@@ -179,6 +179,8 @@ jobs:
           $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
           node scripts/windows-desktop-acceptance.cjs --installer apps/desktop/dist/WorkStep-windows-x64.exe --version $version --previous-installer "$env:RUNNER_TEMP/previous/WorkStep-windows-x64.exe" --previous-version $env:WORKSTEP_PREVIOUS_RELEASE --previous-checksums "$env:RUNNER_TEMP/previous/SHA256SUMS.txt"
           if ($LASTEXITCODE -ne 0) { throw "Windows acceptance failed; release is blocked" }
+          $report = Get-Content "$env:RUNNER_TEMP/windows-acceptance-report/report.json" -Raw | ConvertFrom-Json
+          if ($report.success -ne $true) { throw "Windows acceptance did not complete; release is blocked" }
       - name: Upload Windows acceptance evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

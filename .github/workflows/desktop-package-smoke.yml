@@ -20,6 +20,10 @@ on:
         type: boolean
         required: false
         default: false
+      acceptance_run:
+        description: Reuse a source-built Windows installer artifact from this repository's Actions run
+        required: false
+        default: ""
 
 concurrency:
   group: desktop-package-smoke-${{ inputs.ref }}
@@ -27,10 +31,11 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   windows-acceptance:
-    if: ${{ inputs.acceptance_tag != '' }}
+    if: ${{ inputs.acceptance_tag != '' || inputs.acceptance_run != '' }}
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
@@ -47,14 +52,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ACCEPTANCE_TAG: ${{ inputs.acceptance_tag }}
           PREVIOUS_TAG: ${{ inputs.previous_tag }}
+          ACCEPTANCE_RUN: ${{ inputs.acceptance_run }}
         run: |
-          foreach ($tag in @($env:ACCEPTANCE_TAG, $env:PREVIOUS_TAG)) {
+          if ($env:ACCEPTANCE_TAG -and $env:ACCEPTANCE_RUN) { throw "Choose a release tag OR a build run" }
+          $tags = @($env:PREVIOUS_TAG)
+          if ($env:ACCEPTANCE_TAG) { $tags += $env:ACCEPTANCE_TAG }
+          foreach ($tag in $tags) {
             if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid release tag" }
             $draft = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft
             if ($LASTEXITCODE -ne 0 -or $draft -ne "false") { throw "Release must already be published" }
           }
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/current", "$env:RUNNER_TEMP/previous" | Out-Null
-          gh release download $env:ACCEPTANCE_TAG --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/current" --pattern WorkStep-windows-x64.exe --pattern SHA256SUMS.txt
+          if ($env:ACCEPTANCE_RUN) {
+            if ($env:ACCEPTANCE_RUN -notmatch '^[0-9]+$') { throw "Invalid build run ID" }
+            gh run download $env:ACCEPTANCE_RUN --repo $env:GITHUB_REPOSITORY --name desktop-smoke-windows-x64 --dir "$env:RUNNER_TEMP/current"
+          } else {
+            gh release download $env:ACCEPTANCE_TAG --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/current" --pattern WorkStep-windows-x64.exe --pattern SHA256SUMS.txt
+          }
           if ($LASTEXITCODE -ne 0) { throw "Target download failed" }
           gh release download $env:PREVIOUS_TAG --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/previous" --pattern WorkStep-windows-x64.exe --pattern SHA256SUMS.txt
           if ($LASTEXITCODE -ne 0) { throw "Baseline download failed" }
@@ -63,9 +77,18 @@ jobs:
         env:
           ACCEPTANCE_TAG: ${{ inputs.acceptance_tag }}
           PREVIOUS_TAG: ${{ inputs.previous_tag }}
+          ACCEPTANCE_RUN: ${{ inputs.acceptance_run }}
         run: |
-          node scripts/windows-desktop-acceptance.cjs --installer "$env:RUNNER_TEMP/current/WorkStep-windows-x64.exe" --version $env:ACCEPTANCE_TAG --checksums "$env:RUNNER_TEMP/current/SHA256SUMS.txt" --previous-installer "$env:RUNNER_TEMP/previous/WorkStep-windows-x64.exe" --previous-version $env:PREVIOUS_TAG --previous-checksums "$env:RUNNER_TEMP/previous/SHA256SUMS.txt"
+          $version = $env:ACCEPTANCE_TAG
+          $checksumArgs = @('--checksums', "$env:RUNNER_TEMP/current/SHA256SUMS.txt")
+          if ($env:ACCEPTANCE_RUN) {
+            $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
+            $checksumArgs = @()
+          }
+          node scripts/windows-desktop-acceptance.cjs --installer "$env:RUNNER_TEMP/current/WorkStep-windows-x64.exe" --version $version @checksumArgs --previous-installer "$env:RUNNER_TEMP/previous/WorkStep-windows-x64.exe" --previous-version $env:PREVIOUS_TAG --previous-checksums "$env:RUNNER_TEMP/previous/SHA256SUMS.txt"
           if ($LASTEXITCODE -ne 0) { throw "Windows acceptance failed" }
+          $report = Get-Content "$env:RUNNER_TEMP/windows-acceptance-report/report.json" -Raw | ConvertFrom-Json
+          if ($report.success -ne $true) { throw "Windows acceptance did not complete" }
       - name: Upload Windows acceptance evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -76,7 +99,7 @@ jobs:
           retention-days: 14
 
   macos:
-    if: ${{ inputs.acceptance_tag == '' && !inputs.windows_only }}
+    if: ${{ inputs.acceptance_tag == '' && inputs.acceptance_run == '' && !inputs.windows_only }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -123,7 +146,7 @@ jobs:
           if-no-files-found: error
 
   windows:
-    if: ${{ inputs.acceptance_tag == '' }}
+    if: ${{ inputs.acceptance_tag == '' && inputs.acceptance_run == '' }}
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
@@ -172,6 +195,8 @@ jobs:
           $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
           node scripts/windows-desktop-acceptance.cjs --installer apps/desktop/dist/WorkStep-windows-x64.exe --version $version --previous-installer "$env:RUNNER_TEMP/previous/WorkStep-windows-x64.exe" --previous-version $env:PREVIOUS_TAG --previous-checksums "$env:RUNNER_TEMP/previous/SHA256SUMS.txt"
           if ($LASTEXITCODE -ne 0) { throw "Windows acceptance failed" }
+          $report = Get-Content "$env:RUNNER_TEMP/windows-acceptance-report/report.json" -Raw | ConvertFrom-Json
+          if ($report.success -ne $true) { throw "Windows acceptance did not complete" }
       - name: Upload Windows acceptance evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -190,7 +215,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    if: ${{ inputs.acceptance_tag == '' && !inputs.windows_only }}
+    if: ${{ inputs.acceptance_tag == '' && inputs.acceptance_run == '' && !inputs.windows_only }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

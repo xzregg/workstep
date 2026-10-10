@@ -128,12 +128,14 @@ def test_windows_acceptance_is_a_release_gate_and_supports_published_package_ret
     assert windows.index("windows-desktop-acceptance.cjs") < windows.index("name: desktop-windows-x64")
     assert "if: always()" in windows
     assert "continue-on-error" not in windows
+    assert 'report.success -ne $true' in windows
     smoke = (ROOT / ".github/workflows/desktop-package-smoke.yml").read_text()
     assert "acceptance_tag:" in smoke and "previous_tag:" in smoke
     assert "windows-acceptance:" in smoke
     assert "SHA256SUMS.txt" in smoke
     assert "windows-desktop-acceptance.cjs" in smoke
     assert "--previous-installer" in smoke
+    assert smoke.count('report.success -ne $true') == 2
     assert "gh release edit" not in smoke and "gh release upload" not in smoke
 
 

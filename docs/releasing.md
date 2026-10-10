@@ -68,10 +68,15 @@ Windows 验收，下载原 Release 的 EXE 和 `SHA256SUMS.txt`；不重新打�
 修复代码可用同一流程构建并验收：`ref=dev`、`windows_only=true`、`acceptance_tag` 留空，
 `previous_tag` 指定已发布的升级基线。产物仅上传 Actions artifact，不创建标签、Release
 或镜像；即使 manifest 版本暂未递增，也不能把测试产物当作原已发布版本的替换包。
+仅调整验收脚本时，可设置 `acceptance_run=<构建任务ID>` 复用该仓库的
+`desktop-smoke-windows-x64` artifact，避免重新构建；此时 `acceptance_tag` 留空，
+`ref` 的 manifest 版本必须与该包一致。报告记录实际 EXE 的 SHA-256。
 脚本拒绝在开发者本机启动，演示配置、项目和用户数据均位于 runner 的临时目录。
 Playwright 仅作为开发依赖，通过临时回环调试端口连接实际窗口，不修改正式包的安全 fuses。
 
 无论成功失败都会上传 `windows-acceptance-evidence`（报告、窗口截图、进程日志，保留 14 天）；
+验收还必须生成 `report.json` 且明确 `success: true`；缺失报告、未完成异步流程或只有
+进程退出码为 0 都不能判定通过。
 不上传配置、数据库、请求头或网络 trace。流程不调用真实 LLM，也不需要供应商密钥。
 空工作流中的任务用于验证 CRUD 和持久化，不代表引擎执行已验收。
 Windows Server 的自动检查不能替代 Windows 10/11 实机的 SmartScreen、托盘／系统通知、

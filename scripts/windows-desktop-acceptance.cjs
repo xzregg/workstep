@@ -84,6 +84,27 @@ async function openSettings(page) {
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: /系统设置/ }).click()
 }
+async function closeDesktop(browser) {
+  const connection = await browser.newBrowserCDPSession()
+  let onDisconnect, timer
+  const disconnected = new Promise(resolve => { onDisconnect = resolve; browser.once('disconnected', onDisconnect) })
+  try {
+    // Electron can close the CDP transport before acknowledging Browser.close.
+    // Keep a timer alive and await that real disconnect, not a dangling promise.
+    await Promise.race([
+      connection.send('Browser.close').catch(error => { if (browser.isConnected()) throw error }),
+      disconnected,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Desktop quit command timed out')), 15000) }),
+    ])
+  } finally { clearTimeout(timer); browser.off('disconnected', onDisconnect) }
+}
+function installCompletionGuard(runtime = process, onError = console.error) {
+  let completed = false
+  runtime.once('beforeExit', () => {
+    if (!completed) { onError('Windows acceptance ended before completion'); runtime.exitCode = 1 }
+  })
+  return () => { completed = true }
+}
 
 async function runAcceptance(options) {
   assertWindowsRunner(process.platform, process.env)
@@ -210,8 +231,7 @@ async function runAcceptance(options) {
       })
       await page.waitForURL(`${backendUrl}/`)
       record(`${label}: deep link routed to existing desktop window`)
-      const connection = await browser.newBrowserCDPSession()
-      await connection.send('Browser.close')
+      await closeDesktop(browser)
       await waitFor(async () => child.exitCode !== null, 'Desktop did not quit', 15000)
       await waitFor(async () => fetch(`${backendUrl}/api/health`, { signal: AbortSignal.timeout(1000) })
         .then(() => false, () => true), 'Daemon survived desktop quit', 15000)
@@ -264,6 +284,7 @@ async function runAcceptance(options) {
 if (require.main === module) {
   const { values } = parseArgs({ options: Object.fromEntries(
     ['installer', 'version', 'checksums', 'previous-installer', 'previous-version', 'previous-checksums'].map(name => [name, { type: 'string' }])) })
-  runAcceptance(values).catch(error => { console.error(error); process.exitCode = 1 })
+  const completed = installCompletionGuard()
+  runAcceptance(values).then(completed, error => { completed(); console.error(error); process.exitCode = 1 })
 }
-module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse, fixtureLabels, openSettings }
+module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse, fixtureLabels, openSettings, closeDesktop, installCompletionGuard }
