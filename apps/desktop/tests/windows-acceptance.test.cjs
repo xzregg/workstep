@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { createHash } = require('node:crypto')
 const {
   validateVersion, installArguments, verifyChecksum, validateRuntime,
-  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse,
+  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels,
 } = require('../../../scripts/windows-desktop-acceptance.cjs')
 
 test('acceptance only runs on a GitHub Windows runner, never the developer desktop', () => {
@@ -28,6 +28,12 @@ test('acceptance versions reject shell arguments and smoke pseudo versions', () 
 
 test('NSIS destination is the final unquoted argument for paths with spaces and Chinese', () => {
   assert.deepEqual(installArguments('C:\\temp\\安装目录 WorkStep'), ['/S', '/currentuser', '/D=C:\\temp\\安装目录 WorkStep'])
+})
+
+test('upgrade seeds old versions with supported ASCII but new installs require Unicode', () => {
+  for (const value of Object.values(fixtureLabels(true))) assert.match(value, /^[\x20-\x7e]+$/)
+  assert.match(fixtureLabels(false).userName, /中文.*🙂/)
+  assert.match(fixtureLabels(false).projectName, /验收/)
 })
 
 test('downloaded installer must match the exact checksum entry', () => {

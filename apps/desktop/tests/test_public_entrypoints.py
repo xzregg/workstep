@@ -137,6 +137,16 @@ def test_windows_acceptance_is_a_release_gate_and_supports_published_package_ret
     assert "gh release edit" not in smoke and "gh release upload" not in smoke
 
 
+def test_windows_smoke_build_can_verify_fixes_without_publishing_a_release():
+    smoke = (ROOT / ".github/workflows/desktop-package-smoke.yml").read_text()
+    windows = smoke.split("  windows:\n", 1)[1].split("  linux:\n", 1)[0]
+    assert "windows_only:" in smoke
+    assert "windows-desktop-acceptance.cjs" in windows
+    assert windows.index("windows-desktop-acceptance.cjs") < windows.index("name: desktop-smoke-windows-x64")
+    assert "--previous-installer" in windows
+    assert "WORKSTEP_BUILD_VERSION: smoke-" not in windows
+
+
 def test_repository_readmes_present_the_product_and_current_desktop_support():
     readmes = {
         "README.md": (

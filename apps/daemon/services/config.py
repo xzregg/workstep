@@ -4,6 +4,7 @@ import json
 import hashlib
 import copy
 import logging
+import locale
 import os
 import platform
 from functools import wraps
@@ -102,7 +103,13 @@ class ConfigStore:
                 self._cache = {}
                 return self._cache
             try:
-                self._cache = json.loads(CONFIG_FILE.read_text())
+                try:
+                    text = CONFIG_FILE.read_text(encoding="utf-8")
+                except UnicodeDecodeError:
+                    # Pre-UTF-8 Windows versions used the machine's locale.
+                    # Preserve those settings; the next save migrates to UTF-8.
+                    text = CONFIG_FILE.read_text(encoding=locale.getencoding())
+                self._cache = json.loads(text)
             except Exception as e:
                 logger.warning("Failed to load config: %s", e)
                 self._cache = {}
@@ -116,7 +123,7 @@ class ConfigStore:
             )
             try:
                 temporary.write_text(
-                    json.dumps(self._cache, ensure_ascii=False, indent=2)
+                    json.dumps(self._cache, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
                 temporary.chmod(0o600)
                 os.replace(temporary, CONFIG_FILE)

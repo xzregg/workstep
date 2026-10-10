@@ -18,6 +18,11 @@ function validateVersion(value) {
   return value.replace(/^v/, '')
 }
 function installArguments(destination) { return ['/S', '/currentuser', `/D=${destination}`] }
+function fixtureLabels(baseline = false) {
+  return baseline
+    ? { userName: 'Windows acceptance', projectName: 'WindowsAcceptance', workflowName: 'AcceptanceWorkflow', title: 'AcceptanceTask' }
+    : { userName: 'Windows中文验收🙂', projectName: 'Windows验收项目', workflowName: '验收流程', title: 'Windows验收任务' }
+}
 function verifyChecksum(data, text) {
   const entries = text.split(/\r?\n/).map(line => line.match(/^([a-f0-9]{64})\s+\*?WorkStep-windows-x64\.exe$/)).filter(Boolean)
   assert.equal(entries.length, 1, 'Expected one Windows installer checksum')
@@ -112,9 +117,11 @@ async function runAcceptance(options) {
     assert(await exists(path.join(scenario.config, 'config.json')), 'Uninstall deleted daemon configuration')
     record(`${scenario.name}: uninstall preserves project and daemon data`)
   }
-  async function scenario(name) {
+  async function scenario(name, baseline = false) {
     const directory = path.join(root, name)
-    const value = { name, config: path.join(directory, '配置目录'), project: path.join(directory, '中文项目 with spaces'),
+    // Old Windows builds cannot persist Unicode configuration. Seed an ASCII
+    // project there; the NEW build must still pass fresh Unicode + upgrade writes.
+    const value = { name, config: path.join(directory, '配置目录'), project: path.join(directory, baseline ? 'project with spaces' : '中文项目 with spaces'),
       profile: path.join(directory, 'profile'), fixture: null }
     await fs.mkdir(value.project, { recursive: true }); await fs.mkdir(value.config, { recursive: true })
     return value
@@ -161,21 +168,27 @@ async function runAcceptance(options) {
       if (conflict) record(`${label}: occupied preferred port falls back to own backend`)
       await page.evaluate(() => localStorage.setItem('workstep.locale', JSON.stringify({ state: { locale: 'zh-CN' }, version: 0 })))
       if (seed) {
-        await pageApi(page, '/api/system-settings', 'PUT', { user_name: 'Windows自动验收' })
-        const project = await pageApi(page, '/api/project/init', 'POST', { name: 'Windows验收项目', path: scenario.project })
+        const labels = fixtureLabels(label === 'upgrade-baseline')
+        await pageApi(page, '/api/system-settings', 'PUT', { user_name: labels.userName })
+        const project = await pageApi(page, '/api/project/init', 'POST', { name: labels.projectName, path: scenario.project })
         const query = `?project_id=${encodeURIComponent(project.id)}`
-        const workflow = await pageApi(page, `/api/workflow/create${query}`, 'POST', { name: '验收流程', is_default: true })
-        const title = 'Windows验收任务'
+        const workflow = await pageApi(page, `/api/workflow/create${query}`, 'POST', { name: labels.workflowName, is_default: true })
+        const title = labels.title
         const task = await pageApi(page, `/api/task/create${query}`, 'POST', { title, description: 'No paid engine execution', auto_start: false, workflow_id: workflow.id })
         const memory = '# Windows验收记忆\n\n重启、升级、卸载后保留。\n'
         await pageApi(page, `/api/fs/memory${query}`, 'PUT', { content: memory })
-        scenario.fixture = { projectId: project.id, workflowId: workflow.id, taskId: task.id, title, memory }
+        scenario.fixture = { ...labels, projectId: project.id, workflowId: workflow.id, taskId: task.id, title, memory }
       }
       const fixture = scenario.fixture
+      if (label === 'upgrade-target') {
+        fixture.userName = fixtureLabels().userName
+        await pageApi(page, '/api/system-settings', 'PUT', { user_name: fixture.userName })
+      }
+      assert.equal((await pageApi(page, '/api/system-settings')).user_name, fixture.userName, 'User name lost')
       const query = `?project_id=${encodeURIComponent(fixture.projectId)}`
       validatePersistence(fixture, await pageApi(page, '/api/project/list'),
         await pageApi(page, `/api/task/${fixture.taskId}${query}`), await pageApi(page, `/api/fs/memory${query}`))
-      await page.goto(`${backendUrl}/tasks?project=${encodeURIComponent('Windows验收项目')}&workflow=${encodeURIComponent(fixture.workflowId)}`)
+      await page.goto(`${backendUrl}/tasks?project=${encodeURIComponent(fixture.projectName)}&workflow=${encodeURIComponent(fixture.workflowId)}`)
       await page.getByText(fixture.title, { exact: true }).first().waitFor({ state: 'visible' })
       await page.screenshot({ path: path.join(reportDir, `${label}-tasks.png`) })
       await page.getByRole('button', { name: '设置', exact: true }).click()
@@ -230,11 +243,12 @@ async function runAcceptance(options) {
     await session(fresh, 'fresh-restart', version, false, true)
     await uninstallAndCheck(fresh)
     if (options['previous-installer']) {
-      const upgrade = await scenario('upgrade')
+      const upgrade = await scenario('upgrade', true)
       await install(options['previous-installer'])
       await session(upgrade, 'upgrade-baseline', validateVersion(options['previous-version']), true)
       await install(installer); record('upgrade: original NSIS installer over previous release')
       await session(upgrade, 'upgrade-target', version, false)
+      await session(upgrade, 'upgrade-restart', version, false)
       await uninstallAndCheck(upgrade)
     } else report.gaps.push('Upgrade baseline not supplied; upgrade was not tested')
     report.success = true
@@ -246,4 +260,4 @@ if (require.main === module) {
     ['installer', 'version', 'checksums', 'previous-installer', 'previous-version', 'previous-checksums'].map(name => [name, { type: 'string' }])) })
   runAcceptance(values).catch(error => { console.error(error); process.exitCode = 1 })
 }
-module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse }
+module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse, fixtureLabels }
