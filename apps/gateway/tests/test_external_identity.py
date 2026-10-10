@@ -415,3 +415,44 @@ def test_scan_admin_mutations_do_not_require_password_but_keep_csrf_and_roles(tm
         assert login.status_code == 200
         assert client.get('/api/auth/session').json()['password_confirmation_required'] is True
         assert client.put('/api/admin/registration-policy',headers={'X-CSRF-Token':login.json()['csrf_token']},json={'mode':'closed'}).status_code == 403
+
+
+def test_synced_user_can_have_local_credentials_without_losing_enterprise_identity(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    app.state.identity_connectors = {'dingtalk': FakeConnector()}
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client); headers = {'X-CSRF-Token':csrf}
+        source = _source(client, csrf)
+        snapshot = {'departments':[], 'people':[{'subject':'employee-1','display_name':'张三','department_ids':[]}]}
+        assert client.post(f'/api/admin/identity-sources/{source}/sync',headers=headers,json=snapshot).status_code==200
+        person = next(row for row in client.get('/api/admin/users').json()['users'] if row['registration_source']=='directory_sync')
+        url = f"/api/admin/users/{person['id']}"
+        body = {'display_name':'张三','username':'zhangsan','new_password':'NewPassphrase-2026!'}
+        assert client.patch(url,headers=headers,json=body).status_code==403
+        assert client.post('/api/auth/step-up',headers=headers,json={'password':'OwnerPassphrase-2026!'}).status_code==200
+        assert client.patch(url,headers=headers,json={**body,'username':'bad name'}).status_code==422
+        assert client.patch(url,headers=headers,json={**body,'username':'owner'}).status_code==409
+        assert client.patch(url,headers=headers,json={'display_name':'张三','new_password':'NewPassphrase-2026!'}).status_code==422
+        assert client.patch(url,headers=headers,json=body).status_code==200
+        client.cookies.clear()
+        login = client.post('/api/auth/login',json={'username':'zhangsan','password':'NewPassphrase-2026!'})
+        assert login.status_code==200, login.text
+        assert login.json()['user']['id']==person['id']
+        client.cookies.clear()
+        state = _start(client,source)
+        enterprise = client.get(f'/api/auth/external/{source}/callback?state={state}&code=valid-code')
+        assert enterprise.status_code==200
+        assert enterprise.json()['user']['id']==person['id']
+        client.cookies.clear()
+        admin = client.post('/api/auth/login',json={'username':'owner','password':'OwnerPassphrase-2026!'})
+        headers = {'X-CSRF-Token':admin.json()['csrf_token']}
+        assert client.post(f'/api/admin/identity-sources/{source}/sync',headers=headers,json=snapshot).status_code==200
+        client.cookies.clear()
+        assert client.post('/api/auth/login',json={'username':'zhangsan','password':'NewPassphrase-2026!'}).status_code==200
+        client.cookies.clear()
+        admin = client.post('/api/auth/login',json={'username':'owner','password':'OwnerPassphrase-2026!'})
+        headers = {'X-CSRF-Token':admin.json()['csrf_token']}
+        snapshot['people'][0]['active']=False
+        assert client.post(f'/api/admin/identity-sources/{source}/sync',headers=headers,json=snapshot).status_code==200
+        client.cookies.clear()
+        assert client.post('/api/auth/login',json={'username':'zhangsan','password':'NewPassphrase-2026!'}).status_code==403

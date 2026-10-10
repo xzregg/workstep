@@ -1031,7 +1031,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               <Icon name="share" size={13} strokeWidth={1.75} />
               <span className="task-detail-share-label">{t('share.dialogTitle')}</span>
             </Button>}
-            <GatewayTaskShareLink taskId={task.id} projectId={projectId || null} />
+            <GatewayTaskShareLink taskId={task.id} projectId={projectId || null}
+              local={managedMode === true && detailProject?.type !== 'remote' && !isGatewayRemoteBrowser()} />
           </>
         }
         headerActions={

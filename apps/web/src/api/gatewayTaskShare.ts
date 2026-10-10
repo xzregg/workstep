@@ -14,7 +14,8 @@ async function mutation<T>(path: string, body?: unknown): Promise<T> {
 }
 
 type Record = { id: string; title: string; mode: ShareInfo['mode']; status: string; created_at: string; url?: string }
-export function createGatewayTaskShareApi(platformProjectId: string) {
+export function createGatewayTaskShareApi(platformProjectId: string, local = false) {
+  const basePath = local ? '/gateway-task-shares' : '/remote/task-shares'
   let currentId: string | null = null
   const urls = new Map<string, string>()
   const info = (record: Record, taskId: string): ShareInfo => {
@@ -27,19 +28,19 @@ export function createGatewayTaskShareApi(platformProjectId: string) {
   return {
     get: async (taskId: string, _projectId: string) => {
       const params = new URLSearchParams({ project_id: platformProjectId, task_id: taskId })
-      const result = await request<{ shares: Record[] }>(`/remote/task-shares?${params}`)
+      const result = await request<{ shares: Record[] }>(`${basePath}?${params}`)
       const active = result.shares.find(share => share.status === 'active' || share.status === 'paused')
       return active ? info(active, taskId) : null
     },
     create: async (taskId: string, _projectId: string, password: string | null, title: string | null,
       mode: ShareInfo['mode'], expiresAt?: string | null) => {
-      const result = await mutation<Record>('/remote/task-shares', { project_id: platformProjectId, task_id: taskId,
+      const result = await mutation<Record>(basePath, { project_id: platformProjectId, task_id: taskId,
         password, title: title || '', mode, expires_at: expiresAt || null })
       return info(result, taskId)
     },
     revoke: async (_taskId: string, _projectId: string) => {
       if (!currentId) throw new Error('分享记录不可用')
-      await mutation(`/remote/task-shares/${encodeURIComponent(currentId)}/revoke`)
+      await mutation(`${basePath}/${encodeURIComponent(currentId)}/revoke${local ? `?project_id=${encodeURIComponent(platformProjectId)}` : ''}`)
       urls.delete(currentId)
       currentId = null
     },

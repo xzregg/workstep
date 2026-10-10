@@ -43,6 +43,9 @@ async def _remote_task_share_management(request: Request) -> bool:
     project_id = request.query_params.get('project_id')
     if not project_id:
         return False
+    principal = authenticated_remote_dispatch()
+    if principal is not None:
+        return project_id == principal.project_id
     from api.remote_project import remote_project_registry
     return await asyncio.to_thread(remote_project_registry.get, project_id) is not None
 
@@ -220,6 +223,9 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
         actor = request.scope.get("gateway_remote_actor")
         remote_bridge = actor is not None and managed
+        native_public_share = (managed and actor is None
+            and request.url.path.startswith('/api/task-share/public/')
+            and await asyncio.to_thread(_remote_access_enabled, request.app))
         remote_access = (
             (protected or request.url.path == "/") and not remote_bridge
             and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
@@ -285,7 +291,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 and gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(PLATFORM_COOKIE)) is None):
             return RedirectResponse("/gateway/login", status_code=303)
         browser_session = managed and actor is not None and actor.project_id is None
-        denied = protected and (
+        denied = protected and not native_public_share and (
             (not remote_bridge and not native_dispatch and not remote_access and not browser_session
              and request.url.path != "/api/gateway-platform/callback"
              and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
@@ -300,7 +306,8 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             if managed and protected and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)):
                 response.headers["X-WorkStep-Managed-Session-Expired"] = "1"
         elif (managed and request.url.path.startswith('/api/task-share/')
-              and not await _remote_task_share_management(request)):
+              and not await _remote_task_share_management(request)
+              and not native_public_share):
             response = JSONResponse(
                 {"detail": "legacy sharing is unavailable in managed mode"}, status_code=403,
             )

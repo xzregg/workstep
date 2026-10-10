@@ -946,3 +946,54 @@ def test_shared_history_display_is_identical_across_share_modes():
 
     assert [event.get("name") or event["type"] for event in read_only] == ["TEXT_MESSAGE_CHUNK"]
     assert interactive == read_only
+
+
+@pytest.mark.asyncio
+async def test_native_remote_project_task_share_on_managed_host(manager, tmp_path, monkeypatch):
+    import main
+    import json
+    from fastapi import FastAPI
+    from api.share import router
+    from api.desktop_security import DesktopSecurityMiddleware
+    from api.remote_access_guard import RemoteAccessGuardMiddleware
+    from streaming.remote_host import RemoteRouteDispatcher
+    from services.remote_access import ActorSnapshot, RemotePrincipal, RemoteAccessService
+    from services.remote_protocol import RemoteHttpRequest
+    from services.gateway_client.identity import ManagedLocalSessions
+    from types import SimpleNamespace
+    project,task = _create_task_in_project(manager,tmp_path/'remote-share-host')
+    monkeypatch.setattr(main,'project_manager',manager)
+    gateway = SimpleNamespace(managed_config=object(),local_sessions=ManagedLocalSessions(),policy_cache=SimpleNamespace(current=None))
+    monkeypatch.setattr(main,'gateway_client',gateway)
+    store = MemoryConfigStore(); store.set('remote_access',{'enabled':True})
+    access = RemoteAccessService(store); access.set_access_password('test-password')
+    app = FastAPI(); app.state.gateway_client=gateway; app.state.remote_access_service=access
+    app.include_router(router)
+    app.add_middleware(DesktopSecurityMiddleware)
+    app.add_middleware(RemoteAccessGuardMiddleware,access_service=access)
+    dispatcher = RemoteRouteDispatcher(app)
+    principal = RemotePrincipal(project.id,ActorSnapshot('guest','访客','device','浏览器','remote'))
+    path=f"/api/task-share/{task['id']}"
+    try:
+        created = await dispatcher.dispatch(RemoteHttpRequest('create','POST',path+'/create',query={'project_id':'remote:alias'},headers={'content-type':'application/json'},body=json.dumps({'mode':'read_only'}).encode()),principal)
+        assert created.status==200,created.body
+        token=created.json()['token']
+        queried = await dispatcher.dispatch(RemoteHttpRequest('get','GET',path,query={'project_id':'remote:alias'}),principal)
+        assert queried.status==200 and queried.json()['token']==token
+        async with AsyncClient(transport=ASGITransport(app=app),base_url='http://lan.test') as browser:
+            public=f'/api/task-share/public/{token}'
+            meta=await browser.get(public+'/meta')
+            assert meta.status_code==200,meta.text
+            unlocked=await browser.post(public+'/unlock',json={'password':''})
+            assert unlocked.status_code==200,unlocked.text
+            viewed=await browser.get(public+'/task',headers={'X-Share-Session':unlocked.json()['session_token']})
+            assert viewed.status_code==200,viewed.text
+            assert viewed.json()['id']==task['id']
+        revoked=await dispatcher.dispatch(RemoteHttpRequest('revoke','DELETE',path,query={'project_id':'remote:alias'}),principal)
+        assert revoked.status==200
+        async with AsyncClient(transport=ASGITransport(app=app),base_url='http://lan.test') as browser:
+            assert (await browser.get(public+'/meta')).status_code==404
+            store.set('remote_access',{'enabled':False})
+            assert (await browser.get(public+'/meta')).status_code in (401,403)
+    finally:
+        await dispatcher.aclose()

@@ -81,6 +81,7 @@ public final class MainActivity extends Activity {
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ForegroundRefresh foregroundRefresh = new ForegroundRefresh();
+    private final GatewayLoginNavigation gatewayLoginNavigation = new GatewayLoginNavigation();
     private FrameLayout root;
     private WebView webView;
     private ServerAddress server;
@@ -296,6 +297,7 @@ public final class MainActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled") // The existing React application requires JavaScript.
     private void showWebView() {
         clearPage();
+        gatewayLoginNavigation.reset();
         WebView view = new WebView(this);
         webView = view;
         WebSettings settings = view.getSettings();
@@ -320,6 +322,7 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView source, String url, android.graphics.Bitmap icon) {
                 if (source != webView) return;
+                gatewayLoginNavigation.pageStarted(server, url);
                 pageLoading = true;
                 pageHadError = false;
                 android.view.View errorPanel = root.findViewWithTag("connection_error");
@@ -360,8 +363,9 @@ public final class MainActivity extends Activity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView source, WebResourceRequest request) {
+                if (!request.isForMainFrame()) return false;
                 String url = request.getUrl().toString();
-                if (WebNavigation.staysInWebView(server, url)) return false;
+                if (gatewayLoginNavigation.staysInWebView(server, url)) return false;
                 openExternal(url);
                 return true;
             }
@@ -461,6 +465,7 @@ public final class MainActivity extends Activity {
 
                     @Override
                     public boolean shouldOverrideUrlLoading(WebView ignored, WebResourceRequest request) {
+                        if (!request.isForMainFrame()) return false;
                         handle(request.getUrl().toString());
                         return true;
                     }
@@ -726,7 +731,7 @@ public final class MainActivity extends Activity {
     }
 
     private void openNewWindowUrl(String url) {
-        if (WebNavigation.staysInWebView(server, url) && webView != null) webView.loadUrl(url);
+        if (gatewayLoginNavigation.staysInWebView(server, url) && webView != null) webView.loadUrl(url);
         else openExternal(url);
     }
 

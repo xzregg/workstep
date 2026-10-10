@@ -465,8 +465,16 @@ async def admin_reset_password(call: GatewayCall, user_id: str, body: ResetPassw
 
 
 class AdminEditUserInput(BaseModel):
+    username: str | None = Field(default=None, min_length=3, max_length=64)
     display_name: str = Field(min_length=1, max_length=256)
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator('username')
+    @classmethod
+    def valid_login_username(cls, value):
+        if value is not None and not USERNAME.fullmatch(value):
+            raise ValueError('Invalid login username')
+        return value
 
     @field_validator('display_name')
     @classmethod
@@ -478,7 +486,7 @@ class AdminEditUserInput(BaseModel):
 
 async def admin_edit_user(call: GatewayCall, user_id: str, body: AdminEditUserInput):
     identity, _ = await _user_manager_request(call, user_id)
-    if body.new_password is not None:
+    if body.new_password is not None or body.username is not None:
         _, auth_session = await identity.session_user(call.tokens.get(COOKIE_NAME))
         await identity.require_step_up(auth_session)
-    return public_user(await identity.admin_edit_user(user_id, body.display_name, body.new_password))
+    return public_user(await identity.admin_edit_user(user_id, body.display_name, body.new_password, body.username))

@@ -112,3 +112,30 @@ test("device-wide gateway session resolves the task project before showing share
     await window.happyDOM.close()
   }
 })
+
+
+test('local workbench connected to Gateway keeps task share button without a portal session', async () => {
+  const { window } = installDomEnvironment()
+  window.location.href='http://127.0.0.1:8767/tasks?project=test_workstep'
+  useGatewaySessionStore.setState({session:null})
+  const oldFetch=globalThis.fetch
+  const calls:string[]=[]
+  globalThis.fetch=async(input,init)=>{
+    calls.push(String(input))
+    if(init?.method==='POST') return Response.json({id:'share-local',url:'https://gateway.example/share/new-token',status:'active',mode:'read_only',title:''})
+    return Response.json({shares:[]})
+  }
+  const element=document.body.appendChild(document.createElement('div'));const root=createRoot(element)
+  try {
+    await act(async()=>root.render(<I18nProvider><GatewayTaskShareLink taskId="task-local" projectId="host-local" local /></I18nProvider>))
+    assert.deepEqual(calls,[])
+    const button=element.querySelector<HTMLButtonElement>('.task-detail-share-button')
+    assert.ok(button)
+    await act(async()=>button.click())
+    assert.equal(calls[0],'/api/gateway-task-shares?project_id=host-local&task_id=task-local')
+    const create=[...document.body.querySelectorAll('button')].find(item=>item.textContent==='生成分享链接')!
+    await act(async()=>create.click())
+    assert.equal(calls[1],'/api/gateway-task-shares')
+    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value,'https://gateway.example/share/new-token')
+  } finally {await act(async()=>root.unmount());globalThis.fetch=oldFetch;await window.happyDOM.close()}
+})

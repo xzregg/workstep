@@ -15,6 +15,7 @@ from services.engine_packages import prepare_engine_package_dir
 from services.gateway_client import GatewayClientService
 from services.gateway_client.browser_login import GatewayBrowserLogin
 from api.gateway_platform import router as gateway_platform_router
+from api.gateway_task_shares import router as gateway_task_shares_router
 from api.managed import router as managed_router
 from api.platform_share import router as platform_share_router
 
@@ -267,6 +268,7 @@ app.state.gateway_client = gateway_client
 app.state.remote_access_service = remote_access_service
 app.state.gateway_browser_login = GatewayBrowserLogin(gateway_client)
 app.include_router(gateway_platform_router)
+app.include_router(gateway_task_shares_router)
 app.include_router(completion_notifications_router)
 gateway_client.asgi_app = app
 app.include_router(managed_router)

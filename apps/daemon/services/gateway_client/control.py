@@ -1,6 +1,7 @@
 """Outbound managed device control connection with bounded reconnect."""
 
 import asyncio
+import secrets
 import os
 import base64
 import json
@@ -72,6 +73,8 @@ class GatewayControlClient:
         self._active_socket = None
         self._project_ack_messages: asyncio.Queue | None = None
         self._project_request_lock = asyncio.Lock()
+        self._task_share_ack_messages: asyncio.Queue | None = None
+        self._task_share_request_lock = asyncio.Lock()
         self._verified_gateway_key: str | None = None
         self._reconnect_token: str | None = None
 
@@ -181,6 +184,30 @@ class GatewayControlClient:
                 raise ValueError("Gateway project publication failed")
             return response
 
+    async def manage_task_share(self, device_id: str, project_id: str, action: str, payload: dict) -> dict:
+        async with self._task_share_request_lock:
+            socket, messages = self._active_socket, self._task_share_ack_messages
+            if not self.online or socket is None or messages is None:
+                raise ConnectionError("Gateway control connection is offline")
+            request_id = secrets.token_hex(16)
+            await socket.send(json.dumps({"kind":"task_share", "version":1,
+                "request_id":request_id, "host_project_id":project_id,
+                "action":action, "payload":payload}))
+            async with asyncio.timeout(15):
+                while True:
+                    response = await messages.get()
+                    if isinstance(response, Exception): raise response
+                    if not isinstance(response, dict) or response.get("request_id") != request_id:
+                        continue
+                    if (response.get("kind") != "task_share_ack" or response.get("version") != 1
+                            or response.get("device_id") != device_id):
+                        raise ValueError("Invalid Gateway task share acknowledgment")
+                    if not response.get("ok"):
+                        raise PermissionError(response.get("error") or "网关拒绝了分享操作。")
+                    result = response.get("result")
+                    if not isinstance(result, dict): raise ValueError("Invalid Gateway task share result")
+                    return result
+
     async def _run(self, authorization: str, device_id: str,
                    private_key: Ed25519PrivateKey, public_key_pem: str,
                    delegation_signature: str) -> None:
@@ -275,6 +302,7 @@ class GatewayControlClient:
                         )
                     self._active_socket = socket
                     self._project_ack_messages = project_messages
+                    self._task_share_ack_messages = asyncio.Queue()
                     self.online = True
                     delay = 1.0
                     while not self._stop.is_set():
@@ -338,6 +366,9 @@ class GatewayControlClient:
                         ConnectionError("Gateway control connection closed"),
                     )
                 self._project_ack_messages = None
+                if self._task_share_ack_messages is not None:
+                    self._task_share_ack_messages.put_nowait(ConnectionError("Gateway control connection closed"))
+                self._task_share_ack_messages = None
                 self.config_private_key = None
                 if runtime_task:
                     runtime_task.cancel()
@@ -447,6 +478,9 @@ class GatewayControlClient:
                     skill_messages.put_nowait(message)
                 elif message.get("kind") == "project_publish_ack":
                     project_messages.put_nowait(message)
+                elif message.get("kind") == "task_share_ack":
+                    if self._task_share_ack_messages is not None:
+                        self._task_share_ack_messages.put_nowait(message)
                 else:
                     messages.put_nowait(message)
         except asyncio.CancelledError:
