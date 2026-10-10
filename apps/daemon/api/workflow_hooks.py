@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import Field, field_validator
 
 from schemas.base import BaseSchema
+from api.hook_errors import invoke_hook
 from services.config import config_store, DEFAULT_EXECUTION_ENGINE
 from services.project import project_manager
 from services.remote_access import replayed_actor_context, get_current_actor
@@ -64,7 +65,7 @@ async def configuration(project_id, workflow_id):
             ) if base
         ]
     device_id, bases = await asyncio.to_thread(addresses)
-    hooks = await hook_service.list(project_id, workflow_id)
+    hooks = await invoke_hook(hook_service.list(project_id, workflow_id))
     workflow = await hook_service.manager.run_db(project_id, lambda p: p.workflow_by_id(workflow_id))
     steps = WorkflowDefinition.load(workflow['steps']).compile().steps
     return {'hooks': hooks, 'device_id': device_id, 'addresses': bases,
@@ -85,8 +86,8 @@ async def save_hooks(workflow_id: str, body: SaveHooks, project_id: str = Query(
     if len(ids) != len(set(ids)):
         raise HTTPException(422, '钩子 ID 重复')
     actor = get_current_actor()
-    await hook_service.save(project_id, workflow_id, body.hooks,
-                            actor.actor_id if actor and actor.source == 'managed' else None)
+    await invoke_hook(hook_service.save(project_id, workflow_id, body.hooks,
+                            actor.actor_id if actor and actor.source == 'managed' else None))
     return await configuration(project_id, workflow_id)
 
 
@@ -101,7 +102,7 @@ async def trigger_hook(device_id: str, hook_id: str, request: Request):
     items = list(request.query_params.multi_items())
     if any(k not in {'token', 'step_key', 'title', 'creator'} for k, _ in items) or len({k for k, _ in items}) != len(items):
         raise HTTPException(422, '不支持的参数或重复参数')
-    project_id, hook, workflow = await hook_service.resolve(hook_id)
+    project_id, hook, workflow = await invoke_hook(hook_service.resolve(hook_id))
     token = request.query_params.get('token', '')
     if not token or not hmac.compare_digest(token.encode(), hook['token'].encode()):
         raise HTTPException(401, 'Token 无效')

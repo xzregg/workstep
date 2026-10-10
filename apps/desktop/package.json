@@ -1,6 +1,6 @@
 {
   "name": "workstep-desktop",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "packageManager": "yarn@1.22.22",
   "private": true,
   "description": "Electron shell for the WorkStep FastAPI sidecar",

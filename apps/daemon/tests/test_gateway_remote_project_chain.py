@@ -82,7 +82,8 @@ async def test_gateway_device_forwards_remote_reads_writes_and_stream_without_sc
         actor_provider=lambda: ActorSnapshot('a', 'Device A user', 'device-a', 'Device A', 'local'),
         event_sink=device_bus.publish, connect_factory=connect)
     device = FastAPI()
-    device.state.gateway_client = SimpleNamespace(managed_config=object())
+    from services.gateway_client.identity import ManagedLocalSessions
+    device.state.gateway_client = SimpleNamespace(managed_config=object(), local_sessions=ManagedLocalSessions())
     device.add_middleware(RemoteProjectProxyMiddleware, registry=registry, client_manager=manager)
     device.add_middleware(DesktopSecurityMiddleware)
     @device.get('/api/health')

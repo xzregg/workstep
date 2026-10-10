@@ -178,15 +178,23 @@ def test_sandbox_web_build_uses_github_reachable_npm_registry() -> None:
 
     assert "FROM node:24-bookworm AS web-build" in web_build
     assert web_build.count("--network-timeout 600000 --network-concurrency 4") == 3
-    assert "registry.npmmirror.com" not in web_build
-    assert "https://registry.npmjs.org" in web_build
+    # 本地构建保留镜像默认值，GitHub 发布显式选择其可达的官方仓库。
+    workflow = (REPO_DIR / ".github/workflows/desktop-release.yml").read_text(encoding="utf-8")
+    assert "ARG NPM_REGISTRY=" in web_build
+    assert "--build-arg NPM_REGISTRY=https://registry.npmjs.org" in workflow
+    assert 'yarn config set registry "$NPM_REGISTRY"' in web_build
+    assert web_build.count('${NPM_REGISTRY%/}/#g') == 6
 
 
 def test_local_macos_package_script_rebuilds_version_icons_and_runtime() -> None:
     script = LOCAL_MACOS_PACKAGE_SCRIPT.read_text(encoding="utf-8")
     package = (REPO_DIR / "apps" / "desktop" / "package.json").read_text(encoding="utf-8")
 
-    assert '"version": "1.0.10"' in package
+    import json
+    import tomllib
+    version = json.loads(package)["version"]
+    daemon = tomllib.loads((REPO_DIR / "apps" / "daemon" / "pyproject.toml").read_text(encoding="utf-8"))
+    assert daemon["project"]["version"] == version
     assert 'npm version "$version" --no-git-tag-version --allow-same-version' in script
     assert 'run_yarn icons' in script
     assert 'WORKSTEP_BUILD_VERSION="$version" "$repo_dir/build.sh" --with-web' in script

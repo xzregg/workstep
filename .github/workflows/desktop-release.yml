@@ -40,6 +40,7 @@ jobs:
           repository="${IMAGE_REPOSITORY,,}"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker buildx build --platform linux/amd64,linux/arm64 --push \
+            --build-arg NPM_REGISTRY=https://registry.npmjs.org \
             --tag "$repository:$RELEASE_TAG" --tag "$repository:latest" \
             --metadata-file "$RUNNER_TEMP/image-metadata.json" .
           digest=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$RUNNER_TEMP/image-metadata.json")

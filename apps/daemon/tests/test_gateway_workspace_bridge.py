@@ -14,6 +14,7 @@ import httpx
 
 from api.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client.bridge import ManagedHttpBridge
+from services.gateway_client.identity import ManagedLocalSessions
 
 
 @pytest.mark.asyncio
@@ -24,7 +25,7 @@ async def test_project_bridge_serves_workspace_assets_without_exposing_global_ro
     index = tmp_path / 'index.html'
     index.write_text('<title>WorkStep</title><script src="/assets/app.js"></script>')
     app = FastAPI()
-    app.state.gateway_client = SimpleNamespace(managed_config=object())
+    app.state.gateway_client = SimpleNamespace(managed_config=object(), local_sessions=ManagedLocalSessions())
     app.add_middleware(DesktopSecurityMiddleware)
     app.mount('/assets', StaticFiles(directory=assets))
 

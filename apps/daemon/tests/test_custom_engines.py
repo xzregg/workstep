@@ -36,6 +36,13 @@ class ExampleEngine(CustomEngineBase):
 @pytest.fixture
 def custom_environment(tmp_path, monkeypatch):
     import services.config as config
+    import engines.core.registry as registry
+    # Registration refreshes in-memory catalogs: isolate them as well as files.
+    monkeypatch.setattr(registry, "_ALL_ENGINES", dict(registry._ALL_ENGINES))
+    monkeypatch.setattr(registry, "ENGINE_REGISTRY", dict(registry.ENGINE_REGISTRY))
+    monkeypatch.setattr(registry, "COORDINATOR_FALLBACK_ORDER", list(registry.COORDINATOR_FALLBACK_ORDER))
+    monkeypatch.setattr(registry, "_SCAN_CACHE", None)
+    monkeypatch.setattr(registry, "_SCAN_GENERATION", registry._SCAN_GENERATION)
     monkeypatch.setattr(config, "CONFIG_DIR", tmp_path / "config")
     monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "config" / "config.json")
     monkeypatch.setattr(config.config_store, "_cache", {})

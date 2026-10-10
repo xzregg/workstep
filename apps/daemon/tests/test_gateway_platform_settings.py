@@ -88,6 +88,59 @@ async def test_expired_or_wrong_callback_state_never_contacts_gateway():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('origin', ['http://127.0.0.1:8767', 'http://192.168.52.156:8765', 'https://workstep.example.com'])
+@pytest.mark.parametrize('pending_state', ['missing', 'expired', 'wrong'])
+async def test_invalid_browser_callback_returns_to_fresh_gateway_authorization(monkeypatch, origin, pending_state):
+    import time
+    from unittest.mock import AsyncMock
+    from api.gateway_platform import router
+    from api.desktop_security import DesktopSecurityMiddleware
+    from services.gateway_client.browser_login import GatewayBrowserLogin
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    login = GatewayBrowserLogin(SimpleNamespace())
+    if pending_state != 'missing':
+        login.pending = {'state': ('x' if pending_state == 'wrong' else 's')*32,
+            'expires': time.monotonic() + (-1 if pending_state == 'expired' else 300)}
+    login.settings = AsyncMock(return_value={'url': 'https://gateway.example.com', 'enabled': True})
+    login.begin = AsyncMock(return_value='https://gateway.example.com/desktop/login?state='+'n'*32)
+    app = FastAPI(); app.include_router(router); app.add_middleware(DesktopSecurityMiddleware)
+    app.state.gateway_browser_login = login
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=origin) as client:
+        response = await client.get('/api/gateway-platform/callback',
+            params={'code': 'c'*32, 'state': 's'*32}, headers={'Accept': 'text/html'})
+        assert response.status_code == 303
+        assert response.headers['location'] == '/gateway/login'
+        assert response.headers['cache-control'] == 'no-store'
+        assert 'set-cookie' not in response.headers
+        # Discard the old callback parameters and generate a new authorization.
+        retry = await client.get(response.headers['location'])
+        assert retry.status_code == 303
+        assert retry.headers['location'] == 'https://gateway.example.com/desktop/login?state='+'n'*32
+    login.begin.assert_awaited_once_with('https://gateway.example.com', origin, desktop=False)
+
+
+@pytest.mark.asyncio
+async def test_invalid_native_callback_remains_an_error_but_desktop_navigation_retries(monkeypatch):
+    from api.gateway_platform import router
+    from services.gateway_client.browser_login import GatewayBrowserLogin
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    app = FastAPI(); app.include_router(router)
+    app.state.gateway_browser_login = GatewayBrowserLogin(SimpleNamespace())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://127.0.0.1:8767') as client:
+        params = {'code': 'c'*32, 'state': 's'*32}
+        headers = {'X-WorkStep-Desktop-Token': 'runtime-secret'}
+        response = await client.get('/api/gateway-platform/callback', params=params, headers=headers)
+        assert response.status_code == 400
+        assert response.json()['detail'] == 'Gateway login expired or invalid'
+        response = await client.get('/api/gateway-platform/callback', params=params,
+            headers={**headers, 'Sec-Fetch-Mode': 'navigate'})
+        assert response.status_code == 303
+        assert response.headers['location'] == '/gateway/login'
+
+
+@pytest.mark.asyncio
 async def test_callback_reports_gateway_device_rejection_instead_of_network_failure(tmp_path, monkeypatch):
     import time
     from services.gateway_client import browser_login as module
