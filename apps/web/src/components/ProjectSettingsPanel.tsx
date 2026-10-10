@@ -4,24 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   chatSessionApi,
   projectApi,
-  remoteProjectApi,
   type Project,
   type ProjectSettingsResult,
-  type RemoteDevice,
 } from '../api/client'
 import { useI18n } from '../i18n'
-import { copyText } from '../utils/clipboard'
 import { useChatListStore } from '../stores/chatSessionStore'
-import { resolveAccessExpiresAt, type AccessDurationPreset } from '../utils/remoteDeviceAccess'
-import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import Button from './Button'
 import ConcurrencyLimitInput from './ConcurrencyLimitInput'
 import Field from './Field'
 import Input from './Input'
 import MarkdownEditor from './MarkdownEditor'
 import QuickButtonEditor, { type QuickButtonDraft, quickButtonToDraft, quickButtonFromDraft } from './QuickButtonEditor'
-import RemoteDeviceAccessList from './RemoteDeviceAccessList'
-import Select from './Select'
 import SkillCenterSettings from '../pages/SkillCenterSettings'
 import ProjectSharingTabs from './ProjectSharingTabs'
 import GatewayProjectSettings from './GatewayProjectSettings'
@@ -95,15 +88,6 @@ function LocalProjectSettingsPanel({
   const [concurrencyError, setConcurrencyError] = useState('')
   const [concurrencySaved, setConcurrencySaved] = useState(false)
 
-  // ── share tab ─────────────────────────────────────────────────────
-  const [access, setAccess] = useState<'internal' | 'external'>('internal')
-  const [accessDuration, setAccessDuration] = useState<AccessDurationPreset>('permanent')
-  const [customExpiry, setCustomExpiry] = useState('')
-  const [shareValue, setShareValue] = useState('')
-  const [shareError, setShareError] = useState('')
-  const [shareLoading, setShareLoading] = useState(false)
-  const [devices, setDevices] = useState<RemoteDevice[]>([])
-
   const tabs: { key: TabKey; label: string }[] = useMemo(() => [
     { key: 'general', label: t('projectSettings.tabs.general') },
     { key: 'assistant', label: t('projectSettings.tabs.assistant') },
@@ -148,32 +132,7 @@ function LocalProjectSettingsPanel({
     void loadSettings()
   }, [loadSettings])
 
-  // Share devices polling while the share tab is open.
-  useEffect(() => {
-    if (!projectId || activeTab !== 'share' || isGatewayRemoteBrowser()) return
-    let active = true
-    const refresh = () => {
-      void remoteProjectApi.devices(projectId).then((result) => {
-        if (active) setDevices(result.devices)
-      }).catch(() => undefined)
-    }
-    refresh()
-    const timer = window.setInterval(refresh, 2000)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [projectId, activeTab])
-
   if (!project) return null
-
-  const handleDeviceChange = (device: RemoteDevice) => {
-    setDevices((current) => current.map((item) => (
-      item.project_id === device.project_id && item.device_id === device.device_id
-        ? device
-        : item
-    )))
-  }
 
   // ── save handlers ─────────────────────────────────────────────────
 
@@ -277,27 +236,6 @@ function LocalProjectSettingsPanel({
       setConcurrencyError(reason instanceof Error ? reason.message : t('projectSettings.saveFailed'))
     } finally {
       setConcurrencySaving(false)
-    }
-  }
-
-  const createShare = async () => {
-    if (shareLoading) return
-    setShareLoading(true)
-    setShareError('')
-    try {
-      const accessExpiresAt = resolveAccessExpiresAt(accessDuration, customExpiry)
-      const result = await remoteProjectApi.createShare(project.id, access, accessExpiresAt)
-      setShareValue(result.share_string)
-    } catch (reason) {
-      setShareError(
-        accessDuration === 'custom' && (!customExpiry || new Date(customExpiry).getTime() <= Date.now())
-          ? t('layout.expiryFutureRequired')
-          : reason instanceof Error
-            ? reason.message
-            : t('layout.remoteShareFailed'),
-      )
-    } finally {
-      setShareLoading(false)
     }
   }
 
@@ -536,90 +474,7 @@ function LocalProjectSettingsPanel({
                 </div>
               </div>
             ) : (
-              <ProjectSharingTabs projectId={projectId || ''}>
-              <div style={tabBodyStyle}>
-                <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
-                  {t('projectSettings.share.generateHint')}
-                </p>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <Button
-                    variant={access === 'internal' ? 'primary' : 'ghost'}
-                    onClick={() => { setAccess('internal'); setShareValue(''); setShareError('') }}
-                  >
-                    {t('layout.internalAccess')}
-                  </Button>
-                  <Button
-                    variant={access === 'external' ? 'primary' : 'ghost'}
-                    onClick={() => { setAccess('external'); setShareValue(''); setShareError('') }}
-                  >
-                    {t('layout.externalAccess')}
-                  </Button>
-                </div>
-                <Field label={t('layout.deviceAccessDuration')} error={shareError || undefined}>
-                  <Select
-                    value={accessDuration}
-                    onChange={(event) => {
-                      setAccessDuration(event.target.value as AccessDurationPreset)
-                      setShareValue('')
-                      setShareError('')
-                    }}
-                    style={{ width: '100%' }}
-                  >
-                    <option value="permanent">{t('layout.accessPermanent')}</option>
-                    <option value="day">{t('layout.accessOneDay')}</option>
-                    <option value="week">{t('layout.accessSevenDays')}</option>
-                    <option value="month">{t('layout.accessThirtyDays')}</option>
-                    <option value="custom">{t('layout.accessCustom')}</option>
-                  </Select>
-                </Field>
-                {accessDuration === 'custom' && (
-                  <Field label={t('layout.customExpiry')}>
-                    <Input
-                      type="datetime-local"
-                      value={customExpiry}
-                      onChange={(event) => { setCustomExpiry(event.target.value); setShareValue(''); setShareError('') }}
-                    />
-                  </Field>
-                )}
-                {shareValue && (
-                  <Field label={t('layout.remoteShareString')}>
-                    <textarea
-                      readOnly
-                      value={shareValue}
-                      rows={5}
-                      style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))' }}
-                    />
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                      <Button variant="ghost" size="sm" onClick={() => void copyText(shareValue)}>
-                        {t('common.copy')}
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setShareValue('')}>
-                        {t('common.close')}
-                      </Button>
-                    </div>
-                  </Field>
-                )}
-                <Button
-                  variant="primary"
-                  loading={shareLoading}
-                  disabled={accessDuration === 'custom' && !customExpiry}
-                  onClick={() => void createShare()}
-                >
-                  {t('layout.generateShare')}
-                </Button>
-                <div style={{ borderTop: '1px solid var(--border-soft)', paddingTop: 14 }}>
-                  <div style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 650, marginBottom: 7 }}>
-                    {t('projectSettings.share.devices')}（{t('projectSettings.share.invites')}：
-                    {settings?.share?.active_invites ?? 0}）
-                  </div>
-                  <RemoteDeviceAccessList
-                    devices={devices}
-                    onDeviceChange={handleDeviceChange}
-                    onError={setShareError}
-                  />
-                </div>
-              </div>
-              </ProjectSharingTabs>
+              <ProjectSharingTabs projectId={projectId || ''} />
             )}
           </section>
         </div>

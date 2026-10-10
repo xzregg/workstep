@@ -620,10 +620,10 @@ test('editing user validates passwords, preserves failed edits and protects clos
  }
  render(<AdminEditUserDialog csrf="csrf" user={{id:'test',username:'test',display_name:'Test',status:'active',registration_source:'admin_created',must_change_password:false,created_at:''}} onSaved={()=>saved++} onClose={()=>closed++}/>)
  fireEvent.change(screen.getByLabelText('显示名称'), {target:{value:'新名字'}})
- fireEvent.change(screen.getByLabelText('新密码（可选）'), {target:{value:'Password123'}})
+ fireEvent.change(screen.getByLabelText('新密码（可选）'), {target:{value:'UniquePassphrase-2026!'}})
  const submit = screen.getByRole('button',{name:'保存修改'}) as HTMLButtonElement
  assert.equal(submit.disabled,true)
- fireEvent.change(screen.getByLabelText('确认新密码'), {target:{value:'Password123'}})
+ fireEvent.change(screen.getByLabelText('确认新密码'), {target:{value:'UniquePassphrase-2026!'}})
  fireEvent.change(screen.getByLabelText('输入你的密码确认'), {target:{value:'AdminPassword123'}})
  fireEvent.click(submit)
  await screen.findByText('保存失败，请重试。')
@@ -634,7 +634,7 @@ test('editing user validates passwords, preserves failed edits and protects clos
  fireEvent.click(within(screen.getByRole('dialog',{name:'放弃修改'})).getByRole('button',{name:'取消'}))
  fireEvent.click(submit)
  await waitFor(()=>assert.equal(saved,1))
- assert.deepEqual(calls.at(-1),{display_name:'新名字',new_password:'Password123'})
+ assert.deepEqual(calls.at(-1),{display_name:'新名字',new_password:'UniquePassphrase-2026!'})
 })
 
 test('enterprise user edit has no local password field', () => {

@@ -1,5 +1,7 @@
 """Gateway-local accounts and browser sessions."""
 
+from gateway.services.password_policy import validate_password
+
 import asyncio
 import hashlib
 import hmac
@@ -80,6 +82,8 @@ class IdentityService:
                 raise IdentityError("conflict", "Platform already initialized")
             if await session.scalar(select(func.count(User.id))):
                 raise IdentityError("conflict", "Platform already contains users")
+        validate_password(username, password)
+        validate_password(recovery_username, recovery_password)
         primary_hash = await self._hash_password(password)
         recovery_hash = await self._hash_password(recovery_password)
         primary = User(
@@ -142,6 +146,7 @@ class IdentityService:
         mode = await self.registration_mode() if initialized else "open"
         if mode == "closed":
             raise IdentityError("forbidden", "Registration is closed")
+        validate_password(username, password)
         password_hash = await self._hash_password(password)
         user = User(
             id=str(uuid4()), username=username, display_name=display_name,
@@ -254,6 +259,7 @@ class IdentityService:
             await self.require_step_up(auth_session)
         elif not user.password_hash or not await self._verify_password(user.password_hash, current_password):
             raise IdentityError("forbidden", "Current password is incorrect")
+        validate_password(user.username, new_password)
         new_hash = await self._hash_password(new_password)
         async with self.database.session() as session:
             async with session.begin():
@@ -494,6 +500,11 @@ class IdentityService:
                 ))
 
     async def reset_password(self, user_id: str, new_password: str) -> None:
+        async with self.database.session() as session:
+            target = await session.get(User, user_id)
+            if target is None:
+                raise IdentityError("not_found", "User not found")
+            validate_password(target.username, new_password)
         password_hash = await self._hash_password(new_password)
         async with self.database.session() as session:
             async with session.begin():
@@ -510,6 +521,12 @@ class IdentityService:
 
     async def admin_edit_user(self, user_id: str, display_name: str,
                               new_password: str | None = None) -> User:
+        if new_password is not None:
+            async with self.database.session() as session:
+                target = await session.get(User, user_id)
+                if target is None:
+                    raise IdentityError("not_found", "User not found")
+                validate_password(target.username, new_password)
         password_hash = await self._hash_password(new_password) if new_password is not None else None
         async with self.database.session() as session:
             async with session.begin():
@@ -532,6 +549,7 @@ class IdentityService:
 
     async def admin_create_user(self, username: str, display_name: str, password: str,
                                 status: str, created_by: str) -> User:
+        validate_password(username, password)
         password_hash = await self._hash_password(password)
         user = User(
             id=str(uuid4()), username=username, display_name=display_name,

@@ -1,15 +1,19 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useLocation, useNavigationType } from 'react-router-dom'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import { useI18n } from '../i18n'
 import Icon from './Icon'
+import { NavigationHeaderContext } from './NavigationHeaderContext'
+import { BrandIcon } from './BrandIcon'
 
-export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, headerRight }: {
-  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; headerRight?: ReactNode
+export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, headerRight, showBrandIcon = true }: {
+  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean
 }) {
   const { t } = useI18n()
   const compact = useCompactLayout()
+  const headerLeft = useContext(NavigationHeaderContext)
+  const displayTitle = showBrandIcon && /^workstep$/i.test(title) ? 'WorkStep' : title
   const [open, setOpen] = useState(false)
   const location = useLocation()
   const navigationType = useNavigationType()
@@ -24,10 +28,13 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
   }, [location.key, navigationType, preserveNavigationDrawer])
   useEffect(() => { setOpen(false) }, [compact, dismissSignal])
   return <>
-    <header className="mobile-header">
+    <header className={`mobile-header${headerLeft ? ' mobile-header--device' : ''}`} >
+      <div className="mobile-header-left">
       <button aria-label={t('mobile.openNavigation')} aria-expanded={open} aria-controls="workstep-navigation" onClick={() => setOpen(true)}><Icon name="menu" size={21} /></button>
-      <span title={title}>{title}</span>
-      <div className="mobile-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+      {headerLeft}
+      </div>
+      <span className="mobile-header-title" title={displayTitle}>{showBrandIcon && displayTitle === 'WorkStep' && <BrandIcon size={18}/>}<span>{displayTitle}</span></span>
+      <div className="mobile-header-actions">
         {headerRight}
         <button aria-label={t('mobile.newChat')} disabled={newDisabled} onClick={onNew}><Icon name="plus" size={21} /></button>
       </div>

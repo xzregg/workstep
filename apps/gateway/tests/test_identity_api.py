@@ -558,3 +558,96 @@ def test_persistent_session_migration_preserves_revoked_expired_and_remote_sessi
         assert rows.pop('revoked') == '2099-01-01'
         assert rows.pop('remote') == '2099-01-01'
         assert list(rows.values()) == [None]
+
+
+def test_login_account_limit_survives_ip_rotation_and_expires(tmp_path, monkeypatch):
+    from gateway.services import rate_limit
+    now = [1000.0]
+    monkeypatch.setattr(rate_limit, "monotonic", lambda: now[0])
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        assert _setup(client).status_code == 201
+        client.cookies.clear()
+        # Advance past each IP window while retaining the account window.
+        for attempt in range(10):
+            now[0] = 1000.0 + attempt * 61
+            assert client.post("/api/auth/login", json={
+                "username": "owner", "password": "wrong",
+            }).status_code == 401
+        now[0] += 61
+        assert client.post("/api/auth/login", json={
+            "username": "owner", "password": "OwnerPassphrase-2026!",
+        }).status_code == 429
+        assert client.post("/api/auth/login", json={
+            "username": "recovery", "password": "RecoveryPassphrase-2026!",
+        }).status_code == 200
+        now[0] = 1901.0
+        assert client.post("/api/auth/login", json={
+            "username": "owner", "password": "OwnerPassphrase-2026!",
+        }).status_code == 200
+
+
+def test_forwarded_headers_cannot_bypass_login_ip_limit(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        assert _setup(client).status_code == 201
+        for attempt in range(6):
+            response = client.post("/api/auth/login", headers={
+                "X-Forwarded-For": f"192.0.2.{attempt}",
+                "X-Real-IP": f"192.0.2.{attempt}",
+            }, json={"username": f"missing{attempt}", "password": "wrong"})
+            assert response.status_code == (401 if attempt < 5 else 429)
+
+
+@pytest.mark.parametrize('password', ['12345678', 'Password1!', 'owner'])
+def test_weak_password_rejected_by_all_account_write_apis(tmp_path, password):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        setup = _setup(client)
+        csrf = setup.json()['csrf_token']
+        user_id = setup.json()['user']['id']
+        headers = {'X-CSRF-Token': csrf}
+        assert client.post('/api/auth/step-up', headers=headers, json={
+            'password': 'OwnerPassphrase-2026!',
+        }).status_code == 200
+        for path, body in [
+            ('/api/auth/register', {'username': 'alice', 'display_name': 'Alice', 'password': password}),
+            ('/api/admin/users', {'username': 'alice', 'display_name': 'Alice', 'password': password}),
+            ('/api/auth/password', {'current_password': 'OwnerPassphrase-2026!', 'new_password': password}),
+            (f'/api/admin/users/{user_id}/reset-password', {'new_password': password}),
+        ]:
+            assert client.post(path, headers=headers, json=body).status_code == 422
+        assert client.patch(f'/api/admin/users/{user_id}', headers=headers, json={
+            'display_name': 'Owner', 'new_password': password,
+        }).status_code == 422
+        assert client.post('/api/auth/login', json={
+            'username': 'owner', 'password': 'OwnerPassphrase-2026!',
+        }).status_code == 200
+
+
+@pytest.mark.parametrize('method,path', [('post', 'reset-password'), ('patch', '')])
+def test_password_update_waiting_for_database_keeps_health_responsive(tmp_path, method, path):
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        setup = _setup(client).json()
+        headers = {'X-CSRF-Token': setup['csrf_token']}
+        assert client.post('/api/auth/step-up', headers=headers, json={
+            'password': 'OwnerPassphrase-2026!',
+        }).status_code == 200
+        url = f"/api/admin/users/{setup['user']['id']}" + (f'/{path}' if path else '')
+        body = {'new_password': 'UniquePassphrase-2026!'}
+        if method == 'patch':
+            body['display_name'] = 'Owner'
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with sqlite3.connect(tmp_path / 'workstep_platform.db') as holder:
+                holder.execute('BEGIN EXCLUSIVE')
+                pending = pool.submit(getattr(client, method), url, headers=headers, json=body)
+                time.sleep(.1)
+                assert not pending.done()
+                started = time.monotonic()
+                assert client.get('/api/health').status_code == 200
+                assert time.monotonic() - started < .3
+                holder.rollback()
+            assert pending.result(timeout=5).status_code == (204 if method == 'post' else 200)

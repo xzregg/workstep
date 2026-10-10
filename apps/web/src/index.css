@@ -1292,7 +1292,8 @@ details[open] > summary > .process-trace-chevron {
   opacity: 1;
 }
 
-/* Shimmer label for active thinking state (aicss-inspired) */
+/* Keep shimmer gradients compatible with older embedded WebViews: transparent text
+   must not depend on color-mix(), which would invalidate the whole background. */
 .process-trace-thinking-label {
   transition: color 200ms ease;
 }
@@ -1303,8 +1304,8 @@ details[open] > summary > .process-trace-chevron {
   background: linear-gradient(
     90deg,
     var(--muted) 0%, var(--muted) 30%,
-    color-mix(in srgb, var(--muted) 40%, transparent) 45%,
-    color-mix(in srgb, var(--muted) 40%, transparent) 55%,
+    transparent 45%,
+    transparent 55%,
     var(--muted) 70%, var(--muted) 100%
   );
   background-size: 300% 100%;
@@ -1720,8 +1721,8 @@ details[open] > summary > .process-trace-chevron {
   background: linear-gradient(
     90deg,
     var(--fg) 0%, var(--fg) 30%,
-    color-mix(in srgb, var(--fg) 45%, transparent) 45%,
-    color-mix(in srgb, var(--fg) 45%, transparent) 55%,
+    transparent 45%,
+    transparent 55%,
     var(--fg) 70%, var(--fg) 100%
   );
   background-size: 300% 100%;
@@ -3582,8 +3583,8 @@ details[open] > summary > .process-trace-chevron {
   background: linear-gradient(
     90deg,
     var(--muted) 0%, var(--muted) 28%,
-    color-mix(in srgb, var(--muted) 35%, transparent) 46%,
-    color-mix(in srgb, var(--muted) 35%, transparent) 54%,
+    transparent 46%,
+    transparent 54%,
     var(--muted) 72%, var(--muted) 100%
   );
   background-size: 300% 100%;

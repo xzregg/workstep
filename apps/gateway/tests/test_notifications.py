@@ -231,3 +231,19 @@ def test_old_android_root_websocket_and_recent_keep_terminal_event_protocol(tmp_
         access=client.get('/api/completion-notifications/access',params={'project_id':'gateway/one/project','task_id':'task'}).json()
         assert access['url'].endswith('/workspace/one/') and 'task=task' in access['next']
         assert client.get('/api/completion-notifications/access',params={'project_id':'gateway/hidden/project','task_id':'task'}).status_code==404
+
+
+def test_notification_feed_uses_configured_public_origin_behind_tls_proxy(tmp_path):
+    settings = GatewaySettings(data_dir=tmp_path, public_origin='https://gateway.test')
+    with TestClient(create_app(settings), base_url='https://gateway.test') as client:
+        client.post('/api/platform/setup', json=dict(username='owner', display_name='Owner',
+            password='OwnerPassphrase-2026!', recovery_username='recovery',
+            recovery_password='RecoveryPassphrase-2026!', registration_mode='open'))
+        cookie = 'workstep_gateway_session=' + client.cookies.get('workstep_gateway_session')
+        with client.websocket_connect('ws://gateway.test/ws/notifications', headers={'origin':'https://gateway.test', 'cookie':cookie}) as ws:
+            assert ws.receive_json()['type'] == 'notifications'
+            ws.send_json({'type':'ping'})
+            assert ws.receive_json()['type'] == 'pong'
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect('ws://gateway.test/ws/notifications', headers={'origin':'https://other.test', 'cookie':cookie}):
+                pass

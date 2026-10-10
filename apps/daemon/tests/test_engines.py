@@ -420,6 +420,8 @@ def test_create_engine_waits_for_registry_refresh(monkeypatch):
         "_ALL_ENGINES",
         {"refresh_probe": RefreshProbeEngine},
     )
+    monkeypatch.setattr(engine_registry, "COORDINATOR_FALLBACK_ORDER", list(engine_registry.COORDINATOR_FALLBACK_ORDER))
+    monkeypatch.setattr(engine_registry, "_discover_engine_classes", lambda: {"refresh_probe": RefreshProbeEngine})
     monkeypatch.setattr(engine_registry, "_apply_binary_overrides", lambda: None)
     monkeypatch.setitem(ENGINE_REGISTRY, "refresh_probe", RefreshProbeEngine)
 

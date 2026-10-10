@@ -25,7 +25,7 @@ for (const [protocol, hostname, port, expected] of [
   })
 }
 
-test('remote host keeps device context and return link above the workspace', () => {
+test('remote host reserves a desktop Tab header while waiting for device context', () => {
   const existing = Object.getOwnPropertyDescriptor(globalThis, 'window')
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
@@ -36,7 +36,6 @@ test('remote host keeps device context and return link above the workspace', () 
       <div>workspace</div>
     </GatewayRemoteFrame></I18nProvider>)
     assert.match(html, /gateway-remote-banner/)
-    assert.match(html, /https:\/\/gateway\.test\/account/)
     assert.doesNotMatch(html, />workspace</)
     assert.match(html, /gateway-remote-loading/)
     const projectDialog = renderToString(<I18nProvider><ProjectConnectionDialog

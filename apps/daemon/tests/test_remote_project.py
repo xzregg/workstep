@@ -2162,3 +2162,45 @@ async def test_remote_project_settings_path_is_bound_to_host_identity():
         assert response.json()["project_id"] == "host-project"
     finally:
         await dispatcher.aclose()
+
+
+def test_gateway_bridge_uses_gateway_identity_instead_of_lan_access_key(monkeypatch):
+    from api.desktop_security import DesktopSecurityMiddleware, desktop_websocket_allowed
+    from api.remote_access_guard import websocket_access_allowed
+    from services.gateway_client.identity import ManagedActor, ManagedLocalSessions
+    from starlette.websockets import WebSocketDisconnect
+    import pytest
+    config = MemoryConfig()
+    config.set('remote_access', {'enabled': True})
+    access = RemoteAccessService(config)
+    access.set_access_password('letmein')
+    app = FastAPI()
+    app.state.gateway_client = SimpleNamespace(managed_config=object(), local_sessions=ManagedLocalSessions())
+    app.state.remote_access_service = access
+    app.add_middleware(DesktopSecurityMiddleware)
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+    @app.get('/api/project/list')
+    async def projects(): return {'projects': []}
+    @app.websocket('/ws')
+    async def socket(ws: WebSocket):
+        if not await desktop_websocket_allowed(ws) or not await asyncio.to_thread(websocket_access_allowed, ws, access):
+            await ws.close(code=4401)
+            return
+        await ws.accept()
+        await ws.send_text('ok')
+    trusted = False
+    actor = ManagedActor('user-1','alice','device-1','gateway-remote',0)
+    async def bridge(scope, receive, send):
+        if trusted:
+            scope['gateway_remote_actor'] = actor
+        await app(scope, receive, send)
+    with TestClient(bridge, base_url='http://daemon.test', client=('10.88.0.2', 5000)) as client:
+        assert client.get('/api/project/list', headers={'X-WorkStep-Gateway-User':'alice'}).status_code == 401
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect('/ws'): pass
+        trusted = True
+        assert client.get('/api/project/list').json() == {'projects': []}
+        with client.websocket_connect('/ws') as ws:
+            assert ws.receive_text() == 'ok'
+        app.state.gateway_client.managed_config = None
+        assert client.get('/api/project/list').status_code == 401

@@ -99,10 +99,19 @@ _resolve_registry()
 def refresh_registry(*, invalidate_scan: bool = True):
     """Re-scan available engines and rebuild the registry.
 
-    ``invalidate_scan=False`` rebuilds the engine registry without dropping
-    the cached engine list (used by read-only lookups such as model lists).
+    Manual refresh discovers newly registered custom packages as well.
+    ``invalidate_scan=False`` only rebuilds availability without discovery or
+    dropping the cached engine list (used by read-only model lookups).
     """
     with _REGISTRY_LOCK:
+        if invalidate_scan:
+            discovered = _discover_engine_classes()
+            _ALL_ENGINES.clear()
+            _ALL_ENGINES.update(discovered)
+            COORDINATOR_FALLBACK_ORDER[:] = _COORDINATOR_BASE_ORDER + [
+                engine_id for engine_id in _ALL_ENGINES
+                if engine_id not in _COORDINATOR_BASE_ORDER
+            ]
         ENGINE_REGISTRY.clear()
         _apply_binary_overrides()
         _resolve_registry()

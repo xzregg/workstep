@@ -28,7 +28,7 @@ export default function GatewayProjectSettings({ projectId, projectName, onClose
       </div>
       <div className="modal-body" role="tabpanel">{tab === 'general'
         ? <p>{t('projectSettings.general.name')}：{projectName}</p>
-        : <ProjectSharingTabs projectId={projectId}>{null}</ProjectSharingTabs>}</div>
+        : <ProjectSharingTabs projectId={projectId} />}</div>
     </ResizablePanel>
   </div>
 }

@@ -134,6 +134,7 @@ export default function OpenLocationButton({
     activeProject.type,
     typeof window === 'undefined' ? 'localhost' : window.location.hostname,
     typeof navigator === 'undefined' ? '' : navigator.userAgent,
+    typeof window !== 'undefined' && Boolean(window.workstepDesktop?.directories),
   ) : false)
 
   // Load the platform's available directory openers.

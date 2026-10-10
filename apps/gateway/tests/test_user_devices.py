@@ -352,3 +352,28 @@ def test_legacy_password_change_flag_does_not_block_authorized_access(tmp_path, 
         assert client.post('/workspace/owned/api/remote/redeem', data={'ticket':access.json()['ticket']}, follow_redirects=False).status_code == 303
         assert client.get('/workspace/owned/api/remote/session').status_code == 200
         assert client.get('/api/devices/private/access').status_code == 403
+
+
+def test_unauthorized_workspace_documents_return_to_portal_but_api_keeps_json(tmp_path, monkeypatch):
+    from gateway.services.errors import GatewayError
+    import importlib
+    app_module = importlib.import_module('gateway.app')
+    app = create_app(GatewaySettings(data_dir=tmp_path, public_origin='https://gateway.test'))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        root = '/workspace/device-1/'
+        response = client.get(root, follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers['location'] == '/'
+        assert client.get(root + 'api/projects').status_code == 401
+        async def revoked(call):
+            raise GatewayError('forbidden', 'Device access denied')
+        monkeypatch.setattr(app_module, 'proxy_remote_request', revoked)
+        for path in [root, root + 'tasks?project=test', root + 'chat']:
+            response = client.get(path, headers={'Accept':'text/html'}, follow_redirects=False)
+            assert response.status_code == 303
+            assert response.headers['location'] == '/'
+        denied = client.get(root + 'api/projects', headers={'Accept':'text/html'}, follow_redirects=False)
+        assert denied.status_code == 403
+        assert denied.json()['error']['message'] == 'Device access denied'
+        assert client.get(root + 'assets/index.js', follow_redirects=False).status_code == 403
+        assert client.post(root, follow_redirects=False).status_code == 403

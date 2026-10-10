@@ -70,7 +70,7 @@ async def test_inspect_install_validate_register_and_export(custom_environment):
     report = await manager.run_operation("validate", str(source))
     assert report["ok"] is True, report
     registered = await manager.register(str(source))
-    assert registered["restart_required"] is True
+    assert registered["restart_required"] is False
     assert (manager.root() / "example_custom" / "engine.py").exists()
     blob = await manager.export("example_custom")
     import io
@@ -400,3 +400,53 @@ asyncio.run(run())
         env=dict(os.environ), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     output, errors = await asyncio.wait_for(process.communicate(), 20)
     assert process.returncode == 0, errors.decode()
+
+
+@pytest.mark.asyncio
+async def test_refresh_discovers_new_custom_engine_without_restart(custom_environment, monkeypatch):
+    import threading
+    import time
+    from fastapi import FastAPI
+    from httpx import AsyncClient, ASGITransport
+    from api.engine import router
+    import engines.core.registry as registry
+    from services.custom_engines import custom_engine_manager as manager
+    monkeypatch.setattr(registry, "_ALL_ENGINES", dict(registry._ALL_ENGINES))
+    monkeypatch.setattr(registry, "ENGINE_REGISTRY", dict(registry.ENGINE_REGISTRY))
+    monkeypatch.setattr(registry, "COORDINATOR_FALLBACK_ORDER", list(registry.COORDINATOR_FALLBACK_ORDER))
+    monkeypatch.setattr(registry, "_SCAN_CACHE", None)
+    monkeypatch.setattr(registry, "_SCAN_GENERATION", registry._SCAN_GENERATION)
+    registry._ALL_ENGINES.pop("example_custom", None)
+    registry.ENGINE_REGISTRY.pop("example_custom", None)
+    assert await asyncio.to_thread(registry.create_engine, "example_custom") is None
+    report = await manager.run_operation("validate", str(custom_environment))
+    assert report["ok"], report
+    app = FastAPI()
+    app.include_router(router)
+    @app.get("/health")
+    async def health(): return {"ok": True}
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+        registered = await client.post("/api/engine/custom/register", json={"path": str(custom_environment)})
+        assert registered.status_code == 200, registered.text
+        assert registered.json()["restart_required"] is False
+        discover = registry._discover_engine_classes
+        started = threading.Event()
+        def slow_discover():
+            started.set()
+            time.sleep(.3)
+            return discover()
+        monkeypatch.setattr(registry, "_discover_engine_classes", slow_discover)
+        refresh = asyncio.create_task(client.post("/api/engine/refresh"))
+        assert await asyncio.to_thread(started.wait, 2)
+        assert (await asyncio.wait_for(client.get("/health"), .15)).json()["ok"]
+        response = await refresh
+        assert response.status_code == 200, response.text
+        assert any(item["id"] == "example_custom" and item["installed"] for item in response.json()["engines"])
+        listed = await client.get("/api/engine/list")
+        assert any(item["id"] == "example_custom" for item in listed.json()["engines"])
+        assert "example_custom" in registry.COORDINATOR_FALLBACK_ORDER
+        engine = await asyncio.to_thread(registry.create_engine, "example_custom")
+        assert engine is not None
+        events = [event async for event in engine.spawn("hello", str(custom_environment))]
+        assert any(event.type == "agent_message_chunk" for event in events)
+        await engine.stop()

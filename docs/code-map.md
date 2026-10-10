@@ -294,7 +294,7 @@ Gateway 审计工作台由 `apps/gateway-web/src/AdminAuditPage.tsx` 持有筛�
 | 分享、定时、统计 | `src/api/share.ts`、`schedule.ts`、`statistics.ts` | `api/share.py`、`schedule.py`、`statistics.py`；对应 `services/` | 各模块测试 |
 
 网关模式与内网项目分享并存：daemon `api/remote_project.py` 和 `streaming/remote_host.py` 继续处理本地地址邀请及设备凭据；`api/desktop_security.py` 不再按网关模式禁止远程项目 HTTP 和原生 `/ws/remote-project`。本机旧任务分享仍沿用独立的网关隔离规则；已认证的内网远程项目任务分享管理请求（查询、创建、撤销）可由 `desktop_security.py::_remote_task_share_management` 验证远程注册后转发，公开 token 接口仍不可借 project_id 绕过隔离。`TaskDetail.tsx` 使用 `utils/taskShareUrl.ts::canUseLocalTaskShare` 保留网关连接桌面端的内网任务分享按钮和弹框；回归见 `test_desktop_security.py`（含慢注册读取 canary）、`taskShareUrl.test.ts`。设备本地 Web 的 `ProjectSettingsPanel.tsx`、`ProjectShareDialog.tsx` 和 `ProjectConnectionDialog.tsx` 保留分享与添加远程项目入口，`RemoteAccessSettings.tsx` 允许网关和内网远程配置并存；网关浏览器不能修改这些设备本地连接配置。
-项目配置的分享入口由 `ProjectSettingsPanel.tsx` 和网关项目会话的 `GatewayProjectSettings.tsx` 装配 `ProjectSharingTabs.tsx`：本地远程项目分享与网关访问授权位于同一分享页的子标签，侧边栏不再单列访问授权。子模块复用 `gatewayConnectionStore.ts` 的状态及去重刷新，仅配置了非空网关地址才显示访问授权，不要求网关模式已启用；网关浏览器的分享页只装配网关授权内容，不展示设备本地连接配置或轮询本地分享设备。网关内容仍归 `ProjectPublicationSettings.tsx`，项目会话从 `/api/remote/project-grants` 获取设备主人 `can_invite` 标识，以显示邀请入口；该标识不授予额外操作权限。行为入口为 `tests/projectPublicationSettings.test.tsx`、`tests/gatewayProjectSettings.test.tsx` 和 Gateway `tests/test_project_access.py`。
+项目配置 `ProjectSettingsPanel.tsx`、网关项目会话 `GatewayProjectSettings.tsx` 和项目分享弹窗 `ProjectShareDialog.tsx` 统一装配 `ProjectSharingTabs.tsx`，不再分别实现分享表单。首个子标签为“平台访问”，配置非空网关地址时显示并默认选中；其次为“远程访问”。内网/外网邀请、授权期限、生成/复制字符串与设备管理由 `ProjectLocalSharing.tsx` 自管理，通过 `remoteProjectApi` 调用同一服务；仅远程访问标签激活时轮询设备，轮询请求有 in-flight guard，切换标签保留生成结果。样式分别定位于 `ProjectSharingTabs.css` 和 `ProjectLocalSharing.css`，行为测试见 `tests/projectSharing.test.tsx`。子模块复用 `gatewayConnectionStore.ts` 的状态及去重刷新，仅配置了非空网关地址才显示平台访问，不要求网关模式已启用；网关浏览器的分享页只装配网关授权内容，不展示设备本地连接配置或轮询本地分享设备。网关内容仍归 `ProjectPublicationSettings.tsx`，项目会话从 `/api/remote/project-grants` 获取设备主人 `can_invite` 标识，以显示邀请入口；该标识不授予额外操作权限。行为入口为 `tests/projectPublicationSettings.test.tsx`、`tests/gatewayProjectSettings.test.tsx` 和 Gateway `tests/test_project_access.py`。
 远程项目添加校验与连接身份使用 `main.py::_local_actor`：优先采用当前已认证网关请求身份，其次采用设备已登录的网关账号（显示名称为空时使用平台用户名），无需填写本地使用者名称；连接仍携带当前设备身份。未连接网关时保留原有本地名称要求。回归入口为 `tests/test_remote_project_gateway_identity.py`。
 远程项目每次 HTTP 请求的作者归属由 `api/remote_project_proxy.py` 从已认证 actor 上下文写入 `RemoteHttpRequest.actor`，`services/remote_project.py` 随普通或分块请求传输，`streaming/remote_host.py::RemoteRouteDispatcher` 在执行路由时替换作者 ID、名称和用户名，避免长连接把不同网关用户记为设备用户。设备身份、项目范围、访问级别仍取自连接凭据，不能由归属字段扩大权限；旧客户端缺少该字段时兼容原连接作者。链路测试覆盖同一连接多个网关用户、消息作者字段及分块请求；身份测试覆盖权限保持和旧协议回退。A、B 两端均须更新才能保留每次请求作者。
 `api/remote_project_proxy.py::RemoteProjectProxyMiddleware` 在 `main.py` 中位于 `DesktopSecurityMiddleware` 内层，先鉴权与核对项目范围，再转发已登记的远程项目。整设备授权用户可走「网关 → 设备 A → 内网宿主 B」两段转发，A 使用原有 B 的项目凭据；只获 A 单项目授权的会话不能借此访问其它远程项目。`streaming/ws.py` 的远程订阅通过线程读取注册信息，B 的事件经 `RemoteProjectClientManager` 重写为 A 的远程项目 ID，再回传网关工作台。行为入口为 `tests/test_gateway_remote_project_chain.py`（真实桥接、远端鉴权/RPC、读写、事件回传、跨项目拒绝及慢远端健康 canary）、`test_desktop_security.py`、`test_remote_project.py`、Web `gatewayPlatformSettings.test.tsx` 和 `projectPublicationSettings.test.tsx`。
@@ -483,7 +483,7 @@ Android 网页桥接通知由 `MainActivity.java::handleNotificationMessage` 使
 
 设置入口 `components/CustomEngineOnboardingButton.tsx` 通过 `api/engine.ts` 调用 `/api/engine/custom/onboarding`，复用 `pages/ChatPage.tsx` 普通对话及 `utils/chatDraft.ts` 草稿；接入提示词由 i18n 的 `settings.customEngineOnboardingPrompt` 按界面语言生成，插入后台返回的实际工作目录，不增加助手会话或聊天通道。`services/custom_engine_onboarding.py` 在 runtime 草稿目录创建普通项目/会话，所有磁盘和数据库工作异步隔离；内置 `data/skills/workstep-cli/references/` 给出按需阅读的接入规范与接口契约，不加载独立技能。`CustomEngineControls.tsx` 管理 ZIP 导出、运行停用及回退；显示开关仍属于 EngineSettingsPanel。
 
-`api/custom_engine.py` 是宿主机管理入口；`services/custom_engines.py` 持有安装/验收长操作、签名报告、原子注册和导出职责；`cli.py` 与 `services/tool_registry.py` 复用同一 API。`engines/core/custom_package.py` 只读取清单和校验文件；`custom_proxy.py` 自动发现 `$WORKSTEP_CONFIG_DIR/runtime/engines` 的清单并创建代理；`custom_transport.py` 管理独立子进程和整树终止；用户模块只由 `custom_worker.py` 导入，`custom_sdk.py` 提供依赖安装和通用配置助手，`custom_validation.py` 执行公共验收。动态引擎使用现有 ACP→AG-UI 翻译，前端仍只消费 AG-UI。
+`api/custom_engine.py` 是宿主机管理入口；`services/custom_engines.py` 持有安装/验收长操作、签名报告、原子注册和导出职责；`cli.py` 与 `services/tool_registry.py` 复用同一 API。`engines/core/custom_package.py` 只读取清单和校验文件；`custom_proxy.py` 自动发现 `$WORKSTEP_CONFIG_DIR/runtime/engines` 的清单并创建代理；`custom_transport.py` 管理独立子进程和整树终止；用户模块只由 `custom_worker.py` 导入，`custom_sdk.py` 提供依赖安装和通用配置助手，`custom_validation.py` 执行公共验收。动态引擎使用现有 ACP→AG-UI 翻译，前端仍只消费 AG-UI。 注册成功后无需重启；设置页“重新扫描”调用 `/api/engine/refresh`，`registry.py::refresh_registry` 重新发现引擎并更新协调器回退顺序、注册表与列表缓存。`EngineSettingsPanel` 将返回列表发布到共享 `engineAvailabilityStore`，各处选择框跟随更新；只读查询不重复扫描。
 
 行为回归：Daemon `tests/test_custom_engines.py`（真实子进程、API、安装回滚、指纹失效、ZIP、重启发现、响应 canary）、`test_custom_engine_cli.py`、`test_custom_engine_onboarding.py`；Web `tests/customEngineControls.test.tsx`。
 
@@ -643,7 +643,7 @@ Gateway 项目管理 `/admin/projects` 由 `apps/gateway-web/src/AdminProjectsPa
 
 直接远程项目设置：`streaming/remote_host.py::_build_route_catalog` 将 `/api/projects/{project_id}/…` 和项目技能路径识别为 path 绑定，转发时将本地 `remote:…` 别名替换为已认证的宿主项目 ID；测试 `test_remote_project.py::test_remote_project_settings_path_is_bound_to_host_identity`。
 
-引擎模型刷新由 `apps/daemon/api/engine.py::list_engine_models` 持有：绑定供应商时始终只重新读取已保存的勾选缓存（包括空选择），不拉取或覆盖全量模型；尚无缓存时返回空列表，原生账号仍刷新引擎目录。供应商全量预览与勾选保存仍归 `api/provider.py::provider_models_preview/provider_models_selection`。回归见 `tests/test_api_engine_config.py::test_engine_refresh_preserves_provider_selection`、`test_native_engine_models_are_persisted_and_reused`。
+引擎模型刷新由 `apps/daemon/api/engine.py::list_engine_models` 持有：绑定供应商时始终只重新读取已保存的勾选缓存（包括空选择），不拉取或覆盖全量模型；尚无缓存时返回空列表，原生账号仍刷新引擎目录。供应商全量预览与勾选保存仍归 `api/provider.py::provider_models_preview/provider_models_selection`。 `services/providers.py::saved_models` 读取缓存时将缺失、空白名称回退为模型 ID；Web 引擎模型选项也保留同样兜底，覆盖旧缓存响应。回归见 `tests/test_api_engine_config.py::test_engine_provider_models_use_ids_for_missing_names` 和 Web `tests/engineSettingsPanel.test.tsx`。 Web `components/EngineSettingsPanel.tsx` 在供应商草稿切换后立即读取对应已保存模型列表（无需先保存或手动刷新），按供应商区分本地加载状态并忽略过期请求；表单初始化保持已保存的供应商。交互回归见 `tests/engineSettingsPanel.test.tsx`（切换、原生列表恢复、缓存复用与慢请求交错）。回归见 `tests/test_api_engine_config.py::test_engine_refresh_preserves_provider_selection`、`test_native_engine_models_are_persisted_and_reused`。
 
 侧栏项目拖动由 `apps/web/src/components/Layout.tsx` 组装，`stores/projectStore.ts::reorderProjects` 乐观排序并保存；本地与远程项目统一支持移动。`api/project.py::list_projects` 按本机配置 `project_order` 合并排序，`services/project.py::reorder_projects` 保存统一顺序并兼容原本地项目顺序。行为测试为 `tests/test_project_reorder.py` 与 Web `tests/projectReorder.test.ts`。
 
@@ -666,3 +666,31 @@ Gateway 登录长期有效：`services/identity.py` 的普通账号与企业扫�
 组织同步逐人选择：`OrganizationSyncPanel.tsx` 编排左侧组织树与右侧 `OrganizationSyncUsers.tsx`，后者持有用户搜索、已同步隐藏和全选／逐人排除；`DepartmentSelectionTree.tsx` 展示组织半选并切换用户范围。`full_sync` 返回同一预览快照的用户候选及资料／状态变化；`directory_sync_jobs.py::confirm` 校验候选范围，保存用户排除列表，手动与周期同步都保留排除用户原有资料、状态和成员关系。回归：`organization-sync-panel.test.tsx`（默认隐藏、逐人取消、整组重选、确认载荷），`test_selected_directory_sync.py`（伪造候选拒绝、零用户仍同步组织），`test_directory_sync_optimization.py`（排除不误判离职及自动同步沿用）。
 
 桌面目录打开由 `apps/desktop/src/directory-openers.cjs` 检测宿主应用、按最长挂载边界映射沙箱路径并执行无 shell 命令；可信 IPC 位于 `sandbox-ipc.cjs`，`OpenLocationButton.tsx` 优先使用桌面桥，远程项目继续使用目录浏览弹窗。回归：`apps/desktop/tests/directory-openers.test.cjs`。输入草稿由 `useChatInputDraft.ts` 保护恢复值在受控输入回传前不被空值重渲染覆盖，覆盖自定义引擎接入模板；回归：`apps/web/tests/chatInputDraft.test.tsx`。
+
+桌面目录入口在缺少 `workstepDesktop.directories` 桥时（`utils/openLocation.ts`）使用现有 `ProjectDirectoryBrowserDialog`，不回退容器应用检测或启动命令；宿主桥存在时保留宿主应用菜单。回归：`tests/openLocationMode.test.ts`、`tests/desktopDirectoryOpeners.test.tsx`。
+
+- 网关设备工作台移动入口：`apps/web/src/components/GatewayRemoteFrame.tsx` 仅在网关上下文和移动断点下提供绝对定位的设备选择按钮；列表标题提供返回平台链接。`GatewayRemoteFrame.css` 为网关模式下的 Web 移动头部标题预留空间，普通 Web 不受影响。设备列表由 `GatewayDeviceTabs` 请求网关根路径，设备业务仍走工作区代理。行为验证：`apps/web/tests/gatewayWorkspaceFrame.test.tsx`（断点切换、弹层打开关闭、桌面 Tabs、单一通知连接）。
+
+- 网关通知与设备刷新：移动工作台的设备选择弹层由 `GatewayDeviceTabs` 接收标题内容并提供刷新动作，刷新及通知入口均固定在标题行；`DeviceTabs.showRefresh` 避免在长设备列表内重复显示刷新。通知流 `gateway/services/notifications_api.py` 使用配置的公开平台地址校验同主机来源，支持 HTTPS 反向代理终止 TLS。回归：`test_notifications.py` 与 `gatewayWorkspaceFrame.test.tsx`。
+
+- 网关桌面设备选择：`GatewayRemoteFrame` 在工作台上方显示设备 Tab 横栏和返回平台、刷新、通知入口；移动端沿用绝对定位入口和设备弹窗。`GatewayDeviceTabs` 复用同一设备列表和通知连接，不向 `Layout` 注入设备选择按钮。`vite.config.ts` 的 CSS 目标保留旧内置浏览器支持的 max-width 媒体查询，回归见 `gatewayWorkspaceFrame.test.tsx` 和 `mobileCssCompatibility.test.ts`。
+
+网关账号安全：`gateway/services/rate_limit.py` 在密码校验前按 ASGI peer IP 限制每分钟 5 次、按账号限制 15 分钟 10 次尝试，成功清除账号计数；计数为单进程内存，重启清空，多实例部署需共享限流或入口层补充限制。`services/password_policy.py` 统一校验初始化、注册、管理员创建/重置/编辑和个人改密（8–128 位、四类字符至少三类、常见弱密码和账号同名拒绝），旧密码登录保持兼容。门户 `portalAccount.ts` 复用即时校验及提示，`AccountPage`、`GatewayRegistrationForm`、`AdminCreateUserDialog`、`AdminEditUserDialog` 持有表单行为。测试：Gateway `test_identity_api.py`、`test_password_policy.py`、`test_rate_limit.py`；门户 `account.test.tsx`、`registration.test.tsx`、`admin-users-interactions.test.tsx`。
+
+移动网关设备按钮由 `GatewayRemoteFrame` 通过 `NavigationHeaderContext` 提供给 `ResponsiveNavigation`，在导航按钮右侧参与头部正常布局；按钮无绝对定位和额外层级，弹窗覆盖头部。网关设备数据仍由框架负责。行为回归：`gatewayWorkspaceFrame.test.tsx`。
+
+工作台入口未授权跳转：Gateway `app.py::device_host_boundary` 对 `/workspace/{device_id}/` 及浏览器 HTML 深链接的未登录／授权撤销错误返回平台首页 303；API、静态资源和写请求继续返回错误响应。行为入口：`test_user_devices.py::test_unauthorized_workspace_documents_return_to_portal_but_api_keeps_json`。
+
+网关桥接与局域网密钥：daemon `api/remote_access_guard.py` 的 HTTP 与主 WebSocket 守卫仅在受管配置存在、设备桥接已写入可信 `gateway_remote_actor` 时跳过局域网访问密钥；客户端请求头不构成网关身份。`DesktopSecurityMiddleware` 继续核验项目及宿主文件范围，直接非本地访问沿用原密钥规则。回归 `test_remote_project.py::test_gateway_bridge_uses_gateway_identity_instead_of_lan_access_key`。
+
+安卓企业网页授权：`apps/android/.../WebNavigation.java` 将配置服务及钉钉／企业微信指定 HTTPS 授权域保留在 WebView；`MainActivity` 主导航与用户新窗口共用该规则，原生消息桥接仍仅接受配置服务来源。`ServerAddress` 继续只保存同源平台页面，授权页不会成为下次启动入口；无需登录 SDK。`PortalAuthPage.tsx` 发起跳转后释放提交状态，返回或跳转未发生时可以重试。回归 `WebNavigationTest.java`（平台、授权、回调及域名仿冒），`portal-auth-navigation.test.tsx`（跳转后按钮恢复和失败重试）。
+
+本机网关认证返回兜底由 `api/desktop_security.py::DesktopSecurityMiddleware` 在首页处理 `gateway_auth=cancelled`，调用 `GatewayBrowserLogin.save_settings` 关闭网关模式、清理续连凭据并返回首页；保留网关地址供重新启用。仅本机非桌面浏览器或持有桌面启动凭据的请求可触发，桥接请求和绑定网关安装不能触发。回归：`tests/test_desktop_security.py::test_return_to_local_disables_gateway_without_network`。
+
+开发服务器本地返回由 Web `main.tsx` 启动前调用 `utils/gatewayLocalFallback.ts::restoreLocalGatewayMode`，带取消标记时先通过本机设置 API 关闭网关，再挂载工作台，避免 5173 首页未经过 daemon 导致接口认证跳转循环。失败保留标记、显示刷新重试提示；测试 `gatewayLocalFallback.test.ts`。
+
+本机平台 Cookie 写请求与 WebSocket 同源校验归 `api/desktop_security.py::browser_origin_allowed`，网关设置路由共用此入口；允许同 Host 的 HTTPS 来源经过 HTTP TLS 终结代理，不采信转发头替换 Host，异域及不同端口仍拒绝。注销回归为 `test_desktop_security.py::test_gateway_logout_behind_tls_proxy_preserves_host_boundary`。
+
+局域网／反代的本机 Web 返回同样在启动前处理取消标记；后台只放行取消标记的首页壳，关闭网关仍走同源设置 API，需设备所有者会话或已启用的原生远程访问认证（配置密钥时核验访问 Cookie），网关桥接身份不能借此切换。行为入口：`test_lan_gateway_fallback_uses_native_access_credential` 与 `gatewayLocalFallback.test.ts`。
+
+桌面后台的浏览器工作台请求可使用已验证的 `ManagedLocalSessions` 宿主会话，不强制携带 Electron 启动凭据；HTTP 与主 WebSocket 保留会话失效及 Cookie 同源写入／握手校验，桌面专用接口继续独立核验启动凭据。测试 `test_desktop_daemon_browser_gateway_session_can_read_remote_project`。

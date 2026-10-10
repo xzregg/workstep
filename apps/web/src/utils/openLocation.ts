@@ -4,9 +4,10 @@ export function usesWebDirectoryBrowser(
   projectType: Project['type'],
   hostname: string,
   userAgent: string,
+  hasDesktopDirectoryBridge = false,
 ) {
   if (projectType === 'remote') return true
-  if (/\bElectron\//i.test(userAgent)) return false
+  if (/\bElectron\//i.test(userAgent)) return !hasDesktopDirectoryBridge
   const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase()
   return !(
     normalized === 'localhost'

@@ -361,7 +361,7 @@ public final class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView source, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                if (server.contains(url)) return false;
+                if (WebNavigation.staysInWebView(server, url)) return false;
                 openExternal(url);
                 return true;
             }
@@ -726,7 +726,7 @@ public final class MainActivity extends Activity {
     }
 
     private void openNewWindowUrl(String url) {
-        if (server.contains(url) && webView != null) webView.loadUrl(url);
+        if (WebNavigation.staysInWebView(server, url) && webView != null) webView.loadUrl(url);
         else openExternal(url);
     }
 

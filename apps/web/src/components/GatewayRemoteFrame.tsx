@@ -9,9 +9,18 @@ import { gatewayRemotePortalUrl } from '../utils/gatewayRemote'
 import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 import { useProjectStore } from '../stores/projectStore'
 import Spinner from './Spinner'
+import Icon from './Icon'
+import { NavigationHeaderContext } from './NavigationHeaderContext'
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useOverlay } from '../hooks/useOverlay'
 
 export default function GatewayRemoteFrame({ children }: { children: ReactNode }) {
   const { t } = useI18n()
+  const compact = useCompactLayout()
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
+  useOverlay(pickerOpen, () => setPickerOpen(false), pickerRef, false)
+  useEffect(() => setPickerOpen(false), [compact])
   const embedded = typeof window !== 'undefined' && window.parent !== window && window.frameElement?.getAttribute('data-workstep-embedded') === 'true'
   const gatewayUrl = gatewayRemotePortalUrl()
   const context = useGatewaySessionStore(state => state.session)
@@ -49,18 +58,30 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
     return () => { active = false; window.clearTimeout(timer) }
   }, [gatewayUrl, load])
 
+  const deviceTrigger = compact && !embedded ? <button type="button" className="gateway-mobile-device-trigger" aria-label={t('gatewayRemote.switchDevices')}
+        title={displayContext?.device_name} aria-expanded={pickerOpen} aria-controls="gateway-device-picker" onClick={() => setPickerOpen(value => !value)}>
+        <Icon name="layers" size={18}/>
+      </button> : null
+
   if (!gatewayUrl) return <>{children}</>
-  return <div className="gateway-remote-frame">
-    {!embedded && <div className="gateway-remote-banner" role="status">
-      {displayContext ? <GatewayDeviceTabs currentDeviceId={displayContext.device_id} currentProjectId={displayContext.project_id}/> :
-        <strong>{t('gatewayRemote.loading')}</strong>}
+  return <div className={`gateway-remote-frame${compact && !embedded ? ' gateway-remote-frame--mobile' : ''}`}>
+    {!embedded && <>
+      {pickerOpen && <button type="button" className="gateway-mobile-picker-backdrop" aria-label={t('common.close')} onClick={() => setPickerOpen(false)}/>}
+    </>}
+    {!embedded && <div ref={pickerRef} id="gateway-device-picker" hidden={compact && !pickerOpen}
+      className={compact ? 'gateway-mobile-picker' : 'gateway-remote-banner'} role={compact ? 'dialog' : undefined}
+      aria-modal={compact && pickerOpen ? true : undefined} aria-label={t('gatewayRemote.switchDevices')}>
+      {displayContext ? <GatewayDeviceTabs currentDeviceId={displayContext.device_id} currentProjectId={displayContext.project_id}
+        header={<>
+          {compact && <strong>{t('gatewayRemote.switchDevices')}</strong>}
+          <a href={new URL('/account', displayContext.gateway_url ?? gatewayUrl).href}>{t('gatewayRemote.back')}</a>
+          {gatewayWorkspacePath() && <GatewayWorkspaceNotifications/>}
+          {compact && <button type="button" className="gateway-mobile-picker-close" aria-label={t('common.close')} onClick={() => setPickerOpen(false)}><Icon name="x" size={16}/></button>}
+        </>}/>: <strong>{t('gatewayRemote.loading')}</strong>}
       {disconnected && <span>{t('gatewayRemote.disconnected')}</span>}
-      {displayContext && <span className="gateway-remote-username" title={displayContext.username}>{displayContext.username}</span>}
-      <a className="gateway-header-control" href={new URL('/account', displayContext?.gateway_url ?? gatewayUrl).href}>{t('gatewayRemote.back')}</a>
-      {gatewayWorkspacePath() && <GatewayWorkspaceNotifications/>}
     </div>}
     <div className="gateway-remote-body">
-      <div className="gateway-remote-content">{ready && context ? children : <div className="gateway-remote-loading" role="status">
+      <div className="gateway-remote-content">{ready && context ? <NavigationHeaderContext.Provider value={deviceTrigger}>{children}</NavigationHeaderContext.Provider> : <div className="gateway-remote-loading" role="status">
       {!disconnected && <Spinner size={16} />}
       {disconnected ? t('gatewayRemote.disconnected') : t('gatewayRemote.loading')}
     </div>}</div>

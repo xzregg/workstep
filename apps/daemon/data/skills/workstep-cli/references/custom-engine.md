@@ -12,7 +12,7 @@
 6. `engine install <路径> --json` 等待成功。供应商优先复用 WorkStep 配置：按 `supported_provider_protocols()` 声明协议，运行时通过 `resolve_provider_runtime(provider_id=(config_overrides or {}).get("provider_id"), model=model)` 获取认证；也支持自定义供应商或引擎私有配置。密钥通过设置/受保护配置传入，禁止写进 py、清单、测试和聊天。`engine configure <路径> --config-file <本机私有JSON> --json` 支持 values/clear/confirmed/provider_id/model；用后删除临时凭据文件。
 7. `engine validate <路径> --json`。要求真实联网连接、专属映射测试、生命周期与停止、事件到 AG-UI 转换、执行→下游→审核探测；所有声明的可选能力必须有 `tests/scenarios.json` 真实场景。失败必须修复重测，不改报告、不删测试、不通过关闭必要能力绕过。请告知用户真实探测会产生供应商调用费用。
 8. 通过后 `engine register <路径> --json`，只有更新已存在引擎才使用 `--replace`。注册会验证报告签名与代码、依赖和配置指纹，原子发布到可写 runtime 目录，保留旧版。代码/依赖/配置变化后需要重新 validate。
-9. 只有返回 ok=true、restart_required=true 后提示重启 WorkStep，说明新引擎将出现在设置且使用自动配置表单。不得提前要求重启，也不替用户自动重启。
+9. 只有注册返回 ok=true 后，才提示在设置的引擎页面点击“重新扫描”；后台会重新发现自定义引擎，各处引擎选择列表随之更新，无需重启 WorkStep。引擎仍需完成配置与连接验证；若其它操作返回 restart_required=true，按该操作结果提示重启。
 
 ## 故障与分发
 

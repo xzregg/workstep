@@ -51,6 +51,8 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
   const [defaultModels, setDefaultModels] = useState<Record<string, string>>({})
   const [modelErrors, setModelErrors] = useState<Record<string, string>>({})
   const [modelsLoading, setModelsLoading] = useState<Record<string, boolean>>({})
+  const modelRequests = useRef<Record<string, { providerId: string; sequence: number }>>({})
+  const modelRequestSequence = useRef(0)
   const [savingModel, setSavingModel] = useState<string | null>(null)
   const [customModelMode, setCustomModelMode] = useState<Record<string, boolean>>({})
   const [customModelDrafts, setCustomModelDrafts] = useState<Record<string, string>>({})
@@ -81,20 +83,24 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
     return typeof providerId === 'string' ? providerId : ''
   }
 
-  // 表单内切换供应商时只记草稿（不保存也不请求）；
-  // 点模型行右侧刷新按钮才按当前供应商拉列表。
+  // 供应商草稿变化时立即读取已保存的模型选择，不保存表单或刷新供应商目录。
   const handleEngineValuesChange = (engineId: string, values: Record<string, string>) => {
     const next = typeof values.provider_id === 'string' ? values.provider_id : ''
+    const changed = next !== resolveEngineProvider(engineId)
     setProviderDrafts((current) => {
       if (current[engineId] === next) return current
       return { ...current, [engineId]: next }
     })
+    if (changed && expandedConfigs[engineId]) void loadEngineModels(engineId, false, next)
   }
 
   const loadEngineModels = async (engineId: string, force = false, providerId?: string) => {
-    if ((models[engineId] || modelsLoading[engineId]) && !force) return
-    setModelsLoading((current) => ({ ...current, [engineId]: true }))
     const effectiveProvider = providerId ?? resolveEngineProvider(engineId)
+    if (modelRequests.current[engineId]?.providerId === effectiveProvider && !force) return
+    const sequence = ++modelRequestSequence.current
+    modelRequests.current[engineId] = { providerId: effectiveProvider, sequence }
+    setModelsLoading((current) => ({ ...current, [engineId]: true }))
+    setModels((current) => ({ ...current, [engineId]: [] }))
     let result
     try {
       result = await fetchEngineModels(engineId, force, effectiveProvider)
@@ -106,6 +112,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
         error: modelError instanceof Error ? modelError.message : t('settings.readModelsFailed'),
       }
     }
+    if (modelRequests.current[engineId]?.sequence !== sequence) return
     setModels((current) => ({ ...current, [result.engine_id]: result.models }))
     setDefaultModels((current) => ({
       ...current,
@@ -132,6 +139,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
   }
 
   const clearEngineModelCache = (engineId: string) => {
+    delete modelRequests.current[engineId]
     invalidateEngineModels(engineId)
     setModels((current) => {
       const next = { ...current }
@@ -406,7 +414,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                         <option value={savedDefaultModel}>{savedDefaultModel}</option>
                       )}
                       {engineModels.map((model) => (
-                        <option key={model.id} value={model.id}>{model.label}</option>
+                        <option key={model.id} value={model.id}>{model.label?.trim() || model.id}</option>
                       ))}
                       <option value="__custom__">{t('settings.customModelOption')}</option>
                     </Select>
