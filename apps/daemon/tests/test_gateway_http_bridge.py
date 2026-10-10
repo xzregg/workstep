@@ -126,10 +126,11 @@ async def test_gateway_share_bridge_accepts_only_signed_task_scope():
 
 @pytest.mark.asyncio
 async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blocking_health(monkeypatch):
+    from services.gateway_client.identity import ManagedLocalSessions
     monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
     monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
     app = FastAPI()
-    app.state.gateway_client = type("Client", (), {"managed_config": object()})()
+    app.state.gateway_client = type("Client", (), {"managed_config": object(), "local_sessions": ManagedLocalSessions()})()
     app.add_middleware(DesktopSecurityMiddleware)
 
     @app.post("/api/echo")
@@ -316,6 +317,64 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api(monkey
     assert await response_status("GET", "/api/task/list", "project_id=host-1&project_id=host-2") == 403
     assert await response_status("POST", "/api/task/list", "project_id=host-1") == 403
     assert await response_status("GET", "/api/health", "project_id=host-1") == 403
+
+
+@pytest.mark.asyncio
+async def test_gateway_collector_can_read_real_completion_events_through_project_bridge(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from api.completion_notifications import router
+    from services.completion_push import CompletionPushService
+    from streaming.bus import EventBus
+    from engines.core.agui import AGUIContext, to_agui_events
+
+    async def audit(*args): pass
+    monkeypatch.setattr('api.desktop_security.record_remote_request_failure', audit)
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    bus = EventBus()
+    push = CompletionPushService(bus, tmp_path)
+    app = FastAPI(); app.include_router(router); app.add_middleware(DesktopSecurityMiddleware)
+    app.state.gateway_client = SimpleNamespace(managed_config=object())
+    app.state.completion_push = push
+
+    async def read(query):
+        frames = []
+        async def capture(frame): frames.append(frame)
+        bridge = ManagedHttpBridge(app, 'notices', {
+            'method': 'GET', 'path': '/api/completion-notifications/recent', 'query': query,
+            'headers': [], 'user_id': 'user-1', 'username': 'alice',
+            'project_id': 'host-1', 'access_level': 'read',
+        }, capture, 'device-1')
+        bridge.start_task()
+        await bridge.feed(ProxyFrame(stream_id='notices', type=FrameType.http_request, payload={'phase': 'end'}))
+        await asyncio.wait_for(bridge._task, timeout=1)
+        body = b''.join(base64.b64decode(frame.payload['data']) for frame in frames if frame.payload.get('phase') == 'body')
+        return frames[0].payload['status'], json.loads(body)
+
+    await push.start()
+    try:
+        for source in (
+            {'type': 'message_completed', 'project_id': 'host-1', 'task_id': 'task-1',
+             'message_id': 'message-1', 'data': {'status': 'succeeded'}},
+            {'type': 'status', 'project_id': 'host-1', 'task_id': 'task-1',
+             'step_key': 'review', 'data': {'status': 'passed'}},
+        ):
+            for event in to_agui_events(source, AGUIContext.from_event(source)):
+                await bus.publish(event)
+        for _ in range(100):
+            if len(push.recent_for_project('host-1')) == 2: break
+            await asyncio.sleep(.01)
+        assert len(push.recent_for_project('host-1')) == 2
+        status, body = await read('project_id=host-1&since=0')
+        assert status == 200
+        assert {event['type'] for event in body['events']} == {'TEXT_MESSAGE_END', 'RUN_FINISHED'}
+        assert {event['project_id'] for event in body['events']} == {'host-1'}
+        assert (await read('project_id=host-1&since='+str(time.time()+60)))[1]['events'] == []
+        assert (await read('project_id=host-2&since=0'))[0] == 403
+        assert (await read('project_id=host-1&project_id=host-2'))[0] == 403
+    finally:
+        await push.shutdown()
+        await bus.close()
 
 
 @pytest.mark.asyncio

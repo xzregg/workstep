@@ -117,9 +117,12 @@ test('pending-insert panel reserves space on the wrapper, not the scroller', asy
       wrapper.style.paddingBottom,
       `${PANEL_HEIGHT + MARGIN_BOTTOM + GAP}px`,
     )
-    // 滚动容器自身保持常规内边距（paddingBlock 为逻辑属性），不承载留白
-    assert.equal(scroller.style.paddingBlock, '10px')
+    // 静态内边距由 CSS 持有；底部留白随消息内容滚动，不固定在滚动容器上。
+    assert.equal(getComputedStyle(scroller).paddingBlock, '10px 0')
     assert.equal(scroller.style.paddingBottom, '')
+    const content = scroller.querySelector('.chat-history-content') as HTMLElement
+    assert.ok(content)
+    assert.equal(getComputedStyle(content).paddingBottom, '20px')
 
     await act(async () => root.unmount())
   } finally {

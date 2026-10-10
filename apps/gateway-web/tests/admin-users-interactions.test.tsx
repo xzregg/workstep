@@ -195,9 +195,11 @@ test('device page distinguishes outdated and unknown client versions', async () 
     if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: [
       { id: 'old', name: 'Old PC', version: '1.2.0', status: 'active', online: true,
         connection_ip: '2001:db8::7', daemon_health: true, latest_version: '1.10.0', update_available: true },
-      { id: 'legacy', name: 'Legacy PC', version: '1.0.0', status: 'active', online: false,
+      { id: 'legacy', name: 'Legacy PC', version: null, status: 'active', online: false,
         daemon_health: null, latest_version: null, update_available: null },
-    ], total: 2 })
+      { id: 'unlisted', name: 'Unlisted PC', version: '1.0.0', status: 'active', online: false,
+        daemon_health: null, latest_version: null, update_available: null },
+    ], total: 3 })
     throw new Error(`Unexpected fetch: ${url}`)
   }
   render(<DeviceAdminPage />)
@@ -207,7 +209,11 @@ test('device page distinguishes outdated and unknown client versions', async () 
   assert.match(old.textContent ?? '', /连接 IP：2001:db8::7/)
   assert.match(legacy.textContent ?? '', /离线，暂无连接 IP/)
   assert.match(old.textContent ?? '', /有新版本 1\.10\.0/)
-  assert.match(legacy.textContent ?? '', /版本状态未知/)
+  assert.match(legacy.textContent ?? '', /daemon 版本：未上报/)
+  assert.match(legacy.textContent ?? '', /暂无对应发布版本，无法比较/)
+  const unlisted = screen.getByText('Unlisted PC').closest('tr')!
+  assert.match(unlisted.textContent ?? '', /daemon 版本：1\.0\.0/)
+  assert.match(unlisted.textContent ?? '', /暂无对应发布版本，无法比较/)
 })
 
 test('grant dialog searches users and departments, validates scope, and submits with step-up', async () => {

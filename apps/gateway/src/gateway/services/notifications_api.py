@@ -168,7 +168,34 @@ async def legacy_feed(ws):
 
 async def legacy_access(call,project_id,task_id=None,session_id=None):
     user=await actor(call)
+    if not task_id and not session_id:
+        raise GatewayError('invalid','Notification target required')
     rows=await legacy_rows(call,user.id,project_id,task_ids=[task_id] if task_id else [],
         session_ids=[session_id] if session_id else [],recent=True)
-    if not rows: raise GatewayError('not_found','Notification target unavailable')
-    return await open_notification(call,rows[-1].sequence)
+    if rows:
+        return await open_notification(call,rows[-1].sequence)
+    # Android can receive the device event before the Gateway collector stores it.
+    # Its scoped link identifies the source; normal access tickets still enforce
+    # current authorization without requiring a retained notification row.
+    if not project_id.startswith('gateway/'):
+        raise GatewayError('not_found','Notification target unavailable')
+    _,device_id,host_project_id=project_id.split('/')  # Validated by legacy_rows.
+    async with call.database.session() as session:
+        whole=await has_device_access(session,user.id,device_id)
+        project=await session.scalar(select(PlatformProject).where(
+            PlatformProject.device_id==device_id,PlatformProject.host_project_id==host_project_id))
+    if whole:
+        access=await device_access_for_user(call,device_id,user.id)
+        try:
+            catalog=await call.control_connections.request_project_catalog(device_id)
+        except (ConnectionError,asyncio.TimeoutError) as exc:
+            raise GatewayError('upstream_failed','Source device unavailable') from exc
+        source=next((item for item in catalog if item['id']==host_project_id),None)
+        if source is None: raise GatewayError('not_found','Source project unavailable')
+        name=source['name']
+    else:
+        if project is None: raise GatewayError('not_found','Source project unavailable')
+        access=await project_access(call,project.id)
+        name=project.name
+    query=urlencode({'project':name,'task' if task_id else 'session':task_id or session_id})
+    return dict(access,next=('tasks' if task_id else 'chat')+'?'+query)

@@ -122,6 +122,10 @@ async def callback(request: Request, code: str = Query(min_length=32, max_length
     try:
         result = await service.complete(code, state, callback_origin=str(request.base_url).rstrip('/'))
     except (ValueError, KeyError) as exc:
+        if request.headers.get('sec-fetch-mode') == 'navigate' or 'text/html' in request.headers.get('accept', ''):
+            # A browser must start a fresh PKCE request instead of retrying the
+            # expired callback. Native code exchange still needs an error status.
+            return RedirectResponse('/gateway/login', status_code=303, headers={'Cache-Control': 'no-store'})
         raise HTTPException(status_code=400, detail='Gateway login expired or invalid') from exc
     except httpx.HTTPStatusError as exc:
         if 400 <= exc.response.status_code < 500:

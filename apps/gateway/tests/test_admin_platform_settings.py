@@ -24,7 +24,7 @@ def test_super_admin_reads_platform_settings_and_changes_registration(tmp_path):
         assert response.json()["gateway_id"] == "gateway-test"
         assert response.json()["public_origin"] == "https://gateway.test"
         assert response.json()["registration_mode"] == "open"
-        assert response.json()["session_seconds"] == 86400
+        assert response.json()["session_seconds"] is None
         assert response.json()["database"]["healthy"] is True
         assert response.json()["database"]["migration_version"] == app.state.database.head_revision
         assert response.json()["data_dir"] == str(tmp_path)
@@ -115,4 +115,3 @@ def test_platform_address_write_lock_keeps_health_responsive(tmp_path):
                 client.portal.call(scenario)
         finally:
             event.remove(engine, 'before_cursor_execute', before_execute)
-

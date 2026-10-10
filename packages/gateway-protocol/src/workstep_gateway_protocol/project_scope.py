@@ -70,6 +70,7 @@ _WORKSPACE_ASSET = re.compile(
 # Project workspace services share the same project identity; route-specific
 # resource ownership is checked by their existing project/database handlers.
 _PROJECT_SERVICES = [
+    (r"/api/completion-notifications/recent", {'GET'}, {'since'}),
     (r"/api/skills", {'GET'}, set()),
     (r"/api/skills/rescan", {'POST'}, set()),
     (r"/api/fs/memory", {'GET','PUT'}, set()),

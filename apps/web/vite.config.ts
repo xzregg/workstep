@@ -5,6 +5,10 @@ export default defineConfig(({ mode }) => ({
   ...(mode === 'gateway-share' ? {
     base: '/workspace-assets/',
   } : {}),
+  experimental: {
+    // Keep entry URLs absolute for deep links; lazy assets follow their module.
+    renderBuiltUrl: (_filename: string, { hostType }: { hostType: string }) => ({ relative: hostType !== 'html' }),
+  },
   build: {
     // DingTalk and older Android WebViews need classic max-width media queries.
     cssTarget: ['chrome80', 'safari13'],

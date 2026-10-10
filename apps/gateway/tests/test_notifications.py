@@ -82,7 +82,8 @@ def test_notification_websocket_uses_one_authenticated_feed_and_survives_idle(tm
             assert ws.receive_json()['type'] == 'pong'
 
 
-def test_shared_device_collector_uses_existing_scoped_recent_api_and_keeps_loop_responsive(tmp_path,monkeypatch):
+@pytest.mark.parametrize('scope_kind', ['task', 'session'])
+def test_shared_device_collector_uses_existing_scoped_recent_api_and_keeps_loop_responsive(tmp_path,monkeypatch,scope_kind):
     from gateway.contracts import StreamPayload
     import json
     with TestClient(create_app(GatewaySettings(data_dir=tmp_path)),base_url='https://gateway.test') as client:
@@ -98,14 +99,19 @@ def test_shared_device_collector_uses_existing_scoped_recent_api_and_keeps_loop_
         started=__import__('threading').Event()
         class Data:
             async def proxy_http(self,call,**kwargs):
+                from urllib.parse import parse_qsl
+                from workstep_gateway_protocol import project_http_route_allowed
                 assert kwargs['project_id']=='project' and kwargs['access_level']=='read'
+                assert project_http_route_allowed(call.operation, call.target.path,
+                    parse_qsl(call.target.query), kwargs['project_id'], access_level=kwargs['access_level'])
                 calls.append(call.target.path)
                 async def chunks():
                     started.set()
                     await asyncio.sleep(0.15)
                     if call.target.path.endswith('/recent'):
                         yield json.dumps(dict(events=[dict(type='TEXT_MESSAGE_END',status='succeeded',project_id='project',
-                            task_id='task',messageId='message',recorded_at=time.time())])).encode()
+                            **({'task_id':'task'} if scope_kind=='task' else {'session_id':'session','channel':'session_chat'}),
+                            messageId='message',recorded_at=time.time())])).encode()
                     else: yield b'{"title":"Test task"}'
                 return StreamPayload(chunks())
         async def catalog(id): return [dict(id='project',name='Demo')]
@@ -123,7 +129,7 @@ def test_shared_device_collector_uses_existing_scoped_recent_api_and_keeps_loop_
         assert client.get('/api/notifications').json()['events'][0]['scope_name']=='Test task'
         client.portal.call(service.collect_device,'one',setup['user']['id'])
         assert len(client.get('/api/notifications').json()['events'])==1
-        assert calls.count('/api/task/task')==1
+        assert calls.count('/api/task/task' if scope_kind=='task' else '/api/chat-sessions/session')==1
 
 
 def test_project_group_permissions_and_slow_sql_canary(tmp_path):

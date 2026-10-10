@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 from uuid import uuid4
 
-from fastapi import HTTPException
+from services.hook_errors import HookError
 from models import Task, TaskStep, StepRun
 from models.notification_hook import NotificationHook, NotificationDelivery
 from services.notification_delivery import DeliveryError, notification_payload, send_notification
@@ -58,7 +58,7 @@ class NotificationHookService:
 
     def load_configuration(self, project, workflow_id):
         workflow = project.workflow_by_id(workflow_id)
-        if workflow is None or workflow.get('deleted'): raise HTTPException(404,'流程不存在')
+        if workflow is None or workflow.get('deleted'): raise HookError(404,'流程不存在')
         return [hook_data(row) for row in NotificationHook.select().where(NotificationHook.workflow_id==workflow_id).order_by(NotificationHook.sort_order)]
 
     async def configuration(self, project_id, workflow_id):
@@ -72,7 +72,7 @@ class NotificationHookService:
                 existing = {row.id:row for row in NotificationHook.select().where(NotificationHook.workflow_id==workflow_id)}
                 saved = []
                 for order,draft in enumerate(drafts):
-                    if draft.id and draft.id not in existing: raise HTTPException(422,'钩子不属于当前流程')
+                    if draft.id and draft.id not in existing: raise HookError(422,'钩子不属于当前流程')
                     row = existing.get(draft.id) or NotificationHook(id=str(uuid4()))
                     for key in ('name','platform','url','secret','enabled','prefix','include_link','link_base'):setattr(row,key,getattr(draft,key))
                     row.workflow_id=workflow_id;row.sort_order=order;row.events_json=json.dumps(draft.events)
@@ -88,7 +88,7 @@ class NotificationHookService:
     def get_hook(self, project, workflow_id, hook_id):
         self.load_configuration(project,workflow_id)
         row=NotificationHook.get_or_none((NotificationHook.id==hook_id)&(NotificationHook.workflow_id==workflow_id))
-        if row is None:raise HTTPException(404,'通知钩子不存在')
+        if row is None:raise HookError(404,'通知钩子不存在')
         return hook_data(row)
 
     def snapshot(self, project, workflow, hook, *, event, event_id, task_id, title, step=None, bases=()):
@@ -145,7 +145,7 @@ class NotificationHookService:
     async def test(self, project_id, workflow_id, hook_id):
         def persist(project):
             hook=self.get_hook(project,workflow_id,hook_id)
-            if not hook['enabled']:raise HTTPException(409,'通知钩子已停用')
+            if not hook['enabled']:raise HookError(409,'通知钩子已停用')
             event_id=str(uuid4())
             self.enqueue(hook,self.snapshot(project,project.workflow_by_id(workflow_id),hook,event='test',event_id=event_id,task_id=None,title='WorkStep 测试通知'))
             return NotificationDelivery.get((NotificationDelivery.hook_id==hook_id)&(NotificationDelivery.event_id==event_id)).id
@@ -163,9 +163,9 @@ class NotificationHookService:
     async def retry(self, project_id, workflow_id, hook_id, delivery_id):
         def persist(project):
             hook=self.get_hook(project,workflow_id,hook_id)
-            if not hook['enabled']:raise HTTPException(409,'通知钩子已停用')
+            if not hook['enabled']:raise HookError(409,'通知钩子已停用')
             count=NotificationDelivery.update(status='pending',cycle_attempts=0,next_at=0,result='',updated_at=time.time()).where((NotificationDelivery.id==delivery_id)&(NotificationDelivery.hook_id==hook_id)&(NotificationDelivery.status=='failed')).execute()
-            if not count:raise HTTPException(409,'只能重试当前钩子的失败记录')
+            if not count:raise HookError(409,'只能重试当前钩子的失败记录')
         await self.manager.run_db(project_id,persist)
         self.wake.set()
 

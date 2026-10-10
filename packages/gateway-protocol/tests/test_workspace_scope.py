@@ -93,3 +93,19 @@ def test_project_contract_does_not_open_device_settings_or_git_credentials():
   assert not project_http_route_allowed('GET',path,q,'visible',access_level='edit')
   assert not project_http_route_allowed('PUT',path,q,'visible',access_level='edit')
  assert not project_http_route_allowed('GET','/api/git/projects/private/repositories',q,'visible',access_level='edit')
+
+
+@pytest.mark.parametrize('level', ['read', 'edit'])
+def test_notification_collection_is_read_only_and_bound_to_one_project(level):
+    path = '/api/completion-notifications/recent'
+    query = [('project_id', 'visible'), ('since', '123.5')]
+    allowed = project_http_route_allowed
+    assert allowed('GET', path, query, 'visible', access_level=level)
+    assert allowed('GET', path, query[:1], 'visible', access_level=level)
+    for invalid in ([], [('project_id', 'private')], [*query, ('project_id', 'visible')],
+                    [*query, ('since', '0')], [*query, ('unexpected', '1')]):
+        assert not allowed('GET', path, invalid, 'visible', access_level=level)
+    for method in ('POST', 'PUT', 'DELETE'):
+        assert not allowed(method, path, query[:1], 'visible', access_level=level)
+    for other in ('/api/completion-notifications/public-key', '/api/completion-notifications/subscriptions'):
+        assert not allowed('GET', other, query[:1], 'visible', access_level=level)

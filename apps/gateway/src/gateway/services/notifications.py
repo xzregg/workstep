@@ -158,7 +158,9 @@ class NotificationService:
                 if key not in self.names and isinstance(scope,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,128}',scope):
                     try:
                         path=('/api/task/' if data['task_id'] else '/api/chat-sessions/')+scope
-                        detail=await connection.proxy_http(replace(request,target=urlsplit('http://localhost'+path+'?'+urlencode(dict(project_id=id,limit=1)))),
+                        detail_query={'project_id':id}
+                        if not data['task_id']: detail_query['limit']=1
+                        detail=await connection.proxy_http(replace(request,target=urlsplit('http://localhost'+path+'?'+urlencode(detail_query))),
                             user_id=user_id,username=user.username,project_id=id,access_level='read')
                         text=bytearray()
                         async for chunk in detail.chunks:
