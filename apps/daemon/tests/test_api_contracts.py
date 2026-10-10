@@ -33,7 +33,7 @@ TEST_ACTOR_HEADERS = {
 
 
 @pytest.mark.anyio
-async def test_update_workflow_step_prompt_is_targeted_and_nonblocking(api_context, monkeypatch):
+async def test_update_workflow_step_prompt_is_targeted_and_does_not_block_health(api_context, monkeypatch):
     import main
     from copy import deepcopy
 
