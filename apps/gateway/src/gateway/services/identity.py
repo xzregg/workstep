@@ -520,13 +520,15 @@ class IdentityService:
                 ).values(revoked_at=_now()))
 
     async def admin_edit_user(self, user_id: str, display_name: str,
-                              new_password: str | None = None) -> User:
-        if new_password is not None:
-            async with self.database.session() as session:
-                target = await session.get(User, user_id)
-                if target is None:
-                    raise IdentityError("not_found", "User not found")
-                validate_password(target.username, new_password)
+                              new_password: str | None = None, username: str | None = None) -> User:
+        async with self.database.session() as session:
+            target = await session.get(User, user_id)
+            if target is None:
+                raise IdentityError("not_found", "User not found")
+            if not target.password_hash and (username is not None or new_password is not None) and (not username or new_password is None):
+                raise IdentityError('invalid', 'Both username and password are required to enable password login')
+            if new_password is not None:
+                validate_password(username or target.username, new_password)
         password_hash = await self._hash_password(new_password) if new_password is not None else None
         async with self.database.session() as session:
             async with session.begin():
@@ -535,13 +537,22 @@ class IdentityService:
                     raise IdentityError('not_found', 'User not found')
                 if user.is_recovery or user.status == 'deleted':
                     raise IdentityError('forbidden', 'User cannot be edited')
-                if password_hash is not None and not user.password_hash:
-                    raise IdentityError('bad_input', 'Enterprise login password is managed by the identity provider')
+                username_changed = username is not None and username != user.username
+                if username_changed:
+                    existing = await session.scalar(select(User.id).where(User.username == username, User.id != user_id))
+                    if existing is not None:
+                        raise IdentityError('conflict', 'Login username already exists')
+                    user.username = username
                 user.display_name = display_name
                 if password_hash is not None:
                     user.password_hash = password_hash
                     user.password_changed_at = _now()
                     user.must_change_password = 0
+                try:
+                    await session.flush()
+                except IntegrityError as exc:
+                    raise IdentityError('conflict', 'Login username already exists') from exc
+                if password_hash is not None or username_changed:
                     await session.execute(update(AuthSession).where(
                         AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None),
                     ).values(revoked_at=_now()))

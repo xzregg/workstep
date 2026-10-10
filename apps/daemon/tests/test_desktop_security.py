@@ -588,3 +588,31 @@ def test_desktop_daemon_browser_gateway_session_can_read_remote_project(monkeypa
             assert ws.receive_text() == 'ok'
         app.state.gateway_client.local_sessions.clear()
         assert client.get(path).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_native_public_share_slow_settings_do_not_block_health():
+    import asyncio
+    import time
+    import threading
+    from types import SimpleNamespace
+    from fastapi import FastAPI
+    from httpx import AsyncClient, ASGITransport
+    app=FastAPI()
+    app.state.gateway_client=SimpleNamespace(managed_config=object(),local_sessions=ManagedLocalSessions())
+    entered=threading.Event()
+    def slow_settings():
+        entered.set();time.sleep(.2)
+        return {'enabled':True}
+    app.state.remote_access_service=SimpleNamespace(settings=slow_settings)
+    app.add_middleware(DesktopSecurityMiddleware)
+    @app.get('/api/task-share/public/test/meta')
+    @app.get('/api/health')
+    async def ok():return {'ok':True}
+    async with AsyncClient(transport=ASGITransport(app=app),base_url='http://lan.test') as client:
+        pending=asyncio.create_task(client.get('/api/task-share/public/test/meta'))
+        assert await asyncio.to_thread(entered.wait,1)
+        started=time.monotonic()
+        assert (await client.get('/api/health')).status_code==200
+        assert time.monotonic()-started<.1
+        assert (await pending).status_code==200

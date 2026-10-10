@@ -65,8 +65,11 @@ def _require_interactive_share(ctx: dict) -> None:
 async def create_share(task_id: str, req: CreateShareRequest, pid: str = Query(..., alias="project_id")):
     """Create or replace the share link for a task. Password is optional."""
     from services.gateway_client.policy import require_managed_capability
+    from services.remote_access import authenticated_remote_dispatch
+    principal = authenticated_remote_dispatch()
     try:
-        require_managed_capability("task.share", project_id=pid)
+        if principal is None or principal.project_id != pid:
+            require_managed_capability("task.share", project_id=pid)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     if req.password and len(req.password) < 4:

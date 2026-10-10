@@ -1046,3 +1046,35 @@ def test_full_data_queue_closes_tunnel_and_allows_reconnect_without_blocking_hea
                 data.send_json({'kind': 'data_hello', 'token': command['token'], 'flow_control': True})
                 assert data.receive_json()['flow_control'] is True
                 assert pending.result(timeout=3).flow_control is True
+
+
+def test_local_workbench_manages_gateway_task_shares_over_authenticated_control(tmp_path):
+    app=create_app(GatewaySettings(data_dir=tmp_path,gateway_id='gateway-test',public_origin='https://gateway.test'))
+    with TestClient(app,base_url='https://gateway.test') as client:
+        device_id,token,device_key,csrf=_active_device(client)
+        with client.websocket_connect('/ws/control') as ws:
+            _handshake(ws,token,device_key)
+            assert ws.receive_json()['kind']=='hello'
+            request={'kind':'task_share','version':1,'request_id':'create-1',
+                'host_project_id':'host-1','action':'create','payload':{'task_id':'task-1','mode':'read_only'}}
+            ws.send_json(request)
+            unpublished=ws.receive_json()
+            assert unpublished['ok'] is False
+            assert '发布项目' in unpublished['error']
+            ws.send_json({'kind':'project_publish','version':1,'action':'publish','host_project_id':'host-1','name':'Backend'})
+            assert ws.receive_json()['status']=='published'
+            ws.send_json(request)
+            created=ws.receive_json()
+            assert created['kind']=='task_share_ack'
+            assert created['request_id']=='create-1'
+            assert created['ok'] is True,created
+            share=created['result']
+            assert share['url'].startswith('https://gateway.test/share/')
+            ws.send_json({**request,'request_id':'list-1','action':'list'})
+            assert ws.receive_json()['result']['shares'][0]['id']==share['id']
+            ws.send_json({**request,'host_project_id':'other-host','request_id':'bad-revoke','action':'revoke','payload':{'share_id':share['id']}})
+            assert ws.receive_json()['ok'] is False
+            ws.send_json({**request,'request_id':'revoke-1','action':'revoke','payload':{'share_id':share['id']}})
+            assert ws.receive_json()['ok'] is True
+            ws.send_json({**request,'request_id':'list-2','action':'list'})
+            assert ws.receive_json()['result']['shares'][0]['status']=='revoked'

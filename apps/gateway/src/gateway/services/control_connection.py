@@ -1165,6 +1165,24 @@ async def control_socket(ws: GatewaySocket):
                     return
                 await ws.control_connections.complete_project_catalog(device_id, request_id, projects if message['status'] == 'ok' else None)
                 continue
+            if message.get("kind") == "task_share":
+                from gateway.services.device_task_shares import manage
+                from gateway.services.errors import GatewayError
+                request_id = message.get("request_id")
+                if not isinstance(request_id, str) or not 1 <= len(request_id) <= 64:
+                    await ws.close(code=4400, reason="Invalid task share request")
+                    return
+                try:
+                    result = await manage(ws, device_id, user_id, message)
+                    reply = {"ok":True, "result":result}
+                except GatewayError as exc:
+                    reply = {"ok":False, "error":{
+                        "Share creation unavailable": "当前网关账号没有该项目的任务分享权限，请联系管理员授权。",
+                        "Public Gateway origin unavailable": "网关尚未配置公开地址，请联系管理员配置后重试。",
+                    }.get(exc.message, exc.message or "网关拒绝了分享操作。")}
+                await send_json({"kind":"task_share_ack", "version":1,
+                    "request_id":request_id, "device_id":device_id, **reply})
+                continue
             if message.get("kind") == "project_publish":
                 if (message.get("version") != 1
                         or message.get("action") not in ("publish", "unpublish", "status")

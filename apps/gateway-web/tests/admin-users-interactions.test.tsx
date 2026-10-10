@@ -637,10 +637,20 @@ test('editing user validates passwords, preserves failed edits and protects clos
  assert.deepEqual(calls.at(-1),{display_name:'新名字',new_password:'UniquePassphrase-2026!'})
 })
 
-test('enterprise user edit has no local password field', () => {
+test('enterprise user edit supports a platform username and password', async () => {
  render(<AdminEditUserDialog csrf="csrf" user={{id:'enterprise',username:'ext_123',login_username:null,display_name:'企业员工',status:'active',registration_source:'directory_sync',must_change_password:false,created_at:''}} onSaved={()=>{}} onClose={()=>{}}/>)
- assert.equal(screen.queryByLabelText('新密码（可选）'),null)
- assert.ok(screen.getByLabelText('显示名称'))
+ assert.ok(screen.getByLabelText('新密码（可选）'))
+ const submit=screen.getByRole('button',{name:'保存修改'}) as HTMLButtonElement
+ fireEvent.change(screen.getByLabelText('登录用户名'),{target:{value:'enterprise_user'}})
+ assert.equal(submit.disabled,true)
+ fireEvent.change(screen.getByLabelText('新密码（可选）'),{target:{value:'UniquePassphrase-2026!'}})
+ fireEvent.change(screen.getByLabelText('确认新密码'),{target:{value:'UniquePassphrase-2026!'}})
+ fireEvent.change(screen.getByLabelText('输入你的密码确认'),{target:{value:'AdminPassword123'}})
+ await waitFor(()=>assert.equal(submit.disabled,false))
+ let body:unknown
+ globalThis.fetch=async(input,init)=>{if(init?.method==='PATCH')body=JSON.parse(String(init.body));return Response.json({})}
+ fireEvent.click(submit)
+ await waitFor(()=>assert.deepEqual(body,{display_name:'企业员工',username:'enterprise_user',new_password:'UniquePassphrase-2026!'}))
 })
 
 
