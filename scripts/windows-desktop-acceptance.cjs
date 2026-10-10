@@ -77,6 +77,13 @@ async function pageApi(page, endpoint, method = 'GET', body) {
   }, { endpoint, method, body })
   return parseApiResponse(endpoint, result.status, result.text)
 }
+async function openSettings(page) {
+  if (await page.locator('#workstep-navigation').getAttribute('inert') !== null) {
+    await page.getByRole('button', { name: '打开导航', exact: true }).click()
+  }
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: /系统设置/ }).click()
+}
 
 async function runAcceptance(options) {
   assertWindowsRunner(process.platform, process.env)
@@ -191,8 +198,7 @@ async function runAcceptance(options) {
       await page.goto(`${backendUrl}/tasks?project=${encodeURIComponent(fixture.projectName)}&workflow=${encodeURIComponent(fixture.workflowId)}`)
       await page.getByText(fixture.title, { exact: true }).first().waitFor({ state: 'visible' })
       await page.screenshot({ path: path.join(reportDir, `${label}-tasks.png`) })
-      await page.getByRole('button', { name: '设置', exact: true }).click()
-      await page.getByRole('button', { name: /系统设置/ }).click()
+      await openSettings(page)
       await page.locator('.desktop-update-settings').waitFor({ state: 'visible' })
       await page.locator('.desktop-update-version').filter({ hasText: expectedVersion }).waitFor({ state: 'visible' })
       await page.screenshot({ path: path.join(reportDir, `${label}-settings.png`) })
@@ -260,4 +266,4 @@ if (require.main === module) {
     ['installer', 'version', 'checksums', 'previous-installer', 'previous-version', 'previous-checksums'].map(name => [name, { type: 'string' }])) })
   runAcceptance(values).catch(error => { console.error(error); process.exitCode = 1 })
 }
-module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse, fixtureLabels }
+module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse, fixtureLabels, openSettings }
