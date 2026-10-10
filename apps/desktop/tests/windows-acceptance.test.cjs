@@ -1,9 +1,10 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createHash } = require('node:crypto')
+const { EventEmitter } = require('node:events')
 const {
   validateVersion, installArguments, verifyChecksum, validateRuntime,
-  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels, openSettings,
+  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels, openSettings, closeDesktop, installCompletionGuard,
 } = require('../../../scripts/windows-desktop-acceptance.cjs')
 
 test('acceptance only runs on a GitHub Windows runner, never the developer desktop', () => {
@@ -45,6 +46,31 @@ test('settings opens through the actual collapsed navigation on narrow runner sc
     }
     await openSettings(page)
     assert.deepEqual(clicks, [...(compact ? ['打开导航'] : []), '设置', '/系统设置/'])
+  }
+})
+
+test('desktop quit completes even when CDP disconnects before acknowledging Browser.close', async () => {
+  const browser = new EventEmitter()
+  browser.isConnected = () => true
+  browser.newBrowserCDPSession = async () => ({ send: () => {
+    setTimeout(() => browser.emit('disconnected'), 1)
+    return new Promise(() => {})
+  } })
+  await closeDesktop(browser)
+  assert.equal(browser.listenerCount('disconnected'), 0)
+  browser.newBrowserCDPSession = async () => ({ send: async () => { throw new Error('protocol failure') } })
+  await assert.rejects(closeDesktop(browser), /protocol failure/)
+})
+
+test('an unresolved top-level acceptance must not silently exit with success', () => {
+  for (const complete of [false, true]) {
+    const runtime = new EventEmitter(), errors = []
+    runtime.exitCode = 0
+    const done = installCompletionGuard(runtime, message => errors.push(message))
+    if (complete) done()
+    runtime.emit('beforeExit')
+    assert.equal(runtime.exitCode, complete ? 0 : 1)
+    assert.equal(errors.length, complete ? 0 : 1)
   }
 })
 
