@@ -8,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from services.remote_access import (
-    RemoteAccessService, ACCESS_COOKIE_NAME, _current_actor, get_current_actor,
+    RemoteAccessService, ACCESS_COOKIE_NAME, _current_actor, get_current_actor, authenticated_remote_dispatch,
     actor_from_browser_headers, _is_loopback, _client_host, _guard_exempt,
 )
 from api.desktop_security import desktop_runtime_authenticated
@@ -54,7 +54,8 @@ class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
         self._service = access_service
 
     def _authorized(self, request: Request) -> bool:
-        if _gateway_bridge_authenticated(request) or desktop_runtime_authenticated(request):
+        if (authenticated_remote_dispatch() is not None
+                or _gateway_bridge_authenticated(request) or desktop_runtime_authenticated(request)):
             return True
         if _is_loopback(_client_host(request.headers, request.client)):
             return True

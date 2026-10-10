@@ -694,3 +694,5 @@ Gateway 登录长期有效：`services/identity.py` 的普通账号与企业扫�
 局域网／反代的本机 Web 返回同样在启动前处理取消标记；后台只放行取消标记的首页壳，关闭网关仍走同源设置 API，需设备所有者会话或已启用的原生远程访问认证（配置密钥时核验访问 Cookie），网关桥接身份不能借此切换。行为入口：`test_lan_gateway_fallback_uses_native_access_credential` 与 `gatewayLocalFallback.test.ts`。
 
 桌面后台的浏览器工作台请求可使用已验证的 `ManagedLocalSessions` 宿主会话，不强制携带 Electron 启动凭据；HTTP 与主 WebSocket 保留会话失效及 Cookie 同源写入／握手校验，桌面专用接口继续独立核验启动凭据。测试 `test_desktop_daemon_browser_gateway_session_can_read_remote_project`。
+
+项目分享 RPC 的宿主入口由 `streaming/remote_host.py::RemoteRouteDispatcher.dispatch` 在完成接口目录校验及项目 ID 绑定后设置独立的内部认证上下文；桌面及原生访问守卫识别此上下文，不再重复索要宿主桌面凭据或浏览器网关会话。请求结束恢复上下文，客户端身份头不能建立此授权；连接凭据及撤销检查仍归 `serve_remote_project_socket`。回归 `test_remote_project.py::test_shared_project_dispatch_to_gateway_connected_desktop_host` 覆盖任务／定时列表及伪造身份请求。
