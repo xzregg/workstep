@@ -47,6 +47,31 @@ Dockerfile 支持将用户选择的沙箱目录下的 `home/` 整体挂载为 `/
 
 ## 同一镜像启动 WorkStep 或 Gateway
 
+### 前端依赖下载源
+
+Docker 构建中的 npm、Corepack 与三个前端的 Yarn 安装默认使用
+`https://registry.npmmirror.com`。安装前仅替换镜像内 `yarn.lock` 的官方源下载地址，
+保留依赖版本、完整性校验与 `--frozen-lockfile`；仓库锁文件不变。
+
+直接重新构建即可使用国内源，无需清理已有构建缓存：
+
+```bash
+docker build -t workstep:latest .
+# 或仅构建 Compose 镜像
+docker-compose -f docker-compose.yaml build workstep
+```
+
+需要切回官方源或使用其他兼容的 npm 镜像时，通过构建参数覆盖：
+
+```bash
+docker build --build-arg NPM_REGISTRY=https://registry.npmjs.org -t workstep:latest .
+docker-compose -f docker-compose.yaml build --build-arg NPM_REGISTRY=https://registry.npmjs.org workstep
+```
+
+此参数只控制前端依赖下载，不改变基础镜像、系统包与 Python 运行时的下载源。
+
+### 服务配置
+
 Compose 使用显式 `version: "3.7"`，按 Docker Engine 19.03.13 / API 1.40 的语法范围维护，
 命令使用旧版 `docker-compose`（兼容 1.24.0）；新版也可使用 `docker compose`。
 Dockerfile 不依赖 `$BUILDPLATFORM`、`COPY --chmod` 或 BuildKit 专用指令，入口执行权限

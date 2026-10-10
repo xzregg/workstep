@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -14,6 +15,31 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class SharedImageTests(unittest.TestCase):
+    def test_frontend_install_uses_mirror_for_registry_and_locked_tarballs(self):
+        dockerfile = (ROOT / "Dockerfile").read_text().split(" AS git-build", 1)[0]
+        self.assertIn("ARG NPM_REGISTRY=https://registry.npmmirror.com", dockerfile)
+        self.assertIn("COREPACK_NPM_REGISTRY=${NPM_REGISTRY}", dockerfile)
+        self.assertIn('npm config set registry "$NPM_REGISTRY"', dockerfile)
+        self.assertIn('yarn config set registry "$NPM_REGISTRY"', dockerfile)
+        installs = [run for run in re.findall(r"(?m)^RUN (.*)", dockerfile.replace("\\\n", ""))
+                    if "yarn install" in run]
+        self.assertEqual(len(installs), 3)
+        for app, run in zip(("web", "gateway-web", "landing"), installs):
+            with self.subTest(app=app), tempfile.TemporaryDirectory() as temporary:
+                self.assertIn("--frozen-lockfile", run)
+                rewrite = re.search(r"sed [^\n]+? yarn\.lock(?=\s|$)", run)
+                self.assertIsNotNone(rewrite)
+                self.assertLess(run.index(rewrite.group()), run.index("yarn install"))
+                original = (ROOT / "apps" / app / "yarn.lock").read_text()
+                lock = Path(temporary) / "yarn.lock"
+                for registry in ("https://registry.npmmirror.com", "https://registry.npmjs.org"):
+                    lock.write_text(original)
+                    subprocess.run(["sh", "-c", rewrite.group()], cwd=temporary, check=True,
+                                   env={**os.environ, "NPM_REGISTRY": registry})
+                    expected = re.sub(r"https://registry\.(?:yarnpkg\.com|npmjs\.org)/",
+                                      registry + "/", original)
+                    self.assertEqual(lock.read_text(), expected)
+
     def test_legacy_docker_syntax(self):
         compose = (ROOT / "docker-compose.yaml").read_text()
         self.assertTrue(compose.startswith('version: "3.7"\n'))

@@ -4,27 +4,34 @@
 # ============================================================
 FROM node:24-bookworm AS web-build
 
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ENV COREPACK_NPM_REGISTRY=${NPM_REGISTRY}
+
 WORKDIR /app/apps/web
 COPY packages/gateway-ui /app/packages/gateway-ui
 COPY apps/web/package.json apps/web/yarn.lock ./
-RUN npm config set registry https://registry.npmjs.org \
+# Yarn 1 的锁文件含固定 tarball URL，仅改 registry 不会切换所有下载。
+RUN npm config set registry "$NPM_REGISTRY" \
     && corepack enable && corepack prepare yarn@1.22.22 --activate \
-    && yarn config set registry https://registry.npmjs.org \
+    && yarn config set registry "$NPM_REGISTRY" \
+    && sed -i.bak -e "s#https://registry\.yarnpkg\.com/#${NPM_REGISTRY%/}/#g" -e "s#https://registry\.npmjs\.org/#${NPM_REGISTRY%/}/#g" yarn.lock \
+    && rm yarn.lock.bak \
     && yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 4
 COPY apps/web ./
 RUN yarn build && yarn build:gateway-share
 
 WORKDIR /app/apps/gateway-web
 COPY apps/gateway-web/package.json apps/gateway-web/yarn.lock ./
-RUN yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 4
+RUN sed -i.bak -e "s#https://registry\.yarnpkg\.com/#${NPM_REGISTRY%/}/#g" -e "s#https://registry\.npmjs\.org/#${NPM_REGISTRY%/}/#g" yarn.lock \
+    && rm yarn.lock.bak \
+    && yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 4
 COPY apps/gateway-web ./
 RUN yarn build
 
 WORKDIR /app/apps/landing
 COPY apps/landing/package.json apps/landing/yarn.lock ./
-RUN npm config set registry https://registry.npmjs.org \
-    && corepack enable && corepack prepare yarn@1.22.22 --activate \
-    && yarn config set registry https://registry.npmjs.org \
+RUN sed -i.bak -e "s#https://registry\.yarnpkg\.com/#${NPM_REGISTRY%/}/#g" -e "s#https://registry\.npmjs\.org/#${NPM_REGISTRY%/}/#g" yarn.lock \
+    && rm yarn.lock.bak \
     && yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 4
 COPY apps/landing ./
 # 官网以 /landing 子路径托管（与 start.sh 生产模式一致），否则资源路径错误
