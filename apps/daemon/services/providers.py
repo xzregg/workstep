@@ -124,21 +124,20 @@ def _anthropic_models_v1_fallback(
 
 def saved_models(provider_id: str, protocol: str = "") -> list[EngineModel]:
     """Return the locally saved model list for a provider (no network call)."""
-    from dataclasses import fields as dataclass_fields
-
     entry = config_store.get_provider_models(provider_id, protocol)
     raw_models = entry.get("models") or []
     result: list[EngineModel] = []
     for item in raw_models:
         if not isinstance(item, dict):
             continue
-        try:
-            result.append(EngineModel(**{
-                field.name: item.get(field.name)
-                for field in dataclass_fields(EngineModel)
-            }))
-        except TypeError:
+        model_id = str(item.get("id") or "").strip()
+        if not model_id:
             continue
+        result.append(EngineModel(
+            id=model_id,
+            label=str(item.get("label") or "").strip() or model_id,
+            description=item.get("description"),
+        ))
     return result
 
 

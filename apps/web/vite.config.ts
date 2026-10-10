@@ -3,8 +3,13 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => ({
   ...(mode === 'gateway-share' ? {
-    base: '/workspace-assets/', build: { outDir: 'dist-gateway-share', assetsDir: '' },
+    base: '/workspace-assets/',
   } : {}),
+  build: {
+    // DingTalk and older Android WebViews need classic max-width media queries.
+    cssTarget: ['chrome80', 'safari13'],
+    ...(mode === 'gateway-share' ? { outDir: 'dist-gateway-share', assetsDir: '' } : {}),
+  },
   plugins: [react()],
   resolve: { dedupe: ['react','react-dom','react-router-dom'] },
   server: {

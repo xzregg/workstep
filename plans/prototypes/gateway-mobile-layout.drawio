@@ -1,0 +1,208 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxGraphModel pageWidth="1320" pageHeight="960" background="#f5f5f7">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <mxCell id="2" value="网关移动端 · 保留设备 Tab，工作台沿用 Web 移动布局" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=25;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="28" y="18" width="1100" height="46" />
+    </mxCell>
+    <mxCell id="3" value="01 · 工作台首页" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=17;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="28" y="80" width="390" height="34" />
+    </mxCell>
+    <mxCell id="4" value="" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="28" y="128" width="390" height="704" />
+    </mxCell>
+    <mxCell id="5" value="" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="29" y="129" width="388" height="54" />
+    </mxCell>
+    <mxCell id="6" value="☰" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#424245;fontSize=24;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="40" y="136" width="42" height="40" />
+    </mxCell>
+    <mxCell id="7" value="WorkStep" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=18;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="87" y="136" width="200" height="40" />
+    </mxCell>
+    <mxCell id="8" value="•••" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#424245;fontSize=22;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="336" y="136" width="65" height="40" />
+    </mxCell>
+    <mxCell id="9" value="" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="29" y="184" width="388" height="48" />
+    </mxCell>
+    <mxCell id="10" value="● 沙箱 1" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#e8e8ed;fontColor=#0071e3;fontSize=14;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="38" y="190" width="134" height="36" />
+    </mxCell>
+    <mxCell id="11" value="● 办公电脑" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=none;fontColor=#6e6e73;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="178" y="190" width="132" height="36" />
+    </mxCell>
+    <mxCell id="12" value="○ 家用机" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=none;fontColor=#86868b;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="316" y="190" width="90" height="36" />
+    </mxCell>
+    <mxCell id="13" value="我的 WorkStep" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=21;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="48" y="251" width="350" height="32" />
+    </mxCell>
+    <mxCell id="14" value="沙箱 1 · 已连接" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#16a34a;fontSize=13;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="48" y="289" width="350" height="24" />
+    </mxCell>
+    <mxCell id="15" value="☰  选择项目" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="48" y="338" width="350" height="50" />
+    </mxCell>
+    <mxCell id="16" value="从项目开始工作" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=18;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="56" y="425" width="334" height="32" />
+    </mxCell>
+    <mxCell id="17" value="打开左上角菜单，选择或创建项目。&#10;设备切换后，显示对应设备的工作台。" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#6e6e73;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="56" y="462" width="326" height="62" />
+    </mxCell>
+    <mxCell id="18" value="＋ 添加项目" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#0071e3;strokeColor=none;fontColor=#ffffff;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=center;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="56" y="550" width="156" height="40" />
+    </mxCell>
+    <mxCell id="19" value="02 · 项目侧栏展开" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=17;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="452" y="80" width="390" height="34" />
+    </mxCell>
+    <mxCell id="20" value="" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="452" y="128" width="390" height="704" />
+    </mxCell>
+    <mxCell id="21" value="" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="453" y="129" width="388" height="54" />
+    </mxCell>
+    <mxCell id="22" value="☰" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#424245;fontSize=24;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="464" y="136" width="42" height="40" />
+    </mxCell>
+    <mxCell id="23" value="WorkStep" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=18;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="511" y="136" width="200" height="40" />
+    </mxCell>
+    <mxCell id="24" value="•••" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#424245;fontSize=22;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="760" y="136" width="65" height="40" />
+    </mxCell>
+    <mxCell id="25" value="" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="453" y="184" width="388" height="48" />
+    </mxCell>
+    <mxCell id="26" value="● 沙箱 1" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#e8e8ed;fontColor=#0071e3;fontSize=14;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="462" y="190" width="134" height="36" />
+    </mxCell>
+    <mxCell id="27" value="● 办公电脑" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=none;fontColor=#6e6e73;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="602" y="190" width="132" height="36" />
+    </mxCell>
+    <mxCell id="28" value="○ 家用机" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=none;fontColor=#86868b;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="740" y="190" width="90" height="36" />
+    </mxCell>
+    <mxCell id="29" value="" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=#d2d2d7;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="453" y="233" width="388" height="598" />
+    </mxCell>
+    <mxCell id="30" value="" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="453" y="233" width="328" height="598" />
+    </mxCell>
+    <mxCell id="31" value="项目" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=18;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="467" y="245" width="240" height="42" />
+    </mxCell>
+    <mxCell id="32" value="×" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#6e6e73;fontSize=24;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="728" y="245" width="40" height="42" />
+    </mxCell>
+    <mxCell id="33" value="⌕  搜索项目" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=#e8e8ed;fontColor=#86868b;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="468" y="304" width="296" height="40" />
+    </mxCell>
+    <mxCell id="34" value="▥  数据统计" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="468" y="363" width="296" height="44" />
+    </mxCell>
+    <mxCell id="35" value="＋  添加项目" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="468" y="413" width="296" height="44" />
+    </mxCell>
+    <mxCell id="36" value="项目列表" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#6e6e73;fontSize=12;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="470" y="477" width="260" height="28" />
+    </mxCell>
+    <mxCell id="37" value="▱  操作手册演示" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#eaf3ff;strokeColor=none;fontColor=#0071e3;fontSize=14;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="468" y="519" width="296" height="44" />
+    </mxCell>
+    <mxCell id="38" value="▱  示例项目" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="468" y="571" width="296" height="44" />
+    </mxCell>
+    <mxCell id="39" value="⚙  设置" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="468" y="775" width="296" height="40" />
+    </mxCell>
+    <mxCell id="40" value="03 · 进入项目" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=17;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="876" y="80" width="390" height="34" />
+    </mxCell>
+    <mxCell id="41" value="" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="876" y="128" width="390" height="704" />
+    </mxCell>
+    <mxCell id="42" value="" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="877" y="129" width="388" height="54" />
+    </mxCell>
+    <mxCell id="43" value="☰" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#424245;fontSize=24;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="888" y="136" width="42" height="40" />
+    </mxCell>
+    <mxCell id="44" value="WorkStep" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=18;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="935" y="136" width="200" height="40" />
+    </mxCell>
+    <mxCell id="45" value="•••" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#424245;fontSize=22;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="1184" y="136" width="65" height="40" />
+    </mxCell>
+    <mxCell id="46" value="" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="877" y="184" width="388" height="48" />
+    </mxCell>
+    <mxCell id="47" value="● 沙箱 1" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#e8e8ed;fontColor=#0071e3;fontSize=14;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="886" y="190" width="134" height="36" />
+    </mxCell>
+    <mxCell id="48" value="● 办公电脑" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=none;fontColor=#6e6e73;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="1026" y="190" width="132" height="36" />
+    </mxCell>
+    <mxCell id="49" value="○ 家用机" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=none;fontColor=#86868b;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="1164" y="190" width="90" height="36" />
+    </mxCell>
+    <mxCell id="50" value="操作手册演示" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=18;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="890" y="243" width="290" height="40" />
+    </mxCell>
+    <mxCell id="51" value="＋" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#0071e3;fontSize=24;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="1204" y="243" width="40" height="40" />
+    </mxCell>
+    <mxCell id="52" value="任务" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#eaf3ff;strokeColor=none;fontColor=#0071e3;fontSize=14;fontFamily=PingFang SC;fontStyle=1;align=center;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="890" y="297" width="112" height="36" />
+    </mxCell>
+    <mxCell id="53" value="会话" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=center;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="1015" y="297" width="110" height="36" />
+    </mxCell>
+    <mxCell id="54" value="流程" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=center;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="1135" y="297" width="110" height="36" />
+    </mxCell>
+    <mxCell id="55" value="⌕  搜索任务" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#f5f5f7;strokeColor=#e8e8ed;fontColor=#86868b;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="892" y="356" width="358" height="40" />
+    </mxCell>
+    <mxCell id="56" value="" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="892" y="416" width="358" height="94" />
+    </mxCell>
+    <mxCell id="57" value="整理项目需求" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=16;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="904" y="426" width="306" height="32" />
+    </mxCell>
+    <mxCell id="58" value="进行中" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#0071e3;fontSize=12;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="904" y="465" width="150" height="24" />
+    </mxCell>
+    <mxCell id="59" value="刚刚 · 示例任务" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#6e6e73;fontSize=12;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="1088" y="465" width="140" height="24" />
+    </mxCell>
+    <mxCell id="60" value="" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="892" y="524" width="358" height="94" />
+    </mxCell>
+    <mxCell id="61" value="检查构建结果" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=16;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="904" y="534" width="306" height="32" />
+    </mxCell>
+    <mxCell id="62" value="已完成" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#16a34a;fontSize=12;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="904" y="573" width="150" height="24" />
+    </mxCell>
+    <mxCell id="63" value="刚刚 · 示例任务" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#6e6e73;fontSize=12;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="1088" y="573" width="140" height="24" />
+    </mxCell>
+    <mxCell id="64" value="" style="rounded=1;arcSize=12;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#e8e8ed;fontColor=#1d1d1f;fontSize=14;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="892" y="632" width="358" height="94" />
+    </mxCell>
+    <mxCell id="65" value="补充测试用例" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#1d1d1f;fontSize=16;fontFamily=PingFang SC;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="904" y="642" width="306" height="32" />
+    </mxCell>
+    <mxCell id="66" value="待开始" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#6e6e73;fontSize=12;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="904" y="681" width="150" height="24" />
+    </mxCell>
+    <mxCell id="67" value="刚刚 · 示例任务" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#6e6e73;fontSize=12;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="1088" y="681" width="140" height="24" />
+    </mxCell>
+    <mxCell id="68" value="交互：设备 Tab 横向滑动；点 ☰ 打开项目抽屉，选中项目后关闭。&#10;账号、返回平台和刷新归入右上角菜单；通知入口暂不占主顶栏。原型内容均为示例。" style="rounded=0;arcSize=12;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;fontColor=#6e6e73;fontSize=15;fontFamily=PingFang SC;fontStyle=0;align=left;verticalAlign=middle;spacingLeft=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="28" y="858" width="1238" height="62" />
+    </mxCell>
+  </root>
+</mxGraphModel>

@@ -9,7 +9,7 @@ from sqlalchemy import select,or_,func
 import json
 import time
 from .notifications import RETENTION
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from gateway.models import CompletionNotification,PlatformProject
 from .notifications import visible_to
 from .device_grants import has_device_access
@@ -59,6 +59,10 @@ async def feed(ws,*,legacy=False):
         user=await actor(call)
         origin=call.proofs.get('origin')
         expected=('https' if call.target.scheme=='wss' else 'http')+'://'+call.target.netloc
+        public = urlsplit(call.settings.public_origin or '')
+        # TLS may terminate at the proxy; accept only the configured public host.
+        if public.netloc == call.target.netloc:
+            expected = public.scheme + '://' + public.netloc
         if origin!=expected and not (legacy and origin is None):
             await call.close(code=4403); return
         if call.notifications.connections.get(user.id,0)>=5 or len(call.notifications.listeners)>=512:

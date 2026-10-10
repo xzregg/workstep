@@ -1,11 +1,12 @@
+import { passwordRequirements, validPortalPassword } from './portalAccount'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 type User = { username: string; display_name: string; must_change_password: boolean }
 
-export function validPasswordChange(current: string, next: string, confirmation: string, passwordRequired = true): boolean {
-  return (!passwordRequired || !!current) && next.length >= 8 && next.length <= 128 && next !== current && next === confirmation
+export function validPasswordChange(current: string, next: string, confirmation: string, passwordRequired = true, username = ''): boolean {
+  return (!passwordRequired || !!current) && validPortalPassword(username, next) && next !== current && next === confirmation
 }
 
 export function AccountPage() {
@@ -40,7 +41,7 @@ export function AccountPage() {
 
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!validPasswordChange(current, next, confirmation, passwordRequired)) return
+    if (!validPasswordChange(current, next, confirmation, passwordRequired, user?.username ?? '')) return
     setBusy(true); setError(''); setNotice('')
     try {
       const response = await fetch('/api/auth/password', {
@@ -84,13 +85,14 @@ export function AccountPage() {
         {passwordRequired && <><label htmlFor="account-current-password">当前密码</label>
         <input id="account-current-password" type="password" autoComplete="current-password" value={current}
           onChange={event => setCurrent(event.target.value)} required /></>}
+        <p>{passwordRequirements}</p>
         <label htmlFor="account-new-password">新密码（至少 8 位）</label>
         <input id="account-new-password" type="password" autoComplete="new-password" value={next}
           onChange={event => setNext(event.target.value)} required minLength={8} />
         <label htmlFor="account-confirm-password">确认新密码</label>
         <input id="account-confirm-password" type="password" autoComplete="new-password" value={confirmation}
           onChange={event => setConfirmation(event.target.value)} required />
-        <button type="submit" disabled={busy || !validPasswordChange(current, next, confirmation, passwordRequired)}>
+        <button type="submit" disabled={busy || !validPasswordChange(current, next, confirmation, passwordRequired, user?.username ?? '')}>
           {busy ? '正在保存…' : '保存新密码'}
         </button>
       </form>

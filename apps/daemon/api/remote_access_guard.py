@@ -14,6 +14,16 @@ from services.remote_access import (
 from api.desktop_security import desktop_runtime_authenticated
 
 
+def _gateway_bridge_authenticated(request: Request | WebSocket) -> bool:
+    # Only the authenticated device bridge installs this ASGI scope identity.
+    # Browser headers and cookies cannot manufacture it.
+    if getattr(request, "scope", {}).get("gateway_remote_actor") is None:
+        return False
+    gateway_client = getattr(request.app.state, "gateway_client", None)
+    return (gateway_client is not None
+            and getattr(gateway_client, "managed_config", None) is not None)
+
+
 class BrowserActorMiddleware(BaseHTTPMiddleware):
     """Attach the browser visitor identity for the lifetime of one request."""
 
@@ -44,7 +54,7 @@ class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
         self._service = access_service
 
     def _authorized(self, request: Request) -> bool:
-        if desktop_runtime_authenticated(request):
+        if _gateway_bridge_authenticated(request) or desktop_runtime_authenticated(request):
             return True
         if _is_loopback(_client_host(request.headers, request.client)):
             return True
@@ -70,7 +80,7 @@ class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
 
 def websocket_access_allowed(ws: WebSocket, access_service: "RemoteAccessService") -> bool:
     """Mirror ``RemoteAccessGuardMiddleware`` for the main WebSocket feed."""
-    if desktop_runtime_authenticated(ws):
+    if _gateway_bridge_authenticated(ws) or desktop_runtime_authenticated(ws):
         return True
     if _is_loopback(_client_host(ws.headers, ws.client)):
         return True

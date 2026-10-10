@@ -876,6 +876,32 @@ async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypa
 
 
 @pytest.mark.anyio
+async def test_engine_provider_models_use_ids_for_missing_names(engine_client):
+    client, store = engine_client
+    provider = _add_provider(store)
+    store.set_pydantic_ai_engine_config(provider_id=provider["id"], model="model-a")
+    store.set_provider_models(provider["id"], [
+        {"id": "model-a"},
+        {"id": "model-b", "label": None},
+        {"id": "model-c", "label": ""},
+        {"id": "model-d", "label": "   "},
+        {"id": "model-e", "label": "Model E", "description": "Description"},
+    ], "saved", "openai_chat_completions")
+    response = await client.get("/api/engine/pydantic_ai/models")
+    assert response.status_code == 200
+    assert response.json()["models"] == [
+        {"id": model_id, "label": label, "description": description}
+        for model_id, label, description in [
+            ("model-a", "model-a", None),
+            ("model-b", "model-b", None),
+            ("model-c", "model-c", None),
+            ("model-d", "model-d", None),
+            ("model-e", "Model E", "Description"),
+        ]
+    ]
+
+
+@pytest.mark.anyio
 async def test_native_engine_models_are_persisted_and_reused(engine_client, monkeypatch):
     client, store = engine_client
     calls = {"count": 0}

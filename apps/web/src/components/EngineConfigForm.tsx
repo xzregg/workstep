@@ -80,7 +80,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
 ) {
   const { t } = useI18n()
   const fields = config?.fields ?? []
-  const [values, setValues] = useState<Record<string, string>>({})
+  const [values, setValues] = useState<Record<string, string>>(() => config?.values ?? {})
   const [secrets, setSecrets] = useState<Record<string, boolean>>({})
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [clearKeys, setClearKeys] = useState<Record<string, boolean>>({})

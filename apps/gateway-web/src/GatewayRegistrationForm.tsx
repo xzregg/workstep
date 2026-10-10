@@ -1,3 +1,4 @@
+import { passwordRequirements } from './portalAccount'
 import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { validPortalAccount } from './portalAccount'
@@ -67,6 +68,7 @@ export function GatewayRegistrationForm({ mode, onRegistered, onClosed, onBack }
     <input id="portal-password" type="password" autoComplete="new-password" required minLength={8}
       maxLength={128} disabled={busy} value={account.password}
       onChange={event => setAccount({ ...account, password: event.target.value })} />
+    <p>{passwordRequirements}</p>
     <label htmlFor="portal-password-confirmation">确认密码</label>
     <input id="portal-password-confirmation" type="password" autoComplete="new-password" required
       maxLength={128} disabled={busy} value={confirmation}

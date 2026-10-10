@@ -41,9 +41,13 @@ test('drawer opens, keeps a single navigation tree, closes after selection, and 
   const heading = container.querySelector('.mobile-header > span')!
   assert.equal(heading.textContent, '会话标题很长时应在顶部缩略显示')
   assert.equal(heading.getAttribute('title'), heading.textContent)
+  assert.equal(heading.querySelector('svg'), null)
   await act(async () => setTitle('重命名后的会话'))
   assert.equal(heading.textContent, '重命名后的会话')
   assert.equal(heading.getAttribute('title'), '重命名后的会话')
+  await act(async () => setTitle('workstep'))
+  assert.equal(heading.textContent, 'WorkStep')
+  assert.ok(heading.querySelector('svg'))
   await act(async () => menu.click())
   assert.equal(menu.getAttribute('aria-expanded'), 'true')
   const close = container.querySelector<HTMLButtonElement>('#workstep-navigation button.navigation-close')!

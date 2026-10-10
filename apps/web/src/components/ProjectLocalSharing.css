@@ -1,0 +1,11 @@
+.project-share-dialog { width: 680px; max-height: 88vh; }
+.project-local-sharing { display: flex; flex-direction: column; gap: 12px; }
+.project-local-sharing-networks { display: flex; flex-wrap: wrap; gap: 6px; }
+.project-local-sharing-hint { margin: 0; color: var(--muted); font-size: calc(11px * var(--font-scale)); }
+.project-local-sharing select { width: 100%; }
+.project-local-sharing-string { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; background: var(--surface); color: var(--fg); font-family: var(--font-mono); font-size: calc(11px * var(--font-scale)); }
+.project-local-sharing-expiry { display: grid; gap: 3px; margin-top: 7px; color: var(--muted); font-size: calc(11px * var(--font-scale)); }
+.project-local-sharing-devices { padding-top: 12px; border-top: 1px solid var(--border-soft); }
+.project-local-sharing-device-title { font-size: calc(12px * var(--font-scale)); font-weight: 650; margin-bottom: 7px; }
+.project-local-sharing-error { color: var(--danger); font-size: calc(12px * var(--font-scale)); }
+.project-local-sharing-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }

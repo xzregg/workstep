@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 from workstep_gateway_protocol import PROTOCOL_VERSION
@@ -132,12 +132,19 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             local_path = '/' + path_parts[3]
             gateway_route = (local_path == '/api/remote/task-shares' or local_path.startswith('/api/remote/task-shares/') or local_path in ('/api/remote/redeem', '/api/remote/session', '/api/remote/project-grants', '/api/remote/devices')
                 or (local_path.startswith('/api/remote/devices/') and local_path.endswith('/access') and len(local_path.split('/')) == 6))
+            document_navigation = request.method == 'GET' and not local_path.startswith(('/api/', '/assets/')) and (
+                local_path == '/' or request.headers.get('sec-fetch-dest') == 'document'
+                or 'text/html' in request.headers.get('accept', '').lower())
             if not gateway_route:
                 try:
                     return await invoke(proxy_remote_request, request=request)
                 except IdentityError as exc:
+                    if document_navigation and exc.reason in ('unauthenticated', 'forbidden'):
+                        return RedirectResponse('/', status_code=303)
                     return await identity_error_response(request, exc)
                 except GatewayError as exc:
+                    if document_navigation and exc.reason in ('unauthenticated', 'forbidden'):
+                        return RedirectResponse('/', status_code=303)
                     return await gateway_error_response(request, exc)
         if settings.public_origin:
             host = request.headers.get("host", "").lower()

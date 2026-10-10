@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, request } from '../api/transport'
 import { useI18n } from '../i18n'
 import Spinner from './Spinner'
@@ -9,7 +9,7 @@ import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 type Device = {id: string; name: string; online: boolean; project_only?:boolean}
 type Project = {id:string;device_id:string;device_name:string;device_online:boolean;name:string}
 
-export default function GatewayDeviceTabs({currentDeviceId,currentProjectId}: {currentDeviceId: string;currentProjectId?:string|null}) {
+export default function GatewayDeviceTabs({currentDeviceId,currentProjectId,header}: {currentDeviceId: string;currentProjectId?:string|null;header?:ReactNode}) {
   const {t} = useI18n()
   const [devices, setDevices] = useState<Device[]>([])
   const [projects,setProjects]=useState<Project[]>([])
@@ -67,7 +67,10 @@ export default function GatewayDeviceTabs({currentDeviceId,currentProjectId}: {c
     }catch(reason){setError(reason instanceof Error?reason.message:t('gatewayRemote.switchFailed'));pending.current=false;setOpening(null)}
   }
   return <section className="gateway-direct-device-tabs">
-    <DeviceTabs devices={devices} currentDeviceId={currentDeviceId} disabled={opening!==null} disableOffline
+    {header && <div className="gateway-mobile-picker-header">{header}
+      <button type="button" className="gateway-tab-refresh" aria-label={t('gatewayRemote.refreshDevices')} disabled={opening!==null} onClick={()=>setRevision(value=>value+1)}>↻</button>
+    </div>}
+    <DeviceTabs showRefresh={!header} devices={devices} currentDeviceId={currentDeviceId} disabled={opening!==null} disableOffline
       onSelect={id=>{const device=devices.find(item=>item.id===id);if(device)void select(device)}} onRefresh={()=>setRevision(value=>value+1)}/>
     {(opening || (loading && !devices.length)) && <p role="status"><Spinner size={16}/>{t('gatewayRemote.loading')}</p>}
     {!!currentProjectId && <div className="gateway-project-tabs" role="tablist" aria-label="切换授权项目">

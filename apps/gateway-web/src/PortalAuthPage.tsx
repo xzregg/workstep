@@ -66,6 +66,7 @@ export function PortalAuthPage() {
     if (!response.ok) {
       if (response.status === 409 && url === '/api/platform/setup') throw new Error('平台已完成初始化，请刷新页面登录。')
       if (response.status === 429) throw new Error('尝试次数过多，请稍后再试。')
+      if (response.status === 429) throw new Error('登录尝试过多，请稍后重试。')
       throw new Error(url === '/api/auth/login' ? '登录失败，请检查账号状态和密码。' : '提交失败，请检查填写内容后重试。')
     }
     return response
@@ -87,7 +88,8 @@ export function PortalAuthPage() {
       if (typeof result.authorization_url !== 'string' || !result.authorization_url.startsWith('https://'))
         throw new Error('身份源返回了无效的登录地址。')
       window.location.assign(result.authorization_url)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '扫码登录失败。'); setBusy(false) }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '扫码登录失败。') }
+    finally { setBusy(false) }
   }
 
   return <section className="gateway-auth-card">

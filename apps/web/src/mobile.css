@@ -1039,3 +1039,13 @@
 .chat-history-wrapper.is-at-bottom::after {
   opacity: 0;
 }
+
+.mobile-header-title { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.mobile-header-title > svg { flex-shrink: 0; }
+.mobile-header-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.mobile-header-left, .mobile-header-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+@media (max-width: 1023px) {
+  .mobile-header--device { display: grid; grid-template-columns: minmax(68px, 1fr) minmax(0, 3fr) minmax(68px, 1fr); }
+  .mobile-header--device .mobile-header-actions { justify-content: flex-end; }
+}

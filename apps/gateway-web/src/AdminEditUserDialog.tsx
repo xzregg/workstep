@@ -1,3 +1,4 @@
+import { passwordRequirements, validPortalPassword } from './portalAccount'
 import { useState } from 'react'
 import { GatewayModal } from './GatewayModal'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -17,7 +18,7 @@ export function AdminEditUserDialog({ user, csrf, onSaved, onClose }: {
  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
  const local = !!loginUsername(user)
  const dirty = name !== user.display_name || !!newPassword || !!repeat
- const valid = !!name.trim() && name.trim().length <= 256 && dirty && (!newPassword || (newPassword.length >= 8 && newPassword.length <= 128 && repeat === newPassword && passwordReady))
+ const valid = !!name.trim() && name.trim().length <= 256 && dirty && (!newPassword || (validPortalPassword(loginUsername(user) ?? '', newPassword) && repeat === newPassword && passwordReady))
  function close() { if (!busy) { if (dirty) setDiscard(true); else onClose() } }
  async function save() {
   if (!valid || busy) return
@@ -48,7 +49,8 @@ export function AdminEditUserDialog({ user, csrf, onSaved, onClose }: {
     <label htmlFor="edit-user-name">显示名称</label>
     <input id="edit-user-name" value={name} maxLength={256} disabled={busy} onChange={event => setName(event.target.value)} />
     {local ? <>
-     <label htmlFor="edit-user-password">新密码（可选）</label>
+     <p>{passwordRequirements}</p>
+        <label htmlFor="edit-user-password">新密码（可选）</label>
      <input id="edit-user-password" type="password" autoComplete="new-password" value={newPassword} disabled={busy} maxLength={128} onChange={event => setNewPassword(event.target.value)} />
      <p>留空保持原密码；设置至少 8 位的新密码后，该用户需要重新登录。</p>
      {newPassword && <>

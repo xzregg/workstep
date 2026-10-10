@@ -989,7 +989,7 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 
 设置 → 执行引擎 → 自定义接入会创建一个普通项目对话，预填接入提示词，由 `workstep-cli` 引导按需阅读规范，不加载独立技能。草稿默认在 `$WORKSTEP_CONFIG_DIR/runtime/engine-workspaces/<id>`；有容器项目根目录限制时草稿在允许的项目根目录 `workstep-engine-workspaces/<id>`。正式注册目录统一是 `$WORKSTEP_CONFIG_DIR/runtime/engines/<engine-id>`，不写应用安装目录，因此桌面应用升级与只读源码打包不影响用户引擎。
 
-可移植包由 manifest.json、一个 Python 入口及 files 白名单声明的测试/资源组成；规范与步骤见 [接入指南](../apps/daemon/data/skills/workstep-cli/references/custom-engine.md) 和 [接口契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md)。CLI 可 inspect 指定目录或 py 文件，然后 install/configure/validate/register；install/validate 可异步查询或取消。只有公开验收通过，签名及代码/依赖/配置指纹一致才允许原子注册。注册后需要重启；已加载代理发现文件变化会拒绝执行并要求重新验收。
+可移植包由 manifest.json、一个 Python 入口及 files 白名单声明的测试/资源组成；规范与步骤见 [接入指南](../apps/daemon/data/skills/workstep-cli/references/custom-engine.md) 和 [接口契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md)。CLI 可 inspect 指定目录或 py 文件，然后 install/configure/validate/register；install/validate 可异步查询或取消。只有公开验收通过，签名及代码/依赖/配置指纹一致才允许原子注册。注册后在设置的引擎页面点击“重新扫描”即可发现并同步到引擎选择列表，无需重启；已加载代理发现文件变化会拒绝执行并要求重新验收。
 
 每个引擎自行实现异步 install，按系统/架构判断下载依赖，获取 staged target_dir 而不修改后台 Python 环境；SDK import 必须延迟到依赖存在后。Python SDK、CLI、Node 桥接均可接入，Node 并非桌面包保证提供的运行时，需要引擎检测并安装或说明环境要求。导出 ZIP 仅携带源码/测试/资源及安全测试摘要，不含 dependencies/cache/凭据；接收方按其平台重新安装与验证。支持复用现有供应商及自定义供应商，按协议声明进行匹配；配置 schema 自动生成设置表单，敏感值脱敏。
 

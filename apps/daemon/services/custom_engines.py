@@ -301,7 +301,7 @@ class CustomEngineManager:
                     shutil.rmtree(stage, ignore_errors=True)
             await asyncio.to_thread(copy)
             await asyncio.to_thread(config_store.set_engine_verified, manifest["id"], True)
-            return {"ok": True, "engine_id": manifest["id"], "path": str(target), "restart_required": True}
+            return {"ok": True, "engine_id": manifest["id"], "path": str(target), "restart_required": False, "refresh_required": True}
 
     async def disable(self, engine_id, disabled=True):
         import re

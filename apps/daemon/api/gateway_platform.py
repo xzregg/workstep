@@ -1,4 +1,5 @@
 """Browser settings and callback for desktop and mobile Gateway configuration."""
+import asyncio
 import httpx
 import os
 import hmac
@@ -6,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 from services.gateway_client.browser_login import COOKIE, normalize_origin
+from api.desktop_security import browser_origin_allowed
 
 router = APIRouter()
 
@@ -27,17 +29,27 @@ class SettingsInput(BaseModel):
     def valid_url(cls, value): return normalize_origin(value) if value.strip() else ''
 
 
-def _settings_service(request: Request, mutation=False, configure=False):
+async def _settings_service(request: Request, mutation=False, configure=False):
     actor = request.scope.get('gateway_remote_actor')
     if request.scope.get('gateway_share_scope') is not None or (actor is not None and actor.project_id is not None):
         raise HTTPException(status_code=403, detail='Gateway settings require host access')
-    if mutation and request.headers.get('origin') != str(request.base_url).rstrip('/'):
+    if mutation and not browser_origin_allowed(request):
         raise HTTPException(status_code=403, detail='Same-origin request required')
     gateway = getattr(request.app.state, 'gateway_client', None)
     local = actor is None and request.client and request.client.host in ('127.0.0.1', '::1', 'localhost') and request.url.hostname in ('127.0.0.1', '::1', 'localhost')
     if configure and gateway is not None and gateway.managed_config is not None and not local and not _desktop(request):
         actor = actor or gateway.local_sessions.resolve(request.headers.get('x-workstep-local-session') or request.cookies.get(COOKIE))
-        if actor is None or actor.user_id != gateway.current_user_id:
+        access = getattr(request.app.state, 'remote_access_service', None)
+        def native_access_allowed():
+            if access is None or not access.settings().get('enabled'):
+                return False
+            if not access.access_password_required():
+                return True
+            from services.remote_access import ACCESS_COOKIE_NAME
+            token = request.cookies.get(ACCESS_COOKIE_NAME) or request.headers.get('x-workstep-access')
+            return access.verify_access_token(token)
+        native_access = request.scope.get('gateway_remote_actor') is None and await asyncio.to_thread(native_access_allowed)
+        if not native_access and (actor is None or actor.user_id != gateway.current_user_id):
             raise HTTPException(status_code=403, detail='Gateway settings require the device owner session')
     return request.app.state.gateway_browser_login
 
@@ -59,12 +71,12 @@ def _desktop_login_handoff(request: Request) -> bool:
 
 @router.get('/api/gateway-platform/settings')
 async def settings(request: Request):
-    return await _settings_service(request).settings()
+    return await (await _settings_service(request)).settings()
 
 
 @router.put('/api/gateway-platform/settings')
 async def save_settings(request: Request, body: SettingsInput):
-    service = _settings_service(request, mutation=True, configure=True)
+    service = await _settings_service(request, mutation=True, configure=True)
     try:
         return await service.save_settings(body.url, body.enabled)
     except ValueError as exc:
@@ -73,7 +85,7 @@ async def save_settings(request: Request, body: SettingsInput):
 
 @router.post('/api/gateway-platform/login')
 async def login(request: Request, body: LoginInput):
-    service = _settings_service(request, mutation=True)
+    service = await _settings_service(request, mutation=True)
     try:
         url = await service.begin(body.url, str(request.base_url).rstrip('/'), desktop=_desktop_login_handoff(request))
     except (ValueError, KeyError) as exc:
@@ -85,7 +97,7 @@ async def login(request: Request, body: LoginInput):
 
 @router.get('/gateway/login', include_in_schema=False)
 async def reopen_login(request: Request):
-    service = _settings_service(request)
+    service = await _settings_service(request)
     configured = await service.settings()
     if not configured['url'] or not configured['enabled']: return RedirectResponse('/', status_code=303)
     try:
@@ -96,7 +108,7 @@ async def reopen_login(request: Request):
 
 @router.post('/api/gateway-platform/logout')
 async def logout(request: Request):
-    service = _settings_service(request, mutation=True, configure=True)
+    service = await _settings_service(request, mutation=True, configure=True)
     await service.logout()
     from fastapi.responses import JSONResponse
     response = JSONResponse({'login_url': '/gateway/login'})
@@ -106,7 +118,7 @@ async def logout(request: Request):
 
 @router.get('/api/gateway-platform/callback', include_in_schema=False)
 async def callback(request: Request, code: str = Query(min_length=32, max_length=256), state: str = Query(min_length=32, max_length=256)):
-    service = _settings_service(request)
+    service = await _settings_service(request)
     try:
         result = await service.complete(code, state, callback_origin=str(request.base_url).rstrip('/'))
     except (ValueError, KeyError) as exc:

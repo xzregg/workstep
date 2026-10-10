@@ -58,8 +58,8 @@ class SetupInput(AccountInput):
 
 
 class LoginInput(BaseModel):
-    username: str
-    password: str
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=128)
 
 
 class ChangePasswordInput(BaseModel):
@@ -222,7 +222,9 @@ async def registration_policy(call: GatewayCall):
 
 async def login(call: GatewayCall, response: ReplyEffects, body: LoginInput):
     await _limit_public_action(call, 'login')
+    await call.identity_rate_limiter.check_login_account(body.username)
     user, token = await _identity(call).login(body.username, body.password)
+    await call.identity_rate_limiter.login_succeeded(body.username)
     _set_session_cookie(response, token, call)
     return {"user": public_user(user), "csrf_token": csrf_token(token)}
 
