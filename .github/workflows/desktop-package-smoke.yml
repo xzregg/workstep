@@ -7,6 +7,14 @@ on:
         description: Branch, tag, or commit to package
         required: true
         default: main
+      acceptance_tag:
+        description: Published release to install and verify on Windows (empty builds all platforms)
+        required: false
+        default: ""
+      previous_tag:
+        description: Published upgrade baseline for Windows acceptance
+        required: false
+        default: v1.0.10
 
 concurrency:
   group: desktop-package-smoke-${{ inputs.ref }}
@@ -16,7 +24,54 @@ permissions:
   contents: read
 
 jobs:
+  windows-acceptance:
+    if: ${{ inputs.acceptance_tag != '' }}
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { ref: "${{ inputs.ref }}" }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with: { node-version: "22" }
+      - name: Install acceptance tooling
+        working-directory: apps/desktop
+        run: corepack enable && yarn install --frozen-lockfile
+      - name: Download original published installers and checksum manifests
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCEPTANCE_TAG: ${{ inputs.acceptance_tag }}
+          PREVIOUS_TAG: ${{ inputs.previous_tag }}
+        run: |
+          foreach ($tag in @($env:ACCEPTANCE_TAG, $env:PREVIOUS_TAG)) {
+            if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid release tag" }
+            $draft = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft
+            if ($LASTEXITCODE -ne 0 -or $draft -ne "false") { throw "Release must already be published" }
+          }
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/current", "$env:RUNNER_TEMP/previous" | Out-Null
+          gh release download $env:ACCEPTANCE_TAG --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/current" --pattern WorkStep-windows-x64.exe --pattern SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw "Target download failed" }
+          gh release download $env:PREVIOUS_TAG --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/previous" --pattern WorkStep-windows-x64.exe --pattern SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw "Baseline download failed" }
+      - name: Verify installed Windows desktop and upgrade
+        shell: pwsh
+        env:
+          ACCEPTANCE_TAG: ${{ inputs.acceptance_tag }}
+          PREVIOUS_TAG: ${{ inputs.previous_tag }}
+        run: |
+          node scripts/windows-desktop-acceptance.cjs --installer "$env:RUNNER_TEMP/current/WorkStep-windows-x64.exe" --version $env:ACCEPTANCE_TAG --checksums "$env:RUNNER_TEMP/current/SHA256SUMS.txt" --previous-installer "$env:RUNNER_TEMP/previous/WorkStep-windows-x64.exe" --previous-version $env:PREVIOUS_TAG --previous-checksums "$env:RUNNER_TEMP/previous/SHA256SUMS.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Windows acceptance failed" }
+      - name: Upload Windows acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-acceptance-evidence
+          path: ${{ runner.temp }}/windows-acceptance-report
+          if-no-files-found: warn
+          retention-days: 14
+
   macos:
+    if: ${{ inputs.acceptance_tag == '' }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,6 +118,7 @@ jobs:
           if-no-files-found: error
 
   windows:
+    if: ${{ inputs.acceptance_tag == '' }}
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -104,6 +160,7 @@ jobs:
           if-no-files-found: error
 
   linux:
+    if: ${{ inputs.acceptance_tag == '' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

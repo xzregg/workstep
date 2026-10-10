@@ -50,6 +50,29 @@ the Settings desktop version check and GitHub download link, upgrade, and uninst
 Desktop updates only query the latest published GitHub Release daily; packages are
 downloaded and installed manually. Publishing the draft is an explicit release step.
 
+## Windows 安装包自动验收
+
+`Desktop release` 的 Windows job 在上传安装包前，调用
+`scripts/windows-desktop-acceptance.cjs` 验证实际 NSIS 包；失败会阻止创建发布草稿。
+它在 GitHub `windows-2025` 临时 runner 内安装到含中文和空格的路径，检查首次启动、
+内置 daemon 健康及版本、实际任务列表／设置界面、桌面认证边界、占用端口回退、
+`workstep://open` 深链接、退出时后台停止、重启后项目／任务／记忆保留和卸载后数据保留。
+还会下载上一个正式版，验证原安装包升级后的数据保留。
+
+已发布包可独立补测：运行 `Desktop package smoke`，`ref` 指向验收脚本所在分支，
+设置 `acceptance_tag=v1.0.11`、`previous_tag=v1.0.10`。填写 `acceptance_tag` 时只运行
+Windows 验收，下载原 Release 的 EXE 和 `SHA256SUMS.txt`；不重新打包、移动标签或修改附件。
+脚本拒绝在开发者本机启动，演示配置、项目和用户数据均位于 runner 的临时目录。
+Playwright 仅作为开发依赖，通过临时回环调试端口连接实际窗口，不修改正式包的安全 fuses。
+
+无论成功失败都会上传 `windows-acceptance-evidence`（报告、窗口截图、进程日志，保留 14 天）；
+不上传配置、数据库、请求头或网络 trace。流程不调用真实 LLM，也不需要供应商密钥。
+空工作流中的任务用于验证 CRUD 和持久化，不代表引擎执行已验收。
+Windows Server 的自动检查不能替代 Windows 10/11 实机的 SmartScreen、托盘／系统通知、
+原生目录选择／外部浏览器、真实认证引擎执行和 WSL2/Podman 沙箱检查；这些缺口继续登记。
+更新设置的界面／IPC 检查使用临时用户目录中的可控 Release 缓存，避免共享 runner IP 的匿名
+GitHub API 限流；不将其宣称为在线更新请求或浏览器下载跳转验收。
+
 If a secret is ever committed, revoke it before rewriting Git history. Coordinate
 history rewriting with contributors and forks; deleting a branch or force-pushing
 does not itself revoke a credential.
