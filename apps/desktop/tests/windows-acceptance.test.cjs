@@ -3,13 +3,20 @@ const assert = require('node:assert/strict')
 const { createHash } = require('node:crypto')
 const {
   validateVersion, installArguments, verifyChecksum, validateRuntime,
-  validatePersistence, waitFor, assertWindowsRunner,
+  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse,
 } = require('../../../scripts/windows-desktop-acceptance.cjs')
 
 test('acceptance only runs on a GitHub Windows runner, never the developer desktop', () => {
   assert.throws(() => assertWindowsRunner('darwin', { GITHUB_ACTIONS: 'true', RUNNER_TEMP: '/tmp' }))
   assert.throws(() => assertWindowsRunner('win32', { RUNNER_TEMP: 'C:\\temp' }))
   assertWindowsRunner('win32', { GITHUB_ACTIONS: 'true', RUNNER_TEMP: 'C:\\temp' })
+})
+
+test('non-JSON API errors retain endpoint, status and response instead of a JSON parsing error', () => {
+  assert.throws(() => parseApiResponse('/api/system-settings', 500, 'Internal Server Error'),
+    /\/api\/system-settings: HTTP 500: Internal Server Error/)
+  assert.deepEqual(parseApiResponse('/api/health', 200, '{"status":"ok"}'), { status: 'ok' })
+  assert.throws(() => parseApiResponse('/api/health', 200, 'invalid'), /JSON/)
 })
 
 test('acceptance versions reject shell arguments and smoke pseudo versions', () => {

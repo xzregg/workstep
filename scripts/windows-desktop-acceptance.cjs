@@ -60,14 +60,17 @@ async function execute(file, args, options = {}) {
     child.once('exit', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`${path.basename(file)} exited ${code}`)) })
   })
 }
+function parseApiResponse(endpoint, status, text) {
+  assert(status >= 200 && status < 300, `${endpoint}: HTTP ${status}: ${text}`)
+  return JSON.parse(text)
+}
 async function pageApi(page, endpoint, method = 'GET', body) {
   const result = await page.evaluate(async ({ endpoint, method, body }) => {
     const response = await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
-    return { status: response.status, body: await response.json() }
+    return { status: response.status, text: await response.text() }
   }, { endpoint, method, body })
-  assert(result.status >= 200 && result.status < 300, `${endpoint}: HTTP ${result.status}: ${JSON.stringify(result.body)}`)
-  return result.body
+  return parseApiResponse(endpoint, result.status, result.text)
 }
 
 async function runAcceptance(options) {
@@ -196,6 +199,19 @@ async function runAcceptance(options) {
       record(`${label}: desktop quit stops bundled daemon`)
     } catch (error) {
       if (page) await page.screenshot({ path: path.join(reportDir, `${label}-failure.png`) }).catch(() => {})
+      // Reproduce configuration writes with the ORIGINAL bundled Python in an
+      // isolated fixture. Never dump config files, desktop tokens or user data.
+      const diagnostic = await fs.open(path.join(reportDir, `${label}-config-diagnostic.log`), 'w')
+      try {
+        await execute(path.join(installDir, 'resources/backend/python/python.exe'), ['-c',
+          "import sys, locale; sys.path.insert(0, sys.argv[1]); from services.config import config_store; print('UTF8_MODE', sys.flags.utf8_mode, 'FILE_ENCODING', locale.getencoding(), flush=True); config_store.set_user_name('Windows\\u81ea\\u52a8\\u9a8c\\u6536'); print('CONFIG_WRITE_OK', flush=True)",
+          path.join(installDir, 'resources/backend/app')], {
+          stdio: ['ignore', diagnostic.fd, diagnostic.fd],
+          env: { ...process.env, WORKSTEP_ENV: 'production', PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8',
+            WORKSTEP_CONFIG_DIR: path.join(root, `${label}-diagnostic-config`) },
+        })
+      } catch (diagnosticError) { console.error(`Diagnostic: ${diagnosticError.message}`) }
+      finally { await diagnostic.close() }
       throw error
     } finally {
       if (child.exitCode === null && child.pid) {
@@ -230,4 +246,4 @@ if (require.main === module) {
     ['installer', 'version', 'checksums', 'previous-installer', 'previous-version', 'previous-checksums'].map(name => [name, { type: 'string' }])) })
   runAcceptance(values).catch(error => { console.error(error); process.exitCode = 1 })
 }
-module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor }
+module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse }
