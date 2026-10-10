@@ -158,6 +158,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
+      - name: Verify native Windows socket isolation
+        shell: pwsh
+        run: |
+          uv run --no-project --with pytest==9.1.1 python -m pytest apps/desktop/tests/test_backend_entry.py -k 'socket or occupied or port or loopback or windows_reserves' -q
+          if ($LASTEXITCODE -ne 0) { throw "Windows listener isolation failed" }
       - name: Build React application
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn build
