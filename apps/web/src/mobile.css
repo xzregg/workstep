@@ -850,9 +850,9 @@
     right: -4px !important;
   }
 
-  /* 消息区留白略收紧，多换几行可视消息。 */
+  /* 顶部留白收紧；底部统一由消息内容提供可滚动的 20px 留白。 */
   .chat-history-scroll {
-    padding-block: 6px !important;
+    padding-block: 6px 0 !important;
   }
 
   /* ── C 方案补充（纯 CSS） ── */

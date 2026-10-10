@@ -1,4 +1,5 @@
 const path = require('node:path')
+const { directoryOpeners, openDirectory } = require('./directory-openers.cjs')
 const { isTrustedNavigation } = require('./security.cjs')
 
 function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window: getWindow, rootUrl: getRootUrl, hasActiveWork, restart }) {
@@ -23,6 +24,8 @@ function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window
   }
   const handlers = {
     status: () => manager.status(),
+    directoryOpeners: async () => ({ openers: await directoryOpeners() }),
+    openDirectory: input => openDirectory(input, manager, shell),
     dockerImages: () => manager.dockerImages(),
     hostProjects: () => manager.hostProjects(),
     prepareRuntime: input => prepareStage(input, 'prepareRuntime'),

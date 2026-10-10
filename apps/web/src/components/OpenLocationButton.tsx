@@ -139,7 +139,7 @@ export default function OpenLocationButton({
   // Load the platform's available directory openers.
   useEffect(() => {
     if (webDirectoryMode) return
-    fsApi.directoryOpeners()
+    (window.workstepDesktop?.directories?.openers() ?? fsApi.directoryOpeners())
       .then(({ openers }) => {
         const available = openers.filter((opener) => opener.available)
         setDirectoryOpeners(available.length ? available : FALLBACK_OPENERS)
@@ -192,7 +192,7 @@ export default function OpenLocationButton({
       return
     }
     try {
-      const result = await fsApi.openDirectory(targetPath, openerId)
+      const result = await (window.workstepDesktop?.directories?.open(targetPath, openerId) ?? fsApi.openDirectory(targetPath, openerId))
       setNotice(t('taskList.opened', { path: result.path }))
     } catch (error) {
       setNotice(t('taskList.openFailed', {

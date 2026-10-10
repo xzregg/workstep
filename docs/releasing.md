@@ -4,6 +4,20 @@ Desktop releases are built only from an existing semantic-version tag such as
 `v1.2.3`. The `release` GitHub Environment is the approval gate for creating a
 draft release.
 
+## 统一应用版本号
+
+桌面端是 daemon 的包装，两者使用同一应用版本。版本修改入口为 `apps/desktop/package.json` 的 `version`，不得分别维护 daemon 版本。发布前在 `apps/desktop` 执行（示例版本）：
+
+```bash
+npm version 1.0.11 --no-git-tag-version
+```
+
+`postversion` 自动运行 `scripts/sync-app-version.cjs`，同步 `apps/daemon/pyproject.toml` 和 `apps/daemon/uv.lock`。如果手动编辑 manifest，在仓库根执行 `node scripts/sync-app-version.cjs`。将这些变更一起提交；发布标签必须与应用版本一致，例如 `1.0.11` 对应 `v1.0.11`。
+
+发布前在 `apps/daemon` 执行 `uv run --no-sync pytest tests/test_runtime_version.py tests/test_gateway_control_client.py -q`，核对源码启动、打包运行时和网关心跳版本。桌面后端打包会生成 `app/daemon/app-version.json`；`WORKSTEP_BUILD_VERSION`、启动器的 `WORKSTEP_VERSION` 必须与目标发布标签对应，不能以网关最新版本代替实际运行版本。运行时来源详见 [开发文档](development.md#应用版本号)。
+
+版本变更须进入本批交付提交，按仓库约定通过“合并到 main”快捷按钮合并到本地 `main` 并返回 `dev`。远端推送、创建及推送标签、发布 GitHub Release 按用户指令执行。
+
 Before tagging:
 
 1. Ensure CI passes, including repository-health and full-history secret scans.

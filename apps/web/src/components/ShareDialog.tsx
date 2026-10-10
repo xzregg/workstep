@@ -52,6 +52,11 @@ export default function ShareDialog({
   const [confirmRevoke, setConfirmRevoke] = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
   const pending = useRef(false)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open) dialogRef.current?.focus({ preventScroll: true })
+  }, [open])
 
   // Reset transient state whenever the dialog (re)opens.
   useEffect(() => {
@@ -181,6 +186,7 @@ export default function ShareDialog({
         }}
       >
         <ResizablePanel
+          ref={dialogRef} tabIndex={-1}
           role="dialog" aria-modal="true" aria-label={t('share.dialogTitle')}
           onClick={(e) => e.stopPropagation()}
           style={{
@@ -288,7 +294,7 @@ export default function ShareDialog({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={t('share.passwordPlaceholder')}
-                    autoFocus
+                    autoComplete="new-password"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !creating) handleCreate()
                     }}

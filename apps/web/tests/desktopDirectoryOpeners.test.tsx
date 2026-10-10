@@ -1,0 +1,30 @@
+import { installDomEnvironment } from './helpers/domEnv'
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import OpenLocationButton from '../src/components/OpenLocationButton'
+import { fsApi, type Project } from '../src/api/client'
+import type { TFunction } from '../src/i18n'
+test('desktop opener detection and opening use the host bridge instead of the container API', async () => {
+ const { window } = installDomEnvironment()
+ const root = createRoot(document.body.appendChild(document.createElement('div')))
+ const originalList = fsApi.directoryOpeners, originalOpen = fsApi.openDirectory
+ const calls: unknown[] = []
+ fsApi.directoryOpeners = async () => { throw new Error('container detection called') }
+ fsApi.openDirectory = async () => { throw new Error('container open called') }
+ Object.assign(window, { workstepDesktop: { directories: {
+  openers: async () => ({ openers: [{ id: 'file_manager', label: 'Finder', available: true }, { id: 'vscode', label: 'VS Code', available: true }] }),
+  open: async (path: string, opener: string) => { calls.push([path, opener]); return { opened: true, path: '/host/project' } },
+ } } })
+ try {
+  await act(async () => root.render(<OpenLocationButton activeProject={{ id: 'p', type: 'local', path: '/data/projects/demo' } as Project} t={((key: string) => key) as TFunction} />))
+  await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
+  assert.deepEqual(calls, [['/data/projects/demo', 'file_manager']])
+  await act(async () => (document.querySelectorAll('button')[1] as HTMLButtonElement).click())
+  assert.match(document.body.textContent || '', /VS Code/)
+ } finally {
+  fsApi.directoryOpeners = originalList; fsApi.openDirectory = originalOpen
+  await act(async () => root.unmount()); await window.happyDOM.close()
+ }
+})
