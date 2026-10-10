@@ -234,7 +234,7 @@ export const enUS: I18nDict = {
   },
   demos: {
     eyebrow: 'In action',
-    title: 'Watch a whole workflow like a video',
+    title: 'See how workflows are built and run',
     lede: 'Each demo replays the real interface: autoplay loops by default — click to enlarge, pause, or scrub the timeline.',
     hint: 'Click to enlarge',
     item1Title: 'Drag-and-drop canvas',

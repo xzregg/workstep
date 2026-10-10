@@ -22,6 +22,7 @@ import RemoteAccessSettings from './RemoteAccessSettings'
 import ModelPricingSettings from './ModelPricingSettings'
 import GlobalConcurrencySettings from './GlobalConcurrencySettings'
 import DesktopUpdateSettings from '../components/DesktopUpdateSettings'
+import ProblemFeedbackSettings from '../components/ProblemFeedbackSettings'
 import { useI18n } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
@@ -176,6 +177,8 @@ export default function SettingsPage({
           <GitScanSettings />
         ) : activeSection === 'sandbox' ? (
           <SandboxSettings onDirtyChange={onSandboxDirty} />
+        ) : activeSection === 'feedback' ? (
+          <ProblemFeedbackSettings />
         ) : activeSection === 'system' ? (
           <div className="settings-system-page">
             <h1 className="settings-system-title">{t('settings.systemTitle')}</h1>

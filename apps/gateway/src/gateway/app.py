@@ -43,6 +43,7 @@ from gateway.api.project_access_api import router as project_access_router
 from gateway.api.project_invitations import router as project_invitations_router
 from gateway.api.platform_shares import router as platform_shares_router
 from gateway.api.admin_shares import router as admin_shares_router
+from gateway.api.workflow_hooks import router as workflow_hooks_router
 from gateway.api.admin_overview import router as admin_overview_router
 from gateway.api.org_api import router as org_router
 from gateway.api.device_groups_api import router as device_groups_router
@@ -51,6 +52,8 @@ from gateway.services.notifications import NotificationService
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
+    from workstep_gateway_protocol.hooks import install_hook_log_filter
+    install_hook_log_filter()
     if settings is None:
         settings = GatewaySettings()
         apps_dir = Path(__file__).resolve().parents[3]
@@ -118,12 +121,16 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     from gateway.api.request_audit import audit_admin_request
     app.middleware("http")(audit_admin_request)
 
+    from gateway.api.remote_task_shares import router as remote_task_shares_router
+    app.include_router(remote_task_shares_router)
+    app.include_router(remote_task_shares_router, prefix="/workspace/{workspace_device_id}")
+
     @app.middleware("http")
     async def device_host_boundary(request: Request, call_next):
         path_parts = request.url.path.split('/', 3)
         if len(path_parts) == 4 and path_parts[1] == 'workspace' and path_parts[2]:
             local_path = '/' + path_parts[3]
-            gateway_route = (local_path in ('/api/remote/redeem', '/api/remote/session', '/api/remote/project-grants', '/api/remote/devices')
+            gateway_route = (local_path == '/api/remote/task-shares' or local_path.startswith('/api/remote/task-shares/') or local_path in ('/api/remote/redeem', '/api/remote/session', '/api/remote/project-grants', '/api/remote/devices')
                 or (local_path.startswith('/api/remote/devices/') and local_path.endswith('/access') and len(local_path.split('/')) == 6))
             if not gateway_route:
                 try:
@@ -138,7 +145,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
                 is_device_switch = (request.method == 'GET' and (request.url.path == '/api/remote/devices'
                     or (request.url.path.startswith('/api/remote/devices/') and request.url.path.endswith('/access')
                         and len(request.url.path.split('/')) == 6)))
-                if not is_device_switch and request.url.path not in ("/api/remote/redeem", "/api/remote/session",
+                if not is_device_switch and not (request.url.path == '/api/remote/task-shares' or request.url.path.startswith('/api/remote/task-shares/')) and request.url.path not in ("/api/remote/redeem", "/api/remote/session",
                                             "/api/remote/project-grants"):
                     try:
                         return await invoke(proxy_remote_request, request=request)
@@ -170,6 +177,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(identity_router)
+    app.include_router(workflow_hooks_router)
     app.include_router(notifications_router)
     app.include_router(legacy_notifications_router)
     app.include_router(admin_overview_router)

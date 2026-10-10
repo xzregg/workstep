@@ -194,6 +194,9 @@ def persist_review_decision(
         task_step.review_feedback = comment or ""
         task_step.ended_at = None
     task_step.save()
+    if approved and notifications is not None:
+        notifications.append({'type':'status','step_key':step_key,
+                              'data':{'task_id':task.id,'step_key':step_key,'status':'passed'}})
     if setting_complete and review.workflow_run_id != workflow_run.id:
         latest_attempt = (
             StepRun.select()
@@ -255,6 +258,8 @@ def persist_review_decision(
         workflow_run.owner_id = None
         workflow_run.heartbeat_at = None
         workflow_run.save()
+        if notifications is not None:
+            notifications.append({'type':'task_lifecycle','data':{'event':'completed','event_id':f'{workflow_run.id}:completed','run_id':workflow_run.id}})
         return None
     if terminated:
         task.status = "stopped"
@@ -266,6 +271,8 @@ def persist_review_decision(
         workflow_run.owner_id = None
         workflow_run.heartbeat_at = now
         workflow_run.save()
+        if notifications is not None:
+            notifications.append({'type':'task_lifecycle','data':{'event':'stopped','event_id':f'{workflow_run.id}:stopped','run_id':workflow_run.id}})
         return None
     if setting_complete and not schedule_downstream:
         if review.step_run.artifact_round is not None:
@@ -379,6 +386,7 @@ def persist_review_decision(
         workflow_run.save()
         if notifications is not None:
             notifications.extend([
+                {'type':'task_lifecycle','data':{'event':'paused','event_id':f'{workflow_run.id}:paused:{now.isoformat()}','run_id':workflow_run.id}},
                 {"type": "status", "step_key": step_key,
                  "data": {"task_id": task.id, "step_key": step_key,
                           "status": "failed", "error": task_step.error}},

@@ -19,7 +19,7 @@ test('settings navigation has one current section and changes sections by click'
       </I18nProvider>,
     ))
     const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-    assert.equal(buttons.length, 10)
+    assert.equal(buttons.length, 11)
     assert.equal(buttons.filter((button) => button.getAttribute('aria-current') === 'page').length, 1)
     assert.equal(buttons[0].getAttribute('aria-current'), 'page')
     assert.ok(buttons.every((button) => button.classList.contains('settings-nav-button')))
@@ -28,6 +28,14 @@ test('settings navigation has one current section and changes sections by click'
     assert.equal(selected, 'engines')
     await act(async () => buttons[6].click())
     assert.equal(selected, 'remote')
+    const feedback = buttons.find(button => /反馈问题|Report a problem/.test(button.textContent ?? ''))!
+    assert.ok(feedback)
+    await act(async () => feedback.click())
+    assert.equal(selected, 'feedback')
+    await act(async () => root.render(
+      <I18nProvider><SettingsNavigation activeSection="feedback" onSelect={() => {}} /></I18nProvider>,
+    ))
+    assert.match(container.querySelector('[aria-current="page"]')!.textContent!, /反馈问题|Report a problem/)
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -46,7 +54,7 @@ test('managed settings hide the legacy remote project section', async () => {
         <SettingsNavigation activeSection="providers" onSelect={() => {}} />
       </I18nProvider>,
     ))
-    assert.equal(container.querySelectorAll('button').length, 10)
+    assert.equal(container.querySelectorAll('button').length, 11)
     assert.doesNotMatch(container.textContent ?? '', /远程项目/)
     assert.match(container.textContent ?? '', /远程访问|Remote access/)
     assert.doesNotMatch(container.textContent ?? '', /网关平台/)

@@ -215,7 +215,7 @@ class ExternalIdentityService:
             raise GatewayError('conflict', 'External identity already linked') from exc
 
     async def full_sync(self, source_id: str, departments: list[dict], people: list[dict],
-                        cursor: str | None = None, *, selected_department_ids: list[str] | None = None, additions_only: bool = False, snapshot_complete: bool = True, dry_run: bool = False) -> dict:
+                        cursor: str | None = None, *, selected_department_ids: list[str] | None = None, additions_only: bool = False, snapshot_complete: bool = True, dry_run: bool = False, excluded_subjects: list[str] | None = None) -> dict:
         await self.source(source_id, purpose="sync")
         if cursor is not None and (not isinstance(cursor, str) or len(cursor) > 256):
             raise GatewayError('invalid', 'Invalid directory cursor')
@@ -223,6 +223,7 @@ class ExternalIdentityService:
         scope = set(selected_department_ids) if selected_department_ids is not None else None
         if scope is not None and (not scope or (not set(department_ids) <= scope or (not snapshot_complete and set(department_ids) != scope))):
             raise GatewayError('invalid', 'Selected snapshot must include exactly the selected departments')
+        original_people = {item["subject"]: item for item in people}
         subjects = [item["subject"] for item in people]
         if len(set(department_ids)) != len(department_ids) or len(set(subjects)) != len(subjects):
             raise GatewayError('invalid', 'Duplicate directory identifier')
@@ -280,6 +281,35 @@ class ExternalIdentityService:
                     .where(DirectoryDepartment.source_id == source_id))).all()
                 for person_id, external_id in membership_rows:
                     old_memberships.setdefault(person_id, set()).add(external_id)
+                from gateway.services.organization_settings import option_key
+                options_row = await session.get(PlatformSetting, option_key(source_id))
+                options = json.loads(options_row.value_json) if options_row else {}
+                excluded = set(options.get('excluded_subjects', []) if excluded_subjects is None else excluded_subjects)
+                candidate_subjects = set(subjects) | {subject for subject, row in existing_people.items()
+                    if scope is None or old_memberships.get(row.id, set()) & scope}
+                if dry_run:
+                    incoming = original_people
+                    candidates = []
+                    for subject in sorted(candidate_subjects):
+                        row = existing_people.get(subject)
+                        item = incoming.get(subject)
+                        old_departments = old_memberships.get(row.id, set()) if row else set()
+                        before = {'name': row.display_name, 'departments': sorted(old_departments), 'active': bool(row.active)} if row else None
+                        after = {'name': item['display_name'], 'departments': item['department_ids'], 'active': item.get('active', True)} if item else {'name': row.display_name if row else subject, 'departments': sorted(old_departments), 'active': False if snapshot_complete else bool(row and row.active)}
+                        unchanged = bool(before and item and before['name'] == after['name'] and before['active'] == after['active'] and (old_departments if scope is None else old_departments & scope) == set(after['departments']))
+                        local_user = users.get(identities[subject].user_id) if not additions_only and subject in identities else None
+                        restoration_pending = bool(local_user and local_user.status == 'disabled' and after['active'])
+                        if restoration_pending:
+                            unchanged = False
+                            before['active'] = False
+                        candidates.append({'subject': subject, 'display_name': after['name'],
+                            'department_ids': sorted(old_departments | set(after['departments'])),
+                            'changed': not unchanged, 'skipped': subject in (skipped if not additions_only else set()),
+                            'excluded': subject in excluded, 'before': before, 'after': after,
+                            'kind': 'restoration_pending' if restoration_pending else 'new' if row is None else 'unchanged' if unchanged else 'unverified' if item is None and not snapshot_complete else 'departed' if not after['active'] else 'changed'})
+                    result['user_candidates'] = candidates
+                people = [item for item in people if item['subject'] not in excluded]
+                result['people'] = len(people)
                 changes = {key: 0 for key in (
                     "departments_added", "departments_updated", "departments_moved", "departments_deleted",
                     "people_added", "people_updated", "people_transferred", "people_departed",
@@ -294,7 +324,7 @@ class ExternalIdentityService:
                 old_person_active = {subject: bool(row.active)
                                      for subject, row in existing_people.items()}
                 affected_people = {subject for subject, row in existing_people.items()
-                                   if scope is None or old_memberships.get(row.id, set()) & scope}
+                                   if subject not in excluded and (scope is None or old_memberships.get(row.id, set()) & scope)}
                 changes["departments_deleted"] = sum(
                     snapshot_complete and active and external_id not in incoming_departments and (scope is None or external_id in scope)
                     for external_id, active in old_department_active.items()
@@ -312,13 +342,14 @@ class ExternalIdentityService:
                     if not additions_only and snapshot_complete and row.subject not in skipped and row.subject in affected_people and (scope is None or not old_memberships.get(row.id, set()) - scope): row.active = 0
                 for subject in affected_people - incoming_people:
                     row = existing_people[subject]
-                    if old_person_active[subject] and (additions_only or subject not in skipped):
+                    if subject not in excluded and old_person_active[subject] and (additions_only or subject not in skipped):
                         kind = 'departed' if not row.active else 'unverified'
                         changes['people_unverified'] += kind == 'unverified'
                         details.append({'kind': kind, 'subject': subject, 'name': row.display_name})
                 if scope is not None and not additions_only:
                     await session.execute(DirectoryMembership.__table__.delete().where(
                         DirectoryMembership.department_id.in_([row.id for row in existing_departments.values() if row.external_id in scope]),
+                        DirectoryMembership.person_id.not_in([row.id for subject, row in existing_people.items() if subject in excluded]),
                         True if snapshot_complete else DirectoryMembership.person_id.in_([row.id for row in existing_people.values() if row.subject in incoming_people]),
                     ))
                 for item in departments:
@@ -397,7 +428,7 @@ class ExternalIdentityService:
                         ))
                 await session.flush()
                 if not additions_only:
-                    await _disable_directory_access(session, [row.user_id for subject, row in existing_people.items() if not row.active and (scope is None or subject in affected_people or subject in incoming_people)])
+                    await _disable_directory_access(session, [row.user_id for subject, row in existing_people.items() if subject not in excluded and not row.active and (scope is None or subject in affected_people or subject in incoming_people)])
                 await reconcile_department_groups(session, source_id=source_id, additions_only=additions_only)
                 if additions_only:
                     changes.update(people_departed=0, departments_deleted=0, people_deleted_skipped=skipped_users, departments_deleted_skipped=skipped_groups)
@@ -419,6 +450,8 @@ class ExternalIdentityService:
                     options_row = await session.get(PlatformSetting, option_key(source_id))
                     options = json.loads(options_row.value_json) if options_row else {}
                     options['selected_department_ids'] = selected_department_ids
+                    if excluded_subjects is not None:
+                        options['excluded_subjects'] = sorted((set(options.get('excluded_subjects', [])) - candidate_subjects) | excluded)
                     if options_row: options_row.value_json = json.dumps(options)
                     else: session.add(PlatformSetting(key=option_key(source_id), value_json=json.dumps(options)))
                 if dry_run:

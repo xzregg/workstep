@@ -25,6 +25,7 @@ import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
 import ProjectDirectoryBrowserDialog from '../components/ProjectDirectoryBrowserDialog'
 import ProjectShareDialog from '../components/ProjectShareDialog'
 import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
+import WorkflowHookManagerDialog from '../components/WorkflowHookManagerDialog'
 import WorkflowShortcutSettingsDialog from '../components/WorkflowShortcutSettingsDialog'
 import ArchiveExperienceDialog from '../components/ArchiveExperienceDialog'
 import TaskCreatePanel from '../components/TaskCreatePanel'
@@ -129,6 +130,7 @@ export default function TaskList() {
   }, [archiveTarget?.id, selectedTaskId])
   const [scheduleCount, setScheduleCount] = useState(0)
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
+  const [hooksOpen, setHooksOpen] = useState(false)
   const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false)
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [dragOverLane, setDragOverLane] = useState<string | null>(null)
@@ -190,6 +192,7 @@ export default function TaskList() {
     setMemoryOpen(false)
     setShowScheduleDialog(false)
     setShortcutSettingsOpen(false)
+    setHooksOpen(false)
     setShowShareDialog(false)
     setShowArchived(false)
   }, [activeProject?.path])
@@ -365,6 +368,10 @@ export default function TaskList() {
             <Icon name="zap" size={16} />
             {t('actionShortcuts.quickButtons')}
           </Button>
+          <Button className="workflow-hooks-entry" onClick={() => { setFiltersOpen(false); setHooksOpen(true) }} disabled={!activeWorkflowId || !canEdit}>
+            <Icon name="webhook" size={16} />
+            {t('workflowHooks.title')}
+          </Button>
           <Button onClick={() => { setFiltersOpen(false); setShowScheduleDialog(true) }} disabled={bound}>
             <Icon name="clock" size={16} />
             {t('schedules.title')}
@@ -466,6 +473,10 @@ export default function TaskList() {
           style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
           {t('actionShortcuts.quickButtons')}
+        </Button>
+        <Button variant="ghost" className="workflow-hooks-entry workflow-hooks-entry--toolbar" onClick={() => setHooksOpen(true)} disabled={!activeWorkflowId || !canEdit}>
+          <Icon name="webhook" size={13} />
+          {t('workflowHooks.title')}
         </Button>
         <Button
           variant="ghost"
@@ -676,6 +687,7 @@ export default function TaskList() {
       )}
 
       {/* ── Schedule dialog ── */}
+      {hooksOpen && activeProject && activeWorkflowId && <WorkflowHookManagerDialog key={`${activeProject.id}:${activeWorkflowId}`} projectId={activeProject.id} workflowId={activeWorkflowId} workflowName={activeWorkflowName || ""} onClose={() => setHooksOpen(false)} />}
       {shortcutSettingsOpen && activeProject && activeWorkflowId && <WorkflowShortcutSettingsDialog
         key={`${activeProject.id}:${activeWorkflowId}`}
         projectId={activeProject.id}

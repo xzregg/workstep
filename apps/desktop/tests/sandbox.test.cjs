@@ -21,6 +21,7 @@ test('mounts are limited to distinct project paths and never contain sandbox sto
 
 test('container publishes the authenticated desktop port without exposing container-management sockets', () => {
   const args = containerArgs({ root: '/sandbox', project: '/project', mounts: [], id: 'abc', image: 'registry/image@sha256:' + 'a'.repeat(64) }, 'linux', 43210, 'secret', {})
+  assert.ok(args.some(value => value.startsWith('WORKSTEP_DEVICE_NAME=') && value.endsWith('（沙箱）')))
   assert.ok(args.includes('0.0.0.0:43210:8765'))
   assert.ok(args.some(a => a.includes('source=/sandbox/home,target=/root')))
   assert.ok(args.some(a => a.includes('source=/project,target=/data/projects')))

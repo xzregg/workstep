@@ -184,7 +184,7 @@ async def redeem_device_ticket(call: GatewayCall):
             "read" if "read" in (claims["access_level"], current_level) else "edit"
         )
     auth_session.expires_at = datetime.fromtimestamp(
-        min(claims["exp"] + 3600, int(auth_session.expires_at.timestamp())), timezone.utc,
+        claims["exp"] + 3600, timezone.utc,
     )
     try:
         async with call.database.session() as session:
@@ -208,18 +208,30 @@ async def redeem_device_ticket(call: GatewayCall):
 
 async def remote_session(call: GatewayCall):
     user, device_id, auth_session, host_project_id = await _remote_identity(call)
+    target_host_id = call.query_values.get('project_id')
+    if target_host_id and host_project_id and target_host_id != host_project_id:
+        raise GatewayError('forbidden', 'Project access denied')
     task_create = auth_session.project_access_level == 'edit' and host_project_id is not None and await _project_task_create_allowed(call, device_id, user.id, host_project_id)
     async with call.database.session() as session:
         device = await session.get(Device, device_id)
         project = await session.get(PlatformProject, auth_session.project_id) if auth_session.project_id else None
+        if target_host_id and project is None:
+            project = await session.scalar(select(PlatformProject).where(
+                PlatformProject.device_id == device_id,
+                PlatformProject.host_project_id == target_host_id,
+                PlatformProject.status == 'active',
+                PlatformProject.access_mode == 'remote_published',
+            ))
+            if project is None:
+                raise GatewayError('not_found', 'Published project not found')
         share_create = (await can_create_platform_share(session, user.id, project)
                         if project is not None else False)
     if device is None:
         raise GatewayError('forbidden', 'Device access denied')
     return {"user_id": user.id, "username": user.display_name,
             "device_id": device_id, "device_name": device.name,
-            "project_id": auth_session.project_id,
-            "host_project_id": host_project_id,
+            "project_id": project.id if project else None,
+            "host_project_id": project.host_project_id if project else None,
             "access_level": auth_session.project_access_level,
             "task_create": task_create,
             "share_create": share_create,

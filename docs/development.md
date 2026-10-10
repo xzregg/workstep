@@ -84,3 +84,9 @@ corepack yarn build
 操作手册同步只在 `dev` 合并到本地 `main` 并提交本批代码时触发，集中整理本批已通过行为测试的用户可见功能；日常开发不逐功能更新手册和截图。手册变更随本批交付一起提交。统一维护官网的 [操作手册内容](../apps/landing/src/manual/)。每个功能包含用途、界面入口、操作步骤、输入示例、预期结果、排错说明及真实截图；操作或界面变化时同时修改文字和图片，删除功能时移除失效说明。SDK 是首次接入推荐路径，CLI 保留为其他接入方式。
 
 截图统一复用本机 `8777` 端口的“操作手册演示”项目，启动和目录约定见 [演示环境](manual-demo.md)，禁止包含密钥、个人会话、内部服务地址及私有项目内容。截图声明和图片文件通过 `yarn --cwd apps/landing manual:check` 核对；缺口必须明确登记，不能把示意图当成真实截图。合并提交节点运行官网测试与构建，人工核对桌面、手机端章节导航和图片可读性。详见 [Agent 规范](../AGENTS.md)。
+
+## 应用版本号
+
+桌面端与 daemon 使用同一应用版本，发布版本来源为 `apps/desktop/package.json` 的 `version`。升版本使用 `npm version <版本号> --no-git-tag-version`（在 `apps/desktop` 执行），其 `postversion` 自动同步 daemon 的 `pyproject.toml` 和 `uv.lock`；手动修改版本后执行 `node scripts/sync-app-version.cjs`。
+
+源码 daemon 从桌面端 manifest 读取版本；独立 daemon 目录使用自身 `pyproject.toml`。桌面后端打包时写入 `app/daemon/app-version.json`，版本来自 `WORKSTEP_BUILD_VERSION` 或桌面 manifest。启动器可通过 `WORKSTEP_VERSION` 覆盖运行时版本，网关心跳使用同一运行时值。不得按网关最新发布版本推断本地运行版本。

@@ -1,4 +1,7 @@
 export const zhCN = {
+  notificationHooks: {"typeLabel": "钩子类型", "trigger": "触发钩子", "notification": "通知钩子", "tabs": {"config": "通知配置", "preview": "模拟通知", "history": "投递记录"}, "platforms": {"dingtalk": "钉钉群机器人", "wecom": "企业微信群机器人", "generic": "通用 Webhook（JSON）"}, "events": {"started": "任务开始", "completed": "任务完成", "failed": "任务失败", "paused": "任务暂停", "stopped": "任务停止", "step_completed": "步骤完成", "step_failed": "步骤失败", "waiting": "步骤等待确认", "test": "测试通知"}, "states": {"pending": "等待投递", "sending": "发送中", "sent": "成功", "failed": "失败", "skipped": "已跳过"}, "add": "新增通知钩子", "newHook": "新通知钩子", "platform": "接收平台", "url": "Webhook 地址", "urlHint": "粘贴接收平台提供的地址，通常含访问密钥，请勿分享。", "secret": "钉钉签名密钥（可选）", "delivery": "发送方式", "deliveryHint": "由设备直接发送，设备需要能访问目标地址。网关继续只处理触发钩子的入站转发。", "subscribe": "订阅事件", "eventHint": "只发送勾选的事件，默认通知任务完成和失败。", "content": "消息内容", "prefix": "标题前缀（可选）", "includeLink": "附带任务链接", "linkBase": "任务链接使用的地址", "missingAddress": "未配置，通知不附带链接", "contentHint": "消息包含项目、流程、任务标题、状态和时间；步骤事件另含步骤名称。链接读取总配置，接收人需要访问权限。", "retryHint": "后台发送，不阻塞任务。临时失败最多重试 3 次，重启后继续待投递记录。接收方可能收到重复通知。", "saved": "已保存，通知钩子配置仅在设备端持有。", "required": "请填写名称和有效 HTTP(S) 地址，并至少选择一个事件。", "event": "事件", "taskTitle": "任务标题", "step": "步骤名称", "sampleTitle": "修复登录校验", "sampleStep": "测试验证", "previewHint": "预览不发送通知。测试通知会真实发送到已保存的目标，请核对地址。", "generate": "生成预览", "test": "发送测试通知", "saveFirst": "请先保存配置，才能发送测试通知或重试。", "queued": "已加入投递队列，请在投递记录查看结果。", "preview": "消息预览", "payload": "请求正文预览", "unsubscribed": "当前事件未订阅，真实事件发生时不会发送。", "refresh": "刷新", "noRecords": "暂无投递记录。", "time": "发生时间", "state": "状态", "attempts": "尝试次数", "result": "结果", "action": "操作", "retry": "重试投递", "previous": "上一页", "next": "下一页", "testConfirm": "将向当前已保存的 Webhook 地址发送一条真实测试通知，确认发送？", "confirmSend": "确认发送", "deleteConfirm": "删除将在保存后生效，该目标将不再接收通知，投递记录也会删除。"},
+  workflowHooks: {"title": "流程钩子", "config": "钩子配置", "simulation": "模拟调用", "close": "关闭", "processing": "处理中…", "retry": "重试", "unnamed": "未命名钩子", "firstStep": "第一个步骤（不指定）", "enabled": "启用", "disabled": "停用", "newHook": "新钩子", "defaultTitleValue": "外部触发任务", "defaultCreatorValue": "钩子触发", "add": "新增钩子", "name": "钩子名称", "defaultTitle": "默认任务标题", "defaultCreator": "默认创建者", "step": "起始阶段", "mode": "创建后的动作", "manual": "仅创建任务", "immediate": "立即运行", "parameterHint": "URL 可用 title、creator 覆盖默认值。所选阶段写入 step_key；请求未带 step_key 时从第一步开始。", "pendingReset": "保存后生成新 Token", "pendingSave": "保存后生成地址和 Token", "hide": "隐藏", "show": "显示", "reset": "重置", "addresses": "调用地址", "addressHint": "自动读取总配置中的网关、内网和外网地址，仅显示已填写的地址。设备 ID 由系统提供。", "saveFirst": "请先保存配置，再复制地址或模拟调用。", "gateway": "网关地址", "internal": "内网地址", "external": "外网地址", "online": "设备已连接网关", "offline": "设备未连接网关，当前无法转发", "copy": "复制地址", "noAddress": "暂无调用地址，请在总配置中填写地址。", "delete": "删除钩子", "empty": "尚无钩子，请新增。", "selectHook": "选择钩子", "overrideTitle": "本次标题（可选）", "overrideCreator": "本次创建者（可选）", "simulationHint": "留空使用默认值。模拟只在页面内预览，不发送请求，不创建真实任务。", "body": "POST 正文（完整作为任务内容）", "simulate": "模拟触发", "simulated": "模拟创建成功", "preview": "任务预览", "creator": "创建者：", "required": "钩子名称和默认标题不能为空。", "save": "保存", "confirm": "确认", "unsaved": "有未保存的修改，确认放弃并关闭？", "deleteConfirm": "删除将在保存后生效，原调用地址将无法创建任务。", "resetConfirm": "重置将在保存后生效，旧 Token 将失效。请更新接入系统的地址。", "saved": "已保存，钩子配置仅保存在设备端。", "copyFailed": "复制失败，请手动复制。"},
+
   gatewayLogout: { button: '退出登录', error: '退出失败，请重试。' },
   projectStorage: {
     follow: '数据目录跟随项目目录',
@@ -1444,6 +1447,8 @@ export const zhCN = {
     defaultProjectDirectorySaved: '默认目录已保存',
     systemTitle: '系统设置',
     desktopUpdate: '桌面更新',
+    problemFeedback: '反馈问题',
+    problemFeedbackIntro: '前往 GitHub 提交问题，请提供复现步骤，并在提交前移除密钥、个人路径和私有项目内容。',
     desktopUpdateIntro: '每天从 GitHub Release 检查一次新版本，不会自动下载或安装。',
     currentVersion: '当前版本 {version}',
     newVersion: '发现新版本 {version}',
@@ -2175,6 +2180,11 @@ export const zhCN = {
     skipped: '跳过',
   },
   share: {
+    discardTitle: '放弃分享配置？',
+    discardMessage: '分享配置尚未生成链接，确定放弃并关闭？',
+    discardConfirm: '放弃并关闭',
+    expiresAtLabel: '过期时间（可选，最长 90 天）',
+    savedLinkUnavailable: '已创建的链接仅在生成时显示。可以撤销当前分享，或生成新链接。',
     dialogTitle: '分享此任务',
     dialogSubtitle: '生成公开链接，可按需要让对方只读查看，或直接参与任务步骤交互。',
     modeLabel: '分享模式',

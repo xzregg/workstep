@@ -25,6 +25,8 @@ export function AdminSharesPage() {
   const [error, setError] = useState('')
   const [revokeTarget, setRevokeTarget] = useState<Share | null>(null)
 
+  const [deleteTarget, setDeleteTarget] = useState<Share | null>(null)
+
   useEffect(() => {
     const controller = new AbortController()
     void fetch('/api/auth/session', { signal: controller.signal })
@@ -54,7 +56,7 @@ export function AdminSharesPage() {
     return () => controller.abort()
   }, [status, submittedQuery, offset, revision])
 
-  async function change(share: Share, action: 'pause' | 'resume' | 'revoke') {
+  async function change(share: Share, action: 'pause' | 'resume' | 'revoke' | 'delete') {
     if (busy || !csrfToken) return
     setBusy(true)
     setError('')
@@ -64,12 +66,13 @@ export function AdminSharesPage() {
       })
       if (!response.ok) throw new Error('分享状态更新失败。')
       setRevokeTarget(null)
+      setDeleteTarget(null)
       setRevision(value => value + 1)
     } catch { setError('分享状态更新失败。') }
     finally { setBusy(false) }
   }
 
-  return <section className="gateway-admin-page">
+  return <section className="gateway-admin-page gateway-share-management">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>平台分享管理</h2><Link to="/admin">返回管理概览</Link></div>
     <form className="gateway-share-filters" onSubmit={event => {
@@ -89,7 +92,8 @@ export function AdminSharesPage() {
     </form>
     {error && <p className="gateway-auth-error" role="alert">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
-    {loading && <p role="status">正在加载分享…</p>}
+    {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在更新分享…</p>}
+    {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在加载分享…</p>}
     {!loading && listing && <>
       <p>共 {listing.total} 个分享</p>
       {listing.shares.length === 0 ? <p>没有符合条件的分享。</p> : <AdminRecordTable>
@@ -109,6 +113,7 @@ export function AdminSharesPage() {
               onClick={() => void change(share, 'resume')}>恢复</button>}
             {share.status !== 'revoked' && <button type="button" disabled={busy}
               onClick={() => setRevokeTarget(share)}>撤销</button>}
+            <button type="button" disabled={busy} onClick={() => setDeleteTarget(share)}>删除</button>
           </div>
         </AdminRecordRow>)}
       </AdminRecordTable>}
@@ -119,6 +124,11 @@ export function AdminSharesPage() {
           onClick={() => setOffset(value => value + 20)}>下一页</button>
       </div>
     </>}
+    {deleteTarget && <GatewayConfirmDialog title="确认删除分享"
+      message={`删除「${deleteTarget.title || deleteTarget.task_id}」后链接立即失效，并移除分享及访问记录。任务内容保留。`}
+      confirmLabel="确认删除" busy={busy}
+      onConfirm={() => void change(deleteTarget, 'delete')}
+      onCancel={() => setDeleteTarget(null)} />}
     {revokeTarget && <GatewayConfirmDialog title="确认撤销分享"
       message={`撤销「${revokeTarget.title || revokeTarget.task_id}」后访客将无法访问。`}
       confirmLabel="确认撤销" busy={busy}

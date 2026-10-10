@@ -18,16 +18,18 @@ afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
 test('share management lists metadata without credentials and pauses, resumes, revokes', async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = []
   let status = 'active'
+  let deleted = false
   globalThis.fetch = async (input, init) => {
     const url = String(input)
     calls.push({ url, init })
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf-token' })
-    if (url.startsWith('/api/admin/shares?')) return Response.json({ total: 1, shares: [{
+    if (url.startsWith('/api/admin/shares?')) return Response.json({ total: deleted ? 0 : 1, shares: deleted ? [] : [{
       id: 'share-1', title: 'Review link', created_by: 'owner', device_name: 'PC',
       project_name: 'Project', task_id: 'task-1', mode: 'read_only',
       visit_count: 2, last_seen_at: '2026-09-29T12:00:00Z',
       created_at: '2026-09-29T10:00:00Z', expires_at: null, status,
     }] })
+    if (url.endsWith('/delete')) { deleted = true; return new Response(null, { status: 204 }) }
     if (url.endsWith('/pause')) { status = 'paused'; return new Response(null, { status: 204 }) }
     if (url.endsWith('/resume')) { status = 'active'; return new Response(null, { status: 204 }) }
     if (url.endsWith('/revoke')) { status = 'revoked'; return new Response(null, { status: 204 }) }
@@ -52,6 +54,11 @@ test('share management lists metadata without credentials and pauses, resumes, r
   assert.equal(calls.filter(call => call.url.endsWith('/revoke')).length, 1)
   assert.ok(calls.filter(call => /\/(pause|resume|revoke)$/.test(call.url)).every(call =>
     (call.init?.headers as Record<string, string>)['X-CSRF-Token'] === 'csrf-token'))
+  fireEvent.click(screen.getByRole('button', { name: '删除' }))
+  const deleteDialog = screen.getByRole('dialog', { name: '确认删除分享' })
+  fireEvent.click(within(deleteDialog).getByRole('button', { name: '确认删除' }))
+  await screen.findByText('没有符合条件的分享。')
+  assert.equal(calls.filter(call => call.url.endsWith('/delete')).length, 1)
   fireEvent.change(screen.getByLabelText('分享状态'), { target: { value: 'paused' } })
   await waitFor(() => assert.ok(calls.some(call => call.url.includes('status=paused'))))
 })

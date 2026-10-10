@@ -38,7 +38,8 @@ try {
     Copy-Item (Join-Path $DaemonDir $RuntimeDir) (Join-Path $OutputDir "app/daemon/$RuntimeDir") -Recurse
   }
   Copy-Item (Join-Path $WebDir "dist") (Join-Path $OutputDir "web_dist") -Recurse
-  $ReleaseVersion = if ($env:WORKSTEP_BUILD_VERSION) { $env:WORKSTEP_BUILD_VERSION.TrimStart("v") } else { "0.1.0" }
+  $ReleaseVersion = if ($env:WORKSTEP_BUILD_VERSION) { $env:WORKSTEP_BUILD_VERSION.TrimStart("v") } else { (Get-Content (Join-Path $DesktopDir "package.json") -Raw | ConvertFrom-Json).version }
+  @{ version = $ReleaseVersion } | ConvertTo-Json | Set-Content (Join-Path $OutputDir "app/daemon/app-version.json") -Encoding utf8
   $LegalDir = Join-Path $OutputDir "legal"
   New-Item -ItemType Directory -Path $LegalDir -Force | Out-Null
   Copy-Item (Join-Path $RepoDir "LICENSE") $LegalDir

@@ -28,6 +28,11 @@ class RemoteProjectProxyMiddleware(BaseHTTPMiddleware):
         self._client_manager = client_manager
 
     async def dispatch(self, request: Request, call_next):
+        from workstep_gateway_protocol.hooks import HOOK_PATH
+        if HOOK_PATH.fullmatch(request.url.path):
+            # Hook ingress enforces a streaming body limit itself; never buffer
+            # it here or infer a remote project from an untrusted payload.
+            return await call_next(request)
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
 

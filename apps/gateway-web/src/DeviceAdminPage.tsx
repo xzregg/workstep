@@ -11,6 +11,14 @@ import type { AdminDevice, DeviceAction } from './AdminDeviceActionDialog'
 type DeviceFilters = { status: string; q: string; sort: string; direction: string; page: number; pageSize: number }
 const deviceStatusLabel: Record<string, string> = { pending: '待审批', active: '已启用', disabled: '已停用', revoked: '已撤销' }
 
+export function deviceDisplayName(device: { name?: string | null; connection_ip?: string | null }): string {
+  const name = device.name?.trim() ?? ''
+  const ip = device.connection_ip?.trim() ?? ''
+  const usableName = name && !/^[0-9a-f]{12,64}$/i.test(name)
+  if (!usableName) return ip || name || '未命名设备'
+  return name
+}
+
 export function buildDeviceListQuery(filters: DeviceFilters): string {
   const params = new URLSearchParams({ sort: filters.sort, direction: filters.direction,
     page: String(filters.page), page_size: String(filters.pageSize) })
@@ -117,15 +125,15 @@ export function DeviceAdminPage() {
       </div>
       {loading && <p role="status">正在加载设备…</p>}
       <AdminRecordTable>{devices.map((device) => <AdminRecordRow key={device.id}>
-        <div><strong>{device.name}</strong> <span className={device.online ? 'gateway-device-presence gateway-device-presence--online' : 'gateway-device-presence'}>{device.online ? '在线' : '离线'}</span><p>设备 ID：{device.id} · {device.version ?? '版本未知'} · {deviceStatusLabel[device.status] ?? device.status}</p>
+        <div><strong>{deviceDisplayName(device)}</strong> <span className={device.online ? 'gateway-device-presence gateway-device-presence--online' : 'gateway-device-presence'}>{device.online ? '在线' : '离线'}</span><p>设备 ID：{device.id} · {deviceStatusLabel[device.status] ?? device.status}</p>
           <p>所有者：{device.owner_name ?? '未确定'}{device.owner_user_id ? ` · ${device.owner_user_id}` : ''}</p>
           {device.status === 'revoked' && <p>该设备身份已撤销，不能直接重新启用。需要重新接入时，可彻底删除后再次登录登记。</p>}
           <p>连接 IP：{device.connection_ip ?? (device.online ? '未知' : '离线，暂无连接 IP')}</p>
           <p>控制连接：{device.online ? '在线' : '离线'} · daemon 健康：{
             device.daemon_health === true ? '正常' : device.daemon_health === false ? '异常' : '未知'
-          }</p><p>客户端版本：{device.update_available === true
+          }</p><p>daemon 版本：{device.version || '未上报'}</p><p>升级检查：{device.update_available === true
             ? `有新版本 ${device.latest_version}`
-            : device.update_available === false ? '已是最新' : '版本状态未知'}</p></div>
+            : device.update_available === false ? '已是最新' : '暂无对应发布版本，无法比较'}</p></div>
         <div className="gateway-device-actions">
           <button type="button" onClick={() => setRenameDevice(device)}>修改名称</button>
           {device.status !== 'revoked' && <button type="button" onClick={() => setOwnerDevice(device)}>转移所有者</button>}

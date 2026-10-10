@@ -235,3 +235,46 @@ def test_group_recycle_bin_purge_removes_group_links_but_keeps_users(tmp_path):
             assert db.execute('select count(*) from users where id in (?,?)',users).fetchone()[0]==2
             assert db.execute('select count(*) from group_memberships where group_id=?',(group,)).fetchone()[0]==0
             assert db.execute('select count(*) from user_groups where id=?',(group,)).fetchone()[0]==0
+
+
+def test_admin_edits_user_name_and_password(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        _, headers, users = setup(client)
+        url = f'/api/admin/users/{users[0]}'
+        assert client.patch(url, json={'display_name': '新名字'}).status_code == 403
+        assert client.patch(url, json={'display_name': '   '}, headers=headers).status_code == 422
+        assert client.patch(url, json={'display_name': '新名字', 'new_password': 'short'}, headers=headers).status_code == 422
+        response = client.patch(url, json={'display_name': '新名字', 'new_password': 'ChangedPassword123'}, headers=headers)
+        assert response.status_code == 200, response.text
+        assert response.json()['display_name'] == '新名字'
+        client.post('/api/admin/users/bulk', json={'user_ids': [users[0]], 'action': 'approve'}, headers=headers)
+        client.cookies.clear()
+        assert client.post('/api/auth/login', json={'username': 'alice', 'password': 'UserPassword123'}).status_code == 401
+        assert client.post('/api/auth/login', json={'username': 'alice', 'password': 'ChangedPassword123'}).status_code == 200
+
+
+def test_user_edit_password_hash_does_not_block_health(tmp_path, monkeypatch):
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    import gateway.services.identity as identity_module
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        _, headers, users = setup(client)
+        entered = threading.Event()
+        original = identity_module._password_hasher.hash
+        def slow_hash(password):
+            entered.set()
+            time.sleep(0.7)
+            return original(password)
+        from types import SimpleNamespace
+        monkeypatch.setattr(identity_module, '_password_hasher', SimpleNamespace(hash=slow_hash))
+        with ThreadPoolExecutor() as executor:
+            pending = executor.submit(client.patch, f'/api/admin/users/{users[0]}',
+                json={'display_name':'Slow hash', 'new_password':'ChangedPassword123'}, headers=headers)
+            assert entered.wait(2)
+            started = time.monotonic()
+            assert client.get('/api/health').status_code == 200
+            assert time.monotonic() - started < 0.4
+            assert pending.result().status_code == 200

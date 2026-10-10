@@ -11,7 +11,7 @@ type PlatformSettings = {
   gateway_id: string; public_origin: string | null; registration_mode: RegistrationMode
   device_approval_mode?: 'manual' | 'automatic'
   password_login_enabled?: boolean
-  session_seconds: number; protocol_version: number; data_dir: string
+  session_seconds: number | null; protocol_version: number; data_dir: string
   database: { backend: string; location: string; healthy: boolean; migration_version: string | null }
 }
 
@@ -55,7 +55,7 @@ export function AdminPlatformSettingsPage() {
         <dl className="gateway-account-summary">
           <div><dt>网关 ID</dt><dd>{settings.gateway_id}</dd></div>
           <div><dt>平台地址</dt><dd><PlatformAddress address={settings.public_origin}/></dd></div>
-          <div><dt>会话有效期</dt><dd>{settings.session_seconds / 3600} 小时</dd></div>
+          <div><dt>会话有效期</dt><dd>{settings.session_seconds == null ? '不过期（退出或撤销后失效）' : `${settings.session_seconds / 3600} 小时`}</dd></div>
         </dl>
         <button type="button" onClick={() => setAddressEditing(true)}>修改平台地址</button>
         <p>复制后粘贴到 WorkStep「设置 → 远程访问 → 网关平台」的地址栏。安装页也会显示此地址。</p>
@@ -73,7 +73,7 @@ export function AdminPlatformSettingsPage() {
         <p>自动审批允许已登录用户的新设备直接启用；人工审批需要管理员批准。</p>
         <button type="button" onClick={() => setDeviceEditing(true)}>修改设备审批策略</button>
       </section>
-      <OrganizationSyncSettings csrf={csrf} />
+      <OrganizationSyncSettings csrf={csrf} platformAddress={settings.public_origin} />
       <section className="gateway-project-grants"><h3>客户端与数据</h3>
         <dl className="gateway-account-summary">
           <div><dt>网关协议版本</dt><dd>{settings.protocol_version}</dd></div>

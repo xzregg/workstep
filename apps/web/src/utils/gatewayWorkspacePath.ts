@@ -21,9 +21,24 @@ export function gatewayResourceUrl(value: string): string {
   return value
 }
 
+export function gatewayAuthenticationRedirect(response: Response): string | null {
+  return response.status === 401 && response.headers.get('X-WorkStep-Gateway-Login') === '/gateway/login'
+    && !gatewayWorkspacePath() ? '/gateway/login' : null
+}
+
+let redirecting = false
+function handleGatewayAuthentication(response: Response): Response {
+  const target = gatewayAuthenticationRedirect(response)
+  if (target && typeof window !== 'undefined' && !window.workstepDesktop && !redirecting) {
+    redirecting = true
+    window.location.assign(target)
+  }
+  return response
+}
+
 export function gatewayFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  if (typeof input === 'string') return globalThis.fetch(gatewayResourceUrl(input), init)
-  if (input instanceof URL) return globalThis.fetch(gatewayResourceUrl(input.toString()), init)
+  if (typeof input === 'string') return globalThis.fetch(gatewayResourceUrl(input), init).then(handleGatewayAuthentication)
+  if (input instanceof URL) return globalThis.fetch(gatewayResourceUrl(input.toString()), init).then(handleGatewayAuthentication)
   const next = gatewayResourceUrl(input.url)
-  return globalThis.fetch(next === input.url ? input : new Request(next, input), init)
+  return globalThis.fetch(next === input.url ? input : new Request(next, input), init).then(handleGatewayAuthentication)
 }

@@ -198,12 +198,17 @@ def test_preview_does_not_apply_until_confirmed_and_history_is_durable(tmp_path)
             assert db.execute('select count(*) from directory_people').fetchone()[0] == 0
         assert client.post(base + '/sync-jobs/confirm', json={'job_id': job['id']}).status_code == 403
         assert client.post(base + '/sync-jobs/confirm', headers=headers, json={'job_id': 'wrong'}).status_code == 409
-        assert client.post(base + '/sync-jobs/confirm', headers=headers, json={'job_id': job['id']}).status_code == 202
+        assert job['result']['user_candidates']
+        assert client.post(base + '/sync-jobs/confirm', headers=headers, json={'job_id': job['id'], 'selected_subjects': ['forged']}).status_code == 422
+        assert client.post(base + '/sync-jobs/confirm', headers=headers, json={'job_id': job['id'], 'selected_subjects': []}).status_code == 202
         for _ in range(100):
             final = client.get(base + '/sync-jobs/latest').json()
             if final['status'] in ('completed', 'failed'): break
             time.sleep(.02)
         assert final['status'] == 'completed', final
+        with sqlite3.connect(tmp_path / 'workstep_platform.db') as db:
+            assert db.execute('select count(*) from directory_people').fetchone()[0] == 0
+            assert db.execute('select count(*) from directory_departments').fetchone()[0] == 1
         assert client.get(base + '/sync-history').json()['jobs'][0]['id'] == job['id']
 
 

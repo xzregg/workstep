@@ -511,3 +511,50 @@ def test_admin_can_change_registration_policy_without_restart(tmp_path):
         assert client.post("/api/auth/register", json={
             "username": "alice", "display_name": "Alice", "password": "AlicePassphrase-2026!",
         }).status_code == 201
+
+
+def test_login_session_has_no_expiry_and_survives_time_until_logout(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from gateway.services import identity
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        response = _setup(client)
+        token = client.cookies.get(identity.COOKIE_NAME)
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as connection:
+            assert connection.execute("SELECT expires_at FROM auth_sessions").fetchone() == (None,)
+        now = identity._now()
+        monkeypatch.setattr(identity, "_now", lambda: now + timedelta(days=1000))
+        session = client.get("/api/auth/session")
+        assert session.status_code == 200
+        assert "Max-Age=34560000" in session.headers["set-cookie"]
+        assert client.get("/api/admin/platform-settings").json()["session_seconds"] is None
+        assert client.post("/api/auth/logout", headers={"X-CSRF-Token": response.json()["csrf_token"]}).status_code == 204
+        client.cookies.set(identity.COOKIE_NAME, token)
+        assert client.get("/api/auth/session").status_code == 401
+
+
+def test_persistent_session_migration_preserves_revoked_expired_and_remote_sessions(tmp_path):
+    from alembic import command
+    from gateway.database import migration_config
+    settings = GatewaySettings(data_dir=tmp_path)
+    with TestClient(create_app(settings), base_url="https://gateway.test") as client:
+        assert _setup(client).status_code == 201
+    config = migration_config(settings.effective_database_url)
+    command.downgrade(config, "0043_hook_device_identity")
+    with sqlite3.connect(tmp_path / "workstep_platform.db") as connection:
+        connection.execute("UPDATE auth_sessions SET expires_at='2099-01-01 00:00:00'")
+        user_id = connection.execute("SELECT user_id FROM auth_sessions").fetchone()[0]
+        for name, expiry, revoked, device in [
+            ('expired', '2000-01-01', None, None),
+            ('revoked', '2099-01-01', '2026-01-01', None),
+            ('remote', '2099-01-01', None, 'device-1'),
+        ]:
+            connection.execute("INSERT INTO auth_sessions (id,user_id,token_hash,expires_at,revoked_at,device_id) VALUES (?,?,?,?,?,?)",
+                               (name, user_id, name, expiry, revoked, device))
+    command.upgrade(config, "head")
+    with sqlite3.connect(tmp_path / "workstep_platform.db") as connection:
+        rows = dict(connection.execute("SELECT id,expires_at FROM auth_sessions"))
+        assert rows.pop('expired') == '2000-01-01'
+        assert rows.pop('revoked') == '2099-01-01'
+        assert rows.pop('remote') == '2099-01-01'
+        assert list(rows.values()) == [None]

@@ -53,8 +53,8 @@ async def login(request: Request, response: Response, body: LoginInput):
 
 
 @router.get("/auth/session")
-async def session(request: Request):
-    return await invoke(_handle_session, request=request)
+async def session(request: Request, response: Response):
+    return await invoke(_handle_session, request=request, response=response)
 
 
 @router.get("/auth/admin-access")
@@ -154,3 +154,11 @@ from gateway.services.device_approval_policy import DeviceApprovalPolicyInput, s
 @router.put('/admin/device-approval-policy')
 async def device_approval_policy(request: Request, body: DeviceApprovalPolicyInput):
     return await invoke(set_device_approval_policy, request=request, body=body)
+
+
+from gateway.services.identity_api import AdminEditUserInput, admin_edit_user as _handle_admin_edit_user
+
+
+@router.patch('/admin/users/{user_id}')
+async def admin_edit_user(request: Request, user_id: str, body: AdminEditUserInput):
+    return await invoke(_handle_admin_edit_user, request=request, user_id=user_id, body=body)

@@ -70,6 +70,7 @@ function containerArgs(config, platform, port, token, managedEnv = {}) {
   args.push(
     '--env', `WORKSTEP_DESKTOP_TOKEN=${token}`,
     '--env', 'WORKSTEP_DESKTOP_RUNTIME=1',
+    '--env', `WORKSTEP_DEVICE_NAME=${os.hostname()}（沙箱）`,
     '--env', 'WORKSTEP_PROJECTS_ROOT=/data/projects',
   )
   for (const [key, value] of Object.entries(managedEnv)) {

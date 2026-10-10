@@ -44,8 +44,9 @@ for runtime_dir in agent_assistants api data engines models schemas services sta
 done
 cp -R "$web_dir/dist" "$output_dir/web_dist"
 
-release_version="${WORKSTEP_BUILD_VERSION:-0.1.0}"
+release_version="${WORKSTEP_BUILD_VERSION:-$(node -p "require('$desktop_dir/package.json').version")}"
 release_version="${release_version#v}"
+"$python_bin" -c 'import json,sys; print(json.dumps({"version": sys.argv[1]}))' "$release_version" > "$output_dir/app/daemon/app-version.json"
 mkdir -p "$output_dir/legal"
 cp "$repo_dir/LICENSE" "$repo_dir/NOTICE" "$repo_dir/THIRD_PARTY_NOTICES.md" "$output_dir/legal/"
 "$python_bin" "$repo_dir/scripts/generate_release_sbom.py" \

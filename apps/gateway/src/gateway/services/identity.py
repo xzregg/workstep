@@ -18,7 +18,8 @@ from gateway.database import GatewayDatabase
 from gateway.models import AdminAssignment, AuditEvent, AuthSession, DirectoryDepartment, DirectoryMembership, DirectoryPerson, IdentitySource, PlatformSetting, User
 from gateway.services.permission_subjects import active_group_ids
 
-SESSION_SECONDS = 24 * 60 * 60
+# Persistent cookies are refreshed when the client checks its login session.
+SESSION_COOKIE_SECONDS = 400 * 24 * 60 * 60
 COOKIE_NAME = "workstep_gateway_session"
 _password_hasher = PasswordHasher()
 
@@ -68,7 +69,7 @@ class IdentityService:
         token = secrets.token_urlsafe(32)
         return AuthSession(
             id=str(uuid4()), user_id=user_id, token_hash=_digest(token),
-            expires_at=_now() + timedelta(seconds=SESSION_SECONDS),
+            expires_at=None,
         ), token
 
     async def setup(self, username: str, display_name: str, password: str,
@@ -232,7 +233,7 @@ class IdentityService:
         async with self.database.session() as session:
             auth_session = await session.scalar(select(AuthSession).where(AuthSession.token_hash == _digest(token)))
             if (auth_session is None or auth_session.revoked_at
-                    or _as_utc(auth_session.expires_at) <= _now()
+                    or (auth_session.expires_at is not None and _as_utc(auth_session.expires_at) <= _now())
                     or (auth_session.device_id and not allow_device_session)):
                 raise IdentityError("unauthenticated", "Session expired")
             user = await session.get(User, auth_session.user_id)
@@ -289,14 +290,14 @@ class IdentityService:
         async with self.database.session() as session:
             async with session.begin():
                 current = await session.get(AuthSession, auth_session.id)
-                if current is None or current.revoked_at or _as_utc(current.expires_at) <= _now():
+                if current is None or current.revoked_at or (current.expires_at is not None and _as_utc(current.expires_at) <= _now()):
                     raise IdentityError("unauthenticated", "Session expired")
                 current.step_up_expires_at = _now() + timedelta(minutes=5)
 
     async def require_step_up(self, auth_session: AuthSession) -> None:
         async with self.database.session() as session:
             current = await session.get(AuthSession, auth_session.id)
-            if current is None or current.revoked_at or _as_utc(current.expires_at) <= _now():
+            if current is None or current.revoked_at or (current.expires_at is not None and _as_utc(current.expires_at) <= _now()):
                 raise IdentityError("unauthenticated", "Session expired")
             if current.authentication_method == "scan":
                 return
@@ -506,6 +507,28 @@ class IdentityService:
                     AuthSession.user_id == user_id,
                     AuthSession.revoked_at.is_(None),
                 ).values(revoked_at=_now()))
+
+    async def admin_edit_user(self, user_id: str, display_name: str,
+                              new_password: str | None = None) -> User:
+        password_hash = await self._hash_password(new_password) if new_password is not None else None
+        async with self.database.session() as session:
+            async with session.begin():
+                user = await session.get(User, user_id)
+                if user is None:
+                    raise IdentityError('not_found', 'User not found')
+                if user.is_recovery or user.status == 'deleted':
+                    raise IdentityError('forbidden', 'User cannot be edited')
+                if password_hash is not None and not user.password_hash:
+                    raise IdentityError('bad_input', 'Enterprise login password is managed by the identity provider')
+                user.display_name = display_name
+                if password_hash is not None:
+                    user.password_hash = password_hash
+                    user.password_changed_at = _now()
+                    user.must_change_password = 0
+                    await session.execute(update(AuthSession).where(
+                        AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None),
+                    ).values(revoked_at=_now()))
+            return user
 
     async def admin_create_user(self, username: str, display_name: str, password: str,
                                 status: str, created_by: str) -> User:

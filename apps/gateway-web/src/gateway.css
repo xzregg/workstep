@@ -834,3 +834,19 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-grant-summary { padding: 12px 16px; border-radius: 10px; background: #f5f5f7; font-weight: 600; }
 .gateway-grant-editor > input { width: 100%; }
 .gateway-modal-footer button.gateway-dialog-cancel { background: #f5f5f7; color: #333; }
+
+.gateway-share-management .gateway-admin-table { table-layout: fixed; }
+.gateway-share-management .gateway-admin-table th:last-child { width: 220px; }
+.gateway-share-management .gateway-share-admin-actions { flex-wrap: wrap; }
+
+.gateway-sync-selection-layout { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.4fr); gap: 20px; min-height: 300px; }
+.gateway-sync-selection-layout .gateway-sync-tree { max-height: 440px; overflow: auto; }
+.gateway-sync-selection-layout h3 { margin: 0 0 12px; font-size: 15px; }
+.gateway-sync-user-options { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.gateway-sync-user-options label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.gateway-sync-user-list { max-height: 440px; overflow: auto; border: 1px solid var(--gateway-admin-border); border-radius: 12px; }
+.gateway-sync-user-all, .gateway-sync-user-row { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border-bottom: 1px solid var(--gateway-admin-separator); }
+.gateway-sync-user-row span { min-width: 0; }
+.gateway-sync-user-row small { display: block; margin-top: 4px; color: var(--gateway-admin-muted); }
+.gateway-sync-tree-row .gateway-sync-view-users { margin-left: auto; background: transparent; color: var(--gateway-admin-accent); font-size: 12px; white-space: nowrap; }
+@media(max-width: 1023px) { .gateway-sync-selection-layout { grid-template-columns: 1fr; } }

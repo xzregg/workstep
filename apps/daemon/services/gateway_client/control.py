@@ -1,6 +1,7 @@
 """Outbound managed device control connection with bounded reconnect."""
 
 import asyncio
+import os
 import base64
 import json
 import logging
@@ -214,7 +215,14 @@ class GatewayControlClient:
                     config_key_proof = base64.urlsafe_b64encode(private_key.sign(
                         f"workstep-config-key-v1:{nonce}:{authorization}:{config_fingerprint}".encode(),
                     )).rstrip(b"=").decode()
+                    from services.config import config_store
+                    hook_device_id = (await asyncio.to_thread(config_store.get_device_identity))['device_id']
+                    hook_device_proof = base64.urlsafe_b64encode(private_key.sign(
+                        f'workstep-hook-device-v1:{nonce}:{authorization}:{hook_device_id}'.encode(),
+                    )).rstrip(b'=').decode()
                     await socket.send(json.dumps({
+                        'hook_device_id': hook_device_id,
+                        'hook_device_proof': hook_device_proof,
                         "authorization": authorization,
                         "reconnect_token": self._reconnect_token,
                         "control_public_key_pem": public_key_pem,
@@ -281,6 +289,8 @@ class GatewayControlClient:
                         if audit_task is not None and audit_task.done():
                             await audit_task
                         await socket.send(json.dumps({"kind": "heartbeat",
+                                                      "daemon_version": __import__("version").APP_VERSION,
+                                                      "daemon_name": os.environ.get("WORKSTEP_DEVICE_NAME", "").strip() or None,
                                                       "daemon_health": await self._probe_daemon_health()}))
                         ack = await self._receive_kind(messages, "heartbeat_ack")
                         if (not isinstance(ack, dict) or ack.get("kind") != "heartbeat_ack"

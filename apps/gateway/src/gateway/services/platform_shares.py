@@ -340,13 +340,16 @@ async def _proxy_share_request(call: GatewayCall, token: str, target_path: str,
         raise GatewayError('unavailable', 'Shared device unavailable') from exc
 
 
-async def create_platform_share(call: GatewayCall, body: CreateShareInput):
+async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _actor=None):
     origin = call.settings.public_origin
     if origin is None:
         raise GatewayError('unavailable', 'Public Gateway origin unavailable')
     auth_token = call.tokens.get(COOKIE_NAME)
-    actor, _ = await IdentityService(call.database).session_user(auth_token)
-    _check_csrf(call, auth_token)
+    if _actor is None:
+        actor, _ = await IdentityService(call.database).session_user(auth_token)
+        _check_csrf(call, auth_token)
+    else:
+        actor = _actor
     if actor.status != "active":
         raise GatewayError('forbidden', 'Account unavailable')
     if body.expires_at is not None:
@@ -385,13 +388,15 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput):
             ))
     return {"id": share.id, "url": f"{origin.rstrip('/')}/share/{token}",
             "status": share.status, "mode": share.mode, "title": share.title,
-            "expires_at": expiry}
+            "expires_at": expiry, "created_at": share.created_at}
 
 
 async def list_own_platform_shares(call: GatewayCall,
                                    project_id: str = None,
-                                   task_id: str = None):
-    actor, _ = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
+                                   task_id: str = None, *, _actor=None):
+    actor = _actor
+    if actor is None:
+        actor, _ = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
     if actor.status != "active":
         raise GatewayError('forbidden', 'Account unavailable')
     async with call.database.session() as session:
@@ -410,10 +415,13 @@ async def list_own_platform_shares(call: GatewayCall,
     } for share in rows]}
 
 
-async def revoke_platform_share(call: GatewayCall, share_id: str):
+async def revoke_platform_share(call: GatewayCall, share_id: str, *, _actor=None):
     auth_token = call.tokens.get(COOKIE_NAME)
-    actor, _ = await IdentityService(call.database).session_user(auth_token)
-    _check_csrf(call, auth_token)
+    if _actor is None:
+        actor, _ = await IdentityService(call.database).session_user(auth_token)
+        _check_csrf(call, auth_token)
+    else:
+        actor = _actor
     async with call.database.session() as session:
         async with session.begin():
             share = await session.get(PlatformShare, share_id)

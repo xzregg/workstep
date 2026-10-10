@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
 
 from gateway.services.identity_errors import IdentityError
-from gateway.services.identity import COOKIE_NAME, SESSION_SECONDS, IdentityService, csrf_token, public_user
+from gateway.services.identity import COOKIE_NAME, SESSION_COOKIE_SECONDS, IdentityService, csrf_token, public_user
 
 from gateway.models import DeviceGroup, AdminAssignment, DirectoryDepartment, IdentitySource, User
 
@@ -118,7 +118,7 @@ async def _limit_public_action(call: GatewayCall, action: str) -> None:
 
 
 def _set_session_cookie(response: ReplyEffects, token: str, call: GatewayCall) -> None:
-    response.grants.append(CredentialGrant(COOKIE_NAME, token, lifetime=SESSION_SECONDS))
+    response.grants.append(CredentialGrant(COOKIE_NAME, token, lifetime=SESSION_COOKIE_SECONDS))
 
 
 def _check_csrf(call: GatewayCall, token: str) -> None:
@@ -227,9 +227,11 @@ async def login(call: GatewayCall, response: ReplyEffects, body: LoginInput):
     return {"user": public_user(user), "csrf_token": csrf_token(token)}
 
 
-async def session(call: GatewayCall):
+async def session(call: GatewayCall, response: ReplyEffects):
     token = call.tokens.get(COOKIE_NAME)
     user, auth_session = await _identity(call).session_user(token)
+    if auth_session.expires_at is None:
+        _set_session_cookie(response, token, call)
     return {"user": public_user(user), "csrf_token": csrf_token(token),
             "password_confirmation_required": auth_session.authentication_method != "scan",
             "admin_roles": await _active_admin_roles(call, user.id)}
@@ -446,7 +448,7 @@ async def admin_platform_settings(call: GatewayCall):
         "registration_mode": await identity.registration_mode(),
         "password_login_enabled": enabled,
         "device_approval_mode": approval,
-        "session_seconds": SESSION_SECONDS,
+        "session_seconds": None,
         "protocol_version": call.protocol_version,
         "data_dir": str(settings.data_dir),
         "database": await call.database.status(),
@@ -458,3 +460,23 @@ async def admin_reset_password(call: GatewayCall, user_id: str, body: ResetPassw
     _, auth_session = await identity.session_user(call.tokens.get(COOKIE_NAME))
     await identity.require_step_up(auth_session)
     await identity.reset_password(user_id, body.new_password)
+
+
+class AdminEditUserInput(BaseModel):
+    display_name: str = Field(min_length=1, max_length=256)
+    new_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator('display_name')
+    @classmethod
+    def nonblank_name(cls, value):
+        if not value.strip():
+            raise ValueError('Display name is required')
+        return value.strip()
+
+
+async def admin_edit_user(call: GatewayCall, user_id: str, body: AdminEditUserInput):
+    identity, _ = await _user_manager_request(call, user_id)
+    if body.new_password is not None:
+        _, auth_session = await identity.session_user(call.tokens.get(COOKIE_NAME))
+        await identity.require_step_up(auth_session)
+    return public_user(await identity.admin_edit_user(user_id, body.display_name, body.new_password))

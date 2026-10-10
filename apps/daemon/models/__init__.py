@@ -11,6 +11,8 @@ from models.schema import SchemaVersion
 from models.run import StepRun, WorkflowRun
 from models.review import ReviewRun
 from models.workflow import Workflow
+from models.workflow_hook import WorkflowHook
+from models.notification_hook import NotificationHook, NotificationDelivery
 from models.coordinator import (
     ActionProposal,
     CoordinatorSession,
@@ -37,6 +39,9 @@ ALL_MODELS = [
     StepRun,
     ReviewRun,
     Workflow,
+    WorkflowHook,
+    NotificationHook,
+    NotificationDelivery,
     CoordinatorSession,
     CoordinatorTurn,
     ActionProposal,
