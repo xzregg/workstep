@@ -106,3 +106,40 @@ async def test_deleted_department_disables_its_group_without_losing_local_roles(
             assert (await session.get(GroupMembership,membership.id)).role=='manager'
     finally:
         await database.close()
+
+
+@pytest.mark.asyncio
+async def test_selected_users_preserve_excluded_names_status_membership_and_automatic_scope(tmp_path):
+    from gateway.models import DirectoryMembership
+    database = GatewayDatabase(GatewaySettings(data_dir=tmp_path))
+    await database.start()
+    try:
+        service = ExternalIdentityService(database)
+        source = await service.create_source('wecom', 'corp', 'app', 'SECRET')
+        departments = [{'external_id':'2','display_name':'研发'}]
+        people = [{'subject':name,'display_name':name,'department_ids':['2']} for name in ['keep','change','missing']]
+        await service.full_sync(source.id, departments, people)
+        async with database.session() as session:
+            async with session.begin():
+                person = await session.scalar(select(DirectoryPerson).where(DirectoryPerson.subject=='change'))
+                user = await session.get(User, person.user_id)
+                user.status = 'disabled'
+        status_preview = await service.full_sync(source.id, departments, people, selected_department_ids=['2'], dry_run=True)
+        assert next(row for row in status_preview['user_candidates'] if row['subject']=='change')['changed']
+        assert not next(row for row in status_preview['user_candidates'] if row['subject']=='keep')['changed']
+        incoming = [dict(people[0],display_name='不要改',active=False),dict(people[1],display_name='已改名'),{'subject':'new','display_name':'新员工','department_ids':['2']}]
+        preview = await service.full_sync(source.id, departments, incoming, selected_department_ids=['2'], dry_run=True)
+        assert {row['subject'] for row in preview['user_candidates']} == {'keep','change','missing','new'}
+        await service.full_sync(source.id, departments, incoming, selected_department_ids=['2'], excluded_subjects=['keep','missing','new'])
+        async with database.session() as session:
+            rows = {row.subject:row for row in (await session.scalars(select(DirectoryPerson))).all()}
+            assert rows['keep'].display_name == 'keep' and rows['keep'].active == 1
+            assert rows['missing'].active == 1
+            assert rows['change'].display_name == '已改名'
+            assert 'new' not in rows
+            assert await session.scalar(select(DirectoryMembership).where(DirectoryMembership.person_id==rows['keep'].id))
+        await service.full_sync(source.id, departments, incoming, selected_department_ids=['2'])
+        async with database.session() as session:
+            assert (await session.get(DirectoryPerson, rows['keep'].id)).active == 1
+    finally:
+        await database.close()

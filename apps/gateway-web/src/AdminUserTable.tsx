@@ -1,3 +1,4 @@
+import { AdminEditUserDialog } from './AdminEditUserDialog'
 import { useState } from 'react'
 import { AdminRecordTable } from './AdminRecordTable'
 import { AdminSelectAll, loginUsername, useAdminSelection } from './AdminSelection'
@@ -14,6 +15,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
  const {selected, setSelected, toggle} = useAdminSelection(selectable, resetKey)
  const [bulk, setBulk] = useState<BulkAction|null>(null)
  const [single, setSingle] = useState<{user:AdminUser; kind:'approve'|'disable'}|null>(null)
+ const [editing, setEditing] = useState<AdminUser|null>(null)
  const [notice, setNotice] = useState('')
  const chosen = users.filter(user=>selected.includes(user.id))
  function action(kind:'approve'|'enable'|'disable'|'delete'|'restore'|'purge', ids = selected) {
@@ -41,6 +43,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
     <td>{user.status==='pending'?'待审核':user.status==='disabled'?'已停用':user.status==='deleted'?'已删除':'已启用'}</td>
     <td>{sources[user.registration_source] ?? user.registration_source}</td>
     <td><div className="gateway-row-actions">
+     {user.status!=='deleted' && !user.is_recovery && <button type="button" disabled={loading} onClick={()=>setEditing(user)}>编辑</button>}
      {user.status==='pending' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>setSingle({user,kind:'approve'})}>批准</button>}
      {user.status==='deleted' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('restore',[user.id])}>恢复</button> : user.status==='disabled' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('enable',[user.id])}>启用</button>
       : <button type="button" disabled={loading || user.is_recovery} onClick={()=>setSingle({user,kind:'disable'})}>停用</button>}
@@ -50,6 +53,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
     </div></td>
    </tr>)}
   </AdminRecordTable>
+  {editing && <AdminEditUserDialog user={editing} csrf={csrf} onClose={()=>setEditing(null)} onSaved={()=>{setEditing(null);setNotice('用户资料已保存。');onRefresh()}}/>}
   {bulk && <AdminBulkActionDialog action={bulk} csrf={csrf} onClose={()=>setBulk(null)} onDone={()=>{
    setNotice('所选用户操作成功。');setBulk(null);setSelected([]);onRefresh()
   }}/>}

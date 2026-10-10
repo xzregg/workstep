@@ -1,10 +1,11 @@
+import { AdminEditUserDialog } from '../src/AdminEditUserDialog'
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { JSDOM } from 'jsdom'
 import { MemoryRouter } from 'react-router-dom'
 import { AdminCreateUserDialog } from '../src/AdminCreateUserDialog'
 import { AdminUsersPage } from '../src/AdminUsersPage'
-import { DeviceAdminPage } from '../src/DeviceAdminPage'
+import { DeviceAdminPage, deviceDisplayName } from '../src/DeviceAdminPage'
 import { AdminGrantRoleDialog, AdminRevokeRoleDialog } from '../src/AdminRoleDialogs'
 import { AdminRolesPage } from '../src/AdminRolesPage'
 import type { AdminRole } from '../src/AdminRolesPage'
@@ -605,4 +606,47 @@ test('user recycle bin filters deleted accounts and offers permanent deletion',a
  fireEvent.click(screen.getByRole('button',{name:'彻底删除'}))
  assert.ok(screen.getByRole('dialog',{name:'批量彻底删除用户'}))
  assert.match(document.body.textContent??'',/无法恢复/)
+})
+
+
+test('editing user validates passwords, preserves failed edits and protects closing', async () => {
+ let saved = 0, closed = 0, fail = true
+ const calls: unknown[] = []
+ globalThis.fetch = async (input, init) => {
+  if (String(input) === '/api/auth/step-up') return Response.json({})
+  calls.push(JSON.parse(String(init?.body)))
+  if (fail) { fail = false; return new Response(null, {status:503}) }
+  return Response.json({display_name:'新名字'})
+ }
+ render(<AdminEditUserDialog csrf="csrf" user={{id:'test',username:'test',display_name:'Test',status:'active',registration_source:'admin_created',must_change_password:false,created_at:''}} onSaved={()=>saved++} onClose={()=>closed++}/>)
+ fireEvent.change(screen.getByLabelText('显示名称'), {target:{value:'新名字'}})
+ fireEvent.change(screen.getByLabelText('新密码（可选）'), {target:{value:'Password123'}})
+ const submit = screen.getByRole('button',{name:'保存修改'}) as HTMLButtonElement
+ assert.equal(submit.disabled,true)
+ fireEvent.change(screen.getByLabelText('确认新密码'), {target:{value:'Password123'}})
+ fireEvent.change(screen.getByLabelText('输入你的密码确认'), {target:{value:'AdminPassword123'}})
+ fireEvent.click(submit)
+ await screen.findByText('保存失败，请重试。')
+ assert.equal((screen.getByLabelText('显示名称') as HTMLInputElement).value,'新名字')
+ fireEvent.click(screen.getByRole('button',{name:'取消'}))
+ assert.ok(screen.getByRole('dialog',{name:'放弃修改'}))
+ assert.equal(closed,0)
+ fireEvent.click(within(screen.getByRole('dialog',{name:'放弃修改'})).getByRole('button',{name:'取消'}))
+ fireEvent.click(submit)
+ await waitFor(()=>assert.equal(saved,1))
+ assert.deepEqual(calls.at(-1),{display_name:'新名字',new_password:'Password123'})
+})
+
+test('enterprise user edit has no local password field', () => {
+ render(<AdminEditUserDialog csrf="csrf" user={{id:'enterprise',username:'ext_123',login_username:null,display_name:'企业员工',status:'active',registration_source:'directory_sync',must_change_password:false,created_at:''}} onSaved={()=>{}} onClose={()=>{}}/>)
+ assert.equal(screen.queryByLabelText('新密码（可选）'),null)
+ assert.ok(screen.getByLabelText('显示名称'))
+})
+
+
+test('device display preserves readable names and uses IP only as fallback', () => {
+ assert.equal(deviceDisplayName({name:'917c2dbe1b82',connection_ip:'192.168.52.156'}),'192.168.52.156')
+ assert.equal(deviceDisplayName({name:'沙箱 1',connection_ip:'192.168.52.156'}),'沙箱 1')
+ assert.equal(deviceDisplayName({name:'',connection_ip:'192.168.52.156'}),'192.168.52.156')
+ assert.equal(deviceDisplayName({name:'沙箱 1',connection_ip:null}),'沙箱 1')
 })

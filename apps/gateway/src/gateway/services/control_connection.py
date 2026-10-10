@@ -526,10 +526,19 @@ class DataConnection:
                          provider_ids: list[str] | None = None,
                          provider_grant_expires_at: int | None = None,
                          share_ticket: str | None = None,
+                         hook_request: bool = False,
                          target_path: str | None = None,
                          share_body: bytes | None = None,
                          authorization_check=None):
-        if share_ticket is not None:
+        if hook_request:
+            from .workflow_hooks import HOOK_PATH
+            if (call.operation != 'POST' or not HOOK_PATH.fullmatch(call.target.path)
+                    or share_ticket is not None or target_path is not None
+                    or share_body is not None or user_id is not None or username is not None
+                    or project_id is not None or access_level is not None or task_create
+                    or provider_ids is not None or device_owner):
+                raise ValueError('Invalid hook proxy scope')
+        elif share_ticket is not None:
             read_path = (target_path in (
                 "/api/platform-share/task", "/api/platform-share/history",
                 "/api/platform-share/artifacts", "/api/platform-share/reviews",
@@ -630,7 +639,10 @@ class DataConnection:
 
             headers = [[key.decode('latin1'), value.decode('latin1')] for key, value in call.wire_headers if key.lower() not in (b'host', b'cookie', b'connection', b'x-share-csrf', b'x-workstep-actor-id', b'x-workstep-actor-name', b'x-workstep-actor-device-id', b'x-workstep-actor-device-name') and (not (share_body is not None and key.lower() in (b'content-length', b'transfer-encoding')))]
             start_payload = {'phase': 'start', 'method': call.operation, 'path': target_path or call.target.path, 'query': '' if share_ticket else call.target.query, 'headers': headers}
-            if share_ticket is not None:
+            if hook_request:
+                start_payload['hook_request'] = True
+                start_payload['headers'] = [h for h in headers if h[0].lower() in ('content-type', 'content-length')]
+            elif share_ticket is not None:
                 start_payload["share_ticket"] = share_ticket
             else:
                 start_payload.update({
@@ -973,6 +985,8 @@ async def control_socket(ws: GatewaySocket):
             if not isinstance(hello, dict):
                 raise ValueError("Invalid handshake")
             device_id, user_id, config_public_key_pem = await authenticate_device(ws, hello, nonce)
+            from .workflow_hooks import bind_hook_identity
+            await bind_hook_identity(ws, device_id, hello, nonce)
         except (ValueError, asyncio.TimeoutError):
             await ws.close(code=4401)
             return
@@ -1282,6 +1296,22 @@ async def control_socket(ws: GatewaySocket):
             if daemon_health is not None and type(daemon_health) is not bool:
                 await ws.close(code=4400, reason="Invalid daemon health")
                 return
+            daemon_name = message.get('daemon_name')
+            if daemon_name is not None and (not isinstance(daemon_name, str) or not 1 <= len(daemon_name.strip()) <= 256):
+                await ws.close(code=4400, reason='Invalid daemon name')
+                return
+            daemon_version = message.get('daemon_version')
+            if daemon_version is not None:
+                if not isinstance(daemon_version, str) or not re.fullmatch(r'[0-9][0-9A-Za-z.+-]{0,99}', daemon_version):
+                    await ws.close(code=4400, reason='Invalid daemon version')
+                    return
+                async with ws.database.session() as session:
+                    async with session.begin():
+                        device = await session.get(Device, device_id)
+                        if device is not None and daemon_name and re.fullmatch(r'[0-9a-f]{12,64}', device.name or ''):
+                            device.name = daemon_name.strip()
+                        if device is not None and device.version != daemon_version:
+                            device.version = daemon_version
             ws.control_connections.update_daemon_health(device_id, daemon_health)
             if not await binding_active(ws, device_id, user_id):
                 await ws.close(code=4003, reason="Device access revoked")

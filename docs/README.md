@@ -26,3 +26,7 @@ Repository-agent instructions remain in [`AGENTS.md`](../AGENTS.md); they point 
 - [固定手册演示环境](manual-demo.md) — 独立配置、模拟项目与 `8777` 端口的启动和复用。
 
 - [项目数据存储位置与迁移](project-storage.md)
+
+- [流程钩子：统一地址、设备身份和网关转发](workflow-hooks.md)
+
+- [通知钩子](notification-hooks.md)：流程事件、平台投递、预览与重试。

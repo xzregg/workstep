@@ -6069,3 +6069,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   animation: app-loading-spin 1s linear infinite;
 }
 @keyframes app-loading-spin { to { transform: rotate(360deg); } }
+
+.task-share-expiry { display: flex; flex-direction: column; gap: 6px; }
+.task-share-expiry > span { font-size: calc(12px * var(--font-scale)); font-weight: 500; color: var(--fg-2); }
+.task-share-link-unavailable p { color: var(--muted); font-size: calc(12px * var(--font-scale)); }

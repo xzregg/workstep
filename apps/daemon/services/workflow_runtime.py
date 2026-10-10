@@ -1425,6 +1425,7 @@ class WorkflowRuntime:
         execution_scope: set[str] | None = None,
     ) -> str:
         interrupted = False
+        await self._publish_task_lifecycle(project_id, task.id, workflow_run.id, 'started')
         try:
             await runner.run_pipeline(
                 task=task,
@@ -1445,7 +1446,10 @@ class WorkflowRuntime:
         else:
             def resolve_run_status():
                 latest_task = Task.get_by_id(task.id)
-                if latest_task.status == "ready":
+                latest_run = WorkflowRun.get_by_id(workflow_run.id)
+                if latest_run.status == 'stopped':
+                    workflow_run.status = 'stopped'
+                elif latest_task.status == "ready":
                     workflow_run.status = "succeeded"
                 elif latest_task.status == "paused" and TaskStep.select().where(
                     (TaskStep.task == latest_task)
@@ -1468,6 +1472,12 @@ class WorkflowRuntime:
                 workflow_run.save()
 
             await runner._run_db(finalize_run)
+            if not (interrupted and self._graceful_shutdown):
+                action = getattr(runner, '_cancel_audit', None)
+                kind = ('paused' if action and action[0] == 'task.pause' else 'stopped') if action else {
+                    'succeeded': 'completed', 'paused': 'paused', 'failed': 'failed', 'stopped': 'stopped',
+                }.get(workflow_run.status, 'failed')
+                await self._publish_task_lifecycle(project_id, task.id, workflow_run.id, kind, workflow_run.ended_at.isoformat() if workflow_run.ended_at else '')
             self._leases.release(workflow_run.id)
             try:
                 await runner.close()
@@ -1487,6 +1497,12 @@ class WorkflowRuntime:
                 await self._consume_task_pending_inserts(project_id, task.id)
 
         return workflow_run.id
+
+    async def _publish_task_lifecycle(self, project_id, task_id, run_id, kind, occurrence=''):
+        payload = {'project_id': project_id, 'task_id': task_id, 'type': 'task_lifecycle',
+                   'data': {'event': kind, 'event_id': f'{run_id}:{kind}' + (f':{occurrence}' if kind == 'paused' else ''), 'run_id': run_id}}
+        for event in to_agui_events(payload, AGUIContext.from_event(payload)):
+            await self._event_bus.publish(event)
 
     async def cancel(self, task_id: str, *, action: str = "task.cancel") -> bool:
         """Cancel every active step owned by a task's pipeline.

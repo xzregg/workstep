@@ -1,5 +1,5 @@
 import ResizablePanel from './ResizablePanel'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import Button from './Button'
 import Input from './Input'
 import Icon from './Icon'
@@ -8,6 +8,8 @@ import SegmentedControl from './SegmentedControl'
 import { taskApi, type ShareInfo } from '../api/client'
 import { useI18n } from '../i18n'
 import { copyText } from '../utils/clipboard'
+import { useProjectStore } from '../stores/projectStore'
+import { taskShareUrl } from '../utils/taskShareUrl'
 
 type ShareMode = 'read_only' | 'interactive'
 
@@ -17,6 +19,12 @@ interface Props {
   projectId: string
   onClose: () => void
   onChanged?: (share: ShareInfo | null) => void
+  api?: {
+    get: (taskId: string, projectId: string) => Promise<ShareInfo | null>
+    create: (taskId: string, projectId: string, password: string | null, title: string | null, mode: ShareMode, expiresAt?: string | null) => Promise<ShareInfo>
+    revoke: (taskId: string, projectId: string) => Promise<unknown>
+  }
+  gateway?: boolean
 }
 
 /** Share-dialog: create, view, copy, and revoke a task's share link. */
@@ -26,8 +34,11 @@ export default function ShareDialog({
   projectId,
   onClose,
   onChanged,
+  api = taskApi.share,
+  gateway = false,
 }: Props) {
   const { t } = useI18n()
+  const project = useProjectStore(state => state.projects.find(item => item.id === projectId))
   const [share, setShare] = useState<ShareInfo | null>(null)
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -36,8 +47,11 @@ export default function ShareDialog({
   const [password, setPassword] = useState('')
   const [title, setTitle] = useState('')
   const [mode, setMode] = useState<ShareMode>('read_only')
+  const [expiresAt, setExpiresAt] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState(false)
+  const [confirmClose, setConfirmClose] = useState(false)
+  const pending = useRef(false)
 
   // Reset transient state whenever the dialog (re)opens.
   useEffect(() => {
@@ -45,12 +59,14 @@ export default function ShareDialog({
     setPassword('')
     setTitle('')
     setMode('read_only')
+    setExpiresAt('')
     setError(null)
     setCopied(false)
     setConfirmRevoke(false)
+    setConfirmClose(false)
     setLoading(true)
     let cancelled = false
-    taskApi.share
+    api
       .get(taskId, projectId)
       .then((info) => {
         if (!cancelled) setShare(info)
@@ -70,29 +86,39 @@ export default function ShareDialog({
     return () => {
       cancelled = true
     }
-  }, [open, taskId, projectId])
+  }, [open, taskId, projectId, api])
 
   const shareUrl = useMemo(() => {
     if (!share) return ''
-    return `${window.location.origin}/share/${encodeURIComponent(share.token)}`
-  }, [share])
+    if (gateway) return share.url || ''
+    return taskShareUrl(share.token, project, window.location.origin)
+  }, [share, project, gateway])
 
   if (!open) return null
 
+  const requestClose = () => {
+    if (pending.current) return
+    if (!share && (password || title || expiresAt || mode !== 'read_only')) setConfirmClose(true)
+    else onClose()
+  }
+
   const handleCreate = async () => {
+    if (pending.current || loading) return
     if (password.length > 0 && password.length < 4) {
       setError(t('share.passwordTooShort'))
       return
     }
     setError(null)
+    pending.current = true
     setCreating(true)
     try {
-      const created = await taskApi.share.create(
+      const created = await api.create(
         taskId,
         projectId,
         password || null,
         title.trim() || null,
         mode,
+        expiresAt ? new Date(expiresAt).toISOString() : null,
       )
       setShare(created)
       setPassword('')
@@ -103,6 +129,7 @@ export default function ShareDialog({
       const message = err instanceof Error ? err.message : String(err)
       setError(t('share.createFailed', { error: message }))
     } finally {
+      pending.current = false
       setCreating(false)
     }
   }
@@ -121,9 +148,11 @@ export default function ShareDialog({
   }
 
   const handleRevoke = async () => {
+    if (pending.current) return
+    pending.current = true
     setRevoking(true)
     try {
-      await taskApi.share.revoke(taskId, projectId)
+      await api.revoke(taskId, projectId)
       setShare(null)
       setConfirmRevoke(false)
       onChanged?.(null)
@@ -131,6 +160,7 @@ export default function ShareDialog({
       const message = err instanceof Error ? err.message : String(err)
       setError(t('share.revokeFailed', { error: message }))
     } finally {
+      pending.current = false
       setRevoking(false)
     }
   }
@@ -138,12 +168,12 @@ export default function ShareDialog({
   return (
     <>
       <div
-        onClick={onClose}
+        onClick={requestClose}
         style={{
           position: 'fixed',
           inset: 0,
           zIndex: 2000,
-          background: 'rgba(0,0,0,0.35)',
+          background: 'color-mix(in srgb, var(--fg) 35%, transparent)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
@@ -151,6 +181,7 @@ export default function ShareDialog({
         }}
       >
         <ResizablePanel
+          role="dialog" aria-modal="true" aria-label={t('share.dialogTitle')}
           onClick={(e) => e.stopPropagation()}
           style={{
             background: 'var(--bg)',
@@ -175,7 +206,7 @@ export default function ShareDialog({
               }}>
                 {t('share.dialogTitle')}
               </div>
-              <Button variant="icon" onClick={onClose} aria-label={t('common.close')}>
+              <Button variant="icon" onClick={requestClose} aria-label={t('common.close')}>
                 <Icon name="x" size={16} />
               </Button>
             </div>
@@ -197,7 +228,11 @@ export default function ShareDialog({
                 <div style={{ fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                   {t('share.currentLink')}
                 </div>
-                <div style={{
+                {!shareUrl && <div className="task-share-link-unavailable">
+                  <p>{t('share.savedLinkUnavailable')}</p>
+                  <Button onClick={() => setShare(null)}>{t('share.create')}</Button>
+                </div>}
+                {shareUrl && <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 10px', borderRadius: 'var(--radius-sm)',
                   background: 'var(--bg-soft, color-mix(in oklab, var(--fg), transparent 95%))',
@@ -221,7 +256,7 @@ export default function ShareDialog({
                     <Icon name="external-link" size={13} />
                     {t('share.openWindow')}
                   </Button>
-                </div>
+                </div>}
                 {share.title && (
                   <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--fg-2)' }}>{share.title}</div>
                 )}
@@ -269,6 +304,10 @@ export default function ShareDialog({
                     placeholder={t('share.titlePlaceholder')}
                   />
                 </label>
+                {gateway && <label className="task-share-expiry">
+                  <span>{t('share.expiresAtLabel')}</span>
+                  <Input type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} />
+                </label>}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>
                     {t('share.modeLabel')}
@@ -318,7 +357,11 @@ export default function ShareDialog({
         </ResizablePanel>
       </div>
 
+      <ConfirmDialog open={confirmClose} title={t('share.discardTitle')} message={t('share.discardMessage')}
+        confirmText={t('share.discardConfirm')} zIndex={2100}
+        onConfirm={() => { setConfirmClose(false); onClose() }} onCancel={() => setConfirmClose(false)} />
       <ConfirmDialog
+        loading={revoking}
         open={confirmRevoke}
         title={t('share.revokeConfirmTitle')}
         message={t('share.revokeConfirmMessage')}

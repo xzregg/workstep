@@ -37,6 +37,10 @@ _TASK_CHAT = re.compile(r"/api/task/[A-Za-z0-9_-]{1,128}/chat\Z")
 _TASK_STEP_MESSAGE = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/message\Z")
 _WORKFLOW_DETAIL = re.compile(r"/api/workflow/[A-Za-z0-9_-]{1,128}\Z")
+_WORKFLOW_HOOKS = re.compile(r"/api/workflow/[A-Za-z0-9_-]{1,128}/hooks\Z")
+_NOTIFICATION_HOOKS = re.compile(r"/api/workflow/[A-Za-z0-9_-]{1,128}/notification-hooks\Z")
+_NOTIFICATION_HISTORY = re.compile(r"/api/workflow/[A-Za-z0-9_-]{1,128}/notification-hooks/[A-Za-z0-9_-]{1,128}/deliveries\Z")
+_NOTIFICATION_ACTION = re.compile(r"/api/workflow/[A-Za-z0-9_-]{1,128}/notification-hooks/(?:preview|[A-Za-z0-9_-]{1,128}/test|[A-Za-z0-9_-]{1,128}/deliveries/[A-Za-z0-9_-]{1,128}/retry)\Z")
 _WORKFLOW_STEP_PROMPT = re.compile(
     r"/api/workflow/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/prompt\Z")
 _WORKFLOW_ACTION = re.compile(
@@ -154,6 +158,8 @@ def project_http_route_allowed(method: str, path: str,
         if query_pairs != [("project_id", project_id)]:
             return False
         if method == "PUT":
+            if _WORKFLOW_HOOKS.fullmatch(path) or _NOTIFICATION_HOOKS.fullmatch(path):
+                return True
             if _WORKFLOW_DETAIL.fullmatch(path):
                 return True
             return path in (
@@ -179,6 +185,8 @@ def project_http_route_allowed(method: str, path: str,
             if _CHAT_SESSION_DETAIL.fullmatch(path):
                 return True
             return path == "/api/fs/entry"
+        if _NOTIFICATION_ACTION.fullmatch(path):
+            return True
         if path == "/api/task/create":
             return task_create
         if path == "/api/task/copy":
@@ -228,6 +236,11 @@ def project_http_route_allowed(method: str, path: str,
     values = [value for key, value in query_pairs if key == "project_id"]
     if values != [project_id]:
         return False
+    if _WORKFLOW_HOOKS.fullmatch(path):
+        return access_level == 'edit' and len(query_pairs) == 1
+    if _NOTIFICATION_HOOKS.fullmatch(path) or _NOTIFICATION_HISTORY.fullmatch(path):
+        return (access_level == 'edit' and len(query_pairs) == len(dict(query_pairs))
+                and all(key in ({'project_id','offset'} if _NOTIFICATION_HISTORY.fullmatch(path) else {'project_id'}) for key,_ in query_pairs))
     if path in ("/api/engine/list", "/api/engine/execution/config",
                 "/api/engine/coordinator/config", "/api/assistant/list", "/api/provider/list"):
         return len(query_pairs) == 1

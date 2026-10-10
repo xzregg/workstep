@@ -62,6 +62,33 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.post(grant_url, json={
             "subject_type": "group", "subject_id": group_id, "access_level": "read",
         }, headers=owner_headers).status_code == 200
+        monkeypatch.setattr(app.state.control_connections, "is_online", lambda _id: True)
+        device_ticket = client.get("/api/devices/device-1/access").json()["ticket"]
+        device_host = "https://d-device-1.gateway.test"
+        assert client.post(f"{device_host}/api/remote/redeem", data={"ticket": device_ticket},
+                           follow_redirects=False).status_code == 303
+        target = client.get(f"{device_host}/api/remote/session?project_id=host-1")
+        assert target.status_code == 200, target.text
+        assert target.json()["project_id"] == "project-1"
+        assert target.json()["share_create"] is True
+        share_body = {"project_id": "project-1", "task_id": "task-1", "mode": "interactive", "title": "Modal share"}
+        remote_share_url = f"{device_host}/api/remote/task-shares"
+        assert client.post(remote_share_url, json=share_body).status_code == 403
+        assert client.post(remote_share_url, json=share_body, headers={"Origin": "https://evil.test", "X-WorkStep-Share-Intent": "manage"}).status_code == 403
+        created_share = client.post(remote_share_url, json=share_body, headers={"Origin": device_host, "X-WorkStep-Share-Intent": "manage"})
+        assert created_share.status_code == 201, created_share.text
+        share_id = created_share.json()["id"]
+        assert client.get(remote_share_url + "?project_id=project-1&task_id=task-1").json()["shares"][0]["id"] == share_id
+        assert client.post(remote_share_url + f"/{share_id}/revoke", headers={"Origin": device_host, "X-WorkStep-Share-Intent": "manage"}).status_code == 204
+        assert client.get(f"{device_host}/api/remote/session?project_id=other-host").status_code == 404
+        workspace_ticket = client.get("/api/devices/device-1/access").json()["ticket"]
+        workspace = "https://gateway.test/workspace/device-1"
+        assert client.post(workspace + "/api/remote/redeem", data={"ticket": workspace_ticket}, follow_redirects=False).status_code == 303
+        workspace_share = client.post(workspace + "/api/remote/task-shares", json=share_body, headers={"Origin": "https://gateway.test", "X-WorkStep-Share-Intent": "manage"})
+        assert workspace_share.status_code == 201, workspace_share.text
+        assert client.post(workspace + f"/api/remote/task-shares/{workspace_share.json()['id']}/revoke", headers={"Origin": "https://gateway.test", "X-WorkStep-Share-Intent": "manage"}).status_code == 204
+
+        monkeypatch.setattr(app.state.control_connections, "is_online", lambda _id: False)
         client.cookies.clear()
         login = client.post("/api/auth/login", json={
             "username": "worker", "password": "WorkerPassphrase-2026!",
@@ -98,6 +125,9 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/remote/devices").status_code == 403
         assert client.get(f"{host}/api/remote/devices/device-1/access").status_code == 403
         assert client.get(f"{host}/api/remote/session").json()["host_project_id"] == "host-1"
+        assert client.post(f"{host}/api/remote/task-shares", json={"project_id": "project-1", "task_id": "task-1"}, headers={"Origin": host, "X-WorkStep-Share-Intent": "manage"}).status_code == 403
+        assert client.post(f"{host}/api/remote/task-shares", json={"project_id": "other-project", "task_id": "task-1"}, headers={"Origin": host, "X-WorkStep-Share-Intent": "manage"}).status_code == 403
+        assert client.get(f"{host}/api/remote/session?project_id=other-host").status_code == 403
         assert client.get(f"{host}/api/remote/session").json()["task_create"] is False
         assert client.get(f"{host}/api/remote/session").json()["can_manage_project_access"] is False
         grants = client.get(f"{host}/api/remote/project-grants")
@@ -269,3 +299,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/remote/session", headers={
             "Cookie": f"workstep_gateway_session={edit_cookie}",
         }).json()["share_create"] is True
+        scoped_share = client.post(f"{host}/api/remote/task-shares", headers={
+            "Cookie": f"workstep_gateway_session={edit_cookie}", "Origin": host,
+            "X-WorkStep-Share-Intent": "manage",
+        }, json={"project_id": "project-1", "task_id": "task-1", "mode": "read_only"})
+        assert scoped_share.status_code == 201, scoped_share.text

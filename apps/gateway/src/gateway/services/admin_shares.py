@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import case, func, select, update, delete
 
 from gateway.services.identity import COOKIE_NAME, IdentityService
 
@@ -93,7 +93,7 @@ async def list_admin_shares(call: GatewayCall,
 
 
 async def change_admin_share(call: GatewayCall, share_id: str, action: str):
-    if action not in ("pause", "resume", "revoke"):
+    if action not in ("pause", "resume", "revoke", "delete"):
         raise GatewayError('not_found', 'Share action unavailable')
     actor = await _admin(call, mutation=True)
     async with call.database.session() as session:
@@ -101,16 +101,19 @@ async def change_admin_share(call: GatewayCall, share_id: str, action: str):
             share = await session.get(PlatformShare, share_id)
             if share is None:
                 raise GatewayError('not_found', 'Share unavailable')
-            if share.revoked_at is not None:
+            if share.revoked_at is not None and action != "delete":
                 if action == "revoke":
                     return
                 raise GatewayError('conflict', 'Share revoked')
-            if action != "revoke" and share.expires_at is not None:
+            if action not in ("revoke", "delete") and share.expires_at is not None:
                 expiry = share.expires_at.replace(tzinfo=timezone.utc) if share.expires_at.tzinfo is None else share.expires_at
                 if expiry <= datetime.now(timezone.utc):
                     raise GatewayError('conflict', 'Share expired')
             project = await session.get(PlatformProject, share.project_id)
-            if action == "pause":
+            if action == "delete":
+                await session.execute(delete(PlatformShareSession).where(PlatformShareSession.share_id == share.id))
+                await session.delete(share)
+            elif action == "pause":
                 share.status = "paused"
             elif action == "resume":
                 device = await session.get(Device, share.device_id)

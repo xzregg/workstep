@@ -90,7 +90,7 @@ class DirectorySyncJobs:
             job['department_ids'] = snapshot.get('selected_department_ids', job['department_ids'])
             await progress('applying', job['total'], job['total'], None)
             result = await service.full_sync(source.id, snapshot['departments'], snapshot['people'],
-                snapshot.get('cursor'), selected_department_ids=job['department_ids'], snapshot_complete=snapshot.get("complete", False), dry_run=job.get("preview_requested", False))
+                snapshot.get('cursor'), selected_department_ids=job['department_ids'], snapshot_complete=snapshot.get("complete", False), dry_run=job.get("preview_requested", False), excluded_subjects=job.get("excluded_subjects"))
             job.update(status='preview' if job.get('preview_requested') else 'completed', result=result, completed=job['total'])
             if job.get('preview_requested'): job['snapshot'] = snapshot
             await self._save(source.id, job)
@@ -105,7 +105,7 @@ class DirectorySyncJobs:
         finally:
             self.tasks.pop(source.id, None)
 
-    async def confirm(self, source_id, job_id):
+    async def confirm(self, source_id, job_id, selected_subjects=None):
         async with self.lock:
             if self.closed: raise GatewayError('unavailable', 'Directory sync shutting down')
             if source_id in self.tasks:
@@ -117,6 +117,12 @@ class DirectorySyncJobs:
                 raise GatewayError('conflict', 'Directory preview expired')
             if (datetime.now(timezone.utc) - datetime.fromisoformat(job['started_at'])).total_seconds() > 900:
                 raise GatewayError('conflict', 'Directory preview expired')
+            if selected_subjects is not None:
+                candidates = job.get('result', {}).get('user_candidates', [])
+                available = {row['subject'] for row in candidates if not row.get('skipped')}
+                if not set(selected_subjects) <= available:
+                    raise GatewayError('invalid', 'User selection is outside the preview')
+                job['excluded_subjects'] = sorted(available - set(selected_subjects))
             source = await ExternalIdentityService(self.database).source(source_id, purpose='sync')
             job.update(status='queued', preview_requested=False)
             await self._save(source_id, job)

@@ -1,6 +1,8 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const jaJP: Messages = {
+  notificationHooks: zhCN.notificationHooks,
+  workflowHooks: zhCN.workflowHooks,
   gatewayLogout: zhCN.gatewayLogout,
   projectStorage: zhCN.projectStorage,
   api: zhCN.api,
@@ -1369,6 +1371,8 @@ export const jaJP: Messages = {
     defaultProjectDirectorySaved: '默认目录已保存',
     systemTitle: 'システム設定',
     desktopUpdate: 'デスクトップ更新',
+    problemFeedback: '問題を報告',
+    problemFeedbackIntro: 'GitHub で再現手順を添えて問題を報告してください。送信前にキー、個人のパス、非公開プロジェクトの内容を削除してください。',
     desktopUpdateIntro: 'GitHub Release を1日1回確認します。自動ダウンロードやインストールは行いません。',
     currentVersion: '現在のバージョン {version}',
     newVersion: '新しいバージョン {version}',
@@ -2090,6 +2094,11 @@ export const jaJP: Messages = {
     skipped: '跳过',
   },
   share: {
+    discardTitle: '放弃分享配置？',
+    discardMessage: '分享配置尚未生成链接，确定放弃并关闭？',
+    discardConfirm: '放弃并关闭',
+    expiresAtLabel: '过期时间（可选，最长 90 天）',
+    savedLinkUnavailable: '已创建的链接仅在生成时显示。可以撤销当前分享，或生成新链接。',
     dialogTitle: 'このタスクを共有',
     dialogSubtitle: '公開リンクを作成し、読み取り専用閲覧またはステップへの直接操作を許可できます。',
     modeLabel: '共有モード',

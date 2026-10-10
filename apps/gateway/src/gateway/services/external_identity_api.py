@@ -411,11 +411,12 @@ async def latest_selected_sync(call: GatewayCall, source_id: str):
 
 class ConfirmDirectoryInput(BaseModel):
     job_id: str = Field(min_length=1, max_length=64)
+    selected_subjects: list[str] | None = Field(default=None, max_length=100000)
 
 
 async def confirm_selected_sync(call: GatewayCall, source_id: str, body: ConfirmDirectoryInput):
     await organization_manager(call, source_id=source_id, mutation=True)
-    return await call.directory_reconciler.jobs.confirm(source_id, body.job_id)
+    return await call.directory_reconciler.jobs.confirm(source_id, body.job_id, body.selected_subjects)
 
 
 async def sync_history(call: GatewayCall, source_id: str):

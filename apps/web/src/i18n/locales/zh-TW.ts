@@ -1,6 +1,8 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const zhTW: Messages = {
+  notificationHooks: zhCN.notificationHooks,
+  workflowHooks: zhCN.workflowHooks,
   gatewayLogout: zhCN.gatewayLogout,
   projectStorage: zhCN.projectStorage,
   api: zhCN.api,
@@ -1369,6 +1371,8 @@ export const zhTW: Messages = {
     defaultProjectDirectorySaved: '默认目录已保存',
     systemTitle: '系統設定',
     desktopUpdate: '桌面更新',
+    problemFeedback: '回報問題',
+    problemFeedbackIntro: '前往 GitHub 提交問題，請提供重現步驟，並在提交前移除金鑰、個人路徑和私人專案內容。',
     desktopUpdateIntro: '每天從 GitHub Release 檢查一次新版本，不會自動下載或安裝。',
     currentVersion: '目前版本 {version}',
     newVersion: '發現新版本 {version}',
@@ -2090,6 +2094,11 @@ export const zhTW: Messages = {
     skipped: '跳过',
   },
   share: {
+    discardTitle: '放弃分享配置？',
+    discardMessage: '分享配置尚未生成链接，确定放弃并关闭？',
+    discardConfirm: '放弃并关闭',
+    expiresAtLabel: '过期时间（可选，最长 90 天）',
+    savedLinkUnavailable: '已创建的链接仅在生成时显示。可以撤销当前分享，或生成新链接。',
     dialogTitle: '分享此任務',
     dialogSubtitle: '產生公開連結，可按需要讓對方只讀檢視，或直接參與任務步驟互動。',
     modeLabel: '分享模式',

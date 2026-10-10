@@ -32,7 +32,9 @@ const EDGES: Array<[string, string]> = [
 ]
 
 // 橙色回环线：测试阶段产出未达标时，任务回流到「前端」阶段重做（阶段返工回调）。
-const REWORK_LOOP_PATH = 'M 620 215 C 780 45, 690 10, 600 95'
+const reworkSource = NODES.find((node) => node.id === 'n5')!
+const reworkTarget = NODES.find((node) => node.id === 'n3')!
+const REWORK_LOOP_PATH = `M ${reworkSource.x * 10} ${reworkSource.y * 5.62} C 850 -30, 620 -80, ${reworkTarget.x * 10} ${reworkTarget.y * 5.62}`
 const REWORK_LOOP_AT = 4600
 
 export function CanvasScene({ time }: { time: number }) {

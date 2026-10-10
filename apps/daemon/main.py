@@ -50,6 +50,8 @@ from api.statistics import router as statistics_router
 from api.share import router as share_router
 from api.assistant import router as assistant_router
 from api.system_settings import router as system_settings_router
+from api.workflow_hooks import router as workflow_hooks_router, public_router as hook_ingress_router
+from api import notification_hooks
 from api.git import router as git_router
 from services.git import git_service
 from api.skills import router as skills_router
@@ -72,6 +74,7 @@ from agent_assistants.workflow_gen import WorkflowGenModule
 from agent_assistants.task_draft import TaskDraftModule
 from services.schedule import ScheduleModule
 from services.observability import configure_observability, instrument_fastapi
+from workstep_gateway_protocol.hooks import install_hook_log_filter
 from agent_assistants.chat_session import ChatSessionModule
 from agent_assistants.channel_chat import ChannelChatModule
 from services.channels.bots import BotManager
@@ -90,10 +93,12 @@ from api.remote_project_proxy import RemoteProjectProxyMiddleware
 
 logger = logging.getLogger(__name__)
 configure_observability()
+install_hook_log_filter()
 
 # Global event bus
 event_bus = EventBus()
 completion_push = CompletionPushService(event_bus)
+notification_hooks.service.bus = event_bus
 
 
 def _local_actor() -> ActorSnapshot:
@@ -154,6 +159,7 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(config_store.migrate_legacy_config)
     await asyncio.to_thread(ensure_global_templates)
     await asyncio.to_thread(project_manager._load_saved_projects)
+    await notification_hooks.service.start()
     # Load concurrency limits into the in-memory gate (global defaults +
     # every project's persisted override) before any workflow starts.
     from services.concurrency import concurrency_gate
@@ -218,6 +224,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await completion_push.shutdown()
+        await notification_hooks.service.shutdown()
         await gateway_client.close()
         await git_service.close()
         from services.engine_runtime import runtime_manager
@@ -310,6 +317,9 @@ app.include_router(share_router)
 app.include_router(assistant_router)
 app.include_router(project_settings_router)
 app.include_router(system_settings_router)
+app.include_router(workflow_hooks_router)
+app.include_router(notification_hooks.router)
+app.include_router(hook_ingress_router)
 app.include_router(git_router)
 app.include_router(skills_router)
 app.include_router(remote_project_router)

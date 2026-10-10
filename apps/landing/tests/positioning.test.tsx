@@ -65,12 +65,13 @@ describe('landing positioning', () => {
   it('places demos after the outcome features and remote sharing at the end', () => {
     const html = renderLanding()
     const featuresIndex = html.indexOf('让 AI 工具自己接着往下干')
-    const demosIndex = html.indexOf('像看视频一样，看完一次完整的工作流')
+    const demosIndex = html.indexOf('看看工作流如何编排与执行')
     const workflowIndex = html.indexOf('不限于研发，任意流程都能编排')
     const remoteShareIndex = html.indexOf('你的项目分享给我')
     const finalCtaIndex = html.indexOf('把你正在重复的工作，变成一条会自己推进的流程')
 
     expect(featuresIndex).toBeGreaterThan(-1)
+    expect(html).not.toContain('像看视频一样')
     expect(demosIndex).toBeGreaterThan(featuresIndex)
     expect(workflowIndex).toBeGreaterThan(demosIndex)
     expect(remoteShareIndex).toBeGreaterThan(workflowIndex)

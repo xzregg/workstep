@@ -685,6 +685,12 @@ def test_admin_lists_pauses_resumes_and_revokes_platform_shares(tmp_path):
         assert client.post(f"/api/admin/shares/{share['id']}/revoke",
                            headers=headers).status_code == 204
         assert client.get(f"/api/public/shares/{token}/meta").status_code == 404
+        assert client.post(f"/api/admin/shares/{share['id']}/delete").status_code == 403
+        assert client.post(f"/api/admin/shares/{share['id']}/delete", headers=headers).status_code == 204
+        assert client.get("/api/admin/shares").json()["total"] == 0
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as deleted_db:
+            assert deleted_db.execute("SELECT count(*) FROM platform_share_sessions").fetchone()[0] == 0
+            assert deleted_db.execute("SELECT count(*) FROM audit_events WHERE action = 'platform_share.delete'").fetchone()[0] == 1
         with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
             audits = db.execute(
                 "SELECT action, project_id, task_id, actor_username, metadata_json "
@@ -697,6 +703,16 @@ def test_admin_lists_pauses_resumes_and_revokes_platform_shares(tmp_path):
         assert all(row[1:4] == ("host-1", "task-1", "owner")
                    and json.loads(row[4]) == {"share_id": share["id"]}
                    for row in audits)
+        active_share = client.post("/api/platform-shares", json={
+            "project_id": "project-1", "task_id": "task-1", "mode": "interactive",
+        }, headers=headers).json()
+        active_token = active_share["url"].rsplit("/", 1)[1]
+        assert client.post(f"/api/public/shares/{active_token}/unlock", json={"password": ""}).status_code == 200
+        assert client.post(f"/api/admin/shares/{active_share['id']}/delete", headers=headers).status_code == 204
+        assert client.get(f"/api/public/shares/{active_token}/meta").status_code == 404
+        assert client.get(f"/api/public/shares/{active_token}/session").status_code == 404
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
+            assert db.execute("SELECT count(*) FROM platform_share_sessions").fetchone()[0] == 0
         audit_page = client.get("/api/admin/audit", params={
             "action": "platform_share.pause", "project_id": "project-1",
         })

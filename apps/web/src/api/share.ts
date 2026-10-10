@@ -4,6 +4,7 @@ import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, Rev
 // --- Public share API (no project context, session-token gated) ---
 
 export interface ShareInfo {
+  url?: string
   id: string
   task_id: string
   token: string

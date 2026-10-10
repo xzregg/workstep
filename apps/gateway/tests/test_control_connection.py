@@ -158,6 +158,8 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path, pee
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test", client=(peer_ip, 50000)) as client:
         device_id, token, device_key, csrf = _active_device(client)
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+            database.execute("UPDATE devices SET name = '917c2dbe1b82' WHERE id = ?", (device_id,))
         with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             hello = ws.receive_json()
@@ -186,11 +188,13 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path, pee
             assert listed[0]["connection_ip"] == peer_ip
             assert listed[0]["online"] is True
             assert listed[0]["daemon_health"] is None
-            ws.send_json({"kind": "heartbeat", "daemon_health": True})
+            ws.send_json({"kind": "heartbeat", "daemon_health": True, "daemon_version": "1.2.3", "daemon_name": "研发电脑（沙箱）"})
             heartbeat = ws.receive_json()
             assert heartbeat["kind"] == "heartbeat_ack"
             assert heartbeat["skill_manifest"]
             assert client.get("/api/admin/devices").json()["devices"][0]["daemon_health"] is True
+            assert client.get("/api/admin/devices").json()["devices"][0]["version"] == "1.2.3"
+            assert client.get("/api/admin/devices").json()["devices"][0]["name"] == "研发电脑（沙箱）"
             ws.send_json({"kind": "heartbeat", "daemon_health": False})
             assert ws.receive_json()["kind"] == "heartbeat_ack"
             assert client.get("/api/admin/devices").json()["devices"][0]["daemon_health"] is False

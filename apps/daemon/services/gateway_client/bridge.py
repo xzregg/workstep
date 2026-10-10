@@ -82,6 +82,16 @@ class ManagedHttpBridge:
             access_level = self.start.get("access_level")
             task_create = self.start.get("task_create", False)
             share_ticket = self.start.get("share_ticket")
+            hook_request = self.start.get('hook_request') is True
+            if hook_request:
+                from workstep_gateway_protocol.hooks import HOOK_PATH
+                if (method != 'POST' or not isinstance(path, str) or not HOOK_PATH.fullmatch(path)
+                        or share_ticket is not None
+                        or any(self.start.get(k) is not None for k in (
+                            'user_id', 'username', 'display_name', 'project_id', 'access_level',
+                            'provider_ids', 'provider_grant_expires_at')) or task_create is not False):
+                    raise ValueError('Invalid managed hook request')
+                username = user_id = display_name = 'hook'
             share_scope = None
             if share_ticket is not None:
                 if (not isinstance(share_ticket, str)
@@ -144,6 +154,10 @@ class ManagedHttpBridge:
             }
             if share_scope is not None:
                 scope["gateway_share_scope"] = share_scope
+            if hook_request:
+                scope.pop('gateway_remote_actor')
+                scope.pop('gateway_device_owner')
+                scope['gateway_hook_request'] = True
 
             async def receive():
                 frame = await self._inbound.get()

@@ -22,6 +22,8 @@ test('branch rows open both merge directions with the selected local branch', as
   try {
     await act(async () => root.render(<I18nProvider><GitBranchPicker status={status} onLocate={() => {}} onChanged={async () => {}} onMerge={(direction, branch) => selected.push([direction, branch])} /></I18nProvider>))
     const rows = container.querySelectorAll('.git-branch-row')
+    assert.ok(rows[1].querySelector('.git-branch-actions .git-branch-merge'))
+    assert.ok(rows[1].querySelector('.git-branch-actions .git-branch-final'))
     assert.equal(rows[0].querySelectorAll('.git-branch-merge button').length, 0)
     const buttons = rows[1].querySelectorAll<HTMLButtonElement>('.git-branch-merge button')
     assert.deepEqual([...buttons].map(button => button.textContent), ['Merge to current', 'Merge here'])

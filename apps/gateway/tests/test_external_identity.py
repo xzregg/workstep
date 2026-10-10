@@ -46,7 +46,7 @@ def _start(client, source_id):
     return parse_qs(urlparse(response.json()["authorization_url"]).query)["state"][0]
 
 
-def test_closed_registration_requires_presynced_subject_and_rejects_replay(tmp_path):
+def test_closed_registration_requires_presynced_subject_and_rejects_replay(tmp_path, monkeypatch):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     connector = FakeConnector()
     app.state.identity_connectors = {"dingtalk": connector}
@@ -67,6 +67,10 @@ def test_closed_registration_requires_presynced_subject_and_rejects_replay(tmp_p
         assert logged_in.status_code == 200, logged_in.text
         assert logged_in.json()["user"]["display_name"] == "张三"
         assert logged_in.json()["user"]["username"] != "owner"
+        from datetime import timedelta
+        from gateway.services import identity
+        now = identity._now()
+        monkeypatch.setattr(identity, "_now", lambda: now + timedelta(days=1000))
         assert client.get("/api/auth/session").status_code == 200
 
 

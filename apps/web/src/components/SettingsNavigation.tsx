@@ -2,7 +2,7 @@ import Icon, { type IconName } from './Icon'
 import { useI18n } from '../i18n'
 import './SettingsNavigation.css'
 
-export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'channels' | 'remote' | 'concurrency' | 'git' | 'system' | 'sandbox'
+export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'channels' | 'remote' | 'concurrency' | 'git' | 'system' | 'feedback' | 'sandbox'
 
 const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: string }[] = [
   { id: 'providers', label: 'providerSettings.nav', icon: 'sliders-horizontal' },
@@ -15,6 +15,7 @@ const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: s
   { id: 'concurrency', label: 'projectSettings.tabs.concurrency', icon: 'layers' },
   { id: 'git', label: 'gitSettings.title', icon: 'git-fork' },
   { id: 'system', label: 'settings.systemNav', glyph: '文' },
+  { id: 'feedback', label: 'settings.problemFeedback', icon: 'external-link' },
   { id: 'sandbox', label: 'sandbox.title', icon: 'layers' },
 ]
 

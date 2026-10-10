@@ -11,7 +11,7 @@ type Application = { id: string; provider: 'dingtalk' | 'wecom'; tenant_id: stri
  sync_state?: { last_success_at: string | null; last_error_code: string | null } }
 const names = { dingtalk: '钉钉', wecom: '企业微信' }
 
-function ApplicationEditor({ provider, source, csrf, onClose, onSaved }: { provider: Application['provider']; source?: Application; csrf: string; onClose: () => void; onSaved: () => void }) {
+function ApplicationEditor({ provider, source, csrf, platformAddress, onClose, onSaved }: { platformAddress?: string | null; provider: Application['provider']; source?: Application; csrf: string; onClose: () => void; onSaved: () => void }) {
  const initial = { tenant: source?.tenant_id ?? '', client: source?.client_id ?? '', agent: source?.agent_id ?? '', secret: '',
   frequency: source?.sync_schedule?.frequency ?? 'off', time: source?.sync_schedule?.time ?? '09:00', zone: source?.sync_schedule?.timezone ?? 'Asia/Shanghai', weekday: String(source?.sync_schedule?.weekday ?? 0),
   login: source?.login_enabled ?? true, sync: source?.sync_enabled ?? true, enabled: source?.enabled ?? true }
@@ -51,13 +51,13 @@ function ApplicationEditor({ provider, source, csrf, onClose, onSaved }: { provi
   {source && draft.tenant.trim() !== source.tenant_id && <p role="status">正在更正企业 Corp ID；已有用户组和成员关联会保留。请确认仍是原企业，改为另一企业应添加新应用。</p>}
   <p>自动同步需先完成一次组织选择并确认同步；之后沿用该范围。自动同步失败五分钟后重试，有变更或失败时在管理后台显示组织同步提示。</p>
   <p>密钥加密保存，保存后不再回显。请在企业应用后台授权通讯录读取权限，并配置本平台的登录回调域。</p>
-  {source && <label>登录回调地址<input readOnly value={window.location.origin + '/api/auth/external/' + source.id + '/callback'} /></label>}
+  {source && <label>登录回调地址<input readOnly value={(platformAddress || window.location.origin).replace(/\/+$/, '') + '/api/auth/external/' + source.id + '/callback'} /></label>}
   {error && <p role="alert" className="gateway-auth-error">{error}</p>}
  </GatewayConfirmDialog>
  {discard && <GatewayConfirmDialog title="放弃应用配置" message="尚未保存的修改将丢失。" confirmLabel="放弃并关闭" onConfirm={onClose} onCancel={() => setDiscard(false)} />}</>
 }
 
-export function OrganizationSyncSettings({ csrf }: { csrf: string }) {
+export function OrganizationSyncSettings({ csrf, platformAddress }: { csrf: string; platformAddress?: string | null }) {
  const [sources, setSources] = useState<Application[]>([])
  const [page, setPage] = useState(1); const [total, setTotal] = useState(0)
  const [revision, setRevision] = useState(0); const [error, setError] = useState(''); const [notice, setNotice] = useState('')
@@ -90,6 +90,6 @@ export function OrganizationSyncSettings({ csrf }: { csrf: string }) {
  {total > 25 && <div className="gateway-admin-pagination"><span>共 {total} 个应用 · 第 {page}/{Math.ceil(total/25)} 页</span><button type="button" disabled={loading || page <= 1} onClick={() => setPage(value => value-1)}>上一页</button><button type="button" disabled={loading || page*25 >= total} onClick={() => setPage(value => value+1)}>下一页</button></div>}
  {syncSource && <OrganizationSyncPanel key={syncSource.id} sourceId={syncSource.id} provider={syncSource.provider} csrf={csrf} onClose={() => setSyncSource(null)} onCompleted={() => { setNotice(names[syncSource.provider] + '组织同步完成，已更新用户组和用户。'); setRevision(value => value + 1) }} />}
  {historySource && <OrganizationSyncHistory sourceId={historySource} onClose={()=>setHistorySource(null)}/>}
- {editor && <ApplicationEditor {...editor} csrf={csrf} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); setPage(1); setRevision(value => value+1) }} />}
+ {editor && <ApplicationEditor {...editor} csrf={csrf} platformAddress={platformAddress} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); setPage(1); setRevision(value => value+1) }} />}
  </section>
 }

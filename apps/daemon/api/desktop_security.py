@@ -21,6 +21,19 @@ from services.project_scope import project_http_allowed
 
 DESKTOP_TOKEN_HEADER = "x-workstep-desktop-token"
 LOCAL_SESSION_HEADER = "x-workstep-local-session"
+
+
+async def _remote_task_share_management(request: Request) -> bool:
+    """Only authenticated project-scoped management may pass to the LAN host."""
+    if not re.fullmatch(r'/api/task-share/(?!public/)[^/]+(?:/create)?', request.url.path):
+        return False
+    project_id = request.query_params.get('project_id')
+    if not project_id:
+        return False
+    from api.remote_project import remote_project_registry
+    return await asyncio.to_thread(remote_project_registry.get, project_id) is not None
+
+
 CONTENT_SECURITY_POLICY = "; ".join(
     (
         "default-src 'self'",
@@ -161,6 +174,15 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
     """Authenticate privileged desktop APIs and attach browser hardening headers."""
 
     async def dispatch(self, request: Request, call_next):
+        from workstep_gateway_protocol.hooks import HOOK_PATH
+        if HOOK_PATH.fullmatch(request.url.path):
+            # Only this narrow ingress authenticates with its own hook token.
+            # It never inherits a browser/Gateway user identity.
+            with actor_context(None):
+                response = await call_next(request)
+            response.headers['Cache-Control'] = 'no-store'
+            response.headers['Referrer-Policy'] = 'no-referrer'
+            return response
         desktop_authenticated = desktop_runtime_authenticated(request)
         protected = request.url.path.startswith(("/api/", "/docs", "/redoc", "/openapi.json"))
         gateway_client = getattr(request.app.state, "gateway_client", None)
@@ -240,9 +262,12 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             response = JSONResponse(
                 {"detail": "desktop authentication required"}, status_code=401,
             )
+            if managed and not desktop_authenticated and not remote_bridge and getattr(request.app.state, 'gateway_browser_login', None) is not None:
+                response.headers["X-WorkStep-Gateway-Login"] = "/gateway/login"
             if managed and protected and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)):
                 response.headers["X-WorkStep-Managed-Session-Expired"] = "1"
-        elif managed and request.url.path.startswith('/api/task-share/'):
+        elif (managed and request.url.path.startswith('/api/task-share/')
+              and not await _remote_task_share_management(request)):
             response = JSONResponse(
                 {"detail": "legacy sharing is unavailable in managed mode"}, status_code=403,
             )

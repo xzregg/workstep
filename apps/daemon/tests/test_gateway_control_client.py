@@ -262,6 +262,8 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
     await asyncio.wait_for(heartbeat.wait(), timeout=1)
     assert client.online is True
     assert cache.current and cache.current.device_id == "device-1"
+    from version import APP_VERSION
+    assert next(message for message in sent if message.get("kind") == "heartbeat")["daemon_version"] == APP_VERSION
     assert sent[0]["authorization"] == "authorization"
     assert sent[0]["control_delegation_signature"] == "delegation"
     assert urls[0][0] == "wss://gateway.example/ws/control"

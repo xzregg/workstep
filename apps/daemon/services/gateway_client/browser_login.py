@@ -161,7 +161,7 @@ class GatewayBrowserLogin:
                 response = await client.post(pending['url']+'/api/desktop/token', json={
                     'code': code, 'state': state, 'nonce': pending['nonce'], 'code_verifier': pending['verifier'],
                     'app_instance_id': identity['app_instance_id'], 'gateway_id': pending['gateway_id'],
-                    'device_public_key': public_key, 'device_name': platform.node() or 'WorkStep daemon',
+                    'device_public_key': public_key, 'device_name': os.environ.get('WORKSTEP_DEVICE_NAME', '').strip() or platform.node() or 'WorkStep daemon',
                     'version': __import__('version').APP_VERSION})
                 response.raise_for_status()
                 result = response.json()

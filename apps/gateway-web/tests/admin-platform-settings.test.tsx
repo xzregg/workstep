@@ -50,7 +50,7 @@ test('platform settings retries loading and updates registration after step-up',
     if (url === '/api/admin/platform-settings') {
       if (reads++ === 0) return new Response(null, { status: 503 })
       return Response.json({ gateway_id: 'gateway-test', public_origin: 'https://gateway.test',
-        registration_mode: mode, session_seconds: 86400, protocol_version: 3,
+        registration_mode: mode, session_seconds: null, protocol_version: 3,
         data_dir: '/srv/workstep', database: { backend: 'postgresql', location: 'db.internal/app',
           healthy: true, migration_version: '0028_group_project_capabilities' } })
     }
@@ -66,6 +66,7 @@ test('platform settings retries loading and updates registration after step-up',
   await screen.findByText(/平台设置加载失败/)
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByText('gateway-test')
+  await screen.findByText('不过期（退出或撤销后失效）')
   assert.match(document.body.textContent ?? '', /db.internal\/app/)
   fireEvent.click(screen.getByRole('button', { name: '修改注册策略' }))
   fireEvent.change(screen.getByLabelText('注册策略'), { target: { value: 'open_with_approval' } })

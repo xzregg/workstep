@@ -36,6 +36,7 @@ import TaskDiscussionGroups from '../components/TaskDiscussionGroups'
 import ConfirmDialog from '../components/ConfirmDialog'
 import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
 import GatewayTaskShareLink from '../components/GatewayTaskShareLink'
+import { canUseLocalTaskShare } from '../utils/taskShareUrl'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import TaskStepConfigController from '../components/TaskStepConfigController'
 import {
@@ -1016,7 +1017,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         navigationActions={
           <>
             <TaskDiscussionGroups projectId={projectId} taskId={taskId} />
-            {managedMode !== true && <Button
+            {canUseLocalTaskShare(managedMode, detailProject?.type) && <Button
               className="task-detail-share-button"
               variant="ghost"
               title={t('taskDetail.shareButtonTitle')}
@@ -1132,7 +1133,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             onClose={() => setShowPromptEditor(false)}
           />}
           <ShareDialog
-            open={managedMode !== true && shareOpen && !!task}
+            open={canUseLocalTaskShare(managedMode, detailProject?.type) && shareOpen && !!task}
             taskId={taskId}
             projectId={projectId}
             onClose={() => setShareOpen(false)}

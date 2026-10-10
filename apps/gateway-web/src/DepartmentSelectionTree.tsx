@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 import { subtreeIds, TreeCheckbox } from './TreeSelection'
 
 export type Department = { external_id: string; display_name: string; parent_external_id?: string | null }
-export function DepartmentSelectionTree({ departments, selected, search, disabled, onChange }: {
- departments: Department[]; selected: string[]; search: string; disabled: boolean; onChange: (ids:string[])=>void
+export function DepartmentSelectionTree({ departments, selected, search, disabled, onChange, onSelect, partialIds = [] }: {
+ departments: Department[]; selected: string[]; search: string; disabled: boolean; onChange: (ids:string[], toggledId?:string, checked?:boolean)=>void; onSelect?: (id:string)=>void; partialIds?: string[]
 }) {
  const [collapsed,setCollapsed] = useState<Set<string>>(new Set())
  const nodes=departments.map(node=>({id:node.external_id,parent_id:node.parent_external_id}))
@@ -24,7 +24,7 @@ export function DepartmentSelectionTree({ departments, selected, search, disable
   // the parent's direct members. A cancelled descendant makes ancestors partial.
   if(!value){let parent=nodes.find(node=>node.id===id)?.parent_id;const seen=new Set<string>()
    while(parent && !seen.has(parent)){seen.add(parent);next.delete(parent);parent=nodes.find(node=>node.id===parent)?.parent_id}}
-  onChange([...next])
+  onChange([...next], id, value)
  }
  function branch(items:Department[],seen=new Set<string>(),parentMatches=false):ReactNode {
   return items.filter(node=>!seen.has(node.external_id) && (parentMatches || visible(node))).map(node=>{
@@ -32,13 +32,14 @@ export function DepartmentSelectionTree({ departments, selected, search, disable
    const children=departments.filter(child=>child.parent_external_id===node.external_id && !next.has(child.external_id))
    const open=!!query || !collapsed.has(node.external_id)
    const subtree=subtreeIds(nodes,node.external_id)
-   const checked=subtree.every(id=>choices.has(id))
+   const checked=subtree.every(id=>choices.has(id)) && !subtree.some(id=>partialIds.includes(id))
    const partial=!checked && subtree.some(id=>choices.has(id))
    return <li role="treeitem" aria-checked={partial?'mixed':checked} aria-expanded={children.length?open:undefined} key={node.external_id}>
     <div className="gateway-sync-tree-row">
      {children.length?<button type="button" className="gateway-sync-tree-toggle" aria-label={`${open?'收起':'展开'}${node.display_name}`} aria-expanded={open}
       onClick={()=>setCollapsed(current=>{const updated=new Set(current);if(open)updated.add(node.external_id);else updated.delete(node.external_id);return updated})}>{open?'▾':'▸'}</button>:<span className="gateway-sync-tree-spacer"/>}
      <label><TreeCheckbox label={node.display_name} checked={checked} partial={partial} disabled={disabled} onChange={value=>toggle(node.external_id,value)}/><strong>{node.display_name}</strong></label>
+     {onSelect && <button type="button" className="gateway-sync-view-users" onClick={()=>onSelect(node.external_id)} aria-label={`查看${node.display_name}用户`}>查看用户</button>}
     </div>
     {!!children.length && open && <ul role="group">{branch(children,next,parentMatches || (!!query && matches(node)))}</ul>}
    </li>

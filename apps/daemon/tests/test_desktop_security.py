@@ -226,6 +226,13 @@ def test_managed_runtime_keeps_lan_project_sharing_and_rejects_legacy_task_share
         for path in ('/api/remote-project/share', '/api/remote-project/add'):
             assert client.post(path, headers=headers).status_code == 200
         assert client.post('/api/task-share/task-1/create', headers=headers).status_code == 403
+        from api.remote_project import remote_project_registry
+        monkeypatch.setattr(remote_project_registry, "get", lambda pid: {"id": pid} if pid == "remote-1" else None)
+        assert client.post("/api/task-share/task-1/create?project_id=remote-1", headers=headers).status_code == 200
+        assert client.post("/api/task-share/task-1/create?project_id=local-1", headers=headers).status_code == 403
+        assert client.post("/api/task-share/task-1/create?project_id=remote-1").status_code == 401
+        assert client.get("/api/task-share/public/old-token/meta?project_id=remote-1", headers=headers).status_code == 403
+
         assert client.get('/api/task-share/public/old-token/meta',
                           headers=headers).status_code == 403
         with client.websocket_connect('/ws/remote-project', headers=headers) as ws:
@@ -256,6 +263,9 @@ def test_browser_platform_cookie_requires_same_origin_writes_and_websocket(monke
     app, token, cookie = _browser_managed_app()
     with TestClient(app, base_url='http://localhost:8765') as client:
         assert client.get('/', follow_redirects=False).headers['location'] == '/gateway/login'
+        expired = client.get('/api/actor')
+        assert expired.status_code == 401
+        assert expired.headers['X-WorkStep-Gateway-Login'] == '/gateway/login'
         client.cookies.set(cookie, token)
         assert client.get('/').status_code == 200
         assert client.get('/api/actor').json()['id'] == 'user-1'
@@ -340,3 +350,27 @@ def test_gateway_project_creation_is_reserved_for_device_owner(monkeypatch,user_
         assert client.post('/api/project/init',json={'path':'/demo'}).status_code==expected
         assert client.get('/api/fs/browse').status_code==expected
         assert client.post('/api/fs/mkdir',json={'path':'/demo','name':'project'}).status_code==expected
+
+
+@pytest.mark.asyncio
+async def test_remote_task_share_registry_lookup_keeps_event_loop_responsive(monkeypatch):
+    import asyncio
+    import time
+    from starlette.requests import Request
+    from api.desktop_security import _remote_task_share_management
+    from api.remote_project import remote_project_registry
+
+    def slow_lookup(project_id):
+        time.sleep(0.15)
+        return {"id": project_id}
+
+    monkeypatch.setattr(remote_project_registry, "get", slow_lookup)
+    request = Request({"type": "http", "method": "POST",
+                       "path": "/api/task-share/task-1/create",
+                       "query_string": b"project_id=remote-1", "headers": []})
+    started = time.monotonic()
+    lookup = asyncio.create_task(_remote_task_share_management(request))
+    await asyncio.sleep(0.01)
+    assert time.monotonic() - started < 0.1
+    assert not lookup.done()
+    assert await lookup is True

@@ -73,7 +73,7 @@ test('organization settings opens the self-managed selection panel without impor
  fireEvent.click(await screen.findByRole('button',{name:'同步组织与用户'}))
  await screen.findByLabelText('研发')
  assert.equal(writes,0)
- assert.equal((within(screen.getByRole('dialog',{name:'钉钉 · 选择同步组织'})).getByRole('button',{name:'同步组织与用户'}) as HTMLButtonElement).disabled,true)
+ assert.equal((within(screen.getByRole('dialog',{name:'钉钉 · 选择同步组织与用户'})).getByRole('button',{name:'读取组织与用户变更'}) as HTMLButtonElement).disabled,true)
 })
 
 test('existing enterprise Corp ID can be corrected without replacing its source or secret', async () => {
@@ -135,4 +135,21 @@ test('history owns loading and shows stored status changes',async()=>{
  render(<OrganizationSyncHistory sourceId="source" onClose={()=>{}}/>)
  await screen.findByText(/调部门 3/)
  assert.ok(screen.getByRole('dialog',{name:'组织同步记录'}))
+})
+
+
+test('scan login callback uses the configured platform address for both providers and follows address changes', async () => {
+ for (const provider of ['dingtalk', 'wecom']) {
+  globalThis.fetch = async () => Response.json({sources:[{id:'source-1',provider,tenant_id:'corp',client_id:'app',enabled:true}]})
+  const view = render(<OrganizationSyncSettings csrf="csrf" platformAddress="https://public.example.com/" />)
+  fireEvent.click(await screen.findByRole('button',{name:'编辑配置'}))
+  const callback = screen.getByLabelText('登录回调地址') as HTMLInputElement
+  assert.equal(callback.value,'https://public.example.com/api/auth/external/source-1/callback')
+  assert.equal(callback.readOnly,true)
+  view.rerender(<OrganizationSyncSettings csrf="csrf" platformAddress="https://updated.example.com" />)
+  assert.equal(callback.value,'https://updated.example.com/api/auth/external/source-1/callback')
+  view.rerender(<OrganizationSyncSettings csrf="csrf" platformAddress={null} />)
+  assert.equal(callback.value,'https://gateway.test/api/auth/external/source-1/callback')
+  cleanup()
+ }
 })
