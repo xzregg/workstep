@@ -84,19 +84,27 @@ async function openSettings(page) {
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: /系统设置/ }).click()
 }
-async function closeDesktop(browser) {
-  const connection = await browser.newBrowserCDPSession()
+async function waitForBrowserClose(browser, command, timeout) {
   let onDisconnect, timer
   const disconnected = new Promise(resolve => { onDisconnect = resolve; browser.once('disconnected', onDisconnect) })
   try {
     // Electron can close the CDP transport before acknowledging Browser.close.
     // Keep a timer alive and await that real disconnect, not a dangling promise.
     await Promise.race([
-      connection.send('Browser.close').catch(error => { if (browser.isConnected()) throw error }),
+      command().catch(error => { if (browser.isConnected()) throw error }),
       disconnected,
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Desktop quit command timed out')), 15000) }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Desktop quit command timed out')), timeout) }),
     ])
   } finally { clearTimeout(timer); browser.off('disconnected', onDisconnect) }
+}
+async function closeDesktop(browser) {
+  const connection = await browser.newBrowserCDPSession()
+  await waitForBrowserClose(browser, () => connection.send('Browser.close'), 15000)
+}
+async function cleanupBrowser(browser) {
+  if (browser?.isConnected()) {
+    await waitForBrowserClose(browser, () => browser.close(), 5000).catch(() => {})
+  }
 }
 function installCompletionGuard(runtime = process, onError = console.error) {
   let completed = false
@@ -257,7 +265,7 @@ async function runAcceptance(options) {
         // Exact owned PID/tree only; never kill by image name or port.
         spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
       }
-      if (browser) await browser.close().catch(() => {})
+      await cleanupBrowser(browser)
       if (occupied) await new Promise(resolve => occupied.server.close(resolve))
       await log.close()
     }
@@ -287,4 +295,4 @@ if (require.main === module) {
   const completed = installCompletionGuard()
   runAcceptance(values).then(completed, error => { completed(); console.error(error); process.exitCode = 1 })
 }
-module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse, fixtureLabels, openSettings, closeDesktop, installCompletionGuard }
+module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard }
