@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto')
 const { EventEmitter } = require('node:events')
 const {
   validateVersion, installArguments, verifyChecksum, validateRuntime,
-  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels, openSettings, closeDesktop, installCompletionGuard,
+  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard,
 } = require('../../../scripts/windows-desktop-acceptance.cjs')
 
 test('acceptance only runs on a GitHub Windows runner, never the developer desktop', () => {
@@ -72,6 +72,20 @@ test('an unresolved top-level acceptance must not silently exit with success', (
     assert.equal(runtime.exitCode, complete ? 0 : 1)
     assert.equal(errors.length, complete ? 0 : 1)
   }
+})
+
+test('cleanup does not close an already disconnected desktop a second time', async () => {
+  const browser = new EventEmitter()
+  browser.isConnected = () => false
+  browser.close = () => { assert.fail('closed desktop must not be closed again') }
+  await cleanupBrowser(browser)
+  browser.isConnected = () => true
+  browser.close = () => {
+    setTimeout(() => browser.emit('disconnected'), 1)
+    return new Promise(() => {})
+  }
+  await cleanupBrowser(browser)
+  assert.equal(browser.listenerCount('disconnected'), 0)
 })
 
 test('downloaded installer must match the exact checksum entry', () => {
