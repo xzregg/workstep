@@ -96,6 +96,11 @@ GitHub API 限流；不将其宣称为在线更新请求或浏览器下载跳转
 修复应进入新版本，再完整补测；已发布的 v1.0.11 标签和附件保持不变。
 源码修复采用显式 UTF-8 读写；对无法按 UTF-8 解码的旧配置，先使用当前机器的本地编码
 兼容读取，在下一次保存时迁移为 UTF-8，保留已有项目、设备身份和其他设置。
+重启补测还发现 Windows 上通配地址监听可能与同账号已有的回环监听共存，导致桌面
+连到占用端口的服务（见 [Microsoft Winsock 说明](https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse)）。
+源码启动器使用独占 socket，并持有自己的回环地址预约直到通配监听就绪；首选端口
+被占用时改用空闲端口，保留 LAN 访问能力。原生 Windows socket 测试与实际重启验收
+必须同时通过，不能只用 macOS 上的端口测试代替。
 
 If a secret is ever committed, revoke it before rewriting Git history. Coordinate
 history rewriting with contributors and forks; deleting a branch or force-pushing

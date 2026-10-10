@@ -34,20 +34,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _bind_available(sock: socket.socket, host: str, port: int) -> None:
+    try:
+        sock.bind((host, port))
+    except OSError as exc:
+        windows_exclusive_conflict = hasattr(socket, "SO_EXCLUSIVEADDRUSE") and (
+            exc.errno in (errno.EACCES, 10013, 10048)
+        )
+        if not port or not (exc.errno == errno.EADDRINUSE or windows_exclusive_conflict):
+            raise
+        sock.bind((host, 0))
+
+
 def bind_server_socket(host: str, port: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    reservation = None
     try:
-        try:
-            sock.bind((host, port))
-        except OSError as exc:
-            if not port or exc.errno != errno.EADDRINUSE:
-                raise
-            sock.bind((host, 0))
+        exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        if exclusive is not None:
+            sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+            if host == "0.0.0.0":
+                # Windows allows a wildcard bind beside another process's
+                # specific-interface listener, even with exclusive sockets.
+                # Hold our own loopback reservation until the wildcard is ready,
+                # so 127.0.0.1 cannot remain assigned to a foreign service.
+                reservation = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                reservation.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+                _bind_available(reservation, "127.0.0.1", port)
+                port = reservation.getsockname()[1]
+        _bind_available(sock, host, port)
         sock.listen(2048)
         return sock
     except BaseException:
         sock.close()
         raise
+    finally:
+        if reservation is not None:
+            reservation.close()
 
 
 def ready_line(port: int) -> str:

@@ -1,8 +1,10 @@
 import importlib.util
+import errno
 import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 
@@ -216,6 +218,60 @@ def test_occupied_port_falls_back_without_connecting_to_existing_service():
             fallback.close()
     finally:
         occupied.close()
+
+
+def test_loopback_occupier_cannot_be_shadowed_by_wildcard_listener():
+    occupied = bind_server_socket("127.0.0.1", 0)
+    preferred = occupied.getsockname()[1]
+    try:
+        fallback = bind_server_socket("0.0.0.0", preferred)
+        try:
+            actual = fallback.getsockname()[1]
+            assert actual != preferred
+            with socket.create_connection(("127.0.0.1", actual), timeout=2):
+                pass
+        finally:
+            fallback.close()
+    finally:
+        occupied.close()
+
+
+@pytest.mark.parametrize('error', [errno.EADDRINUSE, errno.EACCES, 10013])
+def test_windows_reserves_loopback_until_exclusive_wildcard_listener_is_ready(monkeypatch, error):
+    events = []
+
+    class FakeSocket:
+        def __init__(self, label):
+            self.label = label
+            self.port = None
+
+        def setsockopt(self, level, option, value):
+            events.append((self.label, 'exclusive', option, value))
+
+        def bind(self, address):
+            events.append((self.label, 'bind', address))
+            if self.label == 'reservation' and address[1] == 8766:
+                raise OSError(error, 'occupied Windows loopback port')
+            self.port = address[1] or 54321
+
+        def getsockname(self):
+            return ('127.0.0.1', self.port)
+
+        def listen(self, backlog):
+            events.append((self.label, 'listen'))
+
+        def close(self):
+            events.append((self.label, 'close'))
+
+    listener, reservation = FakeSocket('listener'), FakeSocket('reservation')
+    sockets = iter([listener, reservation])
+    monkeypatch.setattr(server.socket, 'socket', lambda *args: next(sockets))
+    monkeypatch.setattr(server.socket, 'SO_EXCLUSIVEADDRUSE', -5, raising=False)
+    assert bind_server_socket('0.0.0.0', 8766) is listener
+    assert ('reservation', 'bind', ('127.0.0.1', 0)) in events
+    assert ('listener', 'bind', ('0.0.0.0', 54321)) in events
+    assert events.index(('listener', 'listen')) < events.index(('reservation', 'close'))
+    assert events.index(('listener', 'exclusive', -5, 1)) < events.index(('listener', 'bind', ('0.0.0.0', 54321)))
 
 
 def test_available_requested_port_is_reused():

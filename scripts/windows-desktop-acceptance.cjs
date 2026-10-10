@@ -53,7 +53,7 @@ async function waitFor(probe, message, timeout = 60000, interval = 500) {
 }
 async function exists(file) { return fs.access(file).then(() => true, () => false) }
 async function reservePort() {
-  const server = net.createServer(socket => socket.end())
+  const server = net.createServer(socket => socket.destroy())
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   return { server, port: server.address().port }
 }
