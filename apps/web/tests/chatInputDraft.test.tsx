@@ -41,3 +41,16 @@ test('composer draft follows task ownership across switches and persists on unmo
     await window.happyDOM.close()
   }
 })
+
+test('prefilled onboarding draft survives rerenders before controlled value echoes', async () => {
+ const { window } = installDomEnvironment()
+ const root = createRoot(document.body.appendChild(document.createElement('div')))
+ localStorage.setItem('workstep-chat-draft:onboarding', '接入文字模板')
+ try {
+  await act(async () => root.render(<I18nProvider><ChatInput sessionId="onboarding" value="" onChange={() => {}} onSend={() => {}} /></I18nProvider>))
+  await act(async () => root.render(<I18nProvider><ChatInput sessionId="onboarding" value="" onChange={() => {}} onSend={() => {}} /></I18nProvider>))
+  assert.equal(localStorage.getItem('workstep-chat-draft:onboarding'), '接入文字模板')
+  await act(async () => root.unmount())
+  assert.equal(localStorage.getItem('workstep-chat-draft:onboarding'), '接入文字模板')
+ } finally { await window.happyDOM.close() }
+})

@@ -184,17 +184,19 @@ test('chat draft survives leaving and returning to the page', async () => {
   const container = document.body.appendChild(document.createElement('div'))
 
   try {
+    localStorage.setItem('workstep-chat-draft:session-1', '自定义引擎接入文字模板')
     let root = await renderChat(container)
+    assert.equal((document.querySelector('textarea') as HTMLTextAreaElement).value, '自定义引擎接入文字模板')
     const quickPrompt = [...document.querySelectorAll('button')]
       .find((button) => button.textContent === '填入草稿')
     assert.ok(quickPrompt)
     await act(async () => quickPrompt.click())
-    assert.equal((document.querySelector('textarea') as HTMLTextAreaElement).value, '切页后还在')
+    assert.equal((document.querySelector('textarea') as HTMLTextAreaElement).value, '自定义引擎接入文字模板\n切页后还在')
     await act(async () => root.unmount())
-    assert.equal(localStorage.getItem('workstep-chat-draft:session-1'), '切页后还在')
+    assert.equal(localStorage.getItem('workstep-chat-draft:session-1'), '自定义引擎接入文字模板\n切页后还在')
 
     root = await renderChat(container)
-    assert.equal((document.querySelector('textarea') as HTMLTextAreaElement).value, '切页后还在')
+    assert.equal((document.querySelector('textarea') as HTMLTextAreaElement).value, '自定义引擎接入文字模板\n切页后还在')
     await act(async () => root.unmount())
   } finally {
     restoreApis()

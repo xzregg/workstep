@@ -73,7 +73,15 @@ export class CompletionDeduplicator {
 }
 
 type NativeBridge = { postMessage: (message: string) => void }
-type DesktopBridge = { sandbox?: SandboxBridge; updates?: DesktopUpdateBridge; notify: (notice: CompletionNotice & { url: string }) => void }
+type DesktopBridge = {
+  directories?: {
+    openers: () => Promise<{ openers: import('../api/client').DirectoryOpener[] }>
+    open: (path: string, opener: string) => Promise<{ opened: boolean; path: string }>
+  }
+  sandbox?: SandboxBridge
+  updates?: DesktopUpdateBridge
+  notify: (notice: CompletionNotice & { url: string }) => void
+}
 
 declare global {
   interface Window {

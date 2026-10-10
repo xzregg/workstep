@@ -4028,6 +4028,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   scrollbar-width: thin;
 }
 
+.chat-history-content {
+  /* 留白属于消息内容，向上滚动时随内容离开视口。 */
+  flex-shrink: 0; padding-bottom: 20px;
+}
+
+.chat-history-scroll--assistant {
+  height: 100%; min-height: 0; overflow-y: auto; padding-block: 10px 0;
+  display: flex; flex-direction: column; background: var(--bg);
+}
+
+.chat-history-content--assistant {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 100%;
+}
+
 .chat-history-scroll--paged {
   overflow-anchor: none;
 }
@@ -4039,7 +4053,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .task-chat-history-scroll {
   padding-inline: max(20px, calc((100% - 900px) / 2));
   height: 100%; min-width: 0; overflow-y: auto; overflow-x: hidden;
-  padding-block: 20px; display: flex; flex-direction: column;
+  padding-block: 20px 0; display: flex; flex-direction: column;
 }
 
 .task-chat-history-wrapper { flex: 1; min-width: 0; min-height: 0; position: relative; }

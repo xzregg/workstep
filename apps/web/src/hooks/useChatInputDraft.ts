@@ -27,6 +27,7 @@ export function useChatInputDraft({
   // The parent echo caused by restoring a draft must not be treated as user
   // input; a real edit produces a different value and saves normally.
   const restoredValueRef = useRef<string | null>(null)
+  const beforeRestoreRef = useRef<string | null>(null)
 
   useEffect(() => {
     const previous = draftOwnerRef.current
@@ -37,16 +38,20 @@ export function useChatInputDraft({
         : null
     const ownerChanged = previous?.id !== next?.id || previous?.type !== next?.type
     if (ownerChanged) {
-      if (previous) writeDraft(previous, valueRef.current)
+      if (previous) writeDraft(previous, restoredValueRef.current ?? valueRef.current)
+      restoredValueRef.current = null
+      beforeRestoreRef.current = null
       draftOwnerRef.current = next
       if (!next) return
       const restored = readDraft(next)
       if (restored !== valueRef.current) {
         restoredValueRef.current = restored
+        beforeRestoreRef.current = valueRef.current
         onChange(restored)
       }
       return
     }
+    if (restoredValueRef.current !== null && value === beforeRestoreRef.current) return
     if (restoredValueRef.current === value) {
       restoredValueRef.current = null
       return

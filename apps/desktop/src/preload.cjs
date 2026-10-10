@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('workstepDesktop', {
     readLogs: () => ipcRenderer.invoke('workstep:sandbox:readLogs'),
     copyLogs: () => ipcRenderer.invoke('workstep:sandbox:copyLogs'),
   },
+  directories: {
+    openers: () => ipcRenderer.invoke('workstep:sandbox:directoryOpeners'),
+    open: (path, opener) => ipcRenderer.invoke('workstep:sandbox:openDirectory', { path, opener }),
+  },
   notify: (notice) => ipcRenderer.send('workstep:notify', notice),
   updates: {
     status: () => ipcRenderer.invoke('workstep:update:status'),

@@ -27,3 +27,16 @@ test('composer overlay clearance lives in one shared hook', () => {
   assert.match(hookSource, /overlayHeight \+ OVERLAY_GAP/)
 })
 
+test('task transcript bottom clearance scrolls with the content', async () => {
+  const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
+  const contentRule = css.match(/\.chat-history-content\s*\{([^}]+)\}/)?.[1] ?? ''
+  const scrollRule = css.match(/\.task-chat-history-scroll\s*\{([^}]+)\}/)?.[1] ?? ''
+  assert.match(contentRule, /padding-bottom:\s*20px/)
+  assert.match(contentRule, /flex-shrink:\s*0/)
+  assert.match(scrollRule, /padding-block:\s*20px\s+0/)
+  const assistantScrollRule = css.match(/\.chat-history-scroll--assistant\s*\{([^}]+)\}/)?.[1] ?? ''
+  assert.match(assistantScrollRule, /padding-block:\s*10px\s+0/)
+  assert.doesNotMatch(panelSource, /paddingBlock: 10/)
+  const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
+  assert.match(mobileCss, /\.chat-history-scroll\s*\{\s*padding-block:\s*6px\s+0\s*!important/)
+})

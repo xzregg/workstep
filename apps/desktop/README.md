@@ -52,6 +52,8 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 
 ## 发布
 
+统一版本修改、提交与标签要求见 [发布规范](../../docs/releasing.md#统一应用版本号)。
+
 所有桌面打包入口都会校验沙箱镜像清单。在线发布前将可匿名拉取的 GHCR 镜像摘要设置为 `SANDBOX_IMAGE`，在 `apps/desktop` 执行 `node scripts/write-sandbox-release.cjs`。本地试用包使用明确的 `{"image":null,"localDocker":true}` 清单，仅支持从已启动的 Docker 扫描、选择并导入兼容的 WorkStep 镜像。未明确启用本地导入的空清单或仅含 `latest` 等标签的在线清单会阻止打包；已安装的桌面包不会读取开发用的 `WORKSTEP_SANDBOX_IMAGE` 覆盖变量。
 
 内置 Python 启动时禁用字节码缓存写入，避免改变已签名的应用包资源；验收时应在实际启动前后分别检查签名。

@@ -468,7 +468,7 @@ export default function AssistantChatPanel({
           由包裹层留出「面板高度 + 10px」，滚动容器随之整体变矮。 */}
       <div className={`chat-history-wrapper${scrolledToBottom ? ' is-at-bottom' : ''}`} style={{ flex: 1, minHeight: 0, position: 'relative', paddingBottom: overlayPaddingBottom(5) }}>
         <div
-          className={`chat-history-scroll${onLoadOlderHistory ? ' chat-history-scroll--paged' : ''}`}
+          className={`chat-history-scroll chat-history-scroll--assistant${onLoadOlderHistory ? ' chat-history-scroll--paged' : ''}`}
           ref={listRef}
           onWheelCapture={(event) => {
             if (shouldPauseConversationFollow({ type: 'wheel', deltaY: event.deltaY })) {
@@ -540,16 +540,10 @@ export default function AssistantChatPanel({
               })
             }
           }}
-          style={{
-            height: '100%', minHeight: 0, overflowY: 'auto', paddingBlock: 10,
-            display: 'flex', flexDirection: 'column',
-            background: 'var(--bg)',
-          }}
         >
           <div
             ref={contentRef}
-            className="chat-history-content"
-            style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, minHeight: '100%' }}
+            className="chat-history-content chat-history-content--assistant"
           >
           {conversationMessages.length === 0 && copy.emptyIntro && (
             <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
