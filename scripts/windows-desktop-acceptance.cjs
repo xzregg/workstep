@@ -205,7 +205,7 @@ async function runAcceptance(options) {
       try {
         await execute(path.join(installDir, 'resources/backend/python/python.exe'), ['-c',
           "import sys, locale; sys.path.insert(0, sys.argv[1]); from services.config import config_store; print('UTF8_MODE', sys.flags.utf8_mode, 'FILE_ENCODING', locale.getencoding(), flush=True); config_store.set_user_name('Windows\\u81ea\\u52a8\\u9a8c\\u6536'); print('CONFIG_WRITE_OK', flush=True)",
-          path.join(installDir, 'resources/backend/app')], {
+          path.join(installDir, 'resources/backend/app/daemon')], {
           stdio: ['ignore', diagnostic.fd, diagnostic.fd],
           env: { ...process.env, WORKSTEP_ENV: 'production', PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8',
             WORKSTEP_CONFIG_DIR: path.join(root, `${label}-diagnostic-config`) },
