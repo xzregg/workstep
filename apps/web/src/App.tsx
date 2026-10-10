@@ -18,6 +18,7 @@ import { useI18n } from './i18n'
 import FirstUseDialog from './components/FirstUseDialog'
 import RemoteAccessGate from './components/RemoteAccessGate'
 import GatewayRemoteFrame from './components/GatewayRemoteFrame'
+import GatewayWorkspaceLocation from './components/GatewayWorkspaceLocation'
 import { projectSelectionPath } from './utils/projectSelectionPath'
 import { isGatewayRemoteBrowser } from './utils/gatewayRemote'
 import { useGatewaySessionStore } from './stores/gatewaySessionStore'
@@ -100,6 +101,7 @@ function WelcomeView() {
 function App() {
   return (
     <BrowserRouter basename={gatewayWorkspacePath() || undefined}>
+      <GatewayWorkspaceLocation />
       <GatewayRemoteFrame><GatedApp /></GatewayRemoteFrame>
     </BrowserRouter>
   )

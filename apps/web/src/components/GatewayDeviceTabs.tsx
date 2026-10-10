@@ -5,6 +5,8 @@ import Spinner from './Spinner'
 import { DeviceTabs } from '@workstep/gateway-ui/DeviceTabs'
 import { openRemoteAccess } from '@workstep/gateway-ui/openRemoteAccess'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
+import { readWorkspaceLocation } from '../utils/gatewayWorkspaceLocation'
 
 type Device = {id: string; name: string; online: boolean; project_only?:boolean}
 type Project = {id:string;device_id:string;device_name:string;device_online:boolean;name:string}
@@ -46,12 +48,14 @@ export default function GatewayDeviceTabs({currentDeviceId,currentProjectId,head
     if (pending.current || !device.online || device.id === currentDeviceId) return
     pending.current = true; setOpening(device.id); setError('')
     try {
-      const project=device.project_only?projects.find(item=>item.device_id===device.id):undefined
+      const saved = gatewayWorkspacePath() ? readWorkspaceLocation(useGatewaySessionStore.getState().session?.user_id, device.id) : null
+      const available = projects.filter(item => item.device_id === device.id)
+      const project = device.project_only ? available.find(item => item.id === saved?.projectId) ?? available[0] : undefined
       const access = gatewayWorkspacePath()?await fetch(`/api/${project?'projects':'devices'}/${encodeURIComponent(project?.id ?? device.id)}/access`,{credentials:'same-origin'}).then(async response=>{
         if(!response.ok)throw new ApiError('Device unavailable',response.status)
         return response.json()
       }):await request<{url:string;ticket:string}>(`/remote/devices/${encodeURIComponent(device.id)}/access`)
-      openRemoteAccess(access)
+      openRemoteAccess({ ...access, next: saved && (!device.project_only || project?.id === saved.projectId) ? saved.next : access.next })
     } catch (reason) {
       setError(t(reason instanceof ApiError && reason.status === 409 ? 'gatewayRemote.deviceOffline' : 'gatewayRemote.switchFailed'))
       pending.current = false; setOpening(null)

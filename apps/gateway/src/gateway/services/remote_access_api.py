@@ -8,7 +8,7 @@ import time
 
 from datetime import datetime, timezone
 
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 
 from sqlalchemy import select
@@ -166,8 +166,16 @@ async def redeem_device_ticket(call: GatewayCall):
         claims = call.gateway_signer.verify_access_ticket(ticket[0], gateway_id=call.settings.gateway_id, audience=host)
     except (ValueError, KeyError, UnicodeDecodeError) as exc:
         raise GatewayError('forbidden', 'Invalid device access ticket') from exc
-    next_path = fields.get('next', [''])[0]
-    if next_path and not (next_path.startswith('tasks?') or next_path.startswith('chat?')):
+    destinations = fields.get('next', [''])
+    next_path = destinations[0]
+    try:
+        destination = urlsplit(next_path)
+    except ValueError as exc:
+        raise GatewayError('invalid', 'Invalid workspace destination') from exc
+    # Only application pages relative to this device's workspace are resumable.
+    if (len(destinations) != 1 or destination.scheme or destination.netloc
+            or destination.path not in {'', 'tasks', 'chat', 'canvas', 'git', 'statistics', 'schedules', 'file-preview'}
+            or any(ord(char) <= 32 or ord(char) == 127 or char == chr(92) for char in next_path)):
         raise GatewayError('invalid', 'Invalid workspace destination')
     device_id, user_id = claims["device_id"], claims["user_id"]
     if host != call.settings.device_authority(device_id):

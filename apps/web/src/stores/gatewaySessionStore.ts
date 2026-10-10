@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { request } from '../api/transport'
 
 export interface GatewayRemoteSession {
+  user_id?: string
   device_id: string
   device_name: string
   username: string
