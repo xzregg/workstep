@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { createHash } = require('node:crypto')
 const {
   validateVersion, installArguments, verifyChecksum, validateRuntime,
-  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels,
+  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels, openSettings,
 } = require('../../../scripts/windows-desktop-acceptance.cjs')
 
 test('acceptance only runs on a GitHub Windows runner, never the developer desktop', () => {
@@ -34,6 +34,18 @@ test('upgrade seeds old versions with supported ASCII but new installs require U
   for (const value of Object.values(fixtureLabels(true))) assert.match(value, /^[\x20-\x7e]+$/)
   assert.match(fixtureLabels(false).userName, /中文.*🙂/)
   assert.match(fixtureLabels(false).projectName, /验收/)
+})
+
+test('settings opens through the actual collapsed navigation on narrow runner screens', async () => {
+  for (const compact of [false, true]) {
+    const clicks = []
+    const page = {
+      locator: selector => { assert.equal(selector, '#workstep-navigation'); return { getAttribute: async () => compact ? '' : null } },
+      getByRole: (role, options) => ({ click: async () => { assert.equal(role, 'button'); clicks.push(String(options.name)) } }),
+    }
+    await openSettings(page)
+    assert.deepEqual(clicks, [...(compact ? ['打开导航'] : []), '设置', '/系统设置/'])
+  }
 })
 
 test('downloaded installer must match the exact checksum entry', () => {
