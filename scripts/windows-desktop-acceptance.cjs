@@ -42,6 +42,10 @@ function validatePersistence(fixture, projects, task, memory) {
   assert.equal(task.id, fixture.taskId); assert.equal(task.title, fixture.title)
   assert.equal(memory.content, fixture.memory, 'Project memory lost')
 }
+function validateUninstallMemory(before, after, expected) {
+  assert.equal(before.toString('utf8').replace(/\r\n/g, '\n'), expected, 'Unexpected original memory content')
+  assert.deepEqual(after, before, 'Uninstall changed project memory bytes')
+}
 async function waitFor(probe, message, timeout = 60000, interval = 500) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
@@ -146,10 +150,12 @@ async function runAcceptance(options) {
   }
   async function uninstallAndCheck(scenario) {
     assert(await exists(uninstall), 'Uninstaller missing')
+    const memoryFile = path.join(scenario.project, '.workstep/MEMORY.md')
+    const memoryBefore = await fs.readFile(memoryFile)
     await execute(uninstall, ['/S', '/currentuser'])
     await waitFor(async () => !await exists(executable), 'Uninstall did not remove application')
     assert(await exists(path.join(scenario.project, '.workstep/workstep.db')), 'Uninstall deleted project database')
-    assert.equal(await fs.readFile(path.join(scenario.project, '.workstep/MEMORY.md'), 'utf8'), scenario.fixture.memory)
+    validateUninstallMemory(memoryBefore, await fs.readFile(memoryFile), scenario.fixture.memory)
     assert(await exists(path.join(scenario.config, 'config.json')), 'Uninstall deleted daemon configuration')
     record(`${scenario.name}: uninstall preserves project and daemon data`)
   }
@@ -295,4 +301,4 @@ if (require.main === module) {
   const completed = installCompletionGuard()
   runAcceptance(values).then(completed, error => { completed(); console.error(error); process.exitCode = 1 })
 }
-module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, waitFor, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard }
+module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, validateUninstallMemory, waitFor, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard }
