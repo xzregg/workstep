@@ -73,6 +73,17 @@ Windows Server 的自动检查不能替代 Windows 10/11 实机的 SmartScreen�
 更新设置的界面／IPC 检查使用临时用户目录中的可控 Release 缓存，避免共享 runner IP 的匿名
 GitHub API 限流；不将其宣称为在线更新请求或浏览器下载跳转验收。
 
+### v1.0.11 原始 Windows 包补测结果
+
+2026-10-11 的 [GitHub 验收记录](https://github.com/xzregg/workstep/actions/runs/38067287127)
+使用已发布原 EXE，并核对发布校验清单。中文／空格路径安装、首次启动、内置 daemon
+版本、桌面 IPC 和业务接口认证检查通过；保存中文使用者名称时
+`PUT /api/system-settings` 返回 500，整体验收失败，后续任务、重启、升级和卸载检查未执行。
+原包内置 Python 的隔离复现确认：`ConfigStore._save()` 未指定文本编码，Windows runner
+默认 `cp1252` 导致 `UnicodeEncodeError`。不能将该版本标为 Windows 功能验收通过，
+也不能通过给验收进程强制设置 `PYTHONUTF8=1` 来掩盖正式启动路径的错误。
+修复应进入新版本，再完整补测；已发布的 v1.0.11 标签和附件保持不变。
+
 If a secret is ever committed, revoke it before rewriting Git history. Coordinate
 history rewriting with contributors and forks; deleting a branch or force-pushing
 does not itself revoke a credential.
