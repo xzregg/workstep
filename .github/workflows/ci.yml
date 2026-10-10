@@ -116,7 +116,7 @@ jobs:
           uv run --project apps/daemon --frozen --group dev pytest \
             apps/desktop/tests/test_backend_entry.py \
             apps/desktop/tests/test_build_script.py
-          node --test apps/desktop/tests/sidecar.test.cjs apps/desktop/tests/managed-config.test.cjs
+          node --test apps/desktop/tests/sidecar.test.cjs apps/desktop/tests/managed-config.test.cjs apps/desktop/tests/windows-acceptance.test.cjs
       - name: Web tests and build
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn test && yarn build

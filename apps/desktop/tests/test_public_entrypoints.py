@@ -121,6 +121,22 @@ def test_release_artifacts_exclude_electron_builder_debug_metadata():
     assert "apps/desktop/dist/latest-linux.yml" in workflow
 
 
+def test_windows_acceptance_is_a_release_gate_and_supports_published_package_retests():
+    release = (ROOT / ".github/workflows/desktop-release.yml").read_text()
+    windows = release.split("  windows:\n", 1)[1].split("  linux:\n", 1)[0]
+    assert "windows-desktop-acceptance.cjs" in windows
+    assert windows.index("windows-desktop-acceptance.cjs") < windows.index("name: desktop-windows-x64")
+    assert "if: always()" in windows
+    assert "continue-on-error" not in windows
+    smoke = (ROOT / ".github/workflows/desktop-package-smoke.yml").read_text()
+    assert "acceptance_tag:" in smoke and "previous_tag:" in smoke
+    assert "windows-acceptance:" in smoke
+    assert "SHA256SUMS.txt" in smoke
+    assert "windows-desktop-acceptance.cjs" in smoke
+    assert "--previous-installer" in smoke
+    assert "gh release edit" not in smoke and "gh release upload" not in smoke
+
+
 def test_repository_readmes_present_the_product_and_current_desktop_support():
     readmes = {
         "README.md": (

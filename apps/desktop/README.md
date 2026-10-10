@@ -67,14 +67,17 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 ./build.sh --no-web     # 复用已有 apps/web/dist
 ```
 
-推送 `v*` tag 后，CI 在 Windows x64、Windows x86（32 位）、macOS 和 Linux 分别完成以下流程；Windows 安装包内置与自身架构一致的 CPython：
+推送 `v*` tag 后，CI 在 Windows x64、macOS ARM64 和 Linux x64 分别完成以下流程；Windows 安装包内置与自身架构一致的 CPython：
 
 1. 构建 React 前端。
 2. 下载可重定位的 CPython，并安装锁定的基础 `requirements-prod.txt`（不含可点击安装的引擎 SDK）。
 3. 生成 `build-artifacts/{win,mac,linux}/backend/main.dist/`，其中包含 Python runtime 与 daemon 源码。
 4. 把完整 standalone 目录注入 Electron 的 `resources/backend/`。
 5. 生成 NSIS `.exe`、`.dmg`/更新用 `.zip`、`.AppImage` 和更新元数据。
-6. 创建草稿 GitHub Release；人工发布后才会成为客户端可检测的新版本。
+6. Windows 实际安装包通过安装、启动、界面、版本、重启／升级数据保留和卸载自动验收，失败时阻止发布；报告与真实截图上传为测试证据。
+7. 创建草稿 GitHub Release；人工发布后才会成为客户端可检测的新版本。
+
+已发布 Windows 安装包的独立补测方法及未覆盖的实机项目见 [Windows 安装包自动验收](../../docs/releasing.md#windows-安装包自动验收)。
 
 桌面端不自动下载或安装更新。正式包启动时最多每天查询一次 GitHub 最新 Release，并把结果缓存在本机；用户也可以在“设置 → 系统设置 → 桌面更新”中手动检查。发现更高版本后，只显示“前往 GitHub 下载”按钮并用系统浏览器打开 Release 页面。仅推送 `main` 不会触发更新，必须发布版本号更高的 GitHub Release。
 

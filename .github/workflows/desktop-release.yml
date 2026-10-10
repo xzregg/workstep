@@ -124,6 +124,7 @@ jobs:
   windows:
     needs: [validate, sandbox-image]
     runs-on: windows-2025
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ inputs.tag || github.ref }}" }
@@ -161,6 +162,31 @@ jobs:
           if (-not (Test-Path "resources-placeholder/backend/legal/sbom.cdx.json")) { throw "SBOM missing" }
           $installer = Get-Item "dist/WorkStep-windows-x64.exe"
           if (-not $installer) { throw "Windows installer missing" }
+      - name: Download published Windows upgrade baseline
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = gh release view --repo $env:GITHUB_REPOSITORY --json tagName --jq .tagName
+          if ($LASTEXITCODE -ne 0 -or $tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Published upgrade baseline missing" }
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/previous" | Out-Null
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/previous" --pattern WorkStep-windows-x64.exe --pattern SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw "Baseline download failed" }
+          "WORKSTEP_PREVIOUS_RELEASE=$tag" >> $env:GITHUB_ENV
+      - name: Verify installed Windows desktop before publishing
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
+          node scripts/windows-desktop-acceptance.cjs --installer apps/desktop/dist/WorkStep-windows-x64.exe --version $version --previous-installer "$env:RUNNER_TEMP/previous/WorkStep-windows-x64.exe" --previous-version $env:WORKSTEP_PREVIOUS_RELEASE --previous-checksums "$env:RUNNER_TEMP/previous/SHA256SUMS.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Windows acceptance failed; release is blocked" }
+      - name: Upload Windows acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-acceptance-evidence
+          path: ${{ runner.temp }}/windows-acceptance-report
+          if-no-files-found: warn
+          retention-days: 14
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-windows-x64

@@ -25,7 +25,8 @@
   "dependencies": {},
   "devDependencies": {
     "electron": "43.4.0",
-    "electron-builder": "26.15.3"
+    "electron-builder": "26.15.3",
+    "playwright-core": "1.64.0"
   },
   "volta": {
     "node": "22.22.2",
