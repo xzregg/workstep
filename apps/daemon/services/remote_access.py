@@ -51,6 +51,16 @@ class RemotePrincipal:
     expires_at: int | None = None
 
 
+# Set only while the authenticated RPC dispatcher invokes its bound ASGI route.
+_remote_dispatch_principal: ContextVar[RemotePrincipal | None] = ContextVar(
+    "workstep_remote_dispatch_principal", default=None,
+)
+
+
+def authenticated_remote_dispatch() -> RemotePrincipal | None:
+    return _remote_dispatch_principal.get()
+
+
 _current_actor: ContextVar[ActorSnapshot | None] = ContextVar(
     "workstep_current_actor",
     default=None,

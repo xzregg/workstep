@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 from services.gateway_client.browser_login import COOKIE as PLATFORM_COOKIE
 
-from services.remote_access import ActorSnapshot, actor_context
+from services.remote_access import ActorSnapshot, actor_context, authenticated_remote_dispatch
 from services.project_request_audit import record_remote_request_failure
 from services.project_scope import project_http_allowed
 
@@ -196,6 +196,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             response.headers['Referrer-Policy'] = 'no-referrer'
             return response
         desktop_authenticated = desktop_runtime_authenticated(request)
+        native_dispatch = authenticated_remote_dispatch() is not None
         # The login page and Electron both return with this marker. Complete
         # the local fallback before the managed-mode redirect/API boundary.
         loopback = ("127.0.0.1", "::1", "localhost")
@@ -268,7 +269,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             response = JSONResponse({"detail": "remote host filesystem access unavailable"}, status_code=403)
             response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
             return response
-        if managed and protected and not remote_bridge:
+        if managed and protected and not remote_bridge and not native_dispatch:
             browser_login = getattr(request.app.state, 'gateway_browser_login', None)
             desktop_session = getattr(browser_login, 'desktop_local_session', None) if desktop_authenticated else None
             actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(PLATFORM_COOKIE) or desktop_session)
@@ -285,10 +286,10 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             return RedirectResponse("/gateway/login", status_code=303)
         browser_session = managed and actor is not None and actor.project_id is None
         denied = protected and (
-            (not remote_bridge and not remote_access and not browser_session
+            (not remote_bridge and not native_dispatch and not remote_access and not browser_session
              and request.url.path != "/api/gateway-platform/callback"
              and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
-            or (managed and not remote_bridge and not desktop_authenticated and not remote_access and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback") and actor is None)
+            or (managed and not remote_bridge and not native_dispatch and not desktop_authenticated and not remote_access and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback") and actor is None)
         )
         if denied:
             response = JSONResponse(

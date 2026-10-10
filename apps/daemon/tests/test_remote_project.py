@@ -1,5 +1,6 @@
 """Remote-project transport behavior through the public RPC seam."""
 
+import pytest
 import asyncio
 import base64
 import json
@@ -2204,3 +2205,36 @@ def test_gateway_bridge_uses_gateway_identity_instead_of_lan_access_key(monkeypa
             assert ws.receive_text() == 'ok'
         app.state.gateway_client.managed_config = None
         assert client.get('/api/project/list').status_code == 401
+
+
+@pytest.mark.parametrize('path', ['/api/task/list', '/api/schedule/list'])
+async def test_shared_project_dispatch_to_gateway_connected_desktop_host(monkeypatch, path):
+    from api.desktop_security import DesktopSecurityMiddleware
+    from services.gateway_client.identity import ManagedLocalSessions
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'host-desktop-secret')
+    app = FastAPI()
+    app.state.gateway_client = SimpleNamespace(managed_config=object(), local_sessions=ManagedLocalSessions())
+    app.state.remote_access_service = SimpleNamespace(settings=lambda:{'enabled':False})
+    app.add_middleware(DesktopSecurityMiddleware)
+    access = SimpleNamespace(access_password_required=lambda:True,verify_access_token=lambda token:False)
+    app.add_middleware(RemoteAccessGuardMiddleware,access_service=access)
+    @app.get('/api/task/list')
+    @app.get('/api/schedule/list')
+    async def listing(project_id: str):
+        return {'project_id':project_id,'source':get_current_actor().source}
+    principal = RemotePrincipal('owner-project',ActorSnapshot('guest','访客','device','浏览器','remote'))
+    dispatcher = RemoteRouteDispatcher(app)
+    try:
+        response = await dispatcher.dispatch(RemoteHttpRequest(
+            request_id='shared-project',method='GET',path=path,
+            query={'project_id':'remote:client-alias'}),principal)
+        assert response.status == 200
+        assert response.json() == {'project_id':'owner-project','source':'remote'}
+        async with AsyncClient(transport=ASGITransport(app=app),base_url='http://workstep.internal') as client:
+            forged = await client.get(path,params={'project_id':'owner-project'},headers={
+                'X-WorkStep-Actor-Id':'guest','X-WorkStep-Actor-Name':'guest',
+                'X-WorkStep-Actor-Source':'remote'})
+            assert forged.status_code == 401
+    finally:
+        await dispatcher.aclose()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from services.remote_access import _remote_dispatch_principal
+
 import asyncio
 import base64
 import inspect
@@ -170,6 +172,7 @@ class RemoteRouteDispatcher:
                             user_name=attribution['user_name'],
                             username=attribution['username'] or None)
         actor_token = _current_actor.set(actor)
+        principal_token = _remote_dispatch_principal.set(principal)
         try:
             response = await self._client.request(
                 request.method,
@@ -183,6 +186,7 @@ class RemoteRouteDispatcher:
                 },
             )
         finally:
+            _remote_dispatch_principal.reset(principal_token)
             _current_actor.reset(actor_token)
 
         return RemoteHttpResponse(
