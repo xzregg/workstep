@@ -1,6 +1,7 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const jaJP: Messages = {
+  notificationTemplate: zhCN.notificationTemplate,
   gatewayLocalFallbackError: zhCN.gatewayLocalFallbackError,
   notificationHooks: zhCN.notificationHooks,
   workflowHooks: zhCN.workflowHooks,

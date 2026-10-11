@@ -10,6 +10,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from schemas.notification_hooks import EVENT_NAMES
+from schemas.notification_template import DEFAULT_MARKDOWN_TEMPLATE, MAX_MARKDOWN_BYTES, TEMPLATE_VARIABLE
 
 
 class DeliveryError(Exception):
@@ -40,18 +41,22 @@ def notification_payload(hook, snapshot):
     title = (hook['prefix'] + ' · ' if hook['prefix'] else '') + EVENT_NAMES[snapshot['event']]
     if hook['platform'] == 'generic':
         return {**snapshot, 'notification_title': title}
-    lines = ['### ' + markdown_text(title), '**事件：' + EVENT_NAMES[snapshot['event']] + '**',
-             '项目：' + markdown_text(snapshot['project']['name'][:120]),
-             '流程：' + markdown_text(snapshot['workflow']['name'][:120]), '任务：' + markdown_text(snapshot['task']['title'])]
-    if snapshot.get('step'): lines.append('步骤：' + markdown_text(snapshot['step']['name'][:120]))
-    lines.append('**时间：' + notification_time(snapshot['occurred_at']) + '**')
-    text = '\n\n'.join(lines)
-    text = text.encode()[:3000].decode('utf-8', errors='ignore')
-    if snapshot.get('task_url'):
-        # The base URL is installation configuration, never a webhook credential.
-        url = snapshot['task_url'].replace('(', '%28').replace(')', '%29')
-        if len((text + url).encode()) < 3900:
-            text += '\n\n[查看任务](' + url + ')'
+    step_name = markdown_text(snapshot['step']['name'][:120]) if snapshot.get('step') else ''
+    # Links come from installation addresses, never webhook credentials.
+    url = (snapshot.get('task_url') or '').replace('(', '%28').replace(')', '%29')
+    values = {
+        'notification_title':markdown_text(title), 'event_name':EVENT_NAMES[snapshot['event']],
+        'project_name':markdown_text(snapshot['project']['name'][:120]),
+        'workflow_name':markdown_text(snapshot['workflow']['name'][:120]),
+        'task_title':markdown_text(snapshot['task']['title']), 'step_name':step_name,
+        'step_line':'步骤：' + step_name if step_name else '',
+        'time':notification_time(snapshot['occurred_at']), 'occurred_at':snapshot['occurred_at'],
+        'event':snapshot['event'], 'task_url':url, 'task_link':f'[查看任务]({url})' if url else '',
+    }
+    template = hook.get('markdown_template') or DEFAULT_MARKDOWN_TEMPLATE
+    text = TEMPLATE_VARIABLE.sub(lambda match: values[match.group(1)], template)
+    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+    text = text.encode()[:MAX_MARKDOWN_BYTES].decode('utf-8', errors='ignore')
     return {'msgtype':'markdown', 'markdown': {'title': title, 'text': text} if hook['platform']=='dingtalk' else {'content':text}}
 
 

@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom'
 import { MemoryRouter } from 'react-router-dom'
 import { PortalHeader } from '../src/PortalHeader'
 import { ProjectsPage } from '../src/ProjectsPage'
+import { NotificationCenterView } from '@workstep/gateway-ui/NotificationCenterView'
 
 const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'https://gateway.test/'})
 Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,
@@ -51,7 +52,7 @@ test('notification opens the source workspace directly and never creates iframe'
   assert.equal(sockets.length,1)
   fireEvent.click(screen.getByRole('button',{name:'通知，1 条未读'}))
   assert.ok(screen.getByText('B设备 · 演示项目'))
-  fireEvent.click(screen.getByRole('button',{name:/完成测试 · 已完成/}))
+  fireEvent.click(screen.getByRole('button',{name:/完成测试 · 回复完成/}))
   await waitFor(()=>assert.equal(submissions.length,4))
   assert.equal(submissions[3].next,'tasks?project=Demo&task=task')
   assert.equal(submissions[3].target,'')
@@ -69,9 +70,33 @@ test('offline notification remains visible and retryable instead of navigating',
   render(<MemoryRouter><PortalHeader signedIn hasAdminAccess={false}/></MemoryRouter>)
   await screen.findByRole('button',{name:'通知，1 条未读'})
   fireEvent.click(screen.getByRole('button',{name:'通知，1 条未读'}))
-  fireEvent.click(screen.getByRole('button',{name:/任务 task · 失败/}))
+  fireEvent.click(screen.getByRole('button',{name:/任务 task · 回复失败/}))
   await screen.findByText('设备离线，通知已保留，上线后可重试。')
   assert.equal(screen.getByRole('button',{name:'通知，1 条未读'}).getAttribute('aria-expanded'),'true')
+})
+
+test('notifications distinguish replies from steps and paginate from the last chronological item',async()=>{
+  const base={device_id:'b',device_name:'B设备',host_project_id:'project',project_name:'Demo',
+    task_id:'task',scope_name:'测试任务',read:false}
+  const events=[{...base,id:'newest',sequence:2,status:'succeeded',occurred_at:30},
+    {...base,id:'step',sequence:4,step_key:'start',status:'failed',occurred_at:20}]
+  const requests:string[]=[]
+  globalThis.fetch=async input=>{
+    const url=String(input);requests.push(url)
+    if(url==='/api/notifications')return Response.json({events,unread:4,cursor:4,more:true})
+    assert.equal(url,'/api/notifications?before=4')
+    return Response.json({events:[{...base,id:'older',sequence:3,status:'failed',occurred_at:20},
+      {...base,id:'oldest',sequence:1,session_id:'s',task_id:undefined,scope_name:'会话',status:'error',occurred_at:10}],unread:4,cursor:4,more:false})
+  }
+  render(<NotificationCenterView onOpen={()=>{}}/>)
+  fireEvent.click(await screen.findByRole('button',{name:'通知，4 条未读'}))
+  assert.ok(screen.getByRole('button',{name:/测试任务 · 回复完成/}))
+  assert.ok(screen.getByRole('button',{name:/测试任务 · 步骤失败.*步骤 start/}))
+  fireEvent.click(screen.getByRole('button',{name:'加载更早通知'}))
+  await screen.findByRole('button',{name:/会话 · 回复失败/})
+  assert.deepEqual(requests,['/api/notifications','/api/notifications?before=4'])
+  assert.deepEqual([...document.querySelectorAll('.gateway-notification-panel li strong')].map(node=>node.textContent),
+    ['测试任务 · 回复完成','测试任务 · 步骤失败','测试任务 · 回复失败','会话 · 回复失败'])
 })
 
 test('gateway completion calls the shipped Android notify bridge once and does not replay old history',async()=>{

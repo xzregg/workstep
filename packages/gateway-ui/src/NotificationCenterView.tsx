@@ -110,7 +110,7 @@ export function NotificationCenterView({onOpen}: {onOpen:(target:NotificationTar
     if(pending.current || !snapshot.events.length)return
     pending.current=true;setBusy(true)
     try {
-      const before=Math.min(...snapshot.events.map(e=>e.sequence))
+      const before=snapshot.events[snapshot.events.length-1].sequence
       const response=await fetch('/api/notifications?before='+before,{credentials:'same-origin'})
       if(!response.ok)throw Error('通知加载失败，请重试。')
       const next:Snapshot=await response.json()
@@ -131,7 +131,7 @@ export function NotificationCenterView({onOpen}: {onOpen:(target:NotificationTar
       {busy && <p role="status"><span className="gateway-spinner"/> 正在处理…</p>}
       <ul>{snapshot.events.map(notice=><li key={notice.id} className={notice.read?'':'gateway-notification-unread'}>
         <button type="button" disabled={busy} onClick={()=>void choose(notice)}>
-          <strong>{notice.scope_name || (notice.task_id?'任务 '+notice.task_id:'对话 '+notice.session_id)} · {['passed','succeeded'].includes(notice.status)?'已完成':'失败'}</strong>
+          <strong>{notice.scope_name || (notice.task_id?'任务 '+notice.task_id:'对话 '+notice.session_id)} · {notice.step_key?'步骤':'回复'}{['passed','succeeded'].includes(notice.status)?'完成':'失败'}</strong>
           <span>{notice.device_name} · {notice.project_name}{notice.step_key?' · 步骤 '+notice.step_key:''}</span>
           <time dateTime={new Date(notice.occurred_at*1000).toISOString()}>{new Date(notice.occurred_at*1000).toLocaleString()}</time>
         </button></li>)}</ul>

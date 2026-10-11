@@ -49,6 +49,9 @@ _LEGACY_MALFORMED_INDEXES = (
 )
 
 _ADDITIVE_COLUMNS = {
+    "notification_hooks": {
+        "markdown_template": "TEXT",
+    },
     "project_audit_events": {
         "upload_status": "TEXT NOT NULL DEFAULT 'pending'",
         "upload_error": "TEXT",

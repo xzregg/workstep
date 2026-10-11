@@ -12,10 +12,16 @@ export interface NotificationHook {
   enabled: boolean
   events: NotificationEvent[]
   prefix: string
+  markdown_template?: string | null
   include_link: boolean
   link_base: 'gateway' | 'external' | 'internal'
 }
-export interface NotificationConfiguration { hooks: NotificationHook[]; addresses: HookConfiguration['addresses'] }
+export interface NotificationConfiguration {
+  hooks: NotificationHook[]
+  addresses: HookConfiguration['addresses']
+  default_markdown_template?: string
+  template_variables?: string[]
+}
 export interface NotificationRecord {
   id: string; event: NotificationEvent | 'test'; title: string; status: 'pending' | 'sending' | 'sent' | 'failed' | 'skipped'
   attempts: number; created_at: number; updated_at: number; result: string; next_at: number

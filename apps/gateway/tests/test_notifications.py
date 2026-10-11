@@ -67,6 +67,35 @@ def test_cross_device_notifications_deduplicate_persist_and_check_current_access
         assert restarted.get('/api/notifications').json()['unread'] == 0
 
 
+def test_notifications_sort_and_paginate_by_event_time_with_sequence_read_cursor(tmp_path):
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path)),base_url='https://gateway.test') as client:
+        setup=client.post('/api/platform/setup',json=dict(username='owner',display_name='Owner',password='OwnerPassphrase-2026!',
+            recovery_username='recovery',recovery_password='RecoveryPassphrase-2026!',registration_mode='open')).json()
+        async def seed():
+            async with client.app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(id='one',name='one',public_key='test',status='active',app_instance_id='one',version='1'))
+                    session.add(UserDevice(id='one',user_id=setup['user']['id'],device_id='one',access_level='edit'))
+            now=time.time()
+            # A reconnect collects older results after a newer result was stored.
+            for message,age in [('oldest',30),('newest',10),('older',20),('same-time',20)]:
+                await client.app.state.notifications.record('one','project','Demo',[dict(
+                    type='TEXT_MESSAGE_END',status='succeeded',project_id='project',task_id='task',
+                    messageId=message,recorded_at=now-age)])
+        client.portal.call(seed)
+        first=client.get('/api/notifications',params={'limit':2}).json()
+        assert [event['messageId'] for event in first['events']]==['newest','same-time']
+        assert first['cursor']==4 and first['unread']==4 and first['more']
+        second=client.get('/api/notifications',params={'limit':2,'before':first['events'][-1]['sequence']}).json()
+        assert [event['messageId'] for event in second['events']]==['older','oldest']
+        assert not second['more']
+        incremental=client.get('/api/notifications',params={'after':2}).json()
+        assert [event['messageId'] for event in incremental['events']]==['same-time','older']
+        assert client.post('/api/notifications/read',headers={'X-CSRF-Token':setup['csrf_token']},
+            json={'through':first['cursor']}).status_code==200
+        assert client.get('/api/notifications').json()['unread']==0
+
+
 @pytest.mark.parametrize('path', ['/ws/notifications', '/api/notifications/ws'])
 def test_notification_websocket_uses_one_authenticated_feed_and_survives_idle(tmp_path, path):
     with TestClient(create_app(GatewaySettings(data_dir=tmp_path)),base_url='https://gateway.test') as client:

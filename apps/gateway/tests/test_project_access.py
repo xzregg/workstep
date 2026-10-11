@@ -190,6 +190,7 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/workflow/list?project_id=host-1").status_code == 200
         assert client.get(f"{host}/api/chat-sessions?project_id=host-1").status_code == 200
         for path in ('/api/chat-sessions/session-1?project_id=host-1&limit=300&offset=0',
+                     '/api/engine/codex_sdk/quota?project_id=host-1',
                      '/api/task/task-1/history?project_id=host-1&limit=300&offset=0',
                      '/api/project-actions/sessions/session-1?project_id=host-1',
                      '/api/tasks/task-1/actions?project_id=host-1',
@@ -199,6 +200,9 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                      '/api/workflow/generate/history?project_id=host-1&workflow_id=flow-1'):
             response = client.get(host + path)
             assert response.status_code == 200, (path, response.text)
+        for query in ('', '?project_id=host-2', '?project_id=host-1&project_id=host-1',
+                      '?project_id=host-1&refresh=1'):
+            assert client.get(f'{host}/api/engine/codex_sdk/quota{query}').status_code == 403
         assert client.get(f"{host}/api/search/tasks?projectId=host-1").status_code == 200
         assert client.get(f"{host}/api/search/tasks").status_code == 403
         assert client.get(f"{host}/api/task/task-1/history?project_id=host-1").status_code == 200
