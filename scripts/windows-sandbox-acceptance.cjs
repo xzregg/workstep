@@ -63,9 +63,18 @@ async function runAcceptance(options) {
     report.image = releaseImage
     const extracted = path.join(root, 'published-modules')
     asar.extractAll(archive, extracted)
-    const { SandboxManager } = require(path.join(extracted, 'src/sandbox.cjs'))
-    const { run } = require(path.join(extracted, 'src/sandbox-runtime.cjs'))
-    record('published installer checksum, version and immutable image; unmodified sandbox modules')
+    const modules = options['source-modules'] ? path.join(__dirname, '../apps/desktop/src') : path.join(extracted, 'src')
+    report.moduleMode = options['source-modules'] ? 'source-fix-with-published-image' : 'unmodified-published-modules'
+    if (options['source-modules']) {
+      report.sourceCommit = process.env.GITHUB_SHA
+      report.sourceModuleHashes = Object.fromEntries(await Promise.all(
+        ['sandbox.cjs', 'sandbox-runtime.cjs', 'sandbox-config.cjs', 'sandbox-docker.cjs'].map(async name =>
+          [name, createHash('sha256').update(await fs.readFile(path.join(modules, name))).digest('hex')])) )
+      report.gaps.push('Rebuilt fixed desktop installer: source modules used with the published image')
+    }
+    const { SandboxManager } = require(path.join(modules, 'sandbox.cjs'))
+    const { run } = require(path.join(modules, 'sandbox-runtime.cjs'))
+    record(`published installer checksum/version/immutable image; ${report.moduleMode}`)
 
     const sandbox = path.join(root, options['ascii-sandbox-root'] ? 'sandbox with spaces' : '中文沙箱 with spaces')
     const project = path.join(root, '中文项目 with spaces')
@@ -170,6 +179,19 @@ async function runAcceptance(options) {
   } catch (error) {
     report.failedPhase = phase; report.error = redact(error.stack, token)
     console.error(report.error)
+    if (phase === 'first-start' && podman && machine) {
+      // Product startup stops its VM after failure. Reopen only this owned VM
+      // for read-only diagnostics; do not turn a failed startup into a pass.
+      try {
+        await podman(['machine', 'start', '--update-connection=false', machine])
+        const command = args => podman(['--connection', machine, ...args])
+        const name = machine
+        const [container] = JSON.parse(await command(['inspect', name]))
+        report.containerFailure = { State: container.State, Mounts: container.Mounts,
+          Ports: container.NetworkSettings?.Ports }
+        await fs.writeFile(path.join(reportDir, 'container-failure.log'), redact(await command(['logs', '--tail=200', name]), token))
+      } catch (diagnosticError) { report.diagnosticError = redact(diagnosticError.message, token) }
+    }
   } finally {
     if (manager && !(report.success)) {
       await fs.writeFile(path.join(reportDir, 'sandbox.log'), redact(await manager.readLogs().catch(error => error.message), token))
@@ -183,7 +205,7 @@ async function runAcceptance(options) {
 }
 if (require.main === module) {
   const { values } = parseArgs({ options: { ...Object.fromEntries(['installer', 'version', 'checksums'].map(name => [name, { type: 'string' }])),
-    'ascii-sandbox-root': { type: 'boolean', default: false } } })
+    'ascii-sandbox-root': { type: 'boolean', default: false }, 'source-modules': { type: 'boolean', default: false } } })
   const completed = installCompletionGuard()
   runAcceptance(values).then(completed, error => { completed(); console.error(error); process.exitCode = 1 })
 }

@@ -64,6 +64,29 @@ function validateArchiveEntries(list) {
   }
 }
 
+async function extractWindowsZip(archive, destination, execute = run) {
+  // Windows tar can narrow Unicode paths to the system ANSI code page. .NET
+  // uses wide paths; environment arguments also avoid PowerShell interpolation.
+  const script = String.raw`$ErrorActionPreference='Stop'
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive=$env:WORKSTEP_ZIP_ARCHIVE
+$destination=[IO.Path]::GetFullPath($env:WORKSTEP_ZIP_DESTINATION).TrimEnd('\')+'\'
+$zip=[IO.Compression.ZipFile]::OpenRead($archive)
+try {
+  foreach ($entry in $zip.Entries) {
+    $name=$entry.FullName.Replace('/','\')
+    if ([IO.Path]::IsPathRooted($name) -or $name.Contains(':') -or $name.Contains([char]0) -or (($name -split '\\') -contains '..')) { throw 'Invalid ZIP entry path' }
+    $target=[IO.Path]::GetFullPath([IO.Path]::Combine($destination,$name))
+    if (!$target.StartsWith($destination,[StringComparison]::OrdinalIgnoreCase)) { throw 'ZIP entry escapes destination' }
+    if ((($entry.ExternalAttributes -shr 16) -band 61440) -eq 40960) { throw 'ZIP symbolic links are not allowed' }
+  }
+} finally { $zip.Dispose() }
+[IO.Compression.ZipFile]::ExtractToDirectory($archive,$destination)`
+  await execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    env: { ...process.env, WORKSTEP_ZIP_ARCHIVE: archive, WORKSTEP_ZIP_DESTINATION: destination },
+  })
+}
+
 async function installRuntime(root, platform, arch, report) {
   const asset = ASSETS[`${platform}-${arch}`]
   if (!asset) throw new Error('当前系统或架构不支持桌面沙箱')
@@ -81,6 +104,8 @@ async function installRuntime(root, platform, arch, report) {
     if (asset.format === 'pkg') {
       // Expand the official installer; do not install it into host /opt or run scripts.
       await run('/usr/sbin/pkgutil', ['--expand-full', archive, path.join(stage, 'payload')])
+    } else if (asset.format === 'zip') {
+      await extractWindowsZip(archive, stage)
     } else {
       validateArchiveEntries(await run('tar', ['-tf', archive]))
       await run('tar', ['-xf', archive, '-C', stage])
@@ -102,4 +127,4 @@ async function installRuntime(root, platform, arch, report) {
   } finally { await fs.rm(stage, { recursive: true, force: true }) }
 }
 
-module.exports = { ASSETS, run, download, installRuntime, validateArchiveEntries }
+module.exports = { ASSETS, run, download, installRuntime, validateArchiveEntries, extractWindowsZip }
