@@ -33,6 +33,11 @@ on:
         type: boolean
         required: false
         default: false
+      sandbox_source:
+        description: Verify checked-out sandbox source fixes against the immutable published image (not a rebuilt installer)
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: desktop-package-smoke-${{ inputs.ref }}
@@ -83,9 +88,11 @@ jobs:
           SANDBOX_TAG: ${{ inputs.sandbox_tag }}
           WORKSTEP_ENV: production
           SANDBOX_ASCII_ROOT: ${{ inputs.sandbox_ascii_root }}
+          SANDBOX_SOURCE: ${{ inputs.sandbox_source }}
         run: |
           $pathArgs = @()
           if ($env:SANDBOX_ASCII_ROOT -eq 'true') { $pathArgs = @('--ascii-sandbox-root') }
+          if ($env:SANDBOX_SOURCE -eq 'true') { $pathArgs += '--source-modules' }
           node scripts/windows-sandbox-acceptance.cjs --installer "$env:RUNNER_TEMP/sandbox-installer/WorkStep-windows-x64.exe" --checksums "$env:RUNNER_TEMP/sandbox-installer/SHA256SUMS.txt" --version $env:SANDBOX_TAG @pathArgs
           if ($LASTEXITCODE -ne 0) { throw "Windows sandbox acceptance failed" }
           $sandboxReport = Get-Content "$env:RUNNER_TEMP/windows-sandbox-report/report.json" -Raw | ConvertFrom-Json
