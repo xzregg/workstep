@@ -268,6 +268,33 @@ test('preparation, restart, container health and cleanup preserve project and HO
   } finally { globalThis.fetch = originalFetch; await fs.rm(base, { recursive: true, force: true }) }
 })
 
+test('Windows cold bootstrap can finish after 90 seconds but startup remains bounded', async () => {
+  const originalFetch = globalThis.fetch, originalNow = Date.now
+  try {
+    // Only health polling is exercised; no VM, server, or filesystem is used.
+    const manager = new SandboxManager({ stateDir: '/unused', report: () => {} })
+    for (const [platform, advance, shouldPass] of [['win32', 100000, true], ['win32', 300001, false], ['linux', 100000, false]]) {
+      manager.platform = platform
+      let now = 0, requests = 0
+      Date.now = () => now
+      globalThis.fetch = async () => {
+        if (++requests === 1) { now += advance; throw new Error('runtime seed still extracting') }
+        return Response.json({ status: 'ok' })
+      }
+      if (shouldPass) {
+        await manager.waitForHealth('http://127.0.0.1:45678', 'token', manager.startGeneration)
+        assert.equal(requests, 2)
+      } else {
+        await assert.rejects(manager.waitForHealth('http://127.0.0.1:45678', 'token', manager.startGeneration), /健康检查超时/)
+        assert.equal(requests, 1)
+        assert.equal(manager.running, false)
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch; Date.now = originalNow
+  }
+})
+
 test('failed image preparation stops only the dedicated VM and remains removable', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-vm-test-'))
   try {

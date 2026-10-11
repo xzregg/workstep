@@ -397,20 +397,7 @@ class SandboxManager {
         if (!matched) throw new Error('无法取得沙箱后台端口')
         this.hostPort = Number(matched[1])
         const url = `http://127.0.0.1:${matched[1]}`
-        const deadline = Date.now() + 90000
-        const healthStarted = Date.now()
-        let healthy = false
-        while (Date.now() < deadline) {
-          if (generation !== this.startGeneration) throw new Error('沙箱启动已取消')
-          try {
-            const response = await fetch(`${url}/api/health`, { headers: { 'X-WorkStep-Desktop-Token': token }, signal: AbortSignal.timeout(2000) })
-            if (response.ok && (await response.json()).status === 'ok') { healthy = true; break }
-          } catch { /* startup still in progress */ }
-          const elapsed = Date.now() - healthStarted
-          this.report({ phase: 'starting', progress: null, percent: 75 + Math.min(20, Math.round(elapsed / 90000 * 20)) })
-          await delay(500)
-        }
-        if (!healthy) throw new Error('沙箱后台健康检查超时，请查看容器日志')
+        await this.waitForHealth(url, token, generation)
         this.running = true; this.health = 'healthy'; this.update('running')
         return url
       } catch (error) {
@@ -421,6 +408,22 @@ class SandboxManager {
         throw error
       }
     })
+  }
+  async waitForHealth(url, token, generation) {
+    // The image seeds HOME before starting the daemon. WSL's Windows 9p
+    // mount needs a larger bounded cold-start window than native filesystems.
+    const timeout = this.platform === 'win32' ? 300000 : 90000
+    const started = Date.now(), deadline = started + timeout
+    while (Date.now() < deadline) {
+      if (generation !== this.startGeneration) throw new Error('沙箱启动已取消')
+      try {
+        const response = await fetch(`${url}/api/health`, { headers: { 'X-WorkStep-Desktop-Token': token }, signal: AbortSignal.timeout(2000) })
+        if (response.ok && (await response.json()).status === 'ok') return
+      } catch { /* startup still in progress */ }
+      this.report({ phase: 'starting', progress: null, percent: 75 + Math.min(20, Math.round((Date.now() - started) / timeout * 20)) })
+      await delay(500)
+    }
+    throw new Error('沙箱后台健康检查超时，请查看容器日志')
   }
   async captureLogs() {
     if (!this.session || !this.activeConfig) return
