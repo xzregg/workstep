@@ -5,6 +5,7 @@ import hmac
 import json
 import re
 import time
+from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
@@ -21,16 +22,29 @@ def markdown_text(value):
     return re.sub(r'([\\`*\[\]<>])', r'\\\1', str(value).replace('\n',' ')[:500])
 
 
+def notification_time(value):
+    try:
+        instant = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    local = instant.astimezone()
+    offset = local.strftime('%z')
+    return f"{local:%Y-%m-%d %H:%M:%S} (UTC{offset[:3]}:{offset[3:]})"
+
+
 def notification_payload(hook, snapshot):
     if not hook.get('include_link', True):
         snapshot = {**snapshot, 'task_url': None}
     title = (hook['prefix'] + ' · ' if hook['prefix'] else '') + EVENT_NAMES[snapshot['event']]
     if hook['platform'] == 'generic':
         return {**snapshot, 'notification_title': title}
-    lines = ['### ' + markdown_text(title), '项目：' + markdown_text(snapshot['project']['name'][:120]),
+    lines = ['### ' + markdown_text(title), '**事件：' + EVENT_NAMES[snapshot['event']] + '**',
+             '项目：' + markdown_text(snapshot['project']['name'][:120]),
              '流程：' + markdown_text(snapshot['workflow']['name'][:120]), '任务：' + markdown_text(snapshot['task']['title'])]
     if snapshot.get('step'): lines.append('步骤：' + markdown_text(snapshot['step']['name'][:120]))
-    lines.append('时间：' + snapshot['occurred_at'])
+    lines.append('**时间：' + notification_time(snapshot['occurred_at']) + '**')
     text = '\n\n'.join(lines)
     text = text.encode()[:3000].decode('utf-8', errors='ignore')
     if snapshot.get('task_url'):
@@ -65,9 +79,10 @@ async def send_notification(hook, payload, *, client=None, now=None):
                     code = data.get('errcode')
                 except (ValueError, AttributeError):
                     raise DeliveryError('平台响应格式无效') from None
+                if type(code) is not int:
+                    raise DeliveryError('平台响应格式无效')
                 if code != 0:
-                    safe_code = str(code) if isinstance(code,int) else '未知'
-                    raise DeliveryError(f'平台错误码 {safe_code}', retryable=code in {130101,45009,-1})
+                    raise DeliveryError(f'平台错误码 {code}', retryable=code in {130101,45009,-1})
         except httpx.TimeoutException:
             raise DeliveryError('连接超时',retryable=True) from None
         except httpx.RequestError:

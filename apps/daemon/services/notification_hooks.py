@@ -117,7 +117,7 @@ class NotificationHookService:
             if step_key:
                 from services.workflow_definition import WorkflowDefinition
                 steps=WorkflowDefinition.load(workflow['steps']).compile().steps
-                step={'key':step_key,'name':next((s.get('name') or step_key for s in steps if s['key']==step_key),step_key)}
+                step={'key':step_key,'name':next((s.get('label') or step_key for s in steps if s['key']==step_key),step_key)}
                 run=StepRun.select().where((StepRun.step_key==step_key)&(StepRun.run==task.active_workflow_run_id)).order_by(StepRun.attempt.desc()).first() if task.active_workflow_run_id else None
                 state=TaskStep.get_or_none((TaskStep.task==task_id)&(TaskStep.step_key==step_key))
                 identity=run.id if run else f'{task_id}:{step_key}:{state.started_at if state else ""}:{state.ended_at if state else ""}'
@@ -194,9 +194,10 @@ class NotificationHookService:
             def renew(_):
                 with _.db.atomic('IMMEDIATE'):
                     target=NotificationHook.get_or_none(NotificationHook.id==row['hook_id'])
+                    workflow=_.workflow_by_id(target.workflow_id) if target else None
                     condition=(NotificationDelivery.id==row['id'])&(NotificationDelivery.claim_id==row['claim_id'])&(NotificationDelivery.status=='sending')
-                    if not target or not target.enabled or (row['event']!='test' and row['event'] not in json.loads(target.events_json)):
-                        NotificationDelivery.update(status='skipped',result='目标停用或取消订阅',updated_at=time.time(),claim_id=None).where(condition).execute()
+                    if not target or not target.enabled or not workflow or workflow.get('deleted') or (row['event']!='test' and row['event'] not in json.loads(target.events_json)):
+                        NotificationDelivery.update(status='skipped',result='目标停用、取消订阅或流程已删除',updated_at=time.time(),claim_id=None).where(condition).execute()
                         return None
                     if NotificationDelivery.update(next_at=time.time()+60).where(condition).execute():
                         return hook_data(target)

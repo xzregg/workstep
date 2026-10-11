@@ -10,7 +10,7 @@
 
 WorkStep connects Codex, Claude Code, ACP agents, SDKs, and local harnesses in one visual workspace for planning, implementation, testing, review, and delivery.
 
-[Website](https://xzregg.github.io/workstep/) · [Download](https://github.com/xzregg/workstep/releases/latest) · [Documentation](docs/README.md) · [简体中文](README.zh-CN.md)
+[Website](https://xzregg.github.io/workstep/) · [Download](https://github.com/xzregg/workstep/releases/latest) · [User manual](https://xzregg.github.io/workstep/#docs) · [Developer docs](docs/README.md) · [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/xzregg/workstep/actions/workflows/ci.yml/badge.svg)](https://github.com/xzregg/workstep/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/xzregg/workstep?display_name=tag&style=flat-square)](https://github.com/xzregg/workstep/releases/latest)
@@ -39,6 +39,34 @@ flowchart LR
 
 **WorkStep is not another chat UI.** It turns one-off agent conversations into reusable engineering workflows whose progress, tool calls, approvals, context, and outputs remain visible.
 
+## See it in action
+
+Real screenshots from the demo project (Chinese interface). Click an image to view it at full size. Follow the [user manual](https://xzregg.github.io/workstep/#docs) for detailed instructions.
+
+### 1. Install an SDK engine
+
+Open engine settings, choose an SDK engine, and use **Install & version** to download it. Configure authentication, test the connection, and select the default engine. SDKs are the recommended starting point.
+
+[![Codex SDK installation, version selection, and connection test](apps/landing/src/manual/screenshots/sdk-install-version.jpg)](apps/landing/src/manual/screenshots/sdk-install-version.jpg)
+
+### 2. Connect steps on the workflow canvas
+
+Add steps and connect their inputs and outputs. This example passes a Markdown execution plan from **requirements analysis** to **task execution**; each step shows its engine.
+
+[![Workflow canvas connecting requirements analysis to task execution with Markdown inputs and outputs](apps/landing/src/manual/screenshots/workflow-canvas.jpg)](apps/landing/src/manual/screenshots/workflow-canvas.jpg)
+
+### 3. Run a task and inspect its results
+
+Create a task with your requirements, then follow each step's progress and conversation. The completed example shows both steps and links to the generated plan and execution result.
+
+[![Completed two-step task with execution history and generated artifacts](apps/landing/src/manual/screenshots/first-task-result.jpg)](apps/landing/src/manual/screenshots/first-task-result.jpg)
+
+### 4. Review before continuing
+
+Enable manual review on a step to wait for your decision. Inspect the output, add feedback, then approve and continue, request rework, complete the step, or stop the task.
+
+[![Task waiting for manual review with feedback, rework, and approval controls](apps/landing/src/manual/screenshots/task-review.jpg)](apps/landing/src/manual/screenshots/task-review.jpg)
+
 ## Core capabilities
 
 | | Capability | What it gives you |
@@ -59,10 +87,6 @@ WorkStep currently integrates engines including:
 `Codex CLI` · `Codex SDK` · `Claude Code` · `Claude Agent SDK` · `OpenCode` · `OpenClaw` · `Hermes ACP` · `Cursor SDK` · `Qoder SDK` · `DeepSeek Harness` · `Pydantic AI`
 
 Engine discovery, sessions, approvals, capabilities, and events share a common boundary. Unsupported native capabilities are declared and degraded explicitly rather than simulated.
-
-## See it in action
-
-The [WorkStep website](https://xzregg.github.io/workstep/) contains an interactive product tour of the project workspace, workflow canvas, parallel execution, review gates, and engine switching.
 
 ## Get started
 
@@ -101,6 +125,7 @@ Local-first describes where WorkStep stores and orchestrates project data. Exter
 
 ## Documentation
 
+- [User manual — SDK setup, workflows, tasks, and troubleshooting](https://xzregg.github.io/workstep/#docs)
 - [Product overview](docs/overview.md)
 - [Architecture and data flow](docs/architecture.md)
 - [Workflow execution](docs/workflow-engine-execution.md)

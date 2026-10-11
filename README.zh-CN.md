@@ -10,7 +10,7 @@
 
 在一个可视化工作台中连接 Codex、Claude Code、ACP Agent、SDK 与本地 Harness，组织规划、开发、测试、审查和交付。
 
-[官网](https://xzregg.github.io/workstep/) · [下载](https://github.com/xzregg/workstep/releases/latest) · [文档](docs/README.md) · [English](README.md)
+[官网](https://xzregg.github.io/workstep/) · [下载](https://github.com/xzregg/workstep/releases/latest) · [操作手册](https://xzregg.github.io/workstep/#docs) · [开发文档](docs/README.md) · [English](README.md)
 
 [![CI](https://github.com/xzregg/workstep/actions/workflows/ci.yml/badge.svg)](https://github.com/xzregg/workstep/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/xzregg/workstep?display_name=tag&style=flat-square)](https://github.com/xzregg/workstep/releases/latest)
@@ -39,6 +39,34 @@ flowchart LR
 
 **WorkStep 不是另一个聊天窗口。** 它把一次性的 Agent 对话变成可复用的工程流程，让执行进度、工具调用、人工审批、上下文和最终产物始终可见。
 
+## 看图上手
+
+以下为演示项目的真实界面截图，点击图片可查看原图。完整步骤见[用户操作手册](https://xzregg.github.io/workstep/#docs)。
+
+### 1. 下载 SDK，配置执行引擎
+
+打开引擎设置，选择 SDK 引擎，通过「安装与版本」下载。配置认证后测试连接，再选择默认引擎；新用户推荐从 SDK 开始。
+
+[![Codex SDK 安装、版本选择与连接测试界面](apps/landing/src/manual/screenshots/sdk-install-version.jpg)](apps/landing/src/manual/screenshots/sdk-install-version.jpg)
+
+### 2. 在画布上连接步骤
+
+添加步骤，连接输入与输出。图中把「需求分析」生成的 Markdown 执行计划传给「执行任务」，每个步骤都显示所用引擎。
+
+[![流程画布：需求分析与执行任务通过 Markdown 输入输出连接](apps/landing/src/manual/screenshots/workflow-canvas.jpg)](apps/landing/src/manual/screenshots/workflow-canvas.jpg)
+
+### 3. 创建任务，查看过程与结果
+
+填写需求创建任务，逐步查看执行进度和对话。图中双步骤任务已完成，可以打开生成的执行计划和执行结果。
+
+[![已完成的双步骤任务，展示执行记录与生成产物](apps/landing/src/manual/screenshots/first-task-result.jpg)](apps/landing/src/manual/screenshots/first-task-result.jpg)
+
+### 4. 人工审核后再继续
+
+为步骤启用人工审核，执行完成后会等待你的决定。检查输出、填写意见，再选择通过继续、驳回重做、完成步骤或终止任务。
+
+[![等待人工审核的任务，包含审核意见、驳回重做与通过继续操作](apps/landing/src/manual/screenshots/task-review.jpg)](apps/landing/src/manual/screenshots/task-review.jpg)
+
 ## 核心能力
 
 | | 能力 | 可以获得什么 |
@@ -59,10 +87,6 @@ WorkStep 当前集成的引擎包括：
 `Codex CLI` · `Codex SDK` · `Claude Code` · `Claude Agent SDK` · `OpenCode` · `OpenClaw` · `Hermes ACP` · `Cursor SDK` · `Qoder SDK` · `DeepSeek Harness` · `Pydantic AI`
 
 不同引擎共用统一的发现、会话、审批、能力声明和事件边界。没有原生入口的能力会明确声明并安全降级，不伪造执行状态。
-
-## 查看实际效果
-
-[WorkStep 官网](https://xzregg.github.io/workstep/)提供交互式产品演示，可以直接了解项目工作台、流程画布、并行执行、审核节点和引擎切换。
 
 ## 快速开始
 
@@ -101,6 +125,7 @@ cd workstep
 
 ## 文档
 
+- [用户操作手册：SDK 配置、流程、任务与常见问题](https://xzregg.github.io/workstep/#docs)
 - [产品概览](docs/overview.md)
 - [架构与数据流](docs/architecture.md)
 - [工作流执行](docs/workflow-engine-execution.md)

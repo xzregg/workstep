@@ -35,10 +35,10 @@ def _public_key():
     ).decode()
 
 
-def _authorize(client, csrf):
+def _authorize(client, csrf, app_instance_id=APP_INSTANCE):
     result = client.post("/api/desktop/authorize", headers={"X-CSRF-Token": csrf}, json={
         "state": STATE, "nonce": NONCE, "code_challenge": CHALLENGE,
-        "app_instance_id": APP_INSTANCE, "gateway_id": "gateway-test",
+        "app_instance_id": app_instance_id, "gateway_id": "gateway-test",
     })
     assert result.status_code == 200, result.text
     callback = urlparse(result.json()["callback_url"])
@@ -357,3 +357,33 @@ def test_owner_transfer_slow_database_keeps_health_responsive(tmp_path):
                 assert response.status_code == 204
         try: client.portal.call(scenario)
         finally: event.remove(engine, 'before_cursor_execute', slow_sql)
+
+
+def test_same_account_keeps_two_installations_authorized_independently(tmp_path, monkeypatch):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id='gateway-test', public_origin='https://gateway.test'))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client)
+        headers = {'X-CSRF-Token':csrf}
+        assert client.post('/api/auth/step-up', json={'password':'OwnerPassphrase-2026!'}, headers=headers).status_code == 200
+        authorizations = []
+        for instance in ('local-daemon-one', 'local-daemon-two'):
+            key = _public_key()
+            code = _authorize(client, csrf, instance)
+            first = _redeem(client, code, key, app_instance_id=instance).json()
+            device_id = first['device']['id']
+            assert client.post(f'/api/admin/devices/{device_id}/approve', headers=headers).status_code == 204
+            approved = _redeem(client, _authorize(client, csrf, instance), key, app_instance_id=instance)
+            assert approved.status_code == 200, approved.text
+            authorizations.append(approved.json())
+        assert authorizations[0]['user']['id'] == authorizations[1]['user']['id']
+        assert authorizations[0]['device']['id'] != authorizations[1]['device']['id']
+        monkeypatch.setattr(app.state.control_connections, 'is_online', lambda device:True)
+        for authorization in authorizations:
+            device_id = authorization['device']['id']
+            access = client.get(f'/api/devices/{device_id}/access')
+            assert access.status_code == 200, access.text
+            remote = f'https://d-{device_id}.gateway.test'
+            redeemed = client.post(remote+'/api/remote/redeem', data={'ticket':access.json()['ticket']}, follow_redirects=False)
+            assert redeemed.status_code == 303
+            assert client.get(remote+'/api/remote/session').json()['device_id'] == device_id
+        assert len(client.get('/api/devices').json()['devices']) == 2

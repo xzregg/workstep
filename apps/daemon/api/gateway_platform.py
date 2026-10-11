@@ -6,7 +6,7 @@ import hmac
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
-from services.gateway_client.browser_login import COOKIE, normalize_origin
+from services.gateway_client.browser_login import local_session_cookie_name, normalize_origin
 from api.desktop_security import browser_origin_allowed
 
 router = APIRouter()
@@ -38,7 +38,7 @@ async def _settings_service(request: Request, mutation=False, configure=False):
     gateway = getattr(request.app.state, 'gateway_client', None)
     local = actor is None and request.client and request.client.host in ('127.0.0.1', '::1', 'localhost') and request.url.hostname in ('127.0.0.1', '::1', 'localhost')
     if configure and gateway is not None and gateway.managed_config is not None and not local and not _desktop(request):
-        actor = actor or gateway.local_sessions.resolve(request.headers.get('x-workstep-local-session') or request.cookies.get(COOKIE))
+        actor = actor or gateway.local_sessions.resolve(request.headers.get('x-workstep-local-session') or request.cookies.get(local_session_cookie_name(request.app)))
         access = getattr(request.app.state, 'remote_access_service', None)
         def native_access_allowed():
             if access is None or not access.settings().get('enabled'):
@@ -112,7 +112,7 @@ async def logout(request: Request):
     await service.logout()
     from fastapi.responses import JSONResponse
     response = JSONResponse({'login_url': '/gateway/login'})
-    response.delete_cookie(COOKIE, path='/')
+    response.delete_cookie(local_session_cookie_name(request.app), path='/')
     return response
 
 
@@ -155,5 +155,5 @@ async def callback(request: Request, code: str = Query(min_length=32, max_length
         token, _actor = result[:2]
         # Cross-site Gateway -> daemon redirects must carry the session on the
         # top-level GET; writes and WebSockets enforce their own Origin checks.
-        response.set_cookie(COOKIE, token, httponly=True, samesite='strict' if desktop else 'lax', secure=request.url.scheme=='https', path='/')
+        response.set_cookie(local_session_cookie_name(request.app), token, httponly=True, samesite='strict' if desktop else 'lax', secure=request.url.scheme=='https', path='/')
     return response

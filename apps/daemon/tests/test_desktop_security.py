@@ -616,3 +616,59 @@ async def test_native_public_share_slow_settings_do_not_block_health():
         assert (await client.get('/api/health')).status_code==200
         assert time.monotonic()-started<.1
         assert (await pending).status_code==200
+
+
+def test_same_browser_can_authorize_two_daemons_without_cookie_or_logout_collision(monkeypatch):
+    from types import SimpleNamespace
+    from api.gateway_platform import router
+    from services.gateway_client.browser_login import GatewayBrowserLogin
+    monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
+    monkeypatch.delenv('WORKSTEP_DESKTOP_TOKEN', raising=False)
+
+    def instance(device_id):
+        app = _app()
+        sessions = ManagedLocalSessions()
+        token = sessions.create(ManagedActor('same-user', 'alice', device_id, device_id, 1))
+        gateway = SimpleNamespace(managed_config=object(), local_sessions=sessions, current_user_id='same-user')
+        login = GatewayBrowserLogin(gateway)
+        async def complete(code, state, *, callback_origin=None):
+            return token, None, False
+        async def logout():
+            sessions.clear()
+        login.complete = complete
+        login.logout = logout
+        app.state.gateway_client = gateway
+        app.state.gateway_browser_login = login
+        app.include_router(router)
+        return app, token
+
+    one, token_one = instance('device-one')
+    two, token_two = instance('device-two')
+    with TestClient(one, base_url='http://localhost:8767') as a, TestClient(two, base_url='http://localhost:5173') as b:
+        # Use a single cookie jar as a real browser does for localhost's ports.
+        first = a.get('/api/gateway-platform/callback', params={'code':'c'*32, 'state':'s'*32}, follow_redirects=False)
+        b.cookies.update(a.cookies)
+        second = b.get('/api/gateway-platform/callback', params={'code':'c'*32, 'state':'s'*32}, follow_redirects=False)
+        a.cookies.update(b.cookies)
+        assert set(first.cookies) != set(second.cookies)
+        assert len(a.cookies) == 2
+        for client, origin in ((a, 'http://localhost:8767'), (b, 'http://localhost:5173')):
+            assert client.get('/api/actor').json()['id'] == 'same-user'
+            assert client.get('/', follow_redirects=False).status_code == 200
+            with client.websocket_connect(origin.replace('http:', 'ws:')+'/ws', headers={'Origin':origin}) as socket:
+                assert socket.receive_text() == 'ok'
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect(origin.replace('http:', 'ws:')+'/ws', headers={'Origin':'https://evil.test'}): pass
+        # A's credential is never accepted by B under either cookie's name.
+        b_cookie = next(iter(second.cookies))
+        assert b.get('/api/actor', headers={'Cookie':f'{b_cookie}={token_one}'}).status_code == 401
+        assert b.get('/api/actor', headers={'Cookie':first.headers['set-cookie'].split(';',1)[0]}).status_code == 401
+        logged_out = a.post('/api/gateway-platform/logout', headers={'Origin':'http://localhost:8767'})
+        assert logged_out.status_code == 200
+        assert next(iter(first.cookies)) in logged_out.headers['set-cookie']
+        assert b_cookie not in logged_out.headers['set-cookie']
+        b.cookies.update(a.cookies)
+        assert a.get('/api/actor').status_code == 401
+        assert b.get('/api/actor').json()['id'] == 'same-user'
+        with b.websocket_connect('ws://localhost:5173/ws', headers={'Origin':'http://localhost:5173'}) as socket:
+            assert socket.receive_text() == 'ok'
