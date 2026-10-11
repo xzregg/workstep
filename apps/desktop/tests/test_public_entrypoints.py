@@ -149,6 +149,19 @@ def test_windows_smoke_build_can_verify_fixes_without_publishing_a_release():
     assert "WORKSTEP_BUILD_VERSION: smoke-" not in windows
 
 
+def test_windows_sandbox_acceptance_uses_real_release_and_never_publishes():
+    smoke = (ROOT / ".github/workflows/desktop-package-smoke.yml").read_text()
+    sandbox = smoke.split("  windows-sandbox:\n", 1)[1].split("  windows-acceptance:\n", 1)[0]
+    assert "sandbox_tag:" in smoke
+    assert "runs-on: windows-2025" in sandbox
+    assert "windows-sandbox-acceptance.cjs" in sandbox
+    assert "SHA256SUMS.txt" in sandbox
+    assert "sandboxReport.success -ne $true" in sandbox
+    assert "if: always()" in sandbox
+    assert "continue-on-error" not in sandbox
+    assert "gh release edit" not in smoke and "gh release upload" not in smoke
+
+
 def test_repository_readmes_present_the_product_and_current_desktop_support():
     readmes = {
         "README.md": (
