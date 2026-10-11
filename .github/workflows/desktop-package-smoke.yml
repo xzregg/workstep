@@ -24,6 +24,10 @@ on:
         description: Reuse a source-built Windows installer artifact from this repository's Actions run
         required: false
         default: ""
+      sandbox_tag:
+        description: Published Windows release to verify with real Podman and WSL2 (no build or publish)
+        required: false
+        default: ""
 
 concurrency:
   group: desktop-package-smoke-${{ inputs.ref }}
@@ -34,8 +38,61 @@ permissions:
   actions: read
 
 jobs:
+  windows-sandbox:
+    if: ${{ inputs.sandbox_tag != '' }}
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { ref: "${{ inputs.ref }}" }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with: { node-version: "22" }
+      - name: Record Windows virtualization prerequisites
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/windows-sandbox-report" | Out-Null
+          $diagnostic = @{
+            wslVersion = (wsl --version | Out-String)
+            wslStatus = (wsl --status | Out-String)
+            features = @(Get-WindowsOptionalFeature -Online | Where-Object { $_.FeatureName -in @('VirtualMachinePlatform','Microsoft-Windows-Subsystem-Linux') } | Select-Object FeatureName,State)
+            processors = @(Get-CimInstance Win32_Processor | Select-Object VirtualizationFirmwareEnabled,SecondLevelAddressTranslationExtensions,VMMonitorModeExtensions)
+          }
+          $diagnostic | ConvertTo-Json -Depth 5 | Set-Content "$env:RUNNER_TEMP/windows-sandbox-report/prerequisites.json" -Encoding utf8
+      - name: Install acceptance tooling
+        working-directory: apps/desktop
+        run: corepack enable && yarn install --frozen-lockfile
+      - name: Download published installer without changing the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SANDBOX_TAG: ${{ inputs.sandbox_tag }}
+        run: |
+          if ($env:SANDBOX_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid release tag" }
+          $draft = gh release view $env:SANDBOX_TAG --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft
+          if ($LASTEXITCODE -ne 0 -or $draft -ne "false") { throw "Release must already be published" }
+          gh release download $env:SANDBOX_TAG --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/sandbox-installer" --pattern WorkStep-windows-x64.exe --pattern SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw "Installer download failed" }
+      - name: Verify real published Windows sandbox lifecycle
+        shell: pwsh
+        env:
+          SANDBOX_TAG: ${{ inputs.sandbox_tag }}
+          WORKSTEP_ENV: production
+        run: |
+          node scripts/windows-sandbox-acceptance.cjs --installer "$env:RUNNER_TEMP/sandbox-installer/WorkStep-windows-x64.exe" --checksums "$env:RUNNER_TEMP/sandbox-installer/SHA256SUMS.txt" --version $env:SANDBOX_TAG
+          if ($LASTEXITCODE -ne 0) { throw "Windows sandbox acceptance failed" }
+          $sandboxReport = Get-Content "$env:RUNNER_TEMP/windows-sandbox-report/report.json" -Raw | ConvertFrom-Json
+          if ($sandboxReport.success -ne $true) { throw "Windows sandbox acceptance did not complete" }
+      - name: Upload real sandbox acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-sandbox-evidence
+          path: ${{ runner.temp }}/windows-sandbox-report
+          if-no-files-found: error
+          retention-days: 14
+
   windows-acceptance:
-    if: ${{ inputs.acceptance_tag != '' || inputs.acceptance_run != '' }}
+    if: ${{ inputs.sandbox_tag == '' && (inputs.acceptance_tag != '' || inputs.acceptance_run != '') }}
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
@@ -99,7 +156,7 @@ jobs:
           retention-days: 14
 
   macos:
-    if: ${{ inputs.acceptance_tag == '' && inputs.acceptance_run == '' && !inputs.windows_only }}
+    if: ${{ inputs.sandbox_tag == '' && inputs.acceptance_tag == '' && inputs.acceptance_run == '' && !inputs.windows_only }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -146,7 +203,7 @@ jobs:
           if-no-files-found: error
 
   windows:
-    if: ${{ inputs.acceptance_tag == '' && inputs.acceptance_run == '' }}
+    if: ${{ inputs.sandbox_tag == '' && inputs.acceptance_tag == '' && inputs.acceptance_run == '' }}
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
@@ -222,7 +279,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    if: ${{ inputs.acceptance_tag == '' && inputs.acceptance_run == '' && !inputs.windows_only }}
+    if: ${{ inputs.sandbox_tag == '' && inputs.acceptance_tag == '' && inputs.acceptance_run == '' && !inputs.windows_only }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
