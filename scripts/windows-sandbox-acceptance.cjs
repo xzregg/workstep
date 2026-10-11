@@ -120,7 +120,18 @@ async function runAcceptance(options) {
       return parseApiResponse(endpoint, response.status, await response.text())
     }
     async function start() {
-      const url = await manager.start(0, token)
+      let snapshot
+      const timer = setTimeout(() => {
+        if (!manager.session) return
+        snapshot = manager.session.command(['exec', machine, '/bin/sh', '-c',
+          "ps -eo pid,ppid,etime,stat,args; df -T /root; ls -ld /root/.workstep/runtime/base /root/.workstep/runtime/.base-stage.* 2>/dev/null; curl --max-time 3 -sS http://127.0.0.1:8765/api/health || true"],
+        { captureCombined: true, timeout: 15000 }).then(async text => {
+          await fs.writeFile(path.join(reportDir, `startup-${phase}.log`), redact(text, token))
+        }).catch(error => { report.startupDiagnosticError = redact(error.message, token) })
+      }, 30000)
+      let url
+      try { url = await manager.start(0, token) }
+      finally { clearTimeout(timer); await snapshot }
       const health = await api(url, '/api/health')
       assert.equal(health.status, 'ok'); assert.equal(health.version, version)
       const denied = await fetch(url + '/api/project/list', { signal: AbortSignal.timeout(5000) })
@@ -189,7 +200,8 @@ async function runAcceptance(options) {
         const [container] = JSON.parse(await command(['inspect', name]))
         report.containerFailure = { State: container.State, Mounts: container.Mounts,
           Ports: container.NetworkSettings?.Ports }
-        await fs.writeFile(path.join(reportDir, 'container-failure.log'), redact(await command(['logs', '--tail=200', name]), token))
+        await fs.writeFile(path.join(reportDir, 'container-failure.log'), redact(await run(runtime.executable,
+          ['--connection', machine, 'logs', '--tail=200', name], { env, captureCombined: true }), token))
       } catch (diagnosticError) { report.diagnosticError = redact(diagnosticError.message, token) }
     }
   } finally {
@@ -199,7 +211,7 @@ async function runAcceptance(options) {
       catch (error) { report.cleanupError = redact(error.message, token) }
     }
     if (uninstall) await execute(uninstall, ['/S', '/currentuser']).catch(error => { report.uninstallError = redact(error.message, token); report.success = false })
-    await fs.writeFile(path.join(reportDir, 'report.json'), JSON.stringify(report, null, 2) + '\n')
+    await fs.writeFile(path.join(reportDir, 'report.json'), redact(JSON.stringify(report, null, 2), token) + '\n')
   }
   if (!report.success) throw new Error(`Windows sandbox acceptance failed in ${report.failedPhase || 'cleanup'}; see report artifact`)
 }
