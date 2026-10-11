@@ -102,6 +102,23 @@ GitHub API 限流；不将其宣称为在线更新请求或浏览器下载跳转
 被占用时改用空闲端口，保留 LAN 访问能力。原生 Windows socket 测试与实际重启验收
 必须同时通过，不能只用 macOS 上的端口测试代替。
 
+### Windows 修复源码验收结果
+
+2026-10-11 的 [完整验收记录](https://github.com/xzregg/workstep/actions/runs/38097603643)
+生成了 `success: true` 的报告，25 项检查全部完成。覆盖中文／空格路径安装、
+中文及表情配置保存、端口冲突回退、实际任务／设置界面、深链接、退出清理、
+覆盖安装原 v1.0.11、升级后保存中文配置并再次重启，以及卸载后数据保留。
+验收复用 [源码构建产物](https://github.com/xzregg/workstep/actions/runs/38096823158)，
+EXE 的 SHA-256 为 `d9effbc9311a5663276edca04c6d5045c3e529818c052cc41810fb1fc9f0c2bf`；
+该测试包包含 UTF-8 和 Windows socket 修复，manifest 暂仍为 1.0.11，但不是已发布的
+v1.0.11 原包。原标签、附件和镜像未替换，正式交付修复仍需发布新版本。
+
+安装步骤使用有上限的五分钟预算，安装器非零退出或超时仍判失败；不跳过覆盖安装。
+卸载检查先核对记忆内容，再比较卸载前后原始字节，兼容 Windows 原生 CRLF 而不放宽
+数据保留要求。上文登记的实机、真实 LLM、沙箱和在线更新请求验收缺口仍保留。
+本批没有改变用户界面入口或操作步骤；官网测试和构建通过，已提交版本的手册检查仍为
+45/55 张截图，10 处既有缺口见 `apps/landing/src/manual/README.md`。
+
 If a secret is ever committed, revoke it before rewriting Git history. Coordinate
 history rewriting with contributors and forks; deleting a branch or force-pushing
 does not itself revoke a credential.
