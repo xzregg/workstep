@@ -28,6 +28,11 @@ on:
         description: Published Windows release to verify with real Podman and WSL2 (no build or publish)
         required: false
         default: ""
+      sandbox_ascii_root:
+        description: Diagnostic run using an ASCII sandbox root; does not validate Chinese storage paths
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: desktop-package-smoke-${{ inputs.ref }}
@@ -77,8 +82,11 @@ jobs:
         env:
           SANDBOX_TAG: ${{ inputs.sandbox_tag }}
           WORKSTEP_ENV: production
+          SANDBOX_ASCII_ROOT: ${{ inputs.sandbox_ascii_root }}
         run: |
-          node scripts/windows-sandbox-acceptance.cjs --installer "$env:RUNNER_TEMP/sandbox-installer/WorkStep-windows-x64.exe" --checksums "$env:RUNNER_TEMP/sandbox-installer/SHA256SUMS.txt" --version $env:SANDBOX_TAG
+          $pathArgs = @()
+          if ($env:SANDBOX_ASCII_ROOT -eq 'true') { $pathArgs = @('--ascii-sandbox-root') }
+          node scripts/windows-sandbox-acceptance.cjs --installer "$env:RUNNER_TEMP/sandbox-installer/WorkStep-windows-x64.exe" --checksums "$env:RUNNER_TEMP/sandbox-installer/SHA256SUMS.txt" --version $env:SANDBOX_TAG @pathArgs
           if ($LASTEXITCODE -ne 0) { throw "Windows sandbox acceptance failed" }
           $sandboxReport = Get-Content "$env:RUNNER_TEMP/windows-sandbox-report/report.json" -Raw | ConvertFrom-Json
           if ($sandboxReport.success -ne $true) { throw "Windows sandbox acceptance did not complete" }

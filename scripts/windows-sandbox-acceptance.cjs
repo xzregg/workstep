@@ -42,6 +42,8 @@ async function runAcceptance(options) {
   const report = { version, runner: process.env.RUNNER_OS, success: false, checks: [],
     gaps: ['Windows 10/11 user desktop and reboot', 'Electron sandbox settings UI and native chooser',
       'Real authenticated LLM execution', 'Local Docker image import'] }
+  report.pathMode = options['ascii-sandbox-root'] ? 'ascii-sandbox-root' : 'unicode-sandbox-root'
+  if (options['ascii-sandbox-root']) report.gaps.push('Chinese sandbox storage path: not exercised in this diagnostic run')
   const record = (name, details = {}) => { report.checks.push({ name, ...details }); console.log(`PASS ${name}`) }
   let manager, runtime, env, machine, podman, uninstall
   let phase = 'installer'
@@ -65,7 +67,7 @@ async function runAcceptance(options) {
     const { run } = require(path.join(extracted, 'src/sandbox-runtime.cjs'))
     record('published installer checksum, version and immutable image; unmodified sandbox modules')
 
-    const sandbox = path.join(root, '中文沙箱 with spaces')
+    const sandbox = path.join(root, options['ascii-sandbox-root'] ? 'sandbox with spaces' : '中文沙箱 with spaces')
     const project = path.join(root, '中文项目 with spaces')
     const hostHome = path.join(root, 'host-home')
     const hostConfigFile = path.join(hostHome, '.workstep/config.json')
@@ -73,8 +75,11 @@ async function runAcceptance(options) {
     const hostConfig = JSON.stringify({ user: { name: 'Windows沙箱验收🙂' }, concurrency: { max_tasks: 2 } })
     await fs.writeFile(hostConfigFile, hostConfig)
     await fs.writeFile(path.join(project, 'host-marker.txt'), 'host mount 原始内容\n')
+    let lastPhase
     manager = new SandboxManager({ stateDir: path.join(root, 'state'), hostHome, hostConfigFile,
-      image: releaseImage, report: ({ phase }) => console.log(`PHASE ${phase}`) })
+      image: releaseImage, report: ({ phase }) => { if (phase !== lastPhase) console.log(`PHASE ${phase}`); lastPhase = phase } })
+    report.tar = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      '[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); Get-Command tar | Select-Object Source,Version | ConvertTo-Json -Compress'])
     phase = 'runtime'
     await manager.prepareRuntime({ root: sandbox })
     runtime = JSON.parse(await fs.readFile(path.join(sandbox, 'podman/runtime.json'), 'utf8'))
@@ -177,7 +182,8 @@ async function runAcceptance(options) {
   if (!report.success) throw new Error(`Windows sandbox acceptance failed in ${report.failedPhase || 'cleanup'}; see report artifact`)
 }
 if (require.main === module) {
-  const { values } = parseArgs({ options: Object.fromEntries(['installer', 'version', 'checksums'].map(name => [name, { type: 'string' }])) })
+  const { values } = parseArgs({ options: { ...Object.fromEntries(['installer', 'version', 'checksums'].map(name => [name, { type: 'string' }])),
+    'ascii-sandbox-root': { type: 'boolean', default: false } } })
   const completed = installCompletionGuard()
   runAcceptance(values).then(completed, error => { completed(); console.error(error); process.exitCode = 1 })
 }
