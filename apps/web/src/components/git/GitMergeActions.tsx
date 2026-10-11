@@ -1,3 +1,4 @@
+import Select from '../Select'
 import { useEffect, useRef, useState } from 'react'
 import { type GitBranch, type GitStatus, type GitTrackedRemoteBranch } from '../../api/git'
 import { useI18n } from '../../i18n'
@@ -113,16 +114,16 @@ export default function GitMergeActions({ status, readOnly, otherBusy = false, r
     <Button size="sm" disabled={busy || otherBusy || writes.busy} title={blockedReason || t('git.mergeTitle')} loading={busy} aria-expanded={open} onClick={() => void show()}>{t('git.mergeButton')}<Icon name="chevron-down" size={12} /></Button>
     {open && <span className="git-remote-panel" role="dialog" aria-label={t('git.mergeTitle')}>
       <span className="git-remote-panel__heading"><span><strong>{t('git.mergeTitle')}</strong><small>{direction === 'intoCurrent' ? t('git.mergeHint', { branch: status.branch || '' }) : t('git.mergeIntoHint', { branch: status.branch || '' })}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setOpen(false)}><Icon name="x" size={14} /></Button></span>
-      <label>{t('git.mergeDirection')}<select value={direction} onChange={event => setDirection(event.target.value as 'intoCurrent' | 'intoTarget')} disabled={busy}>
+      <label>{t('git.mergeDirection')}<Select value={direction} onChange={event => setDirection(event.target.value as 'intoCurrent' | 'intoTarget')} disabled={busy}>
         <option value="intoCurrent">{t('git.mergeIntoCurrent')}</option><option value="intoTarget">{t('git.mergeIntoTarget')}</option>
-      </select></label>
-      {direction === 'intoCurrent' ? <label>{t('git.mergeSource')}<select value={source} onChange={event => setSource(event.target.value)} disabled={loading || busy}>
+      </Select></label>
+      {direction === 'intoCurrent' ? <label>{t('git.mergeSource')}<Select value={source} onChange={event => setSource(event.target.value)} disabled={loading || busy}>
         <option value="">{t('git.mergeSource')}</option>
         <optgroup label={t('git.localBranches')}>{branches.filter(item => item.name !== status.branch).map(item => <option key={item.name} value={`local\0\0${item.name}`}>{item.name}</option>)}</optgroup>
         <optgroup label={t('git.remoteBranches')}>{remoteBranches.map(item => <option key={item.name} value={`remote\0${item.remote}\0${item.branch}`}>{item.name}</option>)}</optgroup>
-      </select></label> : <label>{t('git.targetBranch')}<select value={target} onChange={event => setTarget(event.target.value)} disabled={loading || busy}>
+      </Select></label> : <label>{t('git.targetBranch')}<Select value={target} onChange={event => setTarget(event.target.value)} disabled={loading || busy}>
         <option value="">{t('git.targetBranch')}</option>{branches.filter(item => item.name !== status.branch).map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
-      </select></label>}
+      </Select></label>}
       {loading && <span className="git-remote-loading"><Icon name="loader-circle" className="git-spin" size={14} />{t('git.loading')}</span>}
       {!!status.files.length && <span className="git-remote-loading">{direction === 'intoCurrent' ? t('git.mergeDirtyHint') : t('git.mergeSourceDirtyHint')}</span>}
       {blockedReason && <span className="git-remote-error" role="status">{blockedReason}</span>}

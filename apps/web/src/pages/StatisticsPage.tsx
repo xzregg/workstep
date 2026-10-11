@@ -1,3 +1,4 @@
+import Select from '../components/Select'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -390,13 +391,13 @@ export default function StatisticsPage() {
           <p>{t('statistics.subtitle')}</p>
         </div>
         <div className="statistics-header-actions">
-          <select value={range} onChange={(event) => setRange(event.target.value as RangeKey)}>
+          <Select value={range} onChange={(event) => setRange(event.target.value as RangeKey)}>
             <option value="7d">{t('statistics.range7d')}</option>
             <option value="30d">{t('statistics.range30d')}</option>
             <option value="90d">{t('statistics.range90d')}</option>
             <option value="all">{t('statistics.rangeAll')}</option>
             <option value="custom">{t('statistics.rangeCustom')}</option>
-          </select>
+          </Select>
           <Button
             variant="ghost"
             onClick={() => setRefreshKey((value) => value + 1)}

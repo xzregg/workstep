@@ -1,3 +1,4 @@
+import Select from '../Select'
 import { useGitApi, useGitWorkspaceBrowser, useReadOnlyGit, useSharedGit, useProjectScopedGit, useGitWorkspaceEditable } from './GitApiContext'
 import { useEffect, useMemo, useState } from 'react'
 import { type GitDiscovery, type TaskGitWorkspace as Workspace } from '../../api/git'
@@ -221,7 +222,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
     {loading ? <div className="git-empty"><Icon name="loader-circle" className="git-spin" size={24} />{t('git.loading')}</div> : <>
       {!readOnly && workspaceEditable && showAdd && repositories.length > 0 && <div className="task-git-add">
         <label>{t('git.taskAddRepository')}
-          <select value={repositoryId} onChange={event => {
+          <Select value={repositoryId} onChange={event => {
             const id = event.target.value
             const repo = repositories.find(item => item.id === id)
             const suffix = (taskId.replace(/[^A-Za-z0-9]/g, '') || 'task').slice(0, 8)
@@ -242,13 +243,13 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
           }}>
             <option value="">{t('git.taskSelectRepository')}</option>
             {repositories.map(repo => <option key={repo.id} value={repo.id}>{repo.projects.find(item => item.id === projectId)?.relative_path === '.' ? t('git.taskProjectRoot') : repo.projects.find(item => item.id === projectId)?.relative_path || repo.name}</option>)}
-          </select>
+          </Select>
         </label>
         {repositoryId && <>
-          <label className="task-git-source-label">{t('git.taskBaseRef')}<select className="task-git-source-branch" value={baseRef} disabled={branchLoading || !sourceBranches.length} onChange={event => setBaseRef(event.target.value)}>
+          <label className="task-git-source-label">{t('git.taskBaseRef')}<Select className="task-git-source-branch" value={baseRef} disabled={branchLoading || !sourceBranches.length} onChange={event => setBaseRef(event.target.value)}>
             {!sourceBranches.length && <option value="">{branchLoading ? t('git.loading') : t('git.taskNoBranches')}</option>}
             {sourceBranches.map(name => <option key={name} value={name}>{name}</option>)}
-          </select></label>
+          </Select></label>
           <div className="task-git-name-fields">
             <label className="task-git-branch-label">{t('git.taskNewBranch')}<input className="task-git-new-branch" value={branchName} onChange={event => {
               const nextBranch = event.target.value

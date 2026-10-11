@@ -29,7 +29,7 @@ export default forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     className ?? '',
   ].filter(Boolean).join(' ')
   return (
-    <button ref={ref} className={classes} disabled={disabled || loading} {...rest}>
+    <button ref={ref} className={classes} disabled={disabled || loading} {...rest} aria-busy={loading || rest['aria-busy']}>
       {loading && <Spinner size={12} />}
       {children}
     </button>

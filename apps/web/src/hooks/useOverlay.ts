@@ -27,7 +27,7 @@ function onPop(event: PopStateEvent) {
 }
 
 /** Shared focus, scroll and Back behavior for drawers, sheets and full-screen editors. */
-export function useOverlay(open: boolean, onClose: () => void, ref: RefObject<HTMLElement | null>, withHistory = true) {
+export function useOverlay(open: boolean, onClose: () => void, ref: RefObject<HTMLElement | null>, withHistory = true, trapFocus = true) {
   const close = useRef(onClose)
   close.current = onClose
   useEffect(() => {
@@ -59,7 +59,7 @@ export function useOverlay(open: boolean, onClose: () => void, ref: RefObject<HT
     const onKey = (event: KeyboardEvent) => {
       if (stack.at(-1) !== entry) return
       if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); close.current() }
-      if (event.key !== 'Tab') return
+      if (event.key !== 'Tab' || !trapFocus) return
       const nodes = focusable()
       const index = nodes.indexOf(document.activeElement as HTMLElement)
       if (!nodes.length) { event.preventDefault(); element.focus(); return }
@@ -82,5 +82,5 @@ export function useOverlay(open: boolean, onClose: () => void, ref: RefObject<HT
       document.body.style.overflow = stack.length ? 'hidden' : baseOverflow
       if (previous?.isConnected) previous.focus()
     }
-  }, [open, ref, withHistory])
+  }, [open, ref, withHistory, trapFocus])
 }

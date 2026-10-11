@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { notificationHooksApi, notificationEvents, type NotificationConfiguration, type NotificationEvent, type NotificationHook, type NotificationPreview, type NotificationRecord } from '../api/notificationHooks'
@@ -116,7 +117,7 @@ export default function NotificationHooksDialog({projectId,workflowId,workflowNa
           {tab==='config'&&<fieldset className="workflow-hooks-editor notification-hooks-columns" disabled={!!busy}>
             <div><label>{t('workflowHooks.name')}<input value={hook.name} maxLength={128} onChange={e=>change({name:e.target.value})}/></label>
               <label className="workflow-hooks-checkbox"><input type="checkbox" checked={hook.enabled} onChange={e=>change({enabled:e.target.checked})}/>{t('workflowHooks.enabled')}</label>
-              <label>{t('notificationHooks.platform')}<select value={hook.platform} onChange={e=>change({platform:e.target.value as NotificationHook['platform'],secret:'',...(e.target.value==='generic'?{markdown_template:null}:{})})}>{(['dingtalk','wecom','generic'] as const).map(p=><option key={p} value={p}>{platformLabel(p)}</option>)}</select></label>
+              <label>{t('notificationHooks.platform')}<Select value={hook.platform} onChange={e=>change({platform:e.target.value as NotificationHook['platform'],secret:'',...(e.target.value==='generic'?{markdown_template:null}:{})})}>{(['dingtalk','wecom','generic'] as const).map(p=><option key={p} value={p}>{platformLabel(p)}</option>)}</Select></label>
               <label>{t('notificationHooks.url')}<input data-testid="notification-url" type={showUrl?'text':'password'} autoComplete="off" value={hook.url} maxLength={4096} onChange={e=>change({url:e.target.value})}/></label>
               <Button onClick={()=>setShowUrl(v=>!v)}>{t(showUrl?'workflowHooks.hide':'workflowHooks.show')}</Button><p className="workflow-hooks-hint">{t('notificationHooks.urlHint')}</p>
               {hook.platform==='dingtalk'&&<label>{t('notificationHooks.secret')}<input type="password" autoComplete="off" value={hook.secret} maxLength={1024} onChange={e=>change({secret:e.target.value})}/></label>}
@@ -126,7 +127,7 @@ export default function NotificationHooksDialog({projectId,workflowId,workflowNa
               {notificationEvents.map(event=><label className="workflow-hooks-checkbox" key={event}><input type="checkbox" checked={hook.events.includes(event)} onChange={e=>change({events:e.target.checked?[...hook.events,event]:hook.events.filter(k=>k!==event)})}/>{eventLabel(event)}</label>)}
               <h3>{t('notificationHooks.content')}</h3><label>{t('notificationHooks.prefix')}<input value={hook.prefix} maxLength={80} onChange={e=>change({prefix:e.target.value})}/></label>
               <label className="workflow-hooks-checkbox"><input type="checkbox" checked={hook.include_link} onChange={e=>change({include_link:e.target.checked})}/>{t('notificationHooks.includeLink')}</label>
-              <label>{t('notificationHooks.linkBase')}<select value={hook.link_base} disabled={!hook.include_link} onChange={e=>change({link_base:e.target.value as NotificationHook['link_base']})}>{config.addresses.map(a=><option value={a.kind} key={a.kind}>{t(`workflowHooks.${a.kind}`)}</option>)}{!config.addresses.some(a=>a.kind===hook.link_base)&&<option value={hook.link_base}>{t(`workflowHooks.${hook.link_base}`)} · {t('notificationHooks.missingAddress')}</option>}</select></label>
+              <label>{t('notificationHooks.linkBase')}<Select value={hook.link_base} disabled={!hook.include_link} onChange={e=>change({link_base:e.target.value as NotificationHook['link_base']})}>{config.addresses.map(a=><option value={a.kind} key={a.kind}>{t(`workflowHooks.${a.kind}`)}</option>)}{!config.addresses.some(a=>a.kind===hook.link_base)&&<option value={hook.link_base}>{t(`workflowHooks.${hook.link_base}`)} · {t('notificationHooks.missingAddress')}</option>}</Select></label>
               <p className="workflow-hooks-hint">{t('notificationHooks.contentHint')}</p><div className="notification-hooks-note">{t('notificationHooks.retryHint')}</div>
             </div>
             {hook.platform!=='generic'&&(config.default_markdown_template&&config.template_variables?
@@ -134,7 +135,7 @@ export default function NotificationHooksDialog({projectId,workflowId,workflowNa
               <p className="workflow-hooks-hint">{t('notificationTemplate.upgrade')}</p>)}
           </fieldset>}
           {tab==='preview'&&<div className="workflow-hooks-simulation"><div className="workflow-hooks-fields">
-            <label>{t('notificationHooks.event')}<select value={sample.event} onChange={e=>{setSample(s=>({...s,event:e.target.value as NotificationEvent}));setPreview(null)}}>{notificationEvents.map(event=><option value={event} key={event}>{eventLabel(event)}</option>)}</select></label>
+            <label>{t('notificationHooks.event')}<Select value={sample.event} onChange={e=>{setSample(s=>({...s,event:e.target.value as NotificationEvent}));setPreview(null)}}>{notificationEvents.map(event=><option value={event} key={event}>{eventLabel(event)}</option>)}</Select></label>
             <label>{t('notificationHooks.taskTitle')}<input value={sample.title} maxLength={500} placeholder={t('notificationHooks.sampleTitle')} onChange={e=>{setSample(s=>({...s,title:e.target.value}));setPreview(null)}}/></label>
             <label>{t('notificationHooks.step')}<input value={sample.step} maxLength={128} placeholder={t('notificationHooks.sampleStep')} onChange={e=>{setSample(s=>({...s,step:e.target.value}));setPreview(null)}}/></label>
           </div><p className="workflow-hooks-hint">{t('notificationHooks.previewHint')}</p><div className="notification-hooks-actions"><Button onClick={()=>void generatePreview()} disabled={!!busy||invalid}>{t('notificationHooks.generate')}</Button><Button variant="primary" onClick={()=>setConfirm('test')} disabled={!!busy||!ready||!hook.enabled}>{t('notificationHooks.test')}</Button></div>

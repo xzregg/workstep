@@ -238,6 +238,10 @@ def project_http_route_allowed(method: str, path: str,
     values = [value for key, value in query_pairs if key == "project_id"]
     if values != [project_id]:
         return False
+    if (path in ("/api/skins", "/api/skins/contract")
+            or re.fullmatch(r"/api/skins/(?!validate$|register$|import$|export$|onboarding$)[a-z][a-z0-9_-]{0,63}", path)
+            or re.fullmatch(r"/api/skins/assets/[a-f0-9]{64}/[A-Za-z0-9_./-]+\.(?:png|jpe?g|webp)", path)):
+        return len(query_pairs) == 1 and not any(part in (".", "..") for part in path.split("/"))
     if _WORKFLOW_HOOKS.fullmatch(path):
         return access_level == 'edit' and len(query_pairs) == 1
     if _NOTIFICATION_HOOKS.fullmatch(path) or _NOTIFICATION_HISTORY.fullmatch(path):

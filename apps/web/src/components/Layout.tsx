@@ -1,3 +1,4 @@
+import { useSkinSidebar } from '../hooks/useSkinSidebar'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import SidebarConversationTabs from './SidebarConversationTabs'
@@ -85,7 +86,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('providers')
   const [settingsFocus, setSettingsFocus] = useState<SettingsFocusTarget | undefined>()
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
-  const [sidebarWidth, setSidebarWidth] = useState(280)
+  const { width: sidebarWidth, begin: startSidebarDrag, nudge: nudgeSidebar } = useSkinSidebar()
   const [renameWfId, setRenameWfId] = useState<string | null>(null)
   const [deleteWf, setDeleteWf] = useState<{ id: string; projectId: string; name: string; soft: boolean } | null>(null)
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null)
@@ -177,26 +178,6 @@ export default function Layout({ onSelectProject, children }: Props) {
     .filter((projectId) => projects.some((project) => project.id === projectId))
     .sort()
     .join('\u0000')
-  const startSidebarDrag = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = sidebarWidth
-    const onMove = (ev: PointerEvent) => {
-      setSidebarWidth(Math.min(480, Math.max(180, startWidth + (ev.clientX - startX))))
-    }
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('pointercancel', onUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    window.addEventListener('pointercancel', onUp)
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = ''
-  }
 
   useEffect(() => {
     if (!useGatewaySessionStore.getState().session?.host_project_id) void fetchProjects()
@@ -1076,7 +1057,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         onKeyDown={(e) => {
           if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
           e.preventDefault()
-          setSidebarWidth((w) => Math.min(480, Math.max(180, w + (e.key === 'ArrowLeft' ? -16 : 16))))
+          nudgeSidebar(e.key === 'ArrowLeft' ? -16 : 16)
         }}
       />
 

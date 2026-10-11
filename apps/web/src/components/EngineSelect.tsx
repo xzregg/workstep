@@ -110,6 +110,7 @@ export default function EngineSelect({
 
   return (
     <Select
+      skinRole="engine"
       value={value}
       disabled={disabled || visibleEngines.length === 0}
       onChange={(event) => onChange(event.target.value)}

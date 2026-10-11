@@ -1,0 +1,16 @@
+.coordinator-config--bar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; row-gap: 6px; margin-bottom: 8px; }
+.coordinator-config--menu { display: flex; flex-direction: column; gap: 2px; }
+.coordinator-config .coordinator-config-select, .coordinator-config .coordinator-config-engine { font-size: calc(11px * var(--font-scale)); border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); padding: 2px 5px; }
+.coordinator-config--bar .coordinator-config-select { max-width: 140px; }
+.coordinator-config--bar .coordinator-config-engine { max-width: 170px; }
+.coordinator-config--menu .coordinator-config-select { flex: 1; min-width: 0; max-width: none; }
+.coordinator-config--menu .coordinator-config-engine { width: 100%; max-width: none; }
+.coordinator-config-label { flex-shrink: 0; font-size: calc(11px * var(--font-scale)); color: var(--meta); }
+.coordinator-config-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: calc(12px * var(--font-scale)); font-weight: 500; }
+.coordinator-config-chevron { color: var(--meta); opacity: .6; flex-shrink: 0; }
+.chat-input-config-row { cursor: pointer; }
+.chat-input-config-row[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.coordinator-config-status { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
+.coordinator-config--menu .coordinator-config-status { margin-top: 2px; }
+.coordinator-config-status--error { color: var(--danger); }
+.coordinator-config-status--success { color: var(--success); }

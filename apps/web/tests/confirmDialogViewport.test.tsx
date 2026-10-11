@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import ConfirmDialog from '../src/components/ConfirmDialog.tsx'
@@ -21,7 +22,9 @@ test('confirm dialog keeps its chrome inside a short viewport and scrolls only i
     </I18nProvider>,
   )
 
-  assert.match(html, /max-height:calc\(100dvh - 32px\)/)
-  assert.match(html, /display:flex;flex-direction:column;overflow:hidden/)
-  assert.match(html, /data-confirm-dialog-body="true"[^>]*style="[^"]*overflow-y:auto/)
+  const css = readFileSync(new URL('../src/components/ConfirmDialog.css', import.meta.url), 'utf8')
+  assert.match(html, /class="confirm-dialog-panel resizable-panel"/)
+  assert.match(html, /data-confirm-dialog-body="true" class="confirm-dialog-body"/)
+  assert.match(css, /\.confirm-dialog-panel\s*\{[^}]*max-height:\s*calc\(100dvh - 32px\)[^}]*display:\s*flex;\s*flex-direction:\s*column;\s*overflow:\s*hidden/)
+  assert.match(css, /\.confirm-dialog-body\s*\{[^}]*min-height:\s*0;\s*overflow-y:\s*auto/)
 })

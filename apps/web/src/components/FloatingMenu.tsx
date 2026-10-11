@@ -1,7 +1,8 @@
+import { SKIN_EVENT } from '../skins/runtime'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import MobileSheet from './MobileSheet'
 import { useI18n } from '../i18n'
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './Icon'
 
@@ -82,6 +83,11 @@ export default function FloatingMenu({
   title,
   searchable,
 }: FloatingMenuProps) {
+  useEffect(() => {
+    const closeOnSkinChange = () => onClose()
+    window.addEventListener(SKIN_EVENT, closeOnSkinChange)
+    return () => window.removeEventListener(SKIN_EVENT, closeOnSkinChange)
+  }, [onClose])
   const compact = useCompactLayout()
   const { t } = useI18n()
   const menuRef = useRef<HTMLDivElement>(null)

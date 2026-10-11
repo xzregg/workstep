@@ -8,6 +8,7 @@
 - [桌面沙箱模式](desktop-sandbox.md) *(简体中文)* — Podman 下载、独立 Home、项目挂载、配置导入、模式切换与清理。
 - [容器 Home 与运行时持久化](container-runtime.md) *(简体中文)* — 整体 Home 挂载、基础运行时初始化、引擎持久化与旧挂载迁移。
 - [Development](development.md) — setup, test commands, module boundaries, Git management, onboarding, and pull-request checks.
+- [动态皮肤开发规范](skins.md) *(简体中文)* — 包格式、全站样式部位、PC/手机布局、事件边界与聊天制作。
 - [Code map](code-map.md) *(简体中文)* — find feature owners, API and service boundaries, tests, and change workflow.
 - [Gateway 开发与部署](gateway-development.md) *(简体中文)* — Gateway 分层、账号、授权、接口及部署入口；未完成验收仍以平台计划为准。
 - [Gateway 运维](gateway-operations.md) *(简体中文)* — 域名、TLS、备份恢复和客户端发布。

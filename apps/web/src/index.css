@@ -379,8 +379,8 @@ button {
 button:hover { background: var(--surface); color: var(--fg); }
 button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-hover); color: #fff; }
+.btn-primary { background: var(--accent); color: var(--accent-fg); }
+.btn-primary:hover { background: var(--accent-hover); color: var(--accent-fg); }
 .btn-ghost { border: 1px solid var(--border); }
 .btn-ghost:hover { background: var(--surface); }
 
@@ -469,7 +469,7 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-description-actions { flex-wrap: wrap; justify-content: flex-end; margin-top: 8px; }
 .task-description-leading-actions { margin-right: auto; }
 .task-description-schedule-editor { display: flex; align-items: center; gap: 8px; width: 380px; max-width: 100%; }
-.task-description-schedule-status { font-size: calc(12px * var(--font-scale)); font-weight: 600; color: var(--warning); }
+.task-description-schedule-status { font-size: calc(12px * var(--font-scale)); font-weight: 600; color: var(--warn); }
 .task-description-schedule-status[data-state="pending"] { color: var(--accent); }
 .task-description-schedule-status[data-state="failed"] { color: var(--danger); }
 .task-description-schedule-picker { flex: 1; min-width: 0; }
@@ -654,7 +654,7 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-board-card-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .task-board-card-title { font-size: calc(13px * var(--font-scale)); font-weight: 600; color: var(--fg); }
 .task-board-card-scheduled { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); }
-.task-board-card-schedule-missed { color: var(--warning); }
+.task-board-card-schedule-missed { color: var(--warn); }
 .task-board-card-schedule-failed { color: var(--danger); }
 .task-board-card .task-card-status-badge[data-step-status="true"] {
   color: var(--task-card-status-color);
@@ -706,16 +706,16 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .review-decision-actions > .btn { flex-shrink: 0; }
 .review-decision-complete { margin-right: auto; }
 .review-decision-actions .review-decision-complete {
-  background: var(--success); color: #fff; border-color: transparent;
+  background: var(--success); color: var(--accent-fg); border-color: transparent;
 }
 .review-decision-actions .review-decision-complete:hover {
-  background: color-mix(in oklab, var(--success), black 12%); color: #fff;
+  background: color-mix(in oklab, var(--success), black 12%); color: var(--accent-fg);
 }
 .review-decision-actions .review-decision-reject {
-  background: #ea580c; color: #fff; border-color: transparent;
+  background: #ea580c; color: var(--accent-fg); border-color: transparent;
 }
 .review-decision-actions .review-decision-reject:hover {
-  background: #c2410c; color: #fff;
+  background: #c2410c; color: var(--accent-fg);
 }
 .task-message-review-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
 .step-prompt-editor-overlay {
@@ -2293,7 +2293,7 @@ details[open] > summary > .process-trace-chevron {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  color: var(--accent-fg);
   cursor: pointer;
   align-items: center;
   justify-content: center;
@@ -3338,7 +3338,7 @@ details[open] > summary > .process-trace-chevron {
 .code-preview .hljs-number,
 .code-preview .hljs-built_in,
 .code-preview .hljs-type {
-  color: var(--warning);
+  color: var(--warn);
 }
 
 .code-preview .hljs-comment,
@@ -4377,7 +4377,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   border: 0;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  color: var(--accent-fg);
   cursor: pointer;
   align-items: center;
   justify-content: center;
@@ -4964,8 +4964,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 .chat-input-send:disabled { cursor: not-allowed; }
 .chat-input-send[data-state="idle"] { background: transparent; color: var(--fg-2); }
-.chat-input-send[data-state="active"] { background: var(--fg); color: #fff; }
-.chat-input-send[data-state="stopped"] { background: #d92d20; color: #fff; }
+.chat-input-send[data-state="active"] { background: var(--fg); color: var(--accent-fg); }
+.chat-input-send[data-state="stopped"] { background: #d92d20; color: var(--accent-fg); }
 .chat-input-stop-glyph { width: 12px; height: 12px; border-radius: 2px; background: currentColor; }
 .chat-input-send:hover:not(:disabled) {
   transform: scale(0.98);
@@ -5275,8 +5275,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   animation: task-status-spin 0.8s linear infinite;
 }
 
-.btn-danger { background: var(--danger); color: #fff; }
-.btn-danger:hover { background: color-mix(in oklab, var(--danger), white 10%); color: #fff; }
+.btn-danger { background: var(--danger); color: var(--accent-fg); }
+.btn-danger:hover { background: color-mix(in oklab, var(--danger), white 10%); color: var(--accent-fg); }
 .btn-sm { padding: 4px 10px; font-size: calc(12px * var(--font-scale)); border-radius: var(--radius-xs); }
 .btn-loading { opacity: 0.85; cursor: progress; }
 .btn[disabled], button:disabled { opacity: 0.55; cursor: not-allowed; }

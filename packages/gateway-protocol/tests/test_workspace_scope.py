@@ -109,3 +109,13 @@ def test_notification_collection_is_read_only_and_bound_to_one_project(level):
         assert not allowed(method, path, query[:1], 'visible', access_level=level)
     for other in ('/api/completion-notifications/public-key', '/api/completion-notifications/subscriptions'):
         assert not allowed('GET', other, query[:1], 'visible', access_level=level)
+
+
+def test_skin_catalog_is_read_only_and_bound_to_project():
+    from workstep_gateway_protocol import project_http_route_allowed
+    for path in ("/api/skins", "/api/skins/contract", "/api/skins/ocean", "/api/skins/assets/" + "a" * 64 + "/wall.png"):
+        assert project_http_route_allowed("GET", path, [("project_id", "p")], "p", access_level="read")
+        assert not project_http_route_allowed("GET", path, [("project_id", "other")], "p", access_level="edit")
+        assert not project_http_route_allowed("POST", path, [("project_id", "p")], "p", access_level="edit")
+    for path in ("/api/skins/register", "/api/skins/validate", "/api/skins/ocean/export"):
+        assert not project_http_route_allowed("GET", path, [("project_id", "p")], "p", access_level="edit")

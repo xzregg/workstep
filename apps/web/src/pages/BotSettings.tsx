@@ -1,3 +1,4 @@
+import Select from '../components/Select'
 import { useEffect, useState } from 'react'
 import { channelBotApi, type BotDraft, type ChannelBot, type BotPlatform } from '../api/channelBots'
 import Button from '../components/Button'
@@ -105,16 +106,16 @@ export default function BotSettings() {
     </div>
     <h2>{editingId ? t('channelBot.edit') : t('channelBot.add')}</h2>
     <div className="bot-settings-form">
-      <label>{t('channelBot.platform')}<select value={draft.platform} disabled={!!editingId} onChange={(event) => setField('platform', event.target.value as BotPlatform)}>
+      <label>{t('channelBot.platform')}<Select value={draft.platform} disabled={!!editingId} onChange={(event) => setField('platform', event.target.value as BotPlatform)}>
         <option value="wecom">{t('channelBot.wecom')}</option><option value="dingtalk">{t('channelBot.dingtalk')}</option>
-      </select></label>
+      </Select></label>
       <label>{t('channelBot.name')}<Input value={draft.name} onChange={(event) => setField('name', event.target.value)} /></label>
       <label>{draft.platform === 'wecom' ? 'Bot ID' : 'Client ID'}<Input value={draft.app_id} onChange={(event) => setField('app_id', event.target.value)} /></label>
       <label>{draft.platform === 'wecom' ? 'Secret' : 'Client Secret'}<Input type="password" value={draft.secret} placeholder={editingId ? t('channelBot.keepSecret') : ''} onChange={(event) => setField('secret', event.target.value)} /></label>
       {draft.platform === 'dingtalk' && <label>{t('channelBot.cardTemplate')}<Input value={draft.card_template_id || ''} placeholder={t('channelBot.cardTemplatePlaceholder')} onChange={(event) => setField('card_template_id', event.target.value)} /></label>}
-      <label>{t('channelBot.defaultProject')}<select required value={draft.default_project_id} onChange={(event) => setDraft((current) => ({ ...current, default_project_id: event.target.value, default_task_id: '' }))}>
+      <label>{t('channelBot.defaultProject')}<Select required value={draft.default_project_id} onChange={(event) => setDraft((current) => ({ ...current, default_project_id: event.target.value, default_task_id: '' }))}>
         <option value="">{t('channelBot.selectProject')}</option>{localProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-      </select></label>
+      </Select></label>
       <label className="bot-settings-checkbox"><input type="checkbox" checked={draft.enabled} onChange={(event) => setField('enabled', event.target.checked)} />{t('channelBot.enabled')}</label>
     </div>
     <p className="bot-settings-hint">{localProjects.length ? t('channelBot.defaultProjectHint') : t('channelBot.noLocalProject')}</p>

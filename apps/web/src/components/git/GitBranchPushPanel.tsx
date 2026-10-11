@@ -1,3 +1,4 @@
+import Select from '../Select'
 import { useEffect, useState } from 'react'
 import { type GitBranch } from '../../api/git'
 import { useI18n } from '../../i18n'
@@ -56,7 +57,7 @@ export default function GitBranchPushPanel({ id, branch, onClose, onBusy, onPush
 
   return <div className="git-branch-push" role="dialog" aria-label={t('git.branchPushTitle', { branch: branch.name })}>
     <strong>{t('git.branchPushTitle', { branch: branch.name })}</strong><Button variant="icon" aria-label={t('git.close')} onClick={onClose}><Icon name="x" size={14} /></Button>
-    <label>{t('git.remoteSource')}<select value={remote} disabled={loading || pushing} onChange={event => setRemote(event.target.value)}><option value="">{t('git.selectRemote')}</option>{remotes.map(name => <option key={name} value={name}>{name}</option>)}</select></label>
+    <label>{t('git.remoteSource')}<Select value={remote} disabled={loading || pushing} onChange={event => setRemote(event.target.value)}><option value="">{t('git.selectRemote')}</option>{remotes.map(name => <option key={name} value={name}>{name}</option>)}</Select></label>
     <label>{t('git.targetBranch')}<input name="pushTargetBranch" value={target} disabled={loading || pushing} onChange={event => setTarget(event.target.value)} /></label>
     <label className="git-branch-push-track"><input type="checkbox" checked={setUpstream} disabled={loading || pushing} onChange={event => setSetUpstream(event.target.checked)} />{t('git.setUpstream')}</label>
     <Button size="sm" variant="primary" loading={loading || pushing} disabled={!remote || !target.trim() || writes.busy} onClick={() => void push()}>{t('git.pushConfirm')}</Button>

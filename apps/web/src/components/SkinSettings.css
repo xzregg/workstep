@@ -1,0 +1,12 @@
+.skin-settings { display: flex; flex-direction: column; gap: var(--space-3); color: var(--fg); }
+.skin-settings h1, .skin-settings h2, .skin-settings p { margin: 0; }
+.skin-settings p { color: var(--muted); }
+.skin-settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.skin-settings-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: var(--space-3); }
+.skin-settings-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.skin-settings-card[data-selected="true"] { border-color: var(--accent); }
+.skin-settings-file { display: none; }
+.skin-settings .skin-settings-error { color: var(--danger); }
+.skin-settings-package, .skin-settings-showcase { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-soft); border-radius: var(--radius-md); }
+.skin-settings-preview-notice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2); background: var(--accent-light); }
+@media (max-width: 1023px) { .skin-settings .btn, .skin-settings .ws-input { min-height: var(--mobile-control-regular); } }

@@ -1,3 +1,4 @@
+import SkinRecovery from './components/SkinRecovery'
 import { gatewayWorkspacePath } from './utils/gatewayWorkspacePath'
 import { BrandIcon } from './components/BrandIcon'
 import { lazy, Suspense } from 'react'
@@ -101,6 +102,7 @@ function WelcomeView() {
 function App() {
   return (
     <BrowserRouter basename={gatewayWorkspacePath() || undefined}>
+      <SkinRecovery />
       <GatewayWorkspaceLocation />
       <GatewayRemoteFrame><GatedApp /></GatewayRemoteFrame>
     </BrowserRouter>
