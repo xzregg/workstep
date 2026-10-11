@@ -99,9 +99,12 @@ class NotificationService:
             conditions = [visible_to(user_id),Notice.occurred_at>=time.time()-RETENTION,Notice.sequence>after]
             unread = await session.scalar(select(func.count()).select_from(Notice).where(
                 visible_to(user_id),Notice.occurred_at>=time.time()-RETENTION,Notice.sequence>read))
-            if before is not None: conditions.append(Notice.sequence<before)
+            if before is not None:
+                stamp = select(Notice.occurred_at).where(Notice.sequence==before).scalar_subquery()
+                conditions.append(or_(Notice.occurred_at<stamp,
+                    and_(Notice.occurred_at==stamp,Notice.sequence<before)))
             rows = (await session.execute(select(Notice,Device.name).join(Device,Device.id==Notice.device_id)
-                .where(*conditions).order_by(Notice.sequence.desc()).limit(limit+1))).all()
+                .where(*conditions).order_by(Notice.occurred_at.desc(),Notice.sequence.desc()).limit(limit+1))).all()
             events = [dict(json.loads(row.payload_json),sequence=row.sequence,id=row.event_key,device_id=row.device_id,device_name=name,
                 host_project_id=row.host_project_id,project_name=row.project_name,occurred_at=row.occurred_at,
                 read=row.sequence<=read,source_sequence=json.loads(row.payload_json).get('sequence')) for row,name in rows[:limit]]

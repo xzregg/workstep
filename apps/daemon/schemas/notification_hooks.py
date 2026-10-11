@@ -3,6 +3,7 @@ from urllib.parse import urlsplit, parse_qs
 
 from pydantic import Field, field_validator, model_validator
 from schemas.base import BaseSchema
+from schemas.notification_template import MAX_TEMPLATE_LENGTH, validate_markdown_template
 
 NotificationEvent = Literal['started', 'completed', 'failed', 'paused', 'stopped', 'step_completed', 'step_failed', 'waiting']
 EVENT_NAMES = {'started':'任务开始', 'completed':'任务完成', 'failed':'任务失败', 'paused':'任务暂停', 'stopped':'任务停止',
@@ -20,6 +21,12 @@ class NotificationHookDraft(BaseSchema):
     prefix: str = Field(default='', max_length=80)
     include_link: bool = True
     link_base: Literal['gateway','external','internal'] = 'gateway'
+    markdown_template: str | None = Field(default=None, max_length=MAX_TEMPLATE_LENGTH)
+
+    @field_validator('markdown_template')
+    @classmethod
+    def valid_template(cls, value):
+        return validate_markdown_template(value)
 
     @field_validator('name')
     @classmethod

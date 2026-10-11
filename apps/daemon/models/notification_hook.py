@@ -13,6 +13,7 @@ class NotificationHook(BaseModel):
     enabled = pw.BooleanField(default=True)
     events_json = pw.TextField()
     prefix = pw.TextField(default='')
+    markdown_template = pw.TextField(null=True)
     include_link = pw.BooleanField(default=True)
     link_base = pw.TextField(default='gateway')
     sort_order = pw.IntegerField(default=0)

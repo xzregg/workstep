@@ -18,7 +18,7 @@ def test_workspace_loading_does_not_open_global_or_private_routes(method, path):
 
 @pytest.mark.parametrize('path', ['/api/engine/list', '/api/engine/execution/config',
     '/api/engine/coordinator/config', '/api/assistant/list', '/api/provider/list',
-    '/api/engine/codex/models'])
+    '/api/engine/codex/models', '/api/engine/codex_sdk/quota'])
 def test_workspace_catalog_is_project_bound(path):
     allowed = project_http_route_allowed
     assert allowed('GET', path, [('project_id', 'visible')], 'visible')

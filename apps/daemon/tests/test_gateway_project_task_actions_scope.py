@@ -311,3 +311,68 @@ async def test_project_bridge_chat_create_load_send_reload(api_context, monkeypa
     finally:
         await module.shutdown()
         await bus.close()
+
+
+@pytest.mark.anyio
+async def test_project_bridge_engine_quota_is_scoped_and_does_not_block_health(
+    api_context, monkeypatch,
+):
+    import main
+    from api import engine as engine_api
+
+    client, tmp_path = api_context
+    directory = tmp_path / "remote-quota"
+    directory.mkdir()
+    monkeypatch.setattr(engine_api, "project_manager", main.project_manager)
+    initialized = await client.post("/api/project/init", json={"path": str(directory)})
+    assert initialized.status_code == 200
+    project_id = initialized.json()["id"]
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    entered = threading.Event()
+    calls = []
+
+    class QuotaEngine:
+        async def get_quota(self, cwd=""):
+            calls.append(cwd)
+            return {"engine_id": "codex_sdk", "primary": {"remaining_percent": 81}}
+
+    def slow_registry(**_kwargs):
+        entered.set()
+        time.sleep(0.7)
+
+    monkeypatch.setattr(engine_api, "refresh_registry", slow_registry)
+    monkeypatch.setattr(engine_api, "create_engine", lambda _id: QuotaEngine())
+
+    async def request(query):
+        frames = []
+
+        async def capture(frame):
+            frames.append(frame)
+
+        bridge = ManagedHttpBridge(main.app, "quota-chain", {
+            "method": "GET", "path": "/api/engine/codex_sdk/quota", "query": query,
+            "headers": [], "user_id": "worker", "username": "worker",
+            "project_id": project_id, "access_level": "read",
+        }, capture, "device-1")
+        bridge.start_task()
+        await bridge.feed(ProxyFrame(stream_id="quota-chain", type=FrameType.http_request,
+                                    payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=5)
+        content = b"".join(base64.b64decode(frame.payload["data"])
+                           for frame in frames if frame.payload.get("phase") == "body")
+        return frames[0].payload["status"], json.loads(content)
+
+    for query in ("", "project_id=private", f"project_id={project_id}&refresh=1",
+                  f"project_id={project_id}&project_id={project_id}"):
+        assert (await request(query))[0] == 403
+    assert calls == []
+
+    pending = asyncio.create_task(request(f"project_id={project_id}"))
+    assert await asyncio.to_thread(entered.wait, 2)
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    status, body = await pending
+    assert status == 200, body
+    assert body["quota"]["primary"]["remaining_percent"] == 81
+    assert calls == [str(directory.resolve())]

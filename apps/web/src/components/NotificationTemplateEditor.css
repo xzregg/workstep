@@ -1,0 +1,10 @@
+.notification-template-editor{grid-column:1 / -1;min-width:0;border-top:1px solid var(--border-soft);padding-top:16px}
+.notification-template-editor .notification-hooks-actions h3{margin:0}
+.notification-template-editor .markdown-editor-input{font-family:var(--font-mono);min-height:220px!important}
+.notification-template-feedback{min-height:28px;font-size:var(--text-caption);color:var(--muted);padding:8px 0}
+.notification-template-feedback [role=alert]{color:var(--danger)}
+.notification-template-catalog summary{cursor:pointer;font-size:var(--text-body);color:var(--muted);padding:8px 0}
+.notification-template-variables{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:8px}
+.notification-template-variables button{display:flex;align-items:flex-start;flex-direction:column;text-align:left;gap:4px;padding:10px;min-width:0;white-space:normal}
+.notification-template-variables code{font-family:var(--font-mono);font-size:var(--text-caption);overflow-wrap:anywhere}
+.notification-template-variables small{color:var(--muted);font-size:var(--text-caption)}

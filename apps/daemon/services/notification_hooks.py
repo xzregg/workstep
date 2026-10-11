@@ -12,12 +12,13 @@ from models import Task, TaskStep, StepRun
 from models.notification_hook import NotificationHook, NotificationDelivery
 from services.notification_delivery import DeliveryError, notification_payload, send_notification
 from schemas.notification_hooks import EVENT_NAMES
+from schemas.notification_template import DEFAULT_MARKDOWN_TEMPLATE, TEMPLATE_VARIABLES
 
 logger = logging.getLogger(__name__)
 
 
 def hook_data(row):
-    return {key:getattr(row,key) for key in ('id','workflow_id','name','platform','url','secret','enabled','prefix','include_link','link_base')} | {'events':json.loads(row.events_json)}
+    return {key:getattr(row,key) for key in ('id','workflow_id','name','platform','url','secret','enabled','prefix','include_link','link_base','markdown_template')} | {'events':json.loads(row.events_json)}
 
 
 def base_addresses():
@@ -63,7 +64,8 @@ class NotificationHookService:
 
     async def configuration(self, project_id, workflow_id):
         hooks = await self.manager.run_db(project_id, lambda p:self.load_configuration(p,workflow_id))
-        return {'hooks':hooks,'addresses':await asyncio.to_thread(base_addresses)}
+        return {'hooks':hooks,'addresses':await asyncio.to_thread(base_addresses),
+                'default_markdown_template':DEFAULT_MARKDOWN_TEMPLATE,'template_variables':list(TEMPLATE_VARIABLES)}
 
     async def save(self, project_id, workflow_id, drafts):
         def persist(project):
@@ -74,7 +76,7 @@ class NotificationHookService:
                 for order,draft in enumerate(drafts):
                     if draft.id and draft.id not in existing: raise HookError(422,'钩子不属于当前流程')
                     row = existing.get(draft.id) or NotificationHook(id=str(uuid4()))
-                    for key in ('name','platform','url','secret','enabled','prefix','include_link','link_base'):setattr(row,key,getattr(draft,key))
+                    for key in ('name','platform','url','secret','enabled','prefix','include_link','link_base','markdown_template'):setattr(row,key,getattr(draft,key))
                     row.workflow_id=workflow_id;row.sort_order=order;row.events_json=json.dumps(draft.events)
                     row.save(force_insert=row.id not in existing)
                     saved.append(row.id)

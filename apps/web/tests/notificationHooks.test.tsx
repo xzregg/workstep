@@ -134,3 +134,38 @@ test('delivery history recovers from errors, paginates and retries the selected 
     assert.deepEqual(offsets,[0,0,0,50,0])
   } finally {await ui.cleanup()}
 })
+
+test('robot template drafts validate before save and reach preview without sending',async()=>{
+  const ui=await mountNotificationDialog()
+  const defaults='### {notification_title}\n\n**事件：{event_name}**\n\n{task_title}'
+  const catalog={default_markdown_template:defaults,template_variables:['notification_title','event_name','task_title']}
+  const bot={...ui.hook,platform:'dingtalk' as const,url:'https://oapi.dingtalk.com/robot/send?access_token=demo',markdown_template:null}
+  let saved:NotificationHook|undefined,previewed:NotificationHook|undefined
+  notificationHooksApi.get=async()=>({hooks:[bot],addresses:[],...catalog})
+  notificationHooksApi.save=async(_,__,hooks)=>{saved=hooks[0];return {hooks,addresses:[],...catalog}}
+  notificationHooksApi.preview=async(_,__,hook)=>{previewed=hook;return {payload:{msgtype:'markdown',markdown:{text:'**任务完成**'}},snapshot:{task:{title:'演示任务'}},subscribed:true}}
+  try{
+    await ui.render()
+    const edit=async(value:string)=>{
+      const target=ui.document.querySelector<HTMLTextAreaElement>('textarea')!
+      await act(async()=>{
+        Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value')!.set!.call(target,value)
+        target.dispatchEvent(new Event('input',{bubbles:true}))
+      })
+    }
+    await edit('{wrong}')
+    assert.equal(ui.button('保存').disabled,true)
+    await edit('**自定义：{event_name}**')
+    await ui.click('模拟通知')
+    assert.equal(ui.button('发送测试通知').disabled,true)
+    await ui.click('生成预览')
+    assert.equal(previewed?.markdown_template,'**自定义：{event_name}**')
+    assert.equal(ui.document.querySelector('.notification-hooks-message strong')?.textContent,'任务完成')
+    await ui.click('关闭');await ui.click('取消')
+    assert.equal(ui.closed(),0)
+    await ui.click('通知配置');await ui.click('保存')
+    assert.equal(saved?.markdown_template,'**自定义：{event_name}**')
+    await ui.click('恢复默认模板');await ui.click('确认');await ui.click('保存')
+    assert.equal(saved?.markdown_template,null)
+  }finally{await ui.cleanup()}
+})

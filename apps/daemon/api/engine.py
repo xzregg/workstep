@@ -414,6 +414,7 @@ async def inspect_engine(
 @router.get("/{engine_id}/quota")
 async def get_engine_quota(engine_id: str, project_id: str = ""):
     """Fetch account quota for engines that expose a native quota API."""
+    require_catalog_project(project_id)
     engine = await asyncio.to_thread(
         lambda: (refresh_registry(invalidate_scan=False), create_engine(engine_id))[1]
     )

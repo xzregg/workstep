@@ -5,6 +5,8 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { engineApi } from '../src/api/client'
 import { useEngineQuota } from '../src/hooks/useEngineQuota'
+import ChatInputUsage from '../src/components/ChatInputUsage'
+import { I18nProvider } from '../src/i18n'
 
 function QuotaHarness({ engine, running, projectId = 'project-1' }: {
   engine: string
@@ -15,6 +17,7 @@ function QuotaHarness({ engine, running, projectId = 'project-1' }: {
   return <div>
     <span data-quota>{quota?.engine_id ?? ''}</span>
     <span data-refreshing>{String(refreshing)}</span>
+    <I18nProvider><ChatInputUsage quota={quota} compact onRefreshQuota={() => { void refresh() }} quotaRefreshing={refreshing} /></I18nProvider>
     <button type="button" onClick={() => { void refresh() }}>刷新</button>
   </div>
 }
@@ -85,17 +88,37 @@ test('quota loads when entering a running conversation and switching its engine'
 })
 
 
-test('gateway workspace does not read device-native account quota', async () => {
- const { window } = installDomEnvironment()
- window.history.replaceState({}, '', '/workspace/device-1/chat')
- const original = engineApi.quota
- let calls = 0
- engineApi.quota = (async () => { calls++; return { quota: null } }) as never
- const root = createRoot(document.body.appendChild(document.createElement('div')))
- try {
-  await act(async () => root.render(<QuotaHarness engine="codex_sdk" running={false} />))
-  assert.equal(calls, 0)
-  await act(async () => document.querySelector<HTMLButtonElement>('button')!.click())
-  assert.equal(calls, 0)
- } finally { await act(async () => root.unmount()); engineApi.quota = original; await window.happyDOM.close() }
-})
+for (const url of ['http://localhost/workspace/device-1/chat', 'https://d-device-1.gateway.test/chat']) {
+  test(`mobile gateway quota loads and refreshes in ${url}`, async () => {
+    const { window } = installDomEnvironment()
+    window.happyDOM.setURL(url)
+    window.innerWidth = 390
+    const originalQuota = engineApi.quota
+    const requests: Array<[string, string]> = []
+    engineApi.quota = async (engine, projectId) => {
+      requests.push([engine, projectId])
+      return {
+        engine_id: engine, supported: true,
+        quota: { engine_id: engine, primary: { remaining_percent: requests.length === 1 ? 81 : 75 } },
+      } as never
+    }
+    const container = document.body.appendChild(document.createElement('div'))
+    const root = createRoot(container)
+    try {
+      await act(async () => root.render(<QuotaHarness engine="codex_sdk" running={false} />))
+      assert.deepEqual(requests, [['codex_sdk', 'project-1']])
+      const quota = container.querySelector<HTMLElement>('.chat-input-quota')!
+      assert.ok(quota)
+      assert.match(quota.textContent || '', /81%/)
+      await act(async () => quota.click())
+      assert.ok(quota.classList.contains('is-tip-open'))
+      await act(async () => container.querySelector<HTMLButtonElement>('[data-quota-refresh]')!.click())
+      assert.deepEqual(requests, [['codex_sdk', 'project-1'], ['codex_sdk', 'project-1']])
+      assert.match(quota.textContent || '', /75%/)
+    } finally {
+      await act(async () => root.unmount())
+      engineApi.quota = originalQuota
+      await window.happyDOM.close()
+    }
+  })
+}

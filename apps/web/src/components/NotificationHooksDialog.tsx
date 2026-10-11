@@ -10,6 +10,8 @@ import Icon from './Icon'
 import ResizablePanel from './ResizablePanel'
 import MarkdownMessage from './MarkdownMessage'
 import WorkflowHookTypeTabs from './WorkflowHookTypeTabs'
+import NotificationTemplateEditor from './NotificationTemplateEditor'
+import { notificationTemplateIssue } from '../utils/notificationTemplate'
 import './WorkflowHooksDialog.css'
 import './NotificationHooksDialog.css'
 
@@ -31,7 +33,7 @@ export default function NotificationHooksDialog({projectId,workflowId,workflowNa
   const [preview,setPreview]=useState<NotificationPreview|null>(null)
   const [history,setHistory]=useState({items:[] as NotificationRecord[],offset:0,revision:0,loading:false,error:''})
   const hook=hooks[selected],dirty=JSON.stringify(hooks)!==initial
-  const invalid=hooks.some(h=>!h.name.trim()||!/^https?:\/\/\S+$/.test(h.url)||!h.events.length)
+  const invalid=hooks.some(h=>!h.name.trim()||!/^https?:\/\/\S+$/.test(h.url)||!h.events.length||notificationTemplateIssue(h.markdown_template,config?.template_variables??[]))
   const ready=!!hook?.id&&!dirty
   const dialogRef=useRef<HTMLDivElement>(null)
   const compact=useCompactLayout()
@@ -114,7 +116,7 @@ export default function NotificationHooksDialog({projectId,workflowId,workflowNa
           {tab==='config'&&<fieldset className="workflow-hooks-editor notification-hooks-columns" disabled={!!busy}>
             <div><label>{t('workflowHooks.name')}<input value={hook.name} maxLength={128} onChange={e=>change({name:e.target.value})}/></label>
               <label className="workflow-hooks-checkbox"><input type="checkbox" checked={hook.enabled} onChange={e=>change({enabled:e.target.checked})}/>{t('workflowHooks.enabled')}</label>
-              <label>{t('notificationHooks.platform')}<select value={hook.platform} onChange={e=>change({platform:e.target.value as NotificationHook['platform'],secret:''})}>{(['dingtalk','wecom','generic'] as const).map(p=><option key={p} value={p}>{platformLabel(p)}</option>)}</select></label>
+              <label>{t('notificationHooks.platform')}<select value={hook.platform} onChange={e=>change({platform:e.target.value as NotificationHook['platform'],secret:'',...(e.target.value==='generic'?{markdown_template:null}:{})})}>{(['dingtalk','wecom','generic'] as const).map(p=><option key={p} value={p}>{platformLabel(p)}</option>)}</select></label>
               <label>{t('notificationHooks.url')}<input data-testid="notification-url" type={showUrl?'text':'password'} autoComplete="off" value={hook.url} maxLength={4096} onChange={e=>change({url:e.target.value})}/></label>
               <Button onClick={()=>setShowUrl(v=>!v)}>{t(showUrl?'workflowHooks.hide':'workflowHooks.show')}</Button><p className="workflow-hooks-hint">{t('notificationHooks.urlHint')}</p>
               {hook.platform==='dingtalk'&&<label>{t('notificationHooks.secret')}<input type="password" autoComplete="off" value={hook.secret} maxLength={1024} onChange={e=>change({secret:e.target.value})}/></label>}
@@ -127,6 +129,9 @@ export default function NotificationHooksDialog({projectId,workflowId,workflowNa
               <label>{t('notificationHooks.linkBase')}<select value={hook.link_base} disabled={!hook.include_link} onChange={e=>change({link_base:e.target.value as NotificationHook['link_base']})}>{config.addresses.map(a=><option value={a.kind} key={a.kind}>{t(`workflowHooks.${a.kind}`)}</option>)}{!config.addresses.some(a=>a.kind===hook.link_base)&&<option value={hook.link_base}>{t(`workflowHooks.${hook.link_base}`)} · {t('notificationHooks.missingAddress')}</option>}</select></label>
               <p className="workflow-hooks-hint">{t('notificationHooks.contentHint')}</p><div className="notification-hooks-note">{t('notificationHooks.retryHint')}</div>
             </div>
+            {hook.platform!=='generic'&&(config.default_markdown_template&&config.template_variables?
+              <NotificationTemplateEditor key={hook.id||`draft-${selected}`} value={hook.markdown_template} defaultTemplate={config.default_markdown_template} variables={config.template_variables} disabled={!!busy} onChange={markdown_template=>change({markdown_template})}/>:
+              <p className="workflow-hooks-hint">{t('notificationTemplate.upgrade')}</p>)}
           </fieldset>}
           {tab==='preview'&&<div className="workflow-hooks-simulation"><div className="workflow-hooks-fields">
             <label>{t('notificationHooks.event')}<select value={sample.event} onChange={e=>{setSample(s=>({...s,event:e.target.value as NotificationEvent}));setPreview(null)}}>{notificationEvents.map(event=><option value={event} key={event}>{eventLabel(event)}</option>)}</select></label>

@@ -1,4 +1,3 @@
-import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { engineApi, type EngineQuota } from '../api/client'
 
@@ -13,7 +12,7 @@ export function useEngineQuota(projectId: string | undefined, engine: string, ru
   const requestIdRef = useRef(0)
 
   const refresh = useCallback(async () => {
-    if (!projectId || isGatewayRemoteBrowser()) return
+    if (!projectId) return
     const requestId = ++requestIdRef.current
     setRefreshing(true)
     try {
