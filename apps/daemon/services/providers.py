@@ -10,6 +10,7 @@ import asyncio
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -70,24 +71,30 @@ async def fetch_models(
     """
     protocol = select_provider_protocol(provider, protocol)
     models_url = provider_endpoint_url(provider, protocol, "models")
-    # Anthropic 兼容网关（如 OpenRouter `https://openrouter.ai/api`）的模型列表
-    # 需要 `/v1/models`，而真实消息调用用无 `v1` 的地址：缺 `v1` 时自动补一次重试，
-    # 保证供应商测试通过，不改动实际调用地址。
-    fallback_url = _anthropic_models_v1_fallback(provider, protocol, models_url)
+    # 仅模型列表兼容：先追加 /models，失败再追加 /v1/models。
+    # 不改写供应商基础地址，也不影响实际引擎调用。
+    fallback_url = _anthropic_models_v1_fallback(provider, protocol)
     async with httpx.AsyncClient(
         headers=auth_headers(provider, protocol),
         timeout=15,
         transport=transport,
     ) as client:
-        try:
-            response = await client.get(models_url)
+        async def get_payload(url: str) -> Any:
+            response = await client.get(url)
             response.raise_for_status()
-        except httpx.HTTPStatusError:
+            payload = response.json()
+            if protocol == "anthropic_messages" and (
+                not isinstance(payload, dict) or not isinstance(payload.get("data"), list)
+            ):
+                raise ValueError("供应商模型列表响应格式不正确")
+            return payload
+
+        try:
+            payload = await get_payload(models_url)
+        except (httpx.HTTPError, ValueError):
             if fallback_url is None:
                 raise
-            response = await client.get(fallback_url)
-            response.raise_for_status()
-        payload = response.json()
+            payload = await get_payload(fallback_url)
 
     items = payload.get("data", []) if isinstance(payload, dict) else []
     models: dict[str, EngineModel] = {}
@@ -108,16 +115,12 @@ async def fetch_models(
     return sorted(models.values(), key=lambda item: item.label.lower())
 
 
-def _anthropic_models_v1_fallback(
-    provider: dict, protocol: str, models_url: str
-) -> str | None:
+def _anthropic_models_v1_fallback(provider: dict, protocol: str) -> str | None:
     """Return the `/v1/models` retry URL for Anthropic protocol, if applicable."""
     if protocol != "anthropic_messages":
         return None
-    if "/v1" in (models_url.split("://", 1)[-1]):
-        return None
     basic = provider_basic_url(provider, protocol)
-    if not basic:
+    if not basic or urlsplit(basic).path.endswith("/v1"):
         return None
     return f"{basic.rstrip('/')}/v1/models"
 

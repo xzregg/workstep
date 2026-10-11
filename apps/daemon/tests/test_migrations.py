@@ -1,6 +1,25 @@
 """Database schema bootstrap behavior exercised through the public model interface."""
 
 
+def test_existing_notification_hooks_gain_nullable_template_without_losing_data(tmp_path):
+    import peewee
+    from models import NotificationHook, init_db
+    database_path = str(tmp_path / 'legacy-hooks.db')
+    db = peewee.SqliteDatabase(database_path)
+    db.execute_sql('CREATE TABLE notification_hooks (id TEXT PRIMARY KEY, workflow_id TEXT, name TEXT, platform TEXT, url TEXT, secret TEXT, enabled INTEGER, events_json TEXT, prefix TEXT, include_link INTEGER, link_base TEXT, sort_order INTEGER)')
+    db.execute_sql('INSERT INTO notification_hooks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                   ('old-hook','flow','旧钩子','dingtalk','https://oapi.dingtalk.com/robot/send?access_token=demo','SECdemo',1,'["completed"]','k8s',1,'external',0))
+    db.close()
+    for _ in range(2):  # Bootstrap remains idempotent.
+        db = init_db(database_path)
+        try:
+            hook = NotificationHook.get_by_id('old-hook')
+            assert hook.markdown_template is None
+            assert hook.name == '旧钩子' and hook.secret == 'SECdemo' and hook.prefix == 'k8s'
+        finally:
+            db.close()
+
+
 def test_init_db_records_latest_schema_version(tmp_path):
     """A freshly initialized project records the schema version it uses."""
     from models import LATEST_SCHEMA_VERSION, SchemaVersion, init_db

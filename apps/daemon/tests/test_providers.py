@@ -539,6 +539,121 @@ async def test_fetch_models_does_not_guess_anthropic_version_path():
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("first_result", ["404", "html", "error_json", "network_error"])
+@pytest.mark.parametrize("prefix", ["", "/proxy/anthropic", "/v1-router"])
+async def test_anthropic_model_discovery_retries_v1_without_changing_runtime_base(
+    first_result, prefix
+):
+    paths = []
+    provider = {
+        "type": "custom",
+        "protocols": ["openai_responses", "anthropic_messages"],
+        "base_url": "https://other.example.com/v1",
+        "protocol_base_urls": {
+            "openai_responses": "https://other.example.com/v1",
+            "anthropic_messages": f"https://gateway.example.com{prefix}",
+        },
+        "api_key": "test-key",
+    }
+
+    async def handler(request):
+        paths.append(request.url.path)
+        assert request.headers["x-api-key"] == "test-key"
+        if len(paths) == 1:
+            if first_result == "network_error":
+                raise httpx.ConnectError("mock connection failure", request=request)
+            if first_result == "html":
+                return httpx.Response(200, text="<html>gateway home</html>")
+            if first_result == "error_json":
+                return httpx.Response(200, json={"error": "wrong endpoint"})
+            return httpx.Response(404)
+        assert request.url.path == f"{prefix}/v1/models"
+        return httpx.Response(200, json={"data": [{"id": "qwen3.8-flash"}]})
+
+    models = await provider_service.fetch_models(
+        provider, protocol="anthropic_messages", transport=httpx.MockTransport(handler)
+    )
+
+    assert [model.id for model in models] == ["qwen3.8-flash"]
+    assert paths == [f"{prefix}/models", f"{prefix}/v1/models"]
+    assert provider_service.provider_runtime_base_url(provider, "anthropic_messages") == f"https://gateway.example.com{prefix}"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("protocol, base_path", [
+    ("anthropic_messages", "/v1"),
+    ("openai_responses", ""),
+    ("openai_chat_completions", ""),
+])
+async def test_model_discovery_does_not_duplicate_v1_or_retry_other_protocols(
+    protocol, base_path
+):
+    paths = []
+
+    async def handler(request):
+        paths.append(request.url.path)
+        return httpx.Response(404)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await provider_service.fetch_models(
+            {"type": "custom", "protocols": [protocol],
+             "base_url": f"https://gateway.example.com{base_path}"},
+            transport=httpx.MockTransport(handler),
+        )
+    assert paths == [f"{base_path}/models"]
+
+
+@pytest.mark.anyio
+async def test_anthropic_empty_model_list_succeeds_without_retry():
+    paths = []
+
+    async def handler(request):
+        paths.append(request.url.path)
+        return httpx.Response(200, json={"data": []})
+
+    models = await provider_service.fetch_models(
+        {"type": "anthropic", "base_url": "https://gateway.example.com"},
+        transport=httpx.MockTransport(handler),
+    )
+    assert models == []
+    assert paths == ["/models"]
+
+
+@pytest.mark.anyio
+async def test_anthropic_model_fallback_reports_failure_after_two_attempts():
+    paths = []
+
+    async def handler(request):
+        paths.append(request.url.path)
+        return httpx.Response(404 if len(paths) == 1 else 503)
+
+    with pytest.raises(httpx.HTTPStatusError) as error:
+        await provider_service.fetch_models(
+            {"type": "anthropic", "base_url": "https://gateway.example.com/anthropic"},
+            transport=httpx.MockTransport(handler),
+        )
+    assert paths == ["/anthropic/models", "/anthropic/v1/models"]
+    assert error.value.response.status_code == 503
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("protocol", ["openai_responses", "openai_chat_completions"])
+async def test_openai_model_discovery_keeps_existing_empty_response_behavior(protocol):
+    paths = []
+
+    async def handler(request):
+        paths.append(request.url.path)
+        return httpx.Response(200, json={})
+
+    models = await provider_service.fetch_models(
+        {"type": "custom", "protocols": [protocol], "base_url": "https://gateway.example.com"},
+        transport=httpx.MockTransport(handler),
+    )
+    assert models == []
+    assert paths == ["/models"]
+
+
+@pytest.mark.anyio
 async def test_fetch_models_uses_selected_protocol_address_and_auth():
     async def handler(request):
         assert request.url == "https://anthropic.example.com/proxy/v2/models"

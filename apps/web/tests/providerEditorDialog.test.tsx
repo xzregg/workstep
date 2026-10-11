@@ -77,6 +77,27 @@ test('new provider keeps save disabled until required fields are complete', asyn
   }
 })
 
+test('Anthropic address example is the engine base without v1', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const types = [{ id: 'anthropic', label: 'Anthropic', default_protocols: ['anthropic_messages'], default_base_url: 'https://api.anthropic.com' }] as ProviderTypeMeta[]
+  try {
+    await act(async () => root.render(<I18nProvider><ProviderEditorDialog
+      target={{ mode: 'create' }} types={types} onClose={() => {}} onSaved={() => {}}
+    /></I18nProvider>))
+    const address = container.querySelector<HTMLInputElement>('#provider-base-url-anthropic_messages')
+    assert.ok(address)
+    assert.equal(address.value, 'https://api.anthropic.com')
+    assert.equal(address.placeholder, 'https://api.example.com')
+    assert.match(container.textContent ?? '', /\/models.*\/v1\/models/)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
 test('closing an edited provider draft requires discard confirmation', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

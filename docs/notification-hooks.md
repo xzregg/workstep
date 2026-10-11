@@ -8,7 +8,7 @@
 
 默认订阅任务完成、任务失败。可选任务开始、完成、失败、暂停、停止，步骤完成、失败、等待确认。任务事件来自执行轮次生命周期，不把 `ready` 或取消排队当作完成；开始按执行轮次去重，暂停按发生次数保留。人工审核通过通知步骤完成，手动完成任务和终止任务分别通知完成和停止。等待确认包含人工审核与引擎的用户交互请求。消息回复结束、引擎 `done` 与跳过步骤不会误报步骤完成。
 
-设备直接访问配置的 Webhook，网关不代发、不保存通知配置。发送消息不携带对话正文、产物内容或任务创建凭据。通用 JSON 包含 `event_id/event/notification_title/project/workflow/task/step/occurred_at/task_url`；钉钉和企业微信使用各自 Markdown 消息格式，字段长度受平台限额约束。
+设备直接访问配置的 Webhook，网关不代发、不保存通知配置。发送消息不携带对话正文、产物内容或任务创建凭据。通用 JSON 包含 `event_id/event/notification_title/project/workflow/task/step/occurred_at/task_url`，`occurred_at` 保留 ISO 8601 UTC 时间供程序处理；钉钉和企业微信使用各自 Markdown 消息格式，正文独立展示中文事件名称，事件与时间整行加粗；时间转换为发送设备的本地时区，按秒显示并附 UTC 偏移，例如 `2026-10-11 08:13:10 (UTC+08:00)`。字段长度受平台限额约束。
 
 任务链接按配置选择网关、外网或内网地址。网关链接使用已授权平台设备标识的 `/workspace/{device_id}/tasks` 路径，内外网使用 `/tasks`，都携带项目、流程、任务定位参数。不生成分享凭据，打开仍需正常授权；所选地址缺失或网关设备身份不可用时不附带链接。
 
@@ -20,7 +20,7 @@
 
 发送最多 4 路并发，HTTP 超时 10 秒、整体截止 12 秒，不跟随重定向。HTTP 2xx 对通用目标表示成功；钉钉和企业微信还必须返回业务 `errcode: 0`。网络、超时、HTTP 408／429／5xx 和可识别的平台临时错误最多自动重试 3 次，间隔 30／120／600 秒；永久错误直接记为失败。原始响应、地址、签名和密钥不写入投递结果。
 
-发送前重新核对目标启用与事件订阅状态，并使用当前目标地址。停用、取消订阅或删除会跳过待发送记录；已经发出的请求无法撤回。删除目标同时删除其投递记录。失败记录可手动重试，保留总尝试次数并重新给予重试预算。超时和崩溃恢复可能重复投递，通用接收端可使用 `event_id` 去重。
+发送前重新核对流程是否删除、目标启用与事件订阅状态，并使用当前目标地址。等待并发名额后也执行此核对。停用、取消订阅或删除会跳过待发送记录；已经发出的请求无法撤回。删除目标同时删除其投递记录。失败记录可手动重试，保留总尝试次数并重新给予重试预算。超时和崩溃恢复可能重复投递，通用接收端可使用 `event_id` 去重。
 
 投递记录按时间倒序，每页 50 条；展示事件、任务标题、状态、尝试次数和脱敏结果。记录存在待投递项时页面定时刷新，也可手动刷新。记录目前无自动保留期限。
 
@@ -38,6 +38,6 @@
 
 新增项目表通过现有模型注册与启动迁移创建。需要更新设备服务；通过网关管理时还需更新网关引用的共享协议权限表。既有触发钩子数据和公开调用路径不迁移。
 
-行为测试：daemon `tests/test_notification_hooks.py`（真实 API、工作流后台投递、多个目标、重启恢复、去重、次数上限、平台加签／业务错误和慢 I/O canary）；`test_workflow_runtime.py`、`test_review_gate.py`；Web `tests/notificationHooks.test.tsx`、`workflowHooks.test.tsx`；共享协议 `tests/test_hooks.py`。正式用户操作手册与真实演示截图在合并交付节点集中同步。
+行为测试：daemon `tests/test_notification_hooks.py`（真实 API、工作流成功／失败／暂停／停止／人工审核后台投递、多个目标、发送前配置变化、领取超时恢复及并发去重、手动重试、归属与保存事务、慢 SQL／网络健康 canary）；`test_notification_delivery.py`（模拟 HTTP 接收端、平台成功／业务错误／畸形响应、网络错误脱敏、重定向与重试分类）；`test_workflow_runtime.py`、`test_review_gate.py`；Web `tests/notificationHooks.test.tsx`（预览与发送确认、多目标保存及失败恢复、删除确认、记录分页和重试）、`workflowHooks.test.tsx`；共享协议 `tests/test_hooks.py`。机器人投递测试使用模拟接收端，真实群机器人及设备外网连通性仍需实际环境联调。正式用户操作手册与真实演示截图在合并交付节点集中同步。
 
 平台协议参考：[钉钉机器人接入](https://open.dingtalk.com/document/robots/custom-robot-access)、[钉钉安全设置](https://open.dingtalk.com/document/robots/customize-robot-security-settings)、[企业微信群机器人配置](https://developer.work.weixin.qq.com/document/path/91770)。

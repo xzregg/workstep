@@ -24,6 +24,11 @@ from . import connection_credentials
 COOKIE = 'workstep_platform_local_session'
 
 
+def local_session_cookie_name(app) -> str:
+    login = getattr(app.state, 'gateway_browser_login', None)
+    return getattr(login, 'cookie_name', COOKIE)
+
+
 class GatewayLoginCompletion(NamedTuple):
     local_session: str
     actor: Any
@@ -61,6 +66,9 @@ def _identity(origin: str) -> dict:
 class GatewayBrowserLogin:
     def __init__(self, gateway, client_factory=None):
         self.gateway = gateway
+        # Browser cookies share a host across ports. Bind the name to this
+        # daemon lifetime, just like the in-memory local session registry.
+        self.cookie_name = COOKIE + '_' + secrets.token_hex(12)
         self.client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=10, follow_redirects=False))
         self.pending = None
         self.desktop_local_session = None

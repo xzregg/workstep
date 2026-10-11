@@ -196,6 +196,77 @@ def test_claude_provider_runtime_is_isolated_from_parent_environment(provider_st
     assert "secret-claude-gateway" not in runtime.safe_summary
 
 
+@pytest.mark.parametrize("engine_class", [ClaudeCodeEngine, ClaudeAgentSDKEngine])
+@pytest.mark.parametrize("api_base", [
+    "https://gateway.example.com/v1",
+    "https://gateway.example.com/proxy/v1/",
+    "https://gateway.example.com/anthropic",
+    "https://gateway.example.com/v2",
+    "http://v1",
+])
+def test_claude_provider_base_is_passed_through_to_runtime(
+    provider_store, engine_class, api_base
+):
+    provider = {
+        **_provider("multi", "openai_responses"),
+        "protocols": ["openai_responses", "anthropic_messages"],
+        "protocol_base_urls": {
+            "openai_responses": "https://other.example.com/v1",
+            "anthropic_messages": api_base,
+        },
+    }
+    provider_store.save_provider(provider)
+
+    runtime = engine_class().resolve_provider_runtime(
+        provider_id="multi", model="qwen3.8-flash"
+    )
+
+    assert runtime.env["ANTHROPIC_BASE_URL"] == api_base.rstrip("/")
+    assert runtime.model == "qwen3.8-flash"
+    assert runtime.env["ANTHROPIC_API_KEY"] == "secret-multi"
+    assert provider_store.get_provider("multi")["protocol_base_urls"]["anthropic_messages"] == api_base.rstrip("/")
+
+
+@pytest.mark.anyio
+async def test_claude_sdk_probe_passes_provider_base_and_model_to_sdk(
+    provider_store, monkeypatch, tmp_path
+):
+    sdk = pytest.importorskip("claude_agent_sdk")
+    provider_store.save_provider(
+        _provider("claude-gateway", "anthropic_messages", type_id="anthropic")
+    )
+    provider_store.set_claude_permission_mode("acceptEdits")
+    captured = {}
+
+    class Client:
+        def __init__(self, *, options):
+            captured["options"] = options
+
+        async def connect(self):
+            raise RuntimeError("probe stopped before network")
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setattr(sdk, "ClaudeSDKClient", Client)
+    monkeypatch.setattr(
+        ClaudeAgentSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(
+        "services.skill_runtime.prepare_claude_plugin", lambda *_: (tmp_path, [])
+    )
+    result = await ClaudeAgentSDKEngine().test_connection(
+        cwd=str(tmp_path), model="qwen3.8-flash",
+        config_overrides={"provider_id": "claude-gateway"},
+    )
+
+    assert result.message == "probe stopped before network"
+    options = captured["options"]
+    assert options.env["ANTHROPIC_BASE_URL"] == "https://claude-gateway.example.com/v1"
+    assert options.env["ANTHROPIC_API_KEY"] == "secret-claude-gateway"
+    assert options.model == "qwen3.8-flash"
+
+
 _MODEL_MAP_PAYLOAD = json.dumps({
     "sonnet": {"model": "qwen3.8-max"},
     "haiku": {"model": "qwen3.8-flash", "name": "Qwen Flash"},

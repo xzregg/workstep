@@ -252,7 +252,9 @@ export default function ProviderEditorDialog({ target, types, onClose, onSaved }
                       htmlFor={`provider-base-url-${option.value}`} required>
                       <Input id={`provider-base-url-${option.value}`} className="provider-editor-control"
                         value={form.protocol_base_urls[option.value] || ''}
-                        placeholder={t('providerSettings.baseUrlPlaceholder')}
+                        placeholder={t(option.value === 'anthropic_messages'
+                          ? 'providerSettings.anthropicBaseUrlPlaceholder'
+                          : 'providerSettings.baseUrlPlaceholder')}
                         onChange={(event) => {
                           const value = event.target.value
                           setForm((current) => ({ ...current, protocol_base_urls: { ...current.protocol_base_urls, [option.value]: value } }))

@@ -6,6 +6,7 @@ import sqlite3
 import stat
 import time
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -483,6 +484,55 @@ def _cc_switch_providers():
 
 
 # --- Provider settings API ---
+
+
+@pytest.mark.anyio
+async def test_anthropic_model_fallback_keeps_base_and_health_responsive(
+    engine_client, monkeypatch
+):
+    client, store = engine_client
+    provider = {
+        "id": "anthropic-root", "name": "演示供应商", "type": "custom",
+        "protocols": ["anthropic_messages"], "base_url": "https://gateway.example.com/proxy",
+        "protocol_base_urls": {"anthropic_messages": "https://gateway.example.com/proxy"},
+        "api_key": "test-key", "enabled": True,
+    }
+    store.save_provider(provider)
+    fallback_started = asyncio.Event()
+    release = asyncio.Event()
+    paths = []
+
+    async def handler(request):
+        paths.append(request.url.path)
+        if request.url.path == "/proxy/models":
+            return httpx.Response(404)
+        assert request.url.path == "/proxy/v1/models"
+        fallback_started.set()
+        await release.wait()
+        return httpx.Response(200, json={"data": [{"id": "qwen3.8-flash"}]})
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        provider_service.httpx, "AsyncClient",
+        lambda **kwargs: AsyncClient(**{**kwargs, "transport": transport}),
+    )
+    pending = asyncio.create_task(
+        client.get("/api/provider/anthropic-root/models/preview?protocol=anthropic_messages")
+    )
+    try:
+        await asyncio.wait_for(fallback_started.wait(), timeout=1)
+        assert not pending.done()
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+    finally:
+        release.set()
+        response = await pending
+
+    assert response.status_code == 200
+    assert response.json()["error"] is None
+    assert [model["id"] for model in response.json()["models"]] == ["qwen3.8-flash"]
+    assert paths == ["/proxy/models", "/proxy/v1/models"]
+    assert store.get_provider("anthropic-root") == provider
 
 
 @pytest.mark.anyio

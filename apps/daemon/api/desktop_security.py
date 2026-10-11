@@ -12,7 +12,7 @@ from fastapi import WebSocket
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
-from services.gateway_client.browser_login import COOKIE as PLATFORM_COOKIE
+from services.gateway_client.browser_login import local_session_cookie_name
 
 from services.remote_access import ActorSnapshot, actor_context, authenticated_remote_dispatch
 from services.project_request_audit import record_remote_request_failure
@@ -169,12 +169,12 @@ async def desktop_websocket_allowed(ws: WebSocket) -> bool:
         return (_valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER))
                 or await asyncio.to_thread(_remote_access_enabled, ws.app))
     desktop_authenticated = desktop_runtime_authenticated(ws)
-    if not desktop_authenticated and ws.cookies.get(PLATFORM_COOKIE) and not ws.headers.get(LOCAL_SESSION_HEADER):
+    if not desktop_authenticated and ws.cookies.get(local_session_cookie_name(ws.app)) and not ws.headers.get(LOCAL_SESSION_HEADER):
         if not browser_origin_allowed(ws):
             return False
     browser_login = getattr(ws.app.state, 'gateway_browser_login', None)
     desktop_session = getattr(browser_login, 'desktop_local_session', None) if desktop_authenticated else None
-    actor = gateway_client.local_sessions.resolve(ws.headers.get(LOCAL_SESSION_HEADER) or ws.cookies.get(PLATFORM_COOKIE) or desktop_session)
+    actor = gateway_client.local_sessions.resolve(ws.headers.get(LOCAL_SESSION_HEADER) or ws.cookies.get(local_session_cookie_name(ws.app)) or desktop_session)
     if actor is None and desktop_authenticated:
         actor = getattr(gateway_client, 'current_actor', None)
     if actor is None:
@@ -215,7 +215,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 configured = await browser_login.settings()
                 await browser_login.save_settings(configured["url"], False)
                 response = RedirectResponse("/", status_code=303)
-                response.delete_cookie(PLATFORM_COOKIE, path="/")
+                response.delete_cookie(local_session_cookie_name(request.app), path="/")
                 response.headers["Cache-Control"] = "no-store"
                 return response
         protected = request.url.path.startswith(("/api/", "/docs", "/redoc", "/openapi.json"))
@@ -278,17 +278,17 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         if managed and protected and not remote_bridge and not native_dispatch:
             browser_login = getattr(request.app.state, 'gateway_browser_login', None)
             desktop_session = getattr(browser_login, 'desktop_local_session', None) if desktop_authenticated else None
-            actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(PLATFORM_COOKIE) or desktop_session)
+            actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(local_session_cookie_name(request.app)) or desktop_session)
             if actor is None and desktop_authenticated:
                 actor = getattr(gateway_client, 'current_actor', None)
-        if (managed and not desktop_authenticated and actor is not None and request.cookies.get(PLATFORM_COOKIE)
+        if (managed and not desktop_authenticated and actor is not None and request.cookies.get(local_session_cookie_name(request.app))
                 and not request.headers.get(LOCAL_SESSION_HEADER) and request.method not in ("GET", "HEAD", "OPTIONS")
                 and not browser_origin_allowed(request)):
             return JSONResponse({"detail": "same-origin request required"}, status_code=403)
         if (managed and not remote_bridge and not desktop_authenticated and not remote_access and request.url.path == "/"
                 and request.query_params.get("gateway_auth") != "cancelled"
                 and getattr(request.app.state, "gateway_browser_login", None) is not None
-                and gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(PLATFORM_COOKIE)) is None):
+                and gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(local_session_cookie_name(request.app))) is None):
             return RedirectResponse("/gateway/login", status_code=303)
         browser_session = managed and actor is not None and actor.project_id is None
         denied = protected and not native_public_share and (
