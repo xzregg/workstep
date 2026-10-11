@@ -45,7 +45,7 @@ async function runAcceptance(options) {
   report.pathMode = options['ascii-sandbox-root'] ? 'ascii-sandbox-root' : 'unicode-sandbox-root'
   if (options['ascii-sandbox-root']) report.gaps.push('Chinese sandbox storage path: not exercised in this diagnostic run')
   const record = (name, details = {}) => { report.checks.push({ name, ...details }); console.log(`PASS ${name}`) }
-  let manager, runtime, env, machine, podman, uninstall
+  let manager, runtime, env, machine, podman, uninstall, run
   let phase = 'installer'
   try {
     const installer = path.resolve(options.installer)
@@ -73,7 +73,7 @@ async function runAcceptance(options) {
       report.gaps.push('Rebuilt fixed desktop installer: source modules used with the published image')
     }
     const { SandboxManager } = require(path.join(modules, 'sandbox.cjs'))
-    const { run } = require(path.join(modules, 'sandbox-runtime.cjs'))
+    run = require(path.join(modules, 'sandbox-runtime.cjs')).run
     record(`published installer checksum/version/immutable image; ${report.moduleMode}`)
 
     const sandbox = path.join(root, options['ascii-sandbox-root'] ? 'sandbox with spaces' : '中文沙箱 with spaces')
@@ -124,7 +124,7 @@ async function runAcceptance(options) {
       const timer = setTimeout(() => {
         if (!manager.session) return
         snapshot = manager.session.command(['exec', machine, '/bin/sh', '-c',
-          "ps -eo pid,ppid,etime,stat,args; df -T /root; ls -ld /root/.workstep/runtime/base /root/.workstep/runtime/.base-stage.* 2>/dev/null; curl --max-time 3 -sS http://127.0.0.1:8765/api/health || true"],
+          "for p in /proc/[0-9]*; do echo PID ${p##*/}; cat \"$p/comm\" \"$p/wchan\" \"$p/io\" 2>/dev/null; done; df -T /root; ls -lh /usr/local/share/workstep-runtime/base.tar; ls -ld /root/.workstep/runtime/base /root/.workstep/runtime/.base-stage.* 2>/dev/null; curl --max-time 3 -sS http://127.0.0.1:8765/api/health || true"],
         { captureCombined: true, timeout: 15000 }).then(async text => {
           await fs.writeFile(path.join(reportDir, `startup-${phase}.log`), redact(text, token))
         }).catch(error => { report.startupDiagnosticError = redact(error.message, token) })
