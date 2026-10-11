@@ -1,3 +1,4 @@
+import SkinSettings from '../components/SkinSettings'
 import SandboxSettings from '../components/SandboxSettings'
 import GatewayLogoutButton from '../components/GatewayLogoutButton'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -179,6 +180,8 @@ export default function SettingsPage({
           <SandboxSettings onDirtyChange={onSandboxDirty} />
         ) : activeSection === 'feedback' ? (
           <ProblemFeedbackSettings />
+        ) : activeSection === 'skins' ? (
+          <SkinSettings onStarted={closeSettings} />
         ) : activeSection === 'system' ? (
           <div className="settings-system-page">
             <h1 className="settings-system-title">{t('settings.systemTitle')}</h1>

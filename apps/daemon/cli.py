@@ -28,6 +28,7 @@ LIST_FIELDS = {
     "task": ("tasks", ("id", "title", "status", "archived", "workflow_id", "created_at", "updated_at")),
     "engine": ("engines", ("id", "enabled", "custom", "installed", "configured", "verified", "built_in", "version", "mode", "default_model")),
     "schedule": ("schedules", ("id", "name", "workflow_id", "status", "summary", "next_run_at", "last_run_at")),
+    "skin": (None, ("manifest", "revision")),
     "channel": (None, ("id", "name", "platform", "enabled", "status")),
 }
 
@@ -212,6 +213,21 @@ def build_parser() -> argparse.ArgumentParser:
     recipients.add_argument("--user", dest="user_id")
     recipients.add_argument("--group", dest="group_id")
     add_json(channel_send)
+
+    skin = subparsers.add_parser("skin", help="create and manage declarative WorkStep skins")
+    skin_sub = skin.add_subparsers(dest="subcommand", required=True)
+    for action in ("list", "contract"):
+        add_json(skin_sub.add_parser(action))
+    for action in ("validate", "register"):
+        command = skin_sub.add_parser(action)
+        command.add_argument("path")
+        if action == "register": command.add_argument("--replace", action="store_true")
+        add_json(command)
+    for action in ("delete", "export"):
+        command = skin_sub.add_parser(action)
+        command.add_argument("skin_id")
+        if action == "export": command.add_argument("--output", required=True)
+        add_json(command)
 
     engine = subparsers.add_parser("engine", help="manage engines")
     engine_sub = engine.add_subparsers(dest="subcommand", required=True)
@@ -479,6 +495,15 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 "overwrite": args.overwrite,
                 "confirm": "yes",
             })
+    if command == "skin":
+        action = args.subcommand
+        arguments = {"confirm": "yes"}
+        if hasattr(args, "path"):
+            arguments["path"] = str(await asyncio.to_thread(Path(args.path).expanduser().resolve))
+        if hasattr(args, "skin_id"): arguments["skin_id"] = args.skin_id
+        if action == "register": arguments["replace"] = args.replace
+        if action == "export": arguments["output"] = str(await asyncio.to_thread(Path(args.output).expanduser().resolve))
+        return await client.call("workstep_skin_" + action, arguments)
     if command == "engine":
         action = args.subcommand
         if action == "list":

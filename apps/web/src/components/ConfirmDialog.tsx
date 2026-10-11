@@ -1,3 +1,4 @@
+import './ConfirmDialog.css'
 import ResizablePanel from './ResizablePanel'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
@@ -40,30 +41,22 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
   return (
     <div
       onClick={onCancel}
-      style={{
-        position: 'fixed', inset: 0, zIndex,
-        background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16, boxSizing: 'border-box',
-      }}
+      className="confirm-dialog-backdrop"
+      style={{ zIndex }}
     >
       <ResizablePanel
         ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'var(--bg)', borderRadius: 'var(--radius-md)',
-          boxShadow: 'var(--elev-raised), 0 0 0 1px var(--border-soft)',
-          width, maxWidth: '100%', maxHeight: 'calc(100dvh - 32px)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        }}
+        className="confirm-dialog-panel"
+        style={{ width }}
       >
         {/* Header */}
-        <div data-dialog-drag-handle style={{ flexShrink: 0, padding: '16px 20px 0' }}>
-          <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--fg)' }}>
+        <div data-dialog-drag-handle className="confirm-dialog-header">
+          <div className="confirm-dialog-title">
             {title}
           </div>
           {message && (
-            <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
+            <div className="confirm-dialog-message">
               {message}
             </div>
           )}
@@ -72,21 +65,21 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
         {children && (
           <div
             data-confirm-dialog-body="true"
-            style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: '0 20px' }}
+            className="confirm-dialog-body"
           >
             {children}
           </div>
         )}
 
         {/* Footer */}
-        <div style={{ flexShrink: 0, padding: '16px 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+        <div className="confirm-dialog-footer">
           <Button variant="ghost" onClick={onCancel}>{cancelText ?? t('common.cancel')}</Button>
           <Button
             variant={danger ? 'danger' : 'primary'}
             loading={loading}
             disabled={confirmDisabled}
             onClick={onConfirm}
-            style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, padding: '6px 16px' }}
+            className="confirm-dialog-confirm"
           >
             {confirmText ?? t('common.confirm')}
           </Button>

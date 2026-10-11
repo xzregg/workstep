@@ -1,0 +1,47 @@
+{
+  "styles": {
+    "skin-select-option": {
+      "base": {
+        "borderRadius": "10px"
+      },
+      "selected": {
+        "backgroundColor": "#183b58",
+        "color": "#86ccff"
+      }
+    },
+    "chat-input-frame": {
+      "base": {
+        "borderRadius": "16px",
+        "backgroundColor": "#182838"
+      }
+    },
+    "button": {
+      "focus": {
+        "outlineColor": "#86ccff"
+      }
+    }
+  },
+  "layout": {
+    "sidebarSide": "right",
+    "sidebarWidth": 260,
+    "stepsSide": "right",
+    "stepsRatio": 0.35,
+    "splitHandleWidth": 10,
+    "engineAppearance": "cards",
+    "composerToolsPosition": "top"
+  },
+  "mobile": {
+    "styles": {
+      "chat-input-frame": {
+        "base": {
+          "borderRadius": "12px"
+        }
+      }
+    },
+    "layout": {
+      "sidebarSide": "left",
+      "composerToolsPosition": "bottom",
+      "engineAppearance": "list"
+    }
+  }
+}

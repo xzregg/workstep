@@ -1,0 +1,25 @@
+/* Structural options are application-owned; packages only select supported layouts. */
+html[data-skin-sidebar="right"] .responsive-navigation { order: 3; }
+html[data-skin-sidebar="right"] .app-shell > .task-detail-split-handle { order: 2; }
+html[data-skin-sidebar="right"] .app-main { order: 1; }
+html[data-skin-id]:not([data-skin-id="default"]) { color-scheme: light; }
+html[data-skin-scheme="dark"]:not([data-skin-id="default"]) { color-scheme: dark; }
+html[data-skin-id]:not([data-skin-id="default"]) :is(input, textarea, select) { color: var(--fg); background-color: var(--bg); border-color: var(--border); }
+html[data-skin-id]:not([data-skin-id="default"]) .app-main { max-width: var(--skin-content-width); flex: 1; }
+html[data-skin-density="compact"] .task-board-card { padding: var(--space-2); }
+html[data-skin-density="comfortable"] .task-board-card { padding: var(--space-5); }
+html[data-skin-composer="top"] .chat-input-frame { display: flex; flex-direction: column; }
+html[data-skin-composer="top"] .chat-input-toolbar { order: -1; }
+@media (min-width: 1024px) {
+  html[data-skin-steps="right"] .task-detail-content > .task-detail-steps { grid-column: 3; grid-row: 1; }
+  html[data-skin-steps="right"] .task-detail-content > .task-detail-split-handle { grid-column: 2; grid-row: 1; }
+  html[data-skin-steps="right"] .task-detail-content > .task-detail-conversation { grid-column: 1; grid-row: 1; }
+}
+@media (max-width: 1023px) {
+  html[data-skin-sidebar="right"] .responsive-navigation { inset: 0 0 0 auto; transform: translateX(100%); }
+  html[data-skin-sidebar="right"] .responsive-navigation.is-open { transform: translateX(0); }
+}
+.skin-recovery { position: fixed; right: 8px; bottom: 8px; z-index: 2147483647; display: flex; flex-wrap: wrap; max-width: calc(100vw - 16px); gap: 6px; padding: 6px; border: 1px solid #d2d2d7; border-radius: 8px; background: #fff; color: #1d1d1f; box-shadow: 0 2px 10px #0002; font: 12px system-ui; }
+.skin-recovery button { min-height: 32px; padding: 4px 8px; border: 1px solid #d2d2d7; border-radius: 6px; background: #fff; color: #1d1d1f; font: inherit; cursor: pointer; }
+
+html[data-skin-id] .app-shell, html[data-skin-id] .task-detail-window { padding-bottom: var(--skin-recovery-height, 0px); }

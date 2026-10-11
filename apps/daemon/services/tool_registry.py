@@ -456,6 +456,15 @@ WORKSTEP_TOOLS.extend([
     ),
 ])
 
+WORKSTEP_TOOLS.extend([
+    WorkstepTool(name="workstep_skin_list", description="List default and installed skins.", method="GET", path="/api/skins"),
+    WorkstepTool(name="workstep_skin_contract", description="Read the versioned skin parts, states, properties, layouts and actions contract.", method="GET", path="/api/skins/contract"),
+    WorkstepTool(name="workstep_skin_validate", description="Validate a declarative skin package and create an immutable preview; visual acceptance is still required.", method="POST", path="/api/skins/validate", parameters={"path": {"type": "string"}}, required=("path",), body_params=("path",)),
+    WorkstepTool(name="workstep_skin_register", description="Register a validated skin. Replacing the same ID requires explicit replace.", method="POST", path="/api/skins/register", parameters={"path": {"type": "string"}, "replace": {"type": "boolean"}}, required=("path",), body_params=("path", "replace"), read_only=False, side_effect="install or update a skin package"),
+    WorkstepTool(name="workstep_skin_export", description="Export a portable skin ZIP to an absolute local path.", method="POST", path="/api/skins/export", parameters={"skin_id": {"type": "string"}, "output": {"type": "string"}}, required=("skin_id", "output"), body_params=("skin_id", "output"), read_only=False, side_effect="write a skin ZIP"),
+    WorkstepTool(name="workstep_skin_delete", description="Remove a custom skin from the catalog; the default skin is immutable.", method="DELETE", path="/api/skins/{skin_id}", parameters={"skin_id": {"type": "string"}}, required=("skin_id",), path_params=("skin_id",), read_only=False, side_effect="remove a skin registration"),
+])
+
 TOOL_BY_NAME: dict[str, WorkstepTool] = {
     tool.name: tool for tool in WORKSTEP_TOOLS
 }

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
+import { skinContract } from '../skins/contract'
 
-const query = '(max-width: 1023px)'
+const query = `(max-width: ${skinContract.breakpoint}px)`
 function subscribe(callback: () => void) {
   const media = window.matchMedia(query)
   media.addEventListener('change', callback)

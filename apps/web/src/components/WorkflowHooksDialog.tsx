@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { workflowHooksApi, buildHookUrl, type HookConfiguration, type WorkflowHook } from '../api/workflowHooks'
@@ -88,8 +89,8 @@ export default function WorkflowHooksDialog({ projectId, workflowId, workflowNam
             <div className="workflow-hooks-fields">
               <label>{t('workflowHooks.defaultTitle')}<input value={hook.default_title} maxLength={500} onChange={e => change({ default_title: e.target.value })} /></label>
               <label>{t('workflowHooks.defaultCreator')}<input value={hook.default_creator} maxLength={256} onChange={e => change({ default_creator: e.target.value })} /></label>
-              <label>{t('workflowHooks.step')}<select value={hook.step_key} onChange={e => change({ step_key: e.target.value })}><option value="">{t('workflowHooks.firstStep')}</option>{config.steps.map(s => <option key={s.key} value={s.key}>{s.name} · {s.key}</option>)}</select></label>
-              <label>{t('workflowHooks.mode')}<select value={hook.execution_mode} onChange={e => change({ execution_mode: e.target.value as WorkflowHook['execution_mode'] })}><option value="manual">{t('workflowHooks.manual')}</option><option value="immediate">{t('workflowHooks.immediate')}</option></select></label>
+              <label>{t('workflowHooks.step')}<Select value={hook.step_key} onChange={e => change({ step_key: e.target.value })}><option value="">{t('workflowHooks.firstStep')}</option>{config.steps.map(s => <option key={s.key} value={s.key}>{s.name} · {s.key}</option>)}</Select></label>
+              <label>{t('workflowHooks.mode')}<Select value={hook.execution_mode} onChange={e => change({ execution_mode: e.target.value as WorkflowHook['execution_mode'] })}><option value="manual">{t('workflowHooks.manual')}</option><option value="immediate">{t('workflowHooks.immediate')}</option></Select></label>
             </div>
             <p className="workflow-hooks-hint">{t('workflowHooks.parameterHint')}</p>
             <label>Token<div className="workflow-hooks-token"><input readOnly type={showToken ? 'text' : 'password'} value={hook.rotate_token ? t('workflowHooks.pendingReset') : hook.token || t('workflowHooks.pendingSave')} /><Button onClick={() => setShowToken(!showToken)}>{t(showToken ? 'workflowHooks.hide' : 'workflowHooks.show')}</Button><Button onClick={() => setConfirm('reset')} disabled={!hook.id || hook.rotate_token}>{t('workflowHooks.reset')}</Button></div></label>
@@ -101,7 +102,7 @@ export default function WorkflowHooksDialog({ projectId, workflowId, workflowNam
           </fieldset> : <p>{t('workflowHooks.empty')}</p>}
         </div>}
         {config && !failed && tab === 'simulate' && <div className="workflow-hooks-simulation">
-          <div className="workflow-hooks-fields"><label>{t('workflowHooks.selectHook')}<select value={selected} onChange={e => choose(Number(e.target.value))}>{hooks.map((h, i) => <option key={i} value={i}>{h.name}</option>)}</select></label><label>{t('workflowHooks.addresses')}<select value={base} onChange={e => setSimulation(s => ({ ...s, address: e.target.value, done: false }))}>{config.addresses.map(a => <option key={a.kind} value={a.base_url}>{label(a.kind)}</option>)}</select></label>
+          <div className="workflow-hooks-fields"><label>{t('workflowHooks.selectHook')}<Select value={selected} onChange={e => choose(Number(e.target.value))}>{hooks.map((h, i) => <option key={i} value={i}>{h.name}</option>)}</Select></label><label>{t('workflowHooks.addresses')}<Select value={base} onChange={e => setSimulation(s => ({ ...s, address: e.target.value, done: false }))}>{config.addresses.map(a => <option key={a.kind} value={a.base_url}>{label(a.kind)}</option>)}</Select></label>
           <label>{t('workflowHooks.overrideTitle')}<input data-testid="hook-title-override" value={simulation.title} placeholder={hook?.default_title} onChange={e => setSimulation(s => ({ ...s, title: e.target.value, done: false }))} /></label><label>{t('workflowHooks.overrideCreator')}<input value={simulation.creator} placeholder={hook?.default_creator || t('workflowHooks.defaultCreatorValue')} onChange={e => setSimulation(s => ({ ...s, creator: e.target.value, done: false }))} /></label></div>
           <p className="workflow-hooks-hint">{t('workflowHooks.simulationHint')}</p>
           <label>{t('workflowHooks.body')}<textarea value={simulation.body} onChange={e => setSimulation(s => ({ ...s, body: e.target.value, done: false }))} /></label>

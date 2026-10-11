@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
+import { defaultSkin } from '../src/skins/contract'
+import { saveSkin, restoreDefaultSkin } from '../src/skins/runtime'
 import TaskDetailSplitLayout from '../src/components/TaskDetailSplitLayout'
 
 test('task detail divider restores its ratio, clamps drag, and cleans up listeners', async () => {
@@ -33,4 +35,29 @@ test('task detail divider restores its ratio, clamps drag, and cleans up listene
     container.remove()
     await window.happyDOM.close()
   }
+})
+
+
+test('right-side steps use the configured handle width and stop dragging on skin changes', async () => {
+  const { window } = installDomEnvironment()
+  saveSkin({ ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: 'ocean' }, layout: { stepsSide: 'right', stepsRatio: .4, splitHandleWidth: 12 } })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<TaskDetailSplitLayout mobileTab="steps" left={<input defaultValue="draft" />} right={<span>Conversation</span>} />))
+    const layout = container.querySelector<HTMLElement>('.task-detail-content')!
+    assert.match(layout.style.gridTemplateColumns, /0.6fr 12px 0.4fr/)
+    layout.getBoundingClientRect = () => ({ left: 0, width: 1000 } as DOMRect)
+    await act(async () => {
+      container.querySelector('.task-detail-split-handle')!.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }))
+      window.dispatchEvent(new window.PointerEvent('pointermove', { clientX: 300 }))
+    })
+    const ratio = Number(sessionStorage.getItem('workstep:task-detail-split-ratio'))
+    assert.ok(Math.abs(ratio - (1 - 300 / 988)) < .0001)
+    await act(async () => restoreDefaultSkin())
+    assert.equal(document.body.style.cursor, '')
+    await act(async () => window.dispatchEvent(new window.PointerEvent('pointermove', { clientX: 900 })))
+    assert.equal(Number(sessionStorage.getItem('workstep:task-detail-split-ratio')), ratio)
+    assert.equal(container.querySelector('input')!.value, 'draft')
+  } finally { await act(async () => root.unmount()); restoreDefaultSkin(); await window.happyDOM.close() }
 })

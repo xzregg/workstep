@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import './CoordinatorConfigBar.css'
+import { useEffect, useRef, useState } from 'react'
 import EngineSelect, { isEngineSelectable } from './EngineSelect'
 import Select from './Select'
 import Icon from './Icon'
@@ -73,11 +74,6 @@ export interface CoordinatorConfigBarProps {
   allowDefault?: boolean
 }
 
-const selectStyle: CSSProperties = {
-  fontSize: 'calc(11px * var(--font-scale))', border: '1px solid var(--border)',
-  borderRadius: 6, background: 'var(--bg)', color: 'var(--fg)', padding: '2px 5px',
-}
-
 export const THINKING_EFFORT_LEVELS = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
 const CODEX_THINKING_EFFORT_LEVELS = ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const
 
@@ -150,7 +146,7 @@ function MenuField({
         data-open={anchor != null}
         title={title}
         className="chat-input-config-row"
-        style={{ opacity: disabled ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}
+        aria-disabled={disabled || undefined}
         onClick={handleRowToggle}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -159,14 +155,11 @@ function MenuField({
           }
         }}
       >
-        <span style={{ flexShrink: 0, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{label}</span>
-        <span style={{
-          flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap', textAlign: 'right', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500,
-        }}>
+        <span className="coordinator-config-label">{label}</span>
+        <span className="coordinator-config-value">
           {current?.label ?? placeholder}
         </span>
-        <Icon name="chevron-right" size={11} strokeWidth={2.5} style={{ color: 'var(--meta)', opacity: 0.6, flexShrink: 0 }} />
+        <Icon name="chevron-right" size={11} strokeWidth={2.5} className="coordinator-config-chevron" />
       </div>
       {anchor && (
         <FloatingMenu
@@ -252,16 +245,6 @@ export default function CoordinatorConfigBar({
 
   const modelDisabled = disabled || models.length === 0
   const isMenu = variant === 'menu'
-  const fieldStyle: CSSProperties = isMenu
-    ? { ...selectStyle, flex: 1, minWidth: 0, maxWidth: 'none' }
-    : { ...selectStyle, maxWidth: 140 }
-  const engineStyle: CSSProperties = isMenu
-    ? { ...selectStyle, width: '100%', maxWidth: 'none' }
-    : { ...selectStyle, maxWidth: 170 }
-  const statusStyle: CSSProperties = {
-    fontSize: 'calc(11px * var(--font-scale))',
-    ...(isMenu ? { marginTop: 2 } : {}),
-  }
   const effectiveThinkingEffort = defaultThinkingEffort
   const thinkingEffortDefaultLabel = effectiveThinkingEffort
     ? `${t('coord.thinkingEffortDefault')}（${
@@ -281,15 +264,9 @@ export default function CoordinatorConfigBar({
     }）`
     : t('coord.thinkingEffortDefault')
   return (
-    <div style={isMenu
-      ? { display: 'flex', flexDirection: 'column', gap: 2 }
-      : {
-        display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6,
-        flexWrap: 'wrap', rowGap: 6, marginBottom: 8,
-      }}
-    >
+    <div className={`coordinator-config coordinator-config--${isMenu ? 'menu' : 'bar'}`}>
       {!isMenu && (
-        <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{t('coord.engineModel')}</span>
+        <span className="coordinator-config-label">{t('coord.engineModel')}</span>
       )}
       {isMenu ? (
         <>
@@ -415,7 +392,7 @@ export default function CoordinatorConfigBar({
             } : undefined}
             ariaLabel={t('coord.engineAria')}
             title={engineTitle ?? t('coord.engineTitle')}
-            style={engineStyle}
+            className="coordinator-config-engine"
           />
           {supportsProvider && onProviderChange && (
             <Select
@@ -423,7 +400,7 @@ export default function CoordinatorConfigBar({
               disabled={disabled}
               onChange={(event) => onProviderChange(event.target.value)}
               title={t('coord.providerTitle')}
-              style={fieldStyle}
+              className="coordinator-config-select"
             >
               <option value="">{t('coord.providerFollow')}</option>
               {compatibleProviders.map((item) => (
@@ -436,7 +413,7 @@ export default function CoordinatorConfigBar({
             disabled={modelDisabled}
             onChange={(event) => onModelChange(event.target.value)}
             title={t('coord.reasoningTitle')}
-            style={fieldStyle}
+            className="coordinator-config-select"
           >
             <option value="">{t('coord.reasoningDefault')}</option>
             {models.map((m) => (
@@ -448,7 +425,7 @@ export default function CoordinatorConfigBar({
             disabled={modelDisabled}
             onChange={(event) => onFastModelChange(event.target.value)}
             title={t('coord.fastTitle')}
-            style={fieldStyle}
+            className="coordinator-config-select"
           >
             <option value="">{t('coord.fastFollow')}</option>
             {models.map((m) => (
@@ -461,7 +438,7 @@ export default function CoordinatorConfigBar({
               disabled={modelDisabled}
               onChange={(event) => onVisionModelChange(event.target.value)}
               title={t('coord.visionTitle')}
-              style={fieldStyle}
+              className="coordinator-config-select"
             >
               <option value="">{t('coord.visionFollow')}</option>
               {models.map((m) => (
@@ -475,7 +452,7 @@ export default function CoordinatorConfigBar({
               disabled={disabled}
               onChange={(event) => onThinkingEffortChange(event.target.value)}
               title={t('coord.thinkingEffortTitle')}
-              style={fieldStyle}
+              className="coordinator-config-select"
             >
               <option value="">{thinkingEffortDefaultLabel}</option>
               {thinkingEffortLevels.map((level) => (
@@ -488,11 +465,11 @@ export default function CoordinatorConfigBar({
         </>
       )}
       {error ? (
-        <span style={{ ...statusStyle, color: 'var(--danger)' }}>{error}</span>
+        <span className="coordinator-config-status coordinator-config-status--error" data-state="error">{error}</span>
       ) : notice ? (
-        <span style={{ ...statusStyle, color: 'var(--success)' }}>{notice}</span>
+        <span className="coordinator-config-status coordinator-config-status--success" data-state="success">{notice}</span>
       ) : hint ? (
-        <span style={{ ...statusStyle, color: 'var(--meta)' }}>{hint}</span>
+        <span className="coordinator-config-status">{hint}</span>
       ) : null}
     </div>
   )

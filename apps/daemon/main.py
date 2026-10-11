@@ -303,6 +303,8 @@ app.include_router(uploads_router)
 app.include_router(search_router)
 app.include_router(templates_router)
 app.include_router(engine_router)
+from api.skins import router as skins_router
+app.include_router(skins_router)
 app.include_router(provider_router)
 app.include_router(workflow_router)
 app.include_router(workflow_gen_router)

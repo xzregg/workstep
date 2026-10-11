@@ -1,0 +1,8 @@
+{
+  "id": "ocean",
+  "name": "海洋",
+  "version": "1.0.0",
+  "schema_version": 1,
+  "color_scheme": "dark",
+  "description": "示例皮肤：PC 导航在右侧，手机保持紧凑控件。"
+}

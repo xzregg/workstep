@@ -1,4 +1,7 @@
-import { ConfigProvider, DatePicker } from 'antd'
+import { effectiveSkinTokens, skinColor } from '../skins/contract'
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useActiveSkin } from '../skins/runtime'
+import { ConfigProvider, DatePicker, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN.js'
 import zhTW from 'antd/locale/zh_TW.js'
 import enUS from 'antd/locale/en_US.js'
@@ -25,6 +28,9 @@ function parseLocalValue(value: string): Dayjs | null {
 }
 
 export default function DateTimePicker({ value, min, onChange, disabled }: DateTimePickerProps) {
+  const skin = useActiveSkin()
+  const compact = useCompactLayout()
+  const tokens = effectiveSkinTokens(skin, compact)
   const { t, locale } = useI18n()
   const selected = parseLocalValue(value)
   const minimum = parseLocalValue(min || '')
@@ -56,7 +62,11 @@ export default function DateTimePicker({ value, min, onChange, disabled }: DateT
     { label: t('taskList.scheduledPresetNextMonth'), value: now.add(1, 'month').startOf('month') },
   ]
   return (
-    <ConfigProvider locale={antdLocale}>
+    <ConfigProvider locale={antdLocale} theme={skin.manifest.id === 'default' ? undefined : {
+      algorithm: skin.manifest.color_scheme === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
+      token: { colorPrimary: skinColor(tokens, 'accent'), colorBgContainer: skinColor(tokens, 'bg'),
+        colorText: skinColor(tokens, 'fg'), colorBorder: skinColor(tokens, 'border') },
+    }}>
       <DatePicker
         value={selected}
         onChange={handleChange}

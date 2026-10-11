@@ -1,3 +1,4 @@
+import Select from '../Select'
 import { useGitApi, useGitActionAllowed } from './GitApiContext'
 import { useEffect, useRef, useState } from 'react'
 import { type GitRemotes, type GitStatus } from '../../api/git'
@@ -97,10 +98,10 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
     {mode && <span className="git-remote-panel" role="dialog" aria-label={mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}>
       <span className="git-remote-panel__heading"><span><strong>{mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}</strong><small>{mode === 'push' ? t('git.pushDescription') : t('git.pullDescription')}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setMode(null)}><Icon name="x" size={14} /></Button></span>
       {loading && !inventory ? <span className="git-remote-loading"><Icon name="loader-circle" className="git-spin" size={14} />{t('git.remoteLoading')}</span> : <>
-        <label>{t('git.remoteSource')}<select value={remote} onChange={event => selectRemote(event.target.value)}><option value="">{t('git.selectRemote')}</option>{inventory?.remotes.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
+        <label>{t('git.remoteSource')}<Select value={remote} onChange={event => selectRemote(event.target.value)}><option value="">{t('git.selectRemote')}</option>{inventory?.remotes.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</Select></label>
         {selected?.push_url && <small className="git-remote-url" title={mode === 'push' ? selected.push_url : selected.url}>{mode === 'push' ? selected.push_url : selected.url}</small>}
         <label>{mode === 'push' ? t('git.targetBranch') : t('git.remoteBranch')}
-          {mode === 'pull' ? <select name="targetBranch" value={targetBranch} onChange={event => setTargetBranch(event.target.value)}><option value="">{t('git.selectBranch')}</option>{selected?.branches.map(branch => <option key={branch.name} value={branch.name}>{branch.name}</option>)}</select>
+          {mode === 'pull' ? <Select name="targetBranch" value={targetBranch} onChange={event => setTargetBranch(event.target.value)}><option value="">{t('git.selectBranch')}</option>{selected?.branches.map(branch => <option key={branch.name} value={branch.name}>{branch.name}</option>)}</Select>
             : <><input name="targetBranch" list="git-remote-branches" value={targetBranch} onChange={event => setTargetBranch(event.target.value)} placeholder={status.branch || ''} /><datalist id="git-remote-branches">{selected?.branches.map(branch => <option key={branch.name} value={branch.name} />)}</datalist></>}
         </label>
         <span className="git-remote-route"><small>{t('git.syncRoute')}</small><strong>{route}</strong>{inventory?.upstream && <small>{t('git.currentUpstream', { upstream: `${inventory.upstream.remote}/${inventory.upstream.branch}` })}</small>}</span>

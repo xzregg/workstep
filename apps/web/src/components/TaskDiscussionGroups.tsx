@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { channelBotApi, type ChannelBot, type DiscussionGroup } from '../api/channelBots'
@@ -121,10 +122,10 @@ function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged
           {!groups.length && <p>{t('channelBot.noGroups')}</p>}
         </div>
         {!bots.length && <p>{t('channelBot.noBots')}</p>}
-        <label>{t('channelBot.robot')}<select value={botId} onChange={(event) => { setBotId(event.target.value); setGroupId(''); setGroupName(''); setRecent([]) }}>
+        <label>{t('channelBot.robot')}<Select value={botId} onChange={(event) => { setBotId(event.target.value); setGroupId(''); setGroupName(''); setRecent([]) }}>
           {bots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
-        </select></label>
-        <label>{t('channelBot.recentGroups')}<select aria-label={t('channelBot.recentGroups')}
+        </Select></label>
+        <label>{t('channelBot.recentGroups')}<Select aria-label={t('channelBot.recentGroups')}
           value={recent.some((group) => group.group_id === groupId) ? groupId : ''} disabled={!recent.length || busy}
           onChange={(event) => { setGroupId(event.target.value); setGroupName(recent.find((group) => group.group_id === event.target.value)?.group_name || '') }}>
           <option value="">{t('channelBot.selectGroup')}</option>
@@ -137,7 +138,7 @@ function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged
               {group.group_name || group.conversation_title || t('channelBot.unknownGroup')} · {group.group_id}{binding ? ` · ${t('channelBot.boundTo')} ${destination}` : ''}
             </option>
           })}
-        </select></label>
+        </Select></label>
         <label>{t('channelBot.groupId')}<Input value={groupId} onChange={(event) => { setGroupId(event.target.value); setGroupName(recent.find((group) => group.group_id === event.target.value)?.group_name || '') }} /></label>
         {boundGroup && <p className="task-discussion-groups-error">{t('channelBot.boundTo')} {boundElsewhere && 'project_name' in boundGroup && 'task_title' in boundGroup
           ? `${boundGroup.project_name} · ${boundGroup.task_title}` : t('channelBot.currentTask')}</p>}

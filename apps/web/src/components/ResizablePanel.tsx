@@ -1,3 +1,4 @@
+import { SKIN_EVENT } from '../skins/runtime'
 import { forwardRef, useEffect, useRef, useState, type ComponentPropsWithRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
@@ -61,8 +62,11 @@ const ResizablePanel = forwardRef<HTMLDivElement, Props>(function ResizablePanel
 
   useEffect(() => {
     const onResize = () => setBounds((current) => current ? clamp(current) : null)
+    const onSkin = () => { cleanupRef.current?.(); onResize() }
+    window.addEventListener(SKIN_EVENT, onSkin)
     window.addEventListener('resize', onResize)
     return () => {
+      window.removeEventListener(SKIN_EVENT, onSkin)
       window.removeEventListener('resize', onResize)
       cleanupRef.current?.()
     }

@@ -474,3 +474,22 @@ workstep engine rollback engine_id --json
 ```
 
 Install/validate wait for the final result. Add `--no-wait` to get an operation ID, query with `engine operation ID --json`, or cancel with `engine stop ID --json`. A passed report is bound to code, dependencies and configuration; changes require validation again. Registration is atomic and requires a daemon restart to discover the new adapter. Export excludes dependencies and credentials; recipients reinstall for their own OS/architecture. Visibility switches only hide engines in selectors; `disable` actually prevents custom engine execution.
+
+
+## Custom skins
+
+For conversational skin creation, read [references/custom-skin.md](references/custom-skin.md)
+and the workspace `skin-contract.json`. Use the transport above with:
+
+```bash
+workstep skin list --json
+workstep skin contract --json
+workstep skin validate /absolute/skin --json
+workstep skin register /absolute/skin --json
+workstep skin register /absolute/skin --replace --json
+workstep skin export ocean --output /absolute/ocean.zip --json
+```
+
+Skins are declarative packages; business events stay in the application. Explicit
+replacement requires the user's update instruction. A passing format check does
+not imply visual acceptance; preview both PC and mobile in Settings → Skins.

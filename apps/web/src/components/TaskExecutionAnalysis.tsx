@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -244,10 +245,10 @@ export function TaskExecutionAnalysisView({ report }: TaskExecutionAnalysisViewP
         <div className="execution-analysis-panel-head">
           <div><strong>{t('executionAnalysis.timeline')}</strong><small>{t('executionAnalysis.timelineHint')}</small></div>
           <div className="execution-analysis-controls">
-            <select value={timeMode} onChange={(event) => setTimeMode(event.target.value as 'relative' | 'clock')} aria-label={t('executionAnalysis.timeMode')}>
+            <Select value={timeMode} onChange={(event) => setTimeMode(event.target.value as 'relative' | 'clock')} aria-label={t('executionAnalysis.timeMode')}>
               <option value="relative">{t('executionAnalysis.relativeTime')}</option>
               <option value="clock">{t('executionAnalysis.clockTime')}</option>
-            </select>
+            </Select>
             <button type="button" className={roundFilter === 'all' ? 'is-active' : ''} data-round-filter="all" onClick={() => setRoundFilter('all')}>{t('executionAnalysis.allRounds')}</button>
             {report.runs.map((run) => (
               <button type="button" className={roundFilter === run.round ? 'is-active' : ''} data-round-filter={run.round} key={run.id} onClick={() => setRoundFilter(run.round)}>{t('executionAnalysis.round', { round: run.round })}</button>

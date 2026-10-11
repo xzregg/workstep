@@ -1,3 +1,6 @@
+import { effectiveSkinTokens, skinColor } from '../skins/contract'
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import { SKIN_EVENT, currentSkin, useActiveSkin } from '../skins/runtime'
 /* oxlint-disable react/only-export-components -- test loader hooks share module-level caches with the component. */
 import {
   createContext,
@@ -24,6 +27,7 @@ interface MermaidApi {
     securityLevel: 'strict'
     suppressErrorRendering: boolean
     theme: MermaidTheme
+    themeVariables?: Record<string, string>
   }) => void
   render: (id: string, code: string) => Promise<{ svg: string }>
 }
@@ -79,8 +83,8 @@ function loadMermaid(): Promise<MermaidApi> {
   return modulePromise
 }
 
-async function renderDiagram(code: string, theme: MermaidTheme): Promise<string> {
-  const key = `${theme}\u0000${code}`
+async function renderDiagram(code: string, theme: MermaidTheme, signature = theme as string, themeVariables?: Record<string, string>): Promise<string> {
+  const key = `${signature}\u0000${code}`
   const cached = readCachedSvg(key)
   if (cached !== undefined) return cached
 
@@ -94,6 +98,7 @@ async function renderDiagram(code: string, theme: MermaidTheme): Promise<string>
       securityLevel: 'strict',
       suppressErrorRendering: true,
       theme,
+      ...(themeVariables ? { themeVariables } : {}),
     })
     const result = await mermaid.render(`workstep-mermaid-${++renderSequence}`, code)
     cacheSvg(key, result.svg)
@@ -109,6 +114,7 @@ async function renderDiagram(code: string, theme: MermaidTheme): Promise<string>
 
 function currentTheme(): MermaidTheme {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'default'
+  if (currentSkin().manifest.id !== 'default') return currentSkin().manifest.color_scheme === 'dark' ? 'dark' : 'default'
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default'
 }
 
@@ -127,6 +133,14 @@ function MermaidBlock({
   code: string
   renderDelayMs?: number
 }) {
+  const skin = useActiveSkin()
+  const compact = useCompactLayout()
+  const tokens = effectiveSkinTokens(skin, compact)
+  const themeVariables = skin.manifest.id === 'default' ? undefined : {
+    primaryColor: skinColor(tokens, 'surface'), primaryTextColor: skinColor(tokens, 'fg'), primaryBorderColor: skinColor(tokens, 'border'),
+    lineColor: skinColor(tokens, 'accent'), secondaryColor: skinColor(tokens, 'accent-light'), tertiaryColor: skinColor(tokens, 'bg'),
+    fontFamily: tokens['font-body'],
+  }
   const streaming = useContext(MarkdownStreamingContext)
   const { t } = useI18n()
   const [theme, setTheme] = useState<MermaidTheme>(currentTheme)
@@ -135,14 +149,16 @@ function MermaidBlock({
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const generation = useRef(0)
   const copyResetTimer = useRef<number | null>(null)
-  const renderKey = `${theme}\u0000${code}`
+  const signature = themeVariables ? `${theme}:${skin.revision}:${JSON.stringify(themeVariables)}` : theme
+  const renderKey = `${signature}\u0000${code}`
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
     const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const handleChange = () => setTheme(media.matches ? 'dark' : 'default')
+    const handleChange = () => setTheme(currentTheme())
+    window.addEventListener(SKIN_EVENT, handleChange)
     media.addEventListener('change', handleChange)
-    return () => media.removeEventListener('change', handleChange)
+    return () => { window.removeEventListener(SKIN_EVENT, handleChange); media.removeEventListener('change', handleChange) }
   }, [])
 
   useEffect(() => {
@@ -150,7 +166,7 @@ function MermaidBlock({
     if (streaming) return
 
     const timer = window.setTimeout(() => {
-      void renderDiagram(code, theme).then(
+      void renderDiagram(code, theme, signature, themeVariables).then(
         (svg) => {
           if (generation.current === activeGeneration) setState({ key: renderKey, svg })
         },
