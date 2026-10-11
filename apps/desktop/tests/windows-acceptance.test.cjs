@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto')
 const { EventEmitter } = require('node:events')
 const {
   validateVersion, installArguments, verifyChecksum, validateRuntime,
-  validatePersistence, validateUninstallMemory, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard,
+  validatePersistence, validateUninstallMemory, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard, execute,
 } = require('../../../scripts/windows-desktop-acceptance.cjs')
 
 test('acceptance only runs on a GitHub Windows runner, never the developer desktop', () => {
@@ -29,6 +29,14 @@ test('acceptance versions reject shell arguments and smoke pseudo versions', () 
 
 test('NSIS destination is the final unquoted argument for paths with spaces and Chinese', () => {
   assert.deepEqual(installArguments('C:\\temp\\安装目录 WorkStep'), ['/S', '/currentuser', '/D=C:\\temp\\安装目录 WorkStep'])
+})
+
+test('installer execution supports a bounded install-specific timeout without ignoring exit failures', async () => {
+  await execute(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 50)'], { timeout: 2000, stdio: 'ignore' })
+  await assert.rejects(execute(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'],
+    { timeout: 25, stdio: 'ignore' }), /timed out after 25ms/)
+  await assert.rejects(execute(process.execPath, ['-e', 'process.exit(7)'],
+    { timeout: 2000, stdio: 'ignore' }), /exited 7/)
 })
 
 test('upgrade seeds old versions with supported ASCII but new installs require Unicode', () => {
