@@ -62,9 +62,10 @@ async function reservePort() {
   return { server, port: server.address().port }
 }
 async function execute(file, args, options = {}) {
+  const { timeout = 120000, ...spawnOptions } = options
   await new Promise((resolve, reject) => {
-    const child = spawn(file, args, { stdio: 'inherit', ...options })
-    const timer = setTimeout(() => { child.kill(); reject(new Error(`${path.basename(file)} timed out`)) }, 120000)
+    const child = spawn(file, args, { stdio: 'inherit', ...spawnOptions })
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`${path.basename(file)} timed out after ${timeout}ms`)) }, timeout)
     child.once('error', error => { clearTimeout(timer); reject(error) })
     child.once('exit', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`${path.basename(file)} exited ${code}`)) })
   })
@@ -143,7 +144,12 @@ async function runAcceptance(options) {
   const executable = path.join(installDir, 'WorkStep.exe')
   const uninstall = path.join(installDir, 'Uninstall WorkStep.exe')
   async function install(source) {
-    await execute(path.resolve(source), installArguments(installDir), { windowsVerbatimArguments: true })
+    // An upgrade extracts the new bundle AND runs the old NSIS uninstaller.
+    // Keep a finite install-specific budget; runtime commands retain 2 minutes.
+    const started = Date.now()
+    console.log(`Installing ${path.resolve(source)}`)
+    await execute(path.resolve(source), installArguments(installDir), { windowsVerbatimArguments: true, timeout: 300000 })
+    console.log(`Installation completed in ${Date.now() - started}ms`)
     await waitFor(() => exists(executable), 'Installed executable missing')
     assert(await exists(path.join(installDir, 'resources/backend/python/python.exe')), 'Bundled Python missing')
     assert(await exists(path.join(installDir, 'resources/backend/legal/sbom.cdx.json')), 'SBOM missing')
@@ -301,4 +307,4 @@ if (require.main === module) {
   const completed = installCompletionGuard()
   runAcceptance(values).then(completed, error => { completed(); console.error(error); process.exitCode = 1 })
 }
-module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, validateUninstallMemory, waitFor, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard }
+module.exports = { assertWindowsRunner, validateVersion, installArguments, verifyChecksum, validateRuntime, validatePersistence, validateUninstallMemory, waitFor, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard, execute }
