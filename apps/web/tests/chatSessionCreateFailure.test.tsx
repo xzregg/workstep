@@ -66,20 +66,42 @@ test('empty chat page shows create failure and allows another attempt', async ()
   }
 })
 
-test('create request has a deadline so the loading state can recover', async () => {
+test('create request succeeds when AbortSignal.timeout is unavailable', async () => {
   const originalFetch = globalThis.fetch
   const originalTimeout = AbortSignal.timeout
-  let receivedSignal: AbortSignal | undefined
-  globalThis.fetch = async (_input, init) => {
-    receivedSignal = init?.signal as AbortSignal
-    throw receivedSignal.reason
-  }
-  AbortSignal.timeout = () => AbortSignal.abort(new DOMException('Timed out', 'TimeoutError'))
+  Object.defineProperty(AbortSignal, 'timeout', { configurable: true, writable: true, value: undefined })
+  globalThis.fetch = async () => new Response(JSON.stringify({ id: 'created-session' }), {
+    headers: { 'Content-Type': 'application/json' },
+  })
   try {
-    await assert.rejects(chatSessionApi.create({ project_id: 'create-failure' }), { name: 'TimeoutError' })
-    assert.equal(receivedSignal?.aborted, true)
+    const session = await chatSessionApi.create({ project_id: 'create-failure' })
+    assert.equal(session.id, 'created-session')
   } finally {
     globalThis.fetch = originalFetch
     AbortSignal.timeout = originalTimeout
+  }
+})
+
+test('create request has a deadline so the loading state can recover', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let receivedSignal: AbortSignal | undefined
+  globalThis.fetch = (_input, init) => {
+    receivedSignal = init?.signal as AbortSignal
+    return new Promise((_resolve, reject) => {
+      receivedSignal!.addEventListener('abort', () => reject(receivedSignal!.reason), { once: true })
+    })
+  }
+  try {
+    const creation = chatSessionApi.create({ project_id: 'create-failure' })
+    const rejection = assert.rejects(creation, { name: 'TimeoutError' })
+    t.mock.timers.tick(19_999)
+    assert.equal(receivedSignal?.aborted, false)
+    t.mock.timers.tick(1)
+    await rejection
+    assert.equal(receivedSignal?.aborted, true)
+  } finally {
+    globalThis.fetch = originalFetch
+    t.mock.timers.reset()
   }
 })

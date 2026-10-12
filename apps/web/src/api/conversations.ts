@@ -425,12 +425,21 @@ export const chatSessionApi = {
       method: 'PATCH',
       body: JSON.stringify({ project_id: projectId, archived }),
     }),
-  create: (input: ChatSessionCreateInput) =>
-    request<ChatSessionDetail>(`/chat-sessions?project_id=${encodeURIComponent(input.project_id)}`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-      signal: AbortSignal.timeout(20_000),
-    }),
+  create: async (input: ChatSessionCreateInput) => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => {
+      controller.abort(new DOMException('Timed out', 'TimeoutError'))
+    }, 20_000)
+    try {
+      return await request<ChatSessionDetail>(`/chat-sessions?project_id=${encodeURIComponent(input.project_id)}`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
+  },
   get: (sessionId: string, projectId: string, limit = 300, offset = 0) =>
     request<ChatSessionDetail>(
       `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
