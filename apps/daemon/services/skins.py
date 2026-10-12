@@ -251,6 +251,18 @@ class SkinManager:
         staging = workspace / ('.skin-edit-' + uuid.uuid4().hex)
         try:
             staging.mkdir()
+            source_revision = document.get('revision', '')
+            if isinstance(source_revision, str) and re.fullmatch(r'[a-f0-9]{64}', source_revision):
+                source = self.root / 'skin-assets' / source_revision
+                if source.exists():
+                    original, _, files = self._read_package(source)
+                    if original['revision'] != source_revision:
+                        raise ValueError('原皮肤资源校验不匹配')
+                    for name, content in files.items():
+                        if name.startswith('assets/'):
+                            target = staging / name
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            target.write_bytes(content)
             for name, value in [('skin.json', manifest), ('tokens.json', tokens), ('components.json', components)]:
                 (staging / name).write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
             self._read_package(staging)
@@ -258,8 +270,8 @@ class SkinManager:
                 root.mkdir()  # exclusive: never overwrite an AI-created package
             except FileExistsError as exc:
                 raise SkinConflict('对话已创建此目录，请重新读取') from exc
-            for name in ('skin.json', 'tokens.json', 'components.json'):
-                (staging / name).replace(root / name)
+            for item in staging.iterdir():
+                item.replace(root / item.name)
             return self._validate(root)
         finally:
             if staging.exists(): shutil.rmtree(staging)

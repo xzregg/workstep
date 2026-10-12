@@ -1,7 +1,7 @@
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
 import ProjectGitButton from '../components/git/ProjectGitButton'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
@@ -61,6 +61,9 @@ export interface EmbeddedProjectChat {
   sessionId: string | null
   onSessionChange: (id: string | null) => void
   beforeSend?: () => Promise<boolean>
+  emptyContent?: (insert: (text: string) => void) => ReactNode
+  afterContent?: (insert: (text: string) => void) => ReactNode
+  placeholder?: string
 }
 
 export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat } = {}) {
@@ -197,17 +200,18 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
   const projectActions = useProjectActions(activeProject?.id, sessionId)
   // AssistantChatPanel 的消息行是 memo 化的：copy/quickPrompts/回调必须引用稳定，
   // 否则流式期间每个 token 都会击穿 memo，历史气泡全量重渲染。
+  const hasEmbeddedIntro = Boolean(embedded?.emptyContent)
   const panelCopy = useMemo(() => ({
-    emptyIntro: t('chatSession.emptyIntro'),
+    emptyIntro: hasEmbeddedIntro ? '' : t('chatSession.emptyIntro'),
     thinking: t('chatSession.thinking'),
     me: t('chatSession.me'),
     meInitials: t('chatSession.meInitials'),
     agent: t('chatSession.agent'),
     agentInitials: t('chatSession.agentInitials'),
-    placeholder: t(compact ? 'chatSession.placeholderCompact' : 'chatSession.placeholder'),
+    placeholder: embedded?.placeholder || t(compact ? 'chatSession.placeholderCompact' : 'chatSession.placeholder'),
     fullPrompt: t('aiFlow.fullPrompt'),
     closePrompt: t('aiFlow.closePrompt'),
-  }), [t, compact])
+  }), [t, compact, hasEmbeddedIntro, embedded?.placeholder])
   const quickPromptItems = useMemo(
     () => quickButtons.filter((button) => !isEmbedded && button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
       id: button.id,
@@ -464,7 +468,7 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
         messages={messages}
         actionRuns={projectActions.runs}
         onStopAction={(runId) => { void projectActions.stop(runId) }}
-        afterMessages={<ProjectActionMessages state={projectActions} />}
+        afterMessages={<>{messages.length === 0 && embedded?.emptyContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}{embedded?.afterContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}<ProjectActionMessages state={projectActions} /></>}
         availableCommands={session?.availableCommands}
         composerStatus={effectiveEngine === 'codex_sdk' ? <ChatSessionGoalBar
           key={sessionId} projectId={routeProjectId} goal={latestGoalFromMessages(messages)} running={running} stopping={stopping}

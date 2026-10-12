@@ -1,3 +1,5 @@
+皮肤中心独立入口由 `SkinCenterEntry` 持有弹窗生命周期，桌面与手机导航可直接打开；`SkinSettings` 持有皮肤目录读取和注册、导入、导出，`SkinLibrary` 持有卡片选择、筛选搜索和 PC/手机场景预览，选择卡片不自动应用。`SkinStudio` 复用普通 `ChatPage`，通过组合插槽提供起点建议和已校验包的版本卡片，微调与背景光晕仍为声明式皮肤配置；复制已安装皮肤时后台在线程中复制已校验快照中的背景资源。整机网关访问可发起制作，项目绑定会话只显示选用能力，后台原权限门禁继续生效。行为测试 `skinCenterEntry.test.tsx`、`skinSettings.test.tsx`、`skinStudio.test.tsx`、`skins.test.ts`、`test_skins.py`。
+
 # 按功能查找代码
 
 默认工作区初始名称为「默认工作区」，允许重命名；`ProjectManager.unregister` 按固定目录阻止取消注册，项目删除 API 返回 409，`Layout` 隐藏删除入口并在重命名后同步当前项目路由，`projectStore` 同步活动项目名称。回归 `test_customization_workspace.py`、`gatewayWorkspaceApp.test.tsx`、`projectStore.test.ts`。

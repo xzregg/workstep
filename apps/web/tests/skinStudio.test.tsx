@@ -32,6 +32,8 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinStudio workspace={{ project_id: 'design', project_name: '皮肤设计', session_id: 'session', workspace_path: '/tmp/design', package_path: '/tmp/design/skin', prompt: '' }} onClose={() => { closed++ }} onSaved={() => {}} /></I18nProvider></MemoryRouter>))
+    await act(async () => document.querySelector<HTMLButtonElement>('.skin-studio-version button')!.click())
+    assert.match(document.querySelector<HTMLTextAreaElement>('.skin-studio-chat textarea')!.value, /请继续调整「我的皮肤」/)
     const field = document.querySelector('.skin-studio-controls fieldset input:not([type])') as HTMLInputElement || document.querySelector('.skin-studio-controls fieldset input[type=text]') as HTMLInputElement
     await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(field, '手动微调'); field.dispatchEvent(new window.Event('input', { bubbles: true })) })
     await act(async () => document.querySelector<HTMLButtonElement>('.skin-studio-palette button[aria-label="#7c65d5"]')!.click())

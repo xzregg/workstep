@@ -28,6 +28,7 @@ function applyLayout(skin: SkinDocument) {
   root.dataset.skinDensity = layout.density
   root.dataset.skinComposer = layout.composerToolsPosition
   root.dataset.skinEngine = layout.engineAppearance
+  root.dataset.skinGlow = layout.backgroundGlow
   root.style.setProperty('--skin-content-width', layout.contentWidth + 'px')
   root.style.setProperty('--skin-split-handle-width', layout.splitHandleWidth + 'px')
   return layout

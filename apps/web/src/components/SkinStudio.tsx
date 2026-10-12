@@ -16,6 +16,7 @@ import Input from './Input'
 import Select from './Select'
 import Icon from './Icon'
 import SkinStudioPreview from './SkinStudioPreview'
+import ChatMessageBubble from './ChatMessageBubble'
 import './SkinStudio.css'
 
 const palettes = {
@@ -35,7 +36,7 @@ function presetTokens(key: keyof typeof palettes) {
     ...(key === 'graphite' ? { 'fg-2': '#c4c5cf', meta: '#9597a4', 'border-soft': '#353640' } : {}) }
 }
 
-export default function SkinStudio({ workspace, onClose, onSaved }: { workspace: SkinWorkspace; onClose: () => void; onSaved: (skin: SkinDocument) => void }) {
+export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }: { workspace: SkinWorkspace; initialSkin?: SkinDocument; onClose: () => void; onSaved: (skin: SkinDocument) => void }) {
   const { t } = useI18n()
   const ref = useRef<HTMLDivElement>(null)
   const mounted = useRef(true), priorRunning = useRef(false)
@@ -62,13 +63,13 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
     }).catch(reason => {
       if (generation !== readGeneration.current || !mounted.current) return
       if (reason instanceof ApiError && reason.status === 404) {
-        setSkin(current => current ?? { ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: 'skin-' + workspace.session_id.replace(/[^a-z0-9_-]/gi, '').toLowerCase().slice(0, 50), name: t('skins.studioDefaultName'), version: '1.0.0' }, revision: '' })
+        setSkin(current => current ?? { ...(initialSkin ?? defaultSkin()), manifest: { ...(initialSkin ?? defaultSkin()).manifest, id: 'skin-' + workspace.session_id.replace(/[^a-z0-9_-]/gi, '').toLowerCase().slice(0, 50), name: initialSkin ? `${initialSkin.manifest.name} · ${t('skins.myVersion')}` : t('skins.studioDefaultName'), version: '1.0.0' }, revision: initialSkin?.revision ?? '', asset_base: initialSkin?.asset_base ?? '' })
         setRevision(''); setBase('light'); setError('')
       } else throw reason
     }).finally(() => { if (loadInFlight.current?.request === request) loadInFlight.current = null })
     loadInFlight.current = { path: packagePath, request }
     return request
-  }, [packagePath, workspace.session_id, t])
+  }, [packagePath, workspace.session_id, initialSkin, t])
   useEffect(() => {
     mounted.current = true
     void load().catch(reason => { if (mounted.current) setError(reason instanceof ApiError && reason.status === 404 ? '' : String(reason.message || reason)) })
@@ -110,7 +111,10 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
     <ResizablePanel ref={ref} minWidth={640} minHeight={460} className="skin-studio" role="dialog" aria-modal="true" aria-label={t('skins.studioTitle')} tabIndex={-1}>
       <header className="skin-studio-header" data-dialog-drag-handle><div><h2>{t('skins.studioTitle')}</h2><p>{t('skins.studioIntro')}</p></div><Button variant="icon" onClick={requestClose} aria-label={t('common.close')}><Icon name="x" size={18} /></Button></header>
       <div className="skin-studio-body">
-        <section className="skin-studio-chat"><ChatPage embedded={{ project, sessionId, onSessionChange: setSessionId, beforeSend: save }} /></section>
+        <section className="skin-studio-chat"><ChatPage embedded={{ project, sessionId, onSessionChange: setSessionId, beforeSend: save,
+          placeholder: t('skins.studioPlaceholder'), emptyContent: insert => <div className="skin-studio-welcome"><ChatMessageBubble role="assistant" sender={t('skins.studioEditing')} initials="✧" color="var(--accent-light)" content={t('skins.studioHello')} /><div className="skin-studio-suggestions">{(['studioSuggestDark', 'studioSuggestMint', 'studioSuggestCards', 'studioSuggestRight'] as const).map(key => <button key={key} type="button" onClick={() => insert(t(`skins.${key}`))}>{t(`skins.${key}`)}</button>)}</div></div>,
+          afterContent: insert => skin && revision ? <article className="skin-studio-version"><strong>{skin.manifest.name}</strong><p>{t('skins.studioVersionHint')}</p><Button size="sm" disabled={running || busy} onClick={() => insert(t('skins.studioContinuePrompt', { name: skin.manifest.name }))}>{t('skins.studioContinue')}</Button></article> : null,
+        }} /></section>
         <aside className="skin-studio-controls"><h3>{t('skins.studioEditing')}</h3>
           {error && <p className="skin-studio-error" role="alert">{error}</p>}
           {!skin ? <><p className="skin-studio-note" role="status">{t('skins.studioWaiting')}</p><Button onClick={() => void load().catch(reason => setError(String(reason.message)))}>{t('common.retry')}</Button></> : <>
@@ -125,6 +129,7 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
             <label>{t('skins.studioEngine')}<Select value={skin.layout.engineAppearance || 'list'} onChange={event => edit(current => ({ ...current, layout: { ...current.layout, engineAppearance: event.target.value as 'list' | 'cards' } }))}><option value="list">{t('skins.studioList')}</option><option value="cards">{t('skins.studioCards')}</option></Select></label>
             <SkinToggle label={t('skins.studioRight')} checked={skin.layout.sidebarSide === 'right'} onChange={checked => edit(current => ({ ...current, layout: { ...current.layout, sidebarSide: checked ? 'right' : 'left' } }))} />
             <SkinToggle label={t('skins.studioTop')} checked={skin.layout.composerToolsPosition === 'top'} onChange={checked => edit(current => ({ ...current, layout: { ...current.layout, composerToolsPosition: checked ? 'top' : 'bottom' } }))} />
+            <SkinToggle label={t('skins.studioGlow')} checked={skin.layout.backgroundGlow === 'accent'} onChange={checked => edit(current => ({ ...current, layout: { ...current.layout, backgroundGlow: checked ? 'accent' : 'none' } }))} />
             <Button size="sm" disabled={!dirty || !skin.manifest.name.trim()} onClick={() => void save()} loading={busy}>{t('skins.studioSaveDraft')}</Button>
           </fieldset>
           <div className="skin-studio-preview-heading"><span>{t('skins.studioPreview')}</span><div><Button size="sm" variant={phone ? 'ghost' : 'primary'} onClick={() => setPhone(false)}>PC</Button><Button size="sm" variant={phone ? 'primary' : 'ghost'} onClick={() => setPhone(true)}>{t('skins.studioPhone')}</Button></div></div>

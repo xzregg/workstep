@@ -23,3 +23,5 @@ html[data-skin-composer="top"] .chat-input-toolbar { order: -1; }
 .skin-recovery button { min-height: 32px; padding: 4px 8px; border: 1px solid #d2d2d7; border-radius: 6px; background: #fff; color: #1d1d1f; font: inherit; cursor: pointer; }
 
 html[data-skin-id] .app-shell, html[data-skin-id] .task-detail-window { padding-bottom: var(--skin-recovery-height, 0px); }
+
+html[data-skin-glow="accent"] .app-main { background-image: radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 65%); }

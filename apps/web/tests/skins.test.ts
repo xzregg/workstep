@@ -54,6 +54,15 @@ test('PC and mobile layouts inherit shared values and may override independently
   assert.throws(() => compileSkin({ ...input, mobile: { layout: { sidebarWidth: 1000 } } }))
 })
 
+test('soft background glow is a declarative layout option that resets with the default skin', () => {
+  const input = { ...skin(), layout: { backgroundGlow: 'accent' as const } }
+  compileSkin(input)
+  previewSkin(input)
+  assert.equal(document.documentElement.dataset.skinGlow, 'accent')
+  restoreDefaultSkin()
+  assert.equal(document.documentElement.dataset.skinGlow, 'none')
+})
+
 
 test('pseudo elements remain customizable and keep the pseudo element last', () => {
   const input = { ...skin(), styles: { 'provider-protocol-switch::after': { hover: { backgroundColor: '#aabbcc' } } } }
