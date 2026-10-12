@@ -4,12 +4,13 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
-import SkinCenterEntry from '../src/components/SkinCenterEntry'
+import AppearanceSettings from '../src/pages/AppearanceSettings'
+import { loadFontSizePreference } from '../src/utils/fontSizePreference'
 import { I18nProvider } from '../src/i18n'
 import { skinsApi } from '../src/api/skins'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 
-for (const projectScoped of [false, true]) test(`system appearance entry opens the center for ${projectScoped ? 'project' : 'device'} access with the correct creation boundary`, async () => {
+for (const projectScoped of [false, true]) test(`appearance settings embeds the center for ${projectScoped ? 'project' : 'device'} access with the correct creation boundary`, async () => {
   const { window } = installDomEnvironment()
   Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
   window.happyDOM.setURL('http://d-device.localhost:8700/')
@@ -18,15 +19,15 @@ for (const projectScoped of [false, true]) test(`system appearance entry opens t
   useGatewaySessionStore.setState({ session: { device_id: 'device', device_name: 'PC', username: 'Tester', gateway_url: 'http://localhost:8700', project_id: projectScoped ? 'platform' : null, host_project_id: projectScoped ? 'project' : null, access_level: projectScoped ? 'read' : null, task_create: false, share_create: false, can_manage_project_access: false } })
   const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
   try {
-    await act(async () => root.render(<MemoryRouter><I18nProvider><SkinCenterEntry /></I18nProvider></MemoryRouter>))
-    assert.equal(element.querySelector('button')!.textContent, '外观')
-    assert.equal(element.querySelector('.layout-sidebar-nav-button'), null)
-    await act(async () => element.querySelector<HTMLButtonElement>('button')!.click())
-    assert.ok(document.querySelector('.skin-center-dialog'))
+    await act(async () => root.render(<MemoryRouter><I18nProvider><AppearanceSettings /></I18nProvider></MemoryRouter>))
     assert.ok(document.querySelector('.skin-settings-workspace'))
     const hasCreate = [...document.querySelectorAll('button')].some(button => button.textContent?.includes('聊天制作皮肤'))
     assert.equal(hasCreate, !projectScoped)
     assert.ok(document.querySelector('.skin-settings-preview-stage'))
+    const large = [...element.querySelectorAll<HTMLButtonElement>('.settings-appearance-font button')].find(button => /^大$|^Large$/.test(button.textContent ?? ''))!
+    await act(async () => large.click())
+    assert.equal(loadFontSizePreference(), 'large')
+    assert.equal(document.documentElement.dataset.fontSize, 'large')
   } finally {
     await act(async () => root.unmount()); element.remove(); skinsApi.list = oldList
     useGatewaySessionStore.setState({ session: null }); await window.happyDOM.close()

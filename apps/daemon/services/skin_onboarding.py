@@ -65,6 +65,6 @@ async def create_onboarding():
               "在 Runtime 根目录内创建或修改皮肤包，具体包目录可自行命名；默认使用上述建议目录方便右侧读取，不覆盖其他已有成果。先阅读本次规范文件和 workstep-cli 的 references/custom-skin.md。规范覆盖引擎选择框及展开选项、输入框、消息、任务、流程、Git、设置和全部浮层。"
               "只生成声明式 JSON 和本地图片，不修改 WorkStep 源码，不写脚本或任意 CSS。未覆盖部分继承默认皮肤。"
               "使用 workstep skin validate 检查，再经用户同意用 workstep skin register 注册（更新指定 --replace）；"
-              "在设置→系统设置→外观中预览 PC 和手机、确认应用。校验通过不等于视觉验收通过；注册后无需重启。")
+              "在设置→外观中预览 PC 和手机、确认应用。校验通过不等于视觉验收通过；注册后无需重启。")
     await asyncio.to_thread(prepare, root, prompt)
     return {"project_id": project.id, "project_name": project.name, "session_id": session["id"], "created": session['created'], "workspace_path": str(root), "package_path": str(root / "skin"), "prompt": prompt}
