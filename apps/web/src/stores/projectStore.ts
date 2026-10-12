@@ -286,6 +286,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       projects: s.projects.map((p) =>
         p.path === path ? { ...p, name } : p,
       ),
+      activeProject: s.activeProject?.path === path ? { ...s.activeProject, name } : s.activeProject,
     }))
   },
 

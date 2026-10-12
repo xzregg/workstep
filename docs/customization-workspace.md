@@ -1,6 +1,6 @@
 # Runtime 创作项目
 
-技能、引擎和皮肤制作复用一个固定的普通项目，显示名称为 `Runtime`。默认根目录为 `$WORKSTEP_CONFIG_DIR/runtime/workspace/`，默认配置目录是 `~/.workstep`；设置 `WORKSTEP_PROJECTS_ROOT` 时使用允许项目根下的 `runtime/`。
+技能、引擎和皮肤制作复用一个固定的普通项目，初始显示名称为「默认工作区」，可重命名，但不可删除或取消注册。`Runtime` 仅表示这个固定工作项目的职责，身份按目录与项目 ID 识别，不随名称改变。默认根目录为 `$WORKSTEP_CONFIG_DIR/runtime/workspace/`，默认配置目录是 `~/.workstep`；设置 `WORKSTEP_PROJECTS_ROOT` 时使用允许项目根下的 `runtime/`。
 
 Daemon 启动时准备默认工作区，之后复用相同项目 ID 和数据库，每次制作入口仅新建普通会话。项目摘要通过实际固定路径标记 `is_default_workspace`，不靠名称识别。没有选中项目时前端选中 Runtime，首页进入普通对话；已有项目选择及远程授权项目优先。系统不按类型、会话或草稿 ID 分配目录。引擎、技能与皮肤文件由对话在这个项目根目录里按需要创建；具体包名和目录名不由工作区基础设施规定。
 

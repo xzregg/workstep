@@ -167,6 +167,10 @@ test('local startup enters the fixed default workspace chat without creating wor
     assert.equal(new URLSearchParams(window.location.search).get('project'), 'Runtime')
     assert.equal(useProjectStore.getState().activeWorkflowId, null)
     assert.equal(useProjectStore.getState().activeProject?.workflows.length, 0)
+    await act(async () => element.querySelector<HTMLButtonElement>('.ws-more-btn')!.click())
+    const menuText = document.body.textContent ?? ''
+    assert.ok(menuText.includes('重命名'))
+    assert.equal(menuText.includes('删除项目'), false)
   } finally {
     await act(async () => root.unmount()); element.remove()
     globalThis.fetch = oldFetch; globalThis.WebSocket = oldSocket

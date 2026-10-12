@@ -1,5 +1,7 @@
 # 按功能查找代码
 
+默认工作区初始名称为「默认工作区」，允许重命名；`ProjectManager.unregister` 按固定目录阻止取消注册，项目删除 API 返回 409，`Layout` 隐藏删除入口并在重命名后同步当前项目路由，`projectStore` 同步活动项目名称。回归 `test_customization_workspace.py`、`gatewayWorkspaceApp.test.tsx`、`projectStore.test.ts`。
+
 默认工作区在 `main.py::lifespan` 通过 `ensure_default_workspace` 在线程内准备；项目摘要按固定路径标记 `is_default_workspace`，`projectStore` 在无选择时选中 Runtime，`AppRoutes` 首页进入普通聊天，远程绑定和已有选择优先，不自动创建流程。回归 `test_customization_workspace.py`、`projectStore.test.ts`、`gatewayWorkspaceApp.test.tsx`。
 
 自定义技能、引擎、皮肤草稿由 `services/customization_workspace.py` 复用固定 `Runtime` 项目根目录，不自动分配类型或草稿目录；三类 onboarding 服务复用普通聊天和同一项目数据库，项目首次初始化串行，后续只新建普通会话，成果由对话在根目录自行创建。技能本机入口为项目设置 → `SkillCenterSettings` → `SkillDraftCreateButton`，API `api/skills.py::onboarding`，CLI `skill create` / 工具 `workstep_create_skill_draft`；已有技能扫描与安装目录保持不变。回归 `test_customization_workspace.py`、`test_skill_onboarding.py`、原引擎／皮肤 onboarding 测试和 `skillDraftCreate.test.tsx`；目录约定见 [共享工作区](customization-workspace.md)。

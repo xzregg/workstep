@@ -28,6 +28,19 @@ test('default workspace is selected only when no project is selected and does no
   } finally { globalThis.fetch = originalFetch }
 })
 
+test('renaming the default workspace updates active metadata while preserving its identity', async () => {
+  const originalFetch = globalThis.fetch
+  const runtime = { ...project('runtime'), is_default_workspace: true, workflows: [] }
+  globalThis.fetch = async () => Response.json({ path: runtime.path, name: '我的工作台' })
+  useProjectStore.setState({ projects: [runtime], activeProject: runtime, activeWorkflowId: null })
+  try {
+    await useProjectStore.getState().renameProject(runtime.path, '我的工作台')
+    assert.equal(useProjectStore.getState().activeProject?.name, '我的工作台')
+    assert.equal(useProjectStore.getState().activeProject?.id, runtime.id)
+    assert.equal(useProjectStore.getState().activeProject?.is_default_workspace, true)
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('creating an empty project clears the previous workflow selection without creating a workflow', async () => {
   const previous = project('existing')
   const blank: Project = { id: 'blank', path: '/tmp/blank', name: 'blank', steps: {}, workflows: [] }
