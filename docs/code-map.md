@@ -1,4 +1,4 @@
-皮肤中心入口位于 PC／移动端导航底部设置按钮右侧的「外观」，系统设置字体上方保留同一组件入口，由 `SkinCenterEntry` 持有弹窗生命周期；`SkinSettings` 持有皮肤目录读取和注册、导入、导出，`SkinLibrary` 持有卡片选择、筛选搜索和 PC/手机场景预览，选择卡片不自动应用。`SkinStudio` 复用普通 `ChatPage`，通过组合插槽提供起点建议和已校验包的版本卡片，微调与背景光晕仍为声明式皮肤配置；复制已安装皮肤时后台在线程中复制已校验快照中的背景资源。整机网关访问可发起制作，项目绑定会话只显示选用能力，后台原权限门禁继续生效。行为测试 `skinCenterEntry.test.tsx`、`skinSettings.test.tsx`、`skinStudio.test.tsx`、`skins.test.ts`、`test_skins.py`。
+皮肤中心入口位于设置 → 系统设置 → 外观（字体选项上方），由 `SkinCenterEntry` 持有弹窗生命周期；`SkinSettings` 持有皮肤目录读取和注册、导入、导出，`SkinLibrary` 持有卡片选择、筛选搜索和 PC/手机场景预览，选择卡片不自动应用。`SkinStudio` 复用普通 `ChatPage`，通过组合插槽提供起点建议和已校验包的版本卡片，微调与背景光晕仍为声明式皮肤配置；复制已安装皮肤时后台在线程中复制已校验快照中的背景资源。整机网关访问可发起制作，项目绑定会话只显示选用能力，后台原权限门禁继续生效。行为测试 `skinCenterEntry.test.tsx`、`skinSettings.test.tsx`、`skinStudio.test.tsx`、`skins.test.ts`、`test_skins.py`。
 
 # 按功能查找代码
 
