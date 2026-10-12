@@ -3,6 +3,7 @@ import Button from './Button'
 import Icon from './Icon'
 import MarqueeText from './MarqueeText'
 import TaskRecoveredBadge from './TaskRecoveredBadge'
+import TaskDetailTitle from './TaskDetailTitle'
 import { useI18n, type TKey } from '../i18n'
 import type { TaskDetailViewProps, StepData } from './TaskDetailView'
 
@@ -13,6 +14,8 @@ const STATUS_LABEL_KEYS: Record<string, TKey> = {
 
 interface TaskDetailHeaderProps {
   task: NonNullable<TaskDetailViewProps['task']>
+  projectId?: string
+  titleEditable?: boolean
   locale: string
   activeStep: StepData
   activeStepColor: string
@@ -27,7 +30,7 @@ interface TaskDetailHeaderProps {
 
 export default function TaskDetailHeader({ task, locale, activeStep, activeStepColor,
   taskCompleted, headerActions, taskHeaderExtra, onClose, onHeaderPointerDown,
-  onHeaderKeyDown, onHeaderDoubleClick }: TaskDetailHeaderProps) {
+  onHeaderKeyDown, onHeaderDoubleClick, projectId, titleEditable }: TaskDetailHeaderProps) {
   const { t } = useI18n()
   const draggable = Boolean(onHeaderPointerDown)
   const status = taskCompleted ? 'done' : task.status
@@ -45,7 +48,8 @@ export default function TaskDetailHeader({ task, locale, activeStep, activeStepC
       <div className="task-detail-header-main">
         <div className="task-detail-header-fields">
           <div className="task-detail-header-primary">
-            <span className="task-detail-title">{task.title}</span>
+            <span className="task-detail-title"><TaskDetailTitle key={task.id} task={task}
+              projectId={projectId} editable={titleEditable} /></span>
             <span className="task-detail-header-badge" style={{ '--badge-color': activeStepColor } as CSSProperties}>
               {t('taskDetail.currentStep', { step: activeStep.label })}
             </span>
@@ -68,6 +72,7 @@ export default function TaskDetailHeader({ task, locale, activeStep, activeStepC
         </div>
       </div>
       {onClose && <Button variant="icon" className="task-detail-header-close"
+        type="button"
         aria-label={t('common.close')} title={t('common.close')}
         onPointerDown={(event) => event.stopPropagation()} onClick={onClose}>
         <Icon name="x" size={16} />

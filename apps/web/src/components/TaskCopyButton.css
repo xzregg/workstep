@@ -1,0 +1,2 @@
+.task-copy-control { display: inline-flex; align-items: center; gap: 4px; }
+.task-copy-error { color: var(--danger); font-size: calc(12px * var(--font-scale)); max-width: 180px; overflow-wrap: anywhere; }

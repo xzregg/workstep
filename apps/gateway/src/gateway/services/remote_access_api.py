@@ -236,6 +236,16 @@ async def remote_session(call: GatewayCall):
                         if project is not None else False)
     if device is None:
         raise GatewayError('forbidden', 'Device access denied')
+    permissions = None
+    if auth_session.project_id:
+        from gateway.services.project_ui_permissions import effective_ui_permissions
+        async with call.database.session() as session:
+            permissions = await effective_ui_permissions(session, user.id, auth_session.project_id)
+        # UI capabilities still intersect the existing task/share authorization.
+        if not task_create:
+            permissions = [key for key in permissions if key not in ('task.create', 'task.copy', 'task.ai_create', 'task.start_on_create')]
+        if not share_create:
+            permissions = [key for key in permissions if not key.startswith('share.')]
     return {"user_id": user.id, "username": user.display_name,
             "device_id": device_id, "device_name": device.name,
             "project_id": project.id if project else None,
@@ -243,6 +253,7 @@ async def remote_session(call: GatewayCall):
             "access_level": auth_session.project_access_level,
             "task_create": task_create,
             "share_create": share_create,
+            "permissions": permissions,
             "can_manage_project_access": await IdentityService(call.database).is_super_admin(user.id),
             "online": True,
             "gateway_url": call.settings.public_origin + "/devices"}

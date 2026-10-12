@@ -7,8 +7,8 @@ import Icon from './Icon'
 import { NavigationHeaderContext } from './NavigationHeaderContext'
 import { BrandIcon } from './BrandIcon'
 
-export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, headerRight, showBrandIcon = true }: {
-  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean
+export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, showNew = true, headerRight, showBrandIcon = true }: {
+  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; showNew?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean
 }) {
   const { t } = useI18n()
   const compact = useCompactLayout()
@@ -36,7 +36,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
       <span className="mobile-header-title" title={displayTitle}>{showBrandIcon && displayTitle === 'WorkStep' && <BrandIcon size={18}/>}<span>{displayTitle}</span></span>
       <div className="mobile-header-actions">
         {headerRight}
-        <button aria-label={t('mobile.newChat')} disabled={newDisabled} onClick={onNew}><Icon name="plus" size={21} /></button>
+        {showNew && <button aria-label={t('mobile.newChat')} disabled={newDisabled} onClick={onNew}><Icon name="plus" size={21} /></button>}
       </div>
     </header>
     {compact && open && <div className="mobile-overlay-backdrop navigation-backdrop" onClick={() => setOpen(false)} />}

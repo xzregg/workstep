@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import ResponsivePopover from './ResponsivePopover'
 import Icon from './Icon'
 import { useCompactLayout } from '../hooks/useCompactLayout'
@@ -285,6 +286,8 @@ export default function ChatInput({
   maxHeight = 120,
 }: ChatInputProps) {
   const { t } = useI18n()
+  const { can } = useGatewayProjectPermissions(projectId || imageAttach?.projectId)
+  if (!can('file.upload')) imageAttach = undefined
   const markdownUrlResolver = useMarkdownUrlResolver()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const segmentRefs = useRef(new Map<number, HTMLTextAreaElement>())
@@ -386,6 +389,7 @@ export default function ChatInput({
   const inputQuery = slashInputQuery(value, slashCursor)
   const slashActive = inputQuery !== null
   const filteredItems = inputItems.filter((item) => {
+    if (item.kind === 'skill' && !can('skill.read')) return false
     const query = (inputQuery ?? '').toLocaleLowerCase()
     return !query
       || item.name.toLocaleLowerCase().includes(query)

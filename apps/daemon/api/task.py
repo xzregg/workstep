@@ -208,6 +208,7 @@ async def update_task(
             task_id,
             req.description,
             req.review_overrides,
+            title=req.title,
         ),
     )
     if not task:

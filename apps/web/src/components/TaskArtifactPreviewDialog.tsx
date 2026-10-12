@@ -1,11 +1,13 @@
-import type { Project, TaskArtifact } from '../api/client'
+import type { DirectoryBrowseResult, DirectoryEntry, Project, TaskArtifact } from '../api/client'
 import { useI18n } from '../i18n'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import ArtifactPreview from './ArtifactPreview'
 import Button from './Button'
 import ResizablePanel from './ResizablePanel'
 import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
 import { usesWebDirectoryBrowser } from '../utils/openLocation'
+import './TaskArtifactPreviewDialog.css'
 
 interface Props {
   artifact: TaskArtifact
@@ -19,8 +21,32 @@ interface Props {
 
 export default function TaskArtifactPreviewDialog({ artifact, projectId, projectType = 'local', onClose, onOpenDirectory, canOpenDirectory, directoryFiles }: Props) {
   const { t } = useI18n()
-  const [selectedFile, setSelectedFile] = useState<TaskArtifact | null>(null)
   const [showDirectoryBrowser, setShowDirectoryBrowser] = useState(false)
+  const browseSharedDirectory = useMemo(() => {
+    const rootPath = artifact.path.replace(/\\/g, '/').replace(/\/+$/, '')
+    return async (path: string, includeHidden: boolean): Promise<DirectoryBrowseResult> => {
+      const currentPath = (path || rootPath).replace(/\\/g, '/').replace(/\/+$/, '')
+      const entries = new Map<string, DirectoryEntry>()
+      if (currentPath === rootPath || currentPath.startsWith(`${rootPath}/`)) {
+        for (const file of directoryFiles || []) {
+          const filePath = file.path.replace(/\\/g, '/')
+          if (!filePath.startsWith(`${currentPath}/`)) continue
+          const parts = filePath.slice(currentPath.length + 1).split('/')
+          if (!includeHidden && parts.some(part => part.startsWith('.'))) continue
+          const name = parts[0]
+          if (!name) continue
+          entries.set(name, { name, path: `${currentPath}/${name}`, type: parts.length > 1 || file.is_dir ? 'directory' : 'file' })
+        }
+      }
+      return {
+        path: currentPath,
+        name: currentPath.split('/').pop() || artifact.name,
+        parent: currentPath === rootPath ? null : currentPath.replace(/\/[^/]+$/, ''),
+        entries: [...entries.values()].sort((a, b) =>
+          Number(b.type === 'directory') - Number(a.type === 'directory') || a.name.localeCompare(b.name)),
+      }
+    }
+  }, [artifact.path, artifact.name, directoryFiles])
   const webDirectoryMode = !!projectId && usesWebDirectoryBrowser(
     projectType,
     typeof window === 'undefined' ? 'localhost' : window.location.hostname,
@@ -29,37 +55,36 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, project
   const directoryPath = artifact.is_dir
     ? artifact.path
     : artifact.path.replace(/[\\/][^\\/]+$/, '')
-  return <>
+  if (directoryFiles) return (
+    <ProjectDirectoryBrowserDialog
+      projectId={projectId || ''}
+      title={artifact.logical_name || artifact.name}
+      rootPath={artifact.path}
+      displayPath={artifact.path}
+      browseDirectory={browseSharedDirectory}
+      readOnly
+      onClose={onClose}
+    />
+  )
+  return createPortal(<>
   <div
     role="dialog"
     aria-label={t('taskDetail.artifactPreviewAria', { name: artifact.logical_name || artifact.name })}
-    style={{
-      position: 'fixed', inset: 0, zIndex: 1250,
-      background: 'rgba(0,0,0,0.35)', padding: '5vh 6vw',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}
+    className="task-artifact-preview-backdrop"
     onClick={onClose}
   >
     <ResizablePanel
       minWidth={520}
       minHeight={320}
-      style={{
-        width: 'min(900px, 90vw)', height: 'min(720px, 88vh)',
-        background: 'var(--bg)', borderRadius: 12, overflow: 'hidden',
-        boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
-        display: 'flex', flexDirection: 'column',
-      }}
+      className="task-artifact-preview-dialog"
       onClick={(event) => event.stopPropagation()}
     >
-      <div className="dialog-header" style={{ padding: '12px 16px' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
+      <div className="dialog-header task-artifact-preview-header">
+        <div className="task-artifact-preview-heading">
+          <div className="task-artifact-preview-title">
             {artifact.logical_name || artifact.name}
           </div>
-          <div style={{
-            fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
+          <div className="task-artifact-preview-path" title={artifact.path}>
             {artifact.path}
           </div>
         </div>
@@ -72,29 +97,8 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, project
         </Button>}
         <Button variant="icon" onClick={onClose}>✕</Button>
       </div>
-      <div className="artifact-preview-container" style={{ flex: 1, minHeight: 0 }}>
-        {directoryFiles ? (
-          <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
-            <div style={{ width: 230, flexShrink: 0, overflow: 'auto', borderRight: '1px solid var(--border-soft)', padding: 8 }}>
-              {directoryFiles.map((file) => (
-                <Button
-                  key={file.path}
-                  variant="ghost"
-                  onClick={() => setSelectedFile(file)}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                  title={file.path}
-                >
-                  {file.path.slice(artifact.path.replace(/\/$/, '').length + 1)}
-                </Button>
-              ))}
-            </div>
-            <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-              {selectedFile && <ArtifactPreview key={selectedFile.path} path={selectedFile.path} projectId={projectId} />}
-            </div>
-          </div>
-        ) : (
-          <ArtifactPreview path={artifact.path} projectId={projectId} onClose={onClose} />
-        )}
+      <div className="artifact-preview-container task-artifact-preview-body">
+        <ArtifactPreview path={artifact.path} projectId={projectId} onClose={onClose} />
       </div>
     </ResizablePanel>
   </div>
@@ -107,5 +111,5 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, project
       onClose={() => setShowDirectoryBrowser(false)}
     />
   )}
-  </>
+  </>, document.body)
 }

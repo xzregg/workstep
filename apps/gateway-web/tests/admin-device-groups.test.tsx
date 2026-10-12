@@ -31,6 +31,12 @@ test('device group membership requires password and preserves a failed operation
     await screen.findByRole('option', { name: 'Test PCs' })
     fireEvent.change(screen.getByLabelText('设备组'), { target: { value: 'g1' } })
     fireEvent.change(screen.getByLabelText('设备'), { target: { value: 'd1' } })
+  fireEvent.click(screen.getByRole('tab', { name: '部门归属' }))
+  assert.equal(screen.queryByRole('button', { name: '加入设备组' }), null)
+  assert.ok(screen.getByRole('button', { name: '保存部门归属' }))
+  fireEvent.click(screen.getByRole('tab', { name: '设备组管理' }))
+  assert.equal((screen.getByLabelText('设备组') as HTMLSelectElement).value, 'g1')
+  assert.equal((screen.getByLabelText('设备') as HTMLSelectElement).value, 'd1')
     const submit = screen.getByRole('button', { name: '加入设备组' }) as HTMLButtonElement
     assert.equal(submit.disabled, true)
     const remove = screen.getByRole('button', { name: '移出设备组' }) as HTMLButtonElement

@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { buildTaskConversationTimeline, lastEventTimestamp } from './taskConversationFeed'
 import { useTaskConversationScroll } from '../hooks/useTaskConversationScroll'
@@ -129,6 +130,7 @@ function hasProcessEvents(events: any[]) {
 
 export interface TaskDetailViewProps {
   /** The URL access context only decides whether the shared composer is present. */
+  actionEnabled?: boolean
   chatEnabled?: boolean
 
   // ── Task data ──
@@ -261,6 +263,7 @@ export interface TaskDetailViewProps {
   coordinatorStopping?: boolean
 
   // ── Description editing (owner mode only) ──
+  titleEditable?: boolean
   descriptionEditable?: boolean
 
   // ── Prompt editing (edit mode only) ──
@@ -326,6 +329,7 @@ export interface TaskDetailViewProps {
 // ─── Component ───────────────────────────────────────────────────────────
 
 export default function TaskDetailView({
+  actionEnabled,
   chatEnabled,
   task,
   steps,
@@ -405,6 +409,7 @@ export default function TaskDetailView({
   coordinatorConfigNotice,
   coordinatorStopping,
   // Description
+  titleEditable,
   descriptionEditable,
   // Prompt
   onOpenPromptEditor,
@@ -453,9 +458,11 @@ export default function TaskDetailView({
   onChatError,
 }: TaskDetailViewProps) {
   const { t } = useI18n()
-  const canChat = chatEnabled ?? true
+  const { can } = useGatewayProjectPermissions(projectId)
+  const canChat = (chatEnabled ?? true) && can('task.chat')
+  const canRunActions = (actionEnabled ?? (chatEnabled ?? true)) && can('action.run')
   const taskActions = useTaskActions(
-    canChat && onSendPrompt ? projectId : undefined,
+    (canRunActions || (canChat && onSendPrompt)) ? projectId : undefined,
     task?.id,
     steps[selectedStep]?.key,
     onActionChanged,
@@ -512,6 +519,7 @@ export default function TaskDetailView({
     scrolledToBottom, unreadMessages, registerOverlay, overlayPaddingBottom,
     onWheelCapture, onKeyDownCapture, onScroll, jumpToLatest,
   } = useTaskConversationScroll({
+    active: detailMode === 'detail' && (!compact || mobileTab === 'conversation'),
     historyMessages, liveMessages, events, content,
     actionRuns: taskActions.runs,
     chatScrollRef, chatEndRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
@@ -686,7 +694,7 @@ export default function TaskDetailView({
                     key={message.id}
                     message={message}
                     run={message.actionRun}
-                    onStop={canChat ? (runId) => { void taskActions.stop(runId) } : undefined}
+                    onStop={canRunActions ? (runId) => { void taskActions.stop(runId) } : undefined}
                   />
                 }
                 return <TaskConversationMessage
@@ -815,12 +823,13 @@ export default function TaskDetailView({
           />
         </div>
 
+        {!canChat && canRunActions && <TaskActionButtons state={taskActions} actionsOnly />}
         {/* Chat input (edit mode only) */}
         {canChat && (
           <div
             className="task-detail-composer"
           >
-            {onSendPrompt && !compact && <TaskActionButtons state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} />}
+            {onSendPrompt && !compact && <TaskActionButtons actionsAllowed={canRunActions} state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} />}
             {onSendPrompt && compact && taskActions.error && <span role="alert" className="task-conversation-action-error">{taskActions.error}</span>}
             {composerState.running && (
               <ComposerOverlayHostContext.Provider value={registerOverlay}>
@@ -859,7 +868,7 @@ export default function TaskDetailView({
             <ChatInput
               projectId={projectId}
               taskId={task?.id}
-              left={onSendPrompt && compact ? <TaskActionButtons state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} compact /> : undefined}
+              left={onSendPrompt && compact ? <TaskActionButtons actionsAllowed={canRunActions} state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} compact /> : undefined}
               mentions={{
                 options: [
                   {
@@ -910,7 +919,7 @@ export default function TaskDetailView({
                     }
                   : undefined)
               }
-              resetStep={(resumableTarget || chatTarget === 'coordinator') && onResetStepChange
+              resetStep={can('task.restart') && (resumableTarget || chatTarget === 'coordinator') && onResetStepChange
                 ? {
                     active: Boolean(resetStep),
                     onChange: onResetStepChange,
@@ -929,7 +938,7 @@ export default function TaskDetailView({
                   : t('chatInput.stopGenerating')
               }
               config={
-                chatTarget !== 'coordinator'
+                !can('task.config') ? undefined : chatTarget !== 'coordinator'
                   ? stepEngineConfig || undefined
                   : {
                   projectId,
@@ -1028,7 +1037,7 @@ export default function TaskDetailView({
                     false))
               }
               onStop={
-                chatTarget !== 'coordinator' && selectedStepRunning
+                !can('task.stop') ? undefined : chatTarget !== 'coordinator' && selectedStepRunning
                   ? () =>
                       onStopStep?.(
                         chatTarget ?? '',
@@ -1102,7 +1111,7 @@ export default function TaskDetailView({
   return (
     <>
       {/* Header */}
-      {task && <TaskDetailHeader task={task} locale={locale} activeStep={activeStep}
+      {task && <TaskDetailHeader task={task} projectId={projectId} titleEditable={titleEditable} locale={locale} activeStep={activeStep}
         activeStepColor={activeStepColor} taskCompleted={taskCompleted}
         headerActions={<>{!compact && navigationActions}{headerActions}</>} taskHeaderExtra={taskHeaderExtra} onClose={onClose}
         onHeaderPointerDown={onHeaderPointerDown} onHeaderKeyDown={onHeaderKeyDown}

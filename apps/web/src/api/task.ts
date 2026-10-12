@@ -362,6 +362,11 @@ export const taskApi = {
     request<TaskExecutionReport>(
       `/task/${encodeURIComponent(id)}/execution-report?project_id=${encodeURIComponent(projectId)}`,
     ),
+  rename: (id: string, projectId: string, title: string) =>
+    request<Task>(`/task/${id}?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
   updateDescription: (id: string, projectId: string, description: string | undefined, reviewOverrides?: Record<string, any> | null) =>
     request<Task>(`/task/${id}?project_id=${encodeURIComponent(projectId)}`, {
       method: 'PATCH',

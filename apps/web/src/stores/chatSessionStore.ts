@@ -14,6 +14,7 @@ import {
   type ChatSessionSummary,
 } from '../api/client.ts'
 import { createAssistantStore } from './assistantStore.ts'
+import { zhCNT } from '../i18n'
 
 export const useChatSessionStore = createAssistantStore({
   channel: 'session_chat',
@@ -48,6 +49,7 @@ interface ChatListState {
   sessionsByProject: Record<string, ChatSessionSummary[]>
   quickButtons: ChatQuickButton[]
   listLoadingByProject: Record<string, boolean>
+  listErrorByProject: Record<string, string | undefined>
 
   // ── Multi-select ──
   /** Session IDs currently selected for bulk operations. */
@@ -83,6 +85,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
   sessionsByProject: {},
   quickButtons: [],
   listLoadingByProject: {},
+  listErrorByProject: {},
 
   selectedIds: new Set<string>(),
   selectionProjectId: null,
@@ -93,6 +96,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     if (!projectId || get().listLoadingByProject[projectId]) return
     set((state) => ({
       listLoadingByProject: { ...state.listLoadingByProject, [projectId]: true },
+      listErrorByProject: { ...state.listErrorByProject, [projectId]: undefined },
       ...(preserveSelection ? {} : {
         selectedIds: new Set<string>(),
         selectionProjectId: null,
@@ -104,8 +108,11 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       set((state) => ({
         sessionsByProject: { ...state.sessionsByProject, [projectId]: pinChannelSessions(sessions) },
       }))
-    } catch {
-      // Keep whatever is cached; the next navigation retries.
+    } catch (error) {
+      set(state => ({ listErrorByProject: {
+        ...state.listErrorByProject,
+        [projectId]: error instanceof Error ? error.message : zhCNT('layout.sessionLoadFailed'),
+      } }))
     } finally {
       set((state) => ({
         listLoadingByProject: { ...state.listLoadingByProject, [projectId]: false },

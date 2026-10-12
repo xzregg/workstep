@@ -1,3 +1,4 @@
+import { AdminTabs } from './AdminTabs'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
@@ -188,6 +189,7 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
 }
 
 export function AdminDeviceOperationsPage() {
+  const [tab, setTab] = useState('create')
   const [csrf, setCsrf] = useState('')
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
@@ -208,7 +210,10 @@ export function AdminDeviceOperationsPage() {
     <div className="gateway-admin-toolbar"><h2>设备批量作业</h2><Link to="/admin/devices">返回设备管理</Link></div>
     {!csrf && !error && <p role="status">正在检查登录状态…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
-    {csrf && <><OperationCreate csrf={csrf} onCreated={() => setRevision(value => value + 1)} />
-      <OperationHistory csrf={csrf} revision={revision} /></>}
+    {csrf && <AdminTabs label="设备作业分类" value={tab} onChange={setTab} items={[
+      { id: 'create', label: '创建批量作业', content: <OperationCreate csrf={csrf}
+        onCreated={() => { setRevision(value => value + 1); setTab('history') }} /> },
+      { id: 'history', label: '作业记录', content: <OperationHistory csrf={csrf} revision={revision} /> },
+    ]} />}
   </section>
 }

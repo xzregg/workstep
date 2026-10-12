@@ -577,7 +577,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
         taskCompleted={taskCompleted}
         runningSteps={runningSteps}
         executionStepModel={executionStepModel}
-        sessionIdForStep={() => null}
+        sessionIdForStep={(key) => stepProgress.find(step => step.step_key === key)?.session_id || null}
         onViewingPromptChange={() => {}}
         running={task.status === 'running'}
         previewArtifact={previewArtifact}

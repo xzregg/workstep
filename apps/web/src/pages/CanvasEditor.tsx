@@ -24,7 +24,8 @@ function CanvasEditorInner() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const activeProject = useProjectStore((s) => s.activeProject)
-  const { canEdit } = useGatewayProjectPermissions(activeProject?.id)
+  const { can } = useGatewayProjectPermissions(activeProject?.id)
+  const canEdit = can('workflow.edit')
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const saveSteps = useProjectStore((s) => s.saveSteps)
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
@@ -164,7 +165,7 @@ function CanvasEditorInner() {
               variant="ghost"
               className="ai-flow-entry-button"
               title={activeProject?.id ? t('canvas.aiEditTitle') : t('canvas.aiEditNoProject')}
-              disabled={!activeProject?.id || !canEdit}
+              hidden={!can('workflow.ai_edit')} disabled={!activeProject?.id || !canEdit}
               aria-expanded={aiPanelOpen}
               onClick={toggleAiPanel}
               style={{ height: 28, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}
@@ -190,7 +191,7 @@ function CanvasEditorInner() {
       </div>
 
       {/* Desktop: inline side panel. Mobile: full-screen editor overlay. */}
-      {canEdit && aiPanelOpen && <div className="ai-flow-editor-host">
+      {canEdit && can('workflow.ai_edit') && aiPanelOpen && <div className="ai-flow-editor-host">
         <AiFlowEditorPanel
           projectId={activeProject?.id || ''}
           workflowId={activeWorkflowId || undefined}

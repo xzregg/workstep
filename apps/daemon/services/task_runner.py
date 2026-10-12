@@ -953,9 +953,14 @@ class TaskRunner:
                 if event.type == "prompt_input":
                     prompt_snapshots.append(format_prompt_input(event.data))
                     prompt_view = "\n\n".join(prompt_snapshots)
-                    await self._run_db(lambda: Message.update(
-                        prompt_json=json.dumps({"prompt": prompt_view, "input_prompt": prompt}, ensure_ascii=False)
-                    ).where(Message.id == msg_id).execute())
+                    def save_prompt_input():
+                        message = Message.get_by_id(msg_id)
+                        payload = json.loads(message.prompt_json or "{}")
+                        payload.update(prompt=prompt_view, input_prompt=prompt)
+                        message.prompt_json = json.dumps(payload, ensure_ascii=False)
+                        message.save(only=[Message.prompt_json])
+
+                    await self._run_db(save_prompt_input)
                     await self._publish(task.id, step_key, {
                         "channel": "execution", "message_id": msg_id,
                         "engine": step.engine, "model": resolved_model,

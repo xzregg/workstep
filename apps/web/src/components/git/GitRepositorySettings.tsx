@@ -1,4 +1,4 @@
-import { useGitApi, useProjectScopedGit } from './GitApiContext'
+import { useGitApi, useProjectScopedGit, useGitActionAllowed } from './GitApiContext'
 import { useEffect, useState } from 'react'
 import { type GitCredentialStatus } from '../../api/git'
 import { ApiError } from '../../api/client'
@@ -18,6 +18,8 @@ function httpsHost(url: string) {
 
 export default function GitRepositorySettings({ id }: { id: string }) {
   const gitApi = useGitApi()
+  const can = useGitActionAllowed()
+  const canConfig = can('config')
   const projectScoped = useProjectScopedGit()
   const { t } = useI18n()
   const [name, setName] = useState('')
@@ -31,6 +33,7 @@ export default function GitRepositorySettings({ id }: { id: string }) {
   const [notice, setNotice] = useState('')
   const validIdentity = !!name.trim() && /^[^@\s]+@[^@\s]+$/.test(email.trim())
   useEffect(() => {
+    if (!canConfig) return
     let current = true
     setError(''); setNotice(''); setInventory(null); setHost('')
     Promise.all([gitApi.identity(id), projectScoped ? Promise.resolve({ remotes: [], hosts: [] }) : gitApi.credentials(id)]).then(([identity, response]) => {
@@ -40,9 +43,9 @@ export default function GitRepositorySettings({ id }: { id: string }) {
       setHost(credentials.remotes.flatMap(item => [httpsHost(item.push_url), httpsHost(item.url)]).find(Boolean) || credentials.hosts[0] || '')
     }).catch(reason => { if (current) setError(reason instanceof Error ? reason.message : String(reason)) })
     return () => { current = false }
-  }, [id, gitApi, projectScoped])
+  }, [id, gitApi, projectScoped, canConfig])
   async function saveIdentity(global = false) {
-    if (!validIdentity || busy) return
+    if (!canConfig || !validIdentity || busy) return
     setBusy(true); setError(''); setNotice('')
     try {
       const identity = { name: name.trim(), email: email.trim() }
@@ -54,14 +57,14 @@ export default function GitRepositorySettings({ id }: { id: string }) {
     finally { setBusy(false) }
   }
   async function saveCredential() {
-    if (!host.trim() || !username.trim() || !token || busy) return
+    if (!canConfig || !host.trim() || !username.trim() || !token || busy) return
     setBusy(true); setError(''); setNotice('')
     try { const result = await gitApi.saveHostCredentials(host.trim(), username.trim(), token); setInventory(current => current && { ...current, hosts: Array.isArray(result.hosts) ? result.hosts : [] }); setToken(''); setNotice(t('git.credentialsSaved')) }
     catch (reason) { setError(reason instanceof ApiError && reason.status === 404 ? t('git.restartForCredentials') : reason instanceof Error ? reason.message : String(reason)) }
     finally { setBusy(false) }
   }
   async function clearCredential() {
-    if (!host.trim() || busy) return
+    if (!canConfig || !host.trim() || busy) return
     setBusy(true); setError(''); setNotice('')
     try { const result = await gitApi.clearHostCredentials(host.trim()); setInventory(current => current && { ...current, hosts: Array.isArray(result.hosts) ? result.hosts : [] }); setToken(''); setNotice(t('git.credentialsCleared')) }
     catch (reason) { setError(reason instanceof ApiError && reason.status === 404 ? t('git.restartForCredentials') : reason instanceof Error ? reason.message : String(reason)) }
@@ -69,6 +72,7 @@ export default function GitRepositorySettings({ id }: { id: string }) {
   }
   const suggestedHosts = [...new Set(inventory?.remotes.flatMap(item => [httpsHost(item.url), httpsHost(item.push_url)]).filter(Boolean) || [])]
   const configured = !!inventory?.hosts?.includes(host.trim().toLowerCase())
+  if (!canConfig) return null
   return <section className="git-repository-settings">
     <h2>{t('git.identityTitle')}</h2>
     <p>{t('git.identityHint')}</p>

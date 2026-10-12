@@ -1,6 +1,7 @@
 const path = require('node:path')
-const { directoryOpeners, openDirectory } = require('./directory-openers.cjs')
+const { directoryOpeners, openDirectory, fileAction } = require('./directory-openers.cjs')
 const { isTrustedNavigation } = require('./security.cjs')
+const { resolveDroppedDirectory } = require('./project-drop.cjs')
 
 function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window: getWindow, rootUrl: getRootUrl, hasActiveWork, restart }) {
   const approved = new Set()
@@ -23,9 +24,11 @@ function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window
     return manager[method](input)
   }
   const handlers = {
+    droppedDirectory: input => resolveDroppedDirectory(input, manager),
     status: () => manager.status(),
     directoryOpeners: async () => ({ openers: await directoryOpeners() }),
     openDirectory: input => openDirectory(input, manager, shell),
+    fileAction: input => fileAction(input, manager, shell, dialog, getWindow()),
     dockerImages: () => manager.dockerImages(),
     hostProjects: () => manager.hostProjects(),
     prepareRuntime: input => prepareStage(input, 'prepareRuntime'),

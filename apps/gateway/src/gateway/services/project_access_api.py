@@ -3,6 +3,7 @@ from gateway.contracts import GatewayCall
 from datetime import datetime, timezone
 
 from typing import Literal
+import json
 
 from uuid import uuid4
 
@@ -22,6 +23,7 @@ from gateway.models import AuditEvent, Device, GroupMembership, PlatformProject,
 from gateway.services.management_scope import project_manager, grant_subject_ids, require_grant_subject
 
 from gateway.services.project_publication import record_project_publication
+from gateway.services.project_ui_permissions import UiPermissions
 
 
 """Published project access grants, independent of full-device access."""
@@ -31,6 +33,7 @@ class ProjectGrantInput(BaseModel):
     subject_type: Literal["user", "group"]
     subject_id: str = Field(min_length=1, max_length=64)
     access_level: Literal["read", "edit"]
+    ui_permissions: UiPermissions | None = None
 
 
 async def lock_project_access(session, project_id: str):
@@ -116,10 +119,16 @@ async def set_project_grant(call: GatewayCall, project_id: str,
                 grant.revoked_at = None
                 grant.invitation_id = None
                 grant.invitation_blocked = False
+            if body.ui_permissions is not None:
+                grant.ui_permissions_json = body.ui_permissions.model_dump_json()
+                from gateway.services.project_ui_permissions import sync_business_capabilities
+                await sync_business_capabilities(session, actor.id, body.subject_type, body.subject_id,
+                                                 project_id, body.ui_permissions)
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                    device_id=project.device_id,
                                    action="project.access_granted", result="success",
-                                   metadata_json=f'{{"project_id":"{project_id}"}}'))
+                                   metadata_json=json.dumps({'project_id': project_id, 'subject_type': body.subject_type,
+                                       'subject_id': body.subject_id, 'ui_permissions': body.ui_permissions.model_dump() if body.ui_permissions else None})))
     return {"id": grant.id, "project_id": project_id,
             "subject_type": body.subject_type, "subject_id": body.subject_id,
             "access_level": body.access_level}
@@ -141,6 +150,9 @@ async def revoke_project_grant(call: GatewayCall, project_id: str,
             if grant is None:
                 raise GatewayError('not_found', 'Project grant unavailable')
             grant.revoked_at = datetime.now(timezone.utc)
+            if grant.ui_permissions_json is not None:
+                from gateway.services.project_ui_permissions import sync_business_capabilities
+                await sync_business_capabilities(session, actor.id, subject_type, subject_id, project_id, UiPermissions())
             if subject_type == 'user':
                 grant.invitation_blocked = True
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,

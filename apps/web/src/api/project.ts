@@ -242,6 +242,7 @@ export const remoteProjectApi = {
     method: 'POST',
     body: JSON.stringify({ share_string: shareString }),
   }),
+  summary: (projectId: string) => request<Project>(`/remote-project/${encodeURIComponent(projectId)}/summary`),
   remove: (projectId: string) =>
     request<{ deleted: boolean }>(`/remote-project/${encodeURIComponent(projectId)}`, { method: 'DELETE' }),
   devices: (projectId?: string) =>

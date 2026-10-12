@@ -74,24 +74,40 @@ export default function TaskDetailPage({
   ...viewProps
 }: TaskDetailPageProps) {
   const { t } = useI18n()
-  const { canEdit } = useGatewayProjectPermissions(viewProps.projectId)
-  if (!canEdit) {
-    viewProps = { ...viewProps, chatEnabled: false, descriptionEditable: false, reviewConfigEditable: false,
-      onSend: undefined, onSendPrompt: undefined, onStop: undefined, onStopStep: undefined,
-      onOpenPromptEditor: undefined, onRestartStepWithFreshSession: undefined,
-      onRetryFailedMessage: undefined, onSetFailedExecutionComplete: undefined,
-      onReviewAction: undefined, onA2uiAction: undefined, onInteractionRespond: undefined,
-      onProposalOverride: undefined }
+  const { can } = useGatewayProjectPermissions(viewProps.projectId)
+  viewProps = { ...viewProps,
+    actionEnabled: (viewProps.chatEnabled ?? true) && can('action.run'),
+    chatEnabled: (viewProps.chatEnabled ?? true) && can('task.chat'),
+    titleEditable: viewProps.titleEditable && can('task.edit'),
+    descriptionEditable: viewProps.descriptionEditable && can('task.edit'),
+    reviewConfigEditable: viewProps.reviewConfigEditable && can('task.config'),
+    onSend: can('task.chat') ? viewProps.onSend : undefined,
+    onSendPrompt: can('task.chat') ? viewProps.onSendPrompt : undefined,
+    onStop: can('task.stop') ? viewProps.onStop : undefined,
+    onStopStep: can('task.stop') ? viewProps.onStopStep : undefined,
+    onOpenPromptEditor: can('workflow.edit') ? viewProps.onOpenPromptEditor : undefined,
+    onRestartStepWithFreshSession: can('task.restart') ? viewProps.onRestartStepWithFreshSession : undefined,
+    onRetryFailedMessage: can('task.restart') ? viewProps.onRetryFailedMessage : undefined,
+    onSetFailedExecutionComplete: can('task.review') ? viewProps.onSetFailedExecutionComplete : undefined,
+    onReviewAction: can('task.review') ? viewProps.onReviewAction : undefined,
+    onA2uiAction: can('task.chat') ? viewProps.onA2uiAction : undefined,
+    onInteractionRespond: can('task.chat') ? viewProps.onInteractionRespond : undefined,
+    onProposalOverride: can('task.proposal_apply') ? viewProps.onProposalOverride : undefined,
+  }
+  if (gitCapability) gitCapability = { ...gitCapability,
+    readOnly: !!gitCapability.readOnly || (!can('git.write') && !can('git.remote') && !can('git.workspace') && !can('git.config') && !can('file.edit')),
+    workspaceEditable: gitCapability.workspaceEditable !== false && can('git.workspace'),
   }
 
+
   return (
-    <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, projectScoped: gitCapability?.projectScoped, workspaceEditable: gitCapability?.workspaceEditable, allowedActions: gitCapability?.allowedActions, readOnly: !!gitCapability?.readOnly, browseWorkspace: readCapabilities.browseGitWorkspace }}>
+    <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, projectScoped: gitCapability?.projectScoped, workspaceEditable: gitCapability?.workspaceEditable, allowedActions: gitCapability?.allowedActions, permissionCheck: can, readOnly: !!gitCapability?.readOnly, browseWorkspace: readCapabilities.browseGitWorkspace }}>
     <MarkdownAssetUrlProvider resolver={readCapabilities.resolveAssetUrl} filePreview={readCapabilities.filePreview}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TaskDetailView
         {...viewProps}
         artifactDirectory={readCapabilities.artifactDirectory}
-        gitEnabled={!!gitCapability}
+        gitEnabled={!!gitCapability && can('git.read')}
         gitProjectId={gitCapability?.projectId}
         onClose={onClose}
         onLoadMessageEvents={readCapabilities.loadMessageEvents}

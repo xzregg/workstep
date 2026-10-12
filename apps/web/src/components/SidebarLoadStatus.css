@@ -1,0 +1,17 @@
+.sidebar-load-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sidebar-load-status span {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-load-status button {
+  flex-shrink: 0;
+}

@@ -4,6 +4,7 @@ import asyncio
 import threading
 from types import SimpleNamespace
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from engines.deepseek_harness import DeepSeekHarnessEngine
@@ -11,11 +12,13 @@ from .test_chat_session import chat_module, _wait_turn  # noqa: F401
 from .test_deepseek_harness_engine import _configure_spawn, notification, deepseek_provider  # noqa: F401
 
 
+@pytest.mark.parametrize("provider_type", ["deepseek", "custom"])
 async def test_chat_api_persists_engine_id_and_resumes_after_host_cache_eviction(
-    chat_module, monkeypatch, deepseek_provider,
+    chat_module, monkeypatch, deepseek_provider, provider_type,
 ):
     import main
 
+    deepseek_provider.update(type=provider_type, protocols=["openai_chat_completions"])
     module, _, manager, project, store = chat_module
     store.values["providers"] = [deepseek_provider]
     entered, release = threading.Event(), threading.Event()

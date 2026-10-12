@@ -12,7 +12,6 @@ export type GatewayConnection = {
 
 let request: Promise<GatewayConnection> | null = null
 let consumers = 0
-let timer: ReturnType<typeof setInterval> | null = null
 let generation = 0
 
 export const useGatewayConnectionStore = create<{
@@ -55,15 +54,22 @@ export function useGatewayConnection() {
   const error = useGatewayConnectionStore(state => state.error)
   useEffect(() => {
     consumers++
-    if (consumers === 1) {
-      void useGatewayConnectionStore.getState().refresh().catch(() => undefined)
-      if (!gatewayRemotePortalUrl()) timer = setInterval(() => { void useGatewayConnectionStore.getState().refresh().catch(() => undefined) }, 5000)
+    const refresh = () => {
+      if (document.visibilityState !== 'hidden') void useGatewayConnectionStore.getState().refresh().catch(() => undefined)
     }
+    if (consumers === 1 && (gatewayRemotePortalUrl() || !useGatewayConnectionStore.getState().status || useGatewayConnectionStore.getState().error)) refresh()
+    window.addEventListener('workstep:gateway-connection-changed', refresh)
+    window.addEventListener('workstep:reconnected', refresh)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
     return () => {
       consumers--
+      window.removeEventListener('workstep:gateway-connection-changed', refresh)
+      window.removeEventListener('workstep:reconnected', refresh)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
       if (!consumers) {
-        if (timer) clearInterval(timer)
-        timer = null; generation++; request = null
+        generation++; request = null
         useGatewayConnectionStore.setState({ status: null, error: false })
       }
     }

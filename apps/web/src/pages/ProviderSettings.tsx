@@ -1,5 +1,6 @@
 import ProviderImportDialog from '../components/ProviderImportDialog'
 import ProviderModelsDialog from '../components/ProviderModelsDialog'
+import ProviderSavedModels from '../components/ProviderSavedModels'
 import ProviderEditorDialog, { type ProviderEditorTarget } from '../components/ProviderEditorDialog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
@@ -379,34 +380,11 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                         {t('providerSettings.modelsNotFetched')}
                       </div>
                     )}
-                    {providerModelGroups.some((group) => group.models.length > 0) && (
-                      <div className="provider-settings-model-groups">
-                        {providerModelGroups.filter((group) => group.models.length > 0).map((group) => {
-                          const option = ALL_PROTOCOLS.find((item) => item.value === group.protocol)
-                          return (
-                            <div key={group.protocol} data-model-protocol={group.protocol}>
-                              <div className="provider-settings-model-group-title">
-                                {option ? t(option.labelKey) : group.protocol}
-                                {' · '}
-                                {t('providerSettings.modelsCount', { count: group.models.length })}
-                              </div>
-                              <div role="list" className="provider-settings-model-list">
-                                {group.models.map((model) => (
-                                  <span
-                                    key={model.id}
-                                    role="listitem"
-                                    title={model.description || model.label || model.id}
-                                    className="provider-settings-model-chip"
-                                  >
-                                    {model.label || model.id}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                    <ProviderSavedModels
+                      providerName={provider.name}
+                      groups={providerModelGroups}
+                      protocolLabel={protocolLabel}
+                    />
                   </div>
                   <div className="provider-settings-card-actions">
                     <Button

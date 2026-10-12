@@ -178,6 +178,18 @@ export function useSidebarActivity(activeSessionId: string | null) {
     const previous = previousRunningSessionKeyRef.current
     previousRunningSessionKeyRef.current = runningSessionKey
     if (!previous && !runningSessionKey) return
+    const previousIds = new Set(previous ? previous.split(',') : [])
+    const currentIds = new Set(runningSessionKey ? runningSessionKey.split(',') : [])
+    const changedIds = [...new Set([...previousIds, ...currentIds])]
+      .filter(id => previousIds.has(id) !== currentIds.has(id))
+    const catalog = useProjectStore.getState().projects
+    const owners = Object.values(useChatListStore.getState().sessionsByProject).flat()
+    // Remote status snapshots already update their project. Re-reading all
+    // local databases on each remote chat start/end adds no new information.
+    if (changedIds.length && changedIds.every(id => {
+      const projectId = owners.find(session => session.id === id)?.project_id
+      return catalog.find(project => project.id === projectId)?.type === 'remote'
+    })) return
     const timer = window.setTimeout(() => { void fetchProjects() }, 300)
     return () => window.clearTimeout(timer)
   }, [runningSessionKey, fetchProjects])

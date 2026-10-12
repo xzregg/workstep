@@ -12,6 +12,7 @@ import {
 import { useComposerOverlayClearance } from './useComposerOverlayClearance'
 
 type ScrollOptions = {
+  active?: boolean
   historyMessages: unknown[]
   liveMessages: Record<string, LiveMessage>
   events: unknown[]
@@ -30,6 +31,7 @@ type ScrollOptions = {
 
 /** Owns follow, unread, media resize, and scroll interaction for a task transcript. */
 export function useTaskConversationScroll({
+  active = true,
   historyMessages, liveMessages, events, content, actionRuns,
   chatScrollRef, chatEndRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
   stepLastMessageRefs, pendingStepScrollRef, hasUnreadMessages,
@@ -49,6 +51,7 @@ export function useTaskConversationScroll({
   const stepLastRef = stepLastMessageRefs ?? localStepLastRef
   const pendingScrollRef = pendingStepScrollRef ?? localPendingStepRef
   const lastScrollTopRef = useRef(0)
+  const wasActiveRef = useRef(active)
   const lastScrollHeightRef = useRef(0)
   const contentRef = useRef<HTMLDivElement>(null)
   const [scrolledToBottom, setScrolledToBottom] = useState(true)
@@ -63,10 +66,14 @@ export function useTaskConversationScroll({
     scrollRef, followRef, programmaticRef, scrollHeightRef: lastScrollHeightRef,
   })
 
-  // Only message content changes trigger this effect; elapsed-time ticks do not.
+  // Follow content changes and tab returns; elapsed-time ticks do not trigger scrolling.
   useEffect(() => {
+    const returningToConversation = active && !wasActiveRef.current
+    wasActiveRef.current = active
+    if (!active) return
+    if (returningToConversation) followRef.current = true
     const container = scrollRef.current
-    if (container && hasActiveSelectionWithin(
+    if (!returningToConversation && container && hasActiveSelectionWithin(
       container, container.ownerDocument.getSelection(),
     )) {
       followRef.current = false
@@ -81,6 +88,7 @@ export function useTaskConversationScroll({
         programmaticRef.current = target
         lastScrollHeightRef.current = container.scrollHeight
         container.scrollTop = target
+        lastScrollTopRef.current = target
         setScrolledToBottom(isNearConversationBottom(container.scrollHeight, target, container.clientHeight))
       }
       setUnreadMessages(false)
@@ -90,9 +98,10 @@ export function useTaskConversationScroll({
       setUnreadMessages(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyMessages, liveMessages, events, content, actionScrollKey])
+  }, [active, historyMessages, liveMessages, events, content, actionScrollKey])
 
   useEffect(() => {
+    if (!active) return
     const container = scrollRef.current
     if (!container) return
     const onMediaLoad = () => {
@@ -105,9 +114,9 @@ export function useTaskConversationScroll({
     }
     container.addEventListener('load', onMediaLoad, true)
     return () => container.removeEventListener('load', onMediaLoad, true)
-  }, [scrollRef, followRef, programmaticRef])
+  }, [active, scrollRef, followRef, programmaticRef])
 
-  useEffect(() => observeContentResize({
+  useEffect(() => active ? observeContentResize({
     containerRef: scrollRef,
     contentRef,
     onResize: ({ height }) => {
@@ -119,7 +128,7 @@ export function useTaskConversationScroll({
       container.scrollTop = target
       setScrolledToBottom(isNearConversationBottom(container.scrollHeight, target, container.clientHeight))
     },
-  }), [scrollRef, followRef, programmaticRef])
+  }) : undefined, [active, scrollRef, followRef, programmaticRef])
 
   const onWheelCapture = (event: WheelEvent<HTMLDivElement>) => {
     if (shouldPauseConversationFollow({ type: 'wheel', deltaY: event.deltaY })) {

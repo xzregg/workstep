@@ -94,7 +94,7 @@ export default function TaskList() {
     unarchiveTask, setActiveTask,
   } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
-  const { bound, canEdit, canCreateTask } = useGatewayProjectPermissions(activeProject?.id)
+  const { can, canEdit, canCreateTask, canOpenSettings } = useGatewayProjectPermissions(activeProject?.id)
   const renameProject = useProjectStore((s) => s.renameProject)
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
   const saveSteps = useProjectStore((s) => s.saveSteps)
@@ -164,7 +164,7 @@ export default function TaskList() {
     let cancelled = false
     const projectId = activeProject?.id
 
-    if (!projectId || bound) {
+    if (!projectId || !can('schedule.read')) {
       setScheduleCount(0)
       return () => {
         cancelled = true
@@ -183,7 +183,7 @@ export default function TaskList() {
     return () => {
       cancelled = true
     }
-  }, [activeProject?.id, bound])
+  }, [activeProject?.id, can])
 
   // Reset local state when project changes
   useEffect(() => {
@@ -360,31 +360,31 @@ export default function TaskList() {
             <Icon name="archive" size={16} />
             {showArchived ? t('mobile.activeTasks') : t('mobile.archivedTasks')}
           </Button>
-          <Button onClick={() => { setFiltersOpen(false); navigate(`/canvas?project=${encodeURIComponent(activeProject?.name || '')}&workflow=${activeWorkflowId || ''}`) }}>
+          {can('workflow.edit') && <Button onClick={() => { setFiltersOpen(false); navigate(`/canvas?project=${encodeURIComponent(activeProject?.name || '')}&workflow=${activeWorkflowId || ''}`) }}>
             <Icon name="workflow" size={16} />
             {t('taskList.stepEdit')}
-          </Button>
-          <Button onClick={() => { setFiltersOpen(false); setShortcutSettingsOpen(true) }} disabled={!activeWorkflowId || !canEdit || bound}>
+          </Button>}
+          {can('action.manage') && <Button onClick={() => { setFiltersOpen(false); setShortcutSettingsOpen(true) }} disabled={!activeWorkflowId}>
             <Icon name="zap" size={16} />
             {t('actionShortcuts.quickButtons')}
-          </Button>
-          <Button className="workflow-hooks-entry" onClick={() => { setFiltersOpen(false); setHooksOpen(true) }} disabled={!activeWorkflowId || !canEdit}>
+          </Button>}
+          {can('workflow.hooks') && <Button className="workflow-hooks-entry" onClick={() => { setFiltersOpen(false); setHooksOpen(true) }} disabled={!activeWorkflowId}>
             <Icon name="webhook" size={16} />
             {t('workflowHooks.title')}
-          </Button>
-          <Button onClick={() => { setFiltersOpen(false); setShowScheduleDialog(true) }} disabled={bound}>
+          </Button>}
+          {can('schedule.read') && <Button onClick={() => { setFiltersOpen(false); setShowScheduleDialog(true) }} disabled={!activeProject}>
             <Icon name="clock" size={16} />
             {t('schedules.title')}
-          </Button>
-          <MobileOpenLocationButton disabled={!activeProject} onClick={() => { setFiltersOpen(false); setShowMobileDirectoryBrowser(true) }} />
+          </Button>}
+          {can('file.read') && <MobileOpenLocationButton disabled={!activeProject} onClick={() => { setFiltersOpen(false); setShowMobileDirectoryBrowser(true) }} />}
           <ProjectGitButton project={activeProject} />
-          <Button onClick={() => { setFiltersOpen(false); setShowSettingsPanel(true) }}>
+          {canOpenSettings && <Button onClick={() => { setFiltersOpen(false); setShowSettingsPanel(true) }}>
             <Icon name="settings" size={16} />
             {t('taskList.settings')}
-          </Button>
+          </Button>}
         </div>
       </MobileSheet>
-      {showMobileDirectoryBrowser && activeProject && (
+      {can('file.read') && showMobileDirectoryBrowser && activeProject && (
         <ProjectDirectoryBrowserDialog
           projectId={activeProject.id}
           title={activeProject.name}
@@ -393,7 +393,7 @@ export default function TaskList() {
         />
       )}
       <div className="desktop-task-toolbar" style={topbarStyle}>
-        <Button
+        {can('workflow.edit') && <Button
           variant="ghost"
           onClick={() => {
             const params = new URLSearchParams({
@@ -406,7 +406,7 @@ export default function TaskList() {
         >
           <Icon name="table" size={14} strokeWidth={2} />
           {t('taskList.stepEdit')}
-        </Button>
+        </Button>}
         {canCreateTask && !showArchived && (
           <Button variant="primary" onClick={() => openNewPanel()} style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}>
             <Icon name="plus" size={14} strokeWidth={2.5} />
@@ -466,38 +466,38 @@ export default function TaskList() {
             {t('layout.remoteShareTitle')}
           </Button>
         )}
-        <Button
+        {can('action.manage') && <Button
           variant="ghost"
           onClick={() => setShortcutSettingsOpen(true)}
-          disabled={!activeWorkflowId || !canEdit || bound}
+          disabled={!activeWorkflowId}
           style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
           {t('actionShortcuts.quickButtons')}
-        </Button>
-        <Button variant="ghost" className="workflow-hooks-entry workflow-hooks-entry--toolbar" onClick={() => setHooksOpen(true)} disabled={!activeWorkflowId || !canEdit}>
+        </Button>}
+        {can('workflow.hooks') && <Button variant="ghost" className="workflow-hooks-entry workflow-hooks-entry--toolbar" onClick={() => setHooksOpen(true)} disabled={!activeWorkflowId}>
           <Icon name="webhook" size={13} />
           {t('workflowHooks.title')}
-        </Button>
-        <Button
+        </Button>}
+        {can('schedule.read') && <Button
           variant="ghost"
           onClick={() => setShowScheduleDialog(true)}
-          disabled={!activeProject || bound}
+          disabled={!activeProject}
           title={t('schedules.openTitle')}
           style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
           <Icon name="clock" size={13} strokeWidth={2} />
           {t('schedules.title')}{scheduleCount > 0 && `(${scheduleCount})`}
-        </Button>
-        <Button
+        </Button>}
+        {can('file.edit') && <Button
           variant="ghost"
           onClick={() => setMemoryOpen(true)}
-          disabled={!activeProject || bound}
+          disabled={!activeProject}
           title={t('taskList.memoryButtonTitle')}
           style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
           <Icon name="book" size={13} strokeWidth={2} />
           {t('taskList.memory')}
-        </Button>
+        </Button>}
         <Button
           variant="ghost"
           onClick={() => setShowArchived((value) => !value)}
@@ -544,14 +544,14 @@ export default function TaskList() {
             </svg>
           </button>
         </div>
-        <OpenLocationButton
+        {can('file.read') && <OpenLocationButton
           activeProject={activeProject}
           t={t}
           showInlineNotice={false}
           onNoticeChange={setDirectoryNotice}
-        />
+        />}
         <ProjectGitButton project={activeProject} />
-        <Button
+        {canOpenSettings && <Button
           variant="ghost"
           onClick={() => setShowSettingsPanel(true)}
           disabled={!activeProject}
@@ -560,7 +560,7 @@ export default function TaskList() {
         >
           <Icon name="settings" size={13} strokeWidth={2} />
           {t('taskList.settings')}
-        </Button>
+        </Button>}
       </div>
 
       {/* Archive-view banner */}
@@ -635,10 +635,12 @@ export default function TaskList() {
                 {laneTasks.map((task) => <TaskBoardCard
                   key={task.id}
                   task={task}
+                  projectId={activeProject?.id}
                   durationNowMs={durationNowMs}
                   showArchived={showArchived}
                   starting={startingTaskId === task.id}
                   readOnly={!canEdit}
+                  canRun={can('task.run')} canArchive={can('task.archive')} canDelete={can('task.delete')}
                   dragging={dragId === task.id}
                   onOpen={() => handleSelectTask(task.id)}
                   onStart={() => setConfirmStartTaskId(task.id)}
@@ -656,8 +658,10 @@ export default function TaskList() {
         {/* Grouped table view with multi-select bulk actions. */}
         {!loading && activeProject && boardView === 'table' && (
           <TaskTableView
+            projectId={activeProject.id}
             key={`${activeProject.id}:${showArchived}`}
-            readOnly={!canEdit}
+            readOnly={!can('task.archive') && !can('task.delete')}
+            canArchive={can('task.archive')} canDelete={can('task.delete')}
             canCreateTask={canCreateTask}
             lanes={lanes}
             tasksByLane={tasksByLane}
@@ -687,8 +691,8 @@ export default function TaskList() {
       )}
 
       {/* ── Schedule dialog ── */}
-      {hooksOpen && activeProject && activeWorkflowId && <WorkflowHookManagerDialog key={`${activeProject.id}:${activeWorkflowId}`} projectId={activeProject.id} workflowId={activeWorkflowId} workflowName={activeWorkflowName || ""} onClose={() => setHooksOpen(false)} />}
-      {shortcutSettingsOpen && activeProject && activeWorkflowId && <WorkflowShortcutSettingsDialog
+      {can('workflow.hooks') && hooksOpen && activeProject && activeWorkflowId && <WorkflowHookManagerDialog key={`${activeProject.id}:${activeWorkflowId}`} projectId={activeProject.id} workflowId={activeWorkflowId} workflowName={activeWorkflowName || ""} onClose={() => setHooksOpen(false)} />}
+      {can('action.manage') && shortcutSettingsOpen && activeProject && activeWorkflowId && <WorkflowShortcutSettingsDialog
         key={`${activeProject.id}:${activeWorkflowId}`}
         projectId={activeProject.id}
         workflowId={activeWorkflowId}
@@ -701,7 +705,7 @@ export default function TaskList() {
           await saveSteps(activeProject.id, { ...activeProject.steps, projectQuickButtonIds: selectedIds, quickButtons: workflowButtons })
         }}
       />}
-      {showScheduleDialog && (
+      {can('schedule.read') && showScheduleDialog && (
         <div
           className="modal-overlay schedule-dialog-overlay"
           role="presentation"
@@ -728,7 +732,7 @@ export default function TaskList() {
       />
 
       <ProjectSettingsPanel
-        project={showSettingsPanel ? activeProject : null}
+        project={canOpenSettings && showSettingsPanel ? activeProject : null}
         onClose={() => setShowSettingsPanel(false)}
         onProjectRenamed={(name) => {
           if (activeProject) void renameProject(activeProject.path, name)
@@ -778,7 +782,7 @@ export default function TaskList() {
           setArchiveTarget(null)
         }} />}
 
-      {memoryOpen && activeProject && (
+      {can('file.edit') && memoryOpen && activeProject && (
         <ProjectMemoryPanel key={activeProject.id} projectId={activeProject.id}
           onClose={() => setMemoryOpen(false)} />
       )}

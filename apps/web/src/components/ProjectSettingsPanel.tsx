@@ -1,6 +1,6 @@
 import ProjectStorageSettings from './ProjectStorageSettings'
 import ResizablePanel from './ResizablePanel'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   chatSessionApi,
   projectApi,
@@ -17,8 +17,8 @@ import MarkdownEditor from './MarkdownEditor'
 import QuickButtonEditor, { type QuickButtonDraft, quickButtonToDraft, quickButtonFromDraft } from './QuickButtonEditor'
 import SkillCenterSettings from '../pages/SkillCenterSettings'
 import ProjectSharingTabs from './ProjectSharingTabs'
-import GatewayProjectSettings from './GatewayProjectSettings'
-import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
+import { useProjectSettingsDraftGuard } from './useProjectSettingsDraftGuard'
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 
 interface ProjectSettingsPanelProps {
   project: Project | null
@@ -39,10 +39,6 @@ interface ConcurrencyDraft {
 }
 
 export default function ProjectSettingsPanel(props: ProjectSettingsPanelProps) {
-  const session = useGatewaySessionStore(state => state.session)
-  if (props.project && session?.host_project_id === props.project.id) {
-    return <GatewayProjectSettings projectId={props.project.id} projectName={props.project.name} onClose={props.onClose} />
-  }
   return <LocalProjectSettingsPanel {...props} />
 }
 
@@ -53,12 +49,16 @@ function LocalProjectSettingsPanel({
 }: ProjectSettingsPanelProps) {
   const { t } = useI18n()
   const projectId = project?.id
+  const { bound, can } = useGatewayProjectPermissions(projectId)
   const [activeTab, setActiveTab] = useState<TabKey>('general')
 
   // ── aggregate data ────────────────────────────────────────────────
   const [settings, setSettings] = useState<ProjectSettingsResult | null>(null)
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(false)
+  const pendingLoad = useRef<string | null>(null)
+  const currentProject = useRef(projectId)
+  currentProject.current = projectId
 
   // ── general tab ───────────────────────────────────────────────────
   const [nameDraft, setNameDraft] = useState('')
@@ -88,7 +88,11 @@ function LocalProjectSettingsPanel({
   const [concurrencyError, setConcurrencyError] = useState('')
   const [concurrencySaved, setConcurrencySaved] = useState(false)
 
-  const tabs: { key: TabKey; label: string }[] = useMemo(() => [
+  const { hasLoaded, markLoaded, markSaved, requestClose, confirmation } = useProjectSettingsDraftGuard(projectId,
+    { name: nameDraft.trim(), prompt: promptDraft, buttons: buttonsDraft, concurrency: concurrencyDraft },
+    nameSaving || promptSaving || buttonsSaving || concurrencySaving, onClose)
+
+  const tabs = useMemo(() => ([
     { key: 'general', label: t('projectSettings.tabs.general') },
     { key: 'assistant', label: t('projectSettings.tabs.assistant') },
     { key: 'quickButtons', label: t('projectSettings.tabs.quickButtons') },
@@ -96,18 +100,24 @@ function LocalProjectSettingsPanel({
     { key: 'concurrency', label: t('projectSettings.tabs.concurrency') },
     ...(project?.type !== 'remote'
       ? [{ key: 'share' as const, label: t('projectSettings.tabs.share') }] : []),
-  ], [t, project?.type])
+  ] as { key: TabKey; label: string }[]).filter(tab => tab.key === 'general' || tab.key === 'share'
+    || can(tab.key === 'assistant' ? 'session.config' : tab.key === 'quickButtons' ? 'action.manage'
+      : tab.key === 'skills' ? 'skill.read' : 'project.settings')), [t, project?.type, can])
+  const visibleTab = tabs.some(tab => tab.key === activeTab) ? activeTab : 'general'
+  const needsSettings = !bound || ['assistant', 'quickButtons', 'concurrency'].includes(visibleTab)
 
   useEffect(() => {
     if (activeTab === 'share' && project?.type === 'remote') setActiveTab('general')
   }, [activeTab, project?.type])
 
   const loadSettings = useCallback(async () => {
-    if (!projectId) return
+    if (!projectId || !needsSettings || hasLoaded(projectId) || pendingLoad.current === projectId) return
+    pendingLoad.current = projectId
     setLoading(true)
     setLoadError('')
     try {
-      const result = await projectApi.settings(projectId, true)
+      const result = await projectApi.settings(projectId, !bound)
+      if (currentProject.current !== projectId) return
       setSettings(result)
       setNameDraft(result.name)
       setPromptDraft(result.chat_system_prompt || '')
@@ -116,17 +126,20 @@ function LocalProjectSettingsPanel({
       setSelectedQuickButtonId(quickButtons[0]?.id || '')
       const override = result.concurrency?.project
       const effective = result.concurrency?.effective
-      setConcurrencyDraft({
+      const concurrency = {
         maxTasks: String(override?.max_tasks ?? effective?.max_tasks ?? 0),
         maxChats: String(override?.max_chats ?? effective?.max_chats ?? 0),
         scheduleExempt: override?.schedule_exempt ?? effective?.schedule_exempt ?? false,
-      })
+      }
+      setConcurrencyDraft(concurrency)
+      markLoaded(projectId, { name: result.name.trim(), prompt: result.chat_system_prompt || '', buttons: quickButtons, concurrency })
     } catch (reason) {
-      setLoadError(reason instanceof Error ? reason.message : t('projectSettings.loadFailed'))
+      if (currentProject.current === projectId) setLoadError(reason instanceof Error ? reason.message : t('projectSettings.loadFailed'))
     } finally {
-      setLoading(false)
+      if (pendingLoad.current === projectId) pendingLoad.current = null
+      if (currentProject.current === projectId) setLoading(false)
     }
-  }, [projectId, t])
+  }, [projectId, t, bound, needsSettings, hasLoaded, markLoaded])
 
   useEffect(() => {
     void loadSettings()
@@ -137,7 +150,7 @@ function LocalProjectSettingsPanel({
   // ── save handlers ─────────────────────────────────────────────────
 
   const saveName = async () => {
-    if (!project || nameSaving) return
+    if (!can('project.settings') || bound || !project || nameSaving) return
     const trimmed = nameDraft.trim()
     if (!trimmed || trimmed === project.name) {
       setNameError('')
@@ -148,6 +161,7 @@ function LocalProjectSettingsPanel({
     setNameSaved(false)
     try {
       await projectApi.rename(project.path, trimmed)
+      markSaved('name', trimmed)
       setNameSaved(true)
       onProjectRenamed?.(trimmed)
     } catch (reason) {
@@ -158,12 +172,13 @@ function LocalProjectSettingsPanel({
   }
 
   const saveSystemPrompt = async () => {
-    if (!projectId || promptSaving) return
+    if (!can('session.config') || !projectId || promptSaving) return
     setPromptSaving(true)
     setPromptError('')
     setPromptSaved(false)
     try {
       await chatSessionApi.saveSystemPrompt(projectId, promptDraft)
+      markSaved('prompt', promptDraft)
       setPromptSaved(true)
     } catch (reason) {
       setPromptError(reason instanceof Error ? reason.message : t('projectSettings.saveFailed'))
@@ -173,7 +188,7 @@ function LocalProjectSettingsPanel({
   }
 
   const saveQuickButtons = async () => {
-    if (!projectId || buttonsSaving) return
+    if (!can('action.manage') || !projectId || buttonsSaving) return
     for (const button of buttonsDraft) {
       if (!button.label.trim()) {
         setSelectedQuickButtonId(button.id)
@@ -194,7 +209,9 @@ function LocalProjectSettingsPanel({
         projectId,
         buttonsDraft.map(quickButtonFromDraft),
       )
-      setButtonsDraft(savedButtons.map(quickButtonToDraft))
+      const savedDraft = savedButtons.map(quickButtonToDraft)
+      markSaved('buttons', savedDraft)
+      setButtonsDraft(savedDraft)
       setButtonsSaved(true)
     } catch (reason) {
       setButtonsError(reason instanceof Error ? reason.message : t('projectSettings.saveFailed'))
@@ -204,7 +221,7 @@ function LocalProjectSettingsPanel({
   }
 
   const saveConcurrency = async () => {
-    if (!projectId || concurrencySaving) return
+    if (!can('project.settings') || !projectId || concurrencySaving) return
     const parseLimit = (value: string): number => {
       const trimmed = value.trim()
       if (trimmed === '') return NaN
@@ -226,11 +243,13 @@ function LocalProjectSettingsPanel({
         scheduleExempt: concurrencyDraft.scheduleExempt,
       })
       const override = result.project
-      setConcurrencyDraft({
+      const savedConcurrency = {
         maxTasks: String(override.max_tasks ?? 0),
         maxChats: String(override.max_chats ?? 0),
         scheduleExempt: override.schedule_exempt === true,
-      })
+      }
+      markSaved('concurrency', savedConcurrency)
+      setConcurrencyDraft(savedConcurrency)
       setConcurrencySaved(true)
     } catch (reason) {
       setConcurrencyError(reason instanceof Error ? reason.message : t('projectSettings.saveFailed'))
@@ -250,7 +269,9 @@ function LocalProjectSettingsPanel({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <>
+    {confirmation}
+    <div className="modal-overlay" onClick={requestClose}>
       <ResizablePanel
         className="modal"
         role="dialog"
@@ -261,7 +282,7 @@ function LocalProjectSettingsPanel({
       >
         <div className="modal-header" style={{ flexShrink: 0, paddingLeft: 20 }}>
           <span className="modal-title">{t('projectSettings.title')} · {project.name}</span>
-          <Button variant="icon" aria-label={t('common.close')} onClick={onClose}>✕</Button>
+          <Button variant="icon" aria-label={t('common.close')} onClick={requestClose}>✕</Button>
         </div>
         <div className="project-settings-layout" style={{ display: 'flex', flex: 1, minHeight: 0 }}>
           {/* ── left index ── */}
@@ -278,13 +299,13 @@ function LocalProjectSettingsPanel({
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                aria-current={activeTab === tab.key ? 'page' : undefined}
+                aria-current={visibleTab === tab.key ? 'page' : undefined}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 9, width: '100%', border: 'none',
                   borderRadius: 8, padding: '8px 10px', cursor: 'pointer', textAlign: 'left',
-                  background: activeTab === tab.key ? 'var(--bg)' : 'transparent',
-                  color: activeTab === tab.key ? 'var(--fg)' : 'var(--muted)',
-                  fontSize: 'calc(13px * var(--font-scale))', fontWeight: activeTab === tab.key ? 650 : 500,
+                  background: visibleTab === tab.key ? 'var(--bg)' : 'transparent',
+                  color: visibleTab === tab.key ? 'var(--fg)' : 'var(--muted)',
+                  fontSize: 'calc(13px * var(--font-scale))', fontWeight: visibleTab === tab.key ? 650 : 500,
                 }}
               >
                 {tab.label}
@@ -293,14 +314,14 @@ function LocalProjectSettingsPanel({
           </nav>
           {/* ── right scrollable content ── */}
           <section
-            aria-label={tabs.find((tab) => tab.key === activeTab)?.label}
+            aria-label={tabs.find((tab) => tab.key === visibleTab)?.label}
             style={{ flex: 1, minWidth: 0, padding: '16px 22px 22px', overflowY: 'auto' }}
           >
             <div style={{
               fontSize: 'calc(15px * var(--font-scale))', fontWeight: 700, fontFamily: 'var(--font-display)',
               color: 'var(--fg)', marginBottom: 14, flexShrink: 0,
             }}>
-              {tabs.find((tab) => tab.key === activeTab)?.label}
+              {tabs.find((tab) => tab.key === visibleTab)?.label}
             </div>
             {loadError && (
               <div role="status" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 12 }}>
@@ -311,10 +332,10 @@ function LocalProjectSettingsPanel({
               <div style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>
                 {t('common.loading')}
               </div>
-            ) : activeTab === 'general' ? (
+            ) : visibleTab === 'general' ? (
               <div style={tabBodyStyle}>
-                {project.type !== 'remote' && <ProjectStorageSettings projectId={project.id} />}
-                <Field label={t('projectSettings.general.name')} error={nameError || undefined}>
+                {!bound && project.type !== 'remote' && <ProjectStorageSettings projectId={project.id} />}
+                {bound || !can('project.settings') ? <p>{t('projectSettings.general.name')}：{project.name}</p> : <Field label={t('projectSettings.general.name')} error={nameError || undefined}>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Input
                       value={nameDraft}
@@ -336,8 +357,8 @@ function LocalProjectSettingsPanel({
                       {t('projectSettings.general.nameSaved')}
                     </div>
                   )}
-                </Field>
-                <Field label={t('projectSettings.general.path')}>
+                </Field>}
+                {!bound && <Field label={t('projectSettings.general.path')}>
                   <div style={{
                     padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)',
                     background: 'var(--surface)', color: 'var(--muted)',
@@ -346,9 +367,9 @@ function LocalProjectSettingsPanel({
                   }}>
                     {project.path}
                   </div>
-                </Field>
+                </Field>}
               </div>
-            ) : activeTab === 'assistant' ? (
+            ) : visibleTab === 'assistant' ? (
               <div style={tabBodyStyle}>
                 <Field
                   label={t('projectSettings.assistant.systemPrompt')}
@@ -376,7 +397,7 @@ function LocalProjectSettingsPanel({
                   </div>
                 </Field>
               </div>
-            ) : activeTab === 'quickButtons' ? (
+            ) : visibleTab === 'quickButtons' ? (
               <QuickButtonEditor
                 projectId={projectId || ''}
                 buttons={buttonsDraft}
@@ -389,9 +410,9 @@ function LocalProjectSettingsPanel({
                 error={buttonsError}
                 onEdited={() => { setButtonsError(''); setButtonsSaved(false) }}
               />
-            ) : activeTab === 'skills' ? (
+            ) : visibleTab === 'skills' ? (
               <SkillCenterSettings project={project} embedded />
-            ) : activeTab === 'concurrency' ? (
+            ) : visibleTab === 'concurrency' ? (
               <div style={tabBodyStyle}>
                 <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
                   {t('projectSettings.concurrency.hint')}
@@ -480,5 +501,6 @@ function LocalProjectSettingsPanel({
         </div>
       </ResizablePanel>
     </div>
+    </>
   )
 }

@@ -38,18 +38,17 @@ def _main():
     return main
 
 
-def _local_project_summary(project_id: str) -> dict[str, Any] | None:
-    return next(
-        (
-            {**project, "type": "local", "connection_status": "local"}
-            for project in _main().project_manager.list_projects()
-            if project.get("id") == project_id
-        ),
-        None,
-    )
+async def _local_project_summary(project_id: str) -> dict[str, Any] | None:
+    manager = _main().project_manager
+    try:
+        return await manager.run_db(project_id, lambda project: {
+            **manager.project_summary(project), "type": "local", "connection_status": "local",
+        })
+    except ValueError:
+        return None
 
 
-_SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels")
+_SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels", "remote_project_ids")
 _PROJECT_EVENT_CHANNELS = frozenset({
     "execution", "coordinator", "review", "archive_experience", "session_chat", "channel_bots",
 })
@@ -72,6 +71,8 @@ class WsSubscription:
     session_ids: set[str] = field(default_factory=set)
     channels: set[str] = field(default_factory=set)
     project_id: str = ""
+    selected_project_id: str = ""
+    remote_project_ids: set[str] = field(default_factory=set)
     active: bool = False
 
 
@@ -92,10 +93,13 @@ def matches_subscription(event: dict[str, Any], sub: WsSubscription) -> bool:
     """判断事件是否命中订阅；未激活订阅（全量模式）恒为 True。"""
     if not sub.active:
         return True
+    if event.get("type") == "CUSTOM" and event.get("name") == "workstep.gateway_connection_changed":
+        return not sub.project_id
     if (
         event.get("type") == "CUSTOM"
         and event.get("name") == "workstep.remote_project_status"
-        and event.get("project_id") == sub.project_id
+        and (event.get("project_id") in sub.remote_project_ids
+             or event.get("project_id") == (sub.project_id or sub.selected_project_id))
     ):
         return True
     task_id = event.get("task_id")
@@ -110,7 +114,8 @@ def matches_subscription(event: dict[str, Any], sub: WsSubscription) -> bool:
         return True
     channel = event.get("channel")
     if channel and channel in sub.channels:
-        return not sub.project_id or event.get("project_id") == sub.project_id
+        selected = sub.project_id or sub.selected_project_id
+        return not selected or event.get("project_id") == selected
     return False
 
 
@@ -165,19 +170,31 @@ async def _handle_client_message(
                 logger.warning("WS subscribe ignored (no connection context)")
                 return
             new_sub = parse_subscription(msg)
+            previous_remote_ids = subscription.remote_project_ids.copy()
             subscription.task_ids = new_sub.task_ids
             subscription.status_only_task_ids = new_sub.status_only_task_ids
             subscription.session_ids = new_sub.session_ids
             subscription.channels = new_sub.channels
-            subscription.project_id = scoped_project_id or new_sub.project_id
+            # project_id is the authenticated actor scope, never the browser's
+            # current selection. Keeping them separate permits A/B switching.
+            subscription.selected_project_id = new_sub.project_id
+            subscription.remote_project_ids = new_sub.remote_project_ids if not scoped_project_id else set()
             subscription.active = new_sub.active
             main.event_bus.set_filter(queue, _make_subscription_predicate(subscription))
-            project_id = str(msg.get("project_id") or "")
-            if not scoped_project_id and await asyncio.to_thread(main.remote_project_registry.get, project_id) is not None:
-                try:
-                    await main.remote_project_client.subscribe(project_id, msg)
-                except Exception as exc:
-                    logger.info("Remote project subscription deferred: %s", exc)
+            if not scoped_project_id:
+                project_id = str(msg.get("project_id") or "")
+                registered = {p['id'] for p in await asyncio.to_thread(main.remote_project_registry.list_public)}
+                wanted = subscription.remote_project_ids | ({project_id} if project_id in registered else set())
+                for remote_id in (wanted | previous_remote_ids) & registered:
+                    forwarded = {**msg, "channels": [*new_sub.channels, "project_metadata"]}
+                    if remote_id not in wanted:
+                        forwarded = {"task_ids": [], "status_only_task_ids": [], "session_ids": [], "channels": []}
+                    try:
+                        # Remember metadata interest without waiting for a
+                        # remote network connection on the browser WS reader.
+                        await main.remote_project_client.subscribe(remote_id, forwarded, connect=False)
+                    except Exception as exc:
+                        logger.info("Remote project subscription deferred: %s", exc)
             logger.info(
                 "WS subscribe: tasks=%d status_only=%d sessions=%d channels=%d",
                 len(subscription.task_ids),
@@ -212,10 +229,7 @@ async def _handle_client_message(
 
 # Event types that shouldn't leak to external share viewers.
 _SHARE_SCRUBBED_EVENT_TYPES = {
-    "interaction_request",
-    "interaction_response",
     "engine_state",
-    "subagent",
 }
 
 
@@ -301,9 +315,9 @@ def register_websocket_routes(app: FastAPI) -> None:
         Authenticates via the ``session`` query parameter (a session token
         minted by ``POST /api/task-share/public/{token}/unlock``). Subscribes
         to the event bus and forwards only events belonging to the shared
-        task, with coordinator and sensitive event types filtered out.
+        task, with internal engine state filtered out.
         """
-        from services.share import resolve_share_session
+        from services.share import resolve_share_session, _scrub_events
 
         if not await desktop_websocket_allowed(ws):
             await ws.close(code=4401, reason="desktop authentication required")
@@ -320,12 +334,9 @@ def register_websocket_routes(app: FastAPI) -> None:
         def share_predicate(event: dict[str, Any]) -> bool:
             if event.get("task_id") != task_id:
                 return False
-            channel = event.get("channel")
-            # Only forward execution events; drop coordinator and
-            # assistant traffic, which is private.
-            if channel is not None and channel != "execution":
-                return False
             if event.get("type") in _SHARE_SCRUBBED_EVENT_TYPES:
+                return False
+            if not _scrub_events([event]):
                 return False
             return True
 

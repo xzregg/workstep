@@ -984,13 +984,15 @@ async def test_native_engine_models_are_persisted_and_reused(engine_client, monk
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("type_id", ["deepseek", "custom", "openai"])
 async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
     engine_client,
     monkeypatch,
+    type_id,
 ):
     """DeepSeek Harness 刷新保留绑定供应商已有模型目录。"""
     client, store = engine_client
-    provider = _add_provider(store)
+    provider = _add_provider(store, type_id=type_id)
     store.set_deepseek_harness_config(
         provider_id=provider["id"],
         model="deepseek-v4-flash",

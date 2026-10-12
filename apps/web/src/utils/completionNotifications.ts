@@ -74,6 +74,9 @@ export class CompletionDeduplicator {
 
 type NativeBridge = { postMessage: (message: string) => void }
 type DesktopBridge = {
+  files?: {
+    action: (path: string, action: 'open' | 'reveal' | 'save', opener?: string) => Promise<{ path?: string; canceled?: boolean }>
+  }
   directories?: {
     openers: () => Promise<{ openers: import('../api/client').DirectoryOpener[] }>
     open: (path: string, opener: string) => Promise<{ opened: boolean; path: string }>

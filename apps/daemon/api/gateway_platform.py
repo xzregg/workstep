@@ -3,6 +3,7 @@ import asyncio
 import httpx
 import os
 import hmac
+from urllib.parse import urlsplit
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
@@ -69,6 +70,26 @@ def _desktop_login_handoff(request: Request) -> bool:
         and request.client.host in loopback and request.url.hostname in loopback)
 
 
+def _browser_callback_origin(request: Request, service=None) -> str:
+    """Use the public browser scheme when TLS terminates before the daemon.
+
+    The login POST supplies a same-authority Origin checked by the mutation
+    guard. The cross-site callback has no Origin, so use the origin saved with
+    that pending login only when its authority matches the incoming Host.
+    """
+    internal = str(request.base_url).rstrip('/')
+    browser = request.headers.get('origin')
+    if browser and browser_origin_allowed(request):
+        return browser
+    pending = getattr(service, 'pending', None)
+    expected = pending.get('callback_origin') if isinstance(pending, dict) else None
+    if (expected and request.url.scheme == 'http'
+            and urlsplit(expected).scheme == 'https'
+            and urlsplit(expected).netloc == request.url.netloc):
+        return expected
+    return internal
+
+
 @router.get('/api/gateway-platform/settings')
 async def settings(request: Request):
     return await (await _settings_service(request)).settings()
@@ -87,7 +108,7 @@ async def save_settings(request: Request, body: SettingsInput):
 async def login(request: Request, body: LoginInput):
     service = await _settings_service(request, mutation=True)
     try:
-        url = await service.begin(body.url, str(request.base_url).rstrip('/'), desktop=_desktop_login_handoff(request))
+        url = await service.begin(body.url, _browser_callback_origin(request), desktop=_desktop_login_handoff(request))
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail='Invalid platform configuration or changed signing key') from exc
     except (OSError, httpx.HTTPError) as exc:
@@ -101,7 +122,7 @@ async def reopen_login(request: Request):
     configured = await service.settings()
     if not configured['url'] or not configured['enabled']: return RedirectResponse('/', status_code=303)
     try:
-        return RedirectResponse(await service.begin(configured['url'], str(request.base_url).rstrip('/'), desktop=_desktop(request)), status_code=303)
+        return RedirectResponse(await service.begin(configured['url'], _browser_callback_origin(request), desktop=_desktop(request)), status_code=303)
     except (ValueError, KeyError, OSError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail='Unable to start Gateway login') from exc
 
@@ -119,8 +140,9 @@ async def logout(request: Request):
 @router.get('/api/gateway-platform/callback', include_in_schema=False)
 async def callback(request: Request, code: str = Query(min_length=32, max_length=256), state: str = Query(min_length=32, max_length=256)):
     service = await _settings_service(request)
+    callback_origin = _browser_callback_origin(request, service)
     try:
-        result = await service.complete(code, state, callback_origin=str(request.base_url).rstrip('/'))
+        result = await service.complete(code, state, callback_origin=callback_origin)
     except (ValueError, KeyError) as exc:
         if request.headers.get('sec-fetch-mode') == 'navigate' or 'text/html' in request.headers.get('accept', ''):
             # A browser must start a fresh PKCE request instead of retrying the
@@ -155,5 +177,6 @@ async def callback(request: Request, code: str = Query(min_length=32, max_length
         token, _actor = result[:2]
         # Cross-site Gateway -> daemon redirects must carry the session on the
         # top-level GET; writes and WebSockets enforce their own Origin checks.
-        response.set_cookie(local_session_cookie_name(request.app), token, httponly=True, samesite='strict' if desktop else 'lax', secure=request.url.scheme=='https', path='/')
+        response.set_cookie(local_session_cookie_name(request.app), token, httponly=True, samesite='strict' if desktop else 'lax',
+                            secure=callback_origin.startswith('https://'), path='/')
     return response

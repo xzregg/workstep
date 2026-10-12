@@ -14,6 +14,30 @@ const { cleanup, fireEvent, render, screen, waitFor, within } = await import('@t
 const originalFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
 
+test('permission search preserves selections and clear restores compatible choices', async () => {
+  globalThis.fetch = async () => Response.json({ subjects: [], total: 0 })
+  render(<PermissionDialog csrf="csrf" onClose={() => {}} onSaved={() => {}} catalog={[
+    { id: 'task.create', name: '创建任务', category: '业务操作', scopes: ['project'], effects: ['allow', 'deny'] },
+    { id: 'project.read', name: '查看项目', category: '资源访问', scopes: ['project'], effects: ['allow'] },
+    { id: 'admin.super_admin', name: '超级管理员', category: '平台管理', scopes: ['platform'], effects: ['allow'] },
+  ]} />)
+  fireEvent.click(screen.getByRole('checkbox', { name: '创建任务' }))
+  assert.ok(screen.getByText('已选 1 项'))
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索权限' }), { target: { value: 'admin.' } })
+  assert.equal(screen.queryByRole('checkbox', { name: '创建任务' }), null)
+  assert.equal((screen.getByRole('checkbox', { name: '超级管理员' }) as HTMLInputElement).disabled, true)
+  fireEvent.click(screen.getByRole('button', { name: '移除创建任务' }))
+  assert.equal((screen.getByRole('checkbox', { name: '超级管理员' }) as HTMLInputElement).disabled, false)
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索权限' }), { target: { value: '不存在的权限' } })
+  assert.ok(screen.getByText('没有匹配的权限，请尝试其他关键词。'))
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索权限' }), { target: { value: '' } })
+  fireEvent.click(screen.getByRole('checkbox', { name: '创建任务' }))
+  fireEvent.click(screen.getByRole('checkbox', { name: '查看项目' }))
+  fireEvent.click(screen.getByRole('button', { name: '清空选择' }))
+  assert.equal((screen.getByRole('checkbox', { name: '创建任务' }) as HTMLInputElement).checked, false)
+  assert.equal((screen.getByRole('checkbox', { name: '查看项目' }) as HTMLInputElement).checked, false)
+})
+
 test('multiple compatible permissions save together and retry only the failed rules', async () => {
   const posts: string[] = []
   let fail = true
@@ -99,7 +123,7 @@ test('one permission entry assigns a group rule, preserves errors and revokes it
     throw new Error(`Unexpected fetch ${url}`)
   }
   render(<MemoryRouter><AdminPermissionsPage /></MemoryRouter>)
-  await screen.findByRole('heading', { name: '权限管理' })
+  await screen.findByRole('heading', { name: '用户与用户组权限' })
   await screen.findByText(/尚无权限规则/)
   fireEvent.click(screen.getByRole('button', { name: '分配权限' }))
   const editor = screen.getByRole('dialog', { name: '分配权限' })
