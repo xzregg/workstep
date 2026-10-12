@@ -479,7 +479,7 @@ async def usage_events(call: GatewayCall,
         rows = (await session.scalars(select(UsageEvent).where(*conditions).order_by(
             UsageEvent.occurred_at.desc(), UsageEvent.id.desc(),
         ).offset((page - 1) * page_size).limit(page_size))).all()
-    return {"events": [{
+    events = [{
         "id": item.id, "request_id": item.request_id, "source": item.source,
         "metering_status": item.metering_status,
         "occurred_at": item.occurred_at, "received_at": item.received_at,
@@ -498,4 +498,7 @@ async def usage_events(call: GatewayCall,
                            if item.estimated_cost is not None else None),
         "billed_cost": (f"{item.billed_cost:.6f}"
                         if item.billed_cost is not None else None),
-    } for item in rows], "total": total, "page": page, "page_size": page_size}
+    } for item in rows]
+    from .usage_labels import label_usage_events
+    await label_usage_events(call, events, conditions)
+    return {"events": events, "total": total, "page": page, "page_size": page_size}

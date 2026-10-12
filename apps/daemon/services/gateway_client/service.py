@@ -163,6 +163,16 @@ class GatewayClientService:
             self._restore_task.cancel()
             await asyncio.gather(self._restore_task, return_exceptions=True)
             self._restore_task = None
+        previous = self.current_actor
+        same_identity = bool(previous and (
+            previous.user_id, previous.device_id, previous.app_instance_id, previous.project_id,
+        ) == (actor.user_id, actor.device_id, actor.app_instance_id, actor.project_id))
+        if (same_identity and self.control_client is not None
+                and not self.authorization_required
+                and not self.control_client.authorization_required):
+            return self.local_sessions.create(actor), actor
+        if not same_identity:
+            self.local_sessions.clear()
         saved = dict(authorization=authorization, proof=proof, control_private=control_private_key_pem,
                      control_public=control_public_key_pem, delegation=delegation_signature)
         await asyncio.to_thread(connection_credentials.save, self.managed_config.gateway_origin, saved)

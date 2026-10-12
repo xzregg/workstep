@@ -315,10 +315,23 @@ def test_usage_dimension_labels_show_names_without_changing_group_identity(tmp_p
         labels={row['value']:row['label'] for row in projects['groups']}
         assert labels=={'project-1':'本机项目名','local-project':'未发布本机项目','removed-project':None}
         assert catalog_calls==['device-1']
+        detail = client.get('/api/admin/usage/events').json()
+        event_names = {row['id']:row for row in detail['events']}
+        assert event_names['named']['project_name']=='本机项目名'
+        assert event_names['local']['project_name']=='未发布本机项目'
+        assert event_names['named']['user_name']=='显示名称'
+        assert event_names['named']['device_name']=='演示工作站'
+        assert event_names['named']['provider_name']=='演示供应商'
+        assert event_names['unknown']['project_name'] is None
+        unbound = {**_event('unbound'),'project_id':None,'user_id':user_id}
+        assert client.portal.call(record_usage_batch,app.state.database,'device-1','unbound',[unbound])['accepted']==['unbound']
+        unbound_row = client.get('/api/admin/usage/events?project_id=').json()['events'][0]
+        assert unbound_row['project_id'] is None and unbound_row['project_name'] is None
+
         assert 'private-project' not in str(projects) and '不能串用的名称' not in str(projects)
         # A recently cached catalog also supplies unpublished names while offline.
         monkeypatch.setattr(app.state.control_connections,'is_online',lambda id:False)
-        assert client.get('/api/admin/usage?group_by=project').json()['groups']==projects['groups']
+        assert [row for row in client.get('/api/admin/usage?group_by=project').json()['groups'] if row['value'] is not None]==projects['groups']
 
         # Bulk name SQL must not block HTTP health checks.
         import asyncio
@@ -334,13 +347,19 @@ def test_usage_dimension_labels_show_names_without_changing_group_identity(tmp_p
         sql_event.listen(engine, 'before_cursor_execute', slow_names)
         async def sql_canary():
             async with AsyncClient(transport=ASGITransport(app=app),base_url='https://gateway.test',cookies=client.cookies) as actor:
-                pending=asyncio.create_task(actor.get('/api/admin/usage?group_by=user'))
-                try:
-                    assert await asyncio.to_thread(reached.wait,2)
-                    assert (await asyncio.wait_for(actor.get('/api/health'),.25)).status_code==200
-                    assert not pending.done()
-                finally: response=await pending
-                assert response.json()['groups'][0]['label']=='显示名称'
+                for path in ('/api/admin/usage?group_by=user','/api/admin/usage/events'):
+                    reached.clear()
+                    pending=asyncio.create_task(actor.get(path))
+                    try:
+                        assert await asyncio.to_thread(reached.wait,2)
+                        assert (await asyncio.wait_for(actor.get('/api/health'),.25)).status_code==200
+                        assert not pending.done()
+                    finally: response=await pending
+                    assert response.status_code==200
+                    if path.endswith('/events'):
+                        assert response.json()['events'][0]['user_name']=='显示名称'
+                    else:
+                        assert response.json()['groups'][0]['label']=='显示名称'
         try: client.portal.call(sql_canary)
         finally: sql_event.remove(engine,'before_cursor_execute',slow_names)
 

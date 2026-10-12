@@ -47,12 +47,28 @@ final class GatewayLoginNavigation {
         gateway = null;
     }
 
+    String rewrittenLocalReturn(ServerAddress server, String url) {
+        if (gateway == null || server == null || url == null) return null;
+        try {
+            URI target = new URI(url);
+            if (!isTlsProxyCallback(server, url) || target.getRawFragment() != null) return null;
+            String path = target.getRawPath();
+            if (!"/api/gateway-platform/callback".equals(path)
+                    && !("/".equals(path) && "gateway_auth=cancelled".equals(target.getRawQuery()))) return null;
+            return server.origin() + path + (target.getRawQuery() == null ? "" : "?" + target.getRawQuery());
+        } catch (URISyntaxException error) {
+            return null;
+        }
+    }
+
     private static boolean isTlsProxyCallback(ServerAddress server, String callback) throws URISyntaxException {
         URI publicOrigin = new URI(server.origin());
         URI candidate = new URI(callback);
-        return "https".equals(publicOrigin.getScheme()) && publicOrigin.getPort() == -1
+        return "https".equals(publicOrigin.getScheme())
                 && "http".equalsIgnoreCase(candidate.getScheme())
-                && (candidate.getPort() == -1 || candidate.getPort() == 80)
+                && (publicOrigin.getPort() == -1
+                    ? candidate.getPort() == -1 || candidate.getPort() == 80
+                    : candidate.getPort() == publicOrigin.getPort())
                 && candidate.getHost() != null
                 && candidate.getRawUserInfo() == null
                 && publicOrigin.getHost().equalsIgnoreCase(candidate.getHost());

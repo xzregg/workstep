@@ -90,3 +90,15 @@
 @media(max-width:1100px) { .gateway-usage-page .gateway-usage-metric { padding: 0 12px; } .gateway-usage-page .gateway-usage-metric strong { font-size: 20px; } .gateway-usage-page .gateway-usage-charts { grid-template-columns: minmax(0,1.5fr) minmax(220px,1fr); } .gateway-usage-charts .gateway-usage-chart:first-child { grid-column: 1 / -1; } }
 @media(max-width:1023px) { .gateway-usage-page .gateway-usage-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); row-gap: 20px; } .gateway-usage-page .gateway-usage-metric:nth-child(3) { border-right: 0; } .gateway-admin-content .gateway-admin-page.gateway-usage-page { padding: 22px; } }
 @media(max-width:600px) { .gateway-admin-content .gateway-admin-page.gateway-usage-page { padding: 18px 12px; } .gateway-usage-page .gateway-usage-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .gateway-usage-page .gateway-usage-metric:nth-child(3) { border-right: 1px solid #edf0f4; } .gateway-usage-page .gateway-usage-metric:nth-child(2n) { border-right: 0; } .gateway-usage-page .gateway-usage-metric strong { font-size: 20px; } .gateway-usage-page .gateway-usage-charts { grid-template-columns: minmax(0,1fr); } .gateway-usage-charts .gateway-usage-chart:first-child { grid-column: auto; } }
+
+.gateway-usage-events h3 { font-size: 14px; }
+.gateway-usage-money-source { display: block; margin-top: 4px; color: #94a0b1; font-size: 10px; }
+.gateway-usage-metering { padding: 3px 6px; border-radius: 4px; font-size: 10px; color: #b48645; background: #fcf6e9; }
+.gateway-usage-metering[data-metered="true"] { color: #44876d; background: #eef7f2; }
+.gateway-usage-page .gateway-usage-event-detail td { padding: 16px 20px; background: #fbfcfe; white-space: normal; }
+.gateway-usage-event-location { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px 24px; margin: 0; }
+.gateway-usage-event-location > div { min-width: 0; }
+.gateway-usage-event-location dt { font-size: 10px; color: #8e9baa; margin-bottom: 4px; }
+.gateway-usage-event-location dd { font-size: 11px; margin: 0; color: #63748c; overflow-wrap: anywhere; }
+@media(max-width:1023px) { .gateway-usage-event-location { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .gateway-usage-event-location { grid-template-columns: minmax(0,1fr); } }

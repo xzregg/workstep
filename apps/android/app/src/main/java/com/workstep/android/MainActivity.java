@@ -365,6 +365,13 @@ public final class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView source, WebResourceRequest request) {
                 if (!request.isForMainFrame()) return false;
                 String url = request.getUrl().toString();
+                String localReturn = gatewayLoginNavigation.rewrittenLocalReturn(server, url);
+                if (localReturn != null) {
+                    CrashReports.log(MainActivity.this, "网页主进程",
+                            "网关返回地址已转 HTTPS；路径=" + Uri.parse(url).getPath(), null);
+                    source.loadUrl(localReturn);
+                    return true;
+                }
                 if (gatewayLoginNavigation.staysInWebView(server, url)) return false;
                 openExternal(url);
                 return true;
@@ -731,7 +738,12 @@ public final class MainActivity extends Activity {
     }
 
     private void openNewWindowUrl(String url) {
-        if (gatewayLoginNavigation.staysInWebView(server, url) && webView != null) webView.loadUrl(url);
+        String localReturn = gatewayLoginNavigation.rewrittenLocalReturn(server, url);
+        if (localReturn != null && webView != null) {
+            CrashReports.log(this, "网页主进程", "网关返回地址已转 HTTPS；路径=" + Uri.parse(url).getPath(), null);
+            webView.loadUrl(localReturn);
+        }
+        else if (gatewayLoginNavigation.staysInWebView(server, url) && webView != null) webView.loadUrl(url);
         else openExternal(url);
     }
 

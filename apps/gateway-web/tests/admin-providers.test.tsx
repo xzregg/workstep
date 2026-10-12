@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { JSDOM } from 'jsdom'
 import { MemoryRouter } from 'react-router-dom'
+import { AdminUsagePrices } from '../src/AdminUsagePrices'
 import { AdminProvidersPage } from '../src/AdminProvidersPage'
 import { AdminProviderDisableDialog, AdminProviderEditorDialog } from '../src/AdminProviderEditorDialog'
 import { AdminProviderAssignments } from '../src/AdminProviderAssignments'
@@ -247,4 +248,46 @@ test('provider assignments select a user or PC and revoke with step-up', async (
   fireEvent.change(within(dialog).getByLabelText('授权对象'), { target: { value: 'pc-1' } })
   fireEvent.click(within(dialog).getByRole('button', { name: '取消' }))
   assert.ok(screen.getByRole('dialog', { name: '放弃供应商授权修改' }))
+})
+
+
+test('usage model prices list distinguishes unknown and zero and saves without credentials', async () => {
+  const requests: Array<{ url: string; init?: RequestInit }> = []
+  const provider = { id: 'provider-1', name: 'Company API', type: 'custom', enabled: true,
+    revision: 1, protocols: ['openai_responses'],
+    protocol_base_urls: { openai_responses: 'https://api.example.test' },
+    models: ['model-a', 'model-b'], prices: { version: 'v1', models: {
+      'model-a': { input_per_million: '1', output_per_million: '2',
+        cache_read_per_million: '0', cache_write_per_million: '3' },
+    } }, has_key: true }
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); requests.push({ url, init })
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/providers?')) return Response.json({ providers: [provider], total: 1 })
+    if (url === '/api/auth/step-up' || url === '/api/admin/providers/provider-1') return Response.json({})
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter><AdminUsagePrices /></MemoryRouter>)
+  await screen.findByRole('cell', { name: 'model-a' })
+  assert.ok(screen.getByRole('cell', { name: '0' }))
+  assert.equal(screen.getAllByRole('cell', { name: '未设置' }).length, 4)
+  fireEvent.click(screen.getByRole('button', { name: '设置 Company API model-a 价格' }))
+  const dialog = screen.getByRole('dialog', { name: '设置模型价格' })
+  assert.equal(within(dialog).queryByLabelText('供应商名称'), null)
+  assert.equal(within(dialog).queryByLabelText('当前凭据'), null)
+  fireEvent.change(within(dialog).getByLabelText('model-a 输入单价'), { target: { value: '-1' } })
+  assert.equal((within(dialog).getByRole('button', { name: '保存价格' }) as HTMLButtonElement).disabled, true)
+  fireEvent.change(within(dialog).getByLabelText('model-a 输入单价'), { target: { value: '4' } })
+  fireEvent.change(within(dialog).getByLabelText('价格版本'), { target: { value: 'v2' } })
+  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '保存价格' }))
+  await waitFor(() => assert.equal(screen.queryByRole('dialog') === null, true))
+  const saved = requests.find(item => item.url === '/api/admin/providers/provider-1')!
+  assert.equal(saved.init?.method, 'PUT')
+  const body = JSON.parse(String(saved.init?.body))
+  assert.equal(body.prices['model-a'].input_per_million, '4')
+  assert.equal(body.price_version, 'v2')
+  assert.deepEqual(body.models, provider.models)
+  assert.equal('api_key' in body, false)
+  assert.equal(requests.some(item => item.url.endsWith('/credential')), false)
 })
