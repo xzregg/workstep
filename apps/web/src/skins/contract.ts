@@ -12,7 +12,7 @@ export interface SkinLayout {
   sidebarSide?: 'left' | 'right'; sidebarWidth?: number; contentWidth?: number;
   density?: 'standard' | 'compact' | 'comfortable'; stepsSide?: 'left' | 'right';
   stepsRatio?: number; splitHandleWidth?: number; composerToolsPosition?: 'top' | 'bottom';
-  engineAppearance?: 'list' | 'cards';
+  engineAppearance?: 'list' | 'cards'; backgroundGlow?: 'none' | 'accent';
 }
 export interface SkinDocument {
   manifest: { id: string; name: string; version: string; schema_version: number; color_scheme: 'light' | 'dark'; description?: string };

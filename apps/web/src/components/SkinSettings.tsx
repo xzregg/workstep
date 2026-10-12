@@ -12,14 +12,18 @@ import { saveDraft } from '../utils/chatDraft'
 import SkinStudio from './SkinStudio'
 import { useProjectStore } from '../stores/projectStore'
 import { useSkinPreviewing, cancelSkinPreview, previewSkin, restoreDefaultSkin, saveSkin, useActiveSkin } from '../skins/runtime'
-import { skinContract, type SkinDocument } from '../skins/contract'
+import { defaultSkin, skinContract, type SkinDocument } from '../skins/contract'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
+import SkinLibrary from './SkinLibrary'
+import Icon from './Icon'
 import './SkinSettings.css'
 
 export default function SkinSettings() {
   const { t } = useI18n()
   const active = useActiveSkin(), previewing = useSkinPreviewing()
   const [skins, setSkins] = useState<SkinSummary[]>([])
+  const [documents, setDocuments] = useState<SkinDocument[]>([defaultSkin()])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [path, setPath] = useState('')
@@ -29,11 +33,16 @@ export default function SkinSettings() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [sampleEngine, setSampleEngine] = useState('demo')
   const [sampleValue, setSampleValue] = useState('one')
-  const [workspace, setWorkspace] = useState<SkinWorkspace | null>(null)
+  const [workspace, setWorkspace] = useState<(SkinWorkspace & { base?: SkinDocument }) | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const mounted = useRef(true)
-  const remote = isGatewayRemoteBrowser()
-  const refresh = async () => { const result = await skinsApi.list(); if (mounted.current) setSkins(result) }
+  const gatewaySession = useGatewaySessionStore(state => state.session)
+  const remote = isGatewayRemoteBrowser() && (!gatewaySession || !!gatewaySession.host_project_id)
+  const refresh = async () => {
+    const result = await skinsApi.list()
+    const loaded = await Promise.all(result.filter(item => item.manifest.id !== 'default').map(item => skinsApi.get(item.manifest.id)))
+    if (mounted.current) { setSkins(result); setDocuments([defaultSkin(), ...loaded]) }
+  }
   useEffect(() => {
     mounted.current = true
     void refresh().catch(err => { if (mounted.current) setError(String(err.message || err)) })
@@ -45,21 +54,16 @@ export default function SkinSettings() {
     try { await action() } catch (err) { if (mounted.current) setError(err instanceof Error ? err.message : String(err)) }
     finally { if (mounted.current) setBusy(false) }
   }
-  const choose = (id: string, preview: boolean) => run(async () => {
-    const skin = await skinsApi.get(id)
-    if (!mounted.current) return
-    if (preview) previewSkin(skin); else saveSkin(skin)
-  })
   const register = async (replace = false) => {
     const skin = await skinsApi.register(path, replace)
     if (mounted.current) { setChecked(skin); setReplacing(false) }
     await refresh()
   }
-  const start = () => run(async () => {
+  const start = (base?: SkinDocument) => run(async () => {
     const result = await skinsApi.onboarding()
-    saveDraft(result.session_id, result.prompt)
+    saveDraft(result.session_id, t('skins.studioDraft') + (base ? `\n${t('skins.studioEditing')}：${base.manifest.id}-custom` : ''))
     await useProjectStore.getState().fetchProjects()
-    if (mounted.current) setWorkspace(result)
+    if (mounted.current) setWorkspace(base ? { ...result, package_path: `${result.workspace_path}/${base.manifest.id}-custom`, base } : result)
   })
   const exportSkin = (id: string) => run(async () => {
     const blob = await skinsApi.export(id), url = URL.createObjectURL(blob)
@@ -67,12 +71,10 @@ export default function SkinSettings() {
     finally { window.setTimeout(() => URL.revokeObjectURL(url), 0) }
   })
   return <div className="skin-settings">
-    <h1>{t('skins.title')}</h1><p>{t('skins.intro')}</p>
-    <div className="skin-settings-actions">
-      {!remote && <><Button onClick={() => void start()} disabled={busy} loading={busy}>{t('skins.create')}</Button><Button onClick={() => fileInput.current?.click()} disabled={busy}>{t('skins.import')}</Button></>}
-      <Button onClick={() => void run(refresh)} disabled={busy}>{t('skins.refresh')}</Button>
-      <Button onClick={restoreDefaultSkin}>{t('skins.restore')}</Button>
-    </div>
+    <header className="skin-settings-page-head"><div><h1>{t('skins.centerTitle')}</h1><p>{t('skins.centerIntro')}</p></div><div className="skin-settings-actions">
+      {!remote && <><Button onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="upload" size={15} />{t('skins.import')}</Button><Button variant="primary" onClick={() => void start()} disabled={busy} loading={busy}><Icon name="sparkles" size={15} />{t('skins.create')}</Button></>}
+      <Button variant="icon" onClick={() => void run(refresh)} disabled={busy} aria-label={t('skins.refresh')} title={t('skins.refresh')}><Icon name="refresh" size={16} /></Button>
+    </div></header>
     <input ref={fileInput} type="file" accept=".zip,application/zip" className="skin-settings-file" onChange={event => {
       const file = event.target.files?.[0]; event.target.value = ''
       if (file) void run(async () => {
@@ -82,14 +84,10 @@ export default function SkinSettings() {
     }} />
     {error && <p role="alert" className="skin-settings-error">{error}</p>}
     {previewing && <div role="status" className="skin-settings-preview-notice"><span>{t('skins.previewing')}</span><Button onClick={() => saveSkin(active)}>{t('skins.apply')}</Button><Button onClick={cancelSkinPreview}>{t('skins.cancelPreview')}</Button></div>}
-    <div className="skin-settings-list">{skins.map(skin => <article key={skin.manifest.id} className="skin-settings-card" data-selected={active.manifest.id === skin.manifest.id}>
-      <strong>{skin.manifest.id === 'default' ? t('skins.default') : skin.manifest.name}</strong><span>{skin.manifest.version}</span>
-      <div className="skin-settings-actions">
-        <Button disabled={busy} onClick={() => void choose(skin.manifest.id, true)}>{t('skins.preview')}</Button>
-        <Button disabled={busy} onClick={() => void choose(skin.manifest.id, false)}>{t('skins.apply')}</Button>
-        {!remote && skin.manifest.id !== 'default' && <><Button disabled={busy} onClick={() => void exportSkin(skin.manifest.id)}>{t('skins.export')}</Button><Button disabled={busy} variant="danger" onClick={() => setDeleting(skin.manifest.id)}>{t('skins.delete')}</Button></>}
-      </div>
-    </article>)}</div>
+    <SkinLibrary documents={documents} activeId={active.manifest.id} preferredSkin={checked} busy={busy} canManage={!remote}
+      onCreate={base => void start(base)} onPreview={previewSkin} onApply={saveSkin}
+      onExport={id => void exportSkin(id)} onDelete={setDeleting} onRestore={restoreDefaultSkin} />
+    <details className="skin-settings-advanced"><summary>{t('skins.advanced')}</summary>
     {!remote && <div className="skin-settings-package"><h2>{t('skins.package')}</h2>
       <Input disabled={busy} value={path} onChange={event => { setPath(event.target.value); setChecked(null) }} placeholder={t('skins.path')} aria-label={t('skins.path')} />
       <div className="skin-settings-actions"><Button disabled={!path.trim() || busy} onClick={() => void run(async () => { const result = await skinsApi.validate(path); if (mounted.current) setChecked(result.skin) })}>{t('skins.validate')}</Button>
@@ -109,6 +107,7 @@ export default function SkinSettings() {
       <EngineSelect engines={[{ id: 'demo', enabled: true, installed: true, configured: true, verified: true, built_in: false, mode: 'sdk' }, { id: 'unavailable', installed: true, configured: false, verified: false, built_in: false, mode: 'cli' }]} value={sampleEngine} onChange={setSampleEngine} />
       <ChatMessageBubble role="assistant" sender={t('skins.sampleMessage')} initials="AI" color="var(--ai-assistant)" content={t('skins.sampleText')} />
     </section>
+    </details>
     <ConfirmDialog open={Boolean(importing)} title={t('skins.replace')} loading={busy} onCancel={() => { if (!busy) setImporting(null) }} onConfirm={() => void run(async () => {
       const skin = await skinsApi.import(importing!, true)
       if (mounted.current) { setChecked(skin); setImporting(null) }
@@ -121,7 +120,7 @@ export default function SkinSettings() {
       if (mounted.current) setDeleting(null)
       await refresh()
     })} />
-    {workspace && <SkinStudio workspace={workspace} onClose={() => setWorkspace(null)} onSaved={skin => {
+    {workspace && <SkinStudio workspace={workspace} initialSkin={workspace.base} onClose={() => setWorkspace(null)} onSaved={skin => {
       setChecked(skin); previewSkin(skin); setWorkspace(null); void run(refresh)
     }} />}
   </div>

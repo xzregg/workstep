@@ -1,0 +1,4 @@
+.skin-studio-preview-container { width: 100%; }
+.skin-studio-preview-frame { overflow: hidden; margin: 0 auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.skin-studio-preview { display: block; border: 0; transform-origin: top left; }
+.skin-studio-preview-frame.is-phone { border: 4px solid #30333c; border-radius: 20px; }

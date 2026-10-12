@@ -40,6 +40,26 @@ async def test_manual_starting_style_creates_only_an_explicit_package_and_never_
 
 
 @pytest.mark.asyncio
+async def test_customizing_an_installed_skin_copies_its_background_assets(tmp_path, monkeypatch):
+    from services import customization_workspace
+    from services.skins import SkinManager
+    workspace = tmp_path / 'workspace'; workspace.mkdir()
+    monkeypatch.setattr(customization_workspace, 'workspace_root', lambda: workspace)
+    manager = SkinManager(tmp_path / 'runtime')
+    root = package(tmp_path / 'original')
+    (root / 'assets').mkdir()
+    image = b'\x89PNG\r\n\x1a\nbackground-test'
+    (root / 'assets/bg.png').write_bytes(image)
+    (root / 'components.json').write_text(json.dumps({'styles': {'button': {'base': {'backgroundImage': 'assets/bg.png'}}}}))
+    source = await manager.register(str(root))
+    source['manifest']['id'] = 'my-version'
+    target = workspace / 'my-version'
+    await manager.save_draft(str(target), '', source)
+    assert (target / 'assets/bg.png').read_bytes() == image
+    assert (await manager.get('ocean'))['manifest']['id'] == 'ocean'
+
+
+@pytest.mark.asyncio
 async def test_package_registration_export_replacement_and_inheritance(tmp_path):
     from services.skins import SkinManager
     manager = SkinManager(tmp_path / "runtime")
