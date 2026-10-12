@@ -13,7 +13,7 @@ function SkinCenterDialog({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   useOverlay(true, onClose, ref)
   return createPortal(<div className="skin-center-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><ResizablePanel ref={ref} className="skin-center-dialog" role="dialog" aria-modal="true" aria-label={t('skins.centerTitle')} minWidth={640} minHeight={460}>
-    <header className="skin-center-dialog-header" data-dialog-drag-handle><span>{t('nav.settings')} ／ {t('skins.title')}</span><Button variant="icon" aria-label={t('common.close')} onClick={onClose}><Icon name="x" size={18} /></Button></header>
+    <header className="skin-center-dialog-header" data-dialog-drag-handle><span>{t('skins.title')}</span><Button variant="icon" aria-label={t('common.close')} onClick={onClose}><Icon name="x" size={18} /></Button></header>
     <main className="skin-center-dialog-content"><SkinSettings /></main>
   </ResizablePanel></div>, document.body)
 }

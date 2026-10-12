@@ -5,6 +5,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import SkinSettings from '../src/components/SkinSettings'
+import SkinRecovery from '../src/components/SkinRecovery'
 import { I18nProvider } from '../src/i18n'
 import { skinsApi } from '../src/api/skins'
 import { defaultSkin } from '../src/skins/contract'
@@ -19,17 +20,20 @@ test('preview is cancellable and apply persists only the confirmed skin', async 
   skinsApi.get = async () => ocean
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
-    await act(async () => root.render(<MemoryRouter><I18nProvider><SkinSettings /></I18nProvider></MemoryRouter>))
+    await act(async () => root.render(<MemoryRouter><I18nProvider><SkinSettings /><SkinRecovery /></I18nProvider></MemoryRouter>))
     const click = async (text: string) => act(async () => { const button = [...document.querySelectorAll('button')].find(b => b.textContent?.includes(text)); assert.ok(button, text); button.click() })
     await act(async () => document.querySelector<HTMLButtonElement>('.skin-settings-card[data-skin-id="ocean"]')!.click())
     assert.equal(currentSkin().manifest.id, 'default', 'selecting a library card does not apply it')
     assert.ok(document.querySelector('.skin-settings-detail iframe'))
     await click('预览')
     assert.equal(currentSkin().manifest.id, 'ocean')
+    assert.ok(document.querySelector('[data-skin-recovery]'))
     await click('取消预览')
     assert.equal(currentSkin().manifest.id, 'default')
     await click('应用')
     assert.equal(currentSkin().manifest.id, 'ocean')
+    assert.equal(document.querySelector('[data-skin-recovery]'), null)
+    assert.equal(document.querySelector('.skin-settings-footer-note button'), null)
   } finally { skinsApi.list = oldList; skinsApi.get = oldGet; await act(async () => root.unmount()); restoreDefaultSkin(); await window.happyDOM.close() }
 })
 
