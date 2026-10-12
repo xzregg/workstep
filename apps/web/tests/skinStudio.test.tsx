@@ -24,7 +24,9 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
   const saved: SkinDocument[] = []
   skinsApi.saveDraft = async (_path, revision, value) => { assert.equal(revision, 'r1'); saved.push(value); return result({ ...value, revision: 'r2' }) }
   globalThis.fetch = async input => {
+    if (String(input).includes('/chat-sessions/old-session')) return Response.json({ id: 'old-session', project_id: 'design', title: '旧皮肤对话', messages: [{ id: 'old-message', role: 'user', content: '之前想要蓝色背景' }], running: false, engine: 'pydantic_ai' })
     if (String(input).includes('/chat-sessions/session')) return Response.json({ id: 'session', project_id: 'design', title: '', messages: [], running: false, engine: 'pydantic_ai' })
+    if (String(input).includes('/chat-sessions?')) return Response.json({ sessions: [{ id: 'session', title: '当前设计' }, { id: 'old-session', title: '旧皮肤对话' }] })
     if (String(input).includes('/assistants')) return Response.json({ assistants: [{ name: 'chat_session', configured: {}, resolved: {}, available_engines: [] }] })
     return Response.json({ providers: [], buttons: [], runs: [], active_action_ids: [], sessions: [] })
   }
@@ -32,6 +34,11 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinStudio workspace={{ project_id: 'design', project_name: '皮肤设计', session_id: 'session', workspace_path: '/tmp/design', package_path: '/tmp/design/skin', prompt: '' }} onClose={() => { closed++ }} onSaved={() => {}} /></I18nProvider></MemoryRouter>))
+    const history = document.querySelector<HTMLSelectElement>('.skin-studio-history select')!
+    assert.equal(history.options.length, 2)
+    await act(async () => { history.value = 'old-session'; history.dispatchEvent(new window.Event('change', { bubbles: true })) })
+    assert.match(document.querySelector('.skin-studio-chat')!.textContent!, /之前想要蓝色背景/)
+    await act(async () => { history.value = 'session'; history.dispatchEvent(new window.Event('change', { bubbles: true })) })
     await act(async () => document.querySelector<HTMLButtonElement>('.skin-studio-version button')!.click())
     assert.match(document.querySelector<HTMLTextAreaElement>('.skin-studio-chat textarea')!.value, /请继续调整「我的皮肤」/)
     const field = document.querySelector('.skin-studio-controls fieldset input:not([type])') as HTMLInputElement || document.querySelector('.skin-studio-controls fieldset input[type=text]') as HTMLInputElement
@@ -50,7 +57,7 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
     assert.equal(document.querySelector<HTMLFieldSetElement>('.skin-studio-controls fieldset')!.disabled, true)
   } finally {
     await act(async () => root.unmount()); skinsApi.validate = oldValidate; skinsApi.saveDraft = oldSave; globalThis.fetch = oldFetch
-    useChatSessionStore.getState().resetSession('session'); await window.happyDOM.close()
+    useChatSessionStore.getState().resetSession('session'); useChatSessionStore.getState().resetSession('old-session'); await window.happyDOM.close()
   }
 })
 
@@ -75,6 +82,12 @@ test('a new Runtime conversation can create its first skin before any package ex
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinStudio workspace={{ project_id: 'design', project_name: 'Runtime', session_id: 'empty-session', workspace_path: '/tmp/runtime', package_path: '/tmp/runtime/skin', prompt: '' }} onClose={() => {}} onSaved={() => {}} /></I18nProvider></MemoryRouter>))
     assert.ok(document.querySelector('.skin-studio-controls fieldset'), 'starting style is visible before a package is created')
     assert.ok(document.querySelector('.skin-studio-preview'))
+    const tabs = [...document.querySelectorAll<HTMLButtonElement>('.skin-studio-tabs [role=tab]')]
+    assert.equal(tabs.length, 2)
+    await act(async () => tabs[1].click())
+    assert.equal(tabs[1].getAttribute('aria-selected'), 'true')
+    assert.equal(document.querySelector('.skin-studio')!.getAttribute('data-mobile-tab'), 'preview')
+    await act(async () => tabs[0].click())
     const send = document.querySelector<HTMLButtonElement>('.skin-studio-chat .chat-input-send')!
     assert.equal(send.disabled, false)
     await act(async () => send.click())

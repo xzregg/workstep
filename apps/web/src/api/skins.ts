@@ -5,7 +5,7 @@ import { browserActorHeaders } from '../utils/browserActor'
 import type { SkinDocument } from '../skins/contract'
 
 export interface SkinSummary { manifest: SkinDocument['manifest']; revision: string }
-export interface SkinWorkspace { project_id: string; project_name: string; session_id: string; workspace_path: string; package_path: string; prompt: string }
+export interface SkinWorkspace { project_id: string; project_name: string; session_id: string; created?: boolean; workspace_path: string; package_path: string; prompt: string }
 export interface SkinValidation { ok: boolean; skin: SkinDocument; coverage: { overridden: string[]; inherited: string[] }; visual_checked: boolean }
 async function documentPath(path: string): Promise<SkinDocument> {
   const scoped = await workspaceCatalogPath(path)

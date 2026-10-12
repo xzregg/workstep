@@ -40,13 +40,17 @@
 @media(max-width:1023px) {
   .skin-studio-backdrop { padding: 0; }
   .skin-studio { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
-  .skin-studio-body { grid-template-columns: minmax(0, 1fr) 280px; }
+  .skin-studio-tabs { display: flex; flex-shrink: 0; padding: 4px 16px; gap: 8px; border-bottom: 1px solid var(--border); }
+  .skin-studio-tabs button { flex: 1; min-height: var(--mobile-control-regular); border: 0; border-radius: 6px; background: transparent; color: var(--muted); }
+  .skin-studio-tabs button[aria-selected=true] { background: var(--accent-light); color: var(--accent); }
+  .skin-studio-body { display: flex; overflow: hidden; }
+  .skin-studio-chat, .skin-studio-controls { flex: 1; width: 100%; }
+  .skin-studio-controls { border-left: 0; }
+  .skin-studio[data-mobile-tab=chat] .skin-studio-controls, .skin-studio[data-mobile-tab=preview] .skin-studio-chat { display: none; }
   .skin-studio-header, .skin-studio-footer { padding: 12px 16px; }
 }
 @media(max-width:600px) {
-  .skin-studio-body { display: flex; flex-direction: column; overflow-y: auto; }
-  .skin-studio-chat { flex: 0 0 65dvh; min-height: 350px; }
-  .skin-studio-controls { flex: 0 0 auto; overflow: visible; border-left: 0; border-top: 1px solid var(--border); padding: 18px; }
+  .skin-studio-controls { padding: 18px; }
   .skin-studio-footer > span { max-width: 130px; }
 }
 .skin-studio-welcome { margin-bottom: 20px; }
@@ -65,3 +69,9 @@
 .skin-studio-version .btn { font-size: calc(10px * var(--font-scale)); }
 @media(max-width:1023px) { .skin-studio-version { margin-left: 0; } }
 .skin-studio-welcome .chat-message-avatar-anchor > div { color: var(--accent) !important; }
+
+.skin-studio-tabs { display: none; }
+.skin-studio-history { flex-shrink: 0; padding: 8px 22px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
+.skin-studio-history label { display: flex; gap: 12px; align-items: center; min-width: 0; flex: 1; color: var(--muted); font-size: calc(11px * var(--font-scale)); }
+.skin-studio-history .ws-select { flex: 1; min-width: 0; }
+@media(max-width:1023px) { .skin-studio-tabs { display: flex; } .skin-studio-history { padding: 8px 16px; } }
