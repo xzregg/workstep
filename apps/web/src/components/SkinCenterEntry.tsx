@@ -19,8 +19,8 @@ function SkinCenterDialog({ onClose }: { onClose: () => void }) {
 }
 
 /** System appearance entry owns the skin center dialog lifecycle. */
-export default function SkinCenterEntry() {
+export default function SkinCenterEntry({ className = '' }: { className?: string } = {}) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
-  return <><Button variant="ghost" className="skin-center-entry" onClick={() => setOpen(true)}><Icon name="sparkles" size={17} />{t('skins.appearance')}</Button>{open && <SkinCenterDialog onClose={() => setOpen(false)} />}</>
+  return <><Button variant="ghost" className={`skin-center-entry ${className}`} onClick={() => setOpen(true)}><Icon name="sparkles" size={17} />{t('skins.appearance')}</Button>{open && <SkinCenterDialog onClose={() => setOpen(false)} />}</>
 }

@@ -1,3 +1,4 @@
+import SkinCenterEntry from './SkinCenterEntry'
 import { useSkinSidebar } from '../hooks/useSkinSidebar'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
@@ -1049,7 +1050,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        {!bound && <Button
+        {!bound && <div className="layout-sidebar-settings-actions"><Button
           variant="ghost"
           onClick={() => { setSettingsSection('providers'); setSettingsFocus(undefined); setShowSettings(true) }}
           aria-current={showSettings ? 'page' : undefined}
@@ -1057,7 +1058,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         >
           <Icon name="settings" size={17} strokeWidth={2} />
           {t('nav.settings')}
-        </Button>}
+        </Button><SkinCenterEntry className="layout-sidebar-nav-button" /></div>}
       </ResponsiveNavigation>
 
       <div

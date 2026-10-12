@@ -47,6 +47,11 @@
 }
 .layout-sidebar-nav-button.btn[aria-current="page"] { color: var(--fg); background: var(--surface); }
 .layout-sidebar-settings-button.btn { margin: 0 12px 12px; }
+.layout-sidebar-settings-actions { display: flex; gap: 8px; margin: 0 12px 12px; }
+.layout-sidebar-settings-actions > .btn { flex: 1; min-width: 0; width: auto; margin: 0; }
+@media (max-width: 1023px) {
+  .layout-sidebar-settings-actions > .btn { height: var(--mobile-control-regular); min-height: var(--mobile-control-regular); }
+}
 
 .layout-sidebar-section-label {
   padding: 14px 14px 6px;
