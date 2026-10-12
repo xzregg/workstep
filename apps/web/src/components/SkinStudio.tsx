@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { skinsApi, type SkinWorkspace } from '../api/skins'
 import type { Project } from '../api/client'
 import { ApiError } from '../api/transport'
-import { skinContract, type SkinDocument } from '../skins/contract'
+import { defaultSkin, skinContract, type SkinDocument } from '../skins/contract'
 import oceanTokens from '../../../daemon/data/skins/example/tokens.json' with { type: 'json' }
 import { useChatSessionStore } from '../stores/chatSessionStore'
 import ChatPage from '../pages/ChatPage'
@@ -25,6 +25,9 @@ const palettes = {
   mint: { bg: '#f8fcfa', surface: '#eef5f1', fg: '#263e35', muted: '#859b91', border: '#dce9e1', accent: '#31987b', 'accent-fg': '#ffffff', 'accent-light': '#e1f2e9' },
 }
 const baseLabels = { light: 'skins.studioBase_light', ocean: 'skins.studioBase_ocean', graphite: 'skins.studioBase_graphite', mint: 'skins.studioBase_mint' } as const
+function SkinToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return <label className="skin-studio-toggle"><span>{label}</span><button type="button" role="switch" aria-label={label} aria-checked={checked} className="skin-studio-switch" onClick={() => onChange(!checked)}><span /></button></label>
+}
 function presetTokens(key: keyof typeof palettes) {
   const defaults = Object.fromEntries(Object.entries(skinContract.tokens).filter(([name]) => skinContract.token_kinds[name] === 'color'))
   const dark = key === 'ocean' || key === 'graphite'
@@ -56,10 +59,16 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
     const generation = ++readGeneration.current
     const request = skinsApi.validate(packagePath).then(result => {
       if (mounted.current && generation === readGeneration.current) { setSkin(result.skin); setRevision(result.skin.revision); setDirty(false); setBase('custom'); setError('') }
-    }).catch(reason => { if (generation === readGeneration.current) throw reason }).finally(() => { if (loadInFlight.current?.request === request) loadInFlight.current = null })
+    }).catch(reason => {
+      if (generation !== readGeneration.current || !mounted.current) return
+      if (reason instanceof ApiError && reason.status === 404) {
+        setSkin(current => current ?? { ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: 'skin-' + workspace.session_id.replace(/[^a-z0-9_-]/gi, '').toLowerCase().slice(0, 50), name: t('skins.studioDefaultName'), version: '1.0.0' }, revision: '' })
+        setRevision(''); setBase('light'); setError('')
+      } else throw reason
+    }).finally(() => { if (loadInFlight.current?.request === request) loadInFlight.current = null })
     loadInFlight.current = { path: packagePath, request }
     return request
-  }, [packagePath])
+  }, [packagePath, workspace.session_id, t])
   useEffect(() => {
     mounted.current = true
     void load().catch(reason => { if (mounted.current) setError(reason instanceof ApiError && reason.status === 404 ? '' : String(reason.message || reason)) })
@@ -72,10 +81,10 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
     }
     priorRunning.current = running
   }, [running, dirty, load, t])
-  const save = useCallback(async (): Promise<boolean> => {
+  const save = useCallback(async (create = false): Promise<boolean> => {
     if (busy || running) return false
     if (!skin) return !dirty
-    if (!dirty) return true
+    if (!dirty && (!create || revision)) return true
     setBusy(true); setError('')
     try {
       const result = await skinsApi.saveDraft(packagePath, revision, skin)
@@ -85,7 +94,7 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
     finally { if (mounted.current) setBusy(false) }
   }, [skin, dirty, busy, running, revision, packagePath])
   const register = async (replace = false) => {
-    if (!await save()) return
+    if (!await save(true)) return
     setBusy(true); setError('')
     try {
       const registered = await skinsApi.register(packagePath, replace)
@@ -103,10 +112,6 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
       <div className="skin-studio-body">
         <section className="skin-studio-chat"><ChatPage embedded={{ project, sessionId, onSessionChange: setSessionId, beforeSend: save }} /></section>
         <aside className="skin-studio-controls"><h3>{t('skins.studioEditing')}</h3>
-          <div className="skin-studio-package"><label>{t('skins.studioPackage')}<Input value={packageInput} disabled={busy || running} onChange={event => setPackageInput(event.target.value)} /></label><Button size="sm" disabled={!packageInput.trim() || dirty || busy || running} onClick={() => {
-            if (packageInput.trim() === packagePath) void load().catch(reason => setError(String(reason.message)))
-            else { setSkin(null); setPackagePath(packageInput.trim()) }
-          }}>{t('skins.studioReadPackage')}</Button></div>
           {error && <p className="skin-studio-error" role="alert">{error}</p>}
           {!skin ? <><p className="skin-studio-note" role="status">{t('skins.studioWaiting')}</p><Button onClick={() => void load().catch(reason => setError(String(reason.message)))}>{t('common.retry')}</Button></> : <>
           <fieldset disabled={busy || running}>
@@ -118,14 +123,18 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
             }}><option value="custom">{t('skins.studioCustom')}</option>{(Object.keys(palettes) as (keyof typeof palettes)[]).map(key => <option key={key} value={key}>{t(baseLabels[key])}</option>)}</Select></label>
             <label>{t('skins.studioAccent')}<div className="skin-studio-palette">{['#0071e3', '#7c65d5', '#31987b', '#db9b42'].map(color => <button key={color} type="button" aria-label={color} aria-pressed={skin.tokens.accent === color} style={{ '--swatch-color': color } as React.CSSProperties} onClick={() => edit(current => ({ ...current, tokens: { ...current.tokens, accent: color } }))} />)}<input type="color" aria-label={t('skins.studioAccent')} value={/^#[\da-f]{6}$/i.test(skin.tokens.accent || '') ? skin.tokens.accent : '#0071e3'} onChange={event => edit(current => ({ ...current, tokens: { ...current.tokens, accent: event.target.value } }))} /></div></label>
             <label>{t('skins.studioEngine')}<Select value={skin.layout.engineAppearance || 'list'} onChange={event => edit(current => ({ ...current, layout: { ...current.layout, engineAppearance: event.target.value as 'list' | 'cards' } }))}><option value="list">{t('skins.studioList')}</option><option value="cards">{t('skins.studioCards')}</option></Select></label>
-            <label className="skin-studio-toggle">{t('skins.studioRight')}<input type="checkbox" checked={skin.layout.sidebarSide === 'right'} onChange={event => edit(current => ({ ...current, layout: { ...current.layout, sidebarSide: event.target.checked ? 'right' : 'left' } }))} /></label>
-            <label className="skin-studio-toggle">{t('skins.studioTop')}<input type="checkbox" checked={skin.layout.composerToolsPosition === 'top'} onChange={event => edit(current => ({ ...current, layout: { ...current.layout, composerToolsPosition: event.target.checked ? 'top' : 'bottom' } }))} /></label>
+            <SkinToggle label={t('skins.studioRight')} checked={skin.layout.sidebarSide === 'right'} onChange={checked => edit(current => ({ ...current, layout: { ...current.layout, sidebarSide: checked ? 'right' : 'left' } }))} />
+            <SkinToggle label={t('skins.studioTop')} checked={skin.layout.composerToolsPosition === 'top'} onChange={checked => edit(current => ({ ...current, layout: { ...current.layout, composerToolsPosition: checked ? 'top' : 'bottom' } }))} />
             <Button size="sm" disabled={!dirty || !skin.manifest.name.trim()} onClick={() => void save()} loading={busy}>{t('skins.studioSaveDraft')}</Button>
           </fieldset>
           <div className="skin-studio-preview-heading"><span>{t('skins.studioPreview')}</span><div><Button size="sm" variant={phone ? 'ghost' : 'primary'} onClick={() => setPhone(false)}>PC</Button><Button size="sm" variant={phone ? 'primary' : 'ghost'} onClick={() => setPhone(true)}>{t('skins.studioPhone')}</Button></div></div>
           <SkinStudioPreview skin={skin} compact={phone} />
           <p className="skin-studio-note">{t(running ? 'skins.studioRunning' : 'skins.studioNote')}</p>
           </>}
+          <details className="skin-studio-package"><summary>{t('skins.studioPackage')}</summary><label><Input aria-label={t('skins.studioPackage')} value={packageInput} disabled={busy || running} onChange={event => setPackageInput(event.target.value)} /></label><Button size="sm" disabled={!packageInput.trim() || dirty || busy || running} onClick={() => {
+            if (packageInput.trim() === packagePath) void load().catch(reason => setError(String(reason.message)))
+            else { setSkin(null); setPackagePath(packageInput.trim()) }
+          }}>{t('skins.studioReadPackage')}</Button></details>
           <Button size="sm" disabled={busy || running} onClick={() => dirty ? setPending('reload') : void load().catch(reason => setError(String(reason.message)))}>{t('skins.studioReload')}</Button>
         </aside>
       </div>

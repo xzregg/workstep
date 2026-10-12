@@ -161,6 +161,8 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(config_store.migrate_legacy_config)
     await asyncio.to_thread(ensure_global_templates)
     await asyncio.to_thread(project_manager._load_saved_projects)
+    from services.customization_workspace import ensure_default_workspace
+    await ensure_default_workspace(project_manager)
     await notification_hooks.service.start()
     # Load concurrency limits into the in-memory gate (global defaults +
     # every project's persisted override) before any workflow starts.

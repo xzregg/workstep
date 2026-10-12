@@ -71,7 +71,8 @@ test('a new Runtime conversation can create its first skin before any package ex
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinStudio workspace={{ project_id: 'design', project_name: 'Runtime', session_id: 'empty-session', workspace_path: '/tmp/runtime', package_path: '/tmp/runtime/skin', prompt: '' }} onClose={() => {}} onSaved={() => {}} /></I18nProvider></MemoryRouter>))
-    assert.equal(document.querySelector('.skin-studio-controls fieldset'), null)
+    assert.ok(document.querySelector('.skin-studio-controls fieldset'), 'starting style is visible before a package is created')
+    assert.ok(document.querySelector('.skin-studio-preview'))
     const send = document.querySelector<HTMLButtonElement>('.skin-studio-chat .chat-input-send')!
     assert.equal(send.disabled, false)
     await act(async () => send.click())

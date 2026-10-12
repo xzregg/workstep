@@ -1,4 +1,5 @@
 """One Runtime project root for ordinary customization conversations."""
+import asyncio
 import threading
 from pathlib import Path
 
@@ -21,3 +22,8 @@ def runtime_project(manager, root: Path):
         if project is None:
             project = manager.init_project(root, name='Runtime')
     return project
+
+
+async def ensure_default_workspace(manager):
+    """Prepare the fixed workspace at startup without blocking the event loop."""
+    return await asyncio.to_thread(lambda: runtime_project(manager, workspace_root()))

@@ -130,6 +130,12 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
     )
 
     events = []
+    from services import customization_workspace
+
+    async def prepare_default_workspace(manager):
+        events.append("default-workspace-prepare")
+
+    monkeypatch.setattr(customization_workspace, "ensure_default_workspace", prepare_default_workspace)
 
     class RuntimeStub:
         async def recover_running_workflows(self):
@@ -205,6 +211,7 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
 
     assert events == [
         "projects-load",
+        "default-workspace-prepare",
         "workflows-recover",
         "workflows-requeue",
         "bots-start",

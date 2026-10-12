@@ -85,6 +85,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           if (boundProjectId && activeProject?.id !== boundProjectId) {
             activeProject = projects.find(p => p.id === boundProjectId) ?? null
           }
+          if (!boundProjectId && !activeProject) {
+            activeProject = projects.find(p => p.type !== 'remote' && p.is_default_workspace) ?? null
+          }
           const defaultWorkflow = activeProject?.workflows?.find(w => w.is_default)
             ?? activeProject?.workflows?.[0]
           return { projects, activeProject, loading: false, loadError: null,
@@ -295,7 +298,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return activeProject
     }
 
-    const next = remaining[0] ?? null
+    const next = remaining.find(project => project.type !== 'remote' && project.is_default_workspace) ?? remaining[0] ?? null
     const defaultWorkflow = next?.workflows?.find((workflow) => workflow.is_default)
       ?? next?.workflows?.[0]
     set({

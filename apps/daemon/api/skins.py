@@ -34,7 +34,7 @@ class ExportRequest(BaseModel):
 
 class DraftRequest(BaseModel):
     path: str = Field(min_length=1, max_length=4096)
-    expected_revision: str = Field(pattern=r'^[a-f0-9]{64}$')
+    expected_revision: str = Field(pattern=r'^(?:[a-f0-9]{64})?$')
     skin: dict
 
 

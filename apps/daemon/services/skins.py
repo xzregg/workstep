@@ -127,6 +127,8 @@ class SkinManager:
 
     def _read_package(self, path):
         root = Path(path).expanduser()
+        if root.is_absolute() and not root.exists():
+            raise FileNotFoundError(root)
         if not root.is_absolute() or root.is_symlink() or not root.is_dir():
             raise ValueError("皮肤包必须是绝对路径的普通目录")
         files = {}
@@ -206,6 +208,8 @@ class SkinManager:
             root = Path(path).expanduser()
             if root.resolve().is_relative_to((self.root / 'skin-assets').resolve()):
                 raise ValueError('已注册快照不可修改，请在工作目录制作草稿')
+            if not expected_revision:
+                return self._create_draft(root, document)
             current, _, files = self._read_package(path)
             if current['revision'] != expected_revision:
                 raise SkinConflict('草稿已被对话修改，请重新读取后再保存微调')
@@ -232,6 +236,33 @@ class SkinManager:
                 return self._validate(root)
             finally:
                 if staging.exists(): shutil.rmtree(staging)
+
+    def _create_draft(self, root, document):
+        from services.customization_workspace import workspace_root
+        workspace = workspace_root().resolve()
+        if not root.is_absolute() or root.is_symlink() or root.resolve() == workspace or not root.resolve().is_relative_to(workspace):
+            raise ValueError('新皮肤包必须在 Runtime 工作区内创建')
+        if root.exists():
+            raise SkinConflict('对话已创建此目录，请重新读取后再保存')
+        manifest = document.get('manifest', {})
+        tokens = document.get('tokens', {})
+        components = {key: document[key] for key in ('styles', 'layout', 'desktop', 'mobile') if key in document}
+        validate_document(manifest, tokens, components, read_contract())
+        staging = workspace / ('.skin-edit-' + uuid.uuid4().hex)
+        try:
+            staging.mkdir()
+            for name, value in [('skin.json', manifest), ('tokens.json', tokens), ('components.json', components)]:
+                (staging / name).write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            self._read_package(staging)
+            try:
+                root.mkdir()  # exclusive: never overwrite an AI-created package
+            except FileExistsError as exc:
+                raise SkinConflict('对话已创建此目录，请重新读取') from exc
+            for name in ('skin.json', 'tokens.json', 'components.json'):
+                (staging / name).replace(root / name)
+            return self._validate(root)
+        finally:
+            if staging.exists(): shutil.rmtree(staging)
 
     async def save_draft(self, path, expected_revision, document):
         return await asyncio.to_thread(self._save_draft, path, expected_revision, document)
