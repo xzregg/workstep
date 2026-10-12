@@ -1,24 +1,23 @@
 import ChatMessageBubble from './ChatMessageBubble'
 import { ApiError } from '../api/transport'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import Button from './Button'
 import Input from './Input'
 import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
 import EngineSelect from './EngineSelect'
-import { skinsApi, type SkinSummary } from '../api/skins'
+import { skinsApi, type SkinSummary, type SkinWorkspace } from '../api/skins'
 import { useI18n } from '../i18n'
 import { saveDraft } from '../utils/chatDraft'
+import SkinStudio from './SkinStudio'
 import { useProjectStore } from '../stores/projectStore'
 import { useSkinPreviewing, cancelSkinPreview, previewSkin, restoreDefaultSkin, saveSkin, useActiveSkin } from '../skins/runtime'
 import { skinContract, type SkinDocument } from '../skins/contract'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import './SkinSettings.css'
 
-export default function SkinSettings({ onStarted }: { onStarted?: () => void }) {
+export default function SkinSettings() {
   const { t } = useI18n()
-  const navigate = useNavigate()
   const active = useActiveSkin(), previewing = useSkinPreviewing()
   const [skins, setSkins] = useState<SkinSummary[]>([])
   const [busy, setBusy] = useState(false)
@@ -30,6 +29,7 @@ export default function SkinSettings({ onStarted }: { onStarted?: () => void }) 
   const [deleting, setDeleting] = useState<string | null>(null)
   const [sampleEngine, setSampleEngine] = useState('demo')
   const [sampleValue, setSampleValue] = useState('one')
+  const [workspace, setWorkspace] = useState<SkinWorkspace | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const mounted = useRef(true)
   const remote = isGatewayRemoteBrowser()
@@ -59,8 +59,7 @@ export default function SkinSettings({ onStarted }: { onStarted?: () => void }) 
     const result = await skinsApi.onboarding()
     saveDraft(result.session_id, result.prompt)
     await useProjectStore.getState().fetchProjects()
-    navigate(`/chat?${new URLSearchParams({ project: result.project_name, session: result.session_id })}`)
-    onStarted?.()
+    if (mounted.current) setWorkspace(result)
   })
   const exportSkin = (id: string) => run(async () => {
     const blob = await skinsApi.export(id), url = URL.createObjectURL(blob)
@@ -122,5 +121,8 @@ export default function SkinSettings({ onStarted }: { onStarted?: () => void }) 
       if (mounted.current) setDeleting(null)
       await refresh()
     })} />
+    {workspace && <SkinStudio workspace={workspace} onClose={() => setWorkspace(null)} onSaved={skin => {
+      setChecked(skin); previewSkin(skin); setWorkspace(null); void run(refresh)
+    }} />}
   </div>
 }

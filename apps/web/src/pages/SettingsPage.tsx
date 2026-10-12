@@ -181,7 +181,7 @@ export default function SettingsPage({
         ) : activeSection === 'feedback' ? (
           <ProblemFeedbackSettings />
         ) : activeSection === 'skins' ? (
-          <SkinSettings onStarted={closeSettings} />
+          <SkinSettings />
         ) : activeSection === 'system' ? (
           <div className="settings-system-page">
             <h1 className="settings-system-title">{t('settings.systemTitle')}</h1>

@@ -201,6 +201,41 @@ class SkinManager:
     async def validate(self, path):
         return await asyncio.to_thread(self._validate, path)
 
+    def _save_draft(self, path, expected_revision, document):
+        with self._lock:
+            root = Path(path).expanduser()
+            if root.resolve().is_relative_to((self.root / 'skin-assets').resolve()):
+                raise ValueError('已注册快照不可修改，请在工作目录制作草稿')
+            current, _, files = self._read_package(path)
+            if current['revision'] != expected_revision:
+                raise SkinConflict('草稿已被对话修改，请重新读取后再保存微调')
+            manifest = document.get('manifest')
+            if not isinstance(manifest, dict) or manifest.get('id') != current['manifest']['id']:
+                raise ValueError('微调不能更换皮肤 ID')
+            tokens = document.get('tokens', {})
+            components = {key: document[key] for key in ('styles', 'layout', 'desktop', 'mobile') if key in document}
+            validate_document(manifest, tokens, components, read_contract())
+            for name, value in [('skin.json', manifest), ('tokens.json', tokens), ('components.json', components)]:
+                files[name] = (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode()
+            # Validate the entire candidate, including referenced assets, before touching the draft.
+            staging = root.parent / ('.skin-edit-' + uuid.uuid4().hex)
+            try:
+                staging.mkdir()
+                for name, content in files.items():
+                    target = staging / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(content)
+                self._read_package(staging)
+                # Writers stage in the same filesystem; each JSON replacement is atomic.
+                if self._read_package(root)[0]['revision'] != expected_revision:
+                    raise SkinConflict('草稿已变更，请重新读取')
+                for name in ('skin.json', 'tokens.json', 'components.json'):
+                    (staging / name).replace(root / name)
+                return self._validate(root)
+            finally:
+                if staging.exists(): shutil.rmtree(staging)
+
+    async def save_draft(self, path, expected_revision, document):
+        return await asyncio.to_thread(self._save_draft, path, expected_revision, document)
+
     def _register(self, path, replace=False):
         with self._lock:
             skin, coverage, files = self._read_package(path)

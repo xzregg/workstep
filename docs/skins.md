@@ -2,6 +2,10 @@
 
 皮肤入口：设置 → 外观与皮肤。默认皮肤随应用提供；用户皮肤独立注册、ZIP 导入导出。聊天制作沿用普通项目对话，不新增助手协议或聊天通道。
 
+聊天制作以 `SkinStudio` 双栏窗口呈现：左侧嵌入既有 `ChatPage`，复用普通会话、`useChatSessionStore`、消息、输入、停止、审批与引擎配置；通过显式项目／会话上下文工作，不切换外层任务路由或活动项目。右侧可微调名称、基础配色、强调色、引擎列表／卡片、导航左右及工具栏位置。微调先保存到对话正在编辑的同一包，发送消息前自动保存；对话结束后重新读取。运行期间禁用微调，版本冲突时拒绝覆盖并提示重新读取。
+
+右侧预览在独立沙箱文档内编译草稿 CSS，分别按 1024px／390px 布局缩放显示，草稿不会改变正在使用的皮肤。关闭未保存的微调需确认；保存皮肤时注册包，再进入全站预览，确认后才应用。
+
 ## 权威契约与覆盖
 
 机器规范为 `apps/daemon/data/skins/contract.json`，前端直接导入同一文件；后台校验、CLI、工作区里的 `skin-contract.json` 都读取它。
@@ -101,6 +105,8 @@ ID 使用小写字母开头，可包含小写字母、数字、`_`、`-`，最�
 
 宿主管理：POST `/api/skins/validate`、`register`、`import`、`export`、`onboarding`，GET `/{id}/export`，DELETE `/{id}`。管理权限沿用宿主安装许可；项目分享不能管理。import 发送 application/zip 原始正文，同名包返回 409，明确 replace=true 后才能更新。
 
+右侧微调使用宿主 POST `/api/skins/draft`，携带 path、expected_revision 与完整 skin 文档；保留原部位和资源，完整校验后更新三个 JSON 文件，不注册、不应用。版本过期返回 409。与 CLI `skin validate/register` 共用包格式及文件目录。
+
 ```bash
 workstep skin list --json
 workstep skin contract --json
@@ -118,5 +124,6 @@ CLI 与引擎注入工具复用同一 REST 服务；工具 mutation 继续要求
 - 后台：`test_skins.py`、`test_skin_onboarding.py`、`test_skin_cli.py`；覆盖真实 API、真实数据库慢 SQL canary、慢磁盘健康检查、注册回滚、ZIP、资源和项目鉴权。
 - 前端：`skins.test.ts`、`skinSelect.test.tsx`、`skinSettings.test.tsx`、`taskDetailSplitLayout.test.tsx`；覆盖编译、状态保持、继承、预览、真实 change、嵌套浮层 Esc 和布局计算。
 - 权限整合：`gatewayWorkspaceApp.test.tsx` 对默认与自定义皮肤分别验证项目只读／任务创建者的入口和路由限制；`test_skins.py` 对项目读者与编辑者逐项检查宿主管理接口拒绝访问。
+- 双栏制作：`embeddedProjectChat.test.tsx` 验证项目隔离，`skinStudio.test.tsx` 验证微调写回、预览隔离、关闭保护和运行态禁用；`scripts/check-skin-studio.cjs` 对实际构建做四档宽度浏览器验收。
 - 浏览器：先运行 Web build，再执行 `apps/web/scripts/check-skins.cjs`（PLAYWRIGHT_MODULE 可指定现有安装）。脚本读取实际生产构建，全拦截 API/资源，不启动项目服务；检查五档宽度、选项触控尺寸、焦点/关闭及恢复，并保存真实截图到 node_modules/.tmp/skin-qa。这些是验收截图，不代替官网手册演示截图。
 - 合并交付时集中同步官网操作手册和真实手册截图；功能分支阶段不宣称手册完成。
