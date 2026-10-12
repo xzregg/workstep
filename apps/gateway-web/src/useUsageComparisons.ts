@@ -12,12 +12,20 @@ export function useUsageComparisons(filters: string, enabled: boolean) {
   const controller = new AbortController()
   setLoading(true); setFailed(false); setValues({})
   const entries = (Object.entries(ranges) as Array<[Key, typeof ranges.month | null]>).filter(([,range]) => range)
+  const requests = new Map<string, Promise<UsageTotals>>()
   void Promise.allSettled(entries.map(async ([key, range]) => {
    const params = new URLSearchParams(filters)
    params.set('from_time', range!.from); params.set('to_time', range!.to)
-   const response = await fetch(`/api/admin/usage?${params}`, { credentials: 'same-origin', signal: controller.signal })
-   if (!response.ok) throw Error('对比用量加载失败')
-   return [key, await response.json()] as const
+   const url = `/api/admin/usage?${params}`
+   let pending = requests.get(url)
+   if (!pending) {
+    pending = fetch(url, { credentials: 'same-origin', signal: controller.signal }).then(async response => {
+     if (!response.ok) throw Error('对比用量加载失败')
+     return await response.json() as UsageTotals
+    })
+    requests.set(url, pending)
+   }
+   return [key, await pending] as const
   })).then(results => {
    if (controller.signal.aborted) return
    setValues(Object.fromEntries(results.filter(result => result.status === 'fulfilled').map(result => result.value)))

@@ -781,3 +781,6 @@ Web `utils/projectPermissions.ts` → `hooks/useGatewayProjectPermissions.ts` �
 
 
 任务步骤的可变背景增量注入由 `services/prompt.py::_task_background_parts` 统一持有：分别比较 Task（标题＋描述）、Project memory 和 Task Git workspace（仓库列表），首次完整提供，相同会话内容不变时省略，变化或清空时只发送对应更新。`step_execution_messages.py` 将此规则接入普通启动、追问和审核重试，用户本轮输入与当前执行契约仍保留。`task_step_start.py` 只采用同一引擎会话已成功消息中的比较基线，重置／交接／供应商切换不复用；旧原始完整输入由 `legacy_task_context_hashes` 兼容恢复，无法确认时重新提供。基线为 `messages.prompt_json.context_hashes` 的三项摘要，不复制背景全文；`task_runner.py` 保存实际输入时保留摘要，查看继续只显示本轮实传内容。行为入口：`tests/test_pipeline.py::test_resumed_normal_starts_only_inject_changed_task_background`（连续启动、重启、旧记录、独立变更、清空和重置）、`test_task_changes_reach_followup_and_review_retry_without_other_background`、`test_slow_context_checkpoint_save_keeps_health_responsive`，以及 `tests/test_task_step_start.py`。
+
+
+网关紧凑统计（原型 C）：`AdminUsagePage.css` 将正式用量页面改为扁平指标栏、迷你趋势／模型占比和完整明细表。`UsageMetricStrip.tsx` 显示缓存读取占输入 Token 的缓存率、上个完整 UTC 自然月用量及同比／环比，缺失或不兼容口径不补零；`usageStatistics.ts` 持有同比闰日处理、等长前一区间、自然月边界、增减与零基期规则。`useUsageComparisons.ts` 用相同用户／设备／项目／供应商／模型／来源筛选查询三个不同时间范围，与分页无关，错误独立重试。`UsageOverviewCharts.tsx` 单独加载每日及模型数据；`UsageDistributionChart.tsx` 显示模型占比和当前分页的横向比较，不把本页排行标为全局排行。总览表格默认按用户显示，分组表新增缓存率，公共时间选择器与 CSV／明细入口继续复用。行为入口：Gateway Web `usage-statistics.test.tsx`、`admin-usage.test.tsx`（缓存率、零值／缺失、UTC 自然月、闰日、同期日期和同范围筛选）。

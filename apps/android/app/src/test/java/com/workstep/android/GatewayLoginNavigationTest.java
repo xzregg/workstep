@@ -58,6 +58,13 @@ public class GatewayLoginNavigationTest {
                 + "http%3A%2F%2Fphone.workstep.test%2Fapi%2Fgateway-platform%2Fcallback";
         assertTrue(navigation.staysInWebView(LOCAL, login));
         assertTrue(navigation.staysInWebView(LOCAL, "https://login.dingtalk.com/oauth2/auth?state=abc"));
+        assertEquals("https://phone.workstep.test/?gateway_auth=cancelled",
+                navigation.rewrittenLocalReturn(LOCAL, "http://phone.workstep.test/?gateway_auth=cancelled"));
+        assertEquals("https://phone.workstep.test/api/gateway-platform/callback?code=abc&state=abc",
+                navigation.rewrittenLocalReturn(LOCAL,
+                        "http://phone.workstep.test/api/gateway-platform/callback?code=abc&state=abc"));
+        assertNull(navigation.rewrittenLocalReturn(LOCAL, "http://evil.test/?gateway_auth=cancelled"));
+        assertNull(navigation.rewrittenLocalReturn(LOCAL, "http://phone.workstep.test/admin"));
         assertFalse(new GatewayLoginNavigation().staysInWebView(LOCAL,
                 "https://gateway.test/desktop/login?redirect_uri="
                 + "http%3A%2F%2Fevil.test%2Fapi%2Fgateway-platform%2Fcallback"));

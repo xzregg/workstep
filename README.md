@@ -153,6 +153,16 @@ Local-first describes where WorkStep stores and orchestrates project data. Exter
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Use [Issues](https://github.com/xzregg/workstep/issues) for reproducible bugs and actionable feature requests, and [Discussions](https://github.com/xzregg/workstep/discussions) for questions, ideas, and design exploration. Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=xzregg%2Fworkstep&amp;type=date&amp;legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;theme=dark&amp;legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;legend=top-left" />
+    <img alt="WorkStep GitHub star history" src="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;legend=top-left" width="800" />
+  </picture>
+</a>
+
 ## License
 
 WorkStep is licensed under the [Apache License 2.0](LICENSE). Optional third-party engines and services remain under their own terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

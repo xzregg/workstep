@@ -24,4 +24,5 @@ test('previous period, leap-year comparison and complete previous calendar month
  assert.equal(ranges.month.from,'2024-02-01T00:00:00.000Z')
  assert.equal(ranges.month.to,'2024-03-01T00:00:00.000Z')
  assert.equal(usageComparisonRanges('','').previous,null)
+ assert.equal(usageComparisonRanges('2024-02-28T00:00:00Z','2024-02-29T00:00:00Z').year,null)
 })

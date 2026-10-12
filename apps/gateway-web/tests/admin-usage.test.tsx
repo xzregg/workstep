@@ -260,7 +260,7 @@ test('statistics tabs share the applied time filters and load only the active re
 
 test('dimension details reuse the time range, pagination resets after filtering and failed reports retry', async () => {
  const paths:string[]=[]
- let failed=true
+ let failed=false
  globalThis.fetch=async input=>{
   const path=String(input);paths.push(path)
   if(path.includes('/events?'))return Response.json({events:[],total:0})
@@ -270,17 +270,18 @@ test('dimension details reuse the time range, pagination resets after filtering 
  }
  render(<MemoryRouter><AdminUsagePage readOnly/></MemoryRouter>)
  await screen.findByRole('img',{name:'每日 Token 趋势（UTC）'})
+ failed=true
  fireEvent.click(screen.getByRole('tab',{name:'用户统计'}))
  await screen.findByText(/用量汇总加载失败/)
  fireEvent.click(screen.getByRole('button',{name:'重试'}))
- await screen.findByText('用户显示名')
+ await screen.findAllByText('用户显示名')
  fireEvent.click(screen.getByRole('button',{name:'下一页'}))
  await waitFor(()=>assert.equal(new URLSearchParams(paths.at(-1)!.split('?')[1]).get('offset'),'25'))
- await screen.findByText('用户显示名')
+ await screen.findAllByText('用户显示名')
  fireEvent.change(screen.getByLabelText('模型'),{target:{value:'model-b'}})
  fireEvent.click(screen.getByRole('button',{name:'查询用量'}))
  await waitFor(()=>assert.equal(new URLSearchParams(paths.at(-1)!.split('?')[1]).get('offset'),'0'))
- await screen.findByText('用户显示名')
+ await screen.findAllByText('用户显示名')
  const applied=new URLSearchParams(paths.at(-1)!.split('?')[1])
  fireEvent.click(screen.getByRole('button',{name:'查看明细'}))
  await screen.findByText('当前条件下没有计量事件。')
@@ -314,4 +315,25 @@ test('compact report shows cache rate and comparisons, with the same scoped filt
  await screen.findByText('75.0%')
  await waitFor(()=>assert.equal(paths.filter(path=>path.includes('user_id=scoped-user')).length,6))
  assert.ok(paths.filter(path=>path.includes('user_id=scoped-user')).every(path=>path.includes('source=reported_by_device')))
+})
+
+
+test('failed history leaves the current compact report available and retries only comparison queries', async () => {
+ const paths:string[]=[];let failHistory=true
+ globalThis.fetch=async input=>{
+  const path=String(input);paths.push(path)
+  const params=new URLSearchParams(path.split('?')[1])
+  if(!params.has('group_by') && failHistory)return new Response(null,{status:503})
+  return Response.json({event_count:2,unmetered_count:0,input_tokens:100,output_tokens:20,cache_read_tokens:50,cache_write_tokens:0,total_tokens:120,estimated_cost:null,currency:null,groups:[],group_total:0})
+ }
+ render(<MemoryRouter><AdminUsagePage readOnly/></MemoryRouter>)
+ await screen.findByText('50.0%')
+ await screen.findByText('部分对比用量加载失败。')
+ assert.ok(screen.getByRole('img',{name:'每日 Token 趋势（UTC）'}))
+ const currentRequests=paths.filter(path=>new URLSearchParams(path.split('?')[1]).has('group_by')).length
+ failHistory=false
+ fireEvent.click(screen.getByRole('button',{name:'重试对比'}))
+ await screen.findByText('同比 持平')
+ assert.equal(paths.filter(path=>new URLSearchParams(path.split('?')[1]).has('group_by')).length,currentRequests)
+ assert.equal(screen.queryByText('部分对比用量加载失败。'),null)
 })
