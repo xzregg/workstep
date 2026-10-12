@@ -48,6 +48,7 @@ test('split diff resizes and annotates both versions with their own line attribu
   const render = (path: string) => <I18nProvider><GitDiffDialog id="repo" files={[path]} path={path} comparison={{}} onSelect={() => {}} onClose={() => {}} /></I18nProvider>
   try {
     await act(async () => root.render(render('x.ts')))
+    await act(async () => document.querySelector<HTMLButtonElement>('.git-diff-toolbar button')!.click())
     const beforeCell = document.querySelector<HTMLElement>('[data-diff-side="before"] .git-code-cell')!
     const afterCell = document.querySelector<HTMLElement>('[data-diff-side="after"] .git-code-cell')!
     assert.equal(beforeCell.firstElementChild?.tagName, 'CODE')
@@ -141,6 +142,7 @@ test('full file switch shows unchanged lines and a block arrow saves committed c
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<I18nProvider><GitDiffDialog id="repo" files={['x.ts']} path="x.ts" comparison={{}} onSelect={() => {}} onClose={() => {}} /></I18nProvider>))
+    await act(async () => document.querySelector<HTMLButtonElement>('.git-diff-toolbar button')!.click())
     assert.equal(document.querySelector('[data-diff-side="before"]')?.textContent?.includes('middle one'), false)
     const full = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('显示完整文件'))!
     await act(async () => full.click())
@@ -164,6 +166,7 @@ test('a block copied with the arrow can be undone after the file becomes clean',
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<I18nProvider><GitDiffDialog id="repo" files={['x.ts']} path="x.ts" comparison={{}} onSelect={() => {}} onClose={() => {}} /></I18nProvider>))
+    await act(async () => document.querySelector<HTMLButtonElement>('.git-diff-toolbar button')!.click())
     await act(async () => document.querySelector<HTMLButtonElement>('.git-copy-block')!.click())
     const undo = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('撤销上次应用'))!
     assert.ok(undo)
@@ -174,4 +177,39 @@ test('a block copied with the arrow can be undone after the file becomes clean',
     ])
     assert.equal(document.querySelector('button[aria-label="撤销上次应用"]'), null)
   } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); await window.happyDOM.close() }
+})
+
+
+test('recorded diff tree switches snapshots without requesting current workspace data', async () => {
+  const { window } = installDomEnvironment()
+  Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
+  const originalDiff = gitApi.diff
+  gitApi.diff = async () => { throw new Error('must not load current workspace') }
+  const files = ['/project/apps/web/a.ts', '/project/docs/b.md']
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const render = (path: string) => root.render(<I18nProvider><GitDiffDialog id="p" files={files} path={path}
+    projectRoot="/project" comparison={{}} onSelect={render} onClose={() => {}}
+    recordedDiff={{ path, old_path: path, base: null, target: null, before: '', after: '',
+      patch: `@@ -1 +1 @@\n-old\n+${path.endsWith('b.md') ? 'second snapshot' : 'first snapshot'}\n`,
+      binary: false, truncated: false, submodule: false }} /></I18nProvider>)
+  try {
+    await act(async () => render(files[0]))
+    assert.ok(document.querySelector('.git-diff-dialog.unified'))
+    assert.equal(document.querySelector('.git-diff-divider'), null)
+    const viewToggle = document.querySelector<HTMLButtonElement>('.git-diff-toolbar button')!
+    await act(async () => viewToggle.click())
+    assert.ok(document.querySelector('.git-diff-dialog.split'))
+    await act(async () => viewToggle.click())
+    assert.ok(document.querySelector('.git-diff-dialog.unified'))
+    assert.match(document.querySelector('.git-diff-content')!.textContent!, /first snapshot/)
+    await act(async () => (document.querySelector('[title="docs/b.md"]') as HTMLElement).click())
+    assert.equal(document.querySelector('.git-diff-dialog header strong')!.textContent, files[1])
+    assert.match(document.querySelector('.git-diff-content')!.textContent!, /second snapshot/)
+    assert.equal(document.querySelector('.git-error'), null)
+    assert.equal(document.querySelector('[aria-selected="true"]')!.getAttribute('title'), 'docs/b.md')
+  } finally {
+    gitApi.diff = originalDiff
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
 })

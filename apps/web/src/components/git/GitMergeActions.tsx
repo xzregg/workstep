@@ -2,7 +2,7 @@ import Select from '../Select'
 import { useEffect, useRef, useState } from 'react'
 import { type GitBranch, type GitStatus, type GitTrackedRemoteBranch } from '../../api/git'
 import { useI18n } from '../../i18n'
-import { useGitApi } from './GitApiContext'
+import { useGitApi, useGitActionAllowed } from './GitApiContext'
 import { useGitStore } from '../../stores/gitStore'
 import Button from '../Button'
 import Icon from '../Icon'
@@ -12,6 +12,7 @@ export type GitMergeRequest = { direction: 'intoCurrent' | 'intoTarget'; branch:
 
 export default function GitMergeActions({ status, readOnly, otherBusy = false, request, onRefresh, onBusy }: { status: GitStatus; readOnly: boolean; otherBusy?: boolean; request?: GitMergeRequest | null; onRefresh: () => Promise<void>; onBusy: (busy: boolean) => void }) {
   const gitApi = useGitApi()
+  const can = useGitActionAllowed()
   const writes = usePanelGitWrites()
   const { t } = useI18n()
   const root = useRef<HTMLSpanElement>(null)
@@ -58,7 +59,7 @@ export default function GitMergeActions({ status, readOnly, otherBusy = false, r
   }
 
   async function fetchBranches() {
-    if (loading || busy || writes.busy) return
+    if (!can('fetch') || loading || busy || writes.busy) return
     setLoading(true); setError('')
     try {
       const result = await writes.run(async () => {
@@ -94,7 +95,7 @@ export default function GitMergeActions({ status, readOnly, otherBusy = false, r
   }
 
   async function pushMergedTarget() {
-    if (!pushTarget || busy || writes.busy) return
+    if (!can('pushBranch') || !pushTarget || busy || writes.busy) return
     setBusy(true); onBusy(true)
     try {
       await writes.run(async () => {
@@ -128,8 +129,8 @@ export default function GitMergeActions({ status, readOnly, otherBusy = false, r
       {!!status.files.length && <span className="git-remote-loading">{direction === 'intoCurrent' ? t('git.mergeDirtyHint') : t('git.mergeSourceDirtyHint')}</span>}
       {blockedReason && <span className="git-remote-error" role="status">{blockedReason}</span>}
       {error && <span className="git-remote-error" role="alert">{error}</span>}
-      <span className="git-remote-panel__actions"><Button size="sm" loading={loading} disabled={loading || busy || writes.busy} onClick={() => void fetchBranches()}><Icon name="refresh" size={13} />{t('git.fetchBranches')}</Button><Button size="sm" variant="primary" loading={busy} disabled={!(direction === 'intoCurrent' ? source : target) || loading || busy || !!blockedReason} onClick={() => void run()}>{t('git.mergeConfirm')}</Button></span>
+      <span className="git-remote-panel__actions">{can('fetch') && <Button size="sm" loading={loading} disabled={loading || busy || writes.busy} onClick={() => void fetchBranches()}><Icon name="refresh" size={13} />{t('git.fetchBranches')}</Button>}<Button size="sm" variant="primary" loading={busy} disabled={!(direction === 'intoCurrent' ? source : target) || loading || busy || !!blockedReason} onClick={() => void run()}>{t('git.mergeConfirm')}</Button></span>
     </span>}
-    {notice && <span className={`git-remote-toast git-remote-toast--${noticeError ? 'error' : 'success'}`} role={noticeError ? 'alert' : 'status'}><span><strong>{notice}</strong></span>{pushTarget && <Button size="sm" loading={busy} disabled={busy || writes.busy} onClick={() => void pushMergedTarget()}>{t('git.mergePushTarget', { branch: pushTarget.branch })}</Button>}<Button variant="icon" aria-label={t('git.close')} onClick={() => { setNotice(''); setPushTarget(null) }}><Icon name="x" size={13} /></Button></span>}
+    {notice && <span className={`git-remote-toast git-remote-toast--${noticeError ? 'error' : 'success'}`} role={noticeError ? 'alert' : 'status'}><span><strong>{notice}</strong></span>{can('pushBranch') && pushTarget && <Button size="sm" loading={busy} disabled={busy || writes.busy} onClick={() => void pushMergedTarget()}>{t('git.mergePushTarget', { branch: pushTarget.branch })}</Button>}<Button variant="icon" aria-label={t('git.close')} onClick={() => { setNotice(''); setPushTarget(null) }}><Icon name="x" size={13} /></Button></span>}
   </span>
 }

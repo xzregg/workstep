@@ -147,6 +147,44 @@ const projectWithFlows = (id: string, workflowNames: string[]): Project => ({
   })),
 })
 
+test('failed project loads preserve cache and expose an error cleared by retry', async () => {
+  const originalFetch = globalThis.fetch
+  const cached = project('cached')
+  useProjectStore.setState({ projects: [cached], activeProject: cached })
+  try {
+    globalThis.fetch = async () => Response.json({ detail: '设备连接失败' }, { status: 502 })
+    await useProjectStore.getState().fetchProjects()
+    assert.equal(useProjectStore.getState().loadError, '设备连接失败')
+    assert.deepEqual(useProjectStore.getState().projects, [cached])
+    globalThis.fetch = async () => Response.json({ projects: [cached] })
+    await useProjectStore.getState().fetchProjects()
+    assert.equal(useProjectStore.getState().loadError, null)
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('catalog changes during loading queue one follow-up and hydrate the remote default workflow', async () => {
+  const originalFetch = globalThis.fetch
+  const remote = { ...project('remote:p'), type: 'remote' as const, workflows: [] }
+  useProjectStore.setState({ projects: [remote], activeProject: remote, activeWorkflowId: null })
+  let resolveFetch!: (response: Response) => void
+  let calls = 0
+  globalThis.fetch = async () => {
+    calls++
+    if (calls === 1) return new Promise<Response>(resolve => { resolveFetch = resolve })
+    return Response.json({ projects: [{ ...project('remote:p'), type: 'remote' }] })
+  }
+  try {
+    const loading = useProjectStore.getState().fetchProjects()
+    useProjectStore.getState().refreshProjects()
+    useProjectStore.getState().refreshProjects()
+    resolveFetch(Response.json({ projects: [remote] }))
+    await loading
+    await new Promise(resolve => setTimeout(resolve, 0))
+    assert.equal(calls, 2)
+    assert.equal(useProjectStore.getState().activeWorkflowId, 'remote:p-workflow')
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('reorderWorkflows persists the new order and updates local state', async () => {
   const proj = projectWithFlows('reorder', ['One', 'Two', 'Three'])
   const orderedIds = ['reorder-wf-2', 'reorder-wf-0', 'reorder-wf-1']
@@ -173,4 +211,36 @@ test('reorderWorkflows persists the new order and updates local state', async ()
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+
+test('remote snapshot events update only that project without issuing HTTP requests', async () => {
+  const originalFetch = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = async () => { calls++; throw new Error('unexpected request') }
+  const local = project('local')
+  const remote = { ...project('remote:event'), type: 'remote' as const, workflows: [] }
+  useProjectStore.setState({ projects: [local, remote], activeProject: remote, activeWorkflowId: null })
+  try {
+    useProjectStore.getState().applyRemoteProject({ ...remote, workflows: project(remote.id).workflows, connection_status: 'connected' })
+    assert.equal(calls, 0)
+    assert.equal(useProjectStore.getState().projects[0], local)
+    assert.equal(useProjectStore.getState().activeWorkflowId, 'remote:event-workflow')
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('a newer remote event wins over an older full catalog response', async () => {
+  const originalFetch = globalThis.fetch
+  const remote = { ...project('remote:race'), type: 'remote' as const, workflows: [] }
+  useProjectStore.setState({ projects: [remote], activeProject: remote, activeWorkflowId: null })
+  let resolveFetch!: (response: Response) => void
+  globalThis.fetch = async () => new Promise<Response>(resolve => { resolveFetch = resolve })
+  try {
+    const pending = useProjectStore.getState().fetchProjects()
+    useProjectStore.getState().applyRemoteProject({ ...remote, workflows: project(remote.id).workflows })
+    resolveFetch(Response.json({ projects: [remote] }))
+    await pending
+    assert.equal(useProjectStore.getState().projects[0].workflows.length, 1)
+    assert.equal(useProjectStore.getState().activeWorkflowId, 'remote:race-workflow')
+  } finally { globalThis.fetch = originalFetch }
 })

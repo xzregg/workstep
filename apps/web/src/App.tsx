@@ -5,6 +5,8 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
+import DesktopProjectDrop from './components/DesktopProjectDrop'
+import { ProjectPermissionGate } from './components/ProjectPermissionGate'
 import TaskList from './pages/TaskList'
 import CanvasEditor from './pages/CanvasEditor'
 import StatisticsPage from './pages/StatisticsPage'
@@ -61,23 +63,24 @@ export function AppRoutes() {
   if (location.pathname === '/file-preview') {
     return (
       <Routes>
-        <Route path="/file-preview" element={<FilePreviewPage />} />
+        <Route path="/file-preview" element={<ProjectPermissionGate permission="file.read"><FilePreviewPage /></ProjectPermissionGate>} />
       </Routes>
     )
   }
 
   return (
     <Layout onSelectProject={handleSelectProject}>
+      <DesktopProjectDrop onSelectProject={handleSelectProject} />
       <Routes>
         <Route path="/" element={activeProject && useGatewaySessionStore.getState().session?.host_project_id
           ? <Navigate replace to={projectSelectionPath('/tasks', activeProject.name, useProjectStore.getState().activeWorkflowId)} />
           : <WelcomeView />} />
-        <Route path="/git" element={<GitWorkspace />} />
-        <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
-        <Route path="/canvas" element={<CanvasEditor />} />
-        <Route path="/statistics" element={<StatisticsPage />} />
-        <Route path="/schedules" element={activeProject ? <SchedulePage /> : <WelcomeView />} />
-        <Route path="/chat" element={activeProject ? <ChatPage /> : <WelcomeView />} />
+        <Route path="/git" element={<ProjectPermissionGate permission="git.read"><GitWorkspace /></ProjectPermissionGate>} />
+        <Route path="/tasks" element={activeProject ? <ProjectPermissionGate permission="task.read"><TaskList /></ProjectPermissionGate> : <WelcomeView />} />
+        <Route path="/canvas" element={<ProjectPermissionGate permission="workflow.read"><CanvasEditor /></ProjectPermissionGate>} />
+        <Route path="/statistics" element={<ProjectPermissionGate permission="statistics.read"><StatisticsPage /></ProjectPermissionGate>} />
+        <Route path="/schedules" element={activeProject ? <ProjectPermissionGate permission="schedule.read"><SchedulePage /></ProjectPermissionGate> : <WelcomeView />} />
+        <Route path="/chat" element={activeProject ? <ProjectPermissionGate permission="session.read"><ChatPage /></ProjectPermissionGate> : <WelcomeView />} />
         <Route path="*" element={<WelcomeView />} />
       </Routes>
     </Layout>

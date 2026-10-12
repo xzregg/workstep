@@ -13,8 +13,9 @@ import ConfirmDialog from '../ConfirmDialog'
 import GitCodeEditor, { type GitCodeEditorHandle } from './GitCodeEditor'
 import MarqueeText from '../MarqueeText'
 import { usePanelGitWrites } from './gitPanelWrites'
+import GitDiffFileTree from './GitDiffFileTree'
 
-export default function GitDiffDialog({ id, files, path, comparison, onSelect, onSaved, onClose, recordedDiff }: { recordedDiff?: GitDiff; id: string; files: string[]; path: string; comparison: Comparison; onSelect: (path: string) => void; onSaved?: () => Promise<void>; onClose: () => void }) {
+export default function GitDiffDialog({ id, files, path, comparison, onSelect, onSaved, onClose, recordedDiff, projectRoot }: { projectRoot?: string; recordedDiff?: GitDiff; id: string; files: string[]; path: string; comparison: Comparison; onSelect: (path: string) => void; onSaved?: () => Promise<void>; onClose: () => void }) {
   const gitApi = useGitApi()
   const writes = usePanelGitWrites()
   const readOnly = useReadOnlyGit()
@@ -26,7 +27,7 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
   const [data, setData] = useState<GitDiff | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [split, setSplit] = useState(true)
+  const [split, setSplit] = useState(false)
   const [fullFile, setFullFile] = useState(false)
   const [showBlame, setShowBlame] = useState(false)
   const [blame, setBlame] = useState<{ before: BlameLine[]; after: BlameLine[] }>({ before: [], after: [] })
@@ -229,6 +230,9 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
   }
   return createPortal(<><div className={`git-diff-backdrop${recordedDiff ? ' git-diff-backdrop--recorded' : ''}`} onMouseDown={e => { if (e.target === e.currentTarget) requestClose() }}><ResizablePanel ref={dialog} minWidth={360} minHeight={300} className={`git-diff-dialog ${split ? 'split' : 'unified'}${showBlame ? ' has-blame' : ''}`} role="dialog" aria-modal="true" aria-label={t('git.diff')} tabIndex={-1}>
     <header><Icon name="file" size={17} /><strong><span title={path} data-dialog-selectable-text>{path}</span></strong><Button variant="icon" aria-label={t('git.previous')} disabled={editing || index <= 0} onClick={() => onSelect(files[index - 1])}><Icon name="chevron-right" style={{ transform: 'rotate(180deg)' }} size={16} /></Button><Button variant="icon" aria-label={t('git.next')} disabled={editing || index < 0 || index >= files.length - 1} onClick={() => onSelect(files[index + 1])}><Icon name="chevron-right" size={16} /></Button><Button variant="icon" aria-label={t('git.close')} onClick={requestClose}><Icon name="x" size={18} /></Button></header>
+    <div className="git-diff-workspace">
+      <GitDiffFileTree files={files} path={path} projectRoot={projectRoot} disabled={editing} onSelect={onSelect} />
+      <div className="git-diff-main">
     <div className="git-diff-toolbar">{editing ? <><Button size="sm" variant="primary" loading={saving} disabled={!dirty} onClick={() => void save()}><Icon name="check" size={14} />{t('git.saveFile')}</Button><Button size="sm" disabled={saving} onClick={exitEditor}>{t('common.cancel')}</Button><small>{t('git.saveShortcut')}</small></> : <>{lastApplied?.id === id && lastApplied.path === path && <Button size="sm" aria-label={t('git.undoApplied')} loading={undoing} disabled={saving} onClick={() => void undoAppliedBlock()}>{t('git.undoApplied')}</Button>}<Button size="sm" onClick={() => setSplit(!split)}>{split ? t('git.unified') : t('git.split')}</Button>{!recordedDiff && <><Button size="sm" aria-pressed={fullFile} onClick={() => setFullFile(value => !value)}>{fullFile ? t('git.changedOnly') : t('git.fullFile')}</Button><Button size="sm" loading={blameLoading} aria-pressed={showBlame} onClick={() => setShowBlame(!showBlame)}>{t('git.blame')}</Button></>}{editable && <Button size="sm" onClick={startEditing}><Icon name="pencil" size={14} />{t('git.editFile')}</Button>}<Select aria-label={t('git.hunks')} defaultValue="" onChange={e => { document.getElementById(`git-hunk-${e.target.value}`)?.scrollIntoView({ block: 'start' }) }}><option value="">{t('git.hunks')}</option>{hunks.map((h, i) => <option key={i} value={i}>{h.label}</option>)}</Select></>}</div>
     <div className="git-diff-labels" style={{ gridTemplateColumns: `${leftWidth}% minmax(0, 1fr)` }}><span>{t('git.before')} · {recordedDiff ? t('git.diff') : data?.base?.slice(0, 8) || '∅'} · {t('git.readonly')}</span><span>{t('git.after')} · {data?.target?.slice(0, 8) || t('git.changes')}{editing ? ` · ${t('git.editable')}` : ''}</span></div>
     {error && <div className="git-error" role="alert">{error}<Button size="sm" onClick={() => setRetry(n => n + 1)}>{t('git.retry')}</Button></div>}
@@ -240,6 +244,8 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
         onPointerUp={e => { dragging.current = false; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId) }}
         onPointerCancel={() => { dragging.current = false }} onLostPointerCapture={() => { dragging.current = false }}
         onDoubleClick={() => setLeftWidth(50)} onKeyDown={e => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { e.preventDefault(); setLeftWidth(value => e.key === 'Home' ? 20 : e.key === 'End' ? 80 : Math.max(20, Math.min(80, value + (e.key === 'ArrowRight' ? 5 : -5)))) } }} />}
+    </div>
+      </div>
     </div>
     {contextMenu && <div ref={contextMenuRef} className="git-diff-context-menu" role="menu" aria-label={t('git.diff')} style={{ left: contextMenu.x, top: contextMenu.y }} onContextMenu={event => event.preventDefault()}>
       <button autoFocus role="menuitem" onClick={() => { setShowBlame(true); setContextMenu(null) }} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setContextMenu(null) } }}><Icon name="user" size={14} />{t('git.blame')}{showBlame && <Icon name="check" size={14} />}</button>

@@ -24,6 +24,7 @@ export interface MessageEventSummary {
   thought_characters?: number
   commentary_characters?: number
   tool_count?: number
+  edited_files?: string[]
 }
 
 export interface MessageEventDetail extends MessageEventSummary {

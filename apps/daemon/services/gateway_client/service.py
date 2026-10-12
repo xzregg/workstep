@@ -43,6 +43,12 @@ class GatewayClientService:
         self._restore_task = None
         self.skill_sync = None
         self.workflow_runtime = None
+        self.event_sink = None
+
+    async def notify_connection_changed(self):
+        if self.event_sink is not None:
+            await self.event_sink({"type": "CUSTOM", "name": "workstep.gateway_connection_changed",
+                                   "channel": "gateway_connection", "value": {}})
 
     async def start(self) -> None:
         bundle_dir = os.environ.get("WORKSTEP_MANAGED_BUNDLE_DIR")
@@ -96,11 +102,13 @@ class GatewayClientService:
         while True:
             try:
                 await self.restore_connection()
+                await self.notify_connection_changed()
                 return
             except (OSError, ConnectionError, httpx.HTTPError):
                 await asyncio.sleep(10)
             except Exception:
                 self.authorization_required = True
+                await self.notify_connection_changed()
                 logging.getLogger(__name__).warning('Gateway saved connection requires authorization')
                 return
 
@@ -138,6 +146,7 @@ class GatewayClientService:
             provider_store=config_store, usage_outbox=self.usage_outbox,
             audit_outbox=self.audit_outbox, skill_sync=self.skill_sync, on_reconnect_token=persist,
         )
+        self.control_client.on_status_change = self.notify_connection_changed
         args = (saved['authorization'], actor.device_id, saved['control_private'],
                 saved['control_public'], saved['delegation'])
         if saved.get('reconnect_token'):
@@ -154,6 +163,16 @@ class GatewayClientService:
             self._restore_task.cancel()
             await asyncio.gather(self._restore_task, return_exceptions=True)
             self._restore_task = None
+        previous = self.current_actor
+        same_identity = bool(previous and (
+            previous.user_id, previous.device_id, previous.app_instance_id, previous.project_id,
+        ) == (actor.user_id, actor.device_id, actor.app_instance_id, actor.project_id))
+        if (same_identity and self.control_client is not None
+                and not self.authorization_required
+                and not self.control_client.authorization_required):
+            return self.local_sessions.create(actor), actor
+        if not same_identity:
+            self.local_sessions.clear()
         saved = dict(authorization=authorization, proof=proof, control_private=control_private_key_pem,
                      control_public=control_public_key_pem, delegation=delegation_signature)
         await asyncio.to_thread(connection_credentials.save, self.managed_config.gateway_origin, saved)

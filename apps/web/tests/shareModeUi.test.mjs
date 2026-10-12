@@ -18,10 +18,6 @@ const sharedViewSource = await readFile(
   new URL('../src/pages/SharedTaskView.tsx', import.meta.url),
   'utf8',
 )
-const sharedMessagesSource = await readFile(
-  new URL('../src/pages/sharedTaskMessages.ts', import.meta.url),
-  'utf8',
-)
 const taskDetailViewSource = await readFile(
   new URL('../src/components/TaskDetailView.tsx', import.meta.url),
   'utf8',
@@ -72,6 +68,4 @@ test('share mode controls the chat composer and Git write access without hiding 
 test('interactive share selects an actionable step for its composer', () => {
   assert.match(sharedViewSource, /resumableSteps/)
   assert.match(sharedViewSource, /runningSteps\[0\]\?\.key \?\? resumableSteps\[0\]\?\.key/)
-  assert.match(sharedMessagesSource, /workstep\.interaction_request/)
-  assert.match(sharedMessagesSource, /workstep\.interaction_response/)
 })

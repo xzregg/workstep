@@ -1,3 +1,5 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
 import ProjectGitButton from '../components/git/ProjectGitButton'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -87,6 +89,7 @@ export default function ChatPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showMobileDirectoryBrowser, setShowMobileDirectoryBrowser] = useState(false)
   const compact = useCompactLayout()
+  const { can, canOpenSettings } = useGatewayProjectPermissions(activeProject?.id)
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
@@ -189,7 +192,7 @@ export default function ChatPage() {
     closePrompt: t('aiFlow.closePrompt'),
   }), [t, compact])
   const quickPromptItems = useMemo(
-    () => quickButtons.filter((button) => button.enabled !== false).map((button) => ({
+    () => quickButtons.filter((button) => button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
       id: button.id,
       label: button.label,
       prompt: button.prompt,
@@ -197,7 +200,7 @@ export default function ChatPage() {
       kind: button.kind || 'prompt',
       disabled: button.kind === 'action' && projectActions.activeActionIds.includes(button.action_id || button.id),
     })),
-    [quickButtons, projectActions.activeActionIds],
+    [quickButtons, projectActions.activeActionIds, can],
   )
 
   // Resolve project/workflow from the URL (mirrors CanvasEditor's loader).
@@ -289,11 +292,8 @@ export default function ChatPage() {
     },
   })
 
-  // Keep the sidebar session list fresh (titles/previews after turns).
-  useEffect(() => {
-    if (!activeProject?.id) return
-    void useChatListStore.getState().fetchSessions(activeProject.id)
-  }, [activeProject?.id, running])
+  // Navigation uses the sidebar cache. Refresh only after a turn finishes.
+  useChatListTurnRefresh(activeProject?.id, sessionId, running)
 
   // The composer owns draft persistence; a new session starts with empty input.
   useEffect(() => {
@@ -336,6 +336,7 @@ export default function ChatPage() {
   }, [enhanceInputChanged])
 
   const createSession = useCallback(async () => {
+    if (!can('session.create')) return
     if (!activeProject?.id || creating) return
     setCreating(true)
     setSendError('')
@@ -417,18 +418,18 @@ export default function ChatPage() {
             description={t('chatSession.noSession')}
             action={<div className="chat-session-empty-action-group">
               <div className="chat-session-empty-actions">
-                <Button variant="primary" loading={creating} onClick={() => void createSession()}>
+                {can('session.create') && <Button variant="primary" loading={creating} onClick={() => void createSession()}>
                   {t('chatSession.createFirst')}
-                </Button>
-                <Button variant="ghost" onClick={() => setShowArchive(true)}>
+                </Button>}
+                {can('session.manage') && <Button variant="ghost" onClick={() => setShowArchive(true)}>
                   <Icon name="archive" size={13} />{t('chatSession.viewArchive')}
-                </Button>
+                </Button>}
               </div>
               {sendError && <div className="chat-session-create-error" role="alert">{sendError}</div>}
             </div>}
           />
         </div>
-        {showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
+        {can('session.manage') && showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
       </>
     )
   }
@@ -469,7 +470,7 @@ export default function ChatPage() {
         onQuickPromptItemSelect={(item) => {
           const button = quickButtons.find((candidate) => candidate.id === item.id)
           if (!button || button.kind === 'display') return
-          if (button.kind === 'action') { void projectActions.run(button); return }
+          if (button.kind === 'action') { if (can('action.run')) void projectActions.run(button); return }
           if (button.immediate_send) { void send(button.prompt); return }
           const next = applyAssistantQuickPrompt(input, button.prompt)
           setInput(next)
@@ -478,7 +479,7 @@ export default function ChatPage() {
         copy={panelCopy}
         headerActions={(
           <>
-            <Button
+            {can('session.create') && <Button
               variant="ghost"
               size="sm"
               loading={creating}
@@ -486,15 +487,15 @@ export default function ChatPage() {
               onClick={() => void createSession()}
             >
               {t('chatSession.newSession')}
-            </Button>
-            <Button
+            </Button>}
+            {can('session.manage') && <Button
               variant="ghost"
               size="sm"
               onClick={() => setRenameOpen(true)}
             >
               {t('common.rename')}
-            </Button>
-            <Button
+            </Button>}
+            {can('session.manage') && <Button
               variant="ghost"
               size="sm"
               title={t('chatSession.viewArchive')}
@@ -502,10 +503,10 @@ export default function ChatPage() {
             >
               <Icon name="archive" size={13} strokeWidth={2} />
               {t('chatSession.viewArchive')}
-            </Button>
-            <OpenLocationButton activeProject={activeProject} t={t} />
+            </Button>}
+            {can('file.read') && <OpenLocationButton activeProject={activeProject} t={t} />}
             <ProjectGitButton project={activeProject} />
-            <Button
+            {canOpenSettings && <Button
               variant="ghost"
               size="sm"
               title={t('taskList.settingsTitle')}
@@ -513,7 +514,7 @@ export default function ChatPage() {
             >
               <Icon name="settings" size={13} strokeWidth={2} />
               {t('taskList.settings')}
-            </Button>
+            </Button>}
           </>
         )}
         config={{
@@ -582,7 +583,7 @@ export default function ChatPage() {
 
       {transitionDialogs}
 
-      {renameOpen && <ChatSessionRenameDialog
+      {can('session.manage') && renameOpen && <ChatSessionRenameDialog
         projectId={activeProject.id}
         sessionId={sessionId}
         title={sessionTitle}
@@ -591,10 +592,10 @@ export default function ChatPage() {
       />}
 
       <ProjectSettingsPanel
-        project={showSettingsPanel ? activeProject : null}
+        project={canOpenSettings && showSettingsPanel ? activeProject : null}
         onClose={() => setShowSettingsPanel(false)}
       />
-      {showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
+      {can('session.manage') && showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
       {compact && createPortal(
         <button
           className="mobile-session-kebab"
@@ -611,39 +612,39 @@ export default function ChatPage() {
         title={t('chatSession.sessionMenu')}
         onClose={() => setMobileMenuOpen(false)}
       >
-        <Button
+        {can('session.create') && <Button
           variant="ghost"
           loading={creating}
           onClick={() => { setMobileMenuOpen(false); void createSession() }}
           className="chat-session-mobile-action"
         >
           <Icon name="plus" size={16} /> {t('chatSession.newSession')}
-        </Button>
-        <Button
+        </Button>}
+        {can('session.manage') && <Button
           variant="ghost"
           onClick={() => { setMobileMenuOpen(false); setRenameOpen(true) }}
           className="chat-session-mobile-action"
         >
           <Icon name="pencil" size={16} /> {t('common.rename')}
-        </Button>
-        <Button
+        </Button>}
+        {can('session.manage') && <Button
           variant="ghost"
           onClick={() => { setMobileMenuOpen(false); setShowArchive(true) }}
           className="chat-session-mobile-action"
         >
           <Icon name="archive" size={16} /> {t('chatSession.viewArchive')}
-        </Button>
-        <MobileOpenLocationButton onClick={() => { setMobileMenuOpen(false); setShowMobileDirectoryBrowser(true) }} />
+        </Button>}
+        {can('file.read') && <MobileOpenLocationButton onClick={() => { setMobileMenuOpen(false); setShowMobileDirectoryBrowser(true) }} />}
         <ProjectGitButton project={activeProject} />
-        <Button
+        {canOpenSettings && <Button
           variant="ghost"
           onClick={() => { setMobileMenuOpen(false); setShowSettingsPanel(true) }}
           className="chat-session-mobile-action"
         >
           <Icon name="settings" size={16} /> {t('taskList.settings')}
-        </Button>
+        </Button>}
       </MobileSheet>
-      {showMobileDirectoryBrowser && activeProject && (
+      {can('file.read') && showMobileDirectoryBrowser && activeProject && (
         <ProjectDirectoryBrowserDialog
           projectId={activeProject.id}
           title={activeProject.name}

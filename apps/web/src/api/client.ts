@@ -396,6 +396,10 @@ export const fsApi = {
       method: 'POST',
       body: JSON.stringify({ path, opener }),
     }),
+  openFile: (path: string, projectId: string, opener = 'default') =>
+    request<{ opened: boolean; path: string }>('/fs/open-file', {
+      method: 'POST', body: JSON.stringify({ path, project_id: projectId, opener }),
+    }),
   openSessionJournal: (projectId: string, sessionId?: string | null, messageId?: string | null) =>
     request<{ opened: boolean; path: string }>('/fs/open-session-journal', {
       method: 'POST',

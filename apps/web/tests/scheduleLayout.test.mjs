@@ -40,7 +40,7 @@ test('uses the program timezone without exposing a timezone field', () => {
 test('opens without selecting a schedule and reveals the editor only on demand', () => {
   assert.match(source, /const \[creating, setCreating\] = useState\(false\)/)
   assert.match(source, /\? current : null/)
-  assert.match(source, /\{\(selected \|\| creating\) && \(<>/)
+  assert.match(source, /\{\(selected \|\| creating\) && \(<fieldset/)
 })
 
 test('renders a one-time schedule summary on two lines', () => {

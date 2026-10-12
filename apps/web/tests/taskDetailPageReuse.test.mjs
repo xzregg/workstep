@@ -51,7 +51,7 @@ test('task detail keeps review actions in content and has no duplicate footer ac
 
 test('task detail close control is the final header action', async () => {
   const header = await readFile(new URL('../src/components/TaskDetailHeader.tsx', import.meta.url), 'utf8')
-  const titleIndex = header.indexOf('{task.title}')
+  const titleIndex = header.indexOf('<TaskDetailTitle')
   const closeIndex = header.indexOf('aria-label={t(\'common.close\')}')
 
   assert.ok(titleIndex >= 0)

@@ -27,7 +27,8 @@ export function PermissionSubjectTable({ assignments, name, canEdit, canRevoke, 
         <td><button type="button" aria-expanded={open} onClick={() => setExpanded(current => open
           ? current.filter(value => value !== key) : [...current, key])}>{open ? '收起规则' : '查看规则'}</button></td>
       </tr>{open && <tr><td colSpan={5}><ul className="gateway-permission-subject-rules">{rows.map(row => <li key={row.id}>
-        <div><strong>{name(row.permission)}</strong><span className="gateway-permission-detail">{scopeNames[row.scope_type]} · {row.scope_name}</span></div>
+        <div><strong>{name(row.permission)}</strong><span className="gateway-permission-detail">{scopeNames[row.scope_type]} · {row.scope_name}</span>
+          {row.ui_permissions && <span className="gateway-permission-detail">项目入口：允许 {row.ui_permissions.allow.length} 项 · 禁止 {row.ui_permissions.deny.length} 项</span>}</div>
         <span className={`gateway-permission-effect gateway-permission-effect--${row.effect}`}>{row.effect === 'allow' ? '允许' : '禁止'}</span>
         <div className="gateway-device-actions"><button type="button" disabled={!canEdit} onClick={() => onEdit(row)}>调整</button>
           <button type="button" disabled={!canRevoke} onClick={() => onRevoke(row)}>撤销</button></div>

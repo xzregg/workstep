@@ -50,8 +50,9 @@ export function GitFileList({ files, selected, onToggle, onDiff, onDiscard, onIg
 export default function GitChanges({ status, onRefresh, onDiff }: { status: GitStatus; onRefresh: () => Promise<void>; onDiff: (path: string) => void }) {
   const gitApi = useGitApi()
   const writes = usePanelGitWrites()
-  const readOnly = useReadOnlyGit()
+  const contextReadOnly = useReadOnlyGit()
   const can = useGitActionAllowed()
+  const readOnly = contextReadOnly || !can('commit')
   const { t } = useI18n()
   const saved = useDrafts(s => s.drafts[status.id])
   const draft = saved || { message: '', selected: status.files.filter(f => !f.untracked && !f.conflict && !f.submodule).map(f => f.path) }

@@ -1,0 +1,199 @@
+<div id="ws-provider-prototype" aria-label="供应商紧凑布局原型">
+  <style>
+    #ws-provider-prototype {
+      --ws-bg: light-dark(#ffffff,#191b20);
+      --ws-soft: light-dark(#f5f5f7,#24272e);
+      --ws-text: light-dark(#1d1d1f,#eef0f4);
+      --ws-muted: light-dark(#6e6e73,#a6acb7);
+      --ws-line: light-dark(#d2d2d7,#3b404a);
+      --ws-blue: light-dark(#0071e3,#6caeff);
+      --ws-blue-soft: light-dark(#edf5ff,#24364e);
+      --ws-green: light-dark(#16a34a,#84d7a0);
+      --ws-green-soft: light-dark(#edf8f0,#203a2b);
+      --ws-danger: light-dark(#dc2626,#fca5a5);
+      color:var(--ws-text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;
+      background:var(--ws-bg);border:1px solid var(--ws-line);border-radius:14px;
+      padding:26px;position:relative;box-sizing:border-box;max-width:980px;margin:auto;
+    }
+    #ws-provider-prototype *{box-sizing:border-box}
+    #ws-provider-prototype [hidden]{display:none!important}
+    #ws-provider-prototype h2,#ws-provider-prototype p{margin:0}
+    #ws-provider-prototype h2{font-size:20px;font-weight:600;letter-spacing:-.4px}
+    #ws-provider-prototype .ws-page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+    #ws-provider-prototype .ws-description{color:var(--ws-muted);margin-top:6px;font-size:13px;max-width:420px}
+    #ws-provider-prototype .ws-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    #ws-provider-prototype button{font:inherit;color:inherit;background:var(--ws-bg);border:1px solid var(--ws-line);border-radius:12px;padding:0 11px;min-height:32px;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;transition:background .15s}
+    #ws-provider-prototype button:hover{background:var(--ws-soft)}
+    #ws-provider-prototype button:disabled{opacity:.5;cursor:default}
+    #ws-provider-prototype .ws-primary{background:var(--ws-blue);color:light-dark(#ffffff,#1d1d1f);border-color:var(--ws-blue)}
+    #ws-provider-prototype .ws-primary:hover{filter:brightness(.96);background:var(--ws-blue)}
+    #ws-provider-prototype .ws-icon{width:32px;padding:0;flex-shrink:0}
+    #ws-provider-prototype .ws-glyph{display:inline-block;font-family:system-ui,sans-serif;font-size:16px;line-height:1;text-align:center}
+    #ws-provider-prototype .ws-list{display:grid;gap:12px}
+    #ws-provider-prototype .ws-provider{display:grid;grid-template-columns:minmax(0,1fr) 320px;border:1px solid var(--ws-line);border-radius:var(--ws-radius,14px);background:var(--ws-bg);position:relative}
+    #ws-provider-prototype .ws-main{padding:var(--ws-padding,14px);padding-left:64px;min-width:0;position:relative}
+    #ws-provider-prototype .ws-provider-head{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+    #ws-provider-prototype .ws-avatar{position:absolute;left:14px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:38px;height:38px;border-radius:12px;color:var(--ws-blue);background:var(--ws-blue-soft);font-weight:600;flex-shrink:0;font-size:13px}
+    #ws-provider-prototype .ws-title-block{flex:1;min-width:0}
+    #ws-provider-prototype .ws-title-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    #ws-provider-prototype .ws-name{font-size:15px;font-weight:600;overflow-wrap:anywhere}
+    #ws-provider-prototype .ws-kind{font-size:11px;background:var(--ws-soft);color:var(--ws-muted);padding:2px 7px;border-radius:999px}
+    #ws-provider-prototype .ws-caption{color:var(--ws-muted);font-size:12px;margin-top:3px}
+    #ws-provider-prototype .ws-status{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ws-green);background:var(--ws-green-soft);padding:3px 8px;border-radius:999px;white-space:nowrap}
+    #ws-provider-prototype .ws-status.neutral{color:var(--ws-muted);background:var(--ws-soft)}
+    #ws-provider-prototype .ws-status-dot{width:5px;height:5px;border-radius:50%;background:currentColor}
+    #ws-provider-prototype .ws-endpoint{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;margin-bottom:6px;align-items:baseline}
+    #ws-provider-prototype .ws-endpoint:last-child{margin-bottom:0}
+    #ws-provider-prototype .ws-endpoint>.ws-label{display:none}
+    #ws-provider-prototype .ws-label{color:var(--ws-muted);font-size:12px}
+    #ws-provider-prototype .ws-url{font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;font-size:12px;overflow-wrap:anywhere}
+    #ws-provider-prototype .ws-protocols{display:flex;gap:6px;flex-wrap:wrap}
+    #ws-provider-prototype .ws-protocol{font-size:11px;color:var(--ws-muted);background:var(--ws-soft);padding:3px 7px;border-radius:999px}
+    #ws-provider-prototype .ws-summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+    #ws-provider-prototype .ws-disclosure{border:0;padding:0;color:var(--ws-blue);min-height:30px;background:transparent}
+    #ws-provider-prototype .ws-disclosure:hover{background:transparent;text-decoration:underline}
+    #ws-provider-prototype .ws-time{font-size:11px;color:var(--ws-muted)}
+    #ws-provider-prototype .ws-card-actions{display:flex;gap:6px;flex-wrap:wrap;align-content:center;align-items:center;justify-content:flex-end;padding:var(--ws-padding,14px);padding-left:0}
+    #ws-provider-prototype .ws-card-actions button{font-size:12px;min-height:30px;padding:0 10px}
+    #ws-provider-prototype .ws-card-actions .ws-icon{padding:0}
+    #ws-provider-prototype .ws-delete:hover{color:var(--ws-danger)}
+    #ws-provider-prototype .ws-muted-provider .ws-avatar{color:var(--ws-muted);background:var(--ws-soft)}
+    #ws-provider-prototype .ws-muted-provider .ws-name{color:var(--ws-muted)}
+    #ws-provider-prototype .ws-toast{position:sticky;bottom:12px;margin:12px auto 0;max-width:fit-content;padding:9px 14px;color:var(--ws-text);background:var(--ws-soft);border:1px solid var(--ws-line);border-radius:12px;font-size:12px}
+    #ws-provider-prototype .ws-spinner{width:13px;height:13px;border:2px solid var(--ws-line);border-top-color:var(--ws-blue);border-radius:50%;animation:ws-spin .7s linear infinite}
+    @keyframes ws-spin{to{transform:rotate(360deg)}}
+    #ws-provider-prototype .ws-dialog{background:var(--ws-bg);color:var(--ws-text);border:1px solid var(--ws-line);border-radius:12px;padding:22px;max-width:calc(100% - 30px);width:400px}
+    #ws-provider-prototype .ws-dialog::backdrop{background:color-mix(in srgb,#1d1d1f 35%,transparent)}
+    #ws-provider-prototype .ws-dialog h3{margin:0 0 16px;font-size:20px}
+    #ws-provider-prototype .ws-model-dialog{width:540px;padding:20px;max-height:80vh}
+    #ws-provider-prototype .ws-model-dialog-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    #ws-provider-prototype .ws-model-dialog h3{margin:0;font-size:16px}
+    #ws-provider-prototype .ws-model-subtitle{font-size:12px;color:var(--ws-muted);margin-top:4px}
+    #ws-provider-prototype .ws-model-list{padding:0;margin:16px 0 0;list-style:none;max-height:320px;overflow-y:auto;scrollbar-gutter:stable}
+    #ws-provider-prototype .ws-model-list li{padding:9px 2px;border-bottom:1px solid var(--ws-line);font:12px/1.5 ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;overflow-wrap:anywhere}
+    #ws-provider-prototype .ws-model-empty{padding:24px 0;color:var(--ws-muted);font-size:13px}
+    #ws-provider-prototype .ws-field{display:grid;gap:6px;margin:12px 0;font-size:12px;color:var(--ws-muted)}
+    #ws-provider-prototype .ws-field input{width:100%;border:1px solid var(--ws-line);border-radius:12px;background:var(--ws-bg);color:var(--ws-text);padding:9px 10px;font-family:inherit;font-size:15px;line-height:1.4}
+    #ws-provider-prototype .ws-dialog-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+    @media(min-width:900px){
+      #ws-provider-prototype .ws-provider{grid-template-columns:minmax(0,1fr) auto}
+      #ws-provider-prototype .ws-card-actions{flex-wrap:nowrap}
+    }
+    @media(max-width:760px){
+      #ws-provider-prototype .ws-provider{grid-template-columns:minmax(0,1fr)}
+      #ws-provider-prototype .ws-card-actions{padding:0 var(--ws-padding,14px) 12px;padding-left:64px;justify-content:flex-start}
+      #ws-provider-prototype .ws-main{padding-bottom:10px}
+    }
+    @media(max-width:560px){
+      #ws-provider-prototype{padding:18px 14px}
+      #ws-provider-prototype .ws-page-head{gap:14px}
+      #ws-provider-prototype .ws-provider-head{flex-wrap:wrap;gap:10px}
+      #ws-provider-prototype .ws-status{margin-left:auto}
+      #ws-provider-prototype .ws-endpoint{grid-template-columns:1fr;gap:4px}
+      #ws-provider-prototype .ws-footer{align-items:flex-start;gap:6px}
+      #ws-provider-prototype .ws-summary,#ws-provider-prototype .ws-card-actions{width:100%}
+      #ws-provider-prototype .ws-card-actions{justify-content:flex-start}
+    }
+    @media(pointer:coarse){#ws-provider-prototype button{min-height:44px}#ws-provider-prototype .ws-field input{font-size:16px}}
+    @media(prefers-reduced-motion:reduce){#ws-provider-prototype *{transition:none!important}}
+  </style>
+  <header class="ws-page-head">
+    <div><h2>供应商</h2><p class="ws-description">统一管理 API 地址、密钥与模型，供 API 引擎复用。</p></div>
+    <div class="ws-toolbar">
+      <button class="cursor-interaction ws-icon" data-action="refresh" aria-label="刷新供应商"><span class="ws-glyph" aria-hidden="true">↻</span></button>
+      <button class="cursor-interaction" data-action="import"><span class="ws-glyph" aria-hidden="true">↓</span>从第三方导入</button>
+      <button class="cursor-interaction ws-primary" data-action="add"><span class="ws-glyph" aria-hidden="true">+</span>添加供应商</button>
+    </div>
+  </header>
+  <div class="ws-list">
+    <article class="ws-provider" data-id="deepseek">
+      <div class="ws-main">
+        <header class="ws-provider-head">
+          <div class="ws-avatar">DE</div>
+          <div class="ws-title-block"><div class="ws-title-row"><span class="ws-name">DeepSeek</span><span class="ws-kind">DEEPSEEK</span></div><p class="ws-caption">密钥已配置</p></div>
+          
+          
+        </header>
+        <div class="ws-endpoint"><span class="ws-label">API 地址</span><span class="ws-url">https://api.deepseek.com/v1</span></div>
+        <div class="ws-endpoint"><span class="ws-label">支持协议</span><div class="ws-protocols"><span class="ws-protocol">OpenAI Chat Completions</span></div></div>
+      <div class="ws-summary"><button class="cursor-interaction ws-disclosure" data-action="models" aria-haspopup="dialog" aria-controls="ws-model-dialog">3 个模型</button><span class="ws-time" data-time data-tooltip="2026-09-03 09:35:06 UTC">更新于 09-03</span></div></div><div class="ws-card-actions"><button class="cursor-interaction" data-action="test">测试连接</button><button class="cursor-interaction" data-action="fetch-models">获取模型</button><button class="cursor-interaction ws-enable" aria-pressed="true" aria-label="切换 DeepSeek 启用状态" data-action="toggle">停用</button><button class="cursor-interaction" data-action="edit">编辑</button><button class="cursor-interaction" data-action="copy">复制配置</button><button class="cursor-interaction ws-icon ws-delete" aria-label="删除供应商" data-action="delete"><span class="ws-glyph" aria-hidden="true">×</span></button><span class="ws-status"><span class="ws-status-dot"></span><span data-status>已验证</span></span></div>
+      
+      
+    </article>
+    <article class="ws-provider ws-muted-provider" data-id="aliyun">
+      <div class="ws-main"><header class="ws-provider-head"><div class="ws-avatar">阿里</div><div class="ws-title-block"><div class="ws-title-row"><span class="ws-name">阿里云 token plan</span><span class="ws-kind">自定义</span></div><p class="ws-caption">密钥已配置</p></div></header>
+        <div class="ws-endpoint"><span class="ws-label">API 地址</span><span class="ws-url">https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1</span></div><div class="ws-endpoint"><span class="ws-label">支持协议</span><div class="ws-protocols"><span class="ws-protocol">OpenAI Chat Completions</span></div></div>
+      <div class="ws-summary"><button class="cursor-interaction ws-disclosure" data-action="models" aria-haspopup="dialog" aria-controls="ws-model-dialog">0 个模型</button></div></div><div class="ws-card-actions"><button class="cursor-interaction" data-action="test">测试连接</button><button class="cursor-interaction" data-action="fetch-models">获取模型</button><button class="cursor-interaction ws-enable" aria-pressed="false" aria-label="切换 阿里云 token plan 启用状态" data-action="toggle">启用</button><button class="cursor-interaction" data-action="edit">编辑</button><button class="cursor-interaction" data-action="copy">复制配置</button><button class="cursor-interaction ws-icon ws-delete" aria-label="删除供应商" data-action="delete"><span class="ws-glyph" aria-hidden="true">×</span></button><span class="ws-status neutral"><span class="ws-status-dot"></span><span data-status>已停用</span></span></div>
+      
+    </article>
+    <article class="ws-provider" data-id="team">
+      <div class="ws-main"><header class="ws-provider-head"><div class="ws-avatar">团队</div><div class="ws-title-block"><div class="ws-title-row"><span class="ws-name">团队网关</span><span class="ws-kind">自定义</span></div><p class="ws-caption">密钥已配置</p></div></header>
+        <div class="ws-endpoint"><span class="ws-label">API 地址</span><span class="ws-url">https://gateway.example.com/v1</span></div><div class="ws-endpoint"><span class="ws-label">支持协议</span><div class="ws-protocols"><span class="ws-protocol">OpenAI Chat Completions</span><span class="ws-protocol">OpenAI Responses</span><span class="ws-protocol">Anthropic Messages</span></div></div>
+      <div class="ws-summary"><button class="cursor-interaction ws-disclosure" data-action="models" aria-haspopup="dialog" aria-controls="ws-model-dialog">26 个模型</button><span class="ws-time" data-time data-tooltip="2026-10-02 04:26:12 UTC">更新于 10-02</span></div></div><div class="ws-card-actions"><button class="cursor-interaction" data-action="test">测试连接</button><button class="cursor-interaction" data-action="fetch-models">获取模型</button><button class="cursor-interaction ws-enable" aria-pressed="true" aria-label="切换 团队网关 启用状态" data-action="toggle">停用</button><button class="cursor-interaction" data-action="edit">编辑</button><button class="cursor-interaction" data-action="copy">复制配置</button><button class="cursor-interaction ws-icon ws-delete" aria-label="删除供应商" data-action="delete"><span class="ws-glyph" aria-hidden="true">×</span></button><span class="ws-status neutral"><span class="ws-status-dot"></span><span data-status>待验证</span></span></div>
+      
+      
+    </article>
+  </div>
+  <div class="ws-toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="ws-model-dialog" class="ws-dialog ws-model-dialog" aria-labelledby="ws-model-title">
+    <header class="ws-model-dialog-head"><div><h3 id="ws-model-title" data-model-title>模型明细</h3><p class="ws-model-subtitle" data-model-subtitle></p></div><button class="cursor-interaction ws-icon" data-action="close-models" aria-label="关闭模型明细"><span class="ws-glyph" aria-hidden="true">×</span></button></header>
+    <ul class="ws-model-list" data-model-list aria-label="模型列表"></ul>
+    <p class="ws-model-empty" data-model-empty hidden>点击供应商卡片上的“获取模型”后查看明细。</p>
+  </dialog>
+  <dialog class="ws-dialog" data-edit><form method="dialog"><h3 data-dialog-title>编辑供应商</h3><label class="ws-field">名称<input name="providerName" required autocomplete="off"></label><label class="ws-field">API 地址<input name="providerUrl" type="url" required autocomplete="off"></label><div class="ws-dialog-actions"><button class="cursor-interaction" type="button" data-action="cancel">取消</button><button class="cursor-interaction ws-primary" type="submit">保存</button></div></form></dialog>
+  <dialog class="ws-dialog" data-confirm><h3>删除供应商？</h3><p class="ws-description" data-confirm-label></p><div class="ws-dialog-actions"><button class="cursor-interaction" data-action="cancel-delete">取消</button><button class="cursor-interaction ws-primary" data-action="confirm-delete">删除</button></div></dialog>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('ws-provider-prototype');
+  const dialog = root.querySelector('[data-edit]');
+  const confirmation = root.querySelector('[data-confirm]');
+  const form = dialog.querySelector('form');
+  let editCard = null, deleteCard = null, toastTimer;
+  const names = ['claude-haiku-4-5-20251001','claude-opus-4-6','claude-opus-4-7','claude-sonnet-4-6','claude-sonnet-4-5','gpt-5','gpt-5-mini','gpt-5-nano','gpt-5-codex','gpt-5.1','gpt-5.1-codex','gpt-5.2','gpt-5.2-codex','gpt-4.1','gpt-4.1-mini','gpt-4.1-nano','o3','o4-mini','gemini-2.5-pro','gemini-2.5-flash','deepseek-v4-flash','deepseek-v4-pro','qwen3-coder','qwen3-max','kimi-k2','glm-4.5'];
+  const modelData={deepseek:['deepseek-v4-flash','deepseek-v4-flash-vision-exp','deepseek-v4-pro'],aliyun:[],team:names};
+  const modelsDialog=root.querySelector('#ws-model-dialog');
+  const notify = text => {const el=root.querySelector('.ws-toast');el.textContent=text;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,3000)};
+  function save() {
+    if (window.openai?.setWidgetState) window.openai.setWidgetState({modelContent:{prototype:'原卡片样式与模型明细弹窗'},privateContent:{cards:[...root.querySelectorAll('.ws-provider')].map(card=>({id:card.dataset.id,enabled:card.querySelector('.ws-enable').getAttribute('aria-pressed')==='true'}))}}).catch(()=>{});
+  }
+  function restore(snapshot) {
+    const cards=snapshot?.privateContent?.cards;if(!Array.isArray(cards))return;
+    cards.forEach(item=>{const card=[...root.querySelectorAll('.ws-provider')].find(c=>c.dataset.id===item.id);if(!card)return;card.querySelector('.ws-enable').setAttribute('aria-pressed',String(item.enabled));card.querySelector('.ws-enable').textContent=item.enabled?'停用':'启用';card.classList.toggle('ws-muted-provider',!item.enabled);card.querySelector('[data-status]').textContent=item.enabled?(item.id==='deepseek'?'已验证':'待验证'):'已停用';card.querySelector('.ws-status').classList.toggle('neutral',!item.enabled||item.id!=='deepseek');});
+  }
+  restore(window.openai?.widgetState);
+  window.addEventListener('openai:set_globals',event=>restore(event.detail?.globals?.widgetState));
+  
+  root.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-action]');if(!button)return;
+    const action=button.dataset.action,card=button.closest('.ws-provider');
+    if(action==='models'){
+      const models=modelData[card.dataset.id]||[];
+      root.querySelector('[data-model-title]').textContent=card.querySelector('.ws-name').textContent+' · 模型明细';
+      root.querySelector('[data-model-subtitle]').textContent=models.length?'OpenAI Chat Completions · '+models.length+' 个模型':'尚未获取模型';
+      root.querySelector('[data-model-list]').replaceChildren(...models.map(name=>{const item=document.createElement('li');item.textContent=name;return item}));
+      root.querySelector('[data-model-empty]').hidden=models.length>0;
+      modelsDialog.showModal();
+    }
+    if(action==='close-models')modelsDialog.close();
+    if(action==='toggle'){const enabled=button.getAttribute('aria-pressed')!=='true';button.setAttribute('aria-pressed',String(enabled));button.textContent=enabled?'停用':'启用';card.classList.toggle('ws-muted-provider',!enabled);card.querySelector('[data-status]').textContent=enabled?'待验证':'已停用';card.querySelector('.ws-status').classList.add('neutral');save();}
+    if(action==='copy')notify('原型演示：已复制配置');
+    if(action==='refresh')notify('原型演示：供应商列表已刷新');
+    if(action==='import')notify('原型演示：此处进入第三方配置导入');
+    if(action==='test'||action==='fetch-models'){
+      const content=button.innerHTML;button.disabled=true;button.innerHTML='<span class="ws-spinner" aria-hidden="true"></span>'+(action==='test'?'测试中':'获取中');
+      setTimeout(()=>{button.disabled=false;button.innerHTML=content;if(action==='test'){if(card.querySelector('.ws-enable').getAttribute('aria-pressed')==='true'){card.querySelector('[data-status]').textContent='已验证';card.querySelector('.ws-status').classList.remove('neutral')}notify('原型演示：连接测试通过')}else{const time=card.querySelector('[data-time]');if(time){time.textContent='刚刚更新';time.removeAttribute('data-tooltip')}notify('原型演示：模型列表已更新')}},900);
+    }
+    if(action==='edit'||action==='add'){editCard=action==='edit'?card:null;root.querySelector('[data-dialog-title]').textContent=editCard?'编辑供应商':'添加供应商';form.elements.providerName.value=editCard?editCard.querySelector('.ws-name').textContent:'';form.elements.providerUrl.value=editCard?editCard.querySelector('.ws-url').textContent:'';validate();dialog.showModal();}
+    if(action==='cancel')dialog.close();
+    if(action==='delete'){deleteCard=card;root.querySelector('[data-confirm-label]').textContent='将从原型中移除“'+card.querySelector('.ws-name').textContent+'”。';confirmation.showModal();}
+    if(action==='cancel-delete')confirmation.close();
+    if(action==='confirm-delete'){deleteCard?.remove();deleteCard=null;confirmation.close();notify('已从原型移除供应商');}
+  });
+  const submit=form.querySelector('[type=submit]');
+  function validate(){submit.disabled=!form.elements.providerName.value.trim()||!form.elements.providerUrl.value.trim()||!form.checkValidity()}
+  form.addEventListener('input',validate);dialog.addEventListener('close',()=>editCard=null);
+  form.addEventListener('submit',event=>{event.preventDefault();if(!form.checkValidity())return;if(editCard){editCard.querySelector('.ws-name').textContent=form.elements.providerName.value.trim();editCard.querySelector('.ws-url').textContent=form.elements.providerUrl.value.trim();notify('原型中的配置已保存')}else{notify('原型演示：供应商配置已填写')}dialog.close();});
+  if(globalThis.Tweak){const options={spacing:14,radius:"14"};const render=()=>{root.style.setProperty('--ws-padding',options.spacing+'px');root.style.setProperty('--ws-radius',options.radius+'px')};const tweak=new Tweak({container:root,onChange:render});tweak.addSlider(options,'spacing',{label:'卡片留白',min:12,max:24,unit:'px'});tweak.addSelect(options,'radius',{label:'卡片圆角',options:[{label:'紧凑 · 12px',value:'12'},{label:'标准 · 14px',value:'14'},{label:'柔和 · 18px',value:'18'}]});}
+})();
+</script>

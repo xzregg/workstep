@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from schemas.base import BaseSchema
 
@@ -26,8 +26,16 @@ class RunTaskRequest(BaseSchema):
 
 
 class UpdateTaskRequest(BaseSchema):
+    title: str | None = None
     description: str | None = None
     review_overrides: dict[str, object] | None = None
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def validate_title(cls, value):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Task title must not be empty")
+        return value.strip()
 
 
 class ScheduledStartRequest(BaseSchema):

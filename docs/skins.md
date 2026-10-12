@@ -78,6 +78,8 @@ ID 使用小写字母开头，可包含小写字母、数字、`_`、`-`，最�
 
 发送/停止/上传/审批/保存/删除、快捷命令、权限、分享只读规则、API 与 WebSocket 不由皮肤接管。不复制聊天实现，也不新增业务事件总线。皮肤只能调整已提供的部位顺序与布局选项；任意模板和可执行组件属于另一个插件级扩展。
 
+项目授权界面继续使用 `useGatewayProjectPermissions` / `ProjectPermissionGate` 的具体动作权限；自定义皮肤不能恢复未渲染的入口或绕过路由限制。项目范围工作台不开放全局设置；皮肤注册、目录校验、ZIP 管理和聊天工作区创建仍是宿主操作，项目读者与编辑者均不能管理宿主皮肤。
+
 运行时通知：
 
 - `workstep:skin-change`：DOM 样式和布局已应用，包含 id、revision、layout、reason；窗口跨越断点时 reason 为 viewport。
@@ -115,5 +117,6 @@ CLI 与引擎注入工具复用同一 REST 服务；工具 mutation 继续要求
 
 - 后台：`test_skins.py`、`test_skin_onboarding.py`、`test_skin_cli.py`；覆盖真实 API、真实数据库慢 SQL canary、慢磁盘健康检查、注册回滚、ZIP、资源和项目鉴权。
 - 前端：`skins.test.ts`、`skinSelect.test.tsx`、`skinSettings.test.tsx`、`taskDetailSplitLayout.test.tsx`；覆盖编译、状态保持、继承、预览、真实 change、嵌套浮层 Esc 和布局计算。
+- 权限整合：`gatewayWorkspaceApp.test.tsx` 对默认与自定义皮肤分别验证项目只读／任务创建者的入口和路由限制；`test_skins.py` 对项目读者与编辑者逐项检查宿主管理接口拒绝访问。
 - 浏览器：先运行 Web build，再执行 `apps/web/scripts/check-skins.cjs`（PLAYWRIGHT_MODULE 可指定现有安装）。脚本读取实际生产构建，全拦截 API/资源，不启动项目服务；检查五档宽度、选项触控尺寸、焦点/关闭及恢复，并保存真实截图到 node_modules/.tmp/skin-qa。这些是验收截图，不代替官网手册演示截图。
 - 合并交付时集中同步官网操作手册和真实手册截图；功能分支阶段不宣称手册完成。

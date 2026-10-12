@@ -69,9 +69,13 @@ class _RemoteProjectConnection:
         self._send_lock = asyncio.Lock()
         self._reader_task: asyncio.Task | None = None
         self._pending: dict[str, asyncio.Future] = {}
+        self._subscription: dict[str, Any] | None = None
 
-    async def _emit_status(self, status: str) -> None:
+    async def _emit_status(self, status: str, project: dict[str, Any] | None = None) -> None:
         try:
+            if project is None:
+                stored = await asyncio.to_thread(self._registry.get, self.local_project_id)
+                project = RemoteProjectRegistry._public(stored) if stored else None
             result = self._event_sink(
                 {
                     "type": "CUSTOM",
@@ -80,6 +84,7 @@ class _RemoteProjectConnection:
                     "value": {
                         "project_id": self.local_project_id,
                         "status": status,
+                        "project": project,
                     },
                 }
             )
@@ -167,7 +172,10 @@ class _RemoteProjectConnection:
                     ),
                 )
                 self._reader_task = asyncio.create_task(self._reader())
-                await self._emit_status("connected")
+                if self._subscription is not None:
+                    async with self._send_lock:
+                        await socket.send(json.dumps({"type": "subscribe", **self._subscription}, ensure_ascii=False))
+                await self._emit_status("connected", public)
                 return public
             except Exception:
                 if socket is not None and self._socket is None:
@@ -210,13 +218,14 @@ class _RemoteProjectConnection:
                     message.get("project"), dict
                 ):
                     project = message["project"]
-                    await asyncio.to_thread(
+                    updated = await asyncio.to_thread(
                         self._registry.update,
                         self.local_project_id,
                         name=str(project.get("name") or ""),
                         steps=project.get("steps") or {},
                         workflows=project.get("workflows") or [],
                     )
+                    await self._emit_status("updated", RemoteProjectRegistry._public(updated))
                 elif message.get("type") == "access_ended":
                     reason = str(message.get("reason") or "")
                     if reason in {"expired", "revoked"}:
@@ -304,8 +313,10 @@ class _RemoteProjectConnection:
                     pass
             raise
 
-    async def subscribe(self, subscription: dict[str, Any]) -> None:
-        await self.connect()
+    async def subscribe(self, subscription: dict[str, Any], *, connect: bool = True) -> None:
+        self._subscription = subscription
+        if connect:
+            await self.connect()
         if self._socket is not None:
             async with self._send_lock:
                 await self._socket.send(
@@ -378,9 +389,9 @@ class RemoteProjectClientManager:
             raise KeyError(local_project_id)
         return await self._connection(local_project_id).request(request)
 
-    async def subscribe(self, local_project_id: str, subscription: dict[str, Any]) -> None:
+    async def subscribe(self, local_project_id: str, subscription: dict[str, Any], *, connect: bool = True) -> None:
         if await asyncio.to_thread(self._registry.get, local_project_id) is not None:
-            await self._connection(local_project_id).subscribe(subscription)
+            await self._connection(local_project_id).subscribe(subscription, connect=connect)
 
     async def remove(self, local_project_id: str) -> bool:
         connection = self._connections.pop(local_project_id, None)

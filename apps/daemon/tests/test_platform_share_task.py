@@ -462,7 +462,7 @@ async def test_platform_share_task_read_scope_and_slow_db_health(api_context, mo
     assert "cwd" not in body
     assert body['engine'] == created.json()['engine']
     assert body['workflow']['id'] == workflow_id
-    assert 'session_id' not in str(body['steps'])
+    assert all('session_id' in step for step in body['steps'])
     assert all('config' not in node for node in body['workflow']['steps'].get('nodes', []))
     assert body["steps"]
     assert all({'step_key', 'status', 'has_history'}.issubset(step)
@@ -683,7 +683,7 @@ async def test_platform_share_review_is_task_scoped_and_slow_sql_keeps_health(ap
 
 
 @pytest.mark.anyio
-async def test_platform_share_history_excludes_private_channel_and_slow_sql(api_context, monkeypatch):
+async def test_platform_share_history_includes_coordinator_and_slow_sql(api_context, monkeypatch):
     import main
     from models import Message
     from models.fields import utc_now
@@ -706,7 +706,7 @@ async def test_platform_share_history_excludes_private_channel_and_slow_sql(api_
                                         (2, "coordinator", "Private planning")):
             Message.create(id=f"message-{index}", task=task_id, step_key="step-1",
                            channel=channel, sequence=index, position=index,
-                           role="assistant", content=content, event_summary_json=json.dumps([{"type": "agent_message_chunk", "data": {"content": {"text": "summary"}}}]), created_at=utc_now())
+                           role="assistant", content=content, events_json=json.dumps([{"type": "agent_message_chunk", "data": {"content": {"text": "summary"}}}]), created_at=utc_now())
 
     await main.project_manager.run_db(project_id, seed)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
@@ -749,14 +749,14 @@ async def test_platform_share_history_excludes_private_channel_and_slow_sql(api_
     assert time.monotonic() - started < 0.5
     status, body = await pending
     assert status == 200
-    assert [item["content"] for item in body["messages"]] == ["Visible message"]
-    assert "Private planning" not in json.dumps(body)
+    assert [item["content"] for item in body["messages"]] == ["Visible message", "Private planning"]
+    assert body["messages"][1]["channel"] == "coordinator"
     assert body["messages"][0]["channel"] == "execution"
     assert body["messages"][0]["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
 
 
 @pytest.mark.anyio
-async def test_platform_share_history_pages_execution_messages(api_context, monkeypatch):
+async def test_platform_share_history_pages_execution_and_coordinator_messages(api_context, monkeypatch):
     import main
     from models import Message
     from models.fields import utc_now
@@ -814,12 +814,12 @@ async def test_platform_share_history_pages_execution_messages(api_context, monk
     status, first = await read("/api/platform-share/history")
     assert status == 200
     assert len(first["messages"]) == 100
-    assert first["messages"][0]["content"] == "message-5"
+    assert first["messages"][0]["content"] == "message-6"
     assert first["next_offset"] == 100
     status, older = await read("/api/platform-share/history/100")
     assert status == 200
     assert [item["content"] for item in older["messages"]] == [
-        f"message-{index}" for index in range(5)
+        f"message-{index}" for index in range(6)
     ]
     assert older["next_offset"] is None
     assert (await read("/api/platform-share/history/1000000"))[0] == 403
@@ -832,7 +832,7 @@ async def test_platform_share_history_pages_execution_messages(api_context, monk
     assert status == 200
     assert len(final_events["events"]) == 5
     assert final_events["next_cursor"] is None
-    assert (await read("/api/platform-share/events/private-page/0"))[0] == 404
+    assert (await read("/api/platform-share/events/private-page/0"))[0] == 200
 
     from services import history as history_service
     original_events = history_service.get_message_events

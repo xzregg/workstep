@@ -92,6 +92,7 @@ export interface AssistantChatMessage {
     thought_characters?: number
     commentary_characters?: number
     tool_count?: number
+    edited_files?: string[]
   }
   event_detail?: {
     available?: boolean

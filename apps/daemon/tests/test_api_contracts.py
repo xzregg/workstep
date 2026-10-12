@@ -5919,3 +5919,47 @@ async def test_fs_mkdir_parent_is_file(api_context):
     file_path.write_text("hi")
     res = await client.post("/api/fs/mkdir", json={"parent": str(file_path), "name": "x"})
     assert res.status_code == 400, res.text
+
+
+@pytest.mark.anyio
+async def test_task_rename_preserves_context_and_does_not_block_health(api_context, monkeypatch):
+    import main
+
+    client, tmp_path = api_context
+    directory = tmp_path / "rename-project"
+    directory.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    workflow_id = (await _create_test_workflow(client, pid))["id"]
+    created = await client.post(f"/api/task/create?project_id={pid}", json={
+        "workflow_id": workflow_id, "title": "Original", "description": "Keep context", "auto_start": False,
+    })
+    assert created.status_code == 200
+    task = created.json()
+    url = f"/api/task/{task['id']}?project_id={pid}"
+    project = main.project_manager.get_project_by_id(pid)
+    original = project.db.execute_sql
+    entered = threading.Event()
+
+    def slow_write(sql, *args, **kwargs):
+        if sql.startswith('UPDATE "tasks"'):
+            entered.set()
+            time.sleep(0.3)
+        return original(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_write)
+    pending = asyncio.create_task(client.patch(url, json={"title": "  New name  "}))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - before < 0.15
+    response = await pending
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["title"] == "New name"
+    for field in ("description", "status", "steps", "review_overrides"):
+        assert updated.get(field) == task.get(field)
+    assert (await client.get(url)).json()["title"] == "New name"
+    for value in ("", "   ", None):
+        assert (await client.patch(url, json={"title": value})).status_code == 422
+    assert (await client.patch(url, json={"description": "Changed context"})).json()["title"] == "New name"
+    assert (await client.patch(f"/api/task/missing?project_id={pid}", json={"title": "New"})).status_code == 404

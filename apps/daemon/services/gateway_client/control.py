@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import hashlib
+import inspect
 from urllib.parse import urlsplit
 
 import httpx
@@ -62,6 +63,8 @@ class GatewayControlClient:
                                                        recover=recover_engine_command)
                                  if provider_store is not None else None)
         self.online = False
+        self.on_status_change = None
+        self._last_status = None
         self.authorization_required = False
         self._task: asyncio.Task | None = None
         self._data_tasks: set[asyncio.Task] = set()
@@ -77,6 +80,16 @@ class GatewayControlClient:
         self._task_share_request_lock = asyncio.Lock()
         self._verified_gateway_key: str | None = None
         self._reconnect_token: str | None = None
+
+    async def _notify_status(self):
+        status = (self.online, self.authorization_required)
+        if status == self._last_status:
+            return
+        self._last_status = status
+        if self.on_status_change is not None:
+            result = self.on_status_change()
+            if inspect.isawaitable(result):
+                await result
 
     async def _probe_daemon_health(self) -> bool | None:
         if self.asgi_app is None:
@@ -304,6 +317,7 @@ class GatewayControlClient:
                     self._project_ack_messages = project_messages
                     self._task_share_ack_messages = asyncio.Queue()
                     self.online = True
+                    await self._notify_status()
                     delay = 1.0
                     while not self._stop.is_set():
                         if runtime_task is None or runtime_task.done():
@@ -360,6 +374,7 @@ class GatewayControlClient:
                 logger.warning("Gateway control connection failed: %s", type(exc).__name__)
             finally:
                 self.online = False
+                await self._notify_status()
                 self._active_socket = None
                 if self._project_ack_messages is not None:
                     self._project_ack_messages.put_nowait(

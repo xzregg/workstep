@@ -2,10 +2,16 @@ from typing import Literal
 
 from fastapi import APIRouter, Query, Request
 from gateway.api.adapters import invoke
+from gateway.services.project_ui_permissions import ProjectPermissionSetInput, set_project_permission_set
 from gateway.services.permissions import (PermissionInput, permission_catalog, list_permissions,
                                           set_permission, revoke_permission, permission_subjects, permission_resources)
 
 router = APIRouter(prefix="/api/admin/permissions")
+
+
+@router.post('/project-set')
+async def project_set(request: Request, body: ProjectPermissionSetInput):
+    return await invoke(set_project_permission_set, request=request, body=body)
 
 
 @router.get("/catalog")

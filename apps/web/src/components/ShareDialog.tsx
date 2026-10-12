@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import ResizablePanel from './ResizablePanel'
 import { useEffect, useMemo, useState, useRef } from 'react'
 import Button from './Button'
@@ -38,6 +39,7 @@ export default function ShareDialog({
   gateway = false,
 }: Props) {
   const { t } = useI18n()
+  const { can } = useGatewayProjectPermissions(projectId)
   const project = useProjectStore(state => state.projects.find(item => item.id === projectId))
   const [share, setShare] = useState<ShareInfo | null>(null)
   const [loading, setLoading] = useState(false)
@@ -108,7 +110,7 @@ export default function ShareDialog({
   }
 
   const handleCreate = async () => {
-    if (pending.current || loading) return
+    if (!can('share.create') || pending.current || loading) return
     if (password.length > 0 && password.length < 4) {
       setError(t('share.passwordTooShort'))
       return
@@ -153,7 +155,7 @@ export default function ShareDialog({
   }
 
   const handleRevoke = async () => {
-    if (pending.current) return
+    if (!can('share.manage') || pending.current) return
     pending.current = true
     setRevoking(true)
     try {
@@ -236,7 +238,7 @@ export default function ShareDialog({
                 </div>
                 {!shareUrl && <div className="task-share-link-unavailable">
                   <p>{t('share.savedLinkUnavailable')}</p>
-                  <Button onClick={() => setShare(null)}>{t('share.create')}</Button>
+                  {can('share.create') && <Button onClick={() => setShare(null)}>{t('share.create')}</Button>}
                 </div>}
                 {shareUrl && <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
@@ -272,7 +274,7 @@ export default function ShareDialog({
                   })}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-                  <Button
+                  {can('share.manage') && <Button
                     variant="danger"
                     loading={revoking}
                     onClick={() => setConfirmRevoke(true)}
@@ -280,10 +282,10 @@ export default function ShareDialog({
                   >
                     <Icon name="trash" size={13} />
                     {t('share.revoke')}
-                  </Button>
+                  </Button>}
                 </div>
               </div>
-            ) : (
+            ) : !can('share.create') ? <p role="status">{t('common.featureUnavailable')}</p> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>

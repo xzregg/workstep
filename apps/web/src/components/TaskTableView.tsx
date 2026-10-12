@@ -8,6 +8,7 @@ import ConfirmDialog from './ConfirmDialog'
 import DeleteTaskConfirmation from './DeleteTaskConfirmation'
 import Icon from './Icon'
 import Input from './Input'
+import TaskCopyButton from './TaskCopyButton'
 
 interface Lane {
   key: string
@@ -16,7 +17,10 @@ interface Lane {
 }
 
 interface TaskTableViewProps {
+  projectId?: string
   readOnly?: boolean
+  canArchive?: boolean
+  canDelete?: boolean
   canCreateTask?: boolean
   lanes: Lane[]
   tasksByLane: Record<string, Task[]>
@@ -74,12 +78,15 @@ export default function TaskTableView({
   showArchived,
   durationNowMs,
   onOpenTask,
+  projectId,
   onAddTask,
   onArchiveTask,
   onDeleteTask,
   onError,
   readOnly = false,
   canCreateTask = true,
+  canArchive = !readOnly,
+  canDelete = !readOnly,
 }: TaskTableViewProps) {
   const { t, locale } = useI18n()
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({})
@@ -121,7 +128,7 @@ export default function TaskTableView({
   }
 
   const runBulkAction = async (deleteWorkspace = false) => {
-    if (!pendingAction || readOnly || selectedIds.length === 0 || busy) return
+    if (!pendingAction || (pendingAction === 'archive' ? !canArchive : !canDelete) || selectedIds.length === 0 || busy) return
     setBusy(true)
     try {
       if (pendingAction === 'archive') {
@@ -183,7 +190,7 @@ export default function TaskTableView({
           {t('taskList.selectedTasks', { count: selectedIds.length })}
         </span>
         <span style={{ flex: 1 }} />
-        {canCreateTask && !showArchived && (
+        {canArchive && !showArchived && (
           <Button
             variant="ghost"
             disabled={readOnly || selectedIds.length === 0 || busy}
@@ -194,15 +201,15 @@ export default function TaskTableView({
             {t('taskList.bulkArchive')}
           </Button>
         )}
-        <Button
+        {canDelete && <Button
           variant="ghost"
-          disabled={readOnly || selectedIds.length === 0 || busy}
+          disabled={selectedIds.length === 0 || busy}
           onClick={() => setPendingAction('delete')}
           style={{ gap: 5, color: 'var(--danger)' }}
         >
           <Icon name="x" size={13} strokeWidth={2} />
           {t('taskList.bulkDelete')}
-        </Button>
+        </Button>}
       </div>
 
       {lanes.map((lane) => {
@@ -289,7 +296,7 @@ export default function TaskTableView({
                             onChange={() => toggleTask(task.id)}
                           />
                         </td>
-                        <td style={{ ...cellStyle, fontWeight: 600, color: 'var(--fg)' }} title={task.title}>{task.title}</td>
+                        <td style={{ ...cellStyle, fontWeight: 600, color: 'var(--fg)' }} title={task.title}>{task.title}{projectId && <TaskCopyButton taskId={task.id} projectId={projectId} title={task.title} />}</td>
                         <td style={{ ...cellStyle, overflow: 'visible' }}>
                           <span className="status-badge" data-s={info.displayStatus} style={info.stepStatus ? { color: info.statusColor, background: `color-mix(in oklab, ${info.statusColor}, transparent 86%)` } : undefined}>
                             {(info.displayStatus === 'running' || info.displayStatus === 'reviewing') && <span className="task-status-spinner" aria-hidden="true" />}

@@ -39,6 +39,48 @@ flowchart LR
 
 **WorkStep 不是另一个聊天窗口。** 它把一次性的 Agent 对话变成可复用的工程流程，让执行进度、工具调用、人工审批、上下文和最终产物始终可见。
 
+## 安装与快速开始
+
+任选一种方式启动 WorkStep：
+
+### 1. 从源码启动
+
+环境要求：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 20 或 22、Yarn（可通过 Corepack 提供），以及 Bash 和 `lsof`。适用于 macOS / Linux；Windows 推荐桌面包或 Docker。
+
+```bash
+git clone https://github.com/xzregg/workstep.git
+cd workstep
+./start.sh
+```
+
+脚本自动安装依赖并启动前后端，打开 <http://127.0.0.1:5173> 即可使用，按 `Ctrl+C` 停止。更多命令见[开发指南](docs/development.md)。
+
+### 2. 下载桌面包
+
+前往 [GitHub Releases](https://github.com/xzregg/workstep/releases/latest)，下载对应系统的安装包，安装后打开 WorkStep：
+
+- **macOS Apple Silicon**：DMG 或 ZIP
+- **Windows x64**：NSIS 安装程序
+- **Linux x64**：AppImage
+
+桌面包内置后台，无需自行安装 Python。
+
+> 桌面端目前是未签名的早期构建，首次运行可能出现 Windows SmartScreen 或 macOS Gatekeeper 提醒。
+
+### 3. Docker 启动
+
+安装 Docker 和 Docker Compose，然后运行：
+
+```bash
+git clone https://github.com/xzregg/workstep.git
+cd workstep
+docker compose -f docker-compose.yaml up -d --build workstep
+```
+
+构建完成后打开 <http://localhost:8755>。配置和引擎保存在 `./data/home`，项目保存在 `./data/projects`；应用内创建项目时填写 `/data/projects/<项目名称>`。旧版 Compose 可将 `docker compose` 替换为 `docker-compose`，更多配置见[容器运行说明](docs/container-runtime.md)。
+
+启动后，先在引擎设置中下载 SDK、配置认证并测试连接，再创建项目、工作流和任务。详细步骤见[用户操作手册](https://xzregg.github.io/workstep/#docs)。
+
 ## 看图上手
 
 以下为演示项目的真实界面截图，点击图片可查看原图。完整步骤见[用户操作手册](https://xzregg.github.io/workstep/#docs)。
@@ -88,33 +130,6 @@ WorkStep 当前集成的引擎包括：
 
 不同引擎共用统一的发现、会话、审批、能力声明和事件边界。没有原生入口的能力会明确声明并安全降级，不伪造执行状态。
 
-## 快速开始
-
-### 下载桌面版
-
-最新版本提供：
-
--  **macOS Apple Silicon** — DMG 与 ZIP
-- 🪟 **Windows x64** — NSIS 安装程序
-- 🐧 **Linux x64** — AppImage
-
-安装包、自动更新元数据、SHA-256 校验文件和依赖 SBOM 均可从 [GitHub Releases](https://github.com/xzregg/workstep/releases/latest) 下载。
-
-> [!IMPORTANT]
-> 桌面端目前是未签名的早期构建，Windows SmartScreen 或 macOS Gatekeeper 可能在首次运行时显示安全提醒。
-
-### 从源码启动
-
-环境要求：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 20 或 22，以及通过 Corepack 或现有安装提供的 Yarn。
-
-```bash
-git clone https://github.com/xzregg/workstep.git
-cd workstep
-./start.sh
-```
-
-启动后访问 `http://127.0.0.1:5173`。本地后台 API 默认监听 `8765` 端口；各应用的开发和测试命令见[开发指南](docs/development.md)。
-
 ## 本地优先是怎样实现的
 
 1. 每个项目的 `.workstep/` 目录独立保存数据库、事件日志、模板和产物。
@@ -137,6 +152,16 @@ cd workstep
 ## 社区与贡献
 
 提交拉取请求前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。可复现的缺陷和可执行的功能请求请提交到 [Issues](https://github.com/xzregg/workstep/issues)；问题讨论、想法与设计探索请使用 [Discussions](https://github.com/xzregg/workstep/discussions)。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
+
+## Star 增长历史
+
+<a href="https://www.star-history.com/?repos=xzregg%2Fworkstep&amp;type=date&amp;legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;theme=dark&amp;legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;legend=top-left" />
+    <img alt="WorkStep GitHub Star 增长历史" src="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;legend=top-left" width="800" />
+  </picture>
+</a>
 
 ## 许可证
 

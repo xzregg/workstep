@@ -44,6 +44,7 @@ import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import { useI18n } from '../i18n'
 import { resolveMessageError } from '../pages/taskDetailChat'
 import QuickPromptButton from './QuickPromptButton'
+import './AssistantActionBar.css'
 import { ActionConversationMessage } from './TaskActionShortcuts'
 import { actionConversationScrollKey, mergeActionMessages } from '../utils/actionConversation'
 
@@ -72,6 +73,7 @@ export interface AssistantQuickPrompt {
 
 export interface AssistantChatPanelProps {
   projectId: string
+  visibilityPermission?: string
   /** Stable WorkStep conversation id shown in message metadata. */
   sessionId?: string | null
   title: string
@@ -130,6 +132,7 @@ export interface AssistantChatPanelProps {
 }
 
 interface MessageItemProps {
+  visibilityPermission: string
   message: AssistantChatMessage
   copy: AssistantChatCopy
   deviceId: string
@@ -161,12 +164,13 @@ interface MessageItemProps {
  * 否则 memo 失效（功能不受影响，只是回到全量重渲染）。
  */
 const MessageItem = memo(function MessageItem({
-  message, copy, deviceId, userName, locale, showUserTag, projectId, sessionId,
+  message, copy, deviceId, userName, locale, showUserTag, projectId, sessionId, visibilityPermission,
   a2uiEntry, respondInteraction, onViewPrompt, onLoadMessageEvents,
   onForkMessage, onSendToInput, onAsyncQuestionSubmit, onA2uiAction,
 }: MessageItemProps) {
   const { t } = useI18n()
-  const { canEdit } = useGatewayProjectPermissions(projectId)
+  const { can } = useGatewayProjectPermissions(projectId)
+  const canEdit = can(visibilityPermission)
   const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
   const userSender = displayUserSender(
     message.author_name, userName, copy.me, t('aiFlow.historicalUser'),
@@ -187,6 +191,8 @@ const MessageItem = memo(function MessageItem({
       color={message.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
       content={message.content}
       events={message.events}
+      eventDetail={message.event_detail}
+      onLoadEventDetails={onLoadMessageEvents ? () => onLoadMessageEvents(message.id) : undefined}
       interactionsEnabled={canEdit && message.status === 'running'}
       a2uiMessages={a2uiEntry}
       onInteractionRespond={canEdit ? respondInteraction : undefined}
@@ -256,8 +262,8 @@ const MessageItem = memo(function MessageItem({
           />
         ) : undefined
       }
-      onSendToInput={onSendToInput}
-      onAsyncQuestionSubmit={onAsyncQuestionSubmit}
+      onSendToInput={canEdit ? onSendToInput : undefined}
+      onAsyncQuestionSubmit={canEdit ? onAsyncQuestionSubmit : undefined}
       onA2uiAction={canEdit ? onA2uiAction : undefined}
     />
   )
@@ -265,7 +271,7 @@ const MessageItem = memo(function MessageItem({
 
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
-  projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
+  projectId, visibilityPermission = 'session.chat', sessionId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
   onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
@@ -274,7 +280,9 @@ export default function AssistantChatPanel({
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const userName = useUserSettingsStore((state) => state.userName)
   const { t } = useI18n()
-  const { canEdit } = useGatewayProjectPermissions(projectId)
+  const { can } = useGatewayProjectPermissions(projectId)
+  const canEdit = can(visibilityPermission)
+  quickPrompts = quickPrompts?.filter(item => item.kind !== 'action' || can('action.run'))
   const engineMessages = messages.filter((message) => message.engine !== 'action')
   const { panel: pendingPanel, error: pendingError, queueEnabled, queueCurrentInput } = useAssistantPendingInserts({
     projectId, sessionId, messages, input, onInputChange, onSendContent,
@@ -555,10 +563,11 @@ export default function AssistantChatPanel({
               key={message.id}
               message={message}
               run={(message as AssistantChatMessage & { actionRun?: ActionRun }).actionRun}
-              onStop={canEdit ? onStopAction : undefined}
+              onStop={can('action.run') ? onStopAction : undefined}
             />
           ) : (
             <MessageItem
+              visibilityPermission={visibilityPermission}
               key={message.id}
               message={message}
               copy={copy}
@@ -572,7 +581,7 @@ export default function AssistantChatPanel({
               respondInteraction={respondInteraction}
               onViewPrompt={setViewingPrompt}
               onLoadMessageEvents={onLoadMessageEvents}
-              onForkMessage={canEdit ? onForkMessage : undefined}
+              onForkMessage={canEdit && can('session.create') ? onForkMessage : undefined}
               onSendToInput={handleSendToInput}
               onAsyncQuestionSubmit={handleAsyncQuestionSubmit}
               onA2uiAction={canEdit ? onA2uiAction : undefined}
@@ -614,6 +623,11 @@ export default function AssistantChatPanel({
       </div>
 
       {(sendError || pendingError) && <div className="assistant-chat-error">{sendError || pendingError}</div>}
+      {!canEdit && can('action.run') && quickPrompts?.some(item => item.kind === 'action') && <div className="assistant-action-only-bar" role="group" aria-label={quickPromptsLabel}>
+        {quickPrompts.filter(item => item.kind === 'action').map(item => <QuickPromptButton key={item.id || item.label}
+          label={item.label} prompt={item.id || ''} disabled={item.disabled}
+          onSelect={() => { if (can('action.run')) onQuickPromptItemSelect?.(item) }} />)}
+      </div>}
       {canEdit && <>
       <div
         role="separator"
@@ -692,8 +706,8 @@ export default function AssistantChatPanel({
             stopping={stopping}
             placeholder={copy.placeholder}
             imageAttach={{ projectId, prefix: attachmentPrefix, onError: onAttachmentError }}
-            config={config}
-            permission={permission}
+            config={can(visibilityPermission === 'session.chat' ? 'session.config' : visibilityPermission === 'workflow.ai_edit' ? 'workflow.ai_edit' : 'task.config') ? config : undefined}
+            permission={can('session.config') ? permission : undefined}
             enhance={enhance}
             context={context}
             quota={quota}

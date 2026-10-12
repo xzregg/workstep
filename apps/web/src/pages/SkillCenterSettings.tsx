@@ -4,7 +4,9 @@ import Icon from '../components/Icon'
 import Spinner from '../components/Spinner'
 import Select from '../components/Select'
 import { skillApi, type Project, type SkillDescriptor } from '../api/client'
+import './SkillCenterSettings.css'
 import { useI18n } from '../i18n'
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 
 type SourceFilter = 'all' | 'agents' | 'claude' | 'codex' | 'project'
 
@@ -23,6 +25,8 @@ export default function SkillCenterSettings({
   embedded?: boolean
 }) {
   const { t } = useI18n()
+  const { can } = useGatewayProjectPermissions(project?.id)
+  const canRead = can('skill.read'), canManage = can('skill.manage')
   const [skills, setSkills] = useState<SkillDescriptor[]>([])
   const [search, setSearch] = useState('')
   const [source, setSource] = useState<SourceFilter>('all')
@@ -35,7 +39,7 @@ export default function SkillCenterSettings({
   const available = Boolean(project && project.type !== 'remote')
 
   const load = async (rescan = false) => {
-    if (!project || !available) return
+    if (!project || !available || !canRead || (rescan && !canManage)) return
     setLoading(true)
     setError('')
     try {
@@ -59,7 +63,7 @@ export default function SkillCenterSettings({
     setSelectedSkillIds(new Set())
     void load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project?.id, available])
+  }, [project?.id, available, canRead])
 
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
@@ -101,7 +105,7 @@ export default function SkillCenterSettings({
   }
 
   const batchSetEnabled = async (enabled: boolean) => {
-    if (!project || batchAction || updating || selectedSkillIds.size === 0) return
+    if (!canManage || !project || batchAction || updating || selectedSkillIds.size === 0) return
     const previous = skills
     setBatchAction(enabled ? 'enable' : 'disable')
     setError('')
@@ -122,7 +126,7 @@ export default function SkillCenterSettings({
   }
 
   const toggle = async (skill: SkillDescriptor) => {
-    if (!project || updating) return
+    if (!canManage || !project || updating) return
     const previous = skills
     const nextEnabled = !skill.enabled
     setUpdating(skill.skill_id)
@@ -142,6 +146,8 @@ export default function SkillCenterSettings({
       setUpdating(null)
     }
   }
+
+  if (!canRead) return <p role="status">{t('common.featureUnavailable')}</p>
 
   if (!project) {
     return (
@@ -171,10 +177,10 @@ export default function SkillCenterSettings({
             {t('skillCenter.intro')}
           </p>
         </div>
-        <Button onClick={() => void load(true)} loading={loading} disabled={!available}>
+        {canManage && <Button onClick={() => void load(true)} loading={loading} disabled={!available}>
           <Icon name="refresh" size={14} />
           {t('skillCenter.rescan')}
-        </Button>
+        </Button>}
       </div>
 
       <div className="skill-center-project-summary" style={{ padding: '12px 14px', marginBottom: 16, borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border-soft)' }}>
@@ -212,14 +218,14 @@ export default function SkillCenterSettings({
         </div>
       ) : (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr) auto', alignItems: 'center', gap: 12, minHeight: 46, padding: '0 2px', borderTop: '1px solid var(--border-soft)', borderBottom: '1px solid var(--border-soft)' }}>
+          {canManage && <div style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr) auto', alignItems: 'center', gap: 12, minHeight: 46, padding: '0 2px', borderTop: '1px solid var(--border-soft)', borderBottom: '1px solid var(--border-soft)' }}>
             <input
               type="checkbox"
               checked={allFilteredSelected}
               disabled={!available || selectableFiltered.length === 0 || Boolean(batchAction) || Boolean(updating)}
               aria-label={allFilteredSelected ? t('skillCenter.clearFiltered') : t('skillCenter.selectFiltered')}
               onChange={selectAllFiltered}
-              style={{ width: 18, height: 18, margin: 0, accentColor: 'var(--accent)' }}
+              className="skill-center-selection"
             />
             <span style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
               {selectedSkillIds.size > 0
@@ -234,20 +240,20 @@ export default function SkillCenterSettings({
                 {t('skillCenter.disableSelected')}
               </Button>
             </div>
-          </div>
+          </div>}
           {filtered.map((skill) => {
             const problem = skill.error || skill.sync_error
             const busy = updating === skill.skill_id
             return (
               <div key={skill.skill_id} style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr) 132px', alignItems: 'start', gap: 12, padding: '17px 2px', borderBottom: '1px solid var(--border-soft)' }}>
-                <input
+                {canManage ? <input
                   type="checkbox"
                   checked={selectedSkillIds.has(skill.skill_id)}
                   disabled={!available || !skill.valid || Boolean(batchAction) || Boolean(updating)}
                   aria-label={t('skillCenter.selectSkill', { name: skill.name })}
                   onChange={() => toggleSelected(skill.skill_id)}
-                  style={{ width: 18, height: 18, margin: '2px 0 0', accentColor: 'var(--accent)' }}
-                />
+                  className="skill-center-selection"
+                /> : <span />}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 7 }}>
                     <span style={{ fontWeight: 650 }}>{skill.name}</span>
@@ -264,15 +270,15 @@ export default function SkillCenterSettings({
                     {busy && <Spinner size={12} />}
                     {skill.enabled ? t('skillCenter.enabled') : t('skillCenter.disabled')}
                   </span>
-                  <input
+                  {canManage && <input
                     type="checkbox"
                     role="switch"
                     checked={skill.enabled}
                     disabled={!available || !skill.valid || Boolean(updating) || Boolean(batchAction)}
                     aria-label={`${skill.name} ${skill.enabled ? t('skillCenter.disable') : t('skillCenter.enable')}`}
                     onChange={() => void toggle(skill)}
-                    style={{ width: 36, height: 20, accentColor: 'var(--accent)', cursor: busy ? 'wait' : 'pointer' }}
-                  />
+                    className="skill-center-selection"
+                  />}
                 </label>
               </div>
             )

@@ -42,8 +42,9 @@ function notificationUrlFor(notice: CompletionNotice): string {
  * Which task detail panels are open (full event streams). Populated by
  * pages that render a task detail (e.g. TaskList) via setDetailTaskIds.
  */
-export const useWsSubscriptionStore = create<{ taskIds: string[] }>(() => ({
+export const useWsSubscriptionStore = create<{ taskIds: string[]; remoteProjectIds: string[] }>(() => ({
   taskIds: [],
+  remoteProjectIds: [],
 }))
 
 export function setDetailTaskIds(taskIds: string[]) {
@@ -73,6 +74,7 @@ export function useWebSocket() {
   // Stable inputs for the subscription: only change when task ids / session
   // ids actually change (message chunks mutate session content, not keys).
   const detailTaskIds = useWsSubscriptionStore((s) => s.taskIds)
+  const remoteProjectIds = useWsSubscriptionStore((s) => s.remoteProjectIds)
   const tasks = useTaskStore(useShallow((s) => s.tasks))
   const genSessionIds = useWorkflowGenStore(useShallow((s) => Object.keys(s.sessions)))
   const draftSessionIds = useTaskDraftStore(useShallow((s) => Object.keys(s.sessions)))
@@ -91,6 +93,7 @@ export function useWebSocket() {
   const buildSubscription = useCallback(() => ({
     type: 'subscribe',
     project_id: useProjectStore.getState().activeProject?.id,
+    remote_project_ids: useWsSubscriptionStore.getState().remoteProjectIds,
     task_ids: useWsSubscriptionStore.getState().taskIds,
     status_only_task_ids: useTaskStore.getState().tasks.map((t) => t.id),
     session_ids: [...new Set([
@@ -133,7 +136,7 @@ export function useWebSocket() {
     } else {
       void clearBrowserPushWatch().catch(() => undefined)
     }
-  }, [flushSubscription, detailTaskIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId])
+  }, [flushSubscription, detailTaskIds, remoteProjectIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId])
 
   useEffect(() => {
     let active = true
@@ -179,11 +182,15 @@ export function useWebSocket() {
         // A reconnect (e.g. daemon restart) may have changed persisted task
         // state; re-fetch so the board reflects recovered runs immediately.
         const projectId = useProjectStore.getState().activeProject?.id
-        if (isReconnect && projectId) {
-          void useTaskStore.getState().fetchTasks(projectId)
-          useChatListStore.getState().refreshSessions(projectId)
+        if (isReconnect) {
+          const project = useProjectStore.getState().activeProject
+          if (projectId) {
+            if (project?.type !== 'remote') useProjectStore.getState().refreshProjects()
+            void useTaskStore.getState().fetchTasks(projectId)
+            useChatListStore.getState().refreshSessions(projectId)
+          }
           window.dispatchEvent(new Event('workstep:reconnected'))
-          if (disconnectedAt && document.visibilityState === 'hidden') {
+          if (projectId && disconnectedAt && document.visibilityState === 'hidden') {
             const since = disconnectedAt
             const subscription = buildSubscription()
             void gatewayFetch(`/api/completion-notifications/recent?${new URLSearchParams({
@@ -220,13 +227,18 @@ export function useWebSocket() {
             return
           }
           if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.remote_project_status') {
-            void useProjectStore.getState().fetchProjects()
+            const projects = useProjectStore.getState()
+            if (parsed.value?.project) projects.applyRemoteProject(parsed.value.project)
+            else if (parsed.value?.project_id) void projects.fetchRemoteProject(parsed.value.project_id)
             const activeProjectId = useProjectStore.getState().activeProject?.id
             if (activeProjectId && activeProjectId === parsed.value?.project_id && parsed.value?.status === 'connected') {
               void useTaskStore.getState().fetchTasks(activeProjectId)
               useChatListStore.getState().refreshSessions(activeProjectId)
               window.dispatchEvent(new Event('workstep:reconnected'))
             }
+          }
+          if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.gateway_connection_changed') {
+            window.dispatchEvent(new Event('workstep:gateway-connection-changed'))
           }
           if (parsed.type === 'CUSTOM' && parsed.name === 'channel.session_changed') {
             const projectId = useProjectStore.getState().activeProject?.id
@@ -344,7 +356,7 @@ export function useWebSocket() {
       wsRef.current = null
       ws?.close()
     }
-  }, [handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, flushSubscription])
+  }, [handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, flushSubscription, send, buildSubscription])
 
   return { send }
 }

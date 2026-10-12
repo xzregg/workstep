@@ -205,14 +205,16 @@ class RemoteRouteDispatcher:
 
 
 def _subscription_matches(event: dict[str, Any], subscription: dict[str, set[str]]) -> bool:
+    from engines.core.agui import is_status_event
+
+    if "project_metadata" in subscription["channels"] and is_status_event(event):
+        return True
     task_id = str(event.get("task_id") or "")
     session_id = str(event.get("session_id") or "")
     channel = str(event.get("channel") or "")
     if task_id and task_id in subscription["task_ids"]:
         return True
     if task_id and task_id in subscription["status_only_task_ids"]:
-        from engines.core.agui import is_status_event
-
         return is_status_event(event)
     return bool(
         (session_id and session_id in subscription["session_ids"])

@@ -76,3 +76,13 @@ test('the brand returns to overview and closes the mobile menu', async () => {
  await waitFor(() => assert.equal(trigger.getAttribute('aria-expanded'), 'false'))
  assert.equal(document.querySelector('.gateway-admin-breadcrumb strong')?.textContent, '管理概览')
 })
+
+ test('resource and platform permission links belong to separate navigation sections', () => {
+ render(<MemoryRouter><AdminNavigation roles={['super_admin']} /></MemoryRouter>)
+ const users = screen.getByText('用户与权限').closest('details')!
+ const system = screen.getByText('系统设置').closest('details')!
+ assert.equal(within(users).getByText('用户与用户组权限').getAttribute('href'), '/admin/permissions')
+ assert.equal(within(system).getByText('网关平台权限').getAttribute('href'), '/admin/platform-permissions')
+ assert.equal(within(users).queryByText('网关平台权限'), null)
+ assert.equal(within(system).queryByText('用户与用户组权限'), null)
+ })

@@ -24,6 +24,21 @@ export const FILE_TARGET_KEYS = ['path', 'file_path', 'filePath', 'filename'] as
 export const SEARCH_TARGET_KEYS = ['pattern', 'query'] as const
 export const TOOL_TARGET_KEYS = [...FILE_TARGET_KEYS, ...SEARCH_TARGET_KEYS] as const
 
+export type ToolKind = 'edit' | 'read' | 'command' | 'search' | 'subagent' | 'other'
+
+export function toolKind(name: string, protocolKind?: string): ToolKind {
+  if (protocolKind === 'edit' || protocolKind === 'read') return protocolKind
+  if (protocolKind === 'execute') return 'command'
+  if (protocolKind === 'search') return 'search'
+  const normalized = name.toLowerCase()
+  if (/(subagent|sub-agent|sub_agent|spawn_agent|spawn.*agent|delegate)/.test(normalized)) return 'subagent'
+  if (/(edit|write|patch|replace|create|filechange|file_change)/.test(normalized)) return 'edit'
+  if (/(read|open|view)/.test(normalized)) return 'read'
+  if (/(bash|shell|command|exec|terminal)/.test(normalized)) return 'command'
+  if (/(grep|glob|search|find|list)/.test(normalized)) return 'search'
+  return 'other'
+}
+
 export type ToolTargetInfo = {
   /** 尽力解析出的入参对象（可能来自片段合并）。 */
   record: Record<string, unknown> | null

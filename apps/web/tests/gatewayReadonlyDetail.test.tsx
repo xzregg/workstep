@@ -23,7 +23,7 @@ test('readonly project detail preserves history and viewing without exposing its
     steps={[]} stepProgress={[]} selectedStep={0} onStepClick={() => {}}
     historyMessages={[]} liveMessages={{}} events={[]} content=""
     reviews={[]} artifacts={[]} onSend={() => {}} onSendPrompt={() => {}}
-    prompt="draft" onPromptChange={() => {}} descriptionEditable reviewConfigEditable
+    prompt="draft" onPromptChange={() => {}} titleEditable descriptionEditable reviewConfigEditable
     readCapabilities={{ artifactDirectory: '', resolveAssetUrl: value => value,
       filePreview: { load: async () => ({}) as never, rawUrl: value => value }, loadMessageEvents: () => {}, openArtifact: () => {},
       loadExecutionReport: async () => ({}) as never, browseGitWorkspace: async () => ({}) as never }}
@@ -36,10 +36,14 @@ test('readonly project detail preserves history and viewing without exposing its
     await act(async () => render())
     const readonly = element.innerHTML
     assert.match(readonly, /Visible task/)
+    await act(async () => element.querySelector('[data-task-title]')!.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
+    assert.equal(element.querySelector('.task-title-input'), null)
     assert.match(readonly, /task-chat-history/)
     assert.doesNotMatch(readonly, /class="chat-input/)
     await act(async () => { useGatewaySessionStore.setState({ session: { ...session, access_level: 'edit' } }); render() })
     assert.match(element.innerHTML, /class="chat-input/)
+    await act(async () => element.querySelector('[data-task-title]')!.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
+    assert.ok(element.querySelector('.task-title-input'))
   } finally {
     await act(async () => { root.unmount(); useGatewaySessionStore.setState({ session: null }) })
     element.remove()

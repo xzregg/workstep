@@ -6,6 +6,50 @@ import { createRoot } from 'react-dom/client'
 import { useTaskConversationScroll } from '../src/hooks/useTaskConversationScroll'
 import type { ActionRunLike } from '../src/utils/actionConversation'
 
+for (const unmountWhenHidden of [true, false]) {
+  test(`returning to conversation follows latest (${unmountWhenHidden ? 'primary tabs' : 'mobile tabs'})`, async () => {
+    const { window } = installDomEnvironment()
+    const container = document.body.appendChild(document.createElement('div'))
+    const root = createRoot(container)
+    const historyMessages: unknown[] = []
+    const liveMessages = {}
+    const events: unknown[] = []
+    let height = 1000
+    function Transcript({ active }: { active: boolean }) {
+      const scroll = useTaskConversationScroll({ historyMessages, liveMessages, events, content: '', active })
+      return <>
+        {(!unmountWhenHidden || active) && <div ref={(node) => {
+          scroll.scrollRef.current = node
+          if (node) Object.defineProperties(node, {
+            scrollHeight: { configurable: true, get: () => height },
+            clientHeight: { configurable: true, value: 100 },
+          })
+        }} hidden={!active} onWheelCapture={scroll.onWheelCapture} onScroll={scroll.onScroll} />}
+        <output>{scroll.unreadMessages ? 'unread' : 'read'}</output>
+      </>
+    }
+    const render = (active: boolean) => act(async () => root.render(<Transcript active={active} />))
+    try {
+      await render(true)
+      const viewport = container.querySelector('div')!
+      await act(async () => viewport.dispatchEvent(new window.WheelEvent('wheel', { bubbles: true, deltaY: -10 })))
+      viewport.scrollTop = 200
+      await render(false)
+      await render(true)
+      const restored = container.querySelector('div')!
+      assert.equal(restored.scrollTop, 900)
+      assert.equal(container.querySelector('output')?.textContent, 'read')
+      height = 1200
+      await act(async () => restored.dispatchEvent(new window.Event('load')))
+      assert.equal(restored.scrollTop, 1100)
+    } finally {
+      await act(async () => root.unmount())
+      container.remove()
+      await window.happyDOM.close()
+    }
+  })
+}
+
 test('task shortcut output triggers follow without treating unchanged polling as new content', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

@@ -376,12 +376,21 @@
     white-space: nowrap;
     font-size: calc(16px * var(--font-scale)) !important;
   }
+  .task-detail-title:has(.task-title-input) { overflow: visible; }
+  .task-detail-title .task-title-editor { width: 100%; }
+  .task-title-editor .task-title-input { width: 100%; height: var(--mobile-control-regular); }
   .task-detail-header-primary .task-detail-header-badge:not([data-status]) { max-width: 84px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .task-detail-header-primary .task-detail-header-badge[data-status] { flex-shrink: 0; white-space: nowrap; }
   .task-detail-recovered-badge { display: none; }
   .task-detail-header-meta { flex: 1 1 0; min-width: 0; }
   .task-detail-header-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
-  .task-detail-header-close { align-self: flex-end; width: var(--mobile-control-regular); height: var(--mobile-control-regular); }
+  .task-detail-header-close {
+    align-self: center;
+    width: var(--mobile-control-menu);
+    height: var(--mobile-control-menu);
+    border-radius: 4px;
+    touch-action: manipulation;
+  }
   .task-detail-header > div > div + div { display: none; }
   .task-detail-discussion-button,
   .task-detail-share-button {
@@ -573,11 +582,6 @@
   .provider-settings-card-actions {
     grid-column: 1 / -1;
     justify-content: flex-start !important;
-  }
-  .provider-settings-model-list {
-    max-height: min(160px, 24dvh) !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
   }
   .engine-settings-section-heading {
     align-items: flex-start !important;
@@ -1009,6 +1013,15 @@
     min-width: 0 !important;
     min-height: var(--mobile-control-touch) !important;
     padding: 6px 10px !important;
+  }
+  .message-file-changes .chat-message-action {
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: var(--mobile-control-regular) !important;
+  }
+  .message-file-changes .message-file-changes-view {
+    padding: 4px 8px !important;
   }
 
   /* 上下文详情面板：移动端由 JS 计算 fixed 定位，避免被 toolbar overflow 裁剪 */

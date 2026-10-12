@@ -1,0 +1,28 @@
+.git-diff-workspace { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.git-diff-main { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.git-diff-file-tree { display: flex; flex-direction: column; width: clamp(180px, 24%, 280px); flex-shrink: 0; min-height: 0; border-right: 1px solid var(--border); background: var(--surface); }
+.git-diff-tree-toolbar { display: flex; align-items: center; gap: 4px; padding: 8px; }
+.git-diff-tree-toolbar strong { flex: 1; min-width: 0; font-size: inherit; }
+.git-diff-tree-toolbar small { color: var(--meta); font-weight: normal; }
+.git-diff-dialog .git-diff-tree-toolbar button { padding: 0; width: 28px; height: 28px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg-2); }
+.git-diff-tree-toolbar button:hover { background: var(--bg); }
+.git-diff-tree-search { display: flex; align-items: center; gap: 6px; margin: 0 8px 8px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--meta); }
+.git-diff-dialog .git-diff-tree-search input { width: 100%; min-width: 0; height: 32px; padding: 0; border: 0; background: transparent; color: var(--fg); font: inherit; }
+.git-diff-tree-search:focus-within { outline: 2px solid var(--accent); }
+.git-diff-tree-search input:focus { outline: none; }
+.git-diff-tree-list, .git-diff-tree-list ul { list-style: none; margin: 0; padding: 0; }
+.git-diff-tree-list { flex: 1; min-height: 0; overflow: auto; padding: 0 6px 8px; }
+.git-diff-tree-list ul { padding-left: 14px; }
+.git-diff-dialog .git-diff-tree-entry { display: flex; justify-content: flex-start; width: 100%; min-height: 30px; gap: 6px; padding: 4px 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg-2); text-align: left; font: inherit; }
+.git-diff-tree-entry svg { flex-shrink: 0; }
+.git-diff-tree-entry span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-diff-tree-entry:hover { background: var(--bg); }
+.git-diff-dialog .git-diff-tree-entry[aria-selected="true"] { background: var(--accent-light); color: var(--accent); }
+.git-diff-tree-empty { margin: 8px; color: var(--meta); }
+@media (max-width: 1023px) {
+  .git-diff-workspace { flex-direction: column; }
+  .git-diff-file-tree { width: 100%; flex-basis: 32%; max-height: 40%; border-right: 0; border-bottom: 1px solid var(--border); }
+  .git-diff-dialog .git-diff-tree-entry { min-height: var(--mobile-control-regular); }
+  .git-diff-dialog .git-diff-tree-toolbar button { width: var(--mobile-control-regular); height: var(--mobile-control-regular); }
+  .git-diff-dialog .git-diff-tree-search input { height: var(--mobile-control-regular); }
+}

@@ -31,6 +31,12 @@ class OpenDirectoryRequest(BaseModel):
     opener: str = "file_manager"
 
 
+class OpenFileRequest(BaseModel):
+    project_id: str
+    path: str
+    opener: str = "default"
+
+
 class OpenSessionJournalRequest(BaseModel):
     project_id: str
     session_id: str | None = None
@@ -531,6 +537,31 @@ async def open_directory(req: OpenDirectoryRequest):
     else:
         await _open_with(directory, req.opener)
     return {"opened": True, "path": str(directory)}
+
+
+@router.post("/open-file")
+async def open_file(req: OpenFileRequest):
+    from services.remote_access import get_current_actor
+
+    if get_current_actor() is not None:
+        raise HTTPException(status_code=403, detail="Host file opening is local only")
+
+    def prepare() -> tuple[Path, list[str]]:
+        target = _resolve_project_file(req.path, req.project_id)
+        if not target.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+        system = platform.system()
+        if req.opener == "default":
+            command = {"Darwin": ["open", str(target)], "Windows": ["explorer", str(target)]}.get(system, ["xdg-open", str(target)])
+        elif req.opener == "file_manager":
+            command = {"Darwin": ["open", "-R", str(target)], "Windows": ["explorer", f"/select,{target}"]}.get(system, ["xdg-open", str(target.parent)])
+        else:
+            command = _open_command(target.parent if req.opener in {"terminal", "iterm"} else target, req.opener)
+        return target, command
+
+    target, command = await asyncio.to_thread(prepare)
+    await _run_open_command(command, target)
+    return {"opened": True, "path": str(target)}
 
 
 @router.post("/open-session-journal")

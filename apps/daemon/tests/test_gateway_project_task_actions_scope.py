@@ -106,6 +106,7 @@ async def test_project_proxy_task_actions_are_project_scoped(
     monkeypatch.setattr(main.coordinator_module, "update_config", update_coordinator)
     for method, suffix, body in (
         ("PATCH", "", {"description": "Updated"}),
+        ("PATCH", "", {"title": "Renamed"}),
         ("PATCH", "/scheduled-start", {"scheduled_start_at": None}),
         ("PATCH", "/coordinator-config", {"engine": "claude"}),
         ("PATCH", "/step/dev/config", {"engine": "claude"}),

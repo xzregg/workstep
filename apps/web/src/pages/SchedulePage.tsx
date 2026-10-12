@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -59,6 +60,8 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
   const activeWorkflowId = useProjectStore((state) => state.activeWorkflowId)
   const fetchTasks = useTaskStore((state) => state.fetchTasks)
   const projectId = activeProject?.id || ''
+  const { can } = useGatewayProjectPermissions(projectId)
+  const canManage = can('schedule.manage')
   const workflows = (activeProject?.workflows || []).filter((item) => !item.deleted)
   const defaultWorkflow = activeWorkflowId || workflows.find((item) => item.is_default)?.id || workflows[0]?.id || ''
 
@@ -321,7 +324,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
         <strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.title')}</strong>
         <span className="schedule-project-name" style={{ color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>{activeProject?.name}</span>
         <div style={{ flex: 1 }} />
-        <Button className="schedule-new-button" variant="primary" onClick={() => { setCreating(true); setSelectedId(null); fill(null) }}><Icon name="plus" size={16} /> <span>{t('schedules.new')}</span></Button>
+        {canManage && <Button className="schedule-new-button" variant="primary" onClick={() => { setCreating(true); setSelectedId(null); fill(null) }}><Icon name="plus" size={16} /> <span>{t('schedules.new')}</span></Button>}
         {onClose && <Button className="schedule-close-button" variant="ghost" onClick={onClose} title={t('common.close')} aria-label={t('common.close')}><Icon name="x" size={16} /></Button>}
       </div>
       {error && <div role="alert" style={{ padding: '8px 18px', color: 'var(--danger)', background: 'var(--danger-soft)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
@@ -350,12 +353,12 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
         <div className="schedule-split-handle" role="separator" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => beginDividerDrag(event, 'aside')} onKeyDown={dividerKeyDown('aside')} />
 
         <main className="schedule-editor" style={{ overflow: 'auto', padding: 18 }}>
-          {(selected || creating) && (<>
+          {(selected || creating) && (<fieldset className="schedule-permission-fields" disabled={!canManage}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{selectedId ? t('schedules.edit') : t('schedules.create')}</strong><div style={{ flex: 1 }} />
-            {selected && selected.status === 'active' && <Button onClick={() => void changeStatus('pause')}>{t('schedules.pause')}</Button>}
-            {selected && selected.status !== 'active' && selected.status !== 'completed' && <Button onClick={() => void changeStatus('resume')}>{t('schedules.resume')}</Button>}
-            {selected && <Button variant="danger" onClick={() => setDeleteId(selected.id)}>{t('common.delete')}</Button>}
+            {canManage && selected && selected.status === 'active' && <Button onClick={() => void changeStatus('pause')}>{t('schedules.pause')}</Button>}
+            {canManage && selected && selected.status !== 'active' && selected.status !== 'completed' && <Button onClick={() => void changeStatus('resume')}>{t('schedules.resume')}</Button>}
+            {canManage && selected && <Button variant="danger" onClick={() => setDeleteId(selected.id)}>{t('common.delete')}</Button>}
           </div>
           <div className="schedule-frequency-label">{t('schedules.generation')}</div>
           <div className="schedule-frequency-tabs">
@@ -506,8 +509,8 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
             <div style={{ marginTop: 5 }}>{t('schedules.nextRuns')}: {preview.next.slice(0, 3).map(formatDate).join(' · ') || '—'}</div>
           </div>
 
-          <div className="schedule-save-row" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}><Button variant="primary" loading={saving} disabled={preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : !workflowId)} onClick={() => void save()}>{t('common.save')}</Button></div>
-          </>)}
+          {canManage && <div className="schedule-save-row" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}><Button variant="primary" loading={saving} disabled={preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : !workflowId)} onClick={() => void save()}>{t('common.save')}</Button></div>}
+          </fieldset>)}
         </main>
 
         <div className="schedule-split-handle" role="separator" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => beginDividerDrag(event, 'section')} onKeyDown={dividerKeyDown('section')} />

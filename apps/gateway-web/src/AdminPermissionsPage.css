@@ -18,22 +18,123 @@
 .gateway-permission-effect--deny { color: #dc2626; }
 .gateway-permission-note { color: var(--gateway-admin-secondary, #6e6e73); font-size: 13px; line-height: 1.6; }
 .gateway-permission-scope-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.gateway-modal.gateway-permission-dialog { width: min(640px, calc(100vw - 32px)); }
+.gateway-modal.gateway-permission-dialog { width: min(880px, calc(100vw - 32px)); }
 .gateway-modal.gateway-permission-discard { width: min(480px, calc(100vw - 32px)); height: auto; min-height: 0; max-height: calc(100dvh - 32px); top: 50%; bottom: auto; transform: translateY(-50%); }
 .gateway-permission-discard .gateway-modal-body { flex: 0 1 auto; }
-.gateway-permission-selection { border: 1px solid var(--gateway-admin-border); border-radius: var(--gateway-admin-control-radius); padding: 12px; margin: 0 0 16px; }
-.gateway-permission-selection h4 { margin: 12px 0 8px; color: var(--gateway-admin-secondary); }
-.gateway-permission-selection .gateway-permission-checkbox { margin-bottom: 8px; }
+.gateway-permission-selection { min-width: 0; border: 0; padding: 0; margin: 0 0 24px; }
+.gateway-permission-selection legend { padding: 0; margin-bottom: 12px; font-weight: 600; }
+.gateway-permission-dialog .gateway-permission-intro { margin: 0 0 20px; color: var(--gateway-admin-muted); font-size: 13px; line-height: 1.6; }
+.gateway-permission-section { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--gateway-admin-separator); }
+.gateway-permission-section-title { margin: 0 0 12px; font-size: 16px; }
+.gateway-permission-subject-layout { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 16px; }
+.gateway-permission-rule-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.gateway-permission-field { min-width: 0; }
+.gateway-permission-field > label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; }
+.gateway-permission-selection-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.gateway-permission-selection-toolbar input { flex: 1 1 200px; min-width: 0; width: auto; }
+.gateway-permission-count { flex: none; color: var(--gateway-admin-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.gateway-permission-dialog button.gateway-permission-clear { width: auto; margin: 0; padding: 6px 8px; background: transparent; color: var(--gateway-admin-accent); border: 0; }
+.gateway-permission-dialog button.gateway-permission-clear:not(:disabled):hover { background: var(--gateway-admin-surface); }
+.gateway-permission-selected { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.gateway-permission-dialog .gateway-permission-selected button { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; width: auto; min-height: 28px; margin: 0; padding: 4px 10px; border: 1px solid var(--gateway-admin-separator); border-radius: var(--gateway-admin-control-radius); background: var(--gateway-admin-lifted); color: var(--gateway-admin-accent); font-size: 12px; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.gateway-permission-dialog .gateway-permission-selected button:not(:disabled):hover { background: var(--gateway-admin-surface); }
+.gateway-permission-selected button span { flex: none; font-size: 16px; }
+.gateway-permission-categories { display: grid; gap: 16px; }
+.gateway-permission-category { min-width: 0; }
+.gateway-permission-category-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.gateway-permission-category-heading h4 { margin: 0; font-size: 13px; color: var(--gateway-admin-secondary); }
+.gateway-permission-category-heading > span { color: var(--gateway-admin-meta); font-size: 12px; }
+.gateway-permission-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 8px; }
+.gateway-permission-dialog label.gateway-permission-option { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; box-sizing: border-box; margin: 0; padding: 10px 12px; border: 1px solid var(--gateway-admin-separator); border-radius: var(--gateway-admin-control-radius); background: var(--gateway-admin-lifted); font-size: 13px; font-weight: 400; cursor: pointer; }
+.gateway-permission-dialog label.gateway-permission-option:hover { border-color: var(--gateway-admin-border); }
+.gateway-permission-dialog label.gateway-permission-option.is-selected { border-color: var(--gateway-admin-accent); background: color-mix(in srgb, var(--gateway-admin-accent) 6%, var(--gateway-admin-canvas)); }
+.gateway-permission-dialog label.gateway-permission-option.is-unavailable { color: var(--gateway-admin-muted); cursor: not-allowed; }
+.gateway-permission-option > span { min-width: 0; overflow-wrap: anywhere; }
+.gateway-permission-option small { display: block; margin-top: 4px; font-size: 11px; color: var(--gateway-admin-meta); }
+.gateway-permission-option input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; flex: 0 0 16px; accent-color: var(--gateway-admin-accent); }
+.gateway-permission-option:focus-within { outline: 2px solid var(--gateway-admin-accent); outline-offset: 2px; }
+.gateway-permission-empty { padding: 20px 12px; text-align: center; color: var(--gateway-admin-muted); background: var(--gateway-admin-lifted); border-radius: var(--gateway-admin-control-radius); }
 .gateway-permission-subject-rules { list-style: none; margin: 0; padding: 0; }
 .gateway-permission-subject-rules li { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--gateway-admin-separator); }
 .gateway-permission-subject-rules li > div:first-child { flex: 1; min-width: 180px; }
 .gateway-permission-dialog select { width: 100%; margin-bottom: 12px; }
 .gateway-permission-dialog .gateway-permission-picker { margin-bottom: 16px; }
+.gateway-permission-subject-layout .gateway-permission-picker { margin-bottom: 0; }
 .gateway-permission-dialog label.gateway-permission-checkbox { display: flex; align-items: center; gap: 8px; }
 .gateway-permission-checkbox input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; flex: none; }
 @media (max-width: 767px) {
+  .gateway-permission-subject-layout { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .gateway-permission-section { margin-bottom: 20px; padding-bottom: 16px; }
+  .gateway-permission-selection-toolbar { gap: 8px; }
+  .gateway-permission-selection-toolbar input { flex-basis: 100%; }
+  .gateway-permission-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gateway-modal.gateway-permission-discard { height: auto !important; }
   .gateway-permission-filters { display: block; }
   .gateway-permission-filters > div { margin-bottom: 16px; }
   .gateway-permission-filters > button { margin-top: 0; }
+}
+@media (max-width: 479px) {
+  .gateway-permission-options, .gateway-permission-rule-layout { grid-template-columns: minmax(0, 1fr); }
+}
+.gateway-modal.gateway-project-permission-dialog { width: min(1160px, calc(100vw - 32px)); }
+.gateway-project-permission-dialog .gateway-modal-body { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.gateway-project-permission-context { display: grid; grid-template-columns: 140px minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 20px 24px 12px; }
+.gateway-project-permission-context select { width: 100%; }
+.gateway-project-permission-context .gateway-permission-picker .gateway-admin-pagination { margin: 8px 0 0; }
+.gateway-project-permission-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 0 24px 20px; }
+.gateway-project-permission-dialog .gateway-project-permission-presets button { margin: 0; padding: 12px 14px; text-align: left; border: 1px solid var(--gateway-admin-separator); background: var(--gateway-admin-lifted); color: var(--gateway-admin-ink); white-space: normal; }
+.gateway-project-permission-presets strong, .gateway-project-permission-presets span { display: block; }
+.gateway-project-permission-presets span { margin-top: 4px; color: var(--gateway-admin-muted); font-size: 12px; }
+.gateway-project-permission-dialog .gateway-project-permission-presets button[aria-pressed="true"] { border-color: var(--gateway-admin-accent); color: var(--gateway-admin-accent); background: color-mix(in srgb, var(--gateway-admin-accent) 5%, var(--gateway-admin-canvas)); }
+.gateway-project-permission-workspace { display: grid; grid-template-columns: 150px minmax(0, 1fr) 260px; flex: 1; min-height: 0; border-top: 1px solid var(--gateway-admin-separator); }
+.gateway-project-permission-nav { padding: 16px 12px; overflow-y: auto; background: var(--gateway-admin-lifted); border-right: 1px solid var(--gateway-admin-separator); }
+.gateway-project-permission-dialog .gateway-project-permission-nav button { display: flex; justify-content: space-between; gap: 8px; width: 100%; margin: 0 0 8px; padding: 10px 12px; background: transparent; border: 0; color: var(--gateway-admin-secondary); }
+.gateway-project-permission-dialog .gateway-project-permission-nav button[aria-pressed="true"] { color: var(--gateway-admin-accent); background: var(--gateway-admin-surface); font-weight: 600; }
+.gateway-project-permission-nav button span { font-size: 12px; font-variant-numeric: tabular-nums; }
+.gateway-project-permission-details, .gateway-project-permission-review { padding: 20px; min-width: 0; overflow-y: auto; }
+.gateway-project-permission-tools { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 8px; }
+.gateway-project-permission-tools input, .gateway-project-permission-tools select { width: 100%; min-width: 0; }
+.gateway-project-permission-options { border: 0; margin: 0; padding: 0; min-width: 0; }
+.gateway-project-permission-legend { font-size: 13px; color: var(--gateway-admin-muted); padding: 0 0 8px; }
+.gateway-project-permission-dialog label.gateway-project-permission-option { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 12px 0; border-bottom: 1px solid var(--gateway-admin-separator); cursor: pointer; }
+.gateway-project-permission-option input[type="checkbox"] { flex: 0 0 16px; width: 16px; height: 16px; min-height: 16px; margin: 3px 0 0; padding: 0; accent-color: var(--gateway-admin-accent); }
+.gateway-project-permission-option strong { display: block; font-weight: 500; font-size: 14px; }
+.gateway-project-permission-option small { display: block; margin-top: 4px; font-size: 12px; color: var(--gateway-admin-muted); }
+.gateway-project-permission-review { background: var(--gateway-admin-lifted); border-left: 1px solid var(--gateway-admin-separator); }
+.gateway-project-permission-review h4 { margin: 0 0 16px; font-size: 16px; }
+.gateway-project-permission-review dl { margin: 0 0 16px; }
+.gateway-project-permission-review dt { font-size: 12px; color: var(--gateway-admin-muted); margin: 12px 0 4px; }
+.gateway-project-permission-review dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.gateway-project-permission-selected { display: grid; gap: 8px; margin-bottom: 12px; }
+.gateway-project-permission-dialog .gateway-project-permission-selected button { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; width: 100%; padding: 6px 10px; border: 1px solid var(--gateway-admin-separator); background: var(--gateway-admin-canvas); color: var(--gateway-admin-accent); text-align: left; white-space: normal; }
+.gateway-project-permission-selected button span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.gateway-project-permission-footer-note { margin-right: auto; font-size: 12px; color: var(--gateway-admin-muted); }
+@media (max-width: 900px) {
+  .gateway-project-permission-dialog .gateway-modal-body { display: block; overflow-y: auto; }
+  .gateway-project-permission-workspace { grid-template-columns: 140px minmax(0, 1fr); }
+  .gateway-project-permission-review { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--gateway-admin-separator); }
+  .gateway-project-permission-selected { display: flex; flex-wrap: wrap; }
+  .gateway-project-permission-dialog .gateway-project-permission-selected button { width: auto; }
+  .gateway-project-permission-nav, .gateway-project-permission-details, .gateway-project-permission-review { overflow: visible; }
+  .gateway-project-permission-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .gateway-project-permission-context { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 12px; }
+  .gateway-project-permission-presets { padding: 0 16px 16px; }
+  .gateway-project-permission-workspace { display: block; }
+  .gateway-project-permission-nav { display: flex; gap: 4px; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--gateway-admin-separator); }
+  .gateway-project-permission-dialog .gateway-project-permission-nav button { width: auto; margin: 0; }
+  .gateway-project-permission-details, .gateway-project-permission-review { padding: 16px; }
+  .gateway-project-permission-footer-note { flex-basis: 100%; }
+}
+
+.gateway-project-permission-dialog .gateway-project-permission-presets button:not(:disabled):hover,
+.gateway-project-permission-dialog .gateway-project-permission-nav button:not(:disabled):hover,
+.gateway-project-permission-dialog .gateway-project-permission-selected button:not(:disabled):hover { background: var(--gateway-admin-surface); color: var(--gateway-admin-accent); }
+.gateway-project-permission-review input { width: 100%; min-width: 0; }
+
+@media (min-width: 901px) and (max-height: 650px) {
+  .gateway-project-permission-dialog .gateway-modal-body { display: block; overflow-y: auto; }
+  .gateway-project-permission-workspace { min-height: 360px; }
+  .gateway-project-permission-nav, .gateway-project-permission-details, .gateway-project-permission-review { overflow: visible; }
 }

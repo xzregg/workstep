@@ -1001,6 +1001,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorConfigError={coordinatorConfigError}
         coordinatorConfigNotice={coordinatorConfigNotice}
         coordinatorStopping={coordinatorStopping}
+        titleEditable
         descriptionEditable
         onOpenPromptEditor={() => setShowPromptEditor(true)}
         reviewConfigEditable

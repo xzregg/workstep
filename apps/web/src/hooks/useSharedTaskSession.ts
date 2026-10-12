@@ -35,6 +35,8 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
   const olderInFlight = useRef(false)
   const wsRef = useRef<WebSocket | null>(null)
   const reunlockAttemptsRef = useRef(0)
+  const requestedDetails = useRef(new Set<string>())
+  const detailsInFlight = useRef(new Set<string>())
 
   const loadWithSession = useCallback(async (sessionToken: string, version = scopeVersion.current) => {
     if (!token || version !== scopeVersion.current) return
@@ -82,6 +84,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
     setPhase({ kind: 'loading-meta' })
     setTask(null); setMessages([]); setArtifacts([]); setReviews([]); setNextOffset(null)
     olderInFlight.current = false; setLoadingOlder(false)
+    requestedDetails.current.clear(); detailsInFlight.current.clear()
     api.meta(token).then(async (shareMeta) => {
       if (cancelled) return
       setMeta(shareMeta)
@@ -147,11 +150,34 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
     let closed = false
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let backoffMs = 500
+    let snapshotInFlight = false
+    let snapshotAgain = false
+    const refreshSnapshot = async () => {
+      if (snapshotInFlight) { snapshotAgain = true; return }
+      snapshotInFlight = true
+      try {
+        do {
+          snapshotAgain = false
+          const [fresh, history, review, output] = await Promise.all([
+            api.task(token, sessionToken), api.history(token, sessionToken),
+            api.reviews(token, sessionToken), api.artifacts(token, sessionToken),
+          ])
+          if (closed) return
+          setTask(fresh)
+          setMessages(previous => mergeSharedHistorySnapshot(previous, history.messages))
+          setReviews(review.reviews)
+          setArtifacts(output.artifacts)
+          setArtifactDirectory(output.artifact_directory || '')
+        } while (snapshotAgain && !closed)
+      } finally { snapshotInFlight = false }
+    }
 
     const applyEvent = (event: any) => {
       const eventType = event?.type
       setMessages((previous) => applySharedMessageEvent(previous, event))
       if (
+        eventType === 'TEXT_MESSAGE_END' ||
+        eventType === 'TEXT_MESSAGE_START' ||
         eventType === 'status' ||
         eventType === 'RUN_STARTED' ||
         eventType === 'RUN_FINISHED' ||
@@ -167,18 +193,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
           event?.name === 'workstep.review_result'
         )
       ) {
-        const shouldRefreshReviews = eventType === 'review_status'
-          || eventType === 'review_result'
-          || event?.name === 'workstep.review_status'
-          || event?.name === 'workstep.review_result'
-        api.task(token, sessionToken).then((fresh) => {
-          if (!closed) setTask(fresh)
-        }).catch(() => { /* swallow */ })
-        if (shouldRefreshReviews) {
-          api.reviews(token, sessionToken).then((fresh) => {
-            if (!closed) setReviews(fresh.reviews || [])
-          }).catch(() => { /* swallow */ })
-        }
+        void refreshSnapshot().catch(() => { /* retry on reconnect or the next status */ })
       }
     }
 
@@ -193,6 +208,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
         if (closed) return
         setWsStatus('live')
         backoffMs = 500
+        void refreshSnapshot().catch(() => { /* retry on the next status */ })
       }
       ws.onmessage = (event) => {
         try { applyEvent(JSON.parse(event.data)) } catch { /* ignore malformed */ }
@@ -220,14 +236,8 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
       let timer: ReturnType<typeof setTimeout> | null = null
       const poll = async () => {
         try {
-          const [fresh, history, review] = await Promise.all([
-            api.task(token, sessionToken), api.history(token, sessionToken),
-            api.reviews(token, sessionToken),
-          ])
-          if (!closed) {
-            setTask(fresh); setMessages(previous => mergeSharedHistorySnapshot(previous, history.messages))
-            setReviews(review.reviews); setWsStatus('live')
-          }
+          await refreshSnapshot()
+          if (!closed) setWsStatus('live')
         } catch (reason) {
           if (!closed) {
             setWsStatus('disconnected')
@@ -268,7 +278,11 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
   const loadMessageEvents = useCallback(async (messageId: string) => {
     if (!token || phase.kind !== 'ready') return
     const message = messages.find((item) => item.id === messageId)
-    if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return
+    if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading
+      || detailsInFlight.current.has(messageId)) return
+    const version = scopeVersion.current
+    requestedDetails.current.add(messageId)
+    detailsInFlight.current.add(messageId)
     setMessages((current) => current.map((item) => item.id === messageId
       ? { ...item, event_detail: { ...item.event_detail, loading: true, error: '' } }
       : item))
@@ -287,16 +301,29 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
           cursor = nextCursor!
         }
       }
+      if (version !== scopeVersion.current) return
       setMessages((current) => mergeLoadedTaskMessageEvents(
         current, messageId, events, { complete, next_cursor: nextCursor },
       ))
     } catch (reason) {
+      if (version !== scopeVersion.current) return
       const error = reason instanceof Error ? reason.message : String(reason)
       setMessages((current) => current.map((item) => item.id === messageId
         ? { ...item, event_detail: { ...item.event_detail, loading: false, error } }
         : item))
+    } finally {
+      if (version === scopeVersion.current) detailsInFlight.current.delete(messageId)
     }
   }, [api, messages, phase, token])
+
+  useEffect(() => {
+    for (const message of messages) {
+      if (requestedDetails.current.has(message.id) && !message.event_detail?.loaded
+        && !message.event_detail?.loading && !message.event_detail?.error) {
+        void loadMessageEvents(message.id)
+      }
+    }
+  }, [messages, loadMessageEvents])
 
   const loadOlderHistory = useCallback(async () => {
     if (!token || phase.kind !== 'ready' || nextOffset === null || olderInFlight.current) return

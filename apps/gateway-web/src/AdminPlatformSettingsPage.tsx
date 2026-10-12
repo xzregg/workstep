@@ -1,3 +1,4 @@
+import { AdminTabs } from './AdminTabs'
 import { PlatformAddress } from './PlatformAddress'
 import { AdminPlatformAddressDialog } from './AdminPlatformAddressDialog'
 import { OrganizationSyncSettings } from './OrganizationSyncSettings'
@@ -16,6 +17,7 @@ type PlatformSettings = {
 }
 
 export function AdminPlatformSettingsPage() {
+  const [tab, setTab] = useState('platform')
   const [settings, setSettings] = useState<PlatformSettings | null>(null)
   const [csrf, setCsrf] = useState('')
   const [loading, setLoading] = useState(true)
@@ -47,10 +49,11 @@ export function AdminPlatformSettingsPage() {
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>平台设置</h2><Link to="/admin">返回管理概览</Link></div>
-    {loading && <p role="status">正在加载平台设置…</p>}
+    {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在加载平台设置…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(current => current + 1)}>重试</button></p>}
-    {!loading && !error && settings && <>
+    {!error && settings && <AdminTabs label="平台设置分类" value={tab} onChange={setTab} items={[
+     { id: 'platform', label: '平台信息', content: (
       <section className="gateway-project-grants"><h3>平台信息</h3>
         <dl className="gateway-account-summary">
           <div><dt>网关 ID</dt><dd>{settings.gateway_id}</dd></div>
@@ -60,6 +63,8 @@ export function AdminPlatformSettingsPage() {
         <button type="button" onClick={() => setAddressEditing(true)}>修改平台地址</button>
         <p>复制后粘贴到 WorkStep「设置 → 远程访问 → 网关平台」的地址栏。安装页也会显示此地址。</p>
       </section>
+     ) },
+     { id: 'identity', label: '注册与身份', content: (
       <section className="gateway-project-grants"><h3>注册与身份</h3>
         <p>账号密码登录：{settings.password_login_enabled === false ? '已关闭，仅企业扫码登录' : '已启用'}</p>
         <button type="button" onClick={()=>setLoginEditing(true)}>修改登录方式</button>
@@ -68,12 +73,16 @@ export function AdminPlatformSettingsPage() {
         <button type="button" onClick={() => setEditing(true)}>修改注册策略</button>
 
       </section>
+     ) },
+     { id: 'approval', label: '设备审批', content: (
       <section className="gateway-project-grants"><h3>设备审批</h3>
         <p>当前策略：{settings.device_approval_mode === 'automatic' ? '自动审批' : '人工审批'}</p>
         <p>自动审批允许已登录用户的新设备直接启用；人工审批需要管理员批准。</p>
         <button type="button" onClick={() => setDeviceEditing(true)}>修改设备审批策略</button>
       </section>
-      <OrganizationSyncSettings csrf={csrf} platformAddress={settings.public_origin} />
+     ) },
+     { id: 'organization', label: '组织同步与扫码登录', content: <OrganizationSyncSettings csrf={csrf} platformAddress={settings.public_origin} /> },
+     { id: 'data', label: '客户端与数据', content: (
       <section className="gateway-project-grants"><h3>客户端与数据</h3>
         <dl className="gateway-account-summary">
           <div><dt>网关协议版本</dt><dd>{settings.protocol_version}</dd></div>
@@ -84,7 +93,8 @@ export function AdminPlatformSettingsPage() {
         </dl>
         <p>数据库连接配置由服务端部署管理，不能在此页面热切换。</p>
       </section>
-    </>}
+     ) },
+    ]} />}
     {deviceEditing && settings && <AdminRegistrationPolicyDialog devicePolicy mode={settings.device_approval_mode ?? 'manual'} csrf={csrf}
       onClose={() => setDeviceEditing(false)} onSaved={() => { setDeviceEditing(false); setRevision(value => value + 1) }} />}
     {addressEditing && settings && <AdminPlatformAddressDialog address={settings.public_origin} csrf={csrf}

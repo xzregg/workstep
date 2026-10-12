@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
-import { gitApi, type GitBranch, type GitRepository, type GitDiscovery } from '../../api/git'
+import { type GitBranch, type GitRepository, type GitDiscovery } from '../../api/git'
 import { useI18n } from '../../i18n'
 import Icon from '../Icon'
+import { useGitApi } from './GitApiContext'
 import Button from '../Button'
 import { useGitStore } from '../../stores/gitStore'
 import GitBranchStatus from './GitBranchStatus'
 import GitWorktreeDeleteButton from './GitWorktreeDeleteButton'
 import { isProtectedGitBranch } from './branchProtection'
 
-function Repository({ repo, selected, branch, query, relative, open, onToggle, onSelect }: { repo: GitRepository; selected?: string; branch?: string; query: string; relative: string; open: boolean; onToggle: () => void; onSelect: (id: string, ref?: string) => void }) {
+function Repository({ repo, selected, branch, query, relative, open, onToggle, onSelect, onChanged }: { repo: GitRepository; selected?: string; branch?: string; query: string; relative: string; open: boolean; onToggle: () => void; onSelect: (id: string, ref?: string) => void; onChanged?: () => Promise<void> }) {
   const { t } = useI18n()
+  const gitApi = useGitApi()
   const referenceVersion = useGitStore(s => s.referenceVersion)
   const [branches, setBranches] = useState<GitBranch[]>([])
   const [error, setError] = useState('')
@@ -18,21 +20,21 @@ function Repository({ repo, selected, branch, query, relative, open, onToggle, o
     let current = true
     if (directory) gitApi.branches(directory.id).then(r => { if (current) { setBranches(r.branches); setError('') } }).catch(e => { if (current) setError(e.message) })
     return () => { current = false }
-  }, [repo, directory?.id, referenceVersion])
+  }, [repo, directory?.id, referenceVersion, gitApi])
   const visibleTrees = repo.worktrees.filter(w => w.available && !w.prunable)
   const missingTrees = repo.worktrees.filter(w => !w.main && (!w.available || w.prunable))
   const matches = !query || `${repo.name} ${relative} ${visibleTrees.map(w => `${w.path} ${w.branch}`).join(' ')}`.toLowerCase().includes(query.toLowerCase())
   if (!matches) return null
   const expanded = open || !!query
   return <section className="git-repository"><button className="git-repository-title" onClick={() => { if (!window.getSelection()?.toString()) onToggle() }} aria-expanded={expanded}><Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={13} /><Icon name="folder-open" size={15} /><strong>{relative === '.' ? repo.name : relative}</strong></button>
-    {expanded && <>{visibleTrees.map(w => <div key={w.id} className="git-tree-row"><button className={`git-tree-item ${selected === w.id && !branch ? 'selected' : ''}`} title={w.path} disabled={!w.available || w.prunable} onClick={() => { if (!window.getSelection()?.toString()) onSelect(w.id) }}><Icon name={w.main ? 'folder' : 'git-fork'} size={15} /><span><strong>{w.branch || t('git.detached')}</strong><small>{w.main ? t('git.main') : t('git.worktree')} · {w.path}</small></span>{branches.find(b => b.name === w.branch) && <GitBranchStatus branch={branches.find(b => b.name === w.branch)!} />}{!w.available && <small>{t('git.missing')}</small>}</button>{!w.main && w.available && !w.locked && !w.prunable && !isProtectedGitBranch(w.branch) && w.branch !== repo.worktrees.find(tree => tree.main)?.branch && <GitWorktreeDeleteButton tree={w} onDeleted={() => { if (selected === w.id) { const main = repo.worktrees.find(tree => tree.main && tree.available); if (main) onSelect(main.id) } }} />}</div>)}
-      {!!missingTrees.length && <details className="git-missing-worktrees"><summary>{t('git.cleanupMissingWorktrees', { count: missingTrees.length })}</summary>{missingTrees.map(w => <div className="git-missing-worktree" key={w.id}><span title={w.path}>{w.branch || t('git.detached')}</span>{!w.locked && !isProtectedGitBranch(w.branch) && w.branch !== repo.worktrees.find(tree => tree.main)?.branch && <GitWorktreeDeleteButton tree={w} onDeleted={() => { if (selected === w.id && directory) onSelect(directory.id) }} />}</div>)}</details>}
+    {expanded && <>{visibleTrees.map(w => <div key={w.id} className="git-tree-row"><button className={`git-tree-item ${selected === w.id && !branch ? 'selected' : ''}`} title={w.path} disabled={!w.available || w.prunable} onClick={() => { if (!window.getSelection()?.toString()) onSelect(w.id) }}><Icon name={w.main ? 'folder' : 'git-fork'} size={15} /><span><strong>{w.branch || t('git.detached')}</strong><small>{w.main ? t('git.main') : t('git.worktree')} · {w.path}</small></span>{branches.find(b => b.name === w.branch) && <GitBranchStatus branch={branches.find(b => b.name === w.branch)!} />}{!w.available && <small>{t('git.missing')}</small>}</button>{!w.main && w.available && !w.locked && !w.prunable && !isProtectedGitBranch(w.branch) && w.branch !== repo.worktrees.find(tree => tree.main)?.branch && <GitWorktreeDeleteButton tree={w} onDeleted={() => { if (selected === w.id) { const main = repo.worktrees.find(tree => tree.main && tree.available); if (main) onSelect(main.id) } return onChanged?.() }} />}</div>)}
+      {!!missingTrees.length && <details className="git-missing-worktrees"><summary>{t('git.cleanupMissingWorktrees', { count: missingTrees.length })}</summary>{missingTrees.map(w => <div className="git-missing-worktree" key={w.id}><span title={w.path}>{w.branch || t('git.detached')}</span>{!w.locked && !isProtectedGitBranch(w.branch) && w.branch !== repo.worktrees.find(tree => tree.main)?.branch && <GitWorktreeDeleteButton tree={w} onDeleted={() => { if (selected === w.id && directory) onSelect(directory.id); return onChanged?.() }} />}</div>)}</details>}
       {error && <p className="git-danger">{error}</p>}
     </>}
   </section>
 }
 
-export default function GitRepositoryTree({ data, selected, branch, width, onSelect }: { data: GitDiscovery; selected?: string; branch?: string; width?: number; onSelect: (id: string, ref?: string) => void }) {
+export default function GitRepositoryTree({ data, selected, branch, width, onSelect, onChanged }: { data: GitDiscovery; selected?: string; branch?: string; width?: number; onSelect: (id: string, ref?: string) => void; onChanged?: () => Promise<void> }) {
   const { t } = useI18n()
   const [query, setQuery] = useState('')
   const [openDefault, setOpenDefault] = useState(true)
@@ -44,7 +46,7 @@ export default function GitRepositoryTree({ data, selected, branch, width, onSel
   }
   function toggleAll() { setOpenDefault(allClosed); setOpenExceptions(new Set()) }
   return <aside className="git-tree" style={width ? { width, flexBasis: width } : undefined}><div className="git-tree-tools"><label className="git-search"><Icon name="search" size={14} /><input aria-label={t('git.search')} placeholder={t('git.search')} value={query} onChange={e => setQuery(e.target.value)} /></label><Button size="sm" disabled={!data.repositories.length} onClick={toggleAll}>{allClosed ? t('git.expandAll') : t('git.collapseAll')}</Button></div><div className="git-tree-scroll">
-    {data.projects.map(p => <div key={p.id}><h3 title={p.path}>{p.name}</h3>{data.repositories.filter(r => r.projects.some(m => m.id === p.id)).map(r => <Repository key={r.id} repo={r} selected={selected} branch={branch} query={query} relative={r.projects.find(m => m.id === p.id)!.relative_path} open={isOpen(r.id)} onToggle={() => toggleRepository(r.id)} onSelect={onSelect} />)}</div>)}
+    {data.projects.map(p => <div key={p.id}><h3 title={p.path}>{p.name}</h3>{data.repositories.filter(r => r.projects.some(m => m.id === p.id)).map(r => <Repository key={r.id} repo={r} selected={selected} branch={branch} query={query} relative={r.projects.find(m => m.id === p.id)!.relative_path} open={isOpen(r.id)} onToggle={() => toggleRepository(r.id)} onSelect={onSelect} onChanged={onChanged} />)}</div>)}
     {!data.repositories.length && <p className="git-muted">{t('git.emptyHint')}</p>}
   </div><footer>{t('git.depth', { depth: data.depth })}<small>{t('git.browseHint')}</small></footer></aside>
 }

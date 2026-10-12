@@ -231,12 +231,15 @@ class TaskService:
         task_id: str,
         description: str | None,
         review_overrides: dict[str, object] | None = None,
+        title: str | None = None,
     ) -> dict | None:
         """Update task context without interrupting an active engine run."""
         try:
             task = Task.get_by_id(task_id)
         except Task.DoesNotExist:
             return None
+        if title is not None:
+            task.title = title
         if description is not None:
             normalized = description.strip()
             if normalized:

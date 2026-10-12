@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { useTaskStore, type LiveMessage } from '../stores/taskStore'
@@ -18,6 +19,7 @@ interface Props {
 
 /** Owns the archive experience draft, generation lifecycle, and confirmation UI. */
 export default function ArchiveExperienceDialog({ task, projectId, onClose, onArchived }: Props) {
+  const { can } = useGatewayProjectPermissions(projectId)
   const { t } = useI18n()
   const getDraft = useTaskStore((state) => state.getArchiveExperienceDraft)
   const prepareDraft = useTaskStore((state) => state.prepareArchiveExperience)
@@ -161,6 +163,11 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
   }
   const showProgress = ['generating', 'stopping', 'stopped'].includes(phase)
     || (phase === 'archiving' && messageId !== null)
+
+  if (!can('file.edit')) return <ConfirmDialog open title={t('taskList.archiveTask')}
+    message={t('taskList.archiveExperienceIntroMessage', { title: task.title || t('taskList.thatTask') })}
+    confirmText={t('taskList.archiveExperienceDirectArchive')} loading={phase === 'archiving'}
+    onConfirm={handleDirectArchive} onCancel={handleCancel} />
 
   return <ConfirmDialog open title={t('taskList.archiveTask')}
     message={phase === 'review' || phase === 'saving' ? t('taskList.archiveExperienceReviewMessage')

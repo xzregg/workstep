@@ -401,6 +401,43 @@ async def test_mobile_configuration_uses_existing_access_guard_and_returns_to_mo
 
 
 @pytest.mark.asyncio
+async def test_gateway_login_uses_public_https_origin_behind_tls_proxy():
+    from api.gateway_platform import router
+
+    class Login:
+        async def begin(self, url, callback_origin, *, desktop=False):
+            assert callback_origin == 'https://workstep.example.com'
+            assert desktop is False
+            return url + '/desktop/login'
+
+    app = FastAPI(); app.include_router(router); app.state.gateway_browser_login = Login()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://workstep.example.com') as client:
+        response = await client.post('/api/gateway-platform/login',
+            headers={'Origin': 'https://workstep.example.com'},
+            json={'url': 'https://gateway.example.com'})
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_gateway_callback_accepts_pending_public_https_origin_behind_tls_proxy():
+    from api.gateway_platform import router
+
+    class Login:
+        pending = {'callback_origin': 'https://workstep.example.com'}
+
+        async def complete(self, code, state, *, callback_origin):
+            assert callback_origin == self.pending['callback_origin']
+            return ('mobile-session', SimpleNamespace(), False)
+
+    app = FastAPI(); app.include_router(router); app.state.gateway_browser_login = Login()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://workstep.example.com') as client:
+        response = await client.get('/api/gateway-platform/callback',
+            params={'code': 'c'*32, 'state': 's'*32})
+    assert response.status_code == 303
+    assert 'Secure' in response.headers['set-cookie']
+
+
+@pytest.mark.asyncio
 async def test_mobile_cannot_change_managed_gateway_without_device_owner_session():
     from api.gateway_platform import router
     class Login:
