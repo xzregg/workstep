@@ -56,6 +56,6 @@ export default function SkinLibrary({ documents, activeId, preferredSkin, busy, 
         <footer><div className="skin-settings-actions">{canManage && <><Button variant="ghost" size="sm" disabled={busy} onClick={() => onCreate(selected)}><Icon name="sparkles" size={14} />{t('skins.customize')}</Button><Button variant="ghost" size="sm" disabled={busy || selected.manifest.id === 'default'} onClick={() => onExport(selected.manifest.id)}>{t('skins.export')}</Button>{selected.manifest.id !== 'default' && <Button variant="icon" disabled={busy} aria-label={t('skins.delete')} onClick={() => onDelete(selected.manifest.id)}><Icon name="trash" size={14} /></Button>}</>}</div><div className="skin-settings-actions"><Button size="sm" disabled={busy} onClick={() => onPreview(selected)}>{t('skins.preview')}</Button><Button size="sm" variant="primary" disabled={busy || activeId === selected.manifest.id} onClick={() => onApply(selected)}>{t(activeId === selected.manifest.id ? 'skins.applied' : 'skins.apply')}</Button></div></footer>
       </section>
     </div>
-    <div className="skin-settings-footer-note"><span>{t('skins.deviceHint')}</span><Button variant="ghost" size="sm" onClick={onRestore}>{t('skins.restore')}</Button></div>
+    <div className="skin-settings-footer-note"><span>{t('skins.deviceHint')}</span></div>
   </>
 }
