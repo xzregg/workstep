@@ -53,6 +53,17 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>用量与统计</h2><Link to="/admin">返回管理概览</Link></div>
     <p>统计来自 PC 回传或供应商对账；未完成计量单独显示，缺失的 Token 和成本不会计为零。</p>
+    <div className="gateway-usage-tabs gateway-admin-tablist" role="tablist" aria-label="用量统计视图">
+      {tabs.map(item => <button type="button" key={item.id} id={'usage-tab-'+item.id} role="tab" aria-selected={tab === item.id} aria-controls="usage-report-panel" tabIndex={tab === item.id ? 0 : -1}
+        onKeyDown={event => {
+          if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return
+          event.preventDefault()
+          const index = tabs.findIndex(candidate => candidate.id === item.id)
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+          setTab(tabs[next].id as typeof tab); document.getElementById('usage-tab-'+tabs[next].id)?.focus()
+        }}
+        onClick={() => setTab(item.id as typeof tab)}>{item.label}</button>)}
+    </div>
     <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
       <GatewayDateRange from={draft.from_time} to={draft.to_time}
         onChange={range => setDraft(current => ({ ...current, ...range }))} />
@@ -81,17 +92,6 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
       </details>
     </form>
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
-    <div className="gateway-usage-tabs gateway-admin-tablist" role="tablist" aria-label="用量统计视图">
-      {tabs.map(item => <button type="button" key={item.id} id={'usage-tab-'+item.id} role="tab" aria-selected={tab === item.id} aria-controls="usage-report-panel" tabIndex={tab === item.id ? 0 : -1}
-        onKeyDown={event => {
-          if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return
-          event.preventDefault()
-          const index = tabs.findIndex(candidate => candidate.id === item.id)
-          const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
-          setTab(tabs[next].id as typeof tab); document.getElementById('usage-tab-'+tabs[next].id)?.focus()
-        }}
-        onClick={() => setTab(item.id as typeof tab)}>{item.label}</button>)}
-    </div>
     <div id="usage-report-panel" role="tabpanel" aria-labelledby={'usage-tab-'+tab}>
       {tab === 'events' ? <AdminUsageEvents key={filters} filters={filters}/> : tab === 'reconciliation' ?
         !readOnly && <><AdminUsageBillImport/><AdminUsageReconciliation/></> :

@@ -153,6 +153,16 @@ WorkStep 当前集成的引擎包括：
 
 提交拉取请求前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。可复现的缺陷和可执行的功能请求请提交到 [Issues](https://github.com/xzregg/workstep/issues)；问题讨论、想法与设计探索请使用 [Discussions](https://github.com/xzregg/workstep/discussions)。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
 
+## Star 增长历史
+
+<a href="https://www.star-history.com/?repos=xzregg%2Fworkstep&amp;type=date&amp;legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;theme=dark&amp;legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;legend=top-left" />
+    <img alt="WorkStep GitHub Star 增长历史" src="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;legend=top-left" width="800" />
+  </picture>
+</a>
+
 ## 许可证
 
 WorkStep 使用 [Apache License 2.0](LICENSE)。可选的第三方引擎与服务遵循其各自条款，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

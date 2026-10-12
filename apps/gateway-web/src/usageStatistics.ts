@@ -57,6 +57,7 @@ export function usageComparisonRanges(from: string, to: string, now = new Date()
   const last = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth()+1, 0)).getUTCDate()
   result.setUTCDate(Math.min(day, last)); return result.toISOString()
  }
+ const year = { from: lastYear(a), to: lastYear(b) }
  return { month, previous: { from: new Date(a.getTime() - (b.getTime()-a.getTime())).toISOString(), to: a.toISOString() },
-  year: { from: lastYear(a), to: lastYear(b) } }
+  year: year.from < year.to ? year : null }
 }
