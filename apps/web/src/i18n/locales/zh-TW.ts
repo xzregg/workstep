@@ -2,6 +2,9 @@ import { zhCN, type Messages } from './zh-CN'
 
 export const zhTW: Messages = {
   skins: {
+    studioPackage: "皮肤包目录",
+    studioReadPackage: "读取此包",
+    studioWaiting: "等待对话在 Runtime 项目内创建皮肤包，也可指定已有包目录。",
     "studioTitle": "聊出你的专属皮肤",
     "studioIntro": "沿用项目对话。说说你的想法，或在右侧微调。",
     "studioEditing": "正在制作的样式",
@@ -1308,6 +1311,7 @@ export const zhTW: Messages = {
     canvasHintDismiss: '知道了',
   },
   skillCenter: {
+    createDraft: "聊天制作技能",
     nav: '技能中心', title: '技能中心', intro: '選擇目前專案允許使用的本機技能。開啟後會同步唯讀副本，並在下次執行時提供給支援的引擎。',
     rescan: '重新掃描', search: '搜尋技能', searchPlaceholder: '搜尋名稱、描述或來源路徑', sourceFilter: '依來源篩選', allSources: '全部來源',
     noProject: '尚未選擇專案', noProjectHint: '先在側欄選擇一個專案，再設定它可以使用的技能。', nextRunHint: '技能開關依專案儲存，並在下次執行或新工作步驟生效。', remoteUnsupported: '遠端專案暫不支援管理主機上的本機技能。',

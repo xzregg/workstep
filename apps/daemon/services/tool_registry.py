@@ -457,6 +457,7 @@ WORKSTEP_TOOLS.extend([
 ])
 
 WORKSTEP_TOOLS.extend([
+    WorkstepTool(name='workstep_create_skill_draft', description='Start an ordinary skill-making conversation in the fixed Runtime project root; does not allocate a draft directory or install a skill.', method='POST', path='/api/skills/onboarding', read_only=False, side_effect='create an ordinary Runtime chat session'),
     WorkstepTool(name="workstep_skin_list", description="List default and installed skins.", method="GET", path="/api/skins"),
     WorkstepTool(name="workstep_skin_contract", description="Read the versioned skin parts, states, properties, layouts and actions contract.", method="GET", path="/api/skins/contract"),
     WorkstepTool(name="workstep_skin_validate", description="Validate a declarative skin package and create an immutable preview; visual acceptance is still required.", method="POST", path="/api/skins/validate", parameters={"path": {"type": "string"}}, required=("path",), body_params=("path",)),

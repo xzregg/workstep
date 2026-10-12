@@ -2,6 +2,9 @@ import { zhCN, type Messages } from './zh-CN'
 
 export const jaJP: Messages = {
   skins: {
+    studioPackage: "皮肤包目录",
+    studioReadPackage: "读取此包",
+    studioWaiting: "等待对话在 Runtime 项目内创建皮肤包，也可指定已有包目录。",
     "studioTitle": "聊出你的专属皮肤",
     "studioIntro": "沿用项目对话。说说你的想法，或在右侧微调。",
     "studioEditing": "正在制作的样式",
@@ -1308,6 +1311,7 @@ export const jaJP: Messages = {
     canvasHintDismiss: '了解',
   },
   skillCenter: {
+    createDraft: "聊天制作技能",
     nav: 'スキルセンター', title: 'スキルセンター', intro: 'このプロジェクトで使用できるローカルスキルを選択します。有効なスキルは同期され、次回の実行から対応エンジンで利用できます。',
     rescan: '再スキャン', search: 'スキルを検索', searchPlaceholder: '名前、説明、ソースパスを検索', sourceFilter: 'ソースで絞り込み', allSources: 'すべてのソース',
     noProject: 'プロジェクトが選択されていません', noProjectHint: 'サイドバーでプロジェクトを選択してスキルを設定してください。', nextRunHint: 'スキル設定はプロジェクトごとに保存され、次回の実行または新しいセッションから有効になります。', remoteUnsupported: 'リモートプロジェクトのローカルスキル管理にはまだ対応していません。',

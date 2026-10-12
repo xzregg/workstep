@@ -29,6 +29,7 @@ LIST_FIELDS = {
     "engine": ("engines", ("id", "enabled", "custom", "installed", "configured", "verified", "built_in", "version", "mode", "default_model")),
     "schedule": ("schedules", ("id", "name", "workflow_id", "status", "summary", "next_run_at", "last_run_at")),
     "skin": (None, ("manifest", "revision")),
+    "skill": (None, ("project_id", "session_id", "package_path")),
     "channel": (None, ("id", "name", "platform", "enabled", "status")),
 }
 
@@ -213,6 +214,10 @@ def build_parser() -> argparse.ArgumentParser:
     recipients.add_argument("--user", dest="user_id")
     recipients.add_argument("--group", dest="group_id")
     add_json(channel_send)
+
+    skill = subparsers.add_parser('skill', help='create skill drafts in the shared runtime workspace')
+    skill_sub = skill.add_subparsers(dest='subcommand', required=True)
+    add_json(skill_sub.add_parser('create'))
 
     skin = subparsers.add_parser("skin", help="create and manage declarative WorkStep skins")
     skin_sub = skin.add_subparsers(dest="subcommand", required=True)
@@ -495,6 +500,8 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 "overwrite": args.overwrite,
                 "confirm": "yes",
             })
+    if command == 'skill':
+        return await client.call('workstep_create_skill_draft', {'confirm': 'yes'})
     if command == "skin":
         action = args.subcommand
         arguments = {"confirm": "yes"}

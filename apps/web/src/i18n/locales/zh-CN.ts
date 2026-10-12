@@ -1,5 +1,8 @@
 export const zhCN = {
   skins: {
+    studioPackage: "皮肤包目录",
+    studioReadPackage: "读取此包",
+    studioWaiting: "等待对话在 Runtime 项目内创建皮肤包，也可指定已有包目录。",
     "studioTitle": "聊出你的专属皮肤",
     "studioIntro": "沿用项目对话。说说你的想法，或在右侧微调。",
     "studioEditing": "正在制作的样式",
@@ -1399,6 +1402,7 @@ export const zhCN = {
     canvasHintDismiss: '知道了',
   },
   skillCenter: {
+    createDraft: "聊天制作技能",
     nav: '技能中心', title: '技能中心', intro: '选择当前项目允许使用的本地技能。开启后会同步只读副本，并在下次运行时提供给受支持的引擎。',
     rescan: '重新扫描', search: '搜索技能', searchPlaceholder: '搜索名称、描述或来源路径', sourceFilter: '按来源筛选', allSources: '全部来源',
     noProject: '尚未选择项目', noProjectHint: '先在侧栏选择一个项目，再配置它可以使用的技能。', nextRunHint: '技能开关按项目保存，并在下次运行或新会话生效。', remoteUnsupported: '远程项目暂不支持管理主机上的本地技能。',

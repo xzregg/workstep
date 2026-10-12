@@ -10,6 +10,8 @@ import { skinsApi } from '../src/api/skins'
 import { defaultSkin, type SkinDocument } from '../src/skins/contract'
 import { currentSkin, restoreDefaultSkin } from '../src/skins/runtime'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
+import { ApiError } from '../src/api/transport'
+import { saveDraft } from '../src/utils/chatDraft'
 
 test('manual controls edit the shared package, isolate preview, and protect dirty close and concurrent turns', async () => {
   const { window } = installDomEnvironment()
@@ -30,7 +32,7 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinStudio workspace={{ project_id: 'design', project_name: '皮肤设计', session_id: 'session', workspace_path: '/tmp/design', package_path: '/tmp/design/skin', prompt: '' }} onClose={() => { closed++ }} onSaved={() => {}} /></I18nProvider></MemoryRouter>))
-    const field = document.querySelector('.skin-studio-controls input:not([type])') as HTMLInputElement || document.querySelector('.skin-studio-controls input[type=text]') as HTMLInputElement
+    const field = document.querySelector('.skin-studio-controls fieldset input:not([type])') as HTMLInputElement || document.querySelector('.skin-studio-controls fieldset input[type=text]') as HTMLInputElement
     await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(field, '手动微调'); field.dispatchEvent(new window.Event('input', { bubbles: true })) })
     await act(async () => document.querySelector<HTMLButtonElement>('.skin-studio-palette button[aria-label="#7c65d5"]')!.click())
     assert.match(document.querySelector<HTMLIFrameElement>('.skin-studio-preview')!.srcdoc, /--accent:#7c65d5/)
@@ -47,5 +49,35 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
   } finally {
     await act(async () => root.unmount()); skinsApi.validate = oldValidate; skinsApi.saveDraft = oldSave; globalThis.fetch = oldFetch
     useChatSessionStore.getState().resetSession('session'); await window.happyDOM.close()
+  }
+})
+
+test('a new Runtime conversation can create its first skin before any package exists', async () => {
+  const { window } = installDomEnvironment()
+  Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
+  const oldFetch = globalThis.fetch, oldValidate = skinsApi.validate
+  skinsApi.validate = async () => { throw new ApiError('尚未创建皮肤包', 404) }
+  let sent = 0
+  globalThis.fetch = async (input, init) => {
+    const path = String(input)
+    if (path.includes('/chat-sessions/empty-session/chat') && init?.method === 'POST') {
+      sent++; return Response.json({ session_id: 'empty-session', turn_id: 'turn', assistant_message_id: 'reply', status: 'accepted' })
+    }
+    if (path.includes('/chat-sessions/empty-session')) return Response.json({ id: 'empty-session', project_id: 'design', title: '', messages: [], running: false, engine: 'pydantic_ai' })
+    if (path.includes('/assistants')) return Response.json({ assistants: [{ name: 'chat_session', configured: { engine: 'pydantic_ai' }, resolved: {}, available_engines: [] }] })
+    return Response.json({ providers: [], buttons: [], runs: [], active_action_ids: [], sessions: [] })
+  }
+  saveDraft('empty-session', '请在 Runtime 根目录创建我的皮肤包')
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<MemoryRouter><I18nProvider><SkinStudio workspace={{ project_id: 'design', project_name: 'Runtime', session_id: 'empty-session', workspace_path: '/tmp/runtime', package_path: '/tmp/runtime/skin', prompt: '' }} onClose={() => {}} onSaved={() => {}} /></I18nProvider></MemoryRouter>))
+    assert.equal(document.querySelector('.skin-studio-controls fieldset'), null)
+    const send = document.querySelector<HTMLButtonElement>('.skin-studio-chat .chat-input-send')!
+    assert.equal(send.disabled, false)
+    await act(async () => send.click())
+    assert.equal(sent, 1)
+  } finally {
+    await act(async () => root.unmount()); skinsApi.validate = oldValidate; globalThis.fetch = oldFetch
+    useChatSessionStore.getState().resetSession('empty-session'); await window.happyDOM.close()
   }
 })

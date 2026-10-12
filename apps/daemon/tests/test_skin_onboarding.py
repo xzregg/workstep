@@ -11,7 +11,7 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
                              create_session=Mock(return_value={"id": "session"}))
     monkeypatch.setattr(onboarding, "chat_module", lambda: module)
     monkeypatch.setattr(onboarding, "workspace_parent", lambda: tmp_path)
-    project = SimpleNamespace(id="project", name="引擎接入")
+    project = SimpleNamespace(id="project", name="runtime", path=tmp_path)
     monkeypatch.setattr(onboarding.project_manager, "init_project", lambda *a, **kw: project)
     async def run_db(project_id, operation): return operation(project)
     monkeypatch.setattr(onboarding.project_manager, "run_db", run_db)
@@ -20,7 +20,7 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     assert result["session_id"] == "session"
     assert result["project_id"] == "project"
     assert "$custom-engine" not in result["prompt"]
-    assert (Path(result["workspace_path"]) / "skin-contract.json").is_file()
+    assert (Path(result["package_path"]).parent / "skin-contract.json").is_file()
     assert "workstep-cli" in result["prompt"]
     assert "custom-skin.md" in result["prompt"]
     assert result["workspace_path"] in result["prompt"]
@@ -83,7 +83,7 @@ def test_workspace_parent_uses_current_runtime_boundary(tmp_path, monkeypatch, s
     monkeypatch.setattr(config, "CONFIG_DIR", tmp_path / "config")
     if sandbox:
         monkeypatch.setenv("WORKSTEP_PROJECTS_ROOT", str(tmp_path / "projects"))
-        assert workspace_parent() == tmp_path / "projects" / "workstep-skin-workspaces"
+        assert workspace_parent() == tmp_path / "projects" / "runtime"
     else:
         monkeypatch.delenv("WORKSTEP_PROJECTS_ROOT", raising=False)
-        assert workspace_parent() == tmp_path / "config" / "runtime" / "skin-workspaces"
+        assert workspace_parent() == tmp_path / "config" / "runtime" / "workspace"

@@ -1,0 +1,58 @@
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import Mock
+from pathlib import Path
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_all_creation_requests_reuse_runtime_root_without_allocating_draft_directories(tmp_path, monkeypatch):
+    from services import skin_onboarding, custom_engine_onboarding, skill_onboarding
+    from services.project import ProjectManager
+    manager = ProjectManager()
+    root = tmp_path / 'runtime'
+    session_index = iter(range(4))
+    module = SimpleNamespace(_resolve_engine_models=lambda: ('codex_sdk', None, None), create_session=lambda *args, **kwargs: {'id': f'session-{next(session_index)}'})
+    init = Mock(wraps=manager.init_project)
+    monkeypatch.setattr(manager, 'init_project', init)
+    for onboarding in (skin_onboarding, custom_engine_onboarding, skill_onboarding):
+        monkeypatch.setattr(onboarding, 'project_manager', manager)
+        monkeypatch.setattr(onboarding, 'chat_module', lambda: module)
+        monkeypatch.setattr(onboarding, 'workspace_parent', lambda: root)
+        monkeypatch.setattr(onboarding.skill_center, 'runtime_selection', lambda path: None)
+    try:
+        results = await asyncio.gather(skin_onboarding.create_onboarding(), custom_engine_onboarding.create_onboarding(), skin_onboarding.create_onboarding(), skill_onboarding.create_onboarding())
+        assert len({item['project_id'] for item in results}) == 1
+        assert len({item['session_id'] for item in results}) == 4
+        assert all(item['workspace_path'] == str(root) for item in results)
+        assert results[0]['package_path'] == str(root / 'skin')
+        assert results[1]['package_path'] == results[3]['package_path'] == str(root)
+        assert not any((root / name).exists() for name in ('skills', 'engines', 'skins', 'skin'))
+        init.assert_called_once()
+        assert manager.get_project(root).name == 'Runtime'
+        from services.skill_center import SkillCenter
+        draft = Path(results[3]['package_path'])
+        (draft / 'SKILL.md').write_text('---\nname: uninstalled-draft\ndescription: draft\n---\n')
+        installed = tmp_path / 'installed'
+        installed.mkdir()
+        center = SkillCenter(source_roots={'agents': installed})
+        assert not any(skill.name == 'uninstalled-draft' for skill in center.list_project(root))
+        assert not list(installed.iterdir())
+    finally:
+        await asyncio.to_thread(manager.close_all)
+
+
+def test_runtime_project_identity_survives_restart(tmp_path):
+    from services.customization_workspace import runtime_project
+    from services.project import ProjectManager
+    first = ProjectManager(); second = ProjectManager()
+    try:
+        project = runtime_project(first, tmp_path / 'runtime')
+        identity = project.id
+        first.close_all()
+        reopened = runtime_project(second, tmp_path / 'runtime')
+        assert reopened.id == identity
+        assert len(second.list_projects()) == 1
+    finally:
+        first.close_all(); second.close_all()

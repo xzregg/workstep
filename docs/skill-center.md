@@ -1,5 +1,7 @@
 # Project skill center
 
+本机项目设置 → 技能提供「聊天制作技能」。制作复用普通项目对话，所有会话统一在固定 `Runtime` 项目根目录工作，包目录由对话自行创建；CLI 为 `workstep skill create --json`。草稿目录不是技能扫描根，已安装技能库保持原位置，完成后经用户明确要求再安装。详见 [自定义草稿共享工作区](customization-workspace.md)。
+
 WorkStep discovers filesystem skills from `~/.agents/skills`,
 `~/.claude/skills`, and `~/.codex/skills`. Discovery is recursive, but stops at
 the first directory containing `SKILL.md`; nested resources inside a skill are

@@ -2,6 +2,9 @@ import { zhCN, type Messages } from './zh-CN'
 
 export const enUS: Messages = {
   skins: {
+    studioPackage: "皮肤包目录",
+    studioReadPackage: "读取此包",
+    studioWaiting: "等待对话在 Runtime 项目内创建皮肤包，也可指定已有包目录。",
     "studioTitle": "聊出你的专属皮肤",
     "studioIntro": "沿用项目对话。说说你的想法，或在右侧微调。",
     "studioEditing": "正在制作的样式",
@@ -1324,6 +1327,7 @@ export const enUS: Messages = {
     canvasHintDismiss: 'Got it',
   },
   skillCenter: {
+    createDraft: "聊天制作技能",
     nav: 'Skill Center', title: 'Skill Center', intro: 'Choose which local skills this project may use. Enabled skills are mirrored and become available to supported engines on the next run.',
     rescan: 'Rescan', search: 'Search skills', searchPlaceholder: 'Search name, description, or source path', sourceFilter: 'Filter by source', allSources: 'All sources',
     noProject: 'No project selected', noProjectHint: 'Select a project in the sidebar to configure its skills.', nextRunHint: 'Skill choices are saved per project and take effect on the next run or new session.', remoteUnsupported: 'Local host skills cannot be managed for remote projects yet.',

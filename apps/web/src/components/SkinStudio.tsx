@@ -36,29 +36,33 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
   const { t } = useI18n()
   const ref = useRef<HTMLDivElement>(null)
   const mounted = useRef(true), priorRunning = useRef(false)
-  const loadInFlight = useRef<Promise<void> | null>(null)
+  const loadInFlight = useRef<{ path: string; request: Promise<void> } | null>(null)
+  const readGeneration = useRef(0)
   const [skin, setSkin] = useState<SkinDocument | null>(null)
   const [revision, setRevision] = useState('')
   const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [sessionId, setSessionId] = useState<string | null>(workspace.session_id)
   const [pending, setPending] = useState<'close' | 'reload' | 'replace' | null>(null)
   const [base, setBase] = useState('custom'), [phone, setPhone] = useState(false)
+  const [packagePath, setPackagePath] = useState(workspace.package_path)
+  const [packageInput, setPackageInput] = useState(workspace.package_path)
   const session = useChatSessionStore(s => sessionId ? s.sessions[sessionId] : undefined)
   const running = Boolean(session?.running || session?.messages.some(message => message.role === 'assistant' && message.status === 'running'))
   const requestClose = () => { if (busy) return; if (dirty) setPending('close'); else onClose() }
   useOverlay(true, requestClose, ref)
   const project: Project = { id: workspace.project_id, name: workspace.project_name, path: workspace.workspace_path, steps: {}, workflows: [] }
   const load = useCallback(() => {
-    if (loadInFlight.current) return loadInFlight.current
-    const request = skinsApi.validate(workspace.package_path).then(result => {
-      if (mounted.current) { setSkin(result.skin); setRevision(result.skin.revision); setDirty(false); setBase('custom'); setError('') }
-    }).finally(() => { loadInFlight.current = null })
-    loadInFlight.current = request
+    if (loadInFlight.current?.path === packagePath) return loadInFlight.current.request
+    const generation = ++readGeneration.current
+    const request = skinsApi.validate(packagePath).then(result => {
+      if (mounted.current && generation === readGeneration.current) { setSkin(result.skin); setRevision(result.skin.revision); setDirty(false); setBase('custom'); setError('') }
+    }).catch(reason => { if (generation === readGeneration.current) throw reason }).finally(() => { if (loadInFlight.current?.request === request) loadInFlight.current = null })
+    loadInFlight.current = { path: packagePath, request }
     return request
-  }, [workspace.package_path])
+  }, [packagePath])
   useEffect(() => {
     mounted.current = true
-    void load().catch(reason => { if (mounted.current) setError(String(reason.message || reason)) })
+    void load().catch(reason => { if (mounted.current) setError(reason instanceof ApiError && reason.status === 404 ? '' : String(reason.message || reason)) })
     return () => { mounted.current = false }
   }, [load])
   useEffect(() => {
@@ -69,21 +73,22 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
     priorRunning.current = running
   }, [running, dirty, load, t])
   const save = useCallback(async (): Promise<boolean> => {
-    if (!skin || busy || running) return false
+    if (busy || running) return false
+    if (!skin) return !dirty
     if (!dirty) return true
     setBusy(true); setError('')
     try {
-      const result = await skinsApi.saveDraft(workspace.package_path, revision, skin)
+      const result = await skinsApi.saveDraft(packagePath, revision, skin)
       if (mounted.current) { setSkin(result.skin); setRevision(result.skin.revision); setDirty(false) }
       return true
     } catch (reason) { if (mounted.current) setError(reason instanceof Error ? reason.message : String(reason)); return false }
     finally { if (mounted.current) setBusy(false) }
-  }, [skin, dirty, busy, running, revision, workspace.package_path])
+  }, [skin, dirty, busy, running, revision, packagePath])
   const register = async (replace = false) => {
     if (!await save()) return
     setBusy(true); setError('')
     try {
-      const registered = await skinsApi.register(workspace.package_path, replace)
+      const registered = await skinsApi.register(packagePath, replace)
       if (mounted.current) { setDirty(false); setPending(null); onSaved(registered) }
     } catch (reason) {
       if (!mounted.current) return
@@ -98,8 +103,12 @@ export default function SkinStudio({ workspace, onClose, onSaved }: { workspace:
       <div className="skin-studio-body">
         <section className="skin-studio-chat"><ChatPage embedded={{ project, sessionId, onSessionChange: setSessionId, beforeSend: save }} /></section>
         <aside className="skin-studio-controls"><h3>{t('skins.studioEditing')}</h3>
+          <div className="skin-studio-package"><label>{t('skins.studioPackage')}<Input value={packageInput} disabled={busy || running} onChange={event => setPackageInput(event.target.value)} /></label><Button size="sm" disabled={!packageInput.trim() || dirty || busy || running} onClick={() => {
+            if (packageInput.trim() === packagePath) void load().catch(reason => setError(String(reason.message)))
+            else { setSkin(null); setPackagePath(packageInput.trim()) }
+          }}>{t('skins.studioReadPackage')}</Button></div>
           {error && <p className="skin-studio-error" role="alert">{error}</p>}
-          {!skin ? <Button onClick={() => void load().catch(reason => setError(String(reason.message)))}>{t('common.retry')}</Button> : <>
+          {!skin ? <><p className="skin-studio-note" role="status">{t('skins.studioWaiting')}</p><Button onClick={() => void load().catch(reason => setError(String(reason.message)))}>{t('common.retry')}</Button></> : <>
           <fieldset disabled={busy || running}>
             <label>{t('skins.studioName')}<Input value={skin.manifest.name} onChange={event => edit(current => ({ ...current, manifest: { ...current.manifest, name: event.target.value } }))} /></label>
             <label>{t('skins.studioBase')}<Select value={base} onChange={event => {

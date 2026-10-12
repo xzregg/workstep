@@ -411,7 +411,7 @@ function LocalProjectSettingsPanel({
                 onEdited={() => { setButtonsError(''); setButtonsSaved(false) }}
               />
             ) : visibleTab === 'skills' ? (
-              <SkillCenterSettings project={project} embedded />
+              <SkillCenterSettings project={project} embedded onConversationStarted={onClose} />
             ) : visibleTab === 'concurrency' ? (
               <div style={tabBodyStyle}>
                 <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>

@@ -31,3 +31,5 @@ Repository-agent instructions remain in [`AGENTS.md`](../AGENTS.md); they point 
 - [流程钩子：统一地址、设备身份和网关转发](workflow-hooks.md)
 
 - [通知钩子](notification-hooks.md)：流程事件、平台投递、预览与重试。
+
+- [自定义草稿共享工作区](customization-workspace.md)：技能、引擎、皮肤制作目录与普通会话复用。
