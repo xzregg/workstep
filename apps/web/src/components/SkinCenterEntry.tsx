@@ -18,9 +18,9 @@ function SkinCenterDialog({ onClose }: { onClose: () => void }) {
   </ResizablePanel></div>, document.body)
 }
 
-/** Personal appearance stays reachable independently of host administration. */
+/** System appearance entry owns the skin center dialog lifecycle. */
 export default function SkinCenterEntry() {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
-  return <><Button variant="ghost" className="layout-sidebar-nav-button skin-center-entry" onClick={() => setOpen(true)}><Icon name="sparkles" size={17} />{t('skins.title')}</Button>{open && <SkinCenterDialog onClose={() => setOpen(false)} />}</>
+  return <><Button variant="ghost" className="skin-center-entry" onClick={() => setOpen(true)}><Icon name="sparkles" size={17} />{t('skins.appearance')}</Button>{open && <SkinCenterDialog onClose={() => setOpen(false)} />}</>
 }

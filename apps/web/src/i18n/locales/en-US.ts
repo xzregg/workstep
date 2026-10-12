@@ -39,6 +39,7 @@ export const enUS: Messages = {
     studioSuggestCards: "引擎选项改成卡片",
     studioSuggestRight: "导航放右边，工具栏置顶",
     studioGlow: "柔和背景光晕",
+    appearance: "外观",
     studioHistory: "对话记录",
     studioChatTab: "聊天",
     studioPreviewTab: "编辑与预览",

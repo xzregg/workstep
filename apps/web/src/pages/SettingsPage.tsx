@@ -1,3 +1,4 @@
+import SkinCenterEntry from '../components/SkinCenterEntry'
 import SandboxSettings from '../components/SandboxSettings'
 import GatewayLogoutButton from '../components/GatewayLogoutButton'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -259,6 +260,7 @@ export default function SettingsPage({
                 <span className="settings-switch-thumb" />
               </button>
             </div>
+            <div className="settings-system-group settings-system-appearance"><SkinCenterEntry /></div>
             <div className="settings-system-group settings-system-font-size">
               <h2 className="settings-system-heading">{t('settings.fontSize')}</h2>
               <p className="settings-system-description">
