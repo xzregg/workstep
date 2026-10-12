@@ -1,8 +1,12 @@
 .settings-appearance-page { min-width: 0; display: flex; flex-direction: column; gap: 24px; container-type: inline-size; }
-.settings-appearance-font { padding-bottom: 22px; border-bottom: 1px solid var(--border-soft); }
+.settings-appearance-font { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.settings-appearance-font-copy { flex: 1; min-width: 180px; }
 .settings-appearance-font h2 { font-size: calc(14px * var(--font-scale)); font-weight: 650; margin: 0 0 5px; }
-.settings-appearance-font p { color: var(--muted); font-size: calc(12px * var(--font-scale)); margin: 0 0 12px; }
-.settings-appearance-font .segmented-control { max-width: 360px; }
+.settings-appearance-font p { color: var(--muted); font-size: calc(11px * var(--font-scale)); margin: 0; line-height: 1.6; }
+.settings-appearance-font .segmented-control { flex: 1; min-width: 220px; max-width: 360px; }
+@media (max-width: 1023px) {
+  .settings-content .settings-appearance-page .skin-settings-card { height: auto !important; min-height: 0 !important; }
+}
 @container (max-width: 650px) {
   .settings-appearance-page .skin-settings-workspace { grid-template-columns: minmax(0, 1fr); }
 }
