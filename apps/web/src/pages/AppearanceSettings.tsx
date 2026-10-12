@@ -13,9 +13,9 @@ export default function AppearanceSettings() {
     saveFontSizePreference(value)
   }
   return <div className="settings-appearance-page">
+    <SkinSettings />
     <section className="settings-appearance-font" aria-label={t('settings.fontSize')}>
-      <h2>{t('settings.fontSize')}</h2>
-      <p>{t('settings.fontSizeIntro')}</p>
+      <div className="settings-appearance-font-copy"><h2>{t('settings.fontSize')}</h2><p>{t('settings.fontSizeIntro')}</p></div>
       <SegmentedControl ariaLabel={t('settings.fontSize')} value={fontSize} onChange={changeFontSize} options={[
         { value: 'small', label: t('settings.fontSizeSmall') },
         { value: 'standard', label: t('settings.fontSizeStandard') },
@@ -23,6 +23,5 @@ export default function AppearanceSettings() {
         { value: 'extraLarge', label: t('settings.fontSizeExtraLarge') },
       ]} />
     </section>
-    <SkinSettings />
   </div>
 }
