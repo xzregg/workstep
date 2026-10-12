@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import { defaultSkin, effectiveSkinTokens, resolvedSkinLayout, type SkinDocument } from '../skins/contract'
 import { useI18n } from '../i18n'
 import Button from './Button'
@@ -13,9 +13,9 @@ function SkinThumbnail({ skin }: { skin: SkinDocument }) {
   return <span className="skin-thumbnail" style={style} aria-hidden="true"><span className={`skin-thumbnail-window${layout.sidebarSide === 'right' ? ' is-right' : ''}`}><span className="skin-thumbnail-nav"><i /><i /><i /><i /></span><span className="skin-thumbnail-content"><span className="skin-thumbnail-title"><i /><b /></span><span className="skin-thumbnail-bubble"><i /><i /></span><span className="skin-thumbnail-bubble"><i /></span><span className="skin-thumbnail-composer" /></span></span></span>
 }
 
-export default function SkinLibrary({ documents, activeId, preferredSkin, busy, canManage, onCreate, onPreview, onApply, onExport, onDelete, onRestore }: {
+export default function SkinLibrary({ documents, activeId, preferredSkin, busy, canManage, toolbarActions, onCreate, onPreview, onApply, onExport, onDelete, onRestore }: {
   documents: SkinDocument[]; activeId: string; busy: boolean; canManage: boolean;
-  preferredSkin?: SkinDocument | null;
+  preferredSkin?: SkinDocument | null; toolbarActions?: ReactNode;
   onCreate: (base?: SkinDocument) => void; onPreview: (skin: SkinDocument) => void; onApply: (skin: SkinDocument) => void;
   onExport: (id: string) => void; onDelete: (id: string) => void; onRestore: () => void;
 }) {
@@ -30,19 +30,18 @@ export default function SkinLibrary({ documents, activeId, preferredSkin, busy, 
   const [filter, setFilter] = useState('all'), [query, setQuery] = useState('')
   const [phone, setPhone] = useState(false), [scene, setScene] = useState<'chat' | 'tasks' | 'flow'>('chat')
   const selected = documents.find(skin => skin.manifest.id === selectedId) ?? documents[0] ?? defaultSkin()
-  const visible = documents.filter(skin => (filter !== 'mine' || skin.manifest.id !== 'default') && (filter !== 'active' || skin.manifest.id === activeId)
+  const visible = documents.filter(skin => (filter !== 'mine' || skin.manifest.id !== 'default')
     && `${skin.manifest.name} ${skin.manifest.description ?? ''}`.toLowerCase().includes(query.trim().toLowerCase()))
   return <>
     <div className="skin-settings-workspace">
       <section className="skin-settings-library">
-        <div className="skin-settings-tabs" role="tablist" aria-label={t('skins.library')}>
-          {(['all', 'mine', 'active'] as const).map(key => <button key={key} type="button" role="tab" aria-selected={filter === key} onClick={() => setFilter(key)}>{t(`skins.filter_${key}`)}{key !== 'active' && <small>{key === 'all' ? documents.length : documents.filter(skin => skin.manifest.id !== 'default').length}</small>}</button>)}
-        </div>
+        <div className="skin-settings-library-toolbar"><div className="skin-settings-tabs" role="tablist" aria-label={t('skins.library')}>
+          {(['all', 'mine'] as const).map(key => <button key={key} type="button" role="tab" aria-selected={filter === key} onClick={() => setFilter(key)}>{t(`skins.filter_${key}`)}<small>{key === 'all' ? documents.length : documents.filter(skin => skin.manifest.id !== 'default').length}</small></button>)}
+        </div>{toolbarActions}</div>
         <label className="skin-settings-search"><Icon name="search" size={15} /><Input value={query} onChange={event => setQuery(event.target.value)} aria-label={t('skins.librarySearch')} placeholder={t('skins.librarySearch')} /></label>
         <div className="skin-settings-list">{visible.map(skin => <button type="button" key={skin.manifest.id} className="skin-settings-card" data-skin-id={skin.manifest.id} data-selected={selected.manifest.id === skin.manifest.id} aria-pressed={selected.manifest.id === skin.manifest.id} onClick={() => setSelectedId(skin.manifest.id)}>
           <SkinThumbnail skin={skin} /><span className="skin-settings-card-info"><span className="skin-settings-card-title"><strong>{skin.manifest.id === 'default' ? t('skins.default') : skin.manifest.name}</strong>{activeId === skin.manifest.id && <span className="skin-settings-pill">{t('skins.using')}</span>}</span><span className="skin-settings-card-meta">{t(skin.manifest.id === 'default' ? 'skins.builtIn' : 'skins.customPackage')} · {skin.manifest.version}</span><span className="skin-settings-swatches">{['bg', 'surface', 'accent', 'fg'].map(key => <i key={key} style={{ '--swatch-color': effectiveSkinTokens(skin)[key] } as CSSProperties} />)}</span></span>
         </button>)}
-          {canManage && <button type="button" className="skin-settings-create-card" disabled={busy} onClick={() => onCreate()}><span><Icon name="sparkles" size={19} /></span><strong>{t('skins.create')}</strong><small>{t('skins.createHint')}</small></button>}
         </div>
         {visible.length === 0 && <p className="skin-settings-empty" role="status">{t('skins.empty')}</p>}
         <p className="skin-settings-library-tip"><Icon name="shield" size={13} />{t('skins.inheritanceHint')}</p>

@@ -8,7 +8,9 @@
 .skin-settings-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .skin-settings-workspace { display: grid; grid-template-columns: minmax(270px, .82fr) minmax(350px, 1.35fr); gap: 26px; align-items: start; }
 .skin-settings-library { min-width: 0; }
-.skin-settings-tabs { display: flex; gap: 15px; border-bottom: 1px solid var(--border); }
+.skin-settings-library-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.skin-settings-library-toolbar > .btn { flex-shrink: 0; }
+.skin-settings-tabs { display: flex; gap: 15px; min-width: 0; }
 .skin-settings-tabs button { padding: 9px 0 12px; font-size: calc(12px * var(--font-scale)); background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; }
 .skin-settings-tabs button[aria-selected=true] { color: var(--fg); border-bottom-color: var(--fg); font-weight: 600; }
 .skin-settings-tabs small { color: var(--muted); margin-left: 4px; font-size: calc(10px * var(--font-scale)); }
@@ -38,10 +40,6 @@
 .skin-thumbnail-bubble { display: block; height: 27px; border: 1px solid var(--thumb-border); border-radius: 4px; padding: 6px; margin-bottom: 5px; }
 .skin-thumbnail-bubble i { width: 75%; }
 .skin-thumbnail-composer { display: block; height: 19px; border: 1px solid var(--thumb-border); border-radius: 4px; margin-top: 8px; }
-.skin-settings-create-card { border: 1px dashed var(--border); min-height: 213px; padding: 16px 10px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; background: var(--surface); border-radius: 11px; color: var(--muted); font-size: calc(12px * var(--font-scale)); cursor: pointer; }
-.skin-settings-create-card > span { height: 32px; width: 32px; border-radius: 9px; background: var(--accent-light); display: grid; place-items: center; color: var(--accent); }
-.skin-settings-create-card small { font-size: calc(10px * var(--font-scale)); }
-.skin-settings-create-card:hover { border-color: var(--accent); }
 .skin-settings-empty { text-align: center; padding: 32px 10px; font-size: calc(12px * var(--font-scale)); }
 .skin-settings-library-tip { display: flex; align-items: start; gap: 7px; font-size: calc(10px * var(--font-scale)); line-height: 1.7; margin-top: 20px !important; }
 .skin-settings-library-tip svg { flex-shrink: 0; margin-top: 2px; }

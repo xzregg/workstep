@@ -72,7 +72,7 @@ export default function SkinSettings() {
   })
   return <div className="skin-settings">
     <header className="skin-settings-page-head"><div><h1>{t('skins.centerTitle')}</h1><p>{t('skins.centerIntro')}</p></div><div className="skin-settings-actions">
-      {!remote && <><Button onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="upload" size={15} />{t('skins.import')}</Button><Button variant="primary" onClick={() => void start()} disabled={busy} loading={busy}><Icon name="sparkles" size={15} />{t('skins.create')}</Button></>}
+      {!remote && <><Button variant="primary" onClick={() => void start()} disabled={busy} loading={busy}><Icon name="sparkles" size={15} />{t('skins.create')}</Button></>}
       <Button variant="icon" onClick={() => void run(refresh)} disabled={busy} aria-label={t('skins.refresh')} title={t('skins.refresh')}><Icon name="refresh" size={16} /></Button>
     </div></header>
     <input ref={fileInput} type="file" accept=".zip,application/zip" className="skin-settings-file" onChange={event => {
@@ -84,7 +84,7 @@ export default function SkinSettings() {
     }} />
     {error && <p role="alert" className="skin-settings-error">{error}</p>}
     {previewing && <div role="status" className="skin-settings-preview-notice"><span>{t('skins.previewing')}</span><Button onClick={() => saveSkin(active)}>{t('skins.apply')}</Button><Button onClick={cancelSkinPreview}>{t('skins.cancelPreview')}</Button></div>}
-    <SkinLibrary documents={documents} activeId={active.manifest.id} preferredSkin={checked} busy={busy} canManage={!remote}
+    <SkinLibrary toolbarActions={!remote && <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="upload" size={15} />{t('skins.import')}</Button>} documents={documents} activeId={active.manifest.id} preferredSkin={checked} busy={busy} canManage={!remote}
       onCreate={base => void start(base)} onPreview={previewSkin} onApply={saveSkin}
       onExport={id => void exportSkin(id)} onDelete={setDeleting} onRestore={restoreDefaultSkin} />
     <details className="skin-settings-advanced"><summary>{t('skins.advanced')}</summary>

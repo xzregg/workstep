@@ -47,6 +47,11 @@ test('skin library filters and searches packages while leaving the active appear
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinSettings /></I18nProvider></MemoryRouter>))
     assert.equal(document.querySelectorAll('.skin-settings-card').length, 2)
+    assert.equal(document.querySelectorAll('.skin-settings-tabs [role=tab]').length, 2)
+    assert.doesNotMatch(document.querySelector('.skin-settings-tabs')!.textContent!, /当前使用/)
+    assert.equal(document.querySelector('.skin-settings-create-card'), null)
+    assert.match(document.querySelector('.skin-settings-library-toolbar')?.textContent ?? '', /导入 ZIP/)
+    assert.match(document.querySelector('.skin-settings-card[data-skin-id="default"]')!.textContent!, /使用中/)
     const input = document.querySelector<HTMLInputElement>('.skin-settings-search input')!
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, '海洋')
