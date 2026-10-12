@@ -796,6 +796,7 @@ class ProjectManager:
 
     def project_summary(self, proj: Project) -> dict:
         """Serialize a project while its database is active."""
+        from services.customization_workspace import workspace_root
         workflows = [
             {
                 "id": w["id"],
@@ -812,6 +813,7 @@ class ProjectManager:
             "id": proj.id,
             "path": str(proj.path),
             "name": proj.name,
+            "is_default_workspace": proj.path == workspace_root().resolve(),
             "steps": proj.steps,
             "workflows": workflows,
             "follow_project": proj.follow_project,

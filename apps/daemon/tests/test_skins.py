@@ -21,6 +21,25 @@ def package(root, **changes):
 
 
 @pytest.mark.asyncio
+async def test_manual_starting_style_creates_only_an_explicit_package_and_never_overwrites(tmp_path, monkeypatch):
+    from services import customization_workspace
+    from services.skins import SkinManager, SkinConflict
+    workspace = tmp_path / 'workspace'; workspace.mkdir()
+    monkeypatch.setattr(customization_workspace, 'workspace_root', lambda: workspace)
+    manager = SkinManager(tmp_path / 'runtime')
+    source = await manager.validate(str(package(tmp_path / 'reference')))
+    target = workspace / 'my-skin'
+    assert not target.exists()
+    saved = await manager.save_draft(str(target), '', source['skin'])
+    assert saved['skin']['tokens']['accent'] == '#00aaff'
+    assert len(await manager.list()) == 1
+    with pytest.raises(SkinConflict):
+        await manager.save_draft(str(target), '', source['skin'])
+    with pytest.raises(ValueError):
+        await manager.save_draft(str(tmp_path / 'outside'), '', source['skin'])
+
+
+@pytest.mark.asyncio
 async def test_package_registration_export_replacement_and_inheritance(tmp_path):
     from services.skins import SkinManager
     manager = SkinManager(tmp_path / "runtime")

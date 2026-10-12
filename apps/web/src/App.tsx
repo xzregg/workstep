@@ -74,6 +74,8 @@ export function AppRoutes() {
       <Routes>
         <Route path="/" element={activeProject && useGatewaySessionStore.getState().session?.host_project_id
           ? <Navigate replace to={projectSelectionPath('/tasks', activeProject.name, useProjectStore.getState().activeWorkflowId)} />
+          : activeProject?.is_default_workspace
+          ? <Navigate replace to={`/chat?project=${encodeURIComponent(activeProject.name)}`} />
           : <WelcomeView />} />
         <Route path="/git" element={<ProjectPermissionGate permission="git.read"><GitWorkspace /></ProjectPermissionGate>} />
         <Route path="/tasks" element={activeProject ? <ProjectPermissionGate permission="task.read"><TaskList /></ProjectPermissionGate> : <WelcomeView />} />

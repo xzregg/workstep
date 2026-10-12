@@ -12,6 +12,22 @@ const project = (id: string): Project => ({
   workflows: [{ id: `${id}-workflow`, name: 'Default', is_default: true, nodeCount: 0 }],
 })
 
+test('default workspace is selected only when no project is selected and does not create a workflow', async () => {
+  const originalFetch = globalThis.fetch
+  const runtime = { ...project('runtime'), name: 'Runtime', is_default_workspace: true, workflows: [] }
+  const ordinary = project('ordinary')
+  globalThis.fetch = async () => Response.json({ projects: [ordinary, runtime] })
+  try {
+    useProjectStore.setState({ projects: [], activeProject: null, activeWorkflowId: null })
+    await useProjectStore.getState().fetchProjects()
+    assert.equal(useProjectStore.getState().activeProject?.id, runtime.id)
+    assert.equal(useProjectStore.getState().activeWorkflowId, null)
+    useProjectStore.getState().setActiveProject(ordinary)
+    await useProjectStore.getState().fetchProjects()
+    assert.equal(useProjectStore.getState().activeProject?.id, ordinary.id)
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('creating an empty project clears the previous workflow selection without creating a workflow', async () => {
   const previous = project('existing')
   const blank: Project = { id: 'blank', path: '/tmp/blank', name: 'blank', steps: {}, workflows: [] }

@@ -107,7 +107,7 @@ ID 使用小写字母开头，可包含小写字母、数字、`_`、`-`，最�
 
 宿主管理：POST `/api/skins/validate`、`register`、`import`、`export`、`onboarding`，GET `/{id}/export`，DELETE `/{id}`。管理权限沿用宿主安装许可；项目分享不能管理。import 发送 application/zip 原始正文，同名包返回 409，明确 replace=true 后才能更新。
 
-右侧微调使用宿主 POST `/api/skins/draft`，携带 path、expected_revision 与完整 skin 文档；保留原部位和资源，完整校验后更新三个 JSON 文件，不注册、不应用。版本过期返回 409。与 CLI `skin validate/register` 共用包格式及文件目录。
+右侧微调使用宿主 POST `/api/skins/draft`，携带 path、expected_revision 与完整 skin 文档；保留原部位和资源，完整校验后更新三个 JSON 文件，不注册、不应用。版本过期返回 409。新包尚未生成时，编辑器展示内存起始样式；用户保存时可传空 expected_revision，仅允许在 Runtime 内创建不存在的包目录，已有目录返回 409，不自动按会话分配目录。与 CLI `skin validate/register` 共用包格式及文件目录。
 
 ```bash
 workstep skin list --json

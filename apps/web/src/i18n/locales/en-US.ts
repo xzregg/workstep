@@ -2,6 +2,7 @@ import { zhCN, type Messages } from './zh-CN'
 
 export const enUS: Messages = {
   skins: {
+    studioDefaultName: "我的专属皮肤",
     studioPackage: "皮肤包目录",
     studioReadPackage: "读取此包",
     studioWaiting: "等待对话在 Runtime 项目内创建皮肤包，也可指定已有包目录。",

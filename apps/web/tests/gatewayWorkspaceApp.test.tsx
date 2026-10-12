@@ -134,3 +134,43 @@ for (const customSkin of [false, true]) for (const creator of [false, true]) tes
     await window.happyDOM.close()
   }
 })
+
+
+test('local startup enters the fixed default workspace chat without creating workflows', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('http://localhost:8878/')
+  const oldFetch = globalThis.fetch, oldSocket = globalThis.WebSocket
+  const calls: string[] = []
+  class Socket {
+    static OPEN = 1
+    static CONNECTING = 0
+    readyState = 1
+    close() { this.readyState = 3 }
+    send() {}
+  }
+  Object.assign(globalThis, { WebSocket: Socket, ResizeObserver: window.ResizeObserver })
+  globalThis.fetch = async input => {
+    const path = String(input); calls.push(path)
+    if (path === '/api/project/list') return Response.json({ projects: [{ id: 'runtime', name: 'Runtime', path: '/tmp/runtime', is_default_workspace: true, workflows: [], steps: {} }] })
+    if (path.includes('/chat-sessions/quick-buttons')) return Response.json({ buttons: [] })
+    if (path.includes('/chat-sessions')) return Response.json({ sessions: [] })
+    if (path.includes('/assistant/list')) return Response.json({ assistants: [] })
+    return Response.json({ tasks: [], providers: [], engines: [], buttons: [], runs: [] })
+  }
+  useGatewaySessionStore.setState({ session: null, loading: false })
+  useProjectStore.setState({ projects: [], activeProject: null, activeWorkflowId: null })
+  const element = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(element)
+  try {
+    await act(async () => root.render(<I18nProvider><App /></I18nProvider>))
+    assert.equal(window.location.pathname, '/chat')
+    assert.equal(new URLSearchParams(window.location.search).get('project'), 'Runtime')
+    assert.equal(useProjectStore.getState().activeWorkflowId, null)
+    assert.equal(useProjectStore.getState().activeProject?.workflows.length, 0)
+  } finally {
+    await act(async () => root.unmount()); element.remove()
+    globalThis.fetch = oldFetch; globalThis.WebSocket = oldSocket
+    useProjectStore.setState({ projects: [], activeProject: null, activeWorkflowId: null })
+    await window.happyDOM.close()
+  }
+})

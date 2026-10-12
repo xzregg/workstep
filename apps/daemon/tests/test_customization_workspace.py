@@ -56,3 +56,31 @@ def test_runtime_project_identity_survives_restart(tmp_path):
         assert len(second.list_projects()) == 1
     finally:
         first.close_all(); second.close_all()
+
+
+@pytest.mark.asyncio
+async def test_default_workspace_preparation_is_nonblocking_and_has_no_workflow(tmp_path, monkeypatch):
+    import time
+    from services import customization_workspace as workspace
+    from services.project import ProjectManager
+    manager = ProjectManager()
+    root = tmp_path / 'runtime'
+    monkeypatch.setattr(workspace, 'workspace_root', lambda: root)
+    original = manager.init_project
+    def slow_init(*args, **kwargs):
+        time.sleep(.15)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(manager, 'init_project', slow_init)
+    try:
+        preparing = asyncio.create_task(workspace.ensure_default_workspace(manager))
+        await asyncio.sleep(.02)
+        assert not preparing.done(), 'initialization must leave the event loop responsive'
+        project = await preparing
+        summary = await manager.run_db(project.id, manager.project_summary)
+        assert summary['is_default_workspace'] is True
+        assert summary['workflows'] == []
+        other = await asyncio.to_thread(manager.init_project, tmp_path / 'other', name='Runtime')
+        assert (await manager.run_db(other.id, manager.project_summary))['is_default_workspace'] is False
+        assert (await workspace.ensure_default_workspace(manager)).id == project.id
+    finally:
+        await asyncio.to_thread(manager.close_all)

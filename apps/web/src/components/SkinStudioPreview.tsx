@@ -38,7 +38,7 @@ export default function SkinStudioPreview({ skin, compact }: { skin: SkinDocumen
       </style></head><body><div class="app-shell"><aside class="layout-sidebar"><b>W WorkStep</b><p>我的项目</p><p>项目对话</p><p>工作流程</p></aside><main class="app-main"><strong>${escape(t('skins.studioSampleTitle'))}</strong><div class="chat-message-row"><p>✧ ${escape(t('skins.sampleMessage'))}</p><p>${escape(t('skins.sampleText'))}</p></div><div class="chat-input-frame">${layout.engineAppearance === 'cards' ? '<div class="engine-options"><button class="skin-select-option">Codex SDK</button><button class="skin-select-option">Claude Code</button></div>' : ''}<textarea placeholder="${escape(t('skins.sampleInput'))}"></textarea><div class="chat-input-toolbar"><select class="ws-select"><option>Codex SDK</option><option>Claude Code</option></select><button class="btn">↑</button></div></div></main></div></body></html>`
   }, [skin, compact, t])
   const viewportWidth = compact ? 390 : 1024
-  const height = compact ? 620 : 850
+  const height = compact ? 620 : 680
   const scale = (compact ? Math.min(width, 220) : width) / viewportWidth
   return <div ref={ref} className="skin-studio-preview-container"><div className={`skin-studio-preview-frame${compact ? ' is-phone' : ''}`} style={{ width: viewportWidth * scale, height: height * scale }}><iframe title={t('skins.studioPreview')} className="skin-studio-preview" style={{ width: viewportWidth, height, transform: `scale(${scale})` }} sandbox="" srcDoc={source} /></div></div>
 }
