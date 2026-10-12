@@ -606,7 +606,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                   <SidebarRenameField
                     kind="project"
                     initialName={p.name}
-                    onSave={(name) => renameProject(p.path, name)}
+                    onSave={async (name) => {
+                      await renameProject(p.path, name)
+                      if (searchParams.get('project') === p.name) {
+                        const next = new URLSearchParams(searchParams)
+                        next.set('project', name)
+                        navigate(`${location.pathname}?${next}`, { replace: true })
+                      }
+                    }}
                     onClose={() => setRenameId(null)}
                   />
                 ) : (
@@ -1070,7 +1077,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         <SidebarActionMenu ref={moreMenuRef} x={moreMenu.x} y={moreMenu.y}>
           {moreMenu.kind === 'project' && menuTarget && 'path' in menuTarget && (
             <>
-              {managedMode !== true && menuTarget.type !== 'remote' && (
+              {(managedMode !== true || menuTarget.is_default_workspace) && menuTarget.type !== 'remote' && !bound && can('project.settings') && (
                 <SidebarActionItem
                   icon="pencil"
                   onClick={() => { setRenameId(menuTarget.path); setMoreMenu(null) }}
@@ -1101,7 +1108,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   {t('layout.remoteShareTitle')}
                 </SidebarActionItem>
               )}
-              {!bound && can('project.settings') && <SidebarActionItem
+              {!bound && !menuTarget.is_default_workspace && can('project.settings') && <SidebarActionItem
                 icon="trash"
                 danger
                 onClick={() => { setDeleteProjectError(''); setDeleteProjectTarget(menuTarget); setMoreMenu(null) }}

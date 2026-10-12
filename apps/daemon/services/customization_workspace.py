@@ -20,10 +20,14 @@ def runtime_project(manager, root: Path):
         root.mkdir(parents=True, exist_ok=True)
         project = manager.get_project(root)
         if project is None:
-            project = manager.init_project(root, name='Runtime')
+            project = manager.init_project(root, name='默认工作区')
     return project
 
 
 async def ensure_default_workspace(manager):
     """Prepare the fixed workspace at startup without blocking the event loop."""
     return await asyncio.to_thread(lambda: runtime_project(manager, workspace_root()))
+
+
+def is_default_workspace(project):
+    return project.path == workspace_root().resolve()

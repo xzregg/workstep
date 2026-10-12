@@ -641,6 +641,9 @@ class ProjectManager:
         proj = self.get_project_by_id(project_id)
         if proj is None:
             return None
+        from services.customization_workspace import is_default_workspace
+        if is_default_workspace(proj):
+            raise ValueError('默认工作区不能删除，可以修改名称')
 
         path_str = str(proj.path)
         self._projects.pop(path_str, None)
@@ -796,7 +799,7 @@ class ProjectManager:
 
     def project_summary(self, proj: Project) -> dict:
         """Serialize a project while its database is active."""
-        from services.customization_workspace import workspace_root
+        from services.customization_workspace import is_default_workspace
         workflows = [
             {
                 "id": w["id"],
@@ -813,7 +816,7 @@ class ProjectManager:
             "id": proj.id,
             "path": str(proj.path),
             "name": proj.name,
-            "is_default_workspace": proj.path == workspace_root().resolve(),
+            "is_default_workspace": is_default_workspace(proj),
             "steps": proj.steps,
             "workflows": workflows,
             "follow_project": proj.follow_project,

@@ -156,7 +156,11 @@ async def delete_project(project_id: str):
             else await asyncio.to_thread(remote_project_registry.remove, project_id)
         )
         return {"deleted": removed}
-    if await asyncio.to_thread(project_manager.unregister, project_id) is None:
+    try:
+        removed = await asyncio.to_thread(project_manager.unregister, project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if removed is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"deleted": True}
 
