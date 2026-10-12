@@ -341,6 +341,9 @@ export default function TaskConversationMessage({
               initials={initials}
               color={senderColor}
               content={messageContent}
+              eventDetail={msg.event_detail}
+              onLoadEventDetails={msg.event_detail?.available && onLoadMessageEvents
+                ? () => onLoadMessageEvents(msg.id) : undefined}
               projectId={projectId}
               error={resolveMessageError(processEvents) || undefined}
               errorActions={(() => {
@@ -660,8 +663,7 @@ export default function TaskConversationMessage({
                   : undefined
               }
             >
-              {onProposalOverride && projectId &&
-                (msg.proposals ||
+              {(msg.proposals ||
                   [])
                   .map(
                     (
@@ -680,6 +682,7 @@ export default function TaskConversationMessage({
                           proposal={
                             currentProposal
                           }
+                          readOnly={!onProposalOverride || !projectId}
                           taskId={
                             task?.id ||
                             ''

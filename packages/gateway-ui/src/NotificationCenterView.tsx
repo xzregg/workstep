@@ -9,6 +9,7 @@ export type NotificationTarget = {sequence:number;device_id:string;project_id?:s
 export function NotificationCenterView({onOpen}: {onOpen:(target:NotificationTarget,access:{url:string;ticket:string;next?:string})=>void}) {
   const [snapshot,setSnapshot]=React.useState<Snapshot>({events:[],unread:0,cursor:0,more:false})
   const [open,setOpen]=React.useState(false)
+  const [expanded,setExpanded]=React.useState(false)
   const [connected,setConnected]=React.useState(false)
   const [error,setError]=React.useState('')
   const [busy,setBusy]=React.useState(false)
@@ -118,6 +119,21 @@ export function NotificationCenterView({onOpen}: {onOpen:(target:NotificationTar
     } catch(reason){setError(reason instanceof Error?reason.message:'加载失败。')}
     finally{pending.current=false;setBusy(false)}
   }
+  const groups=React.useMemo(()=>{
+    const grouped=new Map<string,{notice:GatewayNotice;count:number;failures:number}>()
+    for(const event of snapshot.events) {
+      const key=JSON.stringify([event.device_id,event.host_project_id,event.task_id,event.session_id,event.step_key,
+        event.task_id || event.session_id ? undefined : event.id])
+      const failure=['passed','succeeded'].includes(event.status)?0:1
+      const group=grouped.get(key)
+      if(!group){grouped.set(key,{notice:{...event},count:1,failures:failure});continue}
+      const read=group.notice.read && event.read
+      if(event.occurred_at>group.notice.occurred_at || (event.occurred_at===group.notice.occurred_at && event.sequence>group.notice.sequence))group.notice={...event}
+      group.notice.read=read;group.count++;group.failures+=failure
+    }
+    return [...grouped.values()].sort((a,b)=>b.notice.occurred_at-a.notice.occurred_at || b.notice.sequence-a.notice.sequence)
+  },[snapshot.events])
+  const rows=expanded?snapshot.events.map(notice=>({notice,count:1,failures:0})):groups
   return <div className="gateway-notifications" ref={root}>
     <button type="button" className="gateway-notification-trigger" aria-label={`通知，${snapshot.unread} 条未读`} aria-expanded={open} onClick={()=>setOpen(value=>!value)}>
       <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/></svg>
@@ -129,10 +145,14 @@ export function NotificationCenterView({onOpen}: {onOpen:(target:NotificationTar
         <button type="button" aria-label="关闭通知" onClick={()=>setOpen(false)}>×</button></header>
       {error && <p role="alert">{error}</p>}
       {busy && <p role="status"><span className="gateway-spinner"/> 正在处理…</p>}
-      <ul>{snapshot.events.map(notice=><li key={notice.id} className={notice.read?'':'gateway-notification-unread'}>
+      {snapshot.events.length>groups.length && <button type="button" className="gateway-notification-history-toggle" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>
+        {expanded?'合并重复事件':'展开全部事件'}
+      </button>}
+      <ul>{rows.map(({notice,count,failures})=><li key={notice.id} className={notice.read?'':'gateway-notification-unread'}>
         <button type="button" disabled={busy} onClick={()=>void choose(notice)}>
           <strong>{notice.scope_name || (notice.task_id?'任务 '+notice.task_id:'对话 '+notice.session_id)} · {notice.step_key?'步骤':'回复'}{['passed','succeeded'].includes(notice.status)?'完成':'失败'}</strong>
           <span>{notice.device_name} · {notice.project_name}{notice.step_key?' · 步骤 '+notice.step_key:''}</span>
+          {count>1 && <span className="gateway-notification-summary">共 {count} 条事件{failures>0?`，其中 ${failures} 条失败`:''}</span>}
           <time dateTime={new Date(notice.occurred_at*1000).toISOString()}>{new Date(notice.occurred_at*1000).toLocaleString()}</time>
         </button></li>)}</ul>
       {!snapshot.events.length && <p className="gateway-notification-empty">暂无通知，设备完成任务后会显示在这里。</p>}

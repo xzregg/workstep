@@ -275,3 +275,108 @@ def test_provider_reconciliation_distinguishes_missing_unmetered_and_currency(tm
             "currency": "incomparable", "no-bill": "awaiting_provider",
             "no-device": "missing_device", None: "awaiting_provider",
         }
+
+
+@pytest.mark.parametrize('rollups', [False, True])
+def test_usage_dimension_labels_show_names_without_changing_group_identity(tmp_path, monkeypatch, rollups):
+    from gateway.models import PlatformProject, PlatformProvider
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id='gateway-test'))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        setup = client.post('/api/platform/setup', json={'username':'owner','display_name':'显示名称','password':'OwnerPassphrase-2026!','recovery_username':'recovery','recovery_password':'RecoveryPassphrase-2026!','registration_mode':'open'}).json()
+        user_id = setup['user']['id']
+        async def seed():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(id='device-1',name='演示工作站',public_key='test',app_instance_id='one',version='1',status='active'))
+                    session.add(Device(id='device-2',name='其他工作站',public_key='test',app_instance_id='two',version='1',status='active'))
+                    session.add(PlatformProvider(id='provider-1',name='演示供应商',type='openai'))
+                    session.add(PlatformProject(id='gateway-project',device_id='device-1',host_project_id='project-1',name='本机项目名'))
+                    session.add(PlatformProject(id='wrong-device-project',device_id='device-2',host_project_id='project-1',name='不能串用的名称'))
+        client.portal.call(seed)
+        for event_id, project_id in [('named','project-1'),('local','local-project'),('unknown','removed-project')]:
+            event = {**_event(event_id), 'user_id':user_id, 'initiated_by_user_id':user_id, 'project_id':project_id}
+            assert client.portal.call(record_usage_batch,app.state.database,'device-1',event_id,[event])['accepted']==[event_id]
+        if rollups:
+            from gateway.services.usage_rollups import advance_rollups
+            client.portal.call(advance_rollups, app.state.database)
+        monkeypatch.setattr(app.state.control_connections,'is_online',lambda id:True)
+        catalog_calls=[]
+        async def catalog(device_id):
+            catalog_calls.append(device_id)
+            return [{'id':'local-project','name':'未发布本机项目'},{'id':'private-project','name':'不可返回的项目'}]
+        monkeypatch.setattr(app.state.control_connections,'request_project_catalog',catalog)
+        for dimension, value, label in [('user',user_id,'显示名称'),('device','device-1','演示工作站'),('provider','provider-1','演示供应商')]:
+            data=client.get('/api/admin/usage',params={'group_by':dimension}).json()
+            if rollups: assert data['summary_source']=='rollup'
+            assert data['groups'][0]['value']==value
+            assert data['groups'][0]['label']==label
+            assert data['groups'][0]['event_count']==3
+        projects=client.get('/api/admin/usage?group_by=project&device_id=device-1').json()
+        labels={row['value']:row['label'] for row in projects['groups']}
+        assert labels=={'project-1':'本机项目名','local-project':'未发布本机项目','removed-project':None}
+        assert catalog_calls==['device-1']
+        detail = client.get('/api/admin/usage/events').json()
+        event_names = {row['id']:row for row in detail['events']}
+        assert event_names['named']['project_name']=='本机项目名'
+        assert event_names['local']['project_name']=='未发布本机项目'
+        assert event_names['named']['user_name']=='显示名称'
+        assert event_names['named']['device_name']=='演示工作站'
+        assert event_names['named']['provider_name']=='演示供应商'
+        assert event_names['unknown']['project_name'] is None
+        unbound = {**_event('unbound'),'project_id':None,'user_id':user_id}
+        assert client.portal.call(record_usage_batch,app.state.database,'device-1','unbound',[unbound])['accepted']==['unbound']
+        unbound_row = client.get('/api/admin/usage/events?project_id=').json()['events'][0]
+        assert unbound_row['project_id'] is None and unbound_row['project_name'] is None
+
+        assert 'private-project' not in str(projects) and '不能串用的名称' not in str(projects)
+        # A recently cached catalog also supplies unpublished names while offline.
+        monkeypatch.setattr(app.state.control_connections,'is_online',lambda id:False)
+        assert [row for row in client.get('/api/admin/usage?group_by=project').json()['groups'] if row['value'] is not None]==projects['groups']
+
+        # Bulk name SQL must not block HTTP health checks.
+        import asyncio
+        import threading
+        import time
+        from httpx import ASGITransport, AsyncClient
+        from sqlalchemy import event as sql_event
+        reached = threading.Event()
+        def slow_names(connection, cursor, statement, parameters, context, many):
+            if 'users.display_name, users.username' in statement and 'users.id IN' in statement:
+                reached.set(); time.sleep(.5)
+        engine = app.state.database.engine.sync_engine
+        sql_event.listen(engine, 'before_cursor_execute', slow_names)
+        async def sql_canary():
+            async with AsyncClient(transport=ASGITransport(app=app),base_url='https://gateway.test',cookies=client.cookies) as actor:
+                for path in ('/api/admin/usage?group_by=user','/api/admin/usage/events'):
+                    reached.clear()
+                    pending=asyncio.create_task(actor.get(path))
+                    try:
+                        assert await asyncio.to_thread(reached.wait,2)
+                        assert (await asyncio.wait_for(actor.get('/api/health'),.25)).status_code==200
+                        assert not pending.done()
+                    finally: response=await pending
+                    assert response.status_code==200
+                    if path.endswith('/events'):
+                        assert response.json()['events'][0]['user_name']=='显示名称'
+                    else:
+                        assert response.json()['groups'][0]['label']=='显示名称'
+        try: client.portal.call(sql_canary)
+        finally: sql_event.remove(engine,'before_cursor_execute',slow_names)
+
+        # Slow daemon name discovery is async and cannot hold up health either.
+        reached.clear(); app.state.notifications.catalog.clear()
+        monkeypatch.setattr(app.state.control_connections,'is_online',lambda id:True)
+        async def slow_catalog(device_id):
+            reached.set(); await asyncio.sleep(.5)
+            return [{'id':'local-project','name':'未发布本机项目'}]
+        monkeypatch.setattr(app.state.control_connections,'request_project_catalog',slow_catalog)
+        async def network_canary():
+            async with AsyncClient(transport=ASGITransport(app=app),base_url='https://gateway.test',cookies=client.cookies) as actor:
+                pending=asyncio.create_task(actor.get('/api/admin/usage?group_by=project'))
+                try:
+                    assert await asyncio.to_thread(reached.wait,2)
+                    assert (await asyncio.wait_for(actor.get('/api/health'),.25)).status_code==200
+                    assert not pending.done()
+                finally: response=await pending
+                assert response.status_code==200
+        client.portal.call(network_canary)

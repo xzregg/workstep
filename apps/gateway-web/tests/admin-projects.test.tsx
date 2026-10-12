@@ -75,10 +75,10 @@ test('project management searches metadata and grants and revokes access', async
   fireEvent.click(screen.getByRole('button', { name: '新增授权' }))
   const dialog = screen.getByRole('dialog', { name: '授予项目访问' })
   fireEvent.change(within(dialog).getByLabelText('对象类型'), { target: { value: 'group' } })
-  await within(dialog).findByRole('radio', { name: 'Engineering' })
+  await within(dialog).findByRole('checkbox', { name: 'Engineering' })
   fireEvent.change(within(dialog).getByLabelText('对象类型'), { target: { value: 'user' } })
-  await within(dialog).findByRole('radio', { name: 'alice' })
-  fireEvent.click(within(dialog).getByRole('radio', { name: 'alice' }))
+  await within(dialog).findByRole('checkbox', { name: 'alice' })
+  fireEvent.click(within(dialog).getByRole('checkbox', { name: 'alice' }))
   assert.match(dialog.textContent ?? '', /已选择：alice/)
   fireEvent.click(within(dialog).getByRole('button', { name: '取消' }))
   const discard = screen.getByRole('dialog', { name: '放弃项目授权修改' })
@@ -133,8 +133,8 @@ test('whole-device grants use the shared user/group selector and revoke endpoint
  fireEvent.click(screen.getByRole('button',{name:'新增授权'}))
  const dialog=screen.getByRole('dialog',{name:'授予设备访问'})
  fireEvent.change(within(dialog).getByLabelText('对象类型'),{target:{value:'group'}})
- await within(dialog).findByRole('radio',{name:'研发组'})
- fireEvent.click(within(dialog).getByRole('radio',{name:'研发组'}))
+ await within(dialog).findByRole('checkbox',{name:'研发组'})
+ fireEvent.click(within(dialog).getByRole('checkbox',{name:'研发组'}))
  assert.equal(within(dialog).queryByRole('option',{name:'只读'}),null)
  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'),{target:{value:'pw'}})
  fireEvent.click(within(dialog).getByRole('button',{name:'保存授权'}))
@@ -157,7 +157,7 @@ test('grant search keeps the selected recipient and hides pagination for a singl
   }
   render(<AdminProjectGrantDialog projectId="p" name="演示项目" csrf="token" onClose={() => {}} onSaved={() => {}} />)
   const dialog = screen.getByRole('dialog', { name: '授予项目访问' })
-  fireEvent.click(await within(dialog).findByRole('radio', { name: 'Alice' }))
+  fireEvent.click(await within(dialog).findByRole('checkbox', { name: 'Alice' }))
   assert.equal(within(dialog).queryByRole('button', { name: '下一页' }), null)
   fireEvent.change(within(dialog).getByLabelText('搜索授权对象'), { target: { value: 'missing' } })
   fireEvent.click(within(dialog).getByRole('button', { name: '搜索' }))
@@ -165,6 +165,38 @@ test('grant search keeps the selected recipient and hides pagination for a singl
   assert.ok(within(dialog).getByText('已选择：Alice · 只读'))
   fireEvent.change(within(dialog).getByLabelText('对象类型'), { target: { value: 'group' } })
   await waitFor(() => assert.ok(calls.some(url => url.includes('subject_type=group'))))
-  assert.ok(within(dialog).getByText('请选择一个授权对象'))
+  assert.ok(within(dialog).getByText('请选择授权对象'))
   assert.equal((within(dialog).getByRole('button', { name: '保存授权' }) as HTMLButtonElement).disabled, true)
+})
+
+
+test('project authorization saves multiple recipients and retries only failed grants', async () => {
+  const saved: string[] = []
+  let fail = true
+  let completed = 0
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    if (url.includes('project-grant-subjects')) return Response.json({ subjects: [{ id: 'a', name: 'Alice' }, { id: 'b', name: 'Bob' }], total: 2 })
+    if (url === '/api/auth/step-up') return Response.json({})
+    if (init?.method === 'POST') {
+      const id = JSON.parse(String(init.body)).subject_id
+      saved.push(id)
+      return id === 'b' && fail ? Response.json({}, { status: 500 }) : Response.json({ id })
+    }
+    return Response.json({ password_confirmation_required: false })
+  }
+  render(<AdminProjectGrantDialog projectId="p" csrf="csrf" onClose={() => {}} onSaved={() => completed++} />)
+  const dialog = screen.getByRole('dialog', { name: '授予项目访问' })
+  fireEvent.click(await within(dialog).findByRole('checkbox', { name: 'Alice' }))
+  fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Bob' }))
+  const password = within(dialog).queryByLabelText('输入管理员密码确认')
+  if (password) fireEvent.change(password, { target: { value: 'pw' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '保存授权' }))
+  await within(dialog).findByRole('alert')
+  assert.deepEqual(saved, ['a', 'b'])
+  assert.equal(completed, 0)
+  fail = false
+  fireEvent.click(within(dialog).getByRole('button', { name: '重试未成功对象' }))
+  await waitFor(() => assert.equal(completed, 1))
+  assert.deepEqual(saved, ['a', 'b', 'b'])
 })

@@ -39,6 +39,48 @@ flowchart LR
 
 **WorkStep is not another chat UI.** It turns one-off agent conversations into reusable engineering workflows whose progress, tool calls, approvals, context, and outputs remain visible.
 
+## Installation and quick start
+
+Choose one way to start WorkStep:
+
+### 1. Run from source
+
+Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 20 or 22, Yarn (available through Corepack), Bash, and `lsof`. For macOS / Linux; on Windows, use the desktop app or Docker.
+
+```bash
+git clone https://github.com/xzregg/workstep.git
+cd workstep
+./start.sh
+```
+
+The script installs dependencies and starts both services. Open <http://127.0.0.1:5173> and press `Ctrl+C` to stop. See the [development guide](docs/development.md) for more commands.
+
+### 2. Download the desktop app
+
+Visit [GitHub Releases](https://github.com/xzregg/workstep/releases/latest), download the package for your system, then install and open WorkStep:
+
+- **macOS Apple Silicon**: DMG or ZIP
+- **Windows x64**: NSIS installer
+- **Linux x64**: AppImage
+
+Desktop packages include the backend; no separate Python installation is required.
+
+> Desktop packages are currently unsigned early-access builds. Windows SmartScreen or macOS Gatekeeper may show a first-run warning.
+
+### 3. Run with Docker
+
+Install Docker and Docker Compose, then run:
+
+```bash
+git clone https://github.com/xzregg/workstep.git
+cd workstep
+docker compose -f docker-compose.yaml up -d --build workstep
+```
+
+After the build finishes, open <http://localhost:8755>. Configuration and engines persist in `./data/home`, and projects in `./data/projects`; use `/data/projects/<project-name>` when creating a project in the app. For older Compose versions, replace `docker compose` with `docker-compose`. See the [container guide](docs/container-runtime.md) for more options.
+
+Once started, download an SDK in engine settings, configure authentication, and test the connection, then create a project, workflow, and task. Follow the [user manual](https://xzregg.github.io/workstep/#docs) for detailed steps.
+
 ## See it in action
 
 Real screenshots from the demo project (Chinese interface). Click an image to view it at full size. Follow the [user manual](https://xzregg.github.io/workstep/#docs) for detailed instructions.
@@ -88,33 +130,6 @@ WorkStep currently integrates engines including:
 
 Engine discovery, sessions, approvals, capabilities, and events share a common boundary. Unsupported native capabilities are declared and degraded explicitly rather than simulated.
 
-## Get started
-
-### Download the desktop app
-
-The latest release provides:
-
--  **macOS Apple Silicon** — DMG and ZIP
-- 🪟 **Windows x64** — NSIS installer
-- 🐧 **Linux x64** — AppImage
-
-Download packages, update metadata, SHA-256 checksums, and the dependency SBOM from [GitHub Releases](https://github.com/xzregg/workstep/releases/latest).
-
-> [!IMPORTANT]
-> Desktop packages are currently unsigned early-access builds. Windows SmartScreen or macOS Gatekeeper may show a first-run warning.
-
-### Run from source
-
-Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 20 or 22, and Yarn through Corepack or an existing installation.
-
-```bash
-git clone https://github.com/xzregg/workstep.git
-cd workstep
-./start.sh
-```
-
-Open `http://127.0.0.1:5173`. The local daemon API listens on port `8765` by default. See the [development guide](docs/development.md) for individual application commands and tests.
-
 ## Local-first by design
 
 1. Each project owns its `.workstep/` database, event logs, templates, and artifacts.
@@ -137,6 +152,16 @@ Local-first describes where WorkStep stores and orchestrates project data. Exter
 ## Community and contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Use [Issues](https://github.com/xzregg/workstep/issues) for reproducible bugs and actionable feature requests, and [Discussions](https://github.com/xzregg/workstep/discussions) for questions, ideas, and design exploration. Report security issues privately as described in [SECURITY.md](SECURITY.md).
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=xzregg%2Fworkstep&amp;type=date&amp;legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;theme=dark&amp;legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;legend=top-left" />
+    <img alt="WorkStep GitHub star history" src="https://api.star-history.com/chart?repos=xzregg/workstep&amp;type=date&amp;legend=top-left" width="800" />
+  </picture>
+</a>
 
 ## License
 

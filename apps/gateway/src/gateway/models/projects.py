@@ -123,6 +123,7 @@ class ProjectAccessGrant(Base):
     subject_type: Mapped[str] = mapped_column(String(16))
     subject_id: Mapped[str] = mapped_column(String(64))
     access_level: Mapped[str] = mapped_column(String(16))
+    ui_permissions_json: Mapped[str | None] = mapped_column(Text)
     assigned_by_user_id: Mapped[str | None] = mapped_column(String(64))
     invitation_id: Mapped[str | None] = mapped_column(ForeignKey("project_invitations.id"))
     invitation_blocked: Mapped[bool] = mapped_column(Boolean, server_default=false())

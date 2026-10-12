@@ -13,6 +13,7 @@ export interface GatewayRemoteSession {
   task_create: boolean
   share_create: boolean
   can_manage_project_access: boolean
+  permissions?: string[] | null
 }
 
 interface GatewaySessionState {
@@ -32,7 +33,8 @@ export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => 
     pending = request<GatewayRemoteSession>('/remote/session').then(session => {
       if (!session.device_id || !session.gateway_url ||
           (!!session.project_id !== !!session.host_project_id) ||
-          (session.project_id && !['read', 'edit'].includes(session.access_level ?? ''))) {
+          (session.project_id && !['read', 'edit'].includes(session.access_level ?? '')) ||
+          (session.permissions != null && (!Array.isArray(session.permissions) || session.permissions.some((key: unknown) => typeof key !== 'string')))) {
         throw new Error('远程项目会话无效，请从平台重新打开。')
       }
       set({ session })

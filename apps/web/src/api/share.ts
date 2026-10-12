@@ -35,6 +35,7 @@ export interface SharedTask {
   coordinator_engine?: string | null
   coordinator_model?: string | null
   coordinator_fast_model?: string | null
+  coordinator_session_id?: string | null
   run_round?: number
   restart_from_step_key?: string | null
   recovered_at?: string | null

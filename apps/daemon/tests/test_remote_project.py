@@ -5,6 +5,7 @@ import asyncio
 import base64
 import json
 import time
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -1212,7 +1213,8 @@ def test_remote_websocket_closes_when_device_access_expires():
             assert ws.receive_json() == {"type": "access_ended", "reason": "expired"}
 
 
-def test_remote_status_event_sends_refreshed_project_summary():
+@pytest.mark.parametrize("metadata_only", [False, True])
+def test_remote_status_event_sends_refreshed_project_summary(metadata_only):
     config = MemoryConfig()
     access = RemoteAccessService(config)
     access.update_settings(
@@ -1294,7 +1296,8 @@ def test_remote_status_event_sends_refreshed_project_summary():
             ws.send_json(
                 {
                     "type": "subscribe",
-                    "status_only_task_ids": ["task-1"],
+                    "status_only_task_ids": [] if metadata_only else ["task-1"],
+                    "channels": ["project_metadata"] if metadata_only else [],
                 }
             )
             ws.send_json(
@@ -1656,7 +1659,7 @@ async def test_client_manager_reuses_authenticated_socket_for_rpc(monkeypatch):
     await manager.close()
 
 
-async def test_client_applies_remote_project_updates_and_forwards_status_events():
+async def test_client_applies_remote_project_updates_and_forwards_status_events(monkeypatch):
     config = MemoryConfig()
     access = RemoteAccessService(config)
     access.update_settings(
@@ -1719,6 +1722,16 @@ async def test_client_applies_remote_project_updates_and_forwards_status_events(
         connect_factory=lambda endpoint, **kwargs: asyncio.sleep(0, result=socket),
     )
     project = await manager.add_share(shared["share_string"])
+    update_started = threading.Event()
+    release_update = threading.Event()
+    original_update = registry.update
+
+    def slow_update(*args, **kwargs):
+        update_started.set()
+        release_update.wait(timeout=1)
+        return original_update(*args, **kwargs)
+
+    monkeypatch.setattr(registry, "update", slow_update)
     await socket.incoming.put(
         json.dumps(
             {
@@ -1753,15 +1766,38 @@ async def test_client_applies_remote_project_updates_and_forwards_status_events(
             }
         )
     )
+    assert await asyncio.to_thread(update_started.wait, 1)
+    # A stalled catalog write must not delay a real HTTP health request.
+    canary_app = FastAPI()
+
+    @canary_app.get("/health")
+    async def health():
+        return {"ok": True}
+
+    try:
+        assert registry.list_public()[0]["workflows"][0]["running"] is False
+        async with AsyncClient(transport=ASGITransport(app=canary_app), base_url="http://test") as client:
+            assert (await asyncio.wait_for(client.get("/health"), timeout=0.1)).json() == {"ok": True}
+        assert not release_update.is_set()
+    finally:
+        release_update.set()
     for _ in range(100):
         if (
-            events
+            any(event.get("name") == "workstep.status" for event in events)
             and registry.list_public()[0]["workflows"][0]["running"] is True
         ):
             break
         await asyncio.sleep(0.001)
 
     assert registry.list_public()[0]["workflows"][0]["running"] is True
+    assert any(
+        event.get("name") == "workstep.remote_project_status"
+        and event.get("value", {}).get("project_id") == project["id"]
+        and event.get("value", {}).get("status") == "updated"
+        and event.get("value", {}).get("project", {}).get("workflows", [{}])[0].get("running") is True
+        and "credential" not in event.get("value", {}).get("project", {})
+        for event in events
+    )
     stored = next(item for item in config.get("remote_projects") if item["id"] == project["id"])
     assert "steps" not in stored
     assert "workflows" not in stored
@@ -1839,6 +1875,10 @@ async def test_client_preserves_revoked_state_when_reconnect_authentication_fail
 
 
 async def test_remote_project_settings_and_add_api(monkeypatch):
+    # Initialize main before replacing its API dependencies; lazy import in
+    # /add otherwise overwrites these fakes with the real client manager.
+    import main  # noqa: F401
+
     config = MemoryConfig()
     access = RemoteAccessService(config)
     registry = RemoteProjectRegistry(config)

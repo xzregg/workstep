@@ -69,6 +69,17 @@ class StepExecutionMessages:
     ) -> StartedExecution:
         step_key = step.key
         capture_input = callable(getattr(engine, "spawn_with_retry", None))
+        context_hashes = {}
+        previous_context_hashes = (
+            state.previous_context_hashes
+            if engine is not None and engine.supports_resume and state.task_step.session_id
+            else None
+        )
+        context_kwargs = dict(
+            separate_instructions=capture_input,
+            previous_context_hashes=previous_context_hashes,
+            context_hashes=context_hashes,
+        )
         review_results = list(dict.fromkeys(
             value
             for value in (
@@ -86,6 +97,7 @@ class StepExecutionMessages:
                 assemble_followup_prompt,
                 task, step, artifacts_dir, followup,
                 state.artifact_round, trigger_name, input_snapshot,
+                **context_kwargs,
             )
         elif (
             state.task_step.session_id
@@ -97,7 +109,7 @@ class StepExecutionMessages:
                 assemble_retry_prompt,
                 task, step, artifacts_dir, input_snapshot,
                 state.artifact_round, state.previous_execution_prompt,
-                separate_instructions=capture_input,
+                **context_kwargs,
             )
         else:
             step_user_input = (
@@ -110,7 +122,7 @@ class StepExecutionMessages:
             prompt = await self._run_db(lambda: assemble_prompt(
                 task, step, artifacts_dir, step_user_input,
                 state.artifact_round, state.input_rounds,
-                input_snapshot, trigger_name, capture_input,
+                input_snapshot, trigger_name, **context_kwargs,
             ))
         if state.pending_handoff:
             handoff_reference = await asyncio.to_thread(
@@ -193,7 +205,7 @@ class StepExecutionMessages:
                 message.event_summary_json = None
                 message.event_count = 0
                 message.last_event_seq = 0
-                message.prompt_json = json.dumps({"prompt": None if capture_input else prompt, "input_prompt": prompt}, ensure_ascii=False)
+                message.prompt_json = json.dumps({"prompt": None if capture_input else prompt, "input_prompt": prompt, "context_hashes": context_hashes}, ensure_ascii=False)
                 message.usage_json = None
                 message.started_at = message_started_at
                 message.ended_at = None
@@ -208,7 +220,7 @@ class StepExecutionMessages:
                 ),
                 artifact_round=state.artifact_round, run_status="running",
                 event_log_path=journal_ref.relative_path,
-                prompt_json=json.dumps({"prompt": None if capture_input else prompt, "input_prompt": prompt}, ensure_ascii=False),
+                prompt_json=json.dumps({"prompt": None if capture_input else prompt, "input_prompt": prompt, "context_hashes": context_hashes}, ensure_ascii=False),
                 position=1, started_at=message_started_at,
                 created_at=message_started_at,
             )

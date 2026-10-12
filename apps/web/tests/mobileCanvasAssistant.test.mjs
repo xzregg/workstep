@@ -105,7 +105,7 @@ test('mobile task menu sits beside new task and includes Git', () => {
     'Git should be immediately above project settings',
   )
   const afterGit = sheet.slice(sheet.indexOf('<ProjectGitButton') + '<ProjectGitButton project={activeProject} />'.length).trimStart()
-  assert.ok(afterGit.startsWith('<Button onClick={() => { setFiltersOpen(false); setShowSettingsPanel(true) }}>'))
+  assert.match(afterGit, /canOpenSettings && <Button onClick=\{\(\) => \{ setFiltersOpen\(false\); setShowSettingsPanel\(true\) \}\}/)
   assert.match(afterGit, /<Icon name="settings" size=\{16\}/)
   assert.match(mobileCss, /\.mobile-task-menu > button,[\s\S]*?\.mobile-task-menu > select\s*\{[^}]*height: var\(--mobile-button-height\) !important[^}]*font-size: var\(--mobile-control-font-size\) !important/s)
   assert.match(mobileCss, /\.mobile-task-menu > button svg\s*\{[^}]*width: var\(--mobile-control-icon-size\) !important[^}]*height: var\(--mobile-control-icon-size\) !important/s)

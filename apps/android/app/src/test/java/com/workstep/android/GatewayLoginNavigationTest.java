@@ -51,4 +51,44 @@ public class GatewayLoginNavigationTest {
         assertTrue(navigation.staysInWebView(local, "http://192.168.1.20:8700/auth"));
         assertFalse(navigation.staysInWebView(local, "http://unrelated.test/"));
     }
+
+    @Test public void tlsProxyCallbackUsingHttpOriginStillKeepsGatewayLoginInApp() {
+        GatewayLoginNavigation navigation = new GatewayLoginNavigation();
+        String login = "https://gateway.test/desktop/login?redirect_uri="
+                + "http%3A%2F%2Fphone.workstep.test%2Fapi%2Fgateway-platform%2Fcallback";
+        assertTrue(navigation.staysInWebView(LOCAL, login));
+        assertTrue(navigation.staysInWebView(LOCAL, "https://login.dingtalk.com/oauth2/auth?state=abc"));
+        assertEquals("https://phone.workstep.test/?gateway_auth=cancelled",
+                navigation.rewrittenLocalReturn(LOCAL, "http://phone.workstep.test/?gateway_auth=cancelled"));
+        assertEquals("https://phone.workstep.test/api/gateway-platform/callback?code=abc&state=abc",
+                navigation.rewrittenLocalReturn(LOCAL,
+                        "http://phone.workstep.test/api/gateway-platform/callback?code=abc&state=abc"));
+        assertNull(navigation.rewrittenLocalReturn(LOCAL, "http://evil.test/?gateway_auth=cancelled"));
+        assertNull(navigation.rewrittenLocalReturn(LOCAL, "http://phone.workstep.test/admin"));
+        assertFalse(new GatewayLoginNavigation().staysInWebView(LOCAL,
+                "https://gateway.test/desktop/login?redirect_uri="
+                + "http%3A%2F%2Fevil.test%2Fapi%2Fgateway-platform%2Fcallback"));
+    }
+
+    @Test public void directGatewayDingTalkLoginKeepsProviderRedirectsInsideApp() {
+        ServerAddress gateway = ServerAddress.parse("https://gateway.test");
+        GatewayLoginNavigation navigation = new GatewayLoginNavigation();
+        navigation.pageStarted(gateway, "https://gateway.test/auth");
+        String authorize = "https://login.dingtalk.com/oauth2/auth?redirect_uri="
+                + "https%3A%2F%2Fgateway.test%2Fapi%2Fauth%2Fexternal%2Fsource-1%2Fcallback&state=abc";
+        assertTrue(navigation.staysInWebView(gateway, authorize));
+        assertTrue(navigation.staysInWebView(gateway, "https://qr.dingtalk.com/scan?state=abc"));
+        assertTrue(navigation.staysInWebView(gateway,
+                "https://gateway.test/api/auth/external/source-1/callback?code=abc"));
+        navigation.pageStarted(gateway, "https://gateway.test/api/auth/external/source-1/callback?code=abc");
+        assertFalse(navigation.staysInWebView(gateway, "https://qr.dingtalk.com/unrelated"));
+    }
+
+    @Test public void providerUrlWithForeignCallbackDoesNotAuthorizeOtherHosts() {
+        ServerAddress gateway = ServerAddress.parse("https://gateway.test");
+        GatewayLoginNavigation navigation = new GatewayLoginNavigation();
+        assertTrue(navigation.staysInWebView(gateway,
+                "https://login.dingtalk.com/oauth2/auth?redirect_uri=https%3A%2F%2Fevil.test%2Fapi%2Fauth%2Fexternal%2Fsource%2Fcallback"));
+        assertFalse(navigation.staysInWebView(gateway, "https://qr.dingtalk.com/scan"));
+    }
 }

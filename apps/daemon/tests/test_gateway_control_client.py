@@ -55,6 +55,42 @@ def _gateway_policy():
 from services.gateway_client.control import GatewayControlClient, control_url, data_url
 
 
+async def test_connection_status_events_are_deduplicated_and_contain_no_configuration():
+    events = []
+    service = GatewayClientService()
+
+    async def sink(event):
+        events.append(event)
+
+    service.event_sink = sink
+    control = GatewayControlClient('https://gateway.example', gateway_id='g',
+                                   public_key_fingerprint='fp', user_id='u', policy_cache=ManagedPolicyCache())
+    control.on_status_change = service.notify_connection_changed
+    await control._notify_status()
+    await control._notify_status()
+    assert len(events) == 1
+    control.online = True
+    await control._notify_status()
+    await control._notify_status()
+    assert len(events) == 2
+    control.online = False
+    control.authorization_required = True
+    await control._notify_status()
+    assert len(events) == 3
+    assert all(event == {"type": "CUSTOM", "name": "workstep.gateway_connection_changed",
+                         "channel": "gateway_connection", "value": {}} for event in events)
+
+
+async def test_restore_completion_notifies_ui_even_when_no_control_connection_is_created(monkeypatch):
+    from unittest.mock import AsyncMock
+    service = GatewayClientService()
+    service.event_sink = AsyncMock()
+    monkeypatch.setattr(service, "restore_connection", AsyncMock())
+    await service._restore_with_retry()
+    service.event_sink.assert_awaited_once()
+    assert service.event_sink.call_args.args[0]["name"] == "workstep.gateway_connection_changed"
+
+
 def test_control_url_is_fixed_to_managed_gateway():
     assert control_url("https://gateway.example") == "wss://gateway.example/ws/control"
     assert data_url("https://gateway.example") == "wss://gateway.example/ws/data"

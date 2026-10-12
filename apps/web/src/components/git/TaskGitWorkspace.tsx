@@ -1,4 +1,5 @@
 import Select from '../Select'
+import { useGatewayProjectPermissions } from '../../hooks/useGatewayProjectPermissions'
 import { useGitApi, useGitWorkspaceBrowser, useReadOnlyGit, useSharedGit, useProjectScopedGit, useGitWorkspaceEditable } from './GitApiContext'
 import { useEffect, useMemo, useState } from 'react'
 import { type GitDiscovery, type TaskGitWorkspace as Workspace } from '../../api/git'
@@ -21,7 +22,9 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   const projectScoped = useProjectScopedGit()
   const scopedDiscovery = shared || projectScoped
   const readOnly = useReadOnlyGit()
-  const workspaceEditable = useGitWorkspaceEditable()
+  const legacyWorkspaceEditable = useGitWorkspaceEditable()
+  const { can } = useGatewayProjectPermissions(projectId)
+  const workspaceEditable = legacyWorkspaceEditable && can('git.workspace')
   const browseWorkspace = useGitWorkspaceBrowser()
   const { t } = useI18n()
   const { data, scan } = useGitStore()
@@ -210,7 +213,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       <span className="git-grow" />
       {workspace?.path && project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={workspace.path} buttonLabel={t('git.taskOpenWorkspaceDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={scopedDiscovery} browseDirectory={scopedDiscovery ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>}
       {!readOnly && workspaceEditable && repositories.length > 0 && <Button size="sm" onClick={() => setShowAdd(value => !value)}>{t('git.taskAddRepository')}</Button>}
-      {!readOnly && workspaceEditable && settingsId && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} aria-expanded={settings} onClick={() => setSettings(value => !value)}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}
+      {!readOnly && can('git.config') && settingsId && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} aria-expanded={settings} onClick={() => setSettings(value => !value)}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}
       <Button size="sm" loading={loading} onClick={() => void refresh()}>{t('git.refresh')}</Button>
       {!readOnly && workspaceEditable && <Button className="task-git-delete-workspace" size="sm" variant="danger" loading={deleteWorkspaceChecking} disabled={loading} onClick={() => void inspectWorkspaceBeforeDelete()}>{t('git.taskDeleteWorkspace')}</Button>}
     </header>
@@ -270,7 +273,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
           <Button variant="primary" loading={adding} disabled={!alias || !baseRef || !branchName || branchLoading} onClick={() => void add()}>{t('git.taskCreateWorktree')}</Button>
         </>}
       </div>}
-      {!readOnly && workspaceEditable && settings && settingsId ? <main className="git-settings"><GitRepositorySettings key={settingsId} id={settingsId} /></main> : workspace?.worktrees.length ? <div className="git-page-body">
+      {!readOnly && can('git.config') && settings && settingsId ? <main className="git-settings"><GitRepositorySettings key={settingsId} id={settingsId} /></main> : workspace?.worktrees.length ? <div className="git-page-body">
         <aside className="task-git-tree" style={{ width: treeWidth, flexBasis: treeWidth }}>
           {workspace.worktrees.map(tree => <div className="task-git-tree-row" key={tree.id}>
             <button type="button" className={tree.id === selectedTree?.id ? 'selected' : ''} aria-pressed={tree.id === selectedTree?.id} onClick={() => setSelected(tree.id)} title={`${tree.alias} · ${tree.relative_path || tree.path}`}>

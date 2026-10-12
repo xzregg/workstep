@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { gitApi } from '../api/git'
+import { gitApi, createProjectGitApi } from '../api/git'
 import { useGitStore } from '../stores/gitStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { useProjectStore } from '../stores/projectStore'
@@ -14,6 +14,11 @@ import Icon from '../components/Icon'
 import Button from '../components/Button'
 import OpenLocationButton from '../components/OpenLocationButton'
 import '../components/git/git.css'
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
+import { GitApiContext } from '../components/git/GitApiContext'
+import { useProjectGitDiscovery } from '../components/git/useProjectGitDiscovery'
+import { fsApi } from '../api/client'
 
 export function scopeGitDiscovery(data: NonNullable<ReturnType<typeof useGitStore.getState>['data']>, projectId: string) {
   if (!projectId) return data
@@ -39,7 +44,13 @@ export default function GitWorkspace() {
   const navigate = useNavigate()
   const location = useLocation()
   const [params, setParams] = useSearchParams()
-  const { data, scanning, job, error, scan } = useGitStore()
+  const sessionProjectId = useGatewaySessionStore(state => state.session?.host_project_id)
+  const projectId = params.get('project_id') || sessionProjectId || ''
+  const { bound, can } = useGatewayProjectPermissions(projectId)
+  const api = useMemo(() => bound ? createProjectGitApi(projectId) : gitApi, [bound, projectId])
+  const localDiscovery = useGitStore()
+  const projectDiscovery = useProjectGitDiscovery(api, bound && can('git.read'))
+  const { data, scanning, job, error, scan } = bound ? projectDiscovery : localDiscovery
   const depth = useUserSettingsStore(s => s.gitScanDepth)
   const loaded = useUserSettingsStore(s => s.loaded)
   const load = useUserSettingsStore(s => s.load)
@@ -50,9 +61,8 @@ export default function GitWorkspace() {
   const { treeWidth, startResize, resizeWithKeyboard, resetResize } = useGitTreeResize()
   const [initializing, setInitializing] = useState(false)
   const [initializeError, setInitializeError] = useState('')
-  useEffect(() => { void load() }, [load])
-  useEffect(() => { if (loaded) void scan(`${depth}:${projectKey}`) }, [scan, depth, loaded, projectKey])
-  const projectId = params.get('project_id') || ''
+  useEffect(() => { if (!bound) void load() }, [load, bound])
+  useEffect(() => { if (!bound && loaded) void scan(`${depth}:${projectKey}`) }, [scan, depth, loaded, projectKey, bound])
   const scopedData = data ? scopeGitDiscovery(data, projectId) : null
   const preferred = scopedData?.repositories[0]
   const selected = params.get('worktree') || preferred?.worktrees.find(w => w.available)?.id || scopedData?.repositories.flatMap(r => r.worktrees).find(w => w.available)?.id
@@ -68,21 +78,23 @@ export default function GitWorkspace() {
   const branch = params.get('ref') || undefined
   function select(id: string, ref?: string) { setParams({ project_id: projectId, worktree: id, ...(ref ? { ref } : {}) }, { replace: true, state: location.state }); setTreeOpen(false); setSettings(false) }
   const project = projects.find(p => p.id === projectId)
-  const canInitialize = !!project && !!scopedData && !scopedData.repositories.length && !scanning
+  const canInitialize = can('git.workspace') && !!project && !!scopedData && !scopedData.repositories.length && !scanning
   const returnTo = (location.state as { returnTo?: unknown } | null)?.returnTo
   async function initializeRepository() {
     if (!canInitialize || initializing) return
     setInitializing(true); setInitializeError('')
     try {
-      await gitApi.initialize(projectId)
+      await api.initialize(projectId)
       await scan(`initialize:${projectId}:${Date.now()}`)
     } catch (reason) { setInitializeError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setInitializing(false) }
   }
-  return <div className={`git-page ${treeOpen ? 'tree-open' : ''}`}>
-    <header className="git-page-header"><Button className="git-back-button" size="sm" aria-label={t('git.back')} title={t('git.back')} onClick={() => navigate(gitReturnTarget(returnTo, project?.name), { replace: true })}><Icon name="chevron-right" style={{ transform: 'rotate(180deg)' }} size={15} /><span>{t('git.back')}</span></Button><h1>{t('git.title')}</h1><Button className="git-mobile-tree" size="sm" onClick={() => setTreeOpen(!treeOpen)}>{t('git.repositories')}</Button><span className="git-grow" />{scanning && <small>{job?.completed_projects || 0} / {job?.total_projects || 0}</small>}{selectedTree && ownerProject && <span className="git-open-location"><OpenLocationButton activeProject={ownerProject} directoryPath={selectedTree.path} browserProjectId={browserProjectId} readOnlyBrowser={!browserProjectId} t={t} /></span>}<Button size="sm" loading={scanning} onClick={() => void scan()}>{scanning ? t('git.scanning') : t('git.scan')}</Button><Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} title={t('git.settings')} onClick={() => setSettings(!settings)} aria-expanded={settings}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button></header>
+  if (!can('git.read')) return <p role="status">{t('common.featureUnavailable')}</p>
+  return <GitApiContext.Provider value={{ api, shared: false, projectScoped: bound, readOnly: false, workspaceEditable: can('git.workspace'), permissionCheck: can,
+    browseWorkspace: (path, includeHidden) => fsApi.browse(path, projectId || undefined, includeHidden) }}><div className={`git-page ${treeOpen ? 'tree-open' : ''}`}>
+    <header className="git-page-header"><Button className="git-back-button" size="sm" aria-label={t('git.back')} title={t('git.back')} onClick={() => navigate(gitReturnTarget(returnTo, project?.name), { replace: true })}><Icon name="chevron-right" style={{ transform: 'rotate(180deg)' }} size={15} /><span>{t('git.back')}</span></Button><h1>{t('git.title')}</h1><Button className="git-mobile-tree" size="sm" onClick={() => setTreeOpen(!treeOpen)}>{t('git.repositories')}</Button><span className="git-grow" />{scanning && <small>{job?.completed_projects || 0} / {job?.total_projects || 0}</small>}{can('file.read') && selectedTree && ownerProject && <span className="git-open-location"><OpenLocationButton activeProject={ownerProject} directoryPath={selectedTree.path} browserProjectId={browserProjectId} readOnlyBrowser={!browserProjectId || !can('file.edit')} t={t} /></span>}<Button size="sm" loading={scanning} onClick={() => void scan()}>{scanning ? t('git.scanning') : t('git.scan')}</Button>{can('git.config') && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} title={t('git.settings')} onClick={() => setSettings(!settings)} aria-expanded={settings}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}</header>
     {error && <div className="git-error" role="alert">{error}<Button size="sm" onClick={() => void scan()}>{t('git.retry')}</Button></div>}
     {!!scopedData?.errors.length && <details className="git-scan-errors"><summary>{t('git.scanError')} ({scopedData.errors.length})</summary>{scopedData.errors.map((e, i) => <p key={i}>{e.path}: {e.message}</p>)}</details>}
-    <div className="git-page-body">{scopedData && <><GitRepositoryTree data={scopedData} selected={selected} branch={branch} width={treeWidth} onSelect={select} /><div className="git-tree-resizer" role="separator" aria-orientation="vertical" aria-label={t('git.resizeTree')} aria-valuemin={230} aria-valuemax={clampGitTreeWidth(Number.MAX_SAFE_INTEGER)} aria-valuenow={treeWidth} tabIndex={0} onPointerDown={startResize} onDoubleClick={resetResize} onKeyDown={resizeWithKeyboard} /></>}{settings ? <main className="git-settings"><GitScanSettings />{selected && valid && <GitRepositorySettings key={selected} id={selected} />}</main> : selected && valid ? <GitWorktreePanel key={`${selected}:${branch || ''}`} id={selected} branch={branch} onLocate={select} onChanged={scan} /> : <main className="git-empty"><Icon name={scanning || initializing ? 'loader-circle' : 'git-fork'} className={scanning || initializing ? 'git-spin' : ''} size={30} /><h2>{scanning ? t('git.scanning') : initializing ? t('git.initializing') : t('git.empty')}</h2><p>{canInitialize || initializing ? t('git.initializeHint') : t('git.emptyHint')}</p>{initializeError && <p className="git-danger" role="alert">{initializeError}</p>}<div className="git-empty-actions">{(canInitialize || initializing) && <Button variant="primary" loading={initializing} disabled={scanning} onClick={() => void initializeRepository()}>{initializing ? t('git.initializing') : t('git.initialize')}</Button>}<Button disabled={initializing} onClick={() => setSettings(true)}>{t('git.settings')}</Button></div></main>}</div>
-  </div>
+    <div className="git-page-body">{scopedData && <><GitRepositoryTree data={scopedData} selected={selected} branch={branch} width={treeWidth} onSelect={select} onChanged={scan} /><div className="git-tree-resizer" role="separator" aria-orientation="vertical" aria-label={t('git.resizeTree')} aria-valuemin={230} aria-valuemax={clampGitTreeWidth(Number.MAX_SAFE_INTEGER)} aria-valuenow={treeWidth} tabIndex={0} onPointerDown={startResize} onDoubleClick={resetResize} onKeyDown={resizeWithKeyboard} /></>}{can('git.config') && settings ? <main className="git-settings">{!bound && <GitScanSettings />}{selected && valid && <GitRepositorySettings key={selected} id={selected} />}</main> : selected && valid ? <GitWorktreePanel key={`${selected}:${branch || ''}`} id={selected} branch={branch} onLocate={select} onChanged={scan} /> : <main className="git-empty"><Icon name={scanning || initializing ? 'loader-circle' : 'git-fork'} className={scanning || initializing ? 'git-spin' : ''} size={30} /><h2>{scanning ? t('git.scanning') : initializing ? t('git.initializing') : t('git.empty')}</h2><p>{canInitialize || initializing ? t('git.initializeHint') : t('git.emptyHint')}</p>{initializeError && <p className="git-danger" role="alert">{initializeError}</p>}<div className="git-empty-actions">{(canInitialize || initializing) && <Button variant="primary" loading={initializing} disabled={scanning} onClick={() => void initializeRepository()}>{initializing ? t('git.initializing') : t('git.initialize')}</Button>}{can('git.config') && <Button disabled={initializing} onClick={() => setSettings(true)}>{t('git.settings')}</Button>}</div></main>}</div>
+  </div></GitApiContext.Provider>
 }

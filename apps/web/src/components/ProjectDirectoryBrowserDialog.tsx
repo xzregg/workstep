@@ -78,8 +78,8 @@ export default function ProjectDirectoryBrowserDialog({
   onClose,
 }: ProjectDirectoryBrowserDialogProps) {
   const { t } = useI18n()
-  const { canEdit } = useGatewayProjectPermissions(projectId)
-  const readOnly = requestedReadOnly || !canEdit
+  const { can } = useGatewayProjectPermissions(projectId)
+  const readOnly = requestedReadOnly || (!can('file.edit') && !can('file.manage') && !can('file.upload'))
   const dialogRef = useRef<HTMLElement>(null)
   const resizeCleanupRef = useRef<(() => void) | null>(null)
   const [bounds, setBounds] = useState<DialogBounds | null>(null)

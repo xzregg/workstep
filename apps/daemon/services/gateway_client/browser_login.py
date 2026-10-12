@@ -192,9 +192,21 @@ class GatewayBrowserLogin:
             fingerprint = hashlib.sha256(control_key.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)).hexdigest()
             delegation = _encode(key.sign(f'workstep-control-delegate-v1:{authorization}:{fingerprint}'.encode()))
             control_private = control_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
-            await self.gateway.close()
+            configured = self.gateway.managed_config
+            same_platform = bool(configured
+                and configured.gateway_origin == pending['url']
+                and configured.gateway_id == pending['gateway_id']
+                and configured.gateway_public_key_fingerprint == pending['fingerprint'])
+            # A second browser gets its own local session, not a replacement
+            # daemon lifecycle that clears every other browser's session.
+            if not same_platform:
+                await self.gateway.close()
             await asyncio.to_thread(config_store.set, 'gateway_platform', stored)
-            await self.gateway.start()
+            if not same_platform:
+                await self.gateway.start()
             result = await self.gateway.bootstrap(authorization, proof, control_private, control_public, delegation)
-            self.desktop_local_session = result[0] if pending["desktop"] else None
+            if pending['desktop']:
+                self.desktop_local_session = result[0]
+            elif not self.gateway.local_sessions.resolve(self.desktop_local_session):
+                self.desktop_local_session = None
             return GatewayLoginCompletion(result[0], result[1], bool(pending["desktop"]))

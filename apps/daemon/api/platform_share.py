@@ -616,7 +616,8 @@ async def _history_page(request: Request, offset: int):
     from services.share import load_shared_history
 
     def load(_project):
-        messages = load_shared_history(scope['task_id'], limit=101, offset=offset, mode=scope['mode'])
+        messages = load_shared_history(scope['task_id'], limit=101, offset=offset,
+                                       mode=scope['mode'], workstep_dir=_project.workstep_dir)
         has_more = len(messages) > 100
         # The loader returns chronological order; the extra row is oldest.
         messages = messages[-100:]

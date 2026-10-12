@@ -11,7 +11,6 @@ import logging
 import secrets
 import uuid
 
-from engines.codex_visualize import convert_visualize_markers
 from models import Task, TaskShare, Workflow
 from models.fields import utc_now
 
@@ -236,7 +235,7 @@ def invalidate_session(session_token: str) -> None:
 
 
 def load_shared_task(task_id: str) -> dict | None:
-    """Load the canonical task-detail payload, minus private project/session data."""
+    """Load the canonical task-detail payload without project management data."""
     try:
         task = Task.get_by_id(task_id)
     except Task.DoesNotExist:
@@ -255,6 +254,7 @@ def load_shared_task(task_id: str) -> dict | None:
         "coordinator_engine",
         "coordinator_model",
         "coordinator_fast_model",
+        "coordinator_session_id",
         "run_round",
         "restart_from_step_key",
         "recovered_at",
@@ -276,10 +276,7 @@ def load_shared_task(task_id: str) -> dict | None:
         "scheduled_start_error",
     )
     payload = {key: canonical.get(key) for key in shared_fields}
-    payload["steps"] = [
-        {key: value for key, value in step.items() if key != "session_id"}
-        for step in canonical["steps"]
-    ]
+    payload["steps"] = canonical["steps"]
     workflow = None
     if task.workflow_id:
         try:
@@ -300,77 +297,34 @@ def load_shared_history(
     limit: int = 200,
     offset: int = 0,
     mode: str = "read_only",
+    workstep_dir=None,
 ) -> list[dict]:
-    """Load message history for a shared task.
+    """Share the same task history projection; permissions only restrict writes.
 
-    Only the ``execution`` channel is exposed through the share view; the
-    coordinator channel contains the user's private planning dialog and
-    must never leak to an external viewer.
+    Callers run this complete database/file work unit in the project executor.
     """
-    from models import Message
-    messages = list(
-        Message.select()
-        .where(
-            (Message.task == task_id)
-            & (Message.channel == "execution")
-        )
-        .order_by(Message.sequence.desc(), Message.created_at.desc())
-        .limit(limit)
-        .offset(offset)
+    from services.task import TaskService
+    from services.history import translate_events
+
+    messages = TaskService(None).get_task_history(
+        task_id, limit=limit, offset=offset, workstep_dir=workstep_dir,
     )
-    result = []
-    import json as _json
-    from services.history import event_detail, message_artifact_projections, translate_events
-    artifact_projections = message_artifact_projections(task_id, messages)
-    for msg in reversed(messages):
-        step_run_id, artifact_round = artifact_projections[msg.id]
-        raw_events: list[dict] = []
-        projected_events = msg.event_summary_json or msg.events_json
-        if projected_events:
-            try:
-                raw_events = _json.loads(projected_events)
-            except Exception:
-                raw_events = []
-        # 与实时推送共用 AG-UI 翻译层（旧词汇经兼容映射），
-        # 再按 CUSTOM name 脱敏。
-        events = _scrub_events(translate_events(
-            raw_events,
-            task_id=task_id,
-            step_key=msg.step_key,
-            message_id=msg.id,
-            channel=msg.channel,
-            engine=msg.engine,
-            model=msg.model,
-        ), mode=mode)
-        entry = {
-            "id": msg.id,
-            "role": msg.role,
-            "content": convert_visualize_markers(msg.content or ""),
-            "step_key": msg.step_key,
-            "context_step_key": msg.context_step_key,
-            "channel": msg.channel,
-            "sequence": msg.sequence,
-            "run_status": msg.run_status,
-            "step_run_id": step_run_id,
-            "artifact_round": artifact_round,
-            "engine": msg.engine,
-            "model": msg.model,
-            "started_at": msg.started_at,
-            "ended_at": msg.ended_at,
-            "created_at": msg.created_at,
-            "events": events,
-            "usage": _json.loads(msg.usage_json) if msg.usage_json else None,
-        }
-        detail = event_detail(msg)
-        if detail is not None:
-            entry["event_detail"] = detail
-        result.append(entry)
-    return result
+    for message in messages:
+        events = []
+        for event in message["events"]:
+            if event.get("type", "").isupper():
+                events.append(event)
+            else:
+                events.extend(translate_events(
+                    [event], task_id=task_id, step_key=message["step_key"],
+                    message_id=message["id"], channel=message["channel"],
+                    engine=message["engine"], model=message["model"],
+                ))
+        message["events"] = _scrub_events(events, mode=mode)
+    return messages
 
 
 _SCRUBBED_CUSTOM_NAMES = {
-    "workstep.interaction_request",
-    "workstep.interaction_response",
     "workstep.engine_state",
 }
 
@@ -378,8 +332,8 @@ _SCRUBBED_CUSTOM_NAMES = {
 def _scrub_events(events: list[dict], mode: str = "read_only") -> list[dict]:
     """Drop events that shouldn't be visible to external share viewers.
 
-    AG-UI 统一词汇下按 ``CUSTOM name`` 脱敏（``workstep.interaction_*``、
-    ``workstep.engine_state``）。
+    Internal engine state is not a visible conversation event. Interaction
+    requests and responses remain visible; share permissions govern responses.
     """
     return [
         event

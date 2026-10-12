@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import React, { useCallback, useRef, useState } from 'react'
 import type { Project } from '../api/client'
 import { useTaskStore } from '../stores/taskStore'
@@ -48,11 +49,13 @@ function initialReviewOverrides(steps: Project['steps']): Record<string, ReviewO
 export default function TaskCreatePanel({ project, workflowId, lanes, initialStepKey, onClose }: Props) {
   const { t } = useI18n()
   const compact = useCompactLayout()
+  const { can } = useGatewayProjectPermissions(project.id)
+  const canAiCreate = can('task.ai_create')
   const createTask = useTaskStore((state) => state.createTask)
   const selectedStepKey = initialStepKey || lanes[0]?.key || null
   const selectedStep = [...(project.steps?.nodes || []), ...(project.steps?.steps || [])]
     .find((step: any) => (step.type || step.key || String(step.id)) === selectedStepKey)
-  const initialAutoStart = Boolean(selectedStep?.autoStart)
+  const initialAutoStart = can('task.start_on_create') && Boolean(selectedStep?.autoStart)
   const initialOverrides = useRef(initialReviewOverrides(project.steps)).current
   const [createStartStepKey, setCreateStartStepKey] = useState<string | null>(selectedStepKey)
   const createLane = lanes.find((lane) => lane.key === createStartStepKey) || lanes[0]
@@ -60,14 +63,14 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
   const [reviewOverrides, setReviewOverrides] = useState<Record<string, ReviewOverride>>(initialOverrides)
   const [newTitle, setNewTitle] = useState('')
   const [createError, setCreateError] = useState('')
-  const [activeTab, setActiveTab] = useState<'content' | 'review' | 'assistant'>(compact ? 'assistant' : 'content')
+  const [activeTab, setActiveTab] = useState<'content' | 'review' | 'assistant'>(compact && canAiCreate ? 'assistant' : 'content')
   const [newDesc, setNewDesc] = useState('')
   const [newAutoStart, setNewAutoStart] = useState(initialAutoStart)
   const [newStartMode, setNewStartMode] = useState<'manual' | 'immediate' | 'scheduled'>(initialAutoStart ? 'immediate' : 'manual')
   const [newScheduledStart, setNewScheduledStart] = useState('')
   const [creating, setCreating] = useState(false)
   const [confirmCloseNewTask, setConfirmCloseNewTask] = useState(false)
-  const [taskAiOpen, setTaskAiOpen] = useState(true)
+  const [taskAiOpen, setTaskAiOpen] = useState(canAiCreate)
   const [taskAiBusy, setTaskAiBusy] = useState(false)
   const [taskAiMessage, setTaskAiMessage] = useState('')
   const [taskAiChatWidth, setTaskAiChatWidth] = useState<number | null>(null)
@@ -83,7 +86,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
   const taskCreationErrors = resolveTaskCreationErrors('', createError)
 
   const handleCreate = async () => {
-    if (!newTitle.trim() || taskAiBusy || creating
+    if (!can('task.create') || !newTitle.trim() || taskAiBusy || creating
       || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))) return
     setCreating(true)
     try {
@@ -93,10 +96,10 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
         project.id,
         newDesc.trim() || undefined,
         createLane?.key,
-        Object.keys(reviewOverrides).length > 0 ? reviewOverrides : undefined,
+        can('task.config') && Object.keys(reviewOverrides).length > 0 ? reviewOverrides : undefined,
         workflowId,
-        newStartMode === 'immediate',
-        newStartMode === 'scheduled' ? localDateTimeToIso(newScheduledStart) : null,
+        can('task.start_on_create') && newStartMode === 'immediate',
+        can('task.schedule_start') && newStartMode === 'scheduled' ? localDateTimeToIso(newScheduledStart) : null,
       )
       const onboarding = useOnboardingStore.getState()
       if (
@@ -124,6 +127,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
   }
 
   const handleStartTaskAi = () => {
+    if (!canAiCreate) return
     if (taskAiOpen) {
       requestCloseTaskAi()
       return
@@ -213,12 +217,12 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
             onClick={() => setActiveTab('content')}
             className="task-create-tab" aria-selected={activeTab === 'content'}
           >{t('taskList.contentTab')}</button>
-          <button
+          {can('task.config') && <button
             role="tab"
             onClick={() => setActiveTab('review')}
             className="task-create-tab" aria-selected={activeTab === 'review'}
-          >{t('taskList.reviewTab')}</button>
-          {compact && <button className="mobile-assistant-tab" aria-pressed={activeTab === 'assistant'} onClick={() => { setTaskAiOpen(true); setActiveTab('assistant') }}>{t('mobile.aiAssistant')}</button>}
+          >{t('taskList.reviewTab')}</button>}
+          {compact && canAiCreate && <button className="mobile-assistant-tab" aria-pressed={activeTab === 'assistant'} onClick={() => { setTaskAiOpen(true); setActiveTab('assistant') }}>{t('mobile.aiAssistant')}</button>}
         </div>
 
         {/* ── Tab: content ── */}
@@ -254,7 +258,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                 className="task-create-title-input"
               />
-              <Button
+              {canAiCreate && <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleStartTaskAi}
@@ -264,7 +268,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
               >
                 <Icon name="sparkles" size={13} className="task-create-ai-icon" />
                 {t('taskList.aiCreate')}
-              </Button>
+              </Button>}
             </div>
           </Field>
           <label className="task-create-description-label">{t('taskList.taskDescription')}</label>
@@ -283,7 +287,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
                   ['manual', t('taskList.startModeManual')],
                   ['immediate', t('taskList.startModeImmediate')],
                   ['scheduled', t('taskList.startModeScheduled')],
-                ] as const).map(([mode, label]) => (
+                ] as const).filter(([mode]) => mode === 'manual' || can(mode === 'immediate' ? 'task.start_on_create' : 'task.schedule_start')).map(([mode, label]) => (
                   <label key={mode} className="task-create-start-mode">
                     <input
                       type="radio"
@@ -316,7 +320,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
         )}
 
         {/* ── Tab: review ── */}
-        {activeTab === 'review' && (
+        {can('task.config') && activeTab === 'review' && (
         <div className="task-create-review">
           <ReviewOverridesEditor value={reviewOverrides} onChange={setReviewOverrides} lanes={lanes} startStepKey={createLane?.key} projectId={project?.id} />
         </div>
@@ -337,7 +341,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
             {t('taskList.createTask')}
           </Button>
           <div className="task-create-secondary-row">
-            <button
+            {canAiCreate && <button
               type="button"
               className="task-create-assistant-status"
               aria-pressed={taskAiOpen}
@@ -345,12 +349,12 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
             >
               <Icon name="sparkles" size={14} />
               {taskAiOpen ? t('taskList.assistantExpanded') : t('taskList.assistantCollapsed')}
-            </button>
+            </button>}
             <Button variant="ghost" className="task-create-cancel" onClick={closeNewPanel}>{t('common.cancel')}</Button>
           </div>
         </div>
         </div>
-        {taskAiOpen && project && (
+        {canAiCreate && taskAiOpen && project && (
           <>
             <div
               className="task-create-divider"

@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { fsApi, type DirectoryBrowseResult, type DirectoryEntry } from '../api/client'
@@ -40,6 +41,9 @@ export default function ProjectDirectoryBrowser({
   onDirtyChange,
 }: ProjectDirectoryBrowserProps) {
   const { t } = useI18n()
+  const { can } = useGatewayProjectPermissions(projectId)
+  const canEditFile = !readOnly && can('file.edit')
+  const canManageFiles = !readOnly && can('file.manage')
   const [selectedDirectory, setSelectedDirectory] = useState<string | null>(null)
   const [root, setRoot] = useState<DirectoryBrowseResult | null>(null)
   const [rootLoading, setRootLoading] = useState(true)
@@ -292,7 +296,7 @@ export default function ProjectDirectoryBrowser({
           style={{ paddingLeft: 8 + depth * 18 }}
           title={entry.path}
           onContextMenu={(event) => {
-            if (readOnly) return
+            if (!canManageFiles) return
             event.preventDefault()
             setContextTarget({ entry, parentPath, x: event.clientX, y: event.clientY })
           }}
@@ -349,7 +353,7 @@ export default function ProjectDirectoryBrowser({
         <div className="project-directory-tree-heading">
           <span>{t('browser.projectFiles')}</span>
           <div className="project-directory-tree-actions">
-            {!readOnly && <ProjectDirectoryUpload
+            {!readOnly && can('file.upload') && <ProjectDirectoryUpload
               projectId={projectId} rootPath={rootPath}
               parent={selectedDirectory ?? root?.relative_path ?? root?.path ?? ''}
               disabled={!root || rootLoading}
@@ -425,7 +429,7 @@ export default function ProjectDirectoryBrowser({
           role="tree"
           aria-label={t('browser.projectTree')}
           onContextMenu={(event) => {
-            if (readOnly) return
+            if (!canManageFiles) return
             if (!rootEntry || (event.target as Element).closest('[role="treeitem"]')) return
             event.preventDefault()
             setContextTarget({ entry: rootEntry, parentPath: rootEntry.path, x: event.clientX, y: event.clientY, isRoot: true })
@@ -458,7 +462,7 @@ export default function ProjectDirectoryBrowser({
               title={entry.path}
               onClick={() => selectFile(entry)}
               onContextMenu={(event) => {
-                if (readOnly) return
+                if (!canManageFiles) return
                 event.preventDefault()
                 setContextTarget({ entry, parentPath: entry.path.replace(/[\\/][^\\/]+$/, ''), x: event.clientX, y: event.clientY })
               }}
@@ -537,7 +541,7 @@ export default function ProjectDirectoryBrowser({
       />
       <section className="project-directory-preview" aria-label={t('browser.filePreview')}>
         <div className="project-directory-preview-content">
-          {selectedFile ? editing ? (
+          {selectedFile ? editing && canEditFile ? (
             <ProjectDirectoryFileEditor
               key={`${selectedFile.path}:${editorRevision}`}
               path={selectedFile.path}
@@ -548,7 +552,7 @@ export default function ProjectDirectoryBrowser({
               onPreview={() => beforeLeave(() => setEditing(false))}
             />
           ) : (
-            <ArtifactPreview key={selectedFile.path} path={selectedFile.path} name={selectedFile.name} projectId={projectId} onEdit={readOnly ? undefined : () => setEditing(true)} />
+            <ArtifactPreview key={selectedFile.path} path={selectedFile.path} name={selectedFile.name} projectId={projectId} onEdit={!canEditFile ? undefined : () => setEditing(true)} />
           ) : (
             <div className="project-directory-preview-empty">
               <Icon name="file" size={28} strokeWidth={1.4} />
@@ -557,7 +561,7 @@ export default function ProjectDirectoryBrowser({
           )}
         </div>
       </section>
-      {!readOnly && <ProjectDirectoryTreeActions
+      {canManageFiles && <ProjectDirectoryTreeActions
         projectId={projectId}
         rootPath={rootPath}
         target={contextTarget}

@@ -1,0 +1,1 @@
+.project-permission-unavailable { display: flex; flex: 1; align-items: center; justify-content: center; padding: 24px; color: var(--meta); font-size: calc(13px * var(--font-scale)); }

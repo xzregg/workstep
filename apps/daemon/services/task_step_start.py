@@ -9,6 +9,7 @@ from models import Message, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.artifact_rounds import next_artifact_round
 from services.pipeline import Step
+from services.prompt import legacy_task_context_hashes
 
 
 class StartedStepState(NamedTuple):
@@ -20,6 +21,7 @@ class StartedStepState(NamedTuple):
     artifact_round: int | None
     input_rounds: dict[str, int]
     previous_execution_prompt: str | None
+    previous_context_hashes: dict | None = None
 
 
 def start_step_state(
@@ -190,6 +192,24 @@ def start_step_state(
         workflow_run.status = "running"
         workflow_run.ended_at = None
 
+    previous_context_hashes = None
+    # Hashes are only a comparison checkpoint for the same completed native
+    # session. A reset, handoff, switch or unknown old record starts in full.
+    if ts.session_id and last_completed_execution is not None:
+        prior_path = last_completed_execution.event_log_path or ""
+        if Path(prior_path).parent.name == ts.session_id:
+            try:
+                prior_data = json.loads(last_completed_execution.prompt_json or "{}")
+                hashes = prior_data.get("context_hashes")
+                if isinstance(hashes, dict):
+                    previous_context_hashes = hashes
+                else:
+                    previous_context_hashes = legacy_task_context_hashes(
+                        prior_data.get("input_prompt", prior_data.get("prompt")),
+                    )
+            except (TypeError, ValueError, AttributeError):
+                pass
+
     pending_handoff = None
     if ts.pending_handoff_json:
         try:
@@ -206,4 +226,5 @@ def start_step_state(
         artifact_round,
         input_rounds,
         previous_execution_prompt,
+        previous_context_hashes,
     )

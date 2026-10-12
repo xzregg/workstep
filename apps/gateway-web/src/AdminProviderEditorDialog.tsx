@@ -23,8 +23,8 @@ function modelsFromText(value: string) {
   return value.split(/[\n,]/).map(item => item.trim()).filter(Boolean)
 }
 
-export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: {
-  provider?: ManagedProvider; csrf: string; onClose: () => void; onSaved: () => void
+export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved, priceModel }: {
+  provider?: ManagedProvider; csrf: string; onClose: () => void; onSaved: () => void; priceModel?: string
 }) {
   const [name, setName] = useState(provider?.name ?? '')
   const [type, setType] = useState(provider?.type ?? 'custom')
@@ -112,11 +112,12 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
   }
 
   return <>
-    <GatewayConfirmDialog title={provider ? '编辑供应商' : '创建供应商'}
-      message="配置将按授权下发到 PC，模型请求仍由 PC 直接发送给供应商。"
+    <GatewayConfirmDialog title={priceModel ? '设置模型价格' : provider ? '编辑供应商' : '创建供应商'}
+      message={priceModel ? `${provider?.name} · ${priceModel} · 每百万 Token 单价（USD）。新价格应用到设备后用于后续调用，历史费用保留原快照。` : "配置将按授权下发到 PC，模型请求仍由 PC 直接发送给供应商。"}
       className="gateway-provider-dialog"
-      confirmLabel="保存供应商" busy={busy} disabled={!valid} onConfirm={() => void save()}
+      confirmLabel={priceModel ? "保存价格" : "保存供应商"} busy={busy} disabled={!valid} onConfirm={() => void save()}
       onCancel={() => dirty ? setDiscard(true) : onClose()}>
+      {!priceModel && <>
       <label htmlFor="provider-name">供应商名称</label>
       <input id="provider-name" value={name} maxLength={256} onChange={event => setName(event.target.value)} />
       <label htmlFor="provider-type">供应商类型</label>
@@ -132,16 +133,18 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
         </div>)}</fieldset>
       <label htmlFor="provider-models">允许模型（每行一个）</label>
       <textarea id="provider-models" value={modelsText} onChange={event => setModelsText(event.target.value)} />
+      </>}
       <label htmlFor="provider-price-version">价格版本</label>
       <input id="provider-price-version" value={priceVersion} maxLength={64}
         onChange={event => setPriceVersion(event.target.value)} />
-      {models.map(model => <fieldset className="gateway-provider-prices" key={model}>
+      {models.filter(model => !priceModel || model === priceModel).map(model => <fieldset className="gateway-provider-prices" key={model}>
         <legend>{model} · 每百万 Token 单价（留空表示未计价）</legend>
         {priceFields.map(([field, label]) => <label key={field}>{label}
           <input type="text" inputMode="decimal" aria-label={`${model} ${label}单价`}
             value={prices[model]?.[field] ?? ''} onChange={event => setPrices(current => ({
               ...current, [model]: { ...current[model], [field]: event.target.value },
             }))} /></label>)}</fieldset>)}
+      {!priceModel && <>
       {provider?.has_key && <>
         <label htmlFor="provider-current-key">当前凭据</label>
         <input id="provider-current-key" readOnly autoComplete="off"
@@ -154,6 +157,7 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
       <label htmlFor="provider-api-key">{provider ? '新凭据（留空则保留当前凭据）' : '供应商凭据'}</label>
       <input id="provider-api-key" type="password" autoComplete="new-password" value={apiKey}
         onChange={event => setApiKey(event.target.value)} />
+      </>}
       <PasswordConfirmation id="provider-admin-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {!protocolUrlsValid && selectedProtocols.length > 0 && <p>请填写所选协议的 HTTP 或 HTTPS 地址。</p>}
       {!modelsValid && <p>模型名称重复或超过长度限制。</p>}

@@ -8,6 +8,7 @@ import { formatTokenTotal } from '../utils/statistics'
 import Button from './Button'
 import Icon from './Icon'
 import MarqueeText from './MarqueeText'
+import TaskCopyButton from './TaskCopyButton'
 import TaskRecoveredBadge from './TaskRecoveredBadge'
 
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
@@ -39,12 +40,16 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 interface Props {
+  projectId?: string
   task: Task
   durationNowMs: number
   showArchived: boolean
   starting: boolean
   dragging?: boolean
   readOnly?: boolean
+  canRun?: boolean
+  canArchive?: boolean
+  canDelete?: boolean
   onOpen: () => void
   onStart: () => void
   onArchive: () => void
@@ -56,7 +61,7 @@ interface Props {
 
 /** One task board card owns its status, metadata, and action presentation. */
 export default function TaskBoardCard({
-  task, durationNowMs, showArchived, starting, dragging = false, readOnly = false,
+  task, projectId, durationNowMs, showArchived, starting, dragging = false, readOnly = false, canRun = !readOnly, canArchive = !readOnly, canDelete = !readOnly,
   onOpen, onStart, onArchive, onRestore, onDelete, onDragStart, onDragEnd,
 }: Props) {
   const { t, locale } = useI18n()
@@ -96,7 +101,7 @@ export default function TaskBoardCard({
       className="task-board-card"
       data-task-status={status}
       data-dragging={dragging || undefined}
-      draggable={!readOnly && !showArchived}
+      draggable={canArchive && !showArchived}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onOpen}
@@ -158,7 +163,8 @@ export default function TaskBoardCard({
           <span className="task-board-card-meta-spacer" />
         )}
         <div className="card-action-buttons task-board-card-buttons">
-          {!readOnly && taskNotStarted && status !== 'running' && (
+          {projectId && <TaskCopyButton taskId={task.id} projectId={projectId} title={task.title} />}
+          {canRun && taskNotStarted && status !== 'running' && (
             <Button variant="icon" data-task-action="start"
               title={t('taskList.startTask')} aria-label={t('taskList.startTask')}
               disabled={starting} loading={starting}
@@ -167,11 +173,11 @@ export default function TaskBoardCard({
               ▶️
             </Button>
           )}
-          <Button variant="icon" className="task-board-card-icon" title={t('common.edit')}
+          <Button variant="icon" className="task-board-card-icon" title={t(readOnly ? 'common.view' : 'common.edit')}
             onClick={(e) => { e.stopPropagation(); onOpen() }}>
-            <Icon name="pencil" size={12} strokeWidth={2} />
+            <Icon name={readOnly ? "eye" : "pencil"} size={12} strokeWidth={2} />
           </Button>
-          {!readOnly && !showArchived && status !== 'running' && (
+          {canArchive && !showArchived && status !== 'running' && (
             <Button variant="icon" data-task-action="archive"
               title={t('taskList.archiveTask')} aria-label={t('taskList.archiveTask')}
               onClick={(e) => { e.stopPropagation(); onArchive() }}
@@ -179,7 +185,7 @@ export default function TaskBoardCard({
               <Icon name="archive" size={12} strokeWidth={2} />
             </Button>
           )}
-          {!readOnly && showArchived && (
+          {canArchive && showArchived && (
             <Button variant="icon" title={t('taskList.restoreToBoard')}
               aria-label={t('taskList.restoreToBoard')}
               onClick={(e) => { e.stopPropagation(); onRestore() }}
@@ -187,7 +193,7 @@ export default function TaskBoardCard({
               <Icon name="rotate-ccw" size={12} strokeWidth={2} />
             </Button>
           )}
-          {!readOnly && !isRunning && (
+          {canDelete && !isRunning && (
             <Button variant="icon" className="task-board-card-icon task-board-card-icon--danger"
               data-task-action="delete" title={t('common.delete')}
               onClick={(e) => { e.stopPropagation(); onDelete() }}>

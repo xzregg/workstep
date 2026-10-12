@@ -20,6 +20,35 @@ function SidebarActivityProbe() {
   return null
 }
 
+test('remote chat start and end use metadata events without scheduling a full project scan', async () => {
+  const window = setupDom()
+  seedProjectState()
+  useProjectStore.setState({ projects: [{ ...FAILED_PROJECT, type: 'remote' }] as never })
+  useChatListStore.setState({ sessionsByProject: { 'project-1': [{
+    id: 'session-1', project_id: 'project-1', title: 'Remote chat', running: false,
+  }] } as never })
+  useChatSessionStore.getState().newSession('session-1')
+  let scheduledScans = 0
+  const originalSetTimeout = window.setTimeout.bind(window)
+  window.setTimeout = ((callback: () => void, delay: number) => {
+    if (delay === 300) scheduledScans++
+    return originalSetTimeout(callback, delay)
+  }) as typeof window.setTimeout
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<MemoryRouter><SidebarActivityProbe /></MemoryRouter>))
+    for (const running of [true, false]) {
+      await act(async () => useChatSessionStore.setState(state => ({ sessions: {
+        ...state.sessions, 'session-1': { ...state.sessions['session-1'], running },
+      } })))
+    }
+    assert.equal(scheduledScans, 0)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 function FailedSessionProbe() {
   const { failedChatSessions, projectHasFailedSession } = useSidebarActivity(null)
   return (

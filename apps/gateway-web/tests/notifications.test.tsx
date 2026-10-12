@@ -95,6 +95,8 @@ test('notifications distinguish replies from steps and paginate from the last ch
   fireEvent.click(screen.getByRole('button',{name:'加载更早通知'}))
   await screen.findByRole('button',{name:/会话 · 回复失败/})
   assert.deepEqual(requests,['/api/notifications','/api/notifications?before=4'])
+  assert.equal(document.querySelectorAll('.gateway-notification-panel li').length,3)
+  fireEvent.click(screen.getByRole('button',{name:'展开全部事件'}))
   assert.deepEqual([...document.querySelectorAll('.gateway-notification-panel li strong')].map(node=>node.textContent),
     ['测试任务 · 回复完成','测试任务 · 步骤失败','测试任务 · 回复失败','会话 · 回复失败'])
 })
@@ -124,4 +126,30 @@ test('gateway completion calls the shipped Android notify bridge once and does n
   sockets[0].onmessage({data:JSON.stringify({...initial,cursor:2})})
   assert.equal(messages.length,1)
  }finally{delete (window as any).WorkStepAndroid}
+})
+
+
+test('repeated replies collapse by device, project and conversation while retaining unread and failure history',async()=>{
+  const base={device_id:'b',device_name:'B设备',host_project_id:'p',project_name:'Demo',
+    session_id:'e93a35cf-4ae3-4c20-b1c1-de6137e4a479',status:'succeeded',read:true}
+  const events=[{...base,id:'latest',sequence:5,occurred_at:50},
+    {...base,id:'other-device',device_id:'c',sequence:4,occurred_at:40},
+    {...base,id:'other-project',host_project_id:'q',sequence:3,occurred_at:30},
+    {...base,id:'failed',sequence:2,occurred_at:20,status:'error',read:false},
+    {...base,id:'old',sequence:1,occurred_at:10}]
+  const opened:number[]=[]
+  globalThis.fetch=async input=>String(input)==='/api/notifications'
+    ?Response.json({events,unread:1,cursor:5,more:false})
+    :Response.json({url:'/workspace/b/',ticket:'ticket'})
+  render(<NotificationCenterView onOpen={target=>opened.push(target.sequence)}/>)
+  fireEvent.click(await screen.findByRole('button',{name:'通知，1 条未读'}))
+  const rows=document.querySelectorAll('.gateway-notification-panel li')
+  assert.equal(rows.length,3)
+  assert.ok(rows[0].classList.contains('gateway-notification-unread'))
+  assert.ok(rows[0].textContent?.includes('共 3 条事件，其中 1 条失败'))
+  fireEvent.click(screen.getByRole('button',{name:'展开全部事件'}))
+  assert.equal(document.querySelectorAll('.gateway-notification-panel li').length,5)
+  fireEvent.click(screen.getByRole('button',{name:'合并重复事件'}))
+  fireEvent.click(document.querySelector('.gateway-notification-panel li > button')!)
+  await waitFor(()=>assert.deepEqual(opened,[5]))
 })

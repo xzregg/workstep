@@ -239,7 +239,10 @@ test('clicking an edited file opens the Git diff dialog with the recorded patch'
     assert.equal(dialog.querySelector('.removed .git-line-number')?.textContent, '4')
     const buttons = [...dialog.querySelectorAll<HTMLButtonElement>('.git-diff-toolbar button')]
     assert.equal(buttons.some(button => button.textContent === '显示完整文件' || button.textContent === '上次修改人'), false)
-    await act(async () => buttons.find(button => button.textContent === '统一视图')!.click())
+    assert.ok(dialog.classList.contains('unified'))
+    await act(async () => buttons.find(button => button.textContent === '并排视图')!.click())
+    assert.ok(document.querySelector('.git-diff-dialog.split'))
+    await act(async () => [...dialog.querySelectorAll<HTMLButtonElement>('.git-diff-toolbar button')].find(button => button.textContent === '统一视图')!.click())
     assert.ok(document.querySelector('.git-diff-dialog.unified'))
   } finally {
     await act(async () => root.unmount())

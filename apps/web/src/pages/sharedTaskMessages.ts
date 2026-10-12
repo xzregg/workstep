@@ -1,3 +1,5 @@
+import { appendMessageContent, isCommentaryEvent } from '../utils/agui'
+
 /** The share stream contains both AG-UI events and older daemon event names. */
 const MAX_LIVE_SHARED_EVENTS = 2000
 
@@ -11,7 +13,7 @@ function appendCappedSharedEvent(events: SharedEvent[] | undefined, event: Share
 }
 
 export function capSharedHistoryEvents(message: SharedMessage): SharedMessage {
-  return Array.isArray(message.events) && message.events.length > MAX_LIVE_SHARED_EVENTS
+  return !message.event_detail?.loaded && Array.isArray(message.events) && message.events.length > MAX_LIVE_SHARED_EVENTS
     ? { ...message, events: message.events.slice(-MAX_LIVE_SHARED_EVENTS) }
     : message
 }
@@ -20,44 +22,54 @@ export function capSharedHistoryEvents(message: SharedMessage): SharedMessage {
 export function applySharedMessageEvent(messages: SharedMessage[], event: SharedEvent): SharedMessage[] {
   const kind = event?.type
   const messageId = event?.messageId ?? event?.message_id
-  const isText = kind === 'text_delta' || kind === 'TEXT_MESSAGE_CHUNK'
-  const isReasoning = kind === 'thinking_delta' || kind === 'REASONING_MESSAGE_CHUNK'
-  if (isText || isReasoning) {
-    if (!messageId) return messages
-    const index = messages.findIndex((message) => message.id === messageId)
-    if (index < 0) {
-      const createdAt = event.created_at ?? new Date().toISOString()
-      return [...messages, {
-        id: messageId, role: 'assistant',
-        content: isText ? event.delta ?? event.text ?? '' : '',
-        step_key: event.step_key, channel: 'execution', run_status: 'running',
-        events: isReasoning ? [event] : [],
-        started_at: createdAt, ended_at: null, created_at: createdAt,
-      }]
-    }
-    const existing = messages[index]
-    const updated = isText
-      ? { ...existing, content: (existing.content ?? '') + (event.delta ?? event.text ?? '') }
-      : { ...existing, events: appendCappedSharedEvent(existing.events, event) }
-    const next = messages.slice()
-    next[index] = updated
-    return next
-  }
-
-  const isTool = ['tool_use', 'tool_input_delta', 'tool_result', 'TOOL_CALL_START',
-    'TOOL_CALL_ARGS', 'TOOL_CALL_CHUNK', 'TOOL_CALL_RESULT'].includes(kind)
-  const isInteraction = kind === 'interaction_request' || kind === 'interaction_response'
-    || event?.name === 'workstep.interaction_request'
-    || event?.name === 'workstep.interaction_response'
+  const isText = ['text_delta', 'TEXT_MESSAGE_START', 'TEXT_MESSAGE_CHUNK', 'TEXT_MESSAGE_CONTENT', 'TEXT_MESSAGE_END'].includes(kind)
+  const isProcess = ['thinking_delta', 'REASONING_MESSAGE_CHUNK', 'tool_use', 'tool_input_delta',
+    'tool_result', 'TOOL_CALL_START', 'TOOL_CALL_ARGS', 'TOOL_CALL_CHUNK', 'TOOL_CALL_RESULT',
+    'interaction_request', 'interaction_response', 'CUSTOM'].includes(kind)
   const isStatus = ['status', 'done', 'RUN_STARTED', 'RUN_FINISHED', 'RUN_ERROR'].includes(kind)
-  if ((!isTool && !isInteraction && !isStatus) || !messageId) return messages
-  const index = messages.findIndex((message) => message.id === messageId)
-  if (index < 0) return messages
-  const existing = messages[index]
-  const updated = isStatus
-    ? { ...existing, run_status: event.status ?? existing.run_status,
-      ended_at: event.created_at ?? existing.ended_at ?? new Date().toISOString() }
-    : { ...existing, events: appendCappedSharedEvent(existing.events, event) }
+  if ((!isText && !isProcess && !isStatus) || !messageId) return messages
+  const index = messages.findIndex(message => message.id === messageId)
+  const restarted = kind === 'TEXT_MESSAGE_START' && event.retry === true
+  const existing: SharedMessage = !restarted && messages[index] || {
+    id: messageId, role: event.role ?? 'assistant', content: '', events: [],
+    channel: event.channel ?? 'execution', step_key: event.step_key,
+    engine: event.engine, model: event.model, run_status: 'running',
+    created_at: event.created_at ?? new Date().toISOString(),
+    started_at: event.started_at ?? event.created_at ?? new Date().toISOString(), ended_at: null,
+    author_id: event.actor?.id, author_name: event.actor?.name,
+    author_device_id: event.actor?.device_id, author_device_name: event.actor?.device_name,
+  }
+  const updated = { ...existing }
+  if (isText) {
+    updated.content = kind === 'text_delta'
+      ? (existing.content ?? '') + (event.delta ?? event.text ?? '')
+      : appendMessageContent(existing.content ?? '', { ...event, delta: event.delta ?? event.text })
+    if (kind === 'TEXT_MESSAGE_END' && typeof event.content === 'string') updated.content = event.content
+    if (kind === 'TEXT_MESSAGE_START') {
+      updated.prompt = event.prompt ?? existing.prompt
+      updated.artifact_round = event.artifact_round ?? existing.artifact_round
+    }
+  }
+  if (isProcess || isCommentaryEvent(event)) {
+    updated.events = existing.event_detail?.loaded
+      ? [...(existing.events ?? []), event] : appendCappedSharedEvent(existing.events, event)
+  }
+  if (kind === 'CUSTOM' && event.name === 'workstep.usage') updated.usage = event.value
+  if (kind === 'CUSTOM' && event.name === 'workstep.action_proposal') {
+    const proposal = event.value?.proposal ?? event.value
+    if (proposal?.id) updated.proposals = [
+      ...(existing.proposals ?? []).filter((item: any) => item.id !== proposal.id), proposal,
+    ]
+  }
+  const status = kind === 'CUSTOM' && event.name === 'workstep.status' ? event.value?.status : event.status
+  if (isStatus || kind === 'TEXT_MESSAGE_END' || kind === 'CUSTOM' && event.name === 'workstep.status') {
+    updated.run_status = status ?? (kind === 'RUN_FINISHED' || kind === 'TEXT_MESSAGE_END' || kind === 'done'
+      ? 'succeeded' : kind === 'RUN_ERROR' ? 'failed' : existing.run_status)
+    if (['succeeded', 'completed', 'done', 'passed', 'ready', 'failed', 'cancelled', 'error'].includes(updated.run_status)) {
+      updated.ended_at = event.ended_at ?? event.created_at ?? existing.ended_at ?? new Date().toISOString()
+    }
+  }
+  if (index < 0) return [...messages, updated]
   const next = messages.slice()
   next[index] = updated
   return next
@@ -72,7 +84,9 @@ export function mergeSharedHistorySnapshot(previous: SharedMessage[], snapshot: 
       if (!fresh) return message
       incoming.delete(message.id)
       return message.event_detail?.loaded
-        ? { ...fresh, events: message.events, event_detail: message.event_detail }
+        ? { ...fresh, events: message.events, event_detail: { ...message.event_detail, ...fresh.event_detail,
+            loaded: message.event_detail.last_event_seq === fresh.event_detail?.last_event_seq,
+          } }
         : fresh
     })
   return [...merged, ...incoming.values()]

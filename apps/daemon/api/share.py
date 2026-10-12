@@ -415,7 +415,7 @@ async def public_share_history(
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    """Load execution-channel message history for the shared task."""
+    """Load the same message history as the shared task detail."""
     ctx = await _require_share_session(request)
     if ctx["token"] != token:
         raise HTTPException(status_code=403, detail="Session does not match share")
@@ -423,10 +423,12 @@ async def public_share_history(
     messages = await project_manager.run_db(
         ctx["project_id"],
         lambda _project: share_service.load_shared_history(
-            ctx["task_id"], limit=limit, offset=offset, mode=ctx.get("mode", "read_only")
+            ctx["task_id"], limit=limit + 1, offset=offset, mode=ctx.get("mode", "read_only"),
+            workstep_dir=_project.workstep_dir
         ),
     )
-    return {"messages": messages, "limit": limit, "offset": offset}
+    return {"messages": messages[-limit:], "limit": limit, "offset": offset,
+            "next_offset": offset + limit if len(messages) > limit else None}
 
 
 @router.get("/public/{token}/messages/{message_id}/events")

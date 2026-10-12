@@ -143,16 +143,22 @@ async def test_assets_are_revisioned_and_missing_images_rejected(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_actual_project_actor_can_read_only_its_catalog_and_cannot_manage(tmp_path, monkeypatch):
+@pytest.mark.parametrize("access_level", ["read", "edit"])
+async def test_actual_project_actor_can_read_only_its_catalog_and_cannot_manage(tmp_path, monkeypatch, access_level):
     from api import skins
     from services.skins import SkinManager
     from services.remote_access import ActorSnapshot, actor_context
     monkeypatch.setattr(skins, "manager", SkinManager(tmp_path / "runtime"))
     app = FastAPI(); app.include_router(skins.router)
-    actor = ActorSnapshot(actor_id="viewer", user_name="viewer", device_id="device", device_name="device", source="remote", project_id="project", access_level="read")
+    actor = ActorSnapshot(actor_id="viewer", user_name="viewer", device_id="device", device_name="device", source="remote", project_id="project", access_level=access_level)
     with actor_context(actor):
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
             assert (await client.get("/api/skins?project_id=project")).status_code == 200
             assert (await client.get("/api/skins?project_id=other")).status_code == 403
-            assert (await client.post("/api/skins/register", json={"path": "/tmp/draft"})).status_code == 403
+            assert (await client.get("/api/skins/contract?project_id=project")).status_code == 200
+            assert (await client.get("/api/skins/default?project_id=project")).status_code == 200
+            for endpoint, payload in [("validate", {"path": "/tmp/draft"}), ("register", {"path": "/tmp/draft"}), ("onboarding", {}), ("export", {"skin_id": "ocean", "output": "/tmp/ocean.zip"})]:
+                assert (await client.post(f"/api/skins/{endpoint}?project_id=project", json=payload)).status_code == 403, endpoint
+            assert (await client.post("/api/skins/import?project_id=project", content=b"zip")).status_code == 403
+            assert (await client.delete("/api/skins/ocean?project_id=project")).status_code == 403
             assert (await client.get("/api/skins/default/export?project_id=project")).status_code == 403

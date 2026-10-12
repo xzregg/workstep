@@ -7,6 +7,56 @@ from agent_assistants.event_journal import TurnEventJournal
 from engines.core.agui import to_agui_events
 
 
+def test_journal_summary_identifies_successful_file_edits_without_loading_details(tmp_path):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "session-edits", "message-edits")
+    for tool_id, kind, path, status in [
+        ("edit", "edit", "src/main.py", "completed"),
+        ("read", "read", "read.py", "completed"),
+        ("failed", "edit", "failed.py", "failed"),
+        ("pending", "edit", "pending.py", "in_progress"),
+    ]:
+        journal.record(ref, {"type": "tool_call", "data": {
+            "tool_call_id": tool_id, "kind": kind, "title": "tool", "raw_input": {"path": path},
+        }})
+        journal.record(ref, {"type": "tool_call_update", "data": {
+            "tool_call_id": tool_id, "status": status, "raw_output": "x" * 100_000,
+        }})
+    journal.record(ref, {"type": "tool_call", "data": {
+        "tool_call_id": "codex", "kind": "edit", "raw_input": {"changes": [
+            {"path": "src/main.py", "diff": "large patch"}, {"path": "docs/a.md"},
+        ]},
+    }})
+    journal.record(ref, {"type": "tool_call_update", "data": {"tool_call_id": "codex", "status": "completed"}})
+    journal.finish(ref)
+    try:
+        snapshot = journal.snapshot(ref)
+        assert snapshot["summary"]["edited_files"] == ["src/main.py", "docs/a.md"]
+        assert "large patch" not in str(snapshot["summary"])
+        assert len(str(snapshot["summary"])) < 1000
+        assert not snapshot["events"]
+    finally:
+        journal.close()
+
+
+async def test_file_edit_summary_snapshot_keeps_slow_storage_off_the_event_loop(tmp_path, monkeypatch):
+    journal = TurnEventJournal()
+    ref = await journal.astart(tmp_path, "session-edit-slow", "message-edit-slow")
+    original = journal._read
+    def slow_read(ref):
+        time.sleep(0.25)
+        return original(ref)
+    monkeypatch.setattr(journal, "_read", slow_read)
+    started = time.perf_counter()
+    snapshot = asyncio.create_task(journal.asnapshot(ref))
+    try:
+        await asyncio.sleep(0.02)
+        assert time.perf_counter() - started < 0.15
+        assert (await snapshot)["summary"]["edited_files"] == []
+    finally:
+        await journal.aclose()
+
+
 async def test_async_journal_io_does_not_block_the_event_loop(tmp_path, monkeypatch):
     """Slow journal storage must not delay unrelated daemon coroutines."""
     journal = TurnEventJournal()

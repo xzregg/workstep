@@ -287,10 +287,15 @@ class ChannelTaskForwarder:
             adapter, recipient = destination
             origin = self._origins.get(state.key)
             is_origin = origin and (origin[0].bot_id, origin[0].conversation_id) == (bot_id, group_id)
-            if self._controls and is_origin and not state.status:
-                scope = await self._controls.begin(recipient, state.key[0], task_id=state.key[1],
-                    assistant_message_id=state.key[2], step_key=step_key, title='@' + title)
             self._reply_status(adapter, recipient, state, title)
+            # DingTalk can actively create and update a stage card without an
+            # inbound message. Broadcast controls allow members of this group
+            # to stop only the execution identified by this assistant message.
+            stage_control = bool(step_key) and getattr(adapter, 'CHANNEL_ID', '') == 'dingtalk'
+            if self._controls and (is_origin or stage_control) and not state.status:
+                scope = await self._controls.begin(recipient, state.key[0], task_id=state.key[1],
+                    assistant_message_id=state.key[2], step_key=step_key, title='@' + title,
+                    broadcast=bool(stage_control and not is_origin))
             supports_streaming = getattr(adapter, 'supports_streaming_reply', None)
             streaming = supports_streaming(recipient) if supports_streaming else bool(recipient.reply_context and getattr(getattr(adapter, 'CAPABILITIES', None), 'streaming', False))
             progress_active = streaming and await self._progress(adapter, recipient, state, prefix + '正在执行…')

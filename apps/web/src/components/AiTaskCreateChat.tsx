@@ -236,7 +236,7 @@ export default function AiTaskCreateChat({
   }, [send, t])
 
   return (
-    <AssistantChatPanel
+    <AssistantChatPanel visibilityPermission="task.ai_create"
       projectId={projectId}
       title={t('taskList.aiTaskAgent')}
       messages={messages}

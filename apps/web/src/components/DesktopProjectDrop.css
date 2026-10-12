@@ -1,0 +1,17 @@
+.desktop-project-drop {
+  position: fixed;
+  inset: 16px;
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: calc(16px * var(--font-scale));
+}
+.desktop-project-drop-spinner { animation: desktop-project-drop-spin 1s linear infinite; }
+@keyframes desktop-project-drop-spin { to { transform: rotate(360deg); } }

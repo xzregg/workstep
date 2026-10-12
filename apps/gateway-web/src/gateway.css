@@ -1,3 +1,4 @@
+@import './AdminUsagePage.css';
 @import './AdminDeviceGroupsPage.css';
 :root {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', sans-serif;
@@ -339,6 +340,17 @@ a {
   background: #fff;
   box-shadow: 0 18px 50px rgb(29 29 31 / 18%);
 }
+dialog.gateway-dialog-backdrop {
+  margin: 0;
+  border: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  color: inherit;
+}
+dialog.gateway-dialog-backdrop:not([open]) { display: none; }
+dialog.gateway-dialog-backdrop::backdrop { background: transparent; }
 .gateway-confirm-dialog h3 { margin-top: 0; }
 .gateway-confirm-dialog label { display: block; margin-bottom: 8px; font-weight: 600; }
 .gateway-confirm-dialog input { box-sizing: border-box; width: 100%; }
@@ -827,7 +839,7 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-grant-subject { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; cursor: pointer; overflow-wrap: anywhere; }
 .gateway-grant-subject:has(input:checked) { background: #eaf3ff; color: #0066cc; }
 .gateway-grant-subject:hover { background: #f5f5f7; }
-.gateway-grant-subject input[type="radio"] { flex: 0 0 16px; width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; }
+.gateway-grant-subject input[type="radio"], .gateway-grant-subject input[type="checkbox"] { flex: 0 0 16px; width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; }
 .gateway-grant-editor .gateway-admin-pagination { margin: 0; }
 .gateway-grant-permission { display: grid; gap: 8px; }
 .gateway-grant-permission p { color: #6e6e73; font-size: 13px; }

@@ -332,6 +332,11 @@ OpenAI 协议不使用该重试。旧版单值 `protocol` / `base_url` 继续作
 首选协议和所有协议共用地址的兼容输入。引擎绑定供应商时以协议集合交集判定兼容，并把该引擎
 实际选择的协议及其对应地址传入运行时。
 
+供应商类型是标记与默认配置预设，不作为引擎兼容性限制。当前线协议只有
+`anthropic_messages`、`openai_responses`、`openai_chat_completions` 三种；
+引擎只按自身声明的协议集合筛选和校验供应商。DeepSeek Harness 当前消费
+`openai_chat_completions`，可绑定任意声明该协议的已启用供应商。
+
 引擎级配置与步骤级覆盖关系（`merge_config_overrides`）：
 
 | 引擎 | 配置键 | 写入目标 |
@@ -341,7 +346,7 @@ OpenAI 协议不使用该重试。旧版单值 `protocol` / `base_url` 继续作
 | Claude Agent SDK（`engines/claude_agent_sdk.py`） | `permission_mode`、`max_turns`、`fallback_model` | 写入 `ClaudeAgentOptions`（`permission_mode` / `max_turns` / `fallback_model`） |
 | Codex Agent SDK（`engines/codex_sdk.py`） | `model_reasoning_effort`、`approval_mode`（`auto_review` / `deny_all`）、`sandbox`（`read-only` / `workspace-write` / `danger-full-access`→SDK `full-access`） | `thread_start` / `thread_resume` 的 `config={"model_reasoning_effort": ...}`、`approval_mode=ApprovalMode(...)`、`sandbox=Sandbox(...)`；协调模式强制 `read_only` |
 | Qoder Agent SDK（`engines/qoder_sdk.py`） | `personal_access_token`（PAT，敏感字段）、`permission_mode`（`default` / `acceptEdits` / `bypassPermissions` / `plan` / `dontAsk` / `auto`）、`model`、`allowed_tools`（工具白名单）、`max_turns`、`include_partial_messages`（流式输出） | 写入 `QoderAgentOptions`（`auth=access_token(token)`、`permission_mode`、`model`、`allowed_tools`、`max_turns`、`include_partial_messages`）；`bypassPermissions` 同时置 `allow_dangerously_skip_permissions=True` |
-| DeepSeek Harness（`engines/deepseek_harness.py`） | `provider_id`、`max_tokens`、`preset`（当前为 `standard`） | 复用 DeepSeek 类型供应商的 `base_url` / `api_key`，写入官方 `DeepSeekHarness`；模型沿用通用引擎默认模型；`preset` 解析为我方随版本校验的 Cordis composition |
+| DeepSeek Harness（`engines/deepseek_harness.py`） | `provider_id`、`max_tokens`、`preset`（当前为 `standard`） | 复用兼容供应商的 OpenAI Chat Completions 协议地址 / `api_key`，写入官方 `DeepSeekHarness`，不限制供应商类型；模型沿用通用引擎默认模型；`preset` 解析为我方随版本校验的 Cordis composition |
 | Pydantic AI（`engines/pydantic_ai/engine.py`） | `provider_id` | 供应商 base_url/key 构建模型（`model` / `thinking_effort` 由助手配置经 `spawn` 参数传入）；`thinking_effort` 映射为 `Thinking` capability；Harness 核心能力固定挂载，压缩与持久化按 `auto` 处理（见 4.7） |
 
 校验规则集中在 `services/config.py`（`set_codex_config` / `set_codex_sdk_config` / `set_claude_agent_sdk_config` / `set_qoder_sdk_config`）：`max_turns` 必须为正整数，枚举值非法时抛中文 `ValueError`。
@@ -999,3 +1004,12 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 主进程只扫描清单和安装元数据，不执行用户模块。用户代码在独立进程运行，管理请求有超时，取消/停止会终止进程树，畸形响应和导入异常不会终止后台。`WORKSTEP_SKIP_CUSTOM_ENGINES=1` 可跳过所有自定义引擎恢复启动。进程隔离保护后台稳定性，用户代码仍有宿主机文件和网络权限。设置的“显示在引擎选择中”只控制下拉可见性；自定义引擎“停用运行”才停止并禁止调用。
 
 公共验收包含实际文本回复与事件转译、专属 unittest、生命周期与停止、协调禁用工具、执行→下游→审核调用链，以及声明的会话/分叉与可选能力真实场景。调用链探测验证引擎公共接口，不在用户项目写入真实任务或工作流。第三方联网验收由用户接入时执行；仓库测试通过本地适配器与真实子进程覆盖隔离和 API，不依赖网络或供应商密钥。
+
+
+### 步骤会话的背景变化检测
+
+步骤的 Task（标题／描述）、Project memory、已挂载仓库三项分别比较内容摘要，正常再次启动、追问和审核重试共用 `prompt.py::_task_background_parts`；同一恢复会话未变的内容不重复注入，变化时提供该部分的新完整内容，清空时明确通知。执行要求、用户输入和当轮输入／输出契约仍按各入口原有规则提供，不以“再次启动”作为任务背景更新条件。
+
+每条执行消息在现有 `prompt_json.context_hashes` 保存完整比较状态的 SHA-256 摘要（不是提示词全文副本），避免第二轮省略正文后第三轮误判缺少背景；ACP 捕获时保留摘要，`prompt`／`input_prompt` 继续记录本轮实际输入。恢复只采用同会话已成功执行的基线，以 JSONL 路径的会话目录核对身份；重置、交接和端点切换重新完整提供。旧完整原始输入可以恢复基线，格式不明的旧查看内容不用于推断。
+
+任务标题／描述可含自己的 Markdown 二级标题，新摘要在合并正文前对助手拥有的完整内容计算，避免将用户章节误切分成任务边界。回归见 `test_pipeline.py` 的普通启动增量、追问／重试变更与慢摘要保存健康检查，以及 `test_task_step_start.py`。

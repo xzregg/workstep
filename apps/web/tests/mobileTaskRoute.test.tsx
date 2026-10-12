@@ -1,12 +1,56 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
-import { act } from 'react'
+import { act, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { taskListPath, useTaskRoute } from '../src/hooks/useTaskRoute'
 import TaskDetailHeader from '../src/components/TaskDetailHeader'
 import { I18nProvider } from '../src/i18n'
+
+test('close dismisses the detail while the list route is still rendering', async () => {
+  const window = new Window({ width: 390 })
+  Object.assign(globalThis, { window, document: window.document, IS_REACT_ACT_ENVIRONMENT: true })
+  let listReady = false
+  let resolveList!: () => void
+  const pendingList = new Promise<void>((resolve) => { resolveList = resolve })
+  function List() {
+    const location = useLocation()
+    if (!location.search.includes('task=') && !listReady) throw pendingList
+    return <output>{location.search}</output>
+  }
+  function Surface() {
+    const { taskId, closeTask, openTask } = useTaskRoute()
+    return <>
+      <List />
+      <button onClick={() => openTask('one')}>打开</button>
+      {taskId && <TaskDetailHeader
+        task={{ id: taskId, title: '流式运行中的任务', status: 'running', steps: [], created_at: '2026-01-01T00:00:00Z' }}
+        locale="zh-CN" activeStep={{ key: 'do', label: '执行', color: 'blue', prompt: '', inputs: [], outputs: [] }}
+        activeStepColor="blue" taskCompleted={false} onClose={closeTask} />}
+    </>
+  }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<MemoryRouter initialEntries={['/tasks?project=demo&task=one']}>
+      <I18nProvider><Suspense fallback={<p>加载列表</p>}><Surface /></Suspense></I18nProvider>
+    </MemoryRouter>))
+    await act(async () => container.querySelector<HTMLButtonElement>('.task-detail-header-close')!.click())
+    assert.equal(container.querySelector('.task-detail-header-close'), null, 'close does not wait for the route transition')
+    listReady = true
+    await act(async () => resolveList())
+    assert.equal(container.querySelector('output')!.textContent, '?project=demo')
+    await act(async () => container.querySelector('button')!.click())
+    assert.ok(container.querySelector('.task-detail-header-close'), 'the same task can be opened again')
+  } finally {
+    listReady = true
+    resolveList()
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
 
 test('task list route identifies its project and workflow', () => {
   assert.equal(taskListPath('项目 A', 'simple'), '/tasks?project=%E9%A1%B9%E7%9B%AE+A&workflow=simple')

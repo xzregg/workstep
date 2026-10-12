@@ -274,6 +274,10 @@ def test_matches_subscription():
     """Events are routed by task / status-only / session / channel."""
     from main import WsSubscription, matches_subscription
 
+    gateway_event = {"type": "CUSTOM", "name": "workstep.gateway_connection_changed"}
+    assert matches_subscription(gateway_event, WsSubscription(active=True, selected_project_id="project"))
+    assert not matches_subscription(gateway_event, WsSubscription(active=True, project_id="authorized-project"))
+
     full = WsSubscription()
     assert matches_subscription({"type": "RUN_STARTED", "task_id": "x"}, full)
 
@@ -448,3 +452,46 @@ async def test_task_runner_events_carry_executor_project_into_agui_feed():
         assert (await q.get())["project_id"] == "project-1"
     finally:
         event_bus.unsubscribe(q)
+
+
+def test_remote_metadata_subscription_is_independent_of_selected_project_but_respects_actor_scope():
+    from streaming.ws import WsSubscription, parse_subscription, _make_subscription_predicate
+
+    sub = parse_subscription({"type": "subscribe", "remote_project_ids": ["remote:a", "remote:b"]})
+    assert sub.remote_project_ids == {"remote:a", "remote:b"}
+    predicate = _make_subscription_predicate(sub)
+    assert predicate({"type": "CUSTOM", "name": "workstep.remote_project_status", "project_id": "remote:b"})
+    assert not predicate({"type": "CUSTOM", "name": "workstep.remote_project_status", "project_id": "remote:c"})
+    assert not predicate({"type": "TEXT_MESSAGE_CHUNK", "project_id": "remote:b"})
+    scoped = WsSubscription(project_id="local:authorized", active=True, remote_project_ids={"remote:b"})
+    assert not _make_subscription_predicate(scoped)({"type": "CUSTOM", "name": "workstep.remote_project_status", "project_id": "remote:b"})
+
+
+@pytest.mark.anyio
+async def test_device_project_switch_updates_metadata_interest_without_connecting_remote_hosts(monkeypatch):
+    import main
+    import json
+    from streaming.ws import WsSubscription
+    from types import SimpleNamespace
+
+    calls = []
+
+    async def subscribe(project_id, subscription, *, connect):
+        assert connect is False
+        calls.append((project_id, subscription))
+
+    monkeypatch.setattr(main, "remote_project_registry", SimpleNamespace(list_public=lambda: [{"id": "remote:a"}, {"id": "remote:b"}]))
+    monkeypatch.setattr(main, "remote_project_client", SimpleNamespace(subscribe=subscribe))
+    sub = WsSubscription()
+    queue = event_bus.subscribe()
+    try:
+        await main._handle_client_message(json.dumps({"type": "subscribe", "project_id": "remote:a", "remote_project_ids": ["remote:a"]}), sub, queue)
+        assert sub.project_id == ""
+        assert sub.selected_project_id == "remote:a"
+        await main._handle_client_message(json.dumps({"type": "subscribe", "project_id": "remote:b", "remote_project_ids": ["remote:b"]}), sub, queue)
+        assert sub.project_id == ""
+        assert sub.selected_project_id == "remote:b"
+        assert any(project_id == "remote:a" and not payload["channels"] for project_id, payload in calls)
+        assert any(project_id == "remote:b" and "project_metadata" in payload["channels"] for project_id, payload in calls)
+    finally:
+        event_bus.unsubscribe(queue)

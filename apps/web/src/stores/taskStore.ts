@@ -130,6 +130,7 @@ interface TaskState {
   runTask: (taskId: string, prompt: string, projectId: string) => Promise<void>
   cancelTask: (taskId: string, projectId: string) => Promise<void>
   pauseTask: (taskId: string, projectId: string) => Promise<void>
+  renameTask: (taskId: string, title: string, projectId: string) => Promise<Task>
   updateTaskDescription: (
     taskId: string,
     description: string | undefined,
@@ -260,6 +261,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }))
   },
 
+  renameTask: async (taskId, title, projectId) => {
+    const updated = await taskApi.rename(taskId, projectId, title)
+    set((s) => ({ tasks: s.tasks.map((task) => task.id === taskId ? updated : task) }))
+    return updated
+  },
+
   updateTaskDescription: async (taskId, description, projectId, reviewOverrides) => {
     const updated = await taskApi.updateDescription(
       taskId,
@@ -327,7 +334,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   copyTask: async (taskId, newTitle, projectId) => {
-    const copied = await taskApi.copy(taskId, newTitle, projectId)
+    const copied = await taskApi.copy(taskId, projectId, newTitle)
     set((s) => ({ tasks: [...s.tasks, copied] }))
   },
 

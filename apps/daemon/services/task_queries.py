@@ -45,8 +45,7 @@ def pending_reviews(task_id):
 def shared_message_events(project, task_id, message_id, *, cursor, limit, mode):
     from services.history import get_message_events
     from services.share import _scrub_events
-    message = Message.get_or_none(Message.id == message_id, Message.task == task_id,
-                                  Message.channel == "execution")
+    message = Message.get_or_none(Message.id == message_id, Message.task == task_id)
     if message is None:
         raise LookupError("Task message not found")
     page = get_message_events(task_id, message_id, project.workstep_dir, cursor=cursor, limit=limit)

@@ -47,3 +47,25 @@ test('gateway workspace never requests device gateway settings', async () => {
   container.remove(); await window.happyDOM.close()
  }
 })
+
+
+test('stable gateway status has no polling interval and refreshes only on a change event', async () => {
+  const { window } = installDomEnvironment()
+  const original = globalThis.fetch
+  let calls = 0
+  let intervals = 0
+  const interval = globalThis.setInterval
+  globalThis.setInterval = ((...args: Parameters<typeof setInterval>) => { intervals++; return interval(...args) }) as typeof setInterval
+  globalThis.fetch = async () => { calls++; return Response.json({ enabled: true, online: true, authenticated: true, url: 'http://localhost:8700' }) }
+  useGatewayConnectionStore.setState({ status: null, error: false })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider><GatewayConnectionStatus onOpenSettings={() => {}} /></I18nProvider>))
+    assert.equal(calls, 1)
+    assert.equal(intervals, 0)
+    await act(async () => window.dispatchEvent(new window.Event('workstep:gateway-connection-changed')))
+    assert.equal(calls, 2)
+  } finally {
+    await act(async () => root.unmount()); globalThis.setInterval = interval; globalThis.fetch = original; await window.happyDOM.close()
+  }
+})

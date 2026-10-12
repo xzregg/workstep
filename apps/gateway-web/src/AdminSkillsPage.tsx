@@ -1,3 +1,4 @@
+import { AdminTabs } from './AdminTabs'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminSkillActionDialog } from './AdminSkillActionDialog'
@@ -102,13 +103,16 @@ export function AdminSkillsPage() {
     <p>版本上传后需单独审核；只有已批准版本可授权用户组。撤销版本会使相关项目分配失效。</p>
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
-    <section className="gateway-overview-card">
-      <div className="gateway-admin-toolbar"><h3>Skill 目录</h3>
-        <button type="button" disabled={!csrf} onClick={() => setAction({ kind: 'create' })}>创建 Skill</button></div>
       <label>Skill<select value={skillId} onChange={event => {
         setSkillId(event.target.value); setVersions([]); setGrantVersionId('')
       }}><option value="">选择 Skill</option>{skills.map(skill =>
         <option key={skill.id} value={skill.id}>{skill.name}</option>)}</select></label>
+    <AdminTabs label="Skill 管理分类" items={[
+     { id: 'catalog', label: 'Skill 目录', content: (
+    <section className="gateway-overview-card">
+      <div className="gateway-admin-toolbar"><h3>Skill 目录</h3>
+        <button type="button" disabled={!csrf} onClick={() => setAction({ kind: 'create' })}>创建 Skill</button></div>
+
       {skillId && <div className="gateway-admin-toolbar"><h3>不可变版本</h3>
         <button type="button" disabled={!csrf} onClick={() => setAction({ kind: 'upload', skillId })}>
           上传版本</button></div>}
@@ -123,6 +127,8 @@ export function AdminSkillsPage() {
               version: version.version })}>撤销版本 {version.version}</button>}
         </li>)}</ul>)}
     </section>
+     ) },
+     { id: 'grants', label: '用户组授权', content: (
     <section className="gateway-overview-card">
       <h3>用户组授权</h3>
       <label>用户组<select value={groupId} onChange={event => {
@@ -142,12 +148,16 @@ export function AdminSkillsPage() {
             kind: 'revoke_grant', groupId, skillId: grant.skill_id, name: grant.name,
           })}>撤销组授权 {grant.name}</button></li>)}</ul>)}
     </section>
+     ) },
+     { id: 'applications', label: '设备应用状态', content: (
     <section className="gateway-overview-card"><h3>设备应用状态</h3>
       {applications.length === 0 ? <p>尚无待同步的项目。</p> : <ul>{applications.map(item =>
         <li key={item.project_id}>{item.project_name} · {item.device_name} · 期望修订 {
           item.desired_revision} · 已应用修订 {item.applied_revision ?? '待同步'} · {item.status}
           {item.last_error_code && ` · 错误 ${item.last_error_code}`}</li>)}</ul>}
     </section>
+     ) },
+    ]} />
     {action && <AdminSkillActionDialog action={action} csrf={csrf}
       onDone={changed} onClose={() => setAction(null)} />}
   </section>

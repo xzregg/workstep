@@ -198,6 +198,19 @@ async def remove_remote_project(project_id: str):
     return {"deleted": True}
 
 
+@router.get("/{project_id}/summary")
+async def remote_project_summary(project_id: str):
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+    project = await asyncio.to_thread(remote_project_registry.get, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Remote project not found")
+    return RemoteProjectRegistry._public(project)
+
+
 @router.get("/devices/list")
 async def list_remote_devices(project_id: str | None = Query(None)):
     devices = await asyncio.to_thread(remote_access_service.list_devices, project_id)

@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from engines.core.tool_inputs import edited_file_paths
 
 
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_.:-]+$")
@@ -393,6 +394,7 @@ class TurnEventJournal:
             "thought_characters": thought_characters,
             "commentary_characters": commentary_characters,
             "tool_count": len(tool_ids),
+            "edited_files": edited_file_paths(events),
         }
         if first_output_at is not None:
             summary["first_output_at"] = first_output_at

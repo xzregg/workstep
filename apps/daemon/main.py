@@ -149,6 +149,7 @@ chat_session_module: ChatSessionModule | None = None
 channel_chat_module: ChannelChatModule | None = None
 channel_bot_manager: BotManager | None = None
 gateway_client = GatewayClientService()
+gateway_client.event_sink = event_bus.publish
 
 
 @asynccontextmanager

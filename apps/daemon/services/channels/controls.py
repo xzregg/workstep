@@ -59,7 +59,9 @@ class ChannelControls:
             if stop_button:
                 adapter = self._adapters.get(message.bot_id)
                 prepare = getattr(adapter, 'set_reply_metadata', None)
-                if prepare:
+                # Stage cards already receive their execution metadata from
+                # the task forwarder, rather than the coordinator's settings.
+                if prepare and not step_key:
                     metadata = {'assistant': '协调助手' if task_id else '渠道助手'}
                     if task_id and hasattr(self._coordinator, 'get_config'):
                         try:

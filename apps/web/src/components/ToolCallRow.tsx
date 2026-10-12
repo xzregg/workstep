@@ -8,10 +8,8 @@ import './git/git.css'
 import { useI18n, type TFunction } from '../i18n'
 import { durationMilliseconds, formatDuration } from '../utils/datetime'
 import type { ToolActivity } from '../utils/messageTimeline'
-import { extractToolTarget, type ToolTargetInfo } from '../utils/toolInput'
+import { extractToolTarget, toolKind, type ToolKind, type ToolTargetInfo } from '../utils/toolInput'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
-
-type ToolKind = 'edit' | 'read' | 'command' | 'search' | 'subagent' | 'other'
 
 /**
  * 展开时单段（输入/结果）显示上限。子代理一次读取/编辑的 raw_output 可达数十 MB，
@@ -100,19 +98,6 @@ function recordedFileDiff(input: unknown, path: string, sourcePath?: string): Gi
 
 function basename(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() || path
-}
-
-function toolKind(name: string, protocolKind?: string): ToolKind {
-  if (protocolKind === 'edit' || protocolKind === 'read') return protocolKind
-  if (protocolKind === 'execute') return 'command'
-  if (protocolKind === 'search') return 'search'
-  const normalized = name.toLowerCase()
-  if (/(subagent|sub-agent|sub_agent|spawn_agent|spawn.*agent|delegate)/.test(normalized)) return 'subagent'
-  if (/(edit|write|patch|replace|create|filechange|file_change)/.test(normalized)) return 'edit'
-  if (/(read|open|view)/.test(normalized)) return 'read'
-  if (/(bash|shell|command|exec|terminal)/.test(normalized)) return 'command'
-  if (/(grep|glob|search|find|list)/.test(normalized)) return 'search'
-  return 'other'
 }
 
 function toolIcon(kind: ToolKind): IconName {
