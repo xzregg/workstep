@@ -32,6 +32,12 @@ class ExportRequest(BaseModel):
     output: str = Field(min_length=1, max_length=4096)
 
 
+class DraftRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+    expected_revision: str = Field(pattern=r'^[a-f0-9]{64}$')
+    skin: dict
+
+
 async def invoke(awaitable):
     try:
         return await awaitable
@@ -61,6 +67,11 @@ async def validate(request: PackageRequest):
 @router.post("/register", dependencies=[Depends(authorize)])
 async def register(request: PackageRequest):
     return await invoke(manager.register(request.path, replace=request.replace))
+
+
+@router.post('/draft', dependencies=[Depends(authorize)])
+async def save_draft(request: DraftRequest):
+    return await invoke(manager.save_draft(request.path, request.expected_revision, request.skin))
 
 
 @router.post("/import", dependencies=[Depends(authorize)])

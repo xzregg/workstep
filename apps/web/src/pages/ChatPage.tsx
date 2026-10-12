@@ -3,7 +3,7 @@ import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
 import ProjectGitButton from '../components/git/ProjectGitButton'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
 import ChannelConversationContext from '../components/ChannelConversationContext'
 import ChatSessionGoalBar from '../components/ChatSessionGoalBar'
@@ -26,6 +26,7 @@ import {
   providerApi,
   type AssistantConfigInfo,
   type ProviderInfo,
+  type Project,
 } from '../api/client'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import {
@@ -55,26 +56,42 @@ import { contextUsageFromMessages } from '../utils/contextUsage.js'
    per-project quick buttons. All chat UI comes from existing shared components.
    ══════════════════════════════════════════ */
 
-export default function ChatPage() {
+export interface EmbeddedProjectChat {
+  project: Project
+  sessionId: string | null
+  onSessionChange: (id: string | null) => void
+  beforeSend?: () => Promise<boolean>
+}
+
+export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat } = {}) {
+  const isEmbedded = Boolean(embedded)
+  const beforeSend = embedded?.beforeSend
   const { t, locale } = useI18n()
-  const navigate = useNavigate()
+  const routeNavigate = useNavigate()
+  const changeEmbeddedSession = embedded?.onSessionChange
+  const navigate = useMemo(() => !changeEmbeddedSession ? routeNavigate : ((to: unknown) => {
+    if (typeof to === 'string' && to.startsWith('/chat')) {
+      changeEmbeddedSession(new URL(to, window.location.origin).searchParams.get('session'))
+    }
+  }) as NavigateFunction, [routeNavigate, changeEmbeddedSession])
   const [searchParams] = useSearchParams()
-  const projectParam = searchParams.get('project')
-  const workflowParam = searchParams.get('workflow')
-  const sessionParam = searchParams.get('session')
+  const projectParam = embedded ? embedded.project.name : searchParams.get('project')
+  const workflowParam = embedded ? null : searchParams.get('workflow')
+  const sessionParam = embedded ? embedded.sessionId : searchParams.get('session')
 
   const {
     projects,
-    activeProject,
+    activeProject: selectedProject,
     loading: projectsLoading,
     fetchProjects,
     setActiveProject,
     setActiveWorkflow,
   } = useProjectStore()
+  const activeProject = embedded?.project || selectedProject
 
   // 草稿/队列等本地状态必须按 URL 中的项目归属保存；
   // activeProject 可能因点击侧栏其他项目的流程而先行变化。
-  const routeProjectId = (
+  const routeProjectId = embedded?.project.id || (
     projectParam
       ? projects.find((item) => item.name === projectParam)?.id
       : activeProject?.id
@@ -192,7 +209,7 @@ export default function ChatPage() {
     closePrompt: t('aiFlow.closePrompt'),
   }), [t, compact])
   const quickPromptItems = useMemo(
-    () => quickButtons.filter((button) => button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
+    () => quickButtons.filter((button) => !isEmbedded && button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
       id: button.id,
       label: button.label,
       prompt: button.prompt,
@@ -200,11 +217,12 @@ export default function ChatPage() {
       kind: button.kind || 'prompt',
       disabled: button.kind === 'action' && projectActions.activeActionIds.includes(button.action_id || button.id),
     })),
-    [quickButtons, projectActions.activeActionIds, can],
+    [isEmbedded, quickButtons, projectActions.activeActionIds, can],
   )
 
   // Resolve project/workflow from the URL (mirrors CanvasEditor's loader).
   useEffect(() => {
+    if (isEmbedded) return
     if (!projectParam) return
     const match = projects.find((project) => project.name === projectParam)
     if (!match) {
@@ -220,7 +238,7 @@ export default function ChatPage() {
       const targetWf = match.workflows?.find((workflow) => workflow.id === workflowParam)
       if (targetWf) setActiveWorkflow(targetWf.id)
     }
-  }, [projectParam, workflowParam, projects, projectsLoading, fetchProjects, setActiveProject, setActiveWorkflow])
+  }, [isEmbedded, projectParam, workflowParam, projects, projectsLoading, fetchProjects, setActiveProject, setActiveWorkflow])
 
   // Engine defaults + per-project quick buttons.
   // Only re-fetch when the project changes; session switching does not affect config.
@@ -260,9 +278,10 @@ export default function ChatPage() {
   }, [activeProject?.id])
 
   useEffect(() => {
+    if (isEmbedded) return
     if (!activeProject?.id) return
     void useChatListStore.getState().fetchQuickButtons(activeProject.id)
-  }, [activeProject?.id])
+  }, [isEmbedded, activeProject?.id])
 
   // URL selection owns the page state; history loading owns the request and store.
   useEffect(() => {
@@ -323,11 +342,12 @@ export default function ChatPage() {
       if (!sessionId) setSendError(t('chatSession.noSession'))
       return false
     }
+    if (beforeSend && !await beforeSend()) return false
     setInput('')
     clearDraft(sessionId, activeProject?.id ?? '')
     resetEnhance()
     return sendMessageNow(content)
-  }, [input, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance])
+  }, [input, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance, beforeSend])
 
   const handleInputChange = useCallback((value: string) => {
     enhanceInputChanged(value)
@@ -464,7 +484,7 @@ export default function ChatPage() {
         onAttachmentError={setSendError}
         onLoadMessageEvents={handleMessageEventsLoad}
         onLoadOlderHistory={loadOlderHistory}
-        onForkMessage={handleForkMessage}
+        onForkMessage={embedded ? undefined : handleForkMessage}
         quickPromptsLabel={t('chatSession.quickPromptsLabel')}
         quickPrompts={quickPromptItems}
         onQuickPromptItemSelect={(item) => {
@@ -477,7 +497,7 @@ export default function ChatPage() {
           setSendError('')
         }}
         copy={panelCopy}
-        headerActions={(
+        headerActions={!embedded && (
           <>
             {can('session.create') && <Button
               variant="ghost"
@@ -596,7 +616,7 @@ export default function ChatPage() {
         onClose={() => setShowSettingsPanel(false)}
       />
       {can('session.manage') && showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
-      {compact && createPortal(
+      {!embedded && compact && createPortal(
         <button
           className="mobile-session-kebab"
           aria-label={t('chatSession.sessionMenu')}

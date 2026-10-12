@@ -455,7 +455,7 @@ export default function AssistantChatPanel({
 
   return (
     <div className="assistant-chat-panel" ref={rootRef}>
-      <div style={{
+      <div className="assistant-chat-header" style={{
         height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 12px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)',
       }}>
