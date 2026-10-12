@@ -114,10 +114,6 @@
   background: var(--accent);
 }
 
-.settings-system-font-size .segmented-control {
-  max-width: 360px;
-}
-
 .settings-system-language-options .segmented-control {
   max-width: 320px;
 }

@@ -1,4 +1,4 @@
-import SkinCenterEntry from '../components/SkinCenterEntry'
+import AppearanceSettings from './AppearanceSettings'
 import SandboxSettings from '../components/SandboxSettings'
 import GatewayLogoutButton from '../components/GatewayLogoutButton'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -28,11 +28,6 @@ import { useI18n } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { browserPushEnabled, enableBrowserPush } from '../utils/browserPush'
-import {
-  loadFontSizePreference,
-  saveFontSizePreference,
-  type FontSizePreference,
-} from '../utils/fontSizePreference'
 import './SettingsPage.css'
 
 
@@ -72,7 +67,6 @@ export default function SettingsPage({
   const saveOpenMode = useUserSettingsStore((state) => state.saveOpenMode)
   const [userNameDraft, setUserNameDraft] = useState(userName)
   const [userNameSaved, setUserNameSaved] = useState(false)
-  const [fontSize, setFontSize] = useState(loadFontSizePreference)
   const [engineRefreshRevision, setEngineRefreshRevision] = useState(0)
   const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false)
   const [browserNotificationsError, setBrowserNotificationsError] = useState(false)
@@ -112,11 +106,6 @@ export default function SettingsPage({
     if (!await saveUserName(userNameDraft)) return
     setUserNameDraft(userNameDraft.trim())
     setUserNameSaved(true)
-  }
-
-  const handleFontSizeChange = (value: FontSizePreference) => {
-    setFontSize(value)
-    saveFontSizePreference(value)
   }
 
   return (
@@ -180,6 +169,8 @@ export default function SettingsPage({
           <SandboxSettings onDirtyChange={onSandboxDirty} />
         ) : activeSection === 'feedback' ? (
           <ProblemFeedbackSettings />
+        ) : activeSection === 'appearance' ? (
+          <AppearanceSettings />
         ) : activeSection === 'system' ? (
           <div className="settings-system-page">
             <h1 className="settings-system-title">{t('settings.systemTitle')}</h1>
@@ -259,24 +250,6 @@ export default function SettingsPage({
               >
                 <span className="settings-switch-thumb" />
               </button>
-            </div>
-            <div className="settings-system-group settings-system-appearance"><SkinCenterEntry /></div>
-            <div className="settings-system-group settings-system-font-size">
-              <h2 className="settings-system-heading">{t('settings.fontSize')}</h2>
-              <p className="settings-system-description">
-                {t('settings.fontSizeIntro')}
-              </p>
-              <SegmentedControl
-                ariaLabel={t('settings.fontSize')}
-                value={fontSize}
-                onChange={handleFontSizeChange}
-                options={[
-                  { value: 'small', label: t('settings.fontSizeSmall') },
-                  { value: 'standard', label: t('settings.fontSizeStandard') },
-                  { value: 'large', label: t('settings.fontSizeLarge') },
-                  { value: 'extraLarge', label: t('settings.fontSizeExtraLarge') },
-                ]}
-              />
             </div>
             <div className="settings-system-group">
               <h2 className="settings-system-heading">{t('settings.onboardingTitle')}</h2>
