@@ -5,7 +5,7 @@ import type { Project } from '../api/client'
 import { ApiError } from '../api/transport'
 import { defaultSkin, skinContract, type SkinDocument } from '../skins/contract'
 import oceanTokens from '../../../daemon/data/skins/example/tokens.json' with { type: 'json' }
-import { useChatSessionStore } from '../stores/chatSessionStore'
+import { useChatSessionStore, useChatListStore } from '../stores/chatSessionStore'
 import ChatPage from '../pages/ChatPage'
 import { useOverlay } from '../hooks/useOverlay'
 import { useI18n } from '../i18n'
@@ -17,6 +17,7 @@ import Select from './Select'
 import Icon from './Icon'
 import SkinStudioPreview from './SkinStudioPreview'
 import ChatMessageBubble from './ChatMessageBubble'
+import { formatConversationDateTime } from '../utils/datetime'
 import './SkinStudio.css'
 
 const palettes = {
@@ -37,7 +38,7 @@ function presetTokens(key: keyof typeof palettes) {
 }
 
 export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }: { workspace: SkinWorkspace; initialSkin?: SkinDocument; onClose: () => void; onSaved: (skin: SkinDocument) => void }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const ref = useRef<HTMLDivElement>(null)
   const mounted = useRef(true), priorRunning = useRef(false)
   const loadInFlight = useRef<{ path: string; request: Promise<void> } | null>(null)
@@ -48,6 +49,10 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
   const [sessionId, setSessionId] = useState<string | null>(workspace.session_id)
   const [pending, setPending] = useState<'close' | 'reload' | 'replace' | null>(null)
   const [base, setBase] = useState('custom'), [phone, setPhone] = useState(false)
+  const [mobileTab, setMobileTab] = useState<'chat' | 'preview'>('chat')
+  const history = useChatListStore(state => state.sessionsByProject[workspace.project_id]) ?? []
+  const historyError = useChatListStore(state => state.listErrorByProject[workspace.project_id])
+  useEffect(() => { void useChatListStore.getState().fetchSessions(workspace.project_id, true) }, [workspace.project_id])
   const [packagePath, setPackagePath] = useState(workspace.package_path)
   const [packageInput, setPackageInput] = useState(workspace.package_path)
   const session = useChatSessionStore(s => sessionId ? s.sessions[sessionId] : undefined)
@@ -108,8 +113,16 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
   }
   const edit = (change: (current: SkinDocument) => SkinDocument) => { setSkin(current => current ? change(current) : current); setDirty(true) }
   return createPortal(<div className="skin-studio-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) requestClose() }}>
-    <ResizablePanel ref={ref} minWidth={640} minHeight={460} className="skin-studio" role="dialog" aria-modal="true" aria-label={t('skins.studioTitle')} tabIndex={-1}>
+    <ResizablePanel ref={ref} minWidth={640} minHeight={460} className="skin-studio" data-mobile-tab={mobileTab} role="dialog" aria-modal="true" aria-label={t('skins.studioTitle')} tabIndex={-1}>
       <header className="skin-studio-header" data-dialog-drag-handle><div><h2>{t('skins.studioTitle')}</h2><p>{t('skins.studioIntro')}</p></div><Button variant="icon" onClick={requestClose} aria-label={t('common.close')}><Icon name="x" size={18} /></Button></header>
+      <div className="skin-studio-history"><label>{t('skins.studioHistory')}<Select aria-label={t('skins.studioHistory')} value={sessionId ?? ''} disabled={running || busy} onChange={event => setSessionId(event.target.value)}>
+        {!history.some(item => item.id === sessionId) && <option value={sessionId ?? ''}>{t('skins.studioTitle')}</option>}
+        {history.map(item => <option key={item.id} value={item.id}>{item.title || t('chatSession.title')} · {formatConversationDateTime(item.created_at, Date.now(), locale)}</option>)}
+      </Select></label>{historyError && <Button size="sm" onClick={() => void useChatListStore.getState().fetchSessions(workspace.project_id, true)}>{t('common.retry')}</Button>}</div>
+      <div className="skin-studio-tabs" role="tablist" aria-label={t('skins.studioTitle')}>
+        <button type="button" role="tab" aria-selected={mobileTab === 'chat'} onClick={() => setMobileTab('chat')}>{t('skins.studioChatTab')}</button>
+        <button type="button" role="tab" aria-selected={mobileTab === 'preview'} onClick={() => setMobileTab('preview')}>{t('skins.studioPreviewTab')}</button>
+      </div>
       <div className="skin-studio-body">
         <section className="skin-studio-chat"><ChatPage embedded={{ project, sessionId, onSessionChange: setSessionId, beforeSend: save,
           placeholder: t('skins.studioPlaceholder'), emptyContent: insert => <div className="skin-studio-welcome"><ChatMessageBubble role="assistant" sender={t('skins.studioEditing')} initials="✧" color="var(--accent-light)" content={t('skins.studioHello')} /><div className="skin-studio-suggestions">{(['studioSuggestDark', 'studioSuggestMint', 'studioSuggestCards', 'studioSuggestRight'] as const).map(key => <button key={key} type="button" onClick={() => insert(t(`skins.${key}`))}>{t(`skins.${key}`)}</button>)}</div></div>,

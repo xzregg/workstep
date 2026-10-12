@@ -8,7 +8,7 @@ import ConfirmDialog from './ConfirmDialog'
 import EngineSelect from './EngineSelect'
 import { skinsApi, type SkinSummary, type SkinWorkspace } from '../api/skins'
 import { useI18n } from '../i18n'
-import { saveDraft } from '../utils/chatDraft'
+import { loadDraft, saveDraft } from '../utils/chatDraft'
 import SkinStudio from './SkinStudio'
 import { useProjectStore } from '../stores/projectStore'
 import { useSkinPreviewing, cancelSkinPreview, previewSkin, restoreDefaultSkin, saveSkin, useActiveSkin } from '../skins/runtime'
@@ -61,7 +61,7 @@ export default function SkinSettings() {
   }
   const start = (base?: SkinDocument) => run(async () => {
     const result = await skinsApi.onboarding()
-    saveDraft(result.session_id, t('skins.studioDraft') + (base ? `\n${t('skins.studioEditing')}：${base.manifest.id}-custom` : ''))
+    if (result.created !== false && !loadDraft(result.session_id)) saveDraft(result.session_id, t('skins.studioDraft') + (base ? `\n${t('skins.studioEditing')}：${base.manifest.id}-custom` : ''))
     await useProjectStore.getState().fetchProjects()
     if (mounted.current) setWorkspace(base ? { ...result, package_path: `${result.workspace_path}/${base.manifest.id}-custom`, base } : result)
   })

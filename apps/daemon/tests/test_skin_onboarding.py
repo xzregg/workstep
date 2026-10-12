@@ -10,6 +10,7 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     module = SimpleNamespace(_resolve_engine_models=lambda: ("codex_sdk", None, None),
                              create_session=Mock(return_value={"id": "session"}))
     monkeypatch.setattr(onboarding, "chat_module", lambda: module)
+    monkeypatch.setattr(onboarding, "design_session", lambda project, chat: {**chat.create_session(project.id, title="自定义皮肤设计"), "created": True})
     monkeypatch.setattr(onboarding, "workspace_parent", lambda: tmp_path)
     project = SimpleNamespace(id="project", name="runtime", path=tmp_path)
     monkeypatch.setattr(onboarding.project_manager, "init_project", lambda *a, **kw: project)
@@ -72,6 +73,21 @@ async def test_onboarding_api_uses_real_db_without_blocking_event_loop(tmp_path,
             result = response.json()
             detail = await manager.run_db(result["project_id"], lambda current: module.get_session(result["project_id"], result["session_id"]))
             assert detail["title"] == "自定义皮肤设计"
+            from models.chat_session import ChatSession, ChatMessage
+            from models.fields import utc_now
+            def write_history(current):
+                ChatSession.update(title='我的蓝色皮肤').where(ChatSession.id == result['session_id']).execute()
+                ChatMessage.create(id='history-message', session=result['session_id'], role='user', content='请改成蓝色', created_at=utc_now())
+            await manager.run_db(result['project_id'], write_history)
+            again = await client.post("/api/skins/onboarding")
+            assert again.json()["session_id"] == result["session_id"]
+            assert again.json()["created"] is False
+            assert len(await manager.run_db(result["project_id"], lambda current: module.list_sessions(result["project_id"]))) == 1
+            restored = await manager.run_db(result['project_id'], lambda current: module.get_session(result['project_id'], again.json()['session_id']))
+            assert restored['title'] == '我的蓝色皮肤'
+            assert restored['messages'][0]['content'] == '请改成蓝色'
+            concurrent = await asyncio.gather(client.post('/api/skins/onboarding'), client.post('/api/skins/onboarding'))
+            assert all(response.json()['session_id'] == result['session_id'] for response in concurrent)
     finally:
         await module.shutdown(); await bus.close(); await asyncio.to_thread(manager.close_all)
 
