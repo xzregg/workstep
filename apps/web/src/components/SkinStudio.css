@@ -39,7 +39,9 @@
 .skin-studio-footer > span { font-size: calc(10px * var(--font-scale)); color: var(--muted); }
 @media(max-width:1023px) {
   .skin-studio-backdrop { padding: 0; }
-  .skin-studio { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
+  .skin-studio { width: 100vw; height: 100dvh; border: 0; border-radius: 0; padding-bottom: 0; }
+  .skin-studio-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .skin-studio-header .skin-studio-save { grid-column: 1 / -1; justify-self: end; }
   .skin-studio-tabs { display: flex; flex-shrink: 0; padding: 4px 16px; gap: 8px; border-bottom: 1px solid var(--border); }
   .skin-studio-tabs button { flex: 1; min-height: var(--mobile-control-regular); border: 0; border-radius: 6px; background: transparent; color: var(--muted); }
   .skin-studio-tabs button[aria-selected=true] { background: var(--accent-light); color: var(--accent); }

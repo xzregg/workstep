@@ -8,6 +8,7 @@ import oceanTokens from '../../../daemon/data/skins/example/tokens.json' with { 
 import { useChatSessionStore, useChatListStore } from '../stores/chatSessionStore'
 import ChatPage from '../pages/ChatPage'
 import { useOverlay } from '../hooks/useOverlay'
+import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
 import ResizablePanel from './ResizablePanel'
 import ConfirmDialog from './ConfirmDialog'
@@ -39,6 +40,7 @@ function presetTokens(key: keyof typeof palettes) {
 
 export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }: { workspace: SkinWorkspace; initialSkin?: SkinDocument; onClose: () => void; onSaved: (skin: SkinDocument) => void }) {
   const { t, locale } = useI18n()
+  const compact = useCompactLayout()
   const ref = useRef<HTMLDivElement>(null)
   const mounted = useRef(true), priorRunning = useRef(false)
   const loadInFlight = useRef<{ path: string; request: Promise<void> } | null>(null)
@@ -112,9 +114,10 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
     } finally { if (mounted.current) setBusy(false) }
   }
   const edit = (change: (current: SkinDocument) => SkinDocument) => { setSkin(current => current ? change(current) : current); setDirty(true) }
+  const saveButton = <Button className="skin-studio-save" variant="primary" disabled={!skin || !skin.manifest.name.trim() || busy || running} loading={busy} onClick={() => void register()}>{t('skins.studioSave')}</Button>
   return createPortal(<div className="skin-studio-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) requestClose() }}>
     <ResizablePanel ref={ref} minWidth={640} minHeight={460} className="skin-studio" data-mobile-tab={mobileTab} role="dialog" aria-modal="true" aria-label={t('skins.studioTitle')} tabIndex={-1}>
-      <header className="skin-studio-header" data-dialog-drag-handle><div><h2>{t('skins.studioTitle')}</h2><p>{t('skins.studioIntro')}</p></div><Button variant="icon" onClick={requestClose} aria-label={t('common.close')}><Icon name="x" size={18} /></Button></header>
+      <header className="skin-studio-header" data-dialog-drag-handle><div><h2>{t('skins.studioTitle')}</h2><p>{t('skins.studioIntro')}</p></div><Button variant="icon" onClick={requestClose} aria-label={t('common.close')}><Icon name="x" size={18} /></Button>{compact && saveButton}</header>
       <div className="skin-studio-history"><label>{t('skins.studioHistory')}<Select aria-label={t('skins.studioHistory')} value={sessionId ?? ''} disabled={running || busy} onChange={event => setSessionId(event.target.value)}>
         {!history.some(item => item.id === sessionId) && <option value={sessionId ?? ''}>{t('skins.studioTitle')}</option>}
         {history.map(item => <option key={item.id} value={item.id}>{item.title || t('chatSession.title')} · {formatConversationDateTime(item.created_at, Date.now(), locale)}</option>)}
@@ -156,7 +159,7 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
           <Button size="sm" disabled={busy || running} onClick={() => dirty ? setPending('reload') : void load().catch(reason => setError(String(reason.message)))}>{t('skins.studioReload')}</Button>
         </aside>
       </div>
-      <footer className="skin-studio-footer"><span>{t('skins.studioSaveHint')}</span><Button variant="primary" disabled={!skin || !skin.manifest.name.trim() || busy || running} loading={busy} onClick={() => void register()}>{t('skins.studioSave')}</Button></footer>
+      {!compact && <footer className="skin-studio-footer"><span>{t('skins.studioSaveHint')}</span>{saveButton}</footer>}
     </ResizablePanel>
     <ConfirmDialog open={pending === 'close' || pending === 'reload'} title={t('skins.studioDiscard')} onCancel={() => setPending(null)} onConfirm={() => { const action = pending; setPending(null); if (action === 'close') onClose(); else void load().catch(reason => setError(String(reason.message))) }} />
     <ConfirmDialog open={pending === 'replace'} title={t('skins.replace')} loading={busy} onCancel={() => { if (!busy) setPending(null) }} onConfirm={() => void register(true)} />
