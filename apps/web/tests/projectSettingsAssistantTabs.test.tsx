@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 // Must stay first: react-dom snapshots DOM support during module evaluation.
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
@@ -82,9 +83,9 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
   try {
     await act(async () => {
       root.render(
-        <I18nProvider>
+        <MemoryRouter><I18nProvider>
           <ProjectSettingsPanel project={project} onClose={() => {}} />
-        </I18nProvider>,
+        </I18nProvider></MemoryRouter>,
       )
     })
     await act(async () => { await Promise.resolve() })

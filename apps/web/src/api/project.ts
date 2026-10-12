@@ -170,6 +170,7 @@ export interface ProjectSkillSelection {
 }
 
 export const skillApi = {
+  onboarding: () => request<{ project_id: string; project_name: string; session_id: string; workspace_path: string; package_path: string; prompt: string }>('/skills/onboarding', { method: 'POST' }),
   list: (projectId: string) => request<ProjectSkillSelection>(
     `/skills?project_id=${encodeURIComponent(projectId)}`,
   ),

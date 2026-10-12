@@ -7,6 +7,7 @@ import { skillApi, type Project, type SkillDescriptor } from '../api/client'
 import './SkillCenterSettings.css'
 import { useI18n } from '../i18n'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import SkillDraftCreateButton from '../components/SkillDraftCreateButton'
 
 type SourceFilter = 'all' | 'agents' | 'claude' | 'codex' | 'project'
 
@@ -20,9 +21,11 @@ const sourceLabels: Record<Exclude<SourceFilter, 'all'>, string> = {
 export default function SkillCenterSettings({
   project,
   embedded = false,
+  onConversationStarted,
 }: {
   project: Project | null
   embedded?: boolean
+  onConversationStarted?: () => void
 }) {
   const { t } = useI18n()
   const { can } = useGatewayProjectPermissions(project?.id)
@@ -155,6 +158,7 @@ export default function SkillCenterSettings({
         <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>
           {t('skillCenter.title')}
         </h1>
+        <SkillDraftCreateButton onStarted={onConversationStarted} />
         <div style={{ marginTop: 28, padding: '34px 24px', textAlign: 'center', color: 'var(--muted)', border: '1px solid var(--border-soft)', borderRadius: 14 }}>
           <Icon name="folder" size={24} />
           <p style={{ marginTop: 12, fontWeight: 600, color: 'var(--fg)' }}>{t('skillCenter.noProject')}</p>
@@ -177,6 +181,7 @@ export default function SkillCenterSettings({
             {t('skillCenter.intro')}
           </p>
         </div>
+        {canManage && <SkillDraftCreateButton onStarted={onConversationStarted} />}
         {canManage && <Button onClick={() => void load(true)} loading={loading} disabled={!available}>
           <Icon name="refresh" size={14} />
           {t('skillCenter.rescan')}

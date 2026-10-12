@@ -456,6 +456,10 @@ apply. Native callers can use `workstep_upload_channel_attachment` with
 `attachments: [{kind: 'image'|'file', path: '<returned project URL>'}]` to
 `workstep_send_channel_message`. Attachment-only sends do not require text.
 
+## Custom skill drafts
+
+Use the Transport above with `skill create --json` to start an ordinary conversation in the fixed `Runtime` project root; no per-type or per-session directory is allocated. The native operation is `workstep_create_skill_draft` with `confirm='yes'`. Read the returned `prompt`, `workspace_path` and `package_path`; create a named skill package within that root without overwriting other existing work. This operation neither installs nor enables a skill. Existing installed skill roots remain unchanged, and draft directories are not skill discovery roots. Install only when explicitly requested by the user.
+
 ## Custom engines
 
 When creating or updating a custom engine, read [the onboarding guide](references/custom-engine.md) and [adapter contract](references/custom-engine-contract.md) on demand. These are reference documents within this CLI skill; do not load a separate custom-engine skill. Commands accept an absolute package directory or its Python entry file.

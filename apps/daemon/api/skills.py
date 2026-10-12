@@ -2,7 +2,7 @@
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from services.project import project_manager
@@ -10,6 +10,20 @@ from services.skill_center import skill_center
 
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
+
+
+def authorize_onboarding():
+    from api.custom_engine import authorize
+    authorize()
+
+
+@router.post('/onboarding', dependencies=[Depends(authorize_onboarding)])
+async def onboarding():
+    from services.skill_onboarding import create_onboarding
+    try:
+        return await create_onboarding()
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 class ProjectSkillToggleRequest(BaseModel):

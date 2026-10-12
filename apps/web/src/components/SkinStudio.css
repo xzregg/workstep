@@ -9,6 +9,9 @@
 .skin-studio-chat .assistant-chat-header { display: none; }
 .skin-studio-controls { min-width: 0; min-height: 0; overflow-y: auto; background: var(--surface); border-left: 1px solid var(--border); padding: 20px 16px; }
 .skin-studio-controls h3 { margin: 0 0 20px; font-size: calc(12px * var(--font-scale)); }
+.skin-studio-package { display: grid; gap: 8px; margin-bottom: 18px; }
+.skin-studio-package label { color: var(--muted); font-size: calc(11px * var(--font-scale)); }
+.skin-studio-package label input { width: 100%; margin-top: 7px; }
 .skin-studio-controls fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .skin-studio-controls fieldset > label { display: block; color: var(--muted); font-size: calc(11px * var(--font-scale)); margin-bottom: 18px; }
 .skin-studio-controls fieldset > label > :is(input, .ws-input, select, .ws-select) { display: block; margin-top: 7px; width: 100%; }

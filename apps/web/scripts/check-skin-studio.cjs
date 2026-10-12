@@ -53,7 +53,7 @@ const initial = { manifest: { id: 'my-skin', name: '我的专属皮肤', version
       const send = await page.locator('.skin-studio-chat .chat-input-send').boundingBox();
       assert.ok(send && send.x >= 0 && send.x + send.width <= width, 'send control remains reachable at ' + width);
       assert.ok(page.url().includes('/tasks?project='), 'embedded chat preserves route');
-      await page.locator('.skin-studio-controls input:not([type]), .skin-studio-controls input[type=text]').first().fill('微调验收皮肤');
+      await page.locator('.skin-studio-controls fieldset input:not([type]), .skin-studio-controls fieldset input[type=text]').first().fill('微调验收皮肤');
       await page.locator('.skin-studio-palette button[aria-label="#7c65d5"]').click();
       await page.getByRole('button', { name: '保存微调', exact: true }).click();
       await page.waitForFunction(() => !document.querySelector('.skin-studio-controls fieldset').disabled);

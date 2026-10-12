@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
@@ -26,12 +27,12 @@ test('running shortcuts does not require permission to send project chat message
   let selected = 0
   const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
   try {
-    await act(async () => root.render(<I18nProvider><AssistantChatPanel projectId="host" title="Chat" messages={[]}
+    await act(async () => root.render(<MemoryRouter><I18nProvider><AssistantChatPanel projectId="host" title="Chat" messages={[]}
       running={false} stopping={false} input="" locale="zh-CN"
       copy={{ emptyIntro: '', thinking: '', me: '用户', meInitials: 'U', agent: '助手', agentInitials: 'AI', placeholder: '', fullPrompt: '', closePrompt: '' }}
       attachmentPrefix="test" onInputChange={() => {}} onSend={() => {}} onSendContent={async () => true} onStop={() => {}}
       quickPrompts={[{ id: 'run', label: '运行脚本', kind: 'action', prompt: '' }, { id: 'prompt', label: '发送提示', prompt: 'hello' }]}
-      onQuickPromptItemSelect={() => { selected++ }} /></I18nProvider>))
+      onQuickPromptItemSelect={() => { selected++ }} /></I18nProvider></MemoryRouter>))
     const run = [...element.querySelectorAll('button')].find(button => button.textContent === '运行脚本')
     assert.ok(run)
     assert.doesNotMatch(element.textContent ?? '', /发送提示/)
@@ -55,7 +56,7 @@ test('project settings expose Skills independently and hide operations after per
   skillApi.rescan = async () => { writes.push('rescan'); return result }
   const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
   try {
-    await act(async () => root.render(<I18nProvider><ProjectSettingsPanel project={project} onClose={() => {}} /></I18nProvider>))
+    await act(async () => root.render(<MemoryRouter><I18nProvider><ProjectSettingsPanel project={project} onClose={() => {}} /></I18nProvider></MemoryRouter>))
     const tab = [...element.querySelectorAll('button')].find(button => button.textContent === '技能中心')
     assert.ok(tab, 'Skills-only users need a settings entrance and tab')
     await act(async () => tab.click())
@@ -69,7 +70,7 @@ test('project settings expose Skills independently and hide operations after per
     assert.deepEqual(writes, ['rescan'])
     await act(async () => session([]))
     assert.doesNotMatch(element.textContent ?? '', /Demo skill/)
-    await act(async () => root.render(<I18nProvider><SkillCenterSettings project={project} /></I18nProvider>))
+    await act(async () => root.render(<MemoryRouter><I18nProvider><SkillCenterSettings project={project} /></I18nProvider></MemoryRouter>))
     assert.doesNotMatch(element.textContent ?? '', /Demo skill/)
   } finally {
     await act(async () => root.unmount()); skillApi.list = oldList; skillApi.rescan = oldRescan
@@ -86,7 +87,7 @@ test('share managers can revoke existing links without exposing share creation',
     create: async () => { created++; throw new Error('unexpected') }, revoke: async () => { revoked++ } }
   const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
   try {
-    await act(async () => root.render(<I18nProvider><ShareDialog open taskId="t" projectId="host" gateway api={api} onClose={() => {}} /></I18nProvider>))
+    await act(async () => root.render(<MemoryRouter><I18nProvider><ShareDialog open taskId="t" projectId="host" gateway api={api} onClose={() => {}} /></I18nProvider></MemoryRouter>))
     const revoke = [...element.querySelectorAll('button')].find(button => button.textContent?.includes('撤销分享'))!
     assert.ok(revoke)
     await act(async () => revoke.click())
@@ -111,7 +112,7 @@ for (const [permission, label] of [['session.config', '对话助手'], ['action.
     }
     const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
     try {
-      await act(async () => root.render(<I18nProvider><ProjectSettingsPanel project={project} onClose={() => { closed++ }} /></I18nProvider>))
+      await act(async () => root.render(<MemoryRouter><I18nProvider><ProjectSettingsPanel project={project} onClose={() => { closed++ }} /></I18nProvider></MemoryRouter>))
       assert.deepEqual(calls, [])
       const tabs = [...element.querySelectorAll('nav button')]
       const allowed = tabs.find(tab => tab.textContent === label)
