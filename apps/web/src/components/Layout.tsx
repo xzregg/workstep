@@ -1,5 +1,4 @@
 import { useSkinSidebar } from '../hooks/useSkinSidebar'
-import SkinCenterEntry from './SkinCenterEntry'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import SidebarConversationTabs from './SidebarConversationTabs'
@@ -1050,7 +1049,6 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        <SkinCenterEntry />
         {!bound && <Button
           variant="ghost"
           onClick={() => { setSettingsSection('providers'); setSettingsFocus(undefined); setShowSettings(true) }}

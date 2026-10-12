@@ -9,7 +9,7 @@ import { I18nProvider } from '../src/i18n'
 import { skinsApi } from '../src/api/skins'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 
-for (const projectScoped of [false, true]) test(`direct mobile skin entry opens the center for ${projectScoped ? 'project' : 'device'} access with the correct creation boundary`, async () => {
+for (const projectScoped of [false, true]) test(`system appearance entry opens the center for ${projectScoped ? 'project' : 'device'} access with the correct creation boundary`, async () => {
   const { window } = installDomEnvironment()
   Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
   window.happyDOM.setURL('http://d-device.localhost:8700/')
@@ -19,6 +19,8 @@ for (const projectScoped of [false, true]) test(`direct mobile skin entry opens 
   const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinCenterEntry /></I18nProvider></MemoryRouter>))
+    assert.equal(element.querySelector('button')!.textContent, '外观')
+    assert.equal(element.querySelector('.layout-sidebar-nav-button'), null)
     await act(async () => element.querySelector<HTMLButtonElement>('button')!.click())
     assert.ok(document.querySelector('.skin-center-dialog'))
     assert.ok(document.querySelector('.skin-settings-workspace'))

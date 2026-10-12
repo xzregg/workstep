@@ -1,4 +1,3 @@
-.skin-center-entry.btn { margin: 0 12px 4px; }
 .skin-center-backdrop { position: fixed; inset: 0; z-index: 1800; background: #121a3044; backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 24px; }
 .skin-center-dialog { width: min(1280px, calc(100vw - 48px)); height: min(900px, calc(100dvh - 48px)); background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--elev-raised); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .skin-center-dialog-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 24px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: calc(11px * var(--font-scale)); }
