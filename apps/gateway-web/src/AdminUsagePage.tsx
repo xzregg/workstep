@@ -2,6 +2,7 @@ import { useState } from 'react'
 import dayjs from 'dayjs'
 import { GatewayDateRange } from './GatewayDateRange'
 import { Link } from 'react-router-dom'
+import { AdminUsagePrices } from './AdminUsagePrices'
 import { AdminUsageSummary } from './AdminUsageSummary'
 import { AdminUsageEvents } from './AdminUsageEvents'
 import { AdminUsageReconciliation } from './AdminUsageReconciliation'
@@ -21,9 +22,9 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
   const [draft, setDraft] = useState<Filters>(defaultFilters)
   const [filters, setFilters] = useState(() => query(draft))
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<UsageDimension | 'overview' | 'events' | 'reconciliation'>('overview')
+  const [tab, setTab] = useState<UsageDimension | 'overview' | 'events' | 'reconciliation' | 'prices'>('overview')
   const tabs = [ {id:'overview', label:'总览'}, ...Object.entries(usageDimensions).map(([id, value]) => ({id,label:value.label+'统计'})),
-    {id:'events',label:'用量明细'}, ...(readOnly ? [] : [{id:'reconciliation',label:'供应商对账'}]) ]
+    {id:'events',label:'用量明细'}, ...(readOnly ? [] : [{id:'prices',label:'模型价格'}, {id:'reconciliation',label:'供应商对账'}]) ]
   function details(field: string, value: string) {
     const params = new URLSearchParams(filters); params.set(field, value)
     setFilters(params.toString()); setDraft({ ...emptyFilters, ...Object.fromEntries(params) }); setTab('events')
@@ -64,7 +65,7 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
         }}
         onClick={() => setTab(item.id as typeof tab)}>{item.label}</button>)}
     </div>
-    <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
+    {tab !== 'prices' && <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
       <GatewayDateRange from={draft.from_time} to={draft.to_time}
         onChange={range => setDraft(current => ({ ...current, ...range }))} />
       <label>计量来源<select value={draft.source} onChange={event => update('source', event.target.value)}>
@@ -90,10 +91,10 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
         onChange={event => update('model', event.target.value)} /></label>
         </div>
       </details>
-    </form>
+    </form>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     <div id="usage-report-panel" role="tabpanel" aria-labelledby={'usage-tab-'+tab}>
-      {tab === 'events' ? <AdminUsageEvents key={filters} filters={filters}/> : tab === 'reconciliation' ?
+      {tab === 'prices' ? !readOnly && <AdminUsagePrices/> : tab === 'events' ? <AdminUsageEvents key={filters} filters={filters}/> : tab === 'reconciliation' ?
         !readOnly && <><AdminUsageBillImport/><AdminUsageReconciliation/></> :
         <AdminUsageSummary key={tab+filters} filters={filters} overview={tab === 'overview'} groupBy={tab === 'overview' ? 'day' : tab} onDetails={details}/>}
     </div>

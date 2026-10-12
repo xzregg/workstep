@@ -23,8 +23,8 @@ export function usageCost(row: UsageTotals, billed: boolean) {
 
 export function usageGroupName(row: UsageGroup, dimension: UsageDimension) {
  if (row.label) return row.label
- if (row.value === null) return '未标记'
- return dimension === 'day' || dimension === 'model' ? row.value : '未登记'+usageDimensions[dimension].label
+ if (row.value === null) return {user:'未关联用户',device:'未记录设备',project:'未关联项目',provider:'未上报供应商',model:'未上报模型',day:'未记录日期'}[dimension]
+ return dimension === 'day' || dimension === 'model' ? row.value : usageDimensions[dimension].label+'名称未知'
 }
 
 export function usageCacheRate(row: Pick<UsageTotals, 'input_tokens' | 'cache_read_tokens'>): number | null {
@@ -60,4 +60,8 @@ export function usageComparisonRanges(from: string, to: string, now = new Date()
  const year = { from: lastYear(a), to: lastYear(b) }
  return { month, previous: { from: new Date(a.getTime() - (b.getTime()-a.getTime())).toISOString(), to: a.toISOString() },
   year: year.from < year.to ? year : null }
+}
+
+export function usageIdentityName(name: string | null | undefined, id: string | null, dimension: 'user' | 'device' | 'project' | 'provider') {
+ return usageGroupName({label:name,value:id} as UsageGroup, dimension)
 }

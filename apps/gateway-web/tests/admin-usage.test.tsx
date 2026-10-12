@@ -53,7 +53,7 @@ test('usage page filters summaries and locates unmetered and metered events', as
       return Response.json({ total: 26, events: [page === '2' ? {
         id: 'usage-2', request_id: 'request-2', source: 'reported_by_device',
         metering_status: 'metered', occurred_at: '2026-09-29T10:00:00Z',
-        user_id: 'user-1', initiated_by_user_id: 'user-1', device_id: 'pc-1',
+        user_id: 'user-1', initiated_by_user_id: 'user-1', device_id: 'pc-1', device_name: '研发工作站', user_name: '演示用户', project_name: '演示项目',
         project_id: 'project-1', task_id: 'task-1', run_id: null, message_id: 'message-1',
         session_id: null, provider_id: 'provider-1', provider_revision: 2,
         model: 'model-a', input_tokens: 10, output_tokens: 5, cache_read_tokens: 0,
@@ -86,7 +86,10 @@ test('usage page filters summaries and locates unmetered and metered events', as
   await screen.findByText(/用量明细加载失败/)
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByText('model-b')
-  assert.match(document.body.textContent ?? '', /总 Token 未知 · 估算成本 未完成计量/)
+  assert.ok(screen.getByRole('cell', {name:'未关联项目'}))
+  assert.ok(screen.getByRole('columnheader', {name:'总 Token'}))
+  assert.ok(screen.getByRole('columnheader', {name:'缓存读取'}))
+  assert.ok(screen.getByRole('cell', {name:/待计价/}))
   const initialQuery = new URLSearchParams(urls.find(url => url.startsWith('/api/admin/usage?'))!.split('?')[1])
   assert.ok(initialQuery.get('from_time'))
   assert.ok(initialQuery.get('to_time'))
@@ -103,8 +106,13 @@ test('usage page filters summaries and locates unmetered and metered events', as
   fireEvent.click(screen.getByRole('tab', { name: '用量明细' }))
   await screen.findByText('model-b')
   fireEvent.click(screen.getByRole('button', { name: '下一页' }))
-  await screen.findByText(/用量事件 usage-2/)
-  assert.match(document.body.textContent ?? '', /请求 request-2/)
+  await screen.findByText('model-a')
+  assert.ok(screen.getByRole('cell', {name:'演示项目'}))
+  assert.ok(screen.getByRole('cell', {name:'演示用户'}))
+  assert.ok(screen.getByRole('cell', {name:'研发工作站'}))
+  fireEvent.click(screen.getByRole('button', {name:'查看事件 usage-2'}))
+  await screen.findByText('usage-2')
+  assert.ok(screen.getByText('request-2'))
   assert.ok(urls.some(url => url.includes('/events?') && url.includes('page=2')))
   fireEvent.click(screen.getByRole('tab', { name: '供应商对账' }))
   fireEvent.change(screen.getByLabelText('对账供应商 ID'), { target: { value: 'provider-1' } })
@@ -116,8 +124,9 @@ test('usage page filters summaries and locates unmetered and metered events', as
   fireEvent.change(screen.getByLabelText('计量来源'), { target: { value: 'provider_reconciled' } })
   fireEvent.click(screen.getByRole('button', { name: '查询用量' }))
   fireEvent.click(screen.getByRole('tab', { name: '用量明细' }))
-  assert.ok((await screen.findAllByText(/账单金额 0.000040 USD/)).length >= 1)
-  await screen.findByText(/供应商账单 · 供应商 provider-1/)
+  assert.ok((await screen.findAllByText('0.000040 USD')).length >= 1)
+  fireEvent.click(screen.getByRole('button', {name:'查看事件 bill-1'}))
+  await screen.findByText('provider-1')
 })
 
 test('provider bill import requires step-up and submits only bounded billing fields', async () => {
@@ -236,6 +245,7 @@ test('statistics tabs share the applied time filters and load only the active re
  assert.equal(new Set(paths).size,paths.length)
  assert.ok(paths.some(path=>new URLSearchParams(path.split('?')[1]).get('group_by')==='day'))
  assert.equal(screen.queryByRole('tab',{name:'供应商对账'}),null)
+ assert.equal(screen.queryByRole('tab',{name:'模型价格'}),null)
  fireEvent.change(screen.getByLabelText('模型'),{target:{value:'model-a'}})
  fireEvent.click(screen.getByRole('button',{name:'查询用量'}))
  await waitFor(()=>assert.ok(paths.at(-1)?.includes('model=model-a')))

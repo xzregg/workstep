@@ -7,9 +7,13 @@
   color: var(--text-secondary);
 }
 
-.sidebar-load-status span {
+.sidebar-load-status-text {
   flex: 1;
   min-width: 0;
+}
+
+.sidebar-load-status > .spinner {
+  flex: 0 0 auto;
 }
 
 .sidebar-load-status button {
