@@ -63,6 +63,7 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
 
 test('a new Runtime conversation can create its first skin before any package exists', async () => {
   const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width: 390, height: 844 })
   Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
   const oldFetch = globalThis.fetch, oldValidate = skinsApi.validate
   skinsApi.validate = async () => { throw new ApiError('尚未创建皮肤包', 404) }
@@ -82,6 +83,8 @@ test('a new Runtime conversation can create its first skin before any package ex
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinStudio workspace={{ project_id: 'design', project_name: 'Runtime', session_id: 'empty-session', workspace_path: '/tmp/runtime', package_path: '/tmp/runtime/skin', prompt: '' }} onClose={() => {}} onSaved={() => {}} /></I18nProvider></MemoryRouter>))
     assert.ok(document.querySelector('.skin-studio-controls fieldset'), 'starting style is visible before a package is created')
     assert.ok(document.querySelector('.skin-studio-preview'))
+    assert.equal(document.querySelector('.skin-studio-footer'), null)
+    assert.ok(document.querySelector('.skin-studio-header .skin-studio-save'))
     const tabs = [...document.querySelectorAll<HTMLButtonElement>('.skin-studio-tabs [role=tab]')]
     assert.equal(tabs.length, 2)
     await act(async () => tabs[1].click())
