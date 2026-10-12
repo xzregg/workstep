@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from engines.core.base import EngineCapabilities
+from engines.core.base import EngineCapabilities, EngineModel
 from engines.deepseek_harness import DeepSeekHarnessEngine
 
 
@@ -105,10 +105,13 @@ def test_deepseek_harness_declares_sdk_install_and_safe_capabilities(monkeypatch
     )
 
 
-def test_deepseek_harness_config_only_accepts_enabled_deepseek_provider(
+@pytest.mark.parametrize("provider_type", ["deepseek", "openai", "custom", "anthropic"])
+def test_deepseek_harness_config_accepts_enabled_chat_provider(
     monkeypatch,
     deepseek_provider,
+    provider_type,
 ):
+    deepseek_provider.update(type=provider_type, protocols=["openai_chat_completions"])
     saved = {}
     monkeypatch.setattr(
         "engines.deepseek_harness.config_store.get_provider",
@@ -138,8 +141,12 @@ def test_deepseek_harness_config_only_accepts_enabled_deepseek_provider(
         "preset": "standard",
     }
 
-    deepseek_provider["type"] = "openai"
-    with pytest.raises(ValueError, match="DeepSeek"):
+    deepseek_provider["protocols"] = ["openai_responses"]
+    with pytest.raises(ValueError, match="协议"):
+        asyncio.run(engine.save_config_values({"provider_id": "deepseek-official"}))
+
+    deepseek_provider.update(protocols=["openai_chat_completions"], enabled=False)
+    with pytest.raises(ValueError, match="停用"):
         asyncio.run(engine.save_config_values({"provider_id": "deepseek-official"}))
 
 
@@ -156,9 +163,42 @@ def test_deepseek_harness_is_configured_requires_provider_credentials(
         lambda _provider_id: deepseek_provider,
     )
 
+    deepseek_provider.update(type="custom", protocols=["openai_chat_completions"])
     assert DeepSeekHarnessEngine.is_configured() is True
     deepseek_provider["api_key"] = ""
     assert DeepSeekHarnessEngine.is_configured() is False
+
+
+def test_deepseek_harness_schema_filters_by_protocol_not_type(monkeypatch, deepseek_provider):
+    providers = [
+        {**deepseek_provider, "id": "openrouter", "type": "custom",
+         "protocols": ["openai_responses", "openai_chat_completions"]},
+        {**deepseek_provider, "id": "wrong-protocol", "protocols": ["anthropic_messages"]},
+        {**deepseek_provider, "id": "disabled", "enabled": False},
+    ]
+    monkeypatch.setattr("engines.deepseek_harness.config_store.get_providers", lambda: providers)
+    field = next(field for field in DeepSeekHarnessEngine.config_schema() if field.key == "provider_id")
+    assert [option.value for option in field.options] == ["openrouter"]
+
+
+async def test_deepseek_harness_models_use_chat_protocol_for_custom_provider(monkeypatch, deepseek_provider):
+    deepseek_provider.update(type="custom", protocols=["openai_responses", "openai_chat_completions"])
+    monkeypatch.setattr("engines.deepseek_harness.config_store.get_deepseek_harness_config",
+                        lambda: {"provider_id": deepseek_provider["id"]})
+    monkeypatch.setattr("engines.deepseek_harness.config_store.get_provider", lambda _: deepseek_provider)
+    reads = []
+
+    def get_models(provider_id, protocol):
+        reads.append((provider_id, protocol))
+        return {"models": [{"id": "custom-model"}]}
+
+    models = [EngineModel(id="custom-model", label="Custom model")]
+    monkeypatch.setattr("engines.deepseek_harness.config_store.get_provider_models", get_models)
+    monkeypatch.setattr("engines.deepseek_harness.provider_service.saved_models", lambda *_: models)
+    assert await DeepSeekHarnessEngine().list_models("") == models
+    assert reads == [(deepseek_provider["id"], "openai_chat_completions")]
+    deepseek_provider["protocols"] = ["openai_responses"]
+    assert await DeepSeekHarnessEngine().list_models("") == []
 
 
 def test_deepseek_harness_uses_workstep_standard_composition(

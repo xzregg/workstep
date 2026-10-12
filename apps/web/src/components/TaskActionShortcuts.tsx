@@ -56,10 +56,10 @@ export function ActionConversationMessage({ message, run, onStop }: {
   </ChatMessageBubble>
 }
 
-export function TaskActionButtons({ state, onFillPrompt, onSendPrompt, compact = false }: { state: State; onFillPrompt?: (value: string) => void; onSendPrompt?: (value: string) => void; compact?: boolean }) {
+export function TaskActionButtons({ state, onFillPrompt, onSendPrompt, compact = false, actionsOnly = false, actionsAllowed = true }: { actionsAllowed?: boolean; actionsOnly?: boolean; state: State; onFillPrompt?: (value: string) => void; onSendPrompt?: (value: string) => void; compact?: boolean }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
-  const enabledButtons = state.buttons.filter((button) => button.enabled !== false)
+  const enabledButtons = state.buttons.filter((button) => button.enabled !== false && (!actionsOnly || button.kind === 'action') && (actionsAllowed || button.kind !== 'action'))
   const renderButton = (button: TaskQuickButton, inSheet: boolean) => {
     const actionRunning = button.kind === 'action' && state.runs.some((run) => run.action_id === button.action_id && isActive(run.status))
     return <QuickPromptButton

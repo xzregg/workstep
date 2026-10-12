@@ -15,6 +15,7 @@ import {
 } from '../utils/a2ui'
 import { isToolEvent } from '../utils/agui.ts'
 import Icon from './Icon'
+import MessageFileChanges, { type MessageFileChangeDetails } from './MessageFileChanges'
 import InteractionPrompt from './InteractionPrompt'
 import PlanChecklist from './PlanChecklist'
 import {
@@ -82,6 +83,8 @@ export interface ChatMessageBubbleProps {
   onA2uiAction?: (action: A2uiClientAction) => void
   /** Engine interaction requests persisted in this message's event stream. */
   events?: InteractionEvent[]
+  eventDetail?: MessageFileChangeDetails
+  onLoadEventDetails?: () => void
   /** Store 累积的 A2UI 载荷，按 messageId 渲染（fence 仅作回退）。 */
   a2uiMessages?: Record<string, unknown>[]
   /** Submit an ACP permission or elicitation response. */
@@ -193,6 +196,8 @@ export default function ChatMessageBubble({
   onA2uiAction,
   interactionsEnabled = true,
   events = [],
+  eventDetail,
+  onLoadEventDetails,
   a2uiMessages,
   onInteractionRespond,
   variant = 'surface',
@@ -315,6 +320,10 @@ export default function ChatMessageBubble({
                 <StreamingStatusText label={t('bubble.thinking')} />
               )
             )
+          )}
+          {role === 'assistant' && !streaming && (
+            <MessageFileChanges events={events} projectId={projectId}
+              eventDetail={eventDetail} onLoadEventDetails={onLoadEventDetails} />
           )}
           {isUser && content && (
             // 预留固定高度的操作行，hover 时显示消息操作，不撑开下方布局。

@@ -2,9 +2,10 @@ import { useEffect, useId, useState } from 'react'
 
 type Option = { id: string; name: string }
 
-export function PermissionPicker({ kind, targetType, label, value, onChange, seed, disabled = false }: {
+export function PermissionPicker({ kind, targetType, label, value, onChange, onNameChange, seed, disabled = false }: {
   kind: 'subject' | 'resource'; targetType: string; label: string; value: string
   onChange: (value: string) => void; seed?: Option; disabled?: boolean
+  onNameChange?: (name: string) => void
 }) {
   const id = useId()
   const [query, setQuery] = useState('')
@@ -34,7 +35,9 @@ export function PermissionPicker({ kind, targetType, label, value, onChange, see
   const visible = seed && !options.some(option => option.id === seed.id) ? [seed, ...options] : options
   return <div className="gateway-permission-picker">
     <label htmlFor={id}>{label}</label>
-    <select id={id} value={value} disabled={disabled || loading} onChange={event => onChange(event.target.value)}>
+    <select id={id} value={value} disabled={disabled || loading} onChange={event => {
+      onChange(event.target.value); onNameChange?.(event.target.selectedOptions[0]?.textContent ?? '')
+    }}>
       <option value="">请选择</option>{visible.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
     </select>
     <form className="gateway-permission-search" onSubmit={event => {

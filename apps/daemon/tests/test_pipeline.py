@@ -2887,3 +2887,155 @@ async def test_cancelled_execution_does_not_consume_artifact_round(tmp_path):
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()
+
+
+@pytest.mark.anyio
+async def test_resumed_normal_starts_only_inject_changed_task_background(tmp_path):
+    from models import Message, Task, TaskStep, init_db
+    from engines.core.registry import ENGINE_REGISTRY
+    from models.fields import utc_now
+
+    db = init_db(str(tmp_path / "context.db"))
+    task = Task.create(id="context-task", title="Original task", description="Nested details\n## Details\nunchanged", cwd=str(tmp_path), created_at=utc_now(), updated_at=utc_now())
+    prompts, sessions = [], []
+    class Recorder(PipelineResumeEngine):
+        SYSTEM_PROMPT_MODE = "system"
+        async def spawn(self, prompt, cwd, **kwargs):
+            prompts.append(prompt)
+            async for event in super().spawn(prompt, cwd, **kwargs):
+                yield event
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["context-test"] = lambda: Recorder(seen=sessions)
+    artifacts = tmp_path / ".workstep" / "artifacts"
+    artifacts.mkdir(parents=True)
+    memory = artifacts.parent / "MEMORY.md"
+    memory.write_text("stable project memory")
+    workspace = tmp_path / ".workstep" / "worktrees" / task.id
+    (workspace / "repo-a").mkdir(parents=True)
+    (workspace / "repo-a" / ".git").write_text("gitdir: elsewhere")
+    config = {"steps": [{"key": "a", "label": "A", "engine": "context-test", "prompt": "Do current work"}]}
+    async def run():
+        # New runner each time proves this survives runtime restart.
+        runner = TaskRunner(EventBus())
+        try:
+            await runner._run_db(lambda: TaskStep.update(status="pending").where(TaskStep.task == task).execute())
+            await runner.run_pipeline(task, config, artifacts)
+            payload = await runner._run_db(lambda: json.loads(Message.select().where(Message.task == task).order_by(Message.sequence.desc()).first().prompt_json))
+            assert prompts[-1] in payload["prompt"]
+            assert payload["input_prompt"] == prompts[-1]
+        finally:
+            await runner.close()
+    try:
+        await run()
+        assert "## Task\nOriginal task" in prompts[0]
+        assert "stable project memory" in prompts[0]
+        assert "Attached repositories: repo-a." in prompts[0]
+        # Upgrade from an old message with only raw input, without rewriting
+        # its saved viewer. The same session can recover the comparison base.
+        def remove_hash_checkpoint():
+            message = Message.select().where(Message.task == task).order_by(Message.sequence.desc()).first()
+            payload = json.loads(message.prompt_json)
+            payload.pop("context_hashes")
+            message.prompt_json = json.dumps(payload)
+            message.save(only=[Message.prompt_json])
+        executor_runner = TaskRunner(EventBus())
+        await executor_runner._run_db(remove_hash_checkpoint)
+        await executor_runner.close()
+        await run()
+        await run()
+        for prompt in prompts[1:]:
+            assert "Original task" not in prompt
+            assert "stable project memory" not in prompt
+            assert "Attached repositories:" not in prompt
+            assert "Do current work" in prompt
+        task.description = "Changed task description"
+        task.save()
+        await run()
+        assert "Changed task description" in prompts[-1]
+        assert "stable project memory" not in prompts[-1]
+        memory.write_text("updated memory")
+        (workspace / "repo-b").mkdir()
+        (workspace / "repo-b" / ".git").write_text("gitdir: elsewhere")
+        await run()
+        assert "updated memory" in prompts[-1]
+        assert "Attached repositories: repo-a, repo-b." in prompts[-1]
+        assert "Changed task description" not in prompts[-1]
+        memory.unlink()
+        await run()
+        assert "project memory was cleared" in prompts[-1].lower()
+        assert "Original task" not in prompts[-1]
+        TaskStep.update(session_id=None).where(TaskStep.task == task).execute()
+        await run()
+        assert "Changed task description" in prompts[-1]
+        assert "Attached repositories: repo-a, repo-b." in prompts[-1]
+        assert sessions[:6] == [None, "sess-1", "sess-1", "sess-1", "sess-1", "sess-1"]
+        assert sessions[-1] is None
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_slow_context_checkpoint_save_keeps_health_responsive(tmp_path, monkeypatch):
+    import threading
+    from httpx import ASGITransport, AsyncClient
+    from main import app
+    from models import Message, Task, init_db
+    from models.fields import utc_now
+    from engines.core.registry import ENGINE_REGISTRY
+
+    db = init_db(str(tmp_path / "slow-context.db"))
+    task = Task.create(id="slow-context", title="Context", cwd=str(tmp_path), created_at=utc_now(), updated_at=utc_now())
+    entered, release = threading.Event(), threading.Event()
+    original_save = Message.save
+    def slow_save(message, *args, **kwargs):
+        payload = json.loads(message.prompt_json or "{}")
+        if message.run_status == "running" and payload.get("context_hashes") and payload.get("prompt"):
+            entered.set()
+            release.wait(3)
+        return original_save(message, *args, **kwargs)
+    monkeypatch.setattr(Message, "save", slow_save)
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["context-canary"] = PipelineResumeEngine
+    runner = TaskRunner(EventBus())
+    running = asyncio.create_task(runner.run_pipeline(
+        task, {"steps": [{"key": "a", "label": "A", "engine": "context-canary", "prompt": "Do work"}]},
+        tmp_path / "artifacts",
+    ))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await asyncio.wait_for(client.get("/api/health"), .3)).status_code == 200
+        assert not running.done()
+    finally:
+        release.set()
+        await running
+        await runner.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+def test_task_changes_reach_followup_and_review_retry_without_other_background(tmp_path):
+    from types import SimpleNamespace
+    from services.prompt import _task_background_parts
+
+    task = SimpleNamespace(title="Task", description="Before", cwd=str(tmp_path), id="task", workflow_id="default", source_dispatch_id=None)
+    artifacts = tmp_path / ".workstep" / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts.parent / "MEMORY.md").write_text("stable memory")
+    hashes = {}
+    _task_background_parts(task, artifacts, separate_instructions=True, context_hashes=hashes)
+    task.description = "After"
+    step = Step(key="a", label="A", prompt="Do work")
+    for build in (
+        lambda checkpoint: assemble_followup_prompt(task, step, artifacts, "continue", context_hashes=checkpoint, previous_context_hashes=hashes, separate_instructions=True),
+        lambda checkpoint: assemble_retry_prompt(task, step, artifacts, {"ports": []}, context_hashes=checkpoint, previous_context_hashes=hashes, separate_instructions=True),
+    ):
+        checkpoint = {}
+        prompt = build(checkpoint)
+        assert "## Updated Task\nTask\nAfter" in prompt
+        assert "stable memory" not in prompt
+        assert checkpoint["Project memory"] == hashes["Project memory"]
+        assert checkpoint["Task"] != hashes["Task"]

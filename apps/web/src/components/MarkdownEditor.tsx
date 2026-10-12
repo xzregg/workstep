@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useEffect, useRef, useState } from 'react'
 import { fsApi } from '../api/client'
 import { useI18n } from '../i18n'
@@ -49,6 +50,8 @@ export default function MarkdownEditor({
   showAttachmentHint = false,
 }: MarkdownEditorProps) {
   const { t } = useI18n()
+  const { can } = useGatewayProjectPermissions(projectId)
+  const canUpload = can('file.upload')
   const [mode, setMode] = useState<'edit' | 'preview'>('edit')
   const [dragActive, setDragActive] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -95,7 +98,7 @@ export default function MarkdownEditor({
   }
 
   const handleAttachment = async (file: File) => {
-    if (!projectId || uploading || disabled) return
+    if (!projectId || uploading || disabled || !canUpload) return
     setUploadError('')
     setUploading(true)
     const marker = `[${t('md.uploading')} ${file.name}]`
@@ -156,7 +159,7 @@ export default function MarkdownEditor({
 
   return (
     <div className="markdown-editor-root">
-      {showAttachmentHint && (
+      {canUpload && showAttachmentHint && (
         <span className="markdown-editor-capability-hint" aria-live="polite">
           {capabilityText}
         </span>
@@ -206,7 +209,7 @@ export default function MarkdownEditor({
         )}
 
         <div className="markdown-editor-actions">
-          <input
+          {canUpload && <input
             ref={fileInputRef}
             type="file"
             hidden
@@ -216,8 +219,8 @@ export default function MarkdownEditor({
               if (file) void handleAttachment(file)
               event.target.value = ''
             }}
-          />
-          <button
+          />}
+          {canUpload && <button
             type="button"
             className="markdown-editor-action"
             disabled={!projectId || disabled || uploading}
@@ -228,7 +231,7 @@ export default function MarkdownEditor({
             {uploading
               ? <span className="task-status-spinner" aria-hidden="true" />
               : <Icon name="paperclip" size={14} strokeWidth={1.8} />}
-          </button>
+          </button>}
           <button
             type="button"
             className="markdown-editor-action"

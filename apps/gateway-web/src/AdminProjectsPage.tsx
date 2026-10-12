@@ -109,7 +109,7 @@ export function AdminProjectsPage() {
       {selected && <GatewayModal title={`${selected.name} · 项目设置`} onClose={() => closeWorkspace(() => setSelected(null))}
         footer={<button type="button" onClick={() => closeWorkspace(() => setSelected(null))}>完成</button>}>
         <p>宿主电脑：{selected.device_name} · {selected.device_online ? '在线' : '离线'}</p>
-        <div className="gateway-project-settings-tabs" role="tablist" aria-label="项目设置">
+        <div className="gateway-project-settings-tabs gateway-admin-tablist" role="tablist" aria-label="项目设置">
           <button type="button" role="tab" id="project-grants-tab"
             aria-controls="project-grants-panel" aria-selected={selectedTab === 'grants'}
             onClick={() => setSelectedTab('grants')}>访问授权</button>

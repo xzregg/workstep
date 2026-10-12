@@ -368,7 +368,10 @@ async def usage_summary(call: GatewayCall,
             result["group_by"] = group_by
             result["groups"] = [{"value": value, **_usage_totals(values)}
                                 for value, *values in groups]
-        return result
+    if group_by in ('user', 'device', 'project', 'provider'):
+        from .usage_labels import label_usage_groups
+        await label_usage_groups(call, entity, conditions, group_by, result['groups'])
+    return result
 
 
 async def usage_reconciliation(call: GatewayCall,

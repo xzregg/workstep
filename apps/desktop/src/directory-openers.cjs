@@ -69,4 +69,35 @@ async function openDirectory(input, manager, shell) {
  }
  return { opened: true, path: directory }
 }
-module.exports = { directoryOpeners, mapSandboxPath, openCommand, openDirectory }
+async function fileAction(input, manager, shell, dialog, window) {
+ if (!input || typeof input.path !== 'string' || !path.isAbsolute(input.path) || input.path.includes('\0')) throw new Error('文件必须是绝对路径')
+ if (!['open', 'reveal', 'save'].includes(input.action)) throw new Error('未知文件操作')
+ const status = await manager.status()
+ const file = await fs.realpath(status.running ? mapSandboxPath(input.path, manager.activeConfig || status.settings) : input.path)
+ if (!(await fs.stat(file)).isFile()) throw new Error('请选择文件')
+ if (input.action === 'reveal') shell.showItemInFolder(file)
+ else if (input.action === 'save') {
+  const options = { defaultPath: path.basename(file) }
+  const result = await (window ? dialog.showSaveDialog(window, options) : dialog.showSaveDialog(options))
+  if (result.canceled || !result.filePath) return { canceled: true }
+  await fs.copyFile(file, result.filePath)
+ } else {
+  const id = input.opener || 'default'
+  if (id === 'default') {
+   const error = await shell.openPath(file)
+   if (error) throw new Error(error)
+  } else {
+   const opener = (await directoryOpeners()).find(item => item.id === id && item.available)
+   if (!opener) throw new Error('宿主机未安装所选应用')
+   if (id === 'file_manager') shell.showItemInFolder(file)
+   else {
+    const app = APPS.find(item => item[0] === id)
+    const target = ['terminal', 'iterm'].includes(id) ? path.dirname(file) : file
+    const command = openCommand(process.platform, id, target, await findCommand(app[3], process.platform))
+    await execute(command[0], command.slice(1), { timeout: 15000, windowsHide: true })
+   }
+  }
+ }
+ return { path: file }
+}
+module.exports = { directoryOpeners, mapSandboxPath, openCommand, openDirectory, fileAction }

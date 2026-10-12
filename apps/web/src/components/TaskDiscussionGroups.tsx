@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { channelBotApi, type ChannelBot, type DiscussionGroup } from '../api/channelBots'
@@ -47,6 +48,8 @@ interface DialogProps extends Props { open: boolean; groups: DiscussionGroup[]; 
 
 function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged, onClose }: DialogProps) {
   const { t } = useI18n()
+  const { can } = useGatewayProjectPermissions(projectId)
+  const canManage = can('task.config')
   const [bots, setBots] = useState<ChannelBot[]>([])
   const [recent, setRecent] = useState<Array<{ group_id: string; group_name?: string; conversation_title?: string }>>([])
   const [botId, setBotId] = useState('')
@@ -65,7 +68,7 @@ function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged
   }
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !canManage) return
     let cancelled = false
     void channelBotApi.list().then((botRows) => {
       if (cancelled) return
@@ -73,19 +76,19 @@ function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged
       setBotId((current) => current || botRows[0]?.id || '')
     }).catch((reason) => { if (!cancelled) setError(String(reason)) })
     return () => { cancelled = true }
-  }, [open])
+  }, [open, canManage])
 
   useEffect(() => {
-    if (!open || !botId) return
+    if (!open || !botId || !canManage) return
     let cancelled = false
     void channelBotApi.recentGroups(botId).then((rows) => {
       if (!cancelled) setRecent(rows)
     }).catch((reason) => { if (!cancelled) setError(String(reason)) })
     return () => { cancelled = true }
-  }, [open, botId])
+  }, [open, botId, canManage])
 
   const bind = async () => {
-    if (!botId || !groupId.trim() || boundGroup) return
+    if (!canManage || !botId || !groupId.trim() || boundGroup) return
     setBusy(true)
     setError('')
     try {
@@ -98,7 +101,7 @@ function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged
   }
 
   const unbind = async () => {
-    if (!removeGroup) return
+    if (!canManage || !removeGroup) return
     setBusy(true)
     try {
       await channelBotApi.unbindGroup(taskId, projectId, removeGroup.bot_id, removeGroup.group_id)
@@ -110,16 +113,17 @@ function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged
 
   return <>
     <ConfirmDialog open={open} title={t('channelBot.discussionGroups')} message={t('channelBot.discussionHint')}
-      confirmText={t('channelBot.bind')} confirmDisabled={!botId || !groupId.trim() || !!boundGroup} loading={busy}
-      onCancel={requestClose} onConfirm={() => void bind()} width={540}>
+      confirmText={t(canManage ? 'channelBot.bind' : 'common.close')} confirmDisabled={canManage && (!botId || !groupId.trim() || !!boundGroup)} loading={busy}
+      onCancel={requestClose} onConfirm={() => canManage ? void bind() : onClose()} width={540}>
       <div className="task-discussion-groups">
         <div className="task-discussion-groups-list">
           {groups.map((group) => <div key={`${group.bot_id}:${group.group_id}`} className="task-discussion-groups-row">
             <span>{bots.find((bot) => bot.id === group.bot_id)?.name || group.bot_id} · {group.group_name || t('channelBot.unknownGroup')} · {group.group_id}</span>
-            <Button variant="ghost" onClick={() => setRemoveGroup(group)}>{t('channelBot.unbind')}</Button>
+            {canManage && <Button variant="ghost" onClick={() => setRemoveGroup(group)}>{t('channelBot.unbind')}</Button>}
           </div>)}
           {!groups.length && <p>{t('channelBot.noGroups')}</p>}
         </div>
+        {canManage && <>
         {!bots.length && <p>{t('channelBot.noBots')}</p>}
         <label>{t('channelBot.robot')}<select value={botId} onChange={(event) => { setBotId(event.target.value); setGroupId(''); setGroupName(''); setRecent([]) }}>
           {bots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
@@ -142,6 +146,7 @@ function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged
         {boundGroup && <p className="task-discussion-groups-error">{t('channelBot.boundTo')} {boundElsewhere && 'project_name' in boundGroup && 'task_title' in boundGroup
           ? `${boundGroup.project_name} · ${boundGroup.task_title}` : t('channelBot.currentTask')}</p>}
         <p>{t('channelBot.groupIdHint')}</p>
+        </>}
         {error && <p className="task-discussion-groups-error" role="alert">{error}</p>}
       </div>
     </ConfirmDialog>

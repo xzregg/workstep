@@ -1,5 +1,6 @@
 """Prompt assembly — builds the full prompt for each pipeline step."""
 
+import hashlib
 import json
 import os
 import re
@@ -104,6 +105,60 @@ def _load_output_type_constraints() -> dict[str, str]:
 OUTPUT_TYPE_CONSTRAINTS: dict[str, str] = _load_output_type_constraints()
 
 
+def _context_digest(value: str) -> str:
+    return hashlib.sha256(value.strip().encode("utf-8")).hexdigest()
+
+
+def legacy_task_context_hashes(prompt: str) -> dict | None:
+    """Recover a baseline only from a full, raw input saved by older versions."""
+    if not isinstance(prompt, str) or "### 正文" in prompt:
+        return None
+    task = _prompt_section(prompt, "Task")
+    if not task:
+        task = "\n".join(value for value in (
+            _prompt_section(prompt, "Task title"), _prompt_section(prompt, "Task description"),
+        ) if value)
+    if not task:
+        return None
+    workspace = _prompt_section(prompt, "Task Git workspace")
+    if "Attached repositories:" in workspace:
+        workspace = "Attached repositories:" + workspace.split("Attached repositories:", 1)[1]
+    return {
+        "Task": _context_digest(task),
+        "Project memory": _context_digest(_prompt_section(prompt, "Project memory")),
+        "Task Git workspace": _context_digest(workspace),
+    }
+
+
+def _task_background_parts(
+    task: Task, artifacts_dir: Path, *, separate_instructions: bool,
+    previous_context_hashes: dict | None = None, context_hashes: dict | None = None,
+) -> list[str]:
+    """Compare owned sections before joining user Markdown; headings may nest."""
+    values = {
+        "Task Git workspace": _task_git_workspace_context(
+            task, artifacts_dir, include_directory=not separate_instructions,
+        ).strip(),
+        "Project memory": _load_project_memory(artifacts_dir) or "",
+        "Task": "\n".join(value for value in (
+            str(task.title or "").strip(), _task_description_for_prompt(task),
+        ) if value),
+    }
+    parts = []
+    for heading, value in values.items():
+        digest = _context_digest(value)
+        if context_hashes is not None:
+            context_hashes[heading] = digest
+        previous = (previous_context_hashes or {}).get(heading)
+        if previous == digest:
+            continue
+        if previous is not None:
+            parts.append(_format_changed_context(heading, value))
+        elif value:
+            parts.append(f"## {heading}\n{value}")
+    return parts
+
+
 def assemble_prompt(
     task: Task,
     step: Step,
@@ -114,6 +169,8 @@ def assemble_prompt(
     input_snapshot: dict | None = None,
     trigger_name: str = "",
     separate_instructions: bool = False,
+    previous_context_hashes: dict | None = None,
+    context_hashes: dict | None = None,
 ) -> str:
     """Assemble the full prompt for a pipeline step.
 
@@ -125,22 +182,10 @@ def assemble_prompt(
     """
     parts = [] if separate_instructions else [SYSTEM_PROMPT]
 
-    workspace_context = _task_git_workspace_context(
-        task, artifacts_dir, include_directory=not separate_instructions,
-    )
-    if workspace_context:
-        parts.append(f"## Task Git workspace\n{workspace_context}")
-
-    memory = _load_project_memory(artifacts_dir)
-    if memory:
-        parts.append(f"## Project memory\n{memory}")
-
-    task_title = str(task.title or "").strip()
-    task_description = _task_description_for_prompt(task)
-    if task_title or task_description:
-        parts.append("## Task\n" + "\n".join(
-            value for value in (task_title, task_description) if value
-        ))
+    parts.extend(_task_background_parts(
+        task, artifacts_dir, separate_instructions=separate_instructions,
+        previous_context_hashes=previous_context_hashes, context_hashes=context_hashes,
+    ))
 
     if task.input_manifest_json:
         try:
@@ -387,6 +432,9 @@ def assemble_followup_prompt(
     artifact_round: int | None = None,
     trigger_name: str = "",
     input_snapshot: dict | None = None,
+    *, separate_instructions: bool = False,
+    previous_context_hashes: dict | None = None,
+    context_hashes: dict | None = None,
 ) -> str:
     """Build a compact prompt for an existing step engine session.
 
@@ -395,6 +443,11 @@ def assemble_followup_prompt(
     output contract that must still be honoured.
     """
     parts = []
+    if context_hashes is not None:
+        parts.extend(_task_background_parts(
+            task, artifacts_dir, separate_instructions=separate_instructions,
+            previous_context_hashes=previous_context_hashes, context_hashes=context_hashes,
+        ))
     if trigger_name:
         parts.append(f"## Triggered by\n{trigger_name}")
     parts.append(f"## User message\n{user_input.strip()}")
@@ -441,6 +494,8 @@ def assemble_retry_prompt(
     artifact_round: int | None = None,
     previous_prompt: str | None = None,
     separate_instructions: bool = False,
+    previous_context_hashes: dict | None = None,
+    context_hashes: dict | None = None,
 ) -> str:
     """Build the incremental contract for a resumed review/feedback revision.
 
@@ -464,7 +519,12 @@ def assemble_retry_prompt(
     )
     if previous_outputs:
         parts.append(previous_outputs)
-    if previous_prompt is not None:
+    if context_hashes is not None:
+        parts.extend(_task_background_parts(
+            task, artifacts_dir, separate_instructions=separate_instructions,
+            previous_context_hashes=previous_context_hashes, context_hashes=context_hashes,
+        ))
+    elif previous_prompt is not None:
         previous_workspace = _prompt_section(previous_prompt, "Task Git workspace")
         current_workspace = _task_git_workspace_context(
             task, artifacts_dir, include_directory=not separate_instructions,

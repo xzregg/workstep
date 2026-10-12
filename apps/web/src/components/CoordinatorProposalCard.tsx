@@ -10,8 +10,10 @@ export function CoordinatorProposalCard({
   taskId,
   projectId,
   onChanged,
+  readOnly = false,
 }: {
   proposal: ActionProposal
+  readOnly?: boolean
   taskId: string
   projectId: string
   onChanged: (proposal: ActionProposal) => void
@@ -172,7 +174,7 @@ export function CoordinatorProposalCard({
       {error && (
         <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>
       )}
-      {(current.status === 'pending' || retryable) && (
+      {!readOnly && (current.status === 'pending' || retryable) && (
         <div style={{ display: 'flex', gap: 8 }}>
           <Button
             variant="primary"

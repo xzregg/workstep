@@ -161,3 +161,77 @@ test('changing public share ignores a late snapshot from the previous token', as
     assert.equal(session.task?.id, 'new')
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })
+
+
+for (const transport of ['socket', 'poll'] as const) {
+  test(`${transport} share refreshes running text, expanded journals and artifacts after connection recovery`, async () => {
+    const { window } = installDomEnvironment()
+    const root = createRoot(document.body.appendChild(document.createElement('div')))
+    const originalSocket = globalThis.WebSocket
+    const originalTimeout = globalThis.setTimeout
+    let timer: (() => void) | undefined
+    let socket: FakeSocket | undefined
+    let revision = 1
+    let historyReads = 0
+    let detailReads = 0
+    class FakeSocket {
+      onopen?: () => void
+      onclose?: (event: { code: number }) => void
+      onmessage?: (event: { data: string }) => void
+      constructor() { socket = this }
+      close() {}
+    }
+    Object.assign(globalThis, { WebSocket: FakeSocket })
+    globalThis.setTimeout = ((callback: () => void, delay: number, ...args: any[]) => {
+      if (delay === 2000 || delay === 500) { timer = callback; return 1 }
+      return originalTimeout(callback, delay, ...args)
+    }) as typeof setTimeout
+    const api = { ...gatewayShareApi,
+      meta: async () => ({ title: 'Share', mode: 'read_only' as const, has_password: false, status: 'active' }),
+      restoreSession: async () => ({ session_token: 'csrf' }),
+      task: async () => ({ id: 'task', title: 'Shared', status: 'running', steps: [] }),
+      history: async () => {
+        historyReads++
+        return { messages: [{ id: 'm', channel: 'coordinator', content: `text-${revision}`, events: [],
+          event_detail: { available: true, loaded: false, last_event_seq: revision } }], limit: 100, offset: 0 }
+      },
+      artifacts: async () => ({ artifacts: [{ id: `artifact-${revision}` }], artifact_directory: '' }),
+      reviews: async () => ({ reviews: [] }),
+      messageEvents: async () => {
+        detailReads++
+        return { events: Array.from({ length: revision }, (_, index) => ({ type: 'TOOL_CALL_START', sequence: index + 1 })), complete: true, next_cursor: null }
+      },
+      buildWsUrl: () => transport === 'socket' ? 'ws://localhost/ws/share' : null,
+    } as unknown as typeof gatewayShareApi
+    let session!: ReturnType<typeof useSharedTaskSession>
+    function Harness() { session = useSharedTaskSession('share', api); return null }
+    const flush = () => act(async () => { await new Promise(resolve => window.setTimeout(resolve, 0)) })
+    try {
+      await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+      await flush()
+      await act(async () => { await session.loadMessageEvents('m') })
+      assert.equal(session.messages[0].events.length, 1)
+      revision = 2
+      if (transport === 'socket') {
+        await act(async () => { socket?.onclose?.({ code: 1006 }) })
+        await act(async () => { timer?.() })
+        await act(async () => { socket?.onopen?.() })
+      } else {
+        await act(async () => { timer?.() })
+      }
+      await flush()
+      assert.equal(historyReads, 2)
+      assert.equal(detailReads, 2)
+      assert.equal(session.messages[0].content, 'text-2')
+      assert.equal(session.messages[0].events.length, 2)
+      assert.equal(session.messages[0].event_detail.loaded, true)
+      assert.equal(session.artifacts[0].id, 'artifact-2')
+      assert.equal(session.wsStatus, 'live')
+    } finally {
+      await act(async () => root.unmount())
+      globalThis.WebSocket = originalSocket
+      globalThis.setTimeout = originalTimeout
+      await window.happyDOM.close()
+    }
+  })
+}

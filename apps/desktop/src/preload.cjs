@@ -1,6 +1,10 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('workstepDesktop', {
+  projects: {
+    pathForFile: (file) => webUtils.getPathForFile(file),
+    resolveDirectory: (path) => ipcRenderer.invoke('workstep:sandbox:droppedDirectory', path),
+  },
   sandbox: process.platform === 'win32' && process.arch === 'ia32' ? undefined : {
     status: () => ipcRenderer.invoke('workstep:sandbox:status'),
     dockerImages: () => ipcRenderer.invoke('workstep:sandbox:dockerImages'),
@@ -21,6 +25,9 @@ contextBridge.exposeInMainWorld('workstepDesktop', {
   directories: {
     openers: () => ipcRenderer.invoke('workstep:sandbox:directoryOpeners'),
     open: (path, opener) => ipcRenderer.invoke('workstep:sandbox:openDirectory', { path, opener }),
+  },
+  files: {
+    action: (path, action, opener) => ipcRenderer.invoke('workstep:sandbox:fileAction', { path, action, opener }),
   },
   notify: (notice) => ipcRenderer.send('workstep:notify', notice),
   updates: {

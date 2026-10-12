@@ -101,12 +101,6 @@ class DeepSeekHarnessEngine(AcpEngineBase):
     def provider_required(cls) -> bool:
         return True
 
-    @classmethod
-    def supports_provider(cls, provider: dict) -> bool:
-        return (
-            super().supports_provider(provider)
-            and str(provider.get("type") or "") == "deepseek"
-        )
     SDK_PACKAGE = "deepseek-harness-sdk==0.1.5rc1"
     DEFAULT_PRESET = "standard"
     # 0.1.0rc7 世代：完整 Cordis 组合（``cordis`` / DSH_CORDIS_CONFIG 环境变量）。
@@ -251,7 +245,6 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         return bool(
             config.get("model")
             and provider
-            and provider.get("type") == "deepseek"
             and DeepSeekHarnessEngine.supports_provider(provider)
             and provider.get("enabled", True)
             and str(provider.get("base_url") or "").strip()
@@ -290,16 +283,16 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         options = tuple(
             EngineConfigOption(str(item["id"]), str(item["name"]))
             for item in config_store.get_providers()
-            if item.get("enabled", True) and item.get("type") == "deepseek"
+            if item.get("enabled", True) and cls.supports_provider(item)
         )
         return [
             EngineConfigField(
                 key="provider_id",
-                label="DeepSeek 供应商",
+                label="供应商",
                 type="select",
-                options=options or (EngineConfigOption("", "暂无已启用的 DeepSeek 供应商"),),
+                options=options or (EngineConfigOption("", "暂无已启用的兼容供应商"),),
                 required=True,
-                help="复用设置 → 供应商中的 DeepSeek API 地址与密钥。",
+                help="复用设置 → 供应商中的 OpenAI Chat Completions 协议地址与密钥，不限制供应商类型。",
             ),
             EngineConfigField(
                 key="max_tokens",
@@ -337,13 +330,14 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         provider_id = str(values.get("provider_id") or "").strip()
         provider = await asyncio.to_thread(config_store.get_provider, provider_id)
         if not provider_id:
-            raise ValueError("请选择 DeepSeek 供应商")
+            raise ValueError("请选择供应商")
         if (
             provider is None
-            or provider.get("type") != "deepseek"
             or not provider.get("enabled", True)
         ):
-            raise ValueError("所选 DeepSeek 供应商不存在或已停用")
+            raise ValueError("所选供应商不存在或已停用")
+        if not self.supports_provider(provider):
+            raise ValueError("供应商协议与引擎不兼容，需要 OpenAI Chat Completions")
         current = await asyncio.to_thread(config_store.get_deepseek_harness_config)
         preset = str(
             values.get("preset", current.get("preset") or self.DEFAULT_PRESET) or ""
@@ -375,7 +369,11 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         provider = await asyncio.to_thread(
             config_store.get_provider, provider_id or config["provider_id"]
         )
-        if provider is None or provider.get("type") != "deepseek":
+        if (
+            provider is None
+            or not provider.get("enabled", True)
+            or not self.supports_provider(provider)
+        ):
             return []
         protocol = self.pick_protocol(provider)
         entry = await asyncio.to_thread(
@@ -782,7 +780,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         ):
             yield InternalEvent(
                 type="error",
-                data={"message": "请先配置可用的 DeepSeek 供应商"},
+                data={"message": "请先配置可用的 OpenAI Chat Completions 供应商"},
             )
             return
         raw_max_tokens = str(config.get("max_tokens") or "").strip()

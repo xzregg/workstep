@@ -349,7 +349,7 @@ export default function AiFlowChat({
 
   return (
     <>
-      <AssistantChatPanel
+      <AssistantChatPanel visibilityPermission="workflow.ai_edit"
         onLoadMessageEvents={loadMessageEvents}
         projectId={projectId}
         title={title ?? t('aiFlow.title')}

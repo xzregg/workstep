@@ -10,11 +10,16 @@ interface ProjectState {
   activeProject: Project | null
   activeWorkflowId: string | null
   loading: boolean
+  loadError: string | null
+  remoteLoadErrors: Record<string, string | undefined>
   canvasDirty: boolean
   /** Local per-project running state, updated incrementally from WS events. */
   projectRunningState: Record<string, boolean>
 
   fetchProjects: () => Promise<void>
+  refreshProjects: () => void
+  fetchRemoteProject: (projectId: string) => Promise<void>
+  applyRemoteProject: (project: Project) => void
   setActiveProject: (p: Project | null) => void
   setActiveWorkflow: (id: string | null) => void
   setCanvasDirty: (d: boolean) => void
@@ -33,21 +38,32 @@ interface ProjectState {
 }
 
 let fetchProjectsInFlight: Promise<void> | null = null
+let pendingProjectRefresh = false
+let remoteRevision = 0
+const remoteSnapshots = new Map<string, { project: Project; revision: number }>()
+const remoteLoads = new Map<string, Promise<void>>()
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   activeProject: null,
   activeWorkflowId: null,
   loading: false,
+  loadError: null,
+  remoteLoadErrors: {},
   canvasDirty: false,
   projectRunningState: {},
 
   fetchProjects: () => {
     if (fetchProjectsInFlight) return fetchProjectsInFlight
-    set({ loading: true })
+    set({ loading: true, loadError: null })
     fetchProjectsInFlight = (async () => {
+      const revision = remoteRevision
       try {
-        const { projects } = await projectApi.list()
+        const response = await projectApi.list()
+        const projects = response.projects.map(project => {
+          const snapshot = remoteSnapshots.get(project.id)
+          return project.type === 'remote' && snapshot && snapshot.revision > revision ? snapshot.project : project
+        })
         set((state) => {
           let activeProject = null
           if (state.activeProject) {
@@ -71,17 +87,68 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           }
           const defaultWorkflow = activeProject?.workflows?.find(w => w.is_default)
             ?? activeProject?.workflows?.[0]
-          return { projects, activeProject, loading: false,
-            ...(boundProjectId && state.activeProject?.id !== boundProjectId
+          return { projects, activeProject, loading: false, loadError: null,
+            ...((boundProjectId && state.activeProject?.id !== boundProjectId)
+              || (!state.activeWorkflowId && activeProject?.type === 'remote' && defaultWorkflow)
               ? { activeWorkflowId: defaultWorkflow?.id ?? null } : {}) }
         })
-      } catch {
-        set({ loading: false })
+      } catch (error) {
+        set({ loading: false, loadError: error instanceof Error ? error.message : zhCNT('layout.projectLoadFailed') })
       } finally {
         fetchProjectsInFlight = null
+        if (pendingProjectRefresh) {
+          pendingProjectRefresh = false
+          void get().fetchProjects()
+        }
       }
     })()
     return fetchProjectsInFlight
+  },
+
+  refreshProjects: () => {
+    if (fetchProjectsInFlight) pendingProjectRefresh = true
+    else void get().fetchProjects()
+  },
+
+  applyRemoteProject: (project) => {
+    const bound = useGatewaySessionStore.getState().session?.host_project_id
+    if (project.type !== 'remote' || (bound && bound !== project.id)) return
+    remoteSnapshots.set(project.id, { project, revision: ++remoteRevision })
+    set(state => {
+      const selected = state.activeProject?.id === project.id
+      const defaultWorkflow = project.workflows?.find(w => w.is_default) ?? project.workflows?.[0]
+      const preserveSteps = state.canvasDirty || (state.activeWorkflowId && defaultWorkflow
+        && state.activeWorkflowId !== defaultWorkflow.id)
+      return {
+        projects: state.projects.map(p => p.id === project.id ? project : p),
+        remoteLoadErrors: { ...state.remoteLoadErrors, [project.id]: undefined },
+        ...(selected ? {
+          activeProject: preserveSteps ? { ...project, steps: state.activeProject!.steps } : project,
+          activeWorkflowId: state.activeWorkflowId ?? defaultWorkflow?.id ?? null,
+        } : {}),
+      }
+    })
+  },
+
+  fetchRemoteProject: (projectId) => {
+    const pending = remoteLoads.get(projectId)
+    if (pending) return pending
+    const revision = remoteRevision
+    set(state => ({ remoteLoadErrors: { ...state.remoteLoadErrors, [projectId]: undefined } }))
+    const loading = (async () => {
+      try {
+        const project = await remoteProjectApi.summary(projectId)
+        if (project.id !== projectId || project.type !== 'remote') throw new Error('远程项目响应与请求不匹配')
+        if ((remoteSnapshots.get(projectId)?.revision ?? 0) <= revision) get().applyRemoteProject(project)
+      } catch (error) {
+        if ((remoteSnapshots.get(projectId)?.revision ?? 0) <= revision) {
+          set(state => ({ remoteLoadErrors: { ...state.remoteLoadErrors,
+            [projectId]: error instanceof Error ? error.message : zhCNT('layout.projectLoadFailed') } }))
+        }
+      } finally { remoteLoads.delete(projectId) }
+    })()
+    remoteLoads.set(projectId, loading)
+    return loading
   },
 
   setActiveProject: (p) => {

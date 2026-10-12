@@ -49,6 +49,7 @@ test('platform settings retries loading and updates registration after step-up',
     calls.push({ url, method: init?.method ?? 'GET' })
     if (url === '/api/admin/platform-settings') {
       if (reads++ === 0) return new Response(null, { status: 503 })
+      if (reads > 2) await new Promise(resolve => setTimeout(resolve, 20))
       return Response.json({ gateway_id: 'gateway-test', public_origin: 'https://gateway.test',
         registration_mode: mode, session_seconds: null, protocol_version: 3,
         data_dir: '/srv/workstep', database: { backend: 'postgresql', location: 'db.internal/app',
@@ -67,12 +68,17 @@ test('platform settings retries loading and updates registration after step-up',
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByText('gateway-test')
   await screen.findByText('不过期（退出或撤销后失效）')
+  assert.equal(screen.getAllByRole('tabpanel').length, 1)
+  assert.equal(screen.queryByRole('button', { name: '修改注册策略' }), null)
+  fireEvent.click(screen.getByRole('tab', { name: '客户端与数据' }))
   assert.match(document.body.textContent ?? '', /db.internal\/app/)
+  fireEvent.click(screen.getByRole('tab', { name: '注册与身份' }))
   fireEvent.click(screen.getByRole('button', { name: '修改注册策略' }))
   fireEvent.change(screen.getByLabelText('注册策略'), { target: { value: 'open_with_approval' } })
   fireEvent.change(screen.getByLabelText('管理员密码'), { target: { value: 'secret-password' } })
   fireEvent.click(screen.getByRole('button', { name: '保存策略' }))
   await screen.findByText(/当前策略：开放注册，管理员审核/)
+  assert.equal(screen.getByRole('tab', { name: '注册与身份' }).getAttribute('aria-selected'), 'true')
   assert.equal(screen.queryByRole('dialog'), null)
   assert.ok(calls.some(call => call.url === '/api/auth/step-up' && call.method === 'POST'))
   assert.ok(calls.some(call => call.url === '/api/admin/registration-policy' && call.method === 'PUT'))
@@ -147,3 +153,24 @@ test('administrator saves a domain with step-up and retains failed edits', async
   assert.equal(origin, 'https://workstep.example.com')
   assert.equal(writes, 2)
 })
+
+ test('organization settings load on first visit and tab switching does not repeat requests', async () => {
+ let sources = 0
+ globalThis.fetch = async input => {
+  const url = String(input)
+  if (url === '/api/admin/platform-settings') return Response.json({ gateway_id: 'test', public_origin: null, registration_mode: 'closed', session_seconds: null, protocol_version: 3, data_dir: '/data', database: { backend: 'sqlite', location: 'db', healthy: true, migration_version: null } })
+  if (url.startsWith('/api/admin/identity-sources')) { sources++; return Response.json({ sources: [], total: 0 }) }
+  return Response.json({ csrf_token: 'csrf', notices: [] })
+ }
+ render(<MemoryRouter><AdminPlatformSettingsPage /></MemoryRouter>)
+ await screen.findByText('test')
+ assert.equal(sources, 0)
+ fireEvent.click(screen.getByRole('tab', { name: '组织同步与扫码登录' }))
+ await screen.findByText('尚未配置企业应用。')
+ assert.equal(sources, 1)
+ fireEvent.click(screen.getByRole('tab', { name: '平台信息' }))
+ assert.equal(screen.queryByRole('button', { name: '添加钉钉应用' }), null)
+ fireEvent.click(screen.getByRole('tab', { name: '组织同步与扫码登录' }))
+ assert.ok(screen.getByRole('button', { name: '添加钉钉应用' }))
+ assert.equal(sources, 1)
+ })

@@ -3,10 +3,12 @@ import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 import { GatewayModal } from './GatewayModal'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { PermissionPicker } from './PermissionPicker'
+import { PermissionSelection } from './PermissionSelection'
 
 export type PermissionDefinition = { id: string; name: string; category: string; scopes: string[]; effects: string[] }
 export type PermissionAssignment = { id: string; subject_type: 'user' | 'group'; subject_id: string; subject_name: string
-  permission: string; scope_type: string; scope_id: string | null; scope_name: string; effect: 'allow' | 'deny'; include_subdepartments?: boolean }
+  permission: string; scope_type: string; scope_id: string | null; scope_name: string; effect: 'allow' | 'deny'; include_subdepartments?: boolean
+  ui_permissions?: { allow: string[]; deny: string[] } | null }
 export const scopeNames: Record<string, string> = { global: '全局', platform: '整个平台', device: '指定设备',
   project: '指定项目', provider: '指定模型供应商', organization: '指定组织', department: '指定部门', device_group: '指定设备组' }
 
@@ -72,34 +74,31 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
         <button type="button" disabled={busy} onClick={() => dirty ? setDiscard(true) : onClose()}>取消</button>
         <button type="button" disabled={busy || !ready} onClick={() => void save()}>{busy ? '处理中…' : '保存权限'}</button>
       </>}>
-      <p>组权限由当前有效成员继承。超管默认拥有全部权限。</p>
+      <p className="gateway-permission-intro">选择授权对象，再勾选权限并设置作用范围。组权限由当前有效成员继承。</p>
+      <section className="gateway-permission-section">
+      <h4 className="gateway-permission-section-title">授权对象</h4>
       {assignment ? <p>授权对象：{subjectType === 'user' ? '用户' : '用户组'} · {assignment.subject_name}</p> : <>
+        <div className="gateway-permission-subject-layout">
+        <div className="gateway-permission-field">
         <label htmlFor="permission-subject-type">对象类型</label>
         <select id="permission-subject-type" value={subjectType} disabled={locked} onChange={event => {
           setSubjectType(event.target.value as 'user' | 'group'); setSubjectId('')
         }}><option value="user">用户</option><option value="group">用户组</option></select>
+        </div>
         <PermissionPicker key={subjectType} kind="subject" targetType={subjectType} label="授权对象" value={subjectId} onChange={setSubjectId} disabled={locked} />
+        </div>
       </>}
-      {!assignment && <fieldset className="gateway-permission-selection" disabled={locked}>
-        <legend>权限（可多选）</legend>
-        <p className="gateway-permission-note">所选权限使用同一个授权对象、作用范围和规则；没有共同作用范围的权限请分次分配。</p>
-        {[...new Set(catalog.map(item => item.category))].map(category => <div key={category}>
-          <h4>{category}</h4>
-          {catalog.filter(item => item.category === category).map(item => <label key={item.id} className="gateway-permission-checkbox">
-            <input type="checkbox" checked={permissions.includes(item.id)}
-              disabled={!permissions.includes(item.id) && definitions.length > 0
-                && !item.scopes.some(value => scopes.includes(value))}
-              onChange={event => {
-                const next = event.target.checked ? [...permissions, item.id] : permissions.filter(id => id !== item.id)
+      </section>
+      {!assignment && <PermissionSelection catalog={catalog} selected={permissions} scopes={scopes} disabled={locked}
+              onChange={next => {
                 const selected = catalog.filter(value => next.includes(value.id))
                 const common = selected[0]?.scopes.filter(value => selected.every(row => row.scopes.includes(value))) ?? []
                 setPermissions(next)
                 if (!common.includes(scope)) { setScope(common[0] ?? ''); setResource('') }
                 if (!selected.every(row => row.effects.includes(effect))) setEffect('allow')
-              }} />{item.name}
-          </label>)}
-        </div>)}
-      </fieldset>}
+              }} />}
+      <section className="gateway-permission-section">
+      <h4 className="gateway-permission-section-title">作用范围与规则</h4>
       {assignment && <><label htmlFor="permission-name">权限</label>
       <select id="permission-name" value={permission} disabled={busy || (!!assignment && !projectAccess)} onChange={event => {
         const next = catalog.find(item => item.id === event.target.value)
@@ -109,23 +108,30 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
         <optgroup key={category} label={category}>{catalog.filter(item => item.category === category
           && (!projectAccess || item.id === 'project.read' || item.id === 'project.edit')).map(item =>
           <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>)}</select></>}
+      <div className="gateway-permission-rule-layout">
+      <div className="gateway-permission-field">
       <label htmlFor="permission-scope">作用范围</label>
       <select id="permission-scope" value={scope} disabled={locked || !!assignment || !definition} onChange={event => {
         setScope(event.target.value); setResource('')
       }}><option value="">请选择范围</option>{scopes.map(value => <option key={value} value={value}>{scopeNames[value]}</option>)}</select>
-      {definition && !noResource && scope && <PermissionPicker key={scope} kind="resource" targetType={scope} label="授权资源" value={resource}
-        onChange={setResource} disabled={locked || !!assignment} seed={resource ? { id: resource,
-          name: assignment?.scope_name ?? preset?.scope_name ?? resource } : undefined} />}
+      </div>
+      <div className="gateway-permission-field">
       <label htmlFor="permission-effect">规则</label>
       <select id="permission-effect" value={effect} disabled={locked || !definition} onChange={event => setEffect(event.target.value as 'allow' | 'deny')}>
         {effects.map(value => <option key={value} value={value}>{value === 'allow' ? '允许' : '禁止'}</option>)}
       </select>
+      </div>
+      </div>
+      {definition && !noResource && scope && <PermissionPicker key={scope} kind="resource" targetType={scope} label="授权资源" value={resource}
+        onChange={setResource} disabled={locked || !!assignment} seed={resource ? { id: resource,
+          name: assignment?.scope_name ?? preset?.scope_name ?? resource } : undefined} />}
       {definition?.effects.includes('deny') && <p className="gateway-permission-note">个人与组规则共同生效；显式禁止优先于允许。</p>}
       {definitions.some(item => item.id === 'device.access') && <p className="gateway-permission-note">此权限开放整台设备的工作区。只开放一个项目时请选择项目查看或编辑权限。</p>}
       {definitions.some(item => item.id === 'project.read' || item.id === 'project.edit' || (scope === 'project' && item.id === 'task.create'))
         && <p className="gateway-permission-note">项目访问与任务创建分别控制。普通用户创建任务需要项目编辑和创建任务两项权限。</p>}
       {scope === 'department' && definitions.some(item => item.id.startsWith('admin.')) && <label className="gateway-permission-checkbox">
         <input type="checkbox" checked={children} disabled={locked} onChange={event => setChildren(event.target.checked)} /> 包含子部门</label>}
+      </section>
       {completed.length > 0 && <p role="status">已保存 {completed.length} 项权限；重试仅保存尚未成功的项。</p>}
       <PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在保存权限…</p>}

@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 import { useI18n } from '../i18n'
 import Icon from './Icon'
@@ -25,7 +26,8 @@ export default function GatewayTaskShareLink({ taskId, projectId, local = false 
   const platformProjectId = local ? projectId : shareSession?.project_id
   const api = useMemo(() => platformProjectId ? createGatewayTaskShareApi(platformProjectId, local) : null, [platformProjectId, local])
   const { t } = useI18n()
-  if (!projectId || (!local && (!shareSession?.share_create || !shareSession.project_id || shareSession.host_project_id !== projectId))) return null
+  const { can } = useGatewayProjectPermissions(projectId || undefined)
+  if ((!can('share.create') && !can('share.manage')) || !projectId || (!local && (!shareSession?.share_create || !shareSession.project_id || shareSession.host_project_id !== projectId))) return null
   return <><Button className="task-detail-share-button" variant="ghost"
     title={t('taskDetail.shareButtonTitle')} aria-label={t('taskDetail.shareButtonTitle')}
     onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); setOpen(true) }}>

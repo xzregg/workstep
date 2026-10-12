@@ -1,5 +1,6 @@
 """One administrative boundary for permission assignments to users and groups."""
 from typing import Literal
+import json
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
@@ -61,9 +62,10 @@ class PermissionInput(BaseModel):
 
 async def permission_catalog(call):
     await _super_admin_read(call)
+    from gateway.services.project_ui_permissions import project_ui_catalog
     return {"permissions": [{"id": key, "name": value[0], "category": value[1],
                               "scopes": list(value[2]), "effects": permission_effects(key)}
-                             for key, value in CATALOG.items()]}
+                             for key, value in CATALOG.items()], **project_ui_catalog()}
 
 
 async def permission_subjects(call, subject_type="user", q="", page=1, page_size=25):
@@ -298,7 +300,8 @@ async def list_permissions(call, subject_type=None, subject_id=None):
             assignments.append({"id": f"project:{row.id}", "subject_type": row.subject_type, "subject_id": row.subject_id,
                 "subject_name": (users if row.subject_type == "user" else groups).get(row.subject_id, "未知对象"),
                 "permission": f"project.{row.access_level}", "scope_type": "project", "scope_id": row.project_id,
-                "scope_name": resources.get(row.project_id, row.project_id), "effect": "allow"})
+                "scope_name": resources.get(row.project_id, row.project_id), "effect": "allow",
+                "ui_permissions": json.loads(row.ui_permissions_json) if row.ui_permissions_json else None})
         for kind, model in (("user", UserDevice), ("group", GroupDevice)):
             for row in (await session.scalars(select(model).where(model.revoked_at.is_(None)))).all():
                 subject = row.user_id if kind == "user" else row.group_id

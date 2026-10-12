@@ -43,7 +43,7 @@ export function AdminUsageEvents({ filters }: { filters: string }) {
 
   return <section className="gateway-project-grants">
     <h3>计量明细</h3>
-    {loading && <p role="status">正在加载用量明细…</p>}
+    {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true"/> 正在加载用量明细…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && events.length === 0 && <p>当前条件下没有计量事件。</p>}

@@ -70,7 +70,9 @@ function GatewayPortalApp() {
         <Route path="/admin/projects" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin', 'org_admin', 'department_admin']}><AdminProjectsPage /></AdminAccessGate>} />
         <Route path="/admin/permissions" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin']}><AdminPermissionsPage /></AdminAccessGate>} />
+          allow={['super_admin']}><AdminPermissionsPage key="resource-permissions" /></AdminAccessGate>} />
+        <Route path="/admin/platform-permissions" element={<AdminAccessGate state={adminAccess}
+          allow={['super_admin']}><AdminPermissionsPage key="platform-permissions" mode="platform" /></AdminAccessGate>} />
         <Route path="/admin/shares" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminSharesPage /></AdminAccessGate>} />
         <Route path="/admin/providers" element={<AdminAccessGate state={adminAccess}

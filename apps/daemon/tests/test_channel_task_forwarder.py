@@ -282,14 +282,18 @@ async def test_proactive_dingtalk_updates_same_card_in_each_group(setup):
     assert not adapter._reply_cards
 
 
-@pytest.mark.parametrize('message_id,channel', [('a','execution'), ('review','review'), ('coord','coordinator')])
-async def test_automatic_task_broadcast_does_not_send_stop_buttons(setup, message_id, channel):
+@pytest.mark.parametrize('platform,message_id,channel', [
+    ('wecom','a','execution'), ('wecom','review','review'), ('wecom','coord','coordinator'),
+    ('dingtalk','coord','coordinator'),
+])
+async def test_wecom_stages_and_automatic_coordinator_broadcast_have_no_stop_buttons(setup, platform, message_id, channel):
     from services.channels.controls import ChannelControls
     forwarder,bus,event,adapter,data,_,_ = setup
     values={}
     store=SimpleNamespace(get=lambda key,default=None:values.get(key,default),set=lambda key,value:values.__setitem__(key,value))
     runtime=SimpleNamespace(cancel_message=AsyncMock(return_value=True))
     adapter.send_card=AsyncMock()
+    adapter.CHANNEL_ID=platform
     adapter.update_card=AsyncMock()
     adapter.supports_streaming_reply=lambda recipient:True
     adapter.update_reply=AsyncMock()

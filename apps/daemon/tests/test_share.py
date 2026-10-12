@@ -176,6 +176,9 @@ def test_shared_task_uses_owner_display_fields_without_private_paths(manager, tm
     ctx = _bind(project)
     try:
         payload = share_service.load_shared_task(task["id"])
+        from services.task_read_model import task_to_dict
+        from models import Task
+        canonical = task_to_dict(Task.get_by_id(task["id"]))
     finally:
         db_proxy.reset(ctx)
 
@@ -193,8 +196,8 @@ def test_shared_task_uses_owner_display_fields_without_private_paths(manager, tm
     ):
         assert key in payload
     assert "cwd" not in payload
-    assert "coordinator_session_id" not in payload
-    assert all("session_id" not in step for step in payload["steps"])
+    assert payload["coordinator_session_id"] == canonical["coordinator_session_id"]
+    assert payload["steps"] == canonical["steps"]
 
 
 @pytest.mark.asyncio
@@ -713,7 +716,7 @@ async def test_slow_shared_file_preview_does_not_block_event_loop(manager, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_shared_history_can_load_its_execution_event_detail(manager, tmp_path, monkeypatch):
+async def test_shared_history_can_load_execution_and_coordinator_event_details(manager, tmp_path, monkeypatch):
     import main
     import time
     import uuid
@@ -758,7 +761,9 @@ async def test_shared_history_can_load_its_execution_event_detail(manager, tmp_p
     assert history.json()["messages"][0]["event_detail"]["available"] is True
     assert detail.status_code == 200
     assert detail.json()["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
-    assert private.status_code == 404
+    assert private.status_code == 200
+    assert private.json()["events"][0]["delta"] == "secret"
+    assert any(item["channel"] == "coordinator" for item in history.json()["messages"])
 
     import services.history as history_service
 
@@ -944,7 +949,7 @@ def test_shared_history_display_is_identical_across_share_modes():
     read_only = share_service._scrub_events(events, mode="read_only")
     interactive = share_service._scrub_events(events, mode="interactive")
 
-    assert [event.get("name") or event["type"] for event in read_only] == ["TEXT_MESSAGE_CHUNK"]
+    assert [event.get("name") or event["type"] for event in read_only] == ["workstep.interaction_request", "workstep.interaction_response", "TEXT_MESSAGE_CHUNK"]
     assert interactive == read_only
 
 
@@ -997,3 +1002,117 @@ async def test_native_remote_project_task_share_on_managed_host(manager, tmp_pat
             assert (await browser.get(public+'/meta')).status_code in (401,403)
     finally:
         await dispatcher.aclose()
+
+
+@pytest.mark.asyncio
+async def test_share_websocket_forwards_coordinator_events_only_for_its_task(monkeypatch):
+    from fastapi import FastAPI, WebSocketDisconnect
+    from streaming import ws as ws_routes
+
+    app = FastAPI()
+    bus = EventBus()
+    from types import SimpleNamespace
+    monkeypatch.setattr(ws_routes, "_main", lambda: SimpleNamespace(event_bus=bus))
+    async def allowed(_ws):
+        return True
+    monkeypatch.setattr(ws_routes, "desktop_websocket_allowed", allowed)
+    monkeypatch.setattr(share_service, "resolve_share_session", lambda _session: {"task_id": "shared"})
+    ws_routes.register_websocket_routes(app)
+    endpoint = next(route.endpoint for route in app.routes if route.path == "/ws/share")
+    received = []
+    ready = asyncio.Event()
+    sent = asyncio.Event()
+    stop = asyncio.Event()
+    class Socket:
+        async def accept(self):
+            ready.set()
+        async def send_json(self, event):
+            received.append(event)
+            if len(received) == 2:
+                sent.set()
+        async def receive_text(self):
+            await stop.wait()
+            raise WebSocketDisconnect()
+    pending = asyncio.create_task(endpoint(Socket(), session="visitor"))
+    try:
+        await asyncio.wait_for(ready.wait(), 1)
+        await bus.publish({"type": "TEXT_MESSAGE_CHUNK", "task_id": "other", "channel": "coordinator", "delta": "other task"})
+        await bus.publish({"type": "CUSTOM", "task_id": "shared", "name": "workstep.engine_state"})
+        await bus.publish({"type": "TEXT_MESSAGE_CHUNK", "task_id": "shared", "channel": "coordinator", "delta": "reply"})
+        await bus.publish({"type": "CUSTOM", "task_id": "shared", "channel": "coordinator", "name": "workstep.action_proposal"})
+        await asyncio.wait_for(sent.wait(), 1)
+        assert [event.get("delta") or event["name"] for event in received] == ["reply", "workstep.action_proposal"]
+    finally:
+        stop.set()
+        await asyncio.wait_for(pending, 1)
+    assert not bus._subscribers
+
+
+@pytest.mark.asyncio
+async def test_shared_running_history_replays_journal_off_loop(manager, tmp_path, monkeypatch):
+    import main
+    import time
+    from models import Message
+    from agent_assistants.event_journal import TurnEventJournal
+    from services import history as history_service
+
+    project, task = _create_task_in_project(manager, tmp_path / "running-share")
+    monkeypatch.setattr(main, "project_manager", manager)
+    journal = TurnEventJournal()
+    ref = journal.start(project.workstep_dir, f"task-{task['id']}", "running-message")
+    journal.record(ref, {"type": "agent_message_chunk", "data": {"content": {"text": "live text"}}})
+    journal.record(ref, {"type": "plan", "data": {"entries": []}})
+    journal.finish(ref)
+    def seed(_project):
+        share = share_service.create_share(task["id"])
+        Message.create(id="running-message", task=task["id"], step_key="do", channel="coordinator", role="assistant",
+                       content="stale", position=1, run_status="running", event_log_path=ref.relative_path,
+                       created_at=int(time.time()))
+        return share
+    share = await manager.run_db(project.id, seed)
+    original_snapshot = history_service._event_journal.snapshot
+    import threading
+    entered = threading.Event()
+    def slow_snapshot(*args, **kwargs):
+        entered.set()
+        time.sleep(0.3)
+        return original_snapshot(*args, **kwargs)
+    monkeypatch.setattr(history_service._event_journal, "snapshot", slow_snapshot)
+    base = f"/api/task-share/public/{share['token']}"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        session = (await client.post(f"{base}/unlock", json={"password": ""})).json()["session_token"]
+        pending = asyncio.create_task(client.get(f"{base}/history", headers={"X-Share-Session": session}))
+        assert await asyncio.to_thread(entered.wait, 1)
+        started = time.monotonic()
+        assert (await client.get("/api/health")).status_code == 200
+        assert time.monotonic() - started < 0.2
+        message = (await pending).json()["messages"][0]
+    assert message["content"] == "live text"
+    assert message["events"][0]["name"] == "workstep.plan"
+    assert message["event_detail"]["last_event_seq"] == 2
+
+
+@pytest.mark.asyncio
+async def test_local_share_history_paginates_all_task_channels(manager, tmp_path, monkeypatch):
+    import main
+    from models import Message
+    project, task = _create_task_in_project(manager, tmp_path / "paged-share")
+    monkeypatch.setattr(main, "project_manager", manager)
+    def seed(_project):
+        share = share_service.create_share(task["id"])
+        for index, channel in enumerate(["execution", "coordinator", "execution"], 1):
+            Message.create(id=f"message-{index}", task=task["id"], step_key="do",
+                           channel=channel, role="assistant", content=f"text-{index}",
+                           sequence=index, position=index, created_at=index)
+        return share
+    share = await manager.run_db(project.id, seed)
+    base = f"/api/task-share/public/{share['token']}"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        session = (await client.post(f"{base}/unlock", json={"password": ""})).json()["session_token"]
+        headers = {"X-Share-Session": session}
+        first = (await client.get(f"{base}/history?limit=2", headers=headers)).json()
+        assert [item["id"] for item in first["messages"]] == ["message-2", "message-3"]
+        assert first["next_offset"] == 2
+        older = (await client.get(f"{base}/history?limit=2&offset=2", headers=headers)).json()
+        assert [item["id"] for item in older["messages"]] == ["message-1"]
+        assert older["next_offset"] is None

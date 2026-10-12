@@ -22,6 +22,21 @@ function summary(id: string, title: string, messageCount = 0) {
   }
 }
 
+test('conversation list failure preserves cache and exposes a per-project error cleared by retry', async () => {
+  const originalFetch = globalThis.fetch
+  useChatListStore.setState({ sessionsByProject: { p1: [summary('s1', 'cached')] }, listLoadingByProject: {} })
+  try {
+    globalThis.fetch = async () => Response.json({ detail: '远程宿主不可用' }, { status: 502 })
+    await useChatListStore.getState().fetchSessions('p1')
+    assert.equal(useChatListStore.getState().listErrorByProject.p1, '远程宿主不可用')
+    assert.equal(useChatListStore.getState().sessionsByProject.p1[0].title, 'cached')
+    globalThis.fetch = async () => Response.json({ sessions: [summary('s2', 'recovered')] })
+    await useChatListStore.getState().fetchSessions('p1')
+    assert.equal(useChatListStore.getState().listErrorByProject.p1, undefined)
+    assert.equal(useChatListStore.getState().sessionsByProject.p1[0].title, 'recovered')
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('sidebar running state falls back to persisted list state until a live event arrives', () => {
   const running = { ...summary('s1', '执行中'), running: true }
   assert.deepEqual(mergeChatSessionRunningState([running], {}), { s1: true })

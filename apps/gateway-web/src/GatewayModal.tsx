@@ -1,19 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ReactNode, PointerEvent } from 'react'
+import { useGatewayModal } from './useGatewayModal'
 
 export function GatewayModal({ title, children, footer, onClose, className = '' }: {
  title: string; children: ReactNode; footer: ReactNode; onClose: () => void; className?: string
 }) {
- const dialog = useRef<HTMLDialogElement>(null)
+ const dialog = useGatewayModal()
  const [size, setSize] = useState<{width:number;height:number} | null>(null)
  const drag = useRef<{x:number;y:number;width:number;height:number;edge:string} | null>(null)
- useEffect(() => {
-  const node = dialog.current
-  const focus = document.activeElement as HTMLElement | null
-  if (node?.showModal) node.showModal()
-  else node?.setAttribute('open','')
-  return () => { node?.close?.(); focus?.focus() }
- }, [])
  function start(event: PointerEvent<HTMLSpanElement>, edge: string) {
   const bounds = dialog.current!.getBoundingClientRect()
   drag.current = { x:event.clientX, y:event.clientY, width:bounds.width, height:bounds.height, edge }

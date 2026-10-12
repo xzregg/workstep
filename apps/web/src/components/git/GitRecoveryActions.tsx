@@ -5,7 +5,7 @@ import { useGitStore } from '../../stores/gitStore'
 import Button from '../Button'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
-import { useGitApi } from './GitApiContext'
+import { useGitApi, useGitActionAllowed } from './GitApiContext'
 import { usePanelGitWrites } from './gitPanelWrites'
 
 export default function GitRecoveryActions({ status, disabled, request, onCloseRequest, onRefresh }: {
@@ -16,6 +16,7 @@ export default function GitRecoveryActions({ status, disabled, request, onCloseR
   onRefresh: () => Promise<void>
 }) {
   const gitApi = useGitApi()
+  const can = useGitActionAllowed()
   const writes = usePanelGitWrites()
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
@@ -74,7 +75,7 @@ export default function GitRecoveryActions({ status, disabled, request, onCloseR
   }
 
   async function pushRecoveredTarget() {
-    if (!pushTarget || busy || writes.busy) return
+    if (!can('pushBranch') || !pushTarget || busy || writes.busy) return
     setBusy(true)
     try {
       await writes.run(async () => {
@@ -91,7 +92,7 @@ export default function GitRecoveryActions({ status, disabled, request, onCloseR
 
   return <>
     <Button size="sm" disabled={disabled || writes.busy || !status.branch || !status.head} onClick={() => void show()}>{t('git.recoveryButton')}</Button>
-    {notice && <span role="status" className="git-remote-toast git-remote-toast--success">{notice}{pushTarget && <Button size="sm" loading={busy} disabled={writes.busy} onClick={() => void pushRecoveredTarget()}>{t('git.mergePushTarget', { branch: pushTarget.branch })}</Button>}<Button variant="icon" aria-label={t('git.close')} onClick={() => { setNotice(''); setPushTarget(null) }}><Icon name="x" size={13} /></Button></span>}
+    {notice && <span role="status" className="git-remote-toast git-remote-toast--success">{notice}{can('pushBranch') && pushTarget && <Button size="sm" loading={busy} disabled={writes.busy} onClick={() => void pushRecoveredTarget()}>{t('git.mergePushTarget', { branch: pushTarget.branch })}</Button>}<Button variant="icon" aria-label={t('git.close')} onClick={() => { setNotice(''); setPushTarget(null) }}><Icon name="x" size={13} /></Button></span>}
     <ConfirmDialog open={open} title={t('git.recoveryTitle')} message={preview ? t('git.recoveryPreviewHint', { branch: preview.request.target, head: preview.head.slice(0, 8) }) : t('git.recoveryChooseHint')} confirmText={t('git.recoveryApply')} loading={busy} confirmDisabled={!preview || busy || writes.busy} onConfirm={() => void apply()} onCancel={close} width={600}>
       {busy && <p><Icon name="loader-circle" className="git-spin" size={14} />{t('git.loading')}</p>}
       {error && <p className="git-error" role="alert">{error}</p>}

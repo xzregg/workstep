@@ -741,6 +741,7 @@ public final class MainActivity extends Activity {
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)
                 && !"mailto".equalsIgnoreCase(scheme) && !"tel".equalsIgnoreCase(scheme)) return;
         try {
+            CrashReports.log(this, "网页主进程", "转系统浏览器；域名=" + uri.getHost(), null);
             startActivity(new Intent(Intent.ACTION_VIEW, uri));
         } catch (Exception error) {
             Toast.makeText(this, "无法打开外部链接", Toast.LENGTH_SHORT).show();

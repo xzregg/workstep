@@ -7,14 +7,17 @@ import App from '../src/App'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 import { useProjectStore } from '../src/stores/projectStore'
+import { useTaskStore } from '../src/stores/taskStore'
 
-test('the real WorkStep app opens the bound task workspace and subscribes within that project', async () => {
+for (const creator of [false, true]) test(creator ? 'task creator sees submission but no workflow, Git, file-write or project-chat entries' : 'the real WorkStep app opens the bound task workspace and subscribes within that project', async () => {
   const { window } = installDomEnvironment()
   window.happyDOM.setURL('http://d-device-1.localhost:8700/')
   useLocaleStore.setState({ locale: 'zh-CN' })
   const oldFetch = globalThis.fetch
   const oldSocket = globalThis.WebSocket
   const calls: string[] = []
+  const creates: Record<string, unknown>[] = []
+  const taskState = useTaskStore.getState()
   const subscriptions: { project_id?: string }[] = []
   class Socket {
     static OPEN = 1
@@ -30,12 +33,20 @@ test('the real WorkStep app opens the bound task workspace and subscribes within
     close() { this.readyState = 3; this.onclose?.() }
   }
   Object.assign(globalThis, { WebSocket: Socket, ResizeObserver: window.ResizeObserver })
-  globalThis.fetch = async input => {
+  globalThis.fetch = async (input, init) => {
     const path = String(input)
     calls.push(path)
+    if (path.startsWith('/api/task/create?project_id=host-1')) {
+      assert.equal(init?.method, 'POST')
+      const body = JSON.parse(String(init?.body))
+      creates.push(body)
+      return Response.json({ id: 'created-task', title: body.title, status: 'ready', steps: [],
+        created_at: '2026-10-12T00:00:00Z', updated_at: '2026-10-12T00:00:00Z', description: '' })
+    }
     if (path === '/api/remote/session') return Response.json({
       device_id: 'device-1', device_name: 'PC', username: 'Alice', gateway_url: 'http://localhost:8700/devices',
-      project_id: 'platform-1', host_project_id: 'host-1', access_level: 'read', task_create: false,
+      project_id: 'platform-1', host_project_id: 'host-1', access_level: creator ? 'edit' : 'read', task_create: creator,
+      permissions: creator ? ['task.read', 'workflow.read', 'task.create'] : undefined,
     })
     if (path === '/api/project/host-1/summary') return Response.json({
       id: 'host-1', name: 'Visible', steps: { steps: [], connections: [] },
@@ -60,8 +71,52 @@ test('the real WorkStep app opens the bound task workspace and subscribes within
     assert.equal(calls.filter(path => path === '/api/project/host-1/summary').length, 1)
     assert.ok(subscriptions.some(subscription => subscription.project_id === 'host-1'))
     assert.equal(element.querySelector('.mobile-task-new-button'), null)
-    assert.equal(element.querySelector('.task-board-lane-add'), null)
+    if (!creator) assert.equal(element.querySelector('.task-board-lane-add'), null)
     assert.equal([...element.querySelectorAll('button')].some(button => button.textContent?.trim() === '新建任务'), false)
+    if (creator) {
+      const buttons = [...element.querySelectorAll('button')]
+      for (const label of ['步骤编辑', '新建对话', '添加流程', '流程钩子', 'Git', '设置']) {
+        assert.equal(buttons.some(button => button.textContent?.trim() === label), false, label)
+      }
+      assert.equal(element.querySelector('.layout-sidebar-session-label'), null)
+      const create = buttons.find(button => button.textContent?.trim() === '新建')
+      assert.ok(create)
+      await act(async () => create.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+      assert.ok(element.querySelector('.task-create-panel'))
+      assert.equal(element.querySelector('.task-create-ai-button'), null)
+      assert.equal(element.querySelector('.task-create-review'), null)
+      assert.equal(element.querySelector('input[value="immediate"]'), null)
+      assert.equal(element.querySelector('input[value="scheduled"]'), null)
+      assert.equal(element.querySelector('.markdown-editor-action[aria-label="上传附件"]'), null)
+      const title = element.querySelector<HTMLInputElement>('#new-task-title')!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(title, '权限验证任务')
+        title.dispatchEvent(new window.Event('input', { bubbles: true }))
+      })
+      const submit = element.querySelector<HTMLButtonElement>('.task-create-primary')!
+      assert.equal(submit.disabled, false)
+      await act(async () => submit.click())
+      assert.equal(creates.length, 1)
+      assert.equal(creates[0].title, '权限验证任务')
+      assert.equal(creates[0].auto_start, false)
+      assert.equal(creates[0].scheduled_start_at, null)
+      assert.equal(creates[0].review_overrides, null)
+      assert.equal(element.querySelector('.task-create-panel'), null)
+      assert.ok(useTaskStore.getState().tasks.some(task => task.id === 'created-task'))
+      // Manually entered URLs cannot mount denied features or request their data.
+      for (const path of ['/chat?project=Visible', '/git?project_id=host-1', '/schedules?project=Visible',
+        '/statistics?project=Visible', '/file-preview?project_id=host-1&path=README.md']) {
+        const requestCount = calls.length
+        await act(async () => {
+          window.history.pushState({}, '', path)
+          window.dispatchEvent(new window.PopStateEvent('popstate'))
+        })
+        assert.ok(element.querySelector('.project-permission-unavailable'), path)
+        assert.equal(element.querySelector('.assistant-chat-panel'), null)
+        assert.equal(calls.length, requestCount, `unavailable route must not load data: ${path}`)
+      }
+    }
+
   } finally {
     await act(async () => root.unmount())
     element.remove()
@@ -69,6 +124,7 @@ test('the real WorkStep app opens the bound task workspace and subscribes within
     globalThis.WebSocket = oldSocket
     useGatewaySessionStore.setState({ session: null, error: '', loading: false })
     useProjectStore.setState({ projects: [], activeProject: null, activeWorkflowId: null })
+    useTaskStore.setState(taskState)
     await window.happyDOM.close()
   }
 })

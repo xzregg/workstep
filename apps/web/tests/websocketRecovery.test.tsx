@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { flushWsSubscriptionNow, useWebSocket } from '../src/hooks/useWebSocket'
+import { flushWsSubscriptionNow, useWebSocket, useWsSubscriptionStore } from '../src/hooks/useWebSocket'
 import { useProjectStore } from '../src/stores/projectStore'
 import { useTaskStore } from '../src/stores/taskStore'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
@@ -24,6 +24,44 @@ class Socket {
   open() { this.readyState = 1; this.onopen?.() }
   receive(value: object) { this.onmessage?.({ data: JSON.stringify(value) }) }
 }
+
+test('remote metadata subscription merges snapshots with no catalog or single-project HTTP refresh', async (context) => {
+  const { window } = installDomEnvironment()
+  const originalSocket = globalThis.WebSocket
+  const originalState = useProjectStore.getState()
+  const originalSubscription = useWsSubscriptionStore.getState()
+  const remote = { id: 'remote:metadata', name: 'Remote', type: 'remote' as const,
+    path: '', steps: {}, workflows: [], connection_status: 'connected' as const }
+  let catalogCalls = 0
+  let snapshotCalls = 0
+  useProjectStore.setState({ projects: [remote], activeProject: remote, activeWorkflowId: null,
+    fetchProjects: async () => { catalogCalls++ }, fetchRemoteProject: async () => { snapshotCalls++ } })
+  useWsSubscriptionStore.setState({ remoteProjectIds: [remote.id] })
+  globalThis.WebSocket = Socket as never
+  Socket.instances = []
+  context.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  function Harness() { useWebSocket(); return null }
+  try {
+    await act(async () => root.render(<Harness />))
+    const socket = Socket.instances[0]
+    await act(async () => socket.open())
+    assert.deepEqual(socket.sent[0].remote_project_ids, [remote.id])
+    await act(async () => socket.receive({ type: 'CUSTOM', name: 'workstep.remote_project_status', project_id: remote.id,
+      value: { project_id: remote.id, status: 'updated', project: { ...remote,
+        workflows: [{ id: 'flow', name: 'Updated flow', is_default: true, nodeCount: 1 }] } } }))
+    assert.equal(useProjectStore.getState().activeProject?.workflows[0].id, 'flow')
+    assert.equal(catalogCalls, 0)
+    assert.equal(snapshotCalls, 0)
+  } finally {
+    await act(async () => root.unmount())
+    context.mock.timers.reset()
+    globalThis.WebSocket = originalSocket
+    useProjectStore.setState(originalState)
+    useWsSubscriptionStore.setState(originalSubscription)
+    await window.happyDOM.close()
+  }
+})
 
 test('foreground recovery replaces stale sockets, restores subscriptions and refreshes data', async (context) => {
   const { window } = installDomEnvironment()

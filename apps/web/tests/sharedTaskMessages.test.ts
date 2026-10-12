@@ -54,3 +54,46 @@ test('shared interaction events attach to the existing message without changing 
   assert.deepEqual(merged[1].events, details)
   assert.equal(merged[1].event_detail.loaded, true)
 })
+
+
+test('shared AG-UI lifecycle retains commentary, custom process events, usage and terminal snapshots', () => {
+  let messages = applySharedMessageEvent([], { type: 'TEXT_MESSAGE_START', messageId: 'm', channel: 'coordinator', role: 'assistant', engine: 'codex', content: '', created_at: 'start' })
+  assert.equal(messages[0]?.channel, 'coordinator')
+  messages = applySharedMessageEvent(messages, { type: 'TEXT_MESSAGE_CHUNK', messageId: 'm', phase: 'commentary', delta: 'working' })
+  assert.equal(messages[0].content, '')
+  assert.equal(messages[0].events[0].delta, 'working')
+  messages = applySharedMessageEvent(messages, { type: 'CUSTOM', name: 'workstep.plan', messageId: 'm', value: { entries: [] } })
+  assert.equal(messages[0].events[1].name, 'workstep.plan')
+  messages = applySharedMessageEvent(messages, { type: 'CUSTOM', name: 'workstep.usage', messageId: 'm', value: { input_tokens: 10 } })
+  assert.equal(messages[0].usage.input_tokens, 10)
+  messages = applySharedMessageEvent(messages, { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', content: 'final' })
+  messages = applySharedMessageEvent(messages, { type: 'TEXT_MESSAGE_END', messageId: 'm', status: 'succeeded', content: 'complete', ended_at: 'end' })
+  assert.equal(messages[0].content, 'complete')
+  assert.equal(messages[0].run_status, 'succeeded')
+  assert.equal(messages[0].ended_at, 'end')
+})
+
+test('run start and first tool create a message without prematurely ending it', () => {
+  const started = applySharedMessageEvent([], { type: 'RUN_STARTED', messageId: 'm', status: 'running' })
+  assert.equal(started[0]?.ended_at, null)
+  const tool = applySharedMessageEvent([], { type: 'TOOL_CALL_START', messageId: 't', name: 'shell' })
+  assert.equal(tool[0]?.events.length, 1)
+})
+
+test('changed journal summaries invalidate expanded details so polling can reload them', () => {
+  const previous = [{ id: 'm', events: [{ type: 'TOOL_CALL_START' }], event_detail: { available: true, loaded: true, last_event_seq: 1 } }]
+  const merged = mergeSharedHistorySnapshot(previous, [{ id: 'm', events: [], event_detail: { available: true, loaded: false, last_event_seq: 2 } }])
+  assert.equal(merged[0].event_detail.loaded, false)
+  assert.equal(merged[0].event_detail.last_event_seq, 2)
+  assert.equal(merged[0].events.length, 1)
+})
+
+
+test('expanded complete share timelines are not truncated by subsequent live events', () => {
+  const events = Array.from({ length: 2001 }, (_, sequence) => ({ type: 'TOOL_CALL_START', sequence }))
+  const history = capSharedHistoryEvents({ id: 'm', events, event_detail: { loaded: true } })
+  assert.equal(history.events.length, 2001)
+  const updated = applySharedMessageEvent([history], { type: 'CUSTOM', name: 'workstep.plan', messageId: 'm' })
+  assert.equal(updated[0].events.length, 2002)
+  assert.equal(updated[0].events[0].sequence, 0)
+})

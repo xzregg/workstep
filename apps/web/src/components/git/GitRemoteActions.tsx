@@ -44,7 +44,7 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
   }
 
   async function open(action: 'pull' | 'push') {
-    if (blocked || busy) return
+    if (!can(action) || blocked || busy) return
     setMode(action); setLoading(true); setError(''); setNotice(null)
     try { applyInventory(await gitApi.remotes(status.id), action) }
     catch (e) { setError(e instanceof Error ? e.message : String(e)) }
@@ -92,8 +92,8 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
   const selected = inventory?.remotes.find(item => item.name === remote)
   const route = mode === 'push' ? `${status.branch} → ${remote || '—'}/${targetBranch || '—'}` : `${remote || '—'}/${targetBranch || '—'} → ${status.branch}`
   return <span className="git-remote-actions" ref={root}>
-    <Button size="sm" title={blocked || t('git.pullHint')} disabled={!!blocked || !!busy || writes.busy} loading={busy === 'pull'} aria-expanded={mode === 'pull'} onClick={() => void open('pull')}>{busy === 'pull' ? t('git.pulling') : t('git.pullButton')}<Icon name="chevron-down" size={12} /></Button>
-    <Button size="sm" title={blocked || t('git.pushButton')} disabled={!!blocked || !!busy || writes.busy} loading={busy === 'push'} aria-expanded={mode === 'push'} onClick={() => void open('push')}>{busy === 'push' ? t('git.pushing') : t('git.pushButton')}<Icon name="chevron-down" size={12} /></Button>
+    {can('pull') && <Button size="sm" title={blocked || t('git.pullHint')} disabled={!!blocked || !!busy || writes.busy} loading={busy === 'pull'} aria-expanded={mode === 'pull'} onClick={() => void open('pull')}>{busy === 'pull' ? t('git.pulling') : t('git.pullButton')}<Icon name="chevron-down" size={12} /></Button>}
+    {can('push') && <Button size="sm" title={blocked || t('git.pushButton')} disabled={!!blocked || !!busy || writes.busy} loading={busy === 'push'} aria-expanded={mode === 'push'} onClick={() => void open('push')}>{busy === 'push' ? t('git.pushing') : t('git.pushButton')}<Icon name="chevron-down" size={12} /></Button>}
     {mode && <span className="git-remote-panel" role="dialog" aria-label={mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}>
       <span className="git-remote-panel__heading"><span><strong>{mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}</strong><small>{mode === 'push' ? t('git.pushDescription') : t('git.pullDescription')}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setMode(null)}><Icon name="x" size={14} /></Button></span>
       {loading && !inventory ? <span className="git-remote-loading"><Icon name="loader-circle" className="git-spin" size={14} />{t('git.remoteLoading')}</span> : <>

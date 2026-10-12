@@ -119,6 +119,19 @@ def test_engine_protocol_declarations_are_adapter_owned():
     assert QoderSDKEngine.supported_provider_protocols() == set()
 
 
+@pytest.mark.parametrize("engine_class", [
+    ClaudeCodeEngine, ClaudeAgentSDKEngine, CodexEngine, CodexSDKEngine,
+    DeepSeekHarnessEngine, PydanticAIEngine,
+])
+@pytest.mark.parametrize("type_id", ["deepseek", "openai", "anthropic", "custom", "moonshot", "ollama"])
+@pytest.mark.parametrize("protocol", ["anthropic_messages", "openai_responses", "openai_chat_completions"])
+def test_engine_compatibility_depends_on_protocol_not_provider_type(engine_class, type_id, protocol):
+    provider = _provider("labeled-provider", protocol, type_id=type_id)
+    assert engine_class.supports_provider(provider) == (
+        protocol in engine_class.supported_provider_protocols()
+    )
+
+
 def test_pydantic_ai_builds_protocol_specific_openai_models():
     anthropic = PydanticAIEngine.build_model(
         provider=_provider("anthropic", "anthropic_messages"),
