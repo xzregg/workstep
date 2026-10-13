@@ -70,5 +70,9 @@ def init_db(db_path: str) -> pw.SqliteDatabase:
     })
     db_proxy.initialize(db)
     db.connect(reuse_if_open=True)
-    migrate_database(db)
+    try:
+        migrate_database(db)
+    except BaseException:
+        db.close()
+        raise
     return db

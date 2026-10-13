@@ -32,13 +32,17 @@ test('failed project loads never schedule retries or request on network recovery
   globalThis.fetch = async input => {
     const url = String(input)
     if (url.includes('/project/list')) return Response.json({ projects: [remote] })
-    if (url.includes('/remote-project/')) { snapshots++; return Response.json({ ...remote, connection_status: 'connected' }) }
+    if (url.includes('/remote-project/')) {
+      snapshots++
+      return available ? Response.json({ ...remote, connection_status: 'connected' }) : Response.json({ detail: 'offline' }, { status: 502 })
+    }
     sessions++
     return available ? Response.json({ sessions: [] }) : Response.json({ detail: 'offline' }, { status: 502 })
   }
   try {
     await act(async () => root.render(<Harness ids={remote.id} />))
-    assert.equal(sessions, 1)
+    assert.equal(sessions, 0)
+    assert.equal(snapshots, 1)
     assert.equal(timers, 0)
     available = true
     await act(async () => {
@@ -46,37 +50,37 @@ test('failed project loads never schedule retries or request on network recovery
       window.dispatchEvent(new window.Event('workstep:reconnected'))
       document.dispatchEvent(new window.Event('visibilitychange'))
     })
-    assert.equal(sessions, 1)
-    await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
-    assert.equal(sessions, 2)
+    assert.equal(sessions, 0)
     assert.equal(snapshots, 1)
+    await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
+    assert.equal(sessions, 0, 'selecting a project must not request conversations')
+    assert.equal(snapshots, 2)
     assert.equal(timers, 0)
   } finally {
     await act(async () => root.unmount()); globalThis.fetch = originalFetch; await window.happyDOM.close()
   }
 })
 
-test('switching away prevents an old request from triggering a remote snapshot', async () => {
+test('selecting and reselecting a local project never loads conversations', async () => {
   const { window } = installDomEnvironment()
   const originalFetch = globalThis.fetch
   const root = createRoot(document.body.appendChild(document.createElement('div')))
-  const remote = { id: 'remote:old', name: 'Old', path: '', type: 'remote' as const, steps: {}, workflows: [] }
+  const remote = { id: 'local', name: 'Local', path: '/tmp/local', steps: {}, workflows: [] }
   useGatewaySessionStore.setState({ session: null })
   useProjectStore.setState({ projects: [remote], activeProject: remote, loadError: null, remoteLoadErrors: {} })
   useChatListStore.setState({ sessionsByProject: {}, listErrorByProject: {}, listLoadingByProject: {} })
-  let finish!: (response: Response) => void
   let snapshots = 0
   globalThis.fetch = async input => {
     const url = String(input)
     if (url.includes('/project/list')) return Response.json({ projects: [remote] })
-    if (url.includes('chat-sessions')) return new Promise<Response>(resolve => { finish = resolve })
     snapshots++
     return Response.json(remote)
   }
   try {
     await act(async () => root.render(<Harness ids={remote.id} />))
+    await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
     await act(async () => root.render(<Harness ids="" />))
-    await act(async () => { finish(Response.json({ sessions: [] })); await new Promise(resolve => setTimeout(resolve, 0)) })
+    await act(async () => root.render(<Harness ids={remote.id} />))
     assert.equal(snapshots, 0)
   } finally {
     await act(async () => root.unmount()); globalThis.fetch = originalFetch; await window.happyDOM.close()

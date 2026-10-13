@@ -48,10 +48,10 @@ function GatewayPortalApp() {
   const hasAdminAccess = adminAccess.status === 'ready' && !!adminAccess.access?.roles.length
   return (
     <PasswordConfirmationRequired.Provider value={adminAccess.access?.password_confirmation_required !== false}><main className={location.pathname === '/' ? 'gateway-workspace-portal' : undefined}>
-      {!location.pathname.startsWith('/admin') && !deviceAuthentication && <PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />}
+      {location.pathname !== '/' && !location.pathname.startsWith('/admin') && !deviceAuthentication && <PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />}
       <AdminPortalRegion admin={location.pathname.startsWith('/admin')} roles={adminAccess.access?.roles ?? []}>
       <Routes>
-        <Route path="/" element={<ProjectsPage />} />
+        <Route path="/" element={<ProjectsPage autoEnter portalHeader={<PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />} />} />
         <Route path="/tasks" element={<LegacyCompletionDestinationPage />} />
         <Route path="/chat" element={<LegacyCompletionDestinationPage />} />
         <Route path="/groups" element={<GroupSkillsPage />} />

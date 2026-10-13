@@ -156,11 +156,13 @@ class ProjectContext:
 
     project: Project
     _token: object | None = field(default=None, init=False, repr=False)
+    _owns_connection: bool = field(default=False, init=False, repr=False)
 
     def __enter__(self) -> Project:
         if self._token is not None:
             raise RuntimeError("ProjectContext is already active")
-        if self.project.db.is_closed():
+        self._owns_connection = self.project.db.is_closed()
+        if self._owns_connection:
             self.project.db.connect(reuse_if_open=True)
         from models import db_proxy
         self._token = db_proxy.activate(self.project.db)
@@ -170,7 +172,12 @@ class ProjectContext:
         from models import db_proxy
         token, self._token = self._token, None
         if token is not None:
-            db_proxy.reset(token)
+            try:
+                if self._owns_connection:
+                    self.project.db.close()
+            finally:
+                self._owns_connection = False
+                db_proxy.reset(token)
 
     async def __aenter__(self) -> Project:
         raise RuntimeError("Async database activation is unsafe; use project_manager.run_db")
@@ -183,7 +190,8 @@ class ProjectManager:
     """Manages multiple project workspaces.
 
     Each project has its own .workstep/ directory with workstep.db.
-    The manager holds open DB connections for all registered projects.
+    Dedicated database workers reuse one connection per project; temporary
+    project contexts close the connections they open.
     """
 
     def __init__(self):
@@ -275,21 +283,14 @@ class ProjectManager:
         database to probe for the task row. Returns ``None`` if no
         registered project owns the task.
         """
-        from models import db_proxy, Task
+        from models import Task
         for proj in self._projects.values():
-            if proj.db.is_closed():
-                try:
-                    proj.db.connect(reuse_if_open=True)
-                except Exception:
-                    continue
-            token = db_proxy.activate(proj.db)
             try:
-                Task.get_by_id(task_id)
-                return proj
+                with ProjectContext(proj):
+                    Task.get_by_id(task_id)
+                    return proj
             except Task.DoesNotExist:
                 continue
-            finally:
-                db_proxy.reset(token)
         return None
 
     async def find_project_for_task_async(self, task_id: str) -> "Project | None":
@@ -445,6 +446,7 @@ class ProjectManager:
         # Initialize SQLite DB
         db_path = ws_dir / "workstep.db"
         db = init_db(str(db_path))
+        db.close()
 
         project = Project(path=path, db=db, steps={}, name=name or path.name, id=project_id, follow_project=follow_project)
         self._projects[path_str] = project
@@ -592,6 +594,7 @@ class ProjectManager:
             raise ValueError(f"No workstep.db at {db_path}")
 
         db = init_db(str(db_path))
+        db.close()
         project = Project(path=path, db=db, steps={}, name=name or path.name, id=project_id or str(uuid.uuid4()), follow_project=identity.get("follow_project", True))
         self._projects[path_str] = project
 

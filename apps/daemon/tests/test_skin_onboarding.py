@@ -25,9 +25,13 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     assert "workstep-cli" in result["prompt"]
     assert "custom-skin.md" in result["prompt"]
     assert result["workspace_path"] in result["prompt"]
-    assert "无需重启" in result["prompt"]
+    assert "No restart is required" in result["prompt"]
+    assert not any('\u4e00' <= char <= '\u9fff' for char in result['prompt'])
+    assert (tmp_path / 'skin-design.md').read_text(encoding='utf-8') == result['prompt']
+    assert f"Suggested skin package directory: {tmp_path / 'skin'}" in result['prompt']
+    assert f"Suggested language package directory: {tmp_path / 'language'}" in result['prompt']
     assert (Path(result['workspace_path']) / 'language-contract.json').is_file()
-    assert '语言包' in result['prompt']
+    assert 'language package' in result['prompt']
     assert 'workstep language validate' in result['prompt']
     module.create_session.assert_called_once()
 

@@ -30,6 +30,8 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
     set +a
 fi
 
+source "$SCRIPT_DIR/scripts/file-limits.sh"
+
 # === 清理环境变量 ===
 unset CLAUDECODE
 

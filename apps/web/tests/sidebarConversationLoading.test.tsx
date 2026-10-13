@@ -11,7 +11,7 @@ import { useChatListStore } from '../src/stores/chatSessionStore'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 import { SIDEBAR_SECTION_STATE_KEY } from '../src/utils/sidebarSectionState'
 
-for (const remote of [false, true]) test(`${remote ? 'remote' : 'local'}: expanding conversations loads that project without selecting it; collapsing does not load`, async () => {
+for (const remote of [false, true]) for (const projectToggle of [false, true]) test(`${remote ? 'remote' : 'local'}: only expanding the conversation section loads its list (${projectToggle ? 'project initially collapsed' : 'project initially expanded'})`, async () => {
   const { window } = installDomEnvironment()
   const oldFetch = globalThis.fetch, oldSocket = globalThis.WebSocket
   const projectState = useProjectStore.getState(), chatState = useChatListStore.getState()
@@ -20,7 +20,7 @@ for (const remote of [false, true]) test(`${remote ? 'remote' : 'local'}: expand
     { id: 'other', name: 'Other', path: '/tmp/other', steps: {}, workflows: [], type: remote ? 'remote' as const : undefined },
   ]
   window.localStorage.setItem(SIDEBAR_SECTION_STATE_KEY, JSON.stringify({
-    expandedProjectIds: ['other'], conversationsByProject: { other: false },
+    expandedProjectIds: projectToggle ? [] : ['other'], conversationsByProject: { other: false },
   }))
   class Socket {
     static OPEN = 1
@@ -50,6 +50,10 @@ for (const remote of [false, true]) test(`${remote ? 'remote' : 'local'}: expand
   try {
     await act(async () => root.render(<I18nProvider><MemoryRouter initialEntries={['/tasks']}><Layout onSelectProject={() => {}} /></MemoryRouter></I18nProvider>))
     assert.equal(calls, 0)
+    if (projectToggle) {
+      await act(async () => container.querySelector<HTMLButtonElement>('[aria-controls="sidebar-project-other"]')!.click())
+      assert.equal(calls, 0, 'expanding the project must not load conversations')
+    }
     await clickHeader()
     assert.equal(calls, 1)
     assert.ok(container.querySelector('.layout-session-list [role="status"]'))

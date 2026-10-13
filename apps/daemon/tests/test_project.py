@@ -75,7 +75,7 @@ def test_init_project_returns_project(tmp_path, manager):
     assert proj.path == tmp_path.resolve()
     assert proj.steps == {}
     assert proj.db is not None
-    assert not proj.db.is_closed()
+    assert proj.db.is_closed()
 
 
 def test_init_project_idempotent(tmp_path, manager):
@@ -711,3 +711,73 @@ async def test_project_storage_rejects_running_task(tmp_path, manager):
     with pytest.raises(ValueError, match="运行"):
         await m.set_storage(project.id, False)
     assert project.follow_project
+
+
+def test_project_context_closes_only_connection_it_opens(tmp_path, manager):
+    m, _, _ = manager
+    project = m.init_project(tmp_path)
+    project.db.close()
+    with m.activate_project(tmp_path):
+        connection = project.db.connection()
+        with m.activate_project(tmp_path):
+            assert project.db.connection() is connection
+        assert not project.db.is_closed()
+    assert project.db.is_closed()
+    project.db.connect()
+    with m.activate_project(tmp_path):
+        pass
+    assert not project.db.is_closed()
+
+
+def test_temporary_workers_release_project_connections_even_on_error(tmp_path, manager):
+    from concurrent.futures import ThreadPoolExecutor
+    m, _, _ = manager
+    project = m.init_project(tmp_path)
+
+    def operation():
+        with pytest.raises(ValueError):
+            with m.activate_project(tmp_path):
+                Workflow.select().count()
+                raise ValueError("failed work unit")
+        return project.db.is_closed()
+
+    with ThreadPoolExecutor(max_workers=4) as workers:
+        assert all(workers.map(lambda _: operation(), range(16)))
+
+
+def test_project_initialization_releases_caller_connection(tmp_path, manager):
+    m, _, _ = manager
+    project = m.init_project(tmp_path)
+    assert project.db.is_closed()
+    m.unregister(project.id)
+    reopened = m.register(tmp_path)
+    assert reopened.db.is_closed()
+
+
+def test_failed_migration_closes_connection(tmp_path, monkeypatch):
+    import models
+    databases = []
+
+    def fail_migration(database):
+        databases.append(database)
+        raise RuntimeError("migration failed")
+
+    monkeypatch.setattr(models, "migrate_database", fail_migration)
+    with pytest.raises(RuntimeError, match="migration failed"):
+        init_db(str(tmp_path / "failed.db"))
+    assert databases[0].is_closed()
+
+
+def test_project_list_does_not_retain_connections_per_pool_thread(tmp_path, manager):
+    from concurrent.futures import ThreadPoolExecutor
+    m, _, _ = manager
+    projects = [m.init_project(tmp_path / f"project-{index}") for index in range(6)]
+    barrier = threading.Barrier(8)
+
+    def list_projects(_):
+        barrier.wait(timeout=5)
+        assert len(m.list_projects()) == 6
+        assert all(project.db.is_closed() for project in projects)
+
+    with ThreadPoolExecutor(max_workers=8) as workers:
+        list(workers.map(list_projects, range(24)))

@@ -1253,8 +1253,8 @@ class ConfigStore:
                 raise ValueError("Invalid managed provider")
             for url in urls.values():
                 parsed = urlsplit(url) if isinstance(url, str) else None
-                if (parsed is None or parsed.scheme != "https" or not parsed.hostname
-                        or parsed.username or parsed.password or parsed.fragment):
+                if (parsed is None or parsed.scheme not in {"http", "https"} or not parsed.hostname
+                        or parsed.username or parsed.password or parsed.fragment or len(url) > 2048):
                     raise ValueError("Invalid managed provider endpoint")
             ids.add(provider_id)
             names.add(name)

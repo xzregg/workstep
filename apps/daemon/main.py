@@ -157,6 +157,8 @@ gateway_client.event_sink = event_bus.publish
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_bot_manager
+    from services.resource_limits import configure_file_limit
+    configure_file_limit()
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
     await completion_push.start()
     await asyncio.to_thread(config_store.migrate_legacy_config)

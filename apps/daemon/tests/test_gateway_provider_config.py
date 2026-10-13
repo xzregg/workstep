@@ -29,7 +29,7 @@ def _b64(data):
 
 
 def _signed_bundle(gateway_key, recipient, *, revision=3, device_id="device-1",
-                   default_provider_id=""):
+                   default_provider_id="", endpoint="https://api.example.test"):
     ephemeral = X25519PrivateKey.generate()
     key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None,
                info=b"workstep-provider-device-v1").derive(
@@ -38,7 +38,7 @@ def _signed_bundle(gateway_key, recipient, *, revision=3, device_id="device-1",
     nonce = b"123456789012"
     providers = [{"id": "provider-1", "name": "Managed API", "type": "custom",
                   "api_key": "secret-api-key", "protocols": ["openai_responses"],
-                  "protocol_base_urls": {"openai_responses": "https://api.example.test"}}]
+                  "protocol_base_urls": {"openai_responses": endpoint}}]
     ciphertext = AESGCM(key).encrypt(
         nonce, json.dumps({"providers": providers,
                            "default_provider_id": default_provider_id}).encode(),
@@ -202,7 +202,8 @@ async def test_managed_provider_api_allows_local_mutations(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_control_applies_signed_provider_bundle_and_acknowledges(tmp_path, monkeypatch):
+@pytest.mark.parametrize("endpoint", ["https://api.example.test", "http://127.0.0.1:8000/v1", "http://provider.example.test/v1"])
+async def test_control_applies_signed_provider_bundle_and_acknowledges(tmp_path, monkeypatch, endpoint):
     monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
     monkeypatch.setattr("engines.core.registry.refresh_registry", lambda: None)
@@ -216,7 +217,7 @@ async def test_control_applies_signed_provider_bundle_and_acknowledges(tmp_path,
         serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
     )).hexdigest()
     recipient = X25519PrivateKey.generate()
-    token = _signed_bundle(gateway_key, recipient, default_provider_id="provider-1")
+    token = _signed_bundle(gateway_key, recipient, default_provider_id="provider-1", endpoint=endpoint)
     client = GatewayControlClient("https://gateway.test", gateway_id="gateway-test",
                                   public_key_fingerprint=fingerprint, user_id="user-1",
                                   policy_cache=ManagedPolicyCache(), provider_store=store)
