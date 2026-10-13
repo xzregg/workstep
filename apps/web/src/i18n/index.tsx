@@ -170,7 +170,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, [locale])
 
   const value = useMemo(() => ({ t, locale, setLocale, fallbackLocale }), [t, locale, setLocale, fallbackLocale])
-  return <I18nContext.Provider value={value}>{children}{previous && <div className="language-preview-notice" role="status"><span>正在预览语言：{language?.manifest.native_name}</span><button type="button" disabled={!installed.some(item => item.manifest.id === language?.manifest.id && item.revision === language.revision)} onClick={() => useLocaleStore.getState().confirmPreview()}>确认使用</button><button type="button" onClick={() => useLocaleStore.getState().cancelPreview()}>取消预览</button><button type="button" onClick={() => setLocale('zh-CN')}>恢复简体中文</button></div>}</I18nContext.Provider>
+  return <I18nContext.Provider value={value}>{children}{previous && <div className="language-preview-notice" data-skin-recovery role="status"><span>正在预览语言：{language?.manifest.native_name}</span><button type="button" disabled={!installed.some(item => item.manifest.id === language?.manifest.id && item.revision === language.revision)} onClick={() => useLocaleStore.getState().confirmPreview()}>确认使用</button><button type="button" onClick={() => useLocaleStore.getState().cancelPreview()}>取消预览</button><button type="button" onClick={() => setLocale('zh-CN')}>恢复简体中文</button></div>}</I18nContext.Provider>
 }
 
 export function useI18n(): I18nContextValue {

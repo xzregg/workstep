@@ -23,6 +23,10 @@ export const zhCN = {
 },
 
   skins: {
+    sendIcon: '发送图标',
+    sendIconPlane: '纸飞机',
+    sendIconUp: '向上箭头',
+    sendIconRight: '向右箭头',
     centerTitle: "外观设置",
     centerIntro: "字体、字号、颜色和布局，都可以手动调整，也可以聊出来。",
     library: "皮肤库",

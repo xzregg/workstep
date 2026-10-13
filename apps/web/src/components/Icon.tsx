@@ -6,6 +6,8 @@ import {
   Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
 } from 'lucide-react'
 
+import {composerSendGlyphs} from '../skins/composerSendGlyphs'
+
 /** 统一 Icon 库：lucide 图标 + 少量自定义字形（保留既有固定规格） */
 const glyphs = {
   menu: Menu,
@@ -67,15 +69,9 @@ const glyphs = {
 
 /** 自定义字形（viewBox 0 0 24 24），fill 字形用 `fill` prop 开启 */
 const customGlyphs = {
-  send: {
-    viewBox: '0 0 24 24',
-    node: (
-      <>
-        <path d="M22 2 11 13" />
-        <path d="m22 2-7 20-4-9-9-4z" />
-      </>
-    ),
-  },
+  send: {viewBox:'0 0 24 24', node: composerSendGlyphs.send.map(path=><path key={path} d={path}/>)},
+  'arrow-up': {viewBox:'0 0 24 24', node: composerSendGlyphs['arrow-up'].map(path=><path key={path} d={path}/>)},
+  'arrow-right': {viewBox:'0 0 24 24', node: composerSendGlyphs['arrow-right'].map(path=><path key={path} d={path}/>)},
   stop: {
     viewBox: '0 0 24 24',
     node: <rect x="5" y="5" width="14" height="14" rx="2" />,

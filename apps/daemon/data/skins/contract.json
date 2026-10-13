@@ -776,7 +776,11 @@
     "is-tip-open": ".is-tip-open",
     "is-warning": ".is-warning",
     "label": "label",
+    "language-draft-installed": ".language-draft-installed",
+    "language-draft-panel": ".language-draft-panel",
+    "language-draft-samples": ".language-draft-samples",
     "language-mermaid": ".language-mermaid",
+    "language-preview-notice": ".language-preview-notice",
     "layout-bulk-delete-error": ".layout-bulk-delete-error",
     "layout-main": ".layout-main",
     "layout-project-expand-button": ".layout-project-expand-button",
@@ -1329,6 +1333,12 @@
     "segmented-control": ".segmented-control",
     "select": "select",
     "selected": ".selected",
+    "settings-appearance-controls": ".settings-appearance-controls",
+    "settings-appearance-field": ".settings-appearance-field",
+    "settings-appearance-font": ".settings-appearance-font",
+    "settings-appearance-font-copy": ".settings-appearance-font-copy",
+    "settings-appearance-page": ".settings-appearance-page",
+    "settings-appearance-size": ".settings-appearance-size",
     "settings-content": ".settings-content",
     "settings-dialog-header": ".settings-dialog-header",
     "settings-dialog-overlay": ".settings-dialog-overlay",
@@ -1419,6 +1429,7 @@
     "skin-settings-footer-note": ".skin-settings-footer-note",
     "skin-settings-library": ".skin-settings-library",
     "skin-settings-library-tip": ".skin-settings-library-tip",
+    "skin-settings-library-toolbar": ".skin-settings-library-toolbar",
     "skin-settings-list": ".skin-settings-list",
     "skin-settings-package": ".skin-settings-package",
     "skin-settings-page-head": ".skin-settings-page-head",
@@ -1440,8 +1451,10 @@
     "skin-studio-chat": ".skin-studio-chat",
     "skin-studio-controls": ".skin-studio-controls",
     "skin-studio-error": ".skin-studio-error",
+    "skin-studio-font-size": ".skin-studio-font-size",
     "skin-studio-footer": ".skin-studio-footer",
     "skin-studio-header": ".skin-studio-header",
+    "skin-studio-history": ".skin-studio-history",
     "skin-studio-note": ".skin-studio-note",
     "skin-studio-package": ".skin-studio-package",
     "skin-studio-palette": ".skin-studio-palette",
@@ -1449,8 +1462,10 @@
     "skin-studio-preview-container": ".skin-studio-preview-container",
     "skin-studio-preview-frame": ".skin-studio-preview-frame",
     "skin-studio-preview-heading": ".skin-studio-preview-heading",
+    "skin-studio-save": ".skin-studio-save",
     "skin-studio-suggestions": ".skin-studio-suggestions",
     "skin-studio-switch": ".skin-studio-switch",
+    "skin-studio-tabs": ".skin-studio-tabs",
     "skin-studio-toggle": ".skin-studio-toggle",
     "skin-studio-version": ".skin-studio-version",
     "skin-studio-welcome": ".skin-studio-welcome",
@@ -1964,6 +1979,14 @@
         "large",
         "extraLarge"
       ]
+    },
+    "composerSendIcon": {
+      "default": "send",
+      "values": [
+        "send",
+        "arrow-up",
+        "arrow-right"
+      ]
     }
   },
   "actions": {
@@ -2117,7 +2140,8 @@
         "enabled-attachments"
       ],
       "layouts": [
-        "composerToolsPosition"
+        "composerToolsPosition",
+        "composerSendIcon"
       ]
     },
     "dialog": {
