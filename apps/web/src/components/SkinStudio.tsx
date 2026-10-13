@@ -127,7 +127,7 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
       <div className="skin-studio-history"><label>{t('skins.studioHistory')}<Select aria-label={t('skins.studioHistory')} value={sessionId ?? ''} disabled={running || busy} onChange={event => setSessionId(event.target.value)}>
         {!history.some(item => item.id === sessionId) && <option value={sessionId ?? ''}>{t('skins.studioTitle')}</option>}
         {history.map(item => <option key={item.id} value={item.id}>{item.title || t('chatSession.title')} · {formatConversationDateTime(item.created_at, Date.now(), locale)}</option>)}
-      </Select></label>{historyError && <Button size="sm" onClick={() => void useChatListStore.getState().fetchSessions(workspace.project_id, true)}>{t('common.retry')}</Button>}</div>
+      </Select></label>{historyError && <Button size="sm" onClick={() => void useChatListStore.getState().fetchSessions(workspace.project_id, true)}>{t('common.retry')}</Button>}{!compact && editorTab === 'skin' && saveButton}</div>
       <div className="skin-studio-tabs" role="tablist" aria-label={t('skins.studioTitle')}>
         <button type="button" role="tab" aria-selected={mobileTab === 'chat'} onClick={() => setMobileTab('chat')}>{t('skins.studioChatTab')}</button>
         <button type="button" role="tab" aria-selected={mobileTab === 'preview'} onClick={() => setMobileTab('preview')}>{t('skins.studioPreviewTab')}</button>
@@ -181,7 +181,6 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
           </div>
         </aside>
       </div>
-      {!compact && editorTab === 'skin' && <footer className="skin-studio-footer"><span>{t('skins.studioSaveHint')}</span>{saveButton}</footer>}
     </ResizablePanel>
     <ConfirmDialog open={pending === 'close' || pending === 'reload'} title={t('skins.studioDiscard')} onCancel={() => setPending(null)} onConfirm={() => { const action = pending; setPending(null); if (action === 'close') onClose(); else void load().catch(reason => setError(String(reason.message))) }} />
     <ConfirmDialog open={pending === 'replace'} title={t('skins.replace')} loading={busy} onCancel={() => { if (!busy) setPending(null) }} onConfirm={() => void register(true)} />

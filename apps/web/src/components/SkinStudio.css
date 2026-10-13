@@ -35,8 +35,6 @@
 .skin-studio-preview-heading > div { display: flex; gap: 4px; }
 .skin-studio-note { padding: 10px; color: #97702d; background: #fff8e7; border: 1px solid #f0e4c8; border-radius: 8px; font-size: calc(10px * var(--font-scale)); line-height: 1.7; margin: 16px 0; }
 .skin-studio-error { color: var(--danger); font-size: calc(11px * var(--font-scale)); overflow-wrap: anywhere; }
-.skin-studio-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--border); padding: 12px 22px; flex-shrink: 0; }
-.skin-studio-footer > span { font-size: calc(10px * var(--font-scale)); color: var(--muted); }
 @media(max-width:1023px) {
   .skin-studio-backdrop { padding: 0; }
   .skin-studio { width: 100vw; height: 100dvh; border: 0; border-radius: 0; padding-bottom: 0; }
@@ -49,11 +47,10 @@
   .skin-studio-chat, .skin-studio-controls { flex: 1; width: 100%; }
   .skin-studio-controls { border-left: 0; }
   .skin-studio[data-mobile-tab=chat] .skin-studio-controls, .skin-studio[data-mobile-tab=preview] .skin-studio-chat { display: none; }
-  .skin-studio-header, .skin-studio-footer { padding: 12px 16px; }
+  .skin-studio-header { padding: 12px 16px; }
 }
 @media(max-width:600px) {
   .skin-studio-controls { padding: 18px; }
-  .skin-studio-footer > span { max-width: 130px; }
 }
 .skin-studio-welcome { margin-bottom: 20px; }
 .skin-studio-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
@@ -75,6 +72,7 @@
 .skin-studio-tabs { display: none; }
 .skin-studio-history { flex-shrink: 0; padding: 8px 22px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
 .skin-studio-history label { display: flex; gap: 12px; align-items: center; min-width: 0; flex: 1; color: var(--muted); font-size: calc(11px * var(--font-scale)); }
+.skin-studio-history .skin-studio-save { flex-shrink: 0; }
 .skin-studio-history .ws-select { flex: 1; min-width: 0; }
 @media(max-width:1023px) { .skin-studio-tabs { display: flex; } .skin-studio-history { padding: 8px 16px; } }
 

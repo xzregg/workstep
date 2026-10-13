@@ -34,6 +34,9 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinStudio workspace={{ project_id: 'design', project_name: '皮肤设计', session_id: 'session', workspace_path: '/tmp/design', package_path: '/tmp/design/skin', prompt: '' }} onClose={() => { closed++ }} onSaved={() => {}} /></I18nProvider></MemoryRouter>))
+    assert.equal(document.querySelector(".skin-studio-footer"), null)
+    assert.ok(document.querySelector(".skin-studio-history .skin-studio-save"))
+    assert.equal(document.querySelector(".skin-studio-header .skin-studio-save"), null)
     const history = document.querySelector<HTMLSelectElement>('.skin-studio-history select')!
     assert.equal(history.options.length, 2)
     await act(async () => { history.value = 'old-session'; history.dispatchEvent(new window.Event('change', { bubbles: true })) })
@@ -96,6 +99,7 @@ test('a new Runtime conversation can create its first skin before any package ex
     assert.ok(document.querySelector('.skin-studio-preview'))
     assert.equal(document.querySelector('.skin-studio-footer'), null)
     assert.ok(document.querySelector('.skin-studio-header .skin-studio-save'))
+    assert.equal(document.querySelector(".skin-studio-history .skin-studio-save"), null)
     const tabs = [...document.querySelectorAll<HTMLButtonElement>('.skin-studio-tabs [role=tab]')]
     assert.equal(tabs.length, 2)
     await act(async () => tabs[1].click())
