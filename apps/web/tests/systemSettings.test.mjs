@@ -20,12 +20,12 @@ test('first-use setup can start or skip the guided checklist after saving a name
   assert.match(firstUseSource, /onboarding\.skipGuide/)
 })
 
-test('language and user name live together under system settings', () => {
+test('system settings keeps identity while appearance owns language and fonts', () => {
   assert.match(settingsSource, /activeSection === 'system'/)
   assert.match(settingsSource, /settings\.userName/)
   assert.doesNotMatch(settingsSource, /settings\.fontSize/)
   assert.match(settingsSource, /<AppearanceSettings/)
-  assert.match(settingsSource, /<SegmentedControl/)
+  assert.doesNotMatch(settingsSource, /setLocale|settings-system-language-options/)
   assert.doesNotMatch(settingsSource, /activeSection === 'language'/)
 })
 

@@ -13,7 +13,6 @@ import Icon from '../components/Icon'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import Input from '../components/Input'
-import SegmentedControl from '../components/SegmentedControl'
 import { providerApi } from '../api/client'
 import SettingsNavigation, { type SettingsSection } from '../components/SettingsNavigation'
 import EngineSettingsPanel from '../components/EngineSettingsPanel'
@@ -49,7 +48,7 @@ export default function SettingsPage({
   preferredProviderId,
   onConfigurationChanged,
 }: SettingsPageProps) {
-  const { t, locale, setLocale } = useI18n()
+  const { t } = useI18n()
   const compactLayout = useCompactLayout()
   const settingsDialogRef = useRef<HTMLDivElement>(null)
   const sandboxDirty = useRef(false)
@@ -267,21 +266,6 @@ export default function SettingsPage({
                 {t('onboarding.reopen')}
               </Button>
             </div>
-            <h2 className="settings-system-heading">{t('nav.language')}</h2>
-            <p className="settings-system-description">
-              {t('settings.languageIntro')}
-            </p>
-            <div className="settings-system-language-options"><SegmentedControl
-              ariaLabel={t('nav.language')}
-              value={locale}
-              onChange={setLocale}
-              options={[
-                { value: 'zh-CN', label: '简体中文' },
-                { value: 'zh-TW', label: '繁體中文' },
-                { value: 'en-US', label: 'English' },
-                { value: 'ja-JP', label: '日本語' },
-              ]}
-            /></div>
           </div>
         ) : (
           <AgentAssistantSettings />
