@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "22d0c46a623f24c78fad2eeadcfbaae597999bef65e8fc863a5f601d6ae53a6d",
+  "revision": "28a65fcaa56ff45f349fe2e3fd12f1cfe7041c2dac554f2b1a32f933d28ccf6f",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -29,6 +29,10 @@
     "languages.hint": "语言包独立于皮肤，可继续在这个对话中修改。当前支持从左到右的语言，日期控件沿用内置回退语言。",
     "languages.samples": "示例文案",
     "languages.catalogOld": "此包基于旧版文案目录，可通过聊天补齐新增项。",
+    "skins.sendIcon": "发送图标",
+    "skins.sendIconPlane": "纸飞机",
+    "skins.sendIconUp": "向上箭头",
+    "skins.sendIconRight": "向右箭头",
     "skins.centerTitle": "外观设置",
     "skins.centerIntro": "字体、字号、颜色和布局，都可以手动调整，也可以聊出来。",
     "skins.library": "皮肤库",

@@ -239,3 +239,18 @@ async def test_typography_contract_registers_and_rejects_invalid_font_size(tmp_p
     assert installed['tokens']['font-body'] == 'Georgia, serif'
     (root / 'components.json').write_text(json.dumps({'layout': {'fontSize': 'giant'}}))
     with pytest.raises(ValueError): await manager.validate(str(root))
+
+@pytest.mark.asyncio
+async def test_composer_send_icon_is_declarative_and_device_specific(tmp_path):
+    from services.skins import SkinManager
+    manager = SkinManager(tmp_path / 'runtime')
+    root = package(tmp_path / 'draft')
+    components = {'layout': {'composerSendIcon': 'arrow-up'}, 'mobile': {'layout': {'composerSendIcon': 'arrow-right'}}}
+    (root / 'components.json').write_text(json.dumps(components))
+    result = await manager.validate(str(root))
+    assert result['skin']['layout']['composerSendIcon'] == 'arrow-up'
+    assert result['skin']['mobile']['layout']['composerSendIcon'] == 'arrow-right'
+    for invalid in ['javascript:evil', '<svg/>', 'trash']:
+        components['layout']['composerSendIcon'] = invalid
+        (root / 'components.json').write_text(json.dumps(components))
+        with pytest.raises(ValueError): await manager.validate(str(root))

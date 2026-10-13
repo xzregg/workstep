@@ -19,3 +19,5 @@
 同一个外观制作对话可以只调整字体或字号，不必重新选择配色。字体类型写入 `tokens.json` 的 `font-body` / `font-display`，代码字体使用 `font-mono`；使用系统字体优先列表并提供后备字体，不安装或下载字体。字号写入 `components.json` 的 `layout.fontSize`，只允许 `small` / `standard` / `large` / `extraLarge` / `inherit`，分别对应现有四档控件或沿用设备设置。不要修改受保护的 `font-scale`。读取最新 Runtime 根目录 `skin-contract.json` 后再生成并校验；未请求的颜色、布局和内容保持不变。
 
 预览仅临时调整字体与字号，取消恢复设备原偏好；确认应用后与外观设置的手动控件同步。此后手动选择的字体和字号优先于皮肤，在刷新后保留。语言包仍属于待实现能力，不能生成不受支持的字段或宣称已安装新语言。
+
+发送图标使用 `components.json` 的 `layout.composerSendIcon`：`send`（纸飞机，默认）、`arrow-up`、`arrow-right`。PC／手机可用 `desktop.layout` 和 `mobile.layout` 覆盖。旧皮肤省略时保持纸飞机。停止、处理中、发送和审批动作不受图标配置影响；不接受自定义 SVG、脚本或远程 URL。

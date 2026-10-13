@@ -93,3 +93,12 @@ test('skin typography previews, cancels, commits and keeps manual controls autho
   assert.throws(() => compileSkin({ ...proposal, layout: { fontSize: 'giant' } } as never))
   restoreDefaultSkin()
 })
+
+test('send icons preserve legacy defaults and desktop/mobile inheritance', () => {
+ assert.equal(resolvedSkinLayout(defaultSkin()).composerSendIcon,'send')
+ const draft={...skin(),layout:{composerSendIcon:'arrow-up' as const},mobile:{layout:{composerSendIcon:'arrow-right' as const}}}
+ compileSkin(draft)
+ assert.equal(resolvedSkinLayout(draft,false).composerSendIcon,'arrow-up')
+ assert.equal(resolvedSkinLayout(draft,true).composerSendIcon,'arrow-right')
+ assert.throws(()=>compileSkin({...draft,layout:{composerSendIcon:'trash'}} as never))
+})

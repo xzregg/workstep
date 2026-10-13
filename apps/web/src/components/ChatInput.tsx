@@ -1,6 +1,7 @@
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import ResponsivePopover from './ResponsivePopover'
 import Icon from './Icon'
+import SkinnedComposerSendIcon from './ComposerSendIcon'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useChatInputDraft } from '../hooks/useChatInputDraft'
 import { useChatInputAttachments } from '../hooks/useChatInputAttachments'
@@ -1276,7 +1277,7 @@ export default function ChatInput({
             ) : running && !canSend ? (
               <span className="task-status-spinner" aria-hidden="true" />
             ) : (
-              <Icon name="send" size={13} strokeWidth={1.6} />
+              <SkinnedComposerSendIcon />
             )}
           </button>
         </div>

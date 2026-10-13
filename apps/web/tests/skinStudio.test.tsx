@@ -50,6 +50,9 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
     await act(async () => { family.value = 'serif'; family.dispatchEvent(new window.Event('change', { bubbles: true })) })
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('.skin-studio-font-size button')].find(button => /^大$|^Large$/.test(button.textContent ?? ''))!.click())
     assert.match(document.querySelector<HTMLIFrameElement>('.skin-studio-preview')!.srcdoc, /Georgia/)
+    const sendIcon=document.querySelector<HTMLSelectElement>('select[aria-label="发送图标"]')!
+    await act(async()=>{sendIcon.value='arrow-up';sendIcon.dispatchEvent(new window.Event('change',{bubbles:true}))})
+    assert.match(document.querySelector<HTMLIFrameElement>('.skin-studio-preview')!.srcdoc,/M12 19V5/)
     assert.equal(currentSkin().manifest.id, 'default')
     await act(async () => document.querySelector<HTMLButtonElement>('.skin-studio-header button')!.click())
     assert.equal(closed, 0)
@@ -59,6 +62,7 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
     assert.equal(saved[0].manifest.name, '手动微调')
     assert.equal(saved[0].tokens.accent, '#7c65d5')
     assert.equal(saved[0].layout.fontSize, 'large')
+    assert.equal(saved[0].layout.composerSendIcon,'arrow-up')
     assert.match(saved[0].tokens['font-body'], /Georgia/)
     await act(async () => useChatSessionStore.setState(state => ({ sessions: { ...state.sessions, session: { ...state.sessions.session, running: true } } })))
     assert.equal(document.querySelector<HTMLFieldSetElement>('.skin-studio-controls fieldset')!.disabled, true)

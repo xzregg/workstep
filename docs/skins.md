@@ -146,3 +146,7 @@ CLI 与引擎注入工具复用同一 REST 服务；工具 mutation 继续要求
 同一个外观制作对话可以只调整字体或字号，不必重新选择配色。字体类型写入 `tokens.json` 的 `font-body` / `font-display`，代码字体使用 `font-mono`；使用系统字体优先列表并提供后备字体，不安装或下载字体。字号写入 `components.json` 的 `layout.fontSize`，只允许 `small` / `standard` / `large` / `extraLarge` / `inherit`，分别对应现有四档控件或沿用设备设置。不要修改受保护的 `font-scale`。读取最新 Runtime 根目录 `skin-contract.json` 后再生成并校验；未请求的颜色、布局和内容保持不变。
 
 预览仅临时调整字体与字号，取消恢复设备原偏好；确认应用后与外观设置的手动控件同步。此后手动选择的字体和字号优先于皮肤，在刷新后保留。语言包仍属于待实现能力，不能生成不受支持的字段或宣称已安装新语言。
+
+## 发送图标
+
+`components.json` 可配置 `layout.composerSendIcon` 为 `send`（纸飞机，默认）、`arrow-up` 或 `arrow-right`。通过 `desktop.layout` / `mobile.layout` 可分别设置。外观制作窗口右侧“发送图标”提供相同选项，聊天也可修改此声明式字段。旧包省略字段时保持原图标。发送、停止、处理中及权限事件不变；不支持任意 SVG、脚本或远程图标。
