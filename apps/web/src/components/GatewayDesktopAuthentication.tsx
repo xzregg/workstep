@@ -33,7 +33,12 @@ export default function GatewayDesktopAuthentication() {
       const latest = useGatewayConnectionStore.getState().status
       if (mounted.current && latest?.enabled && latest.url === origin) window.location.assign(target.href)
     } catch {
-      if (mounted.current) setError(t('gatewayPlatform.connectError'))
+      const latest = useGatewayConnectionStore.getState().status
+      if (mounted.current && latest?.enabled && !latest.package_locked && latest.url === origin) {
+        const target = new URL(window.location.href)
+        target.searchParams.set('gateway_auth', 'cancelled')
+        window.location.assign(target.href)
+      } else if (mounted.current) setError(t('gatewayPlatform.connectError'))
     } finally {
       submitting.current = false
       if (mounted.current) setBusy(false)

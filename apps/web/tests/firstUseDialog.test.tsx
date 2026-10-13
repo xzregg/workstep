@@ -32,7 +32,7 @@ test('gateway desktop opens platform authentication without requiring a local na
   } finally { await act(async () => root.unmount()); globalThis.fetch=original; container.remove(); await window.happyDOM.close() }
 })
 
-test('gateway restart waits for reconnect and opens authentication only once when required', async () => {
+test('gateway restart waits for reconnect and falls back locally when login fails', async () => {
   const { window } = installDomEnvironment()
   Object.defineProperty(window, 'workstepDesktop', { configurable:true, value:{ notify() {} } })
   useUserSettingsStore.setState({ loaded:true, loading:false, userName:'', identitySource:'gateway', error:'' })
@@ -50,11 +50,9 @@ test('gateway restart waits for reconnect and opens authentication only once whe
     reconnecting = false
     await act(async () => useGatewayConnectionStore.getState().refresh())
     assert.equal(logins, 1)
-    assert.match(container.querySelector('[role=alert]')?.textContent || '', /无法连接平台/)
+    assert.equal(window.location.search, '?gateway_auth=cancelled')
     await act(async () => useGatewayConnectionStore.getState().refresh())
     assert.equal(logins, 1)
-    await act(async () => container.querySelector<HTMLButtonElement>('button')!.click())
-    assert.equal(logins, 2)
   } finally { await act(async () => root.unmount()); globalThis.fetch=original; container.remove(); await window.happyDOM.close() }
 })
 
