@@ -1,6 +1,6 @@
 export const zhCN = {
   skins: {
-    centerTitle: "皮肤中心",
+    centerTitle: "皮肤设置",
     centerIntro: "让工作台成为你喜欢的样子。颜色、背景、布局，都可以聊出来。",
     library: "皮肤库",
     filter_all: "全部皮肤",

@@ -71,7 +71,7 @@ export default function SkinSettings() {
     finally { window.setTimeout(() => URL.revokeObjectURL(url), 0) }
   })
   return <div className="skin-settings">
-    <header className="skin-settings-page-head"><div><h1>{t('skins.centerTitle')}</h1><p>{t('skins.centerIntro')}</p></div><div className="skin-settings-actions">
+    <header className="skin-settings-page-head"><div><h2>{t('skins.centerTitle')}</h2><p>{t('skins.centerIntro')}</p></div><div className="skin-settings-actions">
       {!remote && <><Button variant="primary" onClick={() => void start()} disabled={busy} loading={busy}><Icon name="sparkles" size={15} />{t('skins.create')}</Button></>}
       <Button variant="icon" onClick={() => void run(refresh)} disabled={busy} aria-label={t('skins.refresh')} title={t('skins.refresh')}><Icon name="refresh" size={16} /></Button>
     </div></header>

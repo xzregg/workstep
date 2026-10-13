@@ -2,15 +2,15 @@
 .skin-settings h1, .skin-settings h2, .skin-settings p { margin: 0; }
 .skin-settings p { color: var(--muted); }
 .skin-settings-page-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
-.skin-settings-page-head h1 { font-size: calc(26px * var(--font-scale)); font-weight: 650; letter-spacing: -.04em; margin-bottom: 7px; }
-.skin-settings-page-head p { font-size: calc(12px * var(--font-scale)); line-height: 1.6; }
+.skin-settings-page-head h2 { font-size: calc(14px * var(--font-scale)); font-weight: 650; margin-bottom: 5px; }
+.skin-settings-page-head p { font-size: calc(11px * var(--font-scale)); line-height: 1.6; }
 .skin-settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .skin-settings-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .skin-settings .btn-icon { width: 32px; height: 32px; min-width: 32px; min-height: 32px; flex-shrink: 0; padding: 0; gap: 0; }
 .skin-settings .btn-icon > svg { width: 18px; height: 18px; flex-shrink: 0; }
 .skin-settings-workspace { display: grid; grid-template-columns: minmax(270px, .82fr) minmax(350px, 1.35fr); gap: 26px; align-items: start; }
 .skin-settings-library { min-width: 0; }
-.skin-settings-library-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.skin-settings-library-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .skin-settings-library-toolbar > .btn { flex-shrink: 0; }
 .skin-settings-tabs { display: flex; gap: 15px; min-width: 0; }
 .skin-settings-tabs button { padding: 9px 0 12px; font-size: calc(12px * var(--font-scale)); background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; }
@@ -73,6 +73,6 @@
 .skin-settings-package, .skin-settings-showcase { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-soft); border-radius: var(--radius-md); margin-top: 16px; }
 .skin-settings-preview-notice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: 11px 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--accent-light); font-size: calc(11px * var(--font-scale)); }
 @media(max-width:1100px) { .skin-settings-workspace { gap: 18px; grid-template-columns: minmax(245px, .85fr) minmax(320px, 1.3fr); } .skin-settings-page-head { align-items: start; flex-direction: column; gap: 16px; } }
-@media(max-width:760px) { .skin-settings-workspace { grid-template-columns: minmax(0, 1fr); gap: 24px; } .skin-settings-page-head h1 { font-size: calc(23px * var(--font-scale)); } .skin-settings-page-head > .skin-settings-actions { width: 100%; } .skin-settings-page-head .btn-primary { flex: 1; } .skin-settings-preview-stage { min-height: 220px; padding: 15px 12px; } .skin-settings-detail > header, .skin-settings-detail > footer, .skin-settings-properties { padding-left: 16px; padding-right: 16px; } .skin-settings-preview-caption { align-items: start; } .skin-settings-footer-note { flex-wrap: wrap; } }
+@media(max-width:760px) { .skin-settings-workspace { grid-template-columns: minmax(0, 1fr); gap: 24px; } .skin-settings-page-head > .skin-settings-actions { width: 100%; } .skin-settings-page-head .btn-primary { flex: 1; } .skin-settings-preview-stage { min-height: 220px; padding: 15px 12px; } .skin-settings-detail > header, .skin-settings-detail > footer, .skin-settings-properties { padding-left: 16px; padding-right: 16px; } .skin-settings-preview-caption { align-items: start; } .skin-settings-footer-note { flex-wrap: wrap; } }
 @media(max-width:1023px) { .skin-settings .btn, .skin-settings .ws-input, .skin-settings-tabs button, .skin-settings-device-tabs button, .skin-settings-scene-tabs button { min-height: var(--mobile-control-regular); } }
 @media(max-width:1023px) { .skin-settings .btn-icon { width: var(--mobile-control-regular); height: var(--mobile-control-regular); min-width: var(--mobile-control-regular); min-height: var(--mobile-control-regular); } }
