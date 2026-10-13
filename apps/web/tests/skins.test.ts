@@ -1,6 +1,8 @@
 import './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { saveFontSizePreference, loadFontSizePreference } from '../src/utils/fontSizePreference'
+import { saveFontFamilyPreference, loadFontFamilyPreference } from '../src/utils/fontFamilyPreference'
 import { compileSkin, defaultSkin, skinContract, resolvedSkinLayout } from '../src/skins/contract'
 import { applySkin, restoreDefaultSkin, previewSkin, cancelSkinPreview, saveSkin, initializeSkinPreference } from '../src/skins/runtime'
 
@@ -68,4 +70,26 @@ test('pseudo elements remain customizable and keep the pseudo element last', () 
   const input = { ...skin(), styles: { 'provider-protocol-switch::after': { hover: { backgroundColor: '#aabbcc' } } } }
   const css = compileSkin(input)
   assert.match(css, /:hover:not\([^{}]+::after\{background-color:#aabbcc/)
+})
+
+test('skin typography previews, cancels, commits and keeps manual controls authoritative', () => {
+  localStorage.clear(); restoreDefaultSkin()
+  saveFontSizePreference('small'); saveFontFamilyPreference('pingfang')
+  const proposal = { ...skin(), tokens: { 'font-body': 'Georgia, serif', 'font-display': 'Georgia, serif' }, layout: { fontSize: 'large' as const } }
+  previewSkin(proposal)
+  assert.equal(document.documentElement.dataset.fontSize, 'large')
+  assert.equal(loadFontSizePreference(), 'small')
+  cancelSkinPreview()
+  assert.equal(document.documentElement.dataset.fontSize, 'small')
+  assert.equal(document.documentElement.style.getPropertyValue('--font-body'), '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif')
+  saveSkin(proposal)
+  assert.equal(loadFontSizePreference(), 'large')
+  assert.equal(loadFontFamilyPreference(), 'system')
+  saveFontFamilyPreference('pingfang')
+  assert.equal(document.documentElement.style.getPropertyPriority('--font-body'), 'important')
+  saveFontSizePreference('extraLarge')
+  applySkin(defaultSkin()); initializeSkinPreference()
+  assert.equal(document.documentElement.dataset.fontSize, 'extraLarge', 'a later explicit device preference survives reload')
+  assert.throws(() => compileSkin({ ...proposal, layout: { fontSize: 'giant' } } as never))
+  restoreDefaultSkin()
 })

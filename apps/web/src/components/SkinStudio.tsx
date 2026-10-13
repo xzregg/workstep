@@ -15,6 +15,9 @@ import ConfirmDialog from './ConfirmDialog'
 import Button from './Button'
 import Input from './Input'
 import Select from './Select'
+import SegmentedControl from './SegmentedControl'
+import { fontFamilyStacks } from '../utils/fontFamilyPreference'
+import { loadFontSizePreference, type FontSizePreference } from '../utils/fontSizePreference'
 import Icon from './Icon'
 import SkinStudioPreview from './SkinStudioPreview'
 import ChatMessageBubble from './ChatMessageBubble'
@@ -128,7 +131,7 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
       </div>
       <div className="skin-studio-body">
         <section className="skin-studio-chat"><ChatPage embedded={{ project, sessionId, onSessionChange: setSessionId, beforeSend: save,
-          placeholder: t('skins.studioPlaceholder'), emptyContent: insert => <div className="skin-studio-welcome"><ChatMessageBubble role="assistant" sender={t('skins.studioEditing')} initials="✧" color="var(--accent-light)" content={t('skins.studioHello')} /><div className="skin-studio-suggestions">{(['studioSuggestDark', 'studioSuggestMint', 'studioSuggestCards', 'studioSuggestRight'] as const).map(key => <button key={key} type="button" onClick={() => insert(t(`skins.${key}`))}>{t(`skins.${key}`)}</button>)}</div></div>,
+          placeholder: t('skins.studioPlaceholder'), emptyContent: insert => <div className="skin-studio-welcome"><ChatMessageBubble role="assistant" sender={t('skins.studioEditing')} initials="✧" color="var(--accent-light)" content={t('skins.studioHello')} /><div className="skin-studio-suggestions">{(['studioSuggestDark', 'studioSuggestMint', 'studioSuggestFont', 'studioSuggestSize'] as const).map(key => <button key={key} type="button" onClick={() => insert(t(`skins.${key}`))}>{t(`skins.${key}`)}</button>)}</div></div>,
           afterContent: insert => skin && revision ? <article className="skin-studio-version"><strong>{skin.manifest.name}</strong><p>{t('skins.studioVersionHint')}</p><Button size="sm" disabled={running || busy} onClick={() => insert(t('skins.studioContinuePrompt', { name: skin.manifest.name }))}>{t('skins.studioContinue')}</Button></article> : null,
         }} /></section>
         <aside className="skin-studio-controls"><h3>{t('skins.studioEditing')}</h3>
@@ -142,6 +145,17 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
               edit(current => ({ ...current, manifest: { ...current.manifest, color_scheme: ['ocean', 'graphite'].includes(key) ? 'dark' : 'light' }, tokens: { ...current.tokens, ...presetTokens(key) } }))
             }}><option value="custom">{t('skins.studioCustom')}</option>{(Object.keys(palettes) as (keyof typeof palettes)[]).map(key => <option key={key} value={key}>{t(baseLabels[key])}</option>)}</Select></label>
             <label>{t('skins.studioAccent')}<div className="skin-studio-palette">{['#0071e3', '#7c65d5', '#31987b', '#db9b42'].map(color => <button key={color} type="button" aria-label={color} aria-pressed={skin.tokens.accent === color} style={{ '--swatch-color': color } as React.CSSProperties} onClick={() => edit(current => ({ ...current, tokens: { ...current.tokens, accent: color } }))} />)}<input type="color" aria-label={t('skins.studioAccent')} value={/^#[\da-f]{6}$/i.test(skin.tokens.accent || '') ? skin.tokens.accent : '#0071e3'} onChange={event => edit(current => ({ ...current, tokens: { ...current.tokens, accent: event.target.value } }))} /></div></label>
+            <label>{t('settings.fontFamily')}<Select id="skin-studio-font-family" aria-label={t('settings.fontFamily')} value={skin.tokens['font-body']?.includes('Georgia') ? 'serif' : skin.tokens['font-body']?.includes('PingFang SC') ? 'pingfang' : skin.tokens['font-body'] ? 'custom' : 'system'} onChange={event => edit(current => {
+              const tokens = { ...current.tokens }
+              const value = event.target.value as 'system' | keyof typeof fontFamilyStacks
+              if (value === 'system') { delete tokens['font-body']; delete tokens['font-display'] }
+              else { tokens['font-body'] = fontFamilyStacks[value]; tokens['font-display'] = fontFamilyStacks[value] }
+              return { ...current, tokens }
+            })}><option value="system">{t('settings.fontFamilySystem')}</option><option value="pingfang">{t('settings.fontFamilyPingfang')}</option><option value="serif">{t('settings.fontFamilySerif')}</option><option value="custom" disabled>{skin.tokens['font-body'] || t('skins.studioCustom')}</option></Select></label>
+            <div className="skin-studio-font-size"><label>{t('settings.fontSize')}</label><SegmentedControl ariaLabel={t('settings.fontSize')} value={skin.layout.fontSize && skin.layout.fontSize !== 'inherit' ? skin.layout.fontSize : loadFontSizePreference()} onChange={value => edit(current => ({ ...current, layout: { ...current.layout, fontSize: value as FontSizePreference } }))} options={[
+              { value: 'small', label: t('settings.fontSizeSmall') }, { value: 'standard', label: t('settings.fontSizeStandard') },
+              { value: 'large', label: t('settings.fontSizeLarge') }, { value: 'extraLarge', label: t('settings.fontSizeExtraLarge') },
+            ]} /></div>
             <label>{t('skins.studioEngine')}<Select value={skin.layout.engineAppearance || 'list'} onChange={event => edit(current => ({ ...current, layout: { ...current.layout, engineAppearance: event.target.value as 'list' | 'cards' } }))}><option value="list">{t('skins.studioList')}</option><option value="cards">{t('skins.studioCards')}</option></Select></label>
             <SkinToggle label={t('skins.studioRight')} checked={skin.layout.sidebarSide === 'right'} onChange={checked => edit(current => ({ ...current, layout: { ...current.layout, sidebarSide: checked ? 'right' : 'left' } }))} />
             <SkinToggle label={t('skins.studioTop')} checked={skin.layout.composerToolsPosition === 'top'} onChange={checked => edit(current => ({ ...current, layout: { ...current.layout, composerToolsPosition: checked ? 'top' : 'bottom' } }))} />

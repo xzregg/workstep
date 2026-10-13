@@ -1954,6 +1954,16 @@
         "none",
         "accent"
       ]
+    },
+    "fontSize": {
+      "default": "inherit",
+      "values": [
+        "inherit",
+        "small",
+        "standard",
+        "large",
+        "extraLarge"
+      ]
     }
   },
   "actions": {

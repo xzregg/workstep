@@ -1,3 +1,5 @@
+import { applyFontSizePreference, loadFontSizePreference, saveFontSizePreference } from '../utils/fontSizePreference'
+import { applyFontFamilyPreference, loadFontFamilyPreference, saveFontFamilyPreference } from '../utils/fontFamilyPreference'
 import { useSyncExternalStore } from 'react'
 import { compileSkin, defaultSkin, resolvedSkinLayout, type SkinDocument } from './contract'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
@@ -60,7 +62,12 @@ export function applySkin(skin: SkinDocument, reason: SkinLifecycle = 'load') {
   root.dataset.skinId = skin.manifest.id
   root.dataset.skinRevision = skin.revision
   root.dataset.skinScheme = skin.manifest.color_scheme
-  applyLayout(skin)
+  const layout = applyLayout(skin)
+  const typographyChange = reason === 'preview' || reason === 'apply'
+  applyFontSizePreference(typographyChange && layout.fontSize !== 'inherit' ? layout.fontSize : loadFontSizePreference())
+  const variant = window.matchMedia('(max-width: 1023px)').matches ? skin.mobile : skin.desktop
+  const changesFamily = Object.hasOwn(skin.tokens, 'font-body') || Object.hasOwn(variant?.tokens ?? {}, 'font-body')
+  applyFontFamilyPreference(typographyChange && changesFamily ? 'system' : loadFontFamilyPreference())
   wireViewport()
   active = skin
   for (const listener of listeners) listener()
@@ -70,6 +77,10 @@ export function applySkin(skin: SkinDocument, reason: SkinLifecycle = 'load') {
 
 export function saveSkin(skin: SkinDocument, reason: SkinLifecycle = 'apply') {
   applySkin(skin, reason)
+  const compact = window.matchMedia('(max-width: 1023px)').matches
+  const size = resolvedSkinLayout(skin, compact).fontSize
+  if (size !== 'inherit') saveFontSizePreference(size)
+  if (Object.hasOwn(skin.tokens, 'font-body') || Object.hasOwn((compact ? skin.mobile : skin.desktop)?.tokens ?? {}, 'font-body')) saveFontFamilyPreference('system')
   committed = skin; previewing = false
   try { localStorage.setItem(skinStorageKey(), JSON.stringify(skin)) } catch { /* The session still applies when storage is unavailable. */ }
   for (const listener of listeners) listener()

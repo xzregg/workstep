@@ -1,6 +1,6 @@
 import ChatMessageBubble from './ChatMessageBubble'
 import { ApiError } from '../api/transport'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import Button from './Button'
 import Input from './Input'
 import Select from './Select'
@@ -19,7 +19,7 @@ import SkinLibrary from './SkinLibrary'
 import Icon from './Icon'
 import './SkinSettings.css'
 
-export default function SkinSettings() {
+export default function SkinSettings({ preferences }: { preferences?: ReactNode } = {}) {
   const { t } = useI18n()
   const active = useActiveSkin(), previewing = useSkinPreviewing()
   const [skins, setSkins] = useState<SkinSummary[]>([])
@@ -75,6 +75,7 @@ export default function SkinSettings() {
       {!remote && <><Button variant="primary" onClick={() => void start()} disabled={busy} loading={busy}><Icon name="sparkles" size={15} />{t('skins.create')}</Button></>}
       <Button variant="icon" onClick={() => void run(refresh)} disabled={busy} aria-label={t('skins.refresh')} title={t('skins.refresh')}><Icon name="refresh" size={16} /></Button>
     </div></header>
+    {preferences}
     <input ref={fileInput} type="file" accept=".zip,application/zip" className="skin-settings-file" onChange={event => {
       const file = event.target.files?.[0]; event.target.value = ''
       if (file) void run(async () => {

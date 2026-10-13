@@ -1,3 +1,5 @@
+export const APPEARANCE_PREFERENCE_EVENT = 'workstep:appearance-preference'
+
 export const FONT_SIZE_STORAGE_KEY = 'workstep.fontSize'
 
 export const FONT_SIZE_PREFERENCES = ['small', 'standard', 'large', 'extraLarge'] as const
@@ -42,6 +44,7 @@ export function applyFontSizePreference(
   target = defaultTarget(),
 ) {
   if (target) target.dataset.fontSize = value
+  if (typeof window !== 'undefined') window.dispatchEvent(new window.Event(APPEARANCE_PREFERENCE_EVENT))
 }
 
 export function saveFontSizePreference(

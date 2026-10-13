@@ -226,3 +226,16 @@ async def test_actual_project_actor_can_read_only_its_catalog_and_cannot_manage(
             assert (await client.post("/api/skins/import?project_id=project", content=b"zip")).status_code == 403
             assert (await client.delete("/api/skins/ocean?project_id=project")).status_code == 403
             assert (await client.get("/api/skins/default/export?project_id=project")).status_code == 403
+
+@pytest.mark.asyncio
+async def test_typography_contract_registers_and_rejects_invalid_font_size(tmp_path):
+    from services.skins import SkinManager
+    manager = SkinManager(tmp_path / 'runtime')
+    root = package(tmp_path / 'draft')
+    (root / 'tokens.json').write_text(json.dumps({'font-body': 'Georgia, serif'}))
+    (root / 'components.json').write_text(json.dumps({'layout': {'fontSize': 'large'}}))
+    installed = await manager.register(str(root))
+    assert installed['layout']['fontSize'] == 'large'
+    assert installed['tokens']['font-body'] == 'Georgia, serif'
+    (root / 'components.json').write_text(json.dumps({'layout': {'fontSize': 'giant'}}))
+    with pytest.raises(ValueError): await manager.validate(str(root))
