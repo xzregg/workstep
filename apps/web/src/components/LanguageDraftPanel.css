@@ -1,0 +1,12 @@
+.language-draft-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.language-draft-panel h4, .language-draft-panel p { margin: 0; }
+.language-draft-panel label { display: flex; flex-direction: column; gap: 6px; }
+.language-draft-panel pre { max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: calc(11px * var(--font-scale)); }
+.language-draft-samples { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.language-draft-samples p { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.language-draft-samples code { color: var(--muted); font-size: calc(11px * var(--font-scale)); }
+.language-draft-installed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.language-draft-installed > span { flex: 1; }
+
+.language-draft-panel h4 { font-size: calc(12px * var(--font-scale)); }
+.skin-studio-controls > .segmented-control { width: 100%; margin-bottom: 16px; }

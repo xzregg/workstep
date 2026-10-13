@@ -19,7 +19,7 @@ import SkinLibrary from './SkinLibrary'
 import Icon from './Icon'
 import './SkinSettings.css'
 
-export default function SkinSettings({ preferences }: { preferences?: ReactNode } = {}) {
+export default function SkinSettings({ preferences, onRefresh }: { preferences?: ReactNode; onRefresh?: () => Promise<void> } = {}) {
   const { t } = useI18n()
   const active = useActiveSkin(), previewing = useSkinPreviewing()
   const [skins, setSkins] = useState<SkinSummary[]>([])
@@ -73,7 +73,7 @@ export default function SkinSettings({ preferences }: { preferences?: ReactNode 
   return <div className="skin-settings">
     <header className="skin-settings-page-head"><div><h2>{t('skins.centerTitle')}</h2><p>{t('skins.centerIntro')}</p></div><div className="skin-settings-actions">
       {!remote && <><Button variant="primary" onClick={() => void start()} disabled={busy} loading={busy}><Icon name="sparkles" size={15} />{t('skins.create')}</Button></>}
-      <Button variant="icon" onClick={() => void run(refresh)} disabled={busy} aria-label={t('skins.refresh')} title={t('skins.refresh')}><Icon name="refresh" size={16} /></Button>
+      <Button variant="icon" onClick={() => void run(async () => { await Promise.all([refresh(), onRefresh?.()]) })} disabled={busy} aria-label={t('languages.refresh')} title={t('languages.refresh')}><Icon name="refresh" size={16} /></Button>
     </div></header>
     {preferences}
     <input ref={fileInput} type="file" accept=".zip,application/zip" className="skin-settings-file" onChange={event => {

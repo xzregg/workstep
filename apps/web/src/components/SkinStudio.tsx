@@ -20,6 +20,7 @@ import { fontFamilyStacks } from '../utils/fontFamilyPreference'
 import { loadFontSizePreference, type FontSizePreference } from '../utils/fontSizePreference'
 import Icon from './Icon'
 import SkinStudioPreview from './SkinStudioPreview'
+import LanguageDraftPanel from './LanguageDraftPanel'
 import ChatMessageBubble from './ChatMessageBubble'
 import { formatConversationDateTime } from '../utils/datetime'
 import './SkinStudio.css'
@@ -43,6 +44,8 @@ function presetTokens(key: keyof typeof palettes) {
 
 export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }: { workspace: SkinWorkspace; initialSkin?: SkinDocument; onClose: () => void; onSaved: (skin: SkinDocument) => void }) {
   const { t, locale } = useI18n()
+  const tRef = useRef(t); tRef.current = t
+  const [editorTab, setEditorTab] = useState<'skin' | 'language'>('skin')
   const compact = useCompactLayout()
   const ref = useRef<HTMLDivElement>(null)
   const mounted = useRef(true), priorRunning = useRef(false)
@@ -73,13 +76,13 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
     }).catch(reason => {
       if (generation !== readGeneration.current || !mounted.current) return
       if (reason instanceof ApiError && reason.status === 404) {
-        setSkin(current => current ?? { ...(initialSkin ?? defaultSkin()), manifest: { ...(initialSkin ?? defaultSkin()).manifest, id: 'skin-' + workspace.session_id.replace(/[^a-z0-9_-]/gi, '').toLowerCase().slice(0, 50), name: initialSkin ? `${initialSkin.manifest.name} · ${t('skins.myVersion')}` : t('skins.studioDefaultName'), version: '1.0.0' }, revision: initialSkin?.revision ?? '', asset_base: initialSkin?.asset_base ?? '' })
+        setSkin(current => current ?? { ...(initialSkin ?? defaultSkin()), manifest: { ...(initialSkin ?? defaultSkin()).manifest, id: 'skin-' + workspace.session_id.replace(/[^a-z0-9_-]/gi, '').toLowerCase().slice(0, 50), name: initialSkin ? `${initialSkin.manifest.name} · ${tRef.current('skins.myVersion')}` : tRef.current('skins.studioDefaultName'), version: '1.0.0' }, revision: initialSkin?.revision ?? '', asset_base: initialSkin?.asset_base ?? '' })
         setRevision(''); setBase('light'); setError('')
       } else throw reason
     }).finally(() => { if (loadInFlight.current?.request === request) loadInFlight.current = null })
     loadInFlight.current = { path: packagePath, request }
     return request
-  }, [packagePath, workspace.session_id, initialSkin, t])
+  }, [packagePath, workspace.session_id, initialSkin])
   useEffect(() => {
     mounted.current = true
     void load().catch(reason => { if (mounted.current) setError(reason instanceof ApiError && reason.status === 404 ? '' : String(reason.message || reason)) })
@@ -120,7 +123,7 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
   const saveButton = <Button className="skin-studio-save" variant="primary" disabled={!skin || !skin.manifest.name.trim() || busy || running} loading={busy} onClick={() => void register()}>{t('skins.studioSave')}</Button>
   return createPortal(<div className="skin-studio-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) requestClose() }}>
     <ResizablePanel ref={ref} minWidth={640} minHeight={460} className="skin-studio" data-mobile-tab={mobileTab} role="dialog" aria-modal="true" aria-label={t('skins.studioTitle')} tabIndex={-1}>
-      <header className="skin-studio-header" data-dialog-drag-handle><div><h2>{t('skins.studioTitle')}</h2><p>{t('skins.studioIntro')}</p></div><Button variant="icon" onClick={requestClose} aria-label={t('common.close')}><Icon name="x" size={18} /></Button>{compact && saveButton}</header>
+      <header className="skin-studio-header" data-dialog-drag-handle><div><h2>{t('skins.studioTitle')}</h2><p>{t('skins.studioIntro')}</p></div><Button variant="icon" onClick={requestClose} aria-label={t('common.close')}><Icon name="x" size={18} /></Button>{compact && editorTab === 'skin' && saveButton}</header>
       <div className="skin-studio-history"><label>{t('skins.studioHistory')}<Select aria-label={t('skins.studioHistory')} value={sessionId ?? ''} disabled={running || busy} onChange={event => setSessionId(event.target.value)}>
         {!history.some(item => item.id === sessionId) && <option value={sessionId ?? ''}>{t('skins.studioTitle')}</option>}
         {history.map(item => <option key={item.id} value={item.id}>{item.title || t('chatSession.title')} · {formatConversationDateTime(item.created_at, Date.now(), locale)}</option>)}
@@ -131,10 +134,13 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
       </div>
       <div className="skin-studio-body">
         <section className="skin-studio-chat"><ChatPage embedded={{ project, sessionId, onSessionChange: setSessionId, beforeSend: save,
-          placeholder: t('skins.studioPlaceholder'), emptyContent: insert => <div className="skin-studio-welcome"><ChatMessageBubble role="assistant" sender={t('skins.studioEditing')} initials="✧" color="var(--accent-light)" content={t('skins.studioHello')} /><div className="skin-studio-suggestions">{(['studioSuggestDark', 'studioSuggestMint', 'studioSuggestFont', 'studioSuggestSize'] as const).map(key => <button key={key} type="button" onClick={() => insert(t(`skins.${key}`))}>{t(`skins.${key}`)}</button>)}</div></div>,
+          placeholder: t('skins.studioPlaceholder'), emptyContent: insert => <div className="skin-studio-welcome"><ChatMessageBubble role="assistant" sender={t('skins.studioEditing')} initials="✧" color="var(--accent-light)" content={t('skins.studioHello')} /><div className="skin-studio-suggestions">{(['studioSuggestDark', 'studioSuggestMint', 'studioSuggestFont', 'studioSuggestSize'] as const).map(key => <button key={key} type="button" onClick={() => insert(t(`skins.${key}`))}>{t(`skins.${key}`)}</button>)}<button type="button" onClick={() => { setEditorTab('language'); insert(t('languages.suggest')) }}>{t('languages.suggest')}</button></div></div>,
           afterContent: insert => skin && revision ? <article className="skin-studio-version"><strong>{skin.manifest.name}</strong><p>{t('skins.studioVersionHint')}</p><Button size="sm" disabled={running || busy} onClick={() => insert(t('skins.studioContinuePrompt', { name: skin.manifest.name }))}>{t('skins.studioContinue')}</Button></article> : null,
         }} /></section>
         <aside className="skin-studio-controls"><h3>{t('skins.studioEditing')}</h3>
+          <SegmentedControl ariaLabel={t('skins.studioEditing')} value={editorTab} onChange={setEditorTab} options={[{value:'skin', label:t('skins.studioPreviewTab')}, {value:'language', label:t('languages.tab')}]} />
+          <div hidden={editorTab !== 'language'}><LanguageDraftPanel workspacePath={workspace.workspace_path} running={running} /></div>
+          <div hidden={editorTab !== 'skin'}>
           {error && <p className="skin-studio-error" role="alert">{error}</p>}
           {!skin ? <><p className="skin-studio-note" role="status">{t('skins.studioWaiting')}</p><Button onClick={() => void load().catch(reason => setError(String(reason.message)))}>{t('common.retry')}</Button></> : <>
           <fieldset disabled={busy || running}>
@@ -171,9 +177,10 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
             else { setSkin(null); setPackagePath(packageInput.trim()) }
           }}>{t('skins.studioReadPackage')}</Button></details>
           <Button size="sm" disabled={busy || running} onClick={() => dirty ? setPending('reload') : void load().catch(reason => setError(String(reason.message)))}>{t('skins.studioReload')}</Button>
+          </div>
         </aside>
       </div>
-      {!compact && <footer className="skin-studio-footer"><span>{t('skins.studioSaveHint')}</span>{saveButton}</footer>}
+      {!compact && editorTab === 'skin' && <footer className="skin-studio-footer"><span>{t('skins.studioSaveHint')}</span>{saveButton}</footer>}
     </ResizablePanel>
     <ConfirmDialog open={pending === 'close' || pending === 'reload'} title={t('skins.studioDiscard')} onCancel={() => setPending(null)} onConfirm={() => { const action = pending; setPending(null); if (action === 'close') onClose(); else void load().catch(reason => setError(String(reason.message))) }} />
     <ConfirmDialog open={pending === 'replace'} title={t('skins.replace')} loading={busy} onCancel={() => { if (!busy) setPending(null) }} onConfirm={() => void register(true)} />

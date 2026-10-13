@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useI18n, type Locale } from '../i18n'
+import { useI18n, useLocaleStore } from '../i18n'
 import Select from '../components/Select'
 import { loadFontFamilyPreference, currentFontFamilyPreference, saveFontFamilyPreference, type FontFamilyPreference } from '../utils/fontFamilyPreference'
 import SegmentedControl from '../components/SegmentedControl'
@@ -9,6 +9,11 @@ import './AppearanceSettings.css'
 
 export default function AppearanceSettings() {
   const { t, locale, setLocale } = useI18n()
+  const language = useLocaleStore(s => s.language)
+  const installed = useLocaleStore(s => s.installed)
+  const languageLoading = useLocaleStore(s => s.loading)
+  const languageError = useLocaleStore(s => s.error)
+  useEffect(() => { void useLocaleStore.getState().refresh().catch(() => {}) }, [])
   const [fontFamily, setFontFamily] = useState(loadFontFamilyPreference)
   const [fontSize, setFontSize] = useState(loadFontSizePreference)
   useEffect(() => {
@@ -50,15 +55,18 @@ export default function AppearanceSettings() {
         </div>
         <div className="settings-appearance-field">
           <label htmlFor="appearance-language">{t('nav.language')}</label>
-          <Select id="appearance-language" aria-label={t('nav.language')} value={locale}
-            onChange={event => setLocale(event.target.value as Locale)}>
+          <Select id="appearance-language" aria-label={t('nav.language')} value={language ? 'pack:' + language.manifest.id : locale} disabled={languageLoading}
+            onChange={event => setLocale(event.target.value)}>
             <option value="zh-CN">简体中文</option>
             <option value="zh-TW">繁體中文</option>
             <option value="en-US">English</option>
             <option value="ja-JP">日本語</option>
+            {installed.map(item => <option key={item.manifest.id} value={'pack:' + item.manifest.id}>{item.manifest.native_name} · {item.manifest.name}</option>)}
+            {language && !installed.some(item => item.manifest.id === language.manifest.id) && <option value={'pack:' + language.manifest.id}>{language.manifest.native_name}</option>}
           </Select>
+          {languageError && <p role="alert">{languageError}</p>}
         </div>
       </div>
     </section>
-  return <div className="settings-appearance-page"><SkinSettings preferences={preferences} /></div>
+  return <div className="settings-appearance-page"><SkinSettings preferences={preferences} onRefresh={() => useLocaleStore.getState().refresh()} /></div>
 }

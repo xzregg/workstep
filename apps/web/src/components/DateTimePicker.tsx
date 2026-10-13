@@ -31,7 +31,7 @@ export default function DateTimePicker({ value, min, onChange, disabled }: DateT
   const skin = useActiveSkin()
   const compact = useCompactLayout()
   const tokens = effectiveSkinTokens(skin, compact)
-  const { t, locale } = useI18n()
+  const { t, fallbackLocale: locale } = useI18n()
   const selected = parseLocalValue(value)
   const minimum = parseLocalValue(min || '')
   // Keep Ant Design's calendar, time panel, clear button and “now” action

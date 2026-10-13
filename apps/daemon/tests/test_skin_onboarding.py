@@ -26,6 +26,9 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     assert "custom-skin.md" in result["prompt"]
     assert result["workspace_path"] in result["prompt"]
     assert "无需重启" in result["prompt"]
+    assert (Path(result['workspace_path']) / 'language-contract.json').is_file()
+    assert '语言包' in result['prompt']
+    assert 'workstep language validate' in result['prompt']
     module.create_session.assert_called_once()
 
 @pytest.mark.asyncio

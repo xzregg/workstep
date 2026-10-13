@@ -33,6 +33,13 @@ def test_registry_defines_expected_tool_set():
         "workstep_add_task_worktree",
         "workstep_list_engines",
         "workstep_skin_list",
+        "workstep_language_list",
+        "workstep_language_contract",
+        "workstep_language_validate",
+        "workstep_language_register",
+        "workstep_language_export",
+        "workstep_language_delete",
+
         "workstep_create_skill_draft",
         "workstep_skin_contract",
         "workstep_skin_validate",
