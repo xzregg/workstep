@@ -55,6 +55,7 @@ async def test_gateway_device_forwards_remote_reads_writes_and_stream_without_sc
     subscribed = asyncio.Event()
 
     class HostSocket:
+        client = None
         async def accept(self): pass
         async def receive_json(self):
             value = await incoming.get()

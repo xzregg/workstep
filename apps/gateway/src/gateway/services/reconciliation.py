@@ -33,16 +33,22 @@ class DirectoryReconciler:
     async def _apply_source(self, source, connector, service):
         try:
             from gateway.services.organization_settings import source_options
-            selected = (await source_options(self.database, source.id)).get('selected_department_ids', [])
-            if selected == [] or source.id in self.jobs.tasks or self.jobs.closed: return False
-            snapshot = await connector.fetch_directory(source, selected_department_ids=selected) if selected is not None else await connector.fetch_directory(source)
+            from gateway.services.directory_maintenance import saved_policy, apply_maintenance
+            options=await source_options(self.database, source.id)
+            policy=saved_policy(options)
+            if policy is None or source.id in self.jobs.tasks or self.jobs.closed: return False
+            selected=options.get('selected_department_ids',[])
+            snapshot = await connector.fetch_directory(source) if options.get('maintenance_policy') else await connector.fetch_directory(source,selected_department_ids=selected) if selected is not None else await connector.fetch_directory(source)
         except Exception:
             await service.record_sync_failure(source.id, "provider_unavailable")
             await self._record_failure(source.id, "provider_unavailable")
             raise
         try:
-            result = await service.full_sync(source.id, snapshot["departments"], snapshot["people"],
-                                    snapshot.get("cursor"), selected_department_ids=snapshot.get("selected_department_ids", selected), snapshot_complete=snapshot.get("complete", False))
+            if options.get('maintenance_policy'):
+                result=await apply_maintenance(service,source.id,snapshot,policy)
+            else:
+                result = await service.full_sync(source.id, snapshot["departments"], snapshot["people"],
+                                        snapshot.get("cursor"), selected_department_ids=snapshot.get("selected_department_ids", selected), snapshot_complete=snapshot.get("complete", False))
             from uuid import uuid4
             await self.jobs._save(source.id, {'id': str(uuid4()), 'status': 'completed', 'trigger': 'automatic', 'started_at': datetime.now(timezone.utc).isoformat(), 'result': result})
             return True
@@ -113,7 +119,8 @@ class DirectoryReconciler:
             from gateway.services.organization_settings import source_options
             if source:
                 options = await source_options(self.database, source.id)
-                if not options.get('sync_enabled', True) or options.get('selected_department_ids', []) == []: continue
+                from gateway.services.directory_maintenance import saved_policy
+                if not options.get('sync_enabled', True) or saved_policy(options) is None: continue
             connector = self.connectors.get(source.provider) if source and source.enabled else None
             if source and source.enabled and connector is None:
                 await service.record_sync_failure(source_id, "connector_unavailable")

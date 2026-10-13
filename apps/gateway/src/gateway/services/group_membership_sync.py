@@ -9,17 +9,36 @@ from gateway.models import DirectoryDepartment, DirectoryMembership, DirectoryPe
 from gateway.services.capabilities import bump_group_capability_revisions
 
 
+async def restore_department_groups(session,department_ids):
+    if not department_ids:return
+    await session.execute(PlatformSetting.__table__.delete().where(
+        PlatformSetting.key.in_(['directory-group-purged:'+id for id in department_ids])))
+    groups=(await session.scalars(select(UserGroup).where(
+        UserGroup.external_department_id.in_(department_ids),UserGroup.status=='deleted'))).all()
+    for group in groups:group.status='active'
+    await session.flush()
+    for group in groups:await bump_group_capability_revisions(session,group.id)
+
+
 async def reconcile_department_groups(session, *, source_id: str | None = None,
-                                      group_id: str | None = None, additions_only: bool = False) -> None:
+                                      group_id: str | None = None, additions_only: bool = False,
+                                      restore_external_ids=None) -> None:
     if source_id and group_id is None:
         departments = (await session.scalars(select(DirectoryDepartment).where(DirectoryDepartment.source_id == source_id))).all()
+        if restore_external_ids:
+            needed=set(restore_external_ids)
+            while True:
+                added={row.parent_external_id for row in departments if row.external_id in needed and row.parent_external_id}-needed
+                if not added:break
+                needed.update(added)
+            await restore_department_groups(session,{row.id for row in departments if row.active and row.external_id in needed})
         mapped = {row.external_department_id: row for row in (await session.scalars(select(UserGroup).where(UserGroup.source_type == 'external_department', UserGroup.external_department_id.in_([dept.id for dept in departments])))).all()}
         purged = set((await session.scalars(select(PlatformSetting.key).where(PlatformSetting.key.like('directory-group-purged:%')))).all())
         for department in departments:
             if 'directory-group-purged:' + department.id in purged: continue
             group = mapped.get(department.id)
             if group is None and department.active:
-                group = UserGroup(id=str(uuid4()), name=department.display_name, slug='dept-' + department.id, source_type='external_department', external_department_id=department.id, status='active', created_by_user_id='system:directory-sync')
+                group = UserGroup(id=str(uuid4()), name=department.display_name, slug='dept-' + department.id, source_type='external_department', external_department_id=department.id, status='active', created_by_user_id=None)
                 session.add(group)
             if group and group.status != 'deleted' and not additions_only:
                 group.name = department.display_name

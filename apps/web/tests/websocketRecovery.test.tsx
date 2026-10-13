@@ -53,6 +53,24 @@ test('remote metadata subscription merges snapshots with no catalog or single-pr
     assert.equal(useProjectStore.getState().activeProject?.workflows[0].id, 'flow')
     assert.equal(catalogCalls, 0)
     assert.equal(snapshotCalls, 0)
+    await act(async () => socket.receive({ type: 'CUSTOM', name: 'workstep.remote_project_status',
+      value: { project_id: 'remote:inactive', status: 'updated' } }))
+    await act(async () => socket.receive({ type: 'CUSTOM', name: 'workstep.remote_project_status',
+      value: { project_id: remote.id, status: 'updated' } }))
+    assert.equal(snapshotCalls, 0, 'legacy status events wait for a manual project click')
+    let taskCalls = 0
+    let chatCalls = 0
+    context.mock.method(useTaskStore.getState(), 'fetchTasks', async () => { taskCalls++ })
+    context.mock.method(useChatListStore.getState(), 'refreshSessions', () => { chatCalls++ })
+    await act(async () => socket.receive({ type: 'CUSTOM', name: 'workstep.remote_project_status',
+      value: { project_id: remote.id, status: 'connected', project: remote } }))
+    await act(async () => {
+      window.dispatchEvent(new window.Event('workstep:resume'))
+      context.mock.timers.tick(1)
+    })
+    await act(async () => Socket.instances[1].open())
+    assert.equal(taskCalls, 0, 'remote reconnect does not load tasks automatically')
+    assert.equal(chatCalls, 0, 'remote reconnect does not load conversations automatically')
   } finally {
     await act(async () => root.unmount())
     context.mock.timers.reset()

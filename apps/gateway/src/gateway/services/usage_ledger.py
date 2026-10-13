@@ -54,6 +54,7 @@ class UsageEventInput(BaseModel):
     cache_read_tokens: int | None = Field(default=None, ge=0, le=2**63 - 1, strict=True)
     cache_write_tokens: int | None = Field(default=None, ge=0, le=2**63 - 1, strict=True)
     total_tokens: int | None = Field(default=None, ge=0, le=2**63 - 1, strict=True)
+    cache_input_included: bool | None = Field(default=None, strict=True)
     pricing_version: str | None = Field(default=None, max_length=64)
     unit_price_snapshot: dict[str, str] | None = None
     currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
@@ -143,15 +144,20 @@ async def record_usage_batch(database, device_id: str, batch_id: str,
                     or event.occurred_at < now - timedelta(days=30)
                     or event.occurred_at > now + timedelta(minutes=5)):
                 raise ValueError("Usage scope or time invalid")
-            canonical = json.dumps(event.model_dump(mode="json"), sort_keys=True,
+            payload = event.model_dump(mode="json")
+            if event.cache_input_included is None:
+                payload.pop("cache_input_included")
+            canonical = json.dumps(payload, sort_keys=True,
                                    separators=(",", ":"))
             valid.append((event, hashlib.sha256(canonical.encode()).hexdigest()))
         except (ValidationError, ValueError, TypeError):
             rejected.append(str(event_id)[:64])
     accepted: list[str] = []
     duplicates: list[str] = []
+    from .usage_model_prices import batch_reference_prices, reference_cost
     async with database.session() as session:
         async with session.begin():
+            references = await batch_reference_prices(session, [event.model for event, _ in valid])
             for event, digest in valid:
                 receipt = await session.get(UsageEventReceipt, event.usage_event_id)
                 if receipt is not None:
@@ -160,6 +166,13 @@ async def record_usage_batch(database, device_id: str, batch_id: str,
                     else:
                         rejected.append(event.usage_event_id)
                     continue
+                reference = references.get(event.model)
+                fallback = reference_cost(event, reference)
+                if fallback is not None:
+                    event.estimated_cost = fallback
+                    event.currency = 'USD'
+                    event.pricing_version = reference['version']
+                    event.unit_price_snapshot = reference['prices']
                 session.add(UsageEventReceipt(
                     usage_event_id=event.usage_event_id, device_id=device_id,
                     batch_id=batch_id, payload_sha256=digest,

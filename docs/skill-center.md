@@ -84,6 +84,20 @@ Desktop-packaged engines can invoke the bundled CLI with:
 
 The packaged desktop backend includes `cli.py` beside the daemon sources and
 uses its bundled Python runtime. `WorkstepClient` reads the live URL and adds
-the temporary desktop token as a request header. PowerShell and `cmd.exe`
+the temporary desktop token only for that daemon's local origin. Local CLI
+does not require platform login or a manually supplied token, even in Gateway
+mode. At startup the daemon publishes a per-launch record under the user's
+configuration directory `cli-runtime/`, scoped by local origin. The client
+discovers it in a worker thread; POSIX ownership/modes and Windows owner-private
+ACLs protect it. It is not project data and must never be copied into skills,
+commits, prompts, logs, or remote requests. Shutdown removes this launch's
+record, not a replacement daemon's record.
+
+The trusted local path requires loopback peer and host and rejects browser
+Origin, Fetch Metadata, forwarded headers, and remote Gateway actor scopes.
+Public HTTP, browser login, remote invitations, and Gateway permissions retain
+their checks. Remote project forwarding strips local credentials. Restart an
+older running daemon once after upgrading; replacing the CLI alone does not
+change the server's authorization policy. PowerShell and `cmd.exe`
 equivalents are documented in the skill. No global Python or `workstep`
 installation is required on the user's machine.

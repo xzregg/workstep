@@ -538,6 +538,7 @@ class RemoteAccessService:
         actor: ActorSnapshot,
         invite_token: str | None,
         credential: str | None,
+        ip_address: str = "",
     ) -> RemotePrincipal:
         raw = self._load()
         if not raw.get("enabled"):
@@ -565,6 +566,7 @@ class RemoteAccessService:
             matched.update(
                 user_name=actor.user_name,
                 device_name=actor.device_name,
+                ip_address=ip_address or str(matched.get("ip_address") or ""),
                 last_seen_at=int(time.time()),
             )
             raw["devices"] = devices
@@ -606,6 +608,7 @@ class RemoteAccessService:
                 "device_id": actor.device_id,
                 "user_name": actor.user_name,
                 "device_name": actor.device_name,
+                "ip_address": ip_address,
                 "credential_hash": _secret_hash(issued),
                 "revoked": False,
                 "authorized_at": int(time.time()),
@@ -646,6 +649,7 @@ class RemoteAccessService:
                     "device_id": str(item.get("device_id") or ""),
                     "user_name": str(item.get("user_name") or ""),
                     "device_name": str(item.get("device_name") or ""),
+                    "ip_address": str(item.get("ip_address") or ""),
                     "revoked": bool(item.get("revoked", False)),
                     "status": status,
                     "connected": (

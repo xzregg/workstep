@@ -130,12 +130,14 @@ def _valid_token(value: str | None) -> bool:
 
 
 def desktop_request_authenticated(request: Request) -> bool:
-    return _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
+    from services.local_cli import local_cli_authenticated
+    return _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)) or local_cli_authenticated(request)
 
 
 def desktop_runtime_authenticated(request: Request | WebSocket) -> bool:
     """Verify the per-launch Electron credential, never a client-supplied flag."""
-    return (_desktop_token() is not None
+    from services.local_cli import local_cli_authenticated
+    return (isinstance(request, Request) and local_cli_authenticated(request)) or (_desktop_token() is not None
             and "gateway_remote_actor" not in request.scope
             and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
 
@@ -294,7 +296,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         denied = protected and not native_public_share and (
             (not remote_bridge and not native_dispatch and not remote_access and not browser_session
              and request.url.path != "/api/gateway-platform/callback"
-             and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
+             and not desktop_request_authenticated(request))
             or (managed and not remote_bridge and not native_dispatch and not desktop_authenticated and not remote_access and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback") and actor is None)
         )
         if denied:

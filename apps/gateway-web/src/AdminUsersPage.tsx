@@ -1,9 +1,10 @@
+import { AdminListStatus } from './AdminListStatus'
 import { AdminUserGroupTree } from './AdminUserGroupTree'
 import { AdminGroupCreateDialog } from './AdminGroupCreateDialog'
 import { AdminUserTable } from './AdminUserTable'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { AdminCreateUserDialog } from './AdminCreateUserDialog'
 
 export type AdminUser = {
@@ -81,7 +82,6 @@ export function AdminUsersPage() {
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <h2>{filters.status === 'deleted' ? '用户回收站' : '用户管理'}</h2>
-    {superAdmin && <Link to={filters.groupId ? `/admin/permissions?subject_type=group&subject_id=${encodeURIComponent(filters.groupId)}` : '/admin/permissions'}>管理用户与组权限</Link>}
     <div className="gateway-device-actions"><button type="button" onClick={() => setFilters(current => ({ ...current, status: '', groupId: undefined, page: 1 }))}>用户列表</button><button type="button" onClick={() => setFilters(current => ({ ...current, status: 'deleted', groupId: undefined, q: '', page: 1 }))}>回收站</button></div>
     {filters.status === 'deleted' && <p>删除的用户可单项或批量恢复；恢复后为停用状态，可返回用户列表启用。彻底删除需要管理员密码确认，完成后无法恢复。</p>}
     {access === 'checking' && <p role="status">正在检查登录状态…</p>}
@@ -98,7 +98,7 @@ export function AdminUsersPage() {
             placeholder="用户名或显示名称" />
           <button type="submit">搜索</button>
         </form>
-        <button type="button" onClick={() => setCreateOpen(true)}>创建用户</button>
+        <button type="button" className="gateway-admin-primary" onClick={() => setCreateOpen(true)}>创建用户</button>
       </div>
       <div className="gateway-admin-filters">
         <label htmlFor="admin-user-status">状态</label>
@@ -119,7 +119,7 @@ export function AdminUsersPage() {
           <option value="desc">降序</option><option value="asc">升序</option>
         </select>
       </div>
-      {loading && <p role="status">正在加载用户…</p>}
+      <AdminListStatus loading={loading} label="正在加载用户…"/>
       {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
       {!loading && !error && users.length === 0 && <p>当前条件下没有用户。</p>}
       {!error && <AdminUserTable users={users} csrf={csrf} loading={loading} resetKey={filters} onRefresh={refresh}/>}
@@ -133,6 +133,6 @@ export function AdminUsersPage() {
     </div></div>}
     {groupCreateOpen && <AdminGroupCreateDialog csrf={csrf} onClose={() => setGroupCreateOpen(false)} onDone={id => { setGroupCreateOpen(false); setFilters(current => ({ ...current, groupId: id, page: 1 })); refresh() }} />}
     {createOpen && <AdminCreateUserDialog csrf={csrf} onClose={() => setCreateOpen(false)}
-      onSaved={() => { setCreateOpen(false); setFilters(current => ({ ...current, page: 1 })); refresh() }} />}
+      onSaved={() => { setCreateOpen(false); refresh() }} />}
   </section>
 }

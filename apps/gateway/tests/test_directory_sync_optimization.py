@@ -31,12 +31,15 @@ async def test_status_reconciliation_preserves_manual_disable_and_revokes_sessio
         async with database.session() as session:
             assert (await session.get(AuthSession, auth.id)).revoked_at is not None
             assert (await session.get(User, rows['manual'].user_id)).status == 'disabled'
+            assert (await session.get(AuthSession, auth.id)).revoked_at is not None
             assert (await session.get(DirectoryPerson, rows['missing'].id)).active == 1
         people[0]['active'] = True
         result = await service.full_sync(source.id, departments, people)
-        assert result['people_restoration_pending'] == 2
+        assert result['people_restoration_pending'] == 1
+        assert result['people_reactivated'] == 1
         async with database.session() as session:
-            assert (await session.get(User, rows['leaver'].user_id)).status == 'disabled'
+            assert (await session.get(User, rows['leaver'].user_id)).status == 'active'
+            assert (await session.get(User, rows['manual'].user_id)).status == 'disabled'
     finally:
         await database.close()
 

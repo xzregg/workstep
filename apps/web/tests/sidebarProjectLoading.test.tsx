@@ -11,171 +11,99 @@ import SidebarLoadStatus from '../src/components/SidebarLoadStatus'
 import { I18nProvider } from '../src/i18n'
 
 function Harness({ ids }: { ids: string }) {
-  useSidebarProjectLoading(ids)
-  return null
+  const reload = useSidebarProjectLoading(ids)
+  return <button onClick={reload}>reload</button>
 }
 
-test('only failures schedule exponential retries and recovery leaves no timer or full catalog requests', async () => {
+test('failed project loads never schedule retries or request on network recovery; manual clicks retry', async () => {
   const { window } = installDomEnvironment()
   const originalFetch = globalThis.fetch
   const root = createRoot(document.body.appendChild(document.createElement('div')))
-  const remote = { id: 'remote:retry', name: 'Retry', path: '', type: 'remote' as const,
-    connection_status: 'disconnected' as const, access_status: 'active' as const, steps: {}, workflows: [] }
+  const remote = { id: 'remote:manual', name: 'Remote', path: '', type: 'remote' as const,
+    connection_status: 'disconnected' as const, steps: {}, workflows: [] }
   useGatewaySessionStore.setState({ session: null })
-  useProjectStore.setState({ projects: [remote], activeProject: null, loadError: null, remoteLoadErrors: {} })
+  useProjectStore.setState({ projects: [remote], activeProject: remote, loadError: null, remoteLoadErrors: {} })
   useChatListStore.setState({ sessionsByProject: {}, listErrorByProject: {}, listLoadingByProject: {} })
-  const timers = new Map<number, { callback: () => void; delay: number }>()
-  let timerId = 0
-  window.setTimeout = ((callback: () => void, delay: number) => {
-    timers.set(++timerId, { callback, delay })
-    return timerId
-  }) as typeof window.setTimeout
-  window.clearTimeout = ((id: number) => { timers.delete(id) }) as typeof window.clearTimeout
+  let timers = 0
+  window.setTimeout = (() => { timers++; return timers }) as typeof window.setTimeout
   let available = false
-  let catalogs = 0
   let sessions = 0
   let snapshots = 0
   globalThis.fetch = async input => {
-    if (String(input).includes('/project/list')) { catalogs++; return Response.json({ projects: [remote] }) }
-    if (String(input).includes('/remote-project/')) {
-      snapshots++
-      return Response.json({ ...remote, connection_status: 'connected', workflows: [] })
-    }
+    const url = String(input)
+    if (url.includes('/project/list')) return Response.json({ projects: [remote] })
+    if (url.includes('/remote-project/')) { snapshots++; return Response.json({ ...remote, connection_status: 'connected' }) }
     sessions++
     return available ? Response.json({ sessions: [] }) : Response.json({ detail: 'offline' }, { status: 502 })
   }
-  const tick = async () => {
-    const [id, timer] = [...timers.entries()][0]
-    timers.delete(id)
-    await act(async () => { timer.callback(); await new Promise(resolve => setTimeout(resolve, 0)) })
-  }
   try {
     await act(async () => root.render(<Harness ids={remote.id} />))
-    assert.equal(timers.size, 1)
-    assert.equal([...timers.values()][0].delay, 2000)
-    await tick()
-    assert.equal([...timers.values()][0].delay, 4000)
-    assert.equal(catalogs, 1)
-    for (const expectedDelay of [8000, 16000, 32000, 60000, 60000]) {
-      await tick()
-      assert.equal([...timers.values()][0].delay, expectedDelay)
-    }
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
-    await act(async () => document.dispatchEvent(new window.Event('visibilitychange')))
-    assert.equal(timers.size, 0)
-    const failedAttempts = sessions
-    await act(async () => window.dispatchEvent(new window.Event('online')))
-    assert.equal(sessions, failedAttempts)
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    assert.equal(sessions, 1)
+    assert.equal(timers, 0)
     available = true
-    await act(async () => { document.dispatchEvent(new window.Event('visibilitychange')); await new Promise(resolve => setTimeout(resolve, 0)) })
-    assert.equal(timers.size, 0)
-    assert.equal(sessions, failedAttempts + 1)
+    await act(async () => {
+      window.dispatchEvent(new window.Event('online'))
+      window.dispatchEvent(new window.Event('workstep:reconnected'))
+      document.dispatchEvent(new window.Event('visibilitychange'))
+    })
+    assert.equal(sessions, 1)
+    await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
+    assert.equal(sessions, 2)
     assert.equal(snapshots, 1)
-    await act(async () => { window.dispatchEvent(new window.Event('online')) })
-    assert.equal(timers.size, 0)
-    assert.equal(catalogs, 1)
-    assert.equal(sessions, failedAttempts + 1)
-  } finally {
-    await act(async () => root.unmount())
-    globalThis.fetch = originalFetch
-    await window.happyDOM.close()
-  }
-})
-
-test('expanded inactive remote project recovers conversations and workflows after an initial failure', async () => {
-  const { window } = installDomEnvironment()
-  const originalFetch = globalThis.fetch
-  const container = document.body.appendChild(document.createElement('div'))
-  const root = createRoot(container)
-  const remote = { id: 'remote:p', path: '', name: 'Remote', type: 'remote' as const,
-    connection_status: 'disconnected' as const, access_status: 'active' as const, steps: {}, workflows: [] }
-  useGatewaySessionStore.setState({ session: null })
-  useProjectStore.setState({ projects: [remote], activeProject: null, loadError: null })
-  useChatListStore.setState({ sessionsByProject: {}, listErrorByProject: {}, listLoadingByProject: {} })
-  let available = false
-  let catalogCalls = 0
-  let sessionCalls = 0
-  let snapshotCalls = 0
-  globalThis.fetch = async input => {
-    if (String(input).includes('/project/list')) {
-      catalogCalls++
-      return Response.json({ projects: [{ ...remote, connection_status: available ? 'connected' : 'disconnected',
-        workflows: available ? [{ id: 'wf', name: 'Flow', is_default: true, nodeCount: 1 }] : [] }] })
-    }
-    if (String(input).includes('/remote-project/')) {
-      snapshotCalls++
-      return Response.json({ ...remote, connection_status: 'connected',
-        workflows: [{ id: 'wf', name: 'Flow', is_default: true, nodeCount: 1 }] })
-    }
-    sessionCalls++
-    return available ? Response.json({ sessions: [{ id: 'chat', project_id: remote.id, title: 'Recovered' }] })
-      : Response.json({ detail: 'offline' }, { status: 502 })
-  }
-  try {
-    await act(async () => root.render(<Harness ids={remote.id} />))
-    assert.equal(sessionCalls, 1)
-    assert.equal(useChatListStore.getState().listErrorByProject[remote.id], 'offline')
-    available = true
-    await act(async () => { window.dispatchEvent(new window.Event('online')); await new Promise(resolve => setTimeout(resolve, 0)) })
-    assert.equal(sessionCalls, 2)
-    assert.equal(useChatListStore.getState().sessionsByProject[remote.id][0].title, 'Recovered')
-    assert.equal(useProjectStore.getState().projects[0].workflows[0].id, 'wf')
-    assert.equal(catalogCalls, 1, 'remote recovery never reloads every local project')
-    assert.equal(snapshotCalls, 1)
-    const beforeUnmount = catalogCalls
-    await act(async () => root.unmount())
-    window.dispatchEvent(new window.Event('online'))
-    assert.equal(catalogCalls, beforeUnmount)
-  } finally {
-    globalThis.fetch = originalFetch
-    await window.happyDOM.close()
-  }
-})
-
-test('reopening a loaded project reuses cached conversations', async () => {
-  const { window } = installDomEnvironment()
-  const originalFetch = globalThis.fetch
-  const root = createRoot(document.body.appendChild(document.createElement('div')))
-  const project = { id: 'cached', name: 'Cached', path: '', steps: {}, workflows: [] }
-  useGatewaySessionStore.setState({ session: null })
-  useProjectStore.setState({ projects: [project], activeProject: null, loadError: null, remoteLoadErrors: {} })
-  useChatListStore.setState({ sessionsByProject: { cached: [] }, listErrorByProject: {}, listLoadingByProject: {} })
-  let conversations = 0
-  globalThis.fetch = async input => {
-    if (String(input).includes('chat-sessions')) conversations++
-    return Response.json({ projects: [project], sessions: [] })
-  }
-  try {
-    await act(async () => root.render(<Harness ids="cached" />))
-    await act(async () => root.render(<Harness ids="" />))
-    await act(async () => root.render(<Harness ids="cached" />))
-    assert.equal(conversations, 0)
+    assert.equal(timers, 0)
   } finally {
     await act(async () => root.unmount()); globalThis.fetch = originalFetch; await window.happyDOM.close()
   }
 })
 
-test('initial catalog failure retries online without any known projects', async () => {
+test('switching away prevents an old request from triggering a remote snapshot', async () => {
   const { window } = installDomEnvironment()
   const originalFetch = globalThis.fetch
   const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const remote = { id: 'remote:old', name: 'Old', path: '', type: 'remote' as const, steps: {}, workflows: [] }
   useGatewaySessionStore.setState({ session: null })
-  useProjectStore.setState({ projects: [], activeProject: null, loadError: null })
-  let calls = 0
-  globalThis.fetch = async () => ++calls === 1
-    ? Response.json({ detail: 'gateway unavailable' }, { status: 502 })
-    : Response.json({ projects: [{ id: 'p', name: 'Recovered', workflows: [], steps: {}, path: '' }] })
+  useProjectStore.setState({ projects: [remote], activeProject: remote, loadError: null, remoteLoadErrors: {} })
+  useChatListStore.setState({ sessionsByProject: {}, listErrorByProject: {}, listLoadingByProject: {} })
+  let finish!: (response: Response) => void
+  let snapshots = 0
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url.includes('/project/list')) return Response.json({ projects: [remote] })
+    if (url.includes('chat-sessions')) return new Promise<Response>(resolve => { finish = resolve })
+    snapshots++
+    return Response.json(remote)
+  }
   try {
+    await act(async () => root.render(<Harness ids={remote.id} />))
     await act(async () => root.render(<Harness ids="" />))
-    assert.equal(useProjectStore.getState().loadError, 'gateway unavailable')
-    await act(async () => { window.dispatchEvent(new window.Event('online')); await new Promise(resolve => setTimeout(resolve, 0)) })
-    assert.equal(useProjectStore.getState().projects[0].id, 'p')
-    assert.equal(useProjectStore.getState().loadError, null)
+    await act(async () => { finish(Response.json({ sessions: [] })); await new Promise(resolve => setTimeout(resolve, 0)) })
+    assert.equal(snapshots, 0)
   } finally {
-    await act(async () => root.unmount())
-    globalThis.fetch = originalFetch
-    await window.happyDOM.close()
+    await act(async () => root.unmount()); globalThis.fetch = originalFetch; await window.happyDOM.close()
+  }
+})
+
+test('invalid credentials skip requests and initial catalog failures are not retried automatically', async () => {
+  const { window } = installDomEnvironment()
+  const originalFetch = globalThis.fetch
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const remote = { id: 'remote:invalid', name: 'Invalid', path: '', type: 'remote' as const,
+    access_status: 'invalid' as const, steps: {}, workflows: [] }
+  useGatewaySessionStore.setState({ session: null })
+  useProjectStore.setState({ projects: [remote], activeProject: remote, loadError: null, remoteLoadErrors: {} })
+  useChatListStore.setState({ sessionsByProject: {}, listErrorByProject: {}, listLoadingByProject: {} })
+  let calls = 0
+  globalThis.fetch = async () => { calls++; return Response.json({ detail: 'offline' }, { status: 502 }) }
+  try {
+    await act(async () => root.render(<Harness ids={remote.id} />))
+    assert.equal(calls, 1)
+    await act(async () => {
+      window.dispatchEvent(new window.Event('online'))
+      window.dispatchEvent(new window.Event('workstep:reconnected'))
+    })
+    assert.equal(calls, 1)
+  } finally {
+    await act(async () => root.unmount()); globalThis.fetch = originalFetch; await window.happyDOM.close()
   }
 })
 

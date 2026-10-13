@@ -171,14 +171,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const visibleProjects = sidebarSearchActive
     ? projects.filter((project) => sidebarSearchResults.get(project.id)?.visible)
     : projects
-  const sessionProjectIdsKey = [...new Set([
-    ...expandedProjectIds,
-    ...(activeProject?.id ? [activeProject.id] : []),
-  ])]
-    .filter((projectId) => projects.some((project) => project.id === projectId))
-    .sort()
-    .join('\u0000')
-  useSidebarProjectLoading(sessionProjectIdsKey)
+  const reloadSelectedProject = useSidebarProjectLoading(activeProject?.id ?? '')
   const projectLoading = useProjectStore(s => s.loading)
   const projectLoadError = useProjectStore(s => s.loadError)
   const remoteProjectErrors = useProjectStore(s => s.remoteLoadErrors)
@@ -256,7 +249,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     if (!sidebarSearchOpen) return
     const timer = window.setTimeout(() => sidebarSearchInputRef.current?.focus(), 0)
     for (const project of projects) {
-      if (!(project.id in sessionsByProject)) {
+      if (project.type !== 'remote' && !(project.id in sessionsByProject)) {
         void useChatListStore.getState().fetchSessions(project.id)
       }
     }
@@ -264,6 +257,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   }, [projects, sessionsByProject, sidebarSearchOpen])
 
   const handleSelectProject = (p: Project) => {
+    if (activeProject?.id === p.id) reloadSelectedProject()
     setActiveProject(p)
     onSelectProject(p)
   }
@@ -621,7 +615,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     {p.name}
                     {p.type === 'remote' && (
                       <span
-                        title={p.access_status === 'revoked'
+                        title={p.access_status === 'invalid' ? t('layout.remoteAccessInvalidHint') : p.access_status === 'revoked'
                           ? t('layout.remoteAccessRevoked')
                           : p.access_status === 'expired'
                             ? t('layout.remoteAccessExpired')
@@ -629,7 +623,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         className="layout-project-remote-badge"
                         data-access-status={p.access_status}
                       >
-                        {p.access_status === 'revoked'
+                        {p.access_status === 'invalid' ? t('layout.remoteAccessInvalid') : p.access_status === 'revoked'
                           ? t('layout.remoteAccessRevoked')
                           : p.access_status === 'expired'
                             ? t('layout.remoteAccessExpired')
@@ -685,8 +679,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                 <div id={`sidebar-project-${p.id}`}>
                   {p.type === 'remote' && !p.workflows?.length && <SidebarLoadStatus
                     loading={sessionLoading[p.id] && !(p.id in sessionsByProject)} error={sessionLoadErrors[p.id] || remoteProjectErrors[p.id]}
-                    label={t('layout.projectLoadFailed')}
-                    onRetry={() => {
+                    label={t(p.access_status === 'invalid' ? 'layout.remoteAccessInvalidHint' : 'layout.projectLoadFailed')}
+                    onRetry={p.access_status === 'invalid' ? undefined : () => {
                       if (remoteProjectErrors[p.id]) void useProjectStore.getState().fetchRemoteProject(p.id)
                       else useChatListStore.getState().refreshSessions(p.id)
                     }} />}
@@ -873,8 +867,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                     )}>
                       {visibleSessions => <div className="layout-session-list">
                       <SidebarLoadStatus loading={sessionLoading[p.id] && !(p.id in sessionsByProject)} error={sessionLoadErrors[p.id]}
-                        label={t('layout.sessionLoadFailed')}
-                        onRetry={() => useChatListStore.getState().refreshSessions(p.id)} />
+                        label={t(p.access_status === 'invalid' ? 'layout.remoteAccessInvalidHint' : 'layout.sessionLoadFailed')}
+                        onRetry={p.access_status === 'invalid' ? undefined : () => useChatListStore.getState().refreshSessions(p.id)} />
                       {/* Bulk action bar (visible when 2+ sessions selected) */}
                       {selectionProjectId === p.id && selectedIds.size >= 2 && (
                         <div className="layout-session-bulk-actions">

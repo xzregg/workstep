@@ -1,6 +1,6 @@
+import { AdminRecordTable } from './AdminRecordTable'
 import { AdminTabs } from './AdminTabs'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { AdminSkillActionDialog } from './AdminSkillActionDialog'
 import type { SkillAction } from './AdminSkillActionDialog'
 
@@ -99,7 +99,7 @@ export function AdminSkillsPage() {
 
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <div className="gateway-admin-toolbar"><h2>平台 Skill 管理</h2><Link to="/admin">返回管理概览</Link></div>
+    <div className="gateway-admin-toolbar"><h2>平台 Skill 管理</h2></div>
     <p>版本上传后需单独审核；只有已批准版本可授权用户组。撤销版本会使相关项目分配失效。</p>
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
@@ -116,16 +116,17 @@ export function AdminSkillsPage() {
       {skillId && <div className="gateway-admin-toolbar"><h3>不可变版本</h3>
         <button type="button" disabled={!csrf} onClick={() => setAction({ kind: 'upload', skillId })}>
           上传版本</button></div>}
-      {skillId && (versions.length === 0 ? <p>尚无版本。</p> : <ul>{versions.map(version =>
-        <li key={version.id}>{version.version} · {statusNames[version.status] ?? version.status}
-          {' · '}文件 {version.file_count} 个 · 摘要 {version.digest.slice(0, 12)}
-          {version.status === 'pending_review' && <button type="button" disabled={!csrf}
-            onClick={() => setAction({ kind: 'approve', skillId, versionId: version.id,
-              version: version.version })}>批准版本 {version.version}</button>}
-          {version.status === 'approved' && <button type="button" disabled={!csrf}
-            onClick={() => setAction({ kind: 'revoke', skillId, versionId: version.id,
-              version: version.version })}>撤销版本 {version.version}</button>}
-        </li>)}</ul>)}
+      {skillId && <AdminRecordTable columns={['版本','状态','文件数','大小','摘要','操作']}>
+        {versions.map(version => <tr key={version.id}><td>{version.version}</td><td>{statusNames[version.status] ?? version.status}</td>
+          <td>{version.file_count}</td><td>{version.total_size.toLocaleString()} B</td><td title={version.digest}>{version.digest.slice(0,12)}</td>
+          <td><div className="gateway-row-actions"><button type="button" disabled={!csrf || version.status !== 'pending_review'}
+            aria-label={`批准版本 ${version.version}`} onClick={() => setAction({kind:'approve',skillId,versionId:version.id,version:version.version})}>批准版本</button>
+            <button type="button" className="gateway-admin-danger" disabled={!csrf || version.status !== 'approved'}
+              aria-label={`撤销版本 ${version.version}`} onClick={() => setAction({kind:'revoke',skillId,versionId:version.id,version:version.version})}>撤销版本</button></div></td>
+        </tr>)}
+        {!versions.length && <tr><td colSpan={6}>尚无版本。</td></tr>}
+      </AdminRecordTable>}
+
     </section>
      ) },
      { id: 'grants', label: '用户组授权', content: (
@@ -142,19 +143,23 @@ export function AdminSkillsPage() {
       <button type="button" disabled={!csrf || !groupId || !grantVersionId}
         onClick={() => setAction({ kind: 'grant', groupId, versionId: grantVersionId })}>
         授权用户组</button>
-      {groupId && (grants.length === 0 ? <p>本组尚无 Skill 授权。</p> : <ul>{grants.map(grant =>
-        <li key={grant.skill_id}>{grant.name} · {grant.version} · 已授权{' '}
-          <button type="button" disabled={!csrf} onClick={() => setAction({
-            kind: 'revoke_grant', groupId, skillId: grant.skill_id, name: grant.name,
-          })}>撤销组授权 {grant.name}</button></li>)}</ul>)}
+      {groupId && <AdminRecordTable columns={['Skill','版本','状态','操作']}>
+        {grants.map(grant => <tr key={grant.skill_id}><td>{grant.name}</td><td>{grant.version}</td><td>已授权</td>
+          <td><button type="button" className="gateway-admin-danger" disabled={!csrf} aria-label={`撤销组授权 ${grant.name}`}
+            onClick={() => setAction({kind:'revoke_grant',groupId,skillId:grant.skill_id,name:grant.name})}>撤销组授权</button></td></tr>)}
+        {!grants.length && <tr><td colSpan={4}>本组尚无 Skill 授权。</td></tr>}
+      </AdminRecordTable>}
+
     </section>
      ) },
      { id: 'applications', label: '设备应用状态', content: (
     <section className="gateway-overview-card"><h3>设备应用状态</h3>
-      {applications.length === 0 ? <p>尚无待同步的项目。</p> : <ul>{applications.map(item =>
-        <li key={item.project_id}>{item.project_name} · {item.device_name} · 期望修订 {
-          item.desired_revision} · 已应用修订 {item.applied_revision ?? '待同步'} · {item.status}
-          {item.last_error_code && ` · 错误 ${item.last_error_code}`}</li>)}</ul>}
+      <AdminRecordTable columns={['项目','设备','期望版本','已应用版本','状态','错误']}>
+        {applications.map(item => <tr key={item.project_id}><td>{item.project_name}</td><td>{item.device_name}</td>
+          <td>{item.desired_revision}</td><td>{item.applied_revision ?? '待同步'}</td><td>{item.status}</td><td>{item.last_error_code ?? '—'}</td></tr>)}
+        {!applications.length && <tr><td colSpan={6}>尚无待同步的项目。</td></tr>}
+      </AdminRecordTable>
+
     </section>
      ) },
     ]} />

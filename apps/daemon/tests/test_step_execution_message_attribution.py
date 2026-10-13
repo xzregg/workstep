@@ -53,7 +53,7 @@ async def test_retried_execution_rechecks_scope_and_uses_current_run_actor(tmp_p
     task, message_id, state = await executor.run(seed)
     runner = TaskRunner(EventBus(), source_project_id="project-test", database_executor=executor,
                         retry_message_ids={"build": message_id})
-    monkeypatch.setattr(execution, "assemble_prompt", lambda *args: "重试提示")
+    monkeypatch.setattr(execution, "assemble_prompt", lambda *args, **kwargs: "重试提示")
     slow_query_started = threading.Event()
     if source == "valid_slow":
         original = execution.attributed_actor_message_fields

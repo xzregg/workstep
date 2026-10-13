@@ -10,6 +10,7 @@ import ConfirmDialog from './ConfirmDialog'
 import Field from './Field'
 import Input from './Input'
 import Select from './Select'
+import './RemoteDeviceAccessList.css'
 
 interface Props {
   devices: RemoteDevice[]
@@ -140,10 +141,13 @@ export default function RemoteDeviceAccessList({ devices, onDeviceChange, onErro
                   <span style={{ color: 'var(--fg)', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {device.user_name || t('common.unknown')}
                   </span>
-                  <span style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {device.device_name}
+                  <span title={device.device_name || device.device_id} style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {device.device_name || device.device_id}
                   </span>
                   <span style={{ color: statusColor, fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0 }}>{statusLabel}</span>
+                </div>
+                <div className="remote-device-network" title={device.ip_address || undefined}>
+                  IP：{device.ip_address || t('common.unknown')}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 14px', marginTop: 5, color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', lineHeight: 1.45 }}>
                   <span>

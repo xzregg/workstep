@@ -56,3 +56,7 @@ main > .gateway-portal-header:has(.gateway-notifications) .gateway-notifications
   height: var(--mobile-control-regular, 32px); min-height: var(--mobile-control-regular, 32px);
  }
 }
+
+.gateway-notification-trigger { position: relative; box-sizing: border-box; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; line-height: 1; }
+.gateway-notification-trigger > svg { display: block; flex: 0 0 18px; width: 18px; height: 18px; }
+.gateway-notification-trigger > span { box-sizing: border-box; height: 16px; min-width: 16px; top: -5px; right: -5px; display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0 4px; font-size: 10px; }

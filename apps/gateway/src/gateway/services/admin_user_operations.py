@@ -63,6 +63,8 @@ async def bulk_users(call: GatewayCall, body: BulkUserInput):
             if body.action == 'purge':
                 await identity.require_super_admin(actor.id)
                 await purge_users(session, ids)
+            from gateway.services.directory_access import clear_suspension
+            await clear_suspension(session,ids)
             for user in users:
                 if body.action == 'purge': continue
                 user.status = 'deleted' if body.action == 'delete' else 'disabled' if body.action in ['disable', 'restore'] else 'active'

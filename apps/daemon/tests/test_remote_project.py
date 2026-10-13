@@ -1467,13 +1467,19 @@ async def test_proxy_middleware_forwards_existing_api_when_project_is_remote():
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
-        response = await client.get("/api/sessions?project_id=remote%3Aabc")
+        response = await client.get("/api/sessions?project_id=remote%3Aabc", headers={
+            'X-WorkStep-CLI-Token': 'local-only',
+            'X-WorkStep-Desktop-Token': 'desktop-only',
+            'Cookie': 'local-session=private',
+            'Idempotency-Key': 'operation-1',
+        })
 
     assert response.json() == {"source": "remote"}
     project_id, forwarded = manager.requests[0]
     assert project_id == "remote:abc"
     assert forwarded.path == "/api/sessions"
     assert forwarded.query["project_id"] == "remote:abc"
+    assert forwarded.headers == {'accept': '*/*', 'idempotency-key': 'operation-1'}
 
     app.state.gateway_client = type('ManagedGateway', (), {'managed_config': object()})()
     async with AsyncClient(
@@ -1824,7 +1830,12 @@ async def test_client_applies_remote_project_updates_and_forwards_status_events(
     await manager.close()
 
 
-async def test_client_preserves_revoked_state_when_reconnect_authentication_fails():
+@pytest.mark.parametrize("detail, expected_status", [
+    ("Remote device authorization was revoked", "revoked"),
+    ("Invalid remote-project credential", "invalid"),
+    ("Missing remote-project credential", "invalid"),
+])
+async def test_client_preserves_revoked_state_when_reconnect_authentication_fails(detail, expected_status):
     config = MemoryConfig()
     access = RemoteAccessService(config)
     access.update_settings(
@@ -1846,7 +1857,7 @@ async def test_client_preserves_revoked_state_when_reconnect_authentication_fail
             return json.dumps(
                 {
                     "type": "auth_error",
-                    "detail": "Remote device authorization was revoked",
+                    "detail": detail,
                 }
             )
 
@@ -1871,7 +1882,7 @@ async def test_client_preserves_revoked_state_when_reconnect_authentication_fail
     else:
         raise AssertionError("revoked credentials must fail to connect")
 
-    assert registry.list_public()[0]["access_status"] == "revoked"
+    assert registry.list_public()[0]["access_status"] == expected_status
 
 
 async def test_remote_project_settings_and_add_api(monkeypatch):
@@ -2112,6 +2123,7 @@ async def test_socket_cancellation_does_not_leave_child_tasks_running():
 
     class MemoryWebSocket:
         def __init__(self):
+            self.client = None
             self.incoming = asyncio.Queue()
             self.sent = []
 
@@ -2278,3 +2290,54 @@ async def test_shared_project_dispatch_to_gateway_connected_desktop_host(monkeyp
             assert forged.status_code == 401
     finally:
         await dispatcher.aclose()
+
+
+async def test_remote_credential_keeps_its_authenticated_device_when_entry_identity_changes():
+    config = MemoryConfig()
+    access = RemoteAccessService(config)
+    access.update_settings(enabled=True, internal_base_url="http://host:8765", external_base_url="")
+    shared = access.create_share(project_id="host-project", project_name="Remote", access="internal")
+    payload = access.parse_share_string(shared["share_string"])
+    registry = RemoteProjectRegistry(MemoryConfig())
+    actor = ActorSnapshot("local-user", "Local", "installation-a", "Device A", "local")
+    identities = []
+
+    class Socket:
+        def __init__(self):
+            self.incoming = asyncio.Queue()
+
+        async def send(self, value):
+            auth = json.loads(value)
+            if auth["type"] != "auth":
+                return
+            identity = ActorSnapshot(**auth["actor"], source="remote")
+            identities.append(identity)
+            try:
+                principal = access.authenticate(project_id=auth["project_id"], actor=identity,
+                    invite_token=auth.get("invite_token"), credential=auth.get("credential"))
+                result = {"type": "auth_ok", "host_id": payload["fingerprint"],
+                    "credential": principal.credential, "project": {"name": "Remote", "workflows": []}}
+            except PermissionError as exc:
+                result = {"type": "auth_error", "detail": str(exc)}
+            await self.incoming.put(json.dumps(result))
+
+        async def recv(self):
+            return await self.incoming.get()
+
+        async def close(self):
+            pass
+
+    manager = RemoteProjectClientManager(registry=registry, actor_provider=lambda: actor,
+        event_sink=lambda event: None, connect_factory=lambda endpoint, **kwargs: asyncio.sleep(0, result=Socket()))
+    try:
+        remote = await manager.add_share(shared["share_string"])
+        await manager.close()
+        actor = ActorSnapshot("gateway-user", "Gateway visitor", "gateway-device-a", "Gateway A", "managed")
+        await manager.subscribe(remote["id"], {})
+        assert [identity.device_id for identity in identities] == ["installation-a", "installation-a"]
+        assert identities[-1].actor_id == "gateway-user"
+        assert identities[-1].user_name == "Gateway visitor"
+        assert registry.get(remote["id"])["credential_device_id"] == "installation-a"
+        assert "credential_device_id" not in registry.list_public()[0]
+    finally:
+        await manager.close()

@@ -1,0 +1,94 @@
+/* Shared compact workbench, aligned with the usage ledger. */
+.gateway-admin-shell {
+  --gateway-admin-control-radius: 8px;
+  --gateway-admin-panel-radius: 10px;
+  --gateway-admin-separator: #e6eaf0;
+  --gateway-admin-border: #d7dce5;
+  --gateway-admin-control-height: 32px;
+}
+.gateway-admin-shell .gateway-admin-content .gateway-admin-page { background: transparent; border: 0; border-radius: 0; margin: 0; padding: 24px 28px; font-size: 13px; }
+.gateway-admin-shell .gateway-admin-page h2 { font-size: 23px; margin: 0 0 14px; }
+.gateway-admin-shell .gateway-admin-page h3 { font-size: 14px; margin: 0 0 12px; }
+.gateway-admin-shell .gateway-admin-page > p { color: #7d899a; font-size: 12px; margin: 0 0 16px; }
+.gateway-admin-shell .gateway-admin-page :is(input:not([type=checkbox]),select,button) { min-height: var(--gateway-admin-control-height); font-size: 13px; border-radius: 8px; }
+.gateway-admin-shell .gateway-admin-page button { border: 1px solid var(--gateway-admin-separator); background: #fff; color: var(--gateway-admin-secondary); padding: 4px 10px; }
+.gateway-admin-shell .gateway-admin-page button:not(:disabled):hover { background: #f3f7fc; border-color: #b7d4f6; color: var(--gateway-admin-accent); }
+.gateway-admin-shell .gateway-admin-page :is(button[type=submit],button.gateway-admin-primary) { background: var(--gateway-admin-accent); border-color: var(--gateway-admin-accent); color: #fff; }
+.gateway-admin-shell .gateway-admin-page :is(button[type=submit],button.gateway-admin-primary):not(:disabled):hover { background: var(--gateway-admin-accent-hover); color: #fff; }
+.gateway-admin-shell .gateway-admin-page button.gateway-admin-danger { color: #c24141; }
+.gateway-admin-shell .gateway-admin-page button.gateway-admin-danger:not(:disabled):hover { background: #fff5f5; border-color: #f2caca; color: #b91c1c; }
+.gateway-admin-shell .gateway-confirm-dialog .gateway-dialog-actions > button:last-child { background: var(--gateway-admin-accent); color: #fff; border-color: var(--gateway-admin-accent); }
+.gateway-admin-shell .gateway-admin-toolbar { justify-content: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.gateway-admin-shell .gateway-admin-toolbar > :is(h2,h3,strong):first-child { margin: 0; margin-right: auto; }
+.gateway-admin-shell .gateway-admin-toolbar > a { font-size: 12px; text-decoration: none; color: var(--gateway-admin-muted); }
+.gateway-admin-shell .gateway-admin-page-actions { margin: 12px 0; }
+.gateway-admin-shell .gateway-admin-filters { padding: 10px 12px; margin: 12px 0 0; font-size: 12px; gap: 8px; background: #fbfcfe; }
+.gateway-admin-shell .gateway-admin-search { margin: 0; gap: 8px; }
+.gateway-admin-shell .gateway-admin-search label { font-size: 12px; }
+.gateway-admin-shell .gateway-admin-search input { width: 240px; }
+.gateway-admin-shell .gateway-admin-table-scroll { margin: 0 0 12px; border-radius: 10px; background: #fff; }
+.gateway-admin-shell .gateway-admin-table { font-size: 12px; font-variant-numeric: tabular-nums; }
+.gateway-admin-shell .gateway-admin-table th { font-size: 11px; color: #8190a3; background: #fbfcfe; padding: 11px 14px; }
+.gateway-admin-shell .gateway-admin-table td { padding: 11px 14px; }
+.gateway-admin-shell .gateway-admin-table td p { margin: 3px 0; font-size: 11px; }
+.gateway-admin-shell .gateway-admin-table td strong { font-weight: 500; }
+.gateway-admin-shell .gateway-admin-table td button { min-height: 28px; font-size: 11px; padding: 3px 8px; }
+.gateway-admin-shell .gateway-admin-table td:last-child { width: 220px; }
+.gateway-admin-shell .gateway-admin-table-scroll[aria-busy=true] tbody { opacity: .55; }
+.gateway-admin-cell-meta { display: block; font-size: 11px; margin-top: 4px; color: #8793a3; }
+.gateway-admin-shell :is(.gateway-row-actions,.gateway-device-actions) { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+.gateway-admin-list-status { min-height: 28px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8190a3; }
+.gateway-admin-shell .gateway-admin-pagination { min-height: 32px; margin: 12px 0 0; gap: 8px; font-size: 11px; }
+.gateway-admin-shell .gateway-admin-pagination button { min-width: 64px; }
+.gateway-admin-shell :is(.gateway-users-tree-panel,.gateway-overview-card,.gateway-project-grants) { border-radius: 10px; padding: 14px; background: #fff; }
+.gateway-admin-shell .gateway-users-workspace { gap: 14px; }
+.gateway-admin-shell .gateway-user-group-tree button { border-color: transparent; background: transparent; }
+.gateway-admin-shell .gateway-user-group-tree button.gateway-group-selected { color: var(--gateway-admin-accent); background: #eaf3ff; }
+.gateway-admin-shell .gateway-admin-tablist button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: #6e6e73; }
+.gateway-admin-shell .gateway-admin-tablist button[aria-selected=true] { color: var(--gateway-admin-accent); border-bottom-color: var(--gateway-admin-accent); background: transparent; }
+.gateway-admin-details { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 20px; }
+.gateway-admin-details > div { min-width: 0; }
+.gateway-admin-details dt { font-size: 11px; color: #8793a3; }
+.gateway-admin-details dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 13px; }
+@media(max-width:1023px) {
+ .gateway-admin-shell { --gateway-admin-control-height: var(--mobile-control-regular); }
+ .gateway-admin-shell .gateway-admin-content .gateway-admin-page { padding: 22px; }
+ .gateway-admin-shell .gateway-admin-table td button { min-height: var(--mobile-control-regular); }
+}
+@media(max-width:767px) {
+ .gateway-admin-shell .gateway-admin-content .gateway-admin-page { padding: 18px 12px; }
+ .gateway-admin-shell .gateway-admin-search input { width: 100%; }
+ .gateway-admin-shell .gateway-admin-toolbar { align-items: center; }
+ .gateway-admin-shell .gateway-admin-page input:not([type=checkbox]), .gateway-admin-shell .gateway-admin-page select { font-size: 16px; }
+ .gateway-admin-details { grid-template-columns: minmax(0,1fr); }
+}
+
+.gateway-admin-shell .gateway-users-table-panel .gateway-admin-table :is(th,td):has(>input[type=checkbox]) { width: 36px; min-width: 36px; }
+.gateway-admin-shell .gateway-admin-tablist button[aria-selected=true] { box-shadow: none; }
+.gateway-admin-row-menu { position: fixed; inset: auto; width: 220px; box-sizing: border-box; max-height: 304px; overflow-y: auto; margin: 0; padding: 6px; border: 1px solid #e6eaf0; border-radius: 10px; background: #fff; box-shadow: 0 8px 24px rgb(29 29 31 / 12%); }
+.gateway-admin-row-menu[hidden] { display: none; }
+.gateway-admin-shell .gateway-admin-page .gateway-admin-row-menu > button { display: block; width: 100%; min-height: 32px; text-align: left; padding: 6px 10px; margin: 0; border-color: transparent; border-radius: 6px; }
+@container gateway-admin-user-panel (max-width: 600px) {
+ .gateway-users-table-panel > .gateway-admin-toolbar { display: grid; grid-template-columns: 1fr auto; align-items: center; }
+ .gateway-users-table-panel > .gateway-admin-toolbar .gateway-admin-search { grid-column: 1 / -1; grid-row: 1; }
+ .gateway-users-table-panel > .gateway-admin-toolbar > button { grid-row: 2; justify-self: start; }
+ .gateway-users-table-panel > .gateway-admin-toolbar > button:last-child { justify-self: end; }
+}
+
+@media(max-width:1023px) { .gateway-admin-shell .gateway-admin-page .gateway-admin-row-menu > button { min-height: var(--mobile-control-menu); } }
+
+/* View switching and record actions never share a wrapping bulk toolbar. */
+.gateway-group-view-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+.gateway-group-view-toolbar > strong { font-size: 14px; white-space: nowrap; }
+.gateway-admin-shell .gateway-group-view-toolbar > button { width: 120px; flex: 0 0 120px; }
+.gateway-admin-shell .gateway-group-action-bar { flex-wrap: nowrap; gap: 6px; margin: 0 0 12px; }
+.gateway-group-action-bar > span { flex: 1 0 auto; white-space: nowrap; }
+.gateway-admin-shell .gateway-group-action-bar > button { flex: 0 0 auto; padding-inline: 8px; }
+.gateway-admin-shell :is(.gateway-row-actions,.gateway-device-actions) { flex-wrap: nowrap; }
+.gateway-admin-shell :is(.gateway-row-actions,.gateway-device-actions) > button { flex-shrink: 0; }
+.gateway-admin-shell .gateway-bulk-toolbar { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
+.gateway-admin-shell .gateway-bulk-toolbar > :is(span,button) { flex-shrink: 0; white-space: nowrap; }
+.gateway-admin-shell .gateway-share-management .gateway-admin-table { table-layout: auto; }
+
+.gateway-admin-shell .gateway-admin-toolbar > a { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; height: var(--gateway-admin-control-height); padding: 0 10px; border: 1px solid var(--gateway-admin-separator); border-radius: 8px; background: #fff; color: var(--gateway-admin-secondary); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.gateway-admin-shell .gateway-admin-toolbar > a:hover { color: var(--gateway-admin-accent); border-color: #b7d4f6; background: #f3f7fc; }

@@ -133,8 +133,10 @@ async def test_directory_preview_does_not_fetch_members_and_selected_sync_only_r
     monkeypatch.setenv('SELECTED_APP_SECRET', 'secret')
     source = IdentitySource(id='source', provider=provider, tenant_id='corp', client_id='app', secret_env='SELECTED_APP_SECRET')
     requested = []
+    tree_requests = []
     def handler(request):
         path = request.url.path
+        if 'department/list' in path: tree_requests.append(path)
         if path.endswith('/auth/scopes'): return httpx.Response(200, json={'errcode': 0, 'auth_org_scopes': {'authed_dept': [2]}})
         if path.endswith('accessToken'): return httpx.Response(200, json={'accessToken': 'token'})
         if path.endswith('gettoken'): return httpx.Response(200, json={'errcode': 0, 'access_token': 'token'})
@@ -152,6 +154,11 @@ async def test_directory_preview_does_not_fetch_members_and_selected_sync_only_r
     assert len(preview['departments']) == 3 and not requested
     if provider == 'dingtalk':
         assert preview['departments'][0]['display_name'] == '钉钉组织'
+    tree_count = len(tree_requests)
+    cached = await connector.fetch_directory(source, selected_department_ids=['2'], preloaded_departments=preview['departments'])
+    assert cached['people'][0]['department_ids'] == ['2']
+    assert len(tree_requests) == tree_count
+    requested.clear()
     progress = []
     async def update(*values): progress.append(values)
     result = await connector.fetch_directory(source, selected_department_ids=['2'], progress=update)

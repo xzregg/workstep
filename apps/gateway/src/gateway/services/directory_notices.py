@@ -7,7 +7,7 @@ from gateway.services.management_scope import organization_manager
 from pydantic import BaseModel, Field
 
 CHANGE_KEYS = ('departments_added', 'departments_updated', 'departments_moved', 'departments_deleted',
-               'people_added', 'people_updated', 'people_transferred', 'people_departed', 'people_unverified')
+               'people_added', 'people_updated', 'people_transferred', 'people_departed', 'people_unverified','people_restored','people_reactivated')
 
 
 async def record_notice(session, source_id, result=None, error=None):

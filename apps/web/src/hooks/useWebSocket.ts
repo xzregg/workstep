@@ -184,8 +184,8 @@ export function useWebSocket() {
         const projectId = useProjectStore.getState().activeProject?.id
         if (isReconnect) {
           const project = useProjectStore.getState().activeProject
-          if (projectId) {
-            if (project?.type !== 'remote') useProjectStore.getState().refreshProjects()
+          if (projectId && project?.type !== 'remote') {
+            useProjectStore.getState().refreshProjects()
             void useTaskStore.getState().fetchTasks(projectId)
             useChatListStore.getState().refreshSessions(projectId)
           }
@@ -229,9 +229,8 @@ export function useWebSocket() {
           if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.remote_project_status') {
             const projects = useProjectStore.getState()
             if (parsed.value?.project) projects.applyRemoteProject(parsed.value.project)
-            else if (parsed.value?.project_id) void projects.fetchRemoteProject(parsed.value.project_id)
-            const activeProjectId = useProjectStore.getState().activeProject?.id
-            if (activeProjectId && activeProjectId === parsed.value?.project_id && parsed.value?.status === 'connected') {
+            const activeProjectId = projects.activeProject?.id
+            if (projects.activeProject?.type !== 'remote' && activeProjectId && activeProjectId === parsed.value?.project_id && parsed.value?.status === 'connected') {
               void useTaskStore.getState().fetchTasks(activeProjectId)
               useChatListStore.getState().refreshSessions(activeProjectId)
               window.dispatchEvent(new Event('workstep:reconnected'))

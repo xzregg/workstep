@@ -43,6 +43,6 @@ async def user_group_tree(call: GatewayCall):
         if users is not None: counts_query = counts_query.where(GroupMembership.user_id.in_(users))
         counts = dict((await session.execute(counts_query.group_by(GroupMembership.group_id))).all())
         groups = [{'id': group.id, 'name': directory_name(group.name, dept.parent_external_id, provider, tenant_id) if dept else group.name, 'source_type': group.source_type,
-                   'parent_id': parent_groups.get((dept.source_id, dept.parent_external_id)) if dept else None,
+                   'parent_id': parent_groups.get((dept.source_id, dept.parent_external_id)) if dept else group.parent_group_id if group.parent_group_id in ids else None,
                    'member_count': counts.get(group.id, 0)} for group, dept, provider, tenant_id in rows if not dept or dept.active]
     return {'groups': groups}

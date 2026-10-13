@@ -1,6 +1,7 @@
-import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
+import { AdminManagementDialog } from './AdminManagementDialog'
+import { AdminListStatus } from './AdminListStatus'
+import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { AdminProviderApplications } from './AdminProviderApplications'
 import { AdminProviderAssignments } from './AdminProviderAssignments'
 import { AdminProviderTestPanel } from './AdminProviderTestPanel'
@@ -61,9 +62,9 @@ export function AdminProvidersPage() {
 
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <div className="gateway-admin-toolbar"><h2>供应商管理</h2><Link to="/admin">返回管理概览</Link></div>
+    <div className="gateway-admin-toolbar"><h2>供应商管理</h2></div>
     <p>供应商密钥只在创建和轮换时提交；列表不返回密钥。</p>
-    {csrf && <button type="button" onClick={() => setEdit('new')}>创建供应商</button>}
+    <div className="gateway-admin-toolbar gateway-admin-page-actions"><button type="button" className="gateway-admin-primary" disabled={!csrf} onClick={() => setEdit('new')}>创建供应商</button><button type="button" onClick={() => setShowApplications(true)}>查看 PC 应用状态</button></div>
     <form className="gateway-admin-search" onSubmit={event => {
       event.preventDefault(); setFilters(current => ({ ...current, q: query.trim(), page: 1 }))
     }}><label htmlFor="provider-search">搜索名称或类型</label>
@@ -82,36 +83,34 @@ export function AdminProvidersPage() {
         { ...current, direction: event.target.value, page: 1 }))}>
         <option value="asc">升序</option><option value="desc">降序</option></select>
     </div>
-    {loading && <p role="status">正在加载供应商…</p>}
+    <AdminListStatus loading={loading} label="正在加载供应商…"/>
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && providers.length === 0 && <p>当前条件下没有供应商。</p>}
-    <AdminRecordTable>{providers.map(provider => <AdminRecordRow key={provider.id}>
-      <div><strong>{provider.name}</strong><p>{provider.type} · {provider.protocols.join('、')} · {
-        provider.enabled ? '已启用' : '已停用'} · 配置版本 {provider.revision}</p>
-        <p>{provider.model_count} 个模型 · 价格版本 {provider.price_version ?? '未设置'} · 用户授权 {
-          provider.assignment_users} · PC 授权 {provider.assignment_devices}</p>
-        <p>目标 PC {provider.target_devices} 台 · 已应用 {provider.application.applied} · 等待同步 {
-          provider.application.pending} · 失败 {provider.application.failed} · 离线 {
-          provider.application.offline}</p></div>
-        {csrf && <div className="gateway-device-actions"><button type="button"
-          onClick={() => setEdit(provider)}>编辑 / 轮换凭据</button>
-          <button type="button" onClick={() => setAssignmentsFor(provider)}>管理分配</button>
-          {provider.enabled && <button type="button" onClick={() => setTestFor(provider)}>测试连接</button>}
-          {provider.enabled && <button type="button" onClick={() => setDisable(provider)}>停用</button>}</div>}
-    </AdminRecordRow>)}</AdminRecordTable>
+    <AdminRecordTable busy={loading} columns={['供应商','状态','模型 / 价格','授权对象','设备应用','操作']}>
+      {providers.map(provider => <tr key={provider.id}>
+        <td><strong>{provider.name}</strong><small className="gateway-admin-cell-meta">{provider.type} · {provider.protocols.join('、')}</small></td>
+        <td>{provider.enabled ? '已启用' : '已停用'}<small className="gateway-admin-cell-meta">配置版本 {provider.revision}</small></td>
+        <td>{provider.model_count} 个模型 · {provider.price_version ?? '未设置'}</td>
+        <td>用户 {provider.assignment_users} · PC {provider.assignment_devices}</td>
+        <td>已应用 {provider.application.applied} / {provider.target_devices}<small className="gateway-admin-cell-meta">等待 {provider.application.pending} · 失败 {provider.application.failed} · 离线 {provider.application.offline}</small></td>
+        <td><div className="gateway-row-actions"><button type="button" disabled={!csrf || loading} onClick={() => setEdit(provider)}>编辑 / 轮换凭据</button>
+          <button type="button" disabled={!csrf || loading} onClick={() => setAssignmentsFor(provider)}>管理分配</button>
+          <button type="button" disabled={!csrf || loading || !provider.enabled} onClick={() => setTestFor(provider)}>测试连接</button>
+          <button type="button" className="gateway-admin-danger" disabled={!csrf || loading || !provider.enabled} onClick={() => setDisable(provider)}>停用</button></div></td>
+      </tr>)}
+    </AdminRecordTable>
     <div className="gateway-admin-pagination"><span>共 {total} 个供应商 · 第 {filters.page}/{
       Math.max(1, Math.ceil(total / 25))} 页</span>
       <button type="button" disabled={filters.page <= 1 || loading}
         onClick={() => setFilters(current => ({ ...current, page: current.page - 1 }))}>上一页</button>
       <button type="button" disabled={filters.page >= Math.ceil(total / 25) || loading}
         onClick={() => setFilters(current => ({ ...current, page: current.page + 1 }))}>下一页</button></div>
-    <button type="button" onClick={() => setShowApplications(value => !value)}>{
-      showApplications ? '收起 PC 应用状态' : '查看 PC 应用状态'}</button>
-    {showApplications && <AdminProviderApplications />}
-    {assignmentsFor && csrf && <AdminProviderAssignments key={assignmentsFor.id}
-      providerId={assignmentsFor.id} enabled={assignmentsFor.enabled} csrf={csrf}
-      onChanged={() => setRevision(value => value + 1)} />}
+    {showApplications && <AdminManagementDialog title="PC 配置应用状态" onClose={() => setShowApplications(false)}><AdminProviderApplications/></AdminManagementDialog>}
+    {assignmentsFor && csrf && <AdminManagementDialog title={`${assignmentsFor.name} · 管理分配`} onClose={() => setAssignmentsFor(null)}>
+      <AdminProviderAssignments key={assignmentsFor.id} providerId={assignmentsFor.id} enabled={assignmentsFor.enabled} csrf={csrf}
+        onChanged={() => setRevision(value => value + 1)}/>
+    </AdminManagementDialog>}
     {testFor && csrf && <AdminProviderTestPanel key={testFor.id} providerId={testFor.id}
       providerName={testFor.name} csrf={csrf} onClose={() => setTestFor(null)} />}
     {edit && csrf && <AdminProviderEditorDialog key={edit === 'new' ? 'new' : edit.id}

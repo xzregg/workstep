@@ -8,6 +8,7 @@ import './DirectWorkstepWorkspace.css'
 import './NotificationCenter.css'
 import './AdminPermissionsPage.css'
 import './projectInvitations.css'
+import './AdminCompact.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode><BrowserRouter><App /></BrowserRouter></StrictMode>,

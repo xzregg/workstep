@@ -154,11 +154,11 @@ def test_selected_sync_updates_and_reports_locally_deleted_records(tmp_path):
         assert job['status']=='completed',job
         assert job['result']['people_added']==1
         assert job['result']['people_deleted_skipped']==1
-        assert job['result']['departments_deleted_skipped']==1
+        assert job['result']['departments_deleted_skipped']==0
         with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
             assert db.execute("select display_name,active from directory_people where subject='old'").fetchone()==('改名用户',1)
             assert db.execute("select active from directory_people where subject='missing'").fetchone()==(1,)
-            assert db.execute("select status from user_groups").fetchone()==('deleted',)
+            assert db.execute("select status from user_groups").fetchone()==('active',)
 
         client.post('/api/auth/step-up',headers=headers,json={'password':'OwnerPassphrase-2026!'})
         with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
@@ -175,6 +175,42 @@ def test_selected_sync_updates_and_reports_locally_deleted_records(tmp_path):
         assert job['result']['people_added']==0
         with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
             assert db.execute("select count(*) from directory_people where subject='deleted'").fetchone()[0]==0
+
+        async def preview():
+            from gateway.services.external_identity import ExternalIdentityService
+            return await ExternalIdentityService(app.state.database).full_sync(source,
+                [{'external_id':'2','display_name':'研发'}],
+                [{'subject':'deleted','display_name':'删除用户','department_ids':['2']},
+                 {'subject':'never-imported','display_name':'新用户','department_ids':['2']}], dry_run=True)
+        candidates = client.portal.call(preview)['user_candidates']
+        purged_candidate = next(row for row in candidates if row['subject']=='deleted')
+        assert purged_candidate['skipped'] is True
+        assert purged_candidate['skip_reason'] == 'purged'
+        assert next(row for row in candidates if row['subject']=='never-imported')['skipped'] is False
+
+        # An explicit checked selection may restore both soft-deleted and purged users.
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            db.execute("update users set status='deleted' where id in (select user_id from directory_people where subject='old')")
+        client.post(base+'/sync-jobs',headers=headers,json={'department_ids':['2'],'preview':True})
+        for _ in range(100):
+            preview_job=client.get(base+'/sync-jobs/latest').json()
+            if preview_job['status'] in ('preview','failed'): break
+            time.sleep(.02)
+        assert preview_job['status']=='preview',preview_job
+        assert next(row for row in preview_job['result']['user_candidates'] if row['subject']=='old')['skip_reason']=='deleted'
+        confirmed=client.post(base+'/sync-jobs/confirm',headers=headers,json={'job_id':preview_job['id'],'selected_subjects':['old','deleted']})
+        assert confirmed.status_code==202,confirmed.text
+        for _ in range(100):
+            restored=client.get(base+'/sync-jobs/latest').json()
+            if restored['status'] in ('completed','failed'): break
+            time.sleep(.02)
+        assert restored['status']=='completed',restored
+        assert restored['result']['people_restored']==2
+        groups=client.get('/api/admin/user-groups/tree').json()['groups']
+        assert any(row['name']=='改名' for row in groups)
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            assert db.execute("select count(*) from users where status='active' and id in (select user_id from directory_people where subject in ('old','deleted'))").fetchone()[0]==2
+            assert db.execute("select count(*) from platform_settings where key like 'directory-purged:%'").fetchone()[0]==0
 
 
 def test_preview_does_not_apply_until_confirmed_and_history_is_durable(tmp_path):
@@ -237,3 +273,91 @@ def test_schedule_api_validation_and_directory_notices_are_scoped_and_acknowledg
         assert client.get('/api/admin/directory-notices').json()['notices']==[]
         client.post('/api/auth/logout',headers=headers)
         assert client.get('/api/admin/directory-notices').status_code == 401
+
+
+def test_confirmed_department_selection_recreates_purged_groups_and_hierarchy(tmp_path):
+    app=create_app(GatewaySettings(data_dir=tmp_path))
+    departments=[{'external_id':'1','display_name':'公司'},
+                 {'external_id':'2','display_name':'研发','parent_external_id':'1'},
+                 {'external_id':'3','display_name':'销售'}]
+    class HierarchyConnector:
+        async def fetch_directory(self, source, *, selected_department_ids=None, progress=None):
+            return {'departments':[row for row in departments if row['external_id'] in selected_department_ids],
+                    'people':[], 'selected_department_ids':selected_department_ids, 'complete':True}
+    app.state.identity_connectors={'dingtalk':HierarchyConnector()}
+    with TestClient(app,base_url='https://gateway.test') as client:
+        headers={'X-CSRF-Token':_setup(client)}
+        client.post('/api/auth/step-up',headers=headers,json={'password':'OwnerPassphrase-2026!'})
+        source=client.post('/api/admin/identity-sources',headers=headers,json={'provider':'dingtalk','tenant_id':'corp','client_id':'app','client_secret':'secret'}).json()['id']
+        base=f'/api/admin/identity-sources/{source}'
+        assert client.post(base+'/sync',headers=headers,json={'departments':departments,'people':[]}).status_code==200
+        groups=client.get('/api/admin/user-groups/tree').json()['groups']
+        parent_id=next(row['parent_id'] for row in groups if row['name']=='研发')
+        child_id=next(row['id'] for row in groups if row['name']=='研发')
+        sales_id=next(row['id'] for row in groups if row['name']=='销售')
+        assert client.post('/api/groups/bulk',headers=headers,json={'group_ids':[row['id'] for row in groups],'action':'delete'}).status_code==200
+        assert client.post('/api/groups/bulk',headers=headers,json={'group_ids':[parent_id,child_id],'action':'purge'}).status_code==200
+        client.post(base+'/sync-jobs',headers=headers,json={'department_ids':['1','2'],'preview':True})
+        for _ in range(100):
+            preview=client.get(base+'/sync-jobs/latest').json()
+            if preview['status'] in ('preview','failed'):break
+            time.sleep(.02)
+        assert preview['status']=='preview',preview
+        assert client.post(base+'/sync-jobs/confirm',headers=headers,json={'job_id':preview['id'],'selected_subjects':[]}).status_code==202
+        for _ in range(100):
+            final=client.get(base+'/sync-jobs/latest').json()
+            if final['status'] in ('completed','failed'):break
+            time.sleep(.02)
+        assert final['status']=='completed',final
+        groups=client.get('/api/admin/user-groups/tree').json()['groups']
+        assert len(groups)==2
+        child=next(row for row in groups if row['name']=='研发')
+        assert child['parent_id'] in {row['id'] for row in groups}
+        deleted=client.get('/api/groups/deleted').json()['groups']
+        assert any(row['id']==sales_id for row in deleted)
+
+
+def test_full_preview_only_applies_selected_users_and_required_department_groups(tmp_path):
+    app=create_app(GatewaySettings(data_dir=tmp_path))
+    class FullConnector:
+        async def fetch_directory(self,source,*,selected_department_ids=None,progress=None):
+            return {'departments':[{'external_id':'1','display_name':'公司'},
+                {'external_id':'2','display_name':'研发','parent_external_id':'1'},
+                {'external_id':'3','display_name':'销售','parent_external_id':'1'}],
+                'people':[{'subject':'dev','display_name':'研发用户','department_ids':['2']},
+                          {'subject':'sales','display_name':'销售用户','department_ids':['3']}],
+                'selected_department_ids':['1','2','3'],'complete':True}
+    app.state.identity_connectors={'dingtalk':FullConnector()}
+    with TestClient(app,base_url='https://gateway.test') as client:
+        headers={'X-CSRF-Token':_setup(client)}
+        source=client.post('/api/admin/identity-sources',headers=headers,json={'provider':'dingtalk','tenant_id':'corp','client_id':'app','client_secret':'secret'}).json()['id']
+        base=f'/api/admin/identity-sources/{source}'
+        client.post(base+'/sync-jobs',headers=headers,json={'department_ids':['1','2','3'],'selection_department_ids':[],'preview':True})
+        for _ in range(100):
+            preview=client.get(base+'/sync-jobs/latest').json()
+            if preview['status'] in ('preview','failed'):break
+            time.sleep(.02)
+        assert preview['status']=='preview',preview
+        assert preview['selection_department_ids']==[]
+        assert client.get('/api/admin/user-groups/tree').json()['groups']==[]
+        assert client.post(base+'/sync-jobs/confirm',headers=headers,json={'job_id':preview['id'],'department_ids':['unknown'],'selected_subjects':['dev']}).status_code==422
+        response=client.post(base+'/sync-jobs/confirm',headers=headers,json={'job_id':preview['id'],'department_ids':['2'],'selected_subjects':['dev']})
+        assert response.status_code==202,response.text
+        for _ in range(100):
+            final=client.get(base+'/sync-jobs/latest').json()
+            if final['status'] in ('completed','failed'):break
+            time.sleep(.02)
+        assert final['status']=='completed',final
+        users=client.get('/api/admin/users').json()['users']
+        assert any(row['display_name']=='研发用户' for row in users)
+        assert not any(row['display_name']=='销售用户' for row in users)
+        groups=client.get('/api/admin/user-groups/tree').json()['groups']
+        assert len(groups)==2
+        assert not any(row['name']=='销售' for row in groups)
+        dev=next(row for row in groups if row['name']=='研发')
+        assert dev['parent_id'] in {row['id'] for row in groups}
+        members=client.get('/api/groups/'+dev['id']+'/members').json()['members']
+        assert any(row['display_name']=='研发用户' for row in members)
+        from gateway.services.organization_settings import source_options
+        options=client.portal.call(source_options,app.state.database,source)
+        assert options['selected_department_ids']==['2']
