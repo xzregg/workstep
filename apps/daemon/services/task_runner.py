@@ -890,6 +890,7 @@ class TaskRunner:
             await self._execution_messages.publish_completion(
                 task.id, step_key, msg_id, completion,
                 len(events_collected) + 1,
+                error=reported_error,
             )
 
         async def consume_pending_handoff() -> None:
@@ -1157,6 +1158,7 @@ class TaskRunner:
                 interrupted = True
                 raise
             logger.exception("Step %s failed", step_key)
+            reported_error = str(e)
             await self._fail_step(ts, task, step_key, str(e))
             failed.add(step_key)
             error_event = InternalEvent(

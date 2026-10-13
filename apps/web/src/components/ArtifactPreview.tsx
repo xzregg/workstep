@@ -284,7 +284,7 @@ export default function ArtifactPreview({
 
   if (isHtml) {
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
+      <div className="artifact-html-preview">
         {fileHeader(t('artifact.htmlFile'), (
           <>
             {editButton}
@@ -293,17 +293,13 @@ export default function ArtifactPreview({
             {openWindowButton}
           </>
         ))}
-        <div style={{
-          flex: 1, minHeight: 0, borderRadius: 8, overflow: 'hidden',
-          border: '1px solid var(--border-soft)', background: '#fff',
-          display: 'flex', flexDirection: 'column',
-        }}>
+        <div className="artifact-html-frame-container">
           <iframe
             src={rawUrl}
             title={t('artifact.htmlFile')}
             sandbox="allow-scripts allow-same-origin allow-popups"
             onLoad={(event) => prepareFrame(event.currentTarget)}
-            style={{ flex: 1, minHeight: 0, width: '100%', border: 'none', background: '#fff', display: 'block' }}
+            className="artifact-html-frame"
           />
         </div>
       </div>

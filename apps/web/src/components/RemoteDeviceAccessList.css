@@ -1,0 +1,7 @@
+.remote-device-network {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}

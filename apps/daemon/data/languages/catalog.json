@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "28a65fcaa56ff45f349fe2e3fd12f1cfe7041c2dac554f2b1a32f933d28ccf6f",
+  "revision": "9184d16e06835b84b9ecc8e2cc082ef13c778bca39ca613954412c47005a2576",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -480,6 +480,7 @@
     "gatewayRemote.disconnected": "连接已断开",
     "gatewayRemote.online": "在线",
     "gatewayRemote.back": "返回网关平台",
+    "gatewayRemote.backCompact": "返回平台",
     "gatewayRemote.localOnly": "本机目录与桌面应用操作仅在电脑本机可用。",
     "channelBot.whitelistSearch": "搜索用户名称或用户标识",
     "channelBot.whitelistCount": "已选 {selected} 人，共 {total} 人",
@@ -1588,6 +1589,8 @@
     "canvas.leave": "离开",
     "canvas.unsavedSwitchMessage": "有未保存的更改，确定切换工作流？",
     "canvas.switch": "切换",
+    "layout.remoteAccessInvalid": "需重新授权",
+    "layout.remoteAccessInvalidHint": "远程项目凭据失效，请在宿主生成新的分享字符串，并通过“添加项目”重新添加。",
     "layout.projectLoadFailed": "项目列表加载失败",
     "layout.sessionLoadFailed": "对话列表加载失败",
     "layout.intro": "介绍",
@@ -2228,6 +2231,7 @@
     "schedules.agentTask": "AI 生成任务",
     "schedules.agentCandidates": "AI 从 {count} 个流程中选择",
     "schedules.allWorkflows": "全部流程",
+    "taskList.loadFailed": "任务列表加载失败",
     "taskList.copyTask": "复制任务",
     "taskList.copyTitle": "{title}（副本）",
     "taskList.creator": "创建者",

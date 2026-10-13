@@ -14,6 +14,7 @@ import Button from '../components/Button'
 import ChatSessionRenameDialog from '../components/ChatSessionRenameDialog'
 import EmptyState from '../components/EmptyState'
 import Icon from '../components/Icon'
+import Spinner from '../components/Spinner'
 import MobileSheet from '../components/MobileSheet'
 import OpenLocationButton from '../components/OpenLocationButton'
 import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
@@ -421,7 +422,7 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
   }
 
   if (historyLoading && sessionId && !messages.length) {
-    return <div className="chat-session-empty" role="status"><Icon name="loader-circle" className="spin" />{t('common.loading')}</div>
+    return <div className="chat-session-empty" role="status"><Spinner size={16} />{t('common.loading')}</div>
   }
 
   if (historyError && sessionId) {

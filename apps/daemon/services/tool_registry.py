@@ -6,12 +6,14 @@ talks HTTP to the local daemon, so tool behavior always matches the frontend's
 API contract.
 """
 
+import asyncio
 import json
 import os
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+from services.local_cli import local_cli_headers, local_origin
 
 DEFAULT_DAEMON_URL = "http://127.0.0.1:8765"
 
@@ -604,15 +606,17 @@ class WorkstepClient:
             for key in tool.body_params
             if key in args and args[key] not in (None, "")
         }
+        headers = await asyncio.to_thread(local_cli_headers, self.base_url)
+        # Never forward a desktop credential to --url on another machine.
+        origin = local_origin(self.base_url)
+        daemon_origin = local_origin(os.environ.get('WORKSTEP_DAEMON_URL') or DEFAULT_DAEMON_URL)
+        if origin and origin == daemon_origin and os.environ.get('WORKSTEP_DESKTOP_TOKEN'):
+            headers['X-WorkStep-Desktop-Token'] = os.environ['WORKSTEP_DESKTOP_TOKEN']
         async with httpx.AsyncClient(
             base_url=self.base_url,
             transport=self._transport,
             timeout=130.0 if tool.name == "workstep_add_task_worktree" else 30.0,
-            headers=(
-                {"X-WorkStep-Desktop-Token": os.environ["WORKSTEP_DESKTOP_TOKEN"]}
-                if os.environ.get("WORKSTEP_DESKTOP_TOKEN")
-                else None
-            ),
+            headers=headers,
         ) as client:
             try:
                 response = await client.request(

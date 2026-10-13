@@ -8,6 +8,51 @@ from gateway.models import Device, DirectoryDepartment, DirectoryPerson, GroupMe
 from sqlalchemy import select
 
 
+def test_manual_group_parent_is_persisted_and_purging_parent_detaches_child(tmp_path):
+    from test_external_identity import _setup
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        headers = {'X-CSRF-Token': _setup(client)}
+        client.post('/api/auth/step-up', headers=headers, json={'password':'OwnerPassphrase-2026!'})
+        parent = client.post('/api/groups', headers=headers, json={'name':'研发','slug':'dev'}).json()['id']
+        import asyncio
+        import sqlite3
+        import threading
+        from httpx import ASGITransport, AsyncClient
+        from sqlalchemy import event
+        reached=threading.Event()
+        def before_execute(connection,cursor,statement,parameters,context,many):
+            if statement.startswith('INSERT INTO user_groups'):reached.set()
+        engine=app.state.database.engine.sync_engine
+        event.listen(engine,'before_cursor_execute',before_execute)
+        async def create_child_under_lock():
+            async with AsyncClient(transport=ASGITransport(app=app),base_url='https://gateway.test',cookies=client.cookies) as actor:
+                pending=asyncio.create_task(actor.post('/api/groups',headers=headers,json={'name':'开发','slug':'development','parent_id':parent}))
+                try:
+                    assert await asyncio.to_thread(reached.wait,2)
+                    assert (await asyncio.wait_for(actor.get('/api/health'),.5)).status_code==200
+                    assert not pending.done()
+                finally:
+                    await asyncio.to_thread(lock.rollback)
+                return await pending
+        try:
+            with sqlite3.connect(tmp_path/'workstep_platform.db',check_same_thread=False) as lock:
+                lock.execute('BEGIN IMMEDIATE')
+                child=client.portal.call(create_child_under_lock)
+        finally:
+            event.remove(engine,'before_cursor_execute',before_execute)
+        assert child.status_code == 201, child.text
+        child_id = child.json()['id']
+        tree = client.get('/api/admin/user-groups/tree').json()['groups']
+        assert next(row for row in tree if row['id']==child_id)['parent_id']==parent
+        assert client.post('/api/groups', headers=headers, json={'name':'未知父组','slug':'invalid','parent_id':'missing'}).status_code==404
+        assert client.post('/api/groups/bulk', headers=headers, json={'group_ids':[parent],'action':'delete'}).status_code==200
+        assert client.post('/api/groups', headers=headers, json={'name':'已删除父组','slug':'invalid-deleted','parent_id':parent}).status_code==404
+        assert client.post('/api/groups/bulk', headers=headers, json={'group_ids':[parent],'action':'purge'}).status_code==200
+        tree = client.get('/api/admin/user-groups/tree').json()['groups']
+        assert next(row for row in tree if row['id']==child_id)['parent_id'] is None
+
+
 def test_group_leader_can_manage_only_own_skill_projects(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:

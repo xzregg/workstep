@@ -74,9 +74,9 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
       {displayContext ? <GatewayDeviceTabs currentDeviceId={displayContext.device_id} currentProjectId={displayContext.project_id}
         header={<>
           {compact && <strong>{t('gatewayRemote.switchDevices')}</strong>}
-          <a href={new URL('/account', displayContext.gateway_url ?? gatewayUrl).href}>{t('gatewayRemote.back')}</a>
+          <button type="button" className="gateway-header-control gateway-return-control" aria-label={t('gatewayRemote.back')} title={t('gatewayRemote.back')} onClick={() => window.location.assign(new URL('/account', displayContext.gateway_url ?? gatewayUrl).href)}>{compact ? <><Icon name="external-link" size={18}/><span>{t('gatewayRemote.backCompact')}</span></> : t('gatewayRemote.back')}</button>
           {gatewayWorkspacePath() && <GatewayWorkspaceNotifications/>}
-          {compact && <button type="button" className="gateway-mobile-picker-close" aria-label={t('common.close')} onClick={() => setPickerOpen(false)}><Icon name="x" size={16}/></button>}
+          {compact && <button type="button" className="gateway-mobile-picker-close gateway-header-control gateway-header-icon-control" aria-label={t('common.close')} onClick={() => setPickerOpen(false)}><Icon name="x" size={18}/></button>}
         </>}/>: <strong>{t('gatewayRemote.loading')}</strong>}
       {disconnected && <span>{t('gatewayRemote.disconnected')}</span>}
     </div>}

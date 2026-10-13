@@ -101,6 +101,7 @@ class RemoteProjectRegistry:
         if same_consumed_invite:
             item.update(
                 credential=existing["credential"],
+                credential_device_id=existing.get("credential_device_id"),
                 steps=existing.get("steps") or {},
                 workflows=existing.get("workflows") or [],
                 last_invite_hash=existing["last_invite_hash"],
@@ -133,6 +134,7 @@ class RemoteProjectRegistry:
         local_project_id: str,
         *,
         credential: str,
+        device_id: str | None = None,
         project: dict[str, Any],
         access_status: str = "active",
         access_expires_at: int | None = None,
@@ -149,6 +151,8 @@ class RemoteProjectRegistry:
             "access_status": access_status,
             "access_expires_at": access_expires_at,
         }
+        if device_id is not None:
+            changes["credential_device_id"] = device_id
         values = self._load()
         stored = next(entry for entry in values if entry.get("id") == local_project_id)
         stored.update(changes)

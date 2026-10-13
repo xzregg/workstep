@@ -18,7 +18,7 @@ from gateway.config import GatewaySettings
 from gateway.models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0045_project_ui_permissions"
+HEAD_REVISION = "0047_system_group_creator"
 
 
 def safe_database_location(url: str) -> tuple[str, str]:

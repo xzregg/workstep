@@ -1,0 +1,31 @@
+.mobile-navigation-float {
+  position: fixed;
+  z-index: 1250;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(var(--app-viewport-height, 100dvh) * 0.25 + env(safe-area-inset-bottom));
+  width: var(--mobile-control-touch);
+  height: var(--mobile-control-touch);
+  min-height: var(--mobile-control-touch);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+  transition: background var(--motion-fast) var(--ease);
+  will-change: transform;
+  touch-action: none;
+  user-select: none;
+}
+.mobile-navigation-float-icon { transform: rotate(90deg); pointer-events: none; }
+.mobile-navigation-float:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.mobile-navigation-float[data-positioned="true"] {
+  left: 0;
+  top: 0;
+  right: auto;
+  bottom: auto;
+  transform: translate3d(var(--float-x), var(--float-y), 0);
+}

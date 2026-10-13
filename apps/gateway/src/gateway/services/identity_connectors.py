@@ -1,6 +1,7 @@
 """HTTP adapters for DingTalk and WeCom QR authorization."""
 
 import os
+from copy import deepcopy
 from collections import deque
 from urllib.parse import urlencode
 
@@ -27,6 +28,7 @@ def _checked(response: httpx.Response) -> dict:
 
 
 class DingTalkConnector:
+    supports_preloaded_departments = True
     def __init__(self, client_factory=None, secret_resolver=None):
         self.secret_resolver = secret_resolver
         self.client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=10))
@@ -62,17 +64,17 @@ class DingTalkConnector:
             )
 
     async def fetch_directory(self, source: IdentitySource, *, selected_department_ids=None,
-                              departments_only=False, progress=None) -> dict:
+                              departments_only=False, progress=None, preloaded_departments=None) -> dict:
         async with self.client_factory() as client:
             token = _checked(await client.post("https://api.dingtalk.com/v1.0/oauth2/accessToken", json={
                 "appKey": source.client_id, "appSecret": await _secret(source, self.secret_resolver),
             })).get("accessToken")
             if not token:
                 raise ValueError("DingTalk app token missing")
-            departments = [{"external_id": "1", "display_name": '钉钉组织',
+            departments = deepcopy(preloaded_departments) if preloaded_departments is not None else [{"external_id": "1", "display_name": '钉钉组织',
                             "parent_external_id": None}]
-            pending = deque([1])
-            seen = {1}
+            pending = deque([] if preloaded_departments is not None else [1])
+            seen = {int(row['external_id']) for row in departments}
             while pending:
                 current = pending.popleft()
                 children = _checked(await client.post(
@@ -128,10 +130,11 @@ class DingTalkConnector:
                 else:
                     raise ValueError("DingTalk member pagination limit reached")
                 if progress: await progress('fetching', completed, len(selected), str(department_id))
-            return {"departments": departments, "people": list(people.values()), "complete": complete, "selected_department_ids": None if selected_department_ids is None else list(dict.fromkeys([*selected_department_ids, *(str(id) for id in selected)]))}
+            return {"departments": departments, "people": list(people.values()), "complete": complete, "whole_company":whole_company, "selected_department_ids": None if selected_department_ids is None else list(dict.fromkeys([*selected_department_ids, *(str(id) for id in selected)]))}
 
 
 class WeComConnector:
+    supports_preloaded_departments = True
     def __init__(self, client_factory=None, secret_resolver=None):
         self.secret_resolver = secret_resolver
         self.client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=10))
@@ -165,24 +168,26 @@ class WeComConnector:
             return ExternalProfile(tenant_id=source.tenant_id, subject=subject, display_name=subject)
 
     async def fetch_directory(self, source: IdentitySource, *, selected_department_ids=None,
-                              departments_only=False, progress=None) -> dict:
+                              departments_only=False, progress=None, preloaded_departments=None) -> dict:
         async with self.client_factory() as client:
             token = _checked(await client.get("https://qyapi.weixin.qq.com/cgi-bin/gettoken", params={
                 "corpid": source.tenant_id, "corpsecret": await _secret(source, self.secret_resolver),
             })).get("access_token")
             if not token:
                 raise ValueError("WeCom app token missing")
-            raw_departments = _checked(await client.get(
-                "https://qyapi.weixin.qq.com/cgi-bin/department/list",
-                params={"access_token": token},
-            )).get("department")
-            if not isinstance(raw_departments, list) or not raw_departments:
-                raise ValueError("WeCom directory has no visible departments")
-            known = {int(item["id"]) for item in raw_departments}
-            departments = [{
-                "external_id": str(item["id"]), "display_name": item["name"],
-                "parent_external_id": str(item["parentid"]) if int(item["parentid"]) in known else None,
-            } for item in raw_departments]
+            if preloaded_departments is not None:
+                departments = deepcopy(preloaded_departments)
+            else:
+                raw_departments = _checked(await client.get(
+                    "https://qyapi.weixin.qq.com/cgi-bin/department/list",
+                    params={"access_token": token},
+                )).get("department")
+                if not isinstance(raw_departments, list) or not raw_departments:
+                    raise ValueError("WeCom directory has no visible departments")
+                departments = [{
+                    "external_id": str(item["id"]), "display_name": item["name"],
+                    "parent_external_id": str(item["parentid"]) if int(item["parentid"]) != 0 else None,
+                } for item in raw_departments]
             if departments_only:
                 return {"departments": departments, "people": []}
             complete, whole_company = await _directory_scope(client, source, token, departments, selected_department_ids)
@@ -208,7 +213,7 @@ class WeComConnector:
                                            if str(item) in {str(id) for id in selected}],
                     }
                 if progress: await progress('fetching', completed, len(selected), str(department_id))
-            return {"departments": departments, "people": list(people.values()), "complete": complete, "selected_department_ids": None if selected_department_ids is None else list(dict.fromkeys([*selected_department_ids, *(str(id) for id in selected)]))}
+            return {"departments": departments, "people": list(people.values()), "complete": complete, "whole_company":whole_company, "selected_department_ids": None if selected_department_ids is None else list(dict.fromkeys([*selected_department_ids, *(str(id) for id in selected)]))}
 
 
 def _selected_departments(departments, selected_department_ids, *, allow_missing=False):

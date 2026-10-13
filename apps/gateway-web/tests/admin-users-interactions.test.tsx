@@ -108,7 +108,7 @@ test('device page retries load errors and pages server results', async () => {
     }
     throw new Error(`Unexpected fetch: ${url}`)
   }
-  render(<DeviceAdminPage />)
+  render(<MemoryRouter><DeviceAdminPage /></MemoryRouter>)
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByText('Alice PC')
@@ -136,12 +136,16 @@ test('disabled device can be reenabled through an administrator confirmation', a
     }
     throw new Error(`Unexpected fetch: ${url}`)
   }
-  render(<DeviceAdminPage />)
-  fireEvent.click(await screen.findByRole('button', { name: '重新启用' }))
+  render(<MemoryRouter><DeviceAdminPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button',{name:'Alice PC · 更多操作'}))
+  fireEvent.click(screen.getByRole('button', { name: '重新启用' }))
   const dialog = screen.getByRole('dialog', { name: '重新启用设备' })
   fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'test-admin-password' } })
   fireEvent.click(within(dialog).getByRole('button', { name: '确认重新启用' }))
-  await screen.findByRole('button', { name: '停用' })
+  await waitFor(() => assert.equal(screen.queryByRole('dialog') === null,true))
+  await waitFor(() => assert.match(screen.getByText('Alice PC').closest('tr')?.textContent ?? '',/已启用/))
+  fireEvent.click(screen.getByRole('button',{name:'Alice PC · 更多操作'}))
+  await waitFor(() => assert.equal((screen.getByRole('button',{name:'停用'}) as HTMLButtonElement).disabled,false))
   assert.equal(status, 'active')
 })
 
@@ -154,11 +158,14 @@ test('revoked device offers a name edit and explains why reenable is unavailable
     ], total: 1 })
     throw new Error(`Unexpected fetch: ${url}`)
   }
-  render(<DeviceAdminPage />)
-  fireEvent.click(await screen.findByRole('button', { name: '修改名称' }))
+  render(<MemoryRouter><DeviceAdminPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button',{name:'Container PC · 更多操作'}))
+  assert.equal((screen.getByRole('button',{name:'重新启用'}) as HTMLButtonElement).disabled,true)
+  fireEvent.click(screen.getByRole('button', { name: '修改名称' }))
   assert.ok(screen.getByRole('dialog', { name: '修改设备名称' }))
   assert.equal((screen.getByLabelText('设备名称') as HTMLInputElement).value, 'Container PC')
-  assert.equal(screen.queryByRole('button', { name: '重新启用' }), null)
+  fireEvent.click(screen.getByRole('button',{name:'取消'}))
+  fireEvent.click(screen.getByRole('button',{name:'Container PC · 设备详情'}))
   assert.ok(screen.getByText(/该设备身份已撤销，不能直接重新启用。/))
 })
 
@@ -175,8 +182,9 @@ test('permanent deletion is available for revoked devices and refreshes the list
     assert.equal(init?.method, 'DELETE')
     deleted = true; return new Response(null, { status: 204 })
   }
-  render(<DeviceAdminPage />)
-  fireEvent.click(await screen.findByRole('button', { name: '彻底删除' }))
+  render(<MemoryRouter><DeviceAdminPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button',{name:'Container PC · 更多操作'}))
+  fireEvent.click(screen.getByRole('button', { name: '彻底删除' }))
   const dialog = screen.getByRole('dialog', { name: '彻底删除设备' })
   assert.match(dialog.textContent ?? '', /本机项目和文件保留/)
   assert.match(dialog.textContent ?? '', /重新登记/)
@@ -202,18 +210,17 @@ test('device page distinguishes outdated and unknown client versions', async () 
     ], total: 3 })
     throw new Error(`Unexpected fetch: ${url}`)
   }
-  render(<DeviceAdminPage />)
+  render(<MemoryRouter><DeviceAdminPage /></MemoryRouter>)
   fireEvent.change(await screen.findByLabelText('设备状态'), { target: { value: 'active' } })
   const old = (await screen.findByText('Old PC')).closest('tr')!
   const legacy = screen.getByText('Legacy PC').closest('tr')!
-  assert.match(old.textContent ?? '', /连接 IP：2001:db8::7/)
-  assert.match(legacy.textContent ?? '', /离线，暂无连接 IP/)
+  assert.match(old.textContent ?? '', /2001:db8::7/)
   assert.match(old.textContent ?? '', /有新版本 1\.10\.0/)
-  assert.match(legacy.textContent ?? '', /daemon 版本：未上报/)
-  assert.match(legacy.textContent ?? '', /暂无对应发布版本，无法比较/)
+  assert.match(legacy.textContent ?? '', /未上报/)
+  assert.match(legacy.textContent ?? '', /暂无发布版本/)
   const unlisted = screen.getByText('Unlisted PC').closest('tr')!
-  assert.match(unlisted.textContent ?? '', /daemon 版本：1\.0\.0/)
-  assert.match(unlisted.textContent ?? '', /暂无对应发布版本，无法比较/)
+  assert.match(unlisted.textContent ?? '', /1\.0\.0/)
+  assert.match(unlisted.textContent ?? '', /暂无发布版本/)
 })
 
 test('grant dialog searches users and departments, validates scope, and submits with step-up', async () => {
@@ -665,4 +672,36 @@ test('device display preserves readable names and uses IP only as fallback', () 
  assert.equal(deviceDisplayName({name:'沙箱 1',connection_ip:'192.168.52.156'}),'沙箱 1')
  assert.equal(deviceDisplayName({name:'',connection_ip:'192.168.52.156'}),'192.168.52.156')
  assert.equal(deviceDisplayName({name:'沙箱 1',connection_ip:null}),'沙箱 1')
+})
+
+
+test('creating a user keeps the applied search and current list page', async () => {
+  const urls: string[] = []
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); urls.push(url)
+    if (url === '/api/auth/session') return Response.json({csrf_token:'csrf'})
+    if (url === '/api/admin/user-groups/tree') return Response.json({groups:[]})
+    if (url === '/api/admin/users' && init?.method === 'POST') return Response.json({id:'new'})
+    if (url.startsWith('/api/admin/users?')) return Response.json({total:101,users:[{id:'alice',
+      username:'alice',display_name:'Alice',status:'active',registration_source:'local',created_at:'2026-01-01'}]})
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter><AdminUsersPage/></MemoryRouter>)
+  await screen.findByRole('cell',{name:'Alice'})
+  fireEvent.change(screen.getByLabelText('搜索用户'),{target:{value:'alice'}})
+  fireEvent.click(screen.getByRole('button',{name:'搜索'}))
+  await waitFor(() => assert.ok(urls.some(url => url.includes('q=alice'))))
+  await waitFor(() => assert.equal((screen.getByRole('button',{name:'下一页'}) as HTMLButtonElement).disabled,false))
+  fireEvent.click(screen.getByRole('button',{name:'下一页'}))
+  await waitFor(() => assert.ok(urls.some(url => url.includes('page=2'))))
+  fireEvent.click(screen.getByRole('button',{name:'创建用户'}))
+  const dialog = screen.getByRole('dialog',{name:'创建用户'})
+  fireEvent.change(within(dialog).getByLabelText('用户名'),{target:{value:'new-user'}})
+  fireEvent.change(within(dialog).getByLabelText('显示名称'),{target:{value:'New User'}})
+  fireEvent.change(within(dialog).getByLabelText('初始密码（至少 8 位）'),{target:{value:'strong-password-123'}})
+  const before = urls.filter(url => url.startsWith('/api/admin/users?')).length
+  fireEvent.click(within(dialog).getByRole('button',{name:'创建用户'}))
+  await waitFor(() => assert.equal(urls.filter(url => url.startsWith('/api/admin/users?')).length,before+1))
+  const query = new URLSearchParams(urls.filter(url => url.startsWith('/api/admin/users?')).at(-1)!.split('?')[1])
+  assert.equal(query.get('page'),'2'); assert.equal(query.get('q'),'alice')
 })

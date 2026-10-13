@@ -34,6 +34,7 @@ class GroupInput(BaseModel):
     description: str = Field(default="", max_length=2000)
     source_type: str = Field(default="manual", pattern=r"^(manual|external_department)$")
     external_department_id: str | None = Field(default=None, max_length=64)
+    parent_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class MemberInput(BaseModel):
@@ -86,13 +87,20 @@ async def create_group(call: GatewayCall, body: GroupInput):
         raise GatewayError('invalid', 'Invalid group name or slug')
     if (body.source_type == "external_department") != (body.external_department_id is not None):
         raise GatewayError('invalid', 'Department mapping required')
+    if body.source_type == 'external_department' and body.parent_id:
+        raise GatewayError('invalid', 'Mapped group hierarchy follows the external department')
     group = UserGroup(id=str(uuid4()), name=body.name, slug=body.slug,
                       description=body.description, source_type=body.source_type,
                       external_department_id=body.external_department_id,
+                      parent_group_id=body.parent_id,
                       created_by_user_id=actor.id)
     try:
         async with call.database.session() as session:
             async with session.begin():
+                if body.parent_id:
+                    parent = await session.get(UserGroup, body.parent_id)
+                    if parent is None or parent.status != 'active':
+                        raise GatewayError('not_found', 'Parent group unavailable')
                 if body.external_department_id:
                     department = await session.get(DirectoryDepartment,
                                                    body.external_department_id)
@@ -108,7 +116,7 @@ async def create_group(call: GatewayCall, body: GroupInput):
     except IntegrityError as exc:
         raise GatewayError('conflict', 'Group slug already exists') from exc
     return {"id": group.id, "name": group.name, "slug": group.slug,
-            "description": group.description, "source_type": group.source_type}
+            "description": group.description, "source_type": group.source_type, 'parent_id': group.parent_group_id}
 
 
 async def list_groups(call: GatewayCall):

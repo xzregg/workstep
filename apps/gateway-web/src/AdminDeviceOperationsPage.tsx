@@ -2,7 +2,6 @@ import { AdminTabs } from './AdminTabs'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 type Target = { id: string; name: string; version: string; online: boolean }
@@ -207,7 +206,7 @@ export function AdminDeviceOperationsPage() {
   }, [])
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <div className="gateway-admin-toolbar"><h2>设备批量作业</h2><Link to="/admin/devices">返回设备管理</Link></div>
+    <div className="gateway-admin-toolbar"><h2>设备批量作业</h2></div>
     {!csrf && !error && <p role="status">正在检查登录状态…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     {csrf && <AdminTabs label="设备作业分类" value={tab} onChange={setTab} items={[

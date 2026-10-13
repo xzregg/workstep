@@ -42,8 +42,11 @@ def test_gateway_request_identity_takes_precedence_over_device_account(monkeypat
     monkeypatch.setattr(main.config_store, 'get_user_name', lambda: '旧本地姓名')
     monkeypatch.setattr(main.config_store, 'get_device_identity', lambda: {
         'device_id': 'device-a', 'device_name': 'Device A'})
-    with actor_context(ActorSnapshot('visiting-user', '访问用户', 'device-a', 'Device A', 'managed')):
-        assert main._local_actor().user_name == '访问用户'
+    with actor_context(ActorSnapshot('visiting-user', '访问用户', 'device-a', 'device-a', 'managed')):
+        identity = main._local_actor()
+        assert identity.user_name == '访问用户'
+        assert identity.device_name == 'Device A'
+        assert identity.device_id == 'device-a'
 
 
 def test_local_remote_project_still_requires_local_name(monkeypatch):

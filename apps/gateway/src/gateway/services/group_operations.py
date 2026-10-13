@@ -68,6 +68,9 @@ async def bulk_groups(call: GatewayCall, body: BulkGroupInput):
                 for table in tables.values():
                     for column in table.columns:
                         if any(fk.target_fullname == 'user_groups.id' for fk in column.foreign_keys):
+                            if table.name == 'user_groups':
+                                await session.execute(update(UserGroup).where(UserGroup.parent_group_id.in_(ids)).values(parent_group_id=None))
+                                continue
                             await session.execute(delete(table).where(column.in_(ids)))
                 for name in ['provider_assignments', 'project_access_grants']:
                     table = tables[name]

@@ -25,8 +25,9 @@ from gateway.services.management_scope import organization_manager
 
 from gateway.services.identity_api import _check_csrf, _set_session_cookie, _super_admin_request
 
-from gateway.models import DirectoryEventReceipt, DirectorySyncState, IdentitySource, PlatformSetting
+from gateway.models import DirectoryDepartment, DirectoryEventReceipt, DirectorySyncState, IdentitySource, PlatformSetting
 from gateway.services.organization_settings import option_key, source_options
+from gateway.services.directory_maintenance import MaintenancePolicy, saved_policy, apply_maintenance
 
 
 """Enterprise identity setup, scan callbacks and directory import."""
@@ -80,7 +81,10 @@ class DirectorySnapshot(BaseModel):
 
 class SelectedDirectoryInput(BaseModel):
     preview: bool = False
+    refresh: bool = False
     department_ids: list[str] = Field(min_length=1, max_length=10000)
+    selection_department_ids: list[str] | None = Field(default=None, max_length=10000)
+    full_directory: bool = False
 
     @field_validator('department_ids')
     @classmethod
@@ -259,16 +263,20 @@ async def reconcile_directory(call: GatewayCall, source_id: str):
     await organization_manager(call, source_id=source_id, mutation=True)
     service = _service(call)
     source = await service.source(source_id, purpose="sync")
-    selected = (await source_options(call.database, source_id)).get('selected_department_ids', [])
-    if selected == []:
+    options=await source_options(call.database,source_id)
+    policy=saved_policy(options)
+    selected=options.get('selected_department_ids',[])
+    if policy is None:
         raise GatewayError('invalid', 'Select departments before syncing')
     try:
         connector = _connector(call, source.provider)
-        snapshot = await connector.fetch_directory(source, selected_department_ids=selected) if selected is not None else await connector.fetch_directory(source)
+        snapshot = await connector.fetch_directory(source) if options.get('maintenance_policy') else await connector.fetch_directory(source,selected_department_ids=selected) if selected is not None else await connector.fetch_directory(source)
     except Exception as exc:
         await service.record_sync_failure(source_id, 'provider_unavailable')
         raise GatewayError('upstream_failed', 'Directory provider unavailable') from exc
     try:
+        if options.get('maintenance_policy'):
+            return await apply_maintenance(service,source_id,snapshot,policy)
         return await service.full_sync(source_id, snapshot["departments"], snapshot["people"],
                                        snapshot.get('cursor'), selected_department_ids=snapshot.get('selected_department_ids', selected), snapshot_complete=snapshot.get('complete', False))
     except Exception as exc:
@@ -391,16 +399,24 @@ async def preview_directory(call: GatewayCall, source_id: str):
     await organization_manager(call, source_id=source_id)
     source = await _service(call).source(source_id, purpose='sync')
     try:
-        snapshot = await _connector(call, source.provider).fetch_directory(source, departments_only=True)
+        snapshot = await call.directory_reconciler.jobs.preview_cache.departments(source)
     except Exception as exc:
         raise GatewayError('upstream_failed', 'Directory provider unavailable') from exc
     options = await source_options(call.database, source_id)
-    return {'departments': snapshot['departments'], 'selected_department_ids': options.get('selected_department_ids', [])}
+    async with call.database.session() as session:
+        local=(await session.scalars(select(DirectoryDepartment).where(DirectoryDepartment.source_id==source_id))).all()
+        state=await session.get(DirectorySyncState,source_id)
+        initialized=bool(state and state.last_success_at)
+        visible={row['external_id'] for row in snapshot['departments']}
+        departments=[*snapshot['departments'],*[{'external_id':row.external_id,'display_name':row.display_name,
+            'parent_external_id':row.parent_external_id,'local_only':True} for row in local if row.external_id not in visible]]
+    return {'departments':departments,'selected_department_ids':options.get('selected_department_ids',[]),
+            'maintenance_policy':saved_policy(options),'is_initialized':initialized}
 
 
 async def start_selected_sync(call: GatewayCall, source_id: str, body: SelectedDirectoryInput):
     await organization_manager(call, source_id=source_id, mutation=True)
-    return await call.directory_reconciler.jobs.start(source_id, body.department_ids, preview=body.preview)
+    return await call.directory_reconciler.jobs.start(source_id, body.department_ids, preview=body.preview, refresh=body.refresh, selection=body.selection_department_ids, full_directory=body.full_directory)
 
 
 async def latest_selected_sync(call: GatewayCall, source_id: str):
@@ -412,11 +428,15 @@ async def latest_selected_sync(call: GatewayCall, source_id: str):
 class ConfirmDirectoryInput(BaseModel):
     job_id: str = Field(min_length=1, max_length=64)
     selected_subjects: list[str] | None = Field(default=None, max_length=100000)
+    department_ids: list[str] | None = Field(default=None, min_length=1, max_length=10000)
+    maintenance_policy: MaintenancePolicy | None = None
+    groups_only: bool = False
 
 
 async def confirm_selected_sync(call: GatewayCall, source_id: str, body: ConfirmDirectoryInput):
     await organization_manager(call, source_id=source_id, mutation=True)
-    return await call.directory_reconciler.jobs.confirm(source_id, body.job_id, body.selected_subjects)
+    return await call.directory_reconciler.jobs.confirm(source_id, body.job_id, body.selected_subjects, department_ids=body.department_ids,
+        maintenance_policy=body.maintenance_policy.model_dump() if body.maintenance_policy else None,groups_only=body.groups_only)
 
 
 async def sync_history(call: GatewayCall, source_id: str):

@@ -46,6 +46,50 @@ async def test_migration_schema_matches_models(tmp_path):
         await database.close()
 
 
+@pytest.mark.asyncio
+async def test_group_parent_upgrade_preserves_existing_groups_and_members(tmp_path):
+    from alembic import command
+    settings=GatewaySettings(data_dir=tmp_path)
+    await asyncio.to_thread(command.upgrade,migration_config(settings.effective_database_url),'0045_project_ui_permissions')
+    def seed():
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            db.execute("INSERT INTO users(id,username,display_name,status) VALUES('u','member','Member','active')")
+            db.execute("INSERT INTO user_groups(id,name,slug,created_by_user_id) VALUES('g','Existing','existing','u')")
+            db.execute("INSERT INTO group_memberships(id,group_id,user_id) VALUES('m','g','u')")
+    await asyncio.to_thread(seed)
+    database=GatewayDatabase(settings)
+    await database.start()
+    await database.close()
+    def verify():
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            assert db.execute('SELECT id,parent_group_id FROM user_groups').fetchall()==[('g',None)]
+            assert db.execute('SELECT id,group_id,user_id FROM group_memberships').fetchall()==[('m','g','u')]
+            assert db.execute('PRAGMA foreign_key_check').fetchall()==[]
+    await asyncio.to_thread(verify)
+
+
+@pytest.mark.asyncio
+async def test_system_group_creator_upgrade_repairs_legacy_identity(tmp_path):
+    from alembic import command
+    settings=GatewaySettings(data_dir=tmp_path)
+    await asyncio.to_thread(command.upgrade,migration_config(settings.effective_database_url),'0046_manual_group_parent')
+    def seed():
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            db.execute("INSERT INTO users(id,username,display_name,status) VALUES('u','member','Member','active')")
+            db.execute("INSERT INTO user_groups(id,name,slug,created_by_user_id) VALUES('g','Imported','imported','system:directory-sync')")
+            db.execute("INSERT INTO group_memberships(id,group_id,user_id) VALUES('m','g','u')")
+    await asyncio.to_thread(seed)
+    database=GatewayDatabase(settings)
+    await database.start()
+    await database.close()
+    def verify():
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            assert db.execute('SELECT id,created_by_user_id FROM user_groups').fetchall()==[('g',None)]
+            assert db.execute('SELECT id,group_id,user_id FROM group_memberships').fetchall()==[('m','g','u')]
+            assert db.execute('PRAGMA foreign_key_check').fetchall()==[]
+    await asyncio.to_thread(verify)
+
+
 def test_database_location_redacts_credentials_and_query():
     backend, location = safe_database_location(
         "postgresql+asyncpg://private-user:secret@db.example.com:5432/workstep?sslmode=require"

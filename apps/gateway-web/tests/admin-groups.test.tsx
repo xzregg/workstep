@@ -108,6 +108,7 @@ test('administrator can map an external department to a user group', async () =>
     if (url.startsWith('/api/admin/departments?')) return Response.json({ departments: [
       { id: 'department-1', display_name: '工程部', provider: 'wecom', external_id: 'eng' },
     ] })
+    if (url === '/api/admin/user-groups/tree') return Response.json({groups:[]})
     if (url === '/api/auth/step-up') return Response.json({ expires_in_seconds: 300 })
     if (url === '/api/groups' && init?.method === 'POST') {
       body = JSON.parse(String(init.body)); return Response.json({ id: 'group-1' }, { status: 201 })
@@ -128,4 +129,22 @@ test('administrator can map an external department to a user group', async () =>
     name: '工程部', slug: 'engineering', description: '',
     source_type: 'external_department', external_department_id: 'department-1',
   }))
+})
+
+test('create group offers a parent and submits its stable ID',async()=>{
+ let body:Record<string,unknown>|null=null
+ globalThis.fetch=async(input,init)=>{
+  if(String(input)==='/api/admin/user-groups/tree')return Response.json({groups:[{id:'parent',name:'研发',parent_id:null}]})
+  if(String(input)==='/api/auth/step-up')return Response.json({expires_in_seconds:300})
+  if(init?.method==='POST'){body=JSON.parse(String(init.body));return Response.json({id:'child'})}
+  throw Error('Unexpected fetch')
+ }
+ render(<AdminGroupCreateDialog csrf="csrf" onDone={()=>{}} onClose={()=>{}}/>)
+ await screen.findByRole('option',{name:'研发'})
+ fireEvent.change(screen.getByLabelText('父组'),{target:{value:'parent'}})
+ fireEvent.change(screen.getByLabelText('名称'),{target:{value:'开发'}})
+ fireEvent.change(screen.getByLabelText('标识'),{target:{value:'development'}})
+ fireEvent.change(screen.getByLabelText('管理员密码'),{target:{value:'secret'}})
+ fireEvent.click(screen.getByRole('button',{name:'确认创建'}))
+ await waitFor(()=>assert.equal(body?.parent_id,'parent'))
 })

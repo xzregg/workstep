@@ -12,7 +12,7 @@ function Location() {
   const location = useLocation()
   return <output>{JSON.stringify({ url: location.pathname + location.search, state: location.state })}</output>
 }
-test('project Git entry carries project context and is hidden for remote projects', async () => {
+test('project Git entry carries project context for local and remote projects', async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const project = { id: 'project a', name: 'Project', path: '/repo', workflows: [], steps: {} } as Project
@@ -25,6 +25,8 @@ test('project Git entry carries project context and is hidden for remote project
       state: { returnTo: '/chat?project=Project&session=session-1#latest' },
     })
     await act(async () => root.render(render({ ...project, type: 'remote' })))
-    assert.equal(document.querySelector('button'), null)
+    assert.ok(document.querySelector('button'))
+    await act(async () => document.querySelector<HTMLButtonElement>('button')!.click())
+    assert.equal(JSON.parse(document.querySelector('output')?.textContent || '{}').url, '/git?project_id=project%20a')
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })

@@ -41,6 +41,8 @@ WorkStep 使用平台官方长连接接收机器人消息。daemon 主动连出�
 
 ### 在 WorkStep 内续聊并推送回复
 
+绑定任务的群会收到步骤结束消息。供应商连接超时、引擎报错或引擎不可用时，消息以「@阶段名」开头，保留已生成的正文，并附上「执行失败：具体原因」；尚未生成正文也会发送失败提醒。手动停止不追加失败提示。机器人须保持启用、连接正常且拥有发送权限。
+
 在左侧「渠道」Tab 打开会话并发送消息后，LLM 已完成的正文回复会主动推送到该会话当前映射的机器人私聊或群聊。普通会话、已归档或已被重置替换的会话不推送；渠道入站消息已有回复回调，不会重复发送。思考、工具调用与流式碎片不逐条推送。失败会记录日志并发布 `channel_bots.reply_error` 事件。
 
 企业微信使用长连接 SDK 的主动发送接口；钉钉使用 [机器人群聊发送](https://open.dingtalk.com/document/orgapp/the-robot-sends-a-group-message) 或 [机器人单聊发送](https://open.dingtalk.com/document/orgapp/chatbots-send-one-on-one-chat-messages-in-batches)，通过应用凭证获取并缓存 accessToken。钉钉应用需要具备相应主动发送权限。

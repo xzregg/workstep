@@ -1,7 +1,7 @@
+import { AdminListStatus } from './AdminListStatus'
 import { GatewayModal } from './GatewayModal'
-import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
+import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { AdminAccessGrants } from './AdminAccessGrants'
 import { AdminProjectTaskCreatePanel } from './AdminProjectTaskCreatePanel'
 import { AdminPublishProjectPanel, AdminUnpublishProjectDialog } from './AdminProjectPublication'
@@ -64,8 +64,8 @@ export function AdminProjectsPage() {
 
   return <section className="gateway-admin-page gateway-projects-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <div className="gateway-admin-toolbar"><h2>项目管理</h2><Link to="/admin">返回管理概览</Link>
-      {csrf && <button type="button" onClick={() => setShowPublish(true)}>从 PC 发布项目</button>}</div>
+    <div className="gateway-admin-toolbar"><h2>项目管理</h2>
+      {csrf && <button type="button" className="gateway-admin-primary" onClick={() => setShowPublish(true)}>从 PC 发布项目</button>}</div>
     {!csrf && !error && <p role="status">正在检查登录状态…</p>}
     {csrf && <>
       <p>仅展示已发布项目的元数据。管理权限不会自动授予项目内容访问。</p>
@@ -87,19 +87,18 @@ export function AdminProjectsPage() {
         <select aria-label="项目排序方向" value={filters.direction} onChange={event => setFilters(current => (
           { ...current, direction: event.target.value, page: 1 }))}>
           <option value="asc">升序</option><option value="desc">降序</option></select></div></div>
-      {loading && <p role="status">正在加载项目…</p>}
+      <AdminListStatus loading={loading} label="正在加载项目…"/>
       {!loading && !error && projects.length === 0 && <p>当前条件下没有已发布项目。</p>}
-      {projects.length > 0 && <AdminRecordTable columns={['项目与访问情况', '管理']}>{projects.map(project => <AdminRecordRow key={project.id}>
-        <div><strong>{project.name}</strong><p>宿主电脑：{project.device_name} · {
-          project.device_online ? '在线' : '离线'}</p>
-          <p>{project.grant_users + project.grant_groups === 0 && <span className="gateway-project-no-access">尚未授权 · </span>}用户授权 {project.grant_users} · 用户组授权 {project.grant_groups} · 只读 {
-            project.grant_levels.read} · 可编辑 {project.grant_levels.edit}</p>
-          <p>运行状态：{project.running_tasks === null ? '尚未上报' : `${project.running_tasks} 项任务`}</p></div>
-        <div className="gateway-device-actions"><button type="button" onClick={() => {
-          setSelected(project); setSelectedTab('grants')
-        }}>管理授权</button>
-          <button type="button" onClick={() => setUnpublish(project)}>取消发布</button></div>
-      </AdminRecordRow>)}</AdminRecordTable>}
+      <AdminRecordTable busy={loading} columns={['项目','宿主电脑','用户授权','用户组授权','访问级别','运行任务','操作']}>
+        {projects.map(project => <tr key={project.id}>
+          <td><strong>{project.name}</strong></td><td>{project.device_name}<small className="gateway-admin-cell-meta">{project.device_online ? '在线' : '离线'}</small></td>
+          <td>{project.grant_users}</td><td>{project.grant_groups}</td>
+          <td>{project.grant_users+project.grant_groups === 0 ? <span className="gateway-project-no-access">尚未授权</span> : `只读 ${project.grant_levels.read} · 可编辑 ${project.grant_levels.edit}`}</td>
+          <td>{project.running_tasks === null ? '尚未上报' : project.running_tasks}</td>
+          <td><div className="gateway-row-actions"><button type="button" disabled={loading} onClick={() => { setSelected(project); setSelectedTab('grants') }}>管理授权</button>
+            <button type="button" className="gateway-admin-danger" disabled={loading} onClick={() => setUnpublish(project)}>取消发布</button></div></td>
+        </tr>)}
+      </AdminRecordTable>
       <div className="gateway-admin-pagination"><span>共 {total} 个已发布项目 · 第 {filters.page}/{
         Math.max(1, Math.ceil(total / 25))} 页</span>
         <button type="button" disabled={filters.page <= 1 || loading}

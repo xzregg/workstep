@@ -34,11 +34,9 @@ def _external_username(source_id: str, subject: str) -> str:
     return f"ext_{digest}"
 
 
-async def _disable_directory_access(session, user_ids):
-    from gateway.models import AuthSession
-    if not user_ids: return
-    await session.execute(update(User).where(User.id.in_(user_ids), User.registration_source == 'directory_sync', User.status == 'active').values(status='disabled'))
-    await session.execute(update(AuthSession).where(AuthSession.user_id.in_(user_ids), AuthSession.revoked_at.is_(None)).values(revoked_at=_now()))
+async def _disable_directory_access(session, user_ids,source_id=None):
+    from gateway.services.directory_access import disable_access
+    await disable_access(session,user_ids,source_id)
 
 
 class ExternalIdentityService:
@@ -194,6 +192,7 @@ class ExternalIdentityService:
                             registration_source=source.provider,
                         )
                         session.add(user)
+                        await session.flush()
                     if identity is None:
                         identity = ExternalIdentity(
                             id=str(uuid4()), source_id=source_id,
@@ -215,7 +214,7 @@ class ExternalIdentityService:
             raise GatewayError('conflict', 'External identity already linked') from exc
 
     async def full_sync(self, source_id: str, departments: list[dict], people: list[dict],
-                        cursor: str | None = None, *, selected_department_ids: list[str] | None = None, additions_only: bool = False, snapshot_complete: bool = True, dry_run: bool = False, excluded_subjects: list[str] | None = None) -> dict:
+                        cursor: str | None = None, *, selected_department_ids: list[str] | None = None, additions_only: bool = False, snapshot_complete: bool = True, dry_run: bool = False, excluded_subjects: list[str] | None = None, restore_subjects: list[str] | None = None, restore_department_ids: list[str] | None = None, selection_department_ids: list[str] | None = None, maintenance_policy: dict | None = None) -> dict:
         await self.source(source_id, purpose="sync")
         if cursor is not None and (not isinstance(cursor, str) or len(cursor) > 256):
             raise GatewayError('invalid', 'Invalid directory cursor')
@@ -225,6 +224,9 @@ class ExternalIdentityService:
             raise GatewayError('invalid', 'Selected snapshot must include exactly the selected departments')
         original_people = {item["subject"]: item for item in people}
         subjects = [item["subject"] for item in people]
+        restoring = set(restore_subjects or [])
+        if not restoring <= set(subjects) or (additions_only and restoring):
+            raise GatewayError('invalid', 'Restoration is outside the directory snapshot')
         if len(set(department_ids)) != len(department_ids) or len(set(subjects)) != len(subjects):
             raise GatewayError('invalid', 'Duplicate directory identifier')
         if any(department not in department_ids for person in people for department in person["department_ids"]):
@@ -242,6 +244,7 @@ class ExternalIdentityService:
                     select(ExternalIdentity).where(ExternalIdentity.source_id == source_id)
                 )).all()}
                 skipped_users = skipped_groups = 0
+                restored=set()
                 if additions_only:
                     from gateway.models import UserGroup
                     deleted_groups = set((await session.scalars(select(UserGroup.external_department_id).where(
@@ -272,9 +275,14 @@ class ExternalIdentityService:
                     deleted_groups.update(d.id for d in existing_departments.values() if 'directory-group-purged:' + d.id in purged_groups)
                     skipped_groups = sum(existing_departments[d['external_id']].id in deleted_groups for d in departments if d['external_id'] in existing_departments)
                     skipped = {p['subject'] for p in people if 'directory-purged:' + _external_username(source_id, p['subject']) in purged or (p['subject'] in identities and identities[p['subject']].user_id in users and users[identities[p['subject']].user_id].status == 'deleted')}
+                    restored=skipped & restoring
+                    skipped -= restoring
                     skipped_users = len(skipped)
                     people = [p for p in people if p['subject'] not in skipped]
                 old_memberships: dict[str, set[str]] = {}
+                from gateway.services.directory_access import reactivable_users,clear_suspension
+                reactivable=await reactivable_users(session,source_id,
+                    [user.id for user in (users if not additions_only else existing_users).values() if user.status=='disabled'])
                 membership_rows = (await session.execute(select(
                     DirectoryMembership.person_id, DirectoryDepartment.external_id,
                 ).join(DirectoryDepartment, DirectoryDepartment.id == DirectoryMembership.department_id)
@@ -297,24 +305,55 @@ class ExternalIdentityService:
                         before = {'name': row.display_name, 'departments': sorted(old_departments), 'active': bool(row.active)} if row else None
                         after = {'name': item['display_name'], 'departments': item['department_ids'], 'active': item.get('active', True)} if item else {'name': row.display_name if row else subject, 'departments': sorted(old_departments), 'active': False if snapshot_complete else bool(row and row.active)}
                         unchanged = bool(before and item and before['name'] == after['name'] and before['active'] == after['active'] and (old_departments if scope is None else old_departments & scope) == set(after['departments']))
+                        if before and item is None and snapshot_complete and not before['active']:
+                            unchanged = True
                         local_user = users.get(identities[subject].user_id) if not additions_only and subject in identities else None
-                        restoration_pending = bool(local_user and local_user.status == 'disabled' and after['active'])
-                        if restoration_pending:
+                        reactivation=bool(local_user and local_user.id in reactivable and after['active'])
+                        restoration_pending = bool(local_user and local_user.status == 'disabled' and after['active'] and not reactivation)
+                        if restoration_pending or reactivation:
                             unchanged = False
-                            before['active'] = False
+                            if before is None:
+                                before={'name':local_user.display_name,'departments':[],'active':False}
+                            else:before['active'] = False
                         candidates.append({'subject': subject, 'display_name': after['name'],
                             'department_ids': sorted(old_departments | set(after['departments'])),
                             'changed': not unchanged, 'skipped': subject in (skipped if not additions_only else set()),
+                            'skip_reason': ('purged' if 'directory-purged:' + _external_username(source_id, subject) in purged else 'deleted') if not additions_only and subject in skipped else None,
                             'excluded': subject in excluded, 'before': before, 'after': after,
-                            'kind': 'restoration_pending' if restoration_pending else 'new' if row is None else 'unchanged' if unchanged else 'unverified' if item is None and not snapshot_complete else 'departed' if not after['active'] else 'changed'})
+                            'kind': 'reactivated' if reactivation else 'restoration_pending' if restoration_pending else 'source_deleted' if item is None and snapshot_complete else 'new' if row is None else 'unchanged' if unchanged else 'unverified' if item is None and not snapshot_complete else 'departed' if not after['active'] else 'changed'})
                     result['user_candidates'] = candidates
                 people = [item for item in people if item['subject'] not in excluded]
+                # Every imported user needs their department groups, including ancestors.
+                needed_groups = set(restore_department_ids or []) & set(department_ids)
+                needed_groups.update(id for item in people for id in item['department_ids'])
+                parents = {id: row.parent_external_id for id, row in existing_departments.items()}
+                parents.update({item['external_id']: item.get('parent_external_id') for item in departments})
+                pending = list(needed_groups)
+                while pending:
+                    parent = parents.get(pending.pop())
+                    if parent and parent not in needed_groups:
+                        needed_groups.add(parent); pending.append(parent)
+                restoring_ids = {row.id for id, row in existing_departments.items() if id in needed_groups} & deleted_groups
+                if not dry_run and restoring_ids:
+                    from gateway.services.group_membership_sync import restore_department_groups
+                    await restore_department_groups(session,restoring_ids)
+                deleted_groups -= restoring_ids
+                skipped_groups = sum(existing_departments[item['external_id']].id in deleted_groups
+                                     for item in departments if item['external_id'] in existing_departments)
+                if not dry_run:
+                    for subject in restoring - excluded:
+                        marker = await session.get(PlatformSetting, 'directory-purged:' + _external_username(source_id, subject))
+                        if marker is not None:
+                            await session.delete(marker)
                 result['people'] = len(people)
                 changes = {key: 0 for key in (
                     "departments_added", "departments_updated", "departments_moved", "departments_deleted",
                     "people_added", "people_updated", "people_transferred", "people_departed",
                 )}
                 changes.update(people_unverified=0, people_restoration_pending=0,
+                               people_source_deleted=0,
+                               people_restored=len(restored-excluded),
+                               people_reactivated=0,
                                people_deleted_skipped=skipped_users, departments_deleted_skipped=skipped_groups)
                 details = []
                 incoming_departments = {item["external_id"] for item in departments}
@@ -334,6 +373,11 @@ class ExternalIdentityService:
                     and (scope is None or not old_memberships.get(existing_people[subject].id, set()) - scope)
                     for subject, active in old_person_active.items()
                 )
+                if dry_run:
+                    from gateway.services.directory_sync_preview import preview_changes
+                    return preview_changes(result,changes,departments,people,existing_departments,existing_people,
+                        old_memberships,identities,users if not additions_only else existing_users,
+                        affected_people,scope,snapshot_complete,skipped if not additions_only else set(),reactivable)
                 for row in existing_departments.values():
                     if snapshot_complete and row.active and row.external_id not in incoming_departments and (scope is None or row.external_id in scope):
                         details.append({'kind': 'department_deleted', 'name': row.display_name})
@@ -343,8 +387,9 @@ class ExternalIdentityService:
                 for subject in affected_people - incoming_people:
                     row = existing_people[subject]
                     if subject not in excluded and old_person_active[subject] and (additions_only or subject not in skipped):
-                        kind = 'departed' if not row.active else 'unverified'
+                        kind = 'source_deleted' if not row.active else 'unverified'
                         changes['people_unverified'] += kind == 'unverified'
+                        changes['people_source_deleted'] += kind == 'source_deleted'
                         details.append({'kind': kind, 'subject': subject, 'name': row.display_name})
                 if scope is not None and not additions_only:
                     await session.execute(DirectoryMembership.__table__.delete().where(
@@ -373,7 +418,7 @@ class ExternalIdentityService:
                 await session.flush()
                 for item in people:
                     row = existing_people.get(item["subject"])
-                    if row is None or not old_person_active[item["subject"]]:
+                    if row is None:
                         changes["people_added"] += 1
                     else:
                         changes["people_updated"] += row.display_name != item["display_name"]
@@ -391,6 +436,7 @@ class ExternalIdentityService:
                                 status="active", registration_source="directory_sync",
                             )
                             session.add(user)
+                            await session.flush()
                             user_id = user.id
                             session.add(ExternalIdentity(
                                 id=str(uuid4()), source_id=source_id, subject=item["subject"],
@@ -411,11 +457,21 @@ class ExternalIdentityService:
                         details.append({'kind': 'person_changed', 'subject': row.subject, 'name': item['display_name'], 'before': {'name': row.display_name, 'departments': sorted(old_memberships.get(row.id, set())), 'active': old_person_active.get(row.subject, False)}, 'after': {'name': item['display_name'], 'departments': item['department_ids'], 'active': desired_active}})
                     row.display_name = item["display_name"]
                     row.active = int(desired_active)
+                    if row.subject in restored:
+                        details.append({'kind':'person_restored','subject':row.subject,'name':item['display_name']})
                     await session.flush()
                     user = await session.get(User, row.user_id)
+                    if user and user.status=='disabled' and row.active and user.id in reactivable:
+                        user.status='active'
+                        changes['people_reactivated']+=1
+                        details.append({'kind':'person_reactivated','subject':row.subject,'name':item['display_name']})
+                        await clear_suspension(session,[user.id])
+                    if user and user.status == 'deleted' and row.subject in restoring:
+                        user.status = 'active' if row.active else 'disabled'
                     if user and user.status == 'disabled' and row.active:
                         changes['people_restoration_pending'] += 1
-                    if user and user.registration_source == "directory_sync":
+                    from gateway.services.directory_access import ENTERPRISE_ACCOUNT_SOURCES
+                    if user and user.registration_source in ENTERPRISE_ACCOUNT_SOURCES:
                         user.display_name = item["display_name"]
                     if scope is None:
                         await session.execute(DirectoryMembership.__table__.delete().where(
@@ -428,7 +484,7 @@ class ExternalIdentityService:
                         ))
                 await session.flush()
                 if not additions_only:
-                    await _disable_directory_access(session, [row.user_id for subject, row in existing_people.items() if subject not in excluded and not row.active and (scope is None or subject in affected_people or subject in incoming_people)])
+                    await _disable_directory_access(session, [row.user_id for subject, row in existing_people.items() if subject not in excluded and not row.active and (scope is None or subject in affected_people or subject in incoming_people)],source_id)
                 await reconcile_department_groups(session, source_id=source_id, additions_only=additions_only)
                 if additions_only:
                     changes.update(people_departed=0, departments_deleted=0, people_deleted_skipped=skipped_users, departments_deleted_skipped=skipped_groups)
@@ -445,11 +501,13 @@ class ExternalIdentityService:
                 result.update(changes)
                 result['details'] = details
                 state.changes_json = json.dumps(result, sort_keys=True)
-                if scope is not None:
+                if scope is not None or maintenance_policy is not None:
                     from gateway.services.organization_settings import option_key
                     options_row = await session.get(PlatformSetting, option_key(source_id))
                     options = json.loads(options_row.value_json) if options_row else {}
-                    options['selected_department_ids'] = selected_department_ids
+                    options['selected_department_ids'] = selection_department_ids if selection_department_ids is not None else selected_department_ids
+                    if maintenance_policy is not None:
+                        options['maintenance_policy'] = maintenance_policy
                     if excluded_subjects is not None:
                         options['excluded_subjects'] = sorted((set(options.get('excluded_subjects', [])) - candidate_subjects) | excluded)
                     if options_row: options_row.value_json = json.dumps(options)
@@ -499,14 +557,21 @@ class ExternalIdentityService:
                         DirectoryPerson.source_id == source_id,
                         DirectoryPerson.subject == subject,
                     ))
+                    from gateway.services.directory_maintenance import event_is_maintained
+                    if not await event_is_maintained(session,source_id,subject,department_ids,person):
+                        return True
                     if kind == "person_delete":
                         if person is not None:
                             person.active = 0
-                            await _disable_directory_access(session, [person.user_id])
+                            await _disable_directory_access(session, [person.user_id],source_id)
                             from gateway.services.directory_notices import record_notice
-                            await record_notice(session, source_id, result={'people_departed': 1, 'details': [{'kind': 'departed', 'name': person.display_name}]})
+                            await record_notice(session, source_id, result={'people_departed': 1,'people_source_deleted':1, 'details': [{'kind': 'source_deleted', 'name': person.display_name}]})
                             await session.flush()
                             await reconcile_department_groups(session, source_id=source_id)
+                        return True
+                    marker=await session.get(PlatformSetting,'directory-purged:'+_external_username(source_id,subject))
+                    local_user=await session.get(User,person.user_id) if person else None
+                    if marker or local_user and local_user.status=='deleted':
                         return True
                     departments = {row.external_id: row for row in (await session.scalars(
                         select(DirectoryDepartment).where(
@@ -529,6 +594,7 @@ class ExternalIdentityService:
                                 status="active", registration_source="directory_sync",
                             )
                             session.add(user)
+                            await session.flush()
                             identity = ExternalIdentity(
                                 id=str(uuid4()), source_id=source_id, subject=subject,
                                 user_id=user.id, display_name=display_name,
@@ -543,7 +609,11 @@ class ExternalIdentityService:
                     person.active = 1
                     await session.flush()
                     user = await session.get(User, person.user_id)
-                    if user and user.registration_source == "directory_sync":
+                    from gateway.services.directory_access import reactivable_users,clear_suspension
+                    if user and user.status=='disabled' and user.id in await reactivable_users(session,source_id,[user.id]):
+                        user.status='active';await clear_suspension(session,[user.id])
+                    from gateway.services.directory_access import ENTERPRISE_ACCOUNT_SOURCES
+                    if user and user.registration_source in ENTERPRISE_ACCOUNT_SOURCES:
                         user.display_name = display_name
                     await session.execute(DirectoryMembership.__table__.delete().where(
                         DirectoryMembership.person_id == person.id,
@@ -554,7 +624,7 @@ class ExternalIdentityService:
                             department_id=department.id,
                         ))
                     await session.flush()
-                    await reconcile_department_groups(session, source_id=source_id)
+                    await reconcile_department_groups(session, source_id=source_id,restore_external_ids=department_ids)
             return True
         except IntegrityError:
             async with self.database.session() as session:

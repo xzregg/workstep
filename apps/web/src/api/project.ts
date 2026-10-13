@@ -29,7 +29,7 @@ export interface Project {
   has_running_tasks?: boolean
   type?: 'local' | 'remote'
   connection_status?: 'local' | 'connecting' | 'connected' | 'disconnected' | 'error'
-  access_status?: 'pending' | 'active' | 'expired' | 'revoked'
+  access_status?: 'pending' | 'active' | 'expired' | 'revoked' | 'invalid'
   access_expires_at?: number | null
   endpoint?: string
   host_project_id?: string
@@ -210,6 +210,7 @@ export interface RemoteDevice {
   device_id: string
   user_name: string
   device_name: string
+  ip_address?: string
   revoked: boolean
   status: 'active' | 'expired' | 'revoked'
   connected: boolean

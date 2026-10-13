@@ -68,6 +68,7 @@ test('provider directory pages on the server and shows PC application state', as
         device_status: 'active', online: true, desired_revision: 3, applied_revision: 2,
         last_error: 'apply_failed' }], total: 1 })
     }
+    if (url.includes('/assignments?')) return Response.json({assignments:[],total:0})
     if (url.startsWith('/api/admin/providers?')) {
       const params = new URLSearchParams(url.split('?')[1])
       return Response.json({ providers: [{ id: `provider-${params.get('page')}`,
@@ -83,7 +84,8 @@ test('provider directory pages on the server and shows PC application state', as
   }
   render(<MemoryRouter><AdminProvidersPage /></MemoryRouter>)
   await screen.findByText('Alpha API')
-  assert.match(document.body.textContent ?? '', /价格版本 v2 · 用户授权 4 · PC 授权 1/)
+  assert.ok(screen.getByRole('columnheader',{name:'模型 / 价格'}))
+  assert.ok(screen.getByRole('cell',{name:/2 个模型 · v2/}))
   fireEvent.change(screen.getByLabelText('搜索名称或类型'), { target: { value: 'Alpha' } })
   fireEvent.click(screen.getByRole('button', { name: '搜索' }))
   await waitFor(() => assert.ok(urls.some(url => url.includes('q=Alpha'))))
@@ -96,6 +98,12 @@ test('provider directory pages on the server and shows PC application state', as
   await screen.findByText('Office PC')
   assert.match(document.body.textContent ?? '', /失败 · 期望版本 3 · 已应用版本 2/)
   assert.match(document.body.textContent ?? '', /错误：apply_failed/)
+  assert.ok(screen.getByRole('dialog',{name:'PC 配置应用状态'}))
+  fireEvent.click(screen.getByRole('button',{name:'关闭弹窗'}))
+  assert.equal(screen.queryByRole('dialog') === null,true)
+  fireEvent.click(screen.getByRole('button',{name:'管理分配'}))
+  await screen.findByRole('dialog',{name:'Beta API · 管理分配'})
+  assert.equal((screen.getByLabelText('搜索名称或类型') as HTMLInputElement).value,'Alpha')
 })
 
 test('provider editor protects changes and submits configuration with step-up', async () => {
@@ -227,7 +235,7 @@ test('provider assignments select a user or PC and revoke with step-up', async (
   dialog = screen.getByRole('dialog', { name: '设置默认供应商' })
   fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
   fireEvent.click(within(dialog).getByRole('button', { name: '确认设置' }))
-  await screen.findByText('默认供应商')
+  await screen.findByRole('button',{name:'取消默认'})
   assert.ok(requests.some(request => request.url.endsWith('/assign/default')
     && request.init?.method === 'PUT'))
   fireEvent.click(screen.getByRole('button', { name: '取消默认' }))
@@ -251,43 +259,56 @@ test('provider assignments select a user or PC and revoke with step-up', async (
 })
 
 
-test('usage model prices list distinguishes unknown and zero and saves without credentials', async () => {
+
+test('observed models support cross-page bulk selection and price saving without provider credentials', async () => {
   const requests: Array<{ url: string; init?: RequestInit }> = []
-  const provider = { id: 'provider-1', name: 'Company API', type: 'custom', enabled: true,
-    revision: 1, protocols: ['openai_responses'],
-    protocol_base_urls: { openai_responses: 'https://api.example.test' },
-    models: ['model-a', 'model-b'], prices: { version: 'v1', models: {
-      'model-a': { input_per_million: '1', output_per_million: '2',
-        cache_read_per_million: '0', cache_write_per_million: '3' },
-    } }, has_key: true }
+  let failSave = true
   globalThis.fetch = async (input, init) => {
     const url = String(input); requests.push({ url, init })
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
-    if (url.startsWith('/api/admin/providers?')) return Response.json({ providers: [provider], total: 1 })
-    if (url === '/api/auth/step-up' || url === '/api/admin/providers/provider-1') return Response.json({})
+    if (url.startsWith('/api/admin/usage/model-prices?')) {
+      const page = new URLSearchParams(url.split('?')[1]).get('page')
+      return Response.json({ models: [{ model: page === '2' ? 'model-b' : 'model-a',
+        event_count: 10, total_tokens: 250, last_seen_at: '2026-10-12T00:00:00Z',
+        version: 'v1', prices: page === '2' ? null : { input_per_million:'1',
+          output_per_million:'2', cache_read_per_million:'0', cache_write_per_million:'3' } }], total:26 })
+    }
+    if (url === '/api/auth/step-up') return Response.json({})
+    if (url === '/api/admin/usage/model-prices') {
+      if (failSave) { failSave = false; return new Response(null,{status:503}) }
+      return Response.json({ updated:2 })
+    }
     throw new Error(`Unexpected fetch: ${url}`)
   }
   render(<MemoryRouter><AdminUsagePrices /></MemoryRouter>)
-  await screen.findByRole('cell', { name: 'model-a' })
-  assert.ok(screen.getByRole('cell', { name: '0' }))
-  assert.equal(screen.getAllByRole('cell', { name: '未设置' }).length, 4)
-  fireEvent.click(screen.getByRole('button', { name: '设置 Company API model-a 价格' }))
-  const dialog = screen.getByRole('dialog', { name: '设置模型价格' })
-  assert.equal(within(dialog).queryByLabelText('供应商名称'), null)
-  assert.equal(within(dialog).queryByLabelText('当前凭据'), null)
-  fireEvent.change(within(dialog).getByLabelText('model-a 输入单价'), { target: { value: '-1' } })
-  assert.equal((within(dialog).getByRole('button', { name: '保存价格' }) as HTMLButtonElement).disabled, true)
-  fireEvent.change(within(dialog).getByLabelText('model-a 输入单价'), { target: { value: '4' } })
-  fireEvent.change(within(dialog).getByLabelText('价格版本'), { target: { value: 'v2' } })
-  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
-  fireEvent.click(within(dialog).getByRole('button', { name: '保存价格' }))
-  await waitFor(() => assert.equal(screen.queryByRole('dialog') === null, true))
-  const saved = requests.find(item => item.url === '/api/admin/providers/provider-1')!
-  assert.equal(saved.init?.method, 'PUT')
+  await screen.findByRole('cell', { name:'model-a' })
+  assert.ok(screen.getByRole('cell', { name:'0' }))
+  fireEvent.click(screen.getByRole('checkbox', { name:'选择本页模型' }))
+  fireEvent.click(screen.getByRole('button', { name:'下一页' }))
+  await screen.findByRole('cell', { name:'model-b' })
+  assert.equal(screen.getAllByRole('cell', { name:'未设置' }).length,4)
+  fireEvent.click(screen.getByRole('checkbox', { name:'选择 model-b' }))
+  fireEvent.click(screen.getByRole('button', { name:'批量设置价格' }))
+  const dialog = screen.getByRole('dialog', { name:'批量设置模型价格' })
+  for (const label of ['输入','输出','缓存读取','缓存写入']) {
+    fireEvent.change(within(dialog).getByLabelText(`${label}单价`), {target:{value:'2'}})
+  }
+  fireEvent.change(within(dialog).getByLabelText('输入单价'), {target:{value:'-1'}})
+  assert.equal((within(dialog).getByRole('button',{name:'保存价格'}) as HTMLButtonElement).disabled,true)
+  fireEvent.change(within(dialog).getByLabelText('输入单价'), {target:{value:'4'}})
+  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), {target:{value:'password'}})
+  fireEvent.click(within(dialog).getByRole('button',{name:'取消'}))
+  const discard = screen.getByRole('dialog',{name:'放弃价格修改'})
+  fireEvent.click(within(discard).getByRole('button',{name:'取消'}))
+  fireEvent.click(within(dialog).getByRole('button',{name:'保存价格'}))
+  await within(dialog).findByRole('alert')
+  fireEvent.click(within(dialog).getByRole('button',{name:'保存价格'}))
+  await waitFor(() => assert.equal(screen.queryByRole('dialog') === null,true))
+  const saved = requests.find(item => item.url === '/api/admin/usage/model-prices')!
+  assert.equal(saved.init?.method,'PUT')
   const body = JSON.parse(String(saved.init?.body))
-  assert.equal(body.prices['model-a'].input_per_million, '4')
-  assert.equal(body.price_version, 'v2')
-  assert.deepEqual(body.models, provider.models)
-  assert.equal('api_key' in body, false)
-  assert.equal(requests.some(item => item.url.endsWith('/credential')), false)
+  assert.deepEqual(body.models,['model-a','model-b'])
+  assert.equal(body.prices.input_per_million,'4')
+  assert.equal('api_key' in body,false)
+  assert.equal(requests.some(item => item.url.includes('/api/admin/providers')),false)
 })
