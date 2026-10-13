@@ -5,6 +5,20 @@ import { saveFontSizePreference, loadFontSizePreference } from '../src/utils/fon
 import { saveFontFamilyPreference, loadFontFamilyPreference } from '../src/utils/fontFamilyPreference'
 import { compileSkin, defaultSkin, skinContract, resolvedSkinLayout } from '../src/skins/contract'
 import { applySkin, restoreDefaultSkin, previewSkin, cancelSkinPreview, saveSkin, initializeSkinPreference } from '../src/skins/runtime'
+import {composerSendMarkup} from '../src/skins/composerSendGlyphs'
+
+test('custom send geometry compiles and previews while markup and oversized paths are rejected', () => {
+ const rocket = {paths: ['M12 3C8 7 8 13 12 17C16 13 16 7 12 3Z', 'M9 15L6 19M15 15L18 19M12 18V22']}
+ const draft = {...defaultSkin(),layout:{composerSendIcon:rocket},mobile:{layout:{composerSendIcon:'arrow-right' as const}}}
+ assert.doesNotThrow(()=>compileSkin(draft))
+ assert.deepEqual(resolvedSkinLayout(draft).composerSendIcon,rocket)
+ assert.equal(resolvedSkinLayout(draft,true).composerSendIcon,'arrow-right')
+ assert.ok(composerSendMarkup(rocket).includes(`d="${rocket.paths[0]}"`))
+ for (const invalid of [{paths:[]}, {paths:['M0 0" onload="evil']}, {paths:['M0 0'],onload:'evil'}, {paths:Array(33).fill('M0 0')}, {paths:['M0 0'.repeat(1025)]}]) {
+  assert.throws(()=>compileSkin({...draft,layout:{composerSendIcon:invalid}} as never))
+  assert.throws(()=>composerSendMarkup(invalid as never))
+ }
+})
 
 const skin = () => ({ ...defaultSkin(), manifest: { id: 'ocean', name: '海洋', version: '1', schema_version: 1, color_scheme: 'dark' as const }, revision: 'abc', tokens: { bg: '#102030' }, styles: { button: { base: { borderRadius: '12px' }, hover: { color: '#fff' } } }, layout: { sidebarSide: 'right' as const }, asset_base: '/api/skins/assets/abc' })
 

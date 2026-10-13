@@ -20,4 +20,4 @@
 
 预览仅临时调整字体与字号，取消恢复设备原偏好；确认应用后与外观设置的手动控件同步。此后手动选择的字体和字号优先于皮肤，在刷新后保留。语言包仍属于待实现能力，不能生成不受支持的字段或宣称已安装新语言。
 
-发送图标使用 `components.json` 的 `layout.composerSendIcon`：`send`（纸飞机，默认）、`arrow-up`、`arrow-right`。PC／手机可用 `desktop.layout` 和 `mobile.layout` 覆盖。旧皮肤省略时保持纸飞机。停止、处理中、发送和审批动作不受图标配置影响；不接受自定义 SVG、脚本或远程 URL。
+发送图标使用 `components.json` 的 `layout.composerSendIcon`：`send`（纸飞机，默认）、`arrow-up`、`arrow-right`。PC／手机可用 `desktop.layout` 和 `mobile.layout` 覆盖。旧皮肤省略时保持纸飞机。停止、处理中、发送和审批动作不受图标配置影响；支持自定义矢量路径对象，例如 `layout.composerSendIcon: {"paths":["M12 3C8 7 8 13 12 17C16 13 16 7 12 3Z","M9 15L6 19M15 15L18 19M12 18V22"]}`，可生成火箭或其他线条图案，无需改 WorkStep 源码。固定 viewBox 为 `0 0 24 24`、无填充、线条随按钮文字颜色。对象只含 paths，1–32 条，每条最多 4096 字符，以 M/m 和坐标开头，仅允许标准路径命令、数字、空格、逗号、小数点和正负号。不能填写完整 SVG XML、属性、脚本或远程 URL。重新读取 Runtime 的 skin-contract.json 和 skin-design.md 获取最新规范，不沿用历史对话中的旧限制。

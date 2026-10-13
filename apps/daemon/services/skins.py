@@ -92,6 +92,11 @@ def validate_document(manifest, tokens, components, contract):
             raise ValueError("未知布局配置")
         for key, value in layout.items():
             spec = contract["layout"][key]
+            if key == "composerSendIcon" and isinstance(value, dict):
+                paths = value.get("paths")
+                if set(value) != {"paths"} or not isinstance(paths, list) or not 1 <= len(paths) <= 32 or any(not isinstance(path, str) or len(path) > 4096 or not re.match(r"^[Mm]\s*[-+.0-9]", path) or not re.fullmatch(r"[MmLlHhVvCcSsQqTtAaZz0-9., +\-]+", path) for path in paths):
+                    raise ValueError("发送图标路径无效")
+                continue
             if "values" in spec:
                 if value not in spec["values"]:
                     raise ValueError("布局选项无效")

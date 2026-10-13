@@ -17,6 +17,9 @@ test('icon preview changes the real shared input while send and stop retain thei
   assert.ok(document.querySelector('.chat-input-send svg path[d="M22 2 11 13"]'))
   await act(async()=>previewSkin({...defaultSkin(),manifest:{...defaultSkin().manifest,id:'send-test'},layout:{composerSendIcon:'arrow-up'}}))
   assert.ok(document.querySelector('.chat-input-send path[d="M12 19V5"]'))
+  const rocket = {paths: ['M12 3C8 7 8 13 12 17C16 13 16 7 12 3Z', 'M9 15L6 19M15 15L18 19M12 18V22']}
+  await act(async()=>previewSkin({...defaultSkin(),manifest:{...defaultSkin().manifest,id:'send-test'},layout:{composerSendIcon:rocket},mobile:{layout:{composerSendIcon:'arrow-right'}}}))
+  assert.ok(document.querySelector(`.chat-input-send path[d="${rocket.paths[0]}"]`))
   await act(async()=>document.querySelector<HTMLButtonElement>('.chat-input-send')!.click()); assert.equal(sent,1)
   await act(async()=>render(true)); assert.ok(document.querySelector('.chat-input-stop-glyph')); assert.equal(document.querySelector('.chat-input-send svg'),null)
   await act(async()=>document.querySelector<HTMLButtonElement>('.chat-input-send')!.click()); assert.equal(stopped,1)
