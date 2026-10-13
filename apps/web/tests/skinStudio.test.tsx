@@ -1,6 +1,7 @@
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import {readFileSync} from 'node:fs'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
@@ -15,6 +16,10 @@ import { saveDraft } from '../src/utils/chatDraft'
 
 test('manual controls edit the shared package, isolate preview, and protect dirty close and concurrent turns', async () => {
   const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({width: 1600, height: 1000})
+  const stylesheet = document.createElement('style')
+  stylesheet.textContent = readFileSync(new URL('../src/components/SkinStudio.css', import.meta.url), 'utf8')
+  document.head.appendChild(stylesheet)
   Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
   const oldFetch = globalThis.fetch, oldValidate = skinsApi.validate, oldSave = skinsApi.saveDraft
   restoreDefaultSkin()
@@ -37,6 +42,9 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
     assert.equal(document.querySelector(".skin-studio-footer"), null)
     assert.ok(document.querySelector(".skin-studio-history .skin-studio-save"))
     assert.equal(document.querySelector(".skin-studio-header .skin-studio-save"), null)
+    assert.equal(window.getComputedStyle(document.querySelector('.skin-studio-backdrop')!).justifyContent, 'center')
+    assert.equal(window.getComputedStyle(document.querySelector('.skin-studio')!).width, '800px')
+    assert.equal(document.querySelectorAll('.skin-studio > .resizable-panel-handle').length, 8)
     const history = document.querySelector<HTMLSelectElement>('.skin-studio-history select')!
     assert.equal(history.options.length, 2)
     await act(async () => { history.value = 'old-session'; history.dispatchEvent(new window.Event('change', { bubbles: true })) })
@@ -99,6 +107,7 @@ test('a new Runtime conversation can create its first skin before any package ex
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinStudio workspace={{ project_id: 'design', project_name: 'Runtime', session_id: 'empty-session', workspace_path: '/tmp/runtime', package_path: '/tmp/runtime/skin', prompt: '' }} onClose={() => {}} onSaved={() => {}} /></I18nProvider></MemoryRouter>))
     assert.ok(document.querySelector('.skin-studio-controls fieldset'), 'starting style is visible before a package is created')
     assert.ok(document.querySelector('.skin-studio-preview'))
+    assert.equal(document.querySelectorAll('.skin-studio > .resizable-panel-handle').length, 0)
     assert.equal(document.querySelector('.skin-studio-footer'), null)
     assert.ok(document.querySelector('.skin-studio-header .skin-studio-save'))
     assert.equal(document.querySelector(".skin-studio-history .skin-studio-save"), null)
