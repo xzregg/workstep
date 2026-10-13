@@ -1,5 +1,5 @@
-.skin-studio-backdrop { position: fixed; inset: 0; z-index: 1900; background: #121a3044; backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: flex-end; padding: 0; }
-.skin-studio { width: min(730px, 100vw); height: 100dvh; display: flex; flex-direction: column; min-height: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 0; box-shadow: -12px 0 50px #0001; overflow: hidden; padding-bottom: var(--skin-recovery-height, 0px); }
+.skin-studio-backdrop { position: fixed; inset: 0; z-index: 1900; background: #121a3044; backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.skin-studio { width: 50vw; min-width: 640px; max-width: calc(100vw - 48px); height: calc(100dvh - 48px); display: flex; flex-direction: column; min-height: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 20px 60px #0002; overflow: hidden; padding-bottom: var(--skin-recovery-height, 0px); }
 .skin-studio-header { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; padding: 16px 22px; border-bottom: 1px solid var(--border); }
 .skin-studio-header h2 { font-size: calc(16px * var(--font-scale)); margin: 0 0 5px; }
 .skin-studio-header p { color: var(--muted); font-size: calc(11px * var(--font-scale)); margin: 0; }
@@ -37,7 +37,7 @@
 .skin-studio-error { color: var(--danger); font-size: calc(11px * var(--font-scale)); overflow-wrap: anywhere; }
 @media(max-width:1023px) {
   .skin-studio-backdrop { padding: 0; }
-  .skin-studio { width: 100vw; height: 100dvh; border: 0; border-radius: 0; padding-bottom: 0; }
+  .skin-studio { width: 100vw; min-width: 0; max-width: 100vw; height: 100dvh; border: 0; border-radius: 0; padding-bottom: 0; }
   .skin-studio-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .skin-studio-header .skin-studio-save { grid-column: 1 / -1; justify-self: end; }
   .skin-studio-tabs { display: flex; flex-shrink: 0; padding: 4px 16px; gap: 8px; border-bottom: 1px solid var(--border); }
