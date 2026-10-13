@@ -10,6 +10,7 @@ from models.fields import utc_now
 from services.project import project_manager
 from services.skill_center import skill_center
 from services.skins import read_contract
+from services.languages import read_contract as language_contract
 from services.customization_workspace import workspace_root, runtime_project
 
 
@@ -30,6 +31,10 @@ def prepare(root, prompt):
             temporary = Path(file.name)
             file.write(json.dumps(read_contract(), ensure_ascii=False, indent=2))
         temporary.replace(root / 'skin-contract.json')
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=root, prefix='.language-contract-', delete=False) as file:
+            temporary = Path(file.name)
+            file.write(json.dumps(language_contract(), ensure_ascii=False, indent=2))
+        temporary.replace(root / 'language-contract.json')
         (root / 'skin-design.md').write_text(prompt, encoding='utf-8')
     finally:
         if temporary is not None: temporary.unlink(missing_ok=True)
@@ -66,5 +71,10 @@ async def create_onboarding():
               "字体类型使用 tokens.json 的 font-body / font-display（代码字体用 font-mono），系统没有该字体时通过字体栈回退；字号使用 components.json 的 layout.fontSize：small / standard / large / extraLarge，inherit 表示沿用设备字号。禁止修改受保护的 font-scale。只生成声明式 JSON 和本地图片，不修改 WorkStep 源码，不写脚本或任意 CSS。未覆盖部分继承默认皮肤。"
               "使用 workstep skin validate 检查，再经用户同意用 workstep skin register 注册（更新指定 --replace）；"
               "在设置→外观中预览 PC 和手机、确认应用。校验通过不等于视觉验收通过；注册后无需重启。")
+    prompt += (f"\n也可以只调整字体或制作独立语言包，继续沿用本对话。语言包建议目录：{root / 'language'}；真实文案目录：{root / 'language-contract.json'}。"
+               "先读取该目录中的 messages、required_keys 和 revision；语言包只包含 manifest.json、messages.json，可选 glossary.json。manifest 必须有 schema_version:1、id（小写英文数字及横杠下划线）、locale（BCP47，如 es-ES）、name、native_name、version、fallback_locale（zh-CN/zh-TW/en-US/ja-JP 之一）、direction:ltr、catalog_revision（规范 revision）。"
+               "messages.json 使用规范的扁平键，翻译必须保留所有 {name} 等占位符；required_keys 必须全部翻译，其他缺失项回退；不允许覆盖内置语言、HTML、JS 或改 WorkStep 源码。"
+               "用户要求增加语言时翻译其指定范围并如实说明覆盖率，不把中文占位当已翻译。执行 workstep language validate <目录> 校验；用户确认后 workstep language register <目录>（更新 --replace）。"
+               "在右侧语言分区读取、查看覆盖率、安装并预览，用户确认使用后动态生效，无需重启。皮肤和语言包独立安装，不改变现有字体、布局或配色。")
     await asyncio.to_thread(prepare, root, prompt)
     return {"project_id": project.id, "project_name": project.name, "session_id": session["id"], "created": session['created'], "workspace_path": str(root), "package_path": str(root / "skin"), "prompt": prompt}

@@ -1,0 +1,2 @@
+.language-preview-notice { position: fixed; z-index: 2147483647; left: 12px; right: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; border: 1px solid #0071e3; border-radius: 12px; background: #ffffff; color: #1d1d1f; box-shadow: 0 4px 24px #0003; font: 14px system-ui, sans-serif; }
+.language-preview-notice button { padding: 6px 12px; border: 1px solid #d2d2d7; border-radius: 8px; background: #ffffff; color: #1d1d1f; font: inherit; cursor: pointer; }

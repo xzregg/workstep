@@ -1,6 +1,29 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const zhTW: Messages = {
+  languages: {
+    "title": "语言包",
+    "tab": "语言",
+    "path": "语言包目录",
+    "read": "读取并校验",
+    "waiting": "可以在左侧说“帮我增加西班牙语”，生成后这里会自动读取。",
+    "coverage": "已翻译 {translated} / {total} 项；未翻译部分沿用 {fallback}。",
+    "missing": "缺失文案",
+    "preview": "预览语言",
+    "install": "安装并预览",
+    "replace": "这个语言包已安装，是否替换？",
+    "refresh": "刷新皮肤和语言包",
+    "suggest": "帮我增加西班牙语语言包，保留当前外观。",
+    "installed": "已安装语言包",
+    "remove": "移除语言包",
+    "removeConfirm": "移除这个语言包？使用中会切回内置回退语言。",
+    "import": "导入语言 ZIP",
+    "export": "导出语言 ZIP",
+    "hint": "语言包独立于皮肤，可继续在这个对话中修改。当前支持从左到右的语言，日期控件沿用内置回退语言。",
+    "samples": "示例文案",
+    "catalogOld": "此包基于旧版文案目录，可通过聊天补齐新增项。"
+},
+
   skins: {
     centerTitle: "外观设置",
     centerIntro: "字体、字号、颜色和布局，都可以手动调整，也可以聊出来。",

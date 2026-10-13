@@ -8,8 +8,11 @@ import { zhCN, type Messages } from './locales/zh-CN'
 import { enUS } from './locales/en-US'
 import { zhTW } from './locales/zh-TW'
 import { jaJP } from './locales/ja-JP'
+import { builtinLocales, validateLanguage, type BuiltinLocale, type LanguageDocument, type LanguageSummary } from './languagePack'
+import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
+import './languagePreview.css'
 
-export type Locale = 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP'
+export type Locale = string
 
 /** 把嵌套词典拍平为「点分路径 → 文案」的类型 */
 export type FlattenKeys<T, P extends string = ''> = {
@@ -49,13 +52,40 @@ export function createT(dict: Messages): TFunction {
   }
 }
 
-/** 默认（中文）t，供非 React 工具层兜底 */
-export const zhCNT: TFunction = createT(zhCN)
-
-interface LocaleState {
-  locale: Locale
-  setLocale: (locale: Locale) => void
+function builtinDictionary(locale: string): Messages {
+ return locale === 'en-US' ? enUS : locale === 'zh-TW' ? zhTW : locale === 'ja-JP' ? jaJP : zhCN
 }
+export function createLanguageT(pack: LanguageDocument): TFunction {
+ const fallback = flatten(builtinDictionary(pack.manifest.fallback_locale))
+ return (key, params) => {
+  const template = pack.messages[key] ?? fallback[key] ?? ZH_CN_FLAT[key] ?? key
+  return params ? template.replace(/\{(\w+)\}/g, (match, name: string) => params[name] !== undefined ? String(params[name]) : match) : template
+ }
+}
+let cachedLanguage: LanguageDocument | null | undefined
+let cachedLocale = ''
+let cachedTranslator: TFunction = createT(zhCN)
+/** Non-React consumers use the same selected language. */
+export const zhCNT: TFunction = (key, params) => {
+ const state = useLocaleStore.getState()
+ if (cachedLanguage !== state.language || cachedLocale !== state.locale) { cachedLanguage=state.language; cachedLocale=state.locale; cachedTranslator=state.language ? createLanguageT(state.language) : createT(builtinDictionary(state.locale)) }
+ return cachedTranslator(key, params)
+}
+interface LocaleState {
+ locale: Locale
+ language: LanguageDocument | null
+ installed: LanguageSummary[]
+ loading: boolean
+ error: string
+ previous: {locale: Locale; language: LanguageDocument | null} | null
+ setLocale: (locale: Locale) => void
+ refresh: () => Promise<void>
+ previewLanguage: (pack: LanguageDocument) => void
+ cancelPreview: () => void
+ confirmPreview: () => void
+}
+let selectionGeneration = 0
+let catalogRequest: Promise<void> | null = null
 
 function resolveInitialLocale(): Locale {
   if (typeof navigator !== 'undefined' && typeof navigator.language === 'string') {
@@ -70,19 +100,56 @@ function resolveInitialLocale(): Locale {
 }
 
 export const useLocaleStore = create<LocaleState>()(
-  persist(
-    (set) => ({
-      locale: resolveInitialLocale(),
-      setLocale: (locale) => set({ locale }),
-    }),
-    { name: 'workstep.locale' },
-  ),
+ persist((set, get) => ({
+  locale: resolveInitialLocale(), language: null, installed: [], loading: false, error: '', previous: null,
+  setLocale: (choice) => {
+   const generation = ++selectionGeneration
+   if (builtinLocales.includes(choice as BuiltinLocale)) { set({locale:choice, language:null, previous:null, error:'', loading:false}); return }
+   if (!choice.startsWith('pack:')) return
+   set({loading:true, error:''})
+   void import('../api/languages').then(({languagesApi}) => languagesApi.get(choice.slice(5))).then(validateLanguage).then(language => {
+    if (generation === selectionGeneration) set({locale:language.manifest.locale, language, previous:null})
+   }).catch(error => { if (generation === selectionGeneration) set({error:String(error.message || error)}) }).finally(() => { if (generation === selectionGeneration) set({loading:false}) })
+  },
+  refresh: () => {
+   if (catalogRequest) return catalogRequest
+   set({loading:true, error:''})
+   catalogRequest = import('../api/languages').then(({languagesApi}) => languagesApi.list()).then(async installed => {
+    set({installed})
+    const state = get()
+    if (state.language && !state.previous) {
+     const current = installed.find(item => item.manifest.id === state.language!.manifest.id)
+     if (!current) get().setLocale(state.language.manifest.fallback_locale)
+     else if (current.revision !== state.language.revision) get().setLocale('pack:' + current.manifest.id)
+    }
+   }).catch(error => { set({error:String(error.message || error)}); throw error }).finally(() => { catalogRequest=null; set({loading:false}) })
+   return catalogRequest
+  },
+  previewLanguage: (value) => { const language=validateLanguage(value); ++selectionGeneration; set({locale:language.manifest.locale, language, previous:get().previous ?? {locale:get().locale, language:get().language}, error:'', loading:false}) },
+  cancelPreview: () => { const previous=get().previous; if (previous) { ++selectionGeneration; set({...previous, previous:null}) } },
+  confirmPreview: () => set({previous:null}),
+ }), {
+  name:'workstep.locale' + (gatewayWorkspacePath() ? ':' + gatewayWorkspacePath() : ''),
+  partialize: state => state.previous ?? {locale:state.locale, language:state.language},
+  merge: (persisted, current) => {
+   let saved = persisted as Partial<LocaleState> | undefined
+   if (!saved && gatewayWorkspacePath()) {
+    try { const legacy=JSON.parse(localStorage.getItem('workstep.locale') || 'null')?.state; if (builtinLocales.includes(legacy?.locale)) saved={locale:legacy.locale} } catch { /* No legacy preference. */ }
+   }
+   try {
+    if (saved?.language) { const language=validateLanguage(saved.language); return {...current, language, locale:language.manifest.locale} }
+    if (builtinLocales.includes(saved?.locale as BuiltinLocale)) return {...current, locale:saved!.locale!}
+   } catch { /* Corrupt cache never prevents recovery. */ }
+   return current
+  },
+ }),
 )
 
 interface I18nContextValue {
   t: TFunction
   locale: Locale
   setLocale: (locale: Locale) => void
+  fallbackLocale: Locale
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null)
@@ -90,19 +157,20 @@ const I18nContext = createContext<I18nContextValue | null>(null)
 export function I18nProvider({ children }: { children: ReactNode }) {
   const locale = useLocaleStore((s) => s.locale)
   const setLocale = useLocaleStore((s) => s.setLocale)
-  const t = useMemo(() => createT(
-    locale === 'en-US' ? enUS
-      : locale === 'zh-TW' ? zhTW
-        : locale === 'ja-JP' ? jaJP
-          : zhCN,
-  ), [locale])
+  const language = useLocaleStore(s => s.language)
+  const previous = useLocaleStore(s => s.previous)
+  const installed = useLocaleStore(s => s.installed)
+  const t = useMemo(() => language ? createLanguageT(language) : createT(builtinDictionary(locale)), [locale, language])
+  const fallbackLocale = language?.manifest.fallback_locale ?? locale
+  useEffect(() => { if (useLocaleStore.getState().language) void useLocaleStore.getState().refresh().catch(() => {}) }, [])
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('language') === 'default') setLocale('zh-CN') }, [setLocale])
 
   useEffect(() => {
     document.documentElement.lang = locale
   }, [locale])
 
-  const value = useMemo(() => ({ t, locale, setLocale }), [t, locale, setLocale])
-  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
+  const value = useMemo(() => ({ t, locale, setLocale, fallbackLocale }), [t, locale, setLocale, fallbackLocale])
+  return <I18nContext.Provider value={value}>{children}{previous && <div className="language-preview-notice" role="status"><span>正在预览语言：{language?.manifest.native_name}</span><button type="button" disabled={!installed.some(item => item.manifest.id === language?.manifest.id && item.revision === language.revision)} onClick={() => useLocaleStore.getState().confirmPreview()}>确认使用</button><button type="button" onClick={() => useLocaleStore.getState().cancelPreview()}>取消预览</button><button type="button" onClick={() => setLocale('zh-CN')}>恢复简体中文</button></div>}</I18nContext.Provider>
 }
 
 export function useI18n(): I18nContextValue {
