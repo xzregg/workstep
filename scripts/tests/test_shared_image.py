@@ -15,6 +15,24 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class SharedImageTests(unittest.TestCase):
+    def test_web_build_includes_shared_skin_json_before_compilation(self):
+        stage = (ROOT / "Dockerfile").read_text().split("WORKDIR /app/apps/gateway-web", 1)[0]
+        copy = "COPY apps/daemon/data/skins /app/apps/daemon/data/skins"
+        self.assertIn(copy, stage)
+        self.assertLess(stage.index(copy), stage.index("RUN yarn build"))
+        # Both imported files must be available at the same relative paths as on disk.
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "apps/daemon/data/skins"
+            shutil.copytree(ROOT / "apps/daemon/data/skins", target)
+            imports = []
+            for path in (ROOT / "apps/web/src").rglob("*"):
+                if path.suffix in {".ts", ".tsx"}:
+                    for value in re.findall(r"from ['\"]([^'\"]*daemon/data/skins/[^'\"]+\.json)['\"]", path.read_text()):
+                        resolved = ((Path(temporary) / path.relative_to(ROOT)).parent / value).resolve()
+                        self.assertIsInstance(json.loads(resolved.read_text()), dict)
+                        imports.append(value)
+            self.assertGreaterEqual(len(imports), 2)
+
     def test_frontend_install_uses_mirror_for_registry_and_locked_tarballs(self):
         dockerfile = (ROOT / "Dockerfile").read_text().split(" AS git-build", 1)[0]
         self.assertIn("ARG NPM_REGISTRY=https://registry.npmmirror.com", dockerfile)
