@@ -2,9 +2,9 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { subtreeIds, TreeCheckbox } from './TreeSelection'
 
-export type Department = { external_id: string; display_name: string; parent_external_id?: string | null }
-export function DepartmentSelectionTree({ departments, selected, search, disabled, onChange, onSelect, partialIds = [] }: {
- departments: Department[]; selected: string[]; search: string; disabled: boolean; onChange: (ids:string[], toggledId?:string, checked?:boolean)=>void; onSelect?: (id:string)=>void; partialIds?: string[]
+export type Department = { external_id: string; display_name: string; parent_external_id?: string | null; local_only?: boolean; source_status?:'deleted'|'unverified' }
+export function DepartmentSelectionTree({ departments, selected, search, disabled, onChange, onSelect, focusedId, partialIds = [] }: {
+ departments: Department[]; selected: string[]; search: string; disabled: boolean; onChange: (ids:string[], toggledId?:string, checked?:boolean)=>void; onSelect?: (id:string)=>void; focusedId?: string; partialIds?: string[]
 }) {
  const [collapsed,setCollapsed] = useState<Set<string>>(new Set())
  const nodes=departments.map(node=>({id:node.external_id,parent_id:node.parent_external_id}))
@@ -38,8 +38,8 @@ export function DepartmentSelectionTree({ departments, selected, search, disable
     <div className="gateway-sync-tree-row">
      {children.length?<button type="button" className="gateway-sync-tree-toggle" aria-label={`${open?'收起':'展开'}${node.display_name}`} aria-expanded={open}
       onClick={()=>setCollapsed(current=>{const updated=new Set(current);if(open)updated.add(node.external_id);else updated.delete(node.external_id);return updated})}>{open?'▾':'▸'}</button>:<span className="gateway-sync-tree-spacer"/>}
-     <label><TreeCheckbox label={node.display_name} checked={checked} partial={partial} disabled={disabled} onChange={value=>toggle(node.external_id,value)}/><strong>{node.display_name}</strong></label>
-     {onSelect && <button type="button" className="gateway-sync-view-users" onClick={()=>onSelect(node.external_id)} aria-label={`查看${node.display_name}用户`}>查看用户</button>}
+     <label className="gateway-sync-tree-department"><TreeCheckbox label={node.display_name} checked={checked} partial={partial} disabled={disabled} onChange={value=>toggle(node.external_id,value)}/><span><strong>{node.display_name}</strong>{node.local_only && <small className="gateway-sync-department-status">{node.source_status==='deleted'?'源端已删除':'源端不可见，待核实'}</small>}</span></label>
+     {onSelect && <button type="button" className="gateway-sync-view-users" disabled={disabled} aria-pressed={focusedId===node.external_id} onClick={()=>onSelect(node.external_id)} aria-label={`查看${node.display_name}用户`}>查看用户</button>}
     </div>
     {!!children.length && open && <ul role="group">{branch(children,next,parentMatches || (!!query && matches(node)))}</ul>}
    </li>

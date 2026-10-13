@@ -72,7 +72,8 @@ def build_usage_event(*, gateway_id: str, device_id: str,
                   "output_tokens": usage["output_tokens"],
                   "cache_read_tokens": usage["cache_read_tokens"],
                   "cache_write_tokens": usage["cache_write_tokens"],
-                  "total_tokens": usage["total_tokens"]})
+                  "total_tokens": usage["total_tokens"],
+                  "cache_input_included": usage["cache_input_included"]})
     version, prices = _price_snapshot(provider, model or "")
     event["pricing_version"] = version
     if prices is None:

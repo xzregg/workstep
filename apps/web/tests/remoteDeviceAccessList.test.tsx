@@ -48,3 +48,33 @@ test('revoked share devices disappear immediately and stay hidden after loading'
     remoteProjectApi.revokeDevice = originalRevoke
   }
 })
+
+
+test('share devices show device names and last connection IP for online, offline and legacy records', async () => {
+  installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const devices: RemoteDevice[] = ['online', 'offline', 'legacy'].map((id, index) => ({
+    project_id: 'project-1', device_id: id, user_name: '张三',
+    device_name: index === 2 ? '' : `办公室电脑 ${index + 1}`,
+    ip_address: index === 0 ? '192.168.1.23' : index === 1 ? '2001:db8::12' : undefined,
+    connected: index === 0, revoked: false, status: 'active', expires_at: null,
+    authorized_at: 0, last_seen_at: 0,
+  }))
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><RemoteDeviceAccessList devices={devices}
+      onDeviceChange={() => {}} onError={() => {}} /></I18nProvider>))
+    assert.match(container.textContent ?? '', /办公室电脑 1/)
+    assert.match(container.textContent ?? '', /办公室电脑 2/)
+    assert.match(container.textContent ?? '', /IP：192\.168\.1\.23/)
+    assert.match(container.textContent ?? '', /IP：2001:db8::12/)
+    assert.match(container.textContent ?? '', /IP：未知/)
+    assert.match(container.textContent ?? '', /在线/)
+    assert.match(container.textContent ?? '', /离线/)
+    assert.match(container.textContent ?? '', /legacy/)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+  }
+})

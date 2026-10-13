@@ -75,6 +75,76 @@ async def test_nonstreaming_stages_send_one_complete_message_per_group(setup):
     assert adapter.send_text.await_count == count
 
 
+@pytest.mark.parametrize('failure', ['reported', 'reported_partial', 'exception', 'unavailable', 'unavailable_slow', 'success'])
+async def test_runner_terminal_message_reaches_bound_groups_with_failure_reason(setup, monkeypatch, failure):
+    from engines.core.acp_base import AcpEngineBase
+    from engines.core.events import InternalEvent
+    from services.task_runner import TaskRunner
+
+    forwarder, bus, _, adapter, _, projects, project = setup
+    error = "Engine 'missing' not available" if failure.startswith('unavailable') else '供应商连接超时'
+
+    class Engine(AcpEngineBase):
+        EXECUTION_MAX_ATTEMPTS = 1
+        def __init__(self): pass
+        @staticmethod
+        def is_installed(): return True
+        @staticmethod
+        def get_version(): return 'test'
+        @staticmethod
+        def resolve_binary(): return 'test'
+        @property
+        def supports_resume(self): return False
+        @property
+        def supports_interactive(self): return False
+        async def spawn(self, prompt, cwd, **kwargs):
+            if failure == 'exception':
+                raise ConnectionError(error)
+            if failure == 'reported_partial':
+                yield InternalEvent(type='agent_message_chunk', data={'content': {'text': '部分结果'}})
+            if failure in {'reported', 'reported_partial'}:
+                yield InternalEvent(type='error', data={'message': error})
+            else:
+                yield InternalEvent(type='agent_message_chunk', data={'content': {'text': '完成'}})
+        async def stop(self): pass
+
+    monkeypatch.setattr('services.task_runner.create_engine',
+                        lambda _name: None if failure.startswith('unavailable') else Engine())
+    runner = TaskRunner(bus, source_project_id=project.id, database_executor=project.database_executor)
+    task = await projects.run_db(project.id, lambda _p: Task.get_by_id('task'))
+    entered, release = threading.Event(), threading.Event()
+    if failure == 'unavailable_slow':
+        original = Message.save
+        def slow_save(row, *args, **kwargs):
+            if row.run_status == 'failed':
+                entered.set()
+                assert release.wait(2)
+            return original(row, *args, **kwargs)
+        monkeypatch.setattr(Message, 'save', slow_save)
+    pending = asyncio.create_task(runner.run_pipeline(task, {'steps': [
+        {'key': 'a', 'label': '编写', 'engine': 'missing', 'prompt': '执行'},
+    ]}, project.workstep_dir / 'artifacts'))
+    try:
+        if failure == 'unavailable_slow':
+            assert await asyncio.to_thread(entered.wait, 1)
+            async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+                assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
+            adapter.send_text.assert_not_awaited()
+            release.set()
+        await pending
+        await until(lambda: adapter.send_text.await_count == 2 and not forwarder._messages)
+        expected = '@编写\n完成' if failure == 'success' else '@编写\n执行失败：' + error
+        if failure == 'reported_partial':
+            expected = '@编写\n部分结果\n\n执行失败：' + error
+        assert [c.args[1] for c in adapter.send_text.await_args_list] == [expected, expected]
+        assert {c.args[0].conversation_id for c in adapter.send_text.await_args_list} == {'one', 'two'}
+    finally:
+        release.set()
+        if not pending.done():
+            await pending
+        await runner.close()
+
+
 async def test_unbind_and_failure_are_isolated_while_parallel_messages_finish(setup):
     forwarder,bus,event,adapter,data,*_ = setup
     await bus.publish(event('a','TEXT_MESSAGE_START'))

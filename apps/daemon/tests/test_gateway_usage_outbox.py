@@ -108,6 +108,7 @@ def test_usage_event_snapshots_price_and_marks_missing_usage():
                         "cache_read_input_tokens": 20,
                         "cache_input_included": True})
     event = build_usage_event(**context, provider=provider, usage_json=usage)
+    assert event["cache_input_included"] is True
     assert event["input_tokens"] == 120
     assert event["estimated_cost"] == "0.000162"
     assert event["pricing_version"] == "v2"

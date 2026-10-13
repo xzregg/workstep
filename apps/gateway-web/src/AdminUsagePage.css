@@ -102,3 +102,8 @@
 .gateway-usage-event-location dd { font-size: 11px; margin: 0; color: #63748c; overflow-wrap: anywhere; }
 @media(max-width:1023px) { .gateway-usage-event-location { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media(max-width:600px) { .gateway-usage-event-location { grid-template-columns: minmax(0,1fr); } }
+
+.gateway-usage-price-actions { margin: 12px 0; justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
+
+.gateway-usage-page .gateway-usage-prices .gateway-admin-table td:first-child { width: 36px; min-width: 36px; }
+.gateway-usage-page .gateway-usage-prices .gateway-admin-table td:last-child { width: auto; }

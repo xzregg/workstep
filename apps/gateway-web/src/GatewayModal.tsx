@@ -2,8 +2,8 @@ import { useRef, useState } from 'react'
 import type { ReactNode, PointerEvent } from 'react'
 import { useGatewayModal } from './useGatewayModal'
 
-export function GatewayModal({ title, children, footer, onClose, className = '' }: {
- title: string; children: ReactNode; footer: ReactNode; onClose: () => void; className?: string
+export function GatewayModal({ title, children, footer, onClose, className = '', explicitCloseOnly = false }: {
+ title: string; children: ReactNode; footer: ReactNode; onClose: () => void; className?: string; explicitCloseOnly?: boolean
 }) {
  const dialog = useGatewayModal()
  const [size, setSize] = useState<{width:number;height:number} | null>(null)
@@ -22,7 +22,7 @@ export function GatewayModal({ title, children, footer, onClose, className = '' 
    height:Math.min(window.innerHeight-32,Math.max(320,current.height+(current.edge.includes('s')?dy:current.edge.includes('n')?-dy:0)))})
  }
  return <dialog ref={dialog} className={`gateway-modal ${className}`} aria-label={title} style={size ?? undefined}
-  onCancel={event=>{event.preventDefault();onClose()}} onClick={event=>{if(event.target===event.currentTarget)onClose()}}>
+  onCancel={event=>{event.preventDefault();if(!explicitCloseOnly)onClose()}} onClick={event=>{if(!explicitCloseOnly && event.target===event.currentTarget)onClose()}}>
   <header className="gateway-modal-header"><h3>{title}</h3><button type="button" aria-label="关闭弹窗" onClick={onClose}>×</button></header>
   <div className="gateway-modal-body">{children}</div>
   <footer className="gateway-modal-footer">{footer}</footer>

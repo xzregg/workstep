@@ -16,5 +16,5 @@ test('WebSocket refreshes tasks after reconnect but not on the initial connectio
   assert.match(source, /const isReconnect = hasOpened/)
   assert.match(source, /hasOpened = true/)
   assert.match(source, /if \(isReconnect\)/)
-  assert.match(source, /if \(projectId\)/)
+  assert.match(source, /if \(projectId && project\?\.type !== 'remote'\)/)
 })

@@ -255,6 +255,7 @@ async def serve_remote_project_socket(
             actor=actor,
             invite_token=str(auth.get("invite_token") or "") or None,
             credential=str(auth.get("credential") or "") or None,
+            ip_address=ws.client.host if ws.client else "",
         )
         summary = project_summary(principal.project_id)
         if inspect.isawaitable(summary):

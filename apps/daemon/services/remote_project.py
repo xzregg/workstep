@@ -119,6 +119,7 @@ class _RemoteProjectConnection:
                     max_size=16 * 1024 * 1024,
                 )
                 actor: ActorSnapshot = await asyncio.to_thread(self._actor_provider)
+                device_id = str(descriptor.get("credential_device_id") or actor.device_id)
                 auth = {
                     "type": "auth",
                     "project_id": descriptor["host_project_id"],
@@ -127,7 +128,7 @@ class _RemoteProjectConnection:
                     "actor": {
                         "actor_id": actor.actor_id,
                         "user_name": actor.user_name,
-                        "device_id": actor.device_id,
+                        "device_id": device_id,
                         "device_name": actor.device_name,
                     },
                 }
@@ -149,6 +150,8 @@ class _RemoteProjectConnection:
                             self.local_project_id,
                             access_status="expired",
                         )
+                    elif normalized_detail in {"invalid remote-project credential", "missing remote-project credential"}:
+                        await asyncio.to_thread(self._registry.update, self.local_project_id, access_status="invalid")
                     raise PermissionError(detail)
                 if message.get("host_id") != descriptor.get("fingerprint"):
                     raise PermissionError("Remote host fingerprint changed")
@@ -163,6 +166,7 @@ class _RemoteProjectConnection:
                     self._registry.mark_authenticated,
                     self.local_project_id,
                     credential=credential,
+                    device_id=device_id,
                     project=project,
                     access_status=str(message.get("access_status") or "active"),
                     access_expires_at=(

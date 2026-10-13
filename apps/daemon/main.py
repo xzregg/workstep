@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -104,9 +105,9 @@ notification_hooks.service.bus = event_bus
 
 def _local_actor() -> ActorSnapshot:
     request_actor = get_current_actor()
-    if request_actor is not None and request_actor.source == 'managed':
-        return request_actor
     device = config_store.get_device_identity()
+    if request_actor is not None and request_actor.source == 'managed':
+        return replace(request_actor, device_name=device['device_name'])
     gateway_actor = gateway_client.current_actor if gateway_client.managed_config else None
     if gateway_actor is not None:
         return ActorSnapshot(
@@ -222,9 +223,15 @@ async def lifespan(app: FastAPI):
         )
     await schedule_module.start()
     await gateway_client.start()
+    from services.local_cli import LocalCliRuntime
+    local_cli_runtime = LocalCliRuntime(os.environ['WORKSTEP_DAEMON_URL'])
+    await asyncio.to_thread(local_cli_runtime.publish)
+    app.state.local_cli_runtime = local_cli_runtime
     try:
         yield
     finally:
+        app.state.local_cli_runtime = None
+        await asyncio.to_thread(local_cli_runtime.close)
         await completion_push.shutdown()
         await notification_hooks.service.shutdown()
         await gateway_client.close()

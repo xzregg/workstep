@@ -76,3 +76,18 @@ test('board selection excludes other workflows loaded through task details', asy
     taskApi.get = original
   }
 })
+
+
+test('switching projects clears the previous board even if the remote request fails', async () => {
+  const originalFetch = globalThis.fetch
+  const old = { id: 'local-task', workflow_id: 'default' } as Task
+  useTaskStore.setState({ tasks: [old], listQuery: { projectId: 'local', workflowId: 'default', archived: false }, loading: false })
+  globalThis.fetch = async () => Response.json({ detail: 'Invalid remote-project credential' }, { status: 502 })
+  try {
+    const loading = useTaskStore.getState().fetchTasks('remote:new', null)
+    assert.deepEqual(useTaskStore.getState().tasks, [])
+    await loading
+    assert.deepEqual(useTaskStore.getState().tasks, [])
+    assert.equal(useTaskStore.getState().listError, 'Invalid remote-project credential')
+  } finally { globalThis.fetch = originalFetch }
+})

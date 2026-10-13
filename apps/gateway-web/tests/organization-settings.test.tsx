@@ -73,7 +73,7 @@ test('organization settings opens the self-managed selection panel without impor
  fireEvent.click(await screen.findByRole('button',{name:'同步组织与用户'}))
  await screen.findByLabelText('研发')
  assert.equal(writes,0)
- assert.equal((within(screen.getByRole('dialog',{name:'钉钉 · 选择同步组织与用户'})).getByRole('button',{name:'读取组织与用户变更'}) as HTMLButtonElement).disabled,true)
+ assert.equal((within(screen.getByRole('dialog',{name:'钉钉 · 选择同步组织与用户'})).getByRole('button',{name:'读取通讯录'}) as HTMLButtonElement).disabled,true)
 })
 
 test('existing enterprise Corp ID can be corrected without replacing its source or secret', async () => {

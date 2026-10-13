@@ -48,8 +48,9 @@ class UserGroup(Base):
     description: Mapped[str] = mapped_column(Text, server_default="")
     source_type: Mapped[str] = mapped_column(String(32), server_default="manual")
     external_department_id: Mapped[str | None] = mapped_column(ForeignKey("directory_departments.id"))
+    parent_group_id: Mapped[str | None] = mapped_column(ForeignKey('user_groups.id', ondelete='SET NULL'), index=True)
     status: Mapped[str] = mapped_column(String(16), server_default="active")
-    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = timestamp()
     updated_at: Mapped[datetime] = timestamp()
 

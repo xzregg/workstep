@@ -1,9 +1,9 @@
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
-export function AdminGroupCreateDialog({ csrf, onDone, onClose }: {
-  csrf: string; onDone: (id: string) => void; onClose: () => void
+export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId = '' }: {
+  csrf: string; onDone: (id: string) => void; onClose: () => void; defaultParentId?: string
 }) {
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
@@ -12,11 +12,26 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose }: {
   const [departmentQuery, setDepartmentQuery] = useState('')
   const [departments, setDepartments] = useState<Array<{ id: string; display_name: string; provider: string }>>([])
   const [departmentId, setDepartmentId] = useState('')
+  const [parentId, setParentId] = useState(defaultParentId)
+  const [groups, setGroups] = useState<Array<{id:string;name:string;parent_id?:string|null}>>([])
+  const [parentsLoading, setParentsLoading] = useState(true)
+  const [parentsError, setParentsError] = useState('')
+  const [parentsRevision, setParentsRevision] = useState(0)
+  useEffect(()=>{
+    const controller=new AbortController();setParentsLoading(true);setParentsError('')
+    void fetch('/api/admin/user-groups/tree',{credentials:'same-origin',signal:controller.signal}).then(async response=>{
+      if(!response.ok)throw Error('父组列表加载失败，请重试。')
+      const data=await response.json()
+      if(!controller.signal.aborted){setGroups(data.groups ?? []);setParentId(current=>data.groups?.some((group:{id:string})=>group.id===current)?current:'')}
+    }).catch(reason=>{if(!controller.signal.aborted)setParentsError(reason.message)})
+      .finally(()=>{if(!controller.signal.aborted)setParentsLoading(false)})
+    return()=>controller.abort()
+  },[parentsRevision])
   const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [discard, setDiscard] = useState(false)
-  const dirty = Boolean(name || slug || description || password || departmentId || departmentQuery)
+  const dirty = Boolean(name || slug || description || password || departmentId || departmentQuery || parentId!==defaultParentId)
   const valid = Boolean(csrf && passwordReady && name && name.trim() === name
     && /^[a-z0-9][a-z0-9_-]*$/.test(slug)
     && (sourceType === 'manual' || departmentId))
@@ -41,7 +56,8 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose }: {
       if (!step.ok) throw new Error('管理员密码验证失败。')
       const response = await fetch('/api/groups', { method: 'POST', credentials: 'same-origin',
         headers, body: JSON.stringify({ name, slug, description, source_type: sourceType,
-          external_department_id: sourceType === 'external_department' ? departmentId : null }) })
+          external_department_id: sourceType === 'external_department' ? departmentId : null,
+          ...(sourceType === 'manual' && parentId ? {parent_id:parentId} : {}) }) })
       if (!response.ok) throw new Error(response.status === 409
         ? '用户组标识已存在。' : '创建用户组失败。')
       const created = await response.json()
@@ -60,9 +76,15 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose }: {
       <label>说明<input value={description} maxLength={2000}
         onChange={event => setDescription(event.target.value)} /></label>
       <label>来源<select value={sourceType} onChange={event => {
-        setSourceType(event.target.value as 'manual' | 'external_department'); setDepartmentId('')
+        setSourceType(event.target.value as 'manual' | 'external_department'); setDepartmentId('');setParentId('')
       }}><option value="manual">手工用户组</option>
         <option value="external_department">外部部门映射</option></select></label>
+      {sourceType==='manual' && <label>父组<select value={parentId} disabled={parentsLoading} onChange={event=>setParentId(event.target.value)}>
+        <option value="">无父组（顶级用户组）</option>{groups.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}
+      </select></label>}
+      {sourceType==='external_department' && <p>父组按外部部门层级自动同步。</p>}
+      {parentsLoading && sourceType==='manual' && <p role="status"><span className="gateway-spinner"/>正在加载父组…</p>}
+      {parentsError && sourceType==='manual' && <p role="alert">{parentsError}<button type="button" onClick={()=>setParentsRevision(value=>value+1)}>重试父组列表</button></p>}
       {sourceType === 'external_department' && <>
         <label>搜索部门<input value={departmentQuery} maxLength={128}
           onChange={event => setDepartmentQuery(event.target.value)} /></label>

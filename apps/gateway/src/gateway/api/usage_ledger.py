@@ -1,3 +1,4 @@
+from gateway.services.usage_model_prices import ModelPriceBatch, observed_model_prices, save_model_prices
 from gateway.api.adapters import invoke
 from gateway.services.usage_ledger import import_provider_bills as _handle_import_provider_bills, usage_summary as _handle_usage_summary, usage_reconciliation as _handle_usage_reconciliation, usage_events as _handle_usage_events
 
@@ -59,3 +60,15 @@ async def usage_events(request: Request,
                        page: int = Query(1, ge=1),
                        page_size: int = Query(25, ge=1, le=100)):
     return await invoke(_handle_usage_events, request=request, device_id=device_id, user_id=user_id, project_id=project_id, provider_id=provider_id, model=model, source=source, metering_status=metering_status, from_time=from_time, to_time=to_time, page=page, page_size=page_size)
+
+
+
+@router.get('/model-prices')
+async def model_prices(request: Request, q: str = Query('', max_length=128),
+                       page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
+    return await invoke(observed_model_prices, request=request, q=q, page=page, page_size=page_size)
+
+
+@router.put('/model-prices')
+async def update_model_prices(request: Request, body: ModelPriceBatch):
+    return await invoke(save_model_prices, request=request, body=body)

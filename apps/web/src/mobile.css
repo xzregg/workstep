@@ -670,7 +670,7 @@
   .project-settings-layout > nav button { width: auto !important; flex-shrink: 0; }
   .project-settings-layout > section { padding: 16px !important; }
   .file-preview-backdrop { padding: 8px; }
-  .file-preview-dialog { width: 100%; max-width: 100%; max-height: calc(var(--app-viewport-height, 100dvh) - 16px); }
+  .file-preview-dialog { width: 100%; max-width: 100%; height: calc(var(--app-viewport-height, 100dvh) - 16px); max-height: calc(var(--app-viewport-height, 100dvh) - 16px); flex-shrink: 0; }
   .project-directory-dialog-backdrop { padding: 8px; }
   .project-directory-dialog { position: relative; left: auto; top: auto; width: 100%; height: calc(var(--app-viewport-height, 100dvh) - 16px); }
   .project-directory-browser { grid-template-columns: 1fr; grid-template-rows: minmax(180px, 40%) minmax(0, 1fr); }

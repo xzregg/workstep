@@ -270,6 +270,7 @@ class StepExecutionMessages:
     async def publish_completion(
         self, task_id: str, step_key: str, message_id: str,
         completion: CompletedExecution, event_sequence: int,
+        *, error: str | None = None,
     ) -> None:
         """Publish only after the durable completion checkpoint exists."""
         await self._publish(task_id, step_key, {
@@ -277,7 +278,10 @@ class StepExecutionMessages:
             "engine": completion.engine, "model": completion.model,
             "event_sequence": event_sequence,
             "type": "message_completed",
-            "data": {"status": completion.status},
+            "data": {
+                "status": completion.status,
+                **({"error": error} if completion.status == "failed" and error else {}),
+            },
         })
 
     async def fail_unavailable(
@@ -305,5 +309,12 @@ class StepExecutionMessages:
                 step_run.error = error
                 step_run.ended_at = utc_now()
                 step_run.save()
+            return message.task_id, message.step_key, CompletedExecution(
+                message.engine, message.model, message.run_status, message.usage_json,
+            )
 
-        await self._run_db(persist_failure)
+        task_id, step_key, completion = await self._run_db(persist_failure)
+        await self.publish_completion(
+            task_id, step_key, message_id, completion,
+            projection["event_count"] + 1, error=error,
+        )

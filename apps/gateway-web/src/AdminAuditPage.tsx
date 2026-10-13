@@ -1,7 +1,8 @@
+import { AdminRecordDetails } from './AdminRecordDetails'
+import { AdminListStatus } from './AdminListStatus'
 import { GatewayDateRange } from './GatewayDateRange'
-import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
+import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { LedgerExportButton } from './LedgerExportButton'
 
 type AuditEvent = {
@@ -69,7 +70,7 @@ export function AdminAuditPage() {
 
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <div className="gateway-admin-toolbar"><h2>审计记录</h2><Link to="/admin">返回管理概览</Link></div>
+    <div className="gateway-admin-toolbar"><h2>审计记录</h2></div>
     <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
       <GatewayDateRange from={draft.from_time} to={draft.to_time}
         onChange={range => setDraft(current => ({ ...current, ...range }))} />
@@ -92,25 +93,25 @@ export function AdminAuditPage() {
         }}>清除筛选</button></div>
     </form>
     {validation && <p role="alert" className="gateway-auth-error">{validation}</p>}
-    {loading && <p role="status">正在加载审计记录…</p>}
+    <AdminListStatus loading={loading} label="正在加载审计记录…"/>
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(current => current + 1)}>重试</button></p>}
     {!loading && !error && events.length === 0 && <p>当前条件下没有审计记录。</p>}
-    <AdminRecordTable>{events.map(item => <AdminRecordRow key={item.id}><div>
-      <strong>{item.action}</strong><p>{new Date(item.occurred_at).toLocaleString()} · {
-        value(item.actor_name || item.actor_username || item.actor_id)} · {item.result}</p>
-      <p>项目 {value(item.project_name || item.platform_project_id)} · 目标 {
-        value(item.task_id || item.metadata.subject_id?.toString() || item.platform_project_id)}</p>
-      <details><summary>审计详情</summary>
-        <p>事件 {item.id} · 操作人 {value(item.actor_id)} · 类型 {value(item.actor_type)} · 模式 {value(item.mode)}</p>
-        <p>操作设备 {value(item.actor_device_name || item.actor_device_id)} · 宿主 PC {value(item.device_id)}</p>
-        <p>原始发起人 {value(item.initiated_by_username || item.initiated_by_user_id)}</p>
-        <p>平台项目 {value(item.platform_project_id)} · 宿主项目 {value(item.project_id)} · 任务 {value(item.task_id)}</p>
-        <p>流程运行 {value(item.metadata.workflow_run_id?.toString())} · 审核运行 {
-          value(item.metadata.review_run_id?.toString())} · 阶段 {value(item.metadata.step_key?.toString())}</p>
-        <dl>{Object.entries(item.metadata).map(([key, data]) => <div key={key}><dt>{key}</dt><dd>{String(data)}</dd></div>)}</dl>
-      </details>
-    </div></AdminRecordRow>)}</AdminRecordTable>
+    <AdminRecordTable busy={loading} columns={['发生时间','操作','操作人','项目','结果','目标','操作']}>
+      {events.map(item => <tr key={item.id}>
+        <td>{new Date(item.occurred_at).toLocaleString()}</td><td>{item.action}</td>
+        <td>{value(item.actor_name || item.actor_username || item.actor_id)}</td><td>{value(item.project_name || item.platform_project_id)}</td>
+        <td>{item.result}</td><td title={item.task_id || item.platform_project_id || ''}>{value(item.task_id || item.metadata.subject_id?.toString() || item.platform_project_id)}</td>
+        <td><AdminRecordDetails label="审计详情" title={`审计详情 ${item.id}`}>
+          <p>事件 {item.id} · 操作人 {value(item.actor_id)} · 类型 {value(item.actor_type)} · 模式 {value(item.mode)}</p>
+          <p>操作设备 {value(item.actor_device_name || item.actor_device_id)} · 宿主 PC {value(item.device_id)}</p>
+          <p>原始发起人 {value(item.initiated_by_username || item.initiated_by_user_id)}</p>
+          <p>平台项目 {value(item.platform_project_id)} · 宿主项目 {value(item.project_id)} · 任务 {value(item.task_id)}</p>
+          <p>流程运行 {value(item.metadata.workflow_run_id?.toString())} · 审核运行 {value(item.metadata.review_run_id?.toString())} · 阶段 {value(item.metadata.step_key?.toString())}</p>
+          <dl className="gateway-admin-details">{Object.entries(item.metadata).map(([key,data]) => <div key={key}><dt>{key}</dt><dd>{String(data)}</dd></div>)}</dl>
+        </AdminRecordDetails></td>
+      </tr>)}
+    </AdminRecordTable>
     <div className="gateway-admin-pagination"><span>共 {total} 条记录 · 第 {page}/{
       Math.max(1, Math.ceil(total / pageSize))} 页</span>
       <LedgerExportButton rows={events} filename={`audit-page-${page}.csv`} disabled={loading || !!error}

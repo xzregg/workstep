@@ -31,3 +31,15 @@
   white-space: nowrap;
 }
 .task-artifact-preview-body { flex: 1; min-height: 0; }
+
+@media (max-width: 1023px) {
+  .task-artifact-preview-backdrop { padding: 8px; }
+  .task-artifact-preview-dialog {
+    width: 100%;
+    max-width: 100%;
+    height: calc(var(--app-viewport-height, 100dvh) - 16px);
+    max-height: calc(var(--app-viewport-height, 100dvh) - 16px);
+    min-height: 0;
+    flex-shrink: 0;
+  }
+}

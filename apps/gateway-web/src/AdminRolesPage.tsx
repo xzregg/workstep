@@ -1,4 +1,5 @@
-import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
+import { AdminListStatus } from './AdminListStatus'
+import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -90,7 +91,7 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
             placeholder="用户名或显示名称" />
           <button type="submit">搜索</button>
         </form>
-        <button type="button" onClick={() => setGrantOpen(true)}>授予权限</button>
+        <button type="button" className="gateway-admin-primary" onClick={() => setGrantOpen(true)}>授予权限</button>
       </div>
       <div className="gateway-admin-filters">
         <label htmlFor="admin-role-filter">角色</label>
@@ -108,15 +109,15 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
           <option value="desc">降序</option><option value="asc">升序</option>
         </select>
       </div>
-      {loading && <p role="status">正在加载管理员…</p>}
+      <AdminListStatus loading={loading} label="正在加载管理员…"/>
       {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
       {!loading && !error && roles.length === 0 && <p>当前条件下没有管理员。</p>}
-      {!error && <AdminRecordTable>{roles.map(role => <AdminRecordRow key={role.id}>
-        <div><strong>{role.display_name}</strong><p>{role.username} · {roleNames[role.role] ?? role.role} · {
-          role.scope_type === 'platform' ? '全平台' : `${({ department: '部门', organization: '组织', device_group: '设备组' } as Record<string, string>)[role.scope_type]} ${role.scope_name ?? role.scope_id}${role.scope_type === 'department' && role.include_subdepartments ? '（含下级）' : ''}`
-        }</p><p>{role.user_status === 'active' ? '已启用' : role.user_status} · {role.registration_source}</p></div>
-        <button type="button" onClick={() => setRevoke(role)}>撤销</button>
-      </AdminRecordRow>)}</AdminRecordTable>}
+      {!error && <AdminRecordTable busy={loading} columns={['显示名','用户名','角色','管理范围','状态','操作']}>
+        {roles.map(role => <tr key={role.id}><td><strong>{role.display_name}</strong></td><td>{role.username}</td>
+          <td>{roleNames[role.role] ?? role.role}</td><td>{role.scope_type === 'platform' ? '全平台' : `${({ department:'部门', organization:'组织', device_group:'设备组' } as Record<string,string>)[role.scope_type]} ${role.scope_name ?? role.scope_id}${role.scope_type === 'department' && role.include_subdepartments ? '（含下级）' : ''}`}</td>
+          <td>{role.user_status === 'active' ? '已启用' : role.user_status}</td>
+          <td><button type="button" className="gateway-admin-danger" disabled={loading} onClick={() => setRevoke(role)}>撤销</button></td></tr>)}
+      </AdminRecordTable>}
       <div className="gateway-admin-pagination">
         <span>共 {total} 项权限 · 第 {filters.page}/{pages} 页</span>
         <button type="button" disabled={filters.page <= 1 || loading} onClick={() => setFilters(current => (
@@ -126,7 +127,7 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
       </div>
     </>}
     {grantOpen && <AdminGrantRoleDialog delegated={delegated} csrf={csrf} onClose={() => setGrantOpen(false)}
-      onSaved={() => { setGrantOpen(false); setFilters(current => ({ ...current, page: 1 })); refresh() }} />}
+      onSaved={() => { setGrantOpen(false); refresh() }} />}
     {revoke && <AdminRevokeRoleDialog role={revoke} csrf={csrf} onClose={() => setRevoke(null)}
       onComplete={() => { setRevoke(null); refresh() }} />}
   </section>
