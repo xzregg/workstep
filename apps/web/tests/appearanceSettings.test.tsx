@@ -7,6 +7,8 @@ import { MemoryRouter } from 'react-router-dom'
 import AppearanceSettings from '../src/pages/AppearanceSettings'
 import { loadFontSizePreference } from '../src/utils/fontSizePreference'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
+import { defaultSkin } from '../src/skins/contract'
+import { previewSkin, cancelSkinPreview } from '../src/skins/runtime'
 import { skinsApi } from '../src/api/skins'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 
@@ -36,13 +38,21 @@ for (const projectScoped of [false, true]) test(`appearance settings embeds the 
     await act(async () => { family.value = 'pingfang'; family.dispatchEvent(new window.Event('change', { bubbles: true })) })
     assert.match(document.documentElement.style.getPropertyValue('--font-body'), /PingFang SC/)
     assert.equal(window.localStorage.getItem('workstep.fontFamily'), 'pingfang')
-    const hasCreate = [...document.querySelectorAll('button')].some(button => button.textContent?.includes('聊天制作皮肤'))
+    const hasCreate = [...document.querySelectorAll('button')].some(button => button.textContent?.includes('聊聊外观怎么改'))
     assert.equal(hasCreate, !projectScoped)
     assert.ok(document.querySelector('.skin-settings-preview-stage'))
     const large = [...element.querySelectorAll<HTMLButtonElement>('.settings-appearance-font button')].find(button => /^大$|^Large$/.test(button.textContent ?? ''))!
     await act(async () => large.click())
     assert.equal(loadFontSizePreference(), 'large')
     assert.equal(document.documentElement.dataset.fontSize, 'large')
+    await act(async () => previewSkin({ ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: 'font-preview' }, tokens: { 'font-body': 'Georgia, serif' }, layout: { fontSize: 'small' } }))
+    assert.equal(family.value, 'system', 'the setting reflects the preview font instead of a stale manual override')
+    const small = [...element.querySelectorAll<HTMLButtonElement>('.settings-appearance-size button')].find(button => /^小$|^Small$/.test(button.textContent ?? ''))!
+    assert.equal(small.getAttribute('aria-pressed'), 'true')
+    assert.equal(loadFontSizePreference(), 'large')
+    await act(async () => cancelSkinPreview())
+    assert.equal(family.value, 'pingfang')
+    assert.equal(large.getAttribute('aria-pressed'), 'true')
   } finally {
     await act(async () => root.unmount()); element.remove(); skinsApi.list = oldList
     useLocaleStore.setState({ locale: 'zh-CN' }); useGatewaySessionStore.setState({ session: null }); await window.happyDOM.close()

@@ -1,16 +1,24 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useI18n, type Locale } from '../i18n'
 import Select from '../components/Select'
-import { loadFontFamilyPreference, saveFontFamilyPreference, type FontFamilyPreference } from '../utils/fontFamilyPreference'
+import { loadFontFamilyPreference, currentFontFamilyPreference, saveFontFamilyPreference, type FontFamilyPreference } from '../utils/fontFamilyPreference'
 import SegmentedControl from '../components/SegmentedControl'
 import SkinSettings from '../components/SkinSettings'
-import { loadFontSizePreference, saveFontSizePreference, type FontSizePreference } from '../utils/fontSizePreference'
+import { APPEARANCE_PREFERENCE_EVENT, loadFontSizePreference, saveFontSizePreference, type FontSizePreference } from '../utils/fontSizePreference'
 import './AppearanceSettings.css'
 
 export default function AppearanceSettings() {
   const { t, locale, setLocale } = useI18n()
   const [fontFamily, setFontFamily] = useState(loadFontFamilyPreference)
   const [fontSize, setFontSize] = useState(loadFontSizePreference)
+  useEffect(() => {
+    const sync = () => {
+      setFontFamily(currentFontFamilyPreference())
+      setFontSize((document.documentElement.dataset.fontSize as FontSizePreference) || loadFontSizePreference())
+    }
+    window.addEventListener(APPEARANCE_PREFERENCE_EVENT, sync)
+    return () => window.removeEventListener(APPEARANCE_PREFERENCE_EVENT, sync)
+  }, [])
   const changeFontSize = (value: FontSizePreference) => {
     setFontSize(value)
     saveFontSizePreference(value)
@@ -19,9 +27,8 @@ export default function AppearanceSettings() {
     setFontFamily(value)
     saveFontFamilyPreference(value)
   }
-  return <div className="settings-appearance-page">
-    <section className="settings-appearance-font" aria-label={t('settings.appearanceBasicsTitle')}>
-      <div className="settings-appearance-font-copy"><h2>{t('settings.appearanceBasicsTitle')}</h2><p>{t('settings.appearanceBasicsIntro')}</p></div>
+  const preferences = <section className="settings-appearance-font" aria-label={t('settings.appearanceBasicsTitle')}>
+      <div className="settings-appearance-font-copy"><h2>{t('settings.appearanceBasicsTitle')}</h2></div>
       <div className="settings-appearance-controls">
         <div className="settings-appearance-field">
           <label htmlFor="appearance-font-family">{t('settings.fontFamily')}</label>
@@ -53,6 +60,5 @@ export default function AppearanceSettings() {
         </div>
       </div>
     </section>
-    <SkinSettings />
-  </div>
+  return <div className="settings-appearance-page"><SkinSettings preferences={preferences} /></div>
 }

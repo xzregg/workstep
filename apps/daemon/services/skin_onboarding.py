@@ -60,10 +60,10 @@ async def create_onboarding():
     root = project.path
     await asyncio.to_thread(skill_center.runtime_selection, root)
     session = await project_manager.run_db(project.id, lambda current: design_session(current, module))
-    prompt = ("请帮我制作 WorkStep 个性化皮肤。先询问喜欢的颜色、背景、PC/手机布局和需要重点定制的控件。\n"
+    prompt = ("请帮我制作 WorkStep 个性化皮肤。可调整颜色、背景、PC/手机布局、字体类型和四档字号；用户只要求字体或字号时直接调整对应配置，保留其他外观，不要求重新选择配色。\n"
               f"共享 runtime 工作目录：{root}\n建议皮肤包目录：{root / 'skin'}\n本次规范文件：{root / 'skin-contract.json'}\n"
               "在 Runtime 根目录内创建或修改皮肤包，具体包目录可自行命名；默认使用上述建议目录方便右侧读取，不覆盖其他已有成果。先阅读本次规范文件和 workstep-cli 的 references/custom-skin.md。规范覆盖引擎选择框及展开选项、输入框、消息、任务、流程、Git、设置和全部浮层。"
-              "只生成声明式 JSON 和本地图片，不修改 WorkStep 源码，不写脚本或任意 CSS。未覆盖部分继承默认皮肤。"
+              "字体类型使用 tokens.json 的 font-body / font-display（代码字体用 font-mono），系统没有该字体时通过字体栈回退；字号使用 components.json 的 layout.fontSize：small / standard / large / extraLarge，inherit 表示沿用设备字号。禁止修改受保护的 font-scale。只生成声明式 JSON 和本地图片，不修改 WorkStep 源码，不写脚本或任意 CSS。未覆盖部分继承默认皮肤。"
               "使用 workstep skin validate 检查，再经用户同意用 workstep skin register 注册（更新指定 --replace）；"
               "在设置→外观中预览 PC 和手机、确认应用。校验通过不等于视觉验收通过；注册后无需重启。")
     await asyncio.to_thread(prepare, root, prompt)

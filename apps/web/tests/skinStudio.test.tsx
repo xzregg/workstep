@@ -45,6 +45,11 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
     await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(field, '手动微调'); field.dispatchEvent(new window.Event('input', { bubbles: true })) })
     await act(async () => document.querySelector<HTMLButtonElement>('.skin-studio-palette button[aria-label="#7c65d5"]')!.click())
     assert.match(document.querySelector<HTMLIFrameElement>('.skin-studio-preview')!.srcdoc, /--accent:#7c65d5/)
+    const family = document.querySelector<HTMLSelectElement>('#skin-studio-font-family')!
+    assert.ok(family)
+    await act(async () => { family.value = 'serif'; family.dispatchEvent(new window.Event('change', { bubbles: true })) })
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('.skin-studio-font-size button')].find(button => /^大$|^Large$/.test(button.textContent ?? ''))!.click())
+    assert.match(document.querySelector<HTMLIFrameElement>('.skin-studio-preview')!.srcdoc, /Georgia/)
     assert.equal(currentSkin().manifest.id, 'default')
     await act(async () => document.querySelector<HTMLButtonElement>('.skin-studio-header button')!.click())
     assert.equal(closed, 0)
@@ -53,6 +58,8 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '保存微调')!.click())
     assert.equal(saved[0].manifest.name, '手动微调')
     assert.equal(saved[0].tokens.accent, '#7c65d5')
+    assert.equal(saved[0].layout.fontSize, 'large')
+    assert.match(saved[0].tokens['font-body'], /Georgia/)
     await act(async () => useChatSessionStore.setState(state => ({ sessions: { ...state.sessions, session: { ...state.sessions.session, running: true } } })))
     assert.equal(document.querySelector<HTMLFieldSetElement>('.skin-studio-controls fieldset')!.disabled, true)
   } finally {

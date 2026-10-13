@@ -1,3 +1,5 @@
+import { APPEARANCE_PREFERENCE_EVENT } from './fontSizePreference'
+
 export const FONT_FAMILY_STORAGE_KEY = 'workstep.fontFamily'
 export const FONT_FAMILY_PREFERENCES = ['system', 'pingfang', 'serif'] as const
 export type FontFamilyPreference = typeof FONT_FAMILY_PREFERENCES[number]
@@ -6,7 +8,7 @@ interface StorageLike { getItem: (key: string) => string | null; setItem: (key: 
 interface FontTarget { style: Pick<CSSStyleDeclaration, 'setProperty' | 'removeProperty'> }
 const defaultStorage = () => typeof window === 'undefined' ? undefined : window.localStorage
 const defaultTarget = () => typeof document === 'undefined' ? undefined : document.documentElement
-const stacks = {
+export const fontFamilyStacks = {
   pingfang: '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
   serif: 'Georgia, "Songti SC", "SimSun", serif',
 }
@@ -22,8 +24,9 @@ export function applyFontFamilyPreference(value: FontFamilyPreference, target: F
   if (!target) return
   for (const property of ['--font-body', '--font-display']) {
     if (value === 'system') target.style.removeProperty(property)
-    else target.style.setProperty(property, stacks[value])
+    else target.style.setProperty(property, fontFamilyStacks[value], 'important')
   }
+  if (typeof window !== 'undefined') window.dispatchEvent(new window.Event(APPEARANCE_PREFERENCE_EVENT))
 }
 
 export function saveFontFamilyPreference(value: FontFamilyPreference, storage: StorageLike | undefined = defaultStorage(), target: FontTarget | undefined = defaultTarget()) {
@@ -32,3 +35,9 @@ export function saveFontFamilyPreference(value: FontFamilyPreference, storage: S
 }
 
 export function initializeFontFamilyPreference() { applyFontFamilyPreference(loadFontFamilyPreference()) }
+
+export function currentFontFamilyPreference(): FontFamilyPreference {
+  if (typeof document === 'undefined') return loadFontFamilyPreference()
+  const value = document.documentElement.style.getPropertyValue('--font-body')
+  return value === fontFamilyStacks.pingfang ? 'pingfang' : value === fontFamilyStacks.serif ? 'serif' : 'system'
+}

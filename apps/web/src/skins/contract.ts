@@ -9,6 +9,7 @@ export const skinContract = source as {
 }
 export type SkinStyles = Record<string, Record<string, Record<string, string>>>
 export interface SkinLayout {
+  fontSize?: 'inherit' | 'small' | 'standard' | 'large' | 'extraLarge';
   sidebarSide?: 'left' | 'right'; sidebarWidth?: number; contentWidth?: number;
   density?: 'standard' | 'compact' | 'comfortable'; stepsSide?: 'left' | 'right';
   stepsRatio?: number; splitHandleWidth?: number; composerToolsPosition?: 'top' | 'bottom';

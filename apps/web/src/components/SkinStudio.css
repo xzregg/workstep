@@ -77,3 +77,8 @@
 .skin-studio-history label { display: flex; gap: 12px; align-items: center; min-width: 0; flex: 1; color: var(--muted); font-size: calc(11px * var(--font-scale)); }
 .skin-studio-history .ws-select { flex: 1; min-width: 0; }
 @media(max-width:1023px) { .skin-studio-tabs { display: flex; } .skin-studio-history { padding: 8px 16px; } }
+
+.skin-studio-font-size { margin-bottom: 18px; }
+.skin-studio-font-size > label { display: block; color: var(--muted); font-size: calc(11px * var(--font-scale)); margin-bottom: 8px; }
+.skin-studio-font-size .segmented-control { width: 100%; }
+.skin-studio-font-size .segmented-control button { padding: 0 8px; }
