@@ -18,6 +18,8 @@ RUN npm config set registry "$NPM_REGISTRY" \
     && rm yarn.lock.bak \
     && yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 4
 COPY apps/web ./
+# Web imports the shared skin contract and example tokens at build time.
+COPY apps/daemon/data/skins /app/apps/daemon/data/skins
 RUN yarn build && yarn build:gateway-share
 
 WORKDIR /app/apps/gateway-web
