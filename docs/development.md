@@ -14,6 +14,16 @@
 
 修改 I/O 路径时写慢盘、慢 SQL、网络延迟或锁竞争回归，并在慢操作进行时测轻量协程或健康检查是否及时响应。静态搜索只能辅助定位，不能代替真实调用路径测试。详细约束见 [`AGENTS.md`](../AGENTS.md)。
 
+## 文件描述符与数据库连接
+
+`start.sh` 和 `start-gateway.sh` 共用 `scripts/file-limits.sh`，启动时默认将文件描述符软上限提高到 4096；可在 `.env` 或启动环境设置 `WORKSTEP_NOFILE_LIMIT=8192`。脚本不降低已有更高上限，不超过系统硬上限，并输出实际值。配置由随后启动的后端及子进程继承，已运行的进程须在下次重启后生效。`main.py::lifespan` 同时调用 `services/resource_limits.py::configure_file_limit`，让直接运行 uvicorn 和桌面包内后端也采用相同默认值；macOS/Linux 只提高软上限，Windows 没有 POSIX `RLIMIT_NOFILE` 时跳过。桌面包需要重新构建安装才能获得新代码。
+
+daemon 的专用 `ProjectDatabaseExecutor` 每个项目复用一个线程本地连接，在关闭执行器时释放；临时同步 `ProjectContext` 仅关闭自身打开的连接，嵌套上下文和调用者已有连接保留。项目初始化／重新注册完成后关闭初始化线程的连接，迁移失败同样释放。gateway 的异步连接池保持有界复用，SQLite 备份使用显式关闭的源／目标连接；`sqlite3.Connection` 的普通 `with` 只管理事务，不保证关闭连接。
+
+无项目流程助手的 `services/global_sessions.py` 使用串行首次初始化，初始化与临时会话上下文均释放自身连接，嵌套上下文保留外层连接；回归为 `test_global_sessions.py` 与 `test_workflow_gen.py`，慢初始化 canary 验证事件循环仍可响应。
+
+排查 `Too many open files` 时，用 `lsof -nP -p <PID>` 区分数字 FD 与 `txt` 映射；`.db`、`-wal`、`-shm` 都占描述符，同一项目跨临时线程出现大量 `.db` 重复项时检查工作单元的关闭路径。回归入口为 daemon `test_project.py` / `test_api_contracts.py`、gateway `test_database.py` / `test_startup_script.py` 和 `scripts/tests/test_file_limits.py`。
+
 ## 前端控件与样式
 
 优先用 `Button`、`Input`、`Select`、`Textarea`、`ChatInput`、`ConfirmDialog` 等共享组件，设计规则见[前端设计文档](frontend-design.md)。移动端普通可见控件统一为 32px，高点击区域和菜单项用 44px；使用 `src/mobile.css` 的 `--mobile-control-*` 变量，不在页面样式写一次性高度。消息操作按钮保持紧凑；图标按钮要有明确内边距。新增文案先写 `zh-CN.ts`，所有词典键集合保持一致且非空。
@@ -90,3 +100,5 @@ corepack yarn build
 桌面端与 daemon 使用同一应用版本，发布版本来源为 `apps/desktop/package.json` 的 `version`。升版本使用 `npm version <版本号> --no-git-tag-version`（在 `apps/desktop` 执行），其 `postversion` 自动同步 daemon 的 `pyproject.toml` 和 `uv.lock`；手动修改版本后执行 `node scripts/sync-app-version.cjs`。
 
 源码 daemon 从桌面端 manifest 读取版本；独立 daemon 目录使用自身 `pyproject.toml`。桌面后端打包时写入 `app/daemon/app-version.json`，版本来自 `WORKSTEP_BUILD_VERSION` 或桌面 manifest。启动器可通过 `WORKSTEP_VERSION` 覆盖运行时版本，网关心跳使用同一运行时值。不得按网关最新发布版本推断本地运行版本。
+
+WebSocket 主事件流和分享事件流通过 `streaming/ws.py::_wait_for_stream_input` 等待事件／客户端输入，无论哪一方完成、断开或父任务取消，都取消并等待其余子任务结束，避免遗留接收任务在垃圾回收时跨上下文释放追踪 token。回归为 `test_main.py` 的取消／同时断开测试。Gateway 下发供应商端点与平台 `ProviderInput` 的契约一致，允许 HTTP／HTTPS，拒绝账号密码、片段和超过 2048 字符的地址；签名、作用域、版本与加密验证保持原流程，签名配置应用回归为 `test_gateway_provider_config.py`。

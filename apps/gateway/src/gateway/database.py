@@ -1,6 +1,7 @@
 """Async Gateway database and isolated migration startup."""
 
 import asyncio
+from contextlib import closing
 import fcntl
 import os
 import sqlite3
@@ -154,7 +155,7 @@ def _backup_sqlite(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
     try:
-        with sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True) as source_connection, sqlite3.connect(temporary) as backup_connection:
+        with closing(sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)) as source_connection, closing(sqlite3.connect(temporary)) as backup_connection:
             source_connection.backup(backup_connection)
             if backup_connection.execute("PRAGMA quick_check").fetchone() != ("ok",):
                 raise RuntimeError("Gateway SQLite backup integrity check failed")

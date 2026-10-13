@@ -13,6 +13,69 @@ const originalFetch=globalThis.fetch
 const originalSubmit=dom.window.HTMLFormElement.prototype.submit
 afterEach(()=>{cleanup();globalThis.fetch=originalFetch;dom.window.HTMLFormElement.prototype.submit=originalSubmit})
 
+test('automatic entry keeps portal navigation and device tabs out of the first screen until requested',async()=>{
+ let acceptSession!:(response:Response)=>void
+ let acceptAccess!:(response:Response)=>void
+ let submitted=0
+ dom.window.HTMLFormElement.prototype.submit=function(){submitted++}
+ globalThis.fetch=async input=>{
+  const url=String(input)
+  if(url==='/api/auth/session')return new Promise(resolve=>{acceptSession=resolve})
+  if(url==='/api/devices')return Response.json({devices:[{id:'d',name:'研发电脑',online:true}]})
+  if(url==='/api/projects')return Response.json({projects:[]})
+  if(url==='/api/devices/d/access')return new Promise(resolve=>{acceptAccess=resolve})
+  throw Error(url)
+ }
+ render(<MemoryRouter><ProjectsPage autoEnter portalHeader={<PortalHeader hasAdminAccess/>}/></MemoryRouter>)
+ assert.equal(screen.queryByRole('navigation',{name:'工作台导航'}),null)
+ assert.equal(screen.queryByRole('tab'),null)
+ acceptSession(Response.json({user:{id:'u'}}))
+ await screen.findByText(/正在进入 研发电脑/)
+ assert.equal(screen.queryByRole('navigation',{name:'工作台导航'}),null)
+ assert.equal(screen.queryByRole('tab'),null)
+ fireEvent.click(screen.getByRole('button',{name:'选择其他设备'}))
+ assert.ok(screen.getByRole('navigation',{name:'工作台导航'}))
+ assert.ok(screen.getByRole('tab',{name:/研发电脑/}))
+ acceptAccess(Response.json({url:'https://gateway.test/workspace/d/',ticket:'ticket'}))
+ await waitFor(()=>assert.equal(submitted,1))
+})
+
+test('automatic entry reveals the portal for offline devices and failed access',async()=>{
+ for(const online of [false,true]){
+  globalThis.fetch=async input=>{
+   const url=String(input)
+   if(url==='/api/auth/session')return Response.json({user:{id:'u'}})
+   if(url==='/api/devices')return Response.json({devices:[{id:'d',name:'研发电脑',online}]})
+   if(url==='/api/projects')return Response.json({projects:[]})
+   if(url==='/api/devices/d/access')return new Response(null,{status:403})
+   throw Error(url)
+  }
+  render(<MemoryRouter><ProjectsPage autoEnter portalHeader={<PortalHeader hasAdminAccess/>}/></MemoryRouter>)
+  await screen.findByRole('navigation',{name:'工作台导航'})
+  assert.ok(screen.getByRole('tab',{name:/研发电脑/}))
+  if(online)assert.ok(screen.getByRole('button',{name:'重新连接'}))
+  else assert.ok(screen.getByRole('heading',{name:'研发电脑 当前离线'}))
+  cleanup()
+ }
+})
+
+test('successful automatic entry submits the ticket without displaying the portal shell',async()=>{
+ let submitted=0
+ dom.window.HTMLFormElement.prototype.submit=function(){submitted++}
+ globalThis.fetch=async input=>{
+  const url=String(input)
+  if(url==='/api/auth/session')return Response.json({user:{id:'u'}})
+  if(url==='/api/devices')return Response.json({devices:[{id:'d',name:'研发电脑',online:true}]})
+  if(url==='/api/projects')return Response.json({projects:[]})
+  if(url==='/api/devices/d/access')return Response.json({url:'https://gateway.test/workspace/d/',ticket:'ticket'})
+  throw Error(url)
+ }
+ render(<MemoryRouter><ProjectsPage autoEnter portalHeader={<PortalHeader hasAdminAccess/>}/></MemoryRouter>)
+ await waitFor(()=>assert.equal(submitted,1))
+ assert.equal(screen.queryByRole('navigation',{name:'工作台导航'}),null)
+ assert.equal(screen.queryByRole('tab'),null)
+})
+
 test('portal navigation consolidates devices and projects into My WorkStep',()=>{
  render(<MemoryRouter><PortalHeader hasAdminAccess/></MemoryRouter>)
  assert.equal(screen.getByRole('link',{name:'我的 WorkStep'}).getAttribute('href'),'/')

@@ -31,6 +31,21 @@ from api.desktop_security import desktop_websocket_allowed
 logger = logging.getLogger(__name__)
 
 
+async def _wait_for_stream_input(queue, ws):
+    """Drain both children in their own contexts, including parent cancellation."""
+    bus_task = asyncio.create_task(queue.get())
+    ws_task = asyncio.create_task(ws.receive_text())
+    tasks = (bus_task, ws_task)
+    try:
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        return bus_task, ws_task, done
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 def _main():
     """Return the daemon entry-point module (lazy to avoid an import cycle)."""
     import main  # noqa: PLC0415 — resolved at call time, not import time
@@ -283,15 +298,7 @@ def register_websocket_routes(app: FastAPI) -> None:
         )
         try:
             while True:
-                bus_task = asyncio.create_task(queue.get())
-                ws_task = asyncio.create_task(ws.receive_text())
-
-                done, pending = await asyncio.wait(
-                    [bus_task, ws_task], return_when=asyncio.FIRST_COMPLETED
-                )
-
-                for task in pending:
-                    task.cancel()
+                bus_task, ws_task, done = await _wait_for_stream_input(queue, ws)
 
                 if bus_task in done:
                     event = bus_task.result()
@@ -344,14 +351,7 @@ def register_websocket_routes(app: FastAPI) -> None:
         queue = main.event_bus.subscribe(share_predicate)
         try:
             while True:
-                bus_task = asyncio.create_task(queue.get())
-                ws_task = asyncio.create_task(ws.receive_text())
-
-                done, pending = await asyncio.wait(
-                    [bus_task, ws_task], return_when=asyncio.FIRST_COMPLETED
-                )
-                for fut in pending:
-                    fut.cancel()
+                bus_task, ws_task, done = await _wait_for_stream_input(queue, ws)
 
                 if ws_task in done:
                     # Share viewers are strictly read-only — any incoming

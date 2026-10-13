@@ -183,6 +183,8 @@ def test_startup_does_not_accept_an_old_healthy_listener(restart, monkeypatch):
 def test_duplicate_start_refuses_before_overwriting_pid_files(tmp_path):
     script = tmp_path / "start.sh"
     script.write_text((SCRIPT.parents[1] / "start.sh").read_text())
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts/file-limits.sh").write_text((SCRIPT.parent / "file-limits.sh").read_text())
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     lsof = bin_dir / "lsof"

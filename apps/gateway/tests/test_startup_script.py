@@ -9,6 +9,8 @@ import pytest
 @pytest.mark.parametrize("mode,reload", [("prod", False), ("dev", True)])
 def test_startup_script_builds_portal_and_launches_daemon_entrypoint(tmp_path, mode, reload):
     shutil.copy(Path(__file__).resolve().parents[3] / "start-gateway.sh", tmp_path)
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(Path(__file__).resolve().parents[3] / "scripts/file-limits.sh", tmp_path / "scripts")
     for directory in ("apps/gateway/.venv", "apps/gateway-web/node_modules", "apps/web/node_modules", "bin"):
         (tmp_path / directory).mkdir(parents=True)
     for command in ("uv", "yarn"):

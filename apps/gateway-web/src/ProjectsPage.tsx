@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { DirectWorkstepWorkspace } from './DirectWorkstepWorkspace'
 import type { WorkspaceDevice } from './MyWorkstepWorkspace'
@@ -6,7 +6,7 @@ import type { WorkspaceDevice } from './MyWorkstepWorkspace'
 import type { Project } from './ProjectCard'
 export { ProjectCard } from './ProjectCard'
 
-export function ProjectsPage() {
+export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: boolean; portalHeader?: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [status, setStatus] = useState<'checking' | 'ready'>('checking')
@@ -15,6 +15,8 @@ export function ProjectsPage() {
   const [loading,setLoading]=useState(true)
   const [retry,setRetry]=useState(0)
   const [error, setError] = useState('')
+  const [portalVisible, setPortalVisible] = useState(!autoEnter)
+  const showPortal = useCallback(() => setPortalVisible(true), [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -62,14 +64,16 @@ export function ProjectsPage() {
     return () => {controller.abort();clearTimeout(timer)}
   }, [status, navigate, retry])
 
-  return <section className="gateway-admin-page gateway-my-workstep">
+  return <>
+    {(portalVisible || !!error) && portalHeader}
+    <section className="gateway-admin-page gateway-my-workstep">
     <h2 className="gateway-workspace-heading">我的 WorkStep</h2>
     {(location.state as { adminDenied?: boolean } | null)?.adminDenied &&
       <p role="alert">当前账号没有访问该管理页面的权限。</p>}
-    {status === 'checking' && <p role="status">正在检查登录状态…</p>}
+    {status === 'checking' && !error && <div className="gateway-direct-state" role="status"><span className="gateway-spinner"/>正在检查登录状态…</div>}
     {status === 'ready' && <>
-      {loading && !devices.length?<p role="status"><span className="gateway-spinner"/> 正在加载工作空间…</p>:!!devices.length && <DirectWorkstepWorkspace devices={devices} projects={projects}/>}
+      {loading && !devices.length?<div className="gateway-direct-state" role="status"><span className="gateway-spinner"/>正在加载工作空间…</div>:!!devices.length && <DirectWorkstepWorkspace devices={devices} projects={projects} hideNavigation={!portalVisible && !error} onShowNavigation={showPortal}/>}
     </>}
     {error && <p className="gateway-auth-error" role="alert">{error} {status==='ready' && <button type="button" disabled={loading} onClick={()=>setRetry(value=>value+1)}>重新加载</button>}</p>}
-  </section>
+  </section></>
 }

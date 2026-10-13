@@ -11,6 +11,7 @@
 .gateway-my-workstep .gateway-direct-projects button { white-space: nowrap; background: #f5f5f7; color: #6e6e73; border: 1px solid transparent; min-height: 30px; font-size: 12px; }
 .gateway-my-workstep .gateway-direct-projects button[aria-selected="true"] { color: #0071e3; background: #fbfbfd; }
 .gateway-direct-state { padding: 24px; display: flex; align-items: center; justify-content: center; gap: 12px; background: #fff; flex: 1; }
+.gateway-direct-state--entering { flex-direction: column; text-align: center; }
 @media (max-width: 520px) {
  .gateway-direct-projects { flex-direction: column; align-items: flex-start; }
 }

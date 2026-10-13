@@ -502,3 +502,97 @@ async def test_device_project_switch_updates_metadata_interest_without_connectin
         assert any(project_id == "remote:b" and "project_metadata" in payload["channels"] for project_id, payload in calls)
     finally:
         event_bus.unsubscribe(queue)
+
+
+@pytest.mark.anyio
+async def test_websocket_input_tasks_are_drained_on_parent_cancellation():
+    from contextvars import ContextVar
+    from streaming.ws import _wait_for_stream_input
+    context = ContextVar("test_receive_context", default=None)
+    started = asyncio.Event()
+    cleaned = []
+    queue = asyncio.Queue()
+
+    class Socket:
+        async def receive_text(self):
+            token = context.set("receiving")
+            started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                context.reset(token)
+                cleaned.append(True)
+
+    pending = asyncio.create_task(_wait_for_stream_input(queue, Socket()))
+    await started.wait()
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert cleaned == [True]
+    assert not queue._getters
+
+
+@pytest.mark.anyio
+async def test_websocket_input_retrieves_simultaneous_disconnect_and_event():
+    from streaming.ws import _wait_for_stream_input
+    from starlette.websockets import WebSocketDisconnect
+    queue = asyncio.Queue()
+    queue.put_nowait({"type": "event"})
+
+    class Socket:
+        async def receive_text(self):
+            raise WebSocketDisconnect(1005)
+
+    bus_task, ws_task, done = await _wait_for_stream_input(queue, Socket())
+    assert bus_task in done and ws_task in done
+    assert bus_task.result() == {"type": "event"}
+    with pytest.raises(WebSocketDisconnect):
+        ws_task.result()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("path", ["/ws", "/ws/share"])
+async def test_websocket_route_cancellation_closes_receivers_and_unsubscribes(monkeypatch, path):
+    from contextvars import ContextVar
+    from unittest.mock import AsyncMock
+    import streaming.ws as ws_module
+    import services.share as share
+    context = ContextVar("route_receive_context", default=None)
+    started = asyncio.Event()
+    cleaned = []
+    initial = list(event_bus._subscribers)
+    monkeypatch.setattr(ws_module, "desktop_websocket_allowed", AsyncMock(return_value=True))
+    monkeypatch.setattr(ws_module, "websocket_access_allowed", lambda *_: True)
+    monkeypatch.setattr(share, "resolve_share_session", lambda _: {"task_id": "test-task"})
+
+    class Socket:
+        scope = {}
+
+        async def accept(self):
+            pass
+
+        async def receive_text(self):
+            token = context.set("reading")
+            started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                context.reset(token)
+                cleaned.append(True)
+
+    endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", None) == path)
+    call = endpoint(Socket(), session="test-session") if path == "/ws/share" else endpoint(Socket())
+    task = asyncio.create_task(call)
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        queues = [queue for queue, _ in event_bus._subscribers if (queue, None) not in initial]
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert cleaned == [True]
+        assert event_bus._subscribers == initial
+        assert all(not queue._getters for queue in queues)
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)

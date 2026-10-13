@@ -360,3 +360,34 @@ async def test_owner_migration_uses_registration_evidence_not_access_grants(tmp_
             assert (await session.get(Device, 'registered')).owner_user_id == 'a'
             assert (await session.get(Device, 'unknown')).owner_user_id is None
     finally: await database.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail", [False, True])
+async def test_backup_explicitly_closes_connections(tmp_path, monkeypatch, fail):
+    database = GatewayDatabase(GatewaySettings(data_dir=tmp_path))
+    await database.start()
+    connections = []
+    original = sqlite3.connect
+
+    def tracked_connect(*args, **kwargs):
+        connection = original(*args, check_same_thread=False, **kwargs)
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", tracked_connect)
+    if fail:
+        monkeypatch.setattr(os, "replace", lambda *args: (_ for _ in ()).throw(OSError("replace failed")))
+    try:
+        for index in range(3):
+            if fail:
+                with pytest.raises(OSError, match="replace failed"):
+                    await database.backup_sqlite(tmp_path / f"backup-{index}.db")
+            else:
+                await database.backup_sqlite(tmp_path / f"backup-{index}.db")
+        assert len(connections) == 6
+        for connection in connections:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                connection.execute("SELECT 1")
+    finally:
+        await database.close()

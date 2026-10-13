@@ -13,6 +13,7 @@ if [[ -f "$gateway_root/.env" ]]; then
   source "$gateway_root/.env"
   set +a
 fi
+source "$gateway_root/scripts/file-limits.sh"
 export WORKSTEP_GATEWAY_PORT="$gateway_port"
 export WORKSTEP_GATEWAY_PUBLIC_ORIGIN="${WORKSTEP_GATEWAY_PUBLIC_ORIGIN:-http://localhost:$gateway_port}"
 export WORKSTEP_GATEWAY_WEB_DIST="${WORKSTEP_GATEWAY_WEB_DIST:-$gateway_root/apps/gateway-web/dist}"

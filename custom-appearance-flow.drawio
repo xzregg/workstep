@@ -1,0 +1,124 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxGraphModel adaptiveColors="auto" grid="1" gridSize="10" page="1" pageWidth="600" pageHeight="1900">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <mxCell id="title" value="自定义外观 · 当前处理流程" style="text;strokeColor=none;fontStyle=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="40" y="40" width="500" height="60" />
+    </mxCell>
+    <mxCell id="entry" value="设置 → 外观&#10;打开制作／复制皮肤" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="160" width="140" height="60" />
+    </mxCell>
+    <mxCell id="direct" value="手动字体、字号、语言&#10;直接保存设备偏好" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="40" y="160" width="140" height="60" />
+    </mxCell>
+    <mxCell id="existing" value="已有皮肤／ZIP 导入&#10;可直接进入预览应用" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="400" y="160" width="140" height="60" />
+    </mxCell>
+    <mxCell id="init" value="后台检查聊天引擎&#10;定位默认工作区" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="280" width="140" height="60" />
+    </mxCell>
+    <mxCell id="chat" value="准备技能&#10;创建或复用普通聊天" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="400" width="140" height="60" />
+    </mxCell>
+    <mxCell id="write" value="每次打开重新写入&#10;引导与两份规范" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="520" width="140" height="60" />
+    </mxCell>
+    <mxCell id="files" value="工作区根目录文件&#10;skin-design.md&#10;skin-contract.json&#10;language-contract.json" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="400" y="520" width="140" height="80" />
+    </mxCell>
+    <mxCell id="read" value="窗口读取并校验草稿&#10;不存在则显示默认草稿" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="640" width="140" height="60" />
+    </mxCell>
+    <mxCell id="send" value="发送需求给普通聊天&#10;先保存未保存的微调" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="760" width="140" height="60" />
+    </mxCell>
+    <mxCell id="ai" value="AI 按需求读写皮肤包&#10;完成后窗口重读校验" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="880" width="140" height="60" />
+    </mxCell>
+    <mxCell id="draft" value="草稿包（默认 skin/）&#10;skin.json&#10;tokens.json&#10;components.json／图片" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="400" y="880" width="140" height="80" />
+    </mxCell>
+    <mxCell id="edit" value="人工微调＋PC/手机&#10;在窗口内预览" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="1000" width="140" height="60" />
+    </mxCell>
+    <mxCell id="save" value="点击保存预览&#10;保存草稿并注册" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="1120" width="140" height="60" />
+    </mxCell>
+    <mxCell id="validate" value="后端完整包校验&#10;检查版本／ID 冲突" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="1240" width="140" height="60" />
+    </mxCell>
+    <mxCell id="error" value="校验或版本冲突&#10;提示错误／重新读取&#10;同 ID 替换须确认" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="40" y="1240" width="140" height="60" />
+    </mxCell>
+    <mxCell id="install" value="校验成功：创建快照&#10;原子更新皮肤索引" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="1360" width="140" height="60" />
+    </mxCell>
+    <mxCell id="preview" value="关闭制作窗口&#10;全局临时预览" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="1480" width="140" height="60" />
+    </mxCell>
+    <mxCell id="confirm" value="确认应用？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="1600" width="140" height="80" />
+    </mxCell>
+    <mxCell id="apply" value="应用并保存本地偏好&#10;立即生效，无需重启" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="220" y="1720" width="140" height="60" />
+    </mxCell>
+    <mxCell id="cancel" value="取消预览&#10;恢复上次应用的外观" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="400" y="1600" width="140" height="60" />
+    </mxCell>
+    <mxCell id="note" value="说明：只有打开制作入口会重写引导；发送消息不重写。&#10;语言包在同一对话制作，通过独立语言分区校验、安装与选用。" style="text;strokeColor=none;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#64748b;fontColor=#1e293b;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry as="geometry" x="40" y="1840" width="500" height="60" />
+    </mxCell>
+    <mxCell id="e-entry-init" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="entry" target="init" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-init-chat" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="init" target="chat" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-chat-write" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="chat" target="write" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-write-read" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="write" target="read" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-write-files" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="write" target="files" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-read-send" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="read" target="send" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-send-ai" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="send" target="ai" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-ai-draft" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="ai" target="draft" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-ai-edit" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="ai" target="edit" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-edit-save" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="edit" target="save" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-save-validate" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="save" target="validate" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-validate-install" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="validate" target="install" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-install-preview" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="install" target="preview" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-preview-confirm" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="preview" target="confirm" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-validate-error" value="失败／冲突" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="validate" target="error" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-confirm-apply" value="确认" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="confirm" target="apply" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+    <mxCell id="e-confirm-cancel" value="取消" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#64748b;fontSize=11;" edge="1" source="confirm" target="cancel" parent="1">
+      <mxGeometry as="geometry" relative="1" />
+    </mxCell>
+  </root>
+</mxGraphModel>

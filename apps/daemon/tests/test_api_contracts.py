@@ -5963,3 +5963,38 @@ async def test_task_rename_preserves_context_and_does_not_block_health(api_conte
         assert (await client.patch(url, json={"title": value})).status_code == 422
     assert (await client.patch(url, json={"description": "Changed context"})).json()["title"] == "New name"
     assert (await client.patch(f"/api/task/missing?project_id={pid}", json={"title": "New"})).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_project_init_slow_connection_close_does_not_block_health(api_context, monkeypatch):
+    import peewee
+
+    client, tmp_path = api_context
+    project_path = tmp_path / "slow-connection-close"
+    expected_database = str(project_path / ".workstep/workstep.db")
+    entered = threading.Event()
+    release = threading.Event()
+    closed_states = []
+    original = peewee.SqliteDatabase.close
+
+    def slow_close(database):
+        if database.database == expected_database:
+            entered.set()
+            assert release.wait(2)
+            result = original(database)
+            closed_states.append(database.is_closed())
+            return result
+        return original(database)
+
+    monkeypatch.setattr(peewee.SqliteDatabase, "close", slow_close)
+    initializing = asyncio.create_task(client.post("/api/project/init", json={"path": str(project_path)}))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert (await asyncio.wait_for(client.get("/api/health"), timeout=0.2)).status_code == 200
+        assert not initializing.done()
+    finally:
+        release.set()
+        response = await initializing
+    assert response.status_code == 200
+    assert len(closed_states) >= 2
+    assert all(closed_states)
