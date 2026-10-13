@@ -1,4 +1,5 @@
 import source from '../../../daemon/data/skins/contract.json' with { type: 'json' }
+import {validateComposerSendGlyph, type ComposerSendGlyph} from './composerSendGlyphs'
 
 export const skinContract = source as {
   schema_version: number; breakpoint: number; tokens: Record<string, string>;
@@ -9,7 +10,7 @@ export const skinContract = source as {
 }
 export type SkinStyles = Record<string, Record<string, Record<string, string>>>
 export interface SkinLayout {
-  composerSendIcon?: 'send' | 'arrow-up' | 'arrow-right';
+  composerSendIcon?: ComposerSendGlyph;
   fontSize?: 'inherit' | 'small' | 'standard' | 'large' | 'extraLarge';
   sidebarSide?: 'left' | 'right'; sidebarWidth?: number; contentWidth?: number;
   density?: 'standard' | 'compact' | 'comfortable'; stepsSide?: 'left' | 'right';
@@ -77,6 +78,7 @@ export function compileSkin(skin: SkinDocument): string {
   }).join('\n')
   for (const layout of [skin.layout, skin.desktop?.layout || {}, skin.mobile?.layout || {}]) {
     for (const [name, value] of Object.entries(layout)) {
+      if (name === 'composerSendIcon') { validateComposerSendGlyph(value); continue }
       const spec = Object.hasOwn(skinContract.layout, name) ? skinContract.layout[name] : undefined
       if (!spec || (spec.values ? !spec.values.includes(String(value)) : typeof value !== 'number' || !Number.isFinite(value) || value < spec.min! || value > spec.max!)) throw new Error('布局配置无效')
     }

@@ -18,7 +18,7 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
   Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
   const oldFetch = globalThis.fetch, oldValidate = skinsApi.validate, oldSave = skinsApi.saveDraft
   restoreDefaultSkin()
-  const skin: SkinDocument = { ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: 'mine', name: '我的皮肤' }, revision: 'r1' }
+  const skin: SkinDocument = { ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: 'mine', name: '我的皮肤' }, layout: {composerSendIcon: {paths: ['M12 3L5 20L12 16L19 20Z']}}, revision: 'r1' }
   const result = (skin: SkinDocument) => ({ ok: true, skin, coverage: { overridden: [], inherited: [] }, visual_checked: false })
   skinsApi.validate = async () => result(skin)
   const saved: SkinDocument[] = []
@@ -54,6 +54,8 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('.skin-studio-font-size button')].find(button => /^大$|^Large$/.test(button.textContent ?? ''))!.click())
     assert.match(document.querySelector<HTMLIFrameElement>('.skin-studio-preview')!.srcdoc, /Georgia/)
     const sendIcon=document.querySelector<HTMLSelectElement>('select[aria-label="发送图标"]')!
+    assert.equal(sendIcon.value, 'custom')
+    assert.match(document.querySelector<HTMLIFrameElement>('.skin-studio-preview')!.srcdoc, /M12 3L5 20L12 16L19 20Z/)
     await act(async()=>{sendIcon.value='arrow-up';sendIcon.dispatchEvent(new window.Event('change',{bubbles:true}))})
     assert.match(document.querySelector<HTMLIFrameElement>('.skin-studio-preview')!.srcdoc,/M12 19V5/)
     assert.equal(currentSkin().manifest.id, 'default')

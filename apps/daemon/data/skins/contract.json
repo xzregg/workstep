@@ -1986,7 +1986,24 @@
         "send",
         "arrow-up",
         "arrow-right"
-      ]
+      ],
+      "custom": {
+        "type": "object",
+        "required": [
+          "paths"
+        ],
+        "additionalProperties": false,
+        "viewBox": "0 0 24 24",
+        "fill": "none",
+        "stroke": "currentColor",
+        "paths": {
+          "minItems": 1,
+          "maxItems": 32,
+          "maxLength": 4096,
+          "pattern": "^[MmLlHhVvCcSsQqTtAaZz0-9., +\\-]+$",
+          "startsWith": "M or m followed by coordinates"
+        }
+      }
     }
   },
   "actions": {

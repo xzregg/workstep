@@ -149,4 +149,10 @@ CLI 与引擎注入工具复用同一 REST 服务；工具 mutation 继续要求
 
 ## 发送图标
 
-`components.json` 可配置 `layout.composerSendIcon` 为 `send`（纸飞机，默认）、`arrow-up` 或 `arrow-right`。通过 `desktop.layout` / `mobile.layout` 可分别设置。外观制作窗口右侧“发送图标”提供相同选项，聊天也可修改此声明式字段。旧包省略字段时保持原图标。发送、停止、处理中及权限事件不变；不支持任意 SVG、脚本或远程图标。
+`components.json` 可配置 `layout.composerSendIcon` 为 `send`（纸飞机，默认）、`arrow-up` 或 `arrow-right`。通过 `desktop.layout` / `mobile.layout` 可分别设置。外观制作窗口右侧“发送图标”提供相同选项，聊天也可修改此声明式字段。旧包省略字段时保持原图标。发送、停止、处理中及权限事件不变。也支持自定义矢量路径对象，无需新增内置图标或修改源码：
+
+```json
+{"layout":{"composerSendIcon":{"paths":["M12 3C8 7 8 13 12 17C16 13 16 7 12 3Z","M9 15L6 19M15 15L18 19M12 18V22"]}}}
+```
+
+固定坐标系 `0 0 24 24`、无填充、线条使用按钮文字颜色。`paths` 包含 1–32 条路径，每条最多 4096 字符，以 M/m 和坐标开头，只接受标准路径命令、数字、空格、逗号、小数点和正负号，不接受其他字段、完整 SVG XML、脚本或 URL。外观制作窗口显示自定义状态，选择预设可替换自定义图标；预览、安装、ZIP 导入导出和 PC/手机覆盖均保留路径。

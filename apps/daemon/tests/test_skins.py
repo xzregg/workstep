@@ -250,7 +250,16 @@ async def test_composer_send_icon_is_declarative_and_device_specific(tmp_path):
     result = await manager.validate(str(root))
     assert result['skin']['layout']['composerSendIcon'] == 'arrow-up'
     assert result['skin']['mobile']['layout']['composerSendIcon'] == 'arrow-right'
-    for invalid in ['javascript:evil', '<svg/>', 'trash']:
+    rocket = {'paths': ['M12 3C8 7 8 13 12 17C16 13 16 7 12 3Z', 'M9 15L6 19M15 15L18 19M12 18V22']}
+    components['layout']['composerSendIcon'] = rocket
+    (root / 'components.json').write_text(json.dumps(components))
+    installed = await manager.register(str(root))
+    assert installed['layout']['composerSendIcon'] == rocket
+    assert installed['mobile']['layout']['composerSendIcon'] == 'arrow-right'
+    exported = await manager.export(installed['manifest']['id'])
+    imported = await SkinManager(tmp_path / 'imported').import_zip(exported)
+    assert imported['layout']['composerSendIcon'] == rocket
+    for invalid in ['javascript:evil', '<svg/>', 'trash', {'paths': []}, {'paths': ['M0 0" onload="evil']}, {'paths': ['M0 0'], 'onload': 'evil'}, {'paths': ['M0 0'] * 33}, {'paths': ['M0 0' * 1025]}]:
         components['layout']['composerSendIcon'] = invalid
         (root / 'components.json').write_text(json.dumps(components))
         with pytest.raises(ValueError): await manager.validate(str(root))
