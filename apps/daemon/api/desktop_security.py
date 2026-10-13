@@ -187,6 +187,16 @@ async def desktop_websocket_allowed(ws: WebSocket) -> bool:
     return True
 
 
+def local_gateway_fallback_allowed(request: Request) -> bool:
+    loopback = ("127.0.0.1", "::1", "localhost")
+    local = desktop_runtime_authenticated(request) or (
+        _desktop_token() is None and request.client is not None
+        and request.client.host in loopback and request.url.hostname in loopback)
+    return bool(local and "gateway_remote_actor" not in request.scope
+        and request.scope.get("gateway_share_scope") is None
+        and not os.environ.get("WORKSTEP_MANAGED_BUNDLE_DIR"))
+
+
 class DesktopSecurityMiddleware(BaseHTTPMiddleware):
     """Authenticate privileged desktop APIs and attach browser hardening headers."""
 
@@ -204,14 +214,9 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         native_dispatch = authenticated_remote_dispatch() is not None
         # The login page and Electron both return with this marker. Complete
         # the local fallback before the managed-mode redirect/API boundary.
-        loopback = ("127.0.0.1", "::1", "localhost")
-        local_return = (desktop_authenticated or (
-            _desktop_token() is None and request.client is not None
-            and request.client.host in loopback and request.url.hostname in loopback))
         if (request.method == "GET" and request.url.path == "/"
                 and request.query_params.get("gateway_auth") == "cancelled"
-                and "gateway_remote_actor" not in request.scope and local_return
-                and not os.environ.get("WORKSTEP_MANAGED_BUNDLE_DIR")):
+                and local_gateway_fallback_allowed(request)):
             browser_login = getattr(request.app.state, "gateway_browser_login", None)
             if browser_login is not None:
                 configured = await browser_login.settings()

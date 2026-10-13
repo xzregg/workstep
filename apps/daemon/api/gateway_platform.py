@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 from services.gateway_client.browser_login import local_session_cookie_name, normalize_origin
-from api.desktop_security import browser_origin_allowed
+from api.desktop_security import browser_origin_allowed, local_gateway_fallback_allowed
 
 router = APIRouter()
 
@@ -124,6 +124,9 @@ async def reopen_login(request: Request):
     try:
         return RedirectResponse(await service.begin(configured['url'], _browser_callback_origin(request), desktop=_desktop(request)), status_code=303)
     except (ValueError, KeyError, OSError, httpx.HTTPError) as exc:
+        if local_gateway_fallback_allowed(request):
+            return RedirectResponse('/?gateway_auth=cancelled', status_code=303,
+                headers={'Cache-Control': 'no-store'})
         raise HTTPException(status_code=502, detail='Unable to start Gateway login') from exc
 
 

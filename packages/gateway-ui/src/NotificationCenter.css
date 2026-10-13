@@ -24,8 +24,9 @@ main > .gateway-portal-header:has(.gateway-notifications) .gateway-portal-sign-i
 main > .gateway-portal-header:has(.gateway-notifications) .gateway-notifications { grid-column: 3; grid-row: 1; }
 .gateway-portal-header .gateway-portal-navigation { min-width: 0; }
 @media (max-width:1023px) {
- main.gateway-workspace-portal > .gateway-portal-header { grid-template-columns: auto minmax(0,1fr) auto auto; }
- main.gateway-workspace-portal > .gateway-portal-header .gateway-portal-navigation { grid-column: 2; grid-row: 1; }
+ main > .gateway-portal-header:has(.gateway-notifications) { grid-template-columns: minmax(0,1fr) auto auto; }
+ main > .gateway-portal-header:has(.gateway-notifications) .gateway-notifications { grid-column: 2; }
+ main > .gateway-portal-header:has(.gateway-notifications) .gateway-portal-sign-in { grid-column: 3; }
  .gateway-portal-header .gateway-notification-trigger { width: var(--mobile-control-regular,32px); height: var(--mobile-control-regular,32px); }
  .gateway-notification-panel { position: fixed; top: 64px; right: 12px; }
 }

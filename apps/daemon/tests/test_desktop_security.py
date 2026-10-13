@@ -376,13 +376,14 @@ async def test_remote_task_share_registry_lookup_keeps_event_loop_responsive(mon
     assert await lookup is True
 
 
+@pytest.mark.parametrize('entry', ['/?gateway_auth=cancelled', '/gateway/login'])
 @pytest.mark.parametrize('peer,host,desktop,locked,expected', [
     ('127.0.0.1', 'localhost', False, False, True),
     ('10.88.0.2', '10.88.0.5', True, False, True),
     ('10.88.0.2', 'localhost', False, False, False),
     ('127.0.0.1', 'localhost', False, True, False),
 ])
-def test_return_to_local_disables_gateway_without_network(monkeypatch, peer, host, desktop, locked, expected):
+def test_return_to_local_disables_gateway_without_network(monkeypatch, peer, host, desktop, locked, expected, entry):
     from unittest.mock import AsyncMock
     from services.gateway_client import browser_login as module
     monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
@@ -403,9 +404,17 @@ def test_return_to_local_disables_gateway_without_network(monkeypatch, peer, hos
     gateway.current_user_id = None
     service = module.GatewayBrowserLogin(gateway, client_factory=lambda: pytest.fail('fallback contacted Gateway'))
     app.state.gateway_browser_login = service
+    service.begin = AsyncMock(side_effect=OSError('Gateway offline'))
+    from api.gateway_platform import router
+    app.include_router(router)
     headers = {'X-WorkStep-Desktop-Token': 'runtime-secret'} if desktop else {}
     with TestClient(app, base_url=f'http://{host}:8765', client=(peer, 123)) as client:
-        response = client.get('/?gateway_auth=cancelled', headers=headers, follow_redirects=False)
+        response = client.get(entry, headers=headers, follow_redirects=False)
+        if entry == '/gateway/login' and expected:
+            assert response.status_code == 303
+            assert response.headers['location'] == '/?gateway_auth=cancelled'
+            assert response.headers['cache-control'] == 'no-store'
+            response = client.get(response.headers['location'], headers=headers, follow_redirects=False)
         assert stored['enabled'] is (not expected)
         if expected:
             assert response.status_code == 303
@@ -448,12 +457,16 @@ async def test_local_gateway_fallback_slow_storage_keeps_health_responsive(monke
     @app.get('/api/health')
     async def health(): return {'ok': True}
     async with AsyncClient(transport=ASGITransport(app=app, client=('127.0.0.1', 123)), base_url='http://localhost:8765') as client:
-        fallback = asyncio.create_task(client.get('/?gateway_auth=cancelled'))
+        from api.gateway_platform import router
+        app.include_router(router)
+        app.state.gateway_browser_login.begin = AsyncMock(side_effect=OSError('Gateway offline'))
+        fallback = asyncio.create_task(client.get('/gateway/login', follow_redirects=True))
         while not entered.is_set():
             await asyncio.sleep(.001)
         assert (await asyncio.wait_for(client.get('/api/health'), .1)).status_code == 200
         assert not fallback.done()
-        assert (await fallback).headers['location'] == '/'
+        assert (await fallback).status_code == 200
+        assert stored['enabled'] is False
 
 
 @pytest.mark.parametrize('origin,expected', [

@@ -844,6 +844,9 @@ export default function Layout({ onSelectProject, children }: Props) {
                       onClick={(e) => {
                         e.stopPropagation()
                         setSessionSectionOpen((prev) => ({ ...prev, [p.id]: !open }))
+                        if (!open && !['revoked', 'expired', 'invalid'].includes(p.access_status ?? '')) {
+                          void useChatListStore.getState().fetchSessions(p.id, true)
+                        }
                       }}
                     >
                       <span className="layout-sidebar-section-name">
