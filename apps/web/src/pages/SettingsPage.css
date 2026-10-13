@@ -113,7 +113,3 @@
 .settings-system-page .settings-switch[aria-checked="true"] {
   background: var(--accent);
 }
-
-.settings-system-language-options .segmented-control {
-  max-width: 320px;
-}

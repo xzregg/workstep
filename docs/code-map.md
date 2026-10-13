@@ -1,4 +1,4 @@
-皮肤中心入口位于设置 → 外观（系统设置上方的一级菜单），由 `AppearanceSettings` 持有字体偏好并直接组合 `SkinSettings`；`SkinSettings` 持有皮肤目录读取和注册、导入、导出，`SkinLibrary` 持有卡片选择、筛选搜索和 PC/手机场景预览，选择卡片不自动应用。`SkinStudio` 复用普通 `ChatPage`，通过组合插槽提供起点建议和已校验包的版本卡片，微调与背景光晕仍为声明式皮肤配置；复制已安装皮肤时后台在线程中复制已校验快照中的背景资源。整机网关访问可发起制作，项目绑定会话只显示选用能力，后台原权限门禁继续生效。行为测试 `appearanceSettings.test.tsx`、`skinSettings.test.tsx`、`skinStudio.test.tsx`、`skins.test.ts`、`test_skins.py`。
+皮肤中心入口位于设置 → 外观（系统设置上方的一级菜单），由 `AppearanceSettings` 在顶部集中持有字体类型、既有四档字号 Tab 与界面语言选择（复用 `useLocaleStore`，系统设置不再重复提供语言入口），下方直接组合 `SkinSettings`；字体类型由 `utils/fontFamilyPreference.ts` 保存在设备并于启动时恢复，默认跟随皮肤／系统，显式选择只覆盖界面与标题字体，代码字体保持原设置；`SkinSettings` 持有皮肤目录读取和注册、导入、导出，`SkinLibrary` 持有卡片选择、筛选搜索和 PC/手机场景预览，选择卡片不自动应用。`SkinStudio` 复用普通 `ChatPage`，通过组合插槽提供起点建议和已校验包的版本卡片，微调与背景光晕仍为声明式皮肤配置；复制已安装皮肤时后台在线程中复制已校验快照中的背景资源。整机网关访问可发起制作，项目绑定会话只显示选用能力，后台原权限门禁继续生效。行为测试 `appearanceSettings.test.tsx`、`skinSettings.test.tsx`、`skinStudio.test.tsx`、`skins.test.ts`、`test_skins.py`。
 
 # 按功能查找代码
 
