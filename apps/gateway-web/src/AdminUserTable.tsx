@@ -35,7 +35,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
    {!!selected.length && <button type="button" onClick={()=>setSelected([])}>取消选择</button>}
   </div>
   {notice && <p role="status">{notice}</p>}
-  <AdminRecordTable columns={[<AdminSelectAll ids={selectable} selected={selected} onChange={setSelected} disabled={loading}/>, '显示名', '登录用户名', '状态', '注册来源', '操作']}>
+  <AdminRecordTable busy={loading} columns={[<AdminSelectAll ids={selectable} selected={selected} onChange={setSelected} disabled={loading}/>, '显示名', '登录用户名', '状态', '注册来源', '操作']}>
    {users.map(user=><tr key={user.id}>
     <td><input type="checkbox" className="gateway-table-checkbox" aria-label={`选择${user.display_name}`} checked={selected.includes(user.id)} disabled={loading || user.is_recovery} onChange={event=>toggle(user.id,event.target.checked)}/></td>
     <td><strong>{user.display_name}</strong></td>

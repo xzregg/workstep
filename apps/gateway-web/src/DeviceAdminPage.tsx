@@ -1,8 +1,11 @@
+import { AdminRowMenu } from './AdminRowMenu'
+import { AdminRecordDetails } from './AdminRecordDetails'
+import { AdminListStatus } from './AdminListStatus'
+import { AdminManagementDialog } from './AdminManagementDialog'
 import { AdminDeviceOwnerDialog } from './AdminDeviceOwnerDialog'
-import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
+import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { AdminAccessGrants } from './AdminAccessGrants'
-import { GatewayModal } from './GatewayModal'
 import { GatewayLoginForm } from './GatewayLoginForm'
 import { AdminDeviceActionDialog } from './AdminDeviceActionDialog'
 import { AdminDeviceNameDialog } from './AdminDeviceNameDialog'
@@ -91,7 +94,7 @@ export function DeviceAdminPage() {
 
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
-    <div className="gateway-admin-toolbar"><h2>设备管理</h2><a href="/admin/device-operations">批量作业</a></div>
+    <div className="gateway-admin-toolbar"><h2>设备管理</h2></div>
     {status === 'checking' && <p role="status">正在检查登录状态…</p>}
     {status === 'login' && <div className="gateway-admin-login">
       <p>管理员登录后可审批和管理受管电脑。</p>
@@ -123,28 +126,32 @@ export function DeviceAdminPage() {
         <option value="desc">降序</option><option value="asc">升序</option>
       </select>
       </div>
-      {loading && <p role="status">正在加载设备…</p>}
-      <AdminRecordTable>{devices.map((device) => <AdminRecordRow key={device.id}>
-        <div><strong>{deviceDisplayName(device)}</strong> <span className={device.online ? 'gateway-device-presence gateway-device-presence--online' : 'gateway-device-presence'}>{device.online ? '在线' : '离线'}</span><p>设备 ID：{device.id} · {deviceStatusLabel[device.status] ?? device.status}</p>
-          <p>所有者：{device.owner_name ?? '未确定'}{device.owner_user_id ? ` · ${device.owner_user_id}` : ''}</p>
-          {device.status === 'revoked' && <p>该设备身份已撤销，不能直接重新启用。需要重新接入时，可彻底删除后再次登录登记。</p>}
-          <p>连接 IP：{device.connection_ip ?? (device.online ? '未知' : '离线，暂无连接 IP')}</p>
-          <p>控制连接：{device.online ? '在线' : '离线'} · daemon 健康：{
-            device.daemon_health === true ? '正常' : device.daemon_health === false ? '异常' : '未知'
-          }</p><p>daemon 版本：{device.version || '未上报'}</p><p>升级检查：{device.update_available === true
-            ? `有新版本 ${device.latest_version}`
-            : device.update_available === false ? '已是最新' : '暂无对应发布版本，无法比较'}</p></div>
-        <div className="gateway-device-actions">
-          <button type="button" onClick={() => setRenameDevice(device)}>修改名称</button>
-          {device.status !== 'revoked' && <button type="button" onClick={() => setOwnerDevice(device)}>转移所有者</button>}
-          {device.status === 'active' && <button type="button" onClick={() => setGrantDevice(device)}>管理授权</button>}
-          {device.status === 'pending' && <button type="button" onClick={() => setSelected({ device, action: 'approve' })}>批准</button>}
-          {device.status === 'disabled' && <button type="button" onClick={() => setSelected({ device, action: 'enable' })}>重新启用</button>}
-          {device.status === 'active' && <button type="button" onClick={() => setSelected({ device, action: 'disable' })}>停用</button>}
-          {device.status !== 'revoked' && <button type="button" onClick={() => setSelected({ device, action: 'revoke' })}>撤销</button>}
-          <button type="button" onClick={() => setSelected({ device, action: 'delete' })}>彻底删除</button>
-        </div>
-      </AdminRecordRow>)}</AdminRecordTable>
+      <AdminListStatus loading={loading} label="正在加载设备…"/>
+      <AdminRecordTable busy={loading} columns={['设备','连接状态','所有者','连接 IP','daemon 版本','升级检查','操作']}>
+        {devices.map(device => <tr key={device.id}>
+          <td><strong>{deviceDisplayName(device)}</strong><small className="gateway-admin-cell-meta">{deviceStatusLabel[device.status] ?? device.status}</small></td>
+          <td><span className={device.online ? 'gateway-device-presence gateway-device-presence--online' : 'gateway-device-presence'}>{device.online ? '在线' : '离线'}</span><small className="gateway-admin-cell-meta">健康：{device.daemon_health === true ? '正常' : device.daemon_health === false ? '异常' : '未知'}</small></td>
+          <td>{device.owner_name ?? '未确定'}</td><td>{device.connection_ip ?? '—'}</td><td>{device.version || '未上报'}</td>
+          <td>{device.update_available === true ? `有新版本 ${device.latest_version}` : device.update_available === false ? '已是最新' : '暂无发布版本'}</td>
+          <td><div className="gateway-row-actions">
+            <AdminRecordDetails title={`${deviceDisplayName(device)} · 设备详情`}><dl className="gateway-admin-details">
+              <div><dt>设备 ID</dt><dd>{device.id}</dd></div><div><dt>所有者 ID</dt><dd>{device.owner_user_id ?? '未确定'}</dd></div>
+              <div><dt>连接 IP</dt><dd>{device.connection_ip ?? (device.online ? '未知' : '离线，暂无连接 IP')}</dd></div>
+              <div><dt>daemon 版本</dt><dd>{device.version || '未上报'}</dd></div>
+              <div><dt>升级检查</dt><dd>{device.update_available == null ? '暂无对应发布版本，无法比较' : device.update_available ? `有新版本 ${device.latest_version}` : '已是最新'}</dd></div>
+            </dl>{device.status === 'revoked' && <p>该设备身份已撤销，不能直接重新启用。需要重新接入时，可彻底删除后再次登录登记。</p>}</AdminRecordDetails>
+            <AdminRowMenu label={`${deviceDisplayName(device)} · 更多操作`}>
+            <button type="button" disabled={loading} onClick={() => setRenameDevice(device)}>修改名称</button>
+            <button type="button" disabled={loading || device.status === 'revoked'} onClick={() => setOwnerDevice(device)}>转移所有者</button>
+            <button type="button" disabled={loading || device.status !== 'active'} onClick={() => setGrantDevice(device)}>管理授权</button>
+            <button type="button" disabled={loading || !['pending','disabled'].includes(device.status)} onClick={() => setSelected({device,action:device.status === 'pending' ? 'approve' : 'enable'})}>{device.status === 'pending' ? '批准' : '重新启用'}</button>
+            <button type="button" className="gateway-admin-danger" disabled={loading || device.status !== 'active'} onClick={() => setSelected({device,action:'disable'})}>停用</button>
+            <button type="button" className="gateway-admin-danger" disabled={loading || device.status === 'revoked'} onClick={() => setSelected({device,action:'revoke'})}>撤销</button>
+            <button type="button" className="gateway-admin-danger" disabled={loading} onClick={() => setSelected({device,action:'delete'})}>彻底删除</button>
+            </AdminRowMenu>
+          </div></td>
+        </tr>)}
+      </AdminRecordTable>
       {!loading && !error && devices.length === 0 && <p>当前筛选下没有设备。</p>}
       <div className="gateway-admin-pagination">
         <span>共 {total} 台设备 · 第 {filters.page}/{Math.max(1, Math.ceil(total / filters.pageSize))} 页</span>
@@ -154,11 +161,10 @@ export function DeviceAdminPage() {
           { ...current, page: current.page + 1 }))}>下一页</button>
       </div>
     </>}
-    {grantDevice && <GatewayModal title={`${grantDevice.name} · 设备授权`} onClose={() => setGrantDevice(null)}
-      footer={<button type="button" onClick={() => setGrantDevice(null)}>关闭</button>}>
+    {grantDevice && <AdminManagementDialog title={`${grantDevice.name} · 设备授权`} onClose={() => setGrantDevice(null)}>
       <AdminAccessGrants id={grantDevice.id} name={grantDevice.name} kind="devices" csrf={csrf}
         onChanged={() => setRevision(value => value + 1)} />
-    </GatewayModal>}
+    </AdminManagementDialog>}
     {selected && <AdminDeviceActionDialog device={selected.device} action={selected.action} csrf={csrf}
       onClose={() => setSelected(null)} onComplete={() => {
         setSelected(null)

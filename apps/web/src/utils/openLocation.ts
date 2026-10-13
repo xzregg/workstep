@@ -1,4 +1,5 @@
 import type { Project } from '../api/client'
+import { isGatewayRemoteBrowser } from './gatewayRemote'
 
 export function usesWebDirectoryBrowser(
   projectType: Project['type'],
@@ -6,7 +7,7 @@ export function usesWebDirectoryBrowser(
   userAgent: string,
   hasDesktopDirectoryBridge = false,
 ) {
-  if (projectType === 'remote') return true
+  if (projectType === 'remote' || isGatewayRemoteBrowser()) return true
   if (/\bElectron\//i.test(userAgent)) return !hasDesktopDirectoryBridge
   const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase()
   return !(

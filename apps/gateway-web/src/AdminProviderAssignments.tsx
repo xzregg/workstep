@@ -1,3 +1,4 @@
+import { AdminRecordTable } from './AdminRecordTable'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -186,15 +187,15 @@ export function AdminProviderAssignments({ providerId, enabled, csrf, onChanged 
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && assignments.length === 0 && <p>当前条件下没有授权。</p>}
-    <ul className="gateway-device-list">{assignments.map(assignment => <li key={assignment.id}>
-      <div><strong>{assignment.subject_name ?? assignment.subject_id}</strong><p>{
-        assignment.subject_type === 'user' ? '用户' : assignment.subject_type === 'group' ? '用户组' : 'PC'}</p>
-        {assignment.is_default && <span>默认供应商</span>}</div>
-      <div className="gateway-device-actions"><button type="button"
-        disabled={!enabled && !assignment.is_default} onClick={() => setDefaultEdit(assignment)}>{
-          assignment.is_default ? '取消默认' : '设为默认'}</button>
-        <button type="button" onClick={() => setEdit(assignment)}>撤销</button></div>
-    </li>)}</ul>
+    <AdminRecordTable busy={loading} columns={['授权对象','类型','默认供应商','操作']}>
+      {assignments.map(assignment => <tr key={assignment.id}>
+        <td>{assignment.subject_name ?? assignment.subject_id}</td><td>{assignment.subject_type === 'user' ? '用户' : assignment.subject_type === 'group' ? '用户组' : 'PC'}</td>
+        <td>{assignment.is_default ? '默认供应商' : '—'}</td>
+        <td><div className="gateway-row-actions"><button type="button" disabled={loading || (!enabled && !assignment.is_default)}
+          onClick={() => setDefaultEdit(assignment)}>{assignment.is_default ? '取消默认' : '设为默认'}</button>
+          <button type="button" className="gateway-admin-danger" disabled={loading} onClick={() => setEdit(assignment)}>撤销</button></div></td>
+      </tr>)}
+    </AdminRecordTable>
     <div className="gateway-admin-pagination"><span>共 {total} 项授权 · 第 {page}/{
       Math.max(1, Math.ceil(total / 25))} 页</span>
       <button type="button" disabled={page <= 1 || loading} onClick={() => setPage(value => value - 1)}>上一页</button>

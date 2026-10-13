@@ -52,3 +52,46 @@ test('remote directory button previews the supplied path with its browser scope'
     await window.happyDOM.close()
   }
 })
+
+for (const url of ['http://localhost/workspace/device-one/chat', 'http://d-device-one.localhost/chat']) {
+test(`gateway project directory button previews the remote root with a desktop bridge at ${url}`, async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL(url)
+  Object.defineProperty(window.navigator, 'userAgent', { value: 'Electron/43', configurable: true })
+  const originalBrowse = fsApi.browse
+  const originalOpen = fsApi.openDirectory
+  const originalOpeners = fsApi.directoryOpeners
+  const browsed: [string | undefined, string | undefined][] = []
+  let detected = 0
+  let opened = 0
+  fsApi.browse = async (path, projectId) => {
+    browsed.push([path, projectId])
+    return { path: '/remote/project', name: 'Project', entries: [], parent: null }
+  }
+  fsApi.directoryOpeners = async () => { detected++; return { openers: [] } }
+  fsApi.openDirectory = async path => { opened++; return { path } }
+  Object.assign(window, { workstepDesktop: { directories: {
+    openers: async () => { detected++; return { openers: [] } },
+    open: async (path: string) => { opened++; return { path } },
+  } } })
+  const project = { id: 'p', name: 'Project', path: '/remote/project', type: 'local', steps: [], workflows: [] } as Project
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><OpenLocationButton activeProject={project} t={zhCNT} /></I18nProvider>))
+    assert.equal(container.querySelectorAll('button').length, 1)
+    await act(async () => container.querySelector<HTMLButtonElement>('button')!.click())
+    assert.ok(document.querySelector('[role="dialog"]'))
+    assert.deepEqual(browsed, [[undefined, 'p']])
+    assert.equal(detected, 0)
+    assert.equal(opened, 0)
+  } finally {
+    await act(async () => root.unmount())
+    fsApi.browse = originalBrowse
+    fsApi.openDirectory = originalOpen
+    fsApi.directoryOpeners = originalOpeners
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+}

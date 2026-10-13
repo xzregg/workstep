@@ -12,6 +12,7 @@ test('administration shows a persistent sidebar and current content', () => {
  assert.match(html, /<summary>用户与权限<\/summary>/)
  assert.match(html, /<summary>设备管理<\/summary>/)
  assert.match(html, /Alice/)
+ assert.doesNotMatch(html, /返回工作台/)
 })
 
 test('audit administrator only sees authorized navigation', () => {

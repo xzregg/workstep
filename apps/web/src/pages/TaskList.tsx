@@ -90,7 +90,7 @@ export default function TaskList() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const {
-    tasks, loading, fetchTasks, runTask, deleteTask, archiveTask,
+    tasks, loading, listError, listQuery, fetchTasks, runTask, deleteTask, archiveTask,
     unarchiveTask, setActiveTask,
   } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -226,8 +226,8 @@ export default function TaskList() {
   }, [cardLanes, lanes, tasks])
 
   const visibleTasks = useMemo(
-    () => selectWorkflowTasks(tasks, activeWorkflowId, showArchived),
-    [tasks, activeWorkflowId, showArchived],
+    () => activeProject?.id && listQuery?.projectId === activeProject.id ? selectWorkflowTasks(tasks, activeWorkflowId, showArchived) : [],
+    [tasks, listQuery, activeProject?.id, activeWorkflowId, showArchived],
   )
 
   const tasksByLane = useMemo(() => {
@@ -594,6 +594,9 @@ export default function TaskList() {
             {t('common.loading')}
           </div>
         )}
+        {!loading && listError && listQuery?.projectId === activeProject?.id && <p role="alert" className="task-board-load-error">
+          {activeProject?.access_status === 'invalid' ? t('layout.remoteAccessInvalidHint') : listError}
+        </p>}
 
         {!loading && !activeProject && (
           <EmptyState

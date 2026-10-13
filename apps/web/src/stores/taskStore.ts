@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { taskApi, type EngineInputItem, type Task, type TaskStepState } from '../api/client.ts'
 import { useProjectStore } from './projectStore.ts'
+import { zhCNT } from '../i18n'
 import {
   CUSTOM,
   appendMessageContent,
@@ -107,6 +108,7 @@ interface TaskState {
   liveMessages: Record<string, Record<string, LiveMessage>>
   availableCommands: Record<string, Record<string, EngineInputItem[]>>
   loading: boolean
+  listError: string | null
   listQuery: { projectId: string; workflowId: string | null; archived: boolean } | null
   /** Incremented on every task status WS event, so the sidebar can refresh flow running state. */
   taskStatusEvents: number
@@ -171,6 +173,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   liveMessages: {},
   availableCommands: {},
   loading: false,
+  listError: null,
   listQuery: null,
   taskStatusEvents: 0,
   userMessageEvents: {},
@@ -190,19 +193,21 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       // The user may switch away and back while the first request is pending.
       // Re-select its query so that response is still allowed to update the board.
       if (get().listQuery !== existing.query) {
-        set({ loading: true, listQuery: existing.query })
+        set({ loading: true, listError: null, listQuery: existing.query,
+          ...(previous?.projectId !== projectId ? { tasks: [], activeTaskId: null } : {}) })
       }
       return existing.promise
     }
 
-    set({ loading: true, listQuery: query })
+    set({ loading: true, listError: null, listQuery: query,
+      ...(previous?.projectId !== projectId ? { tasks: [], activeTaskId: null } : {}) })
     const promise = Promise.resolve()
       .then(() => taskApi.list(projectId, query.workflowId, query.archived))
       .then(({ tasks }) => {
         if (get().listQuery === query) set({ tasks, loading: false })
       })
-      .catch(() => {
-        if (get().listQuery === query) set({ loading: false })
+      .catch(error => {
+        if (get().listQuery === query) set({ loading: false, listError: error instanceof Error ? error.message : zhCNT('taskList.loadFailed') })
       })
       .finally(() => {
         taskListRequests.delete(requestKey)

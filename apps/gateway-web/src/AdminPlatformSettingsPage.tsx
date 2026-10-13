@@ -4,7 +4,6 @@ import { AdminPlatformAddressDialog } from './AdminPlatformAddressDialog'
 import { OrganizationSyncSettings } from './OrganizationSyncSettings'
 import { AdminLoginPolicyDialog } from './AdminLoginPolicyDialog'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { AdminRegistrationPolicyDialog, registrationLabels } from './AdminRegistrationPolicyDialog'
 import type { RegistrationMode } from './AdminRegistrationPolicyDialog'
 
@@ -48,7 +47,7 @@ export function AdminPlatformSettingsPage() {
 
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <div className="gateway-admin-toolbar"><h2>平台设置</h2><Link to="/admin">返回管理概览</Link></div>
+    <div className="gateway-admin-toolbar"><h2>平台设置</h2></div>
     {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在加载平台设置…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(current => current + 1)}>重试</button></p>}

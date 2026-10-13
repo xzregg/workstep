@@ -6,6 +6,9 @@ function subscribe(callback: () => void) {
   media.addEventListener('change', callback)
   return () => media.removeEventListener('change', callback)
 }
+function getSnapshot() {
+  return typeof window !== 'undefined' && (window.matchMedia?.(query).matches ?? window.innerWidth <= 1023)
+}
 export function useCompactLayout() {
-  return useSyncExternalStore(subscribe, () => window.matchMedia(query).matches, () => false)
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }

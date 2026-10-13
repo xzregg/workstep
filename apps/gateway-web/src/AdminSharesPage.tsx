@@ -1,6 +1,7 @@
-import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
+import { AdminRecordDetails } from './AdminRecordDetails'
+import { AdminListStatus } from './AdminListStatus'
+import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 type Share = {
@@ -74,7 +75,7 @@ export function AdminSharesPage() {
 
   return <section className="gateway-admin-page gateway-share-management">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <div className="gateway-admin-toolbar"><h2>平台分享管理</h2><Link to="/admin">返回管理概览</Link></div>
+    <div className="gateway-admin-toolbar"><h2>平台分享管理</h2></div>
     <form className="gateway-share-filters" onSubmit={event => {
       event.preventDefault(); setOffset(0); setSubmittedQuery(query.trim())
     }}>
@@ -93,31 +94,23 @@ export function AdminSharesPage() {
     {error && <p className="gateway-auth-error" role="alert">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在更新分享…</p>}
-    {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在加载分享…</p>}
-    {!loading && listing && <>
+    <AdminListStatus loading={loading} label="正在加载分享…"/>
+    {listing && <>
       <p>共 {listing.total} 个分享</p>
-      {listing.shares.length === 0 ? <p>没有符合条件的分享。</p> : <AdminRecordTable>
-        {listing.shares.map(share => <AdminRecordRow key={share.id}>
-          <div className="gateway-share-admin-info">
-            <strong>{share.title || share.task_id}</strong>
-            <span>{statusLabel[share.status]} · {share.mode === 'interactive' ? '互动' : '只读'} · {share.visit_count} 次访问</span>
-            <span>{share.created_by} · {share.device_name} / {share.project_name} · 任务 {share.task_id}</span>
-            <span>创建 {new Date(share.created_at).toLocaleString()} · 最后访问 {
-              share.last_seen_at ? new Date(share.last_seen_at).toLocaleString() : '暂无'} · 过期 {
-              share.expires_at ? new Date(share.expires_at).toLocaleString() : '未设置'}</span>
-          </div>
-          <div className="gateway-share-admin-actions">
-            {share.status === 'active' && <button type="button" disabled={busy}
-              onClick={() => void change(share, 'pause')}>暂停</button>}
-            {share.status === 'paused' && <button type="button" disabled={busy}
-              onClick={() => void change(share, 'resume')}>恢复</button>}
-            {share.status !== 'revoked' && <button type="button" disabled={busy}
-              onClick={() => setRevokeTarget(share)}>撤销</button>}
-            <button type="button" disabled={busy} onClick={() => setDeleteTarget(share)}>删除</button>
-          </div>
-        </AdminRecordRow>)}
+      {listing.shares.length === 0 ? <p>没有符合条件的分享。</p> : <AdminRecordTable busy={loading || busy} columns={['分享','项目 / 设备','创建者','状态','访问次数','操作']}>
+        {listing.shares.map(share => <tr key={share.id}>
+          <td><strong>{share.title || share.task_id}</strong><small className="gateway-admin-cell-meta">{share.mode === 'interactive' ? '互动' : '只读'}</small></td>
+          <td>{share.project_name}<small className="gateway-admin-cell-meta">{share.device_name}</small></td><td>{share.created_by}</td>
+          <td>{statusLabel[share.status]}</td><td>{share.visit_count}</td>
+          <td><div className="gateway-row-actions">
+            <AdminRecordDetails title={`分享详情 ${share.id}`}><p>任务 {share.task_id}</p><p>创建 {new Date(share.created_at).toLocaleString()} · 最后访问 {share.last_seen_at ? new Date(share.last_seen_at).toLocaleString() : '暂无'} · 过期 {share.expires_at ? new Date(share.expires_at).toLocaleString() : '未设置'}</p></AdminRecordDetails>
+            <button type="button" disabled={loading || busy || share.status === 'revoked'} onClick={() => void change(share,share.status === 'paused' ? 'resume' : 'pause')}>{share.status === 'paused' ? '恢复' : '暂停'}</button>
+            <button type="button" className="gateway-admin-danger" disabled={loading || busy || share.status === 'revoked'} onClick={() => setRevokeTarget(share)}>撤销</button>
+            <button type="button" className="gateway-admin-danger" disabled={loading || busy} onClick={() => setDeleteTarget(share)}>删除</button>
+          </div></td>
+        </tr>)}
       </AdminRecordTable>}
-      <div className="gateway-share-pagination">
+      <div className="gateway-admin-pagination">
         <button type="button" disabled={offset === 0 || loading}
           onClick={() => setOffset(value => Math.max(0, value - 20))}>上一页</button>
         <button type="button" disabled={offset + 20 >= listing.total || loading}

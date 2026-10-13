@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import dayjs from 'dayjs'
 import { GatewayDateRange } from './GatewayDateRange'
-import { Link } from 'react-router-dom'
 import { AdminUsagePrices } from './AdminUsagePrices'
 import { AdminUsageSummary } from './AdminUsageSummary'
 import { AdminUsageEvents } from './AdminUsageEvents'
@@ -52,7 +51,7 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
 
   return <section className="gateway-admin-page gateway-usage-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <div className="gateway-admin-toolbar"><h2>用量与统计</h2><Link to="/admin">返回管理概览</Link></div>
+    <div className="gateway-admin-toolbar"><h2>用量与统计</h2></div>
     <p>统计来自 PC 回传或供应商对账；未完成计量单独显示，缺失的 Token 和成本不会计为零。</p>
     <div className="gateway-usage-tabs gateway-admin-tablist" role="tablist" aria-label="用量统计视图">
       {tabs.map(item => <button type="button" key={item.id} id={'usage-tab-'+item.id} role="tab" aria-selected={tab === item.id} aria-controls="usage-report-panel" tabIndex={tab === item.id ? 0 : -1}

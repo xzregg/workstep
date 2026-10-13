@@ -25,7 +25,6 @@ export function AdminLayout({ roles, children }: { roles: string[]; children: Re
      <AdminBrand />
      <p className="gateway-admin-sidebar-label">工作空间</p>
      <AdminNavigation roles={roles} />
-     <Link className="gateway-admin-return" to="/">返回工作台<span aria-hidden="true">↗</span></Link>
    </aside>
    <div className="gateway-admin-content">
     <header className="gateway-admin-topbar">
@@ -42,7 +41,6 @@ export function AdminLayout({ roles, children }: { roles: string[]; children: Re
      <div className="gateway-admin-mobile-menu-header"><AdminBrand onNavigate={closeMenu} /><button type="button" className="gateway-admin-menu-close" aria-label="关闭管理菜单" onClick={closeMenu}><span aria-hidden="true">×</span></button></div>
      <p className="gateway-admin-sidebar-label">工作空间</p>
      <AdminNavigation roles={roles} onNavigate={closeMenu} />
-     <Link className="gateway-admin-return" to="/" onClick={closeMenu}>返回工作台<span aria-hidden="true">↗</span></Link>
     </div>
    </dialog>
  </div>

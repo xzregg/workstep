@@ -1,3 +1,4 @@
+import { AdminListStatus } from './AdminListStatus'
 import { AdminTabs } from './AdminTabs'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
@@ -56,22 +57,24 @@ export function AdminDeviceGroupsPage() {
   return <section className="gateway-admin-page">
     <h2>设备组与部门归属</h2>
     <p>管理范围决定管理员可操作的设备。设备及项目内容访问须单独授权。</p>
-    {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" />正在加载管理范围…</p>}
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
-    {notice && <p role="status">{notice}</p>}
-    <div className="gateway-auth-form gateway-device-scope-form">
+    <AdminListStatus loading={loading} label="正在加载管理范围…"/>
+    <div className="gateway-device-scope-form">
       <h3>选择要操作的设备</h3>
+      <div className="gateway-device-scope-fields">
       <label htmlFor="managed-device-choice">设备</label>
       <select id="managed-device-choice" value={deviceId} onChange={event => setDeviceId(event.target.value)} disabled={busy}>
         <option value="">选择设备</option>{devices.map(device => <option key={device.id} value={device.id}>{device.name}</option>)}
       </select>
+      </div>
       <AdminTabs label="设备管理范围分类" items={[
-       { id: 'groups', label: '设备组管理', content: <div className="gateway-auth-form">
+       { id: 'groups', label: '设备组管理', content: <div className="gateway-device-scope-fields">
       <h3>设备组管理</h3>
       <label htmlFor="device-group-name">新设备组名称</label>
+      <div className="gateway-device-scope-control-row">
       <input id="device-group-name" value={name} onChange={event => setName(event.target.value)} disabled={busy} />
       <button type="button" disabled={disabled || !name.trim()}
         onClick={() => void mutate('/api/admin/device-groups', 'POST', { name: name.trim() })}>创建设备组</button>
+      </div>
       <label htmlFor="device-group-choice">设备组</label>
       <select id="device-group-choice" value={groupId} onChange={event => setGroupId(event.target.value)} disabled={busy}>
         <option value="">选择设备组</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
@@ -79,14 +82,14 @@ export function AdminDeviceGroupsPage() {
       {groupId && <p className="gateway-device-scope-summary">组内设备：{groups.find(group => group.id === groupId)?.device_ids.map(id =>
         devices.find(device => device.id === id)?.name ?? id).join('、') || '暂无'}</p>}
       {deviceId && groupId && <p className="gateway-device-scope-summary">{selectedDevice?.name} {inGroup ? '已在' : '尚未加入'}「{selectedGroup?.name}」</p>}
-      <div className="gateway-dialog-actions">
+      <div className="gateway-device-scope-actions">
         <button type="button" disabled={disabled || !deviceId || !groupId || inGroup} onClick={() => void mutate(
           `/api/admin/device-groups/${encodeURIComponent(groupId)}/devices/${encodeURIComponent(deviceId)}`, 'PUT', undefined, '设备已加入所选设备组。')}>加入设备组</button>
         <button type="button" disabled={disabled || !deviceId || !groupId || !inGroup} onClick={() => void mutate(
           `/api/admin/device-groups/${encodeURIComponent(groupId)}/devices/${encodeURIComponent(deviceId)}`, 'DELETE', undefined, '设备已移出所选设备组。')}>移出设备组</button>
       </div>
        </div> },
-       { id: 'department', label: '部门归属', content: <div className="gateway-auth-form">
+       { id: 'department', label: '部门归属', content: <div className="gateway-device-scope-fields">
       <h3>部门归属</h3>
       <p className="gateway-device-scope-help">为当前选中的设备设置管理部门，选择“未分配部门”可清除归属。</p>
       <label htmlFor="managed-department-choice">设备所属部门</label>
@@ -98,9 +101,13 @@ export function AdminDeviceGroupsPage() {
         `/api/admin/devices/${encodeURIComponent(deviceId)}/department`, 'PUT', { department_id: departmentId || null }, '所选设备的部门归属已保存。')}>保存部门归属</button>
        </div> },
       ]} />
+      <div className="gateway-device-scope-fields">
       <PasswordConfirmation id="device-scope-password" label="输入你的密码确认" value={password} onChange={setPassword} disabled={busy} />
+      </div>
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" />正在保存管理范围…</p>}
       <button type="button" disabled={busy || loading} onClick={() => setRevision(value => value + 1)}>刷新列表</button>
     </div>
+    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    {notice && <p role="status">{notice}</p>}
   </section>
 }

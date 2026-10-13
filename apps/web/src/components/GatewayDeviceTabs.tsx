@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, request } from '../api/transport'
 import { useI18n } from '../i18n'
 import Spinner from './Spinner'
+import Icon from './Icon'
 import { DeviceTabs } from '@workstep/gateway-ui/DeviceTabs'
 import { openRemoteAccess } from '@workstep/gateway-ui/openRemoteAccess'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
@@ -72,7 +73,7 @@ export default function GatewayDeviceTabs({currentDeviceId,currentProjectId,head
   }
   return <section className="gateway-direct-device-tabs">
     {header && <div className="gateway-mobile-picker-header">{header}
-      <button type="button" className="gateway-tab-refresh" aria-label={t('gatewayRemote.refreshDevices')} disabled={opening!==null} onClick={()=>setRevision(value=>value+1)}>↻</button>
+      <button type="button" className="gateway-tab-refresh gateway-header-control gateway-header-icon-control" aria-label={t('gatewayRemote.refreshDevices')} title={t('gatewayRemote.refreshDevices')} disabled={opening!==null || loading} onClick={()=>setRevision(value=>value+1)}>{loading ? <Spinner size={18}/> : <Icon name="refresh" size={18}/>}</button>
     </div>}
     <DeviceTabs showRefresh={!header} devices={devices} currentDeviceId={currentDeviceId} disabled={opening!==null} disableOffline
       onSelect={id=>{const device=devices.find(item=>item.id===id);if(device)void select(device)}} onRefresh={()=>setRevision(value=>value+1)}/>

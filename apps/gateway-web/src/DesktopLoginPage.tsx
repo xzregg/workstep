@@ -167,9 +167,8 @@ export function DesktopLoginPage() {
 
   return (
     <section className="gateway-auth-card">
-      <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
       <h2>WorkStep 平台认证</h2>
-      <p className="gateway-auth-description">登录后授权当前电脑访问所属工作空间。</p>
+      <p className="gateway-auth-description">登录后授权当前设备访问所属工作空间。</p>
       {status === 'checking' && <p role="status">正在检查登录状态…</p>}
       {status === 'login' && (
         <>
@@ -179,7 +178,7 @@ export function DesktopLoginPage() {
         </>
       )}
       {status === 'ready' && <>
-        <button type="button" onClick={() => csrf && void authorize(csrf)}>在此电脑上继续</button>
+        <button type="button" onClick={() => csrf && void authorize(csrf)}>在此设备上继续</button>
         <button type="button" onClick={() => void switchAccount()}>登出并切换账号</button>
       </>}
       {status === 'submitting' && <p role="status">正在完成授权…</p>}

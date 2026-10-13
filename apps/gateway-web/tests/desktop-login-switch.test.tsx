@@ -31,6 +31,9 @@ for (const failed of [false, true]) test(`switch account preserves local callbac
     throw Error(`Unexpected request: ${url}`)
   }
   render(<MemoryRouter initialEntries={['/desktop/login?' + query]}><DesktopLoginPage /></MemoryRouter>)
+  assert.ok(await screen.findByRole('button', { name: '在此设备上继续' }))
+  assert.ok(screen.getByText('登录后授权当前设备访问所属工作空间。'))
+  assert.equal(screen.queryByText('WORKSTEP 平台') === null, true)
   fireEvent.click(await screen.findByRole('button', { name: '登出并切换账号' }))
   if (failed) {
     assert.match((await screen.findByRole('alert')).textContent!, /登出失败/)

@@ -29,8 +29,7 @@ test('project list refreshes when chat turns start or finish', () => {
 
 test('sidebar session lists have one initialization owner', () => {
   assert.doesNotMatch(activityHook, /fetchSessions\(activeProject\.id\)/)
-  assert.match(source, /const sessionProjectIdsKey = \[\.\.\.new Set/)
-  assert.match(source, /useSidebarProjectLoading\(sessionProjectIdsKey\)/)
+  assert.match(source, /useSidebarProjectLoading\(activeProject\?\.id \?\? ''\)/)
   assert.match(source, /activeProject\?\.id/)
   // Loading, retry and de-duplication are covered by sidebarProjectLoading.test.tsx.
 })

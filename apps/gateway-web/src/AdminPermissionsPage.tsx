@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { PermissionPicker } from './PermissionPicker'
 import { PermissionSubjectTable } from './PermissionSubjectTable'
 import { PermissionDialog, RevokePermissionDialog, scopeNames } from './PermissionDialogs'
@@ -8,7 +8,7 @@ import { ProjectPermissionDialog, type ProjectPermission, type ProjectPermission
 
 export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' | 'platform' }) {
   const platform = mode === 'platform'
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const [catalog, setCatalog] = useState<PermissionDefinition[]>([])
   const [projectCatalog, setProjectCatalog] = useState<ProjectPermission[]>([])
   const [projectSets, setProjectSets] = useState<ProjectPermissionSet[]>([])
@@ -71,7 +71,11 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
       {!platform && !!projectCatalog.length && <button type="button" disabled={!csrf} onClick={() => { setLegacyNew(true); setEdit('new') }}>资源与业务权限</button>}</div>
     <p className="gateway-permission-summary">{platform ? '分配网关后台管理权限，包括用户管理、设备管理、Skills 管理和审计等。组权限由当前有效成员继承。' : '分配用户与用户组的项目操作、设备访问、供应商使用和业务权限。组权限由当前有效成员继承。'}</p>
     {preset && <p className="gateway-permission-scope-filter">当前范围：{scopeNames[scopeType]} · {preset.scope_name}
-      <Link to={platform ? "/admin/platform-permissions" : "/admin/permissions"}>查看全部范围</Link></p>}
+      <button type="button" onClick={() => {
+        const next = new URLSearchParams(params)
+        for (const key of ['scope_type','scope_id','scope_name']) next.delete(key)
+        setParams(next, { replace:true })
+      }}>查看全部范围</button></p>}
     <div className="gateway-permission-filters">
       <div><label htmlFor="permission-filter-type">对象类型筛选</label>
         <select id="permission-filter-type" value={subjectType} onChange={event => {

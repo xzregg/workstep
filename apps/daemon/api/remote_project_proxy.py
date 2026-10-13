@@ -58,7 +58,10 @@ class RemoteProjectProxyMiddleware(BaseHTTPMiddleware):
             method=request.method,
             path=request.url.path,
             query={key: value for key, value in request.query_params.items()},
-            headers={key: value for key, value in request.headers.items()},
+            # Local process/browser credentials belong only to this daemon;
+            # the remote transport authenticates its own device/project.
+            headers={key: value for key, value in request.headers.items()
+                     if key.lower() in {'accept', 'content-type', 'idempotency-key'}},
             body=body,
             actor={
                 'actor_id': actor.actor_id,
