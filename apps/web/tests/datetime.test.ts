@@ -18,10 +18,10 @@ test('formats same-week conversation times by weekday and earlier times in full'
     formatConversationDateTime(new Date(2026, 7, 10, 11, 22, 33), now),
     '周一 11:22:33',
   )
-  // Last week, even though within a rolling 7-day window → full date.
+  // Last calendar week uses the same weekday format with a last-week prefix.
   assert.equal(
     formatConversationDateTime(new Date(2026, 7, 9, 11, 22, 33), now),
-    '2026-08-09 11:22:33',
+    '上周日 11:22:33',
   )
   // Older messages → full date.
   assert.equal(

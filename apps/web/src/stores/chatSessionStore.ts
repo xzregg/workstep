@@ -94,6 +94,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
 
   fetchSessions: async (projectId, preserveSelection = false) => {
     if (!projectId || get().listLoadingByProject[projectId]) return
+    const initialIds = new Set((get().sessionsByProject[projectId] || []).map(session => session.id))
     set((state) => ({
       listLoadingByProject: { ...state.listLoadingByProject, [projectId]: true },
       listErrorByProject: { ...state.listErrorByProject, [projectId]: undefined },
@@ -105,9 +106,18 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     }))
     try {
       const { sessions } = await chatSessionApi.list(projectId)
-      set((state) => ({
-        sessionsByProject: { ...state.sessionsByProject, [projectId]: pinChannelSessions(sessions) },
-      }))
+      set((state) => {
+        const responseIds = new Set(sessions.map(session => session.id))
+        const addedWhileLoading = (state.sessionsByProject[projectId] || []).filter(
+          session => !initialIds.has(session.id) && !responseIds.has(session.id),
+        )
+        return {
+          sessionsByProject: {
+            ...state.sessionsByProject,
+            [projectId]: pinChannelSessions([...addedWhileLoading, ...sessions]),
+          },
+        }
+      })
     } catch (error) {
       set(state => ({ listErrorByProject: {
         ...state.listErrorByProject,

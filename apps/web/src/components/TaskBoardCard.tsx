@@ -2,7 +2,7 @@ import type { CSSProperties, DragEvent as ReactDragEvent } from 'react'
 import type { Task } from '../api/client'
 import { useI18n, type TKey } from '../i18n'
 import { isTaskCompleted, isTaskNotStarted } from '../pages/taskDetailChat'
-import { formatDuration, toMilliseconds } from '../utils/datetime'
+import { formatConversationDateTime, formatDuration, toMilliseconds } from '../utils/datetime'
 import { formatScheduledStart } from '../utils/scheduledStart'
 import { formatTokenTotal } from '../utils/statistics'
 import Button from './Button'
@@ -156,12 +156,14 @@ export default function TaskBoardCard({
         </div>
       )}
       <div className="card-actions task-board-card-actions">
-        {cardMetaText ? (
-          <MarqueeText className="task-card-meta" text={cardMetaText}
-            title={cardMetaText} forceActive />
-        ) : (
-          <span className="task-board-card-meta-spacer" />
-        )}
+        <div className="task-board-card-metadata">
+          {createdMs !== null && <time className="task-board-card-created" dateTime={task.created_at}
+            title={new Date(createdMs).toLocaleString(locale)}>
+            {formatConversationDateTime(task.created_at, durationNowMs, locale)}
+          </time>}
+          {cardMetaText && <MarqueeText className="task-card-meta" text={cardMetaText}
+            title={cardMetaText} forceActive />}
+        </div>
         <div className="card-action-buttons task-board-card-buttons">
           {projectId && <TaskCopyButton taskId={task.id} projectId={projectId} title={task.title} />}
           {canRun && taskNotStarted && status !== 'running' && (

@@ -802,6 +802,8 @@ Web `utils/projectPermissions.ts` → `hooks/useGatewayProjectPermissions.ts` �
 
 ### 对话列表缓存与授权对象多选
 
+新建会话即时显示由 `chatSessionStore.ts::addSession/fetchSessions` 持有：列表请求返回时保留请求期间新增且响应尚未包含的会话，防止旧列表覆盖刚创建的条目，响应已包含时使用服务器摘要且不重复。API 沿用 `/api/chat-sessions`，回归为 `chatSessionStore.test.ts`。任务看板卡片 `TaskBoardCard.tsx` 默认显示创建时间，`index.css` 仅在桌面悬停时显示操作按钮，时间和元数据保持可见；日期复用消息组件的 `utils/datetime.ts::formatConversationDateTime`，本周显示“周一”、上周显示“上周一”、更早显示完整日期。回归为 `taskBoardCard.test.tsx`、`datetime.test.ts`。
+
 `useSidebarProjectLoading.ts` 在项目选中或再次点击当前项目时仅维护远程项目订阅与元数据读取，不请求对话列表，不自动定时重试；WebSocket 完整快照直接合并缓存，旧状态事件与连接恢复不再触发远程项目 HTTP 补刷，对话列表由用户展开对话分区加载。`ChatPage.tsx` 通过 `useChatListTurnRefresh.ts` 仅在同一会话的一轮运行结束时补刷预览，切换会话不视为运行结束。`Layout.tsx` 将侧栏可见且对话分区展开的项目交给 `useSidebarConversationLoading.ts`，通过 `chatSessionStore.fetchSessions(projectId, true)` 加载／刷新该项目列表；打开移动侧栏时也加载已经展开的分区，桌面首屏恢复展开状态时同样加载。复用进行中请求去重，不切换当前项目；关闭、收起不请求，无效／撤销／过期授权跳过加载。仅在没有列表缓存时显示加载提示，已有列表后台刷新时保持展示；`SidebarConversationTabs.tsx` 在空列表时也渲染列表内容，保留加载、错误与重试入口。测试为 `sidebarConversationLoading.test.tsx`（本地／远程展开、收起、去重、刷新、失败重试和 320／390／1023px 抽屉恢复加载）、`sidebarConversationLoadingHook.test.tsx`（无定时器、桌面恢复、目录延迟与重渲染去重）、`sidebarProjectLoading.test.tsx`、`chatListTurnRefresh.test.tsx`。
 
 网关 `AdminProjectGrantDialog.tsx` 的项目/设备授权对象选择共用多选复选框；同一对象类型下搜索/翻页保留选中项，切换对象类型清空选择。批量保存复用现有逐对象授权接口和管理员密码确认；部分成功后固定选择与访问级别、显示已保存数量，重试只提交未成功的对象，关闭提示已保存的授权不会撤销。复选框使用 `gateway.css` 的 16px 紧凑规格。行为测试为 `apps/gateway-web/tests/admin-projects.test.tsx`。

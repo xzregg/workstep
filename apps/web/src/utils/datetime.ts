@@ -133,6 +133,16 @@ export function formatConversationDateTime(
     const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)
     return `${weekday} ${time}`
   }
+  if (nowMilliseconds !== null) {
+    const previousWeek = new Date(nowMilliseconds)
+    previousWeek.setDate(previousWeek.getDate() - 7)
+    if (startOfWeek(date) === startOfWeek(previousWeek)) {
+      const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)
+      const week = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(-1, 'week')
+      const label = locale.startsWith('zh') ? `${week}${weekday.replace(/^周|^週/, '')}` : `${week} ${weekday}`
+      return `${label} ${time}`
+    }
+  }
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${time}`
 }
 

@@ -22,6 +22,24 @@ function summary(id: string, title: string, messageCount = 0) {
   }
 }
 
+test('a delayed list response preserves sessions created while loading without duplicates', async () => {
+  useChatListStore.setState({ sessionsByProject: { p1: [summary('old', '旧会话')] }, listLoadingByProject: {} })
+  const originalFetch = globalThis.fetch
+  let resolveList!: (response: Response) => void
+  globalThis.fetch = () => new Promise<Response>(resolve => { resolveList = resolve })
+  try {
+    const loading = useChatListStore.getState().fetchSessions('p1', true)
+    useChatListStore.getState().addSession(summary('new', '新会话'))
+    resolveList(Response.json({ sessions: [summary('old', '旧会话')] }))
+    await loading
+    assert.deepEqual(useChatListStore.getState().sessionsByProject.p1.map(session => session.id), ['new', 'old'])
+    globalThis.fetch = async () => Response.json({ sessions: [summary('new', '服务器标题'), summary('old', '旧会话')] })
+    await useChatListStore.getState().fetchSessions('p1', true)
+    assert.deepEqual(useChatListStore.getState().sessionsByProject.p1.map(session => session.id), ['new', 'old'])
+    assert.equal(useChatListStore.getState().sessionsByProject.p1[0].title, '服务器标题')
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('conversation list failure preserves cache and exposes a per-project error cleared by retry', async () => {
   const originalFetch = globalThis.fetch
   useChatListStore.setState({ sessionsByProject: { p1: [summary('s1', 'cached')] }, listLoadingByProject: {} })
