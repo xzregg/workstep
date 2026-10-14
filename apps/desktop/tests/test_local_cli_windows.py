@@ -13,6 +13,22 @@ cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cli)
 
 
+@pytest.fixture(autouse=True)
+def acl_failure_diagnostics(monkeypatch):
+    original = subprocess.run
+
+    def run(*args, **kwargs):
+        result = original(*args, **kwargs)
+        if result.returncode:
+            # ACL helpers do not receive or print the credential token.
+            print('Windows ACL helper exit:', result.returncode)
+            print(result.stdout.decode(errors='replace'))
+            print(result.stderr.decode(errors='replace'))
+        return result
+
+    monkeypatch.setattr(subprocess, 'run', run)
+
+
 def test_windows_cli_publishes_private_credentials_in_unicode_directory(tmp_path, monkeypatch):
     monkeypatch.setenv('WORKSTEP_CONFIG_DIR', str(tmp_path / '配置 WorkStep'))
     runtime = cli.LocalCliRuntime('http://127.0.0.1:43123')
