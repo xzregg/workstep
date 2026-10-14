@@ -16,6 +16,11 @@ const {cleanup, fireEvent, render, screen, waitFor, within} = await import('@tes
 const originalFetch = globalThis.fetch
 afterEach(()=>{cleanup(); globalThis.fetch=originalFetch})
 
+async function clickReady(role: 'button' | 'checkbox', name: string | RegExp) {
+ await waitFor(()=>assert.equal((screen.getByRole(role,{name}) as HTMLInputElement).disabled,false))
+ fireEvent.click(screen.getByRole(role,{name}))
+}
+
 test('users expose checked-only delete with password confirmation and restore in deleted filter', async()=>{
  const writes:object[]=[]
  globalThis.fetch=async(input,init)=>{
@@ -29,15 +34,15 @@ test('users expose checked-only delete with password confirmation and restore in
  }
  render(<MemoryRouter><AdminUsersPage/></MemoryRouter>)
  await screen.findByText('张三')
- fireEvent.click(screen.getByRole('checkbox',{name:'选择张三'}))
- fireEvent.click(screen.getByRole('button',{name:'批量删除'}))
- fireEvent.change(screen.getByLabelText('输入你的密码确认'),{target:{value:'secret'}})
+ await clickReady('checkbox','选择张三')
+ await clickReady('button','批量删除')
+ fireEvent.change(await screen.findByLabelText('输入你的密码确认'),{target:{value:'secret'}})
  fireEvent.click(screen.getByRole('button',{name:'确认删除'}))
  await waitFor(()=>assert.deepEqual(writes,[{action:'delete',user_ids:['a']}]))
  await waitFor(()=>assert.equal(screen.queryByRole('dialog'),null))
  fireEvent.change(screen.getByLabelText('状态'),{target:{value:'deleted'}})
- fireEvent.click(await screen.findByRole('button',{name:'恢复'}))
- fireEvent.change(screen.getByLabelText('输入你的密码确认'),{target:{value:'secret'}})
+ await clickReady('button','恢复')
+ fireEvent.change(await screen.findByLabelText('输入你的密码确认'),{target:{value:'secret'}})
  fireEvent.click(screen.getByRole('button',{name:'确认恢复'}))
  await waitFor(()=>assert.deepEqual(writes[1],{action:'restore',user_ids:['a']}))
 })
@@ -56,10 +61,10 @@ test('group tree supports selected-only delete and refreshes without deleting me
   throw Error(url)
  }
  render(<MemoryRouter><AdminGroupsPage/></MemoryRouter>)
- fireEvent.click(await screen.findByRole('checkbox',{name:'选择用户组研发组'}))
+ await clickReady('checkbox','选择用户组研发组')
  assert.ok(within(screen.getByRole('group',{name:'用户组操作'})).getByRole('button',{name:'删除所选用户组'}))
- fireEvent.click(screen.getByRole('button',{name:'删除所选用户组'}))
- fireEvent.change(screen.getByLabelText('输入你的密码确认'),{target:{value:'secret'}})
+ await clickReady('button','删除所选用户组')
+ fireEvent.change(await screen.findByLabelText('输入你的密码确认'),{target:{value:'secret'}})
  fireEvent.click(screen.getByRole('button',{name:'确认删除'}))
  await waitFor(()=>assert.deepEqual(writes,[{action:'delete',group_ids:['g']}]))
  await screen.findByText('尚无用户组，可创建或同步组织。')
@@ -93,7 +98,7 @@ test('users show display names and bulk approval sends only checked IDs, clearin
  assert.equal(writes[0].url,'/api/admin/users/bulk')
  assert.deepEqual(JSON.parse(String(writes[0].init?.body)),{action:'approve',user_ids:['a']})
  await waitFor(()=>assert.equal(screen.queryByRole('dialog') === null,true))
- fireEvent.click(screen.getByRole('checkbox',{name:'选择李四'}))
+ await clickReady('checkbox','选择李四')
  fireEvent.change(screen.getByLabelText('搜索用户'),{target:{value:'张'}})
  fireEvent.click(screen.getByRole('button',{name:/^搜索$/}))
  await waitFor(()=>assert.equal((screen.getByRole('checkbox',{name:'选择李四'}) as HTMLInputElement).checked,false))
@@ -136,9 +141,9 @@ test('group members support checked-only bulk add and protect directory membersh
  fireEvent.change(screen.getByLabelText('搜索用户'),{target:{value:'张'}})
  fireEvent.click(screen.getByRole('button',{name:'查找用户'}))
  await screen.findByText('张三')
- fireEvent.click(screen.getByRole('checkbox',{name:'选择待添加用户张三'}))
- fireEvent.click(screen.getByRole('button',{name:'批量添加成员'}))
- fireEvent.click(within(screen.getByRole('dialog',{name:'添加成员'})).getByRole('button',{name:'确认添加'}))
+ await clickReady('checkbox','选择待添加用户张三')
+ await clickReady('button','批量添加成员')
+ fireEvent.click(within(await screen.findByRole('dialog',{name:'添加成员'})).getByRole('button',{name:'确认添加'}))
  await waitFor(()=>assert.deepEqual(writes,[{action:'add',user_ids:['a'],role:'member'}]))
 })
 
@@ -159,7 +164,7 @@ test('group role changes and removals exclude synced users and keep failed choic
  }
  render(<GroupMembersManager groupId="g" csrf="csrf" onChanged={()=>{}}/>)
  await screen.findByText('张三')
- fireEvent.click(screen.getByRole('checkbox',{name:'全选当前表格'}))
+ await clickReady('checkbox','全选当前表格')
  assert.equal((screen.getByRole('checkbox',{name:'选择同步成员'}) as HTMLInputElement).checked,false)
  fireEvent.change(screen.getByLabelText('成员角色'),{target:{value:'leader'}})
  fireEvent.click(screen.getByRole('button',{name:'批量调整角色'}))
