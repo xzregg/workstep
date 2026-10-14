@@ -170,7 +170,11 @@ def prepare_cli_environment(host: str, port: int) -> None:
     """Expose the bundled CLI location and live daemon endpoint to engines."""
     os.environ["WORKSTEP_DAEMON_DIR"] = str(_daemon_dir())
     os.environ["WORKSTEP_CLI_PYTHON"] = sys.executable
-    os.environ["WORKSTEP_DAEMON_URL"] = f"http://{host}:{port}"
+    # Wildcard addresses describe listeners, not a local client's destination.
+    client_host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(host, host)
+    if ":" in client_host:
+        client_host = f"[{client_host}]"
+    os.environ["WORKSTEP_DAEMON_URL"] = f"http://{client_host}:{port}"
 
 
 def _load_app(host: str, port: int):

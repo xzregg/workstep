@@ -52,6 +52,16 @@ downloaded and installed manually. Publishing the draft is an explicit release s
 
 ## Windows 安装包自动验收
 
+### v1.0.12 首次构建启动回归
+
+2026-10-14 的 [发布构建](https://github.com/xzregg/workstep/actions/runs/38506803307)
+完成镜像、macOS 和 Linux 打包，但 Windows 只通过中文路径安装，首次启动失败，
+因此未创建或正式发布 Release。后台启动器把监听地址 `0.0.0.0` 直接写入
+`WORKSTEP_DAEMON_URL`，新增本机 CLI 发现仅接受回环地址，导致启动异常。
+启动器修复将 IPv4／IPv6 通配监听转换为 `127.0.0.1`／`[::1]` 客户端地址，
+保留实际端口和原监听范围。回归覆盖通配及回环地址；实际 Windows 完整验收仍需复测。
+该修复不改变操作手册入口或安装步骤。
+
 `Desktop release` 的 Windows job 在上传安装包前，调用
 `scripts/windows-desktop-acceptance.cjs` 验证实际 NSIS 包；失败会阻止创建发布草稿。
 它在 GitHub `windows-2025` 临时 runner 内安装到含中文和空格的路径，检查首次启动、
