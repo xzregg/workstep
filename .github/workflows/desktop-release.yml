@@ -148,6 +148,11 @@ jobs:
           WORKSTEP_BUILD_VERSION: ${{ inputs.tag || github.ref_name }}
           WORKSTEP_WINDOWS_PYTHON_ARCH: x86_64
         run: ./apps/desktop/build-backend.ps1
+      - name: Verify native Windows CLI credential isolation
+        shell: pwsh
+        run: |
+          uv run --no-project --python 3.12 --with pytest==9.1.1 python -m pytest apps/desktop/tests/test_local_cli_windows.py -q
+          if ($LASTEXITCODE -ne 0) { throw "Windows CLI credential isolation failed" }
       - name: Build unsigned Windows installer and update metadata
         shell: pwsh
         working-directory: apps/desktop

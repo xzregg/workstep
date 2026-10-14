@@ -54,12 +54,20 @@ $ErrorActionPreference='Stop'
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
 foreach ($path in (ConvertFrom-Json $env:WORKSTEP_CLI_ACL_PATHS)) {
   $acl=Get-Acl -LiteralPath $path
-  if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { exit 1 }
+  $owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+  # Elevated Windows processes create objects owned by Administrators. Only
+  # normalize that trusted owner when protecting; discovery still requires self.
+  if ($owner -ne $sid.Value -and -not ($env:WORKSTEP_CLI_ACL_PROTECT -eq '1' -and $owner -eq 'S-1-5-32-544')) { exit 1 }
   if ($env:WORKSTEP_CLI_ACL_PROTECT -eq '1') {
     $acl.SetAccessRuleProtection($true,$false)
     foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRuleSpecific($rule) }
     $acl.SetOwner($sid)
-    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
+    if (Test-Path -LiteralPath $path -PathType Container) {
+      $rule=[Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow')
+    } else {
+      $rule=[Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','Allow')
+    }
+    $acl.AddAccessRule($rule)
     Set-Acl -LiteralPath $path -AclObject $acl
     $acl=Get-Acl -LiteralPath $path
   }
@@ -137,6 +145,8 @@ class LocalCliRuntime:
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as stream:
                 json.dump({'url': self.url, 'pid': os.getpid(), 'token': self.token}, stream)
+            if not _windows_private([Path(temporary)], protect=True):
+                raise PermissionError('CLI runtime file ACL must be owner-private')
             os.replace(temporary, path)
         finally:
             if os.path.exists(temporary):
