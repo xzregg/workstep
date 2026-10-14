@@ -678,13 +678,17 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 .task-board-card-actions {
   display: flex; flex-wrap: nowrap; align-items: center; gap: 6px;
-  width: 100%; min-width: 0; opacity: 0; transition: opacity var(--motion-fast);
+  width: 100%; min-width: 0; opacity: 1;
 }
-.task-board-card:hover .task-board-card-actions,
-.task-board-card:focus-within .task-board-card-actions { opacity: 1; }
 .task-board-card .task-card-meta { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
-.task-board-card-meta-spacer { flex: 1; min-width: 0; }
+.task-board-card-metadata { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.task-board-card-created { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
 .task-board-card-buttons { display: flex; flex-wrap: nowrap; gap: 2px; flex-shrink: 0; }
+@media (hover: hover) and (pointer: fine) {
+  .task-board-card-buttons { opacity: 0; transition: opacity var(--motion-fast); }
+  .task-board-card:hover .task-board-card-buttons,
+  .task-board-card:focus-within .task-board-card-buttons { opacity: 1; }
+}
 .task-board-card-icon { width: 22px; height: 22px; flex: 0 0 22px; padding: 0; }
 .task-board-card-icon--success { color: var(--success); }
 .task-board-card-icon--muted { color: var(--meta); }

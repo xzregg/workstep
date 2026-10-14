@@ -6,6 +6,8 @@ import { createRoot } from 'react-dom/client'
 import type { Task } from '../src/api/client'
 import { I18nProvider } from '../src/i18n'
 import TaskBoardCard from '../src/components/TaskBoardCard'
+import { readFileSync } from 'node:fs'
+import { formatConversationDateTime } from '../src/utils/datetime'
 
 const task: Task = {
   id: 'task-1', title: 'Build feature', description: 'Implement the design',
@@ -32,6 +34,15 @@ test('an unstarted board card shows its metadata and keeps action clicks separat
     assert.match(container.textContent || '', /Alice/)
     assert.doesNotMatch(container.textContent || '', /Creator:\s*Alice/)
     assert.match(container.textContent || '', /Implement the design/)
+    const created = container.querySelector('time.task-board-card-created')
+    assert.ok(created)
+    assert.equal(created.getAttribute('datetime'), task.created_at)
+    assert.equal(created.textContent, formatConversationDateTime(task.created_at))
+    const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
+    const rules = document.createElement('style')
+    rules.textContent = css.slice(css.indexOf('.task-board-card-actions {'), css.indexOf('.task-message-artifacts-heading {'))
+    document.head.appendChild(rules)
+    assert.equal(getComputedStyle(container.querySelector('.task-board-card-actions')!).opacity, '1')
     const start = container.querySelector<HTMLButtonElement>('[data-task-action="start"]')
     assert.ok(start)
     await act(async () => start.click())

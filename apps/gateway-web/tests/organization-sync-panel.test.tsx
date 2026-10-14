@@ -187,13 +187,15 @@ test('preview departments can be unchecked including descendants and empty depar
  }
  render(<OrganizationSyncPanel sourceId="source" provider="dingtalk" csrf="csrf" onClose={()=>{}} onCompleted={()=>{}} />)
  const parent=await screen.findByLabelText('公司') as HTMLInputElement
+ await waitFor(()=>assert.equal(parent.disabled,false))
  assert.equal(parent.checked,true)
  fireEvent.click(parent)
- assert.equal(parent.checked,false)
+ await waitFor(()=>assert.equal((screen.getByLabelText('公司') as HTMLInputElement).checked,false))
  assert.equal((screen.getByLabelText('研发') as HTMLInputElement).checked,false)
  const empty=screen.getByLabelText('空部门') as HTMLInputElement
+ await waitFor(()=>assert.equal(empty.disabled,false))
  fireEvent.click(empty)
- assert.equal(empty.checked,false)
+ await waitFor(()=>assert.equal((screen.getByLabelText('空部门') as HTMLInputElement).checked,false))
  assert.equal(writes,0)
  assert.equal((screen.getByRole('button',{name:'同步 0 位用户 · 应用组织变更'}) as HTMLButtonElement).disabled,true)
 })
