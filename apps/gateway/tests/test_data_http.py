@@ -16,6 +16,64 @@ from urllib.parse import urlsplit
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('path,share_target', [
+    ('/api/public/shares/token/git/read/content/7b7d',
+     '/api/platform-share/git/read/content/7b7d'),
+    ('/workspace/device-1/api/fs/project-raw/project-1/demo.html', None),
+], ids=['share-git', 'workspace'])
+@pytest.mark.parametrize('upstream_policies,sandbox_policies', [
+    ([], []),
+    (["connect-src 'self' ws://127.0.0.1:*; frame-ancestors *"], []),
+    (['sandbox'], ['sandbox']),
+    (["default-src 'self'; SaNdBoX allow-scripts; img-src data:"],
+     ['SaNdBoX allow-scripts']),
+    (["sandbox allow-scripts, sandbox"], ['sandbox allow-scripts', 'sandbox']),
+    (['sandbox allow-scripts', 'sandbox'], ['sandbox allow-scripts', 'sandbox']),
+], ids=['no-policy', 'desktop-policy', 'sandbox', 'sandbox-scripts',
+        'policy-list', 'duplicate-headers'])
+async def test_proxy_preserves_upstream_sandbox_in_final_http_response(
+        path, share_target, upstream_policies, sandbox_policies):
+    content = b'<html><script>parent.document.title = "untrusted"</script></html>'
+
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'end':
+                headers = [['content-type', 'text/html'], ['x-content-type-options', 'nosniff']]
+                headers.extend(['Content-Security-Policy', value] for value in upstream_policies)
+                for payload in (
+                    {'phase': 'start', 'status': 200, 'headers': headers},
+                    {'phase': 'body', 'data': base64.b64encode(content).decode()},
+                    {'phase': 'end'},
+                ):
+                    await connection.deliver(ProxyFrame(
+                        stream_id=frame.stream_id, type=FrameType.http_response, payload=payload))
+
+    connection = DataConnection('device-1', Socket())
+    app = FastAPI()
+
+    @app.get(path)
+    async def proxy(request: Request):
+        kwargs = ({'share_ticket': 'signed-ticket', 'target_path': share_target}
+                  if share_target else {'user_id': 'user-1', 'username': 'alice'})
+        return await invoke(connection.proxy_http, request=request, **kwargs)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url='https://gateway.test') as client:
+        response = await client.get(path)
+    assert response.status_code == 200
+    assert response.content == content
+    assert response.headers['content-type'] == 'text/html'
+    assert response.headers['x-content-type-options'] == 'nosniff'
+    policies = response.headers.get_list('content-security-policy')
+    print('PPV_REACHED', flush=True)
+    assert policies[1:] == sandbox_policies
+    assert "connect-src 'self' wss://gateway.test" in policies[0]
+    assert ("frame-ancestors 'none'" if share_target else "frame-ancestors 'self'") in policies[0]
+    assert connection._streams == {}
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('scheme,host,ws_scheme', [
     ('http', 'd-device-1.localhost:8700', 'ws'),
     ('https', 'd-device-1.gateway.test:8700', 'wss'),

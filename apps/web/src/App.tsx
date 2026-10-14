@@ -16,6 +16,7 @@ import GitWorkspace from './pages/GitWorkspace'
 import SharedTaskView from './pages/SharedTaskView'
 import { gatewayShareApi, isGatewayPublicShare } from './api/gatewayShare'
 import FilePreviewPage from './pages/FilePreviewPage'
+import AppearanceSettings from './pages/AppearanceSettings'
 import type { Project } from './api/client'
 import { useI18n } from './i18n'
 import FirstUseDialog from './components/FirstUseDialog'
@@ -83,6 +84,7 @@ export function AppRoutes() {
         <Route path="/statistics" element={<ProjectPermissionGate permission="statistics.read"><StatisticsPage /></ProjectPermissionGate>} />
         <Route path="/schedules" element={activeProject ? <ProjectPermissionGate permission="schedule.read"><SchedulePage /></ProjectPermissionGate> : <WelcomeView />} />
         <Route path="/chat" element={activeProject ? <ProjectPermissionGate permission="session.read"><ChatPage /></ProjectPermissionGate> : <WelcomeView />} />
+        <Route path="/appearance" element={<main className="personal-appearance-page"><AppearanceSettings /></main>} />
         <Route path="*" element={<WelcomeView />} />
       </Routes>
     </Layout>

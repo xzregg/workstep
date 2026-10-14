@@ -529,6 +529,15 @@ async def public_share_reviews(token: str, request: Request):
     return {"reviews": await project_manager.run_db(ctx["project_id"], lambda _project: load_reviews())}
 
 
+def _share_upload_actor(ctx: dict, request: Request):
+    import hashlib
+    from services.remote_access import ActorSnapshot
+    visitor = hashlib.sha256(request.headers["X-Share-Session"].encode()).hexdigest()[:12]
+    return ActorSnapshot(f"share:{ctx['share_id']}:{visitor}", "分享访客", visitor,
+        "分享访客", "remote", project_id=ctx["project_id"], access_level="edit",
+        username="share-visitor", access_source="task_share")
+
+
 @router.post("/public/{token}/upload/image")
 async def public_share_upload_image(
     token: str,
@@ -540,7 +549,9 @@ async def public_share_upload_image(
     if ctx["token"] != token:
         raise HTTPException(status_code=403, detail="Session does not match share")
     _require_interactive_share(ctx)
-    return await upload_image(req, ctx["project_id"])
+    from services.remote_access import actor_context
+    with actor_context(_share_upload_actor(ctx, request)):
+        return await upload_image(req, ctx["project_id"])
 
 
 @router.post("/public/{token}/upload/file")
@@ -554,7 +565,9 @@ async def public_share_upload_file(
     if ctx["token"] != token:
         raise HTTPException(status_code=403, detail="Session does not match share")
     _require_interactive_share(ctx)
-    return await upload_file(req, ctx["project_id"])
+    from services.remote_access import actor_context
+    with actor_context(_share_upload_actor(ctx, request)):
+        return await upload_file(req, ctx["project_id"])
 
 
 @router.get("/public/{token}/uploads/{filename}", response_class=FileResponse)

@@ -49,7 +49,7 @@ class DesktopAuthorizationService:
         self.gateway_id = gateway_id
 
     async def authorize(self, user_id: str, gateway_id: str, state: str, nonce: str,
-                        challenge: str, app_instance_id: str) -> str:
+                        challenge: str, app_instance_id: str, *, login_method: str = "unknown") -> str:
         if gateway_id != self.gateway_id:
             raise GatewayError('forbidden', 'Wrong Gateway')
         code = secrets.token_urlsafe(32)
@@ -57,7 +57,7 @@ class DesktopAuthorizationService:
             async with session.begin():
                 session.add(DesktopAuthCode(
                     code_hash=_digest(code), user_id=user_id, gateway_id=gateway_id,
-                    app_instance_id=app_instance_id, state_hash=_digest(state),
+                    login_method=login_method, app_instance_id=app_instance_id, state_hash=_digest(state),
                     nonce_hash=_digest(nonce), pkce_challenge=challenge,
                     expires_at=_now() + timedelta(minutes=2),
                 ))
@@ -161,6 +161,8 @@ class DesktopAuthorizationService:
                     display_name=user.display_name,
                     device_public_key=device.public_key,
                 ) if device.status == "active" else None
+                from gateway.services.login_audit import add_login_audit
+                add_login_audit(session, user, auth_code.login_method, device=device)
                 return user, device, signed
 
     async def transfer_owner(self, device_id: str, actor_id: str, user_id: str) -> None:

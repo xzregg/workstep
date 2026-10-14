@@ -1,0 +1,19 @@
+.project-audit-settings { min-width: 0; }
+.project-audit-hint { color: var(--muted); font-size: calc(12px * var(--font-scale)); line-height: 1.6; }
+.project-audit-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.project-audit-controls label { display: flex; flex-direction: column; gap: 5px; min-width: 120px; }
+.project-audit-controls select { width: 100%; height: 32px; }
+.project-audit-controls button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; }
+.project-audit-list { list-style: none; margin: 0; padding: 0; }
+.project-audit-row { padding: 12px 0; border-bottom: 1px solid var(--border-soft); }
+.project-audit-event { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.project-audit-object, .project-audit-path { overflow-wrap: anywhere; min-width: 0; }
+.project-audit-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.project-audit-path { margin-top: 5px; color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.project-audit-loading { display: flex; align-items: center; gap: 8px; }
+.project-audit-spinner { animation: project-audit-spin 1s linear infinite; }
+.project-audit-pagination { display: flex; justify-content: end; gap: 8px; margin-top: 14px; }
+@keyframes project-audit-spin { to { transform: rotate(360deg); } }
+@media (max-width: 1023px) {
+  .project-audit-controls select, .project-audit-controls button, .project-audit-pagination button { min-height: var(--mobile-control-regular); height: var(--mobile-control-regular); }
+}

@@ -456,3 +456,45 @@ def test_synced_user_can_have_local_credentials_without_losing_enterprise_identi
         assert client.post(f'/api/admin/identity-sources/{source}/sync',headers=headers,json=snapshot).status_code==200
         client.cookies.clear()
         assert client.post('/api/auth/login',json={'username':'zhangsan','password':'NewPassphrase-2026!'}).status_code==403
+
+
+def test_scan_only_user_sets_strong_local_password_and_keeps_enterprise_identity(tmp_path):
+    import sqlite3
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    app.state.identity_connectors = {"dingtalk": FakeConnector()}
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        source = _source(client, csrf)
+        assert client.post(f"/api/admin/identity-sources/{source}/sync", headers={"X-CSRF-Token": csrf}, json={
+            "departments": [], "people": [{"subject": "employee-1", "display_name": "张三", "department_ids": []}],
+        }).status_code == 200
+        client.cookies.clear()
+        state = _start(client, source)
+        assert client.get(f"/api/auth/external/{source}/callback?state={state}&code=valid-code").status_code == 200
+        session = client.get("/api/auth/session").json()
+        assert session["password_confirmation_required"] is False
+        user = session["user"]
+        headers = {"X-CSRF-Token": session["csrf_token"]}
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
+            assert db.execute("SELECT password_hash FROM users WHERE id=?", (user["id"],)).fetchone() == (None,)
+        for weak in ("12345678", "Password1!", "Aa1!xyz", "abcdefgh", "Aa123456!", "Abcd1234!", "Qwer1234!", "1qaz2wsx!"):
+            rejected = client.post("/api/auth/password", headers=headers, json={
+                "current_password": "", "new_password": weak,
+            })
+            assert rejected.status_code == 422, rejected.text
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
+            assert db.execute("SELECT password_hash FROM users WHERE id=?", (user["id"],)).fetchone() == (None,)
+        password = "UniqueEnterprisePassphrase-2026!"
+        assert client.post("/api/auth/password", headers=headers, json={
+            "current_password": "", "new_password": password,
+        }).status_code == 204
+        client.cookies.clear()
+        local = client.post("/api/auth/login", json={"username": user["username"], "password": password})
+        assert local.status_code == 200, local.text
+        assert local.json()["user"]["id"] == user["id"]
+        assert client.get("/api/auth/session").json()["password_confirmation_required"] is True
+        client.cookies.clear()
+        state = _start(client, source)
+        external = client.get(f"/api/auth/external/{source}/callback?state={state}&code=valid-code")
+        assert external.status_code == 200, external.text
+        assert external.json()["user"]["id"] == user["id"]

@@ -16,3 +16,13 @@ def test_password_matching_account_is_rejected():
 
 def test_strong_password_is_accepted():
     validate_password('owner', 'UniquePassphrase-2026!')
+
+
+@pytest.mark.parametrize('password', ['Aa123456!', 'Abcd1234!', 'Qwer1234!', '1qaz2wsx!'])
+def test_simple_password_templates_are_rejected(password):
+    with pytest.raises(IdentityError):
+        validate_password('alice', password)
+
+
+def test_eight_character_complex_password_is_accepted():
+    validate_password('alice', 'R7!mQ2#v')

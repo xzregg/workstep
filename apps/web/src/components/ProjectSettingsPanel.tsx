@@ -1,3 +1,5 @@
+import ProjectAuditSettings from './ProjectAuditSettings'
+import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 import ProjectStorageSettings from './ProjectStorageSettings'
 import ResizablePanel from './ResizablePanel'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -26,7 +28,7 @@ interface ProjectSettingsPanelProps {
   onProjectRenamed?: (name: string) => void
 }
 
-type TabKey = 'general' | 'assistant' | 'quickButtons' | 'skills' | 'concurrency' | 'share'
+type TabKey = 'general' | 'assistant' | 'quickButtons' | 'skills' | 'concurrency' | 'share' | 'audit'
 
 function randomId(): string {
   return `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -98,11 +100,13 @@ function LocalProjectSettingsPanel({
     { key: 'quickButtons', label: t('projectSettings.tabs.quickButtons') },
     { key: 'skills', label: t('skillCenter.nav') },
     { key: 'concurrency', label: t('projectSettings.tabs.concurrency') },
+    ...(!bound && project?.type !== 'remote' && !gatewayWorkspacePath()
+      ? [{ key: 'audit' as const, label: t('projectAudit.title') }] : []),
     ...(project?.type !== 'remote'
       ? [{ key: 'share' as const, label: t('projectSettings.tabs.share') }] : []),
-  ] as { key: TabKey; label: string }[]).filter(tab => tab.key === 'general' || tab.key === 'share'
+  ] as { key: TabKey; label: string }[]).filter(tab => tab.key === 'general' || tab.key === 'share' || tab.key === 'audit'
     || can(tab.key === 'assistant' ? 'session.config' : tab.key === 'quickButtons' ? 'action.manage'
-      : tab.key === 'skills' ? 'skill.read' : 'project.settings')), [t, project?.type, can])
+      : tab.key === 'skills' ? 'skill.read' : 'project.settings')), [t, project?.type, can, bound])
   const visibleTab = tabs.some(tab => tab.key === activeTab) ? activeTab : 'general'
   const needsSettings = !bound || ['assistant', 'quickButtons', 'concurrency'].includes(visibleTab)
 
@@ -410,6 +414,8 @@ function LocalProjectSettingsPanel({
                 error={buttonsError}
                 onEdited={() => { setButtonsError(''); setButtonsSaved(false) }}
               />
+            ) : visibleTab === 'audit' ? (
+              <ProjectAuditSettings key={project.id} projectId={project.id} />
             ) : visibleTab === 'skills' ? (
               <SkillCenterSettings project={project} embedded onConversationStarted={onClose} />
             ) : visibleTab === 'concurrency' ? (

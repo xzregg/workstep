@@ -599,7 +599,7 @@ def test_forwarded_headers_cannot_bypass_login_ip_limit(tmp_path):
             assert response.status_code == (401 if attempt < 5 else 429)
 
 
-@pytest.mark.parametrize('password', ['12345678', 'Password1!', 'owner'])
+@pytest.mark.parametrize('password', ['12345678', 'Password1!', 'owner', 'Aa123456!', 'Abcd1234!', 'Qwer1234!', '1qaz2wsx!'])
 def test_weak_password_rejected_by_all_account_write_apis(tmp_path, password):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url='https://gateway.test') as client:

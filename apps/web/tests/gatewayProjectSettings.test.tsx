@@ -33,6 +33,7 @@ for (const canInvite of [false, true]) test(`remote settings expose sharing with
       <GatewayTaskShareLink taskId="task-1" projectId="host-1" />
     </I18nProvider>))
     assert.equal(calls.length, 0)
+    assert.equal([...element.querySelectorAll('button')].some(button => button.textContent === '操作审计'), false)
     const shareTab = [...element.querySelectorAll('button')].find(button => button.textContent === '分享')
     assert.ok(shareTab)
     await act(async () => shareTab.click())

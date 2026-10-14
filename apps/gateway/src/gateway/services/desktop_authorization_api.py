@@ -115,9 +115,10 @@ async def gateway_key(call: GatewayCall):
 
 async def authorize_desktop(call: GatewayCall, body: DesktopAuthorizeInput):
     token = call.tokens.get(COOKIE_NAME)
-    user, _ = await IdentityService(call.database).session_user(token)
+    user, auth_session = await IdentityService(call.database).session_user(token)
     _check_csrf(call, token)
-    code = await _service(call).authorize(user.id, body.gateway_id, body.state, body.nonce, body.code_challenge, body.app_instance_id)
+    code = await _service(call).authorize(user.id, body.gateway_id, body.state, body.nonce, body.code_challenge, body.app_instance_id,
+        login_method=auth_session.authentication_provider or auth_session.authentication_method)
     return {"callback_url": (body.redirect_uri or "workstep://auth/callback") + "?" + urlencode({
         "code": code, "state": body.state,
     })}

@@ -6,6 +6,7 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { chatSessionApi, projectApi, skillApi, type Project } from '../src/api/client'
+import { projectAuditApi } from '../src/api/projectAudit'
 import ProjectSettingsPanel from '../src/components/ProjectSettingsPanel'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useChatListStore } from '../src/stores/chatSessionStore'
@@ -28,6 +29,8 @@ const project: Project = {
 
 test('system prompt and reorderable quick buttons use separate settings tabs', async () => {
   const { window } = installDomEnvironment()
+  const originalAudit = projectAuditApi.list
+  projectAuditApi.list = async () => ({ items: [], next_before: null, retention_days: 30 })
   const originalSettings = projectApi.settings
   const originalSetConcurrency = projectApi.setConcurrency
   const originalSaveQuickButtons = chatSessionApi.saveQuickButtons
@@ -89,6 +92,11 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
       )
     })
     await act(async () => { await Promise.resolve() })
+
+    const auditNav = [...container.querySelectorAll('button')].find(button => button.textContent?.trim() === '操作审计')
+    assert.ok(auditNav)
+    await act(async () => auditNav.click())
+    assert.ok(container.textContent?.includes('暂无远程操作记录'))
 
     const assistantNav = [...container.querySelectorAll('button')]
       .find((button) => button.textContent?.trim() === '对话助手')
@@ -183,6 +191,7 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
     assert.deepEqual(skillListCalls, [project.id])
     assert.match(container.textContent || '', /选择当前项目允许使用的本地技能/)
   } finally {
+    projectAuditApi.list = originalAudit
     projectApi.settings = originalSettings
     projectApi.setConcurrency = originalSetConcurrency
     chatSessionApi.saveQuickButtons = originalSaveQuickButtons

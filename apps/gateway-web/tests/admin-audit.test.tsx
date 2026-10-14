@@ -60,3 +60,40 @@ test('audit workbench filters, retries, pages, and shows redacted event detail',
   await screen.findByText(/事件 audit-26/)
   assert.ok(urls.some(url => url.includes('offset=25')))
 })
+
+for (const [method, label] of [['password', '账号密码'], ['dingtalk', '钉钉'], ['wecom', '企业微信']]) {
+  test(`audit table shows ${label} desktop login with user, device and result`, async () => {
+    globalThis.fetch = async () => Response.json({ total: 1, items: [{
+      id: 'login-1', occurred_at: '2026-10-14T09:00:00Z', action: 'auth.desktop.login', result: 'success',
+      actor_id: 'user-1', actor_name: '张三', actor_username: 'alice', device_id: 'pc-1',
+      metadata: { login_method: method, device_name: '研发电脑', device_status: 'active' },
+    }] })
+    render(<MemoryRouter><AdminAuditPage /></MemoryRouter>)
+    await screen.findByRole('cell', { name: '设备授权登录' })
+    assert.ok(screen.getByRole('columnheader', { name: '登录方式' }))
+    assert.ok(screen.getByRole('columnheader', { name: '设备' }))
+    assert.ok(screen.getByRole('cell', { name: label }))
+    assert.ok(screen.getByRole('cell', { name: '张三' }))
+    assert.ok(screen.getByRole('cell', { name: '研发电脑' }))
+    assert.ok(screen.getByRole('cell', { name: '成功' }))
+  })
+}
+
+test('audit distinguishes pending device approval and unauthenticated password attempts', async () => {
+  const urls: string[] = []
+  globalThis.fetch = async input => {
+    urls.push(String(input))
+    return Response.json({ total: 2, items: [
+      { id: 'pending', occurred_at: '2026-10-14T09:00:00Z', action: 'auth.desktop.login', result: 'denied',
+        actor_name: '张三', device_id: 'pc-1', metadata: { login_method: 'dingtalk', device_name: '待审批电脑', reason_code: 'device_pending' } },
+      { id: 'failed', occurred_at: '2026-10-14T09:00:00Z', action: 'auth.login', result: 'failed',
+        actor_type: 'anonymous', actor_username: 'alice', metadata: { login_method: 'password' } },
+    ] })
+  }
+  render(<MemoryRouter><AdminAuditPage /></MemoryRouter>)
+  await screen.findByRole('cell', { name: '待设备审批' })
+  assert.ok(screen.getByRole('cell', { name: '未认证（尝试账号：alice）' }))
+  fireEvent.change(screen.getByLabelText('设备 ID'), { target: { value: 'pc-1' } })
+  fireEvent.click(screen.getByRole('button', { name: '查询审计' }))
+  await waitFor(() => assert.ok(urls.some(url => url.includes('device_id=pc-1'))))
+})

@@ -171,6 +171,8 @@ async def confirm_archive_experience(
         archived = await _run_db(pid, lambda: persist_experience_and_archive(
             project, task_service, pid, task_id, experience,
         ))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Memory file access denied") from exc
     except OverflowError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:

@@ -61,7 +61,12 @@ async def device_access_for_user(call: GatewayCall, device_id: str, user_id: str
     if origin is None:
         raise GatewayError('unavailable', 'Public Gateway origin is not configured')
     host = call.settings.device_authority(device_id)
-    ticket = call.gateway_signer.sign_device_access_ticket(gateway_id=call.settings.gateway_id, device_id=device_id, user_id=user_id, audience=host)
+    # Resolve the provider from the verified current session, including device-scoped sessions.
+    actor, auth_session = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME), allow_device_session=True)
+    if actor.id != user_id:
+        raise GatewayError('forbidden', 'Session user mismatch')
+    login_method = auth_session.authentication_provider or auth_session.authentication_method
+    ticket = call.gateway_signer.sign_device_access_ticket(gateway_id=call.settings.gateway_id, device_id=device_id, user_id=user_id, audience=host, login_method=login_method)
     return {"url": call.settings.device_url(device_id), "ticket": ticket, "expires_in": 60}
 
 

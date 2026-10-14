@@ -2361,7 +2361,8 @@ async def test_run_endpoint_reports_an_invalid_saved_workflow(monkeypatch):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("action", ["task.cancel", "task.pause", "step.cancel"])
-async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action):
+@pytest.mark.parametrize("remote", [False, True])
+async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action, remote):
     """Cancellation uses the same runtime that owns the active TaskRunner."""
     from engines.core.registry import ENGINE_REGISTRY
     from models import ProjectAuditEvent, WorkflowRun
@@ -2372,7 +2373,8 @@ async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action)
         "services.remote_access.get_effective_actor",
         lambda: ActorSnapshot(
             actor_id="operator-1", user_name="Operator", device_id="device-1",
-            device_name="Test device", source="local", username="operator",
+            device_name="Test device", source="managed" if remote else "local", username="operator",
+            access_source="gateway" if remote else None,
         ),
     )
 
@@ -2467,10 +2469,11 @@ async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action)
         ))
         assert len(events) == 1
         assert events[0].actor_username == "operator"
-        assert events[0].metadata_json == (
-            '{"status": "cancelled", "step_key": "req"}'
-            if action == "step.cancel" else '{"status": "paused"}'
-        )
+        metadata = json.loads(events[0].metadata_json)
+        expected = {"status": "cancelled", "step_key": "req"} if action == "step.cancel" else {"status": "paused"}
+        if remote:
+            expected.update(access_source="gateway", object_name="Cancel runtime")
+        assert metadata == expected
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

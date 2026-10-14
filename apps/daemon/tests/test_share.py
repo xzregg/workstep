@@ -1116,3 +1116,25 @@ async def test_local_share_history_paginates_all_task_channels(manager, tmp_path
         older = (await client.get(f"{base}/history?limit=2&offset=2", headers=headers)).json()
         assert [item["id"] for item in older["messages"]] == ["message-1"]
         assert older["next_offset"] is None
+
+@pytest.mark.asyncio
+async def test_interactive_share_upload_records_anonymous_visitor_without_session_secret(manager, tmp_path, monkeypatch):
+    import main
+    import services.project as project_service
+    from services.project_audit import list_project_audit
+    project, task = _create_task_in_project(manager, tmp_path / "share-upload-audit")
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    monkeypatch.setattr(main, "project_manager", manager)
+    share = await manager.run_db(project.id, lambda _project: share_service.create_share(task["id"], mode="interactive"))
+    base = f"/api/task-share/public/{share['token']}"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        unlocked = await client.post(f"{base}/unlock", json={"password": ""})
+        session = unlocked.json()["session_token"]
+        response = await client.post(f"{base}/upload/file", headers={"X-Share-Session": session}, json={"filename": "notes.txt", "data_url": "data:text/plain;base64,aGVsbG8="})
+    assert response.status_code == 200, response.text
+    rows = (await manager.run_db(project.id, lambda _project: list_project_audit(project.id, remote_only=True)))["items"]
+    assert len(rows) == 1
+    assert rows[0]["actor_name"] == "分享访客"
+    assert rows[0]["metadata"]["access_source"] == "task_share"
+    assert rows[0]["metadata"]["file_name"] == "notes.txt"
+    assert session not in str(rows) and share["token"] not in str(rows)

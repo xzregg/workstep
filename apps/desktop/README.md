@@ -29,6 +29,25 @@ WORKSTEP_DESKTOP_PORT=43123 WorkStep
 
 开发模式不启动二进制 sidecar，默认连接 `http://127.0.0.1:8766`；也可设置 `WORKSTEP_DEV_SERVER_URL`，或使用相同的 `--backend-port` 参数。
 
+## 日志与崩溃排查
+
+桌面应用的「帮助」菜单和托盘菜单提供「打开日志目录」「导出诊断包」；本地后台启动失败的弹窗也可打开日志目录。日志位于 Electron `userData` 目录下的 `logs/`，通常为 macOS 的 `~/Library/Application Support/WorkStep/logs/`、Windows 的 `%APPDATA%/WorkStep/logs/` 或 Linux 的 `~/.config/WorkStep/logs/`，以菜单打开的实际路径为准。
+
+- `desktop.log`：启动、主进程控制台、页面加载失败、页面／GPU 等进程退出及沙箱阶段信息。
+- `daemon.log`：普通桌面包内置后台的 stdout/stderr、退出码、退出信号和是否属于正常停止。开发模式连接外部服务，不收集外部服务日志。
+- `fatal.log`：主进程未捕获异常及导致退出的未处理 Promise 拒绝；记录后保留原有致命退出行为。
+- `crashes/`：Electron 原生崩溃转储，仅保存在本机，不上传。它不覆盖 Python 后台的原生崩溃，也不保证记录强制结束或启动前被操作系统拦截的情况。
+
+普通文本日志单文件最多 5 MiB，各保留三份轮转备份；致命异常日志保留一份备份，桌面文本日志合计最多 50 MiB。超长单条记录按字节截断，重启后继续轮转，不为每次启动新增日志文件。写入异步排队，队列满时省略部分记录；仅致命退出前的最后记录同步落盘。磁盘不可写时不阻止应用运行，但无法保证日志保存。
+
+原生 `.dmp` 转储保留最近 14 天、最多 10 份，总大小最多 100 MiB；启动时、进程退出事件后及每小时异步清理，优先保留最新报告。修改不足一分钟的转储暂时保留，避免删除仍在写入的报告，因此清理间隔和写入保护期间可能暂时超限。清理只处理转储文件，不跟随符号链接，不删除 Crashpad 的运行元数据。
+
+沙箱 `desktop/sandbox.log` 同样按 5 MiB、三份备份轮转；`desktop/daemon.log` 为覆盖写入的快照，最多 5 MiB。新启动的 Podman 容器显式使用 `k8s-file` 日志驱动和 `max-size=10mb` 限制，避免仅限制导出的快照、却让容器底层日志无限累积，参数见 [Podman 文档](https://docs.podman.io/en/stable/markdown/podman-run.1.html)。用户自行保存的诊断包不会被自动删除。
+
+导出生成 `.json.gz` 压缩诊断包，包含版本、操作系统／架构信息、桌面文本日志，以及可读取的沙箱诊断快照。运行时桌面令牌、已知本机会话凭据及常见认证字段在写入和导出时脱敏；不主动读取项目数据库、聊天记录、配置文件或原生转储。文本错误仍可能包含业务路径或第三方输出，分享前可解压检查。需要原生转储时，从 `crashes/` 单独取出。
+
+实现位于 `src/diagnostics.cjs`，桌面生命周期接入位于 `src/main.cjs`，普通后台输出由 `src/sidecar.cjs` 接入；回归覆盖日志轮转／脱敏、导出白名单、磁盘错误、慢磁盘响应、真实后台退出、真实致命异常以及菜单操作。
+
 ## 本地开发
 
 桌面应用和安装包图标以 `apps/web/public/favicon.svg` 为源，与网页品牌图标一致。更新网页图标后，在 `apps/desktop` 执行 `yarn icons`，重新生成 `build/app-icon.svg`、macOS ICNS、Windows ICO 和 Linux 各尺寸 PNG，再重新打包。

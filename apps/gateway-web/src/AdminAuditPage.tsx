@@ -14,11 +14,14 @@ type AuditEvent = {
   project_id: string | null; platform_project_id: string | null; project_name: string | null
   task_id: string | null; metadata: Record<string, string | number | boolean>
 }
-type Filters = { from_time: string; to_time: string; user_id: string; project_id: string;
+type Filters = { device_id: string; from_time: string; to_time: string; user_id: string; project_id: string;
   action: string; result: string; q: string }
-const emptyFilters: Filters = { from_time: '', to_time: '', user_id: '', project_id: '',
+const emptyFilters: Filters = { device_id: '', from_time: '', to_time: '', user_id: '', project_id: '',
   action: '', result: '', q: '' }
 const pageSize = 25
+const loginMethods: Record<string, string> = { password: '账号密码', dingtalk: '钉钉', wecom: '企业微信', scan: '企业扫码（历史会话）', unknown: '未知' }
+const loginActions: Record<string, string> = { 'auth.login': '平台登录', 'auth.device.login': '进入设备工作台', 'auth.desktop.login': '设备授权登录', 'auth.identity.bind': '绑定企业身份' }
+const auditResults: Record<string, string> = { success: '成功', succeeded: '成功', denied: '拒绝', failed: '失败' }
 const value = (item: string | null | undefined) => item || '未知'
 
 export function AdminAuditPage() {
@@ -71,11 +74,14 @@ export function AdminAuditPage() {
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>审计记录</h2></div>
+    <p>区分平台登录、桌面设备授权和进入设备工作台；待设备审批不代表已成功登录设备。失败时的尝试账号不代表已验证身份。历史事件不会补录。</p>
     <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
       <GatewayDateRange from={draft.from_time} to={draft.to_time}
         onChange={range => setDraft(current => ({ ...current, ...range }))} />
       <label>用户 ID<input value={draft.user_id} maxLength={64}
         onChange={event => setDraft(current => ({ ...current, user_id: event.target.value }))} /></label>
+      <label>设备 ID<input value={draft.device_id} maxLength={64}
+        onChange={event => setDraft(current => ({ ...current, device_id: event.target.value }))} /></label>
       <label>平台项目 ID<input value={draft.project_id} maxLength={64}
         onChange={event => setDraft(current => ({ ...current, project_id: event.target.value }))} /></label>
       <label>操作类型<input value={draft.action} maxLength={128}
@@ -97,11 +103,13 @@ export function AdminAuditPage() {
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(current => current + 1)}>重试</button></p>}
     {!loading && !error && events.length === 0 && <p>当前条件下没有审计记录。</p>}
-    <AdminRecordTable busy={loading} columns={['发生时间','操作','操作人','项目','结果','目标','操作']}>
+    <AdminRecordTable busy={loading} columns={['发生时间','操作','操作人','登录方式','设备','项目','结果','目标','操作']}>
       {events.map(item => <tr key={item.id}>
-        <td>{new Date(item.occurred_at).toLocaleString()}</td><td>{item.action}</td>
-        <td>{value(item.actor_name || item.actor_username || item.actor_id)}</td><td>{value(item.project_name || item.platform_project_id)}</td>
-        <td>{item.result}</td><td title={item.task_id || item.platform_project_id || ''}>{value(item.task_id || item.metadata.subject_id?.toString() || item.platform_project_id)}</td>
+        <td>{new Date(item.occurred_at).toLocaleString()}</td><td title={item.action}>{loginActions[item.action] || item.action}</td>
+        <td title={item.actor_id || ''}>{item.actor_type === 'anonymous' ? `未认证${item.actor_username ? `（尝试账号：${item.actor_username}）` : ''}` : value(item.actor_name || item.actor_username || item.actor_id)}</td>
+        <td>{item.metadata.login_method ? loginMethods[String(item.metadata.login_method)] || '未知' : '—'}</td>
+        <td title={item.device_id || ''}>{value(item.metadata.device_name?.toString() || item.device_id)}</td><td>{value(item.project_name || item.platform_project_id)}</td>
+        <td>{item.metadata.reason_code === 'device_pending' ? '待设备审批' : auditResults[item.result] || item.result}</td><td title={item.task_id || item.platform_project_id || ''}>{value(item.task_id || item.metadata.subject_id?.toString() || item.platform_project_id)}</td>
         <td><AdminRecordDetails label="审计详情" title={`审计详情 ${item.id}`}>
           <p>事件 {item.id} · 操作人 {value(item.actor_id)} · 类型 {value(item.actor_type)} · 模式 {value(item.mode)}</p>
           <p>操作设备 {value(item.actor_device_name || item.actor_device_id)} · 宿主 PC {value(item.device_id)}</p>
@@ -117,7 +125,7 @@ export function AdminAuditPage() {
       <LedgerExportButton rows={events} filename={`audit-page-${page}.csv`} disabled={loading || !!error}
         columns={[{ name: '事件 ID', key: 'id' }, { name: '时间', key: 'occurred_at' },
           { name: '操作', key: 'action' }, { name: '结果', key: 'result' },
-          { name: '用户 ID', key: 'actor_id' }, { name: '设备 ID', key: 'device_id' },
+          { name: '用户 ID', key: 'actor_id' }, { name: '用户名', key: 'actor_username' }, { name: '姓名', key: 'actor_name' }, { name: '设备 ID', key: 'device_id' },
           { name: '项目 ID', key: 'platform_project_id' }, { name: '任务 ID', key: 'task_id' },
           { name: '详情', key: 'metadata' }]} />
       <button type="button" disabled={page <= 1 || loading} onClick={() => setPage(current => current - 1)}>上一页</button>

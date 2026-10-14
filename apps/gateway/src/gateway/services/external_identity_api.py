@@ -320,6 +320,10 @@ async def external_callback(call: GatewayCall, response: ReplyEffects, source_id
     if error or not authorization_code:
         return_to = await _service(call).failure_return_to(source_id, state)
         if return_to:
+            from gateway.services.login_audit import record_login_failure
+            async with call.database.session() as session:
+                source = await session.get(IdentitySource, source_id)
+            await record_login_failure(call.database, source.provider if source else "unknown", "cancelled" if error in (None, "access_denied") else "unavailable", source_id=source_id)
             failure = "cancelled" if error in (None, "access_denied") else "unavailable"
             separator = "&" if "?" in return_to else "?"
             return RedirectTarget(f'{return_to}{separator}scan_error={failure}')
@@ -336,6 +340,8 @@ async def external_callback(call: GatewayCall, response: ReplyEffects, source_id
     try:
         user, new_token, return_to = await _service(call).complete(source_id, state, authorization_code, _connector(call, source.provider), browser_session_id)
     except GatewayError as exc:
+        from gateway.services.login_audit import record_login_failure
+        await record_login_failure(call.database, source.provider, exc.reason, source_id=source_id)
         return_to = await _service(call).failure_return_to(source_id, state)
         if return_to:
             failure = 'expired' if exc.reason in ('bad_input', 'unauthenticated', 'conflict') else 'denied' if exc.reason == 'forbidden' else 'unavailable'

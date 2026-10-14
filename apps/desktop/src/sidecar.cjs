@@ -72,7 +72,7 @@ function backendLaunch(resourcesPath, platform = process.platform) {
   }
 }
 
-function startSidecar({ executable, args = [], port, env = process.env, timeoutMs = 30_000 }) {
+function startSidecar({ executable, args = [], port, env = process.env, timeoutMs = 30_000, logger }) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, [...args, ...buildBackendArgs(port)], {
       env,
@@ -81,6 +81,7 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
     })
     let settled = false
     let stderr = ''
+    logger?.write('daemon', 'info', '后台进程已启动')
     const timeout = setTimeout(() => {
       finish(new Error(`Backend did not become ready within ${timeoutMs}ms`))
       child.kill()
@@ -95,14 +96,18 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
     }
 
     readline.createInterface({ input: child.stdout }).on('line', (line) => {
+      logger?.write('daemon', 'info', line)
       const readyPort = parseReadyPort(line)
       if (readyPort !== null) finish(null, { child, port: readyPort })
     })
     readline.createInterface({ input: child.stderr }).on('line', (line) => {
+      logger?.write('daemon', 'error', line)
       stderr = `${stderr}${line}\n`.slice(-4000)
     })
     child.once('error', finish)
     child.once('exit', (code, signal) => {
+      logger?.write('daemon', child.workstepStopping ? 'info' : 'error',
+        `后台进程退出 ${JSON.stringify({ code, signal, expected: Boolean(child.workstepStopping) })}`)
       finish(new Error(
         `Backend exited before ready (code=${code}, signal=${signal})${stderr ? `\n${stderr}` : ''}`,
       ))
@@ -112,6 +117,7 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
 
 async function stopSidecar(child, graceMs = 10_000) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return
+  child.workstepStopping = true
   await new Promise((resolve) => {
     const timeout = setTimeout(resolve, graceMs)
     child.once('exit', () => {

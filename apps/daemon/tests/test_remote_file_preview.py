@@ -20,6 +20,9 @@ from tests.test_remote_project import MemoryConfig
 @pytest.fixture
 async def remote_files(tmp_path, monkeypatch):
     root = tmp_path / "project"
+    from services.project import ProjectManager
+    manager = ProjectManager()
+    registered = await asyncio.to_thread(manager.init_project, root)
     site = root / ".workstep/artifacts/task/ui/2"
     site.mkdir(parents=True)
     (site / "UI 设计稿.html").write_text(
@@ -32,9 +35,15 @@ async def remote_files(tmp_path, monkeypatch):
     outside = tmp_path / "secret.html"
     outside.write_text("private")
     (site / "escape.html").symlink_to(outside)
-    project = SimpleNamespace(id="owner-project", path=root, workstep_dir=root / '.workstep')
+    project = SimpleNamespace(id="owner-project", path=root, workstep_dir=root / '.workstep', db=registered.db)
+
+    async def run_db(project_id, operation):
+        assert project_id == project.id
+        return await manager.run_db(registered.id, lambda _project: operation(project))
+
     monkeypatch.setattr(main, "project_manager", SimpleNamespace(
         get_project_by_id=lambda project_id: project if project_id == project.id else None,
+        run_db=run_db,
     ))
     host = FastAPI()
     host.include_router(fs_api.router)
@@ -69,6 +78,7 @@ async def remote_files(tmp_path, monkeypatch):
             yield client, root, outside
     finally:
         await dispatcher.aclose()
+        await asyncio.to_thread(manager.close_all)
 
 
 @pytest.mark.parametrize("query", ["?project_id=remote%3Aabc", ""])
@@ -130,3 +140,36 @@ async def test_remote_html_slow_file_resolution_keeps_health_responsive(remote_f
         release.set()
         response = await pending
     assert response.status_code == 200
+
+
+@pytest.mark.parametrize("detached_storage", [False, True], ids=["project-data", "detached-data"])
+async def test_remote_upload_and_memory_round_trip_preserves_storage_mode(
+    remote_files, detached_storage,
+):
+    client, root, _ = remote_files
+    project = main.project_manager.get_project_by_id("owner-project")
+    if detached_storage:
+        detached = root.parent / "project-data"
+        project.workstep_dir.rename(detached)
+        project.workstep_dir = detached
+        await asyncio.to_thread(project.db.init, str(detached / "workstep.db"))
+    query = {"project_id": "remote:abc"}
+    for kind, media, filename in (
+        ("file", "text/plain", "notes.txt"),
+        ("image", "image/png", "screen.png"),
+    ):
+        uploaded = await client.post(f"/api/fs/upload/{kind}", params=query, json={
+            "filename": filename, "data_url": f"data:{media};base64,aGVsbG8=",
+        })
+        assert uploaded.status_code == 200, uploaded.text
+        data = uploaded.json()
+        assert data["url"] == f".workstep/uploads/{data['filename']}"
+        served = await client.get(f"/api/fs/serve/{data['filename']}", params=query)
+        assert served.status_code == 200, served.text
+        assert served.content == b"hello"
+        assert (project.workstep_dir / "uploads" / data["filename"]).read_bytes() == b"hello"
+    assert (await client.get("/api/fs/memory", params=query)).json()["content"] == ""
+    saved = await client.put("/api/fs/memory", params=query, json={"content": "远程项目记忆"})
+    assert saved.status_code == 200, saved.text
+    assert (await client.get("/api/fs/memory", params=query)).json()["content"] == "远程项目记忆"
+    assert (project.workstep_dir / "MEMORY.md").read_text() == "远程项目记忆"

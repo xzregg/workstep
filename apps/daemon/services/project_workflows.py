@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from functools import wraps
 from typing import TYPE_CHECKING
 
 import peewee as pw
@@ -29,6 +30,34 @@ from models.fields import utc_now
 
 if TYPE_CHECKING:
     from services.project import Project
+
+
+def _audit_remote_change(action):
+    def decorate(operation):
+        @wraps(operation)
+        def perform(self, project, *args, **kwargs):
+            from services.project_audit import remote_audit_source, record_remote_project_audit
+            if remote_audit_source() is None:
+                return operation(self, project, *args, **kwargs)
+            try:
+                with project.db.atomic():
+                    previous = Workflow.get_or_none(Workflow.id == args[0]) if args and action != "workflow.create" else None
+                    result = operation(self, project, *args, **kwargs)
+                    if result is not None:
+                        denied = action == "workflow.delete" and not result.get("deleted")
+                        workflow_id = result.get("id") or (args[0] if args else "")
+                        name = result.get("name") or (previous.name if previous else "")
+                        metadata = {"workflow_id": workflow_id, "object_name": name[:256]}
+                        if denied:
+                            metadata["reason_code"] = result.get("reason", "unavailable")
+                        record_remote_project_audit(project_id=project.id, action=action,
+                            result="denied" if denied else "succeeded", metadata=metadata)
+                    return result
+            except Exception:
+                self._sync_project_workflows(project)
+                raise
+        return perform
+    return decorate
 
 
 class ProjectWorkflowService:
@@ -61,6 +90,7 @@ class ProjectWorkflowService:
         if default:
             proj.steps = default["steps"]
 
+    @_audit_remote_change("workflow.create")
     def create_workflow(self, proj: Project, name: str, steps: dict | None = None,
                         is_default: bool = False) -> dict:
         """Create a new workflow and return its dict."""
@@ -100,6 +130,7 @@ class ProjectWorkflowService:
                 row.save()
         self._sync_project_workflows(proj)
 
+    @_audit_remote_change("workflow.update")
     def update_workflow(self, proj: Project, workflow_id: str,
                         name: str | None = None, steps: dict | None = None) -> dict | None:
         """Update a workflow's name and/or steps. Returns the updated dict or None."""
@@ -141,6 +172,7 @@ class ProjectWorkflowService:
                 schedule.updated_at = utc_now()
                 schedule.save()
 
+    @_audit_remote_change("workflow.delete")
     def delete_workflow(self, proj: Project, workflow_id: str) -> dict | None:
         """Delete a workflow — two-step (recycle bin).
 
@@ -212,6 +244,7 @@ class ProjectWorkflowService:
             updated_at=utc_now(),
         ).where(Schedule.workflow_id == workflow_id).execute()
 
+    @_audit_remote_change("workflow.restore")
     def restore_workflow(self, proj: Project, workflow_id: str) -> dict | None:
         """Restore a soft-deleted (recycle bin) workflow. Returns the dict or None."""
         row = Workflow.get_or_none(Workflow.id == workflow_id)

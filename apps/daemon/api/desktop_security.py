@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 from services.gateway_client.browser_login import local_session_cookie_name
 
-from services.remote_access import ActorSnapshot, actor_context, authenticated_remote_dispatch
+from services.remote_access import ActorSnapshot, actor_context, authenticated_remote_dispatch, is_project_upload_path
 from services.project_request_audit import record_remote_request_failure
 from services.project_scope import project_http_allowed
 
@@ -225,7 +225,8 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 response.delete_cookie(local_session_cookie_name(request.app), path="/")
                 response.headers["Cache-Control"] = "no-store"
                 return response
-        protected = request.url.path.startswith(("/api/", "/docs", "/redoc", "/openapi.json"))
+        protected = (request.url.path.startswith(("/api/", "/docs", "/redoc", "/openapi.json"))
+                     or is_project_upload_path(request.url.path))
         gateway_client = getattr(request.app.state, "gateway_client", None)
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
         actor = request.scope.get("gateway_remote_actor")
@@ -332,6 +333,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 username=actor.username,
                 provider_ids=actor.provider_ids,
                 provider_grant_expires_at=actor.provider_grant_expires_at,
+                access_source=("gateway_share" if share_scope else "gateway") if remote_bridge else None,
             )) if actor is not None else nullcontext()
             with context:
                 try:

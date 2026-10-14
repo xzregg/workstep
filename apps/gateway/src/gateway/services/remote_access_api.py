@@ -186,6 +186,14 @@ async def redeem_device_ticket(call: GatewayCall):
         await _active_access(call, user_id, device_id)
     auth_session, token = IdentityService._create_session(user_id)
     auth_session.device_id = device_id
+    login_method = claims.get("login_method", "unknown")
+    if login_method not in {"password", "dingtalk", "wecom", "scan", "unknown"}:
+        login_method = "unknown"
+    if login_method == "unknown":
+        auth_session.authentication_provider = "unknown"
+    if login_method in {"dingtalk", "wecom", "scan"}:
+        auth_session.authentication_method = "scan"
+        auth_session.authentication_provider = login_method if login_method != "scan" else None
     if claims["kind"] == "project.access":
         auth_session.project_id = claims["project_id"]
         auth_session.project_access_level = (
@@ -203,6 +211,11 @@ async def redeem_device_ticket(call: GatewayCall):
                     expires_at=datetime.fromtimestamp(claims["exp"], timezone.utc),
                 ))
                 session.add(auth_session)
+                from gateway.models import User
+                from gateway.services.login_audit import add_login_audit
+                user = await session.get(User, user_id)
+                device = await session.get(Device, device_id)
+                add_login_audit(session, user, login_method, device=device, action="auth.device.login")
     except IntegrityError as exc:
         raise GatewayError('conflict', 'Ticket already used') from exc
     response = RedirectTarget((call.workspace_path or '/') + next_path)

@@ -3,7 +3,7 @@ import re
 from gateway.services.identity_errors import IdentityError
 
 PASSWORD_REQUIREMENTS = "密码须为 8–128 位，包含大小写字母、数字、符号中的至少三类，且不能使用常见弱密码或与账号相同。"
-_WEAK = {"password", "password1", "password123", "passw0rd", "qwerty", "qwerty123", "123456", "12345678", "123456789", "1234567890", "admin", "admin123", "abc123", "abc123456", "abcdef", "abcdefgh", "letmein", "welcome", "welcome1", "iloveyou", "changeme", "workstep", "workstep123"}
+_WEAK = {"password", "password1", "password123", "passw0rd", "qwerty", "qwerty123", "123456", "12345678", "123456789", "1234567890", "admin", "admin123", "abc123", "abc123456", "abcdef", "abcdefgh", "letmein", "welcome", "welcome1", "iloveyou", "changeme", "workstep", "workstep123", "aa123456", "abcd1234", "qwer1234", "1qaz2wsx"}
 
 
 def validate_password(username: str, password: str) -> None:

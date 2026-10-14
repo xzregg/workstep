@@ -1,8 +1,7 @@
 """Archive experience database work units; callers must use the project executor."""
 
 import json
-import os
-import uuid
+from services.project_memory import read_memory_bytes, write_memory_bytes, delete_memory
 
 
 def normalize_archive_experience(experience: str) -> tuple[str, bool]:
@@ -167,8 +166,7 @@ def persist_experience_and_archive(project, task_service, pid, task_id, experien
     if task.status == "running":
         raise RuntimeError("Running tasks cannot be archived")
 
-    memory_path = project.workstep_dir / "MEMORY.md"
-    previous = memory_path.read_bytes() if memory_path.is_file() else None
+    previous = read_memory_bytes(project.workstep_dir)
     existing = previous.decode("utf-8") if previous is not None else ""
     separator = "\n\n" if existing.rstrip() else ""
     content = (
@@ -178,22 +176,18 @@ def persist_experience_and_archive(project, task_service, pid, task_id, experien
     if len(content.encode("utf-8")) > 500_000:
         raise OverflowError("Memory content exceeds 500KB")
 
-    memory_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = memory_path.with_name(
-        f".{memory_path.name}.{uuid.uuid4().hex}.tmp"
-    )
+    written = False
     try:
-        temporary.write_text(content, encoding="utf-8")
-        os.replace(temporary, memory_path)
+        write_memory_bytes(project.workstep_dir, content.encode("utf-8"))
+        written = True
         archived = task_service.archive_task(task_id, pid)
         if not archived:
             raise ValueError("Task not found")
     except Exception:
-        if temporary.exists():
-            temporary.unlink()
-        if previous is None:
-            memory_path.unlink(missing_ok=True)
-        else:
-            memory_path.write_bytes(previous)
+        if written:
+            if previous is None:
+                delete_memory(project.workstep_dir)
+            else:
+                write_memory_bytes(project.workstep_dir, previous)
         raise
     return archived

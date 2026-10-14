@@ -4,6 +4,7 @@ const path = require('node:path')
 const os = require('node:os')
 const { createHash, randomUUID } = require('node:crypto')
 const { setTimeout: delay } = require('node:timers/promises')
+const { appendRotatingLog, LOG_MAX_BYTES } = require('./diagnostics.cjs')
 const { run, installRuntime, ASSETS } = require('./sandbox-runtime.cjs')
 const { listDockerImages, importDockerImage } = require('./sandbox-docker.cjs')
 const { migrateConfig, readConfig, projectCatalog, mapProjects, localProviderWarnings } = require('./sandbox-config.cjs')
@@ -63,7 +64,7 @@ function guestMounts(config, platform) {
   return [{ source: transform(path.join(config.root, 'home')), target: '/root' }, { source: transform(config.project), target: '/data/projects' }, ...config.mounts.map(mount => ({ source: transform(mount.source), target: mount.target }))]
 }
 function containerArgs(config, platform, port, token, managedEnv = {}) {
-  const args = ['run', '--detach', '--name', `workstep-${config.id}`, '--label', `com.workstep.sandbox=${config.id}`, '--publish', `0.0.0.0:${port || ''}:8765`]
+  const args = ['run', '--detach', '--name', `workstep-${config.id}`, '--label', `com.workstep.sandbox=${config.id}`, '--publish', `0.0.0.0:${port || ''}:8765`, '--log-driver', 'k8s-file', '--log-opt', 'max-size=10mb']
   if (platform === 'linux') args.push('--userns=keep-id:uid=0,gid=0', '--cgroups=disabled')
   for (const mount of guestMounts(config, platform)) args.push('--mount', `type=bind,source=${mount.source},target=${mount.target}`)
   if (config.compatibility) args.push('--cap-add=SYS_ADMIN', '--security-opt=seccomp=unconfined')
@@ -113,8 +114,9 @@ class SandboxManager {
   update(phase, progress = null) {
     this.phase = phase; this.progress = progress; this.report({ phase, progress })
     if (this.logFile && phase !== 'download') {
-      this.logWrite = (this.logWrite || Promise.resolve()).then(() => fs.appendFile(this.logFile,
-        JSON.stringify({ time: new Date().toISOString(), phase, error: this.error }) + '\n', { mode: 0o600 })).catch(() => {})
+      const file = this.logFile
+      this.logWrite = (this.logWrite || Promise.resolve()).then(() => appendRotatingLog(file,
+        JSON.stringify({ time: new Date().toISOString(), phase, error: this.error }) + '\n')).catch(() => {})
     }
   }
   async status() {
@@ -429,7 +431,7 @@ class SandboxManager {
     if (!this.session || !this.activeConfig) return
     let logs = await this.session.command(['logs', '--tail=200', `workstep-${this.activeConfig.id}`], { captureCombined: true, timeout: 10000 })
     for (const secret of this.redactions || []) logs = logs.replaceAll(secret, '[redacted]')
-    await fs.writeFile(path.join(this.activeConfig.root, 'desktop/daemon.log'), logs, { mode: 0o600 })
+    await fs.writeFile(path.join(this.activeConfig.root, 'desktop/daemon.log'), Buffer.from(logs).subarray(-LOG_MAX_BYTES), { mode: 0o600 })
   }
   async readLogs() {
     await this.captureLogs().catch(() => {})

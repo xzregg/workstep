@@ -2577,6 +2577,36 @@ async def test_confirmed_archive_experience_is_appended_to_memory(api_context):
 
 
 @pytest.mark.anyio
+async def test_archive_experience_rejects_external_memory_link(api_context):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "archive-external-memory"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "保留任务", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    outside = tmp_path / "private-memory.md"
+    outside.write_bytes(b"OUTSIDE_PRIVATE_CONTENT")
+    memory = project_dir / ".workstep" / "MEMORY.md"
+    memory.unlink(missing_ok=True)
+    memory.symlink_to(outside)
+
+    confirmed = await client.post(
+        f"/api/task/{task_id}/archive-experience/confirm?project_id={project_id}",
+        json={"experience": "经验内容"},
+    )
+    assert confirmed.status_code == 403
+    assert outside.read_bytes() == b"OUTSIDE_PRIVATE_CONTENT"
+    assert memory.is_symlink()
+    listed = await client.get(f"/api/task/list?project_id={project_id}")
+    assert task_id in {task["id"] for task in listed.json()["tasks"]}
+
+
+@pytest.mark.anyio
 async def test_archive_experience_slow_memory_write_does_not_block_health(
     api_context, monkeypatch
 ):
@@ -2594,16 +2624,16 @@ async def test_archive_experience_slow_memory_write_does_not_block_health(
         json={"title": "Slow memory", "cwd": str(project_dir)},
     )
     task_id = created.json()["id"]
-    original_write_text = Path.write_text
+    import services.task_archive as archive_service
+    original_write = archive_service.write_memory_bytes
     write_started = threading.Event()
 
-    def slow_memory_write(path, *args, **kwargs):
-        if path.name.startswith(".MEMORY.md."):
-            write_started.set()
-            time.sleep(0.35)
-        return original_write_text(path, *args, **kwargs)
+    def slow_memory_write(root, content):
+        write_started.set()
+        time.sleep(0.35)
+        return original_write(root, content)
 
-    monkeypatch.setattr(Path, "write_text", slow_memory_write)
+    monkeypatch.setattr(archive_service, "write_memory_bytes", slow_memory_write)
     confirm_task = asyncio.create_task(client.post(
         f"/api/task/{task_id}/archive-experience/confirm?project_id={project_id}",
         json={"experience": "先复现故障再修复"},

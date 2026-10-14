@@ -135,3 +135,19 @@ async def test_project_file_routes_hide_host_paths_and_reject_direct_scope_escap
         with pytest.raises(HTTPException) as denied:
             await fs_api.serve_upload("secret.png", pid="")
         assert denied.value.status_code == 403
+
+
+    status, saved = await request(
+        "/api/fs/memory", f"project_id={visible}", method="PUT", level="edit",
+        body={"content": "平台项目记忆"},
+    )
+    assert status == 200, saved
+    status, memory = await request("/api/fs/memory", f"project_id={visible}")
+    assert status == 200
+    assert memory["content"] == "平台项目记忆"
+    status, uploaded = await request(
+        "/api/fs/upload/file", f"project_id={visible}", method="POST", level="edit",
+        body={"filename": "note.txt", "data_url": "data:text/plain;base64,aGVsbG8="},
+    )
+    assert status == 200, uploaded
+    assert (visible_dir / ".workstep" / "uploads" / uploaded["filename"]).read_bytes() == b"hello"

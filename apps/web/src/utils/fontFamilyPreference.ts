@@ -1,4 +1,5 @@
 import { APPEARANCE_PREFERENCE_EVENT } from './fontSizePreference'
+import { appearanceCache, appearanceStorageKey } from './appearanceStorage'
 
 export const FONT_FAMILY_STORAGE_KEY = 'workstep.fontFamily'
 export const FONT_FAMILY_PREFERENCES = ['system', 'pingfang', 'serif'] as const
@@ -6,7 +7,7 @@ export type FontFamilyPreference = typeof FONT_FAMILY_PREFERENCES[number]
 
 interface StorageLike { getItem: (key: string) => string | null; setItem: (key: string, value: string) => void }
 interface FontTarget { style: Pick<CSSStyleDeclaration, 'setProperty' | 'removeProperty'> }
-const defaultStorage = () => typeof window === 'undefined' ? undefined : window.localStorage
+const defaultStorage = () => typeof window === 'undefined' ? undefined : appearanceCache
 const defaultTarget = () => typeof document === 'undefined' ? undefined : document.documentElement
 export const fontFamilyStacks = {
   pingfang: '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
@@ -15,7 +16,7 @@ export const fontFamilyStacks = {
 
 export function loadFontFamilyPreference(storage: StorageLike | undefined = defaultStorage()): FontFamilyPreference {
   try {
-    const value = storage?.getItem(FONT_FAMILY_STORAGE_KEY)
+    const value = storage?.getItem(appearanceStorageKey(FONT_FAMILY_STORAGE_KEY))
     return FONT_FAMILY_PREFERENCES.includes(value as FontFamilyPreference) ? value as FontFamilyPreference : 'system'
   } catch { return 'system' }
 }
@@ -30,7 +31,7 @@ export function applyFontFamilyPreference(value: FontFamilyPreference, target: F
 }
 
 export function saveFontFamilyPreference(value: FontFamilyPreference, storage: StorageLike | undefined = defaultStorage(), target: FontTarget | undefined = defaultTarget()) {
-  try { storage?.setItem(FONT_FAMILY_STORAGE_KEY, value) } catch { /* Apply even when storage is unavailable. */ }
+  try { storage?.setItem(appearanceStorageKey(FONT_FAMILY_STORAGE_KEY), value) } catch { /* Apply even when storage is unavailable. */ }
   applyFontFamilyPreference(value, target)
 }
 

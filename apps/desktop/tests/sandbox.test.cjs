@@ -4,6 +4,24 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { SandboxManager, validateSettings, containerArgs, windowsPath } = require('../src/sandbox.cjs')
+const { LOG_MAX_BYTES } = require('../src/diagnostics.cjs')
+
+test('sandbox lifecycle logs rotate and diagnostic snapshots remain bounded', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-log-limit-'))
+  t.after(() => fs.rm(root, { recursive: true, force: true }))
+  await fs.mkdir(path.join(root, 'desktop'))
+  const manager = new SandboxManager({ stateDir: root })
+  manager.logFile = path.join(root, 'desktop/sandbox.log')
+  await fs.writeFile(manager.logFile, Buffer.alloc(LOG_MAX_BYTES + 100))
+  manager.update('starting')
+  await manager.logWrite
+  assert.ok((await fs.stat(manager.logFile)).size < LOG_MAX_BYTES)
+  assert.equal((await fs.stat(manager.logFile + '.1')).size, LOG_MAX_BYTES)
+  manager.activeConfig = { root, id: 'test' }
+  manager.session = { command: async () => 'x'.repeat(LOG_MAX_BYTES + 100) }
+  await manager.captureLogs()
+  assert.equal((await fs.stat(path.join(root, 'desktop/daemon.log'))).size, LOG_MAX_BYTES)
+})
 
 test('mounts are limited to distinct project paths and never contain sandbox storage', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-test-'))
@@ -21,6 +39,8 @@ test('mounts are limited to distinct project paths and never contain sandbox sto
 
 test('container publishes the authenticated desktop port without exposing container-management sockets', () => {
   const args = containerArgs({ root: '/sandbox', project: '/project', mounts: [], id: 'abc', image: 'registry/image@sha256:' + 'a'.repeat(64) }, 'linux', 43210, 'secret', {})
+  assert.equal(args[args.indexOf('--log-driver') + 1], 'k8s-file')
+  assert.equal(args[args.indexOf('--log-opt') + 1], 'max-size=10mb')
   assert.ok(args.some(value => value.startsWith('WORKSTEP_DEVICE_NAME=') && value.endsWith('（沙箱）')))
   assert.ok(args.includes('0.0.0.0:43210:8765'))
   assert.ok(args.some(a => a.includes('source=/sandbox/home,target=/root')))

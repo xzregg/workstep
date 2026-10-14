@@ -207,7 +207,10 @@ class ExternalIdentityService:
                     if not binding_user_id and user.status == "active":
                         auth_session, token = IdentityService._create_session(user.id)
                         auth_session.authentication_method = "scan"
+                        auth_session.authentication_provider = source.provider
                         session.add(auth_session)
+                    from gateway.services.login_audit import add_login_audit
+                    add_login_audit(session, user, source.provider, source_id=source.id, binding=bool(binding_user_id))
                     await session.flush()
                     return user, token, return_to
         except IntegrityError as exc:

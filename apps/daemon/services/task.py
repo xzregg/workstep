@@ -52,14 +52,15 @@ class TaskService:
         self._event_journal = TurnEventJournal()
 
     @staticmethod
-    def _audit_change(project_id: str | None, task_id: str, action: str):
+    def _audit_change(project_id: str | None, task_id: str, action: str, object_name: str | None = None):
         if project_id is None:
             return
-        from services.project_audit import record_project_audit
+        from services.project_audit import record_project_audit, remote_audit_source
         from services.remote_access import get_effective_actor
         actor = get_effective_actor()
         record_project_audit(project_id=project_id, task_id=task_id, action=action,
-            result="succeeded", mode="managed" if actor and actor.source == "managed" else "local")
+            result="succeeded", mode="managed" if actor and actor.source == "managed" else "local",
+            metadata={"object_name": object_name[:256]} if object_name and remote_audit_source() else None)
 
     def create_task(
         self,
@@ -153,7 +154,7 @@ class TaskService:
                     engine=step.get("engine"),
                 )
 
-            self._audit_change(project_id, task.id, "task.create")
+            self._audit_change(project_id, task.id, "task.create", task.title)
             return task_to_dict(task)
 
     def update_scheduled_start(
@@ -589,7 +590,7 @@ class TaskService:
                 if task.status == "running":
                     raise RuntimeError("Running tasks cannot be deleted")
                 task.delete_instance(recursive=True)
-                self._audit_change(project_id, task_id, "task.delete")
+                self._audit_change(project_id, task_id, "task.delete", task.title)
                 return True
         except Task.DoesNotExist:
             return False
@@ -660,7 +661,7 @@ class TaskService:
                         engine=step.engine,
                     )
 
-                self._audit_change(project_id, new_task.id, "task.copy")
+                self._audit_change(project_id, new_task.id, "task.copy", new_task.title)
                 return task_to_dict(new_task)
         except Task.DoesNotExist:
             return None

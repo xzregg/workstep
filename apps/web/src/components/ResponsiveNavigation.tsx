@@ -8,14 +8,17 @@ import MobileNavigationFloat from './MobileNavigationFloat'
 import { NavigationHeaderContext } from './NavigationHeaderContext'
 import { BrandIcon } from './BrandIcon'
 
-export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, showNew = true, headerRight, showBrandIcon = true }: {
-  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; showNew?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean
+export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, showNew = true, headerRight, showBrandIcon = true, onVisibilityChange }: {
+  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; showNew?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean; onVisibilityChange?: (visible: boolean) => void
 }) {
   const { t } = useI18n()
   const compact = useCompactLayout()
   const headerLeft = useContext(NavigationHeaderContext)
   const displayTitle = showBrandIcon && /^workstep$/i.test(title) ? 'WorkStep' : title
   const [open, setOpen] = useState(false)
+  const visibilityCallback = useRef(onVisibilityChange)
+  visibilityCallback.current = onVisibilityChange
+  useEffect(() => { visibilityCallback.current?.(!compact || open) }, [compact, open])
   const location = useLocation()
   const navigationType = useNavigationType()
   const preserveNavigationDrawer = Boolean(

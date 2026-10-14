@@ -46,6 +46,7 @@ class AuthSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     step_up_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    authentication_provider: Mapped[str | None] = mapped_column(String(16))
     authentication_method: Mapped[str] = mapped_column(String(16), server_default="password")
     device_id: Mapped[str | None] = mapped_column(String(64))
     device_name: Mapped[str | None] = mapped_column(String(256))
