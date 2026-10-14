@@ -230,6 +230,7 @@ export default function ChatMessageBubble({
   const visibleContent = isUser
     ? content
     : dedupedContent || assistantBodyFallback(content, events)
+  const displayContent = stripAssistantPayloadsForDisplay(visibleContent)
   const rootStyle: CSSProperties = {
     width: isUser ? 'fit-content' : '100%',
     maxWidth: '100%', minWidth: 0,
@@ -298,7 +299,7 @@ export default function ChatMessageBubble({
               ) : (
                 <>
                   <MessageTimeline
-                    content={stripAssistantPayloadsForDisplay(visibleContent)}
+                    content={displayContent}
                     events={events}
                     streaming={streaming}
                     projectId={projectId}
@@ -395,9 +396,12 @@ export default function ChatMessageBubble({
               onRespond={onInteractionRespond}
             />
           ))}
-          {!isUser && asyncQuestions.map((question, index) => (
-            <div key={`${question.sourceItemId}-${index}`} className="chat-async-question">
-              <div>{question.title}</div>
+          {!isUser && asyncQuestions.map((question, index) => {
+            // Codex 同时发送正文和结构化提问；正文已有标题时只保留选项。
+            const titleInBody = displayContent.includes(question.title)
+            if (titleInBody && question.options.length === 0) return null
+            return <div key={`${question.sourceItemId}-${index}`} className="chat-async-question">
+              {!titleInBody && <div>{question.title}</div>}
               {question.options.length > 0 && (
                 <div className="chat-async-question-options">
                   {question.options.map((option) => (
@@ -432,7 +436,7 @@ export default function ChatMessageBubble({
                 </div>
               )}
             </div>
-          ))}
+          })}
           {asyncSubmitError && <div role="alert" style={{ color: 'var(--danger)' }}>{asyncSubmitError}</div>}
           {footer}
           {children}

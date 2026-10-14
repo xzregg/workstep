@@ -127,9 +127,11 @@ export function DeviceAdminPage() {
       </select>
       </div>
       <AdminListStatus loading={loading} label="正在加载设备…"/>
-      <AdminRecordTable busy={loading} columns={['设备','连接状态','所有者','连接 IP','daemon 版本','升级检查','操作']}>
+      <AdminRecordTable busy={loading} columns={['设备名称','连接状态','所有者','连接 IP','daemon 版本','升级检查','操作']}>
         {devices.map(device => <tr key={device.id}>
-          <td><strong>{deviceDisplayName(device)}</strong><small className="gateway-admin-cell-meta">{deviceStatusLabel[device.status] ?? device.status}</small></td>
+          <td><button type="button" className="gateway-device-name-button" disabled={loading || !csrf}
+            aria-label={`修改设备名称：${device.name?.trim() || '未命名设备'}`} title="点击修改设备名称"
+            onClick={() => setRenameDevice(device)}>{device.name?.trim() || '未命名设备'}</button><small className="gateway-admin-cell-meta">{deviceStatusLabel[device.status] ?? device.status}</small></td>
           <td><span className={device.online ? 'gateway-device-presence gateway-device-presence--online' : 'gateway-device-presence'}>{device.online ? '在线' : '离线'}</span><small className="gateway-admin-cell-meta">健康：{device.daemon_health === true ? '正常' : device.daemon_health === false ? '异常' : '未知'}</small></td>
           <td>{device.owner_name ?? '未确定'}</td><td>{device.connection_ip ?? '—'}</td><td>{device.version || '未上报'}</td>
           <td>{device.update_available === true ? `有新版本 ${device.latest_version}` : device.update_available === false ? '已是最新' : '暂无发布版本'}</td>

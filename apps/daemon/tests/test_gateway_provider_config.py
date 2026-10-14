@@ -361,7 +361,7 @@ async def test_slow_provider_disk_apply_does_not_block_control_loop(tmp_path, mo
     await task
 
 
-def test_remote_actor_cannot_use_another_users_installed_provider(tmp_path, monkeypatch):
+def test_remote_actor_uses_only_providers_installed_and_authorized_on_device(tmp_path, monkeypatch):
     from services.remote_access import ActorSnapshot, actor_context
     monkeypatch.setattr(config_module, 'CONFIG_FILE', tmp_path / 'config.json')
     store = config_module.ConfigStore()
@@ -373,22 +373,22 @@ def test_remote_actor_cannot_use_another_users_installed_provider(tmp_path, monk
     }], user_id='owner', default_provider_id='owner-only')
     monkeypatch.setattr(CodexEngine, 'provider_config_store', classmethod(lambda cls: store))
     actor = ActorSnapshot(actor_id='other', username='other', user_name='Other', device_id='pc',
-                          device_name='PC', source='managed', project_id='project')
+                          device_name='PC', source='managed', project_id='project',
+                          provider_ids=frozenset({'not-installed'}),
+                          provider_grant_expires_at=int(time.time()) + 60)
     with actor_context(actor):
-        assert store.get_providers() == []
-
-        with pytest.raises(ValueError):
-            CodexEngine().resolve_provider_runtime(provider_id='owner-only', model='model-a')
-        assert CodexEngine().resolve_provider_runtime(model='model-a').provider_id == ""
-
-    from dataclasses import replace
-    allowed = replace(actor, provider_ids=frozenset({'owner-only'}), provider_grant_expires_at=int(time.time()) + 60)
-    with actor_context(allowed):
+        assert [provider['id'] for provider in store.get_providers()] == ['owner-only']
         assert store.get_provider('owner-only') is not None
         assert CodexEngine().resolve_provider_runtime(model='model-a').provider_id == 'owner-only'
-    expired = replace(allowed, provider_grant_expires_at=int(time.time()) - 1)
-    with actor_context(expired):
+        with pytest.raises(ValueError, match='供应商不存在'):
+            CodexEngine().resolve_provider_runtime(provider_id='not-installed', model='model-a')
+        with pytest.raises(ValueError, match='模型未获'):
+            CodexEngine().resolve_provider_runtime(provider_id='owner-only', model='not-downloaded')
+    store.set_managed_gateway_id('gateway', provider_guard=lambda _id: False)
+    with actor_context(actor):
         assert store.get_providers() == []
+        with pytest.raises(ValueError, match='供应商不存在'):
+            CodexEngine().resolve_provider_runtime(provider_id='owner-only', model='model-a')
 
 
 @pytest.mark.asyncio
@@ -454,7 +454,7 @@ async def test_provider_origin_check_keeps_event_loop_responsive(tmp_path, monke
 
 
 @pytest.mark.asyncio
-async def test_local_provider_permission_controls_api_catalog_and_runtime(tmp_path, monkeypatch):
+async def test_local_provider_catalog_and_execution_are_independent_of_gateway_mutation_permission(tmp_path, monkeypatch):
     import main
     from tests.test_gateway_policy import _signed_policy
     from services.gateway_client.policy import verify_policy_snapshot
@@ -465,7 +465,7 @@ async def test_local_provider_permission_controls_api_catalog_and_runtime(tmp_pa
     store.save_provider({"id": "local", "name": "Local", "type": "custom",
                          "protocols": ["openai_responses"], "api_key": "local-secret"})
     cache = ManagedPolicyCache()
-    store.set_managed_gateway_id("gateway-test", local_provider_guard=lambda: cache.allows("provider.local"))
+    store.set_managed_gateway_id("gateway-test")
     monkeypatch.setattr(main, "gateway_client", SimpleNamespace(managed_config=object(), policy_cache=cache))
     monkeypatch.setattr("api.provider.config_store", store)
     monkeypatch.setattr("services.providers.config_store", store)
@@ -475,18 +475,18 @@ async def test_local_provider_permission_controls_api_catalog_and_runtime(tmp_pa
     actor = ActorSnapshot("user-1", "Alice", "device-1", "PC", "managed")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
         with actor_context(actor):
-            assert (await client.get("/api/provider/list")).json()["providers"] == []
+            assert [item['id'] for item in (await client.get("/api/provider/list")).json()["providers"]] == ['local']
             assert (await client.delete("/api/provider/local")).status_code == 403
             CodexEngine().require_native_credentials_allowed()
             for revision, allowed in ((2, True), (3, False)):
                 token, pem, fingerprint = _signed_policy(policy_revision=revision, allow_local_providers=allowed)
                 cache.apply(verify_policy_snapshot(token, pem, fingerprint, "gateway-test", "device-1", "user-1"))
                 result = (await client.get("/api/provider/list")).json()["providers"]
-                assert [item["id"] for item in result] == (["local"] if allowed else [])
+                assert [item["id"] for item in result] == ["local"]
+                assert CodexEngine().resolve_provider_runtime(provider_id="local", model="own-model").provider_id == "local"
                 if allowed:
                     assert CodexEngine().resolve_provider_runtime(provider_id="local", model="own-model").provider_id == "local"
                 else:
                     assert (await client.delete("/api/provider/local")).status_code == 403
                     from services.providers import require_managed_model
-                    with pytest.raises(ValueError, match="授权已失效"):
-                        require_managed_model({"id": "local"}, "own-model")
+                    require_managed_model({"id": "local"}, "own-model")

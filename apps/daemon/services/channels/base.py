@@ -76,6 +76,7 @@ class ChannelCard:
     buttons: tuple[ChannelButton, ...] = ()
     running: bool = False
     message_id: str = ''
+    input_prompt: str = ''
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +88,7 @@ class ChannelAction:
     conversation_id: str = ''
     sender_name: str = ''
     reply_context: object | None = field(default=None, repr=False)
+    comment: str | None = None
 
 
 class ChannelAdapter(ABC):

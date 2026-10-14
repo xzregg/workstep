@@ -10,6 +10,7 @@ import hmac
 import logging
 import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from models import Task, TaskShare, Workflow
 from models.fields import utc_now
@@ -50,7 +51,11 @@ def get_share_for_task(task_id: str) -> dict | None:
         )
     except TaskShare.DoesNotExist:
         return None
-    return _share_to_dict(share)
+    return None if _share_expired(share) else _share_to_dict(share)
+
+
+def _share_expired(share):
+    return share.expires_at is not None and share.expires_at <= utc_now()
 
 
 def create_share(
@@ -58,6 +63,7 @@ def create_share(
     password: str | None = None,
     title: str | None = None,
     mode: str = "read_only",
+    expires_at: datetime | None = None,
 ) -> dict:
     """Create or replace a share link for a task.
 
@@ -72,6 +78,13 @@ def create_share(
         Task.get_by_id(task_id)
     except Task.DoesNotExist as exc:
         raise ValueError("task not found") from exc
+
+    now = utc_now()
+    expiry = expires_at if expires_at is not None else now + timedelta(days=7)
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    if not now < expiry <= now + timedelta(days=90):
+        raise ValueError('Share expiration must be in the next 90 days')
 
     # Wipe any previous share for this task (active or revoked).
     TaskShare.delete().where(TaskShare.task == task_id).execute()
@@ -95,6 +108,7 @@ def create_share(
         mode=mode,
         revoked=0,
         created_at=now,
+        expires_at=expiry,
     )
     logger.info("Created share %s for task %s", share.token, task_id)
     return _share_to_dict(share)
@@ -139,6 +153,8 @@ def resolve_share_by_token(token: str) -> dict | None:
             continue
         finally:
             db_proxy.reset(token_ctx)
+        if _share_expired(share):
+            return None
         return {
             "share": _share_to_dict(share, include_project=True, project_id=project.id),
             "task_id": share.task_id,
@@ -172,6 +188,8 @@ def verify_share_password(token: str, password: str) -> str | None:
             continue
         finally:
             db_proxy.reset(token_ctx)
+        if _share_expired(share):
+            return None
         # If share has no password, any password (or none) is accepted.
         if share.password_hash is not None:
             if _hash_password(password, share.salt) != share.password_hash:
@@ -218,12 +236,16 @@ def resolve_share_session(session_token: str) -> dict | None:
             continue
         finally:
             db_proxy.reset(token_ctx)
+        if _share_expired(share):
+            _SHARE_SESSIONS.pop(session_token, None)
+            return None
         return {
             "share_id": share.id,
             "token": share.token,
             "task_id": share.task_id,
             "project_id": ctx["project_id"],
             "mode": share.mode or "read_only",
+            "expires_at": share.expires_at,
         }
     # The share was revoked or its project is no longer registered.
     _SHARE_SESSIONS.pop(session_token, None)
@@ -256,6 +278,10 @@ def load_shared_task(task_id: str) -> dict | None:
         "coordinator_fast_model",
         "coordinator_session_id",
         "run_round",
+        "review_overrides",
+        "queue_position",
+        "archived",
+        "active_workflow_run_id",
         "restart_from_step_key",
         "recovered_at",
         "recovered_count",
@@ -360,6 +386,7 @@ def _share_to_dict(
         "has_password": share.password_hash is not None,
         "created_at": share.created_at,
         "revoked_at": share.revoked_at,
+        "expires_at": share.expires_at,
     }
     if include_project and project_id is not None:
         payload["project_id"] = project_id

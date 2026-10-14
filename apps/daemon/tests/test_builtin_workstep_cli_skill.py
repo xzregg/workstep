@@ -30,6 +30,12 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert "python -m cli project quick-buttons" in text
     assert "python -m cli workflow quick-buttons" in text
     assert "python -m cli task create" in text
+    for action in ("step-message", "step-stop", "step-start"):
+        assert f"python -m cli task {action}" in text
+    for operation in ("workstep_send_step_message", "workstep_stop_step", "workstep_start_step"):
+        assert operation in text
+    assert "--reset-session" in text
+    assert "queued does not mean delivered" in text
     assert "<project>/.workstep/artifacts/<workflow_id>/<task_id>/.worktrees/<alias>/" in text
     assert "<project>/.workstep/worktrees/<task_id>/" not in text
     assert "--workflow" in text

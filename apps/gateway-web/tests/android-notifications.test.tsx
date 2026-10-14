@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { JSDOM } from 'jsdom'
-import { postAndroidCompletion } from '../src/androidNotifications'
+import { notifyAndroidGatewayCompletion, postAndroidCompletion } from '../src/androidNotifications'
 
 test('old APK bridge keeps its message shape while scoping watches, project resets and targets to the device',()=>{
  const dom=new JSDOM('',{url:'https://gateway.test/workspace/one/tasks?project=Demo'})
@@ -22,5 +22,18 @@ test('old APK bridge keeps its message shape while scoping watches, project rese
  assert.equal(messages[4].id,'p:t:m')
  postAndroidCompletion({type:'notify',id:'p:t:m',projectId:'p',taskId:'t',outcome:'succeeded',url:'/workspace/two/tasks?project=Demo&task=t'},'two')
  assert.equal(new URL(messages[5].url,'https://gateway.test').pathname,'/tasks')
+ dom.window.close()
+})
+
+test('gateway reply completion omits a null step key in the Android bridge',()=>{
+ const dom=new JSDOM('',{url:'https://gateway.test/workspace/one/chat?project=Demo'})
+ Object.assign(globalThis,{window:dom.window,document:dom.window.document})
+ const messages:any[]=[]
+ Object.assign(dom.window,{WorkStepAndroid:{postMessage:(text:string)=>messages.push(JSON.parse(text))}})
+ notifyAndroidGatewayCompletion({device_id:'one',host_project_id:'p',device_name:'设备',
+  task_id:'task',messageId:'reply',step_key:null,status:'succeeded'})
+ assert.equal(messages.length,1)
+ assert.equal(messages[0].id,'gateway/one/p:task:reply')
+ assert.equal(Object.hasOwn(messages[0],'stepKey'),false)
  dom.window.close()
 })

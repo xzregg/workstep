@@ -548,8 +548,12 @@ class WorkflowRuntime:
         pending_insert_ids: list[str] | None = None,
         reset_session: bool = False,
         replay_pending: bool = False,
+        allow_pending: bool = False,
     ) -> dict:
         """Persist a user message and re-run a stopped or completed step.
+
+        ``allow_pending`` also admits an existing, never-started pending step;
+        it does not bypass active-step guards or restart input routing.
 
         The message is stored in the step's execution history (and as active
         step guidance) so the next attempt carries it into the step LLM,
@@ -566,7 +570,8 @@ class WorkflowRuntime:
             await asyncio.to_thread(require_user_actor)
         user_message, pending_review_id, trigger_name = await self._run_db(
             project_id, lambda _project: persist_step_followup(
-                task_id, step_key, normalized, author_name, pending_insert_ids
+                task_id, step_key, normalized, author_name, pending_insert_ids,
+                allow_pending=allow_pending,
             )
         )
         message_id = user_message.id

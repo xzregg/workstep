@@ -1,3 +1,4 @@
+import { userChoiceLabel } from './AdminSelection'
 import { AdminRecordTable } from './AdminRecordTable'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
@@ -28,7 +29,7 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
     if (assignment) return
     const controller = new AbortController()
     const params = new URLSearchParams({ q: search, status: 'active',
-      sort: kind === 'user' ? 'username' : 'name',
+      sort: kind === 'user' ? 'display_name' : 'name',
       direction: 'asc', page: String(page), page_size: '25' })
     setLoading(true); setError('')
     void fetch(`/api/admin/${kind === 'user' ? 'users' : 'devices'}?${params}`, {
@@ -87,7 +88,7 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
         <label htmlFor="provider-assignment-target">授权对象</label>
         <select id="provider-assignment-target" value={targetId} onChange={event => setTargetId(event.target.value)}>
           <option value="">请选择</option>{targets.map(target => <option key={target.id} value={target.id}>{
-            kind === 'user' ? `${target.display_name ?? target.username ?? target.id}（${target.username ?? target.id}）`
+            kind === 'user' ? userChoiceLabel(target)
               : target.name ?? target.id}</option>)}</select>
         <div className="gateway-admin-pagination"><span>共 {total} 个对象 · 第 {page}/{
           Math.max(1, Math.ceil(total / 25))} 页</span>

@@ -144,6 +144,22 @@ def build_parser() -> argparse.ArgumentParser:
     task_get.add_argument("--project", required=True, dest="project_id", help="project id")
     task_get.add_argument("--task", required=True, dest="task_id", help="task id")
     add_json(task_get)
+    for action, help_text in (
+        ("step-message", "inject a message into a running step"),
+        ("step-stop", "request cancellation of one step"),
+        ("step-start", "start a step and downstream with a message (stops the old task runner)"),
+    ):
+        step_control = task_sub.add_parser(action, help=help_text)
+        step_control.add_argument("--project", required=True, dest="project_id")
+        step_control.add_argument("--task", required=True, dest="task_id")
+        step_control.add_argument("--step", required=True, dest="step_key")
+        if action != "step-stop":
+            step_control.add_argument("--content", required=True, help="step message")
+        if action == "step-message":
+            step_control.add_argument("--as-guidance", action="store_true", help="also retain for later attempts")
+        if action == "step-start":
+            step_control.add_argument("--reset-session", action="store_true", help="start a fresh engine session")
+        add_json(step_control)
     task_create = task_sub.add_parser("create", help="create a task")
     task_create.add_argument("--project", required=True, dest="project_id", help="project id")
     task_create.add_argument("--title", required=True, help="task title")
@@ -425,6 +441,23 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 return await _create_project_action_on_existing_daemon(args, client, script_content)
             return result
     if command == "task":
+        step_operations = {
+            "step-message": "workstep_send_step_message",
+            "step-stop": "workstep_stop_step",
+            "step-start": "workstep_start_step",
+        }
+        if args.subcommand in step_operations:
+            arguments = {
+                "project_id": args.project_id, "task_id": args.task_id,
+                "step_key": args.step_key, "confirm": "yes",
+            }
+            if args.subcommand != "step-stop":
+                arguments["content"] = args.content
+            if args.subcommand == "step-message":
+                arguments["as_guidance"] = args.as_guidance
+            if args.subcommand == "step-start":
+                arguments["reset_session"] = args.reset_session
+            return await client.call(step_operations[args.subcommand], arguments)
         if args.subcommand == "list":
             return await client.call(
                 "workstep_list_tasks", {"project_id": args.project_id}

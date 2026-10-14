@@ -27,4 +27,7 @@ public class NotificationContentTest {
         assertEquals("会话 session-42", NotificationContent.name("null", "session-42", ""));
         assertEquals("任务 task-42", NotificationContent.name("  ", "", "task-42"));
     }
+    @Test public void missingStepKeyNeverAppearsAsNullInNotification() {
+        assertEquals("任务「修复上传」的回复已完成", NotificationContent.body("修复上传", true, "null", true));
+    }
 }

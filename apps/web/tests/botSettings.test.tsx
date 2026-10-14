@@ -79,7 +79,8 @@ test('editing a legacy task default saves a project default and never fetches ta
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
-    assert.match(container.querySelector('.bot-task-bindings')!.textContent!, /登录修复/ )
+    assert.match(container.querySelector('.bot-task-bindings-trigger')!.textContent!, /已绑定任务.*1/)
+    assert.equal(container.querySelector('.bot-task-bindings'), null)
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '编辑')!.click())
     assert.equal(container.querySelector('option[value="task"]'), null)
     assert.equal(container.querySelectorAll<HTMLSelectElement>('.bot-settings-form select')[1].value, 'p1')
@@ -127,8 +128,8 @@ test('DingTalk can save an optional custom button card template', async () => {
     const project = container.querySelectorAll<HTMLSelectElement>('.bot-settings-form select')[1]
     await act(async () => { project.value = 'p1'; project.dispatchEvent(new window.Event('change', { bubbles: true })) })
     const fields = [...container.querySelectorAll<HTMLInputElement>('.bot-settings-form input:not([type="checkbox"])')]
-    assert.equal(fields.length, 4)
-    for (const [index, value] of ['助手','app','secret','own.schema'].entries()) {
+    assert.equal(fields.length, 5)
+    for (const [index, value] of ['助手','app','secret','own.schema','review.schema'].entries()) {
       await act(async () => {
         Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(fields[index],value)
         fields[index].dispatchEvent(new window.Event('input',{bubbles:true}))
@@ -136,6 +137,7 @@ test('DingTalk can save an optional custom button card template', async () => {
     }
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '保存')!.click())
     assert.equal(saved.card_template_id,'own.schema')
+    assert.equal(saved.review_card_template_id,'review.schema')
   } finally {
     await act(async () => root.unmount())
     container.remove(); globalThis.fetch = fetch; useProjectStore.setState(store); await window.happyDOM.close()
@@ -158,10 +160,10 @@ test('bot settings explains when the running backend omits task bindings', async
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
-    const bindings = container.querySelector('.bot-task-bindings')
+    const bindings = container.querySelector('.bot-task-bindings-trigger')
     assert.ok(bindings)
     assert.match(bindings.textContent!, /已绑定任务/)
-    assert.match(bindings.textContent!, /重启后端/)
+    assert.equal(container.querySelector('.bot-task-bindings'), null)
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -186,9 +188,9 @@ test('bot settings shows an empty task binding state when the backend reports no
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
-    const bindings = container.querySelector('.bot-task-bindings')
+    const bindings = container.querySelector('.bot-task-bindings-trigger')
     assert.ok(bindings)
-    assert.match(bindings.textContent!, /暂无绑定任务/)
+    assert.match(bindings.textContent!, /已绑定任务.*0/)
     assert.doesNotMatch(bindings.textContent!, /重启后端/)
   } finally {
     await act(async () => root.unmount())

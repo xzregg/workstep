@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
+import { taskShareDefaults, taskShareClipboard, shareClipboardLocale } from '../../../packages/gateway-ui/src/taskShareDefaults'
 
 type CreatedShare = { id: string; url: string; status: string; mode: string; title: string }
 type ExistingShare = { id: string; title: string; mode: string; status: string;
@@ -18,8 +19,9 @@ export function GatewayShareCreatePage() {
   const [csrfToken, setCsrfToken] = useState('')
   const [title, setTitle] = useState('')
   const [mode, setMode] = useState<'read_only' | 'interactive'>('read_only')
-  const [password, setPassword] = useState('')
-  const [expiresAt, setExpiresAt] = useState('')
+  const [defaults] = useState(taskShareDefaults)
+  const [password, setPassword] = useState(defaults.password)
+  const [expiresAt, setExpiresAt] = useState(defaults.expiresAt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState<CreatedShare | null>(null)
@@ -102,7 +104,7 @@ export function GatewayShareCreatePage() {
 
   async function copyLink() {
     if (!created) return
-    try { await navigator.clipboard.writeText(created.url); setCopied(true) }
+    try { await navigator.clipboard.writeText(taskShareClipboard(created.url, password, created.title || title.trim() || taskId, shareClipboardLocale(document.documentElement.lang || 'zh-CN'))); setCopied(true) }
     catch { setError('复制失败，请手动选择链接。') }
   }
 
@@ -126,11 +128,11 @@ export function GatewayShareCreatePage() {
         <option value="read_only">只读</option>
         <option value="interactive">互动</option>
       </select>
-      <label htmlFor="gateway-share-new-password">分享密码（可选）</label>
-      <input id="gateway-share-new-password" type="password" autoComplete="new-password"
+      <label htmlFor="gateway-share-new-password">访问密钥</label>
+      <input id="gateway-share-new-password" type="text" autoComplete="off"
         value={password} minLength={4} maxLength={200}
         onChange={event => setPassword(event.target.value)} />
-      <label htmlFor="gateway-share-expiry">过期时间（可选）</label>
+      <label htmlFor="gateway-share-expiry">过期时间（默认 7 天）</label>
       <input id="gateway-share-expiry" type="datetime-local" value={expiresAt}
         onChange={event => setExpiresAt(event.target.value)} />
       {error && <p className="gateway-auth-error" role="alert">{error}</p>}
@@ -144,9 +146,10 @@ export function GatewayShareCreatePage() {
       {!revoked && <>
         <label htmlFor="gateway-created-share-url">分享链接</label>
         <input id="gateway-created-share-url" readOnly value={created.url} />
+        {password && <><label htmlFor="gateway-created-share-key">访问密钥</label><input id="gateway-created-share-key" readOnly value={password} /></>}
         <div className="gateway-share-create-actions">
           <a href={created.url} target="_blank" rel="noopener noreferrer">打开分享链接</a>
-          <button type="button" onClick={() => void copyLink()}>{copied ? '已复制' : '复制链接'}</button>
+          <button type="button" onClick={() => void copyLink()}>{copied ? '已复制' : '复制链接和密钥'}</button>
           <button type="button" onClick={() => setConfirmRevoke(true)}>撤销分享</button>
         </div>
       </>}

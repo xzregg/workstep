@@ -175,7 +175,7 @@ async def list_user_project_capabilities(call: GatewayCall, project_id: str):
                 or project.access_mode != 'remote_published'):
             raise GatewayError('not_found', 'Published project unavailable')
         subjects = await grant_subject_ids(session, identity, actor.id, 'user')
-        rows = (await session.execute(select(CapabilityAssignment, User.username).join(
+        rows = (await session.execute(select(CapabilityAssignment, User.username, User.display_name).join(
             User, User.id == CapabilityAssignment.user_id,
         ).where(CapabilityAssignment.scope_type == 'project',
                 CapabilityAssignment.scope_id == project_id,
@@ -184,7 +184,8 @@ async def list_user_project_capabilities(call: GatewayCall, project_id: str):
                 *([CapabilityAssignment.user_id.in_(subjects)] if subjects is not None else []))
             .order_by(User.username, CapabilityAssignment.id))).all()
     return {'assignments': [{'id': row.id, 'user_id': row.user_id,
-                             'username': name, 'effect': row.effect} for row, name in rows]}
+                             'username': name, 'display_name': display_name.strip() or name, 'effect': row.effect}
+                            for row, name, display_name in rows]}
 
 
 async def list_group_project_capabilities(call: GatewayCall, project_id: str):

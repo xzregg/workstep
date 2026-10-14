@@ -15,7 +15,7 @@ from sqlalchemy import and_, exists, func, or_, select
 
 from gateway.services.ledger_scope import ledger_scope
 
-from gateway.models import AuditEvent, AuditEventReceipt, PlatformProject
+from gateway.models import AuditEvent, AuditEventReceipt, PlatformProject, User
 
 
 """Validate and idempotently receive bounded project audit batches."""
@@ -142,7 +142,7 @@ async def record_audit_batch(
 _VISIBLE_METADATA_KEYS = _METADATA_KEYS | {
     "device_id", "user_id", "group_id", "project_id", "provider_id",
     "batch_id", "skill_id", "source_id", "scope_type", "scope_id",
-    "login_method", "device_name", "device_status",
+    "login_method", "device_name", "device_status", "request_ip",
     "subject_id", "subject_type", "access_level", "role", "share_id", "method", "route",
 }
 
@@ -238,6 +238,18 @@ async def query_audit(
                    for device, host in project_keys)),
         ))).all() if project_keys else []
         project_map = {(row.device_id, row.host_project_id): row for row in projects}
+        visible_rows = rows[:limit]
+        actor_ids = {row.user_id for row in visible_rows if row.user_id
+                     and row.actor_type in (None, 'user') and (not row.actor_name or not row.actor_username)}
+        initiator_ids = {row.initiated_by_user_id for row in visible_rows
+                         if row.initiated_by_user_id and not row.initiated_by_username}
+        user_ids = actor_ids | initiator_ids
+        user_labels = {user.id: (user.display_name.strip() or user.username, user.username)
+                       for user in (await session.scalars(select(User).where(User.id.in_(user_ids)))).all()} if user_ids else {}
+        metadata_map = {row.id: _visible_metadata(row.metadata_json) for row in visible_rows}
+        def actor_label(row, index):
+            return user_labels.get(row.user_id, (None, None))[index] if row.actor_type in (None, 'user') else None
+
         return {
             "items": [{
                 "id": row.id,
@@ -252,14 +264,15 @@ async def query_audit(
                 "result": row.result,
                 "mode": row.mode,
                 "actor_id": row.user_id or row.actor_type,
-                "actor_username": row.actor_username,
-                "actor_name": row.actor_name,
+                "actor_username": row.actor_username or actor_label(row, 1),
+                "actor_name": row.actor_name or actor_label(row, 0),
                 "actor_type": row.actor_type,
                 "actor_device_id": row.actor_device_id,
                 "actor_device_name": row.actor_device_name,
                 "initiated_by_user_id": row.initiated_by_user_id,
-                "initiated_by_username": row.initiated_by_username,
-                "metadata": _visible_metadata(row.metadata_json),
+                "initiated_by_username": row.initiated_by_username or user_labels.get(row.initiated_by_user_id, (None, None))[1],
+                "metadata": metadata_map[row.id],
+                "request_ip": metadata_map[row.id].get("request_ip"),
                 "occurred_at": (row.occurred_at or row.created_at).isoformat(),
             } for row in rows[:limit]],
             "total": total or 0,

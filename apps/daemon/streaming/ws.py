@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -330,7 +331,7 @@ def register_websocket_routes(app: FastAPI) -> None:
             await ws.close(code=4401, reason="desktop authentication required")
             return
 
-        ctx = resolve_share_session(session) if session else None
+        ctx = await asyncio.to_thread(resolve_share_session, session) if session else None
         if ctx is None:
             await ws.close(code=4401, reason="unauthorized")
             return
@@ -351,7 +352,13 @@ def register_websocket_routes(app: FastAPI) -> None:
         queue = main.event_bus.subscribe(share_predicate)
         try:
             while True:
-                bus_task, ws_task, done = await _wait_for_stream_input(queue, ws)
+                expiry = ctx.get('expires_at')
+                remaining = max(0, (expiry - datetime.now(timezone.utc)).total_seconds()) if expiry else None
+                try:
+                    bus_task, ws_task, done = await asyncio.wait_for(_wait_for_stream_input(queue, ws), timeout=remaining)
+                except asyncio.TimeoutError:
+                    await ws.close(code=4401, reason='share expired')
+                    break
 
                 if ws_task in done:
                     # Share viewers are strictly read-only — any incoming

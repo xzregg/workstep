@@ -10,8 +10,9 @@ test('remote task links use the host endpoint, preserving the deployment path', 
   assert.equal(taskShareUrl('token', { id: 'p', type: 'remote', endpoint: 'ws://192.168.1.2:8765/ws/remote-project' }, 'http://localhost:8765'), 'http://192.168.1.2:8765/share/token')
 })
 
-test("gateway-connected desktop keeps LAN remote task sharing", () => {
-  assert.equal(canUseLocalTaskShare(true, "remote"), true)
-  assert.equal(canUseLocalTaskShare(true, "local"), false)
-  assert.equal(canUseLocalTaskShare(false, "local"), true)
+test('Gateway-connected local projects use Gateway links while remote projects keep host links', () => {
+  assert.equal(canUseLocalTaskShare(true, 'local'), false)
+  assert.equal(canUseLocalTaskShare(false, 'local'), true)
+  assert.equal(canUseLocalTaskShare(true, 'remote'), true)
+  assert.equal(canUseLocalTaskShare(false, 'remote'), true)
 })

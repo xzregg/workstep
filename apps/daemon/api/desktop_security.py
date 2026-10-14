@@ -94,6 +94,7 @@ SHARE_REVIEW_WRITE = re.compile(
 SHARE_INTERVENTION_WRITE = re.compile(
     r"/api/platform-share/interventions/[A-Za-z0-9_-]{1,128}/respond\Z"
 )
+SHARE_COORDINATOR_WRITE = re.compile(r"/api/platform-share/actions/[A-Za-z0-9_-]{1,128}/(?:confirm|cancel)\Z")
 
 
 def gateway_device_owner(request: Request) -> bool:
@@ -260,10 +261,11 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                         or (not SHARE_STEP_WRITE.fullmatch(request.url.path)
                             and not SHARE_REVIEW_WRITE.fullmatch(request.url.path)
                             and not SHARE_INTERVENTION_WRITE.fullmatch(request.url.path)
+                            and not SHARE_COORDINATOR_WRITE.fullmatch(request.url.path)
                             and not SHARE_GIT_COMMIT.fullmatch(request.url.path)
                             and not SHARE_GIT_SYNC.fullmatch(request.url.path)
                             and not SHARE_GIT_BRANCH_WRITE.fullmatch(request.url.path)
-                            and request.url.path != "/api/platform-share/uploads")))
+                            and request.url.path not in {"/api/platform-share/uploads", "/api/platform-share/operation"})))
                     or request.method not in ("GET", "POST")
                     or request.url.query):
                 response = JSONResponse({"detail": "share scope denied"}, status_code=403)

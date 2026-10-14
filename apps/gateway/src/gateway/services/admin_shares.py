@@ -71,7 +71,7 @@ async def list_admin_shares(call: GatewayCall,
         total = await session.scalar(select(func.count()).select_from(PlatformShare)
                                      .where(*conditions)) or 0
         rows = (await session.execute(select(
-            PlatformShare, User.username, Device.name, PlatformProject.name,
+            PlatformShare, User.username, func.coalesce(func.nullif(func.trim(User.display_name), ''), User.username), Device.name, PlatformProject.name,
             state.label("effective_status"), visits.c.visit_count, visits.c.last_seen_at,
         ).join(User, User.id == PlatformShare.created_by_user_id)
          .join(Device, Device.id == PlatformShare.device_id)
@@ -84,11 +84,11 @@ async def list_admin_shares(call: GatewayCall,
         "id": share.id, "title": share.title, "device_id": share.device_id,
         "device_name": device_name, "project_id": share.project_id,
         "project_name": project_name, "task_id": share.task_id,
-        "mode": share.mode, "created_by": username,
+        "mode": share.mode, "created_by": username, "created_by_name": creator_name,
         "created_at": share.created_at, "expires_at": share.expires_at,
         "status": effective_status, "visit_count": visit_count or 0,
         "last_seen_at": last_seen_at,
-    } for share, username, device_name, project_name, effective_status,
+    } for share, username, creator_name, device_name, project_name, effective_status,
         visit_count, last_seen_at in rows]}
 
 

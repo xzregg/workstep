@@ -241,12 +241,9 @@ async def remote_session(call: GatewayCall):
                 PlatformProject.device_id == device_id,
                 PlatformProject.host_project_id == target_host_id,
                 PlatformProject.status == 'active',
-                PlatformProject.access_mode == 'remote_published',
             ))
-            if project is None:
-                raise GatewayError('not_found', 'Published project not found')
         share_create = (await can_create_platform_share(session, user.id, project)
-                        if project is not None else False)
+                        if project is not None else await can_create_platform_share(session, user.id, None, device_id=device_id) if target_host_id else False)
     if device is None:
         raise GatewayError('forbidden', 'Device access denied')
     permissions = None
@@ -262,7 +259,7 @@ async def remote_session(call: GatewayCall):
     return {"user_id": user.id, "username": user.display_name,
             "device_id": device_id, "device_name": device.name,
             "project_id": project.id if project else None,
-            "host_project_id": project.host_project_id if project else None,
+            "host_project_id": project.host_project_id if project else target_host_id,
             "access_level": auth_session.project_access_level,
             "task_create": task_create,
             "share_create": share_create,

@@ -787,7 +787,7 @@ async def test_platform_share_history_pages_execution_and_coordinator_messages(a
                            role="assistant", content=f"message-{index}",
                            events_json=(json.dumps([{"type": "agent_message_chunk",
                                "data": {"content": {"text": f"visible event {event_index}"}}}
-                               for event_index in range(105)])
+                               for event_index in range(3105)])
                                if index == 100 else None),
                            created_at=utc_now())
         Message.create(id="private-page", task=task_id, step_key="build",
@@ -832,12 +832,12 @@ async def test_platform_share_history_pages_execution_and_coordinator_messages(a
     assert (await read("/api/platform-share/history/1000000"))[0] == 403
     status, detail = await read("/api/platform-share/events/page-100/0")
     assert status == 200
-    assert len(detail["events"]) == 100
+    assert len(detail["events"]) == 3000
     assert detail["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
-    assert detail["next_cursor"] == 100
-    status, final_events = await read("/api/platform-share/events/page-100/100")
+    assert detail["next_cursor"] == 3000
+    status, final_events = await read("/api/platform-share/events/page-100/3000")
     assert status == 200
-    assert len(final_events["events"]) == 5
+    assert len(final_events["events"]) == 105
     assert final_events["next_cursor"] is None
     assert (await read("/api/platform-share/events/private-page/0"))[0] == 200
 
@@ -908,6 +908,7 @@ async def test_platform_share_artifacts_are_task_scoped_and_hide_host_paths(api_
     assert len(artifacts) == 1
     artifact_id = artifacts[0]["id"]
     assert artifacts[0]["name"] == "result.txt"
+    assert artifacts[0]["source_path"] == f"{workflow_id}/{task_ids[0]}/build/result.txt"
     status, body = await read(f"/api/platform-share/artifacts/{artifact_id}/content")
     assert status == 200 and body == b"visible bytes"
     status, body = await read(f"/api/platform-share/artifacts/{artifact_id}/preview")
@@ -1010,3 +1011,20 @@ async def test_platform_share_git_files_are_virtual_bound_and_slow_disk_does_not
     assert (await client.get('/api/health')).status_code == 200
     assert time.monotonic() - started < .5
     assert (await pending)[0] == 200
+
+
+@pytest.mark.anyio
+async def test_share_task_preserves_review_defaults_without_nested_engine_credentials(monkeypatch):
+    from fastapi import Request
+    from api import platform_share
+    payload = {'id': 'task', 'workflow': {'steps': {'nodes': [{'key': 'build',
+        'review': {'mode': 'auto', 'maxRetries': 3, 'prompt': 'Review output',
+                   'config': {'api_key': 'private'}}, 'config': {'api_key': 'private'}}]}}}
+    async def load(*args):
+        return payload
+    monkeypatch.setattr(platform_share, '_run_db', load)
+    request = Request({'type': 'http', 'gateway_share_scope': {'host_project_id': 'project', 'task_id': 'task'}})
+    task = await platform_share.read_platform_share_task(request)
+    node = task['workflow']['steps']['nodes'][0]
+    assert node['review'] == {'mode': 'auto', 'maxRetries': 3, 'prompt': 'Review output'}
+    assert 'config' not in node

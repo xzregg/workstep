@@ -73,7 +73,6 @@ class GatewayClientService:
                         == self.policy_cache.current.user_id
                     and provider_id in self.policy_cache.current.allowed_provider_ids
                 ),
-                local_provider_guard=self._local_provider_allowed,
             )
             self.verifier = ManagedAuthorizationVerifier(
                 self.managed_config.gateway_id,
@@ -89,14 +88,6 @@ class GatewayClientService:
                 ),
             )
             self._restore_task = asyncio.create_task(self._restore_with_retry())
-
-    def _local_provider_allowed(self) -> bool:
-        from services.remote_access import get_current_actor
-        actor = get_current_actor()
-        policy = self.policy_cache.current
-        return bool(policy and policy.allows("provider.local") and (
-            actor is None or (actor.source == "managed" and actor.project_id is None
-                              and actor.actor_id == policy.user_id)))
 
     async def _restore_with_retry(self):
         while True:

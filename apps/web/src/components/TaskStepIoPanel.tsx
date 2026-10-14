@@ -13,6 +13,7 @@ import Button from './Button'
 import Icon from './Icon'
 import MarqueeText from './MarqueeText'
 import TaskDetailTabs from './TaskDetailTabs'
+import TaskStepFeedback from './TaskStepFeedback'
 
 interface TaskStepIoPanelProps {
   currentStep: StepData
@@ -83,9 +84,8 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
           }))} />}
       </div>
     </div>
-    {progress?.error && <p className="task-step-io-notice is-error" role="alert">
-      {progress.error}
-    </p>}
+    {progress?.error && <TaskStepFeedback key={`${currentStep.key}:${progress.error}`}
+      content={progress.error} status={progress.status} />}
     {!progress?.error && ['rework', 'rework_waiting'].includes(progress?.status ?? '') && (
       <p className="task-step-io-notice" role="status">
         {t(progress?.status === 'rework' ? 'taskDetail.reworkQueuedNotice' : 'taskDetail.reworkWaitingNotice')}

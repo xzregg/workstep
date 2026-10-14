@@ -9,6 +9,7 @@ import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
 import TaskArtifactPreviewDialog from './TaskArtifactPreviewDialog'
 import { GitApiContext } from './git/GitApiContext'
 import { gitApi, type GitApi } from '../api/git'
+import { CoordinatorProposalContext, type CoordinatorProposalActions } from '../contexts/CoordinatorProposalContext'
 import {
   MarkdownAssetUrlProvider,
   type MarkdownUrlResolver,
@@ -45,6 +46,7 @@ export interface TaskDetailPageProps extends Omit<
 > {
   readCapabilities: TaskDetailReadCapabilities
   gitCapability?: TaskDetailGitCapability
+  proposalActions?: CoordinatorProposalActions
   artifactNotice?: string
   /** 产物预览的挂载与关闭由调用方管理状态，这里只负责统一渲染。 */
   previewArtifact?: TaskArtifact | null
@@ -70,6 +72,7 @@ export default function TaskDetailPage({
   overlays,
   readCapabilities,
   gitCapability,
+  proposalActions,
   onClose,
   ...viewProps
 }: TaskDetailPageProps) {
@@ -101,6 +104,7 @@ export default function TaskDetailPage({
 
 
   return (
+    <CoordinatorProposalContext.Provider value={proposalActions}>
     <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, projectScoped: gitCapability?.projectScoped, workspaceEditable: gitCapability?.workspaceEditable, allowedActions: gitCapability?.allowedActions, permissionCheck: can, readOnly: !!gitCapability?.readOnly, browseWorkspace: readCapabilities.browseGitWorkspace }}>
     <MarkdownAssetUrlProvider resolver={readCapabilities.resolveAssetUrl} filePreview={readCapabilities.filePreview}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -167,6 +171,7 @@ export default function TaskDetailPage({
           onClose={() => onCloseArtifactPreview?.()}
           onOpenDirectory={onOpenArtifactDirectory}
           canOpenDirectory={canOpenArtifactDirectory}
+          sharedFiles={!viewProps.projectId || gitCapability?.shared ? viewProps.artifacts : undefined}
         />
       ) : null}
 
@@ -174,5 +179,6 @@ export default function TaskDetailPage({
     </div>
     </MarkdownAssetUrlProvider>
     </GitApiContext.Provider>
+    </CoordinatorProposalContext.Provider>
   )
 }

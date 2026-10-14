@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from gateway.models import PlatformProject, PlatformShare, User, Device
 from gateway.services.errors import GatewayError
 from gateway.services import platform_shares
+from gateway.services.task_share_projects import resolve_task_share_project
 
 
 async def manage(call, device_id: str, user_id: str, message: dict) -> dict:
@@ -18,12 +19,14 @@ async def manage(call, device_id: str, user_id: str, message: dict) -> dict:
     async with call.database.session() as session:
         user = await session.get(User,user_id)
         device = await session.get(Device,device_id)
-        project = await session.scalar(select(PlatformProject).where(
-            PlatformProject.device_id == device_id,PlatformProject.host_project_id == project_id))
         if user is None or user.status != 'active' or device is None or device.status != 'active':
             raise GatewayError('forbidden','网关账号或设备已不可用。')
-        if project is None or project.status != 'active' or project.access_mode != 'remote_published':
-            raise GatewayError('not_found','请先在项目设置中发布项目到网关，再分享任务。')
+        project = await resolve_task_share_project(session, device_id, user_id, project_id, create=action == 'create')
+        await session.commit()
+        if project is None:
+            if action == 'list':
+                return {'shares': []}
+            raise GatewayError('not_found', 'Task project unavailable')
         if action == 'revoke':
             share_id = payload.get('share_id')
             if not isinstance(share_id,str) or not 1 <= len(share_id) <= 128:

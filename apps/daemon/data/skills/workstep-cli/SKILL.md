@@ -311,6 +311,66 @@ branch without changing the task's execution directory; the engine continues
 to start in the project root. Run it only when the user's task authorizes code
 changes.
 
+## Task stage controls
+
+For an explicit request to coordinate stage execution, inspect `task get` and
+the task's workflow first. Use existing step keys within the current project
+and task. Stage calls may run sequentially in the same turn; the user's explicit
+instruction authorizes the necessary operations without separate proposal
+confirmation for every call. Questions alone do not authorize execution.
+
+Send a message to a running execution or automatic review:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task step-message \
+  --project <project_id> --task <task_id> --step <step_key> \
+  --content "Additional requirements" --json
+```
+
+Native operation: `workstep_send_step_message`, with `project_id`, `task_id`,
+`step_key`, `content`, optional `as_guidance`, and `confirm='yes'`. Add
+`--as-guidance` to also retain the message for later attempts. Engine live-message
+support is required; queued does not mean delivered. If unsupported, report it;
+do not silently stop or restart the step.
+
+Stop one stage, including its pending interaction:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task step-stop \
+  --project <project_id> --task <task_id> --step <step_key> --json
+```
+
+Native operation: `workstep_stop_step`, with the three IDs and `confirm='yes'`.
+Re-read `task get` and wait until the step is no longer running before the next
+dependent operation. Bound the wait; if it times out, report the pending stop
+instead of repeatedly issuing it. This stops the stage, not the coordinator.
+
+Start an unstarted stage or resume a stopped/completed stage with a message:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task step-start \
+  --project <project_id> --task <task_id> --step <step_key> \
+  --content "Execute these requirements" --json
+```
+
+Native operation: `workstep_start_step`, with the three IDs, required `content`,
+optional `reset_session`, and `confirm='yes'`. A non-empty startup message is
+required; for a plain start, summarize the user's requested execution. Add
+`--reset-session` (native `reset_session=true`) only when the user explicitly
+requests a fresh session or cleared context. Otherwise preserve the session.
+
+Start uses the existing @step execution logic: it stops the old task runner and
+runs the target plus its DAG downstream using existing input rules. It is not
+an isolated or force start. If other running stages outside the user's request
+would be stopped, explain the impact and ask before starting. Running targets
+reject this operation; use live messages or stop them first as authorized.
+
+After each call, check the returned result. On errors or changed state, re-read
+the task before deciding what to do next; never blindly retry a mutation or
+also propose an operation already performed. Distinguish accepted starts from
+completed work, stop requests from completed stops, and queued messages from
+delivered messages.
+
 ## Engines
 
 ```bash

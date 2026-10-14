@@ -29,6 +29,12 @@ const post = (body?: unknown): RequestInit => ({ method: 'POST', body: JSON.stri
 
 /** Gateway cookies stay server-owned; the session value is solely visitor CSRF. */
 export const gatewayShareApi: SharedTaskApi = {
+  taskOperation: <T,>(token: string, csrf: string, path: string, options?: RequestInit) =>
+    read<T>(token, '/operation', csrf, post({ path, method: options?.method || 'GET',
+      body: typeof options?.body === 'string' && options.body ? JSON.parse(options.body) : null,
+      idempotency_key: new Headers(options?.headers).get('Idempotency-Key') })),
+  confirmAction: (token, csrf, id, key, overwrite = false) => read(token, `/actions/${segment(id)}/confirm`, csrf, post({ idempotency_key: key, overwrite })),
+  cancelAction: (token, csrf, id) => read(token, `/actions/${segment(id)}/cancel`, csrf, post()),
   gitWorkspaceEditable: false,
   gitAllowedActions: ['commit', 'switch', 'createBranch', 'deleteBranch', 'fetch', 'pull', 'push'],
   restoreSession: async token => {
@@ -56,8 +62,8 @@ export const gatewayShareApi: SharedTaskApi = {
   },
   messageEvents: (token, csrf, message, cursor = 0) => read(token, `/events/${segment(message)}/${cursor}`, csrf),
   artifacts: async (token, csrf) => {
-    const result = await read<{ artifacts: any[] }>(token, '/artifacts', csrf)
-    return { artifact_directory: '', artifacts: result.artifacts.map(artifact => ({
+    const result = await read<{ artifacts: any[]; input_snapshots?: any[] }>(token, '/artifacts', csrf)
+    return { artifact_directory: '', input_snapshots: result.input_snapshots || [], artifacts: result.artifacts.map(artifact => ({
       ...artifact, path: `artifact:${artifact.id}`, is_dir: false,
     })) }
   },

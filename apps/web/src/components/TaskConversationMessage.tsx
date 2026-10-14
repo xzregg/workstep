@@ -4,6 +4,7 @@ import type { ActionProposal } from '../api/client'
 import type { TaskDetailViewProps } from './TaskDetailView'
 import { useI18n } from '../i18n'
 import { CoordinatorProposalCard } from './CoordinatorProposalCard'
+import { useCoordinatorProposalActions } from '../contexts/CoordinatorProposalContext'
 import ChatMessageBubble from './ChatMessageBubble'
 import StreamingStatusText from './StreamingStatusText'
 import MessageMetaBar from './MessageMetaBar'
@@ -117,6 +118,7 @@ export default function TaskConversationMessage({
   proposalOverrides,
 }: TaskConversationMessageProps) {
   const { t } = useI18n()
+  const proposalActions = useCoordinatorProposalActions()
   const localUserName = useUserSettingsStore((state) => state.userName)
   const stepKey =
     message.context_step_key ||
@@ -682,7 +684,7 @@ export default function TaskConversationMessage({
                           proposal={
                             currentProposal
                           }
-                          readOnly={!onProposalOverride || !projectId}
+                          readOnly={!onProposalOverride || (!projectId && !proposalActions)}
                           taskId={
                             task?.id ||
                             ''

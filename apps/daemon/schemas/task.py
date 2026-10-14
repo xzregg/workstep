@@ -76,6 +76,7 @@ class CoordinatorConfigRequest(BaseSchema):
 class StepResumeRequest(BaseSchema):
     content: str
     reset_step: bool = False
+    allow_pending: bool = Field(False, description="Allow first execution of an existing pending step; does not bypass input rules")
 
 
 class StepExecutionConfigRequest(BaseSchema):

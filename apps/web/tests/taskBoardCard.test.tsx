@@ -17,6 +17,40 @@ const task: Task = {
     started_at: null, ended_at: null, error: null }],
 }
 
+test('overflowing card metadata scrolls only while hovered and resets on mouse leave', async () => {
+  const { window } = installDomEnvironment()
+  const prototype = window.HTMLElement.prototype
+  const originalScrollWidth = Object.getOwnPropertyDescriptor(prototype, 'scrollWidth')
+  const originalClientWidth = Object.getOwnPropertyDescriptor(prototype, 'clientWidth')
+  Object.defineProperty(prototype, 'scrollWidth', { configurable: true, get: () => 500 })
+  Object.defineProperty(prototype, 'clientWidth', { configurable: true, get: () => 100 })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><TaskBoardCard
+      task={task} durationNowMs={Date.now()} showArchived={false} starting={false}
+      onOpen={() => {}} onStart={() => {}} onArchive={() => {}}
+      onRestore={() => {}} onDelete={() => {}}
+      onDragStart={() => {}} onDragEnd={() => {}}
+    /></I18nProvider>))
+    const metadata = container.querySelector<HTMLElement>('.task-card-meta')!
+    assert.ok(metadata.classList.contains('is-overflowing'))
+    assert.equal(metadata.classList.contains('is-marquee'), false)
+    await act(async () => metadata.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })))
+    assert.equal(metadata.classList.contains('is-marquee'), true)
+    await act(async () => metadata.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true })))
+    assert.equal(metadata.classList.contains('is-marquee'), false)
+  } finally {
+    await act(async () => root.unmount())
+    if (originalScrollWidth) Object.defineProperty(prototype, 'scrollWidth', originalScrollWidth)
+    else delete (prototype as any).scrollWidth
+    if (originalClientWidth) Object.defineProperty(prototype, 'clientWidth', originalClientWidth)
+    else delete (prototype as any).clientWidth
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
 test('an unstarted board card shows its metadata and keeps action clicks separate from opening', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))
@@ -34,10 +68,9 @@ test('an unstarted board card shows its metadata and keeps action clicks separat
     assert.match(container.textContent || '', /Alice/)
     assert.doesNotMatch(container.textContent || '', /Creator:\s*Alice/)
     assert.match(container.textContent || '', /Implement the design/)
-    const created = container.querySelector('time.task-board-card-created')
-    assert.ok(created)
-    assert.equal(created.getAttribute('datetime'), task.created_at)
-    assert.equal(created.textContent, formatConversationDateTime(task.created_at))
+    const metadata = container.querySelector('.task-card-meta .ws-marquee__inner')
+    assert.ok(metadata)
+    assert.equal(metadata.textContent, `${formatConversationDateTime(task.created_at)} · Alice`)
     const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
     const rules = document.createElement('style')
     rules.textContent = css.slice(css.indexOf('.task-board-card-actions {'), css.indexOf('.task-message-artifacts-heading {'))

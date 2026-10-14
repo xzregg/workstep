@@ -168,9 +168,18 @@ class BotManager:
             raise LookupError("机器人不存在")
         config = bot.get(f"{scope}_whitelist", {"enabled": False, "users": []})
         if scope == "group":
-            candidates = {row["group_id"]: {"group_id": row["group_id"], "group_name": row.get("group_name", "")} for row in data["recent_groups"] if row["bot_id"] == bot_id}
-            candidates.update({row["group_id"]: row for row in config.get("groups", [])})
-            return {"enabled": config["enabled"], "groups": config.get("groups", []), "candidates": list(candidates.values())}
+            recent = await self.recent_groups(bot_id)
+            candidates = {row["group_id"]: {
+                "group_id": row["group_id"],
+                "group_name": row.get("group_name") or row.get("conversation_title", ""),
+            } for row in recent}
+            groups = []
+            for row in config.get("groups", []):
+                current = candidates.get(row["group_id"], {})
+                resolved = {"group_id": row["group_id"], "group_name": current.get("group_name") or row.get("group_name", "")}
+                candidates[row["group_id"]] = resolved
+                groups.append(resolved)
+            return {"enabled": config["enabled"], "groups": groups, "candidates": list(candidates.values())}
         candidates = dict(self._private_users.get(bot_id, {}))
         candidates.update({user["sender_id"]: user for user in config["users"]})
         return {**config, "candidates": list(candidates.values())}
@@ -225,6 +234,7 @@ class BotManager:
             "id": str(uuid.uuid4()), "platform": platform, "name": name,
             "app_id": app_id, "secret": secret,
             "card_template_id": str(values.get("card_template_id") or "").strip(),
+            "review_card_template_id": str(values.get("review_card_template_id") or "").strip(),
             "enabled": bool(values.get("enabled", False)),
             "default_target_type": kind,
             "default_project_id": project_id if kind else "",
@@ -247,7 +257,7 @@ class BotManager:
             if bot is None:
                 raise LookupError("机器人不存在")
             updated = dict(bot)
-            for key in ("name", "app_id", "default_target_type", "default_project_id", "default_task_id", "enabled", "card_template_id"):
+            for key in ("name", "app_id", "default_target_type", "default_project_id", "default_task_id", "enabled", "card_template_id", "review_card_template_id"):
                 if key in values:
                     updated[key] = values[key]
             if values.get("secret"):
@@ -259,6 +269,7 @@ class BotManager:
             updated["default_task_id"] = str(updated["default_task_id"] or "")
             updated["enabled"] = bool(updated["enabled"])
             updated["card_template_id"] = str(updated.get("card_template_id") or "").strip()
+            updated["review_card_template_id"] = str(updated.get("review_card_template_id") or "").strip()
             if not updated["default_target_type"]:
                 updated["default_project_id"] = ""
             if updated["default_target_type"] != "task":
@@ -499,6 +510,10 @@ class BotManager:
             return
         adapter = self._adapters.get(message.bot_id)
         if not adapter:
+            return
+        review_reply = await self._controls.review_message(message)
+        if review_reply is not None:
+            await adapter.send_text(message, review_reply)
             return
         start_reply = (adapter.start_reply if adapter.CAPABILITIES.waiting else None) if isinstance(adapter, ChannelAdapter) else getattr(adapter, "start_reply", None)
         if start_reply is not None:

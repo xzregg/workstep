@@ -74,7 +74,7 @@ async def project_grant_rows(session, project_id: str) -> list[dict]:
                ProjectAccessGrant.subject_id))).all()
     user_ids = [row.subject_id for row in rows if row.subject_type == 'user']
     group_ids = [row.subject_id for row in rows if row.subject_type == 'group']
-    user_names = dict((await session.execute(select(User.id, User.username).where(
+    user_names = dict((await session.execute(select(User.id, func.coalesce(func.nullif(func.trim(User.display_name), ''), User.username)).where(
         User.id.in_(user_ids)))).all()) if user_ids else {}
     group_names = dict((await session.execute(select(UserGroup.id, UserGroup.name).where(
         UserGroup.id.in_(group_ids)))).all()) if group_ids else {}
@@ -253,7 +253,7 @@ async def list_admin_projects(call: GatewayCall, q: str = '',
             ProjectAccessGrant.revoked_at.is_(None)))).all() if project_ids else []
         publisher_ids = {project.published_by_user_id for project, _ in rows
                          if project.published_by_user_id}
-        publisher_names = dict((await session.execute(select(User.id, User.username).where(
+        publisher_names = dict((await session.execute(select(User.id, func.coalesce(func.nullif(func.trim(User.display_name), ''), User.username)).where(
             User.id.in_(publisher_ids)))).all()) if publisher_ids else {}
         projects = []
         for project, device in rows:
@@ -265,15 +265,23 @@ async def list_admin_projects(call: GatewayCall, q: str = '',
 async def list_project_grant_subjects(call: GatewayCall,
                                       subject_type: Literal['user', 'group'],
                                       q: str = '',
+                                      group_id: str = '',
                                       page: int = 1,
                                       page_size: int = 25):
     identity, actor, _ = await project_manager(call)
     model = User if subject_type == 'user' else UserGroup
-    name = User.username if subject_type == 'user' else UserGroup.name
+    name = func.coalesce(func.nullif(func.trim(User.display_name), ''), User.username) if subject_type == 'user' else UserGroup.name
     conditions = [model.status == 'active']
+    if subject_type == 'user' and group_id:
+        conditions.append(User.id.in_(select(GroupMembership.user_id).join(
+            UserGroup, UserGroup.id == GroupMembership.group_id).where(
+            GroupMembership.group_id == group_id, GroupMembership.revoked_at.is_(None), UserGroup.status == 'active')))
+
     if q.strip():
         escaped = q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-        conditions.append(name.ilike(f'%{escaped}%', escape='\\'))
+        match = name.ilike(f'%{escaped}%', escape='\\')
+        conditions.append(or_(match, User.username.ilike(f'%{escaped}%', escape='\\'))
+                          if subject_type == 'user' else match)
     async with call.database.session() as session:
         allowed = await grant_subject_ids(session, identity, actor.id, subject_type)
         if allowed is not None:
@@ -281,7 +289,7 @@ async def list_project_grant_subjects(call: GatewayCall,
         total = await session.scalar(select(func.count()).select_from(model).where(*conditions))
         rows = (await session.scalars(select(model).where(*conditions).order_by(name, model.id)
             .offset((page - 1) * page_size).limit(page_size))).all()
-    return {'subjects': [{'id': row.id, 'name': getattr(row, 'username', None) or row.name}
+    return {'subjects': [{'id': row.id, 'name': (row.display_name.strip() or row.username) if subject_type == 'user' else row.name}
                          for row in rows], 'total': total, 'page': page, 'page_size': page_size}
 
 

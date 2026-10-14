@@ -500,7 +500,8 @@ class BaseLLMEngine(ABC):
 
     def resolve_provider_id(self, provider_id: str | None = None) -> str:
         """Resolve an explicit provider override against the engine default."""
-        selected = str(provider_id or "").strip()
+        explicit = str(provider_id or "").strip()
+        selected = explicit
         config_store = self.provider_config_store()
         get_managed_default = getattr(config_store, "get_managed_default_provider", None)
         managed_default = get_managed_default() if callable(get_managed_default) else ""
@@ -509,7 +510,9 @@ class BaseLLMEngine(ABC):
             selected = str(self.get_config_values().get("provider_id") or "").strip()
         if not selected and callable(get_engine_provider):
             selected = str(get_engine_provider(self.ENGINE_ID) or "").strip()
-        if managed_default and (not selected or config_store.get_provider(selected) is None):
+        if managed_default and (
+            not selected or (not explicit and config_store.get_provider(selected) is None)
+        ):
             return str(managed_default)
         return selected
 

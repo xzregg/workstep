@@ -6,12 +6,15 @@ import logging
 import mimetypes
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 
 import httpx
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
+from api.shared_coordinator_actions import ShareActionConfirmation, apply_shared_coordinator_action
+from api.shared_task_operations import SharedTaskOperation, dispatch_shared_task_operation
 
 from api.fs import (
     UploadFileRequest,
@@ -36,6 +39,7 @@ class CreateShareRequest(BaseSchema):
     password: str | None = None
     title: str | None = None
     mode: str = "read_only"
+    expires_at: datetime | None = None
 
 
 class VerifyShareRequest(BaseSchema):
@@ -80,7 +84,7 @@ async def create_share(task_id: str, req: CreateShareRequest, pid: str = Query(.
         share = await project_manager.run_db(
             pid,
             lambda _project: share_service.create_share(
-                task_id, req.password, req.title, req.mode
+                task_id, req.password, req.title, req.mode, req.expires_at
             ),
         )
     except ValueError as exc:
@@ -481,7 +485,9 @@ async def public_share_artifacts(token: str, request: Request):
             round_directory = round_directory.parent
         step_directory = round_directory.parent if round_directory.name == str(first["round"]) else round_directory
         artifact_directory = str(step_directory.parent)
-    return {"artifacts": artifacts, "artifact_directory": str(artifact_directory)}
+    from services.artifacts import list_task_artifact_input_snapshots
+    snapshots = await project_manager.run_db(ctx['project_id'], lambda _: list_task_artifact_input_snapshots(ctx['task_id']))
+    return {"artifacts": artifacts, "artifact_directory": str(artifact_directory), "input_snapshots": snapshots}
 
 
 @router.get("/public/{token}/file-preview")
@@ -670,6 +676,33 @@ async def public_share_cancel_step(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"cancelled": cancelled}
+
+
+@router.post("/public/{token}/actions/{proposal_id}/confirm")
+async def public_share_confirm_action(token: str, proposal_id: str, request: Request, body: ShareActionConfirmation):
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(403, "Session does not match share")
+    _require_interactive_share(ctx)
+    return await apply_shared_coordinator_action(ctx["project_id"], ctx["task_id"], proposal_id, body)
+
+
+@router.post("/public/{token}/operation")
+async def public_share_task_operation(token: str, request: Request, body: SharedTaskOperation):
+    ctx = await _require_share_session(request)
+    if ctx['token'] != token:
+        raise HTTPException(403, "Session does not match share")
+    _require_interactive_share(ctx)
+    return await dispatch_shared_task_operation(request, ctx['project_id'], ctx['task_id'], body)
+
+
+@router.post("/public/{token}/actions/{proposal_id}/cancel")
+async def public_share_cancel_action(token: str, proposal_id: str, request: Request):
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(403, "Session does not match share")
+    _require_interactive_share(ctx)
+    return await apply_shared_coordinator_action(ctx["project_id"], ctx["task_id"], proposal_id)
 
 
 @router.post("/public/{token}/steps/{step_key}/review/{decision}")

@@ -36,7 +36,7 @@ def test_admin_assigns_encrypted_provider_without_exposing_secret(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         setup = client.post("/api/platform/setup", json={
-            "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
+            "username": "owner", "display_name": "平台管理员", "password": "OwnerPassphrase-2026!",
             "recovery_username": "recovery", "recovery_password": "RecoveryPassphrase-2026!",
             "registration_mode": "open",
         })
@@ -210,7 +210,8 @@ def test_admin_assigns_encrypted_provider_without_exposing_secret(tmp_path):
         assignments = client.get(f"/api/admin/providers/{provider_id}/assignments")
         assert assignments.status_code == 200
         assert assignments.json()["assignments"][0]["subject_id"] == owner_id
-        assert assignments.json()["assignments"][0]["subject_name"] == "owner"
+        assert assignments.json()["assignments"][0]["subject_name"] == "平台管理员"
+        assert client.get(f"/api/admin/providers/{provider_id}/assignments?q=平台管理员").json()["total"] == 1
         assert client.get(f"/api/admin/providers/{provider_id}/assignments?q=missing").json()["total"] == 0
         assert client.get(f"/api/admin/providers/{provider_id}/assignments?page_size=101").status_code == 422
         before_ciphertext = client.portal.call(stored_ciphertext)

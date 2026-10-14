@@ -174,6 +174,7 @@ for (const transport of ['socket', 'poll'] as const) {
     let revision = 1
     let historyReads = 0
     let detailReads = 0
+    const detailCursors: number[] = []
     class FakeSocket {
       onopen?: () => void
       onclose?: (event: { code: number }) => void
@@ -197,9 +198,10 @@ for (const transport of ['socket', 'poll'] as const) {
       },
       artifacts: async () => ({ artifacts: [{ id: `artifact-${revision}` }], artifact_directory: '' }),
       reviews: async () => ({ reviews: [] }),
-      messageEvents: async () => {
+      messageEvents: async (_token: string, _session: string, _message: string, cursor = 0) => {
         detailReads++
-        return { events: Array.from({ length: revision }, (_, index) => ({ type: 'TOOL_CALL_START', sequence: index + 1 })), complete: true, next_cursor: null }
+        detailCursors.push(cursor)
+        return { events: Array.from({ length: revision - cursor }, (_, index) => ({ type: 'TOOL_CALL_START', sequence: cursor + index + 1 })), last_event_seq: revision, complete: true, next_cursor: null }
       },
       buildWsUrl: () => transport === 'socket' ? 'ws://localhost/ws/share' : null,
     } as unknown as typeof gatewayShareApi
@@ -222,11 +224,14 @@ for (const transport of ['socket', 'poll'] as const) {
       await flush()
       assert.equal(historyReads, 2)
       assert.equal(detailReads, 2)
+      assert.deepEqual(detailCursors, [0, 1])
       assert.equal(session.messages[0].content, 'text-2')
       assert.equal(session.messages[0].events.length, 2)
       assert.equal(session.messages[0].event_detail.loaded, true)
       assert.equal(session.artifacts[0].id, 'artifact-2')
       assert.equal(session.wsStatus, 'live')
+      await act(async () => { await session.loadMessageEvents('m') })
+      assert.equal(detailReads, 2, 'reopening reuses already loaded message details')
     } finally {
       await act(async () => root.unmount())
       globalThis.WebSocket = originalSocket
@@ -235,3 +240,44 @@ for (const transport of ['socket', 'poll'] as const) {
     }
   })
 }
+
+test('gateway polling slows idle tasks, pauses in hidden tabs and refreshes on return', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const originalTimeout = globalThis.setTimeout
+  const originalClear = globalThis.clearTimeout
+  let timer: (() => void) | undefined
+  let delay = 0
+  let reads = 0
+  let status = 'completed'
+  let visibility = 'visible'
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
+  globalThis.setTimeout = ((callback: () => void, ms: number, ...args: any[]) => {
+    if (ms === 2000 || ms === 30000) { timer = callback; delay = ms; return 98765 }
+    return originalTimeout(callback, ms, ...args)
+  }) as typeof setTimeout
+  globalThis.clearTimeout = ((id: any) => { if (id === 98765) timer = undefined; else originalClear(id) }) as typeof clearTimeout
+  const api = { ...gatewayShareApi,
+    meta: async () => ({ has_password: false }), restoreSession: async () => ({ session_token: 'csrf' }),
+    task: async () => { reads++; return { id: 'task', status, steps: [] } },
+    history: async () => ({ messages: [] }), artifacts: async () => ({ artifacts: [] }), reviews: async () => ({ reviews: [] }),
+  } as unknown as typeof gatewayShareApi
+  function Harness() { useSharedTaskSession('share', api); return null }
+  try {
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    assert.equal(reads, 1)
+    assert.equal(delay, 30000)
+    await act(async () => { visibility = 'hidden'; document.dispatchEvent(new window.Event('visibilitychange')) })
+    assert.equal(timer, undefined)
+    status = 'running'
+    await act(async () => { visibility = 'visible'; document.dispatchEvent(new window.Event('visibilitychange')) })
+    assert.equal(reads, 2)
+    assert.equal(delay, 2000)
+    await act(async () => root.unmount())
+    assert.equal(timer, undefined)
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.setTimeout = originalTimeout; globalThis.clearTimeout = originalClear
+    await window.happyDOM.close()
+  }
+})

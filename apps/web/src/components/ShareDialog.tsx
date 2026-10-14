@@ -11,6 +11,7 @@ import { useI18n } from '../i18n'
 import { copyText } from '../utils/clipboard'
 import { useProjectStore } from '../stores/projectStore'
 import { taskShareUrl } from '../utils/taskShareUrl'
+import { taskShareDefaults, taskShareClipboard, rememberTaskShareKey, taskShareKey, forgetTaskShareKey } from '../../../../packages/gateway-ui/src/taskShareDefaults'
 
 type ShareMode = 'read_only' | 'interactive'
 
@@ -18,6 +19,7 @@ interface Props {
   open: boolean
   taskId: string
   projectId: string
+  taskTitle?: string
   onClose: () => void
   onChanged?: (share: ShareInfo | null) => void
   api?: {
@@ -33,6 +35,7 @@ export default function ShareDialog({
   open,
   taskId,
   projectId,
+  taskTitle,
   onClose,
   onChanged,
   api = taskApi.share,
@@ -53,8 +56,18 @@ export default function ShareDialog({
   const [error, setError] = useState<string | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
+  const initialDefaults = useRef({ password: '', expiresAt: '' })
   const pending = useRef(false)
   const dialogRef = useRef<HTMLDivElement>(null)
+
+  function resetDraft() {
+    const defaults = taskShareDefaults()
+    initialDefaults.current = defaults
+    setPassword(defaults.password)
+    setTitle('')
+    setMode('read_only')
+    setExpiresAt(defaults.expiresAt)
+  }
 
   useEffect(() => {
     if (open) dialogRef.current?.focus({ preventScroll: true })
@@ -63,10 +76,7 @@ export default function ShareDialog({
   // Reset transient state whenever the dialog (re)opens.
   useEffect(() => {
     if (!open) return
-    setPassword('')
-    setTitle('')
-    setMode('read_only')
-    setExpiresAt('')
+    resetDraft()
     setError(null)
     setCopied(false)
     setConfirmRevoke(false)
@@ -76,7 +86,10 @@ export default function ShareDialog({
     api
       .get(taskId, projectId)
       .then((info) => {
-        if (!cancelled) setShare(info)
+        if (!cancelled) {
+          setShare(info)
+          if (info) setPassword(taskShareKey(info.id))
+        }
       })
       .catch((err: Error) => {
         if (!cancelled) {
@@ -105,7 +118,7 @@ export default function ShareDialog({
 
   const requestClose = () => {
     if (pending.current) return
-    if (!share && (password || title || expiresAt || mode !== 'read_only')) setConfirmClose(true)
+    if (!share && (password !== initialDefaults.current.password || title || expiresAt !== initialDefaults.current.expiresAt || mode !== 'read_only')) setConfirmClose(true)
     else onClose()
   }
 
@@ -128,7 +141,7 @@ export default function ShareDialog({
         expiresAt ? new Date(expiresAt).toISOString() : null,
       )
       setShare(created)
-      setPassword('')
+      rememberTaskShareKey(created.id, password)
       setTitle('')
       setMode('read_only')
       onChanged?.(created)
@@ -142,7 +155,9 @@ export default function ShareDialog({
   }
 
   const handleCopy = async () => {
-    const ok = await copyText(shareUrl)
+    const ok = await copyText(taskShareClipboard(shareUrl, password, share?.title || taskTitle || t('share.copyTask'), {
+      address: t('share.copyAddress'), password: t('share.copyPassword'), task: t('share.copyTask'),
+    }))
     if (ok) {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
@@ -160,6 +175,8 @@ export default function ShareDialog({
     setRevoking(true)
     try {
       await api.revoke(taskId, projectId)
+      if (share) forgetTaskShareKey(share.id)
+      resetDraft()
       setShare(null)
       setConfirmRevoke(false)
       onChanged?.(null)
@@ -238,7 +255,7 @@ export default function ShareDialog({
                 </div>
                 {!shareUrl && <div className="task-share-link-unavailable">
                   <p>{t('share.savedLinkUnavailable')}</p>
-                  {can('share.create') && <Button onClick={() => setShare(null)}>{t('share.create')}</Button>}
+                  {can('share.create') && <Button onClick={() => { resetDraft(); setShare(null) }}>{t('share.create')}</Button>}
                 </div>}
                 {shareUrl && <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
@@ -256,7 +273,7 @@ export default function ShareDialog({
                       outline: 'none',
                     }}
                   />
-                  <Button variant="ghost" onClick={handleCopy} style={{ fontSize: 'calc(12px * var(--font-scale))', height: 28 }}>
+                  <Button variant="ghost" disabled={share.has_password && !password} onClick={handleCopy} style={{ fontSize: 'calc(12px * var(--font-scale))', height: 28 }}>
                     <Icon name={copied ? 'check' : 'copy'} size={13} />
                     {copied ? t('share.linkCopied') : t('share.copyLink')}
                   </Button>
@@ -265,6 +282,11 @@ export default function ShareDialog({
                     {t('share.openWindow')}
                   </Button>
                 </div>}
+                {share.has_password && <label className="task-share-access-key">
+                  <span>{t('share.passwordLabel')}</span>
+                  <Input value={password} onChange={event => setPassword(event.target.value)} placeholder={t('share.passwordPlaceholder')} autoComplete="off" />
+                </label>}
+                {share.expires_at && <div className="task-share-expiry-display">{t('share.expiresAtLabel')}：{new Date(share.expires_at).toLocaleString()}</div>}
                 {share.title && (
                   <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--fg-2)' }}>{share.title}</div>
                 )}
@@ -292,11 +314,13 @@ export default function ShareDialog({
                     {t('share.passwordLabel')} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({t('common.optional')})</span>
                   </span>
                   <Input
-                    type="password"
+                    type="text"
+                    name="share-access-key"
+                    aria-label={t('share.passwordLabel')}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={t('share.passwordPlaceholder')}
-                    autoComplete="new-password"
+                    autoComplete="off"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !creating) handleCreate()
                     }}
@@ -312,10 +336,10 @@ export default function ShareDialog({
                     placeholder={t('share.titlePlaceholder')}
                   />
                 </label>
-                {gateway && <label className="task-share-expiry">
+                <label className="task-share-expiry">
                   <span>{t('share.expiresAtLabel')}</span>
                   <Input type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} />
-                </label>}
+                </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>
                     {t('share.modeLabel')}

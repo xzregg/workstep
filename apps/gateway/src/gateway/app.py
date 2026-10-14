@@ -226,6 +226,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             if path.startswith("api/") or "." in path:
                 raise HTTPException(status_code=404)
             return FileResponse(settings.web_dist / "index.html")
+    from gateway.audit_context import AuditRequestContextMiddleware
+    app.add_middleware(AuditRequestContextMiddleware)
     return app
 
 

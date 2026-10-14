@@ -1,4 +1,6 @@
 import Select from '../components/Select'
+import SystemStatisticsPanel from '../components/SystemStatisticsPanel'
+import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -248,7 +250,7 @@ function TableShell({ title, hint, children }: {
 }
 
 
-export default function StatisticsPage() {
+function BusinessStatistics() {
   const { t, locale } = useI18n()
   const [searchParams, setSearchParams] = useSearchParams()
   const [report, setReport] = useState<StatisticsReport | null>(null)
@@ -370,26 +372,20 @@ export default function StatisticsPage() {
   ] : [], [locale, report, t])
 
   return (
-    <div className="statistics-page">
-      <header className="statistics-header">
-        <div>
-          <div className="statistics-breadcrumbs">
-            <button onClick={() => setScope()}>{t('statistics.global')}</button>
+    <div className="statistics-business">
+      <header className="statistics-business-toolbar">
+          <nav className="statistics-breadcrumbs statistics-scope" aria-label={t('statistics.title')}>
+            {projectId ? <button onClick={() => setScope()}>{t('statistics.global')}</button> : <h2 className="statistics-scope-current">{t('statistics.global')}</h2>}
             {report?.scope.project_name && (
               <>
                 <span>/</span>
-                <button onClick={() => setScope(report.scope.project_id || undefined)}>
-                  {report.scope.project_name}
-                </button>
+                {workflowId ? <button onClick={() => setScope(report.scope.project_id || undefined)}>{report.scope.project_name}</button> : <strong className="statistics-scope-current">{report.scope.project_name}</strong>}
               </>
             )}
             {report?.scope.workflow_name && (
-              <><span>/</span><strong>{report.scope.workflow_name}</strong></>
+                <><span>/</span><strong className="statistics-scope-current">{report.scope.workflow_name}</strong></>
             )}
-          </div>
-          <h1>{t('statistics.title')}</h1>
-          <p>{t('statistics.subtitle')}</p>
-        </div>
+          </nav>
         <div className="statistics-header-actions">
           <Select value={range} onChange={(event) => setRange(event.target.value as RangeKey)}>
             <option value="7d">{t('statistics.range7d')}</option>
@@ -651,4 +647,39 @@ function EngineTable({ rows, locale, currency }: { rows: StatisticsEngineRow[]; 
       ))}</tbody></table>
     </TableShell>
   )
+}
+
+
+export default function StatisticsPage() {
+  const { t } = useI18n()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const hostname = window.location.hostname
+  const local = !isGatewayRemoteBrowser() && (hostname === 'localhost' || hostname === '[::1]' || hostname === '::1' || /^127\.\d+\.\d+\.\d+$/.test(hostname))
+  const system = local && searchParams.get('tab') === 'system'
+  const setTab = (tab: 'business' | 'system') => {
+    const next = new URLSearchParams(searchParams)
+    if (tab === 'system') next.set('tab', 'system')
+    else next.delete('tab')
+    setSearchParams(next)
+  }
+  return <div className="statistics-page statistics-page--tabs">
+    <header className="statistics-heading"><h1>{t('statistics.title')}</h1><p>{t('systemStatistics.subtitle')}</p></header>
+    <div className="statistics-tabs" role="tablist" aria-label={t('statistics.title')}>
+      {(['business', ...(local ? ['system'] : [])] as const).map(tab => {
+        const selected = (tab === 'system') === system
+        return <button key={tab} id={`statistics-${tab}-tab`} role="tab" aria-selected={selected} tabIndex={selected ? 0 : -1} aria-controls="statistics-active-panel"
+          onClick={() => setTab(tab as 'business' | 'system')}
+          onKeyDown={event => {
+            if (!local || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+            event.preventDefault()
+            const target = event.key === 'Home' ? 'business' : event.key === 'End' ? 'system' : system ? 'business' : 'system'
+            setTab(target)
+            document.getElementById(`statistics-${target}-tab`)?.focus()
+          }}>{t(tab === 'system' ? 'systemStatistics.systemTab' : 'systemStatistics.businessTab')}</button>
+      })}
+    </div>
+    <div id="statistics-active-panel" role="tabpanel" aria-labelledby={`statistics-${system ? 'system' : 'business'}-tab`}>
+      {system ? <SystemStatisticsPanel /> : <BusinessStatistics />}
+    </div>
+  </div>
 }

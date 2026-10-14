@@ -5,7 +5,7 @@ import test from 'node:test'
 test('portal loads its complete stylesheet cascade before application scripts', () => {
  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
  const head = html.slice(0, html.indexOf('</head>'))
- const styles = ['gateway', 'AdminTabs', 'DirectWorkstepWorkspace', 'NotificationCenter', 'AdminPermissionsPage', 'projectInvitations', 'AdminCompact']
+ const styles = ['gateway', 'AdminTabs', 'DirectWorkstepWorkspace', 'NotificationCenter', 'AdminPermissionsPage', 'projectInvitations', 'AdminCompact', 'GrantSubjectPicker']
  let previous = head.indexOf('name="viewport"')
  for (const name of styles) {
   const position = head.indexOf(`href="/src/${name}.css"`)

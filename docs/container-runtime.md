@@ -45,6 +45,10 @@ Dockerfile 支持将用户选择的沙箱目录下的 `home/` 整体挂载为 `/
 4. 更新 Volta 自身的可执行文件，保留其下载目录和用户配置。
 5. 使用镜像构建时锁定的共享 Python 虚拟环境执行命令，不在启动时重新解析依赖。
 
+镜像将 `/usr/bin/git` 链接到 `/root/.workstep/runtime/base/git/bin/git`，
+保证登录 shell 重设 PATH 或直接调用系统路径时仍使用镜像管理的 Git 2.50.1，
+支持相对 worktree 链接。入口初始化 Home 后该链接即可使用。
+
 ## 同一镜像启动 WorkStep 或 Gateway
 
 ### 前端依赖下载源

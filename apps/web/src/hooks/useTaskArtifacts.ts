@@ -5,6 +5,7 @@ import { findPreferredArtifact } from '../pages/taskArtifactRules'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 
 interface Options {
+  snapshot?: { artifacts: TaskArtifact[]; artifactDirectory: string; inputSnapshots: TaskArtifactInputSnapshot[] }
   taskId: string
   projectId: string
   steps?: readonly unknown[]
@@ -12,7 +13,7 @@ interface Options {
 }
 
 /** Owns a task's artifact snapshot, preview selection, refresh, and directory feedback. */
-export function useTaskArtifacts({ taskId, projectId, steps, remote }: Options) {
+export function useTaskArtifacts({ taskId, projectId, steps, remote, snapshot }: Options) {
   const { t } = useI18n()
   const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
   const [artifactDirectory, setArtifactDirectory] = useState('')
@@ -67,6 +68,11 @@ export function useTaskArtifacts({ taskId, projectId, steps, remote }: Options) 
   }, [taskId, projectId, identity])
 
   useEffect(() => {
+    if (snapshot) {
+      setArtifacts(snapshot.artifacts); setArtifactDirectory(snapshot.artifactDirectory)
+      setInputSnapshots(snapshot.inputSnapshots)
+      return
+    }
     if (!taskId || !projectId) {
       setArtifacts([])
       setArtifactDirectory('')
@@ -80,7 +86,7 @@ export function useTaskArtifacts({ taskId, projectId, steps, remote }: Options) 
       if (active) setLoading(false)
     })
     return () => { active = false }
-  }, [taskId, projectId, steps, refreshArtifacts])
+  }, [taskId, projectId, steps, refreshArtifacts, snapshot?.artifacts, snapshot?.inputSnapshots])
 
   const openArtifact = useCallback(async (
     name: string, preferredStepKey?: string, round?: number, path?: string,

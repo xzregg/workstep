@@ -1,3 +1,4 @@
+from datetime import timezone
 from gateway.services.errors import GatewayError
 from gateway.contracts import GatewayCall, ReplyEffects, CredentialGrant
 import hmac
@@ -320,7 +321,8 @@ async def admin_list_users(call: GatewayCall, q: str = '',
         users = [{**public_user(user), "registration_source": user.registration_source,
                   "login_username": user.username if user.password_hash else None,
                   "is_recovery": bool(user.is_recovery),
-                  "created_at": user.created_at.isoformat()} for user in rows]
+                  "created_at": user.created_at.isoformat(),
+                  "last_login_at": user.last_login_at.replace(tzinfo=user.last_login_at.tzinfo or timezone.utc).isoformat() if user.last_login_at else None} for user in rows]
     return {"users": users, "total": total, "page": page, "page_size": page_size}
 
 

@@ -189,6 +189,8 @@ export interface TaskExecutionReport {
 }
 
 export interface TaskArtifact {
+  /** Share-safe path relative to the artifact root, for matching recorded edits. */
+  source_path?: string
   step_key: string
   round: number
   is_latest: boolean
@@ -629,6 +631,7 @@ export const taskApi = {
       password?: string | null,
       title?: string | null,
       mode: 'read_only' | 'interactive' = 'read_only',
+      expiresAt?: string | null,
     ) =>
       request<ShareInfo>(
         `/task-share/${encodeURIComponent(taskId)}/create?project_id=${encodeURIComponent(projectId)}`,
@@ -638,6 +641,7 @@ export const taskApi = {
             password: password || null,
             title: title ?? null,
             mode,
+            ...(expiresAt === undefined ? {} : { expires_at: expiresAt }),
           }),
         },
       ),

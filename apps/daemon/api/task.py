@@ -423,6 +423,7 @@ async def resume_step(
             step_key,
             req.content,
             reset_session=req.reset_step,
+            **({"allow_pending": True} if req.allow_pending else {}),
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

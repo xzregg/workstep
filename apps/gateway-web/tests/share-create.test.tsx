@@ -33,6 +33,12 @@ test('Gateway share page validates and creates a task share with CSRF', async ()
     <Routes><Route path="/shares/new" element={<GatewayShareCreatePage />} /></Routes>
   </MemoryRouter>)
   await screen.findByRole('button', { name: '创建分享' })
+  const key = (screen.getByLabelText('访问密钥') as HTMLInputElement).value
+  const expiry = (screen.getByLabelText('过期时间（默认 7 天）') as HTMLInputElement).value
+  assert.ok(key.length >= 16)
+  assert.ok(Math.abs(new Date(expiry).getTime() - Date.now() - 7 * 86400000) < 60000)
+  let clipboard = ''
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { clipboard = text } } })
   fireEvent.change(screen.getByLabelText('分享标题'), { target: { value: 'Task for review' } })
   fireEvent.click(screen.getByRole('button', { name: '创建分享' }))
   const link = await screen.findByRole('link', { name: '打开分享链接' })
@@ -42,8 +48,14 @@ test('Gateway share page validates and creates a task share with CSRF', async ()
     'csrf-token')
   assert.deepEqual(JSON.parse(String(create?.init?.body)), {
     project_id: 'project-1', task_id: 'task-1', mode: 'read_only',
-    title: 'Task for review', password: null, expires_at: null,
+    title: 'Task for review', password: key, expires_at: new Date(expiry).toISOString(),
   })
+  fireEvent.click(screen.getByRole('button', { name: '复制链接和密钥' }))
+  await waitFor(() => assert.equal(clipboard, 'Task for review\n访问地址：https://gateway.test/share/public-token\n访问密码：' + key))
+  document.documentElement.lang = 'en-US'
+  fireEvent.click(screen.getByRole('button', { name: '已复制' }))
+  await waitFor(() => assert.equal(clipboard, 'Task for review\nAccess address: https://gateway.test/share/public-token\nAccess password: ' + key))
+  document.documentElement.lang = 'zh-CN'
   fireEvent.click(screen.getByRole('button', { name: '撤销分享' }))
   fireEvent.click(screen.getByRole('dialog', { name: '确认撤销分享' })
     .querySelector('button:last-child')!)

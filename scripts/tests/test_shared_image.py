@@ -15,6 +15,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class SharedImageTests(unittest.TestCase):
+    def test_system_git_points_to_image_managed_git(self):
+        self.assertIn("RUN ln -sf /root/.workstep/runtime/base/git/bin/git /usr/bin/git",
+                      (ROOT / "Dockerfile").read_text())
+
     def test_web_build_includes_shared_skin_json_before_compilation(self):
         stage = (ROOT / "Dockerfile").read_text().split("WORKDIR /app/apps/gateway-web", 1)[0]
         copy = "COPY apps/daemon/data/skins /app/apps/daemon/data/skins"

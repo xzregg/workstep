@@ -89,7 +89,7 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
         </div>
       </>}
       </section>
-      {!assignment && <PermissionSelection catalog={catalog} selected={permissions} scopes={scopes} disabled={locked}
+      {!assignment && <PermissionSelection catalog={catalog} selected={permissions} scopes={scopes} disabled={locked || !subjectId}
               onChange={next => {
                 const selected = catalog.filter(value => next.includes(value.id))
                 const common = selected[0]?.scopes.filter(value => selected.every(row => row.scopes.includes(value))) ?? []

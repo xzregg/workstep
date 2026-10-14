@@ -148,9 +148,9 @@ export function AdminProjectTaskCreatePanel({ projectId, csrf }: { projectId: st
       if (!users.ok || !groups.ok) throw new Error('任务创建能力加载失败。')
       const [userData, groupData] = await Promise.all([users.json(), groups.json()])
       if (!controller.signal.aborted) setAssignments([
-        ...(userData.assignments ?? []).map((row: { id: string; user_id: string; username: string; effect: 'allow' | 'deny' }) =>
+        ...(userData.assignments ?? []).map((row: { id: string; user_id: string; username: string; display_name?: string; effect: 'allow' | 'deny' }) =>
           ({ id: row.id, subjectType: 'user' as const, subjectId: row.user_id,
-            subjectName: row.username, effect: row.effect })),
+            subjectName: row.display_name?.trim() || row.username, effect: row.effect })),
         ...(groupData.assignments ?? []).map((row: { id: string; group_id: string; group_name: string; effect: 'allow' | 'deny' }) =>
           ({ id: row.id, subjectType: 'group' as const, subjectId: row.group_id,
             subjectName: row.group_name, effect: row.effect })),

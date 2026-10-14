@@ -5323,8 +5323,9 @@ async def test_restart_step_reports_conflict_for_running_step(api_context, monke
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("allow_pending", [False, True])
 async def test_resume_step_message_slow_sql_does_not_block_health(
-    api_context, monkeypatch
+    api_context, monkeypatch, allow_pending
 ):
     """A stopped step's follow-up is persisted in its project DB executor."""
     import main
@@ -5348,7 +5349,7 @@ async def test_resume_step_message_slow_sql_does_not_block_health(
     step_key = created.json()["steps"][0]["step_key"]
     await main.project_manager.run_db(
         project_id,
-        lambda _project: TaskStep.update(status="cancelled").where(
+        lambda _project: TaskStep.update(status="pending" if allow_pending else "cancelled").where(
             (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
         ).execute(),
     )
@@ -5370,7 +5371,7 @@ async def test_resume_step_message_slow_sql_does_not_block_health(
     followup = asyncio.create_task(client.post(
         f"/api/task/{task_id}/step/{step_key}/resume?project_id={project_id}",
         headers=TEST_ACTOR_HEADERS,
-        json={"content": "补充验收要求"},
+        json={"content": "补充验收要求", "allow_pending": allow_pending},
     ))
     assert await asyncio.to_thread(query_started.wait, 1)
     assert time.perf_counter() - query_started_at[0] < 0.2

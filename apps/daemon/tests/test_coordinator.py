@@ -676,6 +676,95 @@ async def _wait_for_reply(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("source", ["page", "channel"])
+async def test_coordinator_can_call_stage_tools_sequentially_without_proposals(api_context, monkeypatch, source):
+    """A single coordinator turn may stop, inspect, start and inject via task APIs."""
+    import httpx
+    import main
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import ActionProposal
+    from services.remote_access import ActorSnapshot, actor_context
+    from services.tool_registry import WorkstepClient
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    task_view = (await client.get(f"/api/task/{task_id}?project_id={project_id}")).json()
+    step_a, step_b = [step["step_key"] for step in task_view["steps"][:2]]
+    calls = []
+
+    async def stop(*args):
+        calls.append(("stop", args))
+        return True
+
+    async def start(*args, **kwargs):
+        calls.append(("start", args, kwargs))
+        return {"status": "queued", "run_id": "new-run", "step_key": step_b}
+
+    async def inject(*args, **kwargs):
+        calls.append(("inject", args, kwargs))
+        return {"status": "queued", "message_id": "injected", "step_key": step_b}
+
+    monkeypatch.setattr(main.workflow_runtime, "cancel_step", stop)
+    monkeypatch.setattr(main.workflow_runtime, "resume_step_with_message", start)
+    monkeypatch.setattr(main.workflow_runtime, "send_step_message", inject)
+
+    async def transport(request):
+        if request.method == "GET":
+            calls.append(("inspect", request.url.path))
+        return await client.request(
+            request.method, str(request.url), content=request.content,
+            headers={"Content-Type": "application/json"},
+        )
+
+    stage_client = WorkstepClient(base_url="http://test", transport=httpx.MockTransport(transport))
+
+    class StageCoordinator(CoordinatorFakeEngine):
+        async def spawn(self, **kwargs):
+            common = {"project_id": project_id, "task_id": task_id, "confirm": "yes"}
+            stopped = await stage_client.call("workstep_stop_step", {**common, "step_key": step_a})
+            assert stopped["cancelled"] is True
+            await stage_client.call("workstep_get_task", common)
+            started = await stage_client.call("workstep_start_step", {
+                **common, "step_key": step_b, "content": "按新要求执行", "reset_session": True,
+            })
+            assert started.get("status") == "queued", started
+            injected = await stage_client.call("workstep_send_step_message", {
+                **common, "step_key": step_b, "content": "追加验收条件",
+            })
+            assert injected["status"] == "queued"
+            yield InternalEvent("agent_message_chunk", {"content": {"text": json.dumps({
+                "version": 1, "reply": "停止请求已接受，B 启动已接受，补充消息已排队", "proposal": None,
+            }, ensure_ascii=False)}})
+
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", StageCoordinator)
+    if source == "page":
+        accepted = (await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "stage-controls-page"},
+            json={"content": "停 A，启动 B 并补充要求"},
+        )).json()
+        message_id = accepted["assistant_message_id"]
+    else:
+        with actor_context(ActorSnapshot(
+            actor_id="channel-user", user_name="渠道用户", device_id="bot",
+            device_name="演示机器人", source="channel", project_id=project_id,
+        )):
+            accepted = await main.coordinator_module.submit_message(
+                project_id, task_id, "停 A，启动 B 并补充要求", "stage-controls-channel",
+                channel_source={"platform": "dingtalk", "bot_id": "demo-bot", "chat_type": "group"},
+            )
+        message_id = accepted.assistant_message_id
+    reply = await _wait_for_reply(client, project_id, task_id, message_id)
+    assert reply["run_status"] == "succeeded"
+    assert [call[0] for call in calls] == ["stop", "inspect", "start", "inject"]
+    assert calls[0][1] == (project_id, task_id, step_a)
+    assert calls[2][1] == (project_id, task_id, step_b, "按新要求执行")
+    assert calls[2][2] == {"reset_session": True, "allow_pending": True}
+    assert calls[3][1] == (project_id, task_id, step_b, "追加验收条件")
+    assert await main.project_manager.run_db(project_id, lambda _: ActionProposal.select().count()) == 0
+
+
+@pytest.mark.anyio
 async def test_stop_orphaned_coordinator_turn_persists_terminal_state(api_context):
     """A persisted running turn remains stoppable after its memory task is lost."""
     import main
@@ -1683,6 +1772,13 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
             assert "even when the user explicitly asks" in rules
             assert "existing workflow step" in rules
             assert "step-specific requirements and acceptance criteria" in rules
+            assert "workstep_send_step_message" in rules
+            assert "workstep_stop_step" in rules
+            assert "workstep_start_step" in rules
+            assert "sequentially" in rules
+            assert "wait until the target step is no longer running" in rules
+            assert "current project and task" in rules
+            assert "Do not silently stop or restart" in rules
         assert "create task worktrees" not in instructions
     finally:
         db.close()

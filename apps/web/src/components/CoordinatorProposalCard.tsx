@@ -4,6 +4,7 @@ import { taskApi } from '../api/task'
 import { randomUuid } from '../utils/uuid'
 import { useI18n } from '../i18n'
 import Button from './Button'
+import { useCoordinatorProposalActions } from '../contexts/CoordinatorProposalContext'
 
 export function CoordinatorProposalCard({
   proposal,
@@ -19,6 +20,7 @@ export function CoordinatorProposalCard({
   onChanged: (proposal: ActionProposal) => void
 }) {
   const { t } = useI18n()
+  const actions = useCoordinatorProposalActions()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const current = proposal
@@ -43,7 +45,7 @@ export function CoordinatorProposalCard({
     setError('')
     try {
       onChanged(
-        await taskApi.confirmAction(
+        actions ? await actions.confirm(current.id, randomUuid(), overwrite) : await taskApi.confirmAction(
           taskId,
           current.id,
           projectId,
@@ -57,8 +59,8 @@ export function CoordinatorProposalCard({
           ? reason.message
           : t('taskDetail.proposalConfirmFailed')
       try {
-        const history = await taskApi.history(taskId, projectId)
-        const latest = [...history.messages]
+        const history = actions ? undefined : await taskApi.history(taskId, projectId)
+        const latest = actions ? await actions.latest(current.id) : [...history!.messages]
           .reverse()
           .flatMap((message) => message.proposals || [])
           .find((item) => item.id === current.id) as
@@ -82,7 +84,7 @@ export function CoordinatorProposalCard({
     setPending(true)
     setError('')
     try {
-      onChanged(await taskApi.cancelAction(taskId, current.id, projectId))
+      onChanged(actions ? await actions.cancel(current.id) : await taskApi.cancelAction(taskId, current.id, projectId))
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -174,7 +176,7 @@ export function CoordinatorProposalCard({
       {error && (
         <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>
       )}
-      {!readOnly && (current.status === 'pending' || retryable) && (
+      {!readOnly && (!actions || actions.canApply(current)) && (current.status === 'pending' || retryable) && (
         <div style={{ display: 'flex', gap: 8 }}>
           <Button
             variant="primary"

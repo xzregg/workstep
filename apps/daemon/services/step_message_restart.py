@@ -6,7 +6,7 @@ from services.messages import create_task_message, new_message_id
 from services.step_execution_config import ACTIVE_STEP_CONFIG_STATUSES
 
 
-def persist_step_followup(task_id, step_key, normalized, author_name, pending_insert_ids):
+def persist_step_followup(task_id, step_key, normalized, author_name, pending_insert_ids, *, allow_pending=False):
     """Write a validated follow-up and clear its consumed queue entries."""
     task = Task.get_or_none(Task.id == task_id)
     if task is None:
@@ -24,6 +24,8 @@ def persist_step_followup(task_id, step_key, normalized, author_name, pending_in
         "passed",
         "skipped",
     }
+    if allow_pending:
+        allowed_statuses.add("pending")
     # 正在执行的步骤不接受 @ 重跑：实时注入走 message 接口。
     if step.status in ACTIVE_STEP_CONFIG_STATUSES or step.status in (
         "reviewing",

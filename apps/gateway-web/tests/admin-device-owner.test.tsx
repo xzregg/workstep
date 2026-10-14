@@ -25,7 +25,7 @@ test('owner transfer validates selection, protects edits, and submits explicit o
   writes.push(init!); return new Response(null, { status: 204 })
  }
  render(<AdminDeviceOwnerDialog device={device} csrf="csrf" onComplete={() => saved++} onClose={() => closed++} />)
- await screen.findByRole('option', { name: 'bob · bob' })
+ await screen.findByRole('option', { name: 'bob' })
  assert.equal(screen.queryByRole('option', { name: 'alice · alice' }), null)
  assert.equal(screen.queryByRole('option', { name: 'disabled · disabled' }), null)
  assert.equal((screen.getByRole('button', { name: '确认转移' }) as HTMLButtonElement).disabled, true)

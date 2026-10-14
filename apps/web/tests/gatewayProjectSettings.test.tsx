@@ -5,6 +5,9 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ProjectSettingsPanel from '../src/components/ProjectSettingsPanel'
 import GatewayTaskShareLink from '../src/components/GatewayTaskShareLink'
+import TaskShareButton from '../src/components/TaskShareButton'
+import { useManagedModeStore } from '../src/stores/managedModeStore'
+import { useProjectStore } from '../src/stores/projectStore'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 
@@ -70,7 +73,7 @@ test("device-wide gateway session resolves the task project before showing share
     calls.push(String(input))
     if (String(input).endsWith('/revoke')) return new Response(null, { status: 204 })
     if (String(input) === '/api/remote/task-shares' && init?.method === 'POST') {
-      assert.equal(JSON.parse(String(init.body)).project_id, 'platform-2')
+      assert.equal(JSON.parse(String(init.body)).host_project_id, 'host-2')
       return Response.json({ id: 'share-2', url: 'http://localhost:8700/share/new-token', status: 'active', mode: 'interactive', title: '' })
     }
     if (String(input).includes('/remote/task-shares?')) return Response.json({ shares: [] })
@@ -85,11 +88,11 @@ test("device-wide gateway session resolves the task project before showing share
     const shareButton = element.querySelector<HTMLButtonElement>('.task-detail-share-button')
     assert.ok(shareButton)
     await act(async () => shareButton.click())
-    assert.ok(document.body.textContent?.includes('访问密码'))
+    assert.ok(document.body.textContent?.includes('访问密钥'))
     assert.ok(document.body.textContent?.includes('只读'))
     assert.ok(document.body.textContent?.includes('过期时间'))
     assert.equal(window.location.pathname, '/')
-    assert.ok(calls.includes('/api/remote/task-shares?project_id=platform-2&task_id=task-2'))
+    assert.ok(calls.includes('/api/remote/task-shares?host_project_id=host-2&task_id=task-2'))
     const modeButton = [...document.body.querySelectorAll('button')].find(button => button.textContent === '可交互')
     assert.ok(modeButton)
     await act(async () => modeButton.click())
@@ -115,28 +118,95 @@ test("device-wide gateway session resolves the task project before showing share
 })
 
 
-test('local workbench connected to Gateway keeps task share button without a portal session', async () => {
+test('local workbench connected to Gateway generates a Gateway share without publication', async () => {
   const { window } = installDomEnvironment()
-  window.location.href='http://127.0.0.1:8767/tasks?project=test_workstep'
-  useGatewaySessionStore.setState({session:null})
-  const oldFetch=globalThis.fetch
-  const calls:string[]=[]
-  globalThis.fetch=async(input,init)=>{
-    calls.push(String(input))
-    if(init?.method==='POST') return Response.json({id:'share-local',url:'https://gateway.example/share/new-token',status:'active',mode:'read_only',title:''})
-    return Response.json({shares:[]})
+  window.happyDOM.setURL('http://127.0.0.1:8767/tasks?project=test_workstep')
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  useManagedModeStore.setState({ managed: true })
+  useGatewaySessionStore.setState({ session: null })
+  const oldFetch = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); calls.push(url)
+    assert.ok(url.startsWith('/api/gateway-task-shares'))
+    if (init?.method === 'POST') return Response.json({ id: 'share-local', url: 'https://gateway.test/share/local-token', has_password: true, mode: 'read_only', created_at: new Date().toISOString() })
+    return Response.json({ shares: [] })
   }
-  const element=document.body.appendChild(document.createElement('div'));const root=createRoot(element)
+  const element = document.body.appendChild(document.createElement('div')); const root = createRoot(element)
   try {
-    await act(async()=>root.render(<I18nProvider><GatewayTaskShareLink taskId="task-local" projectId="host-local" local /></I18nProvider>))
-    assert.deepEqual(calls,[])
-    const button=element.querySelector<HTMLButtonElement>('.task-detail-share-button')
-    assert.ok(button)
-    await act(async()=>button.click())
-    assert.equal(calls[0],'/api/gateway-task-shares?project_id=host-local&task_id=task-local')
-    const create=[...document.body.querySelectorAll('button')].find(item=>item.textContent==='生成分享链接')!
-    await act(async()=>create.click())
-    assert.equal(calls[1],'/api/gateway-task-shares')
-    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value,'https://gateway.example/share/new-token')
-  } finally {await act(async()=>root.unmount());globalThis.fetch=oldFetch;await window.happyDOM.close()}
+    await act(async () => root.render(<I18nProvider><TaskShareButton taskId="task-local" projectId="host-local" projectType="local" /></I18nProvider>))
+    await act(async () => element.querySelector<HTMLButtonElement>('.task-detail-share-button')!.click())
+    assert.equal(calls[0], '/api/gateway-task-shares?project_id=host-local&task_id=task-local')
+    assert.equal(document.querySelector<HTMLInputElement>('input[name="share-access-key"]')?.type, 'text')
+    await act(async () => ([...document.body.querySelectorAll('button')].find(button => button.textContent === '生成分享链接')!).click())
+    assert.equal(calls[1], '/api/gateway-task-shares')
+    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value, 'https://gateway.test/share/local-token')
+  } finally {
+    await act(async () => root.unmount()); globalThis.fetch = oldFetch
+    useGatewaySessionStore.setState({ session: null }); useManagedModeStore.setState({ managed: null })
+    await window.happyDOM.close()
+  }
+})
+
+for (const published of [false, true]) test(`Gateway device workbench keeps its share entry: published=${published}`, async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.test/workspace/device/tasks')
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  useGatewaySessionStore.setState({ session: { device_id: 'device', device_name: 'PC', username: 'owner',
+    gateway_url: 'https://gateway.test/devices', project_id: null, host_project_id: null,
+    access_level: null, task_create: false, share_create: false, can_manage_project_access: true } })
+  const oldFetch = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = async (input, init) => {
+    const path = String(input); calls.push(path)
+    assert.ok(path.startsWith('/workspace/device/api/remote/'), 'Gateway workbench never creates host-only share links')
+    if (path.includes('/session?')) return published ? Response.json({ ...useGatewaySessionStore.getState().session,
+      project_id: 'platform', host_project_id: 'host', share_create: true })
+      : Response.json({ ...useGatewaySessionStore.getState().session, project_id: null, host_project_id: 'host', share_create: true })
+    if (init?.method === 'POST') return Response.json({ id: 'gateway-share', url: 'https://gateway.test/share/key', has_password: true, mode: 'read_only', created_at: new Date().toISOString() })
+    return Response.json({ shares: [] })
+  }
+  const element = document.body.appendChild(document.createElement('div')); const root = createRoot(element)
+  try {
+    await act(async () => root.render(<I18nProvider><TaskShareButton taskId="task" projectId="host" /></I18nProvider>))
+    const button = element.querySelector<HTMLButtonElement>('.task-detail-share-button')
+    assert.ok(button, 'publication lookup must not silently remove the entry')
+    await act(async () => button.click())
+    await act(async () => ([...document.body.querySelectorAll('button')].find(button => button.textContent === '生成分享链接')!).click())
+    assert.ok(calls.includes('/workspace/device/api/remote/task-shares'))
+    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value, 'https://gateway.test/share/key')
+  } finally { await act(async () => root.unmount()); globalThis.fetch = oldFetch; useGatewaySessionStore.setState({ session: null }); await window.happyDOM.close() }
+})
+
+
+for (const remote of [false, true]) test(`host shares keep the task host's address: remote=${remote}`, async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('http://127.0.0.1:8767/tasks')
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  useManagedModeStore.setState({ managed: remote })
+  const oldProjects = useProjectStore.getState().projects
+  const project = { id: remote ? 'remote:host' : 'host', name: 'Project', type: remote ? 'remote' : 'local',
+    endpoint: remote ? 'ws://192.168.1.99:8765/ws/remote-project' : undefined, path: '', steps: {}, workflows: [] } as const
+  useProjectStore.setState({ projects: [project as never] })
+  const oldFetch = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); calls.push(url)
+    assert.ok(url.startsWith('/api/task-share/task-host'))
+    return init?.method === 'POST' ? Response.json({ id: 'host-share', token: 'host-token', mode: 'read_only', has_password: true, created_at: new Date().toISOString() }) : Response.json(null)
+  }
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider><TaskShareButton taskId="task-host" projectId={project.id} projectType={project.type} /></I18nProvider>))
+    assert.equal(document.querySelectorAll('.task-detail-share-button').length, 1)
+    await act(async () => document.querySelector<HTMLButtonElement>('.task-detail-share-button')!.click())
+    await act(async () => ([...document.body.querySelectorAll('button')].find(button => button.textContent === '生成分享链接')!).click())
+    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value,
+      remote ? 'http://192.168.1.99:8765/share/host-token' : 'http://127.0.0.1:8767/share/host-token')
+    assert.equal(calls.length, 2)
+  } finally {
+    await act(async () => root.unmount()); globalThis.fetch = oldFetch
+    useProjectStore.setState({ projects: oldProjects }); useManagedModeStore.setState({ managed: null })
+    await window.happyDOM.close()
+  }
 })

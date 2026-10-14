@@ -80,7 +80,7 @@ COORDINATOR_STOP_TIMEOUT_SECONDS = 10.0
 # assistant, described declaratively (its task-specific conversation logic
 # lives in CoordinatorModule below). It loads the WorkStep internal tools:
 # the agent may inspect projects/tasks via the daemon, but never executes
-# anything itself (read-only guard + confirm-gated mutating tools).
+# project implementation itself; authorized stage controls use internal tools.
 COORDINATOR_CONFIG = AssistantConfig(
     name="task_coordinator",
     channel=COORDINATOR_CHANNEL,
@@ -94,7 +94,9 @@ COORDINATOR_CONFIG = AssistantConfig(
         "transport. Keep using available WorkStep tools for other operations. "
         "Mutating actions require explicit user authorization (confirm='yes'). "
         "At most one action proposal (supplement_step / rerun_from_step / "
-        "review_decision / create_workflow_action) may be proposed. For workflow "
+        "review_decision / create_workflow_action) may be proposed. This limit "
+        "applies to proposals, not sequential user-authorized stage tool calls. "
+        "Do not propose an operation that you already performed through a tool. For workflow "
         "Action creation in task chat, return a proposal for user review; do not "
         "call the CLI write operation before proposal confirmation. Never execute workflow actions directly."
     ),

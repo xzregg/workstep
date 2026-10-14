@@ -67,7 +67,7 @@ test('shared files copy complete raw content through the share resolver and show
     rawUrl: (path: string) => `/api/share/token/files/raw?path=${encodeURIComponent(path)}` }
   try {
     await act(async () => root.render(<I18nProvider><MarkdownAssetUrlProvider filePreview={preview}>
-      <FileContextMenu target={target} projectId="p" projectRoot="/project" localProject onDismiss={dismiss} />
+      <FileContextMenu target={target} onDismiss={dismiss} />
     </MarkdownAssetUrlProvider></I18nProvider>))
     assert.doesNotMatch(document.body.textContent!, /打开方式|VS Code|Finder/)
     const button = [...document.querySelectorAll('button')].find(item => item.textContent === '复制文件内容')!

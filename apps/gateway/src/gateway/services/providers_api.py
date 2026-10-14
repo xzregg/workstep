@@ -490,7 +490,7 @@ async def list_platform_provider_assignments(call: GatewayCall, provider_id: str
                                              page: int = 1,
                                              page_size: int = 25):
     identity, actor, devices = await project_manager(call)
-    base = select(ProviderAssignment, User.username, Device.name, UserGroup.name).outerjoin(
+    base = select(ProviderAssignment, func.coalesce(func.nullif(func.trim(User.display_name), ''), User.username), Device.name, UserGroup.name).outerjoin(
         User, and_(ProviderAssignment.subject_type == "user",
                    ProviderAssignment.subject_id == User.id),
     ).outerjoin(Device, and_(ProviderAssignment.subject_type == "device",
@@ -501,7 +501,8 @@ async def list_platform_provider_assignments(call: GatewayCall, provider_id: str
     if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
-        conditions.append(or_(User.username.ilike(pattern, escape="\\"),
+        conditions.append(or_(User.display_name.ilike(pattern, escape="\\"),
+                              User.username.ilike(pattern, escape="\\"),
                               UserGroup.name.ilike(pattern, escape="\\"),
                               Device.name.ilike(pattern, escape="\\"),
                               ProviderAssignment.subject_id.ilike(pattern, escape="\\")))

@@ -17,18 +17,22 @@ interface Props {
   onOpenDirectory?: () => void
   canOpenDirectory?: boolean
   directoryFiles?: TaskArtifact[]
+  sharedFiles?: TaskArtifact[]
 }
 
-export default function TaskArtifactPreviewDialog({ artifact, projectId, projectType = 'local', onClose, onOpenDirectory, canOpenDirectory, directoryFiles }: Props) {
+export default function TaskArtifactPreviewDialog({ artifact, projectId, projectType = 'local', onClose, onOpenDirectory, canOpenDirectory, directoryFiles, sharedFiles }: Props) {
   const { t } = useI18n()
   const [showDirectoryBrowser, setShowDirectoryBrowser] = useState(false)
+  const directoryPath = artifact.is_dir
+    ? artifact.path
+    : artifact.path.replace(/[\\/][^\\/]+$/, '')
   const browseSharedDirectory = useMemo(() => {
-    const rootPath = artifact.path.replace(/\\/g, '/').replace(/\/+$/, '')
+    const rootPath = directoryPath.replace(/\\/g, '/').replace(/\/+$/, '')
     return async (path: string, includeHidden: boolean): Promise<DirectoryBrowseResult> => {
       const currentPath = (path || rootPath).replace(/\\/g, '/').replace(/\/+$/, '')
       const entries = new Map<string, DirectoryEntry>()
       if (currentPath === rootPath || currentPath.startsWith(`${rootPath}/`)) {
-        for (const file of directoryFiles || []) {
+        for (const file of directoryFiles || sharedFiles || []) {
           const filePath = file.path.replace(/\\/g, '/')
           if (!filePath.startsWith(`${currentPath}/`)) continue
           const parts = filePath.slice(currentPath.length + 1).split('/')
@@ -46,15 +50,12 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, project
           Number(b.type === 'directory') - Number(a.type === 'directory') || a.name.localeCompare(b.name)),
       }
     }
-  }, [artifact.path, artifact.name, directoryFiles])
-  const webDirectoryMode = !!projectId && usesWebDirectoryBrowser(
+  }, [directoryPath, artifact.name, directoryFiles, sharedFiles])
+  const webDirectoryMode = Boolean(sharedFiles) || (!!projectId && usesWebDirectoryBrowser(
     projectType,
     typeof window === 'undefined' ? 'localhost' : window.location.hostname,
     typeof navigator === 'undefined' ? '' : navigator.userAgent,
-  )
-  const directoryPath = artifact.is_dir
-    ? artifact.path
-    : artifact.path.replace(/[\\/][^\\/]+$/, '')
+  ))
   if (directoryFiles) return (
     <ProjectDirectoryBrowserDialog
       projectId={projectId || ''}
@@ -102,12 +103,14 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, project
       </div>
     </ResizablePanel>
   </div>
-  {showDirectoryBrowser && projectId && (
+  {showDirectoryBrowser && (projectId || sharedFiles) && (
     <ProjectDirectoryBrowserDialog
-      projectId={projectId}
+      projectId={projectId || ''}
       title={artifact.logical_name || artifact.name}
       rootPath={directoryPath}
       displayPath={directoryPath}
+      browseDirectory={sharedFiles ? browseSharedDirectory : undefined}
+      readOnly={Boolean(sharedFiles)}
       onClose={() => setShowDirectoryBrowser(false)}
     />
   )}

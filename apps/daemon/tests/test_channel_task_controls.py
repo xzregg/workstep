@@ -72,7 +72,7 @@ async def test_manual_review_broadcast_has_no_stop_and_uses_clicker_identity(set
     await until(lambda: adapter.send_card.await_count == 2)
     card = adapter.send_card.await_args_list[0].args[1]
     group = adapter.send_card.await_args_list[0].args[0].conversation_id
-    assert [b.label for b in card.buttons] == ['通过','不通过']
+    assert [b.label for b in card.buttons] == ['通过','不通过','终止任务','完成步骤','填写意见']
     assert not card.running
     assert '构建' in card.title and '构建结果' in card.text
     assert await controls.handle(ChannelAction('bot',card.id,'0','member',conversation_id='wrong')) == '该操作不属于此会话'
@@ -129,7 +129,7 @@ async def test_automatic_question_answers_original_waiter_without_stop_and_expir
         await waiter
 
 
-@pytest.mark.parametrize('key, decision, status', [('0','approve','passed'), ('1','reject','retrying')])
+@pytest.mark.parametrize('key, decision, status', [('0','approve','passed'), ('1','reject','retrying'), ('2','terminate','cancelled')])
 async def test_review_callback_persists_reviewer_and_message_author_after_restart(setup, key, decision, status):
     from services.workflow_runtime import WorkflowRuntime
     relay,bus,event,adapter,controls,_,projects,project,_,store = setup
@@ -141,14 +141,18 @@ async def test_review_callback_persists_reviewer_and_message_author_after_restar
     # Persisted manual review controls do not depend on in-memory active scopes.
     fresh = ChannelControls(store, controls._load_config, controls._adapters, SimpleNamespace(),
         SimpleNamespace(), AsyncMock(), workflow_runtime=runtime, projects=projects)
-    await fresh.handle(ChannelAction('bot',card.id,key,'reviewer',conversation_id=recipient.conversation_id,sender_name='小陈'))
+    await fresh.handle(ChannelAction('bot',card.id,key,'reviewer',conversation_id=recipient.conversation_id,sender_name='小陈',comment='已核对边界行为'))
     def read(_project):
         review = ReviewRun.get_by_id('review')
         message = Message.get_by_id('review-message')
         step = TaskStep.get(TaskStep.task=='task')
         return review.decision, review.reviewer_id, review.reviewer_name, message.author_name, message.author_username, step.status
     assert await projects.run_db(project.id, read) == (decision,'channel:wecom:reviewer','小陈','小陈','reviewer',status)
-    runtime._resume_in_project.assert_awaited_once()
+    assert await projects.run_db(project.id, lambda _p: ReviewRun.get_by_id('review').decision_comment) == '已核对边界行为'
+    if decision == 'terminate':
+        runtime._resume_in_project.assert_not_awaited()
+    else:
+        runtime._resume_in_project.assert_awaited_once()
     assert '失效' in await fresh.handle(ChannelAction('bot',card.id,key,'reviewer',conversation_id=recipient.conversation_id))
 
 
@@ -375,3 +379,131 @@ async def test_coordinator_question_slow_sql_keeps_health_responsive(setup, monk
     finally:
         release.set()
     await until(lambda: adapter.send_card.await_count == 2)
+
+
+async def test_review_comment_is_scoped_to_clicker_and_survives_restart(setup):
+    from services.channels.base import IncomingMessage
+    _,bus,event,adapter,controls,runtime,projects,project,_,store = setup
+    await bus.publish(event('workstep.review_result', review_run_id='review', status='awaiting_review'))
+    await until(lambda: adapter.send_card.await_count == 2)
+    recipient,card = adapter.send_card.await_args_list[0].args
+    ack = AsyncMock()
+    assert '下一条' in await controls.handle(ChannelAction('bot',card.id,'4','member',conversation_id=recipient.conversation_id), on_claimed=ack)
+    ack.assert_not_awaited()
+    runtime.decide_review.assert_not_awaited()
+    fresh = ChannelControls(store, controls._load_config, controls._adapters, SimpleNamespace(),
+        SimpleNamespace(), AsyncMock(), workflow_runtime=runtime, projects=projects)
+    assert await fresh.review_message(IncomingMessage('bot','input','group',recipient.conversation_id,'other','别人的聊天')) is None
+    assert await fresh.review_message(IncomingMessage('bot','input','group','wrong','member','别的群')) is None
+    assert '已保存' in await fresh.review_message(IncomingMessage('bot','input','group',recipient.conversation_id,'member','请增加边界测试'))
+    await fresh.handle(ChannelAction('bot',card.id,'1','member',conversation_id=recipient.conversation_id))
+    runtime.decide_review.assert_awaited_once_with(project.id,'task','build','review','reject',comment='请增加边界测试')
+
+
+@pytest.mark.parametrize('continue_downstream', [True, False])
+async def test_review_complete_step_requires_explicit_downstream_choice(setup, continue_downstream):
+    _,bus,event,adapter,controls,runtime,_,project,*_ = setup
+    await bus.publish(event('workstep.review_result', review_run_id='review', status='awaiting_review'))
+    await until(lambda: adapter.send_card.await_count == 2)
+    recipient,card = adapter.send_card.await_args_list[0].args
+    ack = AsyncMock()
+    assert '请选择' in await controls.handle(ChannelAction('bot',card.id,'3','member',conversation_id=recipient.conversation_id), on_claimed=ack)
+    ack.assert_not_awaited()
+    runtime.decide_review.assert_not_awaited()
+    menu = adapter.send_card.await_args.args[1]
+    assert [b.label for b in menu.buttons] == ['继续下游','仅完成步骤']
+    await controls.handle(ChannelAction('bot',menu.id,'0' if continue_downstream else '1','member',conversation_id=recipient.conversation_id))
+    runtime.decide_review.assert_awaited_once_with(project.id,'task','build','review','set_complete',schedule_downstream=continue_downstream)
+    assert '失效' in await controls.handle(ChannelAction('bot',card.id,'0','member',conversation_id=recipient.conversation_id))
+
+
+async def test_review_terminate_uses_original_runtime(setup):
+    _,bus,event,adapter,controls,runtime,_,project,*_ = setup
+    await bus.publish(event('workstep.review_result', review_run_id='review', status='awaiting_review'))
+    await until(lambda: adapter.send_card.await_count == 2)
+    recipient,card = adapter.send_card.await_args_list[0].args
+    await controls.handle(ChannelAction('bot',card.id,'2','member',conversation_id=recipient.conversation_id))
+    runtime.decide_review.assert_awaited_once_with(project.id,'task','build','review','terminate')
+
+
+async def test_review_native_comment_uses_original_runtime(setup):
+    _,bus,event,adapter,controls,runtime,_,project,*_ = setup
+    await bus.publish(event('workstep.review_result', review_run_id='review', status='awaiting_review'))
+    await until(lambda: adapter.send_card.await_count == 2)
+    recipient,card = adapter.send_card.await_args_list[0].args
+    await controls.handle(ChannelAction('bot',card.id,'0','member',conversation_id=recipient.conversation_id, comment='同意'))
+    runtime.decide_review.assert_awaited_once_with(project.id,'task','build','review','approve',comment='同意')
+
+
+@pytest.mark.parametrize('text', ['取消审核意见', '取消'])
+async def test_review_comment_can_cancel_without_consuming_later_chat(setup, text):
+    from services.channels.base import IncomingMessage
+    _,bus,event,adapter,controls,runtime,*_ = setup
+    await bus.publish(event('workstep.review_result', review_run_id='review', status='awaiting_review'))
+    await until(lambda: adapter.send_card.await_count == 2)
+    recipient,card = adapter.send_card.await_args_list[0].args
+    await controls.handle(ChannelAction('bot',card.id,'4','member',conversation_id=recipient.conversation_id))
+    message = IncomingMessage('bot','input','group',recipient.conversation_id,'member',text)
+    assert '已取消' in await controls.review_message(message)
+    assert await controls.review_message(message) is None
+    runtime.decide_review.assert_not_awaited()
+
+
+async def test_review_comment_slow_sql_keeps_health_responsive(setup, monkeypatch):
+    import threading
+    from httpx import ASGITransport, AsyncClient
+    import main
+    from services.channels.base import IncomingMessage
+    _,bus,event,adapter,controls,_,projects,project,*_ = setup
+    await bus.publish(event('workstep.review_result', review_run_id='review', status='awaiting_review'))
+    await until(lambda: adapter.send_card.await_count == 2)
+    recipient,card = adapter.send_card.await_args_list[0].args
+    await controls.handle(ChannelAction('bot',card.id,'4','member',conversation_id=recipient.conversation_id))
+    entered,release = threading.Event(),threading.Event()
+    execute = project.db.execute_sql
+    def slow(sql,*args,**kwargs):
+        if sql.startswith('SELECT') and 'FROM "tasks"' in sql:
+            entered.set()
+            assert release.wait(2)
+        return execute(sql,*args,**kwargs)
+    monkeypatch.setattr(project.db,'execute_sql',slow)
+    pending = asyncio.create_task(controls.review_message(IncomingMessage('bot','input','group',recipient.conversation_id,'member','意见')))
+    try:
+        await until(entered.is_set)
+        async with AsyncClient(transport=ASGITransport(app=main.app),base_url='http://test') as client:
+            assert (await asyncio.wait_for(client.get('/api/health'),.3)).status_code == 200
+        assert not pending.done()
+    finally:
+        release.set()
+    assert '已保存' in await pending
+
+
+async def test_native_review_comment_is_retained_in_complete_step_menu(setup):
+    _,bus,event,adapter,controls,runtime,_,project,*_ = setup
+    await bus.publish(event('workstep.review_result', review_run_id='review', status='awaiting_review'))
+    await until(lambda: adapter.send_card.await_count == 2)
+    recipient,card = adapter.send_card.await_args_list[0].args
+    await controls.handle(ChannelAction('bot',card.id,'3','member',conversation_id=recipient.conversation_id,comment='已检查'))
+    menu = adapter.send_card.await_args.args[1]
+    assert not menu.input_prompt
+    await controls.handle(ChannelAction('bot',menu.id,'1','member',conversation_id=recipient.conversation_id))
+    runtime.decide_review.assert_awaited_once_with(project.id,'task','build','review','set_complete',comment='已检查',schedule_downstream=False)
+
+
+async def test_complete_step_menu_persists_original_review_without_running_downstream(setup):
+    from services.workflow_runtime import WorkflowRuntime
+    _,bus,event,adapter,controls,_,projects,project,*_ = setup
+    runtime = WorkflowRuntime(bus, projects)
+    runtime._resume_in_project = AsyncMock()
+    controls._workflow_runtime = runtime
+    await bus.publish(event('workstep.review_result',review_run_id='review',status='awaiting_review'))
+    await until(lambda: adapter.send_card.await_count == 2)
+    recipient,card = adapter.send_card.await_args_list[0].args
+    await controls.handle(ChannelAction('bot',card.id,'3','reviewer',conversation_id=recipient.conversation_id,comment='完成本步',sender_name='小陈'))
+    menu = adapter.send_card.await_args.args[1]
+    assert '已完成步骤' in await controls.handle(ChannelAction('bot',menu.id,'1','reviewer',conversation_id=recipient.conversation_id,sender_name='小陈'))
+    def read(_project):
+        review = ReviewRun.get_by_id('review')
+        return review.decision,review.status,review.decision_comment,review.reviewer_name
+    assert await projects.run_db(project.id,read) == ('set_complete','passed','完成本步','小陈')
+    runtime._resume_in_project.assert_not_awaited()

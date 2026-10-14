@@ -85,7 +85,26 @@ test('changed journal summaries invalidate expanded details so polling can reloa
   const merged = mergeSharedHistorySnapshot(previous, [{ id: 'm', events: [], event_detail: { available: true, loaded: false, last_event_seq: 2 } }])
   assert.equal(merged[0].event_detail.loaded, false)
   assert.equal(merged[0].event_detail.last_event_seq, 2)
+  assert.equal(merged[0].event_detail.loaded_cursor, 1)
   assert.equal(merged[0].events.length, 1)
+})
+
+test('polling preserves cached details and the loading guard while fetching appended events', () => {
+  const events = [{ type: 'TOOL_CALL_START', sequence: 1 }]
+  const previous = [{ id: 'm', events, event_log_path: 'log', event_detail: {
+    available: true, loaded: false, loading: true, loaded_cursor: 1, last_event_seq: 2,
+  } }]
+  const snapshot = [{ id: 'm', events: [], event_log_path: 'log', event_detail: {
+    available: true, loaded: false, last_event_seq: 3,
+  } }]
+  const merged = mergeSharedHistorySnapshot(previous, snapshot)
+  assert.deepEqual(merged[0].events, events)
+  assert.equal(merged[0].event_detail.loaded_cursor, 1)
+  assert.equal(merged[0].event_detail.loading, true)
+  assert.equal(merged[0].event_detail.last_event_seq, 3)
+  const replaced = mergeSharedHistorySnapshot(previous, [{ ...snapshot[0], event_log_path: 'new-log' }])
+  assert.equal(replaced[0].event_detail.loaded_cursor, undefined)
+  assert.deepEqual(replaced[0].events, [])
 })
 
 
@@ -96,4 +115,7 @@ test('expanded complete share timelines are not truncated by subsequent live eve
   const updated = applySharedMessageEvent([history], { type: 'CUSTOM', name: 'workstep.plan', messageId: 'm' })
   assert.equal(updated[0].events.length, 2002)
   assert.equal(updated[0].events[0].sequence, 0)
+  const refreshing = { ...history, event_detail: { loaded: false, loaded_cursor: 2001 } }
+  const appended = applySharedMessageEvent([refreshing], { type: 'CUSTOM', name: 'workstep.plan', messageId: 'm' })
+  assert.equal(appended[0].events.length, 2002, 'an incremental refresh must retain cached events')
 })

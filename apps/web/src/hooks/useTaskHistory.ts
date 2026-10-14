@@ -3,10 +3,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState,
 import { taskApi } from '../api/client'
 import { loadTaskHistoryWithRetry, mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory } from '../pages/taskHistoryModel'
+import { mergeSharedHistorySnapshot } from '../pages/sharedTaskMessages'
 
 const PAGE_SIZE = 300
 
 interface TaskHistoryOptions {
+  snapshot?: any[]
   taskId: string
   projectId: string
   userMessageEvents: number
@@ -27,7 +29,7 @@ export interface TaskHistoryState {
 /** Owns persisted task messages, older pages, detail events, and refresh signals. */
 export function useTaskHistory({ taskId, projectId, userMessageEvents,
   reviewEventSignal, chatScrollRef, shouldFollowMessagesRef,
-  lastProgrammaticScrollTopRef }: TaskHistoryOptions): TaskHistoryState {
+  lastProgrammaticScrollTopRef, snapshot }: TaskHistoryOptions): TaskHistoryState {
   const [historyMessages, setHistoryMessages] = useState<any[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const offsetRef = useRef(0)
@@ -37,9 +39,12 @@ export function useTaskHistory({ taskId, projectId, userMessageEvents,
   const refreshHistoryRef = useRef<(() => void) | null>(null)
   const refreshSeenRef = useRef<{ key: string; user: number; review: string } | null>(null)
   const eventDetailInFlightRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (snapshot) setHistoryMessages(current => mergeSharedHistorySnapshot(current, snapshot))
+  }, [snapshot])
 
   useEffect(() => {
-    if (!taskId || !projectId) {
+    if (!taskId || !projectId || snapshot) {
       return
     }
     const controller = new AbortController()
@@ -91,7 +96,7 @@ export function useTaskHistory({ taskId, projectId, userMessageEvents,
       window.removeEventListener('workstep:reconnected', refresh)
       if (refreshHistoryRef.current === refresh) refreshHistoryRef.current = null
     }
-  }, [taskId, projectId])
+  }, [taskId, projectId, Boolean(snapshot)])
 
   const loadOlderHistory = useCallback(async () => {
     if (!taskId || !projectId || historyLoading || olderLoadingRef.current || !hasOlderRef.current) return

@@ -3121,8 +3121,9 @@ async def test_resume_step_rejects_empty_or_unstopped_step(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_resume_step_allows_pending_step_with_execution_history(tmp_path):
-    """已经执行过的阶段回到 pending 后，仍可带消息重新执行。"""
+@pytest.mark.parametrize("allow_pending", [False, True])
+async def test_resume_step_allows_pending_step_with_execution_history(tmp_path, allow_pending):
+    """Pending steps need execution history unless first startup is explicit."""
     import json
 
     from engines.core.registry import ENGINE_REGISTRY
@@ -3165,7 +3166,7 @@ async def test_resume_step_allows_pending_step_with_execution_history(tmp_path):
         started_at=None,
         ended_at=None,
     )
-    Message.create(
+    history_message = Message.create(
         id="older-output",
         task=task,
         channel="execution",
@@ -3180,6 +3181,8 @@ async def test_resume_step_allows_pending_step_with_execution_history(tmp_path):
         ended_at=now,
         created_at=now,
     )
+    if allow_pending:
+        history_message.delete_instance()
     project = SimpleNamespace(
         id="project-resume-history",
         path=tmp_path,
@@ -3201,10 +3204,14 @@ async def test_resume_step_allows_pending_step_with_execution_history(tmp_path):
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
     try:
         accepted = await runtime.resume_step_with_message(
-            project.id, task.id, "do", "重新来"
+            project.id, task.id, "do", "重新来", allow_pending=allow_pending
         )
         assert accepted["step_key"] == "do"
         assert accepted["message_id"]
+        run = await _wait_run_finished(accepted["run_id"])
+        assert run.status == "succeeded"
+        assert TaskStep.get_by_id((task.id, "do")).status == "passed"
+        assert Message.get_by_id(accepted["message_id"]).content == "重新来"
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()
@@ -3213,7 +3220,8 @@ async def test_resume_step_allows_pending_step_with_execution_history(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_resume_step_rejects_running_step_even_with_history(tmp_path):
+@pytest.mark.parametrize("allow_pending", [False, True])
+async def test_resume_step_rejects_running_step_even_with_history(tmp_path, allow_pending):
     """执行中的阶段不接受带消息重跑：实时注入走独立接口。"""
     import json
 
@@ -3292,7 +3300,7 @@ async def test_resume_step_rejects_running_step_even_with_history(tmp_path):
     try:
         with pytest.raises(ValueError, match="步骤当前不可重新执行"):
             await runtime.resume_step_with_message(
-                project.id, task.id, "do", "重新来"
+                project.id, task.id, "do", "重新来", allow_pending=allow_pending
             )
     finally:
         await runtime.shutdown()

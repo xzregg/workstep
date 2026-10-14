@@ -6,8 +6,33 @@ import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.io.File;
 import java.time.Instant;
+import java.util.TimeZone;
 
 public class DiagnosticReportTest {
+    @Test
+    public void displaysStoredUtcEntriesInTheCurrentSystemTimeZone() throws Exception {
+        TimeZone previous = TimeZone.getDefault();
+        File directory = Files.createTempDirectory("workstep-report-zone").toFile();
+        try {
+            Files.write(new File(directory, "main-log.txt").toPath(), (
+                    "2026-10-07T01:56:00Z 网页主进程 网页渲染失败\n"
+                    + "java.lang.Error: blank\n").getBytes(StandardCharsets.UTF_8));
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            String report = DiagnosticReport.create(directory, Instant.parse("2026-10-07T02:00:00Z").toEpochMilli());
+            assertTrue(report.contains("生成时间：2026-10-07 10:00:00.000 +08:00"));
+            assertTrue(report.contains("2026-10-07 09:56:00.000 +08:00 网页主进程 网页渲染失败"));
+            assertTrue(report.contains("java.lang.Error: blank"));
+            assertFalse(report.contains("2026-10-07T01:56:00Z"));
+            TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"));
+            assertTrue(DiagnosticReport.create(directory, Instant.parse("2026-10-07T02:00:00Z").toEpochMilli())
+                    .contains("2026-10-06 18:56:00.000 -07:00 网页主进程 网页渲染失败"));
+        } finally {
+            TimeZone.setDefault(previous);
+            new File(directory, "main-log.txt").delete();
+            directory.delete();
+        }
+    }
+
     @Test
     public void copiesRecentNotificationPageAndRecoveryContextWithoutOldHistory() throws Exception {
         File directory = Files.createTempDirectory("workstep-report").toFile();

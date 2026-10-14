@@ -2,7 +2,7 @@ import { notifyAndroidGatewayCompletion } from './androidNotifications'
 import * as React from 'react'
 
 export type GatewayNotice = {sequence:number;id:string;device_id:string;device_name:string;host_project_id:string;
-  project_name:string;messageId?:string;source_sequence?:number;scope_name?:string;task_id?:string;session_id?:string;step_key?:string;status:string;occurred_at:number;read:boolean}
+  project_name:string;messageId?:string;source_sequence?:number;scope_name?:string;task_id?:string;session_id?:string;step_key?:string|null;status:string;occurred_at:number;read:boolean}
 type Snapshot = {events:GatewayNotice[];unread:number;cursor:number;more:boolean}
 export type NotificationTarget = {sequence:number;device_id:string;project_id?:string}
 

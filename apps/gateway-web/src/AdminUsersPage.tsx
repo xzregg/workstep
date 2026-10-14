@@ -10,7 +10,7 @@ import { AdminCreateUserDialog } from './AdminCreateUserDialog'
 export type AdminUser = {
   id: string; username: string; display_name: string; status: 'active' | 'pending' | 'disabled' | 'deleted'
   registration_source: string; must_change_password: boolean; created_at: string
-  login_username?: string | null; is_recovery?: boolean
+  last_login_at?: string | null; login_username?: string | null; is_recovery?: boolean
 }
 
 type Filters = { q: string; status: string; sort: string; direction: string; page: number; pageSize: number; groupId?: string }
@@ -39,6 +39,7 @@ export function AdminUsersPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [groupCreateOpen, setGroupCreateOpen] = useState(false)
   const [superAdmin, setSuperAdmin] = useState(false)
+  const [canViewAudit, setCanViewAudit] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -47,7 +48,7 @@ export function AdminUsersPage() {
         if (response.status === 401) { navigate('/auth?next=%2Fadmin%2Fusers', { replace: true }); return }
         if (!response.ok) throw new Error('登录状态加载失败。')
         const session = await response.json()
-        if (!controller.signal.aborted) { setCsrf(session.csrf_token); setSuperAdmin((session.admin_roles ?? []).includes('super_admin')); setAccess('ready') }
+        if (!controller.signal.aborted) { setCsrf(session.csrf_token); setSuperAdmin((session.admin_roles ?? []).includes('super_admin')); setCanViewAudit((session.admin_roles ?? []).some((role: string) => ['super_admin', 'audit_admin'].includes(role))); setAccess('ready') }
       })
       .catch(reason => { if (reason?.name !== 'AbortError') setError('登录状态加载失败，请刷新重试。') })
     return () => controller.abort()
@@ -122,7 +123,7 @@ export function AdminUsersPage() {
       <AdminListStatus loading={loading} label="正在加载用户…"/>
       {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
       {!loading && !error && users.length === 0 && <p>当前条件下没有用户。</p>}
-      {!error && <AdminUserTable users={users} csrf={csrf} loading={loading} resetKey={filters} onRefresh={refresh}/>}
+      {!error && <AdminUserTable users={users} csrf={csrf} loading={loading} resetKey={filters} onRefresh={refresh} canViewAudit={canViewAudit}/>}
       <div className="gateway-admin-pagination">
         <span>共 {total} 位用户 · 每页 {filters.pageSize} 位 · 第 {filters.page}/{pages} 页</span>
         <button type="button" disabled={filters.page <= 1 || loading} onClick={() => setFilters(current => (

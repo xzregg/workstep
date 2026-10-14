@@ -1,4 +1,5 @@
 import { request } from './transport'
+import type { SystemStatisticsReport } from './systemStatistics'
 
 // --- Statistics API ---
 
@@ -163,6 +164,7 @@ export interface StatisticsParams {
 }
 
 export const statisticsApi = {
+  system: () => request<SystemStatisticsReport>('/statistics/system'),
   overview: (params: StatisticsParams = {}) => {
     const query = new URLSearchParams()
     if (params.projectId) query.set('project_id', params.projectId)

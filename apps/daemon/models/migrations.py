@@ -157,6 +157,7 @@ _ADDITIVE_COLUMNS = {
     },
     "task_shares": {
         "mode": "TEXT DEFAULT 'read_only'",
+        "expires_at": "DATETIME",
     },
 }
 

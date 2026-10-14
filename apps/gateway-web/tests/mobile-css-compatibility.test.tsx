@@ -14,6 +14,8 @@ test('production portal and shared device styles retain queries supported by old
   .flatMap(asset => asset.type === 'asset' && asset.fileName.endsWith('.css') ? [String(asset.source)] : [])
   .join('\n')
  assert.ok(css.includes('.gateway-portal-header'), 'build must include the portal header')
+ assert.ok(css.includes('.gateway-grant-picker'), 'build must include the grant group/member split layout')
+ assert.ok(css.includes('.gateway-grant-groups'), 'build must include bounded group tree styling')
  assert.ok(css.includes('.gateway-instance-tabs'), 'build must include shared device tabs')
  assert.match(css, /max-width:\s*1023px/)
  assert.match(css, /max-width:\s*520px/)

@@ -205,6 +205,7 @@ class ExternalIdentityService:
                     identity.last_login_at = _now()
                     token = None
                     if not binding_user_id and user.status == "active":
+                        user.last_login_at = _now()
                         auth_session, token = IdentityService._create_session(user.id)
                         auth_session.authentication_method = "scan"
                         auth_session.authentication_provider = source.provider

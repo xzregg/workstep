@@ -13,6 +13,8 @@ from services.intervention import intervention_manager
 logger = logging.getLogger(__name__)
 CONFIG_KEY = 'channel_button_actions'
 TTL = 24 * 60 * 60
+REVIEW_KINDS = {'review', 'review_comment', 'review_complete'}
+COMMENT_TTL = 10 * 60
 
 
 class ChannelControls:
@@ -82,9 +84,41 @@ class ChannelControls:
         return scope
 
     async def review(self, scope, review_id, title, text):
-        await self._card(scope, title + ' · 等待审核', text + '\n需要填写审核意见时，请到 WorkStep 审核表单操作。',
+        await self._card(scope, title + ' · 等待审核', text + '\n审核意见可选：点击填写意见后发送下一条文字，再点击审核按钮。',
             [('通过', {'kind':'review', 'review_id':review_id, 'decision':'approve'}),
-             ('不通过', {'kind':'review', 'review_id':review_id, 'decision':'reject'})])
+             ('不通过', {'kind':'review', 'review_id':review_id, 'decision':'reject'}),
+             ('终止任务', {'kind':'review', 'review_id':review_id, 'decision':'terminate'}),
+             ('完成步骤', {'kind':'review_complete', 'review_id':review_id}),
+             ('填写意见', {'kind':'review_comment', 'review_id':review_id})])
+
+    async def review_message(self, message):
+        """Consume only the next message explicitly requested by this reviewer."""
+        async with self._lock:
+            rows = await self._load()
+            candidates = [(key, row) for key, row in rows.items()
+                if (row['message']['bot_id'], row['message']['conversation_id']) ==
+                   (message.bot_id, message.conversation_id)
+                and row.get('comment_requests', {}).get(message.sender_id, 0) > time.time() - COMMENT_TTL]
+            if not candidates:
+                return None
+            _, row = max(candidates, key=lambda item: item[1]['comment_requests'][message.sender_id])
+            action = next(a for a in row['options'].values() if a['kind'] in REVIEW_KINDS)
+            config = await self._load_config()
+            bot = next((b for b in config['bots'] if b['id'] == message.bot_id and b['enabled']), None)
+            if row['status'] != 'pending' or not bot or not self._binding_matches(config, bot, row) or not await self._review_pending(row, action):
+                row['comment_requests'].pop(message.sender_id, None)
+                await self._save(rows)
+                return '该审核已处理或已失效，意见未保存。'
+            if message.text.strip() in {'取消', '取消审核意见'}:
+                row['comment_requests'].pop(message.sender_id, None)
+                await self._save(rows)
+                return '已取消填写审核意见。'
+            if message.attachments or not message.text.strip() or len(message.text) > 10000:
+                return '请发送不超过 10000 字的文字审核意见，或发送「取消审核意见」。'
+            row['comment_requests'].pop(message.sender_id, None)
+            row.setdefault('comments', {})[message.sender_id] = message.text.strip()
+            await self._save(rows)
+            return '审核意见已保存，请点击原卡片的审核按钮提交。'
 
     async def _review_pending(self, row, action):
         if self._projects is None:
@@ -110,7 +144,7 @@ class ChannelControls:
         for offset in range(0, len(options), 6):
             items = options[offset:offset + 6]
             card_id = uuid.uuid4().hex
-            card = ChannelCard(card_id, title, text, tuple(ChannelButton(str(i), label, danger=action['kind'] == 'stop') for i, (label, action) in enumerate(items)), running=all(action["kind"] == "stop" for _, action in items), message_id=scope.get('assistant_message_id', ''))
+            card = ChannelCard(card_id, title, text, tuple(ChannelButton(str(i), label, danger=action['kind'] == 'stop' or action.get('decision') == 'terminate') for i, (label, action) in enumerate(items)), running=all(action["kind"] == "stop" for _, action in items), message_id=scope.get('assistant_message_id', ''), input_prompt='审核意见（可选）' if any(action['kind'] == 'review_comment' for _, action in items) else '')
             page_key = f'{dedup_key}:{offset}' if dedup_key else None
             row = {**scope, 'created_at':time.time(), 'status':'pending', 'event_key':page_key,
                    'title':title, 'text':text, 'options':{str(i): {'label':label, **action} for i, (label, action) in enumerate(items)}}
@@ -252,7 +286,7 @@ class ChannelControls:
             action = row['options'].get(click.key)
             if click.key == 'stop':
                 action = next((option for option in row['options'].values() if option['kind'] == 'stop'), None)
-            broadcast_action = row.get('broadcast') and action and action['kind'] in {'stop','review','interaction','answer'}
+            broadcast_action = row.get('broadcast') and action and action['kind'] in {'stop','interaction','answer', *REVIEW_KINDS}
             if broadcast_action and click.conversation_id != message['conversation_id']:
                 return '该操作不属于此会话'
             if not click.sender_id or (not broadcast_action and message['sender_id'] != click.sender_id):
@@ -261,8 +295,10 @@ class ChannelControls:
                 return '无效的选项'
             identity = tuple(action.get(key) for key in ('kind','interaction_id','proposal_id','question_id','review_id'))
             shared_answer = action and action['kind'] == 'answer' and bool(row['task_id'])
-            claim_scope = (row['project_id'], row['task_id'], row['assistant_message_id']) if broadcast_action or shared_answer else row['id']
+            claim_scope = (row['project_id'], row['task_id'], row['assistant_message_id']) if broadcast_action or shared_answer or (action and action['kind'] in REVIEW_KINDS) else row['id']
             claim = (claim_scope, identity)
+            if action['kind'] in REVIEW_KINDS:
+                claim = ((row['project_id'], row['task_id']), ('review', action['review_id']))
             if claim in self._claims:
                 return '该操作已处理或已失效'
             self._claims.add(claim)
@@ -273,8 +309,31 @@ class ChannelControls:
                 return '渠道绑定已改变，该操作已失效'
             if action['kind'] in {'stop','interaction'} and row['id'] not in self._active:
                 return '该操作已处理或已失效'
-            if action['kind'] == 'review' and not await self._review_pending(row, action):
+            if action['kind'] in REVIEW_KINDS and not await self._review_pending(row, action):
                 return '该审核已处理或已失效'
+            if action['kind'] in REVIEW_KINDS and click.comment is not None and (not isinstance(click.comment, str) or len(click.comment) > 10000):
+                return '审核意见须为不超过 10000 字的文字。'
+            if action['kind'] == 'review_comment':
+                async with self._lock:
+                    rows = await self._load()
+                    if rows[click.card_id]['status'] != 'pending':
+                        return '该审核已处理或已失效'
+                    for other in rows.values():
+                        if (other['message']['bot_id'], other['message']['conversation_id']) == (click.bot_id, message['conversation_id']):
+                            other.get('comment_requests', {}).pop(click.sender_id, None)
+                    rows[click.card_id].setdefault('comment_requests', {})[click.sender_id] = time.time()
+                    await self._save(rows)
+                return '请发送下一条文字作为审核意见（10 分钟内有效），或发送「取消审核意见」。保存后再点击原审核按钮。'
+            if action['kind'] == 'review_complete':
+                # Selection only: retain the original card and ask explicitly.
+                scope = {**row, 'message':{**message, 'sender_id':click.sender_id, 'sender_name':click.sender_name}, 'broadcast':False}
+                if click.comment is not None:
+                    scope['comments'] = {**row.get('comments', {}), click.sender_id:click.comment.strip()}
+                await self._card(scope, '完成步骤', '请选择是否继续调度下游步骤。', [
+                    ('继续下游', {'kind':'review','review_id':action['review_id'], 'decision':'set_complete','schedule_downstream':True}),
+                    ('仅完成步骤', {'kind':'review','review_id':action['review_id'], 'decision':'set_complete','schedule_downstream':False}),
+                ])
+                return '请选择「继续下游」或「仅完成步骤」。'
             if on_claimed is not None:
                 await on_claimed()
             recipient = IncomingMessage(**message)
@@ -294,9 +353,18 @@ class ChannelControls:
                 elif action['kind'] == 'review':
                     if self._workflow_runtime is None:
                         return '审核服务不可用，请到 WorkStep 操作'
+                    async with self._lock:
+                        current = await self._load()
+                        comment = click.comment
+                        if comment is None:
+                            comment = next((r.get('comments', {}).get(click.sender_id) for r in sorted(current.values(), key=lambda r:r['created_at'], reverse=True)
+                                if r['id'] == row['id'] and r.get('comments', {}).get(click.sender_id)), None)
+                    kwargs = {'comment':comment.strip()} if comment is not None else {}
+                    if 'schedule_downstream' in action:
+                        kwargs['schedule_downstream'] = action['schedule_downstream']
                     await self._workflow_runtime.decide_review(row['project_id'], row['task_id'], row['step_key'],
-                        action['review_id'], action['decision'])
-                    result = recipient.sender_name + (' 审核通过' if action['decision'] == 'approve' else ' 审核不通过')
+                        action['review_id'], action['decision'], **kwargs)
+                    result = recipient.sender_name + ' ' + {'approve':'审核通过','reject':'审核不通过','terminate':'已终止任务','set_complete':'已完成步骤'}[action['decision']]
                 elif action['kind'] == 'interaction':
                     if not intervention_manager.deliver_response(action['interaction_id'], action['response'], task_id=row['turn_id']):
                         return '该问题已回答或已失效'
@@ -316,12 +384,13 @@ class ChannelControls:
                 # All pages of one question share a decision identity.
                 identity = tuple(action.get(key) for key in ('kind','interaction_id','proposal_id','question_id','review_id'))
                 for other in rows.values():
-                    matches = any(tuple(option.get(key) for key in ('kind','interaction_id','proposal_id','question_id','review_id')) == identity
+                    matches = any((action['kind'] == 'review' and option.get('review_id') == action['review_id']) or tuple(option.get(key) for key in ('kind','interaction_id','proposal_id','question_id','review_id')) == identity
                                   for option in other['options'].values())
-                    same_scope = other['id'] == row['id'] or ((shared_answer or (broadcast_action and other.get('broadcast'))) and
-                        (other['project_id'],other['task_id'],other['assistant_message_id']) == claim_scope)
+                    same_scope = other['id'] == row['id'] or ((shared_answer or (broadcast_action and other.get('broadcast')) or action['kind'] == 'review') and
+                        (other['project_id'],other['task_id'],other['assistant_message_id']) == (row['project_id'],row['task_id'],row['assistant_message_id']))
                     if same_scope and matches:
                         other['status'] = 'completed'
+                        other.pop('comment_requests', None)
                         other['clicked_by'] = {'user_id':click.sender_id, 'user_name':recipient.sender_name, 'at':time.time()}
                 await self._save(rows)
             return result

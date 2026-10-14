@@ -10,6 +10,14 @@ export const BASE = gatewayWorkspacePath() + '/api'
 /** Default page size for loading full event logs / message histories. */
 export const FULL_PAGE_LIMIT = 30000
 
+type TaskShareTransport = <T>(path: string, options?: RequestInit) => Promise<T>
+let taskShareTransport: { scope: string; send: TaskShareTransport } | undefined
+export function registerTaskShareTransport(scope: string, send: TaskShareTransport) {
+  const registration = { scope, send }
+  taskShareTransport = registration
+  return () => { if (taskShareTransport === registration) taskShareTransport = undefined }
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -43,6 +51,13 @@ async function readApiResponse<T>(res: Response, path: string): Promise<T> {
 }
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/share/')
+    && !path.startsWith('/task-share/public/')) {
+    if (!taskShareTransport) throw new ApiError('Share task transport is not available', 403)
+    const { scope, send } = taskShareTransport
+    return (options?.method || 'GET').toUpperCase() === 'GET'
+      ? singleFlight(`TASK SHARE ${scope} ${path}`, () => send<T>(path, options)) : send<T>(path, options)
+  }
   if (isGatewayRemoteBrowser() && options?.body && typeof options.body === 'string') {
     let projectId = ''
     try { projectId = JSON.parse(options.body)?.project_id ?? '' } catch { /* Multipart/text is not a project body. */ }

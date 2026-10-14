@@ -22,7 +22,7 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
   const [setupError, setSetupError] = useState('')
   const [revision, setRevision] = useState(0)
   const [retrySetup, setRetrySetup] = useState(0)
-  const [edit, setEdit] = useState<PermissionAssignment | 'new' | null>(null)
+  const [edit, setEdit] = useState<PermissionAssignment | 'new' | null>(params.get('assign') === '1' ? 'new' : null)
   const [revoke, setRevoke] = useState<PermissionAssignment | null>(null)
   const scopeType = params.get('scope_type') ?? ''
   const scopeId = params.get('scope_id') ?? ''
@@ -63,6 +63,10 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
   const availableCatalog = catalog.filter(item => item.id.startsWith('admin.') === platform)
   const visible = assignments.filter(row => row.permission.startsWith('admin.') === platform
     && (!scopeType || (row.scope_type === scopeType && row.scope_id === scopeId)))
+  const linkedAssignment = params.get('assign') === '1' && edit === 'new' && subjectId && scopeType === 'project'
+    ? visible.find(row => row.id.startsWith('project:') && row.subject_type === subjectType && row.subject_id === subjectId) : undefined
+  const editor = linkedAssignment ?? edit
+  const editorReady = !!csrf && availableCatalog.length > 0 && (params.get('assign') !== '1' || (!loading && !error))
   const name = (permission: string) => catalog.find(item => item.id === permission)?.name ?? permission
   function saved() { setEdit(null); setLegacyNew(false); setRevoke(null); setRevision(value => value + 1) }
   return <section className="gateway-admin-page gateway-permissions-page">
@@ -89,14 +93,15 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
     {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在加载权限规则…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>重试规则</button></p>}
     {!loading && !error && visible.length === 0 && <p>当前条件下尚无权限规则。点击“{platform ? '分配平台权限' : '分配权限'}”，选择用户或组、权限和作用范围。</p>}
-    {!!visible.length && <PermissionSubjectTable assignments={visible} name={name} canEdit={!!csrf && !!availableCatalog.length}
+    {!!visible.length && <PermissionSubjectTable assignments={visible} name={name} projectCatalog={projectCatalog} projectSets={projectSets} canEdit={!!csrf && !!availableCatalog.length}
       canRevoke={!!csrf} onEdit={setEdit} onRevoke={setRevoke} />}
     {!loading && !error && <p className="gateway-permission-note">共 {new Set(visible.map(row => `${row.subject_type}:${row.subject_id}`)).size} 个授权对象，{visible.length} 条直接授权规则。{!platform && '个人与组的业务禁止规则优先；'}继承权限会随组成员变化更新。</p>}
-    {edit && !platform && projectCatalog.length > 0 && !legacyNew && (edit === 'new' ? !preset || preset.scope_type === 'project' : edit.id.startsWith('project:')) ?
-      <ProjectPermissionDialog key={edit === 'new' ? 'new' : edit.id} catalog={projectCatalog} sets={projectSets} csrf={csrf} preset={preset}
-        assignment={edit === 'new' ? undefined : edit} onClose={() => setEdit(null)} onSaved={saved} /> : edit &&
-      <PermissionDialog key={edit === 'new' ? 'new' : edit.id} catalog={availableCatalog} csrf={csrf} preset={preset}
-      assignment={edit === 'new' ? undefined : edit} onClose={() => setEdit(null)} onSaved={saved} />}
+    {editor && editorReady && !platform && projectCatalog.length > 0 && !legacyNew && (editor === 'new' ? !preset || preset.scope_type === 'project' : editor.id.startsWith('project:')) ?
+      <ProjectPermissionDialog key={editor === 'new' ? 'new' : editor.id} catalog={projectCatalog} sets={projectSets} csrf={csrf} preset={preset}
+        subjectPreset={editor === 'new' && subjectId ? { type: subjectType === 'group' ? 'group' : 'user', id: subjectId, name: params.get('subject_name') ?? subjectId } : undefined}
+        assignment={editor === 'new' ? undefined : editor} onClose={() => setEdit(null)} onSaved={saved} /> : editor && editorReady &&
+      <PermissionDialog key={editor === 'new' ? 'new' : editor.id} catalog={availableCatalog} csrf={csrf} preset={preset}
+      assignment={editor === 'new' ? undefined : editor} onClose={() => setEdit(null)} onSaved={saved} />}
     {revoke && <RevokePermissionDialog assignment={revoke} name={name(revoke.permission)} csrf={csrf}
       onClose={() => setRevoke(null)} onSaved={saved} />}
   </section>

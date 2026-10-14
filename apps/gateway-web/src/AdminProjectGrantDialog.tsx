@@ -1,6 +1,7 @@
+import { GrantSubjectPicker } from './GrantSubjectPicker'
 import { GatewayModal } from './GatewayModal'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 export type ProjectGrant = { id: string; subject_type: 'user' | 'group'; subject_id: string;
@@ -14,40 +15,15 @@ export function AdminProjectGrantDialog({ projectId, deviceId, grant, csrf, name
   const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>(grant ? [{ id: grant.subject_id, name: grant.subject_name }] : [])
   const [completed, setCompleted] = useState<string[]>([])
   const [level, setLevel] = useState<'read' | 'edit'>(grant?.access_level ?? (deviceId ? 'edit' : 'read'))
-  const [query, setQuery] = useState('')
-  const [search, setSearch] = useState('')
-  const [subjects, setSubjects] = useState<Subject[]>([])
-  const [subjectPage, setSubjectPage] = useState(1)
-  const [subjectTotal, setSubjectTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
   const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [discard, setDiscard] = useState(false)
-  const [revision, setRevision] = useState(0)
-
-  useEffect(() => {
-    if (grant) return
-    const controller = new AbortController()
-    const params = new URLSearchParams({ subject_type: subjectType, q: search,
-      page: String(subjectPage), page_size: '25' })
-    setLoading(true); setError('')
-    void fetch(`/api/admin/project-grant-subjects?${params}`, {
-      credentials: 'same-origin', signal: controller.signal,
-    }).then(async response => {
-      if (!response.ok) throw new Error('授权对象加载失败。')
-      const data = await response.json()
-      if (!controller.signal.aborted) { setSubjects(data.subjects ?? []); setSubjectTotal(data.total ?? 0) }
-    }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '授权对象加载失败。')
-    }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
-    return () => controller.abort()
-  }, [grant, subjectType, search, subjectPage, revision])
 
   const locked = busy || completed.length > 0
   const dirty = (!grant && selectedSubjects.length > 0) || level !== (grant?.access_level ?? (deviceId ? 'edit' : 'read')) || !!password
   async function save() {
-    if (busy || !selectedSubjects.length || !passwordReady || loading) return
+    if (busy || !selectedSubjects.length || !passwordReady) return
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
@@ -71,7 +47,7 @@ export function AdminProjectGrantDialog({ projectId, deviceId, grant, csrf, name
     <GatewayModal title={deviceId ? '授予设备访问' : grant ? '调整项目授权' : '授予项目访问'}
       onClose={close} footer={<>
         <button type="button" className="gateway-dialog-cancel" disabled={busy} onClick={close}>取消</button>
-        <button type="button" disabled={busy || !selectedSubjects.length || !passwordReady || loading} onClick={() => void save()}>
+        <button type="button" disabled={busy || !selectedSubjects.length || !passwordReady} onClick={() => void save()}>
           {busy ? <><span className="gateway-spinner" /> 保存中…</> : completed.length ? '重试未成功对象' : '保存授权'}</button>
       </>}>
       <div className="gateway-grant-editor">
@@ -80,40 +56,18 @@ export function AdminProjectGrantDialog({ projectId, deviceId, grant, csrf, name
       {grant ? <p>授权对象：{grant.subject_type === 'user' ? '用户' : '用户组'} · {grant.subject_name}</p> : <>
         <label htmlFor="project-grant-type">对象类型</label>
         <select id="project-grant-type" disabled={locked} value={subjectType} onChange={event => {
-          setSubjectType(event.target.value as 'user' | 'group'); setSelectedSubjects([]); setSubjects([]); setLoading(true); setSearch(''); setQuery(''); setSubjectPage(1)
+          setSubjectType(event.target.value as 'user' | 'group'); setSelectedSubjects([])
         }}><option value="user">用户</option><option value="group">用户组</option></select>
-        <form className="gateway-admin-search" onSubmit={event => {
-          event.preventDefault(); setSubjectPage(1); setSearch(query.trim())
-        }}>
-          <label htmlFor="project-grant-search">搜索授权对象</label>
-          <input id="project-grant-search" disabled={locked} value={query} onChange={event => setQuery(event.target.value)} />
-          <button type="submit" disabled={locked}>搜索</button>
-        </form>
-        <fieldset className="gateway-grant-subjects" disabled={loading || locked}>
-          <legend>授权对象</legend>
-          {!loading && subjects.map(subject => <label key={subject.id} className="gateway-grant-subject">
-            <input type="checkbox" checked={selectedSubjects.some(item => item.id === subject.id)}
-              onChange={() => setSelectedSubjects(values => values.some(item => item.id === subject.id)
-                ? values.filter(item => item.id !== subject.id) : [...values, subject])} />
-            <span>{subject.name}</span>
-          </label>)}
-          {!loading && !error && subjects.length === 0 && <p>没有匹配的{subjectType === 'user' ? '用户' : '用户组'}，请尝试其他关键词。</p>}
-        </fieldset>
-        <div className="gateway-admin-pagination"><span>共 {subjectTotal} 个对象 · 第 {subjectPage}/{
-          Math.max(1, Math.ceil(subjectTotal / 25))} 页</span>
-          {subjectTotal > 25 && <><button type="button" disabled={subjectPage <= 1 || loading || locked} onClick={() => {
-            setSubjectPage(value => value - 1)
-          }}>上一页</button>
-          <button type="button" disabled={subjectPage >= Math.ceil(subjectTotal / 25) || loading || locked}
-            onClick={() => setSubjectPage(value => value + 1)}>下一页</button></>}</div>
-        {loading && <p role="status"><span className="gateway-spinner"/> 正在加载授权对象…</p>}
-        {error && <button type="button" onClick={() => setRevision(value => value + 1)}>重试加载</button>}
+        <GrantSubjectPicker key={subjectType} subjectType={subjectType} selected={selectedSubjects}
+          onChange={setSelectedSubjects} disabled={locked} />
       </>}
-      <div className="gateway-grant-permission"><label htmlFor="project-grant-level">访问级别</label>
-      <select id="project-grant-level" disabled={locked} value={level} onChange={event => setLevel(event.target.value as 'read' | 'edit')}>
-        {!deviceId && <option value="read">只读</option>}<option value="edit">可编辑</option>
-      </select>
-      <p>{deviceId ? '可操作这台设备及其中全部项目。' : level === 'read' ? '允许查看此项目的内容，不能编辑。' : '允许查看和编辑此项目的内容。'}</p></div>
+      <fieldset className="gateway-grant-permission" disabled={locked || !selectedSubjects.length}><legend>访问级别</legend>
+        <div className="gateway-grant-level-options">
+          {!deviceId && <label><input type="radio" name="grant-access-level" value="read" checked={level === 'read'} onChange={() => setLevel('read')} />只读</label>}
+          <label><input type="radio" name="grant-access-level" value="edit" checked={level === 'edit'} onChange={() => setLevel('edit')} />可编辑</label>
+        </div>
+        <p>{deviceId ? '可操作这台设备及其中全部项目。' : level === 'read' ? '允许查看此项目的内容，不能编辑。' : '允许查看和编辑此项目的内容。'}</p>
+      </fieldset>
       <p className="gateway-grant-summary" aria-live="polite">{selectedSubjects.length ? `已选择：${selectedSubjects.map(subject => subject.name).join('、')} · ${level === 'read' ? '只读' : '可编辑'}` : '请选择授权对象'}</p>
       {completed.length > 0 && <p role="status">已保存 {completed.length} 个对象，重试仅保存未成功的对象。</p>}
       <PasswordConfirmation id="project-grant-password" label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />

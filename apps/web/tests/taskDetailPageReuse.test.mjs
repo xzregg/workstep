@@ -46,7 +46,7 @@ test('task detail keeps review actions in content and has no duplicate footer ac
   assert.doesNotMatch(taskDetail, /resolveTaskDetailAdvanceState/)
   assert.doesNotMatch(sharedView, /resolveTaskDetailAdvanceState/)
   assert.doesNotMatch(sharedView, /primaryAction/)
-  assert.match(sharedView, /chatEnabled=\{interactive\}/)
+  assert.match(sharedView, /<SharedEditableTaskDetail/)
 })
 
 test('task detail close control is the final header action', async () => {

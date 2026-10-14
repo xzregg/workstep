@@ -2,11 +2,12 @@ import { AdminRecordDetails } from './AdminRecordDetails'
 import { AdminListStatus } from './AdminListStatus'
 import { GatewayDateRange } from './GatewayDateRange'
 import { AdminRecordTable } from './AdminRecordTable'
+import { useSearchParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { LedgerExportButton } from './LedgerExportButton'
 
 type AuditEvent = {
-  id: string; occurred_at: string; action: string; result: string
+  id: string; request_ip?: string | null; occurred_at: string; action: string; result: string
   actor_id: string | null; actor_username: string | null; actor_name: string | null
   actor_type: string | null; actor_device_id: string | null; actor_device_name: string | null
   device_id: string | null; mode: string | null
@@ -25,8 +26,10 @@ const auditResults: Record<string, string> = { success: '成功', succeeded: '�
 const value = (item: string | null | undefined) => item || '未知'
 
 export function AdminAuditPage() {
-  const [draft, setDraft] = useState<Filters>(emptyFilters)
-  const [filters, setFilters] = useState('')
+  const [params] = useSearchParams()
+  const linkedUser = params.get('user_id')?.slice(0, 64) ?? ''
+  const [draft, setDraft] = useState<Filters>({ ...emptyFilters, user_id: linkedUser })
+  const [filters, setFilters] = useState(linkedUser ? new URLSearchParams({ user_id: linkedUser }).toString() : '')
   const [page, setPage] = useState(1)
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [total, setTotal] = useState(0)
@@ -103,10 +106,12 @@ export function AdminAuditPage() {
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(current => current + 1)}>重试</button></p>}
     {!loading && !error && events.length === 0 && <p>当前条件下没有审计记录。</p>}
-    <AdminRecordTable busy={loading} columns={['发生时间','操作','操作人','登录方式','设备','项目','结果','目标','操作']}>
+    <AdminRecordTable busy={loading} columns={['发生时间','操作','操作人','用户名','请求 IP','登录方式','设备','项目','结果','目标','操作']}>
       {events.map(item => <tr key={item.id}>
         <td>{new Date(item.occurred_at).toLocaleString()}</td><td title={item.action}>{loginActions[item.action] || item.action}</td>
         <td title={item.actor_id || ''}>{item.actor_type === 'anonymous' ? `未认证${item.actor_username ? `（尝试账号：${item.actor_username}）` : ''}` : value(item.actor_name || item.actor_username || item.actor_id)}</td>
+        <td>{item.actor_type === 'anonymous' ? (item.actor_username ? `尝试账号：${item.actor_username}` : '—') : item.actor_username || '未记录'}</td>
+        <td>{item.request_ip || '未记录'}</td>
         <td>{item.metadata.login_method ? loginMethods[String(item.metadata.login_method)] || '未知' : '—'}</td>
         <td title={item.device_id || ''}>{value(item.metadata.device_name?.toString() || item.device_id)}</td><td>{value(item.project_name || item.platform_project_id)}</td>
         <td>{item.metadata.reason_code === 'device_pending' ? '待设备审批' : auditResults[item.result] || item.result}</td><td title={item.task_id || item.platform_project_id || ''}>{value(item.task_id || item.metadata.subject_id?.toString() || item.platform_project_id)}</td>
@@ -125,7 +130,7 @@ export function AdminAuditPage() {
       <LedgerExportButton rows={events} filename={`audit-page-${page}.csv`} disabled={loading || !!error}
         columns={[{ name: '事件 ID', key: 'id' }, { name: '时间', key: 'occurred_at' },
           { name: '操作', key: 'action' }, { name: '结果', key: 'result' },
-          { name: '用户 ID', key: 'actor_id' }, { name: '用户名', key: 'actor_username' }, { name: '姓名', key: 'actor_name' }, { name: '设备 ID', key: 'device_id' },
+          { name: '用户 ID', key: 'actor_id' }, { name: '请求 IP', key: 'request_ip' }, { name: '用户名', key: 'actor_username' }, { name: '姓名', key: 'actor_name' }, { name: '设备 ID', key: 'device_id' },
           { name: '项目 ID', key: 'platform_project_id' }, { name: '任务 ID', key: 'task_id' },
           { name: '详情', key: 'metadata' }]} />
       <button type="button" disabled={page <= 1 || loading} onClick={() => setPage(current => current - 1)}>上一页</button>

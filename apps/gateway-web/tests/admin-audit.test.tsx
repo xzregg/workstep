@@ -43,6 +43,8 @@ test('audit workbench filters, retries, pages, and shows redacted event detail',
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByRole('cell',{name:'task.start'})
   assert.ok(screen.getByRole('columnheader',{name:'操作人'}))
+  assert.ok(screen.getByRole('columnheader',{name:'用户名'}))
+  assert.ok(screen.getByRole('cell',{name:'alice'}))
   fireEvent.click(screen.getByRole('button',{name:'审计详情 audit-1'}))
   assert.match(document.body.textContent ?? '', /流程运行 run-1/)
   assert.match(document.body.textContent ?? '', /宿主项目 host-project-1/)

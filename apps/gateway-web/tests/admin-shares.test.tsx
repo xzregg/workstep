@@ -24,7 +24,7 @@ test('share management lists metadata without credentials and pauses, resumes, r
     calls.push({ url, init })
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf-token' })
     if (url.startsWith('/api/admin/shares?')) return Response.json({ total: deleted ? 0 : 1, shares: deleted ? [] : [{
-      id: 'share-1', title: 'Review link', created_by: 'owner', device_name: 'PC',
+      id: 'share-1', title: 'Review link', created_by: 'ext_owner', created_by_name: '张三', device_name: 'PC',
       project_name: 'Project', task_id: 'task-1', mode: 'read_only',
       visit_count: 2, last_seen_at: '2026-09-29T12:00:00Z',
       created_at: '2026-09-29T10:00:00Z', expires_at: null, status,
@@ -37,7 +37,8 @@ test('share management lists metadata without credentials and pauses, resumes, r
   }
   render(<MemoryRouter><AdminSharesPage /></MemoryRouter>)
   await screen.findByText('Review link')
-  assert.match(document.body.textContent ?? '', /owner/)
+  assert.ok(screen.getByRole('cell', { name: '张三' }))
+  assert.equal(document.body.textContent?.includes('ext_owner'), false)
   assert.match(document.body.textContent ?? '', /PC/)
   assert.ok(screen.getByRole('cell',{name:'2'}))
   assert.ok(screen.getByRole('columnheader',{name:'访问次数'}))

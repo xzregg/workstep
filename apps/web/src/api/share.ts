@@ -1,5 +1,5 @@
 import { BASE, FULL_PAGE_LIMIT, fileDataUrl, request, shareRequest } from './transport'
-import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, ReviewRun, DirectoryBrowseResult } from './client'
+import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, ReviewRun, DirectoryBrowseResult, ActionProposal, TaskArtifactInputSnapshot } from './client'
 
 // --- Public share API (no project context, session-token gated) ---
 
@@ -14,6 +14,7 @@ export interface ShareInfo {
   has_password: boolean
   created_at: string
   revoked_at: string | null
+  expires_at?: string | null
 }
 
 export interface ShareMeta {
@@ -37,6 +38,10 @@ export interface SharedTask {
   coordinator_fast_model?: string | null
   coordinator_session_id?: string | null
   run_round?: number
+  review_overrides?: Record<string, any> | null
+  queue_position?: number | null
+  archived?: boolean
+  active_workflow_run_id?: string | null
   restart_from_step_key?: string | null
   recovered_at?: string | null
   recovered_count?: number
@@ -60,6 +65,17 @@ export interface SharedTask {
 }
 
 export const shareApi = {
+  taskOperation: <T,>(token: string, session: string, path: string, options?: RequestInit) =>
+    shareRequest<T>(`/task-share/public/${encodeURIComponent(token)}/operation`, session, {
+      method: 'POST', body: JSON.stringify({ path, method: options?.method || 'GET',
+        body: typeof options?.body === 'string' && options.body ? JSON.parse(options.body) : null,
+        idempotency_key: new Headers(options?.headers).get('Idempotency-Key') }),
+    }),
+  confirmAction: (token: string, session: string, id: string, idempotencyKey: string, overwrite = false) =>
+    shareRequest<ActionProposal>(`/task-share/public/${encodeURIComponent(token)}/actions/${encodeURIComponent(id)}/confirm`, session,
+      { method: 'POST', body: JSON.stringify({ idempotency_key: idempotencyKey, overwrite }) }),
+  cancelAction: (token: string, session: string, id: string) =>
+    shareRequest<ActionProposal>(`/task-share/public/${encodeURIComponent(token)}/actions/${encodeURIComponent(id)}/cancel`, session, { method: 'POST' }),
   gitRequest: <T,>(token: string, sessionToken: string, path: string, options?: RequestInit) =>
     shareRequest<T>(path.replace(/^\/git/, `/task-share/public/${encodeURIComponent(token)}/git`), sessionToken, options),
   meta: (token: string) =>
@@ -97,12 +113,12 @@ export const shareApi = {
     return { messages, limit, offset }
   },
   messageEvents: (token: string, sessionToken: string, messageId: string, cursor = 0) =>
-    shareRequest<{ events: any[]; complete: boolean; next_cursor: number | null }>(
+    shareRequest<{ events: any[]; complete: boolean; next_cursor: number | null; last_event_seq?: number }>(
       `/task-share/public/${encodeURIComponent(token)}/messages/${encodeURIComponent(messageId)}/events?cursor=${cursor}`,
       sessionToken,
     ),
   artifacts: (token: string, sessionToken: string) =>
-    shareRequest<{ artifacts: TaskArtifact[]; artifact_directory: string }>(
+    shareRequest<{ artifacts: TaskArtifact[]; artifact_directory: string; input_snapshots?: TaskArtifactInputSnapshot[] }>(
       `/task-share/public/${encodeURIComponent(token)}/artifacts`,
       sessionToken,
     ),

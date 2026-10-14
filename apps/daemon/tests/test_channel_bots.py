@@ -730,7 +730,8 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
         await module.shutdown()
 
 
-async def test_recent_group_falls_back_to_renamed_conversation_and_db_does_not_block_health(bots, monkeypatch):
+@pytest.mark.parametrize('endpoint', ['recent-groups', 'group-whitelist'])
+async def test_recent_group_falls_back_to_renamed_conversation_and_db_does_not_block_health(bots, monkeypatch, endpoint):
     manager, project, *_ = bots
     bot = await manager.create_bot({'platform': 'wecom', 'name': '机器人', 'app_id': 'bot', 'secret': 'secret',
         'default_target_type': 'project', 'default_project_id': project.id})
@@ -740,6 +741,7 @@ async def test_recent_group_falls_back_to_renamed_conversation_and_db_does_not_b
     data = await manager._load()
     data['recent_groups'] = [{'bot_id': bot['id'], 'group_id': 'room', 'group_name': ''}]
     data['sessions'][f"{bot['id']}:group:room"] = session['id']
+    data['bots'][0]['group_whitelist'] = {'enabled': True, 'groups': [{'group_id': 'room', 'group_name': ''}]}
     await manager._save(data)
     entered, release = threading.Event(), threading.Event()
     original = ChatSession.select
@@ -749,7 +751,7 @@ async def test_recent_group_falls_back_to_renamed_conversation_and_db_does_not_b
         return original(*args, **kwargs)
     monkeypatch.setattr(ChatSession, 'select', slow_select)
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
-        pending = asyncio.create_task(client.get(f"/api/channel-bots/{bot['id']}/recent-groups"))
+        pending = asyncio.create_task(client.get(f"/api/channel-bots/{bot['id']}/{endpoint}"))
         try:
             assert await asyncio.to_thread(entered.wait, 1)
             assert (await asyncio.wait_for(client.get('/api/health'), 0.5)).status_code == 200
@@ -757,11 +759,36 @@ async def test_recent_group_falls_back_to_renamed_conversation_and_db_does_not_b
             release.set()
         response = await asyncio.wait_for(pending, 2)
     assert response.status_code == 200
-    assert response.json()[0]['conversation_title'] == '我的测试群'
-    assert response.json()[0]['group_name'] == ''
+    if endpoint == 'recent-groups':
+        assert response.json()[0]['conversation_title'] == '我的测试群'
+        assert response.json()[0]['group_name'] == ''
+    else:
+        assert response.json()['candidates'] == [{'group_id': 'room', 'group_name': '我的测试群'}]
+        assert response.json()['groups'] == [{'group_id': 'room', 'group_name': '我的测试群'}]
+        assert (await manager._load())['bots'][0]['group_whitelist']['groups'][0]['group_name'] == ''
     monkeypatch.setattr(ChatSession, 'select', original)
     await manager.bind_group(project.id, 'task-1', bot['id'], 'room')
     assert (await manager.list_task_groups(project.id, 'task-1'))[0]['group_name'] == '我的测试群'
+
+
+async def test_group_whitelist_prefers_current_names_and_retains_saved_only_groups(bots):
+    manager, *_ = bots
+    bot = await manager.create_bot(dict(platform='wecom', name='机器人', app_id='names', secret='s'))
+    data = await manager._load()
+    data['recent_groups'] = [
+        {'bot_id': bot['id'], 'group_id': 'room', 'group_name': '当前群名'},
+        {'bot_id': bot['id'], 'group_id': 'unknown', 'group_name': ''},
+        {'bot_id': 'other-bot', 'group_id': 'unknown', 'group_name': '其他机器人群'},
+    ]
+    await manager._save(data)
+    saved = [{'group_id': 'room', 'group_name': '旧名称'}, {'group_id': 'saved-only', 'group_name': '已保存群'}]
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        response = await client.put(f"/api/channel-bots/{bot['id']}/group-whitelist", json={'enabled': True, 'groups': saved})
+    assert response.status_code == 200
+    assert response.json()['groups'] == [{'group_id': 'room', 'group_name': '当前群名'}, saved[1]]
+    assert {row['group_id']: row['group_name'] for row in response.json()['candidates']} == {
+        'room': '当前群名', 'unknown': '', 'saved-only': '已保存群',
+    }
 
 
 async def test_bot_list_exposes_task_bindings_and_unbinds_without_blocking_health(bots, monkeypatch):
@@ -832,14 +859,16 @@ async def test_task_channel_stop_callback_bypasses_message_queue(bots):
 async def test_dingtalk_optional_card_template_is_saved_and_updated_through_api(bots):
     _, first, *_ = bots
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
-        response = await client.post('/api/channel-bots',json={'platform':'dingtalk','name':'卡片助手','app_id':'card-template','secret':'s','card_template_id':'own.schema','default_project_id':first.id})
+        response = await client.post('/api/channel-bots',json={'platform':'dingtalk','name':'卡片助手','app_id':'card-template','secret':'s','card_template_id':'own.schema','review_card_template_id':'review.schema','default_project_id':first.id})
         assert response.status_code == 200
         bot = response.json()
         assert bot['card_template_id'] == 'own.schema'
+        assert bot['review_card_template_id'] == 'review.schema'
         assert bot['capabilities']['cards'] is True
-        update = await client.patch('/api/channel-bots/'+bot['id'],json={'card_template_id':''})
+        update = await client.patch('/api/channel-bots/'+bot['id'],json={'card_template_id':'','review_card_template_id':''})
         assert update.status_code == 200
         assert (await client.get('/api/channel-bots')).json()[0]['card_template_id'] == ''
+        assert (await client.get('/api/channel-bots')).json()[0]['review_card_template_id'] == ''
 
 
 async def test_create_bot_api_requires_default_project(bots):
@@ -1029,3 +1058,18 @@ async def test_private_whitelist_slow_save(bots, monkeypatch):
         finally:
             release.set()
         assert (await pending).status_code == 200
+
+
+async def test_review_input_is_consumed_before_coordinator_and_respects_whitelist(bots):
+    from unittest.mock import AsyncMock
+    manager,project,_,submissions,project_chats,adapters = bots
+    bot = await manager.create_bot({'platform':'wecom','name':'审核','app_id':'review-input','secret':'s',
+        'enabled':True,'default_target_type':'task','default_project_id':project.id,'default_task_id':'task-1'})
+    manager._controls.review_message = AsyncMock(return_value='审核意见已保存')
+    await manager.handle_message(IncomingMessage(bot['id'],'opinion','single','member','member','需要改进'))
+    assert adapters[bot['id']].sent[-1] == ('member','审核意见已保存')
+    assert not submissions and not project_chats
+    await manager.save_private_whitelist(bot['id'], True, [])
+    manager._controls.review_message.reset_mock()
+    await manager.handle_message(IncomingMessage(bot['id'],'denied','single','member','member','被限制的意见'))
+    manager._controls.review_message.assert_not_awaited()

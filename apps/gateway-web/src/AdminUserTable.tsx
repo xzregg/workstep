@@ -8,8 +8,8 @@ import { AdminUserActionDialog } from './AdminUserActionDialog'
 import type { AdminUser } from './AdminUsersPage'
 
 const sources: Record<string,string> = {local:'自主注册',admin_created:'管理员创建',directory_sync:'组织同步',dingtalk:'钉钉',wecom:'企业微信'}
-export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
- users: AdminUser[]; csrf: string; loading: boolean; resetKey: unknown; onRefresh: () => void
+export function AdminUserTable({users, csrf, loading, resetKey, onRefresh, canViewAudit = false}: {
+ users: AdminUser[]; csrf: string; loading: boolean; resetKey: unknown; onRefresh: () => void; canViewAudit?: boolean
 }) {
  const selectable = users.filter(user=>!user.is_recovery).map(user=>user.id)
  const {selected, setSelected, toggle} = useAdminSelection(selectable, resetKey)
@@ -35,14 +35,16 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
    {!!selected.length && <button type="button" onClick={()=>setSelected([])}>取消选择</button>}
   </div>
   {notice && <p role="status">{notice}</p>}
-  <AdminRecordTable busy={loading} columns={[<AdminSelectAll ids={selectable} selected={selected} onChange={setSelected} disabled={loading}/>, '显示名', '登录用户名', '状态', '注册来源', '操作']}>
+  <AdminRecordTable busy={loading} columns={[<AdminSelectAll ids={selectable} selected={selected} onChange={setSelected} disabled={loading}/>, '显示名', '登录用户名', '状态', '注册来源', '上次登录时间', '操作']}>
    {users.map(user=><tr key={user.id}>
     <td><input type="checkbox" className="gateway-table-checkbox" aria-label={`选择${user.display_name}`} checked={selected.includes(user.id)} disabled={loading || user.is_recovery} onChange={event=>toggle(user.id,event.target.checked)}/></td>
     <td><strong>{user.display_name}</strong></td>
     <td><span className="gateway-login-name" title={loginUsername(user) ?? '使用企业身份登录'}>{loginUsername(user) ?? '扫码登录'}</span></td>
     <td>{user.status==='pending'?'待审核':user.status==='disabled'?'已停用':user.status==='deleted'?'已删除':'已启用'}</td>
     <td>{sources[user.registration_source] ?? user.registration_source}</td>
+    <td>{user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '暂无记录'}</td>
     <td><div className="gateway-row-actions">
+     {canViewAudit && <a href={`/admin/audit?user_id=${encodeURIComponent(user.id)}`} aria-label={`${user.display_name}的审计日志`}>审计日志</a>}
      {user.status!=='deleted' && !user.is_recovery && <button type="button" disabled={loading} onClick={()=>setEditing(user)}>编辑</button>}
      {user.status==='pending' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>setSingle({user,kind:'approve'})}>批准</button>}
      {user.status==='deleted' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('restore',[user.id])}>恢复</button> : user.status==='disabled' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('enable',[user.id])}>启用</button>
