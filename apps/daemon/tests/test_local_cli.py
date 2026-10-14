@@ -16,6 +16,23 @@ from services.tool_registry import WorkstepClient
 from services.local_cli import LocalCliRuntime, local_cli_headers, credential_path
 
 
+def test_windows_acl_child_does_not_inherit_incompatible_powershell_module_path(tmp_path, monkeypatch):
+    import services.local_cli as cli
+    inherited = {'PSMODULEPATH': 'powershell-seven-modules', 'OTHER': 'retained'}
+    monkeypatch.setattr(cli, 'os', SimpleNamespace(name='nt', environ=inherited))
+    calls = []
+
+    def run(arguments, **kwargs):
+        calls.append(kwargs['env'])
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(cli.subprocess, 'run', run)
+    assert cli._windows_private([tmp_path], protect=True)
+    assert not any(key.casefold() == 'psmodulepath' for key in calls[0])
+    assert calls[0]['OTHER'] == 'retained'
+    assert inherited['PSMODULEPATH'] == 'powershell-seven-modules'
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize('desktop', [False, True])
 async def test_local_cli_reads_projects_in_gateway_mode_without_login(tmp_path, monkeypatch, desktop):

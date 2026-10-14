@@ -59,7 +59,10 @@ downloaded and installed manually. Publishing the draft is an explicit release s
 因此未创建或正式发布 Release。后台启动器把监听地址 `0.0.0.0` 直接写入
 `WORKSTEP_DAEMON_URL`，新增本机 CLI 发现仅接受回环地址，导致启动异常。
 启动器修复将 IPv4／IPv6 通配监听转换为 `127.0.0.1`／`[::1]` 客户端地址，
-保留实际端口和原监听范围。回归覆盖通配及回环地址；实际 Windows 完整验收仍需复测。
+保留实际端口和原监听范围。回归覆盖通配及回环地址。
+后续 Windows 原生检查还确认，继承 PowerShell 7 的模块路径会导致系统 PowerShell 5
+无法加载 ACL 模块；ACL 子进程现在使用自身系统模块路径，规范化目录及文件所有者，
+并验证拒绝任何允许其他用户读取的凭据。原生回归已通过，实际 Windows 完整验收仍在执行。
 该修复不改变操作手册入口或安装步骤。
 
 `Desktop release` 的 Windows job 在上传安装包前，调用
