@@ -31,6 +31,7 @@ def acl_failure_diagnostics(monkeypatch):
 
 def test_windows_cli_publishes_private_credentials_in_unicode_directory(tmp_path, monkeypatch):
     monkeypatch.setenv('WORKSTEP_CONFIG_DIR', str(tmp_path / '配置 WorkStep'))
+    monkeypatch.setenv('PSModulePath', str(tmp_path / 'incompatible-powershell-modules'))
     runtime = cli.LocalCliRuntime('http://127.0.0.1:43123')
     try:
         runtime.publish()
@@ -55,7 +56,8 @@ $acl=Get-Acl -LiteralPath $env:WORKSTEP_TEST_CLI_PATH
 $everyone=[Security.Principal.SecurityIdentifier]::new('S-1-1-0')
 $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone,'Read','Allow'))
 Set-Acl -LiteralPath $env:WORKSTEP_TEST_CLI_PATH -AclObject $acl
-'''], env={**os.environ, 'WORKSTEP_TEST_CLI_PATH': str(path)}, capture_output=True)
+'''], env={**{key: value for key, value in os.environ.items() if key.casefold() != 'psmodulepath'},
+           'WORKSTEP_TEST_CLI_PATH': str(path)}, capture_output=True)
     assert result.returncode == 0, result.stderr.decode(errors='replace')
     assert cli.local_cli_headers(runtime.url) == {}
     assert cli._windows_private([path], protect=True)
