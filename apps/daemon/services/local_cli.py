@@ -57,7 +57,7 @@ foreach ($path in (ConvertFrom-Json $env:WORKSTEP_CLI_ACL_PATHS)) {
   $owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
   # Elevated Windows processes create objects owned by Administrators. Only
   # normalize that trusted owner when protecting; discovery still requires self.
-  if ($owner -ne $sid.Value -and -not ($env:WORKSTEP_CLI_ACL_PROTECT -eq '1' -and $owner -eq 'S-1-5-32-544')) { exit 1 }
+  if ($owner -ne $sid.Value -and -not ($env:WORKSTEP_CLI_ACL_PROTECT -eq '1' -and $owner -eq 'S-1-5-32-544')) { throw 'CLI ACL owner is not current user or trusted administrator' }
   if ($env:WORKSTEP_CLI_ACL_PROTECT -eq '1') {
     $acl.SetAccessRuleProtection($true,$false)
     foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRuleSpecific($rule) }
@@ -71,9 +71,9 @@ foreach ($path in (ConvertFrom-Json $env:WORKSTEP_CLI_ACL_PATHS)) {
     Set-Acl -LiteralPath $path -AclObject $acl
     $acl=Get-Acl -LiteralPath $path
   }
-  if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { exit 1 }
+  if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { throw 'CLI ACL owner normalization failed' }
   foreach ($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
-    if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @($sid.Value,'S-1-5-18','S-1-5-32-544')) { exit 1 }
+    if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @($sid.Value,'S-1-5-18','S-1-5-32-544')) { throw 'CLI ACL allows another identity' }
   }
 }
 '''
