@@ -365,6 +365,13 @@ async def test_platform_share_upload_is_task_scoped_and_disk_write_keeps_health(
     assert uploaded["size"] == 7
     assert uploaded["url"] == f".workstep/uploads/{uploaded['filename']}"
     assert uploaded["filename"].endswith(".txt")
+    from services.project_audit import list_project_audit
+    audits = await main.project_manager.run_db(project_id, lambda _project: list_project_audit(project_id, remote_only=True))
+    event = next(row for row in audits["items"] if row["action"] == "file.upload")
+    assert event["metadata"]["access_source"] == "gateway_share"
+    assert event["task_id"] == task_ids[0]
+    assert event["metadata"]["file_size"] == 7
+
     path = f"/api/platform-share/uploads/{uploaded['filename']}"
     assert await request(path) == (200, b"visible")
     assert (await request(path, task_id=task_ids[1]))[0] == 404

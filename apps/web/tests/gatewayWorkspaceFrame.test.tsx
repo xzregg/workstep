@@ -51,6 +51,12 @@ test('workspace waits for its session and project, then removes content after se
     await act(async () => { await assert.rejects(useGatewaySessionStore.getState().load(true)) })
     // The shared session state must revoke content immediately, before the next poll.
     assert.equal(element.querySelector('[data-workspace]'), null)
+    fail = false
+    await act(async () => {
+      window.dispatchEvent(new window.Event('workstep:resume'))
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+    assert.ok(element.querySelector('[data-workspace]'), 'returning to the APK retries the gateway session immediately')
   } finally {
     await act(async () => root.unmount())
     element.remove()

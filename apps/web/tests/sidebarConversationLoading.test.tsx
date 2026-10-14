@@ -82,3 +82,75 @@ for (const remote of [false, true]) for (const projectToggle of [false, true]) t
     await window.happyDOM.close()
   }
 })
+
+for (const width of [320, 390, 1023]) for (const remote of [false, true]) test(`${width}px ${remote ? 'remote' : 'local'}: opening the drawer loads restored expanded conversations once and retries only on another opening`, async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width, height: 844 })
+  Object.assign(globalThis, { history: window.history })
+  const oldFetch = globalThis.fetch, oldSocket = globalThis.WebSocket
+  const projectState = useProjectStore.getState(), chatState = useChatListStore.getState()
+  const projects = [
+    { id: 'restored', name: 'Restored', path: '/tmp/restored', steps: {}, workflows: [], type: remote ? 'remote' as const : undefined },
+    { id: 'closed', name: 'Closed', path: '/tmp/closed', steps: {}, workflows: [] },
+  ]
+  window.localStorage.setItem(SIDEBAR_SECTION_STATE_KEY, JSON.stringify({
+    expandedProjectIds: ['restored', 'closed'], conversationsByProject: { restored: true, closed: false },
+  }))
+  class Socket {
+    static OPEN = 1
+    static CONNECTING = 0
+    readyState = 1
+    send() {}
+    close() { this.readyState = 3 }
+  }
+  Object.assign(globalThis, { WebSocket: Socket, ResizeObserver: window.ResizeObserver })
+  useGatewaySessionStore.setState({ session: null })
+  useProjectStore.setState({ projects: [], activeProject: null, activeWorkflowId: null })
+  useChatListStore.setState({ sessionsByProject: {}, listLoadingByProject: {}, listErrorByProject: {} })
+  const calls: string[] = []
+  let finish!: (response: Response) => void
+  let catalog!: (response: Response) => void
+  globalThis.fetch = async input => {
+    const path = String(input)
+    if (path === '/api/project/list') return new Promise<Response>(resolve => { catalog = resolve })
+    if (path.includes('/chat-sessions?')) {
+      calls.push(path)
+      return new Promise<Response>(resolve => { finish = resolve })
+    }
+    return Response.json({ sessions: [], engines: [], providers: [], buttons: [] })
+  }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const render = () => act(async () => root.render(<I18nProvider><MemoryRouter initialEntries={['/tasks']}><Layout onSelectProject={() => {}} /></MemoryRouter></I18nProvider>))
+  const open = () => act(async () => container.querySelector<HTMLButtonElement>('[aria-controls="workstep-navigation"]')!.click())
+  const close = () => act(async () => container.querySelector<HTMLButtonElement>('.navigation-close')!.click())
+  try {
+    await render()
+    assert.equal(calls.length, 0)
+    await open()
+    assert.equal(calls.length, 0)
+    await act(async () => catalog(Response.json({ projects })))
+    assert.equal(calls.length, 1)
+    assert.match(calls[0], /project_id=restored/)
+    assert.ok(container.querySelector('.layout-session-list [role="status"]'))
+    await render()
+    assert.equal(calls.length, 1, 'rerendering must not issue another request')
+    await act(async () => finish(Response.json({ detail: 'offline' }, { status: 502 })))
+    assert.ok(container.querySelector('.layout-session-list [role="alert"]'))
+    await render()
+    assert.equal(calls.length, 1, 'failure must not trigger an automatic retry')
+    await close()
+    assert.equal(calls.length, 1)
+    await open()
+    assert.equal(calls.length, 2)
+    await act(async () => finish(Response.json({ sessions: [
+      { id: 'restored-session', title: '恢复后的对话', project_id: 'restored', workflow_id: '', engine: 'codex', message_count: 1 },
+    ] })))
+    assert.match(container.querySelector('.layout-session-list')!.textContent!, /恢复后的对话/)
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.fetch = oldFetch; globalThis.WebSocket = oldSocket
+    useProjectStore.setState(projectState); useChatListStore.setState(chatState)
+    await window.happyDOM.close()
+  }
+})

@@ -106,21 +106,21 @@ class GatewaySigner:
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"
 
     def sign_device_access_ticket(self, *, gateway_id: str, device_id: str,
-                                  user_id: str, audience: str) -> str:
+                                  user_id: str, audience: str, login_method: str = "unknown") -> str:
         return self._sign_access_ticket(gateway_id=gateway_id, device_id=device_id,
                                         user_id=user_id, audience=audience,
-                                        kind="device.access")
+                                        kind="device.access", login_method=login_method)
 
     def sign_project_access_ticket(self, *, gateway_id: str, device_id: str,
                                    user_id: str, audience: str, project_id: str,
-                                   host_project_id: str, access_level: str) -> str:
+                                   host_project_id: str, access_level: str, login_method: str = "unknown") -> str:
         if access_level not in ("read", "edit") or not project_id or not host_project_id:
             raise ValueError("Invalid project access")
         return self._sign_access_ticket(gateway_id=gateway_id, device_id=device_id,
                                         user_id=user_id, audience=audience,
                                         kind="project.access", project_id=project_id,
                                         host_project_id=host_project_id,
-                                        access_level=access_level)
+                                        access_level=access_level, login_method=login_method)
 
     def sign_platform_share_ticket(self, *, gateway_id: str, device_id: str,
                                    share_id: str, project_id: str,

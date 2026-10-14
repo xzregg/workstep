@@ -3,13 +3,14 @@ import {
   type ReactNode,
 } from 'react'
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { zhCN, type Messages } from './locales/zh-CN'
 import { enUS } from './locales/en-US'
 import { zhTW } from './locales/zh-TW'
 import { jaJP } from './locales/ja-JP'
 import { builtinLocales, validateLanguage, type BuiltinLocale, type LanguageDocument, type LanguageSummary } from './languagePack'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
+import { appearanceStorage, appearanceScope } from '../utils/appearanceStorage'
 import './languagePreview.css'
 
 export type Locale = string
@@ -130,17 +131,18 @@ export const useLocaleStore = create<LocaleState>()(
   confirmPreview: () => set({previous:null}),
  }), {
   name:'workstep.locale' + (gatewayWorkspacePath() ? ':' + gatewayWorkspacePath() : ''),
+  storage: createJSONStorage(() => appearanceStorage),
   partialize: state => state.previous ?? {locale:state.locale, language:state.language},
   merge: (persisted, current) => {
    let saved = persisted as Partial<LocaleState> | undefined
-   if (!saved && gatewayWorkspacePath()) {
+   if (!saved && gatewayWorkspacePath() && !appearanceScope()) {
     try { const legacy=JSON.parse(localStorage.getItem('workstep.locale') || 'null')?.state; if (builtinLocales.includes(legacy?.locale)) saved={locale:legacy.locale} } catch { /* No legacy preference. */ }
    }
    try {
     if (saved?.language) { const language=validateLanguage(saved.language); return {...current, language, locale:language.manifest.locale} }
     if (builtinLocales.includes(saved?.locale as BuiltinLocale)) return {...current, locale:saved!.locale!}
    } catch { /* Corrupt cache never prevents recovery. */ }
-   return current
+   return !saved && !appearanceScope() ? {...current, locale:resolveInitialLocale(), language:null, previous:null} : current
   },
  }),
 )

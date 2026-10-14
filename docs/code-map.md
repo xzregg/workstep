@@ -4,7 +4,11 @@
 
 皮肤设置入口位于设置 → 外观（系统设置上方的一级菜单），由 `AppearanceSettings` 在顶部集中持有字体类型、既有四档字号 Tab 与界面语言选择（复用 `useLocaleStore`，系统设置不再重复提供语言入口），通过 `SkinSettings.preferences` 插槽放入同一外观设置模块；标题与“聊聊外观怎么改”入口统领手动控件和皮肤库；字体类型由 `utils/fontFamilyPreference.ts` 保存在设备并于启动时恢复，默认跟随皮肤／系统，显式选择只覆盖界面与标题字体，代码字体保持原设置；`SkinSettings` 持有皮肤目录读取和注册、导入、导出，`SkinLibrary` 持有卡片选择、筛选搜索和 PC/手机场景预览，选择卡片不自动应用。`SkinStudio` 复用普通 `ChatPage`，通过组合插槽提供起点建议和已校验包的版本卡片，微调、字体类型（font-body / font-display）和四档字号（layout.fontSize）仍为声明式皮肤配置；预览取消恢复原字体偏好，确认应用后与手动控件同步，设备手动覆盖使用同一字体偏好事件；复制已安装皮肤时后台在线程中复制已校验快照中的背景资源。整机网关访问可发起制作，项目绑定会话只显示选用能力，后台原权限门禁继续生效。行为测试 `appearanceSettings.test.tsx`、`skinSettings.test.tsx`、`skinStudio.test.tsx`、`skins.test.ts`、`test_skins.py`。
 
+网关个人外观：整机访问沿用设置 → 外观，项目范围访问从侧栏“外观与皮肤”进入 `/appearance`，均复用 `AppearanceSettings`，只读用户也可选用设备公共包。`utils/appearancePreferences.ts` 在启动挂载前恢复个人选择，串行合并保存并持有失败重试；`appearanceStorage.ts` 统一字体、字号、语言与皮肤缓存的认证身份作用域，预览不写入个人选择。`api/appearance.py` 的 GET/PATCH `/api/appearance/preferences` 仅使用认证 `managed_actor`，写入需匹配作用域；`services/appearance_preferences.py` 在线程内将用户＋网关＋设备偏好原子持久化。共享协议只开放个人读写，不放开宿主包管理。设备皮肤库、语言包、制作会话和草稿继续共用，不按用户复制。回归：`test_appearance_preferences.py`（真实桥接和慢盘 canary）、协议 `test_workspace_scope.py`、Web `appearancePreferences.test.ts`、`appearanceSettings.test.tsx`，实际生产构建验收 `scripts/check-personal-appearance.cjs`。
+
 # 按功能查找代码
+
+桌面诊断入口为应用「帮助」菜单／托盘的「打开日志目录」「导出诊断包」，后台启动失败弹窗也可打开目录。`apps/desktop/src/diagnostics.cjs` 持有异步文件日志、按字节限制及轮转、凭据脱敏、受限文本诊断包导出、本地 Electron 崩溃转储和按年龄／数量／总大小的异步清理；`src/main.cjs` 持有菜单、启动／停止、主进程控制台与 Electron 进程事件接入，`src/sidecar.cjs` 持有普通后台 stdout/stderr 及退出状态。日志位于桌面 `userData/logs/`，沙箱快照复用 `SandboxManager.readLogs()`；`src/sandbox.cjs` 复用轮转写入器限制沙箱阶段日志、限制快照字节数，并在容器启动参数中限制底层后台日志大小。行为测试为 `apps/desktop/tests/diagnostics.test.cjs`、`sandbox.test.cjs` 和 `managed-login-window.test.cjs`；路径、保留规则与边界见 [桌面端说明](../apps/desktop/README.md#日志与崩溃排查)。
 
 默认工作区初始名称为「默认工作区」，允许重命名；`ProjectManager.unregister` 按固定目录阻止取消注册，项目删除 API 返回 409，`Layout` 隐藏删除入口并在重命名后同步当前项目路由，`projectStore` 同步活动项目名称。回归 `test_customization_workspace.py`、`gatewayWorkspaceApp.test.tsx`、`projectStore.test.ts`。
 
@@ -404,7 +408,7 @@ WorkStep Web `GatewayTaskShareLink.tsx` 在原 `TaskDetail.tsx` 中按远程会�
 | 分享页实时消息事件合并、状态更新与事件数量上限 | `src/pages/sharedTaskMessages.ts`；`src/hooks/useSharedTaskSession.ts` 将事件写入消息状态 | `sharedTaskMessages.test.ts`、`useSharedTaskSession.test.tsx` |
 | 分享链接的密码解锁、会话过期恢复、首屏快照、实时连接及消息事件详情 | `src/hooks/useSharedTaskSession.ts`；`SharedTaskView.tsx` 只装配任务展示和交互，固定样式在 `src/index.css` 的 `shared-task-*` 类 | `useSharedTaskSession.test.tsx`、`interactiveShareComposer.test.tsx` |
 | 新建任务、起始步骤与启动方式、审核覆盖、AI 草稿和关闭保护 | `TaskCreatePanel.tsx`；`TaskList.tsx` 只负责入口和当前项目/流程选择；样式在 `src/index.css` 的 `task-create-*` 类 | `taskCreatePanel.test.tsx`、`assistantPanelToggle.test.mjs` |
-| 项目记忆 `.workstep/MEMORY.md` 读取、编辑、保存与放弃确认 | `ProjectMemoryPanel.tsx`；任务列表只负责打开入口；样式在 `src/index.css` 的 `project-memory-*` 类 | `projectMemoryPanel.test.tsx` |
+| 项目记忆 `.workstep/MEMORY.md` 读取、编辑、保存与放弃确认 | `ProjectMemoryPanel.tsx`；任务列表只负责打开入口；样式在 `src/index.css` 的 `project-memory-*` 类；daemon `api/fs.py`、`services/prompt.py`、`agent_assistants/task_draft.py` 与 `services/task_archive.py` 复用 `services/project_memory.py` 的数据根范围检查与同步 I/O 工作单元，由调用方在线程/项目执行器内运行 | `projectMemoryPanel.test.tsx`、daemon `test_fs_security_boundaries.py`、`test_memory_consumers.py` |
 
 ## 修改路径
 
@@ -616,7 +620,7 @@ Gateway 平台地址写入由 `services/platform_address.py` 负责，`api/ident
 
 Gateway 控制重连由 daemon `services/gateway_client/control.py` 持有心跳和退避，Gateway `services/control_connection.py` 持有握手、绑定核验与续期，`services/control_credentials.py` 签发/核验仅限控制连接的公钥绑定凭据。Gateway 重启及登录票据过期回归见 `tests/test_control_connection.py`，客户端采用最新心跳续期凭据重连见 daemon `tests/test_gateway_control_client.py`。
 
-- Gateway 工作台入口外壳由 `DirectWorkstepWorkspace.css` 实现；`App.tsx` 的 `gateway-workspace-portal` 仅对工作台首页应用紧凑页头。门户每 10 秒刷新设备/项目，离线设备恢复后自动重新申请票据；实际 WorkStep 用 `GatewayRemoteFrame.tsx` 定期检查设备会话，工作台 WebSocket 沿原路径重连。设备切换是当前页导航，会重新加载目标工作台，后台 Tab 不驻留隐藏工作台或连接。
+- Gateway 工作台入口外壳由 `DirectWorkstepWorkspace.css` 实现；`App.tsx` 的 `gateway-workspace-portal` 仅对工作台首页应用紧凑页头。门户每 10 秒刷新设备/项目，离线设备恢复后自动重新申请票据；实际 WorkStep 用 `GatewayRemoteFrame.tsx` 定期检查设备会话，安卓返回前台、网页重新可见或网络恢复时立即重试，工作台 WebSocket 沿原路径重连。设备切换是当前页导航，会重新加载目标工作台，后台 Tab 不驻留隐藏工作台或连接。回归见 Web `tests/gatewayWorkspaceFrame.test.tsx`。
 
 扫码会话操作确认：`models/identity.py::AuthSession.authentication_method` 记录当前会话的认证方式，`external_identity.py` 在扫码回调创建会话时标记；`identity.py::require_step_up` 对有效扫码会话免密码验证，保留会话、权限和 CSRF 校验，密码登录仍执行原验证。`0038_scan_sessions.py` 回填可识别的历史无密码企业会话。`identity_api.py` 返回 `password_confirmation_required`；`App.tsx` 将该策略传给共享 `PasswordConfirmation.tsx`，所有管理操作表单复用字段、按钮校验和验证请求；`AccountPage.tsx` 按同一策略决定是否要求当前密码。行为测试：`test_external_identity.py`、`test_identity_api.py`、`scan-password-confirmation.test.tsx` 和 `account.test.tsx`。
 
@@ -721,7 +725,7 @@ Gateway 登录长期有效：`services/identity.py` 的普通账号与企业扫�
 
 - 网关桌面设备选择：`GatewayRemoteFrame` 在工作台上方显示设备 Tab 横栏和返回平台、刷新、通知入口；移动端沿用绝对定位入口和设备弹窗。`GatewayDeviceTabs` 复用同一设备列表和通知连接，不向 `Layout` 注入设备选择按钮。`vite.config.ts` 的 CSS 目标保留旧内置浏览器支持的 max-width 媒体查询，回归见 `gatewayWorkspaceFrame.test.tsx` 和 `mobileCssCompatibility.test.ts`。
 
-网关账号安全：`gateway/services/rate_limit.py` 在密码校验前按 ASGI peer IP 限制每分钟 5 次、按账号限制 15 分钟 10 次尝试，成功清除账号计数；计数为单进程内存，重启清空，多实例部署需共享限流或入口层补充限制。`services/password_policy.py` 统一校验初始化、注册、管理员创建/重置/编辑和个人改密（8–128 位、四类字符至少三类、常见弱密码和账号同名拒绝），旧密码登录保持兼容。门户 `portalAccount.ts` 复用即时校验及提示，`AccountPage`、`GatewayRegistrationForm`、`AdminCreateUserDialog`、`AdminEditUserDialog` 持有表单行为。测试：Gateway `test_identity_api.py`、`test_password_policy.py`、`test_rate_limit.py`；门户 `account.test.tsx`、`registration.test.tsx`、`admin-users-interactions.test.tsx`。
+网关账号安全：`gateway/services/rate_limit.py` 在密码校验前按 ASGI peer IP 限制每分钟 5 次、按账号限制 15 分钟 10 次尝试，成功清除账号计数；计数为单进程内存，重启清空，多实例部署需共享限流或入口层补充限制。`services/password_policy.py` 统一校验初始化、注册、管理员创建/重置/编辑和个人改密（8–128 位、四类字符至少三类、常见弱密码和账号同名拒绝），常见模板 `Aa123456!`、`Abcd1234!`、`Qwer1234!`、`1qaz2wsx!` 的大小写/符号变体同样拒绝；旧密码登录保持兼容。门户 `portalAccount.ts` 复用即时校验及提示，`AccountPage`、`GatewayRegistrationForm`、`AdminCreateUserDialog`、`AdminEditUserDialog` 持有表单行为。测试：Gateway `test_identity_api.py`、`test_password_policy.py`、`test_rate_limit.py`；门户 `account.test.tsx`、`registration.test.tsx`、`admin-users-interactions.test.tsx`。
 
 移动网关设备按钮由 `GatewayRemoteFrame` 通过 `NavigationHeaderContext` 提供给 `ResponsiveNavigation`，在导航按钮右侧参与头部正常布局；按钮无绝对定位和额外层级，弹窗覆盖头部。网关设备数据仍由框架负责。行为回归：`gatewayWorkspaceFrame.test.tsx`。
 
@@ -775,7 +779,7 @@ Web `utils/projectPermissions.ts` → `hooks/useGatewayProjectPermissions.ts` �
 
 ### 远程项目目录与内容加载恢复
 
-项目侧栏由 `Layout.tsx` 组装；`hooks/useSidebarProjectLoading.ts` 持有目录初始化和当前选中项目的对话加载。项目选中时加载一次，再次点击同一项目可手动刷新/重试；不设置定时器，也不监听网络恢复、页面可见或 WebSocket 重连来重试。已展开但未选中的远程项目不发起加载、补刷或重试；切换后旧请求完成也不继续补刷快照。侧栏搜索只搜索远程项目的已有缓存。远程项目认证成功后读取一次 `/api/remote-project/{project_id}/summary`，只读取设备登记与内存快照。`SidebarLoadStatus.tsx`/CSS 显示加载图标、失败和手动重试。
+项目侧栏由 `Layout.tsx` 组装；`hooks/useSidebarProjectLoading.ts` 持有目录初始化、当前选中远程项目的订阅与元数据读取，不加载对话列表。`ResponsiveNavigation.tsx` 通过 `onVisibilityChange` 通知侧栏实际可见状态；`hooks/useSidebarConversationLoading.ts` 在侧栏显示或对话分区变为可见展开态时，为对应项目加载一次列表，也覆盖持久化恢复的展开状态、目录晚于侧栏打开返回及未选中的远程项目。每次可见展开只尝试一次，缓存写入、失败或普通重渲染不再次请求；关闭后重新打开、收起后重新展开或错误提示中的手动重试可再次加载。无定时器，不监听网络恢复、页面可见或 WebSocket 重连来重试；无效／撤销／过期授权不加载。侧栏搜索只搜索远程项目的已有缓存。远程项目选中时读取一次 `/api/remote-project/{project_id}/summary`，只读取设备登记与内存快照。`SidebarLoadStatus.tsx`/CSS 显示加载图标、失败和手动重试。
 
 `projectStore.ts` 持有目录去重/排队补刷、单项目快照去重、错误状态及 `applyRemoteProject` 合并；后到的旧目录或快照响应不能覆盖较新的事件，活动项目保留非默认流程和未保存画布。`useWebSocket.ts` 通过 `remote_project_ids` 订阅当前选中远程项目的元数据，收到 `workstep.remote_project_status.value.project` 时直接合并，旧格式事件不补读单项目快照。工作台重连仅恢复远程项目订阅，不自动补读远程项目列表；重新点击项目可刷新。`useSidebarActivity.ts` 对远程对话开始/结束沿用项目快照，不再触发全设备目录扫描。
 
@@ -798,7 +802,7 @@ Web `utils/projectPermissions.ts` → `hooks/useGatewayProjectPermissions.ts` �
 
 ### 对话列表缓存与授权对象多选
 
-`useSidebarProjectLoading.ts` 在项目选中或再次点击当前项目时仅维护远程项目订阅与元数据读取，不请求对话列表，不自动定时重试；WebSocket 完整快照直接合并缓存，旧状态事件与连接恢复不再触发远程项目 HTTP 补刷，对话列表由用户展开对话分区加载。`ChatPage.tsx` 通过 `useChatListTurnRefresh.ts` 仅在同一会话的一轮运行结束时补刷预览，切换会话不视为运行结束。`Layout.tsx` 仅在点击对话标题、将对话分区从收起切换为展开时，通过 `chatSessionStore.fetchSessions(projectId, true)` 加载／刷新该项目列表，复用进行中请求去重，不切换当前项目；收起不请求，无效／撤销／过期授权跳过加载。仅在没有列表缓存时显示加载提示，已有列表后台刷新时保持展示；`SidebarConversationTabs.tsx` 在空列表时也渲染列表内容，保留加载、错误与重试入口。测试为 `sidebarConversationLoading.test.tsx`（本地／远程展开、收起、去重、刷新与失败重试）、`sidebarProjectLoading.test.tsx`、`chatListTurnRefresh.test.tsx`。
+`useSidebarProjectLoading.ts` 在项目选中或再次点击当前项目时仅维护远程项目订阅与元数据读取，不请求对话列表，不自动定时重试；WebSocket 完整快照直接合并缓存，旧状态事件与连接恢复不再触发远程项目 HTTP 补刷，对话列表由用户展开对话分区加载。`ChatPage.tsx` 通过 `useChatListTurnRefresh.ts` 仅在同一会话的一轮运行结束时补刷预览，切换会话不视为运行结束。`Layout.tsx` 将侧栏可见且对话分区展开的项目交给 `useSidebarConversationLoading.ts`，通过 `chatSessionStore.fetchSessions(projectId, true)` 加载／刷新该项目列表；打开移动侧栏时也加载已经展开的分区，桌面首屏恢复展开状态时同样加载。复用进行中请求去重，不切换当前项目；关闭、收起不请求，无效／撤销／过期授权跳过加载。仅在没有列表缓存时显示加载提示，已有列表后台刷新时保持展示；`SidebarConversationTabs.tsx` 在空列表时也渲染列表内容，保留加载、错误与重试入口。测试为 `sidebarConversationLoading.test.tsx`（本地／远程展开、收起、去重、刷新、失败重试和 320／390／1023px 抽屉恢复加载）、`sidebarConversationLoadingHook.test.tsx`（无定时器、桌面恢复、目录延迟与重渲染去重）、`sidebarProjectLoading.test.tsx`、`chatListTurnRefresh.test.tsx`。
 
 网关 `AdminProjectGrantDialog.tsx` 的项目/设备授权对象选择共用多选复选框；同一对象类型下搜索/翻页保留选中项，切换对象类型清空选择。批量保存复用现有逐对象授权接口和管理员密码确认；部分成功后固定选择与访问级别、显示已保存数量，重试只提交未成功的对象，关闭提示已保存的授权不会撤销。复选框使用 `gateway.css` 的 16px 紧凑规格。行为测试为 `apps/gateway-web/tests/admin-projects.test.tsx`。
 
@@ -837,3 +841,21 @@ Web `utils/projectPermissions.ts` → `hooks/useGatewayProjectPermissions.ts` �
 数据库连接资源：daemon `services/project.py::ProjectContext` 持有临时线程连接的打开／关闭，初始化与注册释放调用线程的连接；`services/project_database.py::ProjectDatabaseExecutor` 保留每项目专用线程的连接复用与关闭。gateway `src/gateway/database.py::_backup_sqlite` 显式关闭备份两端连接，主服务沿用 SQLAlchemy 有界异步连接池。`start.sh`／`start-gateway.sh` 共用 `scripts/file-limits.sh` 设置 `WORKSTEP_NOFILE_LIMIT`（默认 4096），只提高软上限并受硬上限约束。回归为 daemon `test_project.py`、`test_api_contracts.py`、gateway `test_database.py`、`test_startup_script.py` 和 `scripts/tests/test_file_limits.py`；运维说明见 [开发指南](development.md#文件描述符与数据库连接)。 无项目流程助手的 `services/global_sessions.py` 使用串行首次初始化，初始化与临时会话上下文均释放自身连接，嵌套上下文保留外层连接；回归为 `test_global_sessions.py` 与 `test_workflow_gen.py`，慢初始化 canary 验证事件循环仍可响应。
 
 桌面与直接 daemon 启动的文件描述符上限由 `main.py::lifespan` → `services/resource_limits.py` 设置，与 shell 启动器共用 `WORKSTEP_NOFILE_LIMIT` 默认 4096，Windows 缺少 POSIX resource 时跳过；测试 `test_resource_limits.py`、desktop `test_backend_entry.py`。主／分享 WebSocket 在 `streaming/ws.py::_wait_for_stream_input` 统一取消并等待子任务清理，防止追踪上下文跨 Context 重置，测试 `test_main.py`。Gateway 供应商下发由 `services/config.py::apply_managed_providers` 接受与平台一致的 HTTP／HTTPS 端点并保留地址校验；签名配置端到端测试 `test_gateway_provider_config.py`。
+
+
+### 项目远程操作审计
+
+本机／桌面项目设置的“操作审计”由 `apps/web/src/components/ProjectAuditSettings.tsx` 自主管理查询、筛选、分页、重试和请求取消，`ProjectSettingsPanel.tsx` 仅装配入口；`api/projectAudit.ts` 默认查询远程记录。daemon `api/project_audit.py` 只允许项目所在设备查询，拒绝远程浏览器、原生远程项目、Gateway 远程和公开分享读取。记录存入既有项目数据库 `project_audit_events`，复用 `services/project_audit.py`，保存操作者快照、对象名称、操作、结果和时间，不保存文件内容、任务正文或凭据。
+
+新增上传审计由 `api/fs.py::_audit_uploaded_file` 持有，普通远程上传、旧公开分享和 Gateway 任务分享共用；流程创建／修改／删除／恢复由 `services/project_workflows.py` 与业务变更同事务落库。既有任务创建／复制／删除／归档／启动／暂停／停止记录补充远程来源和名称快照。`api/desktop_security.py` 从可信桥接身份标记 Gateway 来源；`api/remote_access_guard.py` 标记非本机浏览器（姓名为自报身份）；旧公开分享使用分享 ID 和会话摘要标记匿名访客，不能确定真实姓名。Gateway 现有审计上报接受新增的有限元数据，管理员读取仍遵循已发布项目和管理员部门权限。
+
+`services/project_audit_retention.py` 在 daemon 启动 30 秒后及每小时清理超过 30 天的记录，每批最多 100 条，满批之间暂停 50 毫秒让出项目数据库，通过项目数据库执行器运行（包含尚未上报的过期记录）。删除后的 SQLite 页供后续写入复用，运行中不执行 `VACUUM`，数据库文件不会立即缩小；Gateway 已接收的独立副本不受本地清理影响。行为入口：daemon `test_project_remote_operations.py`、`test_platform_share_task.py`、`test_share.py`、`test_project_audit.py`、`test_project_audit_task_crud.py`、`test_gateway_audit_outbox.py`；Gateway `test_audit_ledger.py`；Web `projectAuditSettings.test.tsx`、`projectSettingsAssistantTabs.test.tsx`、`gatewayProjectSettings.test.tsx`。
+
+
+### Gateway 登录与设备访问审计
+
+`services/login_audit.py` 在既有认证事务内添加小型用户／设备名称快照：`identity.py` 的账号密码登录、`external_identity.py` 的钉钉／企业微信登录及绑定、`desktop_authorization.py` 的桌面授权兑换、`remote_access_api.py` 的设备／项目访问票据兑换。登录失败在 API 服务适配层调用脱敏记录器，尝试账号标记为未认证，不关联到已验证用户；不保存密码、扫码授权码、state、nonce、Cookie 或票据。已有公开入口限流先于密码失败记录，限流拒绝不逐条写入登录事件。
+
+认证会话新增 `authentication_provider` 保留准确企业来源，单次桌面授权码新增 `login_method`；门户远程访问票据的已签名声明带登录方式，成功兑换后沿用该来源，旧票据／旧扫码会话显示未知／历史企业扫码，不能按用户绑定列表猜测当次登录方式。迁移为 `0048_login_audit_method`，不补录历史登录。桌面待审批记录为拒绝／待审批，不声称已经获得有效设备授权。
+
+`apps/gateway-web/src/AdminAuditPage.tsx` 以公共 `AdminRecordTable` 展示时间、操作人、登录方式、设备、项目、结果、目标和详情，支持设备 ID 筛选和既有分页／时间范围。审计读取仍复用 `ledger_scope` 的管理员与部门边界；新增登录元数据仅在服务端审计可见字段中开放，不允许 daemon 批量上报伪造登录方式。测试入口：Gateway `test_login_audit.py`（三种来源的完整登录→桌面授权→工作台进入、重放、失败脱敏、SQLite 锁健康检查）、`test_database.py`、`test_external_identity.py`、`test_desktop_authorization.py`、`test_user_devices.py`、`test_project_access.py`、`test_audit_ledger.py`；Gateway Web `admin-audit.test.tsx`。

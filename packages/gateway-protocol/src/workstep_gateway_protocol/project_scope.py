@@ -143,6 +143,9 @@ def project_http_route_allowed(method: str, path: str,
                                task_create: bool = False) -> bool:
     if not project_id or access_level not in ("read", "edit"):
         return False
+    # Personal selections change no project data, including for read-only users.
+    if path == '/api/appearance/preferences':
+        return method in ('GET', 'PATCH') and not query_pairs
     if _project_service_allowed(method, path, query_pairs, project_id, access_level):
         return True
     if method in ("POST", "PUT", "PATCH", "DELETE"):
@@ -223,7 +226,7 @@ def project_http_route_allowed(method: str, path: str,
         return path in ("/api/task/run", "/api/task/pause", "/api/task/cancel")
     if method != "GET":
         return False
-    if path in ("/", "/tasks", "/chat", "/canvas", "/statistics", "/file-preview"):
+    if path in ("/", "/tasks", "/chat", "/canvas", "/statistics", "/file-preview", "/appearance"):
         return True
     if path == "/favicon.svg" or (_WORKSPACE_ASSET.fullmatch(path)
             and not any(part in (".", "..") for part in path.split("/"))):

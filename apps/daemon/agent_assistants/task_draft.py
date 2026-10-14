@@ -274,11 +274,15 @@ class TaskDraftModule(AssistantRuntime):
 
     def _context(self, session) -> dict:
         with self._project_manager.activate_project_by_id(session.project_id) as project:
-            memory_path = project.workstep_dir / "MEMORY.md"
+            from services.project_memory import read_memory_bytes
+
+            try:
+                raw_memory = read_memory_bytes(project.workstep_dir)
+            except PermissionError:
+                raw_memory = None
             memory = (
-                memory_path.read_text(encoding="utf-8")
-                if memory_path.is_file()
-                else ""
+                raw_memory.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+                if raw_memory is not None else ""
             )
             if session.extra.get("schedule_mode"):
                 candidates = self._allowed_workflow_ids(session, project)

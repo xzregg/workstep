@@ -119,3 +119,14 @@ def test_skin_catalog_is_read_only_and_bound_to_project():
         assert not project_http_route_allowed("POST", path, [("project_id", "p")], "p", access_level="edit")
     for path in ("/api/skins/register", "/api/skins/validate", "/api/skins/ocean/export"):
         assert not project_http_route_allowed("GET", path, [("project_id", "p")], "p", access_level="edit")
+
+
+@pytest.mark.parametrize('level', ['read', 'edit'])
+def test_personal_appearance_does_not_require_project_write_permission(level):
+    path = '/api/appearance/preferences'
+    for method in ('GET', 'PATCH'):
+        assert project_http_route_allowed(method, path, [], 'p', access_level=level)
+        assert not project_http_route_allowed(method, path, [('user_id', 'other')], 'p', access_level=level)
+    for method in ('POST', 'PUT', 'DELETE'):
+        assert not project_http_route_allowed(method, path, [], 'p', access_level=level)
+    assert project_http_route_allowed('GET', '/appearance', [], 'p', access_level=level)

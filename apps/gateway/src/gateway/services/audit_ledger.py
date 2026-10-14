@@ -24,6 +24,7 @@ from gateway.models import AuditEvent, AuditEventReceipt, PlatformProject
 _METADATA_KEYS = {
     "source", "step_key", "workflow_run_id", "review_run_id",
     "status", "reason_code", "schedule_id",
+    "access_source", "object_name", "workflow_id", "file_name", "file_path", "file_size",
 }
 
 
@@ -47,6 +48,13 @@ class AuditEventInput(BaseModel):
     initiated_by_username: str | None = Field(default=None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     occurred_at: datetime
+
+    @field_validator("action")
+    @classmethod
+    def project_action(cls, value: str):
+        if value.startswith("auth."):
+            raise ValueError("Gateway authentication actions cannot be uploaded by a device")
+        return value
 
     @field_validator("metadata")
     @classmethod
@@ -134,6 +142,7 @@ async def record_audit_batch(
 _VISIBLE_METADATA_KEYS = _METADATA_KEYS | {
     "device_id", "user_id", "group_id", "project_id", "provider_id",
     "batch_id", "skill_id", "source_id", "scope_type", "scope_id",
+    "login_method", "device_name", "device_status",
     "subject_id", "subject_type", "access_level", "role", "share_id", "method", "route",
 }
 

@@ -188,6 +188,76 @@ async def test_task_draft_publishes_description_without_creating_task(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("outside", [False, True])
+async def test_task_draft_memory_links_never_include_outside_content(
+    draft_module, monkeypatch, tmp_path, outside,
+):
+    module, _bus, _manager, project, _store = draft_module
+    target = (tmp_path if outside else project.workstep_dir) / "linked-memory.md"
+    target.write_bytes((
+        "OUTSIDE_PRIVATE_CONTENT" if outside else "合法链接约定\r\n第二行\r第三行"
+    ).encode("utf-8"))
+    memory = project.workstep_dir / "MEMORY.md"
+    memory.unlink()
+    memory.symlink_to(target)
+    prompts = []
+
+    async def invoke(*args, **kwargs):
+        prompts.append(args[3])
+        return json.dumps({"reply": "完成", "task_draft": {
+            "description": "任务描述", "start_step_key": "req",
+        }}), [], None
+
+    monkeypatch.setattr(module, "_invoke", invoke)
+    accepted = module.submit_message(
+        project.id, None, "完善任务", f"memory-link-{outside}",
+        title="任务", description="草稿", workflow_id=project.default_workflow()["id"],
+        start_step_key="req",
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    if outside:
+        assert '"memory": ""' in prompts[0]
+    else:
+        assert "合法链接约定\\n第二行\\n第三行" in prompts[0]
+    assert "OUTSIDE_PRIVATE_CONTENT" not in "".join(prompts)
+
+
+@pytest.mark.anyio
+async def test_task_draft_slow_memory_read_keeps_event_loop_responsive(
+    draft_module, monkeypatch,
+):
+    import threading
+    import services.project_memory as project_memory
+
+    module, _bus, _manager, project, _store = draft_module
+    started = threading.Event()
+    original = project_memory.read_memory_bytes
+
+    def slow_read(root):
+        started.set()
+        time.sleep(0.35)
+        return original(root)
+
+    async def invoke(*args, **kwargs):
+        return json.dumps({"reply": "完成", "task_draft": {
+            "description": "任务描述", "start_step_key": "req",
+        }}), [], None
+
+    monkeypatch.setattr(project_memory, "read_memory_bytes", slow_read)
+    monkeypatch.setattr(module, "_invoke", invoke)
+    accepted = module.submit_message(
+        project.id, None, "完善任务", "slow-memory-read", title="任务",
+        description="草稿", workflow_id=project.default_workflow()["id"],
+        start_step_key="req",
+    )
+    assert await asyncio.to_thread(started.wait, 1)
+    before = time.monotonic()
+    await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.2)
+    assert time.monotonic() - before < 0.2
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+
+@pytest.mark.anyio
 async def test_task_create_assistant_routes_image_message_to_vision_model(
     draft_module, monkeypatch
 ):

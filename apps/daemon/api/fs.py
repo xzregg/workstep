@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from services.config import CONFIG_DIR
+from services.project_memory import read_memory_bytes, write_memory_bytes
 from api.fs_browser import router as browser_router
 from api.fs_paths import (
     _assert_project_path, _path_error_detail, _project, _project_relative_path,
@@ -175,6 +176,15 @@ class MemoryWriteRequest(BaseModel):
     content: str
 
 
+def _project_upload_dir(data_root: Path) -> Path:
+    upload_dir = data_root / "uploads"
+    try:
+        upload_dir.resolve().relative_to(data_root.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return upload_dir
+
+
 @router.get("/memory")
 async def read_memory(pid: str = Query(..., alias="project_id")):
     """Read the project's .workstep/MEMORY.md (empty string when missing)."""
@@ -186,9 +196,14 @@ async def read_memory(pid: str = Query(..., alias="project_id")):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     memory_path = project.workstep_dir / "MEMORY.md"
-    content = await asyncio.to_thread(
-        lambda: memory_path.read_text(encoding="utf-8") if memory_path.is_file() else ""
-    )
+    def load_memory() -> str:
+        try:
+            content = read_memory_bytes(project.workstep_dir)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail="Access denied") from exc
+        return content.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n") if content is not None else ""
+
+    content = await asyncio.to_thread(load_memory)
     return {"path": str(memory_path), "content": content}
 
 
@@ -209,11 +224,30 @@ async def write_memory(
         raise HTTPException(status_code=400, detail="记忆内容超过 500KB 上限")
     memory_path = project.workstep_dir / "MEMORY.md"
     def persist_memory() -> None:
-        memory_path.parent.mkdir(parents=True, exist_ok=True)
-        memory_path.write_text(req.content, encoding="utf-8")
+        try:
+            write_memory_bytes(project.workstep_dir, req.content.encode("utf-8"))
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail="Access denied") from exc
 
     await asyncio.to_thread(persist_memory)
     return {"path": str(memory_path), "saved": True}
+
+
+async def _audit_uploaded_file(project, filename: str, original_name: str, size: int, task_id: str | None = None) -> None:
+    from services.project_audit import remote_audit_source, record_remote_project_audit
+    if project is None or remote_audit_source() is None:
+        return
+    from main import project_manager
+    name = Path(original_name.replace("\\", "/")).name
+    name = "".join(char for char in name if char.isprintable())[:256]
+    try:
+        await project_manager.run_db(project.id, lambda _project: record_remote_project_audit(
+            project_id=project.id, action="file.upload", task_id=task_id, metadata={
+                "file_name": name, "file_path": f".workstep/uploads/{filename}", "file_size": size,
+            }))
+    except Exception:
+        await asyncio.to_thread((Path(project.workstep_dir) / "uploads" / filename).unlink, missing_ok=True)
+        raise
 
 
 @router.post("/upload/image")
@@ -271,10 +305,13 @@ async def upload_image(
         rel_path = f"data/uploads/{filename}"
     filepath = upload_dir / filename
     def persist_upload() -> None:
+        if project is not None:
+            _project_upload_dir(Path(project.workstep_dir))
         upload_dir.mkdir(parents=True, exist_ok=True)
         filepath.write_bytes(content)
 
     await asyncio.to_thread(persist_upload)
+    await _audit_uploaded_file(project, filename, req.filename, len(content))
 
     # Relative path kept in markdown as-is so it stays meaningful for LLM
     # prompts; the frontend maps it back to /api/fs/serve/... for preview.
@@ -329,10 +366,13 @@ async def upload_file(
         upload_dir = CONFIG_DIR / "data" / "uploads"
         rel_path = f"data/uploads/{filename}"
     def persist_upload() -> None:
+        if project is not None:
+            _project_upload_dir(Path(project.workstep_dir))
         upload_dir.mkdir(parents=True, exist_ok=True)
         (upload_dir / filename).write_bytes(content)
 
     await asyncio.to_thread(persist_upload)
+    await _audit_uploaded_file(project, filename, req.filename, len(content))
     return {"url": rel_path, "filename": filename, "size": len(content)}
 
 
@@ -371,7 +411,7 @@ async def serve_upload(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return await asyncio.to_thread(
-        _serve_upload_file, Path(project.workstep_dir) / "uploads", filename
+        lambda: _serve_upload_file(_project_upload_dir(Path(project.workstep_dir)), filename)
     )
 
 
@@ -390,7 +430,7 @@ async def serve_upload_by_project_name(project_name: str, filename: str):
         raise HTTPException(status_code=404, detail="Project not found")
     _require_actor_project(project.id)
     return await asyncio.to_thread(
-        _serve_upload_file, Path(project.workstep_dir) / "uploads", filename
+        lambda: _serve_upload_file(_project_upload_dir(Path(project.workstep_dir)), filename)
     )
 
 

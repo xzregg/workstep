@@ -6,9 +6,12 @@ import SegmentedControl from '../components/SegmentedControl'
 import SkinSettings from '../components/SkinSettings'
 import { APPEARANCE_PREFERENCE_EVENT, loadFontSizePreference, saveFontSizePreference, type FontSizePreference } from '../utils/fontSizePreference'
 import './AppearanceSettings.css'
+import { retryAppearancePreferences, useAppearanceSyncState } from '../utils/appearancePreferences'
+import Spinner from '../components/Spinner'
 
 export default function AppearanceSettings() {
   const { t, locale, setLocale } = useI18n()
+  const sync = useAppearanceSyncState()
   const language = useLocaleStore(s => s.language)
   const installed = useLocaleStore(s => s.installed)
   const languageLoading = useLocaleStore(s => s.loading)
@@ -68,5 +71,12 @@ export default function AppearanceSettings() {
         </div>
       </div>
     </section>
-  return <div className="settings-appearance-page"><SkinSettings preferences={preferences} onRefresh={() => useLocaleStore.getState().refresh()} /></div>
+  return <div className="settings-appearance-page">
+    {sync.status !== 'local' && <div className="appearance-sync-status" role={sync.status === 'error' ? 'alert' : 'status'}>
+      {sync.status === 'saving' && <Spinner size={14} />}
+      <span>{t(sync.status === 'error' ? 'settings.appearanceSyncFailed' : sync.status === 'saving' ? 'settings.appearanceSyncSaving' : 'settings.appearancePersonal')}</span>
+      {sync.status === 'error' && <button type="button" onClick={() => void retryAppearancePreferences()}>{t('common.retry')}</button>}
+    </div>}
+    <SkinSettings preferences={preferences} onRefresh={() => useLocaleStore.getState().refresh()} />
+  </div>
 }

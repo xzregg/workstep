@@ -276,6 +276,8 @@ async def upload_platform_share_attachment(request: Request):
     filename = f"{_upload_prefix(scope['task_id'])}{uuid.uuid4().hex}{extension}"
     await asyncio.to_thread(_persist_share_upload, Path(project.workstep_dir),
                             filename, bytes(content))
+    from api.fs import _audit_uploaded_file
+    await _audit_uploaded_file(project, filename, name, len(content), task_id=scope["task_id"])
     return {"url": f".workstep/uploads/{filename}", "filename": filename,
             "size": len(content)}
 

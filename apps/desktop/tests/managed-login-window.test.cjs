@@ -48,10 +48,19 @@ function desktopHarness() {
         } },
         app: { on() {}, getVersion: () => '1.0.9', requestSingleInstanceLock: () => true,
           whenReady: () => new Promise(() => {}), getPath: () => '/tmp/login-test' },
-        shell: { openExternal: async url => external.push(url) },
+        shell: { openExternal: async url => external.push(url), openPath: async value => { handlers.set('opened-logs', value); return '' } },
+        dialog: {
+          showSaveDialog: async () => handlers.get('save-result') || { canceled: true },
+          showMessageBox: async value => { handlers.set('diagnostic-dialog', value); return { response: 0 } },
+        },
         ipcMain: { removeAllListeners() {}, on() {} },
       }
       if (name === './sandbox-ipc.cjs') return { registerSandboxIpc() {} }
+      if (name === './diagnostics.cjs') return {
+        createDiagnostics: () => ({ directory: '/tmp/ws-diagnostic-menu-test', write() {}, addSecret() {}, flush: async () => {},
+          exportReport: async destination => { handlers.set('exported-diagnostics', destination) } }),
+        installDiagnostics() {}, captureConsole() {},
+      }
       if (name === './credential-store.cjs') return {
         loadOrCreateDeviceIdentity: async () => ({ appInstanceId: 'test-app' }),
       }
@@ -187,4 +196,23 @@ test('native desktop menu returns from an arbitrary page without an active login
   assert.equal(entry.accelerator, 'CmdOrCtrl+Shift+H')
   entry.click()
   assert.equal(main.url, 'http://127.0.0.1:8766/?gateway_auth=cancelled')
+})
+
+test('desktop help exposes working diagnostic directory and export actions', async t => {
+  const { context, handlers } = desktopHarness()
+  const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'ws-diagnostic-menu-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  context.diagnosticDirectory = directory
+  vm.runInContext('diagnostics.directory = diagnosticDirectory', context)
+  vm.runInContext('rootUrl = "http://127.0.0.1:8766"; createWindow(rootUrl)', context)
+  const menu = handlers.get('application-menu').find(item => item.label === '帮助').submenu
+  assert.deepEqual(Array.from(menu, item => item.label), ['打开日志目录', '导出诊断包'])
+  await vm.runInContext('openDiagnosticsDirectory()', context)
+  assert.equal(handlers.get('opened-logs'), directory)
+  await vm.runInContext('exportDiagnostics()', context)
+  assert.equal(handlers.has('exported-diagnostics'), false)
+  handlers.set('save-result', { canceled: false, filePath: '/tmp/report.json.gz' })
+  await vm.runInContext('exportDiagnostics()', context)
+  assert.equal(handlers.get('exported-diagnostics'), '/tmp/report.json.gz')
+  assert.equal(handlers.get('diagnostic-dialog').type, 'info')
 })

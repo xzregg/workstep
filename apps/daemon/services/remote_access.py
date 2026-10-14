@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import ipaddress
+import re
 import json
 import secrets
 import socket
@@ -41,6 +42,7 @@ class ActorSnapshot:
     username: str | None = None
     provider_ids: frozenset[str] | None = None
     provider_grant_expires_at: int | None = None
+    access_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -215,10 +217,15 @@ def _is_loopback(host: str) -> bool:
         return False
 
 
+def is_project_upload_path(path: str) -> bool:
+    """Legacy Markdown attachment URLs carry private project data too."""
+    return bool(re.fullmatch(r"/[^/]+/\.workstep/uploads/[^/]+", path))
+
+
 def _guard_exempt(path: str, method: str) -> bool:
     # Static assets and the SPA shell must load so the remote visitor can see
     # the unlock dialog; only the data/API surface is withheld.
-    if not path.startswith("/api/"):
+    if not path.startswith("/api/") and not is_project_upload_path(path):
         return True
     if path == "/api/health":
         return True

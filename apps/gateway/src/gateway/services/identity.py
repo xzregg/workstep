@@ -223,6 +223,8 @@ class IdentityService:
                 session.add(auth_session)
                 fresh_user = await session.get(User, user.id)
                 fresh_user.last_login_at = _now()
+                from gateway.services.login_audit import add_login_audit
+                add_login_audit(session, fresh_user, "password")
                 if _password_hasher.check_needs_rehash(user.password_hash):
                     fresh_user.password_hash = await self._hash_password(password)
                 if fresh_user.is_recovery:

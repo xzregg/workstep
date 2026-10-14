@@ -12,6 +12,7 @@ from services.artifact_rounds import iter_artifact_rounds, select_upstream_round
 from services.git.task_workspace import TaskGitWorkspace
 from services.pipeline import Step
 from services.project_storage import data_directory
+from services.project_memory import read_memory_bytes
 
 # Config path relative to this file
 _OUTPUT_TYPES_PATH = Path(__file__).resolve().parent.parent / "data" / "output-types.json"
@@ -73,11 +74,11 @@ def _load_project_memory(artifacts_dir: Path, limit: int = 50_000) -> str | None
     content directly in the prompt; engines are not instructed to read or
     update the file themselves. Returns None when the file is missing/empty.
     """
-    memory_file = artifacts_dir.parent / "MEMORY.md"
     try:
-        if not memory_file.is_file():
+        raw = read_memory_bytes(artifacts_dir.parent)
+        if raw is None:
             return None
-        content = memory_file.read_text(encoding="utf-8", errors="replace").strip()
+        content = raw.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n").strip()
     except OSError:
         return None
     if not content:

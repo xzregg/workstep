@@ -1,3 +1,5 @@
+import { appearanceCache, appearanceStorageKey } from './appearanceStorage'
+
 export const APPEARANCE_PREFERENCE_EVENT = 'workstep:appearance-preference'
 
 export const FONT_SIZE_STORAGE_KEY = 'workstep.fontSize'
@@ -17,7 +19,7 @@ interface FontSizeTarget {
 
 function defaultStorage(): StorageLike | undefined {
   if (typeof window === 'undefined') return undefined
-  return window.localStorage
+  return appearanceCache
 }
 
 function defaultTarget(): FontSizeTarget | undefined {
@@ -32,7 +34,7 @@ function isFontSizePreference(value: string | null): value is FontSizePreference
 export function loadFontSizePreference(storage = defaultStorage()): FontSizePreference {
   if (!storage) return 'standard'
   try {
-    const value = storage.getItem(FONT_SIZE_STORAGE_KEY)
+    const value = storage.getItem(appearanceStorageKey(FONT_SIZE_STORAGE_KEY))
     return isFontSizePreference(value) ? value : 'standard'
   } catch {
     return 'standard'
@@ -53,7 +55,7 @@ export function saveFontSizePreference(
   target = defaultTarget(),
 ) {
   try {
-    storage?.setItem(FONT_SIZE_STORAGE_KEY, value)
+    storage?.setItem(appearanceStorageKey(FONT_SIZE_STORAGE_KEY), value)
   } catch {
     // The preference still applies for this session when storage is unavailable.
   }

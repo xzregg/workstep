@@ -33,3 +33,12 @@ test('password policy rejects common and account-matching passwords', () => {
   assert.equal(validPortalPassword('owner123!', 'Owner123!'), false)
   assert.equal(validPortalPassword('alice', 'UniquePassphrase-2026!'), true)
 })
+
+
+test('password policy rejects short predictable templates even with enough character classes', () => {
+  for (const password of ['Aa123456!', 'Abcd1234!', 'Qwer1234!', '1qaz2wsx!']) {
+    assert.equal(validPortalPassword('alice', password), false, password)
+  }
+  assert.equal(validPortalPassword('alice', 'R7!mQ2#v'), true)
+  assert.equal(validPortalPassword('alice', 'Aa1!xyz'), false)
+})

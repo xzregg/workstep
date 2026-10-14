@@ -13,6 +13,7 @@ import Icon from './Icon'
 import { NavigationHeaderContext } from './NavigationHeaderContext'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
+import { initializeAppearancePreferences } from '../utils/appearancePreferences'
 
 export default function GatewayRemoteFrame({ children }: { children: ReactNode }) {
   const { t } = useI18n()
@@ -28,6 +29,7 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
   const load = useGatewaySessionStore(state => state.load)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(false)
+  const appearanceIdentity = useRef<string | null>(null)
   const disconnected = error || !!sessionError
   const lastContext=useRef(context)
   if(context)lastContext.current=context
@@ -37,10 +39,23 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
     if (!gatewayUrl) return
     let active = true
     let timer: number | undefined
+    let refreshing = false
     async function refresh() {
+      if (!active || refreshing) return
+      refreshing = true
+      window.clearTimeout(timer)
       try {
         const next = await load(true)
         if (!active) return
+        if (next.user_id) {
+          const identity = `${next.device_id}:${next.user_id}`
+          if (appearanceIdentity.current && appearanceIdentity.current !== identity) {
+            setReady(false)
+            await initializeAppearancePreferences()
+            if (!active) return
+          }
+          appearanceIdentity.current = identity
+        }
         if (next.host_project_id && useProjectStore.getState().activeProject?.id !== next.host_project_id) {
           await useProjectStore.getState().fetchProjects()
           if (useProjectStore.getState().activeProject?.id !== next.host_project_id) {
@@ -51,11 +66,23 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
       } catch {
         if (active) { setReady(false); setError(true) }
       } finally {
+        refreshing = false
         if (active) timer = window.setTimeout(() => void refresh(), 20000)
       }
     }
+    const resume = () => void refresh()
+    const visible = () => { if (document.visibilityState === 'visible') resume() }
     void refresh()
-    return () => { active = false; window.clearTimeout(timer) }
+    window.addEventListener('workstep:resume', resume)
+    window.addEventListener('online', resume)
+    document.addEventListener('visibilitychange', visible)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+      window.removeEventListener('workstep:resume', resume)
+      window.removeEventListener('online', resume)
+      document.removeEventListener('visibilitychange', visible)
+    }
   }, [gatewayUrl, load])
 
   const deviceTrigger = compact && !embedded ? <button type="button" className="gateway-mobile-device-trigger" aria-label={t('gatewayRemote.switchDevices')}

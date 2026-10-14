@@ -161,7 +161,7 @@ async def revoke_project_grant(call: GatewayCall, project_id: str,
 
 
 async def project_access(call: GatewayCall, project_id: str):
-    user, _ = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
+    user, auth_session = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
     if user.status != "active":
         raise GatewayError('forbidden', 'Account unavailable')
     async with call.database.session() as session:
@@ -180,7 +180,8 @@ async def project_access(call: GatewayCall, project_id: str):
     if origin is None:
         raise GatewayError('unavailable', 'Public Gateway origin is not configured')
     host = call.settings.device_authority(device_id)
-    ticket = call.gateway_signer.sign_project_access_ticket(gateway_id=call.settings.gateway_id, device_id=device_id, user_id=user.id, audience=host, project_id=project_id, host_project_id=host_project_id, access_level=level)
+    ticket = call.gateway_signer.sign_project_access_ticket(gateway_id=call.settings.gateway_id, device_id=device_id, user_id=user.id, audience=host, project_id=project_id, host_project_id=host_project_id, access_level=level,
+        login_method=auth_session.authentication_provider or auth_session.authentication_method)
     return {"url": call.settings.device_url(device_id), "ticket": ticket, "expires_in": 60,
             "project_id": project_id, "access_level": level}
 

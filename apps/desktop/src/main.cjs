@@ -1,7 +1,8 @@
 const { createPrivateKey, randomBytes, sign } = require('node:crypto')
-const { app, BrowserWindow, Menu, Notification, Tray, clipboard, dialog, ipcMain, nativeImage, safeStorage, session, shell } = require('electron')
+const { app, BrowserWindow, Menu, Notification, Tray, clipboard, crashReporter, dialog, ipcMain, nativeImage, safeStorage, session, shell } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs/promises')
+const { createDiagnostics, installDiagnostics, captureConsole } = require('./diagnostics.cjs')
 const { SandboxManager } = require('./sandbox.cjs')
 const { registerSandboxIpc } = require('./sandbox-ipc.cjs')
 const { managedEnvironment, readManagedConfig } = require('./managed-config.cjs')
@@ -234,6 +235,7 @@ async function bootstrapManagedBackend(url, authorization) {
   const result = await response.json()
   if (!result.local_session) throw new Error('Managed backend returned no local session')
   localSession = result.local_session
+  diagnostics?.addSecret(localSession)
 }
 
 async function stopBackend() {
@@ -241,6 +243,8 @@ async function stopBackend() {
     stopping = (async () => {
       if (sandboxManager?.session) await sandboxManager.stop()
       await stopSidecar(backendProcess)
+      diagnostics?.write('desktop', 'info', '后台停止完成')
+      await diagnostics?.flush()
     })().finally(() => {
       backendProcess = null
       stopping = null
@@ -346,6 +350,7 @@ function createWindow(url) {
     { role: 'editMenu' },
     { role: 'viewMenu' },
     { role: 'windowMenu' },
+    { label: '帮助', submenu: diagnosticMenu() },
   ]))
   registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager: sandboxManager,
     window: () => mainWindow, rootUrl: () => rootUrl, hasActiveWork,
@@ -361,6 +366,43 @@ function showDesktopWindow() {
   window.show()
   if (window.isMinimized()) window.restore()
   window.focus()
+}
+
+function diagnosticMenu() {
+  return [
+    { label: '打开日志目录', click: () => { void openDiagnosticsDirectory() } },
+    { label: '导出诊断包', click: () => { void exportDiagnostics() } },
+  ]
+}
+
+async function openDiagnosticsDirectory() {
+  if (!diagnostics) return
+  try {
+    await fs.mkdir(diagnostics.directory, { recursive: true, mode: 0o700 })
+    const error = await shell.openPath(diagnostics.directory)
+    if (error) throw new Error(error)
+  } catch (error) { console.error('无法打开日志目录', error) }
+}
+
+async function exportDiagnostics() {
+  if (!diagnostics) return
+  try {
+    const result = await dialog.showSaveDialog({ title: '导出诊断包',
+      defaultPath: `WorkStep-diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json.gz`,
+      filters: [{ name: 'WorkStep 诊断包', extensions: ['json.gz'] }] })
+    if (result.canceled || !result.filePath) return
+    let sandboxLog
+    if (sandboxManager) {
+      try { sandboxLog = await sandboxManager.readLogs() }
+      catch (error) { diagnostics.write('desktop', 'warn', `无法读取沙箱日志：${error.message || error}`) }
+    }
+    await diagnostics.exportReport(result.filePath, sandboxLog)
+    await dialog.showMessageBox({ type: 'info', title: '诊断包已导出',
+      message: '已保存桌面文本日志与版本信息。', detail: '原生崩溃转储保存在日志目录的 crashes 子目录中。' })
+  } catch (error) {
+    console.error('无法导出诊断包', error)
+    await dialog.showMessageBox({ type: 'error', title: '诊断包导出失败', message: '无法保存诊断包，请检查目标目录的权限和磁盘空间。' })
+  }
 }
 
 async function hasActiveWork() {
@@ -396,6 +438,7 @@ function configureTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开 WorkStep', click: showDesktopWindow },
     { label: '返回本地工作台', click: returnToLocalWorkspace },
+    ...diagnosticMenu(),
     { type: 'separator' },
     { label: '退出 WorkStep', click: () => app.quit() },
   ]))
@@ -407,6 +450,7 @@ async function backendUrl() {
   const sandbox = await sandboxManager.settings()
   if (sandbox.enabled) {
     desktopToken = randomBytes(32).toString('hex')
+    diagnostics?.addSecret(desktopToken)
     const env = app.isPackaged ? managedEnvironment(process.resourcesPath,
       require('../package.json').managedGatewayRootFingerprint) : {}
     if (env.WORKSTEP_MANAGED_BUNDLE_DIR) {
@@ -426,9 +470,11 @@ async function backendUrl() {
     process.resourcesPath, require('../package.json').managedGatewayRootFingerprint,
   )
   desktopToken = randomBytes(32).toString('hex')
+  diagnostics?.addSecret(desktopToken)
   const result = await startSidecar({
     ...launch,
     port: requestedPort,
+    logger: diagnostics,
     env: {
       ...process.env,
       // The signed application bundle must remain unchanged after launch.
@@ -557,7 +603,10 @@ const handleGracefulQuit = createGracefulQuit({
   stop: stopBackend,
   quit: () => app.quit(),
   onStart: () => { quitting = true },
-  onError: error => console.error('Unable to stop backend cleanly during quit', error),
+  onError: async error => {
+    console.error('Unable to stop backend cleanly during quit', error)
+    await diagnostics?.flush()
+  },
 })
 
 app.on('before-quit', (event) => {
@@ -567,6 +616,17 @@ app.on('before-quit', (event) => {
 })
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
+const diagnostics = hasSingleInstanceLock ? createDiagnostics({
+  directory: path.join(app.getPath('userData'), 'logs'),
+  metadata: { version: app.getVersion(), electron: process.versions.electron,
+    node: process.versions.node, platform: process.platform, arch: process.arch,
+    osRelease: require('node:os').release() },
+}) : null
+if (diagnostics) {
+  installDiagnostics({ app, crashReporter, logger: diagnostics })
+  captureConsole(diagnostics)
+  diagnostics.write('desktop', 'info', `桌面启动 ${JSON.stringify({ version: app.getVersion(), platform: process.platform, arch: process.arch })}`)
+}
 if (!hasSingleInstanceLock) app.quit()
 
 app.on('second-instance', (_event, argv) => {
@@ -589,8 +649,16 @@ app.whenReady().then(async () => {
   configureTray()
   const release = require('./sandbox-release.json')
   const image = app.isPackaged ? release.image : process.env.WORKSTEP_SANDBOX_IMAGE || release.image
+  let lastSandboxPhase
   sandboxManager = new SandboxManager({ stateDir: app.getPath('userData'), image, hostConfigFile: process.env.WORKSTEP_CONFIG_DIR ? path.join(process.env.WORKSTEP_CONFIG_DIR, 'config.json') : undefined,
-    report: status => sandboxStartup?.update(status) })
+    report: status => {
+      sandboxStartup?.update(status)
+      if (status.phase !== lastSandboxPhase || status.error) {
+        lastSandboxPhase = status.phase
+        diagnostics?.write('desktop', status.error ? 'error' : 'info',
+          `沙箱阶段 ${JSON.stringify({ phase: status.phase, error: status.error })}`)
+      }
+    } })
   const startupAction = async (event, action, input) => {
     if (!sandboxStartup || event.sender !== sandboxStartup.window.webContents) throw new Error('沙箱启动操作来源无效')
     if (action === 'readLogs') return sandboxManager.readLogs()
@@ -683,16 +751,21 @@ app.whenReady().then(async () => {
     }
     const initialPath = pendingProtocolUrl ? protocolPath(pendingProtocolUrl) : '/'
     createWindow(`${rootUrl}${initialPath}`)
+    diagnostics?.write('desktop', 'info', '桌面工作台就绪')
     sandboxStartup?.close(); sandboxStartup = null
     configureManagedSessionRecovery(managed)
     configureUpdater()
   } catch (error) {
-    await dialog.showMessageBox({
+    console.error('桌面启动失败', error)
+    await diagnostics?.flush()
+    const result = await dialog.showMessageBox({
       type: 'error',
       title: 'WorkStep 无法启动',
       message: managed ? '网关登录或本地后台启动失败' : '本地后台服务启动失败',
       detail: error instanceof Error ? error.message : String(error),
+      buttons: ['退出', '打开日志目录'], defaultId: 0, cancelId: 0,
     })
+    if (result.response === 1) await openDiagnosticsDirectory()
     app.quit()
   }
 })

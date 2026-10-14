@@ -718,6 +718,18 @@ class DataConnection:
             for pair in response_headers:
                 if (isinstance(pair, list) and len(pair) == 2
                         and all(isinstance(item, str) for item in pair)
+                        and pair[0].lower() == "content-security-policy"):
+                    # Resource origins are rewritten below for remote workspaces,
+                    # but a file's sandbox must never be relaxed by that policy.
+                    # Keep separate policies separate: browsers enforce all of them.
+                    for policy in pair[1].split(','):
+                        for directive in policy.split(';'):
+                            directive = directive.strip()
+                            if directive and directive.split()[0].lower() == "sandbox":
+                                response.headers.append("Content-Security-Policy", directive)
+                                break
+                if (isinstance(pair, list) and len(pair) == 2
+                        and all(isinstance(item, str) for item in pair)
                         and pair[0].lower() not in ("connection", "transfer-encoding",
                                                     "content-length", "set-cookie",
                                                     "content-security-policy", "x-frame-options",

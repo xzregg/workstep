@@ -3,6 +3,7 @@ import { applyFontFamilyPreference, loadFontFamilyPreference, saveFontFamilyPref
 import { useSyncExternalStore } from 'react'
 import { compileSkin, defaultSkin, resolvedSkinLayout, type SkinDocument } from './contract'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
+import { appearanceCache, appearanceStorageKey } from '../utils/appearanceStorage'
 
 export const SKIN_EVENT = 'workstep:skin-change'
 export const SKIN_LIFECYCLE_EVENT = 'workstep:skin-lifecycle'
@@ -10,7 +11,7 @@ export type SkinLifecycle = 'load' | 'preview' | 'apply' | 'cancel-preview' | 'r
 function lifecycle(type: SkinLifecycle, skin: SkinDocument, error?: string) {
   window.dispatchEvent(new window.CustomEvent(SKIN_LIFECYCLE_EVENT, { detail: { type, id: skin.manifest.id, revision: skin.revision, ...(error ? { error } : {}) } }))
 }
-export const skinStorageKey = () => 'workstep.skin.v1:' + gatewayWorkspacePath()
+export const skinStorageKey = () => appearanceStorageKey('workstep.skin.v1:' + gatewayWorkspacePath())
 let active = defaultSkin()
 let committed = active
 let previewing = false
@@ -21,6 +22,7 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 export const useActiveSkin = () => useSyncExternalStore(subscribe, () => active, () => active)
 export const useSkinPreviewing = () => useSyncExternalStore(subscribe, () => previewing, () => false)
 export const currentSkin = () => active
+export const committedSkin = () => committed
 
 function applyLayout(skin: SkinDocument) {
   const root = document.documentElement
@@ -82,7 +84,7 @@ export function saveSkin(skin: SkinDocument, reason: SkinLifecycle = 'apply') {
   if (size !== 'inherit') saveFontSizePreference(size)
   if (Object.hasOwn(skin.tokens, 'font-body') || Object.hasOwn((compact ? skin.mobile : skin.desktop)?.tokens ?? {}, 'font-body')) saveFontFamilyPreference('system')
   committed = skin; previewing = false
-  try { localStorage.setItem(skinStorageKey(), JSON.stringify(skin)) } catch { /* The session still applies when storage is unavailable. */ }
+  appearanceCache.setItem(skinStorageKey(), JSON.stringify(skin))
   for (const listener of listeners) listener()
 }
 export function previewSkin(skin: SkinDocument) {
@@ -98,7 +100,7 @@ export function restoreDefaultSkin() { saveSkin(defaultSkin(), 'restore') }
 export function initializeSkinPreference() {
   try {
     if (new URLSearchParams(window.location.search).get('skin') === 'default') { restoreDefaultSkin(); return }
-    const stored = localStorage.getItem(skinStorageKey())
+    const stored = appearanceCache.getItem(skinStorageKey())
     committed = stored ? JSON.parse(stored) : defaultSkin()
     applySkin(committed)
   } catch { restoreDefaultSkin() }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from fastapi import WebSocket
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -30,14 +31,21 @@ class BrowserActorMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if get_current_actor() is not None:
             return await call_next(request)
+        from services.project_audit import _remote_browser_request
+        remote = not _is_loopback(_client_host(request.headers, request.client))
+        remote_token = _remote_browser_request.set(remote)
         actor = actor_from_browser_headers(request.headers)
-        if actor is None:
-            return await call_next(request)
-        token = _current_actor.set(actor)
+        token = None
+        if actor is not None:
+            if remote:
+                actor = replace(actor, access_source="remote_browser")
+            token = _current_actor.set(actor)
         try:
             return await call_next(request)
         finally:
-            _current_actor.reset(token)
+            if token is not None:
+                _current_actor.reset(token)
+            _remote_browser_request.reset(remote_token)
 
 
 class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):

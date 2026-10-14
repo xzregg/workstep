@@ -40,6 +40,7 @@ import { useOnboardingStore } from '../stores/onboardingStore'
 import { filterSidebarProject } from '../utils/sidebarSearch'
 import { useSidebarSessionActions } from '../hooks/useSidebarSessionActions'
 import { useSidebarProjectLoading } from '../hooks/useSidebarProjectLoading'
+import { useSidebarConversationLoading } from '../hooks/useSidebarConversationLoading'
 import SidebarLoadStatus from './SidebarLoadStatus'
 import {
   engineApi,
@@ -168,6 +169,12 @@ export default function Layout({ onSelectProject, children }: Props) {
     filterSidebarProject(project, sessionsByProject[project.id] || [], sidebarSearchQuery),
   ])), [projects, sessionsByProject, sidebarSearchQuery])
   const sidebarSearchActive = sidebarSearchQuery.trim().length > 0
+  const [sidebarVisible, setSidebarVisible] = useState(false)
+  useSidebarConversationLoading(sidebarVisible, can('session.read') && !sidebarSearchActive
+    ? projects.filter((p) => expandedProjectIds.includes(p.id)
+      && (sessionSectionOpen[p.id] ?? (location.pathname === '/chat' && !!activeSessionId))
+      && !['revoked', 'expired', 'invalid'].includes(p.access_status ?? '')).map((p) => p.id)
+    : [])
   const visibleProjects = sidebarSearchActive
     ? projects.filter((project) => sidebarSearchResults.get(project.id)?.visible)
     : projects
@@ -442,7 +449,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   return (
     <div className="app-shell">
       {/* Sidebar */}
-      <ResponsiveNavigation className="layout-sidebar" showNew={can('session.create')} newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth }}>
+      <ResponsiveNavigation className="layout-sidebar" onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth }}>
         <div className="layout-sidebar-header">
           <div className="layout-sidebar-brand">
             <BrandIcon size={18} />
@@ -844,9 +851,6 @@ export default function Layout({ onSelectProject, children }: Props) {
                       onClick={(e) => {
                         e.stopPropagation()
                         setSessionSectionOpen((prev) => ({ ...prev, [p.id]: !open }))
-                        if (!open && !['revoked', 'expired', 'invalid'].includes(p.access_status ?? '')) {
-                          void useChatListStore.getState().fetchSessions(p.id, true)
-                        }
                       }}
                     >
                       <span className="layout-sidebar-section-name">
@@ -1046,6 +1050,12 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
+        {bound && <Button variant="ghost" onClick={() => navigate('/appearance')}
+          aria-current={location.pathname === '/appearance' ? 'page' : undefined}
+          className="layout-sidebar-nav-button layout-sidebar-settings-button">
+          <Icon name="sparkles" size={17} strokeWidth={2} />
+          {t('skins.appearance')}
+        </Button>}
         {!bound && <Button
           variant="ghost"
           onClick={() => { setSettingsSection('providers'); setSettingsFocus(undefined); setShowSettings(true) }}

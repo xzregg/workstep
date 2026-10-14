@@ -16,7 +16,7 @@ async def record_remote_request_failure(actor, status: int, reason_code: str):
     snapshot = ActorSnapshot(actor_id=actor.user_id, username=actor.username,
         user_name=actor.display_name or actor.username, device_id=actor.device_id,
         device_name=actor.device_id, source='managed', project_id=actor.project_id,
-        access_level=actor.project_access_level)
+        access_level=actor.project_access_level, access_source="gateway")
     try:
         with actor_context(snapshot):
             await manager.run_db(actor.project_id, lambda _project: record_project_audit(

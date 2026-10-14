@@ -42,3 +42,6 @@ logs/
 .playwright-cli/
 .pids/
 /data/
+
+# Local security audit evidence and generated test credentials
+/audit-context/

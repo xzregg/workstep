@@ -223,7 +223,12 @@ async def registration_policy(call: GatewayCall):
 async def login(call: GatewayCall, response: ReplyEffects, body: LoginInput):
     await _limit_public_action(call, 'login')
     await call.identity_rate_limiter.check_login_account(body.username)
-    user, token = await _identity(call).login(body.username, body.password)
+    try:
+        user, token = await _identity(call).login(body.username, body.password)
+    except IdentityError as exc:
+        from gateway.services.login_audit import record_login_failure
+        await record_login_failure(call.database, "password", exc.reason, attempted_username=body.username)
+        raise
     await call.identity_rate_limiter.login_succeeded(body.username)
     _set_session_cookie(response, token, call)
     return {"user": public_user(user), "csrf_token": csrf_token(token)}

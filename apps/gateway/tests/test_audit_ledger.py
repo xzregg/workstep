@@ -1,5 +1,6 @@
 """Device audit upload is bounded, idempotent, and scoped to its device."""
 
+import json
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -44,6 +45,7 @@ def test_audit_batch_replay_and_conflicting_id(tmp_path):
 
         client.portal.call(seed)
         event = _event()
+        event["metadata"] = {"access_source": "gateway", "object_name": "报告", "file_name": "report.txt", "file_path": ".workstep/uploads/report.txt", "file_size": 7, "workflow_id": "flow-1"}
         first = client.portal.call(
             record_audit_batch, app.state.database, "device-1", "batch-1",
             [event],
@@ -66,6 +68,7 @@ def test_audit_batch_replay_and_conflicting_id(tmp_path):
                 return await session.get(AuditEvent, "audit-1")
 
         row = client.portal.call(read)
+        assert json.loads(row.metadata_json) == event["metadata"]
         assert (row.project_id, row.task_id, row.actor_username,
                 row.initiated_by_username, row.actor_device_id,
                 row.actor_device_name, row.result) == (
@@ -412,3 +415,13 @@ def test_department_audit_admin_only_sees_own_department_and_children(tmp_path):
 
         client.portal.call(revoke_roles)
         assert client.get("/api/admin/audit").status_code == 403
+
+
+def test_device_audit_cannot_forge_gateway_login_events_or_methods():
+    import pytest
+    from pydantic import ValidationError
+    from gateway.services.audit_ledger import AuditEventInput
+    with pytest.raises(ValidationError):
+        AuditEventInput.model_validate({**_event(), "action": "auth.login"})
+    with pytest.raises(ValidationError):
+        AuditEventInput.model_validate({**_event(), "metadata": {"login_method": "dingtalk"}})

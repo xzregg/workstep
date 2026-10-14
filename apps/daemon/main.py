@@ -227,6 +227,9 @@ async def lifespan(app: FastAPI):
         )
     await schedule_module.start()
     await gateway_client.start()
+    from services.project_audit_retention import ProjectAuditRetention
+    audit_retention = ProjectAuditRetention(project_manager)
+    audit_retention.start()
     from services.local_cli import LocalCliRuntime
     local_cli_runtime = LocalCliRuntime(os.environ['WORKSTEP_DAEMON_URL'])
     await asyncio.to_thread(local_cli_runtime.publish)
@@ -238,6 +241,7 @@ async def lifespan(app: FastAPI):
         await asyncio.to_thread(local_cli_runtime.close)
         await completion_push.shutdown()
         await notification_hooks.service.shutdown()
+        await audit_retention.close()
         await gateway_client.close()
         await git_service.close()
         from services.engine_runtime import runtime_manager
@@ -317,8 +321,10 @@ app.include_router(templates_router)
 app.include_router(engine_router)
 from api.skins import router as skins_router
 from api.languages import router as languages_router
+from api.appearance import router as appearance_router
 app.include_router(skins_router)
 app.include_router(languages_router)
+app.include_router(appearance_router)
 app.include_router(provider_router)
 app.include_router(workflow_router)
 app.include_router(workflow_gen_router)

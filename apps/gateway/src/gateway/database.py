@@ -19,7 +19,7 @@ from gateway.config import GatewaySettings
 from gateway.models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0047_system_group_creator"
+HEAD_REVISION = "0048_login_audit_method"
 
 
 def safe_database_location(url: str) -> tuple[str, str]:

@@ -61,6 +61,7 @@ class DesktopAuthCode(Base):
     app_instance_id: Mapped[str] = mapped_column(String(128))
     state_hash: Mapped[str] = mapped_column(String(64))
     nonce_hash: Mapped[str] = mapped_column(String(64))
+    login_method: Mapped[str] = mapped_column(String(16), server_default="unknown")
     pkce_challenge: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = timestamp()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
