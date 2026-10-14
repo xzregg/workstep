@@ -46,7 +46,7 @@ export default function BotSettings() {
       platform: bot.platform, name: bot.name, app_id: bot.app_id, secret: '',
       enabled: bot.enabled, default_target_type: 'project',
       default_project_id: bot.default_project_id, default_task_id: '',
-      ...(bot.platform === 'dingtalk' ? { card_template_id: bot.card_template_id || '' } : {}),
+      ...(bot.platform === 'dingtalk' ? { card_template_id: bot.card_template_id || '', review_card_template_id: bot.review_card_template_id || '' } : {}),
     })
     setError('')
   }
@@ -99,9 +99,10 @@ export default function BotSettings() {
         <span role="status">{t(`channelBot.status.${bot.status}` as 'channelBot.status.connected')}{bot.error ? ` · ${bot.error}` : ''}</span>
         <BotPrivateWhitelist botId={bot.id} />
         <BotPrivateWhitelist botId={bot.id} scope="group" />
+        <BotTaskBindings bindings={bot.task_bindings} onChanged={reload} />
         <Button variant="ghost" onClick={() => edit(bot)}>{t('common.edit')}</Button>
         <Button variant="ghost" onClick={() => setDeleteId(bot.id)}>{t('common.delete')}</Button>
-      </div><BotTaskBindings bindings={bot.task_bindings} onChanged={reload} /></div>)}
+      </div></div>)}
       {!bots.length && <p>{t('channelBot.empty')}</p>}
     </div>
     <h2>{editingId ? t('channelBot.edit') : t('channelBot.add')}</h2>
@@ -113,6 +114,7 @@ export default function BotSettings() {
       <label>{draft.platform === 'wecom' ? 'Bot ID' : 'Client ID'}<Input value={draft.app_id} onChange={(event) => setField('app_id', event.target.value)} /></label>
       <label>{draft.platform === 'wecom' ? 'Secret' : 'Client Secret'}<Input type="password" value={draft.secret} placeholder={editingId ? t('channelBot.keepSecret') : ''} onChange={(event) => setField('secret', event.target.value)} /></label>
       {draft.platform === 'dingtalk' && <label>{t('channelBot.cardTemplate')}<Input value={draft.card_template_id || ''} placeholder={t('channelBot.cardTemplatePlaceholder')} onChange={(event) => setField('card_template_id', event.target.value)} /></label>}
+      {draft.platform === 'dingtalk' && <label>{t('channelBot.reviewCardTemplate')}<Input value={draft.review_card_template_id || ''} placeholder={t('channelBot.reviewCardTemplatePlaceholder')} onChange={(event) => setField('review_card_template_id', event.target.value)} /></label>}
       <label>{t('channelBot.defaultProject')}<Select required value={draft.default_project_id} onChange={(event) => setDraft((current) => ({ ...current, default_project_id: event.target.value, default_task_id: '' }))}>
         <option value="">{t('channelBot.selectProject')}</option>{localProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
       </Select></label>
@@ -122,6 +124,7 @@ export default function BotSettings() {
     <p className="bot-settings-hint">{t('channelBot.taskBindingHint')}</p>
     {draft.platform === 'dingtalk' && <div className="bot-settings-hint">
       <p>{t('channelBot.cardTemplateHint')}</p>
+      <p>{t('channelBot.reviewCardTemplateHint')}</p>
       <div className="bot-settings-help-links">
         <a href="https://open-dev.dingtalk.com/" target="_blank" rel="noopener noreferrer">{t('channelBot.dingtalkConsole')}</a>
         <a href="https://open.dingtalk.com/document/orgapp/create-and-deliver-cards" target="_blank" rel="noopener noreferrer">{t('channelBot.cardPermissionDocs')}</a>

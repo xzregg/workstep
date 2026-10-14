@@ -30,3 +30,10 @@ export function AdminPersonName({user}: {user: {display_name: string; username: 
  return <div className="gateway-person-name"><strong>{user.display_name}</strong>
   <small>{login ? `登录用户名：${login}` : '组织账号 · 扫码登录'}</small></div>
 }
+
+export function userChoiceLabel(user: {id?: string; display_name?: string; username?: string; login_username?: string | null}): string {
+ const name = user.display_name?.trim() || user.username?.trim() || user.id || '未命名用户'
+ const login = loginUsername({username: user.username ?? '', login_username: user.login_username})
+ if (login && login !== name) return `${name}（${login}）`
+ return !login && user.username?.startsWith('ext_') ? `${name}（企业扫码用户）` : name
+}

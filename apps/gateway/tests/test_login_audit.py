@@ -11,7 +11,7 @@ from test_external_identity import FakeConnector, _start
 def test_login_and_desktop_authorization_have_user_method_and_device_snapshots(tmp_path, method):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test", public_origin="https://gateway.test"))
     app.state.identity_connectors = {method: FakeConnector()}
-    with TestClient(app, base_url="https://gateway.test") as client:
+    with TestClient(app, base_url="https://gateway.test", client=("198.51.100.42", 50000)) as client:
         owner_csrf = _setup(client)
         if method == "password":
             logged = client.post("/api/auth/login", json={"username": "owner", "password": "OwnerPassphrase-2026!"})
@@ -52,6 +52,9 @@ def test_login_and_desktop_authorization_have_user_method_and_device_snapshots(t
         login = next(item for item in events if item["action"] == "auth.login" and item["metadata"].get("login_method") == method)
         desktop = [item for item in events if item["action"] == "auth.desktop.login"]
         assert login["actor_id"] == uid
+        assert login['request_ip'] == '198.51.100.42'
+        user_rows = client.get('/api/admin/users', params={'q': logged.json()['user']['username']}).json()['users']
+        assert next(user for user in user_rows if user['id'] == uid)['last_login_at'].endswith('+00:00')
         assert len(desktop) == 2
         remote = [item for item in events if item["action"] == "auth.device.login"]
         assert len(remote) == 1
@@ -102,3 +105,23 @@ def test_login_with_audit_waiting_for_sqlite_keeps_health_responsive(tmp_path):
                 holder.rollback()
             assert pending.result(timeout=5).status_code == 200
         assert len(client.get("/api/admin/audit", params={"action": "auth.login"}).json()["items"]) == 1
+
+
+def test_audit_ip_uses_transport_peer_and_isolates_concurrent_requests(tmp_path):
+    import asyncio
+    from httpx import ASGITransport, AsyncClient
+    from gateway.audit_context import request_ip
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        _setup(client)
+        async def attempt(name, address):
+            async with AsyncClient(transport=ASGITransport(app=app, client=(address, 12345)), base_url='https://gateway.test') as actor:
+                response = await actor.post('/api/auth/login', json={'username': name, 'password': 'incorrect'},
+                    headers={'X-Forwarded-For': '192.0.2.99', 'X-Real-IP': '192.0.2.98'})
+                assert response.status_code == 401
+        async def scenario():
+            await asyncio.gather(attempt('first', '198.51.100.1'), attempt('second', '198.51.100.2'))
+            assert request_ip.get() is None
+        client.portal.call(scenario)
+        rows = client.get('/api/admin/audit', params={'action': 'auth.login', 'result': 'failed'}).json()['items']
+        assert {row['actor_username']: row['request_ip'] for row in rows} == {'first': '198.51.100.1', 'second': '198.51.100.2'}

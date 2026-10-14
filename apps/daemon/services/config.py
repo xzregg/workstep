@@ -93,7 +93,6 @@ class ConfigStore:
         self._lock = threading.RLock()
         self._managed_gateway_id: str | None = None
         self._managed_provider_guard = None
-        self._local_provider_guard = None
 
     def _load(self) -> dict:
         with self._lock:
@@ -987,27 +986,14 @@ class ConfigStore:
 
     # --- Providers (global LLM API suppliers) ---
 
-    def set_managed_gateway_id(self, gateway_id: str | None, provider_guard=None, local_provider_guard=None) -> None:
+    def set_managed_gateway_id(self, gateway_id: str | None, provider_guard=None) -> None:
         with self._lock:
             self._managed_gateway_id = gateway_id
             self._managed_provider_guard = provider_guard
-            self._local_provider_guard = local_provider_guard
 
     @property
     def managed_gateway_id(self) -> str | None:
         return self._managed_gateway_id
-
-    def _provider_allowed_for_actor(self, provider_id: str) -> bool:
-        from services.remote_access import get_current_actor
-        import time
-        actor = get_current_actor()
-        if actor is None or actor.source != "managed":
-            return True
-        if actor.provider_ids is not None:
-            return (actor.provider_grant_expires_at is not None
-                    and actor.provider_grant_expires_at > time.time()
-                    and provider_id in actor.provider_ids)
-        return actor.actor_id == self.get("managed_provider_state", {}).get("user_id")
 
     def get_managed_default_provider(self) -> str:
         if not self._managed_gateway_id:
@@ -1120,12 +1106,10 @@ class ConfigStore:
             self._save()
         if self._managed_gateway_id and not include_unmanaged:
             return [item for item in providers
-                    if (not item.get("managed") and (
-                        self._local_provider_guard is None or self._local_provider_guard())) or (
+                    if not item.get("managed") or (
                         item.get("managed_gateway_id") == self._managed_gateway_id
                         and self._managed_provider_guard is not None
-                        and self._managed_provider_guard(str(item.get("id")))
-                        and self._provider_allowed_for_actor(str(item.get("id"))))]
+                        and self._managed_provider_guard(str(item.get("id"))))]
         return providers
 
     def get_provider(self, provider_id: str) -> dict[str, Any] | None:

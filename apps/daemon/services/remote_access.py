@@ -35,7 +35,7 @@ class ActorSnapshot:
     user_name: str
     device_id: str
     device_name: str
-    source: Literal["local", "browser", "remote", "managed"]
+    source: Literal["local", "browser", "remote", "managed", "channel"]
     project_id: str | None = None
     access_level: str | None = None
     remote_task_create: bool = False

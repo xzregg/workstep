@@ -40,3 +40,36 @@ test('device name validates, preserves edits on failure, and saves without chang
   assert.equal(writes[1].method, 'PUT')
   assert.match(screen.getByText(/设备 ID：/).textContent ?? '', /pc-1/)
 })
+
+ test('device table shows the saved name and opens renaming directly from its name cell', async () => {
+ const { DeviceAdminPage } = await import('../src/DeviceAdminPage')
+ let currentName = '93a1f068d205'
+ let listReads = 0
+ globalThis.fetch = async (input, init) => {
+  const url = String(input)
+  if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+  if (url.startsWith('/api/admin/devices?')) {
+   listReads++
+   return Response.json({ devices: [{ ...device, name: currentName, connection_ip: '192.168.1.20' }], total: 1 })
+  }
+  if (url === '/api/auth/step-up') return Response.json({})
+  assert.equal(url, '/api/admin/devices/pc-1/name')
+  assert.equal(init?.method, 'PUT')
+  assert.equal(new Headers(init?.headers).get('X-CSRF-Token'), 'csrf')
+  currentName = JSON.parse(String(init?.body)).name
+  return new Response(null, { status: 204 })
+ }
+ render(<DeviceAdminPage />)
+ await screen.findByRole('columnheader', { name: '设备名称' })
+ const nameButton = await screen.findByRole('button', { name: '修改设备名称：93a1f068d205' })
+ assert.equal(nameButton.textContent, '93a1f068d205')
+ assert.ok(screen.getByText('192.168.1.20'))
+ fireEvent.click(nameButton)
+ const dialog = screen.getByRole('dialog', { name: '修改设备名称' })
+ fireEvent.change(within(dialog).getByLabelText('设备名称'), { target: { value: '研发电脑' } })
+ fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'test-password' } })
+ fireEvent.click(within(dialog).getByRole('button', { name: '保存名称' }))
+ await screen.findByRole('button', { name: '修改设备名称：研发电脑' })
+ assert.equal(screen.queryByRole('dialog'), null)
+ assert.equal(listReads, 2)
+ })

@@ -258,7 +258,7 @@ export function useWebSocket() {
               url: notificationUrlFor({ ...watch, outcome: 'succeeded', title: '', body: '' }),
             })
           }
-          if (parsed.type === 'RUN_STARTED' && parsed.project_id && parsed.task_id && parsed.step_key) {
+          if (parsed.type === 'RUN_STARTED' && parsed.project_id && parsed.task_id && parsed.step_key && parsed.step_key !== 'null') {
             const watch = {
               id: `${parsed.project_id}:${parsed.task_id}:step:${parsed.step_key}`,
               projectId: parsed.project_id,

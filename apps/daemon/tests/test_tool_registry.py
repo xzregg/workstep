@@ -28,6 +28,9 @@ def test_registry_defines_expected_tool_set():
         "workstep_create_workflow_action",
         "workstep_list_tasks",
         "workstep_get_task",
+        "workstep_send_step_message",
+        "workstep_stop_step",
+        "workstep_start_step",
         "workstep_list_git_repositories",
         "workstep_get_task_workspace",
         "workstep_add_task_worktree",
@@ -84,6 +87,50 @@ def test_registry_defines_expected_tool_set():
     assert "workflow_id" in by_name["workstep_create_task"].body_params
     assert "start_step_key" in by_name["workstep_create_task"].body_params
     assert by_name["workstep_add_task_worktree"].read_only is False
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(("operation", "action", "extra", "body"), [
+    ("workstep_send_step_message", "message", {"content": "补充要求", "as_guidance": True},
+     {"content": "补充要求", "as_guidance": True}),
+    ("workstep_stop_step", "cancel", {}, {}),
+    ("workstep_start_step", "resume", {"content": "执行新要求", "reset_session": True},
+     {"content": "执行新要求", "reset_step": True, "allow_pending": True}),
+    ("workstep_start_step", "resume", {"content": "继续", "reset_session": False},
+     {"content": "继续", "reset_step": False, "allow_pending": True}),
+])
+async def test_stage_tools_require_confirmation_and_use_existing_routes(operation, action, extra, body):
+    calls = []
+
+    async def handler(request):
+        calls.append((request.method, request.url.path, dict(request.url.params),
+                      json.loads(request.content) if request.content else {}))
+        return httpx.Response(200, json={"status": "queued"})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    arguments = {"project_id": "p", "task_id": "t", "step_key": "A", **extra}
+    rejected = await client.call(operation, arguments)
+    assert rejected["ok"] is False
+    assert calls == []
+    assert await client.call(operation, {**arguments, "confirm": "yes"}) == {"status": "queued"}
+    assert calls == [("POST", f"/api/task/t/step/A/{action}", {"project_id": "p"}, body)]
+
+
+@pytest.mark.anyio
+async def test_stage_tool_reports_unsupported_injection_without_starting_step():
+    calls = []
+
+    async def handler(request):
+        calls.append(request.url.path)
+        return httpx.Response(409, json={"detail": "该引擎不支持执行中消息注入"})
+
+    result = await WorkstepClient(transport=httpx.MockTransport(handler)).call(
+        "workstep_send_step_message",
+        {"project_id": "p", "task_id": "t", "step_key": "A", "content": "补充", "confirm": "yes"},
+    )
+    assert result["ok"] is False
+    assert "该引擎不支持执行中消息注入" in result["error"]
+    assert calls == ["/api/task/t/step/A/message"]
 
 
 @pytest.mark.anyio

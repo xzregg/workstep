@@ -10,6 +10,28 @@ import { buildMessageTimeline } from '../src/utils/messageTimeline'
 import { collectMessageFileChanges, relativeMessageFilePath } from '../src/utils/messageFileChanges'
 import { useProjectStore } from '../src/stores/projectStore'
 import MessageFileChanges from '../src/components/MessageFileChanges'
+import { MarkdownAssetUrlProvider } from '../src/contexts/MarkdownAssetUrlContext'
+
+test('share edited files without a project ID open new file contents through the share capability', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const reads: string[] = []
+  const filePreview = {
+    load: async (path: string) => { reads.push(path); return { type: 'text', content: 'new document', language: 'markdown', name: 'new.md' } as any },
+    rawUrl: () => '/share/file',
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><MarkdownAssetUrlProvider filePreview={filePreview}>
+      <MessageFileChanges events={edit('new', { path: '/data/project/.workstep/artifacts/w/t/build/new.md' })} />
+    </MarkdownAssetUrlProvider></I18nProvider>))
+    await act(async () => (document.querySelector('.message-file-changes-toggle') as HTMLElement).click())
+    const path = document.querySelector('button.message-file-change-path') as HTMLElement
+    assert.ok(path, 'share file must be clickable without a local project')
+    await act(async () => path.click())
+    assert.deepEqual(reads, ['/data/project/.workstep/artifacts/w/t/build/new.md'])
+    assert.match(document.querySelector('.file-preview-dialog')!.textContent!, /new document/)
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
+})
 
 const patch = '@@ -4,2 +4,3 @@\n-old\n+new\n+extra\n context\n'
 function edit(id: string, args: unknown, overrides: Record<string, unknown> = {}) {
@@ -280,7 +302,11 @@ test('historical edit summaries show the actual file count before any detail req
     assert.equal(loads, 0)
     assert.equal(container.querySelectorAll('.message-file-change-row').length, 0)
     await act(async () => (container.querySelector('.message-file-changes-toggle') as HTMLElement).click())
-    assert.equal(loads, 1)
+    assert.equal(loads, 0)
+    assert.equal(container.querySelectorAll('.message-file-change-row').length, 2)
+    await act(async () => (container.querySelector('.message-file-changes-toggle') as HTMLElement).click())
+    await act(async () => (container.querySelector('.message-file-changes-toggle') as HTMLElement).click())
+    assert.equal(loads, 0)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

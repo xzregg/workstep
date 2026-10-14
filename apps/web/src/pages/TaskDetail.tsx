@@ -30,13 +30,10 @@ import {
 import { copyMessageText } from '../components/MessageResponseFooter'
 import { a2uiActionMessageParams } from '../utils/a2ui'
 import StepPromptEditor from '../components/StepPromptEditor'
-import Icon from '../components/Icon'
-import ShareDialog from '../components/ShareDialog'
 import TaskDiscussionGroups from '../components/TaskDiscussionGroups'
 import ConfirmDialog from '../components/ConfirmDialog'
 import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
-import GatewayTaskShareLink from '../components/GatewayTaskShareLink'
-import { canUseLocalTaskShare } from '../utils/taskShareUrl'
+import TaskShareButton from '../components/TaskShareButton'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import TaskStepConfigController from '../components/TaskStepConfigController'
 import {
@@ -58,11 +55,11 @@ import {
 import { mergeRefreshedTaskHistory } from './taskHistoryModel'
 import { useTaskArtifacts } from '../hooks/useTaskArtifacts'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
-import { useManagedMode } from '../hooks/useManagedMode'
 import { useTaskReviewActions } from '../hooks/useTaskReviewActions'
 import { useTaskPendingInserts } from '../hooks/useTaskPendingInserts'
 import { CUSTOM } from '../utils/agui'
 import { useI18n } from '../i18n'
+import type { SharedTaskDetailBinding } from './SharedEditableTaskDetail'
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
@@ -111,13 +108,14 @@ interface StepProgress extends Partial<TaskStepState> {
 }
 
 interface TaskDetailProps {
+  shared?: SharedTaskDetailBinding
   taskId: string
   onClose: () => void
 }
 
 const TASK_HISTORY_PAGE_SIZE = 300
 
-export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
+export default function TaskDetail({ taskId, onClose, shared }: TaskDetailProps) {
   const { t, locale } = useI18n()
   const { openTask } = useTaskRoute()
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -132,6 +130,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   // because its `steps` are kept fresh by setActiveWorkflow, while the
   // projects[] entry may hold stale steps from the last fetchProjects.
   const detailProject = useMemo(() => {
+    if (shared) return shared.project
     if (urlProjectName) {
       const match = projects.find((p) => p.name === urlProjectName)
       if (match) {
@@ -140,7 +139,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       }
     }
     return activeProject
-  }, [urlProjectName, projects, activeProject])
+  }, [urlProjectName, projects, activeProject, shared?.project])
   const tasks = useTaskStore((s) => s.tasks)
   const events = useTaskStore((s) => (taskId ? s.events[taskId] : undefined) ?? EMPTY_EVENTS)
   const content = useTaskStore((s) => (taskId ? s.content[taskId] : '') ?? '')
@@ -158,23 +157,23 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   const projectId = detailProject?.id || ''
   const taskGitApi = useMemo(() => detailProject?.type === 'remote' ? createProjectGitApi(projectId) : gitApi, [projectId, detailProject?.type])
-  const ownerFilePreview = useMemo(() => ({
+  const ownerFilePreview = useMemo(() => shared?.readCapabilities.filePreview || ({
     load: (path: string) => fsApi.preview(path, projectId),
     rawUrl: (path: string) => fsApi.projectFileUrl(path, projectId),
-  }), [projectId])
+  }), [projectId, shared?.readCapabilities.filePreview])
   const browseGitWorkspace = useCallback(
-    (path: string, includeHidden: boolean) => fsApi.browse(path, projectId || undefined, includeHidden),
-    [projectId],
+    (path: string, includeHidden: boolean) => shared ? shared.readCapabilities.browseGitWorkspace(path, includeHidden) : fsApi.browse(path, projectId || undefined, includeHidden),
+    [projectId, shared?.readCapabilities.browseGitWorkspace],
   )
   const ownerAssetUrl = useCallback(
-    (src: string) => resolveMarkdownImageSrc(src, projectId),
-    [projectId],
+    (src: string) => shared ? shared.readCapabilities.resolveAssetUrl(src) : resolveMarkdownImageSrc(src, projectId),
+    [projectId, shared?.readCapabilities.resolveAssetUrl],
   )
   const ownerExecutionReport = useCallback(
     () => taskApi.executionReport(taskId, projectId),
     [taskId, projectId],
   )
-  const { task, status: taskReadStatus, error: taskReadError, retry: retryTaskRead } = useTaskRecord(taskId, projectId)
+  const { task, status: taskReadStatus, error: taskReadError, retry: retryTaskRead } = useTaskRecord(taskId, projectId, shared?.task)
   const taskStatus = task?.status
   const taskCompleted = isTaskCompleted(task?.steps || [])
   const sessionIdForStep = (stepKey?: string | null): string | null => {
@@ -245,8 +244,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const [livePromptOverrides, setLivePromptOverrides] = useState<Record<string, string>>({})
   const [taskIdCopied, setTaskIdCopied] = useState(false)
-  const [shareOpen, setShareOpen] = useState(false)
-  const managedMode = useManagedMode()
   const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
   const [selectedStep, setSelectedStep] = useState(0)
   const selectedStepTaskRef = useRef<string | null>(null)
@@ -261,6 +258,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const { historyMessages, setHistoryMessages, historyLoading,
     loadOlderHistory, loadMessageEvents } = useTaskHistory({
     taskId, projectId, userMessageEvents, reviewEventSignal,
+    snapshot: shared?.messages,
     chatScrollRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
   })
   const {
@@ -279,13 +277,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     artifacts, artifactDirectory, inputSnapshots: artifactInputSnapshots,
     previewArtifact, closePreview: closeArtifactPreview, notice: artifactNotice,
     openArtifact, openArtifactDirectory,
-  } = useTaskArtifacts({ taskId, projectId, steps: task?.steps, remote: detailProject?.type === 'remote' })
+  } = useTaskArtifacts({ taskId, projectId, steps: task?.steps, remote: detailProject?.type === 'remote', snapshot: shared })
   const {
     reviews, pending: reviewActionPending, pendingCompletion: pendingReviewCompletion,
     reviewComment, setReviewComment, decideReview,
     requestFailedExecutionComplete, confirmCompletion, cancelCompletion,
   } = useTaskReviewActions({
     taskId, projectId, updatedAt: task?.updated_at, reviewEventSignal,
+    snapshot: shared?.reviews,
     fetchTasks, refreshTask, onError: setChatError,
   })
   const [showPromptEditor, setShowPromptEditor] = useState(false)
@@ -353,6 +352,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         .catch(() => undefined)
     }
   }, [activeCoordinatorMessageId, historyMessages, liveMessages, projectId, taskId])
+  useEffect(() => {
+    if (!shared) return
+    const active = [...shared.messages].reverse().find(message => message.channel === 'coordinator'
+      && message.role === 'assistant' && ['queued', 'running'].includes(message.run_status))
+    if (active) { setActiveCoordinatorMessageId(active.id); setCoordinatorRunning(true) }
+  }, [shared?.messages])
 
   useEffect(() => {
     if (historyLoading || !pendingStepScrollRef.current) return
@@ -903,7 +908,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   return (
-    <TaskDetailWindow title={task.title} onClose={onClose}>
+    <TaskDetailWindow title={task.title} onClose={onClose} standalone={Boolean(shared)}>
       {(headerHandlers) => <TaskStepConfigController
         projectId={projectId || ''}
         taskId={task.id}
@@ -913,19 +918,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         {({ inputConfig: stepEngineConfig, loading: stepEngineConfigLoading, error: stepEngineConfigError }) => <TaskDetailPage
         {...headerHandlers}
         task={task}
-        gitCapability={projectId ? { api: taskGitApi, projectId, projectScoped: detailProject?.type === 'remote' } : undefined}
+        gitCapability={shared?.gitCapability || (projectId ? { api: taskGitApi, projectId, projectScoped: detailProject?.type === 'remote' } : undefined)}
         steps={steps}
         workflowConnections={detailProject?.steps?.connections || []}
         stepProgress={stepProgress}
         selectedStep={selectedStep}
         onStepClick={handleStepClick}
         historyMessages={historyMessages}
-        onLoadOlderHistory={loadOlderHistory}
+        onLoadOlderHistory={shared?.loadOlderHistory || loadOlderHistory}
         readCapabilities={{
           artifactDirectory,
           resolveAssetUrl: ownerAssetUrl,
           filePreview: ownerFilePreview,
-          loadMessageEvents,
+          loadMessageEvents: shared?.readCapabilities.loadMessageEvents || loadMessageEvents,
           openArtifact,
           loadExecutionReport: ownerExecutionReport,
           browseGitWorkspace,
@@ -956,6 +961,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         prompt={prompt}
         onPromptChange={setPrompt}
         onSend={handleRun}
+        chatAttachment={shared?.attachment}
         onSendPrompt={(value) => { void handleRun(value) }}
         onActionChanged={() => {
           if (!taskId || !projectId) return
@@ -1018,22 +1024,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         navigationActions={
           <>
             <TaskDiscussionGroups projectId={projectId} taskId={taskId} />
-            {canUseLocalTaskShare(managedMode, detailProject?.type) && <Button
-              className="task-detail-share-button"
-              variant="ghost"
-              title={t('taskDetail.shareButtonTitle')}
-              aria-label={t('taskDetail.shareButtonTitle')}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation()
-                setShareOpen(true)
-              }}
-            >
-              <Icon name="share" size={13} strokeWidth={1.75} />
-              <span className="task-detail-share-label">{t('share.dialogTitle')}</span>
-            </Button>}
-            <GatewayTaskShareLink taskId={task.id} projectId={projectId || null}
-              local={managedMode === true && detailProject?.type !== 'remote' && !isGatewayRemoteBrowser()} />
+            {!shared && <TaskShareButton taskId={task.id} taskTitle={task.title} projectId={projectId} projectType={detailProject?.type} />}
           </>
         }
         headerActions={
@@ -1125,6 +1116,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             projectId={projectId}
             workflowId={task?.workflow_id || detailProject?.workflows?.find((workflow) => workflow.is_default)?.id || ''}
             onSaved={(nextSteps) => {
+              if (shared) { void refreshTask(taskId, projectId); return }
               const workflowId = task?.workflow_id || detailProject?.workflows?.find((workflow) => workflow.is_default)?.id
               if (detailProject) setActiveProject({ ...detailProject,
                 steps: useProjectStore.getState().activeWorkflowId === workflowId ? nextSteps : detailProject.steps,
@@ -1134,12 +1126,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             }}
             onClose={() => setShowPromptEditor(false)}
           />}
-          <ShareDialog
-            open={canUseLocalTaskShare(managedMode, detailProject?.type) && shareOpen && !!task}
-            taskId={taskId}
-            projectId={projectId}
-            onClose={() => setShareOpen(false)}
-          />
+
         </>}
         onClose={onClose}
         chatScrollRef={chatScrollRef}

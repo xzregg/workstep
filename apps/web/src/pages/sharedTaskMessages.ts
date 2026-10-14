@@ -51,7 +51,7 @@ export function applySharedMessageEvent(messages: SharedMessage[], event: Shared
     }
   }
   if (isProcess || isCommentaryEvent(event)) {
-    updated.events = existing.event_detail?.loaded
+    updated.events = existing.event_detail?.loaded || existing.event_detail?.loaded_cursor !== undefined
       ? [...(existing.events ?? []), event] : appendCappedSharedEvent(existing.events, event)
   }
   if (kind === 'CUSTOM' && event.name === 'workstep.usage') updated.usage = event.value
@@ -83,11 +83,19 @@ export function mergeSharedHistorySnapshot(previous: SharedMessage[], snapshot: 
       const fresh = incoming.get(message.id)
       if (!fresh) return message
       incoming.delete(message.id)
-      return message.event_detail?.loaded
-        ? { ...fresh, events: message.events, event_detail: { ...message.event_detail, ...fresh.event_detail,
-            loaded: message.event_detail.last_event_seq === fresh.event_detail?.last_event_seq,
-          } }
-        : fresh
+      const detail = message.event_detail
+      const cursor = detail?.loaded_cursor ?? (detail?.loaded ? detail.last_event_seq : undefined)
+      if ((!detail?.loaded && cursor === undefined && !detail?.loading)
+        || message.event_log_path !== fresh.event_log_path
+        || message.step_run_id !== fresh.step_run_id
+        || typeof cursor === 'number' && typeof fresh.event_detail?.last_event_seq === 'number'
+          && fresh.event_detail.last_event_seq < cursor) return fresh
+      return { ...fresh, events: message.events, event_detail: {
+        ...fresh.event_detail, ...detail,
+        last_event_seq: fresh.event_detail?.last_event_seq,
+        loaded_cursor: cursor,
+        loaded: cursor === fresh.event_detail?.last_event_seq,
+      } }
     })
   return [...merged, ...incoming.values()]
 }

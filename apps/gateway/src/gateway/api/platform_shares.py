@@ -6,8 +6,20 @@ from fastapi import APIRouter, Query, Request
 
 
 from gateway.services.platform_shares import CreateShareInput, UnlockShareInput
+from gateway.services.platform_shares import public_share_coordinator_action as _handle_coordinator_action
+from gateway.services.platform_shares import public_share_task_operation as _handle_task_operation
 
 router = APIRouter(prefix="/api")
+
+
+@router.post('/public/shares/{token}/operation')
+async def public_share_task_operation(request: Request, token: str):
+    return await invoke(_handle_task_operation, request=request, token=token)
+
+
+@router.post("/public/shares/{token}/actions/{proposal_id}/{action}")
+async def public_share_coordinator_action(request: Request, token: str, proposal_id: str, action: str):
+    return await invoke(_handle_coordinator_action, request=request, token=token, proposal_id=proposal_id, action=action)
 
 
 @router.post("/platform-shares", status_code=201)

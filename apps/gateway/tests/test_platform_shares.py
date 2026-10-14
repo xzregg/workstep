@@ -282,6 +282,8 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                 "project_id": "project-1", "task_id": "task-1", "mode": mode,
             }, headers=headers)
             assert created.status_code == 201, created.text
+            expiry = datetime.fromisoformat(created.json()['expires_at'])
+            assert abs((expiry - datetime.now(timezone.utc) - timedelta(days=7)).total_seconds()) < 2
             tokens[mode] = created.json()["url"].rsplit("/", 1)[1]
 
         captured = []
@@ -315,6 +317,12 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         unlocked = client.post(f"/api/public/shares/{token}/unlock", json={"password": ""})
         assert unlocked.status_code == 200
         read_csrf = unlocked.json()["csrf_token"]
+        assert client.post(f"/api/public/shares/{token}/operation",
+                           headers={"X-Share-CSRF": read_csrf},
+                           json={"path": "/task/task-1", "method": "PATCH", "body": {"title": "Edit"}}).status_code == 403
+        assert client.post(f"/api/public/shares/{token}/actions/proposal-1/confirm",
+                           headers={"X-Share-CSRF": read_csrf},
+                           json={"idempotency_key": "confirm-1"}).status_code == 403
         assert client.post(f"/api/public/shares/{token}/steps/build/message",
                            headers={"X-Share-CSRF": read_csrf},
                            json={"content": "hello"}).status_code == 403
@@ -354,6 +362,26 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         unlocked = client.post(f"/api/public/shares/{token}/unlock", json={"password": ""})
         assert unlocked.status_code == 200
         csrf = unlocked.json()["csrf_token"]
+        operation_path = f"/api/public/shares/{token}/operation"
+        operation = {"path": "/task/task-1", "method": "PATCH", "body": {"title": "Edit"}, "idempotency_key": None}
+        assert client.post(operation_path, json=operation).status_code == 403
+        assert client.post(operation_path, headers={"X-Share-CSRF": csrf}, json=operation).status_code == 200
+        assert captured[-1][0] == "/api/platform-share/operation"
+        assert json.loads(captured[-1][1]) == operation
+        assert client.post(operation_path, headers={"X-Share-CSRF": csrf},
+                           json={**operation, "method": "TRACE"}).status_code == 422
+        captured.clear()
+        action_path = f"/api/public/shares/{token}/actions/proposal-1/confirm"
+        assert client.post(action_path, json={"idempotency_key": "confirm-1"}).status_code == 403
+        assert client.post(action_path, headers={"X-Share-CSRF": "wrong"},
+                           json={"idempotency_key": "confirm-1"}).status_code == 403
+        assert client.post(action_path, headers={"X-Share-CSRF": csrf},
+                           json={"idempotency_key": "confirm-1"}).status_code == 200
+        assert captured[-1][0] == "/api/platform-share/actions/proposal-1/confirm"
+        assert json.loads(captured[-1][1]) == {"idempotency_key": "confirm-1", "overwrite": False}
+        assert client.post(f"/api/public/shares/{token}/actions/proposal-1/cancel",
+                           headers={"X-Share-CSRF": csrf}).status_code == 200
+        captured.clear()
         assert client.get(f"/api/public/shares/{token}/session").json()["csrf_token"] == csrf
         upload_path = f"/api/public/shares/{token}/uploads"
         assert client.post(upload_path, headers={"X-Share-Filename": "report.txt"},
@@ -668,6 +696,7 @@ def test_admin_lists_pauses_resumes_and_revokes_platform_shares(tmp_path):
         row = listing.json()["shares"][0]
         assert row["id"] == share["id"]
         assert row["created_by"] == "owner"
+        assert row["created_by_name"] == "Owner"
         assert row["device_name"] == "PC"
         assert row["project_name"] == "Project"
         assert row["visit_count"] == 1

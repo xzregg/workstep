@@ -81,6 +81,18 @@ class ShareInteractionInput(BaseModel):
     data: dict
 
 
+class ShareActionConfirmationInput(BaseModel):
+    idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^\S+$")
+    overwrite: bool = False
+
+
+class ShareTaskOperationInput(BaseModel):
+    path: str = Field(min_length=1, max_length=16384)
+    method: str = Field(default='GET', pattern=r'^(GET|POST|PATCH|PUT|DELETE)$')
+    body: dict | None = None
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
 class ShareGitCommitInput(BaseModel):
     paths: list[str] = Field(min_length=1, max_length=10000)
     message: str = Field(min_length=1, max_length=100000)
@@ -133,11 +145,11 @@ def _check_share_csrf(call: GatewayCall) -> None:
         raise GatewayError('forbidden', 'Share CSRF token required')
 
 
-async def _bounded_share_json(call: GatewayCall):
+async def _bounded_share_json(call: GatewayCall, limit: int = 262144):
     raw = bytearray()
     async for chunk in call.payload():
         raw.extend(chunk)
-        if len(raw) > 262144:
+        if len(raw) > limit:
             raise GatewayError('too_large', 'Share message too large')
     try:
         return json.loads(raw)
@@ -186,6 +198,22 @@ async def _share_interaction_body(call: GatewayCall) -> bytes:
     return json.dumps({"data": body.data}, separators=(",", ":")).encode()
 
 
+async def _share_action_body(call: GatewayCall) -> bytes:
+    try:
+        body = ShareActionConfirmationInput.model_validate(await _bounded_share_json(call))
+    except ValidationError as exc:
+        raise GatewayError('invalid', 'Invalid action confirmation') from exc
+    return body.model_dump_json().encode()
+
+
+async def _share_task_operation_body(call: GatewayCall) -> bytes:
+    try:
+        body = ShareTaskOperationInput.model_validate(await _bounded_share_json(call, 35_000_000))
+    except ValidationError as exc:
+        raise GatewayError('invalid', 'Invalid task operation') from exc
+    return body.model_dump_json().encode()
+
+
 async def _share_git_commit_body(call: GatewayCall) -> bytes:
     try:
         body = ShareGitCommitInput.model_validate(await _bounded_share_json(call))
@@ -213,15 +241,21 @@ async def _share_git_branch_body(call: GatewayCall, kind: str) -> bytes:
     return json.dumps(body.model_dump(exclude_none=True), separators=(",", ":")).encode()
 
 
-async def can_create_platform_share(session, user_id: str, project: PlatformProject) -> bool:
+async def can_create_platform_share(session, user_id: str, project: PlatformProject | None, *, device_id: str | None = None) -> bool:
     from gateway.services.identity import IdentityService
     from gateway.services.capabilities import capability_rules
     from gateway.services.permission_subjects import active_group_ids
     from gateway.models import GroupCapabilityAssignment
+    if project is not None and project.status != 'active':
+        return False
+    device_id = project.device_id if project is not None else device_id
+    if not device_id:
+        return False
     if await IdentityService.super_admin_in_session(session, user_id):
         return True
-    access = await effective_project_access(session, user_id, project.id)
-    if access != "edit":
+    from gateway.services.device_grants import has_device_access
+    whole_device = await has_device_access(session, user_id, device_id)
+    if not whole_device and (project is None or await effective_project_access(session, user_id, project.id) != 'edit'):
         return False
     rules = await capability_rules(session, user_id)
     group_rules = (await session.scalars(select(GroupCapabilityAssignment).where(
@@ -229,11 +263,11 @@ async def can_create_platform_share(session, user_id: str, project: PlatformProj
         GroupCapabilityAssignment.project_id == project.id,
         GroupCapabilityAssignment.capability == "share.create",
         GroupCapabilityAssignment.revoked_at.is_(None),
-    ))).all()
+    ))).all() if project is not None else []
     applicable = [rule for rule in rules if rule.capability == "share.create" and (
                   rule.scope_type == "global"
-                  or (rule.scope_type == "device" and rule.scope_id == project.device_id)
-                  or (rule.scope_type == "project" and rule.scope_id == project.id))]
+                  or (rule.scope_type == "device" and rule.scope_id == device_id)
+                  or (project is not None and rule.scope_type == "project" and rule.scope_id == project.id))]
     return (any(rule.effect == "allow" for rule in (*applicable, *group_rules))
             and not any(rule.effect == "deny" for rule in (*applicable, *group_rules)))
 
@@ -256,11 +290,14 @@ async def _live_share(call: GatewayCall, token: str) -> PlatformShare:
     if share.status != "active":
         raise GatewayError('not_found', 'Share unavailable')
     if (project is None or project.status != "active"
-            or project.access_mode != "remote_published"
             or project.device_id != share.device_id):
         raise GatewayError('unavailable', 'Share project unavailable')
     if device is None or device.status != "active":
         raise GatewayError('unavailable', 'Share paused')
+    async with call.database.session() as session:
+        creator = await session.get(User, share.created_by_user_id)
+        if creator is None or creator.status != 'active' or not await can_create_platform_share(session, creator.id, project):
+            raise GatewayError('forbidden', 'Share creator authorization revoked')
     return share
 
 
@@ -304,14 +341,14 @@ async def _interactive_provider_scope(call: GatewayCall, share: PlatformShare, p
 async def _proxy_share_request(call: GatewayCall, token: str, target_path: str,
                                *, write: bool = False,
                                interactive_read: bool = False,
-                               body_kind: Literal["message", "review", "interaction", "upload", "git_commit", "git_sync", "git_switch", "git_branch_create", "git_branch_delete"] | None = None):
+                               body_kind: Literal["message", "review", "interaction", "action", "operation", "upload", "git_commit", "git_sync", "git_switch", "git_branch_create", "git_branch_delete"] | None = None):
     share, project = await _authorized_visitor(call, token, touch=True)
     if write or interactive_read:
         if share.mode != "interactive":
             raise GatewayError('forbidden', 'Share is read-only')
     if write:
         _check_share_csrf(call)
-    share_body = await _share_message_body(call) if body_kind == 'message' else await _share_review_body(call) if body_kind == 'review' else await _share_interaction_body(call) if body_kind == 'interaction' else await _share_git_commit_body(call) if body_kind == 'git_commit' else await _share_git_sync_body(call) if body_kind == 'git_sync' else await _share_git_branch_body(call, body_kind) if body_kind in ('git_switch', 'git_branch_create', 'git_branch_delete') else await _share_upload_body(call) if body_kind == 'upload' else b'' if write else None
+    share_body = await _share_task_operation_body(call) if body_kind == 'operation' else await _share_action_body(call) if body_kind == 'action' else await _share_message_body(call) if body_kind == 'message' else await _share_review_body(call) if body_kind == 'review' else await _share_interaction_body(call) if body_kind == 'interaction' else await _share_git_commit_body(call) if body_kind == 'git_commit' else await _share_git_sync_body(call) if body_kind == 'git_sync' else await _share_git_branch_body(call, body_kind) if body_kind in ('git_switch', 'git_branch_create', 'git_branch_delete') else await _share_upload_body(call) if body_kind == 'upload' else b'' if write else None
     connections = call.control_connections
     if not connections.is_online(share.device_id):
         raise GatewayError('unavailable', 'Shared device offline')
@@ -357,7 +394,7 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _a
         if not datetime.now(timezone.utc) < expiry <= datetime.now(timezone.utc) + timedelta(days=90):
             raise GatewayError('invalid', 'Invalid share expiration')
     else:
-        expiry = None
+        expiry = datetime.now(timezone.utc) + timedelta(days=7)
     password_hash = (await asyncio.to_thread(_hasher.hash, body.password)) if body.password else None
     token = secrets.token_urlsafe(32)
     async with call.database.session() as session:
@@ -365,9 +402,8 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _a
             project = await session.get(PlatformProject, body.project_id)
             device = await session.get(Device, project.device_id) if project else None
             if (project is None or project.status != "active"
-                    or project.access_mode != "remote_published"
                     or device is None or device.status != "active"):
-                raise GatewayError('not_found', 'Published project unavailable')
+                raise GatewayError('not_found', 'Task project unavailable')
             if not await can_create_platform_share(session, actor.id, project):
                 raise GatewayError('forbidden', 'Share creation unavailable')
             share = PlatformShare(
@@ -388,7 +424,7 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _a
             ))
     return {"id": share.id, "url": f"{origin.rstrip('/')}/share/{token}",
             "status": share.status, "mode": share.mode, "title": share.title,
-            "expires_at": expiry, "created_at": share.created_at}
+            "expires_at": expiry, "created_at": share.created_at, "has_password": bool(password_hash)}
 
 
 async def list_own_platform_shares(call: GatewayCall,
@@ -411,7 +447,7 @@ async def list_own_platform_shares(call: GatewayCall,
         "status": ("revoked" if share.revoked_at is not None
                    else "expired" if share.expires_at is not None and _utc(share.expires_at) <= now
                    else share.status),
-        "created_at": share.created_at, "expires_at": share.expires_at,
+        "created_at": share.created_at, "expires_at": share.expires_at, "has_password": share.password_hash is not None,
     } for share in rows]}
 
 
@@ -623,6 +659,17 @@ async def public_share_git_sync(call: GatewayCall, token: str, tree_id: str, act
 
 async def public_share_step_message(call: GatewayCall, token: str, step_key: str):
     return await _proxy_share_step(call, token, step_key, 'message')
+
+
+async def public_share_coordinator_action(call: GatewayCall, token: str, proposal_id: str, action: str):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", proposal_id) or action not in {'confirm', 'cancel'}:
+        raise GatewayError('not_found', 'Action unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/actions/{proposal_id}/{action}',
+                                     write=True, body_kind='action' if action == 'confirm' else None)
+
+
+async def public_share_task_operation(call: GatewayCall, token: str):
+    return await _proxy_share_request(call, token, '/api/platform-share/operation', write=True, body_kind='operation')
 
 
 async def public_share_step_resume(call: GatewayCall, token: str, step_key: str):

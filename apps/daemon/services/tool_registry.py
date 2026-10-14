@@ -186,6 +186,60 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         query_params=("project_id",),
     ),
     WorkstepTool(
+        name="workstep_send_step_message",
+        description="Queue a message for a running step or automatic review. Requires an engine supporting live step messages; queued does not mean delivered. Do not stop/restart as an automatic fallback.",
+        method="POST",
+        path="/api/task/{task_id}/step/{step_key}/message",
+        parameters={
+            "project_id": {"type": "string", "description": "current project id"},
+            "task_id": {"type": "string", "description": "current task id"},
+            "step_key": {"type": "string", "description": "existing workflow step key, not display title"},
+            "content": {"type": "string", "description": "message with step-specific requirements and acceptance criteria"},
+            "as_guidance": {"type": "boolean", "description": "also retain as guidance for later attempts; default false"},
+        },
+        required=("project_id", "task_id", "step_key", "content"),
+        read_only=False,
+        side_effect="send a message to the running step engine",
+        path_params=("task_id", "step_key"),
+        query_params=("project_id",),
+        body_params=("content", "as_guidance"),
+    ),
+    WorkstepTool(
+        name="workstep_stop_step",
+        description="Request cancellation of one step and its pending interaction. Re-read the task and wait until the step is no longer running before the next dependent operation. Does not stop the coordinator conversation.",
+        method="POST",
+        path="/api/task/{task_id}/step/{step_key}/cancel",
+        parameters={
+            "project_id": {"type": "string", "description": "current project id"},
+            "task_id": {"type": "string", "description": "current task id"},
+            "step_key": {"type": "string", "description": "existing workflow step key, not display title"},
+        },
+        required=("project_id", "task_id", "step_key"),
+        read_only=False,
+        side_effect="cancel one step engine and its pending interaction",
+        path_params=("task_id", "step_key"),
+        query_params=("project_id",),
+    ),
+    WorkstepTool(
+        name="workstep_start_step",
+        description="Start/resume a non-running step with a message, like @step. Stops the old task runner and restarts this step and its DAG downstream using existing input rules; not an isolated or force start. Preserve the session unless reset_session is explicitly requested.",
+        method="POST",
+        path="/api/task/{task_id}/step/{step_key}/resume",
+        parameters={
+            "project_id": {"type": "string", "description": "current project id"},
+            "task_id": {"type": "string", "description": "current task id"},
+            "step_key": {"type": "string", "description": "existing workflow step key, not display title"},
+            "content": {"type": "string", "description": "startup message with requirements; required even when only continuing"},
+            "reset_session": {"type": "boolean", "description": "start a fresh engine session only when explicitly requested; default false"},
+        },
+        required=("project_id", "task_id", "step_key", "content"),
+        read_only=False,
+        side_effect="stop the old task runner and start this step and its downstream",
+        path_params=("task_id", "step_key"),
+        query_params=("project_id",),
+        body_params=("content", "reset_step", "allow_pending"),
+    ),
+    WorkstepTool(
         name="workstep_list_git_repositories",
         description="List Git repositories discovered in one project before choosing task worktrees.",
         method="GET",
@@ -592,6 +646,11 @@ class WorkstepClient:
                     ),
                 }
             args["cwd"] = project["path"]
+
+        if tool.name == "workstep_start_step":
+            args["allow_pending"] = True
+            if "reset_session" in args:
+                args["reset_step"] = args.pop("reset_session")
 
         url = tool.path
         for param in tool.path_params:

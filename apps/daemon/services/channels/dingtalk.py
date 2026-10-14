@@ -43,11 +43,14 @@ class _CardHandler(CallbackHandler):
             return value if isinstance(value, dict) else {}
         sources = [object_value(raw.get('content')), object_value(raw.get('value')), raw]
         action = ''
+        comment = None
         for source in sources:
             private = object_value(source.get('cardPrivateData'))
             ids = private.get('actionIds') or []
             action = str(ids[0]) if isinstance(ids, list) and ids else str(source.get('actionValue') or source.get('eventKey') or '')
             if action:
+                params = object_value(private.get('params'))
+                comment = params.get('comment')
                 break
         if action:
             if action in {'btn_stop', 'stop'}:
@@ -55,7 +58,7 @@ class _CardHandler(CallbackHandler):
             space = str(raw.get('spaceId') or '')
             conversation_id = '' if 'IM_ROBOT.' in space or raw.get('spaceType') == 'IM_ROBOT' else space.removeprefix('dtv1.card//IM_GROUP.').removeprefix('IM_GROUP.')
             click = ChannelAction(self._adapter._bot['id'], str(raw.get('outTrackId') or ''),
-                action, str(raw.get('userId') or ''), conversation_id=conversation_id)
+                action, str(raw.get('userId') or ''), conversation_id=conversation_id, comment=comment)
             task = asyncio.create_task(self._adapter._card_action(click))
             self._adapter._action_tasks.add(task)
             task.add_done_callback(self._adapter._action_tasks.discard)
@@ -255,7 +258,12 @@ class DingTalkAdapter(ChannelAdapter):
         # Avoid the template's per-Markdown-field size limit on long replies.
         blocks = [{'type':0, 'markdown':card.text[offset:offset + 2500], 'text':'', 'mediaId':''}
                   for offset in range(0, len(card.text), 2500)]
-        return {"title":card.title, "markdown":card.text, "tips":'消息 ID: ' + message_id if message_id else '',
+        review_data = {'inputPrompt':card.input_prompt}
+        for index in range(6):
+            button = card.buttons[index] if index < len(card.buttons) else None
+            review_data.update({f'button{index}Label':button.label if button else '',
+                f'button{index}Visible':str(button is not None).lower()})
+        return {**review_data, "title":card.title, "markdown":card.text, "tips":'消息 ID: ' + message_id if message_id else '',
                 "config":json.dumps({"autoLayout":True, "enableForward":False}),
                 "quoteContent":status.metadata.get('quote', card.title) if status else card.title,
                 "content":'', "copy_content":card.text,
@@ -288,6 +296,8 @@ class DingTalkAdapter(ChannelAdapter):
         template = self._bot.get('card_template_id') or DEFAULT_CARD_TEMPLATE_ID
         if template == DEFAULT_CARD_TEMPLATE_ID and card.buttons and not card.running:
             template = BUTTON_CARD_TEMPLATE_ID
+        if card.input_prompt and self._bot.get('review_card_template_id'):
+            template = self._bot['review_card_template_id']
         self._card_templates[card.id] = template
         self._card_status[card.id] = CardStatus(dict(self._reply_metadata.pop(self._reply_key(recipient), {})))
         self._card_status[card.id].metadata['quote'] = card.title

@@ -47,7 +47,8 @@ test('public share client exposes mode and interactive actions', () => {
 
 test('shared task view enables interactions only for interactive shares', () => {
   assert.match(sharedViewSource, /meta\?\.mode === 'interactive'/)
-  assert.match(sharedViewSource, /chatEnabled=\{interactive\}/)
+  assert.match(sharedViewSource, /if \(interactive && token\)/)
+  assert.match(sharedViewSource, /<SharedEditableTaskDetail/)
   assert.doesNotMatch(sharedViewSource, /interactionOnly=/)
   assert.match(sharedViewSource, /uploadAttachment/)
   assert.match(sharedViewSource, /markdownUrlResolver/)
@@ -57,15 +58,16 @@ test('shared task view enables interactions only for interactive shares', () => 
 })
 
 test('share mode controls the chat composer and Git write access without hiding task content', () => {
-  assert.match(sharedViewSource, /chatEnabled=\{interactive\}/)
-  assert.match(sharedViewSource, /gitCapability=\{\{[^}]*readOnly: !interactive/)
+  assert.match(sharedViewSource, /if \(interactive && token\)/)
+  assert.match(sharedViewSource, /<SharedEditableTaskDetail/)
+  assert.match(sharedViewSource, /gitCapability=\{\{[^}]*readOnly: true/)
   assert.doesNotMatch(taskDetailViewSource, /\breadOnly\b/)
   assert.doesNotMatch(sharedViewSource, /runningSteps=\{interactive \?/)
   assert.doesNotMatch(sharedViewSource, /sharePrimaryAction/)
 })
 
 
-test('interactive share selects an actionable step for its composer', () => {
-  assert.match(sharedViewSource, /resumableSteps/)
-  assert.match(sharedViewSource, /runningSteps\[0\]\?\.key \?\? resumableSteps\[0\]\?\.key/)
+test('editable shares delegate to the task detail controller instead of separate write handlers', () => {
+  assert.match(sharedViewSource, /<SharedEditableTaskDetail/)
+  assert.doesNotMatch(sharedViewSource, /sendStepContent|handleStopStep|decideReview =/)
 })

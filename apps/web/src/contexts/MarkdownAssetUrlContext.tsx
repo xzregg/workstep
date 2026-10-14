@@ -7,6 +7,7 @@ const MarkdownAssetUrlContext = createContext<MarkdownUrlResolver | undefined>(u
 export interface TaskFilePreview {
   load: (path: string) => Promise<FilePreview>
   rawUrl: (path: string) => string
+  windowUrl?: (path: string, name: string, line?: number) => string
 }
 const TaskFilePreviewContext = createContext<TaskFilePreview | undefined>(undefined)
 

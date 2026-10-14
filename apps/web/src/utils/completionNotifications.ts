@@ -28,7 +28,7 @@ interface TerminalEvent {
 }
 
 export function completionNotice(event: TerminalEvent): CompletionNotice | null {
-  if (event.step_key && event.project_id && event.task_id &&
+  if (event.step_key && event.step_key !== 'null' && event.project_id && event.task_id &&
       (event.type === 'RUN_FINISHED' && event.status === 'passed' ||
        event.type === 'RUN_ERROR' && event.status === 'failed')) {
     const success = event.status === 'passed'

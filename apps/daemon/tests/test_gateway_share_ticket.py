@@ -78,14 +78,13 @@ def test_share_provider_grants_are_signed_bounded_and_do_not_change_visitor_iden
             verify_share_ticket(token, key, fingerprint, 'gateway-1', 'device-1')
 
 @pytest.mark.anyio
-async def test_share_bridge_applies_only_signed_supplier_scope_and_keeps_visitor_actor():
+async def test_share_bridge_keeps_signed_metadata_and_visitor_actor():
     import asyncio
     import base64
     import json
     import time
     from types import SimpleNamespace
     from fastapi import FastAPI
-    from services.config import ConfigStore
     from api.desktop_security import DesktopSecurityMiddleware
     from services.remote_access import get_current_actor
     from services.gateway_client.bridge import ManagedHttpBridge
@@ -97,10 +96,8 @@ async def test_share_bridge_applies_only_signed_supplier_scope_and_keeps_visitor
     async def task():
         def check():
             actor = get_current_actor()
-            store = SimpleNamespace(get=lambda *args: {'user_id': 'owner'})
             return {'actor': actor.actor_id,
-                    'allowed': ConfigStore._provider_allowed_for_actor(store, 'supplier'),
-                    'owner_only': ConfigStore._provider_allowed_for_actor(store, 'owner-supplier')}
+                    'provider_ids': sorted(actor.provider_ids or [])}
         return await asyncio.to_thread(check)
     ticket, key, pin = _ticket(mode='interactive', provider_scope={
         'provider_ids': ['supplier'], 'provider_grant_expires_at': int(time.time()) + 300})
@@ -116,5 +113,5 @@ async def test_share_bridge_applies_only_signed_supplier_scope_and_keeps_visitor
         await asyncio.wait_for(bridge._task, 3)
         body = b''.join(base64.b64decode(frame.payload['data']) for frame in frames if frame.payload.get('phase') == 'body')
         return frames[0].payload['status'], json.loads(body) if body else None
-    assert await request({}) == (200, {'actor': 'share:share-1', 'allowed': True, 'owner_only': False})
+    assert await request({}) == (200, {'actor': 'share:share-1', 'provider_ids': ['supplier']})
     assert (await request({'provider_ids': ['owner-supplier']}))[0] == 502

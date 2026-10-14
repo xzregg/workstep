@@ -31,7 +31,7 @@ Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0
 
 `POST /api/admin/permissions` 统一接收 `subject_type`（user/group）、`subject_id`、`permission`、`scope_type`、`scope_id` 和 `effect`；全局/平台不传 scope_id。`GET` 返回旧入口与新入口的同一批有效授权，`DELETE /{assignment_id}` 复用原有撤销逻辑，保留恢复管理员、最后一名本地超管、CSRF 与二次认证保护。项目查看/编辑共用一条授权，调整访问级别不会新增重复授权。资源访问和管理员角色通过撤销控制，五项业务动作支持显式禁止。个人与当前有效组的业务规则合并，禁止优先；超级管理员拥有全部权限，不受普通业务禁止规则限制。组角色也由当前有效成员继承，移出组、停用组或账号后失效。
 
-策略和供应商授权变更提高关联设备版本，下次控制心跳更新签名策略与加密供应商配置。超级管理员角色变更同时更新这两个版本。组供应商默认优先级为用户、用户组、设备；多个组默认按授权创建时间和 ID 稳定选择。网关授权名 `share.create` 对应 daemon 签名能力 `task.share`；任务创建与分享的项目允许/禁止列表均转换为宿主项目 ID 后签名下发，本机接口也遵守项目禁止优先。本地分享创建、引擎安装、任务创建、项目发布与本地供应商修改有实际后端门禁。本地供应商撤权后从目录和运行时选择中移除，已读出的旧供应商也不能继续通过模型调用入口；引擎自身账号登录不属于本地供应商授权。设备停用、撤销或账号停用关闭控制连接时，daemon 清空策略。统一列表展示直接规则，用户的组继承权限由后端实时计算。
+策略和供应商授权变更提高关联设备版本，下次控制心跳更新签名策略与加密供应商配置。超级管理员角色变更同时更新这两个版本。组供应商默认优先级为用户、用户组、设备；多个组默认按授权创建时间和 ID 稳定选择。网关授权名 `share.create` 对应 daemon 签名能力 `task.share`；任务创建与分享的项目允许/禁止列表均转换为宿主项目 ID 后签名下发，本机接口也遵守项目禁止优先。本地分享创建、引擎安装、任务创建、项目发布与本地供应商修改有实际后端门禁。设备自行配置的供应商和模型不因网关权限或访问用户变化从目录和运行时移除；本地供应商修改的管理门禁与读取、执行分开。网关下发供应商撤权后从该设备目录和运行时移除，已读出的旧供应商也不能继续通过模型调用入口。设备停用、撤销或账号停用关闭控制连接时，daemon 清空策略。统一列表展示直接规则，用户的组继承权限由后端实时计算。
 
 桌面登录页支持本地密码及已启用的钉钉/企业微信身份源；扫码回调持久化一次性 state 与经过白名单约束的回跳路径，成功后返回原桌面登录页继续签发 code，失败后携带有限错误状态返回重试。待审核账号进入等待页。
 
@@ -65,7 +65,7 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 0.0.0.0 -
 
 设备子域的 HTTP 和业务 WebSocket 请求现在由 Gateway 校验设备会话、当前分配和在线状态后，按流 ID 经数据 WSS 转发给 PC。PC 在进程内调用已有 FastAPI 应用，注入经过 Gateway 核验的用户身份；HTTP 正文和业务 WebSocket 消息分块传输，Gateway 不转发浏览器 Cookie 或伪造的操作者头。门户“打开电脑”会提交一次性票据，远程 Web 显示设备、用户、在线状态和返回入口。项目会话现在也经该数据通道加载宿主的完整 WorkStep Web，不再由门户复制任务列表/详情；首次只读取绑定项目摘要，进入原任务工作台，任务详情复用 `TaskDetailPage`，项目授权设置复用现有授权展示模块。PC 拒绝远程用户执行原生目录/桌面动作及无项目作用域的 FS 浏览，门户给出本机操作提示。完整流控、受管包端到端验收和更多接口边界检查仍待完成，阶段 3C 不可用于生产。
 
-阶段 4A 的供应商控制面 API 已接入：超级管理员先用 `/api/auth/step-up` 确认密码，再用 `POST /api/admin/providers` 创建供应商，`PUT /api/admin/providers/{id}` 更新配置及轮换密钥，`POST /api/admin/providers/{id}/assign` 给用户或设备分配，`POST /api/admin/providers/{id}/assign/revoke` 撤销，`POST /api/admin/providers/{id}/disable` 停用。`GET /api/admin/providers`、`/{id}/assignments`、`/applications` 只返回非敏感目录、分配和设备应用状态。供应商 Key 在 Gateway 数据库中加密，控制连接用设备临时 X25519 公钥封装配置包；PC 校验网关签名、设备、用户、版本与期限，写入本机 `config.json` 并回执。PC 本地文件系统权限持有人仍能读取已下发 Key。配置/策略失效时受管供应商不可用；配置落盘或引擎刷新失败保留上一版本。远程请求携带当前访问用户的供应商授权及五分钟有效期；PC 同时校验本机有效策略和访问用户的供应商范围。轻量 HTTP 调用重新校验当前凭据和模型目录，撤权或密钥轮换后的缓存配置不可继续使用。无法接入平台供应商的原生凭据引擎在受管模式下拒绝调用。
+阶段 4A 的供应商控制面 API 已接入：超级管理员先用 `/api/auth/step-up` 确认密码，再用 `POST /api/admin/providers` 创建供应商，`PUT /api/admin/providers/{id}` 更新配置及轮换密钥，`POST /api/admin/providers/{id}/assign` 给用户或设备分配，`POST /api/admin/providers/{id}/assign/revoke` 撤销，`POST /api/admin/providers/{id}/disable` 停用。`GET /api/admin/providers`、`/{id}/assignments`、`/applications` 只返回非敏感目录、分配和设备应用状态。供应商 Key 在 Gateway 数据库中加密，控制连接用设备临时 X25519 公钥封装配置包；PC 校验网关签名、设备、用户、版本与期限，写入本机 `config.json` 并回执。PC 本地文件系统权限持有人仍能读取已下发 Key。配置/策略失效时受管供应商不可用；配置落盘或引擎刷新失败保留上一版本。远程请求保留签名的访问者元数据；供应商和模型选择统一读取项目所在设备已配置或已下发的目录，PC 校验该设备的有效下发策略，不按访问用户再次过滤供应商。未下发到目标设备的供应商不可选择。轻量 HTTP 调用重新校验当前凭据和模型目录，撤权或密钥轮换后的缓存配置不可继续使用。无法接入平台供应商的原生凭据引擎在受管模式下拒绝调用。
 
 阶段 4B 的超级管理员在密码二次认证后可用 `POST /api/admin/device-operations` 提交 `install/update/rollback/refresh/test`、引擎 ID、确切版本、设备列表与并发数；`GET /api/admin/device-operations` 分页查询，`GET /api/admin/device-operations/{id}` 查看逐台状态，`POST /api/admin/device-operations/{id}/retry-failed` 仅重试失败或过期设备。命令在控制 WSS 上用 Gateway 密钥签名并绑定设备、动作、参数、幂等键和到期时间；PC 在执行前持久化收据，重复命令返回已有结果。安装/更新/回退仍走本机版本化运行时管理器的官方包目录和互斥逻辑，普通受管本地 API 的引擎管理动作由签名策略门禁拒绝。长时间安装的断线恢复与真实受管包验收仍待完成。
 

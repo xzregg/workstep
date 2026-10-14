@@ -32,6 +32,7 @@ test('step results produce distinct completion notices', () => {
   assert.equal(completionNotice({ ...base, type: 'RUN_ERROR', status: 'failed' })?.outcome, 'failed')
   assert.equal(completionNotice({ ...base, type: 'RUN_ERROR', status: 'cancelled' }), null)
   assert.equal(completionNotice({ ...base, type: 'RUN_FINISHED', step_key: '' }), null)
+  assert.equal(completionNotice({ ...base, type: 'RUN_FINISHED', status: 'passed', step_key: 'null' }), null)
 })
 
 test('task notification URL keeps its workflow so the target board can load it', () => {

@@ -24,6 +24,7 @@ type HeaderHandlers = {
 }
 
 interface Props {
+  standalone?: boolean
   title: string
   onClose: () => void
   children: (handlers: HeaderHandlers) => ReactNode
@@ -108,11 +109,11 @@ function resizePanelBounds(start: PanelBounds, edge: ResizeEdge, deltaX: number,
 }
 
 /** Owns task dialog bounds, pointer and keyboard movement, resize, and persistence. */
-export default function TaskDetailWindow({ title, onClose, children }: Props) {
+export default function TaskDetailWindow({ title, onClose, children, standalone = false }: Props) {
   const { t } = useI18n()
   const compact = useCompactLayout()
   const dialogRef = useRef<HTMLDivElement>(null)
-  useOverlay(compact, onClose, dialogRef, false)
+  useOverlay(!standalone && compact, onClose, dialogRef, false)
   const [panelBounds, setPanelBounds] = useState(initialPanelBounds)
   const interactionCleanupRef = useRef<(() => void) | null>(null)
 
@@ -214,6 +215,7 @@ export default function TaskDetailWindow({ title, onClose, children }: Props) {
     onHeaderDoubleClick: () => setPanelBounds(defaultPanelBounds()),
   }
 
+  if (standalone) return <div className="shared-task-editable-detail">{children({})}</div>
   return <div ref={dialogRef} className="task-detail-window" role="dialog" aria-modal="true"
     aria-label={t('taskDetail.dialogAria', { title })}
     style={{ left: panelBounds.x, top: panelBounds.y,

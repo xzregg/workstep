@@ -79,8 +79,8 @@ export default function FileContextMenu({ target, projectId, projectRoot, localP
       } else if (native && action === 'save') {
         await window.workstepDesktop!.files!.action(absolutePath!, action, opener)
       } else {
-        if (!projectId) throw new Error(t('fileMenu.projectRequired'))
-        const url = filePreview ? filePreview.rawUrl(target.path) : fsApi.projectFileUrl(target.path, projectId)
+        if (!projectId && !filePreview) throw new Error(t('fileMenu.projectRequired'))
+        const url = filePreview ? filePreview.rawUrl(target.path) : fsApi.projectFileUrl(target.path, projectId!)
         if (action === 'content') {
           const preview = await (filePreview ? filePreview.load(target.path) : fsApi.preview(target.path, projectId))
           if (preview.type !== 'text') throw new Error(t('fileMenu.textOnly'))
@@ -130,9 +130,9 @@ export default function FileContextMenu({ target, projectId, projectRoot, localP
           } }}>{t('fileMenu.openWith')} <span>›</span></button>
         <div className="file-context-divider" role="separator" />
       </>}
-      <button autoFocus={!hostActions} role="menuitem" disabled={busy || !projectId} onClick={() => void run('save')}>{t('fileMenu.saveAs')}</button>
+      <button autoFocus={!hostActions} role="menuitem" disabled={busy || (!projectId && !filePreview)} onClick={() => void run('save')}>{t('fileMenu.saveAs')}</button>
       <button role="menuitem" disabled={busy} onClick={() => void run('path')}>{t('fileMenu.copyPath')}</button>
-      <button role="menuitem" disabled={busy || !projectId} onClick={() => void run('content')}>{t('fileMenu.copyContent')}</button>
+      <button role="menuitem" disabled={busy || (!projectId && !filePreview)} onClick={() => void run('content')}>{t('fileMenu.copyContent')}</button>
       {hostActions && <button role="menuitem" disabled={busy} onClick={() => void run('reveal')}>{t('fileMenu.reveal', { app: openers.find(item => item.id === 'file_manager')?.label || t('taskList.openLocation') })}</button>}
       {busy && <div className="file-context-feedback" role="status"><Spinner size={14} />{t('common.loading')}</div>}
       {notice && <div className="file-context-feedback" role="alert">{notice}</div>}

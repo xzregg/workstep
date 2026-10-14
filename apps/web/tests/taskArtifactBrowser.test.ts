@@ -225,3 +225,11 @@ test('derives task and step directories from existing artifact paths when the AP
   ))
   assert.equal((html.match(/class="task-artifact-open-directory(?: task-artifact-open-directory--step)?"/g) || []).length, 2)
 })
+
+test('share artifact directories use task and step identities instead of opaque content IDs', () => {
+  assert.deepEqual(artifactDirectories({
+    path: '.workstep/artifacts/flow/task/build/req1/new.md',
+    source_path: 'flow/task/build/req1/new.md', step_key: 'build',
+    relative_path: 'new.md', round: 1,
+  }), { task: '.workstep/artifacts/flow/task', step: '.workstep/artifacts/flow/task/build' })
+})

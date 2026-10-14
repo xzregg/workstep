@@ -1,0 +1,23 @@
+.gateway-grant-picker { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; min-width: 0; }
+.gateway-grant-picker:not(:has(.gateway-grant-groups)) { grid-template-columns: minmax(0, 1fr); }
+.gateway-grant-groups { margin: 0; padding: 12px; min-width: 0; border: 1px solid var(--gateway-admin-separator); border-radius: var(--gateway-admin-control-radius); }
+.gateway-grant-picker .gateway-tree-scroll { max-height: 240px; overflow-y: auto; }
+.gateway-grant-picker .gateway-tree-scroll > ul { min-width: 0; }
+.gateway-grant-picker .gateway-tree-row { min-width: 0; }
+.gateway-grant-picker .gateway-user-group-tree button { min-width: 0; min-height: 32px; padding: 4px 8px; margin-bottom: 2px; }
+.gateway-grant-picker .gateway-user-group-tree button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gateway-grant-picker .gateway-user-group-tree button small { flex-shrink: 0; }
+.gateway-project-permission-dialog .gateway-grant-picker { margin: 0 24px 16px; flex-shrink: 0; }
+.gateway-grant-members { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.gateway-grant-picker .gateway-grant-subjects { flex: 1; min-height: 160px; max-height: 240px; }
+.gateway-grant-picker .gateway-admin-search { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.gateway-grant-picker .gateway-admin-search label { width: 100%; }
+.gateway-grant-picker .gateway-admin-search input { flex: 1; min-width: 100px; }
+.gateway-grant-permission { margin: 0; padding: 12px; border: 1px solid var(--gateway-admin-separator); border-radius: var(--gateway-admin-control-radius); }
+.gateway-grant-level-options { display: flex; gap: 24px; }
+.gateway-grant-level-options label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.gateway-grant-level-options input[type="radio"] { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; }
+@media (max-width: 640px) {
+ .gateway-grant-picker { grid-template-columns: minmax(0, 1fr); }
+ .gateway-grant-picker .gateway-tree-scroll { max-height: 140px; }
+}

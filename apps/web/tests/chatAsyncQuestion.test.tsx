@@ -7,6 +7,70 @@ import { installDomEnvironment } from './helpers/domEnv'
 import ChatMessageBubble from '../src/components/ChatMessageBubble'
 import { I18nProvider } from '../src/i18n'
 
+for (const options of [[], ['网关页面打不开', '设备离线']]) {
+  test(`question already in the body renders once with ${options.length} choices`, async () => {
+    const { window } = installDomEnvironment()
+    const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
+    const title = '连不上时，是网关登录页面也打不开，还是页面能打开但设备显示离线／远程工作台打不开？网关部署在本机还是服务器？'
+    const submitted: string[] = []
+    try {
+      for (const streaming of [true, false]) {
+        await act(async () => root.render(
+          <I18nProvider>
+            <ChatMessageBubble
+              role="assistant" sender="Codex" initials="AI" color="var(--ai-assistant)"
+              content={`我需要确认连接情况。\n\n${title}`} streaming={streaming}
+              events={[{
+                type: 'TEXT_MESSAGE_CONTENT', messageId: 'question-1',
+                delta: `我需要确认连接情况。\n\n${title}`,
+              }, {
+                type: 'CUSTOM', name: 'workstep.async_question',
+                value: { source_item_id: 'question-1', questions: [{ title, options }] },
+              }]}
+              onAsyncQuestionSubmit={async (value) => { submitted.push(value); return true }}
+            />
+          </I18nProvider>,
+        ))
+        assert.equal(window.document.body.textContent?.split(title).length, 2)
+        assert.ok(window.document.body.textContent?.includes('我需要确认连接情况。'))
+        assert.equal(window.document.querySelectorAll('.chat-async-question').length, options.length ? 1 : 0)
+      }
+      if (options.length) {
+        const button = window.document.querySelector<HTMLButtonElement>('.chat-async-question button')
+        assert.ok(button)
+        await act(async () => button.click())
+        assert.deepEqual(submitted, [options[0]])
+      }
+    } finally {
+      await act(async () => root.unmount())
+      await window.happyDOM.close()
+    }
+  })
+}
+
+test('a question absent from the body keeps its title even without choices', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
+  try {
+    await act(async () => root.render(
+      <I18nProvider>
+        <ChatMessageBubble
+          role="assistant" sender="Codex" initials="AI" color="var(--ai-assistant)"
+          content="先确认连接情况。"
+          events={[{
+            type: 'CUSTOM', name: 'workstep.async_question',
+            value: { source_item_id: 'question-2', questions: [{ title: '网关部署在哪里？', options: [] }] },
+          }]}
+        />
+      </I18nProvider>,
+    ))
+    assert.equal(window.document.querySelector('.chat-async-question')?.textContent, '网关部署在哪里？')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('Codex asynchronous question submits a choice without changing the draft', async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))

@@ -49,3 +49,34 @@ async def test_custom_markdown_template_keeps_its_existing_fields():
     assert payload['cardTemplateId'] == 'custom.schema'
     data = payload['cardData']['cardParamMap']
     assert (data['title'], data['markdown'], data['tips']) == ('标题', '正文', '消息 ID: assistant')
+
+
+async def test_review_template_is_separate_from_running_reply_template():
+    adapter = DingTalkAdapter({'id':'bot', 'app_id':'app', 'secret':'secret',
+        'review_card_template_id':'review.schema'}, AsyncMock(), AsyncMock())
+    adapter._card_api = AsyncMock(return_value={})
+    message = IncomingMessage('bot','in','group','room','user','')
+    await adapter.send_card(message, ChannelCard('review','等待审核','正文',
+        (ChannelButton('0','通过'), ChannelButton('1','不通过')), input_prompt='审核意见（可选）'))
+    payload = adapter._card_api.await_args.args[1]
+    assert payload['cardTemplateId'] == 'review.schema'
+    data = payload['cardData']['cardParamMap']
+    assert data['button0Label'] == '通过' and data['button1Label'] == '不通过'
+    assert data['button0Visible'] == 'true' and data['button2Visible'] == 'false'
+    await adapter.send_card(message, ChannelCard('running','运行','正文', (ChannelButton('0','中止'),), running=True))
+    assert adapter._card_api.await_args.args[1]['cardTemplateId'] == '675cde2f-f526-40cb-b828-f5b2b57b8b77.schema'
+
+
+async def test_review_callback_reads_native_input_from_private_params():
+    import asyncio
+    from types import SimpleNamespace
+    from services.channels.dingtalk import _CardHandler
+    adapter = DingTalkAdapter({'id':'bot', 'app_id':'app', 'secret':'secret'}, AsyncMock(), AsyncMock())
+    adapter._card_action = AsyncMock()
+    handler = _CardHandler(adapter)
+    await handler.process(SimpleNamespace(data={'outTrackId':'review', 'userId':'reviewer',
+        'spaceId':'dtv1.card//IM_GROUP.room', 'content':json.dumps({'cardPrivateData':{
+            'actionIds':['1'], 'params':{'comment':'请补充测试','decision':'approve'}}})}))
+    await asyncio.gather(*adapter._action_tasks)
+    click = adapter._card_action.await_args.args[0]
+    assert (click.card_id, click.key, click.comment, click.conversation_id) == ('review','1','请补充测试','room')

@@ -65,6 +65,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git curl jq \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=git-build /root/.workstep/runtime/base/git /root/.workstep/runtime/base/git
+# Login shells reset PATH; absolute /usr/bin/git must also use the managed Git.
+RUN ln -sf /root/.workstep/runtime/base/git/bin/git /usr/bin/git
 
 # Keep the managed runtime under HOME; /usr/local only supplies the image seed.
 ENV HOME=/root \

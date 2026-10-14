@@ -15,6 +15,7 @@ export interface ChannelBot {
   app_id: string
   enabled: boolean
   card_template_id?: string
+  review_card_template_id?: string
   task_bindings?: BotTaskBinding[]
   has_secret: boolean
   status: string
@@ -26,6 +27,7 @@ export interface ChannelBot {
 
 export interface BotDraft {
   card_template_id?: string
+  review_card_template_id?: string
   platform: BotPlatform
   name: string
   app_id: string

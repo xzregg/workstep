@@ -4,12 +4,16 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 /** Produces a bounded report with recent context and only a few error stacks. */
 final class DiagnosticReport {
+    private static final DateTimeFormatter LOCAL_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS XXX");
+
     private static final class Entry {
         long time;
         String header;
@@ -18,7 +22,8 @@ final class DiagnosticReport {
 
     static String create(File directory, long now) {
         List<Entry> recent = new ArrayList<>();
-        StringBuilder report = new StringBuilder("生成时间：").append(Instant.ofEpochMilli(now))
+        DateTimeFormatter localClock = LOCAL_TIME.withZone(ZoneId.systemDefault());
+        StringBuilder report = new StringBuilder("生成时间：").append(localClock.format(Instant.ofEpochMilli(now)))
                 .append("\n范围：最近30分钟，最多30条诊断事件和3条错误详情\n");
         for (String name : new String[]{"main-log.txt", "notification-log.txt"}) {
             File file = new File(directory, name);
@@ -47,7 +52,7 @@ final class DiagnosticReport {
         report.append("\n==== 最近操作与连接状态 ====\n");
         if (recent.isEmpty()) report.append("最近30分钟暂无记录，请复现问题后复制。\n");
         for (Entry entry : recent.subList(Math.max(0, recent.size() - 30), recent.size())) {
-            report.append(shorten(entry.header, 240)).append('\n');
+            report.append(shorten(localTime(entry.header, entry.time, localClock), 240)).append('\n');
         }
         if (recent.size() > 30) report.append("已省略较早的诊断事件。\n");
         List<Entry> errors = new ArrayList<>();
@@ -59,7 +64,7 @@ final class DiagnosticReport {
         int number = 0;
         for (Entry entry : errors.subList(Math.max(0, errors.size() - 3), errors.size())) {
             report.append("\n==== 错误详情 ").append(++number).append(" ====\n")
-                    .append(shorten(entry.text, 1600)).append('\n');
+                    .append(shorten(localTime(entry.text, entry.time, localClock), 1600)).append('\n');
         }
         if (errors.size() > 3) report.append("已省略较早的错误详情。\n");
         File crash = new File(directory, "last-crash.txt");
@@ -70,6 +75,11 @@ final class DiagnosticReport {
             } catch (Exception ignored) { }
         }
         return shorten(report.toString(), 14000);
+    }
+
+    private static String localTime(String text, long epochMillis, DateTimeFormatter time) {
+        int end = text.indexOf(' ');
+        return end < 0 ? text : time.format(Instant.ofEpochMilli(epochMillis)) + text.substring(end);
     }
 
     private static String shorten(String text, int limit) {

@@ -185,6 +185,10 @@ def test_shared_task_uses_owner_display_fields_without_private_paths(manager, tm
     assert payload is not None
     for key in (
         "run_round",
+        "review_overrides",
+        "queue_position",
+        "archived",
+        "active_workflow_run_id",
         "restart_from_step_key",
         "recovered_count",
         "creator_name",
@@ -1138,3 +1142,67 @@ async def test_interactive_share_upload_records_anonymous_visitor_without_sessio
     assert rows[0]["metadata"]["access_source"] == "task_share"
     assert rows[0]["metadata"]["file_name"] == "notes.txt"
     assert session not in str(rows) and share["token"] not in str(rows)
+
+
+def test_share_default_expiry_and_expired_sessions_are_rejected(manager, tmp_path):
+    from datetime import timedelta
+    from models import TaskShare
+    from models.fields import utc_now
+    project, task = _create_task_in_project(manager, tmp_path / 'expiry-project')
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task['id'], password='generated-key')
+        assert abs((share['expires_at'] - utc_now() - timedelta(days=7)).total_seconds()) < 2
+        session = share_service.verify_share_password(share['token'], 'generated-key')
+        assert share_service.resolve_share_session(session)
+        TaskShare.update(expires_at=utc_now() - timedelta(seconds=1)).where(TaskShare.id == share['id']).execute()
+        assert share_service.resolve_share_by_token(share['token']) is None
+        assert share_service.verify_share_password(share['token'], 'generated-key') is None
+        assert share_service.resolve_share_session(session) is None
+        assert share_service.get_share_for_task(task['id']) is None
+        with pytest.raises(ValueError):
+            share_service.create_share(task['id'], expires_at=utc_now() - timedelta(seconds=1))
+    finally:
+        db_proxy.reset(ctx)
+
+
+@pytest.mark.asyncio
+async def test_share_socket_expires_and_session_lookup_does_not_block_health(monkeypatch):
+    import threading
+    import time
+    from datetime import timedelta
+    from fastapi import FastAPI
+    from types import SimpleNamespace
+    from models.fields import utc_now
+    from streaming import ws as ws_routes
+    app = FastAPI()
+    @app.get('/health')
+    async def health():
+        return {'ok': True}
+    bus = EventBus()
+    monkeypatch.setattr(ws_routes, '_main', lambda: SimpleNamespace(event_bus=bus))
+    async def allowed(_ws):
+        return True
+    monkeypatch.setattr(ws_routes, 'desktop_websocket_allowed', allowed)
+    entered = threading.Event()
+    def slow_session(_session):
+        entered.set()
+        time.sleep(0.25)
+        return {'task_id': 'task', 'expires_at': utc_now() + timedelta(seconds=0.1)}
+    monkeypatch.setattr(share_service, 'resolve_share_session', slow_session)
+    ws_routes.register_websocket_routes(app)
+    endpoint = next(route.endpoint for route in app.routes if route.path == '/ws/share')
+    closed = []
+    class Socket:
+        async def accept(self): pass
+        async def receive_text(self): await asyncio.Future()
+        async def close(self, code, reason): closed.append((code, reason))
+    pending = asyncio.create_task(endpoint(Socket(), session='visitor'))
+    assert await asyncio.to_thread(entered.wait, 1)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        start = time.monotonic()
+        assert (await client.get('/health')).status_code == 200
+        assert time.monotonic() - start < 0.15
+    await asyncio.wait_for(pending, 1)
+    assert closed == [(4401, 'share expired')]
+    assert not bus._subscribers

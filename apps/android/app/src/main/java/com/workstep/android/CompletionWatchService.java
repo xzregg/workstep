@@ -230,11 +230,12 @@ public final class CompletionWatchService extends Service {
             String sessionId = NotificationIds.value(event.optString("session_id"));
             String taskId = "session_chat".equals(event.optString("channel")) && !sessionId.isEmpty()
                     ? "" : NotificationIds.value(event.optString("task_id"));
-            boolean step = ("RUN_FINISHED".equals(type) && "passed".equals(status))
-                    || ("RUN_ERROR".equals(type) && "failed".equals(status));
+            String stepKey = NotificationIds.value(event.optString("step_key"));
+            boolean step = !stepKey.isEmpty() && (("RUN_FINISHED".equals(type) && "passed".equals(status))
+                    || ("RUN_ERROR".equals(type) && "failed".equals(status)));
             if (!step && !"TEXT_MESSAGE_END".equals(type)) return;
             String watchId = step
-                    ? event.optString("project_id") + ":" + taskId + ":step:" + event.optString("step_key")
+                    ? event.optString("project_id") + ":" + taskId + ":step:" + stepKey
                     : event.optString("project_id") + ":" +
                     (!sessionId.isEmpty() ? sessionId : taskId)
                     + ":" + event.optString("messageId");
@@ -259,7 +260,7 @@ public final class CompletionWatchService extends Service {
                 String name = NotificationContent.name(watch.optString("scopeName"), sessionId, taskId);
                 String result = CompletionNotifications.show(this, id,
                         NotificationContent.title(name, step, success),
-                        NotificationContent.body(name, taskReply, step ? event.optString("step_key") : "", success),
+                        NotificationContent.body(name, taskReply, step ? stepKey : "", success),
                         destination, server);
                 CrashReports.log(this, "后台通知进程", "系统通知：" + result + "；目标=" + destination, null);
             }

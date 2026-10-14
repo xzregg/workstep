@@ -234,9 +234,12 @@ async def lifespan(app: FastAPI):
     local_cli_runtime = LocalCliRuntime(os.environ['WORKSTEP_DAEMON_URL'])
     await asyncio.to_thread(local_cli_runtime.publish)
     app.state.local_cli_runtime = local_cli_runtime
+    from services.system_statistics import system_statistics
+    await system_statistics.start()
     try:
         yield
     finally:
+        await system_statistics.close()
         app.state.local_cli_runtime = None
         await asyncio.to_thread(local_cli_runtime.close)
         await completion_push.shutdown()

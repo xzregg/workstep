@@ -1,3 +1,4 @@
+import { userChoiceLabel } from './AdminSelection'
 import { useEffect, useState } from 'react'
 import { GatewayModal } from './GatewayModal'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -57,7 +58,7 @@ export function AdminDeviceOwnerDialog({ device, csrf, onComplete, onClose }: {
   <div className="gateway-auth-form">
    <label htmlFor="new-device-owner">新所有者（最多显示 25 人，可搜索）</label>
    <select id="new-device-owner" value={userId} disabled={busy || loading} onChange={event => setUserId(event.target.value)}>
-    <option value="">请选择用户</option>{users.filter(user => user.status === 'active' && user.id !== device.owner_user_id).map(user => <option key={user.id} value={user.id}>{user.display_name || user.username} · {user.username}</option>)}
+    <option value="">请选择用户</option>{users.filter(user => user.status === 'active' && user.id !== device.owner_user_id).map(user => <option key={user.id} value={user.id}>{userChoiceLabel(user)}</option>)}
    </select>
    <PasswordConfirmation id="owner-password" label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />
   </div>

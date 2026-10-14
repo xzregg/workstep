@@ -39,6 +39,7 @@ const task = {
 
 async function renderShare(mode: 'read_only' | 'interactive') {
   const { window, document } = installDomEnvironment()
+  window.history.replaceState({}, "", "/share/token-1")
   const originalFetch = globalThis.fetch
   const originalWebSocket = globalThis.WebSocket
   class FakeWebSocket {
@@ -51,8 +52,18 @@ async function renderShare(mode: 'read_only' | 'interactive') {
     send() {}
   }
   Object.assign(globalThis, { WebSocket: FakeWebSocket })
-  globalThis.fetch = async (input) => {
+  globalThis.fetch = async (input, init) => {
     const url = String(input)
+    if (url.endsWith('/operation')) {
+      const operation = JSON.parse(String(init?.body))
+      const path = operation.path.split('?')[0]
+      if (path === '/task/list') return jsonResponse({ tasks: [task] })
+      if (path.endsWith('/step/build/config')) return jsonResponse({ editable: true, configured: { engine: 'codex', config: {} }, resolved: { engine: 'codex', config: {} }, available_engines: [] })
+      if (path.endsWith('/coordinator-config')) return jsonResponse({ configured: { engine: 'codex', config: {} }, resolved: { engine: 'codex', config: {} }, available_engines: [] })
+      if (path.endsWith('/actions')) return jsonResponse({ buttons: [], runs: [] })
+      if (path.endsWith('/discussion-groups') || path === '/provider/list' || path === '/engine/list') return jsonResponse([])
+      return jsonResponse({})
+    }
     if (url.endsWith('/meta')) {
       return jsonResponse({ mode, title: 'Shared', password_required: false })
     }
@@ -109,7 +120,7 @@ test('interactive task share window shows the task-detail message composer', asy
   assert.match(rendered.text, /build/i)
 })
 
-test('share modes keep the same task display and differ only by the composer', async () => {
+test('editable shares expose task operations while both modes retain task content', async () => {
   const interactive = await renderShare('interactive')
   const readOnly = await renderShare('read_only')
 
@@ -117,12 +128,12 @@ test('share modes keep the same task display and differ only by the composer', a
   assert.equal(readOnly.hasComposer, false)
   assert.equal(interactive.hasAnalysisTab, true)
   assert.equal(readOnly.hasAnalysisTab, true)
-  assert.equal(interactive.hasDescriptionEdit, false)
+  assert.equal(interactive.hasDescriptionEdit, true)
   assert.equal(readOnly.hasDescriptionEdit, false)
   for (const label of ['Shared interactive task', 'Task description', 'build']) {
     assert.match(interactive.text, new RegExp(label, 'i'))
     assert.match(readOnly.text, new RegExp(label, 'i'))
   }
   assert.match(interactive.text, /Build step prompt/)
-  assert.equal(interactive.displayHtml, readOnly.displayHtml)
+  assert.notEqual(interactive.displayHtml, readOnly.displayHtml)
 })

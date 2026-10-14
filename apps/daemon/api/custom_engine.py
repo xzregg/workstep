@@ -2,7 +2,7 @@
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -132,3 +132,14 @@ async def export_to_path(request: ExportRequest):
 async def onboarding():
     from services.custom_engine_onboarding import create_onboarding
     return await invoke(create_onboarding())
+
+
+@router.post("/import")
+async def import_engine(request: Request):
+    from services.custom_engine_import import MAX_PACKAGE, import_package
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > MAX_PACKAGE:
+            raise HTTPException(413, '引擎包不能超过 32 MiB')
+        data.extend(chunk)
+    return await invoke(import_package(bytes(data)))

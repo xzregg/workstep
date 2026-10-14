@@ -174,7 +174,7 @@ export default function MessageIdPopover({ messageId, sessionId, projectId, open
     : messageId || ''
   // 开发模式 + 有宿主项目时，每个 ID 行的复制按钮旁多一个「打开」按钮，
   // 在文件管理器里 reveal 该会话/消息的 JSONL 事件日志目录。
-  const canOpenJournal = Boolean(openEnabled && projectId && !isGatewayRemoteBrowser())
+  const canOpenJournal = Boolean(openEnabled && projectId && !projectId.startsWith('share:') && !isGatewayRemoteBrowser())
   const openJournal = () => fsApi.openSessionJournal(
     projectId as string, hasSession ? sessionId : null, hasMessage ? messageId : null,
   ).then(() => undefined)

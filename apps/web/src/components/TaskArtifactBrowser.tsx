@@ -7,6 +7,7 @@ import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
 import TaskArtifactPreviewDialog from './TaskArtifactPreviewDialog'
 import { collapseDirectoryArtifactChildren } from '../utils/artifactListing'
 import ArtifactUnchangedBadge from './ArtifactUnchangedBadge'
+import { useSharedGit } from './git/GitApiContext'
 
 interface ArtifactStepDefinition {
   key: string
@@ -69,7 +70,11 @@ function parentDirectory(path: string) {
   return parent === path ? '' : parent
 }
 
-export function artifactDirectories(artifact: Pick<TaskArtifact, 'path' | 'relative_path' | 'round'>) {
+export function artifactDirectories(artifact: Pick<TaskArtifact, 'path' | 'relative_path' | 'round'> & Partial<Pick<TaskArtifact, 'source_path' | 'step_key'>>) {
+  if (artifact.source_path && artifact.step_key && artifact.path.endsWith(artifact.source_path)) {
+    const task = artifact.path.slice(0, -artifact.source_path.length) + artifact.source_path.split('/').slice(0, 2).join('/')
+    return { task, step: `${task}/${artifact.step_key}` }
+  }
   const relativeParts = artifact.relative_path?.split(/[\\/]/).filter(Boolean) || []
   if (!relativeParts.length) return null
   let roundDirectory = artifact.path.replace(/[\\/]+$/, '')
@@ -119,6 +124,7 @@ export default function TaskArtifactBrowser({
   onOpenArtifact: (name: string, stepKey?: string, round?: number, path?: string) => void
 }) {
   const { t, locale } = useI18n()
+  const shared = useSharedGit()
   const stepGroups = useMemo(
     () => buildArtifactStepGroups(artifacts, steps),
     [artifacts, steps],
@@ -264,7 +270,7 @@ export default function TaskArtifactBrowser({
           )
         })}
       </div>
-      {openDirectory && projectId && (
+      {openDirectory && projectId && !shared && (
         <ProjectDirectoryBrowserDialog
           projectId={projectId}
           title={openDirectory.title}
@@ -273,7 +279,7 @@ export default function TaskArtifactBrowser({
           onClose={() => setOpenDirectory(null)}
         />
       )}
-      {openDirectory && !projectId && artifacts.length > 0 && (
+      {openDirectory && (!projectId || shared) && artifacts.length > 0 && (
         <TaskArtifactPreviewDialog
           artifact={{
             ...artifacts[0],

@@ -13,6 +13,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from api.task_context import _run_db
+from api.shared_coordinator_actions import ShareActionConfirmation, apply_shared_coordinator_action
+from api.shared_task_operations import SharedTaskOperation, dispatch_shared_task_operation
 
 router = APIRouter(prefix="/api/platform-share")
 _ARTIFACT_ID = re.compile(r"[0-9a-f]{64}\Z")
@@ -97,6 +99,24 @@ def _interactive_scope(request: Request, step_key: str) -> dict:
     return scope
 
 
+@router.post("/actions/{proposal_id}/confirm")
+async def confirm_platform_share_action(request: Request, proposal_id: str, body: ShareActionConfirmation):
+    scope = _interactive_share_scope(request)
+    return await apply_shared_coordinator_action(scope["host_project_id"], scope["task_id"], proposal_id, body)
+
+
+@router.post("/operation")
+async def platform_share_task_operation(request: Request, body: SharedTaskOperation):
+    scope = _interactive_share_scope(request)
+    return await dispatch_shared_task_operation(request, scope['host_project_id'], scope['task_id'], body)
+
+
+@router.post("/actions/{proposal_id}/cancel")
+async def cancel_platform_share_action(request: Request, proposal_id: str):
+    scope = _interactive_share_scope(request)
+    return await apply_shared_coordinator_action(scope["host_project_id"], scope["task_id"], proposal_id)
+
+
 @router.get("/interventions")
 async def read_platform_share_interventions(request: Request):
     scope = _interactive_share_scope(request)
@@ -144,8 +164,10 @@ def _task_artifacts(project, task_id: str) -> list[tuple[dict, Path]]:
             "step_key", "round", "is_latest", "is_selected", "manifest_status",
             "eligible_for_downstream", "name", "logical_name", "artifact_type",
             "output_port", "declared_output", "relative_path", "size", "updated_at",
+            "unchanged_from_round", "round_unchanged_from",
         )}
         public["id"] = artifact_id
+        public["source_path"] = relative.as_posix()
         result.append((public, path))
     return result
 
@@ -156,11 +178,16 @@ async def read_platform_share_artifacts(request: Request):
     from main import project_manager
     if project_manager is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    artifacts = await project_manager.run_db(
+    def listing(project):
+        from services.artifacts import list_task_artifact_input_snapshots, project_relative_artifact_listing
+        artifacts = [public for public, _ in _task_artifacts(project, scope['task_id'])]
+        snapshots = list_task_artifact_input_snapshots(scope['task_id'])
+        _, snapshots = project_relative_artifact_listing(project, [], snapshots)
+        return {'artifacts': artifacts, 'input_snapshots': snapshots}
+    return await project_manager.run_db(
         scope["host_project_id"],
-        lambda project: [public for public, _ in _task_artifacts(project, scope["task_id"])],
+        listing,
     )
-    return {"artifacts": artifacts}
 
 
 @router.get("/artifacts/{artifact_id}/content")
@@ -488,9 +515,15 @@ async def read_platform_share_task(request: Request):
         workflow = task['workflow']['steps']
         # Preserve graph/prompt viewing without exposing engine configuration,
         # credentials, task-dispatch target IDs or host filesystem paths.
+        nodes = workflow.get('nodes', [])
         workflow['nodes'] = [{key: node[key] for key in (
             'id', 'key', 'type', 'title', 'label', 'color', 'prompt', 'engine', 'model', 'inputs', 'outputs',
         ) if key in node} for node in workflow.get('nodes', [])]
+        for public, node in zip(workflow['nodes'], nodes):
+            if isinstance(node.get('review'), dict):
+                public['review'] = {key: node['review'][key] for key in (
+                    'mode', 'auto', 'maxRetries', 'prompt', 'engine', 'model',
+                ) if key in node['review']}
         workflow.pop('config', None)
     return task
 
@@ -656,7 +689,7 @@ async def read_platform_share_events(request: Request, message_id: str, cursor: 
     def load(project):
         try:
             return shared_message_events(project, scope["task_id"], message_id,
-                                         cursor=cursor, limit=100, mode=scope["mode"])
+                                         cursor=cursor, limit=3000, mode=scope["mode"])
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="Message events unavailable") from exc
 

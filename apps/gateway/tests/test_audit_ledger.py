@@ -143,6 +143,10 @@ def test_admin_audit_query_only_exposes_published_project_events(tmp_path):
                         host_project_id="project-2", name="Private",
                         access_mode="policy_only", status="active",
                     ))
+                    session.add(AuditEvent(id="snapshot-owner", user_id=owner_id, actor_type="user",
+                        actor_name="历史姓名", actor_username="old_owner", action="test.snapshot", result="success"))
+                    session.add(AuditEvent(id="anonymous-owner", user_id=owner_id, actor_type="anonymous",
+                        actor_username="attempt", action="auth.login", result="failed"))
                     session.add(AuditEvent(
                         id="global-secret", user_id=owner_id,
                         action="auth.login", result="success",
@@ -167,6 +171,14 @@ def test_admin_audit_query_only_exposes_published_project_events(tmp_path):
         legacy = next(item for item in all_events.json()["items"]
                       if item["id"] == "global-secret")
         assert legacy["metadata"] == {"user_id": "owner"}
+        assert legacy["actor_name"] == "Owner"
+        assert legacy["actor_username"] == "owner"
+        snapshot = next(item for item in all_events.json()['items'] if item['id'] == 'snapshot-owner')
+        assert (snapshot['actor_name'], snapshot['actor_username']) == ('历史姓名', 'old_owner')
+        anonymous = next(item for item in all_events.json()['items'] if item['id'] == 'anonymous-owner')
+        assert anonymous['actor_name'] is None
+        assert anonymous['actor_username'] == 'attempt'
+
 
         filtered = client.get("/api/admin/audit", params={
             "user_id": "user-1", "result": "succeeded", "q": "task-1",

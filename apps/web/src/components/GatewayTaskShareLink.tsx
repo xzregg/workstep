@@ -10,7 +10,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { request } from '../api/transport'
 import type { GatewayRemoteSession } from '../stores/gatewaySessionStore'
 
-export default function GatewayTaskShareLink({ taskId, projectId, local = false }: { taskId: string; projectId: string | null; local?: boolean }) {
+export default function GatewayTaskShareLink({ taskId, projectId, taskTitle, local = false }: { taskId: string; projectId: string | null; taskTitle?: string; local?: boolean }) {
   const session = useGatewaySessionStore(state => state.session)
   const [target, setTarget] = useState<{ projectId: string; source: GatewayRemoteSession; session: GatewayRemoteSession } | null>(null)
   useEffect(() => {
@@ -21,20 +21,22 @@ export default function GatewayTaskShareLink({ taskId, projectId, local = false 
       .catch(() => { if (!cancelled) setTarget(null) })
     return () => { cancelled = true }
   }, [session, projectId, local])
-  const shareSession = session?.host_project_id ? session : session && target?.source === session && target.projectId === projectId ? target.session : null
+  const sameIdentity = session && target && session.device_id === target.source.device_id && session.user_id === target.source.user_id && session.username === target.source.username
+  const shareSession = session?.host_project_id ? session : sameIdentity && target?.projectId === projectId ? target.session : null
   const [open, setOpen] = useState(false)
-  const platformProjectId = local ? projectId : shareSession?.project_id
-  const api = useMemo(() => platformProjectId ? createGatewayTaskShareApi(platformProjectId, local) : null, [platformProjectId, local])
+  const hostProject = !local && !session?.host_project_id
+  const platformProjectId = local || hostProject ? projectId : shareSession?.project_id
+  const api = useMemo(() => platformProjectId ? createGatewayTaskShareApi(platformProjectId, local, hostProject) : null, [platformProjectId, local, hostProject])
   const { t } = useI18n()
   const { can } = useGatewayProjectPermissions(projectId || undefined)
-  if ((!can('share.create') && !can('share.manage')) || !projectId || (!local && (!shareSession?.share_create || !shareSession.project_id || shareSession.host_project_id !== projectId))) return null
+  if ((!can('share.create') && !can('share.manage')) || !projectId || (!local && (!shareSession?.share_create || !platformProjectId || shareSession.host_project_id !== projectId))) return null
   return <><Button className="task-detail-share-button" variant="ghost"
     title={t('taskDetail.shareButtonTitle')} aria-label={t('taskDetail.shareButtonTitle')}
     onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); setOpen(true) }}>
     <Icon name="share" size={13} strokeWidth={1.75} />
     <span className="task-detail-share-label">{t('share.dialogTitle')}</span>
   </Button>
-    {api && projectId && createPortal(<ShareDialog key={`${platformProjectId}:${taskId}`} open={open} taskId={taskId} projectId={projectId}
+    {api && projectId && createPortal(<ShareDialog key={`${platformProjectId}:${taskId}`} open={open} taskId={taskId} taskTitle={taskTitle} projectId={projectId}
       api={api} gateway onClose={() => setOpen(false)} />, document.body)}
   </>
 }

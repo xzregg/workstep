@@ -681,8 +681,7 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   width: 100%; min-width: 0; opacity: 1;
 }
 .task-board-card .task-card-meta { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
-.task-board-card-metadata { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.task-board-card-created { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
+.task-board-card-meta-spacer { flex: 1; min-width: 0; }
 .task-board-card-buttons { display: flex; flex-wrap: nowrap; gap: 2px; flex-shrink: 0; }
 @media (hover: hover) and (pointer: fine) {
   .task-board-card-buttons { opacity: 0; transition: opacity var(--motion-fast); }
@@ -6131,10 +6130,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 @keyframes app-loading-spin { to { transform: rotate(360deg); } }
 
-.task-share-expiry { display: flex; flex-direction: column; gap: 6px; }
-.task-share-expiry > span { font-size: calc(12px * var(--font-scale)); font-weight: 500; color: var(--fg-2); }
+.task-share-expiry, .task-share-access-key { display: flex; flex-direction: column; gap: 6px; }
+.task-share-expiry > span, .task-share-access-key > span { font-size: calc(12px * var(--font-scale)); font-weight: 500; color: var(--fg-2); }
 .task-share-link-unavailable p { color: var(--muted); font-size: calc(12px * var(--font-scale)); }
 
 .schedule-permission-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 
 .task-board-load-error { padding: 12px 20px; color: var(--danger); overflow-wrap: anywhere; }
+
+.task-share-expiry-display { font-size: calc(11px * var(--font-scale)); color: var(--muted); }

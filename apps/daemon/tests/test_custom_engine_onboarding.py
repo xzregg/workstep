@@ -37,7 +37,8 @@ async def test_onboarding_resolves_engine_before_creating_project(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_onboarding_api_uses_real_db_without_blocking_event_loop(tmp_path, monkeypatch):
+@pytest.mark.parametrize('imported', [False, True])
+async def test_onboarding_api_uses_real_db_without_blocking_event_loop(tmp_path, monkeypatch, imported):
     import time
     from fastapi import FastAPI
     from httpx import AsyncClient, ASGITransport
@@ -62,14 +63,23 @@ async def test_onboarding_api_uses_real_db_without_blocking_event_loop(tmp_path,
     async def health(): return {"ok": True}
     try:
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
-            pending = asyncio.create_task(client.post("/custom/onboarding"))
+            if imported:
+                from tests.test_custom_engine_import import package
+                pending = asyncio.create_task(client.post('/custom/import', content=package()))
+            else:
+                pending = asyncio.create_task(client.post("/custom/onboarding"))
             await asyncio.sleep(.05)
             assert (await asyncio.wait_for(client.get("/health"), .1)).json()["ok"]
             response = await pending
             assert response.status_code == 200, response.text
             result = response.json()
             detail = await manager.run_db(result["project_id"], lambda current: module.get_session(result["project_id"], result["session_id"]))
-            assert detail["title"] == "自定义引擎接入"
+            assert detail["title"] == ("导入自定义引擎" if imported else "自定义引擎接入")
+            if imported:
+                assert result['package_path'] in result['prompt']
+                assert 'engine validate' in result['prompt']
+                assert '同 ID' in result['prompt']
+                assert '不重新创建适配器' in result['prompt']
     finally:
         await module.shutdown(); await bus.close(); await asyncio.to_thread(manager.close_all)
 

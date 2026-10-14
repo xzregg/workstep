@@ -146,7 +146,7 @@ export default function ArtifactPreview({
     return () => {
       active = false
     }
-  }, [view, projectId, taskFilePreview, t])
+  }, [view.kind, view.path, projectId, taskFilePreview, t])
 
   const fileHeader = (label: string, extra?: ReactNode) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
@@ -253,9 +253,11 @@ export default function ArtifactPreview({
       className="artifact-open-window-button"
       onClick={() => {
         window.open(
-          taskFilePreview
-            ? taskFilePreview.rawUrl(preview.relative_path || view.path)
-            : previewWindowUrl(view.path, name || filenameFromPath(view.path), projectId!, line),
+          taskFilePreview?.windowUrl
+            ? taskFilePreview.windowUrl(view.path, name || filenameFromPath(view.path), line)
+            : projectId
+              ? previewWindowUrl(view.path, name || filenameFromPath(view.path), projectId, line)
+              : taskFilePreview!.rawUrl(preview.relative_path || view.path),
           '_blank',
           'noopener,noreferrer',
         )

@@ -152,3 +152,30 @@ test('one permission entry assigns a group rule, preserves errors and revokes it
   await waitFor(() => assert.ok(requests.some(row => row.url.endsWith('capability%3A1') && row.init?.method === 'DELETE')))
   await screen.findByText(/尚无权限规则/)
 })
+
+ test('permission picker places one search row above its choices and applies the search', async () => {
+ const { PermissionPicker } = await import('../src/PermissionPicker')
+ const urls: string[] = []
+ globalThis.fetch = async input => { urls.push(String(input)); return Response.json({ subjects: [{ id: 'u', name: '张三' }], total: 1 }) }
+ render(<PermissionPicker kind="subject" targetType="user" label="授权对象" value="" onChange={() => {}} />)
+ await screen.findByRole('option', { name: '张三' })
+ const search = screen.getByRole('textbox', { name: '搜索授权对象' })
+ const choices = screen.getByRole('combobox', { name: '授权对象' })
+ assert.ok(search.compareDocumentPosition(choices) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING)
+ fireEvent.change(search, { target: { value: '张三' } })
+ fireEvent.click(screen.getByRole('button', { name: '搜索' }))
+ await waitFor(() => assert.ok(urls.some(url => new URL(url, 'https://gateway.test').searchParams.get('q') === '张三')))
+ })
+
+test('project summary shows saved fine permissions and their names instead of only base grant counts', () => {
+ const base = {subject_type:'user' as const,subject_id:'u',subject_name:'张三',scope_type:'project',scope_id:'p',scope_name:'演示项目',effect:'allow' as const}
+ const permissions = Array.from({length:44},(_,i) => ({id:`feature.${i}`,name:`功能${i}`,description:'',category:'功能'}))
+ const rules = [{...base,id:'project:g',permission:'project.edit',ui_permissions:{allow:permissions.map(p => p.id),deny:['file.delete']}}, {...base,id:'capability:c',permission:'task.create'}]
+ render(<PermissionSubjectTable assignments={rules} name={id => id === 'task.create' ? '创建任务' : '编辑项目'} projectCatalog={[...permissions,{id:'file.delete',name:'删除文件',description:'',category:'文件'}]} projectSets={[{id:'editor',name:'项目编辑者',description:'',permissions:permissions.map(p => p.id)}]} canEdit canRevoke onEdit={() => {}} onRevoke={() => {}} />)
+ assert.ok(screen.getByText('允许 44 项 · 禁止 1 项'))
+ assert.equal(screen.queryByText('允许 2 项 · 禁止 0 项'),null)
+ fireEvent.click(screen.getByRole('button',{name:'查看规则'}))
+ assert.ok(screen.getByText('功能43'))
+ assert.ok(screen.getByText('禁止 · 删除文件'))
+ assert.ok(screen.getByText(/基础授权：允许 2 条 · 禁止 0 条/))
+})

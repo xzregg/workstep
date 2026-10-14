@@ -1,3 +1,4 @@
+import { userChoiceLabel } from './AdminSelection'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
 import { AdminRoleScopePicker, roleScopes } from './AdminRoleScopePicker'
@@ -70,7 +71,7 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
       {userChoices.length > 0 && <label htmlFor="role-selected-user">选择用户</label>}
       {userChoices.length > 0 && <select id="role-selected-user" aria-label="选择用户" value={userId} onChange={event => setUserId(event.target.value)}>
         <option value="">选择用户</option>{userChoices.map(user => <option value={user.id} key={user.id}>
-          {user.display_name}{user.username?.startsWith('ext_') ? '（企业扫码用户）' : `（${user.username ?? ''}）`}</option>)}
+          {userChoiceLabel(user)}</option>)}
       </select>}
       <label htmlFor="role-kind">管理员角色</label>
       <select id="role-kind" value={role} onChange={event => {

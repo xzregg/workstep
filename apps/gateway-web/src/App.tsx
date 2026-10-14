@@ -68,7 +68,7 @@ function GatewayPortalApp() {
         <Route path="/admin/device-operations" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin', 'device_admin', 'org_admin', 'department_admin']}><AdminDeviceOperationsPage /></AdminAccessGate>} />
         <Route path="/admin/projects" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin', 'org_admin', 'department_admin']}><AdminProjectsPage /></AdminAccessGate>} />
+          allow={['super_admin', 'org_admin', 'department_admin']}><AdminProjectsPage canConfigurePermissions={adminAccess.access?.roles.includes('super_admin')} /></AdminAccessGate>} />
         <Route path="/admin/permissions" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminPermissionsPage key="resource-permissions" /></AdminAccessGate>} />
         <Route path="/admin/platform-permissions" element={<AdminAccessGate state={adminAccess}

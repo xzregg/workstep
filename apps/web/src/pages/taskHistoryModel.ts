@@ -8,7 +8,7 @@ export function mergeLoadedTaskMessageEvents(
   messages: any[],
   messageId: string,
   loadedEvents: any[],
-  detail: { complete: boolean; next_cursor: number | null },
+  detail: { complete: boolean; next_cursor: number | null; last_event_seq?: number },
 ): any[] {
   return messages.map((message) => {
     if (message.id !== messageId) return message
@@ -26,13 +26,15 @@ export function mergeLoadedTaskMessageEvents(
       (eventSequence(left) ?? Number.MAX_SAFE_INTEGER)
       - (eventSequence(right) ?? Number.MAX_SAFE_INTEGER)
     ))
+    const loadedCursor = detail.last_event_seq ?? message.event_detail?.last_event_seq ?? 0
     return {
       ...message,
       events,
       event_detail: {
         ...message.event_detail,
         available: true,
-        loaded: true,
+        loaded: detail.last_event_seq === undefined || loadedCursor >= (message.event_detail?.last_event_seq ?? 0),
+        ...(detail.last_event_seq === undefined ? {} : { loaded_cursor: loadedCursor }),
         loading: false,
         complete: detail.complete,
         next_cursor: detail.next_cursor,

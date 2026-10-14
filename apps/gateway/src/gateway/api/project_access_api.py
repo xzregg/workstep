@@ -49,9 +49,10 @@ async def list_admin_projects(request: Request, q: str = Query('', max_length=12
 async def list_project_grant_subjects(request: Request,
                                       subject_type: Literal['user', 'group'],
                                       q: str = Query('', max_length=128),
+                                      group_id: str = Query('', max_length=64),
                                       page: int = Query(1, ge=1),
                                       page_size: int = Query(25, ge=1, le=100)):
-    return await invoke(_handle_list_project_grant_subjects, request=request, subject_type=subject_type, q=q, page=page, page_size=page_size)
+    return await invoke(_handle_list_project_grant_subjects, request=request, subject_type=subject_type, q=q, group_id=group_id, page=page, page_size=page_size)
 
 
 @router.get('/admin/devices/{device_id}/publishable-projects')

@@ -1,6 +1,6 @@
 import { gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { shareApi, type ReviewRun, type ShareMeta, type SharedTask, type TaskArtifact } from '../api/client'
+import { shareApi, type ReviewRun, type ShareMeta, type SharedTask, type TaskArtifact, type TaskArtifactInputSnapshot } from '../api/client'
 import { ApiError } from '../api/transport'
 import type { SharedTaskApi } from '../api/share'
 import { useI18n } from '../i18n'
@@ -16,7 +16,7 @@ export type SharePhase =
   | { kind: 'error'; message: string }
 
 /** Owns public share access, the initial snapshot, and its live subscription. */
-export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareApi) {
+export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareApi, { live = true }: { live?: boolean } = {}) {
   const { t } = useI18n()
   const [phase, setPhase] = useState<SharePhase>({ kind: 'loading-meta' })
   const [meta, setMeta] = useState<ShareMeta | null>(null)
@@ -24,6 +24,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
   const [messages, setMessages] = useState<any[]>([])
   const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
   const [artifactDirectory, setArtifactDirectory] = useState('')
+  const [inputSnapshots, setInputSnapshots] = useState<TaskArtifactInputSnapshot[]>([])
   const [reviews, setReviews] = useState<ReviewRun[]>([])
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -37,6 +38,8 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
   const reunlockAttemptsRef = useRef(0)
   const requestedDetails = useRef(new Set<string>())
   const detailsInFlight = useRef(new Set<string>())
+  const latestTask = useRef(task)
+  latestTask.current = task
 
   const loadWithSession = useCallback(async (sessionToken: string, version = scopeVersion.current) => {
     if (!token || version !== scopeVersion.current) return
@@ -53,6 +56,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
     setNextOffset('next_offset' in historyData && historyData.next_offset != null ? Number(historyData.next_offset) : null)
     setArtifacts(artifactsData.artifacts)
     setArtifactDirectory(artifactsData.artifact_directory || '')
+    setInputSnapshots(artifactsData.input_snapshots || [])
     setReviews(reviewsData.reviews || [])
     setPhase({ kind: 'ready', sessionToken })
   }, [api, token])
@@ -145,7 +149,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
   }, [api, token, meta, password, t, loadWithSession, recoverSession])
 
   useEffect(() => {
-    if (phase.kind !== 'ready' || !token) return
+    if (phase.kind !== 'ready' || !token || !live) return
     const sessionToken = phase.sessionToken
     let closed = false
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -163,11 +167,13 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
             api.reviews(token, sessionToken), api.artifacts(token, sessionToken),
           ])
           if (closed) return
+          latestTask.current = fresh
           setTask(fresh)
           setMessages(previous => mergeSharedHistorySnapshot(previous, history.messages))
           setReviews(review.reviews)
           setArtifacts(output.artifacts)
           setArtifactDirectory(output.artifact_directory || '')
+          setInputSnapshots(output.input_snapshots || [])
         } while (snapshotAgain && !closed)
       } finally { snapshotInFlight = false }
     }
@@ -234,7 +240,18 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
 
     if (api.buildWsUrl(sessionToken) === null) {
       let timer: ReturnType<typeof setTimeout> | null = null
+      let polling = false
+      const schedule = () => {
+        if (closed || document.visibilityState === 'hidden') return
+        const activeStatuses = ['running', 'reviewing', 'retrying', 'rework']
+        const current = latestTask.current
+        const active = activeStatuses.includes(current?.status || '')
+          || current?.steps?.some(step => activeStatuses.includes(step.status))
+        timer = setTimeout(() => { timer = null; void poll() }, active ? 2000 : 30000)
+      }
       const poll = async () => {
+        if (closed || polling || document.visibilityState === 'hidden') return
+        polling = true
         try {
           await refreshSnapshot()
           if (!closed) setWsStatus('live')
@@ -248,11 +265,20 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
               return
             }
           }
-        }
-        if (!closed) timer = setTimeout(() => void poll(), 2000)
+        } finally { polling = false }
+        schedule()
       }
-      timer = setTimeout(() => void poll(), 2000)
-      return () => { closed = true; if (timer) clearTimeout(timer) }
+      const onVisibilityChange = () => {
+        if (timer) { clearTimeout(timer); timer = null }
+        if (document.visibilityState !== 'hidden') void poll()
+      }
+      document.addEventListener('visibilitychange', onVisibilityChange)
+      schedule()
+      return () => {
+        closed = true
+        if (timer) clearTimeout(timer)
+        document.removeEventListener('visibilitychange', onVisibilityChange)
+      }
     }
     connect()
     return () => {
@@ -262,7 +288,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
       wsRef.current = null
       try { ws?.close() } catch { /* ignore */ }
     }
-  }, [api, phase, token, recoverSession, meta])
+  }, [api, phase, token, recoverSession, meta, live])
 
   const refreshTask = useCallback(async () => {
     if (!token || phase.kind !== 'ready') return
@@ -287,7 +313,8 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
       ? { ...item, event_detail: { ...item.event_detail, loading: true, error: '' } }
       : item))
     try {
-      let cursor = 0
+      let cursor = message.event_detail.loaded_cursor ?? 0
+      let lastEventSeq = cursor
       let complete = false
       const events: any[] = []
       let nextCursor: number | null = null
@@ -296,6 +323,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
         events.push(...page.events)
         complete = page.complete || page.next_cursor === null
         nextCursor = page.next_cursor
+        lastEventSeq = page.last_event_seq ?? nextCursor ?? message.event_detail.last_event_seq ?? lastEventSeq
         if (!complete) {
           if (nextCursor === cursor) throw new Error('Event detail cursor did not advance')
           cursor = nextCursor!
@@ -303,7 +331,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
       }
       if (version !== scopeVersion.current) return
       setMessages((current) => mergeLoadedTaskMessageEvents(
-        current, messageId, events, { complete, next_cursor: nextCursor },
+        current, messageId, events, { complete, next_cursor: nextCursor, last_event_seq: lastEventSeq },
       ))
     } catch (reason) {
       if (version !== scopeVersion.current) return
@@ -349,7 +377,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
 
   return {
     retry, loadOlderHistory: nextOffset === null ? undefined : loadOlderHistory, loadingOlder,
-    phase, meta, task, messages, artifacts, artifactDirectory, reviews, wsStatus,
+    phase, meta, task, messages, artifacts, artifactDirectory, inputSnapshots, reviews, wsStatus,
     password, setPassword, error, unlock, refreshTask, appendOptimisticMessage, loadMessageEvents,
   }
 }

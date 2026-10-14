@@ -65,6 +65,7 @@ def test_group_task_create_tracks_current_membership_and_denies_override(tmp_pat
         }).status_code == 200
         user_rules = client.get('/api/admin/projects/project-1/task-create-users').json()['assignments']
         assert user_rules[0]['username'] == 'worker'
+        assert user_rules[0]['display_name'] == 'Worker'
         assert user_rules[0]['effect'] == 'deny'
         denied = policy()
         assert denied[3] == []

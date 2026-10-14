@@ -28,3 +28,4 @@ class TaskShare(BaseModel):
     revoked = pw.IntegerField(default=0)
     created_at = UTCDateTimeField()
     revoked_at = UTCDateTimeField(null=True)
+    expires_at = UTCDateTimeField(null=True)

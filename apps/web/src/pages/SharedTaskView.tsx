@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import ConfirmDialog from '../components/ConfirmDialog'
+import { useParams, useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
 import Input from '../components/Input'
 import Spinner from '../components/Spinner'
@@ -16,39 +15,38 @@ import {
   type TaskArtifact,
 } from '../api/client'
 import {
-  createOptimisticUserMessage,
-  isStepResumableWithMessage,
   isStepActiveForStop,
   isTaskCompleted,
   resolveStepDisplayStatus,
   findActiveStepIndex,
 } from './taskDetailChat'
 import { findPreferredArtifact } from './taskArtifactRules'
+import { sharedTaskArtifactFiles, sharedTaskFilePath } from './sharedTaskFiles'
 import { useI18n } from '../i18n'
-import type { ReviewDecisionAction } from '../components/ReviewDecisionActions'
 import type { SharedTaskApi } from '../api/share'
 import { useSharedTaskSession } from '../hooks/useSharedTaskSession'
+import { MarkdownAssetUrlProvider } from '../contexts/MarkdownAssetUrlContext'
+import FilePreviewPage from './FilePreviewPage'
+import { gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
+import SharedEditableTaskDetail from './SharedEditableTaskDetail'
 
 export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi }) {
   const { token } = useParams<{ token: string }>()
+  const [searchParams] = useSearchParams()
+  const standalonePreview = searchParams.get('preview') === '1'
   const { t, locale } = useI18n()
   const {
-    phase, meta, task, messages, artifacts, artifactDirectory, reviews, wsStatus, retry, loadOlderHistory, loadingOlder,
-    password, setPassword, error, unlock: handleUnlock, refreshTask: refreshSharedTask,
-    appendOptimisticMessage, loadMessageEvents,
-  } = useSharedTaskSession(token, api)
+    phase, meta, task, messages, artifacts, artifactDirectory, inputSnapshots, reviews, wsStatus, retry, loadOlderHistory, loadingOlder,
+    password, setPassword, error, unlock: handleUnlock, loadMessageEvents,
+  } = useSharedTaskSession(token, api, { live: !standalonePreview })
+  const artifactFiles = useMemo(() => sharedTaskArtifactFiles(artifacts), [artifacts])
+  const sharedArtifactDirectory = artifactDirectory || (artifacts[0]?.source_path
+    ? `.workstep/artifacts/${artifacts[0].source_path.split('/').slice(0, 2).join('/')}` : '')
   const [previewArtifact, setPreviewArtifact] = useState<TaskArtifact | null>(null)
+  const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const [artifactNotice, setArtifactNotice] = useState<string | null>(null)
   const [selectedStep, setSelectedStep] = useState(0)
   const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
-  const [chatTarget, setChatTarget] = useState<string | 'coordinator'>('coordinator')
-  const [prompt, setPrompt] = useState('')
-  const [chatError, setChatError] = useState('')
-  const [stoppingStepKeys, setStoppingStepKeys] = useState<string[]>([])
-  const [reviewComment, setReviewComment] = useState('')
-  const [reviewPending, setReviewPending] = useState(false)
-  const [reviewConfirmation, setReviewConfirmation] = useState<{ action: ReviewDecisionAction; review: any; stepKey: string } | null>(null)
-  const reviewBusy = useRef(false)
   const selectedStepTaskRef = useRef<string | null>(null)
 
   // ── Step data for TaskDetailView (read-only mode) ──────────────────
@@ -228,11 +226,6 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
   const executionStepModel = activeStep?.model || task?.model || ''
   const taskCompleted = isTaskCompleted(task?.steps || [])
   const interactive = meta?.mode === 'interactive'
-  const reviewActionLabels: Record<ReviewDecisionAction, string> = {
-    approve: t('taskDetail.approve'), reject: t('taskDetail.reject'),
-    'force-approve': t('taskDetail.forceApprove'), terminate: t('taskDetail.terminate'),
-    'complete-task': t('taskDetail.completeTask'), 'set-complete': t('taskDetail.setStepComplete'),
-  }
   const shareSessionToken = phase.kind === 'ready' ? phase.sessionToken : ''
   const sharedGitApi = useMemo(() => createGitApi(<T,>(path: string, options?: RequestInit) =>
     api.gitRequest<T>(token || '', shareSessionToken, path, options),
@@ -243,13 +236,20 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
       : src,
     [api, token, shareSessionToken],
   )
+  const sharedArtifactsRef = useRef(artifacts)
+  sharedArtifactsRef.current = artifacts
   const sharedFilePreview = useMemo(() => ({
     load: (path: string) => token && shareSessionToken
-      ? api.previewFile(token, shareSessionToken, path)
+      ? api.previewFile(token, shareSessionToken, sharedTaskFilePath(path, sharedArtifactsRef.current))
       : Promise.reject(new Error(t('share.sessionExpired'))),
     rawUrl: (path: string) => token && shareSessionToken
-      ? api.fileUrl(token, shareSessionToken, path)
+      ? api.fileUrl(token, shareSessionToken, sharedTaskFilePath(path, sharedArtifactsRef.current))
       : '',
+    windowUrl: (path: string, name: string, line?: number) => {
+      const params = new URLSearchParams({ preview: '1', path, name })
+      if (line !== undefined) params.set('line', String(line))
+      return gatewayResourceUrl(`/share/${encodeURIComponent(token || '')}?${params}`)
+    },
   }), [api, token, shareSessionToken, t])
   const browseGitWorkspace = useCallback(
     (path: string, includeHidden: boolean) => token && shareSessionToken
@@ -272,129 +272,6 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
     [steps, stepProgress],
   )
 
-  const resumableSteps = useMemo(
-    () => steps.filter((step) => (
-      stepProgress.some((progress) => (
-        progress.step_key === step.key
-        && isStepResumableWithMessage(progress.status, progress.has_history)
-      ))
-    )),
-    [steps, stepProgress],
-  )
-
-  useEffect(() => {
-    if (!interactive) return
-    setChatTarget((current) => {
-      if (runningSteps.some((step) => step.key === current)) return current
-      if (resumableSteps.some((step) => step.key === current)) return current
-      return runningSteps[0]?.key ?? resumableSteps[0]?.key ?? current
-    })
-  }, [interactive, runningSteps, resumableSteps])
-
-  const sendStepContent = useCallback(async (content: string): Promise<boolean> => {
-    if (!token || phase.kind !== 'ready' || !task) return false
-    const selectedTargetReady = chatTarget !== 'coordinator' && (
-      runningSteps.some((step) => step.key === chatTarget)
-      || resumableSteps.some((step) => step.key === chatTarget)
-    )
-    const target = selectedTargetReady
-      ? chatTarget
-      : runningSteps[0]?.key || resumableSteps[0]?.key
-    if (!target) {
-      setChatError(t('share.noInteractiveStep'))
-      return false
-    }
-    setChatError('')
-    try {
-      const stepProgressItem = stepProgress.find((item) => item.step_key === target)
-      const canResume = stepProgressItem
-        && isStepResumableWithMessage(
-          stepProgressItem.status,
-          stepProgressItem.has_history,
-        )
-      const accepted = canResume
-        ? await api.resumeStep(token, phase.sessionToken, target, content)
-        : await api.sendStepMessage(
-            token,
-            phase.sessionToken,
-            task.id,
-            target,
-            content,
-          )
-      appendOptimisticMessage(createOptimisticUserMessage(
-        accepted.message_id,
-        content,
-        target,
-        accepted.created_at || new Date().toISOString(),
-      ))
-      await refreshSharedTask()
-      return true
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-      return false
-    }
-  }, [
-    api,
-    token,
-    phase,
-    task,
-    chatTarget,
-    stepProgress,
-    runningSteps,
-    resumableSteps,
-    t,
-    refreshSharedTask,
-    appendOptimisticMessage,
-  ])
-
-  const handleSend = useCallback(async () => {
-    const content = prompt.trim()
-    if (!content) return
-    const sent = await sendStepContent(content)
-    if (sent) setPrompt('')
-  }, [prompt, sendStepContent])
-
-  const handleStopStep = useCallback(async (stepKey: string) => {
-    if (!token || phase.kind !== 'ready') return
-    if (stoppingStepKeys.includes(stepKey)) return
-    setStoppingStepKeys((current) => [...current, stepKey])
-    setChatError('')
-    try {
-      await api.cancelStep(token, phase.sessionToken, stepKey)
-      await refreshSharedTask()
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
-    } finally {
-      setStoppingStepKeys((current) => current.filter((key) => key !== stepKey))
-    }
-  }, [
-    api,
-    token,
-    phase,
-    stoppingStepKeys,
-    t,
-    refreshSharedTask,
-  ])
-
-  const respondInteraction = useCallback(async (id: string, response: Record<string, unknown>) => {
-    if (!token || phase.kind !== 'ready' || !interactive) return
-    await api.respondInteraction(token, phase.sessionToken, id, response)
-    await refreshSharedTask()
-  }, [api, token, phase, interactive, refreshSharedTask])
-
-  const decideReview = useCallback(async (action: ReviewDecisionAction, review?: any, stepKey?: string) => {
-    const selected = review || reviews.find(item => item.step_key === currentStep.key && item.status === 'pending')
-    if (!token || phase.kind !== 'ready' || !interactive || !selected || reviewBusy.current || action === 'set-complete') return
-    reviewBusy.current = true; setReviewPending(true); setChatError('')
-    try {
-      await api.decideReview(token, phase.sessionToken, stepKey || selected.step_key, selected.id,
-        action, reviewComment.trim() || undefined)
-      setReviewComment(''); setReviewConfirmation(null)
-      await refreshSharedTask()
-    } catch (reason) { setChatError(reason instanceof Error ? reason.message : t('taskDetail.reviewActionFailed')) }
-    finally { reviewBusy.current = false; setReviewPending(false) }
-  }, [api, token, phase, interactive, reviews, currentStep.key, reviewComment, refreshSharedTask, t])
-
   const findArtifact = (
     name: string,
     preferredStepKey?: string,
@@ -402,7 +279,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
     round?: number,
     path?: string,
   ) => {
-    return findPreferredArtifact(source || artifacts, name, preferredStepKey, round, path)
+    return findPreferredArtifact(source || artifactFiles, name, preferredStepKey, round, path)
   }
 
   const openArtifact = (
@@ -513,11 +390,32 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
     </span>
   )
 
+  if (standalonePreview && !interactive) return (
+    <MarkdownAssetUrlProvider resolver={markdownUrlResolver} filePreview={sharedFilePreview}>
+      <FilePreviewPage />
+    </MarkdownAssetUrlProvider>
+  )
+
+  if (interactive && token) return (
+    <SharePageShell>
+      <SharedEditableTaskDetail previewOnly={standalonePreview} token={token} session={shareSessionToken} api={api} task={task}
+        messages={messages} artifacts={artifactFiles} inputSnapshots={inputSnapshots} reviews={reviews}
+        readCapabilities={{ artifactDirectory: sharedArtifactDirectory, resolveAssetUrl: markdownUrlResolver,
+          filePreview: sharedFilePreview, loadMessageEvents, openArtifact,
+          loadExecutionReport: executionReportLoader, browseGitWorkspace }}
+        gitCapability={{ api: sharedGitApi, projectId: 'shared', shared: true, readOnly: false,
+          workspaceEditable: api.gitWorkspaceEditable, allowedActions: api.gitAllowedActions }}
+        attachment={{ prefix: task.id.slice(0, 8),
+          upload: (file, prefix) => api.uploadAttachment(token, shareSessionToken, file, prefix) }}
+        loadOlderHistory={loadOlderHistory} />
+    </SharePageShell>
+  )
+
   return (
     <SharePageShell>
       <TaskDetailPage
-        chatEnabled={interactive}
-        gitCapability={{ api: sharedGitApi, projectId: 'shared', shared: true, readOnly: !interactive, workspaceEditable: api.gitWorkspaceEditable, allowedActions: api.gitAllowedActions }}
+        chatEnabled={false}
+        gitCapability={{ api: sharedGitApi, projectId: 'shared', shared: true, readOnly: true, workspaceEditable: api.gitWorkspaceEditable, allowedActions: api.gitAllowedActions }}
         task={task}
         steps={steps}
         workflowConnections={task?.workflow?.steps?.connections || []}
@@ -527,7 +425,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
         historyMessages={messages}
         onLoadOlderHistory={loadOlderHistory}
         readCapabilities={{
-          artifactDirectory,
+          artifactDirectory: sharedArtifactDirectory,
           resolveAssetUrl: markdownUrlResolver,
           filePreview: sharedFilePreview,
           loadMessageEvents,
@@ -540,33 +438,13 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
         content=""
         reviews={reviews}
         reviewCanCompleteStep={false}
-        reviewComment={reviewComment}
-        onReviewCommentChange={setReviewComment}
-        reviewActionPending={reviewPending}
-        onReviewAction={interactive ? (action, review, stepKey) => {
-          const selected = review || reviews.find(item => item.step_key === currentStep.key && item.status === 'pending')
-          if (selected && action !== 'set-complete') setReviewConfirmation({ action, review: selected, stepKey: stepKey || selected.step_key })
-        } : undefined}
-        onInteractionRespond={interactive ? respondInteraction : undefined}
-        chatTarget={chatTarget}
-        onChatTargetChange={setChatTarget}
-        chatError={chatError || error || ''}
-        prompt={prompt}
-        onPromptChange={setPrompt}
-        onSend={interactive ? handleSend : undefined}
-        chatAttachment={interactive && token ? {
-          prefix: task.id.slice(0, 8),
-          upload: (file, prefix) => api.uploadAttachment(
-            token,
-            shareSessionToken,
-            file,
-            prefix,
-          ),
-          onError: setChatError,
-        } : undefined}
-        onStopStep={interactive ? handleStopStep : undefined}
-        stoppingStepKeys={stoppingStepKeys}
-        artifacts={artifacts}
+        reviewComment=""
+        chatTarget="coordinator"
+        chatError={error || ''}
+        prompt=""
+        stoppingStepKeys={[]}
+        artifacts={artifactFiles}
+        artifactInputSnapshots={inputSnapshots}
         headerActions={headerActions}
         locale={locale}
         durationNowMs={durationNowMs}
@@ -578,17 +456,14 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
         runningSteps={runningSteps}
         executionStepModel={executionStepModel}
         sessionIdForStep={(key) => stepProgress.find(step => step.step_key === key)?.session_id || null}
-        onViewingPromptChange={() => {}}
+        onViewingPromptChange={setViewingPrompt}
+        viewingPrompt={viewingPrompt}
+        onCloseViewingPrompt={() => setViewingPrompt(null)}
         running={task.status === 'running'}
         previewArtifact={previewArtifact}
         onCloseArtifactPreview={() => setPreviewArtifact(null)}
         artifactNotice={artifactNotice || undefined}
       />
-      <ConfirmDialog open={!!reviewConfirmation} title={t('taskDetail.reviewResult')}
-        message={reviewConfirmation ? `${task.title} · ${reviewConfirmation.stepKey} · ${reviewActionLabels[reviewConfirmation.action]}` : ''}
-        loading={reviewPending} danger={reviewConfirmation?.action === 'terminate' || reviewConfirmation?.action === 'reject'}
-        onConfirm={() => { if (reviewConfirmation) void decideReview(reviewConfirmation.action, reviewConfirmation.review, reviewConfirmation.stepKey) }}
-        onCancel={() => { if (!reviewBusy.current) setReviewConfirmation(null) }} />
     </SharePageShell>
   )
 }

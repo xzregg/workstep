@@ -26,12 +26,13 @@ export function postAndroidCompletion(message:BridgeMessage,deviceId?:string) {
 
 
 export function notifyAndroidGatewayCompletion(event:{device_id:string;host_project_id:string;device_name:string;scope_name?:string;
- task_id?:string;session_id?:string;messageId?:string;step_key?:string;source_sequence?:number;status:string}) {
+ task_id?:string;session_id?:string;messageId?:string;step_key?:string|null;source_sequence?:number;status:string}) {
  const project=event.host_project_id,scope=event.session_id || event.task_id
- if(!scope || (!event.step_key && !event.messageId))return
- const id=event.step_key?`${project}:${event.task_id}:step:${event.step_key}:${event.source_sequence ?? event.status}`:`${project}:${scope}:${event.messageId}`
+ const stepKey=event.step_key && event.step_key!=='null'?event.step_key:undefined
+ if(!scope || (!stepKey && !event.messageId))return
+ const id=stepKey?`${project}:${event.task_id}:step:${stepKey}:${event.source_sequence ?? event.status}`:`${project}:${scope}:${event.messageId}`
  const target=new URLSearchParams({project,...(event.task_id?{task:event.task_id}:{session:event.session_id!})})
  postAndroidCompletion({type:'notify',id,projectId:project,taskId:event.task_id || null,sessionId:event.session_id || null,
-  stepKey:event.step_key,outcome:['succeeded','passed'].includes(event.status)?'succeeded':'failed',
+  ...(stepKey?{stepKey}:{}),outcome:['succeeded','passed'].includes(event.status)?'succeeded':'failed',
   scopeName:`${event.device_name} · ${event.scope_name || scope}`,url:`/${event.task_id?'tasks':'chat'}?${target}`},event.device_id)
 }

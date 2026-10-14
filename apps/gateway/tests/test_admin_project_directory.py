@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
-from gateway.models import Device, PlatformProject
+from gateway.models import Device, PlatformProject, User
 
 
 def test_admin_project_directory_is_paged_and_contains_only_published_metadata(tmp_path):
@@ -21,6 +21,7 @@ def test_admin_project_directory_is_paged_and_contains_only_published_metadata(t
         async def seed():
             async with app.state.database.session() as session:
                 async with session.begin():
+                    session.add(User(id='external-user', username='ext_02c264d44230b936f6c2ce', display_name='张三', status='active'))
                     session.add(Device(id='pc-1', name='Main PC', public_key='test',
                                        status='active', app_instance_id='app-1', version='1.0'))
                     for project_id, name, mode in (
@@ -30,7 +31,7 @@ def test_admin_project_directory_is_paged_and_contains_only_published_metadata(t
                     ):
                         session.add(PlatformProject(id=project_id, device_id='pc-1',
                                                     host_project_id=f'host-{project_id}',
-                                                    name=name, access_mode=mode, status='active'))
+                                                    name=name, access_mode=mode, status='active', published_by_user_id=worker))
 
         client.portal.call(seed)
         assert client.post('/api/auth/step-up', headers={'X-CSRF-Token': csrf}, json={
@@ -40,6 +41,12 @@ def test_admin_project_directory_is_paged_and_contains_only_published_metadata(t
             'name': 'Engineering', 'slug': 'engineering',
         })
         assert group.status_code == 201, group.text
+        group_id = group.json()['id']
+        assert client.post(f'/api/groups/{group_id}/members', headers={'X-CSRF-Token': csrf}, json={'user_id': worker}).status_code == 200
+        members = client.get('/api/admin/project-grant-subjects', params={'subject_type': 'user', 'group_id': group_id, 'q': 'Worker'})
+        assert members.json()['subjects'] == [{'id': worker, 'name': 'Worker'}]
+        assert client.get('/api/admin/project-grant-subjects', params={'subject_type': 'user', 'group_id': group_id, 'q': '张三'}).json()['subjects'] == []
+
         assert client.post('/api/admin/projects/project-a/grants', headers={'X-CSRF-Token': csrf}, json={
             'subject_type': 'user', 'subject_id': worker, 'access_level': 'edit',
         }).status_code == 200
@@ -49,12 +56,13 @@ def test_admin_project_directory_is_paged_and_contains_only_published_metadata(t
         first = listed.json()['projects'][0]
         assert first['id'] == 'project-a'
         assert first['device_name'] == 'Main PC'
+        assert first['publisher'] == 'Worker'
         assert first['device_online'] is False
         assert first['grant_users'] == 1
         assert first['grant_groups'] == 0
         assert first['grant_levels'] == {'read': 0, 'edit': 1}
         grants = client.get('/api/admin/projects/project-a/grants').json()['grants']
-        assert grants[0]['subject_name'] == 'worker'
+        assert grants[0]['subject_name'] == 'Worker'
         assert 'host_project_id' not in first
         assert 'content' not in first
         second = client.get('/api/admin/projects?sort=name&direction=asc&page=2&page_size=1').json()
@@ -63,7 +71,11 @@ def test_admin_project_directory_is_paged_and_contains_only_published_metadata(t
         assert client.get('/api/admin/projects?page_size=101').status_code == 422
         subjects = client.get('/api/admin/project-grant-subjects?subject_type=user&q=work&page_size=1')
         assert subjects.json()['total'] == 1
-        assert subjects.json()['subjects'][0]['name'] == 'worker'
+        assert subjects.json()['subjects'][0]['name'] == 'Worker'
+        for query in ('张三', 'ext_02c264'):
+            named = client.get('/api/admin/project-grant-subjects', params={'subject_type': 'user', 'q': query})
+            assert named.status_code == 200
+            assert named.json()['subjects'] == [{'id': 'external-user', 'name': '张三'}]
         groups = client.get('/api/admin/project-grant-subjects?subject_type=group&q=Engineer')
         assert groups.json()['total'] == 1
         assert groups.json()['subjects'][0]['name'] == 'Engineering'

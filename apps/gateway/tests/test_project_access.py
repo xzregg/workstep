@@ -80,7 +80,7 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         share_id = created_share.json()["id"]
         assert client.get(remote_share_url + "?project_id=project-1&task_id=task-1").json()["shares"][0]["id"] == share_id
         assert client.post(remote_share_url + f"/{share_id}/revoke", headers={"Origin": device_host, "X-WorkStep-Share-Intent": "manage"}).status_code == 204
-        assert client.get(f"{device_host}/api/remote/session?project_id=other-host").status_code == 404
+        assert client.get(f"{device_host}/api/remote/session?project_id=other-host").json()["host_project_id"] == "other-host"
         workspace_ticket = client.get("/api/devices/device-1/access").json()["ticket"]
         workspace = "https://gateway.test/workspace/device-1"
         assert client.post(workspace + "/api/remote/redeem", data={"ticket": workspace_ticket}, follow_redirects=False).status_code == 303

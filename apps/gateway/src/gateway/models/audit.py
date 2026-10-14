@@ -1,3 +1,6 @@
+import json
+from sqlalchemy import event
+from gateway.audit_context import request_ip
 from datetime import datetime
 
 from decimal import Decimal
@@ -33,6 +36,20 @@ class AuditEvent(Base):
     initiated_by_user_id: Mapped[str | None] = mapped_column(String(64))
     initiated_by_username: Mapped[str | None] = mapped_column(String(128))
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+@event.listens_for(AuditEvent, 'init')
+def attach_request_ip(_target, _args, kwargs):
+    address = request_ip.get()
+    if address is None:
+        return
+    try:
+        metadata = json.loads(kwargs.get('metadata_json') or '{}')
+    except (TypeError, ValueError):
+        return
+    if isinstance(metadata, dict):
+        metadata['request_ip'] = address
+        kwargs['metadata_json'] = json.dumps(metadata, ensure_ascii=False)
 
 
 class AuditEventReceipt(Base):

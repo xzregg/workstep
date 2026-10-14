@@ -823,7 +823,7 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
   .gateway-project-list-toolbar .gateway-admin-filters { width: 100%; }
 }
 
-.gateway-projects-page [role="status"]::before { content: ''; display: inline-block; width: 14px; height: 14px; margin-right: 8px; border: 2px solid #dbeafe; border-top-color: #0071e3; border-radius: 50%; vertical-align: middle; animation: gateway-project-loading 0.8s linear infinite; }
+.gateway-projects-page > p[role="status"]::before { content: ''; display: inline-block; width: 14px; height: 14px; margin-right: 8px; border: 2px solid #dbeafe; border-top-color: #0071e3; border-radius: 50%; vertical-align: middle; animation: gateway-project-loading 0.8s linear infinite; }
 @keyframes gateway-project-loading { to { transform: rotate(360deg); } }
 
 .gateway-grant-editor { display: flex; flex-direction: column; gap: 16px; }
@@ -897,3 +897,13 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
  .gateway-organization-sync-dialog .gateway-sync-user-list { flex: none; height: 280px; }
  .gateway-organization-sync-dialog .gateway-sync-progress { max-height: none; }
 }
+
+.gateway-admin-page button.gateway-device-name-button {
+ display: inline-block; max-width: 100%; padding: 0; min-height: 0;
+ border: 0; border-radius: 0; background: transparent;
+ color: var(--gateway-admin-accent); font-weight: 600; text-align: left;
+ overflow-wrap: anywhere; cursor: pointer;
+}
+.gateway-admin-page button.gateway-device-name-button:hover { background: transparent; text-decoration: underline; }
+.gateway-admin-page button.gateway-device-name-button:focus-visible { outline: 2px solid var(--gateway-admin-accent); outline-offset: 3px; }
+.gateway-admin-page button.gateway-device-name-button:disabled { cursor: default; }

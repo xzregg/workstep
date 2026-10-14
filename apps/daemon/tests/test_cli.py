@@ -9,6 +9,31 @@ from cli import build_parser, dispatch, main
 from services.tool_registry import WorkstepClient
 
 
+@pytest.mark.anyio
+async def test_cli_stage_controls_stop_then_start_and_inject():
+    calls = []
+
+    async def handler(request):
+        calls.append((request.url.path, json.loads(request.content) if request.content else {}))
+        return httpx.Response(200, json={"cancelled": True, "status": "queued"})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    parser = build_parser()
+    common = ["--project", "p", "--task", "t"]
+    for arguments in (
+        ["task", "step-stop", *common, "--step", "A"],
+        ["task", "step-start", *common, "--step", "B", "--content", "新要求", "--reset-session"],
+        ["task", "step-message", *common, "--step", "B", "--content", "再补充", "--as-guidance"],
+    ):
+        result = await dispatch(parser.parse_args(arguments), client)
+        assert result["status"] == "queued"
+    assert calls == [
+        ("/api/task/t/step/A/cancel", {}),
+        ("/api/task/t/step/B/resume", {"content": "新要求", "reset_step": True, "allow_pending": True}),
+        ("/api/task/t/step/B/message", {"content": "再补充", "as_guidance": True}),
+    ]
+
+
 def test_parser_resolves_subcommands():
     parser = build_parser()
 

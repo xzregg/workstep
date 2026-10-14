@@ -88,6 +88,7 @@ export default function TaskBoardCard({
     cardDurationMs = Math.max(0, endMs - startedMs)
   }
   const cardMetaText = [
+    formatConversationDateTime(task.created_at, durationNowMs, locale),
     task.creator_name ? task.creator_name : '',
     (task.total_tokens ?? 0) > 0
       ? `${formatTokenTotal(task.total_tokens as number, locale)} ${t('taskList.tokens')}`
@@ -156,14 +157,8 @@ export default function TaskBoardCard({
         </div>
       )}
       <div className="card-actions task-board-card-actions">
-        <div className="task-board-card-metadata">
-          {createdMs !== null && <time className="task-board-card-created" dateTime={task.created_at}
-            title={new Date(createdMs).toLocaleString(locale)}>
-            {formatConversationDateTime(task.created_at, durationNowMs, locale)}
-          </time>}
-          {cardMetaText && <MarqueeText className="task-card-meta" text={cardMetaText}
-            title={cardMetaText} forceActive />}
-        </div>
+        {cardMetaText ? <MarqueeText className="task-card-meta" text={cardMetaText}
+          title={cardMetaText} /> : <span className="task-board-card-meta-spacer" />}
         <div className="card-action-buttons task-board-card-buttons">
           {projectId && <TaskCopyButton taskId={task.id} projectId={projectId} title={task.title} />}
           {canRun && taskNotStarted && status !== 'running' && (

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 type Share = {
-  id: string; title: string; created_by: string; device_name: string
+  id: string; title: string; created_by: string; created_by_name?: string; device_name: string
   project_name: string; task_id: string; mode: string; visit_count: number
   last_seen_at: string | null; created_at: string; expires_at: string | null
   status: 'active' | 'paused' | 'revoked' | 'expired'
@@ -100,7 +100,7 @@ export function AdminSharesPage() {
       {listing.shares.length === 0 ? <p>没有符合条件的分享。</p> : <AdminRecordTable busy={loading || busy} columns={['分享','项目 / 设备','创建者','状态','访问次数','操作']}>
         {listing.shares.map(share => <tr key={share.id}>
           <td><strong>{share.title || share.task_id}</strong><small className="gateway-admin-cell-meta">{share.mode === 'interactive' ? '互动' : '只读'}</small></td>
-          <td>{share.project_name}<small className="gateway-admin-cell-meta">{share.device_name}</small></td><td>{share.created_by}</td>
+          <td>{share.project_name}<small className="gateway-admin-cell-meta">{share.device_name}</small></td><td>{share.created_by_name?.trim() || share.created_by}</td>
           <td>{statusLabel[share.status]}</td><td>{share.visit_count}</td>
           <td><div className="gateway-row-actions">
             <AdminRecordDetails title={`分享详情 ${share.id}`}><p>任务 {share.task_id}</p><p>创建 {new Date(share.created_at).toLocaleString()} · 最后访问 {share.last_seen_at ? new Date(share.last_seen_at).toLocaleString() : '暂无'} · 过期 {share.expires_at ? new Date(share.expires_at).toLocaleString() : '未设置'}</p></AdminRecordDetails>

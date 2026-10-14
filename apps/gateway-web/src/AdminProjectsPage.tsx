@@ -3,7 +3,6 @@ import { GatewayModal } from './GatewayModal'
 import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { AdminAccessGrants } from './AdminAccessGrants'
-import { AdminProjectTaskCreatePanel } from './AdminProjectTaskCreatePanel'
 import { AdminPublishProjectPanel, AdminUnpublishProjectDialog } from './AdminProjectPublication'
 
 type Project = { id: string; name: string; device_id: string; device_name: string;
@@ -13,14 +12,13 @@ type Project = { id: string; name: string; device_id: string; device_name: strin
 type Filters = { q: string; sort: string; direction: string; page: number }
 
 
-export function AdminProjectsPage() {
+export function AdminProjectsPage({ canConfigurePermissions = true }: { canConfigurePermissions?: boolean }) {
   const [csrf, setCsrf] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
   const [total, setTotal] = useState(0)
   const [query, setQuery] = useState('')
   const [filters, setFilters] = useState<Filters>({ q: '', sort: 'name', direction: 'asc', page: 1 })
   const [selected, setSelected] = useState<Project | null>(null)
-  const [selectedTab, setSelectedTab] = useState<'grants' | 'task-create'>('grants')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
@@ -89,13 +87,14 @@ export function AdminProjectsPage() {
           <option value="asc">升序</option><option value="desc">降序</option></select></div></div>
       <AdminListStatus loading={loading} label="正在加载项目…"/>
       {!loading && !error && projects.length === 0 && <p>当前条件下没有已发布项目。</p>}
-      <AdminRecordTable busy={loading} columns={['项目','宿主电脑','用户授权','用户组授权','访问级别','运行任务','操作']}>
+      <AdminRecordTable busy={loading} columns={['项目','宿主电脑','发布者','用户授权','用户组授权','访问级别','运行任务','操作']}>
         {projects.map(project => <tr key={project.id}>
           <td><strong>{project.name}</strong></td><td>{project.device_name}<small className="gateway-admin-cell-meta">{project.device_online ? '在线' : '离线'}</small></td>
+          <td>{project.publisher || '未记录'}</td>
           <td>{project.grant_users}</td><td>{project.grant_groups}</td>
           <td>{project.grant_users+project.grant_groups === 0 ? <span className="gateway-project-no-access">尚未授权</span> : `只读 ${project.grant_levels.read} · 可编辑 ${project.grant_levels.edit}`}</td>
           <td>{project.running_tasks === null ? '尚未上报' : project.running_tasks}</td>
-          <td><div className="gateway-row-actions"><button type="button" disabled={loading} onClick={() => { setSelected(project); setSelectedTab('grants') }}>管理授权</button>
+          <td><div className="gateway-row-actions"><button type="button" disabled={loading} onClick={() => { setSelected(project) }}>管理授权</button>
             <button type="button" className="gateway-admin-danger" disabled={loading} onClick={() => setUnpublish(project)}>取消发布</button></div></td>
         </tr>)}
       </AdminRecordTable>
@@ -108,24 +107,8 @@ export function AdminProjectsPage() {
       {selected && <GatewayModal title={`${selected.name} · 项目设置`} onClose={() => closeWorkspace(() => setSelected(null))}
         footer={<button type="button" onClick={() => closeWorkspace(() => setSelected(null))}>完成</button>}>
         <p>宿主电脑：{selected.device_name} · {selected.device_online ? '在线' : '离线'}</p>
-        <div className="gateway-project-settings-tabs gateway-admin-tablist" role="tablist" aria-label="项目设置">
-          <button type="button" role="tab" id="project-grants-tab"
-            aria-controls="project-grants-panel" aria-selected={selectedTab === 'grants'}
-            onClick={() => setSelectedTab('grants')}>访问授权</button>
-          <button type="button" role="tab" id="project-task-create-tab"
-            aria-controls="project-task-create-panel" aria-selected={selectedTab === 'task-create'}
-            onClick={() => setSelectedTab('task-create')}>任务创建能力</button>
-        </div>
-        {selectedTab === 'grants' && <div role="tabpanel" id="project-grants-panel"
-          aria-labelledby="project-grants-tab">
-          <AdminAccessGrants key={`grants-${selected.id}`} id={selected.id} name={selected.name} csrf={csrf}
-            onChanged={() => setRevision(value => value + 1)} />
-        </div>}
-        {selectedTab === 'task-create' && <div role="tabpanel" id="project-task-create-panel"
-          aria-labelledby="project-task-create-tab">
-          <AdminProjectTaskCreatePanel key={`capabilities-${selected.id}`}
-            projectId={selected.id} csrf={csrf} />
-        </div>}
+        <AdminAccessGrants key={`grants-${selected.id}`} id={selected.id} name={selected.name} csrf={csrf}
+          canConfigurePermissions={canConfigurePermissions} onChanged={() => setRevision(value => value + 1)} />
       </GatewayModal>}
       {unpublish && <AdminUnpublishProjectDialog project={unpublish} csrf={csrf}
         onClose={() => setUnpublish(null)} onComplete={() => {

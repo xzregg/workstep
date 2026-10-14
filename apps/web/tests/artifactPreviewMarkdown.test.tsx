@@ -12,6 +12,7 @@ import {
   setMermaidLoader,
 } from '../src/components/MermaidBlock.tsx'
 import FilePreviewPage from '../src/pages/FilePreviewPage.tsx'
+import { MarkdownAssetUrlProvider } from '../src/contexts/MarkdownAssetUrlContext'
 import { I18nProvider } from '../src/i18n/index.tsx'
 import { installDomEnvironment } from './helpers/domEnv.ts'
 
@@ -147,7 +148,12 @@ test('file preview opens the standalone preview route with toolbar state', async
     await act(async () => {
       root.render(
         <I18nProvider>
-          <ArtifactPreview path="docs/guide.md" line={3} projectId="project:one" />
+          <MarkdownAssetUrlProvider filePreview={{
+            load: async () => (await markdownPreviewResponse().json()),
+            rawUrl: () => '/api/fs/project-raw/owner/docs/guide.md',
+          }}>
+            <ArtifactPreview path="docs/guide.md" line={3} projectId="project:one" />
+          </MarkdownAssetUrlProvider>
         </I18nProvider>,
       )
     })

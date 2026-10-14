@@ -22,6 +22,7 @@ class CreateBotRequest(BaseModel):
     default_project_id: str = Field(min_length=1)
     default_task_id: str = ""
     card_template_id: str = Field(default="", max_length=200)
+    review_card_template_id: str = Field(default="", max_length=200)
 
     @model_validator(mode='after')
     def require_project(self):
@@ -39,6 +40,7 @@ class UpdateBotRequest(BaseModel):
     default_project_id: str | None = None
     default_task_id: str | None = None
     card_template_id: str | None = Field(default=None, max_length=200)
+    review_card_template_id: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode='after')
     def prevent_clearing_project(self):

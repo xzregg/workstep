@@ -8,6 +8,7 @@ type PendingCompletion =
   | { kind: 'execution'; messageId: string; artifactRound: number }
 
 interface Options {
+  snapshot?: ReviewRun[]
   taskId: string
   projectId: string
   updatedAt?: string | null
@@ -19,7 +20,7 @@ interface Options {
 
 /** Owns review decisions and failed-execution completion, including the downstream choice. */
 export function useTaskReviewActions({
-  taskId, projectId, updatedAt, reviewEventSignal, fetchTasks, refreshTask, onError,
+  taskId, projectId, updatedAt, reviewEventSignal, fetchTasks, refreshTask, onError, snapshot,
 }: Options) {
   const { t } = useI18n()
   const [reviews, setReviews] = useState<ReviewRun[]>([])
@@ -41,7 +42,7 @@ export function useTaskReviewActions({
     }
   }, [taskId, projectId])
 
-  useEffect(() => { void loadReviews() }, [loadReviews, updatedAt, reviewEventSignal])
+  useEffect(() => { if (snapshot) setReviews(snapshot); else void loadReviews() }, [loadReviews, updatedAt, reviewEventSignal, snapshot])
 
   const decideReview = useCallback(async (
     decision: ReviewDecisionAction, review?: ReviewRun, stepKey?: string,
