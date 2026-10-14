@@ -78,8 +78,12 @@ foreach ($path in (ConvertFrom-Json $env:WORKSTEP_CLI_ACL_PATHS)) {
 }
 '''
     try:
+        # PowerShell 7 can export a module path incompatible with the built-in
+        # Windows PowerShell. Let powershell.exe initialize its own modules.
+        environment = {key: value for key, value in os.environ.items()
+                       if key.casefold() != 'psmodulepath'}
         result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
-            env={**os.environ, 'WORKSTEP_CLI_ACL_PATHS': json.dumps([str(p) for p in paths]),
+            env={**environment, 'WORKSTEP_CLI_ACL_PATHS': json.dumps([str(p) for p in paths]),
                  'WORKSTEP_CLI_ACL_PROTECT': '1' if protect else '0'},
             capture_output=True, timeout=10)
         return result.returncode == 0
