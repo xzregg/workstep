@@ -297,6 +297,16 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/{suffix}",
         )
 
+    @app.post("/api/public/shares/token/operation")
+    async def guest_operation(request: Request):
+        return await invoke(connection.proxy_http, request=request, share_ticket="signed-ticket",
+                            target_path="/api/platform-share/operation", share_body=b'{"method":"GET"}')
+
+    @app.post("/api/public/shares/token/actions/{action}")
+    async def guest_action(request: Request, action: str):
+        return await invoke(connection.proxy_http, request=request, share_ticket="signed-ticket",
+                            target_path=f"/api/platform-share/actions/proposal-1/{action}", share_body=b'{}')
+
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="https://gateway.test") as client:
         response = await client.get("/api/public/shares/token/task",
@@ -326,6 +336,9 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
         for action in ("switch", "create", "delete"):
             assert (await client.post(f"/api/public/shares/token/git/worktrees/{action}/write")).status_code == 200
         assert (await client.post("/api/public/shares/token/git/worktrees/fetch")).status_code == 200
+        assert (await client.post("/api/public/shares/token/operation")).status_code == 200
+        for action in ("confirm", "cancel"):
+            assert (await client.post(f"/api/public/shares/token/actions/{action}")).status_code == 200
     assert starts[0]["path"] == "/api/platform-share/task"
     assert starts[0]["share_ticket"] == "signed-ticket"
     assert "user_id" not in starts[0]
@@ -358,7 +371,7 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     assert bodies == [b'{"content":"hello"}', b'{"review_run_id":"review-1"}',
                       b'{"data":{"action":"cancel"}}', b"visible", b'{"message":"Commit"}',
                       b'{"branch":"feature"}', b'{"branch":"feature"}',
-                      *([b'{"snapshot":"' + b"d" * 64 + b'"}'] * 3)]
+                      *([b'{"snapshot":"' + b"d" * 64 + b'"}'] * 3), b'{"method":"GET"}', b'{}', b'{}']
 
 
 @pytest.mark.asyncio
@@ -439,7 +452,8 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
 
 
 @pytest.mark.asyncio
-async def test_data_connection_forwards_bidirectional_websocket_frames():
+@pytest.mark.parametrize('share', [False, True])
+async def test_data_connection_forwards_bidirectional_websocket_frames(share):
     class Browser:
         def __init__(self):
             self.scope = {"headers": [(b"host", b"d-device-1.gateway.test"),
@@ -470,10 +484,16 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
         async def send_json(self, message):
             frame = ProxyFrame.model_validate(message)
             if frame.type == FrameType.websocket_open:
-                assert frame.payload["user_id"] == "user-1"
-                assert frame.payload["display_name"] == "Alice Display"
-                assert frame.payload["project_id"] == "host-1"
-                assert frame.payload["access_level"] == "edit"
+                if share:
+                    assert frame.payload['path'] == '/ws/platform-share'
+                    assert frame.payload['query'] == ''
+                    assert frame.payload['share_ticket'] == 'signed-ticket'
+                    assert not any(name in frame.payload for name in ('user_id', 'project_id', 'provider_ids'))
+                else:
+                    assert frame.payload["user_id"] == "user-1"
+                    assert frame.payload["display_name"] == "Alice Display"
+                    assert frame.payload["project_id"] == "host-1"
+                    assert frame.payload["access_level"] == "edit"
                 assert all(name.lower() != "cookie" for name, _ in frame.payload["headers"])
                 await connection.deliver(ProxyFrame(
                     stream_id=frame.stream_id, type=FrameType.websocket_open,
@@ -492,17 +512,20 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
 
     browser = Browser()
     connection = DataConnection("device-1", Socket())
+    identity = ({'share_ticket': 'signed-ticket', 'target_path': '/ws/platform-share'} if share else {
+        'user_id': 'user-1', 'username': 'alice', 'display_name': 'Alice Display',
+        'project_id': 'host-1', 'access_level': 'edit',
+    })
     await asyncio.wait_for(connection.proxy_websocket(
-        GatewaySocket(port=browser, target=urlsplit(browser.url.path), wire_headers=tuple(browser.scope["headers"])), user_id="user-1", username="alice",
-        display_name="Alice Display",
-        project_id="host-1", access_level="edit",
+        GatewaySocket(port=browser, target=urlsplit(browser.url.path), wire_headers=tuple(browser.scope["headers"])), **identity,
     ), timeout=2)
     assert browser.accepted
     assert browser.sent == ["echo:" + "hello" * 20000]
 
 
 @pytest.mark.asyncio
-async def test_project_websocket_closes_after_access_revocation():
+@pytest.mark.parametrize('share', [False, True])
+async def test_project_websocket_closes_after_access_revocation(share):
     allowed = True
 
     async def authorize():
@@ -532,7 +555,10 @@ async def test_project_websocket_closes_after_access_revocation():
         async def send_json(self, message):
             frame = ProxyFrame.model_validate(message)
             if frame.type == FrameType.websocket_open:
-                assert frame.payload["project_id"] == "host-1"
+                if share:
+                    assert frame.payload['share_ticket'] == 'signed-ticket'
+                else:
+                    assert frame.payload["project_id"] == "host-1"
                 await connection.deliver(ProxyFrame(
                     stream_id=frame.stream_id, type=FrameType.websocket_open,
                     payload={"accepted": True},
@@ -540,9 +566,11 @@ async def test_project_websocket_closes_after_access_revocation():
 
     browser = Browser()
     connection = DataConnection("device-1", Socket())
+    identity = ({'share_ticket': 'signed-ticket', 'target_path': '/ws/platform-share'} if share else {
+        'user_id': 'user-1', 'username': 'alice', 'project_id': 'host-1', 'access_level': 'read',
+    })
     task = asyncio.create_task(connection.proxy_websocket(
-        GatewaySocket(port=browser, target=urlsplit(browser.url.path), wire_headers=tuple(browser.scope["headers"])), user_id="user-1", username="alice",
-        project_id="host-1", access_level="read",
+        GatewaySocket(port=browser, target=urlsplit(browser.url.path), wire_headers=tuple(browser.scope["headers"])), **identity,
         authorization_check=authorize,
     ))
     await asyncio.wait_for(browser.accepted.wait(), timeout=1)

@@ -82,7 +82,7 @@ class ACPStreamingClient:
         else:
             dump = getattr(requested_schema, "model_dump", None)
             schema_data = (
-                dump(by_alias=False, exclude_none=True)
+                dump(by_alias=True, exclude_none=True)
                 if callable(dump)
                 else requested_schema
             )

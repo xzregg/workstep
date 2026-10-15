@@ -94,6 +94,7 @@ export type EventLike = {
 /** WorkStep 自定义事件名常量。 */
 export const CUSTOM = {
   status: 'workstep.status',
+  taskUpdated: 'workstep.task_updated',
   plan: 'workstep.plan',
   planUpdate: 'workstep.plan_update',
   goalUpdate: 'workstep.goal_update',

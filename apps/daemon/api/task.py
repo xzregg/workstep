@@ -198,7 +198,7 @@ async def update_task(
     pid: str = Query(..., alias="project_id"),
 ):
     """Update editable task metadata while preserving its execution state."""
-    from main import task_service
+    from main import task_service, event_bus
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     await _require_scoped_task(pid, task_id)
@@ -213,6 +213,10 @@ async def update_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await event_bus.publish({
+        "type": "CUSTOM", "name": "workstep.task_updated",
+        "task_id": task_id, "project_id": pid, "value": {},
+    })
     return _project_task_response(pid, task)
 
 

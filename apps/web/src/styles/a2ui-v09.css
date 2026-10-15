@@ -229,9 +229,12 @@
 }
 
 .a2ui-message button {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
   appearance: none;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--fg);
   padding: 7px 12px;
@@ -268,7 +271,7 @@
   box-sizing: border-box;
   margin: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--fg);
   padding: 8px 10px;

@@ -60,6 +60,7 @@ _STATUS_CUSTOM_NAMES = {
     "workstep.step_rework",
     "workstep.run_recovered",
     "workstep.scheduled_start",
+    "workstep.task_updated",
 }
 
 

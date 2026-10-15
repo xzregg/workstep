@@ -78,6 +78,27 @@ test('elicitation schema renders multi-choice and free text fields', () => {
   assert.equal(form.fields[1].required, true)
 })
 
+test('standard ACP anyOf choices keep labels and return multiple values', () => {
+  const request: InteractionRequestData = {
+    interaction_id: 'acp-multiple', method: 'elicitation/create',
+    requested_schema: { type: 'object', required: ['scope'], properties: {
+      scope: { type: 'array', title: '实现范围', items: { anyOf: [
+        { const: 'web', title: '前端', description: '实现界面' },
+        { const: 'daemon', title: '后端' },
+      ] } },
+    } },
+  }
+  const field = interactionForm(request).fields[0]
+  assert.equal(field.type, 'multiple')
+  assert.deepEqual(field.options, [
+    { value: 'web', label: '前端', description: '实现界面' },
+    { value: 'daemon', label: '后端', description: '' },
+  ])
+  assert.deepEqual(buildInteractionResponse(request, { scope: ['web', 'daemon'] }), {
+    action: 'accept', content: { scope: ['web', 'daemon'] },
+  })
+})
+
 test('URL elicitation keeps its link and builds an ACP accept response', () => {
   const request: InteractionRequestData = {
     interaction_id: 'url-1',

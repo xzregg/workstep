@@ -51,7 +51,13 @@ async def test_editable_share_reuses_task_routes_with_bound_scope_and_responsive
         raw = b''.join(base64.b64decode(frame.payload['data']) for frame in frames if frame.payload.get('phase') == 'body')
         return frames[0].payload['status'], json.loads(raw) if raw else None
 
+    class Bots:
+        async def list_task_groups(self, pid, tid):
+            assert (pid, tid) == (project_id, task_id)
+            return []
+    monkeypatch.setattr(main, 'channel_bot_manager', Bots())
     base = f'/task/{task_id}'
+    assert await operation(base + '/discussion-groups?project_id=share%3Atoken') == (200, [])
     assert (await operation(base, mode='read_only'))[0] == 403
     assert (await operation('/task/foreign', method='PATCH', body={'title': 'No'}))[0] == 403
     assert (await operation('https://owner.test/api/task/' + task_id))[0] == 403
@@ -61,8 +67,16 @@ async def test_editable_share_reuses_task_routes_with_bound_scope_and_responsive
     assert (await operation('/workflow/foreign/step/req/prompt', method='PATCH', body={'prompt': 'No'}))[0] == 403
     status, task = await operation(base + '?project_id=foreign')
     assert status == 200 and task['id'] == task_id
+    notifications = main.event_bus.subscribe()
     status, task = await operation(base, method='PATCH', body={'title': 'SharedEdit'})
     assert status == 200 and task['title'] == 'SharedEdit'
+    assert not notifications.empty(), 'task edits must notify other connected task views'
+    notice = notifications.get_nowait()
+    assert notice == {'type': 'CUSTOM', 'name': 'workstep.task_updated',
+                      'task_id': task_id, 'project_id': project_id, 'value': {}}
+    from streaming.ws import WsSubscription, matches_subscription
+    assert matches_subscription(notice, WsSubscription(active=True, status_only_task_ids={task_id}))
+    main.event_bus.unsubscribe(notifications)
     assert (await operation('/task/list'))[1]['tasks'][0]['id'] == task_id
     assert (await operation(base + '/step/req/config'))[0] == 200
     assert (await operation(f'/git/projects/share%3Atoken/tasks/{task_id}/workspace'))[0] == 200

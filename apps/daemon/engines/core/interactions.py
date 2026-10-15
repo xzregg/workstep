@@ -118,7 +118,7 @@ def claude_ask_user_request(
                 "type": "array",
                 "title": title,
                 "description": description,
-                "items": {"oneOf": choices},
+                "items": {"anyOf": choices},
                 "_meta": {"allowInput": True},
             }
         else:
@@ -143,6 +143,24 @@ def claude_ask_user_request(
             "required": required,
         },
     )
+
+
+def codex_user_input_request(
+    tool_use_id: str,
+    tool_input: Mapping[str, Any],
+) -> InternalEvent:
+    """Map Codex questions to a form while retaining native question IDs."""
+    event = claude_ask_user_request(tool_use_id, tool_input)
+    original = event.data["requested_schema"]["properties"]
+    properties = {}
+    for index, question in enumerate(tool_input.get("questions") or []):
+        field = original[f"question_{index}"]
+        field["_meta"] = {"allowInput": bool(question.get("isOther"))}
+        properties[str(question["id"])] = field
+    event.data["requested_schema"] = {
+        "type": "object", "properties": properties, "required": list(properties),
+    }
+    return event
 
 
 def interaction_from_tool_use(

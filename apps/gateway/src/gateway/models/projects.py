@@ -12,6 +12,7 @@ class PlatformShare(Base):
     __tablename__ = "platform_shares"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    credentials_ciphertext: Mapped[str | None] = mapped_column(Text)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("platform_projects.id"), index=True)

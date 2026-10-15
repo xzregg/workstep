@@ -11,7 +11,7 @@ import { useI18n } from '../i18n'
 import { copyText } from '../utils/clipboard'
 import { useProjectStore } from '../stores/projectStore'
 import { taskShareUrl } from '../utils/taskShareUrl'
-import { taskShareDefaults, taskShareClipboard, rememberTaskShareKey, taskShareKey, forgetTaskShareKey } from '../../../../packages/gateway-ui/src/taskShareDefaults'
+import { taskShareDefaults, taskShareClipboard, taskShareAccessUrl, rememberTaskShareKey, taskShareKey, forgetTaskShareKey } from '../../../../packages/gateway-ui/src/taskShareDefaults'
 
 type ShareMode = 'read_only' | 'interactive'
 
@@ -88,7 +88,7 @@ export default function ShareDialog({
       .then((info) => {
         if (!cancelled) {
           setShare(info)
-          if (info) setPassword(taskShareKey(info.id))
+          if (info) setPassword(info.access_password ?? taskShareKey(info.id))
         }
       })
       .catch((err: Error) => {
@@ -110,9 +110,8 @@ export default function ShareDialog({
 
   const shareUrl = useMemo(() => {
     if (!share) return ''
-    if (gateway) return share.url || ''
-    return taskShareUrl(share.token, project, window.location.origin)
-  }, [share, project, gateway])
+    return taskShareAccessUrl(gateway ? share.url || '' : taskShareUrl(share.token, project, window.location.origin), password)
+  }, [share, project, gateway, password])
 
   if (!open) return null
 

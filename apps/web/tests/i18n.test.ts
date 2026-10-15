@@ -115,10 +115,10 @@ test('task Git repository actions use compact labels', () => {
 test('share clipboard localizes its labels without translating task names or credentials', async () => {
   const { taskShareClipboard } = await import('../../../packages/gateway-ui/src/taskShareDefaults')
   const expected = {
-    'zh-CN': '原始任务\n访问地址：https://host/share/token\n访问密码：actual-secret',
-    'en-US': '原始任务\nAccess address: https://host/share/token\nAccess password: actual-secret',
-    'zh-TW': '原始任务\n存取位址：https://host/share/token\n存取密碼：actual-secret',
-    'ja-JP': '原始任务\nアクセス先：https://host/share/token\nアクセスパスワード：actual-secret',
+    'zh-CN': '原始任务\n访问地址：https://host/share/token?_t=actual-secret\n访问密码：actual-secret',
+    'en-US': '原始任务\nAccess address: https://host/share/token?_t=actual-secret\nAccess password: actual-secret',
+    'zh-TW': '原始任务\n存取位址：https://host/share/token?_t=actual-secret\n存取密碼：actual-secret',
+    'ja-JP': '原始任务\nアクセス先：https://host/share/token?_t=actual-secret\nアクセスパスワード：actual-secret',
   }
   for (const [locale, dict] of Object.entries(locales)) {
     const t = createT(dict)

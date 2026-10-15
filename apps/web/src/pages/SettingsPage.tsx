@@ -17,6 +17,7 @@ import { providerApi } from '../api/client'
 import SettingsNavigation, { type SettingsSection } from '../components/SettingsNavigation'
 import EngineSettingsPanel from '../components/EngineSettingsPanel'
 import TemplateSettings from './TemplateSettings'
+import RoleCenterSettings from './RoleCenterSettings'
 import ProviderSettings from './ProviderSettings'
 import RemoteAccessSettings from './RemoteAccessSettings'
 import ModelPricingSettings from './ModelPricingSettings'
@@ -52,10 +53,12 @@ export default function SettingsPage({
   const compactLayout = useCompactLayout()
   const settingsDialogRef = useRef<HTMLDivElement>(null)
   const sandboxDirty = useRef(false)
+  const roleCenterDirty = useRef(false)
   const [pendingExit, setPendingExit] = useState<{ section?: SettingsSection } | null>(null)
   const onSandboxDirty = useCallback((dirty: boolean) => { sandboxDirty.current = dirty }, [])
-  const closeSettings = () => sandboxDirty.current ? setPendingExit({}) : onClose()
-  const selectSection = (section: SettingsSection) => sandboxDirty.current ? setPendingExit({ section }) : setActiveSection(section)
+  const onRoleCenterDirty = useCallback((dirty: boolean) => { roleCenterDirty.current = dirty }, [])
+  const closeSettings = () => sandboxDirty.current || roleCenterDirty.current ? setPendingExit({}) : onClose()
+  const selectSection = (section: SettingsSection) => sandboxDirty.current || roleCenterDirty.current ? setPendingExit({ section }) : setActiveSection(section)
   useOverlay(true, closeSettings, settingsDialogRef, compactLayout)
   const userName = useUserSettingsStore((state) => state.userName)
   const gatewayIdentity = useUserSettingsStore((state) => state.identitySource === 'gateway')
@@ -118,10 +121,11 @@ export default function SettingsPage({
         if (event.target === event.currentTarget) closeSettings()
       }}
     >
-      <ConfirmDialog open={Boolean(pendingExit)} title={t('sandbox.discard')}
+      <ConfirmDialog open={Boolean(pendingExit)} title={t(roleCenterDirty.current ? 'roleCenter.discardTitle' : 'sandbox.discard')}
         onCancel={() => setPendingExit(null)} onConfirm={() => {
           const section = pendingExit?.section
           sandboxDirty.current = false; setPendingExit(null)
+          roleCenterDirty.current = false
           if (section) setActiveSection(section); else onClose()
         }} />
       <ResizablePanel
@@ -156,6 +160,8 @@ export default function SettingsPage({
           <ModelPricingSettings />
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
+        ) : activeSection === 'roles' ? (
+          <RoleCenterSettings onDirtyChange={onRoleCenterDirty} />
         ) : activeSection === 'channels' ? (
           <BotSettings />
         ) : activeSection === 'remote' ? (

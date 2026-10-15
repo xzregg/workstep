@@ -22,6 +22,7 @@ class TaskShare(BaseModel):
     task = pw.ForeignKeyField(Task, backref="shares", unique=True)
     token = pw.TextField(unique=True, index=True)
     title = pw.TextField(null=True)
+    password_ciphertext = pw.TextField(null=True)
     password_hash = pw.TextField(null=True)
     salt = pw.TextField(null=True)
     mode = pw.TextField(default="read_only")

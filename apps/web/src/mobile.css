@@ -480,9 +480,9 @@
   .settings-nav { overflow-x: auto; flex-shrink: 0; }
   .settings-nav button { flex-shrink: 0; }
   .skill-center-project-summary { display: none; }
-  .settings-layout button:not(.btn-icon),
-  .settings-content button:not(.btn-icon),
-  .project-settings-layout button:not(.btn-icon) {
+  .settings-layout button:not(.btn-icon):not(.role-center-card),
+  .settings-content button:not(.btn-icon):not(.role-center-card),
+  .project-settings-layout button:not(.btn-icon):not(.role-center-card) {
     height: var(--mobile-control-regular) !important;
     min-height: var(--mobile-control-regular) !important;
   }

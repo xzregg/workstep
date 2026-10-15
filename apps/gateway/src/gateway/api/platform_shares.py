@@ -2,14 +2,20 @@ from gateway.api.adapters import invoke
 from gateway.services.platform_shares import create_platform_share as _handle_create_platform_share, list_own_platform_shares as _handle_list_own_platform_shares, revoke_platform_share as _handle_revoke_platform_share, public_share_meta as _handle_public_share_meta, unlock_public_share as _handle_unlock_public_share, public_share_session as _handle_public_share_session, public_share_task as _handle_public_share_task, public_share_execution_report as _handle_public_share_execution_report, public_share_host_status as _handle_public_share_host_status, public_share_history as _handle_public_share_history, public_share_history_page as _handle_public_share_history_page, public_share_events as _handle_public_share_events, public_share_artifacts as _handle_public_share_artifacts, public_share_reviews as _handle_public_share_reviews, public_share_interventions as _handle_public_share_interventions, public_share_artifact_content as _handle_public_share_artifact_content, public_share_artifact_preview as _handle_public_share_artifact_preview, public_share_upload as _handle_public_share_upload, public_share_upload_content as _handle_public_share_upload_content, public_share_git_read as _handle_public_share_git_read, public_share_git_workspace as _handle_public_share_git_workspace, public_share_git_status as _handle_public_share_git_status, public_share_git_branches as _handle_public_share_git_branches, public_share_git_commit as _handle_public_share_git_commit, public_share_git_switch as _handle_public_share_git_switch, public_share_git_fetch as _handle_public_share_git_fetch, public_share_git_create_branch as _handle_public_share_git_create_branch, public_share_git_delete_branch as _handle_public_share_git_delete_branch, public_share_git_sync as _handle_public_share_git_sync, public_share_step_message as _handle_public_share_step_message, public_share_step_resume as _handle_public_share_step_resume, public_share_step_cancel as _handle_public_share_step_cancel, public_share_review_decision as _handle_public_share_review_decision, public_share_intervention_response as _handle_public_share_intervention_response
 
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, WebSocket
 
 
 from gateway.services.platform_shares import CreateShareInput, UnlockShareInput
 from gateway.services.platform_shares import public_share_coordinator_action as _handle_coordinator_action
 from gateway.services.platform_shares import public_share_task_operation as _handle_task_operation
+from gateway.services.platform_shares import public_share_websocket as _handle_share_websocket
 
 router = APIRouter(prefix="/api")
+
+
+@router.websocket('/public/shares/{token}/ws')
+async def public_share_websocket(ws: WebSocket, token: str):
+    return await invoke(_handle_share_websocket, ws=ws, token=token)
 
 
 @router.post('/public/shares/{token}/operation')

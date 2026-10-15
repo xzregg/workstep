@@ -23,6 +23,8 @@ interface MarkdownEditorProps {
   maxLength?: number
   /** Show the compact paste/drop capability hint above the editor. */
   showAttachmentHint?: boolean
+  /** Prompt assets can opt out of project-scoped attachment upload. */
+  allowAttachments?: boolean
 }
 
 function readAsDataUrl(file: File): Promise<string> {
@@ -48,10 +50,11 @@ export default function MarkdownEditor({
   ariaLabel,
   maxLength,
   showAttachmentHint = false,
+  allowAttachments = true,
 }: MarkdownEditorProps) {
   const { t } = useI18n()
   const { can } = useGatewayProjectPermissions(projectId)
-  const canUpload = can('file.upload')
+  const canUpload = allowAttachments && can('file.upload')
   const [mode, setMode] = useState<'edit' | 'preview'>('edit')
   const [dragActive, setDragActive] = useState(false)
   const [uploading, setUploading] = useState(false)

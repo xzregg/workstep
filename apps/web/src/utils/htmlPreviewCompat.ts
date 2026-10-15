@@ -39,6 +39,21 @@ export function replaceLightDarkWithLightFallback(css: string): string {
 
 const preparedFrames = new WeakSet<HTMLIFrameElement>()
 
+/** Keep fragment navigation within an opaque srcdoc rather than the share URL. */
+export function isolatedHtmlDocument(content: string): string {
+  return content + `<script>
+document.addEventListener('click', function (event) {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  var link = event.target instanceof Element && event.target.closest('a[href^="#"]');
+  if (!link || link.hasAttribute('download') || (link.target && link.target !== '_self')) return;
+  var id;
+  try { id = decodeURIComponent(link.getAttribute('href').slice(1)); } catch (_) { return; }
+  var target = id ? document.getElementById(id) || document.getElementsByName(id)[0] : document.documentElement;
+  if (target) { event.preventDefault(); target.scrollIntoView(); }
+});
+</script>`
+}
+
 function prepareDocument(document: Document) {
   const supportsLightDark = document.defaultView?.CSS?.supports?.(
     'color',

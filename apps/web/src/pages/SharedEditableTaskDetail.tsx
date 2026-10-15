@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fsApi, type Project, type ReviewRun, type Task, type TaskArtifact, type TaskArtifactInputSnapshot } from '../api/client'
 import type { SharedTaskApi, SharedTask } from '../api/share'
 import type { TaskDetailReadCapabilities, TaskDetailGitCapability } from '../components/TaskDetailPage'
@@ -48,7 +48,11 @@ export default function SharedEditableTaskDetail({ token, session, api, task, me
         return { ...listing, artifacts: sharedTaskArtifactFiles(listing.artifacts) } as T
       }
       url.searchParams.set('project_id', `share:${token}`)
-      return api.taskOperation<T>(token, session, url.pathname + url.search, options)
+      const result = await api.taskOperation<T>(token, session, url.pathname + url.search, options)
+      if (options?.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) {
+        window.dispatchEvent(new window.CustomEvent('workstep:shared-task-changed', { detail: { token } }))
+      }
+      return result
     })
     setReady(bindingKey)
     return unregister
@@ -63,8 +67,10 @@ export default function SharedEditableTaskDetail({ token, session, api, task, me
     shared: false, api: createGitApi(), projectId: `share:${token}`, readOnly: false,
     workspaceEditable: true, projectScoped: true, allowedActions: undefined,
   }), [gitCapability.api, token])
-  const editableRead = useMemo(() => ({ ...readCapabilities,
-    browseGitWorkspace: async (path: string, includeHidden: boolean) => {
+  const latestRead = useRef({ readCapabilities, artifacts })
+  latestRead.current = { readCapabilities, artifacts }
+  const browseEditableWorkspace = useCallback(async (path: string, includeHidden: boolean) => {
+      if (path.startsWith('artifact:')) return latestRead.current.readCapabilities.browseGitWorkspace(path, includeHidden)
       const listing = await fsApi.browse(path, project.id, includeHidden)
       if (!path.startsWith('workspace:')) return listing
       const current = path.replace(/\/$/, '')
@@ -73,12 +79,14 @@ export default function SharedEditableTaskDetail({ token, session, api, task, me
         parent: current === 'workspace:' ? null : current.includes('/') ? current.slice(0, current.lastIndexOf('/')) : 'workspace:',
         entries: listing.entries.map(entry => ({ ...entry, path: virtualPath(entry.path), relative_path: virtualPath(entry.path) })),
       }
-    },
-    filePreview: { ...readCapabilities.filePreview,
-      load: (path: string) => path.startsWith('artifact:') || path.startsWith('workspace:') || artifacts.some(item => item.source_path && path.replace(/\\/g, '/').endsWith('/artifacts/' + item.source_path))
-        ? readCapabilities.filePreview.load(path) : fsApi.preview(path, project.id),
-    },
-  }), [readCapabilities, project.id, artifacts])
+    }, [project.id])
+  const filePreview = useMemo(() => ({ ...readCapabilities.filePreview,
+    load: (path: string) => path.startsWith('artifact:') || path.startsWith('workspace:') || latestRead.current.artifacts.some(item => item.source_path && path.replace(/\\/g, '/').endsWith('/artifacts/' + item.source_path))
+      ? latestRead.current.readCapabilities.filePreview.load(path) : fsApi.preview(path, project.id),
+  }), [readCapabilities.filePreview, project.id])
+  const editableRead = useMemo(() => ({ ...readCapabilities,
+    browseGitWorkspace: browseEditableWorkspace, filePreview,
+  }), [readCapabilities, browseEditableWorkspace, filePreview])
   if (ready !== bindingKey) return null
   if (previewOnly) return <MarkdownAssetUrlProvider resolver={editableRead.resolveAssetUrl} filePreview={editableRead.filePreview}>
     <FilePreviewPage />

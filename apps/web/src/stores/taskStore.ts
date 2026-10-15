@@ -346,6 +346,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   handleWsEvent: (event) => {
     const taskId = event.task_id
     if (!taskId) return
+    if (isCustom(event, CUSTOM.taskUpdated)) {
+      if (event.project_id) void get().refreshTask(taskId, String(event.project_id)).catch(() => undefined)
+      return
+    }
     const timedEvent = event.timestamp
       ? event
       : { ...event, timestamp: Date.now() }

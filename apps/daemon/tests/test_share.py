@@ -1206,3 +1206,32 @@ async def test_share_socket_expires_and_session_lookup_does_not_block_health(mon
     await asyncio.wait_for(pending, 1)
     assert closed == [(4401, 'share expired')]
     assert not bus._subscribers
+
+
+def test_owner_can_recopy_share_credentials_without_exposing_password_to_visitors(manager, tmp_path):
+    project, task = _create_task_in_project(manager, tmp_path / 'recopy')
+    ctx = _bind(project)
+    try:
+        created = share_service.create_share(task['id'], password='copy-password')
+        loaded = share_service.get_share_for_task(task['id'])
+        assert loaded['token'] == created['token']
+        assert loaded['access_password'] == 'copy-password'
+    finally:
+        db_proxy.reset(ctx)
+    public = share_service.resolve_share_by_token(created['token'])['share']
+    assert 'access_password' not in public
+    from models import TaskShare
+    ctx = _bind(project)
+    try:
+        TaskShare.update(password_ciphertext=None).where(TaskShare.id == created['id']).execute()
+    finally:
+        db_proxy.reset(ctx)
+    assert share_service.verify_share_password(created['token'], 'wrong-password') is None
+    assert share_service.verify_share_password(created['token'], 'copy-password')
+    ctx = _bind(project)
+    try:
+        assert share_service.get_share_for_task(task['id'])['access_password'] == 'copy-password'
+        row = TaskShare.get_by_id(created['id'])
+        assert 'copy-password' not in row.password_ciphertext
+    finally:
+        db_proxy.reset(ctx)

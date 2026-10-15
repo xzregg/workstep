@@ -1,6 +1,7 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const enUS: Messages = {
+  roleCenter: zhCN.roleCenter,
   projectAudit: {
     "title": "操作审计",
     "resumeTask": "继续任务",
@@ -1361,6 +1362,9 @@ export const enUS: Messages = {
     switch: 'Switch',
   },
   layout: {
+    workspaceHome: '工作台',
+    recentConversations: '最近聊天',
+    noRecentConversations: '打开过的任务和对话会显示在这里',
     remoteAccessInvalid: '需重新授权',
     remoteAccessInvalidHint: '远程项目凭据失效，请在宿主生成新的分享字符串，并通过“添加项目”重新添加。',
     projectLoadFailed: '项目列表加载失败',
@@ -1901,6 +1905,9 @@ export const enUS: Messages = {
   },
   schedules: {
     title: '定时任务',
+    projects: '选择项目',
+    unsavedTitle: '放弃定时任务修改？',
+    unsavedMessage: '当前定时任务尚未保存，确定放弃修改并离开？',
     openTitle: '管理项目定时任务',
     back: '返回看板',
     new: '新建定时任务',

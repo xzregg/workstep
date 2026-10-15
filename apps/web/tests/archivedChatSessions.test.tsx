@@ -7,6 +7,7 @@ import ArchivedChatSessions from '../src/components/ArchivedChatSessions'
 import { chatSessionApi, type ChatSessionSummary } from '../src/api/client'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useChatListStore } from '../src/stores/chatSessionStore'
+import { useRecentVisitsStore } from '../src/stores/recentVisitsStore'
 
 const row = (id: string, title: string): ChatSessionSummary => ({
   id, title, project_id: 'p1', workflow_id: '', engine: 'codex', message_count: 1,
@@ -60,8 +61,11 @@ test('archived conversations can be searched, selected and restored', async () =
     const deleteSelected = [...container.querySelectorAll('button')].find((button) => button.textContent === '批量删除')!
     await act(async () => deleteSelected.click())
     const confirm = [...document.querySelectorAll('button')].find((button) => button.textContent === '确认删除')!
+    useRecentVisitsStore.getState().visit({ kind: 'session', id: 'two', projectId: 'p1', title: '接口讨论' })
     await act(async () => confirm.click())
     assert.deepEqual(deleted, ['two'])
+    useRecentVisitsStore.getState().hydrate()
+    assert.equal(useRecentVisitsStore.getState().entries.some(entry => entry.id === 'two'), false)
     assert.doesNotMatch(container.textContent || '', /接口讨论/)
   } finally {
     chatSessionApi.list = originalList

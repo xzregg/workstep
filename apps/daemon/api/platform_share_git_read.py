@@ -62,6 +62,35 @@ async def read_git_view(request: Request, action: str, encoded: str):
     data = _parameters(encoded)
     if action not in {'repositories', 'history', 'changes', 'diff', 'blame', 'remotes', 'browse', 'preview', 'content'}:
         raise HTTPException(404, 'Git view unavailable')
+    artifact = re.fullmatch(r'artifact:([0-9a-f]{64})(?:/(.*))?', data.get('path', ''))
+    if artifact and action in {'browse', 'preview', 'content'}:
+        from api.platform_share import _share_artifact_path
+        root = Path(await _share_artifact_path(scope, artifact[1], allow_directory=True))
+        virtual = 'workspace:' + (artifact[2] or '')
+        public_root = 'artifact:' + artifact[1]
+        if action == 'browse':
+            result = await asyncio.to_thread(_browse, root, virtual)
+            def public_path(value):
+                suffix = value[len('workspace:'):]
+                return public_root + ('/' + suffix if suffix else '')
+            for field in ('path', 'relative_path', 'parent', 'parent_relative_path'):
+                if result.get(field) is not None: result[field] = public_path(result[field])
+            for item in result['entries']:
+                item['path'] = public_path(item['path'])
+                item['relative_path'] = item['path']
+            return result
+        def artifact_file():
+            target = _workspace_file(root, virtual)
+            if not target.is_file(): raise HTTPException(404, 'File unavailable')
+            if action == 'content': return FileResponse(target)
+            from api.fs import _preview_file_sync
+            preview = _preview_file_sync(str(target), None, True)
+            return {key: preview[key] for key in ('type', 'content_type', 'content', 'file_size', 'extension')}
+        response = await asyncio.to_thread(artifact_file)
+        if isinstance(response, FileResponse):
+            response.headers['Content-Security-Policy'] = 'sandbox'
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
     workspace = await _share_git_workspace(scope)
     if action == 'repositories':
         return {'projects': [{'id': 'shared', 'name': 'Shared task', 'path': 'workspace:'}],

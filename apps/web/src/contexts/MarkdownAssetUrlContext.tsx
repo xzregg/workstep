@@ -5,6 +5,7 @@ export type MarkdownUrlResolver = (src: string) => string
 
 const MarkdownAssetUrlContext = createContext<MarkdownUrlResolver | undefined>(undefined)
 export interface TaskFilePreview {
+  isolatedHtml?: boolean
   load: (path: string) => Promise<FilePreview>
   rawUrl: (path: string) => string
   windowUrl?: (path: string, name: string, line?: number) => string

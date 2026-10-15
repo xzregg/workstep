@@ -4,6 +4,7 @@ import { chatSessionApi, type Project } from '../api/client'
 import { useI18n } from '../i18n'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
+import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 
 /** Owns sidebar conversation mutations and the navigation that follows removal. */
 export function useSidebarSessionActions() {
@@ -72,6 +73,7 @@ export function useSidebarSessionActions() {
     try {
       const deletedSession = useChatListStore.getState().sessionsByProject[projectId]?.find((session) => session.id === sessionId)
       await chatSessionApi.remove(sessionId, projectId)
+      useRecentVisitsStore.getState().removeSessions(projectId, [sessionId])
       useChatListStore.getState().removeSession(sessionId)
       useChatSessionStore.getState().resetSession(sessionId)
       if (activeSessionId === sessionId) {
@@ -96,6 +98,7 @@ export function useSidebarSessionActions() {
     try {
       const archivedSession = useChatListStore.getState().sessionsByProject[projectId]?.find((session) => session.id === sessionId)
       await chatSessionApi.setArchived(sessionId, projectId, true)
+      useRecentVisitsStore.getState().removeSessions(projectId, [sessionId])
       useChatListStore.getState().removeSession(sessionId)
       if (activeSessionId === sessionId) {
         const next = useChatListStore.getState().sessionsByProject[projectId]?.find(

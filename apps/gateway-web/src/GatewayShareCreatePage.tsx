@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
-import { taskShareDefaults, taskShareClipboard, shareClipboardLocale } from '../../../packages/gateway-ui/src/taskShareDefaults'
+import { taskShareDefaults, taskShareClipboard, taskShareAccessUrl, shareClipboardLocale } from '../../../packages/gateway-ui/src/taskShareDefaults'
 
 type CreatedShare = { id: string; url: string; status: string; mode: string; title: string }
-type ExistingShare = { id: string; title: string; mode: string; status: string;
+type ExistingShare = { url?: string; access_password?: string | null; has_password?: boolean; id: string; title: string; mode: string; status: string;
   created_at: string; expires_at: string | null }
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 const TASK_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
@@ -102,9 +102,9 @@ export function GatewayShareCreatePage() {
     finally { setBusy(false) }
   }
 
-  async function copyLink() {
-    if (!created) return
-    try { await navigator.clipboard.writeText(taskShareClipboard(created.url, password, created.title || title.trim() || taskId, shareClipboardLocale(document.documentElement.lang || 'zh-CN'))); setCopied(true) }
+  async function copyLink(share = created, key = password) {
+    if (!share?.url) return
+    try { await navigator.clipboard.writeText(taskShareClipboard(share.url, key, share.title || title.trim() || taskId, shareClipboardLocale(document.documentElement.lang || 'zh-CN'))); setCopied(true) }
     catch { setError('复制失败，请手动选择链接。') }
   }
 
@@ -145,10 +145,10 @@ export function GatewayShareCreatePage() {
       <p>{revoked ? '分享已撤销。' : '分享已创建。'}</p>
       {!revoked && <>
         <label htmlFor="gateway-created-share-url">分享链接</label>
-        <input id="gateway-created-share-url" readOnly value={created.url} />
+        <input id="gateway-created-share-url" readOnly value={taskShareAccessUrl(created.url, password)} />
         {password && <><label htmlFor="gateway-created-share-key">访问密钥</label><input id="gateway-created-share-key" readOnly value={password} /></>}
         <div className="gateway-share-create-actions">
-          <a href={created.url} target="_blank" rel="noopener noreferrer">打开分享链接</a>
+          <a href={taskShareAccessUrl(created.url, password)} target="_blank" rel="noopener noreferrer">打开分享链接</a>
           <button type="button" onClick={() => void copyLink()}>{copied ? '已复制' : '复制链接和密钥'}</button>
           <button type="button" onClick={() => setConfirmRevoke(true)}>撤销分享</button>
         </div>
@@ -157,10 +157,13 @@ export function GatewayShareCreatePage() {
     </div>}
     {auth === 'ready' && existingShares.length > 0 && <section className="gateway-share-existing">
       <h3>我创建的分享</h3>
-      <p>出于安全考虑，已创建的链接不会再次显示；需要新链接时可重新创建。</p>
       <ul>{existingShares.filter(share => share.id !== created?.id).map(share => <li key={share.id}>
         <span>{share.title || '未命名分享'} · {share.status === 'revoked' ? '已撤销'
           : share.status === 'expired' ? '已过期' : share.status === 'paused' ? '已暂停' : '有效'}</span>
+        {share.access_password && share.status === 'active' && <input
+          aria-label={`${share.title || '未命名分享'}访问密钥`} readOnly value={share.access_password} />}
+        {share.url && share.status === 'active' && <button type="button" disabled={!!share.has_password && !share.access_password}
+          onClick={() => void copyLink(share as CreatedShare, share.access_password || '')}>复制链接和密钥</button>}
         {share.status !== 'revoked' && <button type="button"
           onClick={() => setExistingRevokeTarget(share)}>撤销{share.title || '未命名分享'}</button>}
       </li>)}</ul>

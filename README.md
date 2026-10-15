@@ -4,11 +4,9 @@
 
 # WorkStep
 
-### Orchestrate AI coding agents into observable, controllable workflows
+### Let AI develop in steps. Keep key decisions in your hands.
 
-**Make quality delivery continuous.**
-
-WorkStep connects Codex, Claude Code, ACP agents, SDKs, and local harnesses in one visual workspace for planning, implementation, testing, review, and delivery.
+WorkStep is an AI development workspace for individual developers and small teams. Connect coding tools like Codex and Claude Code into reusable steps for planning, implementation, testing, and review.
 
 [Website](https://xzregg.github.io/workstep/) · [Download](https://github.com/xzregg/workstep/releases/latest) · [User manual](https://xzregg.github.io/workstep/#docs) · [Developer docs](docs/README.md) · [简体中文](README.zh-CN.md)
 
@@ -21,41 +19,20 @@ WorkStep connects Codex, Claude Code, ACP agents, SDKs, and local harnesses in o
 
 </div>
 
-## Understand WorkStep in 30 seconds
+## What can you do with it?
 
-```mermaid
-flowchart LR
-    T[Task] --> W[Visual workflow]
-    W --> E{Choose an engine}
-    E --> C[Codex]
-    E --> A[Claude Code]
-    E --> O[ACP / SDK / Harness]
-    C --> R[Live events]
-    A --> R
-    O --> R
-    R --> H[Approve · pause · resume · retry]
-    H --> D[Code · tests · reviews · artifacts]
-```
+For example, to add search to an existing project, configure a workflow like this:
 
-**WorkStep is not another chat UI.** It turns one-off agent conversations into reusable engineering workflows whose progress, tool calls, approvals, context, and outputs remain visible.
+1. **Analyze requirements**: define the search scope and constraints, then produce an implementation plan.
+2. **Implement the feature**: change the code according to the plan and explain which files changed.
+3. **Run tests**: execute the agreed test commands and record results and outstanding issues.
+4. **Review changes**: inspect the code and test results. With manual review enabled, approve the step or provide feedback for rework.
 
-## Installation and quick start
+This is a workflow design example; actual results need checking. WorkStep connects steps, passes results, and records progress. Execution comes from the tools and models you configure. Steps can share one engine, so you do not need to install every tool.
 
-Choose one way to start WorkStep:
+Reuse the workflow for later tasks to reduce repeated briefing, manual handoffs, and progress checks.
 
-### 1. Run from source
-
-Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 20 or 22, Yarn (available through Corepack), Bash, and `lsof`. For macOS / Linux; on Windows, use the desktop app or Docker.
-
-```bash
-git clone https://github.com/xzregg/workstep.git
-cd workstep
-./start.sh
-```
-
-The script installs dependencies and starts both services. Open <http://127.0.0.1:5173> and press `Ctrl+C` to stop. See the [development guide](docs/development.md) for more commands.
-
-### 2. Download the desktop app
+## Download the desktop app (recommended)
 
 Visit [GitHub Releases](https://github.com/xzregg/workstep/releases/latest), download the package for your system, then install and open WorkStep:
 
@@ -63,27 +40,22 @@ Visit [GitHub Releases](https://github.com/xzregg/workstep/releases/latest), dow
 - **Windows x64**: NSIS installer
 - **Linux x64**: AppImage
 
-Desktop packages include the backend; no separate Python installation is required.
+Desktop packages include the backend; no separate Python installation is required. Install an optional execution engine from the app when you are ready.
 
 > Desktop packages are currently unsigned early-access builds. Windows SmartScreen or macOS Gatekeeper may show a first-run warning.
 
-### 3. Run with Docker
+### What do you need for your first task?
 
-Install Docker and Docker Compose, then run:
+1. Open **Settings → Execution engines** and install one engine, such as Codex SDK or Claude Agent SDK. An engine is the AI program that reads files, changes code, and calls tools. You can install it through the interface.
+2. Configure authentication and a model service as required by the engine, test it, and save your execution defaults. Installing WorkStep or an engine does not provide model accounts or credentials. Model service fees follow your chosen provider’s terms.
+3. Add a project, use onboarding to create the two-step analysis and execution example, then create and start a task.
+4. Begin with an easy-to-check task, such as reading demo materials and generating a usage guide. Inspect the files before using the workflow on your own development project.
 
-```bash
-git clone https://github.com/xzregg/workstep.git
-cd workstep
-docker compose -f docker-compose.yaml up -d --build workstep
-```
-
-After the build finishes, open <http://localhost:8755>. Configuration and engines persist in `./data/home`, and projects in `./data/projects`; use `/data/projects/<project-name>` when creating a project in the app. For older Compose versions, replace `docker compose` with `docker-compose`. See the [container guide](docs/container-runtime.md) for more options.
-
-Once started, download an SDK in engine settings, configure authentication, and test the connection, then create a project, workflow, and task. Follow the [user manual](https://xzregg.github.io/workstep/#docs) for detailed steps.
+Follow the [setup guide](https://xzregg.github.io/workstep/#docs/getting-started) and [first-task walkthrough](https://xzregg.github.io/workstep/#docs/first-task) for detailed steps. Local standalone use does not require gateway login; external model services still require their own authentication.
 
 ## See it in action
 
-Real screenshots from the demo project (Chinese interface). Click an image to view it at full size. Follow the [user manual](https://xzregg.github.io/workstep/#docs) for detailed instructions.
+Real screenshots from the demo project (Chinese interface). The starter task reads demo materials, produces a plan, and creates a usage guide so you can check the handoff between steps and inspect the file. Click an image to view it at full size. Follow the [user manual](https://xzregg.github.io/workstep/#docs) for detailed instructions.
 
 ### 1. Install an SDK engine
 
@@ -113,11 +85,11 @@ Enable manual review on a step to wait for your decision. Inspect the output, ad
 
 | | Capability | What it gives you |
 |---|---|---|
-| 🎛️ | **Visual orchestration** | Build sequential, parallel, review, and rework stages on a reusable workflow canvas. |
-| 🤖 | **Multiple agent engines** | Use CLI, SDK, ACP, and harness-based engines without redesigning the workflow around one vendor. |
-| 👁️ | **Live observability** | Follow streaming responses, tool calls, execution state, structured events, and step history. |
+| 🎛️ | **Configure development steps** | Build sequential, parallel, review, and rework stages on a reusable workflow canvas. |
+| 🤖 | **Choose AI coding tools** | Use CLI, SDK, ACP, and harness-based engines without redesigning the workflow around one vendor. |
+| 👁️ | **Follow execution** | Follow streaming responses, tool calls, execution state, structured events, and step history. |
 | 🛡️ | **Human control** | Approve sensitive tools, pause or stop work, resume sessions, and retry failed stages. |
-| 💾 | **Local-first storage** | Keep each project's SQLite database, event logs, templates, and artifacts with the project owner. |
+| 💾 | **Local-first storage** | Keep project data, execution records, and artifacts on your device or infrastructure. |
 | 🔁 | **Recoverable context** | Continue tasks and supported engine sessions after interruption or restart. |
 | 📦 | **Web and desktop** | Run from source or use unsigned early-access packages for macOS Apple Silicon, Windows x64, and Linux x64. |
 | 🔗 | **Controlled collaboration** | Authorize remote access per project and device instead of uploading every project to a central service. |
@@ -128,15 +100,41 @@ WorkStep currently integrates engines including:
 
 `Codex CLI` · `Codex SDK` · `Claude Code` · `Claude Agent SDK` · `OpenCode` · `OpenClaw` · `Hermes ACP` · `Cursor SDK` · `Qoder SDK` · `DeepSeek Harness` · `Pydantic AI`
 
-Engine discovery, sessions, approvals, capabilities, and events share a common boundary. Unsupported native capabilities are declared and degraded explicitly rather than simulated.
+Choose and configure one to get started. Session recovery, approvals, and other capabilities vary by engine; see the [engine capability guide](docs/llm-engine-development-guide.md).
 
 ## Local-first by design
 
-1. Each project owns its `.workstep/` database, event logs, templates, and artifacts.
+1. Project data and execution records stay on your machine, next to the project by default or in a configurable central location.
 2. Engines execute through the local daemon; WorkStep does not silently copy projects into a hosted workspace.
 3. Optional remote access is explicit, scoped to a project and device, and can be revoked by the project owner.
 
 Local-first describes where WorkStep stores and orchestrates project data. External model providers and optional engines still follow their own network and data policies.
+
+## Other ways to run (development and self-hosting)
+
+### Run from source
+
+Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 20 or 22, Yarn (available through Corepack), Bash, and `lsof`. For macOS / Linux; on Windows, use the desktop app or Docker.
+
+```bash
+git clone https://github.com/xzregg/workstep.git
+cd workstep
+./start.sh
+```
+
+The script installs dependencies and starts both services. Open <http://127.0.0.1:5173> and press `Ctrl+C` to stop. See the [development guide](docs/development.md) for more commands.
+
+### Run with Docker
+
+Install Docker and Docker Compose, then run:
+
+```bash
+git clone https://github.com/xzregg/workstep.git
+cd workstep
+docker compose -f docker-compose.yaml up -d --build workstep
+```
+
+After the build finishes, open <http://localhost:8755>. Configuration and engines persist in `./data/home`, and projects in `./data/projects`; use `/data/projects/<project-name>` when creating a project in the app. For older Compose versions, replace `docker compose` with `docker-compose`. See the [container guide](docs/container-runtime.md) for more options.
 
 ## Documentation
 

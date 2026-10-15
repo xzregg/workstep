@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Ellipsis, Eye,
+  Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Drama, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List, Monitor, Smartphone,
   Crosshair, Maximize2, Menu, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
   Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
@@ -26,6 +26,7 @@ const glyphs = {
   copy: Copy,
   crosshair: Crosshair,
   download: Download,
+  drama: Drama,
   ellipsis: Ellipsis,
   eye: Eye,
   'external-link': ExternalLink,

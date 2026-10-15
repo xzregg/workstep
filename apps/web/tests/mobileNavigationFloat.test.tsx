@@ -24,6 +24,19 @@ for (const [width, android, visible] of [[390, false, true], [320, false, true],
       await act(async () => root.render(<I18nProvider><MemoryRouter><ResponsiveNavigation title="WorkStep" onNew={() => {}}><button>项目</button></ResponsiveNavigation></MemoryRouter></I18nProvider>))
       const button = document.querySelector<HTMLButtonElement>('.mobile-navigation-float')
       assert.equal(!!button, visible)
+      if (android) {
+        // MainActivity's native circle uses these selectors to toggle the drawer.
+        const nativeCircleTap = () => {
+          const open = document.querySelector<HTMLButtonElement>('button[aria-controls="workstep-navigation"]')!
+          const close = document.getElementById('workstep-navigation')!.querySelector<HTMLButtonElement>('button.navigation-close')!
+          if (open.getAttribute('aria-expanded') === 'true') close.click()
+          else open.click()
+        }
+        await act(async () => nativeCircleTap())
+        assert.ok(container.querySelector('aside.is-open'))
+        await act(async () => nativeCircleTap())
+        assert.equal(container.querySelector('aside.is-open'), null)
+      }
       if (button) {
         assert.equal(button.getAttribute('aria-controls'), 'workstep-navigation')
         const transition = window.getComputedStyle(button).transition

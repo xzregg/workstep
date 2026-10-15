@@ -1,0 +1,92 @@
+[
+  {
+    "id": "academic",
+    "name": "学术",
+    "name_en": "Academic"
+  },
+  {
+    "id": "design",
+    "name": "设计",
+    "name_en": "Design"
+  },
+  {
+    "id": "engineering",
+    "name": "工程开发",
+    "name_en": "Engineering"
+  },
+  {
+    "id": "finance",
+    "name": "金融",
+    "name_en": "Finance"
+  },
+  {
+    "id": "game-development",
+    "name": "游戏开发",
+    "name_en": "Game Development"
+  },
+  {
+    "id": "gis",
+    "name": "地理信息系统",
+    "name_en": "GIS"
+  },
+  {
+    "id": "healthcare",
+    "name": "医疗健康",
+    "name_en": "Healthcare"
+  },
+  {
+    "id": "marketing",
+    "name": "市场营销",
+    "name_en": "Marketing"
+  },
+  {
+    "id": "paid-media",
+    "name": "付费广告",
+    "name_en": "Paid Media"
+  },
+  {
+    "id": "product",
+    "name": "产品",
+    "name_en": "Product"
+  },
+  {
+    "id": "project-management",
+    "name": "项目管理",
+    "name_en": "Project Management"
+  },
+  {
+    "id": "research",
+    "name": "研究",
+    "name_en": "Research"
+  },
+  {
+    "id": "sales",
+    "name": "销售",
+    "name_en": "Sales"
+  },
+  {
+    "id": "security",
+    "name": "安全",
+    "name_en": "Security"
+  },
+  {
+    "id": "spatial-computing",
+    "name": "空间计算",
+    "name_en": "Spatial Computing"
+  },
+  {
+    "id": "specialized",
+    "name": "专项专家",
+    "name_en": "Specialized"
+  },
+  {
+    "id": "support",
+    "name": "支持服务",
+    "name_en": "Support"
+  },
+  {
+    "id": "testing",
+    "name": "测试",
+    "name_en": "Testing"
+  }
+]

@@ -383,7 +383,7 @@ async def test_remote_task_share_registry_lookup_keeps_event_loop_responsive(mon
     ('10.88.0.2', 'localhost', False, False, False),
     ('127.0.0.1', 'localhost', False, True, False),
 ])
-def test_return_to_local_disables_gateway_without_network(monkeypatch, peer, host, desktop, locked, expected, entry):
+def test_return_to_local_preserves_gateway_without_network(monkeypatch, peer, host, desktop, locked, expected, entry):
     from unittest.mock import AsyncMock
     from services.gateway_client import browser_login as module
     monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
@@ -396,7 +396,7 @@ def test_return_to_local_disables_gateway_without_network(monkeypatch, peer, hos
     stored = {'url': 'http://localhost:8700', 'enabled': True, 'authorized': True}
     monkeypatch.setattr(module.config_store, 'get', lambda *args: dict(stored))
     monkeypatch.setattr(module.config_store, 'set', lambda key, value: stored.update(value))
-    monkeypatch.setattr(module.connection_credentials, 'delete', lambda origin: None)
+    monkeypatch.setattr(module.connection_credentials, 'delete', lambda origin: pytest.fail('fallback deleted credentials'))
     app, _, _ = _browser_managed_app()
     gateway = app.state.gateway_client
     gateway.close = AsyncMock()
@@ -415,16 +415,17 @@ def test_return_to_local_disables_gateway_without_network(monkeypatch, peer, hos
             assert response.headers['location'] == '/?gateway_auth=cancelled'
             assert response.headers['cache-control'] == 'no-store'
             response = client.get(response.headers['location'], headers=headers, follow_redirects=False)
-        assert stored['enabled'] is (not expected)
+        assert stored == {'url': 'http://localhost:8700', 'enabled': True, 'authorized': True}
         if expected:
             assert response.status_code == 303
             assert response.headers['location'] == '/'
             assert client.get('/', headers=headers).status_code == 200
             assert client.get('/api/private', headers=headers).status_code == 200
-            with client.websocket_connect('/ws', headers=headers) as ws:
+            with client.websocket_connect(f'ws://{host}:8765/ws', headers={**headers, 'Origin': f'http://{host}:8765'}) as ws:
                 assert ws.receive_text() == 'ok'
-            assert gateway.managed_config is None
-            gateway.close.assert_awaited_once()
+            assert gateway.managed_config is not None
+            gateway.close.assert_not_awaited()
+            assert client.get('/api/gateway-platform/settings', headers=headers).json()['local_workspace'] is True
         else:
             gateway.close.assert_not_awaited()
 
@@ -466,7 +467,7 @@ async def test_local_gateway_fallback_slow_storage_keeps_health_responsive(monke
         assert (await asyncio.wait_for(client.get('/api/health'), .1)).status_code == 200
         assert not fallback.done()
         assert (await fallback).status_code == 200
-        assert stored['enabled'] is False
+        assert stored['enabled'] is True
 
 
 @pytest.mark.parametrize('origin,expected', [
@@ -530,22 +531,20 @@ def test_lan_gateway_fallback_uses_native_access_credential(monkeypatch, valid, 
     app, _, _ = _browser_managed_app()
     app.include_router(router)
     app.state.gateway_client.current_user_id = 'owner'
-    app.state.gateway_browser_login.save_settings = AsyncMock(return_value={'enabled': False})
+    from services.gateway_client.browser_login import GatewayBrowserLogin
+    app.state.gateway_browser_login = GatewayBrowserLogin(app.state.gateway_client)
+    app.state.gateway_browser_login.save_settings = AsyncMock()
     app.state.remote_access_service = SimpleNamespace(
         settings=lambda: {'enabled': True}, access_password_required=lambda: True,
         verify_access_token=lambda token: valid and token == 'native-access')
     with TestClient(app, base_url=base_url, client=('192.168.52.100',123)) as client:
         client.cookies.set('workstep_access', 'native-access')
         # Return marker must reach the SPA even without a Gateway user session.
-        assert client.get('/?gateway_auth=cancelled', follow_redirects=False).status_code == 200
-        response = client.put('/api/gateway-platform/settings',
-            headers={'Origin':origin},
-            json={'url':'http://localhost:8700','enabled':False})
+        assert client.get('/?gateway_auth=cancelled', follow_redirects=False).status_code == (303 if valid else 200)
+        response = client.post('/api/gateway-platform/local-workspace', headers={'Origin': origin})
         assert response.status_code == expected
-        if valid:
-            app.state.gateway_browser_login.save_settings.assert_awaited_once_with('http://localhost:8700',False)
-        else:
-            app.state.gateway_browser_login.save_settings.assert_not_awaited()
+        app.state.gateway_browser_login.save_settings.assert_not_awaited()
+        assert client.get('/api/private').status_code == (200 if valid else 401)
 
 
 @pytest.mark.asyncio
@@ -561,7 +560,8 @@ async def test_lan_fallback_slow_access_validation_keeps_health_responsive(monke
     app, _, _ = _browser_managed_app()
     app.include_router(router)
     app.state.gateway_client.current_user_id = 'owner'
-    app.state.gateway_browser_login.save_settings = AsyncMock(return_value={'enabled':False})
+    from services.gateway_client.browser_login import GatewayBrowserLogin
+    app.state.gateway_browser_login = GatewayBrowserLogin(app.state.gateway_client)
     entered = threading.Event()
     def slow_verify(token):
         entered.set()
@@ -573,8 +573,8 @@ async def test_lan_fallback_slow_access_validation_keeps_health_responsive(monke
     async def health(): return {'ok':True}
     async with AsyncClient(transport=ASGITransport(app=app,client=('192.168.52.100',123)),base_url='http://192.168.52.156:8765') as client:
         client.cookies.set('workstep_access','native-access')
-        fallback = asyncio.create_task(client.put('/api/gateway-platform/settings',
-            headers={'Origin':'http://192.168.52.156:8765'},json={'url':'http://localhost:8700','enabled':False}))
+        fallback = asyncio.create_task(client.post('/api/gateway-platform/local-workspace',
+            headers={'Origin':'http://192.168.52.156:8765'}))
         while not entered.is_set():
             await asyncio.sleep(.001)
         assert (await asyncio.wait_for(client.get('/api/health'),.1)).status_code == 200
@@ -685,3 +685,90 @@ def test_same_browser_can_authorize_two_daemons_without_cookie_or_logout_collisi
         assert b.get('/api/actor').json()['id'] == 'same-user'
         with b.websocket_connect('ws://localhost:5173/ws', headers={'Origin':'http://localhost:5173'}) as socket:
             assert socket.receive_text() == 'ok'
+
+
+def test_temporary_local_workspace_is_same_origin_and_local_only(monkeypatch):
+    from services.gateway_client.browser_login import GatewayBrowserLogin
+    from api.gateway_platform import router
+    monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
+    monkeypatch.delenv('WORKSTEP_MANAGED_BUNDLE_DIR', raising=False)
+    app, _, _ = _browser_managed_app()
+    app.state.gateway_browser_login = GatewayBrowserLogin(app.state.gateway_client)
+    app.include_router(router)
+    with TestClient(app, base_url='http://localhost:5173', client=('127.0.0.1', 123)) as client:
+        assert client.post('/api/gateway-platform/local-workspace', headers={'Origin': 'https://evil.test'}).status_code == 403
+        assert client.post('/api/gateway-platform/local-workspace', headers={'Origin': 'http://localhost:5173'}).status_code == 200
+        assert client.get('/api/private').status_code == 200
+        assert client.post('/api/remote-project/add', headers={'Origin': 'https://evil.test'}).status_code == 403
+        with client.websocket_connect('ws://localhost:5173/ws', headers={'Origin': 'http://localhost:5173'}) as ws:
+            assert ws.receive_text() == 'ok'
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect('ws://localhost:5173/ws', headers={'Origin': 'https://evil.test'}): pass
+        with TestClient(app, base_url='http://localhost:5173', client=('10.0.0.2', 123)) as remote:
+            remote.cookies.update(client.cookies)
+            assert remote.get('/api/private').status_code == 401
+            assert remote.post('/api/gateway-platform/local-workspace', headers={'Origin': 'http://localhost:5173'}).status_code in (401, 403)
+        # A different daemon, or a daemon restart, cannot accept this temporary cookie.
+        other, _, _ = _browser_managed_app()
+        other.state.gateway_browser_login = GatewayBrowserLogin(other.state.gateway_client)
+        with TestClient(other, base_url='http://localhost:5173', client=('127.0.0.1', 123)) as restarted:
+            restarted.cookies.update(client.cookies)
+            assert restarted.get('/api/private').status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_temporary_workspace_does_not_cancel_gateway_restore(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from httpx import ASGITransport, AsyncClient
+    from services.gateway_client import service as module
+    from services.gateway_client.browser_login import GatewayBrowserLogin
+    from api.gateway_platform import router
+    monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
+    monkeypatch.delenv('WORKSTEP_MANAGED_BUNDLE_DIR', raising=False)
+    monkeypatch.setattr(module.config_module, 'CONFIG_DIR', tmp_path)
+    saved = dict(authorization='authorization', proof='proof', control_private='private',
+                 control_public='public', delegation='delegation', reconnect_token='renewed-token')
+    await asyncio.to_thread(module.connection_credentials.save, 'https://gateway.test', saved)
+    gateway_available = asyncio.Event()
+    restoring = asyncio.Event()
+    starts = []
+    class Control:
+        online = False
+        authorization_required = False
+        def __init__(self, *args, **kwargs): pass
+        def start(self, *args, **kwargs):
+            self.online = True
+            starts.append(kwargs['reconnect_token'])
+        async def stop(self): pass
+    actor = ManagedActor('user-1', 'alice', 'device-1', 'app-1', 1)
+    class Verifier:
+        async def verify(self, *args, **kwargs):
+            restoring.set()
+            await gateway_available.wait()
+            return actor
+    gateway = module.GatewayClientService(Control)
+    gateway.managed_config = SimpleNamespace(gateway_origin='https://gateway.test',
+        gateway_id='gateway-1', gateway_public_key_fingerprint='pin')
+    gateway.verifier = Verifier()
+    app = _app()
+    app.state.gateway_client = gateway
+    app.state.gateway_browser_login = GatewayBrowserLogin(gateway)
+    app.include_router(router)
+    gateway._restore_task = asyncio.create_task(gateway._restore_with_retry())
+    try:
+        await asyncio.wait_for(restoring.wait(), 1)
+        async with AsyncClient(transport=ASGITransport(app=app, client=('127.0.0.1', 123)), base_url='http://localhost:8765') as client:
+            assert (await client.get('/?gateway_auth=cancelled', follow_redirects=True)).status_code == 200
+            assert not gateway._restore_task.done()
+            assert (await client.get('/api/private')).status_code == 200
+            assert await asyncio.to_thread(module.connection_credentials.load, 'https://gateway.test') == saved
+            gateway_available.set()
+            await asyncio.wait_for(asyncio.shield(gateway._restore_task), 1)
+            assert starts == ['renewed-token']
+            status = (await client.get('/api/gateway-platform/settings')).json()
+            assert status['authenticated'] is True
+            assert status['online'] is True
+            assert (await client.get('/api/actor')).json()['id'] == 'user-1'
+    finally:
+        await gateway.close()

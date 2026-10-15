@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { installDomEnvironment } from './helpers/domEnv'
 import ShareDialog from '../src/components/ShareDialog'
+import { forgetTaskShareKey } from '../../../packages/gateway-ui/src/taskShareDefaults'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 
 for (const gateway of [false, true]) test(`share dialog focuses its container instead of password: gateway=${gateway}`, async () => {
@@ -42,7 +43,7 @@ for (const gateway of [false, true]) test(`share defaults and clipboard include 
   const api = { get: async () => saved, create: async (...args: any[]) => {
     submitted = args
     saved = { id: 'share-default-' + gateway, task_id: 'task', token: 'default-token', url: 'https://gateway.test/share/default-token',
-      mode: args[4], title: null, has_password: true, revoked: false, created_at: new Date().toISOString(), revoked_at: null }
+      access_password: args[2], mode: args[4], title: null, has_password: true, revoked: false, created_at: new Date().toISOString(), revoked_at: null }
     return saved
   }, revoke: async () => {} }
   const render = (open = true) => root.render(<I18nProvider><ShareDialog open={open} gateway={gateway} taskId="task" taskTitle="示例任务" projectId="project" api={api} onClose={() => { closed = true }} /></I18nProvider>)
@@ -63,6 +64,7 @@ for (const gateway of [false, true]) test(`share defaults and clipboard include 
     assert.ok(copied.startsWith('示例任务\n访问地址：'))
     assert.match(copied, /\/share\/default-token/)
     assert.match(copied, new RegExp('访问密码：' + key))
+    forgetTaskShareKey(saved.id) // Simulate reopening without any in-memory credential cache.
     await act(async () => render(false))
     await act(async () => render())
     await act(async () => ([...element.querySelectorAll('button')].find(button => button.textContent?.trim() === '复制链接和密钥')!).click())

@@ -26,7 +26,7 @@ def test_device_workspace_shares_unpublished_task_without_publishing_project(tmp
             from gateway.services.device_task_shares import manage
             async with app.state.database.session() as session:
                 actor = await session.scalar(select(User).where(User.username == 'owner'))
-            call = SimpleNamespace(database=app.state.database, settings=app.state.settings, tokens={})
+            call = SimpleNamespace(database=app.state.database, settings=app.state.settings, tokens={}, gateway_signer=app.state.gateway_signer)
             body = {'version': 1, 'host_project_id': 'native-unpublished', 'action': 'list', 'payload': {'task_id': 'native-task'}}
             assert await manage(call, 'device-1', actor.id, body) == {'shares': []}
             body.update(action='create', payload={'task_id': 'native-task', 'password': 'access-key'})
@@ -35,6 +35,10 @@ def test_device_workspace_shares_unpublished_task_without_publishing_project(tmp
             async with app.state.database.session() as session:
                 project = await session.scalar(select(PlatformProject).where(PlatformProject.host_project_id == 'native-unpublished'))
                 assert project.access_mode == 'policy_only' and project.published_at is None
+            body.update(action='list', payload={'task_id': 'native-task'})
+            listed = await manage(call, 'device-1', actor.id, body)
+            assert listed['shares'][0]['url'] == created['url']
+            assert listed['shares'][0]['access_password'] == 'access-key'
             body.update(action='revoke', payload={'share_id': created['id']})
             assert await manage(call, 'device-1', actor.id, body) == {'ok': True}
         client.portal.call(native_control_share)

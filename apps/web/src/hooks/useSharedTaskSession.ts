@@ -16,7 +16,7 @@ export type SharePhase =
   | { kind: 'error'; message: string }
 
 /** Owns public share access, the initial snapshot, and its live subscription. */
-export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareApi, { live = true }: { live?: boolean } = {}) {
+export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareApi, { live = true, passwordHint = '' }: { live?: boolean; passwordHint?: string } = {}) {
   const { t } = useI18n()
   const [phase, setPhase] = useState<SharePhase>({ kind: 'loading-meta' })
   const [meta, setMeta] = useState<ShareMeta | null>(null)
@@ -26,7 +26,8 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
   const [artifactDirectory, setArtifactDirectory] = useState('')
   const [inputSnapshots, setInputSnapshots] = useState<TaskArtifactInputSnapshot[]>([])
   const [reviews, setReviews] = useState<ReviewRun[]>([])
-  const [password, setPassword] = useState('')
+  const [password, setPassword] = useState(passwordHint)
+  useEffect(() => { setPassword(passwordHint) }, [token, passwordHint])
   const [error, setError] = useState<string | null>(null)
   const [wsStatus, setWsStatus] = useState<'disconnected' | 'connecting' | 'live'>('disconnected')
   const [revision, setRevision] = useState(0)
@@ -40,6 +41,8 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
   const detailsInFlight = useRef(new Set<string>())
   const latestTask = useRef(task)
   latestTask.current = task
+  const latestMessages = useRef(messages)
+  latestMessages.current = messages
 
   const loadWithSession = useCallback(async (sessionToken: string, version = scopeVersion.current) => {
     if (!token || version !== scopeVersion.current) return
@@ -156,6 +159,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
     let backoffMs = 500
     let snapshotInFlight = false
     let snapshotAgain = false
+    let reschedulePoll: (() => void) | undefined
     const refreshSnapshot = async () => {
       if (snapshotInFlight) { snapshotAgain = true; return }
       snapshotInFlight = true
@@ -168,6 +172,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
           ])
           if (closed) return
           latestTask.current = fresh
+          latestMessages.current = history.messages
           setTask(fresh)
           setMessages(previous => mergeSharedHistorySnapshot(previous, history.messages))
           setReviews(review.reviews)
@@ -177,6 +182,12 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
         } while (snapshotAgain && !closed)
       } finally { snapshotInFlight = false }
     }
+    const onChanged = (event: Event) => {
+      if ((event as CustomEvent).detail?.token === token) {
+        void refreshSnapshot().catch(() => undefined).finally(() => reschedulePoll?.())
+      }
+    }
+    window.addEventListener('workstep:shared-task-changed', onChanged)
 
     const applyEvent = (event: any) => {
       const eventType = event?.type
@@ -193,6 +204,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
         eventType === 'step_retrying' ||
         event?.type === 'CUSTOM' && (
           event?.name === 'workstep.status' ||
+          event?.name === 'workstep.task_updated' ||
           event?.name === 'workstep.step_retrying' ||
           event?.name === 'workstep.run_recovered' ||
           event?.name === 'workstep.review_status' ||
@@ -206,7 +218,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
     const connect = () => {
       if (closed) return
       setWsStatus('connecting')
-      const url = api.buildWsUrl(sessionToken)
+      const url = api.buildWsUrl(sessionToken, token)
       if (url === null) return
       const ws = new WebSocket(gatewayResourceUrl(url))
       wsRef.current = ws
@@ -226,8 +238,15 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
         if (wsRef.current === ws) wsRef.current = null
         if (closed) return
         setWsStatus('disconnected')
-        if (event.code === 4401) {
-          if (meta) void recoverSession(meta)
+        if (event.code === 4401 || event.code === 4403) {
+          setTask(null); setMessages([]); setArtifacts([]); setReviews([])
+          // Revocation and expiry can close an otherwise valid visitor socket.
+          // Recheck link availability before offering password recovery.
+          void api.meta(token).then(freshMeta => {
+            if (!closed) return recoverSession(freshMeta)
+          }).catch(reason => {
+            if (!closed) setPhase({ kind: 'error', message: reason instanceof Error ? reason.message : String(reason) })
+          })
           return
         }
         reconnectTimer = setTimeout(() => {
@@ -238,15 +257,18 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
       }
     }
 
-    if (api.buildWsUrl(sessionToken) === null) {
+    if (api.buildWsUrl(sessionToken, token) === null) {
       let timer: ReturnType<typeof setTimeout> | null = null
       let polling = false
       const schedule = () => {
         if (closed || document.visibilityState === 'hidden') return
         const activeStatuses = ['running', 'reviewing', 'retrying', 'rework']
         const current = latestTask.current
-        const active = activeStatuses.includes(current?.status || '')
-          || current?.steps?.some(step => activeStatuses.includes(step.status))
+        const inactive = ['completed', 'ready', 'stopped', 'failed', 'paused', 'cancelled', 'archived', 'pending', 'awaiting_review'].includes(current?.status || '')
+        const coordinatorActive = latestMessages.current.some(message => message.channel === 'coordinator'
+          && message.role === 'assistant' && ['queued', 'running'].includes(message.run_status))
+        const active = coordinatorActive || (!inactive && (activeStatuses.includes(current?.status || '')
+          || current?.steps?.some(step => activeStatuses.includes(step.status))))
         timer = setTimeout(() => { timer = null; void poll() }, active ? 2000 : 30000)
       }
       const poll = async () => {
@@ -268,6 +290,10 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
         } finally { polling = false }
         schedule()
       }
+      reschedulePoll = () => {
+        if (timer) { clearTimeout(timer); timer = null }
+        schedule()
+      }
       const onVisibilityChange = () => {
         if (timer) { clearTimeout(timer); timer = null }
         if (document.visibilityState !== 'hidden') void poll()
@@ -278,12 +304,14 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
         closed = true
         if (timer) clearTimeout(timer)
         document.removeEventListener('visibilitychange', onVisibilityChange)
+        window.removeEventListener('workstep:shared-task-changed', onChanged)
       }
     }
     connect()
     return () => {
       closed = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
+      window.removeEventListener('workstep:shared-task-changed', onChanged)
       const ws = wsRef.current
       wsRef.current = null
       try { ws?.close() } catch { /* ignore */ }

@@ -229,7 +229,8 @@ class ManagedHttpBridge:
 
 class ManagedWebSocketBridge:
     def __init__(self, app, stream_id: str, start: dict, send_frame, device_id: str,
-                 *, flow_control: bool = False):
+                 *, flow_control: bool = False, gateway_key: str = "",
+                 gateway_fingerprint: str = "", gateway_id: str = ""):
         self.app = app
         self.stream_id = stream_id
         self.start = start
@@ -237,6 +238,9 @@ class ManagedWebSocketBridge:
         self._outbound_credits = asyncio.BoundedSemaphore(32)
         self.flow_control = flow_control
         self.device_id = device_id
+        self.gateway_key = gateway_key
+        self.gateway_fingerprint = gateway_fingerprint
+        self.gateway_id = gateway_id
         self._inbound: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._task: asyncio.Task | None = None
 
@@ -283,6 +287,22 @@ class ManagedWebSocketBridge:
             project_id = self.start.get("project_id")
             access_level = self.start.get("access_level")
             task_create = self.start.get("task_create", False)
+            share_scope = None
+            if self.start.get('share_ticket') is not None:
+                if (path != '/ws/platform-share' or query
+                        or not self.gateway_key or not self.gateway_fingerprint or not self.gateway_id
+                        or task_create is not False
+                        or any(self.start.get(name) is not None for name in (
+                            'user_id', 'username', 'display_name', 'project_id', 'access_level',
+                            'provider_ids', 'provider_grant_expires_at'))):
+                    raise ValueError('Invalid managed share WebSocket')
+                share_scope = await asyncio.to_thread(
+                    verify_share_ticket, self.start['share_ticket'], self.gateway_key,
+                    self.gateway_fingerprint, self.gateway_id, self.device_id,
+                )
+                user_id = 'share:' + share_scope['share_id']
+                username = 'share-visitor'
+                display_name = 'Share visitor'
             raw_headers = self.start.get("headers", [])
             if (not isinstance(path, str) or not path.startswith("/") or path.startswith("//")
                     or not isinstance(query, str) or not isinstance(username, str)
@@ -319,6 +339,8 @@ class ManagedWebSocketBridge:
                 "server": ("127.0.0.1", 80), "subprotocols": [],
                 "gateway_remote_actor": actor,
             }
+            if share_scope is not None:
+                scope['gateway_share_scope'] = share_scope
 
             async def receive():
                 nonlocal first_receive

@@ -20,16 +20,35 @@ for (const { interactive, standalone } of [
   useUserSettingsStore.setState({ openMode: true })
   const originalFetch = globalThis.fetch
   const originalSocket = globalThis.WebSocket
+  const originalTimeout = globalThis.setTimeout
+  const originalClearTimeout = globalThis.clearTimeout
+  let poll: (() => void) | undefined
+  let shareSocket: any
+  globalThis.setTimeout = ((callback: () => void, ms: number, ...args: any[]) => {
+    if (ms === 2000 || ms === 30000) { poll = callback; return 98765 }
+    return originalTimeout(callback, ms, ...args)
+  }) as typeof setTimeout
+  globalThis.clearTimeout = ((id: any) => { if (id === 98765) poll = undefined; else originalClearTimeout(id) }) as typeof clearTimeout
   const calls: string[] = []
   const operations: Array<{ path: string; method: string; body?: any; idempotency_key?: string }> = []
   let openedUrl = ''
+  let sharedDescription = 'Original task description'
   window.open = ((url: string | URL) => { openedUrl = String(url); return null }) as typeof window.open
   const sourcePath = 'flow/task/build/req1/new.md'
   const recordedPath = `/data/private/project/.workstep/artifacts/${sourcePath}`
   const artifactId = 'a'.repeat(64)
+  const directoryId = 'b'.repeat(64)
   const proposal = { id: 'proposal-1', type: 'rerun_from_step', status: 'pending', payload: { content: 'Restart build' }, target_step_key: 'build' }
   Object.assign(globalThis, { ResizeObserver: window.ResizeObserver,
-    WebSocket: class { constructor() { throw new Error('Owner websocket is forbidden') } } })
+    WebSocket: class {
+      onopen?: () => void
+      onmessage?: (event: { data: string }) => void
+      constructor(url: string) {
+        assert.equal(url, 'ws://localhost:8700/api/public/shares/handle/ws')
+        shareSocket = this
+      }
+      close() {}
+    } })
   globalThis.fetch = async (input, init) => {
     const path = String(input); calls.push(path)
     const prefix = '/api/public/shares/handle'
@@ -66,14 +85,17 @@ for (const { interactive, standalone } of [
       if (target === '/intervention/respond') return Response.json({ delivered: true })
       if (target === '/task/task/reviews') return globalThis.fetch(prefix + '/reviews')
       if (target === '/task/task/history') return globalThis.fetch(prefix + '/history')
-      if (target === '/task/task') return globalThis.fetch(prefix + '/task')
+      if (target === '/task/task') {
+        if (operation.method === 'PATCH') sharedDescription = operation.body.description
+        return globalThis.fetch(prefix + '/task')
+      }
       if (target === '/task/list') return Response.json({ tasks: [(await (await globalThis.fetch(prefix + '/task')).json())] })
       throw new Error(`Unmapped task operation: ${target}`)
     }
     if (path === prefix + '/meta') return Response.json({ title: 'Shared', mode: interactive ? 'interactive' : 'read_only', has_password: false })
     if (path === prefix + '/session') return Response.json({ csrf_token: 'restored-csrf' })
     if (path === prefix + '/unlock') return Response.json({ csrf_token: 'csrf' })
-    if (path === prefix + '/task') return Response.json({ id: 'task', title: 'Gateway task', status: interactive ? 'awaiting_review' : 'pending',
+    if (path === prefix + '/task') return Response.json({ id: 'task', title: 'Gateway task', description: sharedDescription, status: interactive ? 'awaiting_review' : 'pending',
       created_at: '2026-10-03T00:00:00Z', steps: [{ step_key: 'build', status: interactive ? 'awaiting_review' : 'pending', has_history: false }], workflow: null })
     if (path === prefix + '/history') return Response.json({ messages: [{ id: 'message', role: 'assistant',
       step_key: 'build', content: 'Visible execution', prompt: 'Shared actual input', created_at: '2026-10-03T00:00:00Z', events: [
@@ -87,7 +109,18 @@ for (const { interactive, standalone } of [
       proposal.status = 'succeeded'
       return Response.json(proposal)
     }
-    if (path === prefix + '/artifacts') return Response.json({ artifacts: [{ id: artifactId, source_path: sourcePath, name: 'new.md', relative_path: 'new.md', step_key: 'build' }] })
+    if (path === prefix + '/artifacts') return Response.json({ artifacts: [
+      { id: artifactId, source_path: sourcePath, name: 'new.md', relative_path: 'new.md', step_key: 'build' },
+      { id: directoryId, source_path: 'flow/task/build/req1/code', name: 'code', relative_path: 'code', step_key: 'build', is_dir: true },
+    ] })
+    if (path.startsWith(prefix + '/git/read/')) {
+      const [, action, encoded] = path.slice((prefix + '/git/read/').length).match(/^([^/]+)\/(.+)$/)!
+      const { path: virtual } = JSON.parse(Buffer.from(encoded, 'hex').toString())
+      assert.ok(virtual.startsWith(`artifact:${directoryId}`))
+      if (action === 'browse') return Response.json({ path: virtual, name: 'code', parent: null,
+        entries: [{ name: 'main.py', type: 'file', path: virtual + '/main.py', relative_path: virtual + '/main.py' }] })
+      return Response.json({ type: 'text', content: 'print("share test")', extension: '.py', content_type: 'text/plain', file_size: 20 })
+    }
     if (path === prefix + `/artifacts/${artifactId}/preview`) return Response.json({ type: 'text', content: 'New shared document', extension: '.md', content_type: 'text/markdown', file_size: 20 })
     if (path === prefix + '/reviews') return Response.json({ reviews: interactive ? [{ id: 'review', step_key: 'build', mode: 'manual', status: 'pending', report: null }] : [] })
     if (path === prefix + '/steps/build/review/approve') {
@@ -116,6 +149,9 @@ for (const { interactive, standalone } of [
       return
     }
     assert.ok(element.querySelector('.task-detail-header'))
+    assert.ok(shareSocket, 'gateway shares must connect their task-scoped websocket')
+    await act(async () => shareSocket.onopen())
+    assert.equal(poll, undefined, 'a connected share must not schedule snapshot polling')
     assert.ok(element.textContent?.includes('Gateway task'))
     assert.ok(element.textContent?.includes('Visible execution'))
     assert.equal(element.querySelector('.app-shell'), null)
@@ -128,6 +164,10 @@ for (const { interactive, standalone } of [
     await act(async () => (element.querySelector('button.message-file-change-path') as HTMLElement).click())
     assert.match(document.querySelector('.file-preview-dialog')!.textContent!, /New shared document/)
     assert.equal(calls.filter(path => path.endsWith(`/artifacts/${artifactId}/preview`)).length, 1)
+    await act(async () => shareSocket.onmessage({ data: JSON.stringify({ type: 'CUSTOM', name: 'workstep.task_updated', task_id: 'task' }) }))
+    assert.equal(calls.filter(path => path.endsWith(`/artifacts/${artifactId}/preview`)).length, 1,
+      'refreshing shared task snapshots must not restart an open file preview')
+    assert.match(document.querySelector('.file-preview-dialog')!.textContent!, /New shared document/)
     await act(async () => (document.querySelector('.file-preview-dialog-close') as HTMLElement).click())
     const artifactsTab = [...element.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
       .find(tab => tab.textContent?.trim() === '产物')!
@@ -160,10 +200,31 @@ for (const { interactive, standalone } of [
     await act(async () => (element.querySelector('.task-artifact-open-directory--step') as HTMLElement).click())
     assert.equal(document.querySelector('.project-directory-dialog-heading span')?.getAttribute('title'), '.workstep/artifacts/flow/task/build')
     await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    const directoryOutput = [...element.querySelectorAll<HTMLElement>('.task-artifact-file-row')]
+      .find(row => row.textContent?.includes('code'))!
+    assert.ok(directoryOutput)
+    await act(async () => directoryOutput.click())
+    const directoryPreview = document.querySelector('.project-directory-dialog')!
+    assert.ok(directoryPreview, 'both share modes must browse directory artifacts')
+    const codeFile = directoryPreview.querySelector<HTMLElement>('[role="treeitem"][title$="/main.py"]')!
+    assert.ok(codeFile)
+    await act(async () => codeFile.click())
+    assert.match(directoryPreview.textContent!, /share test/)
+    await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     const detailTab = element.querySelector<HTMLButtonElement>('.task-detail-primary-tabs [role="tab"]')!
     await act(async () => detailTab.click())
     if (!interactive) assert.equal(element.querySelector('.chat-input'), null)
     else {
+      await act(async () => element.querySelector<HTMLButtonElement>('.task-description-edit')!.click())
+      const description = element.querySelector<HTMLTextAreaElement>('.task-detail-description textarea')!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(description, 'Updated through share')
+        description.dispatchEvent(new window.Event('input', { bubbles: true }))
+      })
+      await act(async () => [...element.querySelectorAll<HTMLButtonElement>('.task-description-actions button')]
+        .find(button => button.textContent === '保存')!.click())
+      assert.match(element.querySelector('.task-description-content')!.textContent!, /Updated through share/,
+        'successful edits must refresh the share immediately without waiting for its poll timer')
       const confirmProposal = [...element.querySelectorAll<HTMLButtonElement>('button')]
         .find(button => button.textContent?.trim() === '确认')
       assert.ok(confirmProposal, 'interactive share coordinator action must be actionable')
@@ -184,6 +245,7 @@ for (const { interactive, standalone } of [
   } finally {
     await act(async () => root.unmount())
     element.remove(); globalThis.fetch = originalFetch; globalThis.WebSocket = originalSocket
+    globalThis.setTimeout = originalTimeout; globalThis.clearTimeout = originalClearTimeout
     useUserSettingsStore.setState({ openMode: previousOpenMode })
     await window.happyDOM.close()
   }

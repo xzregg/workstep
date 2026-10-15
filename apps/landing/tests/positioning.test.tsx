@@ -13,12 +13,13 @@ function renderLanding() {
 }
 
 describe('landing positioning', () => {
-  it('explains AI tool orchestration instead of LLM API orchestration', () => {
+  it('explains a concrete development task before introducing engine choices', () => {
     const html = renderLanding()
 
-    expect(html).toContain('把你熟悉的 AI 工具，连接成工作流')
-    expect(html).toContain('不造 Agent，编排已经能干活的 Agent')
-    expect(html).toContain('编排现成 Agent 工具，不造轮子')
+    expect(html).toContain('例如：给项目加一个搜索功能')
+    expect(html).toContain('代码改动与实现说明')
+    expect(html).toContain('测试结果与待处理问题')
+    expect(html.indexOf('例如：给项目加一个搜索功能')).toBeLessThan(html.indexOf('class="engines-strip"'))
   })
 
   it('explains channel bots and their project, task, and review capabilities', () => {
@@ -62,20 +63,30 @@ describe('landing positioning', () => {
     expect(html.match(/class="demo-card"/g)).toHaveLength(3)
   })
 
-  it('places demos after the outcome features and remote sharing at the end', () => {
+  it('places the example and demos before advanced capabilities and collaboration', () => {
     const html = renderLanding()
-    const featuresIndex = html.indexOf('让 AI 工具自己接着往下干')
-    const demosIndex = html.indexOf('看看工作流如何编排与执行')
-    const workflowIndex = html.indexOf('不限于研发，任意流程都能编排')
+    const exampleIndex = html.indexOf('例如：给项目加一个搜索功能')
+    const featuresIndex = html.indexOf('少一点来回交代，多一点过程掌控')
+    const demosIndex = html.indexOf('看看步骤如何执行、结果如何查看')
+    const workflowIndex = html.indexOf('先跑通开发任务，再扩展你的流程')
     const remoteShareIndex = html.indexOf('你的项目分享给我')
-    const finalCtaIndex = html.indexOf('把你正在重复的工作，变成一条会自己推进的流程')
+    const finalCtaIndex = html.indexOf('从一个能检查结果的小任务开始')
 
     expect(featuresIndex).toBeGreaterThan(-1)
     expect(html).not.toContain('像看视频一样')
-    expect(demosIndex).toBeGreaterThan(featuresIndex)
-    expect(workflowIndex).toBeGreaterThan(demosIndex)
+    expect(demosIndex).toBeGreaterThan(exampleIndex)
+    expect(featuresIndex).toBeGreaterThan(demosIndex)
+    expect(workflowIndex).toBeGreaterThan(featuresIndex)
     expect(remoteShareIndex).toBeGreaterThan(workflowIndex)
     expect(finalCtaIndex).toBeGreaterThan(remoteShareIndex)
+  })
+
+  it('distinguishes workflow ideas and interface animations from completed customer work', () => {
+    const html = renderLanding()
+    expect(html).toContain('以下是流程设计示例')
+    expect(html).toContain('界面动画示意')
+    expect(html).not.toContain('任意流程都能编排')
+    expect(html).not.toContain('成稿发布一气呵成')
   })
 
   it('keeps the workflow examples focused on templates instead of raw JSON', () => {

@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import logging
 import secrets
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -22,6 +23,20 @@ logger = logging.getLogger(__name__)
 _SHARE_SESSIONS: dict[str, dict] = {}  # session_token → {share_id, task_id, project_id}
 
 SHARE_MODES = {"read_only", "interactive"}
+
+
+_VAULT_LOCK = threading.Lock()
+
+
+def _password_vault():
+    from cryptography.fernet import Fernet
+    from services.project import config_store
+    with _VAULT_LOCK:
+        key = config_store.get('task_share_vault_key')
+        if not key:
+            key = Fernet.generate_key().decode()
+            config_store.set('task_share_vault_key', key)
+    return Fernet(key.encode())
 
 
 def _hash_password(password: str, salt: str) -> str:
@@ -51,7 +66,7 @@ def get_share_for_task(task_id: str) -> dict | None:
         )
     except TaskShare.DoesNotExist:
         return None
-    return None if _share_expired(share) else _share_to_dict(share)
+    return None if _share_expired(share) else _share_to_dict(share, include_credentials=True)
 
 
 def _share_expired(share):
@@ -103,6 +118,7 @@ def create_share(
         task=task_id,
         token=_generate_token(),
         title=title or None,
+        password_ciphertext=_password_vault().encrypt(password.encode()).decode() if password else None,
         password_hash=password_hash,
         salt=salt,
         mode=mode,
@@ -111,7 +127,7 @@ def create_share(
         expires_at=expiry,
     )
     logger.info("Created share %s for task %s", share.token, task_id)
-    return _share_to_dict(share)
+    return _share_to_dict(share, include_credentials=True)
 
 
 def revoke_share(task_id: str) -> bool:
@@ -194,6 +210,9 @@ def verify_share_password(token: str, password: str) -> str | None:
         if share.password_hash is not None:
             if _hash_password(password, share.salt) != share.password_hash:
                 return None
+            if share.password_ciphertext is None:
+                share.password_ciphertext = _password_vault().encrypt(password.encode()).decode()
+                share.save(only=[TaskShare.password_ciphertext])
         session_token = _generate_session_token()
         _SHARE_SESSIONS[session_token] = {
             "share_id": share.id,
@@ -374,6 +393,7 @@ def _scrub_events(events: list[dict], mode: str = "read_only") -> list[dict]:
 def _share_to_dict(
     share: TaskShare,
     include_project: bool = False,
+    include_credentials: bool = False,
     project_id: str | None = None,
 ) -> dict:
     payload = {
@@ -388,6 +408,9 @@ def _share_to_dict(
         "revoked_at": share.revoked_at,
         "expires_at": share.expires_at,
     }
+    if include_credentials:
+        payload['access_password'] = (_password_vault().decrypt(share.password_ciphertext.encode()).decode()
+                                      if share.password_ciphertext else None)
     if include_project and project_id is not None:
         payload["project_id"] = project_id
     return payload

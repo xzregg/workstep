@@ -12,7 +12,7 @@ import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
 import type { AssistantChatMessage } from '../stores/assistantStore'
 import { taskApi, type ActionRun, type EngineInputItem } from '../api/client'
-import { stripA2uiBlocks } from '../utils/a2ui'
+import { a2uiActionMessageParams, stripA2uiBlocks } from '../utils/a2ui'
 import { formatConversationDateTime } from '../utils/datetime'
 import {
   isAutoShrinkClamp,
@@ -338,6 +338,16 @@ export default function AssistantChatPanel({
   const handleAsyncQuestionSubmit = useCallback((content: string) => (
     onSendContent(content, [])
   ), [onSendContent])
+  const handleA2uiAction = useCallback((action: A2uiClientAction) => {
+    if (onA2uiAction) {
+      onA2uiAction(action)
+      return
+    }
+    void onSendContent(t('taskDetail.a2uiActionMessage', a2uiActionMessageParams(action)), [])
+      .catch((reason) => onAttachmentError?.(
+        reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
+      ))
+  }, [onA2uiAction, onSendContent, onAttachmentError, t])
 
   useLayoutEffect(() => {
     const list = listRef.current
@@ -584,7 +594,7 @@ export default function AssistantChatPanel({
               onForkMessage={canEdit && can('session.create') ? onForkMessage : undefined}
               onSendToInput={handleSendToInput}
               onAsyncQuestionSubmit={handleAsyncQuestionSubmit}
-              onA2uiAction={canEdit ? onA2uiAction : undefined}
+              onA2uiAction={canEdit ? handleA2uiAction : undefined}
             />
           ))}
           {showThinkingReply && (

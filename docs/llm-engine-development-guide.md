@@ -647,7 +647,10 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 
 - 权限确认使用 ACP `session/request_permission`：请求带完整 `tool_call` 和 `options`，响应必须返回用户实际选择的 `option_id`，不得默认选择第一个允许项。
 - 询问用户使用 ACP `elicitation/create` form：`requested_schema` 为 JSON Schema object，支持单选、多选、文本、数字和布尔输入；响应使用 `accept` / `decline` / `cancel`。
+- 多选字段使用 `type: "array"`，具名选项放在 `items.anyOf`，普通字符串选项放在 `items.enum`；提交后保留数组。前端兼容历史 `items.oneOf`，新适配器应发标准格式。ACP SDK 的 schema 必须以 `by_alias=True` 序列化，保留 `anyOf` / `oneOf` / `minItems` 等 JSON Schema 字段名，不能变成 Python 字段名。
 - Claude Code / Claude Agent SDK 的 `AskUserQuestion`、Qoder 的 elicitation 及其它 `ask_user` 别名，由 Base 层转换为上述 form。
+- Codex SDK 的 `mcpServer/elicitation/request` form 复用同一个表单和响应 broker，原样保留多选 schema；`item/tool/requestUserInput` 按原生问题 ID 映射字段，响应转换回 `answers[id].answers`。SDK reader 线程等待用户时不得阻塞事件循环，超时须取消挂起请求。当前 Codex 异步问题只有 `title/options`，没有多选标记，继续按单选展示，不能因答案结构是数组而推断题目允许多选。
+- 接入以原生入口为准：Hermes / OpenCode 的 ACP 表单、Claude 的 `multiSelect`、Qoder 的表单和 Pydantic AI 的 `multiple` 均共用 `InteractionPrompt`。Codex CLI 的 exec、OpenClaw 的一次性 exec，以及当前未暴露提问回调的 Cursor / DeepSeek 传输，不得伪造暂停或声明已支持原生多选。
 - 进程内 Agent 调用 `request_interaction(event, publish)` 后必须停在原工具协程，直到 `respond_interaction(...)` 解析同一个 `interaction_id`。Pydantic AI 的 `ask_user`、`write_file`、`edit_file` 都走该通道。
 - 非 ACP 原生传输适配器的 `request_permission` 会在 `request_interaction` 中登记到基类 pending 审批注册表，上层 `approve_tool` / `approve_tool_option` 可直接写回决定；引擎只需调用 `request_interaction`，不要重复实现审批通道。
 - 工作流层先注册等待项，再发布请求，并在等待期间持久化请求；响应后追加 `interaction_response`，刷新页面仍能显示同一张交互卡片。

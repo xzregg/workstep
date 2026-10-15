@@ -15,6 +15,7 @@ import SessionRowActions from './SessionRowActions'
 import { useTaskStore } from '../stores/taskStore'
 import { useChatListStore } from '../stores/chatSessionStore'
 import { useSidebarActivityStore } from '../stores/sidebarActivityStore'
+import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import { useSidebarActivity } from '../hooks/useSidebarActivity'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { taskListPath } from '../hooks/useTaskRoute'
@@ -34,6 +35,8 @@ import SandboxModeBadge from './SandboxModeBadge'
 import GatewayConnectionStatus from './GatewayConnectionStatus'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import LayoutOnboardingActions from './LayoutOnboardingActions'
+import WorkspaceNavigationActions, { WORKSPACE_TOOL_RAIL_WIDTH } from './WorkspaceNavigationActions'
+import { useCompactLayout } from '../hooks/useCompactLayout'
 import SidebarRenameField from './SidebarRenameField'
 import { SidebarActionItem, SidebarActionMenu } from './SidebarActionMenu'
 import { useOnboardingStore } from '../stores/onboardingStore'
@@ -42,6 +45,7 @@ import { useSidebarSessionActions } from '../hooks/useSidebarSessionActions'
 import { useSidebarProjectLoading } from '../hooks/useSidebarProjectLoading'
 import { useSidebarConversationLoading } from '../hooks/useSidebarConversationLoading'
 import SidebarLoadStatus from './SidebarLoadStatus'
+import RecentConversations from './RecentConversations'
 import {
   engineApi,
   type Project,
@@ -67,6 +71,7 @@ interface Props {
 export default function Layout({ onSelectProject, children }: Props) {
   const { t } = useI18n()
   const managedMode = useManagedMode()
+  const compact = useCompactLayout()
   useWebSocket()
   useVisualViewport()
   const navigate = useNavigate()
@@ -449,7 +454,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   return (
     <div className="app-shell">
       {/* Sidebar */}
-      <ResponsiveNavigation className="layout-sidebar" onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth }}>
+      <ResponsiveNavigation className="layout-sidebar" onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth + (compact ? 0 : WORKSPACE_TOOL_RAIL_WIDTH) }}>
         <div className="layout-sidebar-header">
           <div className="layout-sidebar-brand">
             <BrandIcon size={18} />
@@ -465,21 +470,8 @@ export default function Layout({ onSelectProject, children }: Props) {
           </div>
         </div>
 
-        {can('statistics.read') && <Button
-          variant="ghost"
-          onClick={() => navigate('/statistics')}
-          aria-current={location.pathname === '/statistics' ? 'page' : undefined}
-          className="layout-sidebar-nav-button"
-        >
-          <Icon name="bar-chart" size={17} strokeWidth={2} />
-          {t('nav.statistics')}
-        </Button>}
-
-        {!bound && <Button variant="ghost" className="layout-sidebar-nav-button" onClick={openLocalProjectModal}>
-          <Icon name="plus" size={17} strokeWidth={2} />
-          {t('nav.addProject')}
-        </Button>}
-
+        <div className="layout-sidebar-body">
+        <section id="layout-project-panel" tabIndex={-1} className="layout-sidebar-project-panel" aria-label={t('layout.projects')}>
         <div className="layout-sidebar-section-label">
           <span>{t('layout.projects')}</span>
           <Button
@@ -497,7 +489,6 @@ export default function Layout({ onSelectProject, children }: Props) {
           >
             <Icon name="search" size={14} strokeWidth={2} />
           </Button>
-        </div>
 
         {sidebarSearchOpen && (
           <div className="layout-sidebar-search">
@@ -524,6 +515,12 @@ export default function Layout({ onSelectProject, children }: Props) {
             />
           </div>
         )}
+
+          {!bound && <Button variant="icon" size="sm" className="layout-sidebar-search-button"
+            aria-label={t('nav.addProject')} title={t('nav.addProject')} onClick={openLocalProjectModal}>
+            <Icon name="plus" size={14} strokeWidth={2} />
+          </Button>}
+        </div>
 
         <div className="layout-sidebar-projects">
           {visibleProjects.map((p) => {
@@ -919,6 +916,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             // Only navigate on plain click (no modifiers)
                             if (!e.metaKey && !e.ctrlKey && !e.shiftKey) {
                               useSidebarActivityStore.getState().markSessionRead(session.id)
+                              useRecentVisitsStore.getState().visit({ kind: 'session', id: session.id, projectId: p.id, title: session.title })
                               navigate(`/chat?project=${encodeURIComponent(p.name)}&session=${encodeURIComponent(session.id)}`)
                             }
                           }}
@@ -1017,7 +1015,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             failedTitle={t('layout.failedState')}
                             completedTitle={t('layout.completedUnread')}
                           />
-                          {can('session.manage') && <SessionRowActions
+                          {can('session.manage') && <SessionRowActions showMore={!compact}
                             session={session}
                             hovered={hoveredSessionId === session.id}
                             now={sidebarNow}
@@ -1050,21 +1048,11 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        {bound && <Button variant="ghost" onClick={() => navigate('/appearance')}
-          aria-current={location.pathname === '/appearance' ? 'page' : undefined}
-          className="layout-sidebar-nav-button layout-sidebar-settings-button">
-          <Icon name="sparkles" size={17} strokeWidth={2} />
-          {t('skins.appearance')}
-        </Button>}
-        {!bound && <Button
-          variant="ghost"
-          onClick={() => { setSettingsSection('providers'); setSettingsFocus(undefined); setShowSettings(true) }}
-          aria-current={showSettings ? 'page' : undefined}
-          className="layout-sidebar-nav-button layout-sidebar-settings-button"
-        >
-          <Icon name="settings" size={17} strokeWidth={2} />
-          {t('nav.settings')}
-        </Button>}
+        </section>
+        <RecentConversations now={sidebarNow} />
+        </div>
+        <WorkspaceNavigationActions activeSettingsSection={showSettings ? settingsSection : undefined}
+          onOpenSettings={section => { setSettingsSection(section); setSettingsFocus(undefined); setShowSettings(true) }} />
       </ResponsiveNavigation>
 
       <div

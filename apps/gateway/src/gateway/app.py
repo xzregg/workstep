@@ -200,6 +200,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(user_devices_router)
     app.include_router(remote_access_router)
     app.include_router(remote_access_router, prefix="/workspace/{workspace_device_id}")
+    # Specific visitor sockets must precede the whole-device catch-all route.
+    app.include_router(platform_shares_router)
     app.include_router(remote_websocket_router)
     app.include_router(providers_router)
     app.include_router(device_commands_router)
@@ -212,7 +214,6 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(device_skill_router)
     app.include_router(project_access_router)
     app.include_router(project_invitations_router)
-    app.include_router(platform_shares_router)
     app.include_router(admin_shares_router)
     install_share_viewer(app, settings)
 

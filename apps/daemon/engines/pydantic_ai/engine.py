@@ -634,7 +634,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                 "type": "array",
                 "title": "请选择",
                 "description": question,
-                "items": {"oneOf": choices},
+                "items": {"anyOf": choices},
             }
         else:
             field = {

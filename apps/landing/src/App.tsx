@@ -40,12 +40,12 @@ export default function App() {
       <Nav />
       {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : <main>
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
-        <EnginesStrip />
         <Philosophy />
-        <Features />
-        <Compare />
         <Demos onOpen={setOpenDemo} />
+        <Features />
+        <EnginesStrip />
         <Workflow />
+        <Compare />
         <Channels />
         <RemoteShare />
         <FinalCta experienceHref={experienceHref} />

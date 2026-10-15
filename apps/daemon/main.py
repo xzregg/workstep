@@ -40,6 +40,8 @@ from api.fs import uploads_router
 from api.search import router as search_router
 from api.templates import ensure_global_templates
 from api.templates import router as templates_router
+from api.role_center import router as role_center_router
+from services.role_center import role_center
 from api.engine import router as engine_router
 from api.provider import router as provider_router
 from api.workflow import router as workflow_router
@@ -155,6 +157,19 @@ gateway_client.event_sink = event_bus.publish
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Make saved Git credentials available before starting engine workers."""
+    from services.git.engine_credentials import install_engine_credentials
+
+    restore_git_environment = install_engine_credentials(git_service.credential_file)
+    try:
+        async with _application_lifespan(app):
+            yield
+    finally:
+        restore_git_environment()
+
+
+@asynccontextmanager
+async def _application_lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_bot_manager
     from services.resource_limits import configure_file_limit
@@ -163,6 +178,7 @@ async def lifespan(app: FastAPI):
     await completion_push.start()
     await asyncio.to_thread(config_store.migrate_legacy_config)
     await asyncio.to_thread(ensure_global_templates)
+    await asyncio.to_thread(role_center.ensure_defaults)
     await asyncio.to_thread(project_manager._load_saved_projects)
     from services.customization_workspace import ensure_default_workspace
     await ensure_default_workspace(project_manager)
@@ -321,6 +337,7 @@ app.include_router(fs_router)
 app.include_router(uploads_router)
 app.include_router(search_router)
 app.include_router(templates_router)
+app.include_router(role_center_router)
 app.include_router(engine_router)
 from api.skins import router as skins_router
 from api.languages import router as languages_router

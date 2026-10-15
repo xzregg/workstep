@@ -18,8 +18,14 @@ export const shareClipboardMessages = {
 export function shareClipboardLocale(locale: string) {
   return shareClipboardMessages[locale as keyof typeof shareClipboardMessages] || shareClipboardMessages['zh-CN']
 }
+export function taskShareAccessUrl(url: string, password: string) {
+  if (!url || !password) return url
+  const address = new URL(url)
+  address.searchParams.set('_t', password)
+  return address.toString()
+}
 export function taskShareClipboard(url: string, password: string, title: string, labels: { address: string; password: string; task: string }) {
-  return `${title || labels.task}\n${labels.address}${url}${password ? `\n${labels.password}${password}` : ''}`
+  return `${title || labels.task}\n${labels.address}${taskShareAccessUrl(url, password)}${password ? `\n${labels.password}${password}` : ''}`
 }
 
 // Keep a just-created key available when its dialog is reopened in this app.

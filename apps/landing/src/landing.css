@@ -398,6 +398,20 @@ button {
   justify-content: center;
 }
 
+.hero-setup {
+  max-width: 64ch;
+  margin: 16px auto 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.hero-setup a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

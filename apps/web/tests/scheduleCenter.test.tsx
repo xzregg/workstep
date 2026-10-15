@@ -1,0 +1,256 @@
+import { installDomEnvironment } from './helpers/domEnv'
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { MemoryRouter, useLocation } from 'react-router-dom'
+import ScheduleCenter from '../src/components/ScheduleCenter'
+import { scheduleApi, workflowApi, type Project, type ProjectSchedule } from '../src/api/client'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
+import { useProjectStore } from '../src/stores/projectStore'
+import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
+import ResponsiveNavigation from '../src/components/ResponsiveNavigation'
+import { useTaskStore } from '../src/stores/taskStore'
+import { useTaskRecord } from '../src/hooks/useTaskRecord'
+
+const projects: Project[] = ['a', 'b'].map(id => ({
+  id, name: `项目${id.toUpperCase()}`, path: `/tmp/${id}`, steps: {},
+  workflows: [{ id: `flow-${id}`, name: `流程${id.toUpperCase()}`, is_default: true, nodeCount: 0 }],
+}))
+const schedule = (id: string): ProjectSchedule => ({
+  id: `schedule-${id}`, name: `任务${id}`, workflow_id: `flow-${id}`,
+  task_template: { title: `定时任务${id.toUpperCase()}`, description: '说明' },
+  rule: { kind: 'daily', time: '09:00', timezone: 'Asia/Shanghai' },
+  summary: '每天 09:00', cron_expression: '0 9 * * *', timezone: 'Asia/Shanghai',
+  execution_mode: 'workflow', overlap_policy: 'skip', status: 'active', created_at: '', updated_at: '',
+})
+function Route() { const location = useLocation(); return <output id="route">{location.pathname + location.search}</output> }
+async function setup() {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const projectState = useProjectStore.getState(), sessionState = useGatewaySessionStore.getState()
+  const original = { ...scheduleApi }, originalWorkflowGet = workflowApi.get, originalFetch = globalThis.fetch
+  const reads: string[] = []
+  useProjectStore.setState({ projects, activeProject: projects[0], activeWorkflowId: 'flow-a' })
+  useGatewaySessionStore.setState({ session: null })
+  scheduleApi.list = async id => { reads.push(id); return { schedules: [schedule(id)] } }
+  scheduleApi.preview = async () => ({ cron_expression: '0 9 * * *', timezone: 'Asia/Shanghai', summary: '', next_runs: ['2026-10-15T01:00:00Z'] })
+  scheduleApi.runs = async () => ({ runs: [] })
+  workflowApi.get = async id => ({ id, name: id, steps: { nodes: [] } }) as any
+  globalThis.fetch = async () => Response.json({ providers: [], buttons: [], assistants: [], models: [] })
+  const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+  const render = () => act(async () => root.render(<MemoryRouter initialEntries={['/tasks?project=项目A&workflow=flow-a']}><I18nProvider><ScheduleCenter /><Route /></I18nProvider></MemoryRouter>))
+  const button = (name: string, scope: ParentNode = document.body) => {
+    const found = [...scope.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === name || b.getAttribute('aria-label') === name)
+    assert.ok(found, `button: ${name}`); return found
+  }
+  const click = (name: string) => act(async () => button(name).click())
+  const cleanup = async () => {
+    await act(async () => root.unmount()); container.remove()
+    Object.assign(scheduleApi, original); workflowApi.get = originalWorkflowGet; globalThis.fetch = originalFetch
+    useProjectStore.setState(projectState); useGatewaySessionStore.setState(sessionState)
+    await window.happyDOM.close()
+  }
+  return { window, container, reads, render, button, click, cleanup }
+}
+
+test('global schedules reuse the project editor and switch scope without changing the board or route', async () => {
+  const app = await setup()
+  try {
+    await app.render(); await app.click('定时任务')
+    assert.equal(document.querySelectorAll('[role="tab"]').length, 2)
+    assert.ok(document.querySelector('.schedule-page'))
+    assert.match(document.querySelector('.schedule-list')!.textContent!, /定时任务A/)
+    await app.click('项目B')
+    assert.match(document.querySelector('.schedule-list')!.textContent!, /定时任务B/)
+    assert.doesNotMatch(document.querySelector('.schedule-list')!.textContent!, /定时任务A/)
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    assert.equal(document.querySelector<HTMLSelectElement>('.schedule-editor select')!.value, 'flow-b')
+    assert.ok([...document.querySelectorAll<HTMLOptionElement>('.schedule-editor option')].some(o => o.value === 'flow-b'))
+    assert.ok(![...document.querySelectorAll<HTMLOptionElement>('.schedule-editor option')].some(o => o.value === 'flow-a'))
+    assert.deepEqual(app.reads, ['a', 'b'])
+    assert.equal(useProjectStore.getState().activeProject?.id, 'a')
+    assert.equal(useProjectStore.getState().activeWorkflowId, 'flow-a')
+    assert.equal(document.querySelector('#route')?.textContent, '/tasks?project=项目A&workflow=flow-a')
+    await app.click('关闭')
+    assert.equal(document.querySelector('[role="dialog"]'), null)
+  } finally { await app.cleanup() }
+})
+
+test('unsaved changes guard project switching and close; saving writes only to the tab project', async () => {
+  const app = await setup()
+  const writes: { projectId: string; workflowId: string }[] = []
+  scheduleApi.create = async (id, payload) => { writes.push({ projectId: id, workflowId: payload.workflow_id }); return { ...schedule(id), ...payload } }
+  try {
+    await app.render(); await app.click('定时任务'); await app.click('项目B'); await app.click('新建定时任务')
+    await act(async () => {
+      const input = [...document.querySelectorAll<HTMLInputElement>('.schedule-editor input')].find(i => i.type === 'text')!
+      Object.getOwnPropertyDescriptor(app.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '新任务')
+      input.dispatchEvent(new app.window.Event('input', { bubbles: true }))
+    })
+    await app.click('项目A')
+    assert.ok(document.querySelector('.confirm-dialog-panel'))
+    await app.click('取消')
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent, '项目B')
+    await app.click('关闭')
+    assert.ok(document.querySelector('.confirm-dialog-panel'))
+    await app.click('取消')
+    await act(async () => new Promise(resolve => setTimeout(resolve, 280)))
+    await app.click('保存')
+    assert.deepEqual(writes, [{ projectId: 'b', workflowId: 'flow-b' }])
+    await app.click('项目A')
+    assert.equal(document.querySelector('.confirm-dialog-panel'), null)
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent, '项目A')
+  } finally { await app.cleanup() }
+})
+
+test('late responses from a previous tab cannot replace the new project schedules', async () => {
+  const app = await setup()
+  let resolveA!: (result: { schedules: ProjectSchedule[] }) => void
+  scheduleApi.list = id => id === 'a' ? new Promise(resolve => { resolveA = resolve }) : Promise.resolve({ schedules: [schedule(id)] })
+  try {
+    await app.render(); await app.click('定时任务'); await app.click('项目B')
+    await act(async () => resolveA({ schedules: [schedule('a')] }))
+    assert.match(document.querySelector('.schedule-list')!.textContent!, /定时任务B/)
+    assert.doesNotMatch(document.querySelector('.schedule-list')!.textContent!, /定时任务A/)
+  } finally { await app.cleanup() }
+})
+
+test('switching later project tabs preserves the horizontal tab scroll position', async () => {
+  const app = await setup()
+  try {
+    useProjectStore.setState({ projects: [...projects, ...Array.from({ length: 20 }, (_, index) => ({
+      ...projects[0], id: `extra-${index}`, name: `后面的项目${index}`,
+    }))] })
+    await app.render(); await app.click('定时任务')
+    const strip = document.querySelector<HTMLElement>('.schedule-center-tabs')!
+    strip.scrollLeft = 640
+    strip.dispatchEvent(new app.window.Event('scroll'))
+    await app.click('后面的项目18')
+    assert.equal(document.querySelector<HTMLElement>('.schedule-center-tabs')!.scrollLeft, 640)
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent, '后面的项目18')
+    const currentStrip = document.querySelector<HTMLElement>('.schedule-center-tabs')!
+    currentStrip.scrollLeft = 780
+    currentStrip.dispatchEvent(new app.window.Event('scroll'))
+    await app.click('后面的项目19')
+    assert.equal(document.querySelector<HTMLElement>('.schedule-center-tabs')!.scrollLeft, 780)
+    assert.ok(document.querySelector('.schedule-center-tabs') === strip, 'the scroll container must survive project switches')
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent, '后面的项目19')
+    await app.click('后面的项目18')
+    assert.ok(document.querySelector('.schedule-center-tabs') === strip)
+    assert.equal(strip.scrollLeft, 780)
+  } finally { await app.cleanup() }
+})
+
+test('bound read-only sessions see only their permitted project and cannot create schedules', async () => {
+  const app = await setup()
+  try {
+    app.window.happyDOM.setURL('http://d-device.localhost:8700/')
+    useGatewaySessionStore.setState({ session: { host_project_id: 'b', access_level: 'read', permissions: ['schedule.read'] } as any })
+    await app.render(); await app.click('定时任务')
+    assert.deepEqual([...document.querySelectorAll('[role="tab"]')].map(t => t.textContent), ['项目B'])
+    assert.deepEqual(app.reads, ['b'])
+    assert.equal(document.querySelector('.schedule-new-button'), null)
+  } finally { await app.cleanup() }
+})
+
+test('empty project catalogs show a useful empty state without schedule requests', async () => {
+  const app = await setup()
+  try {
+    useProjectStore.setState({ projects: [], activeProject: null })
+    await app.render(); await app.click('定时任务')
+    assert.match(document.querySelector('[role="dialog"]')!.textContent!, /还没有项目/)
+    assert.deepEqual(app.reads, [])
+  } finally { await app.cleanup() }
+})
+
+test('loading workflow review defaults does not make an untouched schedule dirty', async () => {
+  const app = await setup()
+  workflowApi.get = async id => ({ id, name: id, steps: { nodes: [{ key: 'develop', title: '开发', review: { mode: 'manual' } }] } }) as any
+  scheduleApi.list = async id => ({ schedules: [{ ...schedule(id), workflow_id: `other-${id}` }] })
+  try {
+    await app.render(); await app.click('定时任务')
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    await app.click('项目B')
+    assert.equal(document.querySelector('.confirm-dialog-panel'), null)
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent, '项目B')
+  } finally { await app.cleanup() }
+})
+
+test('mobile entry dismisses the navigation drawer while keeping the schedules window open', async () => {
+  const app = await setup()
+  app.window.innerWidth = 390
+  const oldHistory = globalThis.history
+  Object.assign(globalThis, { history: app.window.history })
+  const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+  try {
+    await act(async () => root.render(<MemoryRouter><I18nProvider><ResponsiveNavigation title="项目A" onNew={() => {}}>
+      <ScheduleCenter />
+    </ResponsiveNavigation></I18nProvider></MemoryRouter>))
+    await act(async () => container.querySelector<HTMLButtonElement>('.mobile-header button')!.click())
+    assert.ok(container.querySelector('.responsive-navigation.is-open'))
+    await act(async () => container.querySelector<HTMLButtonElement>('.layout-sidebar-nav-button')!.click())
+    assert.equal(container.querySelector('.responsive-navigation.is-open'), null)
+    assert.ok(document.querySelector('.schedule-center-dialog'))
+  } finally { await act(async () => root.unmount()); container.remove(); await app.cleanup(); Object.assign(globalThis, { history: oldHistory }) }
+})
+
+test('saving blocks switching; failures retain the editor and its discard protection', async () => {
+  const app = await setup()
+  let rejectSave!: (error: Error) => void
+  scheduleApi.update = () => new Promise((_resolve, reject) => { rejectSave = reject })
+  try {
+    await app.render(); await app.click('定时任务')
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    await app.click('按间隔')
+    await act(async () => new Promise(resolve => setTimeout(resolve, 280)))
+    await app.click('保存')
+    assert.ok([...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].every(tab => tab.disabled))
+    await act(async () => rejectSave(new Error('保存失败')))
+    assert.match(document.querySelector('.schedule-page [role="alert"]')!.textContent!, /保存失败/)
+    await app.click('项目B')
+    assert.ok(document.querySelector('.confirm-dialog-panel'))
+    await app.click('放弃')
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent, '项目B')
+  } finally { await app.cleanup() }
+})
+
+test('opening a run uses the tab project even when the board URL points at another project', async () => {
+  const app = await setup()
+  const oldTaskState = useTaskStore.getState(), calls: string[] = []
+  useTaskStore.setState({ tasks: [] })
+  scheduleApi.runs = async () => ({ runs: [{ id: 'run-b', schedule_id: 'schedule-b', scheduled_for: '2026-10-14T01:00:00Z', status: 'succeeded', task_id: 'run-task' }] })
+  globalThis.fetch = async input => {
+    const url = String(input); calls.push(url)
+    if (/\/task\/run-task\?/.test(url)) return Response.json({ detail: 'Task not found' }, { status: 404 })
+    return Response.json({ tasks: [], messages: [], artifacts: [], reviews: [], runs: [], proposals: [], supplements: [], sessions: [], providers: [], buttons: [], configured: {}, resolved: {}, available_engines: [] })
+  }
+  try {
+    await app.render(); await app.click('定时任务'); await app.click('项目B')
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    await app.click('查看任务')
+    assert.ok(calls.includes('/api/task/run-task?project_id=b'))
+    assert.ok(!calls.includes('/api/task/run-task?project_id=a'))
+    assert.ok(!calls.some(url => url.includes('/task/list')), 'opening a run must not replace the board list')
+    assert.equal(useTaskStore.getState().tasks.length, 0, 'a task from another project must not enter the board list')
+    assert.equal(useProjectStore.getState().activeProject?.id, 'a')
+  } finally { await app.cleanup(); useTaskStore.setState(oldTaskState) }
+})
+
+test('isolated task records load successfully without adding another project to the board', async () => {
+  const app = await setup(), previousTasks = useTaskStore.getState()
+  const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+  function Record() {
+    const { task } = useTaskRecord('run-task', 'b', undefined, true)
+    return <output>{task?.title}</output>
+  }
+  globalThis.fetch = async () => Response.json({ id: 'run-task', title: 'B 的执行任务', status: 'done', steps: [] })
+  useTaskStore.setState({ tasks: [] })
+  try {
+    await act(async () => root.render(<Record />))
+    assert.equal(container.textContent, 'B 的执行任务')
+    assert.equal(useTaskStore.getState().tasks.length, 0)
+  } finally {
+    await act(async () => root.unmount()); container.remove(); useTaskStore.setState(previousTasks); await app.cleanup()
+  }
+})

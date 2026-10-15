@@ -1,3 +1,4 @@
+import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
 import ProjectGitButton from '../components/git/ProjectGitButton'
@@ -307,6 +308,12 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
     messageSessionId: sessionId,
     projectId: activeProject?.id,
     onLoaded: (detail) => {
+      if (!isEmbedded && routeProjectId) {
+        if (detail.archived) useRecentVisitsStore.getState().removeSessions(routeProjectId, [detail.id])
+        else useRecentVisitsStore.getState().visit({
+          kind: 'session', id: detail.id, projectId: routeProjectId, title: detail.title || '',
+        })
+      }
       setSessionTitle(detail.title || '')
       setPermissionMode(detail.permission_mode || '')
       restoreSession(detail)

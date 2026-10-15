@@ -7,6 +7,7 @@ import Icon from './Icon'
 import MobileNavigationFloat from './MobileNavigationFloat'
 import { NavigationHeaderContext } from './NavigationHeaderContext'
 import { BrandIcon } from './BrandIcon'
+import { NavigationDismissContext } from './NavigationDismissContext'
 
 export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, showNew = true, headerRight, showBrandIcon = true, onVisibilityChange }: {
   children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; showNew?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean; onVisibilityChange?: (visible: boolean) => void
@@ -49,7 +50,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
       role={compact && open ? 'dialog' : undefined} aria-modal={compact && open ? true : undefined}
       aria-label={t('mobile.navigation')} inert={compact && !open ? true : undefined} tabIndex={-1}>
       {compact && <button className="navigation-close" aria-label={t('common.close')} onClick={() => setOpen(false)}><Icon name="x" size={20} /></button>}
-      {children}
+      <NavigationDismissContext.Provider value={() => setOpen(false)}>{children}</NavigationDismissContext.Provider>
     </aside>
   </>
 }

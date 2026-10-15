@@ -30,7 +30,12 @@ from engines.core.events import (
     agent_message_chunk,
     compacted_event,
 )
-from engines.core.interactions import permission_request, permission_signature
+from engines.core.interactions import (
+    codex_user_input_request,
+    elicitation_request,
+    permission_request,
+    permission_signature,
+)
 from engines.core.input_items import workstep_input_commands
 from engines.core.packages import RuntimePackage
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
@@ -1014,7 +1019,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         """Build the synchronous approval callback handed to ``AsyncCodex``.
 
         The SDK invokes it from its stdout reader thread when Codex requests
-        approval for a command/file change. We bridge it to the ACP-shaped
+        approval or user input. We bridge it to the ACP-shaped
         ``interaction_request`` flow: submit the prompt to the main loop,
         block the reader thread until the user answers, then return the
         ``decision`` the SDK expects.
@@ -1025,19 +1030,77 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         }
 
         def handler(method: str, params: Any) -> dict:
-            if method not in approval_methods:
+            user_input = method in {
+                "item/tool/requestUserInput", "mcpServer/elicitation/request",
+            }
+            if method not in approval_methods and not user_input:
                 return {}
             future = asyncio.run_coroutine_threadsafe(
-                self._ask_approval(event_queue, session_id, method, params or {}),
+                self._ask_user_input(event_queue, session_id, method, params or {})
+                if user_input else self._ask_approval(event_queue, session_id, method, params or {}),
                 loop,
             )
             try:
-                allowed = future.result(timeout=300)
+                result = future.result(timeout=300)
             except Exception:
+                future.cancel()
+                if method == "item/tool/requestUserInput":
+                    return {"answers": {}}
+                if user_input:
+                    return {"action": "cancel", "content": None, "_meta": None}
                 return {}
-            return {"decision": "accept" if allowed else "deny"}
+            if user_input:
+                return result
+            return {"decision": "accept" if result else "deny"}
 
         return handler
+
+    async def _ask_user_input(
+        self, event_queue: asyncio.Queue, session_id: str,
+        method: str, params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Bridge native Codex question/form callbacks through ACP elicitation."""
+        interaction_id = str(uuid.uuid4())
+        if method == "item/tool/requestUserInput":
+            questions = params.get("questions") or []
+            if not questions or any(
+                not isinstance(question, dict) or not question.get("id")
+                or question.get("isSecret") for question in questions
+            ):
+                return {"answers": {}}
+            event = codex_user_input_request(interaction_id, params)
+            event.data["tool_call_id"] = str(params.get("itemId") or interaction_id)
+        else:
+            if params.get("mode", "form") != "form":
+                return {"action": "decline", "content": None, "_meta": None}
+            requested_schema = params.get("requestedSchema")
+            if not isinstance(requested_schema, dict):
+                return {"action": "decline", "content": None, "_meta": None}
+            event = elicitation_request(
+                interaction_id=interaction_id,
+                message=str(params.get("message") or "需要你的输入"),
+                requested_schema=requested_schema,
+            )
+        event.data["session_id"] = str(params.get("threadId") or session_id)
+        response = await self.request_interaction(event, event_queue.put)
+        action = response.get("action")
+        content = response.get("content")
+        if method == "item/tool/requestUserInput":
+            answers = {}
+            if action == "accept" and isinstance(content, dict):
+                for question in questions:
+                    key = str(question["id"])
+                    value = content.get(key)
+                    if isinstance(value, str):
+                        answers[key] = {"answers": [value]}
+                    elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+                        answers[key] = {"answers": value}
+            return {"answers": answers}
+        return {
+            "action": action if action in {"accept", "decline", "cancel"} else "cancel",
+            "content": content if action == "accept" and isinstance(content, dict) else None,
+            "_meta": None,
+        }
 
     async def _ask_approval(
         self,

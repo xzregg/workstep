@@ -42,7 +42,7 @@ test('Gateway share page validates and creates a task share with CSRF', async ()
   fireEvent.change(screen.getByLabelText('分享标题'), { target: { value: 'Task for review' } })
   fireEvent.click(screen.getByRole('button', { name: '创建分享' }))
   const link = await screen.findByRole('link', { name: '打开分享链接' })
-  assert.equal(link.getAttribute('href'), 'https://gateway.test/share/public-token')
+  assert.equal(link.getAttribute('href'), 'https://gateway.test/share/public-token?_t=' + key)
   const create = calls.find(call => call.url === '/api/platform-shares')
   assert.equal(create?.init?.headers && (create.init.headers as Record<string, string>)['X-CSRF-Token'],
     'csrf-token')
@@ -51,10 +51,10 @@ test('Gateway share page validates and creates a task share with CSRF', async ()
     title: 'Task for review', password: key, expires_at: new Date(expiry).toISOString(),
   })
   fireEvent.click(screen.getByRole('button', { name: '复制链接和密钥' }))
-  await waitFor(() => assert.equal(clipboard, 'Task for review\n访问地址：https://gateway.test/share/public-token\n访问密码：' + key))
+  await waitFor(() => assert.equal(clipboard, 'Task for review\n访问地址：https://gateway.test/share/public-token?_t=' + key + '\n访问密码：' + key))
   document.documentElement.lang = 'en-US'
   fireEvent.click(screen.getByRole('button', { name: '已复制' }))
-  await waitFor(() => assert.equal(clipboard, 'Task for review\nAccess address: https://gateway.test/share/public-token\nAccess password: ' + key))
+  await waitFor(() => assert.equal(clipboard, 'Task for review\nAccess address: https://gateway.test/share/public-token?_t=' + key + '\nAccess password: ' + key))
   document.documentElement.lang = 'zh-CN'
   fireEvent.click(screen.getByRole('button', { name: '撤销分享' }))
   fireEvent.click(screen.getByRole('dialog', { name: '确认撤销分享' })
@@ -63,7 +63,7 @@ test('Gateway share page validates and creates a task share with CSRF', async ()
   await screen.findByText('分享已撤销。')
 })
 
-test('creator can revisit and revoke an existing share without recovering its token', async () => {
+test('creator can revisit, copy credentials, and revoke an existing share', async () => {
   let revoked = false
   globalThis.fetch = async (input, init) => {
     const url = String(input)
@@ -71,7 +71,7 @@ test('creator can revisit and revoke an existing share without recovering its to
     if (url.startsWith('/api/platform-shares?')) return Response.json({ shares: [{
       id: 'old-share', title: '旧链接', mode: 'read_only',
       status: revoked ? 'revoked' : 'active', created_at: '2026-09-29T10:00:00Z',
-      expires_at: null,
+      expires_at: null, url: 'https://gateway.test/share/saved-token', access_password: 'saved-password',
     }] })
     if (url === '/api/platform-shares/old-share/revoke' && init?.method === 'POST') {
       revoked = true
@@ -83,7 +83,10 @@ test('creator can revisit and revoke an existing share without recovering its to
     <Routes><Route path="/shares/new" element={<GatewayShareCreatePage />} /></Routes>
   </MemoryRouter>)
   await screen.findByText(/旧链接 · 有效/)
-  assert.equal(screen.queryByText('https://gateway.test/share/old-share'), null)
+  let clipboard = ''
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { clipboard = text } } })
+  fireEvent.click(screen.getByRole('button', { name: '复制链接和密钥' }))
+  await waitFor(() => assert.equal(clipboard, '旧链接\n访问地址：https://gateway.test/share/saved-token?_t=saved-password\n访问密码：saved-password'))
   fireEvent.click(screen.getByRole('button', { name: '撤销旧链接' }))
   fireEvent.click(screen.getByRole('dialog', { name: '确认撤销分享' })
     .querySelector('button:last-child')!)
