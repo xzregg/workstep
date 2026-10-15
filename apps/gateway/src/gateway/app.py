@@ -41,7 +41,7 @@ from gateway.api.groups_api import router as groups_router
 from gateway.api.skills_api import router as skills_router, admin_group_router as admin_group_skills_router, project_skill_router, device_skill_router
 from gateway.api.project_access_api import router as project_access_router
 from gateway.api.project_invitations import router as project_invitations_router
-from gateway.api.platform_shares import router as platform_shares_router
+from gateway.api.platform_shares import router as platform_shares_router, websocket_router as share_websocket_router
 from gateway.api.admin_shares import router as admin_shares_router
 from gateway.api.workflow_hooks import router as workflow_hooks_router
 from gateway.api.admin_overview import router as admin_overview_router
@@ -202,6 +202,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(remote_access_router, prefix="/workspace/{workspace_device_id}")
     # Specific visitor sockets must precede the whole-device catch-all route.
     app.include_router(platform_shares_router)
+    app.include_router(share_websocket_router)
     app.include_router(remote_websocket_router)
     app.include_router(providers_router)
     app.include_router(device_commands_router)

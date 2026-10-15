@@ -34,7 +34,7 @@
 
 ## WebSocket 反向代理路径
 
-新客户端统一访问 `/ws/control`、`/ws/data`、`/ws/notifications`；同源设备工作台访问 `/ws/workspace/{device_id}`，设备子域仍使用 `/ws`。GET、POST 和页面路径保持不变。旧 `/api/control/ws`、`/api/data/ws`、`/api/notifications/ws`、`/workspace/{device_id}/ws` 保留兼容，迁移期间仍须支持 Upgrade。
+新客户端统一访问 `/ws/control`、`/ws/data`、`/ws/notifications`；公开任务分享使用 `/ws/public/shares/{token}`，沿用访客会话 Cookie 和 Origin 校验；同源设备工作台访问 `/ws/workspace/{device_id}`，设备子域仍使用 `/ws`。GET、POST 和页面路径保持不变。旧 `/api/control/ws`、`/api/data/ws`、`/api/notifications/ws`、`/workspace/{device_id}/ws` 保留兼容，迁移期间仍须支持 Upgrade。
 
 Nginx 可用 `location = /ws` 和 `location ^~ /ws/` 单独匹配新 WebSocket 路径。`proxy_pass` 不带 URI 后缀，保留 Host、查询参数、Cookie、Upgrade、Connection 和 HTTPS scheme，设置足够的长连接超时。工作台兑换票据时同时签发 HTTP 和 WebSocket 路径各自的设备会话 Cookie；已打开的旧工作台需重新进入设备入口完成兑换后使用新路径。
 

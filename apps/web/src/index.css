@@ -1,3 +1,4 @@
+@import '@workstep/gateway-ui/TaskShareLoginToggle.css';
 :root {
   --font-scale: 1;
   --bg: #ffffff;
@@ -609,6 +610,15 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-detail-composer {
   position: relative; padding: 4px 20px; border-top: 1px solid var(--border-soft);
   background: var(--bg); display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;
+}
+.task-detail-composer.is-resized,
+.task-detail-composer.is-resizing { height: 100%; min-height: 0; }
+.task-detail-composer:is(.is-resized, .is-resizing) .chat-input-root,
+.task-detail-composer:is(.is-resized, .is-resizing) .chat-input-frame {
+  display: flex; flex-direction: column; flex: 1; min-height: 0;
+}
+.task-detail-composer:is(.is-resized, .is-resizing) .chat-input-editor {
+  flex: 1; min-height: 0 !important; max-height: none !important;
 }
 .task-conversation-action-error { color: var(--danger); }
 .task-conversation-chat-error {

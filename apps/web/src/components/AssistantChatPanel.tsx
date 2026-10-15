@@ -1,3 +1,4 @@
+import ChatComposerResizeHandle from './ChatComposerResizeHandle'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useChatComposerResize } from '../hooks/useChatComposerResize'
@@ -639,17 +640,7 @@ export default function AssistantChatPanel({
           onSelect={() => { if (can('action.run')) onQuickPromptItemSelect?.(item) }} />)}
       </div>}
       {canEdit && <>
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label={t('layout.dragResizeComposer')}
-        title={t('layout.dragResizeComposer')}
-        tabIndex={0}
-        onMouseDown={startComposerResize}
-        onDoubleClick={resetComposerHeight}
-        onKeyDown={handleComposerResizeKey}
-        className="chat-composer-resize-handle"
-      />
+      <ChatComposerResizeHandle startResize={startComposerResize} resetHeight={resetComposerHeight} handleResizeKey={handleComposerResizeKey} />
 
       <div
         ref={composerRef}

@@ -60,6 +60,7 @@ class CreateShareInput(BaseModel):
     task_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
     mode: Literal["read_only", "interactive"] = "read_only"
     title: str = Field(default="", max_length=256)
+    require_login: bool = False
     password: str | None = Field(default=None, min_length=4, max_length=200)
     expires_at: datetime | None = None
 
@@ -309,8 +310,20 @@ async def _live_share(call: GatewayCall, token: str) -> PlatformShare:
     return share
 
 
+def _requires_login(share):
+    return share.require_login or share.mode == "interactive"
+
+
+async def _share_login_user(call, share):
+    if not _requires_login(share):
+        return None
+    user, _ = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
+    return user
+
+
 async def _authorized_visitor(call: GatewayCall, token: str, *, touch: bool = False):
     share = await _live_share(call, token)
+    await _share_login_user(call, share)
     session_token = call.tokens.get(SHARE_SESSION_COOKIE)
     if not session_token:
         raise GatewayError('unauthenticated', 'Share session required')
@@ -375,7 +388,10 @@ async def _proxy_share_request(call: GatewayCall, token: str, target_path: str,
     provider_ids = []
     if share.mode == 'interactive':
         provider_ids = await _interactive_provider_scope(call, share, project)
-    ticket = call.gateway_signer.sign_platform_share_ticket(gateway_id=call.settings.gateway_id, device_id=share.device_id, share_id=share.id, project_id=share.project_id, host_project_id=project.host_project_id, task_id=share.task_id, mode=share.mode, provider_ids=provider_ids)
+    visitor = await _share_login_user(call, share)
+    actor = ({'user_id': visitor.id, 'username': visitor.username,
+              'display_name': visitor.display_name or visitor.username} if visitor else None)
+    ticket = call.gateway_signer.sign_platform_share_ticket(gateway_id=call.settings.gateway_id, device_id=share.device_id, share_id=share.id, project_id=share.project_id, host_project_id=project.host_project_id, task_id=share.task_id, mode=share.mode, provider_ids=provider_ids, actor=actor)
     try:
         connection = await connections.request_data(share.device_id)
         response = await connection.proxy_http(call, share_ticket=ticket, target_path=target_path, authorization_check=authorize_stream, **{'share_body': share_body} if write else {})
@@ -433,11 +449,13 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _a
             raise GatewayError('invalid', 'Invalid share expiration')
     else:
         expiry = datetime.now(timezone.utc) + timedelta(days=7)
-    password_hash = (await asyncio.to_thread(_hasher.hash, body.password)) if body.password else None
+    require_login = body.require_login or body.mode == "interactive"
+    password = None if require_login else body.password
+    password_hash = (await asyncio.to_thread(_hasher.hash, password)) if password else None
     token = secrets.token_urlsafe(32)
     share_id = str(uuid4())
     credentials = await asyncio.to_thread(call.gateway_signer.encrypt_provider_secret,
-        'task-share:' + share_id, json.dumps({'token': token, 'password': body.password or ''}))
+        'task-share:' + share_id, json.dumps({'token': token, 'password': password or ''}))
     async with call.database.session() as session:
         async with session.begin():
             project = await session.get(PlatformProject, body.project_id)
@@ -450,7 +468,7 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _a
             share = PlatformShare(
                 id=share_id, credentials_ciphertext=credentials, token_hash=_digest(token), device_id=device.id,
                 project_id=project.id, task_id=body.task_id, mode=body.mode,
-                title=body.title.strip(), password_hash=password_hash,
+                title=body.title.strip(), password_hash=password_hash, require_login=require_login,
                 created_by_user_id=actor.id, status="active", expires_at=expiry,
             )
             session.add(share)
@@ -466,7 +484,7 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _a
     return {"id": share.id, "url": f"{origin.rstrip('/')}/share/{token}",
             "status": share.status, "mode": share.mode, "title": share.title,
             "expires_at": expiry, "created_at": _utc(share.created_at), "has_password": bool(password_hash),
-            "access_password": body.password or ""}
+            "access_password": password or "", "require_login": _requires_login(share)}
 
 
 async def list_own_platform_shares(call: GatewayCall,
@@ -490,14 +508,14 @@ async def list_own_platform_shares(call: GatewayCall,
                 'task-share:' + share.id, share.credentials_ciphertext)
             credentials = json.loads(raw)
             recovered[share.id] = {'url': f"{call.settings.public_origin.rstrip('/')}/share/{credentials['token']}",
-                                  'access_password': credentials['password']}
+                                  'access_password': '' if _requires_login(share) else credentials['password']}
     now = datetime.now(timezone.utc)
     return {"shares": [{
-        "id": share.id, "title": share.title, "mode": share.mode, **recovered.get(share.id, {}),
+        "id": share.id, "title": share.title, "mode": share.mode, "require_login": _requires_login(share), **recovered.get(share.id, {}),
         "status": ("revoked" if share.revoked_at is not None
                    else "expired" if share.expires_at is not None and _utc(share.expires_at) <= now
                    else share.status),
-        "created_at": _utc(share.created_at), "expires_at": _utc(share.expires_at) if share.expires_at else None, "has_password": share.password_hash is not None,
+        "created_at": _utc(share.created_at), "expires_at": _utc(share.expires_at) if share.expires_at else None, "has_password": share.password_hash is not None and not _requires_login(share),
     } for share in rows]}
 
 
@@ -539,14 +557,16 @@ async def revoke_platform_share(call: GatewayCall, share_id: str, *, _actor=None
 async def public_share_meta(call: GatewayCall, token: str):
     share = await _live_share(call, token)
     return {"title": share.title, "mode": share.mode,
-            "has_password": share.password_hash is not None, "status": "active"}
+            "has_password": share.password_hash is not None and not _requires_login(share), "status": "active",
+            "require_login": _requires_login(share)}
 
 
 async def unlock_public_share(call: GatewayCall, token: str, body: UnlockShareInput):
     share = await _live_share(call, token)
+    await _share_login_user(call, share)
     client_ip = call.peer.host if call.peer else 'unknown'
     await call.identity_rate_limiter.check(f'share:{share.id}', client_ip)
-    if share.password_hash is not None:
+    if share.password_hash is not None and not _requires_login(share):
         try:
             verified = await asyncio.to_thread(_hasher.verify, share.password_hash, body.password)
         except VerificationError:
@@ -554,7 +574,7 @@ async def unlock_public_share(call: GatewayCall, token: str, body: UnlockShareIn
         if not verified:
             raise GatewayError('forbidden', 'Invalid share password')
     credentials = await asyncio.to_thread(call.gateway_signer.encrypt_provider_secret,
-        'task-share:' + share.id, json.dumps({'token': token, 'password': body.password if share.password_hash else ''}))
+        'task-share:' + share.id, json.dumps({'token': token, 'password': body.password if share.password_hash and not _requires_login(share) else ''}))
     session_token = secrets.token_urlsafe(32)
     expiry = min(datetime.now(timezone.utc) + timedelta(hours=1),
                  _utc(share.expires_at) if share.expires_at else datetime.now(timezone.utc) + timedelta(hours=1))

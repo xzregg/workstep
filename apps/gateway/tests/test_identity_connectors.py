@@ -203,3 +203,46 @@ def test_selected_parent_includes_new_descendants_without_importing_unselected_s
     snapshot, selected=_selected_departments(departments,['2'])
     assert selected==[2,3]
     assert {item['external_id'] for item in snapshot}=={'2','3'}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["张三", ""])
+async def test_wecom_login_fetches_member_name_without_directory_sync(monkeypatch, name):
+    monkeypatch.setenv("WECOM_TEST_SECRET", "secret")
+    source = IdentitySource(id="source", provider="wecom", tenant_id="corp",
+                            client_id="corp", agent_id="1001", secret_env="WECOM_TEST_SECRET")
+    paths = []
+
+    def handler(request):
+        paths.append(request.url.path)
+        if request.url.path.endswith("gettoken"):
+            return httpx.Response(200, json={"errcode": 0, "access_token": "token"})
+        if request.url.path.endswith("getuserinfo"):
+            return httpx.Response(200, json={"errcode": 0, "UserId": "employee-1"})
+        assert request.url.path == "/cgi-bin/user/get"
+        assert request.url.params["userid"] == "employee-1"
+        return httpx.Response(200, json={"errcode": 0, "userid": "employee-1", "name": name})
+
+    connector = WeComConnector(lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    profile = await connector.exchange_code(source, "code", "nonce")
+    assert profile.subject == "employee-1"
+    assert profile.display_name == (name or "employee-1")
+    assert len(paths) == 3
+
+
+@pytest.mark.asyncio
+async def test_wecom_name_permission_failure_keeps_verified_identity(monkeypatch):
+    monkeypatch.setenv("WECOM_TEST_SECRET", "secret")
+    source = IdentitySource(id="source", provider="wecom", tenant_id="corp",
+                            client_id="corp", agent_id="1001", secret_env="WECOM_TEST_SECRET")
+
+    def handler(request):
+        if request.url.path.endswith("gettoken"):
+            return httpx.Response(200, json={"errcode": 0, "access_token": "token"})
+        if request.url.path.endswith("getuserinfo"):
+            return httpx.Response(200, json={"errcode": 0, "UserId": "employee-1"})
+        return httpx.Response(200, json={"errcode": 48002, "errmsg": "permission denied"})
+
+    connector = WeComConnector(lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    profile = await connector.exchange_code(source, "code", "nonce")
+    assert profile.subject == profile.display_name == "employee-1"

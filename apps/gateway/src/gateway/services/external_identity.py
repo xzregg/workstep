@@ -34,6 +34,34 @@ def _external_username(source_id: str, subject: str) -> str:
     return f"ext_{digest}"
 
 
+class DisplayNameConflict(GatewayError):
+    def __init__(self):
+        super().__init__('conflict', 'Multiple accounts share this display name')
+
+
+async def _display_name_user(session, source_id: str, subject: str, display_name: str):
+    # A member-ID fallback is not a name and must not claim an existing account.
+    if not display_name or not display_name.strip() or display_name == subject:
+        return None
+    matches = (await session.scalars(select(User).where(
+        User.display_name == display_name,
+    ).limit(2))).all()
+    if len(matches) > 1:
+        raise DisplayNameConflict()
+    if not matches:
+        return None
+    user = matches[0]
+    if user.status != 'active':
+        raise GatewayError('forbidden', 'Matching account unavailable')
+    bound = await session.scalar(select(ExternalIdentity).where(
+        ExternalIdentity.source_id == source_id, ExternalIdentity.user_id == user.id,
+    ))
+    if bound is not None:
+        # Distinct members within one enterprise can genuinely share a name.
+        return None
+    return user
+
+
 async def _disable_directory_access(session, user_ids,source_id=None):
     from gateway.services.directory_access import disable_access
     await disable_access(session,user_ids,source_id)
@@ -182,17 +210,18 @@ class ExternalIdentityService:
                         if directory_person is not None and not directory_person.active:
                             raise GatewayError('forbidden', 'Directory member inactive')
                     else:
-                        mode = await session.get(PlatformSetting, "registration_mode")
-                        if mode is None or mode.value_json == '"closed"':
-                            raise GatewayError('forbidden', 'External identity not provisioned')
-                        user = User(
-                            id=str(uuid4()), username=_external_username(source_id, profile.subject),
-                            display_name=profile.display_name, password_hash=None,
-                            status="active" if mode.value_json == '"open"' else "pending",
-                            registration_source=source.provider,
-                        )
-                        session.add(user)
-                        await session.flush()
+                        # Enabled enterprise sources admit verified members independently
+                        # of the policy governing public password registration.
+                        user = await _display_name_user(session, source_id, profile.subject, profile.display_name)
+                        if user is None:
+                            user = User(
+                                id=str(uuid4()), username=_external_username(source_id, profile.subject),
+                                display_name=profile.display_name, password_hash=None,
+                                status="active",
+                                registration_source=source.provider,
+                            )
+                            session.add(user)
+                            await session.flush()
                     if identity is None:
                         identity = ExternalIdentity(
                             id=str(uuid4()), source_id=source_id,
@@ -434,13 +463,15 @@ class ExternalIdentityService:
                         if identity:
                             user_id = identity.user_id
                         else:
-                            user = User(
-                                id=str(uuid4()), username=_external_username(source_id, item["subject"]),
-                                display_name=item["display_name"], password_hash=None,
-                                status="active", registration_source="directory_sync",
-                            )
-                            session.add(user)
-                            await session.flush()
+                            user = await _display_name_user(session, source_id, item["subject"], item["display_name"])
+                            if user is None:
+                                user = User(
+                                    id=str(uuid4()), username=_external_username(source_id, item["subject"]),
+                                    display_name=item["display_name"], password_hash=None,
+                                    status="active", registration_source="directory_sync",
+                                )
+                                session.add(user)
+                                await session.flush()
                             user_id = user.id
                             session.add(ExternalIdentity(
                                 id=str(uuid4()), source_id=source_id, subject=item["subject"],
@@ -592,13 +623,15 @@ class ExternalIdentityService:
                             ExternalIdentity.subject == subject,
                         ))
                         if identity is None:
-                            user = User(
-                                id=str(uuid4()), username=_external_username(source_id, subject),
-                                display_name=display_name, password_hash=None,
-                                status="active", registration_source="directory_sync",
-                            )
-                            session.add(user)
-                            await session.flush()
+                            user = await _display_name_user(session, source_id, subject, display_name)
+                            if user is None:
+                                user = User(
+                                    id=str(uuid4()), username=_external_username(source_id, subject),
+                                    display_name=display_name, password_hash=None,
+                                    status="active", registration_source="directory_sync",
+                                )
+                                session.add(user)
+                                await session.flush()
                             identity = ExternalIdentity(
                                 id=str(uuid4()), source_id=source_id, subject=subject,
                                 user_id=user.id, display_name=display_name,

@@ -19,6 +19,7 @@ class PlatformShare(Base):
     task_id: Mapped[str] = mapped_column(String(128))
     mode: Mapped[str] = mapped_column(String(16))
     title: Mapped[str] = mapped_column(String(256))
+    require_login: Mapped[bool] = mapped_column(Boolean, server_default=false())
     password_hash: Mapped[str | None] = mapped_column(Text)
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     status: Mapped[str] = mapped_column(String(16), server_default="active")

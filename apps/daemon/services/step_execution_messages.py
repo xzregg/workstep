@@ -14,7 +14,8 @@ from models.fields import utc_now
 from services.artifact_rounds import step_round_dir
 from services.intervention import seal_unanswered_interactions
 from services.messages import (
-    attributed_actor_message_fields, create_task_message, extract_usage_json, new_message_id,
+    attributed_actor_display_name, attributed_actor_message_fields,
+    create_task_message, extract_usage_json, new_message_id,
 )
 from services.pipeline import Step
 from services.prompt import (
@@ -91,6 +92,10 @@ class StepExecutionMessages:
         ))
         followup = self._step_followups.get(step_key, "").strip()
         trigger_name = self._step_trigger_names.get(step_key, "").strip()
+        if not trigger_name:
+            trigger_name = await self._run_db(lambda: attributed_actor_display_name(
+                task, channel="execution", step_key=step_key,
+            ))
         if (followup and state.task_step.session_id and engine is not None
                 and engine.supports_resume):
             prompt = await asyncio.to_thread(
@@ -109,6 +114,7 @@ class StepExecutionMessages:
                 assemble_retry_prompt,
                 task, step, artifacts_dir, input_snapshot,
                 state.artifact_round, state.previous_execution_prompt,
+                trigger_name=trigger_name,
                 **context_kwargs,
             )
         else:

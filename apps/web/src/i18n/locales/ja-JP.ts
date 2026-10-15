@@ -1346,6 +1346,8 @@ export const jaJP: Messages = {
     switch: '切り替え',
   },
   layout: {
+    sidebarSectionResize: '拖动调整最近聊天高度，双击恢复默认',
+    sidebarSectionDragHint: '拖动调整分区位置，或按 Alt + ↑/↓',
     workspaceHome: '工作台',
     recentConversations: '最近聊天',
     noRecentConversations: '打开过的任务和对话会显示在这里',
@@ -2416,6 +2418,12 @@ export const jaJP: Messages = {
     skipped: '跳过',
   },
   share: {
+    requireLogin: 'ゲートウェイログインを必須にする',
+    loginRequired: 'この共有にアクセスするにはゲートウェイにログインしてください。',
+    loginHint: '操作可能な共有にはログインが必要です。アクセスキーは不要で、操作にログインユーザーが記録されます。',
+    loginAction: 'ログイン',
+    copyLinkOnly: 'リンクをコピー',
+
     copyAddress: 'アクセス先：',
     copyPassword: 'アクセスパスワード：',
     copyTask: 'タスク',
