@@ -34,3 +34,13 @@ const createdKeys = new Map<string, string>()
 export function rememberTaskShareKey(id: string, password: string) { createdKeys.set(id, password) }
 export function taskShareKey(id: string) { return createdKeys.get(id) || '' }
 export function forgetTaskShareKey(id: string) { createdKeys.delete(id) }
+
+export const shareLoginMessages = {
+  'zh-CN': { label: '验证网关登录', hint: '可操作分享必须验证网关登录；开启后无需访问密钥，操作将记录登录用户。', required: '请先登录网关后访问此分享。', copy: '复制链接' },
+  'en-US': { label: 'Require Gateway login', hint: 'Interactive shares require Gateway login. No access key is needed; actions record the signed-in user.', required: 'Sign in to Gateway to access this share.', copy: 'Copy link' },
+  'zh-TW': { label: '驗證閘道登入', hint: '可操作分享必須驗證閘道登入；開啟後無需存取密鑰，操作會記錄登入使用者。', required: '請先登入閘道後存取此分享。', copy: '複製連結' },
+  'ja-JP': { label: 'ゲートウェイログインを必須にする', hint: '操作可能な共有にはログインが必要です。アクセスキーは不要で、操作にログインユーザーが記録されます。', required: 'この共有にアクセスするにはゲートウェイにログインしてください。', copy: 'リンクをコピー' },
+}
+export function shareLoginLocale(locale: string) {
+  return shareLoginMessages[locale as keyof typeof shareLoginMessages] || shareLoginMessages['zh-CN']
+}

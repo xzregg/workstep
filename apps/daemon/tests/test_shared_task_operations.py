@@ -14,6 +14,42 @@ from workstep_gateway_protocol import FrameType, ProxyFrame
 
 
 @pytest.mark.anyio
+async def test_signed_share_chat_persists_gateway_visitor_identity(api_context, monkeypatch):
+    import main
+    from models import Message
+    from services.remote_access import get_current_actor
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    monkeypatch.setattr(main.gateway_client, 'managed_config', object())
+    # Persist a real submission without launching an LLM turn.
+    monkeypatch.setattr(main.coordinator_module, '_schedule_turn', lambda *args: None)
+    actor = {'user_id': 'visitor-1', 'username': 'visitor', 'display_name': '访问者'}
+    ticket, signer, pin = _ticket(task_id=task_id, host_project_id=project_id, mode='interactive', provider_scope={'actor': actor})
+    frames = []
+    async def send(frame): frames.append(frame)
+    bridge = ManagedHttpBridge(main.app, 'visitor-chat', {
+        'method': 'POST', 'path': '/api/platform-share/operation', 'query': '',
+        'headers': [['content-type', 'application/json']], 'share_ticket': ticket,
+    }, send, 'device-1', gateway_key=signer, gateway_fingerprint=pin, gateway_id='gateway-1')
+    bridge.start_task()
+    body = json.dumps({'path': f'/task/{task_id}/chat', 'method': 'POST',
+                       'body': {'content': '验证实名聊天', 'author_name': 'Owner'},
+                       'idempotency_key': 'visitor-chat-1'}).encode()
+    await bridge.feed(ProxyFrame(stream_id='visitor-chat', type=FrameType.http_request,
+        payload={'phase': 'body', 'data': base64.b64encode(body).decode()}))
+    await bridge.feed(ProxyFrame(stream_id='visitor-chat', type=FrameType.http_request, payload={'phase': 'end'}))
+    await asyncio.wait_for(bridge._task, 3)
+    raw = b''.join(base64.b64decode(f.payload['data']) for f in frames if f.payload.get('phase') == 'body')
+    assert frames[0].payload['status'] == 200, raw
+    message_id = json.loads(raw)['user_message_id']
+    def read(_):
+        message = Message.get_by_id(message_id)
+        return message.author_id, message.author_username, message.author_name, message.initiated_by_user_id
+    assert await main.project_manager.run_db(project_id, read) == ('visitor-1', 'visitor', '访问者', 'visitor-1')
+    assert get_current_actor() is None or get_current_actor().actor_id != 'visitor-1', 'Visitor identity must not leak to another request'
+
+
+@pytest.mark.anyio
 async def test_editable_share_reuses_task_routes_with_bound_scope_and_responsive_database(api_context, monkeypatch):
     import main
     from models import Task, Message

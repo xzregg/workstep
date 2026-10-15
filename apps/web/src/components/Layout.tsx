@@ -45,7 +45,7 @@ import { useSidebarSessionActions } from '../hooks/useSidebarSessionActions'
 import { useSidebarProjectLoading } from '../hooks/useSidebarProjectLoading'
 import { useSidebarConversationLoading } from '../hooks/useSidebarConversationLoading'
 import SidebarLoadStatus from './SidebarLoadStatus'
-import RecentConversations from './RecentConversations'
+import WorkspaceSidebarSections from './WorkspaceSidebarSections'
 import {
   engineApi,
   type Project,
@@ -175,7 +175,8 @@ export default function Layout({ onSelectProject, children }: Props) {
   ])), [projects, sessionsByProject, sidebarSearchQuery])
   const sidebarSearchActive = sidebarSearchQuery.trim().length > 0
   const [sidebarVisible, setSidebarVisible] = useState(false)
-  useSidebarConversationLoading(sidebarVisible, can('session.read') && !sidebarSearchActive
+  const [projectSectionVisible, setProjectSectionVisible] = useState(true)
+  useSidebarConversationLoading(sidebarVisible && projectSectionVisible, can('session.read') && !sidebarSearchActive
     ? projects.filter((p) => expandedProjectIds.includes(p.id)
       && (sessionSectionOpen[p.id] ?? (location.pathname === '/chat' && !!activeSessionId))
       && !['revoked', 'expired', 'invalid'].includes(p.access_status ?? '')).map((p) => p.id)
@@ -470,10 +471,8 @@ export default function Layout({ onSelectProject, children }: Props) {
           </div>
         </div>
 
-        <div className="layout-sidebar-body">
-        <section id="layout-project-panel" tabIndex={-1} className="layout-sidebar-project-panel" aria-label={t('layout.projects')}>
-        <div className="layout-sidebar-section-label">
-          <span>{t('layout.projects')}</span>
+        <WorkspaceSidebarSections now={sidebarNow} onProjectVisibilityChange={setProjectSectionVisible}
+          projectActions={<>
           <Button
             variant="icon"
             aria-label={t('layout.searchSidebar')}
@@ -520,8 +519,8 @@ export default function Layout({ onSelectProject, children }: Props) {
             aria-label={t('nav.addProject')} title={t('nav.addProject')} onClick={openLocalProjectModal}>
             <Icon name="plus" size={14} strokeWidth={2} />
           </Button>}
-        </div>
-
+          </>}
+          projects={
         <div className="layout-sidebar-projects">
           {visibleProjects.map((p) => {
             const searchResult = sidebarSearchResults.get(p.id)!
@@ -1048,9 +1047,8 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        </section>
-        <RecentConversations now={sidebarNow} />
-        </div>
+          }
+        />
         <WorkspaceNavigationActions activeSettingsSection={showSettings ? settingsSection : undefined}
           onOpenSettings={section => { setSettingsSection(section); setSettingsFocus(undefined); setShowSettings(true) }} />
       </ResponsiveNavigation>

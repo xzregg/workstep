@@ -44,7 +44,7 @@ for (const { interactive, standalone } of [
       onopen?: () => void
       onmessage?: (event: { data: string }) => void
       constructor(url: string) {
-        assert.equal(url, 'ws://localhost:8700/api/public/shares/handle/ws')
+        assert.equal(url, 'ws://localhost:8700/ws/public/shares/handle')
         shareSocket = this
       }
       close() {}

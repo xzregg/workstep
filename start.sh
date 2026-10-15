@@ -66,6 +66,38 @@ check_port() {
     return 1  # 端口空闲
 }
 
+release_port() {
+    local port=$1
+    local pids pid waited
+    pids=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+    [ -n "$pids" ] || return 0
+    warn "端口 $port 已被占用，正在停止进程: $pids"
+    for pid in $pids; do
+        kill "$pid" 2>/dev/null || true
+    done
+    waited=0
+    while check_port "$port" && [ "$waited" -lt 10 ]; do
+        sleep 0.5
+        waited=$((waited + 1))
+    done
+    if check_port "$port"; then
+        # 重新查询仍在监听的进程，避免向已退出的旧 PID 发送信号。
+        pids=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+        for pid in $pids; do
+            kill -9 "$pid" 2>/dev/null || true
+        done
+        waited=0
+        while check_port "$port" && [ "$waited" -lt 10 ]; do
+            sleep 0.5
+            waited=$((waited + 1))
+        done
+    fi
+    if check_port "$port"; then
+        fail "无法释放端口 ${port}，请检查占用进程及终止权限"
+    fi
+    ok "端口 $port 已释放"
+}
+
 stop_service() {
     local pid_file=$1
     if [ -f "$pid_file" ]; then
@@ -96,8 +128,9 @@ wait_ready() {
 
 # === 预检查 ===
 command -v lsof >/dev/null 2>&1 || fail "需要 lsof 检查端口占用"
-if check_port "$PORT" || { [ "$MODE" = "dev" ] && check_port 5173; }; then
-    fail "服务端口已被占用；请使用重启按钮或先停止已有服务，不能重复启动"
+release_port "$PORT"
+if [ "$MODE" = "dev" ]; then
+    release_port 5173
 fi
 
 # 检查依赖

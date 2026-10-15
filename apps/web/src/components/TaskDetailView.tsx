@@ -1,3 +1,5 @@
+import { useChatComposerResize } from '../hooks/useChatComposerResize'
+import ChatComposerResizeHandle from './ChatComposerResizeHandle'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { buildTaskConversationTimeline, lastEventTimestamp } from './taskConversationFeed'
@@ -511,6 +513,7 @@ export default function TaskDetailView({
 
   // ── Split ratio (draggable divider between left panel & conversation) ──
   const compact = useCompactLayout()
+  const composerResize = useChatComposerResize()
   const mobileReviewRef = useRef<HTMLDivElement>(null)
   const [mobileTab, setMobileTab] = useState<'conversation' | 'steps' | 'artifacts'>('conversation')
   const [detailMode, setDetailMode] = useState<'detail' | 'artifacts' | 'analysis' | 'git'>('detail')
@@ -632,7 +635,7 @@ export default function TaskDetailView({
 
   const renderConversation = () => {
     return (
-      <div className="task-conversation-body">
+      <div className="task-conversation-body" ref={composerResize.rootRef}>
         {/* Chat header */}
         <div className="task-conversation-header">
           <span className="task-conversation-heading">
@@ -825,9 +828,13 @@ export default function TaskDetailView({
 
         {!canChat && canRunActions && <TaskActionButtons state={taskActions} actionsOnly />}
         {/* Chat input (edit mode only) */}
-        {canChat && (
+        {canChat && (<>
+          <ChatComposerResizeHandle {...composerResize} />
+          <div ref={composerResize.composerRef} className="chat-composer-outer"
+            style={!compact && composerResize.height !== null ? { height: composerResize.height } : undefined}>
           <div
-            className="task-detail-composer"
+            ref={composerResize.composerInnerRef}
+            className={`task-detail-composer${!compact && composerResize.height !== null ? ' is-resized' : ''}`}
           >
             {onSendPrompt && !compact && <TaskActionButtons actionsAllowed={canRunActions} state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} />}
             {onSendPrompt && compact && taskActions.error && <span role="alert" className="task-conversation-action-error">{taskActions.error}</span>}
@@ -1081,7 +1088,8 @@ export default function TaskDetailView({
               }
             />
           </div>
-        )}
+          </div>
+        </>)}
       </div>
     )
   }

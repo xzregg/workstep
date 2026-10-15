@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "0cd798b33ded5fd8ddb2160fb94a6e0da1c68c0bd1715ba8f803c655d9be72ee",
+  "revision": "5584405deaad59fb30fa276fd024604c71faf71980c3200a2d64598a4ca5fa54",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -1760,6 +1760,8 @@
     "canvas.leave": "离开",
     "canvas.unsavedSwitchMessage": "有未保存的更改，确定切换工作流？",
     "canvas.switch": "切换",
+    "layout.sidebarSectionResize": "拖动调整最近聊天高度，双击恢复默认",
+    "layout.sidebarSectionDragHint": "拖动调整分区位置，或按 Alt + ↑/↓",
     "layout.workspaceHome": "工作台",
     "layout.recentConversations": "最近聊天",
     "layout.noRecentConversations": "打开过的任务和对话会显示在这里",
@@ -2860,6 +2862,11 @@
     "executionAnalysis.superseded": "已被后续轮次替代",
     "executionAnalysis.reused": "复用",
     "executionAnalysis.skipped": "跳过",
+    "share.requireLogin": "验证网关登录",
+    "share.loginRequired": "请先登录网关后访问此分享。",
+    "share.loginHint": "可操作分享必须验证网关登录；开启后无需访问密钥，操作将记录登录用户。",
+    "share.loginAction": "前往登录",
+    "share.copyLinkOnly": "复制链接",
     "share.copyAddress": "访问地址：",
     "share.copyPassword": "访问密码：",
     "share.copyTask": "任务",

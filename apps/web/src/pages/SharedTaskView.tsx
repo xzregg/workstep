@@ -316,6 +316,15 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
     )
   }
 
+  if (phase.kind === 'need-login') {
+    const next = window.location.pathname + window.location.search
+    return <SharePageShell><div className="shared-task-error-panel">
+      <p>{t('share.loginRequired')}</p>
+      <a href={`/auth?next=${encodeURIComponent(next)}`}>{t('share.loginAction')}</a>
+      <Button onClick={retry}>{t('common.retry')}</Button>
+    </div></SharePageShell>
+  }
+
   if (phase.kind === 'error') {
     return (
       <SharePageShell>

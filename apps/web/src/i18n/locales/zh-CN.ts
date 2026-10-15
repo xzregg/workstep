@@ -1467,6 +1467,8 @@ export const zhCN = {
     switch: '切换',
   },
   layout: {
+    sidebarSectionResize: '拖动调整最近聊天高度，双击恢复默认',
+    sidebarSectionDragHint: '拖动调整分区位置，或按 Alt + ↑/↓',
     workspaceHome: '工作台',
     recentConversations: '最近聊天',
     noRecentConversations: '打开过的任务和对话会显示在这里',
@@ -2547,6 +2549,12 @@ export const zhCN = {
     skipped: '跳过',
   },
   share: {
+    requireLogin: '验证网关登录',
+    loginRequired: '请先登录网关后访问此分享。',
+    loginHint: '可操作分享必须验证网关登录；开启后无需访问密钥，操作将记录登录用户。',
+    loginAction: '前往登录',
+    copyLinkOnly: '复制链接',
+
     copyAddress: '访问地址：',
     copyPassword: '访问密码：',
     copyTask: '任务',

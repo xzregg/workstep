@@ -13,6 +13,8 @@ import { useProjectStore } from '../stores/projectStore'
 import { taskShareUrl } from '../utils/taskShareUrl'
 import { taskShareDefaults, taskShareClipboard, taskShareAccessUrl, rememberTaskShareKey, taskShareKey, forgetTaskShareKey } from '../../../../packages/gateway-ui/src/taskShareDefaults'
 
+import { TaskShareLoginToggle } from '@workstep/gateway-ui/TaskShareLoginToggle'
+
 type ShareMode = 'read_only' | 'interactive'
 
 interface Props {
@@ -24,7 +26,7 @@ interface Props {
   onChanged?: (share: ShareInfo | null) => void
   api?: {
     get: (taskId: string, projectId: string) => Promise<ShareInfo | null>
-    create: (taskId: string, projectId: string, password: string | null, title: string | null, mode: ShareMode, expiresAt?: string | null) => Promise<ShareInfo>
+    create: (taskId: string, projectId: string, password: string | null, title: string | null, mode: ShareMode, expiresAt?: string | null, requireLogin?: boolean) => Promise<ShareInfo>
     revoke: (taskId: string, projectId: string) => Promise<unknown>
   }
   gateway?: boolean
@@ -53,6 +55,9 @@ export default function ShareDialog({
   const [title, setTitle] = useState('')
   const [mode, setMode] = useState<ShareMode>('read_only')
   const [expiresAt, setExpiresAt] = useState('')
+  const [requireLogin, setRequireLogin] = useState(false)
+  const loginRequired = gateway && (requireLogin || mode === 'interactive')
+  const sharePassword = share?.require_login ? '' : password
   const [error, setError] = useState<string | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
@@ -66,6 +71,7 @@ export default function ShareDialog({
     setPassword(defaults.password)
     setTitle('')
     setMode('read_only')
+    setRequireLogin(false)
     setExpiresAt(defaults.expiresAt)
   }
 
@@ -110,20 +116,20 @@ export default function ShareDialog({
 
   const shareUrl = useMemo(() => {
     if (!share) return ''
-    return taskShareAccessUrl(gateway ? share.url || '' : taskShareUrl(share.token, project, window.location.origin), password)
-  }, [share, project, gateway, password])
+    return taskShareAccessUrl(gateway ? share.url || '' : taskShareUrl(share.token, project, window.location.origin), sharePassword)
+  }, [share, project, gateway, sharePassword])
 
   if (!open) return null
 
   const requestClose = () => {
     if (pending.current) return
-    if (!share && (password !== initialDefaults.current.password || title || expiresAt !== initialDefaults.current.expiresAt || mode !== 'read_only')) setConfirmClose(true)
+    if (!share && (password !== initialDefaults.current.password || title || expiresAt !== initialDefaults.current.expiresAt || mode !== 'read_only' || requireLogin)) setConfirmClose(true)
     else onClose()
   }
 
   const handleCreate = async () => {
     if (!can('share.create') || pending.current || loading) return
-    if (password.length > 0 && password.length < 4) {
+    if (!loginRequired && password.length > 0 && password.length < 4) {
       setError(t('share.passwordTooShort'))
       return
     }
@@ -134,13 +140,14 @@ export default function ShareDialog({
       const created = await api.create(
         taskId,
         projectId,
-        password || null,
+        loginRequired ? null : password || null,
         title.trim() || null,
         mode,
         expiresAt ? new Date(expiresAt).toISOString() : null,
+        loginRequired,
       )
       setShare(created)
-      rememberTaskShareKey(created.id, password)
+      rememberTaskShareKey(created.id, loginRequired ? '' : password)
       setTitle('')
       setMode('read_only')
       onChanged?.(created)
@@ -154,7 +161,7 @@ export default function ShareDialog({
   }
 
   const handleCopy = async () => {
-    const ok = await copyText(taskShareClipboard(shareUrl, password, share?.title || taskTitle || t('share.copyTask'), {
+    const ok = await copyText(taskShareClipboard(shareUrl, sharePassword, share?.title || taskTitle || t('share.copyTask'), {
       address: t('share.copyAddress'), password: t('share.copyPassword'), task: t('share.copyTask'),
     }))
     if (ok) {
@@ -274,14 +281,15 @@ export default function ShareDialog({
                   />
                   <Button variant="ghost" disabled={share.has_password && !password} onClick={handleCopy} style={{ fontSize: 'calc(12px * var(--font-scale))', height: 28 }}>
                     <Icon name={copied ? 'check' : 'copy'} size={13} />
-                    {copied ? t('share.linkCopied') : t('share.copyLink')}
+                    {copied ? t('share.linkCopied') : t(share.require_login ? 'share.copyLinkOnly' : 'share.copyLink')}
                   </Button>
                   <Button variant="ghost" onClick={handleOpenWindow} style={{ fontSize: 'calc(12px * var(--font-scale))', height: 28 }}>
                     <Icon name="external-link" size={13} />
                     {t('share.openWindow')}
                   </Button>
                 </div>}
-                {share.has_password && <label className="task-share-access-key">
+                {share.require_login && <p>{t('share.loginRequired')}</p>}
+                {share.has_password && !share.require_login && <label className="task-share-access-key">
                   <span>{t('share.passwordLabel')}</span>
                   <Input value={password} onChange={event => setPassword(event.target.value)} placeholder={t('share.passwordPlaceholder')} autoComplete="off" />
                 </label>}
@@ -308,7 +316,9 @@ export default function ShareDialog({
               </div>
             ) : !can('share.create') ? <p role="status">{t('common.featureUnavailable')}</p> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {gateway && <TaskShareLoginToggle checked={loginRequired} required={mode === 'interactive'}
+                  onChange={setRequireLogin} label={t('share.requireLogin')} hint={t('share.loginHint')} />}
+                {!loginRequired && <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>
                     {t('share.passwordLabel')} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({t('common.optional')})</span>
                   </span>
@@ -324,7 +334,7 @@ export default function ShareDialog({
                       if (e.key === 'Enter' && !creating) handleCreate()
                     }}
                   />
-                </label>
+                </label>}
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>
                     {t('share.titleLabel')}
@@ -363,7 +373,7 @@ export default function ShareDialog({
                   <Button
                     variant="primary"
                     loading={creating}
-                    disabled={password.length > 0 && password.length < 4}
+                    disabled={!loginRequired && password.length > 0 && password.length < 4}
                     onClick={handleCreate}
                     style={{ fontSize: 'calc(13px * var(--font-scale))' }}
                   >

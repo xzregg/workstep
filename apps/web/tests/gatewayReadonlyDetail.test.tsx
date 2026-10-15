@@ -14,8 +14,8 @@ test('readonly project detail preserves history and viewing without exposing its
   globalThis.fetch = async () => Response.json({ detail: 'scope denied' }, { status: 403 })
   const element = document.body.appendChild(document.createElement('div'))
   const root = createRoot(element)
-  const render = () => root.render(<I18nProvider><TaskDetailPage
-    locale="zh-CN" durationNowMs={Date.now()} currentStep={{ key: 'do', label: 'Execute', color: 'blue', prompt: '', inputs: [], outputs: [] }}
+  const render = (chatEnabled = true) => root.render(<I18nProvider><TaskDetailPage
+    chatEnabled={chatEnabled} locale="zh-CN" durationNowMs={Date.now()} currentStep={{ key: 'do', label: 'Execute', color: 'blue', prompt: '', inputs: [], outputs: [] }}
     activeStep={{ key: 'do', label: 'Execute', color: 'blue', prompt: '', inputs: [], outputs: [] }} currentStepColor="blue" activeStepColor="blue"
     taskCompleted={false} runningSteps={[]} executionStepModel="" sessionIdForStep={() => null}
     onViewingPromptChange={() => {}} projectId="host-1" task={{ id: 'task-1', title: 'Visible task', status: 'ready',
@@ -40,10 +40,31 @@ test('readonly project detail preserves history and viewing without exposing its
     assert.equal(element.querySelector('.task-title-input'), null)
     assert.match(readonly, /task-chat-history/)
     assert.doesNotMatch(readonly, /class="chat-input/)
+    assert.equal(element.querySelector('.chat-composer-resize-handle'), null)
     await act(async () => { useGatewaySessionStore.setState({ session: { ...session, access_level: 'edit' } }); render() })
     assert.match(element.innerHTML, /class="chat-input/)
+    const separator = element.querySelector<HTMLElement>('.chat-composer-resize-handle')!
+    assert.ok(separator)
+    const conversation = element.querySelector<HTMLElement>('.task-conversation-body')!
+    conversation.getBoundingClientRect = () => ({ height: 800 }) as DOMRect
+    const composer = element.querySelector<HTMLElement>('.chat-composer-outer')!
+    composer.getBoundingClientRect = () => ({ height: 220 }) as DOMRect
+    await act(async () => separator.dispatchEvent(new window.MouseEvent('mousedown', { clientY: 300, bubbles: true })))
+    await act(async () => window.dispatchEvent(new window.MouseEvent('mousemove', { clientY: 200, bubbles: true })))
+    await act(async () => window.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true })))
+    assert.equal(composer.style.height, '320px')
+    assert.equal(window.localStorage.getItem('workstep-chat-composer-height'), '320')
+    await act(async () => separator.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
+    assert.equal(composer.style.height, '')
     await act(async () => element.querySelector('[data-task-title]')!.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
     assert.ok(element.querySelector('.task-title-input'))
+    // Public shares use the same detail page, with chatEnabled deciding composer access.
+    window.happyDOM.setURL('http://localhost:8765/share/demo')
+    await act(async () => { useGatewaySessionStore.setState({ session: null }); render(true) })
+    assert.ok(element.querySelector('.chat-composer-resize-handle'))
+    await act(async () => render(false))
+    assert.equal(element.querySelector('.chat-composer-resize-handle'), null)
+    assert.equal(element.querySelector('.chat-composer-outer'), null)
   } finally {
     await act(async () => { root.unmount(); useGatewaySessionStore.setState({ session: null }) })
     element.remove()
