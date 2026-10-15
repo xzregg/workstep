@@ -577,9 +577,11 @@ class DataConnection:
                 r"/api/platform-share/git/worktrees/[0-9a-f]{24}/(?:pull|push)",
                 target_path or "") or re.fullmatch(
                 r"/api/platform-share/git/worktrees/[0-9a-f]{24}/(?:switch|fetch|branches|branches/delete)",
-                target_path or "") or target_path == "/api/platform-share/uploads"
+                target_path or "") or re.fullmatch(
+                r"/api/platform-share/actions/[A-Za-z0-9_-]{1,128}/(?:confirm|cancel)",
+                target_path or "") or target_path in {"/api/platform-share/uploads", "/api/platform-share/operation"}
             max_share_body = (25_000_000 if target_path == "/api/platform-share/uploads"
-                              else 262144)
+                              else 35_000_000 if target_path == "/api/platform-share/operation" else 262144)
             if (not isinstance(share_ticket, str) or not share_ticket
                     or not ((call.operation == 'GET' and read_path and share_body is None)
                             or (call.operation == 'POST' and write_path
@@ -765,13 +767,19 @@ class DataConnection:
             self._outbound_windows.pop(stream_id, None)
             raise
 
-    async def proxy_websocket(self, browser: GatewaySocket, *, user_id: str,
-                              username: str, display_name: str | None = None,
+    async def proxy_websocket(self, browser: GatewaySocket, *, user_id: str | None = None,
+                              username: str | None = None, display_name: str | None = None,
                               project_id: str | None = None,
                               access_level: str | None = None,
                               provider_ids: list[str] | None = None,
                               provider_grant_expires_at: int | None = None,
+                              share_ticket: str | None = None,
+                              target_path: str | None = None,
                               authorization_check=None) -> None:
+        if share_ticket is not None and (target_path != '/ws/platform-share'
+                or any(value is not None for value in (user_id, username, display_name,
+                    project_id, access_level, provider_ids, provider_grant_expires_at))):
+            raise ValueError('Invalid share WebSocket scope')
         if (project_id is None) != (access_level is None) or (
                 access_level is not None and access_level not in ("read", "edit")):
             raise ValueError("Invalid project proxy scope")
@@ -795,7 +803,15 @@ class DataConnection:
         tasks: list[asyncio.Task] = []
         headers = [[key.decode('latin1'), value.decode('latin1')] for key, value in browser.wire_headers if key.lower() not in (b'host', b'cookie', b'connection', b'sec-websocket-key', b'sec-websocket-version') and (not key.lower().startswith(b'x-workstep-'))]
         try:
-            await self.send_frame(ProxyFrame(stream_id=stream_id, type=FrameType.websocket_open, payload={'phase': 'start', 'path': browser.target.path, 'query': browser.target.query, 'headers': headers, 'user_id': user_id, 'username': username, 'display_name': display_name or username, 'project_id': project_id, 'access_level': access_level, 'provider_ids': provider_ids, 'provider_grant_expires_at': provider_grant_expires_at}))
+            payload = {'phase': 'start', 'path': browser.target.path, 'query': browser.target.query,
+                       'headers': headers, 'user_id': user_id, 'username': username,
+                       'display_name': display_name or username, 'project_id': project_id,
+                       'access_level': access_level, 'provider_ids': provider_ids,
+                       'provider_grant_expires_at': provider_grant_expires_at}
+            if share_ticket is not None:
+                payload = {'phase': 'start', 'path': target_path, 'query': '',
+                           'headers': headers, 'share_ticket': share_ticket}
+            await self.send_frame(ProxyFrame(stream_id=stream_id, type=FrameType.websocket_open, payload=payload))
             opened = await asyncio.wait_for(queue.get(), timeout=15)
             if self.flow_control and not isinstance(opened, Exception):
                 await self.send_frame(ProxyFrame(

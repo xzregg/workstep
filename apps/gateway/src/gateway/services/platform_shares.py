@@ -1,5 +1,5 @@
 from gateway.services.errors import GatewayError
-from gateway.contracts import GatewayCall, CredentialGrant, JsonValue
+from gateway.contracts import GatewayCall, GatewaySocket, CredentialGrant, JsonValue, SocketClosed
 import asyncio
 
 import hashlib
@@ -298,6 +298,14 @@ async def _live_share(call: GatewayCall, token: str) -> PlatformShare:
         creator = await session.get(User, share.created_by_user_id)
         if creator is None or creator.status != 'active' or not await can_create_platform_share(session, creator.id, project):
             raise GatewayError('forbidden', 'Share creator authorization revoked')
+    if share.credentials_ciphertext is None:
+        encrypted = await asyncio.to_thread(call.gateway_signer.encrypt_provider_secret,
+            'task-share:' + share.id, json.dumps({'token': token, 'password': None if share.password_hash else ''}))
+        async with call.database.session() as session:
+            async with session.begin():
+                await session.execute(update(PlatformShare).where(
+                    PlatformShare.id == share.id, PlatformShare.credentials_ciphertext.is_(None)
+                ).values(credentials_ciphertext=encrypted))
     return share
 
 
@@ -377,6 +385,36 @@ async def _proxy_share_request(call: GatewayCall, token: str, target_path: str,
         raise GatewayError('unavailable', 'Shared device unavailable') from exc
 
 
+async def public_share_websocket(ws: GatewaySocket, token: str):
+    try:
+        origin = ws.proofs.get('origin')
+        if not origin or origin.rstrip('/') != (ws.settings.public_origin or '').rstrip('/'):
+            raise GatewayError('forbidden', 'Share WebSocket origin rejected')
+        share, project = await _authorized_visitor(ws, token)
+
+        async def authorize_stream():
+            current, current_project = await _authorized_visitor(ws, token)
+            if (current.id != share.id or current.device_id != share.device_id
+                    or current.task_id != share.task_id or current.mode != share.mode
+                    or current_project.host_project_id != project.host_project_id):
+                raise GatewayError('forbidden', 'Share changed')
+
+        ticket = ws.gateway_signer.sign_platform_share_ticket(
+            gateway_id=ws.settings.gateway_id, device_id=share.device_id,
+            share_id=share.id, project_id=share.project_id,
+            host_project_id=project.host_project_id, task_id=share.task_id, mode=share.mode,
+        )
+        connection = await ws.control_connections.request_data(share.device_id)
+        await connection.proxy_websocket(ws, share_ticket=ticket,
+            target_path='/ws/platform-share', authorization_check=authorize_stream)
+    except GatewayError:
+        await ws.close(code=4401)
+    except (ConnectionError, asyncio.TimeoutError):
+        await ws.close(code=1013)
+    except SocketClosed:
+        pass
+
+
 async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _actor=None):
     origin = call.settings.public_origin
     if origin is None:
@@ -397,6 +435,9 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _a
         expiry = datetime.now(timezone.utc) + timedelta(days=7)
     password_hash = (await asyncio.to_thread(_hasher.hash, body.password)) if body.password else None
     token = secrets.token_urlsafe(32)
+    share_id = str(uuid4())
+    credentials = await asyncio.to_thread(call.gateway_signer.encrypt_provider_secret,
+        'task-share:' + share_id, json.dumps({'token': token, 'password': body.password or ''}))
     async with call.database.session() as session:
         async with session.begin():
             project = await session.get(PlatformProject, body.project_id)
@@ -407,7 +448,7 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _a
             if not await can_create_platform_share(session, actor.id, project):
                 raise GatewayError('forbidden', 'Share creation unavailable')
             share = PlatformShare(
-                id=str(uuid4()), token_hash=_digest(token), device_id=device.id,
+                id=share_id, credentials_ciphertext=credentials, token_hash=_digest(token), device_id=device.id,
                 project_id=project.id, task_id=body.task_id, mode=body.mode,
                 title=body.title.strip(), password_hash=password_hash,
                 created_by_user_id=actor.id, status="active", expires_at=expiry,
@@ -424,7 +465,8 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput, *, _a
             ))
     return {"id": share.id, "url": f"{origin.rstrip('/')}/share/{token}",
             "status": share.status, "mode": share.mode, "title": share.title,
-            "expires_at": expiry, "created_at": share.created_at, "has_password": bool(password_hash)}
+            "expires_at": expiry, "created_at": _utc(share.created_at), "has_password": bool(password_hash),
+            "access_password": body.password or ""}
 
 
 async def list_own_platform_shares(call: GatewayCall,
@@ -441,13 +483,21 @@ async def list_own_platform_shares(call: GatewayCall,
             PlatformShare.project_id == project_id,
             PlatformShare.task_id == task_id,
         ).order_by(PlatformShare.created_at.desc(), PlatformShare.id.desc()).limit(100))).all()
+    recovered = {}
+    for share in rows:
+        if share.credentials_ciphertext:
+            raw = await asyncio.to_thread(call.gateway_signer.decrypt_provider_secret,
+                'task-share:' + share.id, share.credentials_ciphertext)
+            credentials = json.loads(raw)
+            recovered[share.id] = {'url': f"{call.settings.public_origin.rstrip('/')}/share/{credentials['token']}",
+                                  'access_password': credentials['password']}
     now = datetime.now(timezone.utc)
     return {"shares": [{
-        "id": share.id, "title": share.title, "mode": share.mode,
+        "id": share.id, "title": share.title, "mode": share.mode, **recovered.get(share.id, {}),
         "status": ("revoked" if share.revoked_at is not None
                    else "expired" if share.expires_at is not None and _utc(share.expires_at) <= now
                    else share.status),
-        "created_at": share.created_at, "expires_at": share.expires_at, "has_password": share.password_hash is not None,
+        "created_at": _utc(share.created_at), "expires_at": _utc(share.expires_at) if share.expires_at else None, "has_password": share.password_hash is not None,
     } for share in rows]}
 
 
@@ -503,6 +553,8 @@ async def unlock_public_share(call: GatewayCall, token: str, body: UnlockShareIn
             verified = False
         if not verified:
             raise GatewayError('forbidden', 'Invalid share password')
+    credentials = await asyncio.to_thread(call.gateway_signer.encrypt_provider_secret,
+        'task-share:' + share.id, json.dumps({'token': token, 'password': body.password if share.password_hash else ''}))
     session_token = secrets.token_urlsafe(32)
     expiry = min(datetime.now(timezone.utc) + timedelta(hours=1),
                  _utc(share.expires_at) if share.expires_at else datetime.now(timezone.utc) + timedelta(hours=1))
@@ -512,6 +564,7 @@ async def unlock_public_share(call: GatewayCall, token: str, body: UnlockShareIn
             if (current is None or current.revoked_at is not None
                     or current.status != "active"):
                 raise GatewayError('not_found', 'Share unavailable')
+            current.credentials_ciphertext = credentials
             session.add(PlatformShareSession(
                 id=str(uuid4()), share_id=share.id,
                 session_token_hash=_digest(session_token), expires_at=expiry,

@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 from services.gateway_client.browser_login import local_session_cookie_name, normalize_origin
-from api.desktop_security import browser_origin_allowed, local_gateway_fallback_allowed
+from api.desktop_security import (browser_origin_allowed, local_gateway_fallback_allowed,
+    gateway_workspace_access_allowed, local_gateway_workspace_active, set_local_gateway_workspace_cookie)
 
 router = APIRouter()
 
@@ -92,7 +93,17 @@ def _browser_callback_origin(request: Request, service=None) -> str:
 
 @router.get('/api/gateway-platform/settings')
 async def settings(request: Request):
-    return await (await _settings_service(request)).settings()
+    return {**await (await _settings_service(request)).settings(),
+            'local_workspace': await local_gateway_workspace_active(request)}
+
+
+@router.post('/api/gateway-platform/local-workspace')
+async def local_workspace(request: Request):
+    await _settings_service(request, mutation=True)
+    if not await gateway_workspace_access_allowed(request):
+        raise HTTPException(status_code=403, detail='Local workspace requires local device access')
+    from fastapi.responses import JSONResponse
+    return set_local_gateway_workspace_cookie(request, JSONResponse({'local_workspace': True}))
 
 
 @router.put('/api/gateway-platform/settings')
@@ -177,6 +188,7 @@ async def callback(request: Request, code: str = Query(min_length=32, max_length
     desktop = bool(result and len(result) > 2 and result[2])
     response = RedirectResponse('workstep://open' if desktop else '/?gateway_auth=' + ('complete' if result else 'pending'), status_code=303)
     if result:
+        response.delete_cookie(local_session_cookie_name(request.app) + '_workspace', path='/')
         token, _actor = result[:2]
         # Cross-site Gateway -> daemon redirects must carry the session on the
         # top-level GET; writes and WebSockets enforce their own Origin checks.

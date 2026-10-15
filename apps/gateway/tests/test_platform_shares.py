@@ -67,14 +67,28 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         own = client.get("/api/platform-shares?project_id=project-1&task_id=task-1")
         assert own.status_code == 200, own.text
         assert len(own.json()["shares"]) == 1
+        for field in ("created_at", "expires_at"):
+            initial_time = datetime.fromisoformat(share[field].replace("Z", "+00:00"))
+            restored_time = datetime.fromisoformat(own.json()["shares"][0][field].replace("Z", "+00:00"))
+            assert initial_time.tzinfo is not None and restored_time.tzinfo is not None
+            assert initial_time == restored_time
+        assert own.json()["shares"][0]["url"] == created.json()["url"]
+        assert own.json()["shares"][0]["access_password"] == "correct horse battery staple"
         assert {key: own.json()["shares"][0][key] for key in (
             "id", "title", "mode", "status",
         )} == {"id": share["id"], "title": "Demo",
                "mode": "read_only", "status": "active"}
-        assert token not in own.text and "token_hash" not in own.text
+        assert "token_hash" not in own.text and "password_hash" not in own.text
 
+        owner_read_headers = {'Cookie': '; '.join(f'{key}={value}' for key, value in client.cookies.items())}
         client.cookies.clear()
+        # Legacy rows have only hashes: an authenticated token lookup recovers
+        # the original URL; a successful unlock recovers the original password.
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
+            db.execute("UPDATE platform_shares SET credentials_ciphertext=NULL WHERE id=?", (share['id'],))
         meta = client.get(f"/api/public/shares/{token}/meta")
+        legacy = client.get("/api/platform-shares?project_id=project-1&task_id=task-1", headers=owner_read_headers).json()['shares'][0]
+        assert legacy['url'] == share['url'] and legacy['access_password'] is None
         assert meta.status_code == 200, meta.text
         assert meta.json() == {"title": "Demo", "mode": "read_only",
                                "has_password": True, "status": "active"}
@@ -86,6 +100,8 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         unlocked = client.post(f"/api/public/shares/{token}/unlock", json={
             "password": "correct horse battery staple",
         })
+        restored = client.get("/api/platform-shares?project_id=project-1&task_id=task-1", headers=owner_read_headers).json()['shares'][0]
+        assert restored['url'] == share['url'] and restored['access_password'] == 'correct horse battery staple'
         assert unlocked.status_code == 200, unlocked.text
         assert ('secure' in unlocked.headers['set-cookie'].lower()) == origin.startswith('https:')
         assert "platform_share_session" in client.cookies
@@ -104,6 +120,14 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         captured = {}
 
         class ShareConnection:
+            async def proxy_websocket(self, ws, *, share_ticket, target_path, authorization_check):
+                await authorization_check()
+                assert target_path == '/ws/platform-share'
+                captured['ws_ticket'] = share_ticket
+                await ws.accept()
+                await ws.send_json({'type': 'RUN_STARTED', 'task_id': 'task-1'})
+                await ws.close()
+
             async def proxy_http(self, request, *, share_ticket, target_path,
                                  authorization_check):
                 await authorization_check()
@@ -133,6 +157,14 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         monkeypatch.setattr(app.state.control_connections, "is_online", lambda _id: True)
         monkeypatch.setattr(app.state.control_connections, "daemon_health", lambda _id: False)
         monkeypatch.setattr(app.state.control_connections, "request_data", request_data)
+        from starlette.websockets import WebSocketDisconnect
+        ws_url = origin.replace('https://', 'wss://').replace('http://', 'ws://') + f'/api/public/shares/{token}/ws'
+        with client.websocket_connect(ws_url, headers={'Origin': origin}) as ws:
+            assert ws.receive_json() == {'type': 'RUN_STARTED', 'task_id': 'task-1'}
+        assert captured['ws_ticket']
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(ws_url, headers={'Origin': 'https://other.test'}):
+                pass
         status = client.get(f"/api/public/shares/{token}/host-status")
         assert status.json() == {"connected": True, "daemon_health": False}
         assert status.headers["cache-control"] == "no-store"
@@ -184,6 +216,9 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                 )
         client.cookies.clear()
         assert client.get(f"/api/public/shares/{token}/session").status_code == 401
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(ws_url, headers={'Origin': origin}):
+                pass
         assert client.get(f"/api/public/shares/{token}/task").status_code == 401
         assert client.get(f"/api/public/shares/{token}/history").status_code == 401
         assert client.get(f"/api/public/shares/{token}/artifacts").status_code == 401
@@ -202,6 +237,9 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         }).status_code == 404
         client.cookies.set("platform_share_session", visitor_cookie,
                            domain="gateway.test", path="/")
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(ws_url, headers={'Origin': origin}):
+                pass
         assert client.get(f"/api/public/shares/{token}/session").status_code == 404
         assert client.get(f"/api/public/shares/{token}/task").status_code == 404
         assert client.get(f"/api/public/shares/{token}/history").status_code == 404

@@ -138,7 +138,7 @@ export default function TaskDetailPage({
         />
       )}
 
-      {previewArtifact?.is_dir && !viewProps.projectId ? (
+      {previewArtifact?.is_dir && !viewProps.projectId && !previewArtifact.path.startsWith('artifact:') ? (
         <TaskArtifactPreviewDialog
           artifact={previewArtifact}
           directoryFiles={viewProps.artifacts.filter((item) => (
@@ -152,6 +152,8 @@ export default function TaskDetailPage({
           title={previewArtifact.logical_name || previewArtifact.name}
           rootPath={previewArtifact.path}
           displayPath={previewArtifact.path}
+          browseDirectory={previewArtifact.path.startsWith('artifact:') ? readCapabilities.browseGitWorkspace : undefined}
+          readOnly={!!gitCapability?.readOnly}
           headerActions={onOpenArtifactDirectory ? (
             <Button
               variant="ghost"

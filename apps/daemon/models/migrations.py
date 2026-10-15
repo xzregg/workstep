@@ -156,6 +156,7 @@ _ADDITIVE_COLUMNS = {
         "origin": "TEXT",
     },
     "task_shares": {
+        "password_ciphertext": "TEXT",
         "mode": "TEXT DEFAULT 'read_only'",
         "expires_at": "DATETIME",
     },

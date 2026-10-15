@@ -8,6 +8,7 @@ import { useSidebarSessionActions } from '../src/hooks/useSidebarSessionActions'
 import { I18nProvider } from '../src/i18n'
 import { useChatListStore } from '../src/stores/chatSessionStore'
 import { useProjectStore } from '../src/stores/projectStore'
+import { useRecentVisitsStore } from '../src/stores/recentVisitsStore'
 import { installDomEnvironment } from './helpers/domEnv'
 
 for (const action of ['deleteSession', 'archiveSession'] as const) {
@@ -28,8 +29,9 @@ test(`${action} only selects a remaining sidebar conversation of the same type`,
     route = location.pathname + location.search
     return null
   }
-  chatSessionApi.remove = async () => ({ success: true }) as never
-  chatSessionApi.setArchived = async () => ({ success: true }) as never
+  let fail = false
+  chatSessionApi.remove = async () => { if (fail) throw new Error('delete failed'); return { success: true } as never }
+  chatSessionApi.setArchived = async () => { if (fail) throw new Error('archive failed'); return { success: true } as never }
   useProjectStore.setState({ projects: [project], activeProject: project })
   try {
     for (const scenario of [
@@ -48,8 +50,16 @@ test(`${action} only selects a remaining sidebar conversation of the same type`,
           <I18nProvider><Harness /></I18nProvider>
         </MemoryRouter>,
       ))
+      useRecentVisitsStore.getState().visit({ kind: 'session', id: 'deleted', projectId: project.id, title: 'Deleted' })
+      fail = true
+      await act(async () => { await controls[action]('deleted', project.id) })
+      assert.equal(useRecentVisitsStore.getState().entries.some(entry => entry.id === 'deleted'), true, 'failed removal keeps recent history')
+      fail = false
       await act(async () => { await controls[action]('deleted', project.id) })
       assert.equal(new URLSearchParams(route.split('?')[1]).get('session'), scenario.expected)
+      assert.equal(useRecentVisitsStore.getState().entries.some(entry => entry.id === 'deleted'), false)
+      useRecentVisitsStore.getState().hydrate()
+      assert.equal(useRecentVisitsStore.getState().entries.some(entry => entry.id === 'deleted'), false, 'removal persists after reloading local history')
     }
   } finally {
     chatSessionApi.remove = originalRemove
@@ -101,10 +111,13 @@ test('sidebar session deletion keeps failure visible and redirects the active co
         <I18nProvider><Harness /></I18nProvider>
       </MemoryRouter>,
     ))
+    useRecentVisitsStore.getState().visit({ kind: 'session', id: 'session-1', projectId: project.id, title: 'First' })
     await act(async () => { assert.equal(await controls.deleteSession('session-1', project.id), false) })
+    assert.equal(useRecentVisitsStore.getState().entries.some(entry => entry.id === 'session-1'), true, 'failed deletion must keep recent history')
     assert.equal(controls.sessionError, 'delete failed')
     assert.match(route, /session=session-1/)
     await act(async () => { assert.equal(await controls.deleteSession('session-1', project.id), true) })
+    assert.equal(useRecentVisitsStore.getState().entries.some(entry => entry.id === 'session-1'), false)
     assert.equal(controls.sessionError, '')
     assert.match(route, /session=session-2/)
     assert.deepEqual(navigationState, { preserveNavigationDrawer: true })

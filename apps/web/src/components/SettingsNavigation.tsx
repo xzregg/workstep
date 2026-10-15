@@ -2,7 +2,7 @@ import Icon, { type IconName } from './Icon'
 import { useI18n } from '../i18n'
 import './SettingsNavigation.css'
 
-export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'channels' | 'remote' | 'concurrency' | 'git' | 'appearance' | 'system' | 'feedback' | 'sandbox'
+export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'roles' | 'channels' | 'remote' | 'concurrency' | 'git' | 'appearance' | 'system' | 'feedback' | 'sandbox'
 
 const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: string }[] = [
   { id: 'providers', label: 'providerSettings.nav', icon: 'sliders-horizontal' },
@@ -10,6 +10,7 @@ const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: s
   { id: 'pricing', label: 'settings.pricingNav', icon: 'layers' },
   { id: 'assistants', label: 'settings.assistantNav', glyph: '✦' },
   { id: 'templates', label: 'settings.templatesNav', icon: 'layout-grid' },
+  { id: 'roles', label: 'roleCenter.title', icon: 'drama' },
   { id: 'channels', label: 'channelBot.title', icon: 'bot' },
   { id: 'remote', label: 'settings.remoteAccessTitle', icon: 'share' },
   { id: 'concurrency', label: 'projectSettings.tabs.concurrency', icon: 'layers' },

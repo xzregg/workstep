@@ -1,3 +1,4 @@
+import { useRecordRecentVisit } from '../hooks/useRecordRecentVisit'
 import { useTaskHistory } from '../hooks/useTaskHistory'
 import { useTaskCoordinatorConfig } from '../hooks/useTaskCoordinatorConfig'
 import { useTaskStepControls } from '../hooks/useTaskStepControls'
@@ -26,6 +27,7 @@ import {
   taskApi,
   type ActionProposal,
   type TaskStepState,
+  type Project,
 } from '../api/client'
 import { copyMessageText } from '../components/MessageResponseFooter'
 import { a2uiActionMessageParams } from '../utils/a2ui'
@@ -109,13 +111,14 @@ interface StepProgress extends Partial<TaskStepState> {
 
 interface TaskDetailProps {
   shared?: SharedTaskDetailBinding
+  project?: Project
   taskId: string
   onClose: () => void
 }
 
 const TASK_HISTORY_PAGE_SIZE = 300
 
-export default function TaskDetail({ taskId, onClose, shared }: TaskDetailProps) {
+export default function TaskDetail({ taskId, onClose, shared, project }: TaskDetailProps) {
   const { t, locale } = useI18n()
   const { openTask } = useTaskRoute()
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -131,6 +134,7 @@ export default function TaskDetail({ taskId, onClose, shared }: TaskDetailProps)
   // projects[] entry may hold stale steps from the last fetchProjects.
   const detailProject = useMemo(() => {
     if (shared) return shared.project
+    if (project) return project
     if (urlProjectName) {
       const match = projects.find((p) => p.name === urlProjectName)
       if (match) {
@@ -139,7 +143,7 @@ export default function TaskDetail({ taskId, onClose, shared }: TaskDetailProps)
       }
     }
     return activeProject
-  }, [urlProjectName, projects, activeProject, shared?.project])
+  }, [urlProjectName, projects, activeProject, shared?.project, project])
   const tasks = useTaskStore((s) => s.tasks)
   const events = useTaskStore((s) => (taskId ? s.events[taskId] : undefined) ?? EMPTY_EVENTS)
   const content = useTaskStore((s) => (taskId ? s.content[taskId] : '') ?? '')
@@ -173,7 +177,13 @@ export default function TaskDetail({ taskId, onClose, shared }: TaskDetailProps)
     () => taskApi.executionReport(taskId, projectId),
     [taskId, projectId],
   )
-  const { task, status: taskReadStatus, error: taskReadError, retry: retryTaskRead } = useTaskRecord(taskId, projectId, shared?.task)
+  const { task, status: taskReadStatus, error: taskReadError, retry: retryTaskRead } = useTaskRecord(
+    taskId, projectId, shared?.task, Boolean(project && projectId !== activeProject?.id),
+  )
+  useRecordRecentVisit(!shared && task && detailProject ? {
+    kind: 'task', id: task.id, projectId: detailProject.id,
+    title: task.title, workflowId: task.workflow_id || undefined,
+  } : null)
   const taskStatus = task?.status
   const taskCompleted = isTaskCompleted(task?.steps || [])
   const sessionIdForStep = (stepKey?: string | null): string | null => {
@@ -331,8 +341,8 @@ export default function TaskDetail({ taskId, onClose, shared }: TaskDetailProps)
 
   // Fetch tasks if not already loaded
   useEffect(() => {
-    if (tasks.length === 0 && projectId) fetchTasks(projectId)
-  }, [tasks.length, fetchTasks, projectId])
+    if (!shared && !project && tasks.length === 0 && projectId) fetchTasks(projectId)
+  }, [tasks.length, fetchTasks, projectId, Boolean(shared), project])
 
   useEffect(() => {
     shouldFollowMessagesRef.current = true

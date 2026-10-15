@@ -18,8 +18,6 @@ export default function TaskDiscussionGroups({ projectId, taskId }: Props) {
   const key = `${projectId}:${taskId}`
   const keyRef = useRef(key)
   keyRef.current = key
-  const openRef = useRef(open)
-  openRef.current = open
   const groups = bindingState.key === key ? bindingState.groups : []
   const refreshGroups = useCallback(async () => {
     const rows = await channelBotApi.taskGroups(taskId, projectId)
@@ -27,17 +25,16 @@ export default function TaskDiscussionGroups({ projectId, taskId }: Props) {
   }, [key, projectId, taskId])
 
   useEffect(() => {
-    void refreshGroups().catch(() => undefined)
-    const timer = window.setInterval(() => {
-      if (!openRef.current) void refreshGroups().catch(() => undefined)
-    }, 10000)
-    return () => window.clearInterval(timer)
+    const refresh = () => { void refreshGroups().catch(() => undefined) }
+    refresh()
+    window.addEventListener('workstep:reconnected', refresh)
+    return () => window.removeEventListener('workstep:reconnected', refresh)
   }, [refreshGroups])
 
   return <>
     <Button className="task-detail-discussion-button" variant="ghost"
       onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => { event.stopPropagation(); setOpen(true) }}>
+      onClick={(event) => { event.stopPropagation(); setOpen(true); void refreshGroups().catch(() => undefined) }}>
       {groups.length ? t('channelBot.boundButton') : t('channelBot.discussionGroups')}
     </Button>
     {createPortal(<TaskDiscussionGroupsDialog open={open} projectId={projectId} taskId={taskId}

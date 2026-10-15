@@ -286,6 +286,15 @@ export function normalizeA2uiInteractiveComponents(
       if (!component || typeof component !== 'object') return component
       const next = { ...component } as Record<string, unknown>
 
+      if (next.component === 'ChoicePicker' && (
+        next.label == null || (typeof next.label === 'string' && !next.label.trim())
+      )) {
+        const title = [next.title, next.question].find(
+          (value) => typeof value === 'string' && value.trim(),
+        )
+        if (title !== undefined) next.label = title
+      }
+
       if (next.component === 'ChoicePicker' && next.variant === undefined) {
         if (next.multipleSelection === true) next.variant = 'multipleSelection'
         else if (next.mutuallyExclusive === true) next.variant = 'mutuallyExclusive'

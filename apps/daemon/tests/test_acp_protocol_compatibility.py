@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import pytest
@@ -6,6 +7,7 @@ from acp import schema
 from engines.core.acp_base import AcpEngineBase
 from engines.core.agui import to_agui_events
 from engines.core.schema import EngineImage
+from engines.core.acp_streaming_client import ACPStreamingClient
 
 
 class ProbeEngine(AcpEngineBase):
@@ -23,6 +25,36 @@ class ProbeEngine(AcpEngineBase):
     @staticmethod
     def resolve_binary():
         return "acp-probe"
+
+
+@pytest.mark.anyio
+async def test_native_acp_multi_select_keeps_json_schema_aliases_and_returns_arrays():
+    handler = ACPStreamingClient()
+    requested_schema = {"type": "object", "properties": {
+        "scope": {"type": "array", "title": "范围", "items": {"anyOf": [
+            {"const": "web", "title": "前端"}, {"const": "daemon", "title": "后端"},
+        ]}},
+        "strategy": {"type": "string", "title": "方式", "oneOf": [
+            {"const": "minimal", "title": "最小改动"},
+        ]},
+    }, "required": ["scope"]}
+    mode = schema.ElicitationFormSessionMode(
+        sessionId="session", requestedSchema=requested_schema,
+    )
+    waiting = asyncio.create_task(handler.create_elicitation("请选择", mode))
+    try:
+        request = await asyncio.wait_for(handler.updates.get(), 2)
+        fields = request.data["requested_schema"]["properties"]
+        assert fields["scope"]["items"]["anyOf"] == requested_schema["properties"]["scope"]["items"]["anyOf"]
+        assert fields["strategy"]["oneOf"] == requested_schema["properties"]["strategy"]["oneOf"]
+        handler.resolve_elicitation(request.data["interaction_id"], {
+            "action": "accept", "content": {"scope": ["web", "daemon"]},
+        })
+        response = await waiting
+        assert response.content == {"scope": ["web", "daemon"]}
+    finally:
+        waiting.cancel()
+        await asyncio.gather(waiting, return_exceptions=True)
 
 
 def _initialize_response(**capability_values):

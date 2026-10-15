@@ -10,6 +10,12 @@ test('task header shows the bound BOT label for an existing group', async () => 
   const { window } = installDomEnvironment()
   useLocaleStore.setState({ locale: 'zh-CN' })
   const previousFetch = globalThis.fetch
+  const previousInterval = window.setInterval
+  let intervals = 0
+  window.setInterval = ((...args: Parameters<typeof window.setInterval>) => {
+    intervals++
+    return previousInterval(...args)
+  }) as typeof window.setInterval
   globalThis.fetch = async () => new Response(JSON.stringify([
     { bot_id: 'bot-1', group_id: 'group-1', project_id: 'project-1', task_id: 'task-1' },
   ]), { status: 200 })
@@ -18,10 +24,12 @@ test('task header shows the bound BOT label for an existing group', async () => 
   try {
     await act(async () => root.render(<I18nProvider><TaskDiscussionGroups projectId="project-1" taskId="task-1" /></I18nProvider>))
     assert.equal(container.querySelector('.task-detail-discussion-button')?.textContent, '已绑定 BOT')
+    assert.equal(intervals, 0, 'BOT bindings must refresh on interaction, not poll in the background')
   } finally {
     await act(async () => root.unmount())
     container.remove()
     globalThis.fetch = previousFetch
+    window.setInterval = previousInterval
     await window.happyDOM.close()
   }
 })

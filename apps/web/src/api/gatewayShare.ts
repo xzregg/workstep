@@ -64,15 +64,15 @@ export const gatewayShareApi: SharedTaskApi = {
   artifacts: async (token, csrf) => {
     const result = await read<{ artifacts: any[]; input_snapshots?: any[] }>(token, '/artifacts', csrf)
     return { artifact_directory: '', input_snapshots: result.input_snapshots || [], artifacts: result.artifacts.map(artifact => ({
-      ...artifact, path: `artifact:${artifact.id}`, is_dir: false,
+      ...artifact, path: `artifact:${artifact.id}`, is_dir: Boolean(artifact.is_dir),
     })) }
   },
   previewFile: (token, csrf, path) => {
-    if (path.startsWith('workspace:')) return read(token, gitReadPath('preview', { path }), csrf)
+    if (path.startsWith('workspace:') || /^artifact:[0-9a-f]{64}\//.test(path)) return read(token, gitReadPath('preview', { path }), csrf)
     if (!/^artifact:[0-9a-f]{64}$/.test(path)) return Promise.reject(new Error('文件不在分享范围内'))
     return read(token, `/artifacts/${path.slice(9)}/preview`, csrf)
   },
-  fileUrl: (token, _csrf, path) => path.startsWith('workspace:')
+  fileUrl: (token, _csrf, path) => path.startsWith('workspace:') || /^artifact:[0-9a-f]{64}\//.test(path)
     ? base(token) + gitReadPath('content', { path }) : /^artifact:[0-9a-f]{64}$/.test(path)
     ? `${base(token)}/artifacts/${path.slice(9)}/content` : '',
   browseGitWorkspace: (token, csrf, path, _includeHidden) => read(token, gitReadPath('browse', { path: path || 'workspace:' }), csrf),
@@ -110,9 +110,10 @@ export const gatewayShareApi: SharedTaskApi = {
     }
     return read(token, path, csrf, options)
   },
-  // Gateway currently provides task-scoped snapshots; poll them without using
-  // the owner's /ws or legacy process-local share credentials.
-  buildWsUrl: () => null,
+  buildWsUrl: (_csrf, token) => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}${base(token!)}/ws`
+  },
 }
 
 export const isGatewayPublicShare = () => typeof document !== 'undefined'

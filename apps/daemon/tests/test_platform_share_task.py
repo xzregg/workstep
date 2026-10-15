@@ -687,6 +687,14 @@ async def test_platform_share_review_is_task_scoped_and_slow_sql_keeps_health(ap
                                    body={"review_run_id": "review-0", "comment": "Looks good"})
     assert status == 200 and result["decision"] == "approve"
     assert calls == [(project_id, task_ids[0], "build", "review-0", "approve", "Looks good")]
+    await main.project_manager.run_db(project_id, lambda _project: ReviewRun.update(
+        status="approved", reviewer_name="Reviewer", ended_at=utc_now(),
+    ).where(ReviewRun.id == "review-0").execute())
+    status, reviews = await request("/api/platform-share/reviews")
+    assert status == 200
+    assert [review["id"] for review in reviews["reviews"]] == ["review-0"]
+    assert reviews["reviews"][0]["status"] == "approved"
+    assert reviews["reviews"][0]["reviewer_name"] == "Reviewer"
 
 
 @pytest.mark.anyio
@@ -922,6 +930,31 @@ async def test_platform_share_artifacts_are_task_scoped_and_hide_host_paths(api_
     assert (await read(f"/api/platform-share/artifacts/{private_id}/content"))[0] == 404
     assert (await read(f"/api/platform-share/artifacts/{private_id}/preview"))[0] == 404
     assert (await read("/api/platform-share/artifacts", ticket + "x"))[0] != 200
+
+    code_directory = root / task_ids[0] / "build" / "code"
+    code_directory.mkdir()
+    (code_directory / "main.py").write_text("print('test')")
+    status, body = await read("/api/platform-share/artifacts")
+    directory_artifact = next(item for item in json.loads(body)["artifacts"] if item["name"] == "code")
+    assert directory_artifact["is_dir"] is True
+    assert str(project_dir).encode() not in body
+    assert (await read(f"/api/platform-share/artifacts/{directory_artifact['id']}/content"))[0] == 404
+    virtual = f"artifact:{directory_artifact['id']}"
+    async def directory_read(action, path):
+        encoded = json.dumps({"path": path}).encode().hex()
+        return await read(f"/api/platform-share/git/read/{action}/{encoded}")
+    status, body = await directory_read("browse", virtual)
+    assert status == 200
+    listing = json.loads(body)
+    assert listing["path"] == virtual and listing["parent"] is None
+    assert listing["entries"][0]["path"] == virtual + "/main.py"
+    assert str(project_dir).encode() not in body
+    status, body = await directory_read("preview", virtual + "/main.py")
+    assert status == 200 and json.loads(body)["content"] == "print('test')"
+    assert await directory_read("content", virtual + "/main.py") == (200, b"print('test')")
+    (code_directory / "escape").symlink_to(root / task_ids[1] / "build" / "result.txt")
+    for path in (virtual + "/../result.txt", virtual + "/escape", "artifact:" + private_id):
+        assert (await directory_read("preview", path))[0] == 404
 
     from services import artifacts as artifact_service
     original_list = artifact_service.list_task_artifacts

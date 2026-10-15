@@ -6,9 +6,10 @@ import { createRoot } from 'react-dom/client'
 import GatewayDesktopAuthentication from '../src/components/GatewayDesktopAuthentication'
 import { I18nProvider } from '../src/i18n'
 
-test('cancelled desktop authentication waits for manual retry', async () => {
+for (const temporaryWorkspace of [false, true]) {
+test(`cancelled desktop authentication waits for manual retry after refresh=${temporaryWorkspace}`, async () => {
   installDomEnvironment()
-  window.location.href = 'http://127.0.0.1:8766/?gateway_auth=cancelled'
+  window.location.href = 'http://127.0.0.1:8766/' + (temporaryWorkspace ? '' : '?gateway_auth=cancelled')
   window.workstepDesktop = {} as typeof window.workstepDesktop
   const previousFetch = globalThis.fetch
   const calls: string[] = []
@@ -19,7 +20,7 @@ test('cancelled desktop authentication waits for manual retry', async () => {
     return new Response(JSON.stringify(String(input).endsWith('/login')
       ? { authorization_url: 'https://gateway.example/desktop/login' }
       : { url: 'https://gateway.example', enabled: true, authenticated: false,
-          package_locked: false, pending_device: false, online: false }))
+          package_locked: false, pending_device: false, online: false, local_workspace: temporaryWorkspace }))
   }
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
@@ -36,3 +37,5 @@ test('cancelled desktop authentication waits for manual retry', async () => {
     globalThis.fetch = previousFetch
   }
 })
+
+}

@@ -8,6 +8,7 @@
  */
 
 import { create } from 'zustand'
+import { useRecentVisitsStore } from './recentVisitsStore'
 import {
   chatSessionApi,
   type ChatQuickButton,
@@ -262,6 +263,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     set({ bulkDeleting: true })
     try {
       const result = await chatSessionApi.bulkDelete(projectId, ids)
+      useRecentVisitsStore.getState().removeSessions(projectId, result.deleted)
       // Remove deleted sessions from local state
       const deletedSet = new Set(result.deleted)
       set((state) => ({

@@ -920,6 +920,10 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   display: grid;
   gap: 8px;
 }
+.chat-async-question-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
 .chat-async-question-options { display: flex; flex-wrap: wrap; gap: 8px; }
 .chat-async-question .chat-message-action {
   opacity: 1;
@@ -5900,6 +5904,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 
 /* ── Schedule frequency editor ── */
+
+.modal-overlay.schedule-task-backdrop { z-index: 999; }
 
 .schedule-mobile-back { display: none; }
 .schedule-frequency-section { margin-top: 18px; }

@@ -145,8 +145,6 @@ def _task_artifacts(project, task_id: str) -> list[tuple[dict, Path]]:
     root = (Path(project.workstep_dir) / "artifacts").resolve()
     result = []
     for artifact in list_task_artifacts(project, task_id):
-        if artifact["is_dir"]:
-            continue
         path = Path(artifact["path"])
         try:
             relative = path.relative_to(root)
@@ -165,6 +163,7 @@ def _task_artifacts(project, task_id: str) -> list[tuple[dict, Path]]:
             "eligible_for_downstream", "name", "logical_name", "artifact_type",
             "output_port", "declared_output", "relative_path", "size", "updated_at",
             "unchanged_from_round", "round_unchanged_from",
+            "is_dir",
         )}
         public["id"] = artifact_id
         public["source_path"] = relative.as_posix()
@@ -199,7 +198,7 @@ async def read_platform_share_artifact_content(request: Request, artifact_id: st
                         content_disposition_type="attachment")
 
 
-async def _share_artifact_path(scope: dict, artifact_id: str) -> str:
+async def _share_artifact_path(scope: dict, artifact_id: str, *, allow_directory=False) -> str:
     if not _ARTIFACT_ID.fullmatch(artifact_id):
         raise HTTPException(status_code=404, detail="Artifact unavailable")
     from main import project_manager
@@ -208,7 +207,7 @@ async def _share_artifact_path(scope: dict, artifact_id: str) -> str:
 
     def find(project):
         return next((str(path) for public, path in _task_artifacts(project, scope["task_id"])
-                     if public["id"] == artifact_id), None)
+                     if public["id"] == artifact_id and (allow_directory or not public["is_dir"])), None)
 
     path = await project_manager.run_db(scope["host_project_id"], find)
     if path is None:
@@ -595,9 +594,9 @@ async def read_platform_share_reviews(request: Request):
     if project_manager is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
-    from services.task_queries import pending_reviews
+    from services.task_queries import task_reviews
     def load(_project):
-        return pending_reviews(scope["task_id"])
+        return task_reviews(scope["task_id"], include_errors=False)
 
     return {"reviews": await project_manager.run_db(scope["host_project_id"], load)}
 

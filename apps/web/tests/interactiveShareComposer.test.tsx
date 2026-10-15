@@ -42,6 +42,7 @@ async function renderShare(mode: 'read_only' | 'interactive') {
   window.history.replaceState({}, "", "/share/token-1")
   const originalFetch = globalThis.fetch
   const originalWebSocket = globalThis.WebSocket
+  const operationPaths: string[] = []
   class FakeWebSocket {
     onopen: (() => void) | null = null
     onmessage: ((event: MessageEvent) => void) | null = null
@@ -57,6 +58,7 @@ async function renderShare(mode: 'read_only' | 'interactive') {
     if (url.endsWith('/operation')) {
       const operation = JSON.parse(String(init?.body))
       const path = operation.path.split('?')[0]
+      operationPaths.push(path)
       if (path === '/task/list') return jsonResponse({ tasks: [task] })
       if (path.endsWith('/step/build/config')) return jsonResponse({ editable: true, configured: { engine: 'codex', config: {} }, resolved: { engine: 'codex', config: {} }, available_engines: [] })
       if (path.endsWith('/coordinator-config')) return jsonResponse({ configured: { engine: 'codex', config: {} }, resolved: { engine: 'codex', config: {} }, available_engines: [] })
@@ -103,6 +105,7 @@ async function renderShare(mode: 'read_only' | 'interactive') {
       text: document.body.textContent ?? '',
       hasDescriptionEdit: Boolean(document.querySelector('[aria-label*="描述"], [aria-label*="description"]')),
       displayHtml: displayClone.innerHTML,
+      operationPaths,
     }
   } finally {
     await act(async () => root.unmount())
@@ -118,6 +121,7 @@ test('interactive task share window shows the task-detail message composer', asy
   assert.equal(rendered.hasAttachment, true)
   assert.equal(rendered.fileInputCount, 2)
   assert.match(rendered.text, /build/i)
+  assert.equal(rendered.operationPaths.includes('/task/list'), false, 'shared task snapshots must not load a project task list')
 })
 
 test('editable shares expose task operations while both modes retain task content', async () => {

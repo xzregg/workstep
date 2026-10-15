@@ -38,7 +38,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
   const {
     phase, meta, task, messages, artifacts, artifactDirectory, inputSnapshots, reviews, wsStatus, retry, loadOlderHistory, loadingOlder,
     password, setPassword, error, unlock: handleUnlock, loadMessageEvents,
-  } = useSharedTaskSession(token, api, { live: !standalonePreview })
+  } = useSharedTaskSession(token, api, { live: !standalonePreview, passwordHint: searchParams.get('_t') || '' })
   const artifactFiles = useMemo(() => sharedTaskArtifactFiles(artifacts), [artifacts])
   const sharedArtifactDirectory = artifactDirectory || (artifacts[0]?.source_path
     ? `.workstep/artifacts/${artifacts[0].source_path.split('/').slice(0, 2).join('/')}` : '')
@@ -239,6 +239,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
   const sharedArtifactsRef = useRef(artifacts)
   sharedArtifactsRef.current = artifacts
   const sharedFilePreview = useMemo(() => ({
+    isolatedHtml: true,
     load: (path: string) => token && shareSessionToken
       ? api.previewFile(token, shareSessionToken, sharedTaskFilePath(path, sharedArtifactsRef.current))
       : Promise.reject(new Error(t('share.sessionExpired'))),

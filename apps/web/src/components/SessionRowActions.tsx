@@ -7,12 +7,13 @@ import Icon from './Icon'
 
 type Session = Pick<ChatSessionSummary, 'id' | 'title' | 'created_at' | 'updated_at'>
 
-export default function SessionRowActions({ session, hovered, now, onArchive, onMore }: {
+export default function SessionRowActions({ session, hovered, now, onArchive, onMore, showMore = false }: {
   session: Session
   hovered: boolean
   now: number
   onArchive: () => void
   onMore: (event: MouseEvent) => void
+  showMore?: boolean
 }) {
   const { t, locale } = useI18n()
   const [revealed, setRevealed] = useState(false)
@@ -28,7 +29,7 @@ export default function SessionRowActions({ session, hovered, now, onArchive, on
     return () => document.removeEventListener('click', close, true)
   }, [revealed])
 
-  return <div ref={root} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, height: 24 }}>
+  return <div ref={root} className="ws-session-row-actions" data-show-more={showMore || undefined} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, height: 24 }}>
     {(hovered || revealed) && <Button
       variant="icon"
       className="ws-more-btn"
@@ -38,7 +39,7 @@ export default function SessionRowActions({ session, hovered, now, onArchive, on
       aria-label={t('chatSession.archive')}
       style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0, opacity: revealed ? 1 : undefined, pointerEvents: revealed ? 'auto' : undefined }}
     ><Icon name="archive" size={13} /></Button>}
-    {hovered || !timestamp ? <Button
+    {(hovered || !timestamp || showMore) && <Button
       variant="icon"
       className="ws-more-btn"
       onPointerDown={event => event.stopPropagation()}
@@ -46,7 +47,8 @@ export default function SessionRowActions({ session, hovered, now, onArchive, on
       title={t('layout.moreActions')}
       aria-label={t('layout.moreActions')}
       style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '22px', padding: 0, flexShrink: 0 }}
-    >⋯</Button> : revealed ? null : <button
+    >⋯</Button>}
+    {timestamp && (showMore || (!hovered && !revealed)) && <button
       type="button"
       title={formatConversationDateTime(timestamp, now, locale)}
       aria-label={formatConversationDateTime(timestamp, now, locale)}

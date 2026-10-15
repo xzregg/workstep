@@ -4969,7 +4969,8 @@ async def test_qoder_sdk_spawn_uses_message_dicts_and_resume(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_qoder_sdk_can_use_tool_permission_round_trip(monkeypatch):
+@pytest.mark.parametrize("interaction_kind", ["permission", "multiple"])
+async def test_qoder_sdk_can_use_tool_permission_round_trip(monkeypatch, interaction_kind):
     """can_use_tool 权限回调 → interaction_request 弹窗 → 允许 → PermissionResultAllow。
 
     Mirrors the Claude Agent SDK spawn-level permission flow for Qoder: the
@@ -4992,14 +4993,26 @@ async def test_qoder_sdk_can_use_tool_permission_round_trip(monkeypatch):
             pass
 
         async def receive_messages(self):
-            result = await self.options.can_use_tool(
-                "Bash",
-                {"command": "ls"},
-                SimpleNamespace(tool_use_id="tool-1", title="Bash"),
-            )
-            permission_result["allowed"] = isinstance(
-                result, sdk_module.PermissionResultAllow
-            )
+            if interaction_kind == "multiple":
+                permission_result["form"] = await self.options.on_elicitation({
+                    "mode": "form", "message": "选择实现范围", "requestedSchema": {
+                        "type": "object", "properties": {"scope": {
+                            "type": "array", "title": "范围", "items": {"anyOf": [
+                                {"const": "web", "title": "前端"},
+                                {"const": "daemon", "title": "后端"},
+                            ]},
+                        }}, "required": ["scope"],
+                    },
+                })
+            else:
+                result = await self.options.can_use_tool(
+                    "Bash",
+                    {"command": "ls"},
+                    SimpleNamespace(tool_use_id="tool-1", title="Bash"),
+                )
+                permission_result["allowed"] = isinstance(
+                    result, sdk_module.PermissionResultAllow
+                )
             yield _QoderResultMessage(
                 type="result",
                 result="done",
@@ -5040,6 +5053,16 @@ async def test_qoder_sdk_can_use_tool_permission_round_trip(monkeypatch):
 
     consumer = asyncio.create_task(consume())
     await asyncio.wait_for(request_seen.wait(), timeout=5)
+
+    if interaction_kind == "multiple":
+        assert request_data["method"] == "elicitation/create"
+        field = request_data["requested_schema"]["properties"]["scope"]
+        assert [option["const"] for option in field["items"]["anyOf"]] == ["web", "daemon"]
+        response = {"action": "accept", "content": {"scope": ["web", "daemon"]}}
+        assert await engine.respond_interaction(request_data, response)
+        await asyncio.wait_for(consumer, timeout=5)
+        assert permission_result["form"] == response
+        return
 
     assert request_data["method"] == "session/request_permission"
     assert request_data["tool_call"]["name"] == "Bash"

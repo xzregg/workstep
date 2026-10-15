@@ -616,6 +616,9 @@ class GatewayControlClient:
                             raise ValueError("Invalid managed data stream")
                         bridge = ManagedWebSocketBridge(self.asgi_app, frame.stream_id,
                                                         frame.payload, send_frame, device_id,
+                                                        gateway_key=self._verified_gateway_key,
+                                                        gateway_fingerprint=self.public_key_fingerprint,
+                                                        gateway_id=self.gateway_id,
                                                         flow_control=flow_control)
                         streams[frame.stream_id] = bridge
                         bridge.start_task()

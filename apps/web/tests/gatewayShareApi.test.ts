@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { gatewayShareApi } from '../src/api/gatewayShare'
+import { sharedTaskArtifactFiles } from '../src/pages/sharedTaskFiles'
+
+test('Gateway directory artifacts retain their type and browse using their task-scoped identity', async () => {
+  const original = globalThis.fetch
+  globalThis.fetch = async () => Response.json({ artifacts: [{ id: 'a'.repeat(64), name: 'code',
+    is_dir: true, source_path: 'workflow/task/build/code' }] })
+  try {
+    const { artifacts } = await gatewayShareApi.artifacts('handle', 'csrf')
+    assert.equal(artifacts[0].is_dir, true)
+    assert.equal(sharedTaskArtifactFiles(artifacts)[0].path, 'artifact:' + 'a'.repeat(64))
+    await gatewayShareApi.previewFile('handle', 'csrf', 'artifact:' + 'a'.repeat(64) + '/main.py')
+  } finally { globalThis.fetch = original }
+})
 
 test('Gateway share transport uses visitor cookies and CSRF instead of local share credentials', async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = []
@@ -18,7 +31,6 @@ test('Gateway share transport uses visitor cookies and CSRF instead of local sha
     assert.equal(new Headers(calls[1].init?.headers).get('X-Share-Session'), null)
     assert.equal(calls[1].init?.credentials, 'same-origin')
     assert.deepEqual(JSON.parse(String(calls[1].init?.body)), { content: 'hello' })
-    assert.equal(gatewayShareApi.buildWsUrl('visitor-csrf'), null)
     await assert.rejects(gatewayShareApi.gitRequest('handle', 'visitor-csrf', '/api/admin/providers'))
   } finally { globalThis.fetch = original }
 })

@@ -4,6 +4,7 @@ import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, Rev
 // --- Public share API (no project context, session-token gated) ---
 
 export interface ShareInfo {
+  access_password?: string | null
   url?: string
   id: string
   task_id: string
@@ -248,6 +249,6 @@ export const shareApi = {
 export type SharedTaskApi = Omit<typeof shareApi, 'buildWsUrl'> & {
   gitWorkspaceEditable?: boolean
   gitAllowedActions?: readonly string[]
-  buildWsUrl: (sessionToken: string) => string | null
+  buildWsUrl: (sessionToken: string, token?: string) => string | null
   restoreSession?: (token: string) => Promise<{ session_token: string }>
 }

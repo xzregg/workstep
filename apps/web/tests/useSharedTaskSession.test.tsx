@@ -6,6 +6,74 @@ import { createRoot } from 'react-dom/client'
 import { I18nProvider } from '../src/i18n'
 import { gatewayShareApi } from '../src/api/gatewayShare'
 import { useSharedTaskSession } from '../src/hooks/useSharedTaskSession'
+import { ApiError } from '../src/api/transport'
+
+test('share password hints prefill the form without submitting and follow the selected link', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  let unlocks = 0
+  const api = { ...gatewayShareApi,
+    meta: async () => ({ title: 'Share', mode: 'read_only', has_password: true }),
+    restoreSession: async () => { throw new ApiError('Session required', 401) },
+    unlock: async () => { unlocks++; return { session_token: 'session' } },
+  } as typeof gatewayShareApi
+  let session!: ReturnType<typeof useSharedTaskSession>
+  function Harness({ token, hint }: { token: string; hint: string }) {
+    session = useSharedTaskSession(token, api, { live: false, passwordHint: hint })
+    return null
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><Harness token="first" hint="first-key" /></I18nProvider>))
+    assert.equal(session.password, 'first-key')
+    assert.equal(session.phase.kind, 'need-password')
+    assert.equal(unlocks, 0)
+    await act(async () => root.render(<I18nProvider><Harness token="second" hint="second-key" /></I18nProvider>))
+    assert.equal(session.password, 'second-key')
+    assert.equal(unlocks, 0)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('revoked share sockets clear task data and show unavailability instead of asking for a password again', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const originalSocket = globalThis.WebSocket
+  let socket: any
+  let revoked = false
+  class FakeSocket {
+    onclose?: (event: { code: number }) => void
+    constructor() { socket = this }
+    close() {}
+  }
+  Object.assign(globalThis, { WebSocket: FakeSocket })
+  const api = { ...gatewayShareApi,
+    meta: async () => {
+      if (revoked) throw new ApiError('Share unavailable', 404)
+      return { title: 'Share', mode: 'read_only', has_password: true }
+    },
+    restoreSession: async () => ({ session_token: 'csrf' }),
+    task: async () => ({ id: 'task', steps: [] }),
+    history: async () => ({ messages: [{ id: 'm', content: 'Visible' }] }),
+    artifacts: async () => ({ artifacts: [] }), reviews: async () => ({ reviews: [] }),
+  } as unknown as typeof gatewayShareApi
+  let session!: ReturnType<typeof useSharedTaskSession>
+  function Harness() { session = useSharedTaskSession('share', api); return null }
+  try {
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    assert.equal(session.phase.kind, 'ready')
+    revoked = true
+    await act(async () => socket.onclose({ code: 4403 }))
+    assert.equal(session.phase.kind, 'error')
+    assert.equal(session.task, null)
+    assert.deepEqual(session.messages, [])
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.WebSocket = originalSocket
+    await window.happyDOM.close()
+  }
+})
 
 function response(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -152,7 +220,7 @@ test('changing public share ignores a late snapshot from the previous token', as
     artifacts: async () => ({ artifacts: [], artifact_directory: '' }), reviews: async () => ({ reviews: [] }),
   } as typeof gatewayShareApi
   let session!: ReturnType<typeof useSharedTaskSession>
-  function Harness({ token }: { token: string }) { session = useSharedTaskSession(token, api); return null }
+  function Harness({ token }: { token: string }) { session = useSharedTaskSession(token, api, { live: false }); return null }
   try {
     await act(async () => root.render(<I18nProvider><Harness token="old" /></I18nProvider>))
     await act(async () => root.render(<I18nProvider><Harness token="new" /></I18nProvider>))
@@ -241,7 +309,7 @@ for (const transport of ['socket', 'poll'] as const) {
   })
 }
 
-test('gateway polling slows idle tasks, pauses in hidden tabs and refreshes on return', async () => {
+test('snapshot-only transport slows idle tasks, pauses in hidden tabs and refreshes on return', async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const originalTimeout = globalThis.setTimeout
@@ -249,7 +317,9 @@ test('gateway polling slows idle tasks, pauses in hidden tabs and refreshes on r
   let timer: (() => void) | undefined
   let delay = 0
   let reads = 0
-  let status = 'completed'
+  let artifactReads = 0
+  let status = 'ready'
+  let coordinatorRunning = false
   let visibility = 'visible'
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
   globalThis.setTimeout = ((callback: () => void, ms: number, ...args: any[]) => {
@@ -259,20 +329,31 @@ test('gateway polling slows idle tasks, pauses in hidden tabs and refreshes on r
   globalThis.clearTimeout = ((id: any) => { if (id === 98765) timer = undefined; else originalClear(id) }) as typeof clearTimeout
   const api = { ...gatewayShareApi,
     meta: async () => ({ has_password: false }), restoreSession: async () => ({ session_token: 'csrf' }),
-    task: async () => { reads++; return { id: 'task', status, steps: [] } },
-    history: async () => ({ messages: [] }), artifacts: async () => ({ artifacts: [] }), reviews: async () => ({ reviews: [] }),
+    buildWsUrl: () => null,
+    task: async () => { reads++; return { id: 'task', status, steps: [{ step_key: 'build', status: 'running' }] } },
+    history: async () => ({ messages: [{ id: 'coordinator', role: 'assistant', channel: 'coordinator', run_status: coordinatorRunning ? 'running' : 'succeeded' }] }), artifacts: async () => { artifactReads++; return { artifacts: [] } }, reviews: async () => ({ reviews: [] }),
   } as unknown as typeof gatewayShareApi
   function Harness() { useSharedTaskSession('share', api); return null }
   try {
     await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
     assert.equal(reads, 1)
     assert.equal(delay, 30000)
+    await act(async () => timer?.())
+    assert.equal(reads, 2)
+    assert.equal(artifactReads, 2, 'file changes must remain observable even when the task record is unchanged')
     await act(async () => { visibility = 'hidden'; document.dispatchEvent(new window.Event('visibilitychange')) })
     assert.equal(timer, undefined)
     status = 'running'
     await act(async () => { visibility = 'visible'; document.dispatchEvent(new window.Event('visibilitychange')) })
-    assert.equal(reads, 2)
+    assert.equal(reads, 3)
+    assert.equal(artifactReads, 3, 'changed tasks refresh their dependent snapshots')
     assert.equal(delay, 2000)
+    status = 'completed'; coordinatorRunning = true
+    await act(async () => timer?.())
+    assert.equal(delay, 2000, 'coordinator activity must keep live refresh even while the task is idle')
+    coordinatorRunning = false
+    await act(async () => timer?.())
+    assert.equal(delay, 30000, 'finished coordinator activity returns to idle refresh')
     await act(async () => root.unmount())
     assert.equal(timer, undefined)
   } finally {

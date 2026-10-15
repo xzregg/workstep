@@ -397,11 +397,11 @@ export default function ChatMessageBubble({
             />
           ))}
           {!isUser && asyncQuestions.map((question, index) => {
-            // Codex 同时发送正文和结构化提问；正文已有标题时只保留选项。
+            // 有选项的卡片始终保留题目，避免多道题使用相同选项时无法区分。
             const titleInBody = displayContent.includes(question.title)
             if (titleInBody && question.options.length === 0) return null
             return <div key={`${question.sourceItemId}-${index}`} className="chat-async-question">
-              {!titleInBody && <div>{question.title}</div>}
+              <div className="chat-async-question-title">{question.title}</div>
               {question.options.length > 0 && (
                 <div className="chat-async-question-options">
                   {question.options.map((option) => (

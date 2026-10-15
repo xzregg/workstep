@@ -487,6 +487,111 @@ async def test_project_websocket_bridge_only_receives_explicit_project_events():
     assert blocked[0].payload["code"] == 4401
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['read_only', 'interactive'])
+async def test_platform_share_websocket_filters_project_task_and_rejects_client_commands(mode):
+    import main
+    from streaming.ws import register_websocket_routes
+
+    app = FastAPI()
+    register_websocket_routes(app)
+    ticket, key, pin = _ticket(mode=mode)
+    frames = []
+    opened, sent = asyncio.Event(), asyncio.Event()
+
+    async def capture(frame):
+        frames.append(frame)
+        if frame.type == FrameType.websocket_open:
+            opened.set()
+        if frame.type == FrameType.websocket_data:
+            sent.set()
+
+    bridge = ManagedWebSocketBridge(app, 'share-ws', {
+        'path': '/ws/platform-share', 'headers': [], 'share_ticket': ticket,
+    }, capture, 'device-1', gateway_key=key, gateway_fingerprint=pin, gateway_id='gateway-1')
+    bridge.start_task()
+    try:
+        await asyncio.wait_for(opened.wait(), 1)
+        assert frames[0].payload['accepted'] is True
+        await main.event_bus.publish({'type': 'RUN_STARTED', 'project_id': 'other', 'task_id': 'task-1'})
+        await main.event_bus.publish({'type': 'RUN_STARTED', 'project_id': 'host-1', 'task_id': 'other'})
+        assert not sent.is_set()
+        event = {'type': 'RUN_STARTED', 'project_id': 'host-1', 'task_id': 'task-1'}
+        await main.event_bus.publish(event)
+        await asyncio.wait_for(sent.wait(), 1)
+        assembler = WebSocketMessageAssembler()
+        messages = [assembler.add(frame.payload) for frame in frames if frame.type == FrameType.websocket_data]
+        import json
+        assert [json.loads(message[1]) for message in messages if message] == [event]
+        await bridge.feed(ProxyFrame(stream_id='share-ws', type=FrameType.websocket_data,
+                                    payload=next(websocket_payloads('text', b'{"type":"cancel"}'))))
+        await asyncio.wait_for(bridge._task, 1)
+    finally:
+        bridge.cancel()
+        await asyncio.gather(bridge._task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('override', [
+    {'path': '/ws'}, {'query': 'task_id=other'}, {'user_id': 'owner'},
+    {'provider_ids': ['supplier']}, {'share_ticket': 'forged'},
+])
+async def test_share_websocket_ticket_cannot_be_used_for_owner_or_other_scope(override):
+    ticket, key, pin = _ticket()
+    frames = []
+
+    async def capture(frame):
+        frames.append(frame)
+
+    app = FastAPI()
+    bridge = ManagedWebSocketBridge(app, 'blocked-share', {
+        'path': '/ws/platform-share', 'headers': [], 'share_ticket': ticket, **override,
+    }, capture, 'device-1', gateway_key=key, gateway_fingerprint=pin, gateway_id='gateway-1')
+    bridge.start_task()
+    await asyncio.wait_for(bridge._task, 1)
+    assert frames[0].type == FrameType.websocket_open
+    assert frames[0].payload['accepted'] is False
+
+
+@pytest.mark.asyncio
+async def test_slow_share_socket_verification_keeps_health_responsive(monkeypatch):
+    import threading
+    import httpx
+    from services.gateway_client import bridge as module
+
+    started, release = threading.Event(), threading.Event()
+    verify = module.verify_share_ticket
+
+    def slow_verify(*args):
+        started.set()
+        assert release.wait(2)
+        return verify(*args)
+
+    monkeypatch.setattr(module, 'verify_share_ticket', slow_verify)
+    app = FastAPI()
+
+    @app.get('/health')
+    async def health():
+        return {'ok': True}
+
+    ticket, key, pin = _ticket()
+    async def capture(frame):
+        pass
+    bridge = ManagedWebSocketBridge(app, 'slow-share', {
+        'path': '/ws/platform-share', 'share_ticket': ticket,
+    }, capture, 'device-1', gateway_key=key, gateway_fingerprint=pin, gateway_id='gateway-1')
+    bridge.start_task()
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+            response = await asyncio.wait_for(client.get('/health'), .2)
+            assert response.json() == {'ok': True}
+        assert not release.is_set()
+    finally:
+        release.set()
+        await asyncio.wait_for(bridge._task, 1)
+
+
 def test_remote_provider_grant_cannot_extend_its_trusted_lifetime():
     from services.gateway_client.bridge import _provider_scope
     expires = int(time.time()) + 300

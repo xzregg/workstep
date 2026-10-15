@@ -1,5 +1,6 @@
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 
 import AiTaskCreateChat from '../components/AiTaskCreateChat'
@@ -20,6 +21,8 @@ import {
 import { useI18n } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import { useTaskStore } from '../stores/taskStore'
+import { useScheduleDraftState, type ScheduleEditorState } from '../hooks/useScheduleDraftState'
+import type { Project } from '../api/client'
 
 type Kind = ScheduleRule['kind']
 
@@ -51,19 +54,25 @@ function ScheduleSummary({ summary }: { summary: string }) {
 interface SchedulePageProps {
   onClose?: () => void
   onCountChange?: (count: number) => void
+  project?: Project
+  headerTarget?: HTMLElement
+  tabbed?: boolean
+  onEditorStateChange?: (state: ScheduleEditorState) => void
 }
 
-export default function SchedulePage({ onClose, onCountChange }: SchedulePageProps = {}) {
+export default function SchedulePage({ onClose, onCountChange, project, headerTarget, tabbed, onEditorStateChange }: SchedulePageProps = {}) {
   const navigate = useNavigate()
   const { t } = useI18n()
-  const activeProject = useProjectStore((state) => state.activeProject)
+  const selectedProject = useProjectStore((state) => state.activeProject)
+  const activeProject = project ?? selectedProject
   const activeWorkflowId = useProjectStore((state) => state.activeWorkflowId)
   const fetchTasks = useTaskStore((state) => state.fetchTasks)
   const projectId = activeProject?.id || ''
   const { can } = useGatewayProjectPermissions(projectId)
   const canManage = can('schedule.manage')
   const workflows = (activeProject?.workflows || []).filter((item) => !item.deleted)
-  const defaultWorkflow = activeWorkflowId || workflows.find((item) => item.is_default)?.id || workflows[0]?.id || ''
+  const defaultWorkflow = (activeProject?.id === selectedProject?.id && workflows.some(item => item.id === activeWorkflowId) ? activeWorkflowId : '') || workflows.find((item) => item.is_default)?.id || workflows[0]?.id || ''
+  const [draftRevision, resetDraft] = useReducer((revision: number) => revision + 1, 0)
 
   const [items, setItems] = useState<ProjectSchedule[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -104,6 +113,11 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
   const [steps, setSteps] = useState<Array<{ key: string; title: string; color?: string }>>([])
   const [preview, setPreview] = useState<{ cron: string | null; next: string[] }>({ cron: null, next: [] })
 
+  const acceptDefaults = useScheduleDraftState(JSON.stringify({ workflowId, title, description, startStep, reviewOverrides,
+    generation, instruction, candidateWorkflowIds, retryCount, kind, at, clock, weekdays, intervalEvery,
+    monthday, cron, startDate, endDate, timezone, execution, overlap }), draftRevision,
+    Boolean(selectedId || creating), saving, onEditorStateChange)
+
   const selected = items.find((item) => item.id === selectedId) || null
 
   const load = useCallback(async () => {
@@ -130,7 +144,9 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
 
   useEffect(() => {
     if (!projectId || !workflowId) { setSteps([]); return }
+    let active = true
     workflowApi.get(workflowId, projectId).then((workflow) => {
+      if (!active) return
       const nodes = workflow.steps?.nodes || workflow.steps?.steps || []
       const mapped = nodes.map((node: any) => ({
         key: String(node.type || node.key || node.id),
@@ -140,7 +156,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
       setSteps(mapped)
       setReviewOverrides((current) => {
         if (Object.keys(current).length) return current
-        return Object.fromEntries(nodes.map((node: any) => {
+        const defaults = Object.fromEntries(nodes.map((node: any) => {
           const key = String(node.type || node.key || node.id)
           const review = node.review || {}
           const mode = ['skip', 'auto', 'manual'].includes(review.mode)
@@ -150,9 +166,12 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
             maxRetries: Math.max(1, Math.min(5, Number(review.maxRetries) || 1)),
           }]
         }))
+        acceptDefaults('reviewOverrides', defaults)
+        return defaults
       })
-    }).catch(() => setSteps([]))
-  }, [projectId, workflowId])
+    }).catch(() => { if (active) setSteps([]) })
+    return () => { active = false }
+  }, [projectId, workflowId, acceptDefaults])
 
   const buildRule = useCallback((): ScheduleRule => {
     if (kind === 'once') return { kind, run_at: at, timezone }
@@ -229,6 +248,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
   }
 
   const fill = useCallback((item: ProjectSchedule | null) => {
+    resetDraft()
     setTaskConfigTab('content')
     closeTest()
     if (!item) {
@@ -294,7 +314,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
       const saved = selectedId
         ? await scheduleApi.update(projectId, selectedId, payload)
         : await scheduleApi.create(projectId, payload)
-      await load(); setCreating(false); setSelectedId(saved.id)
+      await load(); setCreating(false); setSelectedId(saved.id); resetDraft()
     } catch (cause) { setError((cause as Error).message) }
     finally { setSaving(false) }
   }
@@ -316,9 +336,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
     [4, t('schedules.thu')], [5, t('schedules.fri')], [6, t('schedules.sat')], [0, t('schedules.sun')],
   ] as Array<[number, string]>
 
-  return (
-    <div className={`schedule-page${selected || creating ? ' schedule-page--editing' : ''}${creating ? ' schedule-page--creating' : ''}${testOpen && generation === 'agent' ? ' schedule-page--testing' : ''}`} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
-      <div className="schedule-header" style={{ height: 52, padding: '0 18px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border-soft)' }}>
+  const header = <div className="schedule-header" style={{ height: 52, padding: '0 18px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border-soft)' }}>
         {(selected || creating) && <Button className="schedule-mobile-back" variant="ghost" onClick={() => { if (testOpen) { closeTest(); return } setCreating(false); setSelectedId(null); fill(null) }} aria-label={t('schedules.back')}><Icon name="chevron-right" size={16} style={{ transform: 'rotate(180deg)' }} /></Button>}
         {!onClose && <Button variant="ghost" onClick={() => navigate('/tasks')}><Icon name="chevron-right" size={14} style={{ transform: 'rotate(180deg)' }} /> {t('schedules.back')}</Button>}
         <strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.title')}</strong>
@@ -327,8 +345,12 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
         {canManage && <Button className="schedule-new-button" variant="primary" onClick={() => { setCreating(true); setSelectedId(null); fill(null) }}><Icon name="plus" size={16} /> <span>{t('schedules.new')}</span></Button>}
         {onClose && <Button className="schedule-close-button" variant="ghost" onClick={onClose} title={t('common.close')} aria-label={t('common.close')}><Icon name="x" size={16} /></Button>}
       </div>
+
+  return (
+    <div className={`schedule-page${selected || creating ? ' schedule-page--editing' : ''}${creating ? ' schedule-page--creating' : ''}${testOpen && generation === 'agent' ? ' schedule-page--testing' : ''}`} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+      {headerTarget ? createPortal(header, headerTarget) : header}
       {error && <div role="alert" style={{ padding: '8px 18px', color: 'var(--danger)', background: 'var(--danger-soft)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
-      <div className="schedule-layout" style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: `${asideWidth}px ${SPLIT_HANDLE_WIDTH}px minmax(0, 1fr) ${SPLIT_HANDLE_WIDTH}px ${sectionWidth}px` }}>
+      <div className="schedule-layout" id={tabbed ? `schedule-content-${projectId}` : undefined} role={tabbed ? 'tabpanel' : undefined} aria-labelledby={tabbed ? `schedule-project-${projectId}` : undefined} style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: `${asideWidth}px ${SPLIT_HANDLE_WIDTH}px minmax(0, 1fr) ${SPLIT_HANDLE_WIDTH}px ${sectionWidth}px` }}>
         <aside className="schedule-list" style={{ overflow: 'auto', padding: 10 }}>
           {loading && <div className="task-status-spinner" style={{ margin: 16 }} />}
           {!loading && items.length === 0 && <div style={{ color: 'var(--meta)', padding: 18, fontSize: 'calc(13px * var(--font-scale))' }}>{t('schedules.empty')}</div>}
@@ -538,13 +560,13 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.runs')}</strong><div style={{ flex: 1 }} /><Select value={runFilter} onChange={(event) => setRunFilter(event.target.value)} style={{ width: 130 }}><option value="all">{t('schedules.all')}</option>{['queued', 'running', 'created', 'succeeded', 'failed', 'skipped'].map((status) => <option key={status} value={status}>{t(`schedules.status_${status}` as any)}</option>)}</Select></div>
               {filteredRuns.length === 0 && <div style={{ color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', padding: 16 }}>{t('schedules.noRuns')}</div>}
-              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}{run.task_id && <Button size="sm" style={{ marginTop: 7 }} onClick={async () => { await fetchTasks(projectId, selected?.workflow_id); setTaskId(run.task_id || null) }}>{t('schedules.openTask')}</Button>}</div>)}
+              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}{run.task_id && <Button size="sm" style={{ marginTop: 7 }} onClick={async () => { if (!project) await fetchTasks(projectId, selected?.workflow_id); setTaskId(run.task_id || null) }}>{t('schedules.openTask')}</Button>}</div>)}
             </>
           ))}
         </section>
       </div>
       <ConfirmDialog open={deleteId !== null} title={t('schedules.deleteTitle')} message={t('schedules.deleteMessage')} danger confirmText={t('common.delete')} onCancel={() => setDeleteId(null)} onConfirm={() => { if (!deleteId) return; setSaving(true); scheduleApi.delete(projectId, deleteId).then(() => { setDeleteId(null); setCreating(false); setSelectedId(null); fill(null); return load() }).catch((cause) => setError((cause as Error).message)).finally(() => setSaving(false)) }} />
-      {taskId && <><div onClick={() => setTaskId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.2)', zIndex: 999 }} /><TaskDetail taskId={taskId} onClose={() => setTaskId(null)} /></>}
+      {taskId && <><div className="modal-overlay schedule-task-backdrop" onClick={() => setTaskId(null)} /><TaskDetail taskId={taskId} project={activeProject ?? undefined} onClose={() => setTaskId(null)} /></>}
     </div>
   )
 }

@@ -19,7 +19,9 @@ export interface InteractionSchemaProperty {
   enum?: string[]
   oneOf?: Array<{ const: string; title?: string; description?: string }>
   items?: {
+    type?: string
     enum?: string[]
+    anyOf?: Array<{ const: string; title?: string; description?: string }>
     oneOf?: Array<{ const: string; title?: string; description?: string }>
   }
   _meta?: { allowInput?: boolean }
@@ -167,7 +169,9 @@ export function interactionItemsFromEvents(
 function schemaOptions(
   property: InteractionSchemaProperty,
 ): InteractionFieldOption[] {
-  const choices = property.oneOf ?? property.items?.oneOf
+  const choices = property.type === 'array'
+    ? property.items?.anyOf ?? property.items?.oneOf
+    : property.oneOf
   if (choices) {
     return choices.map((choice) => ({
       value: String(choice.const),

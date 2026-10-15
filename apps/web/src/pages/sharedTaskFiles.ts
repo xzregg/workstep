@@ -1,7 +1,7 @@
 import type { TaskArtifact } from '../api/client'
 
 export function sharedTaskArtifactFiles(artifacts: TaskArtifact[]): TaskArtifact[] {
-  return artifacts.map(artifact => artifact.source_path
+  return artifacts.map(artifact => artifact.source_path && !artifact.is_dir
     ? { ...artifact, path: `.workstep/artifacts/${artifact.source_path}` } : artifact)
 }
 

@@ -13,7 +13,7 @@ async function mutation<T>(path: string, body?: unknown): Promise<T> {
   return response.status === 204 ? undefined as T : await response.json() as T
 }
 
-type Record = { id: string; title: string; mode: ShareInfo['mode']; status: string; created_at: string; url?: string; has_password?: boolean; expires_at?: string | null }
+type Record = { access_password?: string | null; id: string; title: string; mode: ShareInfo['mode']; status: string; created_at: string; url?: string; has_password?: boolean; expires_at?: string | null }
 export function createGatewayTaskShareApi(platformProjectId: string, local = false, hostProject = false) {
   const basePath = local ? '/gateway-task-shares' : '/remote/task-shares'
   const targetField = hostProject ? 'host_project_id' : 'project_id'
@@ -24,7 +24,7 @@ export function createGatewayTaskShareApi(platformProjectId: string, local = fal
     currentId = record.id
     if (record.url) urls.set(record.id, record.url)
     return { id: record.id, task_id: taskId, token: '', url: urls.get(record.id),
-      title: record.title, mode: record.mode, revoked: record.status === 'revoked',
+      access_password: record.access_password, title: record.title, mode: record.mode, revoked: record.status === 'revoked',
       has_password: record.has_password ?? protectedShares.get(record.id) ?? false, expires_at: record.expires_at, created_at: record.created_at || '', revoked_at: null }
   }
   return {

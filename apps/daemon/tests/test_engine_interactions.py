@@ -121,7 +121,7 @@ def test_claude_ask_user_maps_to_acp_form_elicitation():
         "title": "范围",
         "description": "选择实现范围",
         "items": {
-            "oneOf": [
+            "anyOf": [
                 {"const": "后端", "title": "后端", "description": "实现事件桥接"},
                 {"const": "前端", "title": "前端", "description": "实现消息交互"},
             ]
@@ -240,3 +240,50 @@ def test_base_engine_normalizes_ask_user_aliases_from_every_adapter():
     assert event.type == "interaction_request"
     assert event.data["interaction_id"] == "ask-1"
     assert event.data["method"] == "elicitation/create"
+
+
+@pytest.mark.anyio
+async def test_sdk_multi_select_answers_preserve_array_and_question_identity():
+    engine = InteractionEngine()
+    published = []
+    tool_input = {"questions": [{
+        "header": "范围", "question": "选择实现范围", "multiSelect": True,
+        "options": [{"label": "前端"}, {"label": "后端"}],
+    }]}
+    waiting = asyncio.create_task(engine.handle_tool_permission(
+        published.append, tool_name="AskUserQuestion", tool_input=tool_input,
+        tool_use_id="multi-ask",
+    ))
+    await asyncio.sleep(0)
+    request = published[0]
+    field = request.data["requested_schema"]["properties"]["question_0"]
+    assert field["type"] == "array"
+    assert [choice["const"] for choice in field["items"]["anyOf"]] == ["前端", "后端"]
+    await engine.respond_interaction(request.data, {
+        "action": "accept", "content": {"question_0": ["前端", "后端"]},
+    })
+    allowed, result = await waiting
+    assert allowed
+    assert result == {"questions": tool_input["questions"], "answers": {"选择实现范围": ["前端", "后端"]}}
+
+
+@pytest.mark.anyio
+async def test_builtin_agent_multi_select_uses_standard_schema_and_returns_array():
+    from engines.pydantic_ai import PydanticAIEngine
+
+    engine = PydanticAIEngine()
+    published = []
+
+    async def publish(event):
+        published.append(event)
+        await engine.respond_interaction(event.data, {
+            "action": "accept", "content": {"answer": ["前端", "后端"]},
+        })
+
+    result = await engine._ask_user(
+        publish, question="选择实现范围", options=["前端", "后端"], multiple=True,
+    )
+    field = published[0].data["requested_schema"]["properties"]["answer"]
+    assert field["type"] == "array"
+    assert [choice["const"] for choice in field["items"]["anyOf"]] == ["前端", "后端"]
+    assert result == {"answer": ["前端", "后端"]}

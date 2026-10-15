@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { chatSessionApi, type ChatSessionSummary } from '../api/client'
 import { useI18n } from '../i18n'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Input from './Input'
@@ -62,6 +63,7 @@ export default function ArchivedChatSessions({ projectId }: { projectId: string 
     setError('')
     try {
       const result = await chatSessionApi.bulkDelete(projectId, deleteIds)
+      useRecentVisitsStore.getState().removeSessions(projectId, result.deleted)
       const deleted = new Set(result.deleted)
       setSessions((current) => current.filter((session) => !deleted.has(session.id)))
       setSelected((current) => new Set([...current].filter((id) => !deleted.has(id))))

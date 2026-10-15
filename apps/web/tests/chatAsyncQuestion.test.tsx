@@ -8,7 +8,7 @@ import ChatMessageBubble from '../src/components/ChatMessageBubble'
 import { I18nProvider } from '../src/i18n'
 
 for (const options of [[], ['网关页面打不开', '设备离线']]) {
-  test(`question already in the body renders once with ${options.length} choices`, async () => {
+  test(`question in the body keeps a title beside its ${options.length} choices`, async () => {
     const { window } = installDomEnvironment()
     const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
     const title = '连不上时，是网关登录页面也打不开，还是页面能打开但设备显示离线／远程工作台打不开？网关部署在本机还是服务器？'
@@ -31,9 +31,12 @@ for (const options of [[], ['网关页面打不开', '设备离线']]) {
             />
           </I18nProvider>,
         ))
-        assert.equal(window.document.body.textContent?.split(title).length, 2)
+        assert.equal(window.document.body.textContent?.split(title).length, options.length ? 3 : 2)
         assert.ok(window.document.body.textContent?.includes('我需要确认连接情况。'))
         assert.equal(window.document.querySelectorAll('.chat-async-question').length, options.length ? 1 : 0)
+        if (options.length) {
+          assert.equal(window.document.querySelector('.chat-async-question-title')?.textContent, title)
+        }
       }
       if (options.length) {
         const button = window.document.querySelector<HTMLButtonElement>('.chat-async-question button')
@@ -47,6 +50,41 @@ for (const options of [[], ['网关页面打不开', '设备离线']]) {
     }
   })
 }
+
+test('each question card keeps its own title when all questions and repeated options are in the body', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
+  const questions = ['安装位置？', '启动方式？', '访问方式？', '更新方式？'].map((title) => ({
+    title, options: ['使用默认值', '自定义', '暂时不确定'],
+  }))
+  try {
+    for (const streaming of [true, false]) {
+      await act(async () => root.render(
+        <I18nProvider>
+          <ChatMessageBubble
+            role="assistant" sender="Codex" initials="AI" color="var(--ai-assistant)"
+            content={questions.map(({ title, options }) => `${title}\n${options.map((option) => `- ${option}`).join('\n')}`).join('\n\n')}
+            streaming={streaming}
+            events={[{
+              type: 'CUSTOM', name: 'workstep.async_question',
+              value: { source_item_id: 'four-questions', questions },
+            }]}
+            onAsyncQuestionSubmit={async () => true}
+          />
+        </I18nProvider>,
+      ))
+      const cards = [...window.document.querySelectorAll('.chat-async-question')]
+      assert.equal(cards.length, questions.length)
+      cards.forEach((card, index) => {
+        assert.equal(card.querySelector('.chat-async-question-title')?.textContent, questions[index].title)
+        assert.deepEqual([...card.querySelectorAll('button')].map((button) => button.textContent), questions[index].options)
+      })
+    }
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
 
 test('a question absent from the body keeps its title even without choices', async () => {
   const { window } = installDomEnvironment()

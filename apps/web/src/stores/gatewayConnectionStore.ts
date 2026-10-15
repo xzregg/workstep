@@ -8,6 +8,7 @@ export type GatewayConnection = {
   url: string; enabled: boolean; authenticated: boolean; online: boolean
   pending_device: boolean; package_locked: boolean; authorization_required?: boolean
   reconnecting?: boolean
+  local_workspace?: boolean
 }
 
 let request: Promise<GatewayConnection> | null = null

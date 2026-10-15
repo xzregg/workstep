@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/msitarzewski/agency-agents",
+  "commit": "bd956db032d907387e6b9ddebff3e18f1de8c679",
+  "license": "MIT",
+  "role_count": 282,
+  "division_count": 18,
+  "counts": {
+    "academic": 6,
+    "design": 10,
+    "engineering": 65,
+    "finance": 5,
+    "game-development": 21,
+    "gis": 13,
+    "healthcare": 3,
+    "marketing": 37,
+    "paid-media": 7,
+    "product": 6,
+    "project-management": 7,
+    "research": 1,
+    "sales": 9,
+    "security": 12,
+    "spatial-computing": 6,
+    "specialized": 59,
+    "support": 6,
+    "testing": 9
+  }
+}

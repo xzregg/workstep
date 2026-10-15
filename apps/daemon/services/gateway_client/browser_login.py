@@ -69,6 +69,9 @@ class GatewayBrowserLogin:
         # Browser cookies share a host across ports. Bind the name to this
         # daemon lifetime, just like the in-memory local session registry.
         self.cookie_name = COOKIE + '_' + secrets.token_hex(12)
+        # This browser-only fallback expires with the daemon. It never changes
+        # the saved Gateway connection or its delegated credentials.
+        self.local_workspace_token = secrets.token_urlsafe(32)
         self.client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=10, follow_redirects=False))
         self.pending = None
         self.desktop_local_session = None

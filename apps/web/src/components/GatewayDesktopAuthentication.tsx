@@ -46,7 +46,7 @@ export default function GatewayDesktopAuthentication() {
   }, [status, needsLogin, t])
 
   useEffect(() => {
-    if (!cancelled.current && needsLogin && status && attempted.current !== status.url) {
+    if (!cancelled.current && needsLogin && status && !status.local_workspace && attempted.current !== status.url) {
       attempted.current = status.url
       void authenticate()
     }

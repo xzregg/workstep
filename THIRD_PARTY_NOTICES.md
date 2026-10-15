@@ -7,4 +7,8 @@ WorkStep depends on open-source packages under their respective licenses. Each d
 
 Mention of a third-party product does not imply endorsement, affiliation, or transfer of trademark rights.
 
+## Agency Agents role prompts
+
+The bundled role center includes 282 role prompts from [msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents), commit `bd956db032d907387e6b9ddebff3e18f1de8c679`, under the MIT License. Copyright (c) 2025 AgentLand Contributors. The original license is retained in `apps/daemon/data/role-center/LICENSE.agency-agents.txt` and distributed with the daemon data directory. Each role retains its repository, original file path, commit, and license identifier.
+
 The Release SBOM is the version-specific dependency index. Review it together with the license files embedded by upstream packages before redistributing a modified binary.

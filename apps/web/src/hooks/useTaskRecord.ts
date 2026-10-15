@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Task } from '../api/client'
+import { taskApi, type Task } from '../api/client'
 import { ApiError } from '../api/transport'
 import { useTaskStore } from '../stores/taskStore'
 
 /** Keeps a task detail available when a filtered board list replaces its row. */
-export function useTaskRecord(taskId: string, projectId: string, snapshot?: Task) {
-  const listed = useTaskStore((state) => state.tasks.find((task) => task.id === taskId))
+export function useTaskRecord(taskId: string, projectId: string, snapshot?: Task, isolated = false) {
+  const listed = useTaskStore((state) => isolated ? undefined : state.tasks.find((task) => task.id === taskId))
   const refreshTask = useTaskStore((state) => state.refreshTask)
+  const hasSnapshot = Boolean(snapshot)
   const [attempt, setAttempt] = useState(0)
   const retry = useCallback(() => setAttempt((value) => value + 1), [])
   const [result, setResult] = useState<{
@@ -14,9 +15,10 @@ export function useTaskRecord(taskId: string, projectId: string, snapshot?: Task
   } | null>(null)
 
   useEffect(() => {
-    if (!taskId || !projectId || snapshot) return
+    if (!taskId || !projectId || hasSnapshot) return
     let active = true
-    void refreshTask(taskId, projectId)
+    const read = isolated ? taskApi.get : refreshTask
+    void read(taskId, projectId)
       .then((task) => {
         if (active) setResult({ taskId, projectId, attempt, task })
       })
@@ -25,7 +27,7 @@ export function useTaskRecord(taskId: string, projectId: string, snapshot?: Task
           error: error instanceof Error ? error : new Error(String(error)) })
       })
     return () => { active = false }
-  }, [projectId, refreshTask, taskId, attempt, Boolean(snapshot)])
+  }, [projectId, refreshTask, taskId, attempt, hasSnapshot, isolated])
 
   const current = result?.taskId === taskId && result.projectId === projectId
     && result.attempt === attempt ? result : null

@@ -325,7 +325,7 @@ def register_websocket_routes(app: FastAPI) -> None:
         to the event bus and forwards only events belonging to the shared
         task, with internal engine state filtered out.
         """
-        from services.share import resolve_share_session, _scrub_events
+        from services.share import resolve_share_session
 
         if not await desktop_websocket_allowed(ws):
             await ws.close(code=4401, reason="desktop authentication required")
@@ -336,41 +336,57 @@ def register_websocket_routes(app: FastAPI) -> None:
             await ws.close(code=4401, reason="unauthorized")
             return
 
-        task_id = ctx["task_id"]
-        await ws.accept()
+        await _serve_share_stream(ws, ctx)
 
-        def share_predicate(event: dict[str, Any]) -> bool:
-            if event.get("task_id") != task_id:
-                return False
-            if event.get("type") in _SHARE_SCRUBBED_EVENT_TYPES:
-                return False
-            if not _scrub_events([event]):
-                return False
-            return True
+    @app.websocket("/ws/platform-share")
+    async def ws_platform_share_endpoint(ws: WebSocket):
+        # Only the verified managed bridge can supply this scope. Cookies,
+        # query parameters and owner project credentials cannot grant access.
+        scope = ws.scope.get('gateway_share_scope')
+        if not isinstance(scope, dict):
+            await ws.close(code=4401, reason='share ticket required')
+            return
+        await _serve_share_stream(ws, {
+            'task_id': scope['task_id'], 'project_id': scope['host_project_id'],
+        })
 
-        main = _main()
-        queue = main.event_bus.subscribe(share_predicate)
-        try:
-            while True:
-                expiry = ctx.get('expires_at')
-                remaining = max(0, (expiry - datetime.now(timezone.utc)).total_seconds()) if expiry else None
-                try:
-                    bus_task, ws_task, done = await asyncio.wait_for(_wait_for_stream_input(queue, ws), timeout=remaining)
-                except asyncio.TimeoutError:
-                    await ws.close(code=4401, reason='share expired')
+
+async def _serve_share_stream(ws: WebSocket, ctx: dict):
+    """Shared task-only event delivery for local and Gateway visitors."""
+    from services.share import _scrub_events
+
+    task_id = ctx['task_id']
+    project_id = ctx.get('project_id')
+    await ws.accept()
+
+    def share_predicate(event):
+        return (event.get('task_id') == task_id
+                and (not project_id or event.get('project_id') == project_id)
+                and event.get('type') not in _SHARE_SCRUBBED_EVENT_TYPES
+                and bool(_scrub_events([event])))
+
+    main = _main()
+    queue = main.event_bus.subscribe(share_predicate)
+    try:
+        while True:
+            expiry = ctx.get('expires_at')
+            remaining = max(0, (expiry - datetime.now(timezone.utc)).total_seconds()) if expiry else None
+            try:
+                bus_task, ws_task, done = await asyncio.wait_for(
+                    _wait_for_stream_input(queue, ws), timeout=remaining,
+                )
+            except asyncio.TimeoutError:
+                await ws.close(code=4401, reason='share expired')
+                break
+            if ws_task in done:
+                # Writes use authorized HTTP operations, never socket commands.
+                break
+            if bus_task in done:
+                event = bus_task.result()
+                if event is None:
                     break
-
-                if ws_task in done:
-                    # Share viewers are strictly read-only — any incoming
-                    # message is unexpected, so treat it as a disconnect.
-                    break
-
-                if bus_task in done:
-                    event = bus_task.result()
-                    if event is None:  # shutdown sentinel
-                        break
-                    await ws.send_json(jsonable_encoder(event))
-        except WebSocketDisconnect:
-            logger.debug("Share WS disconnected for task %s", task_id)
-        finally:
-            main.event_bus.unsubscribe(queue)
+                await ws.send_json(jsonable_encoder(event))
+    except WebSocketDisconnect:
+        logger.debug('Share WS disconnected for task %s', task_id)
+    finally:
+        main.event_bus.unsubscribe(queue)

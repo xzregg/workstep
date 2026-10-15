@@ -13,7 +13,7 @@ export function FinalCta({ experienceHref }: { experienceHref: string }) {
         </div>
         <div className="final-cta-actions">
           <a href={experienceHref} className="btn btn-primary">
-            {t('finalCta.primary')}
+            {t(experienceHref === '/' ? 'common.openWorkspace' : 'finalCta.primary')}
             <ArrowRight size={15} />
           </a>
           <a href="#demos" className="btn btn-ghost">
