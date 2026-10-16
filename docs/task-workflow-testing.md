@@ -52,9 +52,9 @@
 
 测试不得使用日常项目数据库，不得将测试适配器装入生产引擎注册表。完整回归中若有既有失败，应单列名称和基线证据，不能将其计作通过。
 
-## 2026-10-16 验证结果
+## 2026-10-16 合并前验证结果
 
-分支：`codex/task-flow-overrides`；基线：`dev` 提交 `838905a5`。未提交、合并或推送。未修改日常任务数据库。
+分支：`codex/task-flow-overrides`；基线：`dev` 提交 `838905a5`。以下为合并前的历史记录，当时尚未提交、合并或推送。未修改日常任务数据库。
 
 | 测试批次 | 结果 |
 |---|---|
@@ -90,3 +90,30 @@
 PYTHONPATH=../../packages/gateway-protocol/src uv run --no-sync pytest tests/test_task_workflow_execution.py -q
 PYTHONPATH=../../packages/gateway-protocol/src uv run --no-sync pytest tests/test_task_workflow.py tests/test_task_workflow_boundary.py tests/test_task_workflow_execution.py tests/test_step_rework.py tests/test_rework_loop.py tests/test_artifact_port_routing.py tests/test_review_gate.py tests/test_recovery.py tests/test_workflow_runtime.py tests/test_workflow_step.py tests/test_task_review_overrides.py tests/test_pipeline.py -q
 ```
+
+## 2026-10-16 合并 dev 后复验
+
+- 功能提交：`0699de4f`；合入本地 `dev@2ac3f04a`，合并提交：`521d4fa3`。
+- 唯一文本冲突是自动生成的语言目录 revision；基于两边合并后的词典重新生成，得到 3180 个键。提示词、消息归属、任务详情及分享改动均保留。
+- 仅合并 `dev` 已提交内容。原 `dev` 工作区的其他未提交修改未被纳入、提交或覆盖；没有合回 `dev`／`main`，没有推送远端。
+
+| 复验批次 | 结果 |
+|---|---|
+| daemon 后端全量 | 3318 通过、12 失败（共 3330 项） |
+| 执行相关回归（含 45 项业务组合） | 302 通过 |
+| 45 项业务组合＋dev 提交署名／消息归属测试 | 59 通过 |
+| Web 全量 | 1544 通过、11 失败 |
+| 网关后端全量 | 429 通过、1 失败、1 跳过 |
+| 网关前端全量 | 首轮 225 通过、1 失败；完整复跑 226 通过 |
+| 网关共享协议全量 | 86 通过 |
+| Web、分享 Web、网关前端构建及类型检查 | 均通过 |
+
+daemon 的 12 项失败在干净 `dev@2ac3f04a` 上再次定向重跑复现（30 通过、12 失败、217 未选中）。通过 JUnit XML 逐项比较，失败集合完全相同：仍为上述模型分层一项、缺少 Qoder SDK 的九项、协调助手提示词两项，没有新增的合并回归失败。
+
+Web 的 11 项在干净的 `dev@2ac3f04a` 工作树定向重跑得到相同失败（22 通过、11 失败）：browserActor（1）、chatInputLayout（1）、gatewayTaskShare（1）、gatewayWorkspace（2）、remoteChatSync（1）、taskTableBulkActions（1）、userSettings（4）。此前 gatewayProjectSettings 的六项失败已随 dev 更新消失；dev 带入的可操作分享强制登录行为与 gatewayTaskShare 旧测试的密码预期不符，本次没有修改此无关行为。
+
+网关后端失败为 `test_control_connection.py::test_local_workbench_manages_gateway_task_shares_over_authenticated_control`：测试仍预期未发布项目不能创建分享，实际已允许。在干净 dev 工作树单独重跑得到同一失败。
+
+网关前端首轮的 `admin-usage.test.tsx` 时间区间用例相差 1 毫秒。`GatewayDateRangePicker` 的“最近 7 天”两次分别调用 `dayjs()`；其源码与 dev 完全一致。该文件在功能分支和干净 dev 各自单独重跑均 9 通过，功能分支完整复跑也 226 通过。保留首轮失败记录，不将其隐去。
+
+所有测试使用隔离配置和项目数据，未启动日常应用进程，未修改真实任务数据库。测试日志位于本次独立临时目录，后端保留 JUnit XML，前端保留完整测试报告；未将临时文件或依赖目录加入提交。
