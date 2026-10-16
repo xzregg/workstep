@@ -1,3 +1,4 @@
+import type { FileChangesQuery } from '../utils/messageFileChanges'
 import { useCallback } from 'react'
 import { workflowGenApi } from '../api/conversations'
 import { useI18n } from '../i18n'
@@ -6,8 +7,9 @@ import { useWorkflowGenStore } from '../stores/workflowGenStore'
 /** Fetch the full persisted process only when its trace is expanded. */
 export function useWorkflowMessageEvents(projectId: string, workflowId: string | undefined, sessionId: string | null) {
   const { t } = useI18n()
-  return useCallback(async (messageId: string) => {
+  return useCallback(async (messageId: string, query?: FileChangesQuery) => {
     if (!workflowId || !sessionId) return
+    if (query) return workflowGenApi.messageEvents(projectId, workflowId, messageId, 0, query)
     const store = useWorkflowGenStore.getState()
     const message = store.sessions[sessionId]?.messages.find(item => item.id === messageId)
     if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return

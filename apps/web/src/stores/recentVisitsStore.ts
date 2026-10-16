@@ -33,6 +33,7 @@ interface RecentVisitsState {
   visit: (target: RecentVisitTarget) => void
   update: (target: RecentVisitTarget) => void
   removeSessions: (projectId: string, sessionIds: readonly string[]) => void
+  removeTasks: (projectId: string, taskIds: readonly string[]) => void
 }
 
 export const useRecentVisitsStore = create<RecentVisitsState>((set) => {
@@ -43,6 +44,10 @@ export const useRecentVisitsStore = create<RecentVisitsState>((set) => {
   return {
     entries: [],
     hydrate: () => set({ entries: read() }),
+    removeTasks: (projectId, taskIds) => {
+      const removed = new Set(taskIds)
+      save(read().filter(entry => entry.kind !== 'task' || entry.projectId !== projectId || !removed.has(entry.id)))
+    },
     removeSessions: (projectId, sessionIds) => {
       const removed = new Set(sessionIds)
       save(read().filter(entry => entry.kind !== 'session' || entry.projectId !== projectId || !removed.has(entry.id)))

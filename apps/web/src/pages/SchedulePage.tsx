@@ -3,6 +3,10 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 
+import ScheduleRuleEditor from '../components/ScheduleRuleEditor'
+import TaskScheduleEditor from '../components/TaskScheduleEditor'
+import ScheduleNotificationEditor, {type NotificationEditorState} from '../components/ScheduleNotificationEditor'
+import ScheduleRunNotification from '../components/ScheduleRunNotification'
 import AiTaskCreateChat from '../components/AiTaskCreateChat'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -14,6 +18,7 @@ import MarkdownEditor from '../components/MarkdownEditor'
 import ReviewOverridesEditor, { type ReviewOverride } from '../components/ReviewOverridesEditor'
 import Select from '../components/Select'
 import TaskDetail from './TaskDetail'
+import './SchedulePage.css'
 import {
   scheduleApi, workflowApi,
   type ProjectSchedule, type SchedulePayload, type ScheduleRule, type ScheduleRun,
@@ -33,7 +38,7 @@ const statusColors: Record<string, string> = {
   active: 'var(--success)', running: 'var(--accent)', succeeded: 'var(--success)',
   paused: 'var(--meta)', completed: 'var(--meta)', created: 'var(--status-ready)',
   invalid: 'var(--danger)', failed: 'var(--danger)', skipped: 'var(--warning)',
-  queued: 'var(--warning)',
+  queued: 'var(--warning)', stopped: 'var(--meta)',
 }
 
 function localInputValue(date = new Date(Date.now() + 60 * 60 * 1000)) {
@@ -75,6 +80,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
   const [draftRevision, resetDraft] = useReducer((revision: number) => revision + 1, 0)
 
   const [items, setItems] = useState<ProjectSchedule[]>([])
+  const [listType, setListType] = useState<'once' | 'recurring'>('recurring')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [runs, setRuns] = useState<ScheduleRun[]>([])
@@ -82,9 +88,14 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [notification, setNotification] = useState<NotificationEditorState>({value:{enabled:false},valid:true})
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [focusMessageId, setFocusMessageId] = useState<string | undefined>()
   const [taskId, setTaskId] = useState<string | null>(null)
   const [taskConfigTab, setTaskConfigTab] = useState<'content' | 'review'>('content')
+  const [targetType, setTargetType] = useState<'project' | 'task'>('project')
+  const [targetFilter, setTargetFilter] = useState('all')
+  const [taskFilter, setTaskFilter] = useState('')
   const [generation, setGeneration] = useState<'static' | 'agent'>('static')
   const [instruction, setInstruction] = useState('')
   const [candidateWorkflowIds, setCandidateWorkflowIds] = useState<string[]>([])
@@ -115,9 +126,10 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
 
   const acceptDefaults = useScheduleDraftState(JSON.stringify({ workflowId, title, description, startStep, reviewOverrides,
     generation, instruction, candidateWorkflowIds, retryCount, kind, at, clock, weekdays, intervalEvery,
-    monthday, cron, startDate, endDate, timezone, execution, overlap }), draftRevision,
-    Boolean(selectedId || creating), saving, onEditorStateChange)
+    monthday, cron, startDate, endDate, timezone, execution, overlap, notification:notification.value }), draftRevision,
+    Boolean(selectedId || creating), saving, targetType === 'project' ? onEditorStateChange : undefined)
 
+  const visibleItems = items.filter((item) => (item.rule.kind === 'once') === (listType === 'once') && (targetFilter === 'all' || (item.target_type || 'project') === targetFilter) && (!taskFilter || (item.target_task_id || '').includes(taskFilter)))
   const selected = items.find((item) => item.id === selectedId) || null
 
   const load = useCallback(async () => {
@@ -179,6 +191,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
       start_date: startDate || undefined,
       end_date: endDate || undefined,
     }
+    if (kind === 'minutes') return { kind, every: intervalEvery, timezone, ...effectiveRange }
     if (kind === 'daily') return { kind, time: clock, timezone, ...effectiveRange }
     if (kind === 'weekly') return { kind, weekdays, time: clock, timezone, ...effectiveRange }
     if (kind === 'monthly') return { kind, monthdays: [monthday], time: clock, timezone, ...effectiveRange }
@@ -249,8 +262,10 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
 
   const fill = useCallback((item: ProjectSchedule | null) => {
     resetDraft()
+    setNotification({value:item?.notification || {enabled:false},valid:true})
     setTaskConfigTab('content')
     closeTest()
+    setTargetType(item?.target_type || 'project')
     if (!item) {
       setGeneration('static'); setWorkflowId(defaultWorkflow); setTitle(''); setDescription('')
       setInstruction(''); setCandidateWorkflowIds(workflows.map((wf) => wf.id)); setRetryCount(2)
@@ -276,6 +291,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
     if (item.rule.kind === 'once') setAt(item.rule.run_at.slice(0, 16))
     if ('time' in item.rule) setClock(item.rule.time)
     if (item.rule.kind === 'weekly') setWeekdays(item.rule.weekdays)
+    if (item.rule.kind === 'minutes') setIntervalEvery(item.rule.every)
     if (item.rule.kind === 'interval') { setIntervalEvery(item.rule.every); setWeekdays(item.rule.weekdays) }
     if (item.rule.kind === 'monthly') setMonthday(item.rule.monthdays[0] || 1)
     if (item.rule.kind === 'cron') setCron(item.rule.expression)
@@ -287,7 +303,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
 
   const save = async () => {
     const agentMode = generation === 'agent'
-    if (preview.next.length === 0) return
+    if (preview.next.length === 0 || !notification.valid) return
     if (agentMode ? !instruction.trim() : !workflowId) return
     const derivedTitle = title.trim() || `${description.trim().slice(0, 10)}...`
     const payload: SchedulePayload = {
@@ -307,14 +323,14 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
             title: derivedTitle, description: description.trim() || undefined,
             start_step_key: startStep || undefined, review_overrides: reviewOverrides,
           },
-      rule: buildRule(), execution_mode: execution, overlap_policy: overlap,
+      notification: notification.value, rule: buildRule(), execution_mode: execution, overlap_policy: overlap,
     }
     setSaving(true); setError('')
     try {
       const saved = selectedId
         ? await scheduleApi.update(projectId, selectedId, payload)
         : await scheduleApi.create(projectId, payload)
-      await load(); setCreating(false); setSelectedId(saved.id); resetDraft()
+      await load(); setListType(saved.rule.kind === 'once' ? 'once' : 'recurring'); setCreating(false); setSelectedId(saved.id); resetDraft()
     } catch (cause) { setError((cause as Error).message) }
     finally { setSaving(false) }
   }
@@ -331,11 +347,6 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
     () => runs.filter((run) => runFilter === 'all' || run.status === runFilter),
     [runs, runFilter],
   )
-  const weekdaysMeta = [
-    [1, t('schedules.mon')], [2, t('schedules.tue')], [3, t('schedules.wed')],
-    [4, t('schedules.thu')], [5, t('schedules.fri')], [6, t('schedules.sat')], [0, t('schedules.sun')],
-  ] as Array<[number, string]>
-
   const header = <div className="schedule-header" style={{ height: 52, padding: '0 18px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border-soft)' }}>
         {(selected || creating) && <Button className="schedule-mobile-back" variant="ghost" onClick={() => { if (testOpen) { closeTest(); return } setCreating(false); setSelectedId(null); fill(null) }} aria-label={t('schedules.back')}><Icon name="chevron-right" size={16} style={{ transform: 'rotate(180deg)' }} /></Button>}
         {!onClose && <Button variant="ghost" onClick={() => navigate('/tasks')}><Icon name="chevron-right" size={14} style={{ transform: 'rotate(180deg)' }} /> {t('schedules.back')}</Button>}
@@ -352,13 +363,36 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
       {error && <div role="alert" style={{ padding: '8px 18px', color: 'var(--danger)', background: 'var(--danger-soft)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
       <div className="schedule-layout" id={tabbed ? `schedule-content-${projectId}` : undefined} role={tabbed ? 'tabpanel' : undefined} aria-labelledby={tabbed ? `schedule-project-${projectId}` : undefined} style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: `${asideWidth}px ${SPLIT_HANDLE_WIDTH}px minmax(0, 1fr) ${SPLIT_HANDLE_WIDTH}px ${sectionWidth}px` }}>
         <aside className="schedule-list" style={{ overflow: 'auto', padding: 10 }}>
+          <div className="schedule-list-tabs" role="tablist" aria-label={t('schedules.title')}>
+            {(['recurring', 'once'] as const).map((type) => (
+              <button key={type} type="button" role="tab"
+                id={`schedule-type-${projectId}-${type}`}
+                aria-controls={`schedule-type-list-${projectId}`}
+                disabled={saving} aria-selected={listType === type} tabIndex={listType === type ? 0 : -1}
+                onClick={() => setListType(type)}
+                onKeyDown={(event) => {
+                  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                  event.preventDefault()
+                  const next = event.key === 'Home' ? 'recurring' : event.key === 'End' ? 'once' : type === 'once' ? 'recurring' : 'once'
+                  setListType(next)
+                  document.getElementById(`schedule-type-${projectId}-${next}`)?.focus()
+                }}>
+                {t(type === 'once' ? 'schedules.onceTasks' : 'schedules.recurringTasks')}
+              </button>
+            ))}
+          </div>
+          <div className="schedule-target-filter">
+            <Select aria-label={t('schedules.targetFilter')} value={targetFilter} onChange={e => { setTargetFilter(e.target.value); setTaskFilter('') }}><option value="all">{t('schedules.all')}</option><option value="project">{t('schedules.projectTarget')}</option><option value="task">{t('schedules.taskTarget')}</option></Select>
+            {targetFilter === 'task' && <Input aria-label={t('schedules.taskIdFilter')} placeholder={t('schedules.taskIdFilter')} value={taskFilter} onChange={e => setTaskFilter(e.target.value)} />}
+          </div>
+          <div role="tabpanel" id={`schedule-type-list-${projectId}`} aria-labelledby={`schedule-type-${projectId}-${listType}`}>
           {loading && <div className="task-status-spinner" style={{ margin: 16 }} />}
-          {!loading && items.length === 0 && <div style={{ color: 'var(--meta)', padding: 18, fontSize: 'calc(13px * var(--font-scale))' }}>{t('schedules.empty')}</div>}
-          {items.map((item) => (
+          {!loading && visibleItems.length === 0 && <div style={{ color: 'var(--meta)', padding: 18, fontSize: 'calc(13px * var(--font-scale))' }}>{t(items.length === 0 ? 'schedules.empty' : 'schedules.emptyType')}</div>}
+          {visibleItems.map((item) => (
             <button className="schedule-list-item" key={item.id} onClick={() => { setCreating(false); setSelectedId(item.id) }} style={{ display: 'block', width: '100%', minWidth: 0, border: 0, borderRadius: 8, padding: 12, marginBottom: 6, textAlign: 'left', cursor: 'pointer', background: selectedId === item.id ? 'var(--accent-light)' : 'transparent', color: 'var(--fg)' }}>
               <div className="schedule-list-title-row" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                 <MarqueeText
-                  text={item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}
+                  text={item.target_type === 'task' ? item.name : item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}
                   style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}
                 />
                 <span className="schedule-list-status" style={{ flexShrink: 0, color: statusColors[item.status], fontSize: 'calc(11px * var(--font-scale))' }}>{t(`schedules.status_${item.status}` as any)}</span>
@@ -367,9 +401,11 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
                 <span className="schedule-list-time" style={{ minWidth: 0 }}>{formatDate(item.next_run_at)}</span>
                 <span className="schedule-list-summary" style={{ flexShrink: 0, textAlign: 'right' }}><ScheduleSummary summary={item.summary} /></span>
               </div>
+              {item.target_type === 'task' && <div className="schedule-task-target">{t('schedules.taskTarget')} · {item.target_task_id}</div>}
               {item.task_template.mode === 'agent' && <div style={{ color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 4 }}>{item.task_template.candidate_workflow_ids?.length ? t('schedules.agentCandidates', { count: item.task_template.candidate_workflow_ids.length }) : t('schedules.allWorkflows')}</div>}
             </button>
           ))}
+          </div>
         </aside>
 
         <div className="schedule-split-handle" role="separator" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => beginDividerDrag(event, 'aside')} onKeyDown={dividerKeyDown('aside')} />
@@ -379,9 +415,11 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{selectedId ? t('schedules.edit') : t('schedules.create')}</strong><div style={{ flex: 1 }} />
             {canManage && selected && selected.status === 'active' && <Button onClick={() => void changeStatus('pause')}>{t('schedules.pause')}</Button>}
-            {canManage && selected && selected.status !== 'active' && selected.status !== 'completed' && <Button onClick={() => void changeStatus('resume')}>{t('schedules.resume')}</Button>}
+            {canManage && selected && selected.status !== 'active' && <Button onClick={() => void changeStatus('resume')}>{t('schedules.resume')}</Button>}
             {canManage && selected && <Button variant="danger" onClick={() => setDeleteId(selected.id)}>{t('common.delete')}</Button>}
           </div>
+          {creating && <div className="schedule-frequency-tabs"><button type="button" className={targetType === 'project' ? 'active' : ''} onClick={() => setTargetType('project')}>{t('schedules.projectTarget')}</button><button type="button" className={targetType === 'task' ? 'active' : ''} onClick={() => { setTargetType('task'); closeTest() }}>{t('schedules.taskTarget')}</button></div>}
+          {targetType === 'task' ? <TaskScheduleEditor key={`${projectId}:${selectedId || 'new'}`} projectId={projectId} schedule={selected} workflows={workflows} onEditorStateChange={onEditorStateChange} onSaved={saved => { setTargetFilter('all'); setTaskFilter(''); void load(); setCreating(false); setSelectedId(saved.id); setListType(saved.rule.kind === 'once' ? 'once' : 'recurring') }} /> : <>
           <div className="schedule-frequency-label">{t('schedules.generation')}</div>
           <div className="schedule-frequency-tabs">
             <button type="button" className={generation === 'static' ? 'active' : ''} onClick={() => { setGeneration('static'); closeTest() }}>{t('schedules.generationStatic')}</button>
@@ -435,7 +473,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
                   >
                     <MarkdownEditor value={instruction} onChange={setInstruction} projectId={projectId} placeholder={t('schedules.instructionPlaceholder')} />
                   </Field>
-                  <div className="schedule-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                  <div className="schedule-form-grid schedule-form-grid--spaced">
                     <Field label={t('schedules.referenceTitle')} help={t('schedules.referenceTitleHelp')}><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
                     <Field label={t('schedules.retryCount')} help={t('schedules.retryCountHelp')}><Input type="number" min={0} max={10} value={retryCount} onChange={(event) => setRetryCount(Math.max(0, Number(event.target.value)))} /></Field>
                   </div>
@@ -454,7 +492,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
                 </>
               ) : (
                 <>
-                  <div className="schedule-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="schedule-form-grid">
                     <Field label={t('schedules.workflow')}><Select value={workflowId} onChange={(event) => { setWorkflowId(event.target.value); setStartStep(''); setReviewOverrides({}) }}>{workflows.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
                     <Field label={t('schedules.startStep')}><Select value={startStep} onChange={(event) => setStartStep(event.target.value)}><option value="">{t('schedules.firstStep')}</option>{steps.map((step) => <option key={step.key} value={step.key}>{step.title}</option>)}</Select></Field>
                   </div>
@@ -471,58 +509,17 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
             </div>
           )}
 
-          <div className="schedule-frequency-section">
-            <div className="schedule-frequency-label">{t('schedules.frequency')}</div>
-            <div className="schedule-frequency-tabs">
-              <button type="button" className={kind !== 'interval' && kind !== 'once' ? 'active' : ''} onClick={() => setKind('daily')}>{t('schedules.frequencyCycle')}</button>
-              <button type="button" className={kind === 'interval' ? 'active' : ''} onClick={() => setKind('interval')}>{t('schedules.frequencyInterval')}</button>
-              <button type="button" className={kind === 'once' ? 'active' : ''} onClick={() => setKind('once')}>{t('schedules.frequencyOnce')}</button>
-            </div>
-
-            {kind !== 'interval' && kind !== 'once' && (
-              <div className="schedule-frequency-row">
-                <Select value={kind} onChange={(event) => setKind(event.target.value as Kind)}>
-                  <option value="daily">{t('schedules.daily')}</option>
-                  <option value="weekly">{t('schedules.weekly')}</option>
-                  <option value="monthly">{t('schedules.monthly')}</option>
-                  <option value="cron">Cron</option>
-                </Select>
-                {kind !== 'cron' && <Input type="time" value={clock} onChange={(event) => setClock(event.target.value)} />}
-                {kind === 'monthly' && <Input type="number" min={1} max={31} value={monthday} onChange={(event) => setMonthday(Number(event.target.value))} aria-label={t('schedules.monthday')} />}
-                {kind === 'cron' && <Input value={cron} onChange={(event) => setCron(event.target.value)} placeholder="0 9 * * 1-5" aria-label="Cron" />}
-              </div>
-            )}
-
-            {kind === 'interval' && (
-              <div className="schedule-frequency-row schedule-interval-row">
-                <span>{t('schedules.every')}</span>
-                <Input type="number" min={1} max={24} value={intervalEvery} onChange={(event) => setIntervalEvery(Number(event.target.value))} />
-                <span>{t('schedules.hours')}</span>
-              </div>
-            )}
-
-            {kind === 'once' && <div className="schedule-frequency-row"><Input type="datetime-local" value={at} onChange={(event) => setAt(event.target.value)} /></div>}
-
-            {(kind === 'weekly' || kind === 'interval') && (
-              <div className="schedule-weekday-tabs">
-                {weekdaysMeta.map(([day, label]) => (
-                  <button key={day} type="button" className={weekdays.includes(day) ? 'active' : ''} onClick={() => setWeekdays((value) => value.includes(day) ? value.filter((item) => item !== day) : [...value, day])}>{label}</button>
-                ))}
-              </div>
-            )}
-
-            {kind !== 'once' && (
-              <div className="schedule-effective-range">
-                <div className="schedule-frequency-label">{t('schedules.effectiveRange')} <span>{t('schedules.effectiveRangeHint')}</span></div>
-                <div className="schedule-date-range">
-                  <Input type="date" value={startDate} onChange={(event) => { const value = event.target.value; setStartDate(value); if (endDate && value > endDate) setEndDate('') }} aria-label={t('schedules.startDate')} />
-                  <span>—</span>
-                  <Input type="date" value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} aria-label={t('schedules.endDate')} />
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="schedule-form-grid" style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <ScheduleRuleEditor value={buildRule()} onChange={rule => {
+            setKind(rule.kind)
+            setStartDate(rule.start_date || ''); setEndDate(rule.end_date || '')
+            if ('run_at' in rule) setAt(rule.run_at)
+            if ('time' in rule) setClock(rule.time)
+            if ('every' in rule) setIntervalEvery(rule.every)
+            if ('weekdays' in rule) setWeekdays(rule.weekdays)
+            if ('monthdays' in rule) setMonthday(rule.monthdays[0])
+            if ('expression' in rule) setCron(rule.expression)
+          }} />
+          <div className="schedule-form-grid schedule-form-grid--spaced">
             <Field label={t('schedules.execution')}><Select value={execution} onChange={(event) => setExecution(event.target.value as ProjectSchedule['execution_mode'])}><option value="workflow">{t('schedules.followWorkflow')}</option><option value="immediate">{t('schedules.immediate')}</option><option value="manual">{t('schedules.manual')}</option></Select></Field>
             <Field label={t('schedules.overlap')}><Select value={overlap} onChange={(event) => setOverlap(event.target.value as ProjectSchedule['overlap_policy'])}><option value="skip">{t('schedules.skip')}</option><option value="parallel">{t('schedules.parallel')}</option><option value="queue">{t('schedules.queue')}</option></Select></Field>
           </div>
@@ -531,14 +528,17 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
             <div style={{ marginTop: 5 }}>{t('schedules.nextRuns')}: {preview.next.slice(0, 3).map(formatDate).join(' · ') || '—'}</div>
           </div>
 
-          {canManage && <div className="schedule-save-row" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}><Button variant="primary" loading={saving} disabled={preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : !workflowId)} onClick={() => void save()}>{t('common.save')}</Button></div>}
+          <ScheduleNotificationEditor key={`${projectId}:${selectedId || 'new'}`} projectId={projectId} initialValue={selected?.notification}
+            onChange={(state, automatic) => { if (automatic) acceptDefaults('notification', state.value); setNotification(state) }} />
+          {canManage && <div className="schedule-save-row" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}><Button variant="primary" loading={saving} disabled={!notification.valid || preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : !workflowId)} onClick={() => void save()}>{t('common.save')}</Button></div>}
+          </>}
           </fieldset>)}
         </main>
 
         <div className="schedule-split-handle" role="separator" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => beginDividerDrag(event, 'section')} onKeyDown={dividerKeyDown('section')} />
 
         <section className="schedule-runs" style={{ overflow: 'hidden', padding: 18, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          {(selected || creating) && (testOpen && generation === 'agent' ? (
+          {(selected || creating) && (testOpen && targetType === 'project' && generation === 'agent' ? (
             <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border-soft)', borderRadius: 8, overflow: 'hidden', background: 'var(--surface)' }}>
               <div style={{ flex: 1, minHeight: 0 }}>
                 <AiTaskCreateChat
@@ -558,15 +558,15 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.runs')}</strong><div style={{ flex: 1 }} /><Select value={runFilter} onChange={(event) => setRunFilter(event.target.value)} style={{ width: 130 }}><option value="all">{t('schedules.all')}</option>{['queued', 'running', 'created', 'succeeded', 'failed', 'skipped'].map((status) => <option key={status} value={status}>{t(`schedules.status_${status}` as any)}</option>)}</Select></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.runs')}</strong><div style={{ flex: 1 }} /><Select value={runFilter} onChange={(event) => setRunFilter(event.target.value)} style={{ width: 130 }}><option value="all">{t('schedules.all')}</option>{['queued', 'running', 'created', 'succeeded', 'failed', 'skipped', 'stopped'].map((status) => <option key={status} value={status}>{t(`schedules.status_${status}` as any)}</option>)}</Select></div>
               {filteredRuns.length === 0 && <div style={{ color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', padding: 16 }}>{t('schedules.noRuns')}</div>}
-              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}{run.task_id && <Button size="sm" style={{ marginTop: 7 }} onClick={async () => { if (!project) await fetchTasks(projectId, selected?.workflow_id); setTaskId(run.task_id || null) }}>{t('schedules.openTask')}</Button>}</div>)}
+              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}<ScheduleRunNotification canRetry={canManage} projectId={projectId} scheduleId={selectedId || ''} run={run} onRetried={async () => { if (selectedId) setRuns((await scheduleApi.runs(projectId, selectedId)).runs) }} />{run.task_id && <Button size="sm" style={{ marginTop: 7 }} onClick={async () => { if (!project) await fetchTasks(projectId, selected?.workflow_id); setFocusMessageId(run.assistant_message_id || undefined); setTaskId(run.task_id || null) }}>{t('schedules.openTask')}</Button>}</div>)}
             </>
           ))}
         </section>
       </div>
       <ConfirmDialog open={deleteId !== null} title={t('schedules.deleteTitle')} message={t('schedules.deleteMessage')} danger confirmText={t('common.delete')} onCancel={() => setDeleteId(null)} onConfirm={() => { if (!deleteId) return; setSaving(true); scheduleApi.delete(projectId, deleteId).then(() => { setDeleteId(null); setCreating(false); setSelectedId(null); fill(null); return load() }).catch((cause) => setError((cause as Error).message)).finally(() => setSaving(false)) }} />
-      {taskId && <><div className="modal-overlay schedule-task-backdrop" onClick={() => setTaskId(null)} /><TaskDetail taskId={taskId} project={activeProject ?? undefined} onClose={() => setTaskId(null)} /></>}
+      {taskId && <><div className="modal-overlay schedule-task-backdrop" onClick={() => setTaskId(null)} /><TaskDetail taskId={taskId} focusMessageId={focusMessageId} project={activeProject ?? undefined} onClose={() => setTaskId(null)} /></>}
     </div>
   )
 }

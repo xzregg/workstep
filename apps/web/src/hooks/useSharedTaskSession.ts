@@ -1,3 +1,4 @@
+import type { FileChangesQuery } from '../utils/messageFileChanges'
 import { gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { shareApi, type ReviewRun, type ShareMeta, type SharedTask, type TaskArtifact, type TaskArtifactInputSnapshot } from '../api/client'
@@ -333,8 +334,9 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
     setMessages((current) => [...current, message])
   }, [])
 
-  const loadMessageEvents = useCallback(async (messageId: string) => {
+  const loadMessageEvents = useCallback(async (messageId: string, query?: FileChangesQuery) => {
     if (!token || phase.kind !== 'ready') return
+    if (query) return api.messageEvents(token, phase.sessionToken, messageId, 0, query)
     const message = messages.find((item) => item.id === messageId)
     if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading
       || detailsInFlight.current.has(messageId)) return

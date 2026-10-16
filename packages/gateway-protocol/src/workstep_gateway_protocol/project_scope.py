@@ -84,11 +84,13 @@ _PROJECT_SERVICES = [
     (r"/api/action-runs/[A-Za-z0-9_-]{1,128}/stop", {'POST'}, set()),
     (r"/api/workflow/generate/chat", {'POST'}, set()),
     (r"/api/workflow/generate/history", {'GET', 'DELETE'}, {'workflow_id'}),
-    (r"/api/workflow/generate/history/messages/[A-Za-z0-9_-]{1,128}/events", {'GET'}, {'workflow_id','cursor','limit'}),
+    (r"/api/workflow/generate/history/messages/[A-Za-z0-9_-]{1,128}/events", {'GET'}, {'workflow_id','cursor','limit','file_changes','file_path'}),
     (r"/api/workflow/generate/[A-Za-z0-9_-]{1,128}/stop", {'POST'}, set()),
     (r"/api/task-draft/chat", {'POST'}, set()),
     (r"/api/task-draft/[A-Za-z0-9_-]{1,128}/stop", {'POST'}, set()),
     (r"/api/project/save-steps", {'POST'}, {'workflow_id'}),
+    (r"/api/schedule/notification-options", {'GET'}, {'task_id'}),
+    (r"/api/schedule/[A-Za-z0-9_-]{1,128}/runs/[A-Za-z0-9_-]{1,128}/notification/retry", {'POST'}, set()),
     (r"/api/schedule/list", {'GET'}, set()),
     (r"/api/schedule/(?:create|preview)", {'POST'}, set()),
     (r"/api/schedule/[A-Za-z0-9_-]{1,128}", {'GET','PATCH','DELETE'}, set()),
@@ -292,8 +294,8 @@ def project_http_route_allowed(method: str, path: str,
             or _TASK_STEP_HISTORY.fullmatch(path)):
         return len(query_pairs) == 1
     if _TASK_MESSAGE_EVENTS.fullmatch(path) or _CHAT_MESSAGE_EVENTS.fullmatch(path):
-        return all(key in ("project_id", "cursor", "limit")
-                   for key, _ in query_pairs)
+        return (all(key in ("project_id", "cursor", "limit", "file_changes", "file_path")
+                    for key, _ in query_pairs) and len(query_pairs) == len(dict(query_pairs)))
     if path == "/api/workflow/list" or _WORKFLOW_DETAIL.fullmatch(path):
         return len(query_pairs) == 1
     if path == "/api/chat-sessions":

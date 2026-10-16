@@ -14,7 +14,7 @@ test('uses nearly the full desktop viewport height for the schedule dialog', () 
 
 test('renders task configuration before scheduling configuration', () => {
   const taskConfiguration = source.indexOf("t('taskList.contentTab')")
-  const schedulingConfiguration = source.indexOf("t('schedules.frequency')")
+  const schedulingConfiguration = source.indexOf('<ScheduleRuleEditor value=')
   const saveAction = source.indexOf("t('common.save')")
 
   assert.ok(taskConfiguration >= 0, 'task configuration is present')
@@ -23,9 +23,7 @@ test('renders task configuration before scheduling configuration', () => {
 })
 
 test('uses the reference frequency tabs and derives the schedule name from the effective task title', () => {
-  assert.match(source, /schedules\.frequencyCycle/)
-  assert.match(source, /schedules\.frequencyInterval/)
-  assert.match(source, /schedules\.frequencyOnce/)
+  assert.match(source, /<ScheduleRuleEditor value=\{buildRule\(\)\}/)
   assert.doesNotMatch(source, /<Field label=\{t\('schedules\.name'\)\}>/)
   assert.match(source, /const derivedTitle = title\.trim\(\) \|\| `\$\{description\.trim\(\)\.slice\(0, 10\)\}\.\.\.`/)
   assert.match(source, /: derivedTitle,/)
@@ -54,7 +52,6 @@ test('renders each schedule as a two-row item with title/status then time/summar
   assert.match(source, /className="schedule-list-item"/)
   assert.match(source, /className="schedule-list-item"[\s\S]*?display:\s*'block'/)
   assert.match(source, /className="schedule-list-title-row"/)
-  assert.match(source, /<MarqueeText[\s\S]*?text=\{item\.task_template\.title/)
   assert.match(source, /className="schedule-list-status"/)
   assert.match(source, /className="schedule-list-meta"/)
   assert.match(source, /className="schedule-list-time"/)
@@ -79,6 +76,6 @@ test('uses a single-column list and editor flow on mobile', () => {
   assert.match(mobileCss, /\.schedule-page--creating:not\(\.schedule-page--testing\) \.schedule-runs\s*\{[^}]*display:\s*none !important/s)
   assert.match(mobileCss, /\.schedule-page--testing \.schedule-editor\s*\{[^}]*display:\s*none !important/s)
   assert.match(mobileCss, /\.schedule-page--testing \.schedule-runs\s*\{[^}]*display:\s*flex !important[^}]*height:\s*100%/s)
-  assert.match(mobileCss, /\.schedule-form-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) !important/s)
+  assert.match(mobileCss, /\.schedule-form-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\) !important/s)
   assert.match(mobileCss, /\.schedule-split-handle\s*\{[^}]*display:\s*none !important/s)
 })

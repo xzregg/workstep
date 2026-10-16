@@ -2891,6 +2891,84 @@ async def test_chat_compacted_event_is_live_and_persisted(chat_module, monkeypat
 
 
 @pytest.mark.anyio
+async def test_chat_file_index_api_loads_counts_and_patch_without_process_events(chat_module, monkeypatch):
+    import main
+    from tests.test_file_change_index import edit
+
+    module, _bus, manager, project, _ = chat_module
+    def seed(_project):
+        session = module.create_session(project.id)
+        other = module.create_session(project.id)
+        ref = module._event_journal.start(project.workstep_dir, session["id"], "indexed-chat")
+        edit(module._event_journal, ref, "edit", "a.py", "@@ -1 +1 @@\n-before\n+after\n")
+        module._event_journal.finish(ref)
+        ChatMessage.create(id="indexed-chat", session=session["id"], role="assistant", content="done",
+                           created_at=utc_now(), event_log_path=ref.relative_path)
+        return session["id"], other["id"]
+    session_id, other_id = await manager.run_db(project.id, seed)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    monkeypatch.setattr(module._event_journal, "timeline", lambda *_args, **_kwargs: pytest.fail("must not read full events"))
+    params = {"project_id": project.id, "file_changes": "true"}
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        url = f"/api/chat-sessions/{session_id}/messages/indexed-chat/events"
+        summary = await client.get(url, params=params)
+        assert summary.status_code == 200
+        assert summary.json()["files"][0]["added"] == 1
+        assert summary.json()["events"] == []
+        detail = await client.get(url, params={**params, "file_path": "a.py"})
+        assert detail.status_code == 200 and "-before\n+after" in detail.json()["patch"]
+        assert (await client.get(f"/api/chat-sessions/{other_id}/messages/indexed-chat/events", params=params)).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_delete_session_api_removes_logs_and_indexes_without_blocking_health(chat_module, monkeypatch):
+    import main
+    import agent_assistants.event_journal as journal_module
+
+    module, _bus, manager, project, _ = chat_module
+    session = module.create_session(project.id)
+    sibling = module.create_session(project.id)
+    target = project.workstep_dir / "event_logs" / session["id"]
+    target.mkdir(parents=True)
+    (target / "message.jsonl").write_text("{}\n")
+    (target / "message.index.json").write_text("{}")
+    other = project.workstep_dir / "event_logs" / sibling["id"]
+    other.mkdir()
+    (other / "keep.jsonl").write_text("keep")
+    module.set_archived(project.id, session["id"], True)
+    assert target.exists()
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    entered = threading.Event()
+    release = threading.Event()
+    original = journal_module.shutil.rmtree
+
+    def slow_remove(path, *args, **kwargs):
+        if path == target:
+            entered.set()
+            assert release.wait(3)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(journal_module.shutil, "rmtree", slow_remove)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        deletion = asyncio.create_task(client.delete(
+            f"/api/chat-sessions/{session['id']}", params={"project_id": project.id},
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get("/api/health"), 0.5)).status_code == 200
+            assert not deletion.done()
+        finally:
+            release.set()
+            response = await deletion
+    assert response.status_code == 200, response.text
+    assert not target.exists()
+    assert (other / "keep.jsonl").read_text() == "keep"
+    assert module.get_session(project.id, session["id"]) is None
+
+
+@pytest.mark.anyio
 async def test_delete_rejects_running_session(chat_module, monkeypatch):
     module, bus, manager, project, _ = chat_module
     session = module.create_session(project.id, "wf-4")

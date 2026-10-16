@@ -5807,6 +5807,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 .task-create-content { padding: 16px; }
 .task-create-review { padding: 12px 16px; }
+.review-overrides-editor { display: flex; flex-direction: column; gap: 8px; }
 .task-create-start-step {
   margin-bottom: 10px;
   padding: 11px 12px;
@@ -5929,6 +5930,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   background: var(--surface);
 }
 .schedule-frequency-tabs > button {
+  justify-content: center;
+  text-align: center;
   min-width: 76px;
   padding: 8px 15px;
   border: 0;

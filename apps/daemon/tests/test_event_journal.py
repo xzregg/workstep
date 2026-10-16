@@ -3,8 +3,59 @@
 import asyncio
 import time
 
+import pytest
+
 from agent_assistants.event_journal import TurnEventJournal
 from engines.core.agui import to_agui_events
+
+
+def test_delete_session_removes_nested_logs_and_indexes_without_recreating_them(tmp_path):
+    journal = TurnEventJournal(flush_bytes=10**9)
+    ref = journal.start(tmp_path, "session-delete", "message", "engine-session")
+    journal.record(ref, {"type": "text", "data": {"text": "buffered"}})
+    directory = tmp_path / "event_logs" / "session-delete"
+    (directory / "engine-session" / "message.index.json").write_text("{}")
+    other = tmp_path / "event_logs" / "other"
+    other.mkdir()
+    (other / "keep.jsonl").write_text("keep")
+    journal.delete_session(tmp_path, "session-delete")
+    journal.delete_session(tmp_path, "session-delete")
+    journal.close()
+    assert not directory.exists()
+    assert (other / "keep.jsonl").read_text() == "keep"
+
+
+@pytest.mark.parametrize("session_id", [".", "..", "../other"])
+def test_delete_session_rejects_parent_and_root_segments(tmp_path, session_id):
+    journal = TurnEventJournal()
+    (tmp_path / "event_logs").mkdir()
+    try:
+        with pytest.raises(ValueError):
+            journal.delete_session(tmp_path, session_id)
+        assert (tmp_path / "event_logs").is_dir()
+    finally:
+        journal.close()
+
+
+def test_delete_session_does_not_follow_directory_or_nested_symlinks(tmp_path):
+    journal = TurnEventJournal()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.jsonl").write_text("keep")
+    logs = tmp_path / "event_logs"
+    logs.mkdir()
+    (logs / "linked").symlink_to(outside, target_is_directory=True)
+    nested = logs / "nested"
+    nested.mkdir()
+    (nested / "link").symlink_to(outside, target_is_directory=True)
+    try:
+        journal.delete_session(tmp_path, "linked")
+        journal.delete_session(tmp_path, "nested")
+        assert not (logs / "linked").is_symlink()
+        assert not nested.exists()
+        assert (outside / "keep.jsonl").read_text() == "keep"
+    finally:
+        journal.close()
 
 
 def test_journal_summary_identifies_successful_file_edits_without_loading_details(tmp_path):

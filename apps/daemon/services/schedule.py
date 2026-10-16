@@ -37,11 +37,15 @@ class ScheduleModule:
         task_service,
         workflow_runtime,
         task_agent=None,
+        coordinator=None,
+        notification_sender=None,
     ):
         self._projects = project_manager
         self._tasks = task_service
         self._runtime = workflow_runtime
         self._task_agent = task_agent
+        self._coordinator = coordinator
+        self._notification_sender = notification_sender
         self._stop = asyncio.Event()
         self._loop_task: asyncio.Task | None = None
         self._workers: set[asyncio.Task] = set()
@@ -100,6 +104,11 @@ class ScheduleModule:
         return {
             "id": row.id,
             "name": row.name,
+            "target_type": row.target_type,
+            "target_task_id": row.target_task_id,
+            "instruction": row.instruction,
+            "stop_condition": row.stop_condition,
+            "notification": json.loads(row.notification_json),
             "workflow_id": row.workflow_id,
             "task_template": task_template,
             "rule": rule,
@@ -191,18 +200,47 @@ class ScheduleModule:
                 f"start_step_key does not exist: {start_key}"
             )
 
+    @staticmethod
+    def _validate_target(target_type, task_id, instruction, stop_condition, overlap):
+        if target_type not in {"project", "task"} or stop_condition not in {"manual", "task_terminal"}:
+            raise ScheduleValidationError("Invalid schedule target or stop condition")
+        if target_type == "project":
+            if task_id or instruction or stop_condition != "manual":
+                raise ScheduleValidationError("Project schedules cannot carry a task target")
+            return
+        if not task_id or not str(instruction or "").strip():
+            raise ScheduleValidationError("Task target and instruction are required")
+        task = Task.get_or_none(Task.id == task_id)
+        if task is None or task.archived:
+            raise ScheduleValidationError("Target task does not exist or is archived")
+        if overlap != "skip":
+            raise ScheduleValidationError("Task schedules require skip overlap policy")
+        from services.task_schedule_runtime import task_is_terminal
+        if stop_condition == "task_terminal" and task_is_terminal(task):
+            raise ScheduleValidationError("Target task is already terminal")
+
     def create(
         self,
         project_id: str,
         *,
         name: str,
-        workflow_id: str,
-        task_template: dict,
+        workflow_id: str = "",
+        task_template: dict | None = None,
+        target_type: str = "project",
+        target_task_id: str | None = None,
+        instruction: str | None = None,
+        stop_condition: str = "manual",
+        notification: dict | None = None,
         rule: dict,
         execution_mode: str = "workflow",
         overlap_policy: str = "skip",
     ) -> dict:
-        task_template = self._normalize_template(task_template)
+        if target_type == "task" and (workflow_id or task_template or execution_mode != "workflow"):
+            raise ScheduleValidationError("Task schedules cannot contain project task creation settings")
+        task_template = {} if target_type == "task" else self._normalize_template(task_template or {})
+        rule = dict(rule)
+        if rule.get("kind") == "minutes":
+            rule["anchor_at"] = utc_now().isoformat()
         creator = current_actor_task_fields()
         if creator and "_creator" not in task_template:
             task_template["_creator"] = {
@@ -223,17 +261,26 @@ class ScheduleModule:
         if next_run_at is None:
             raise ScheduleValidationError("The schedule has no future occurrence")
         with self._projects.activate_project_by_id(project_id) as project:
-            if self._template_mode(task_template) == AGENT_MODE:
+            self._validate_target(target_type, target_task_id, instruction, stop_condition, overlap_policy)
+            if target_type == "task":
+                pass
+            elif self._template_mode(task_template) == AGENT_MODE:
                 workflow_id = str(workflow_id or "").strip()
                 self._validate_template(project, task_template)
             else:
                 workflow = self._workflow(project, workflow_id)
                 self._validate_template(project, task_template, workflow)
+            from services.schedule_notifications import normalize_notification
+            notification = normalize_notification(project_id, notification, target_task_id if target_type == "task" else None)
             now = utc_now()
             with db_proxy.atomic("IMMEDIATE"):
                 row = Schedule.create(
                     id=str(uuid.uuid4()),
                     name=str(name).strip(),
+                    target_type=target_type, target_task_id=target_task_id,
+                    instruction=instruction.strip() if instruction else None,
+                    stop_condition=stop_condition,
+                    notification_json=json.dumps(notification, ensure_ascii=False),
                     workflow_id=workflow_id,
                     task_template_json=json.dumps(task_template, ensure_ascii=False),
                     rule_json=json.dumps(rule, ensure_ascii=False),
@@ -249,11 +296,13 @@ class ScheduleModule:
                 self._record_schedule_audit(project_id, row, "schedule.create")
                 return self._to_dict(row)
 
-    def list(self, project_id: str) -> list[dict]:
+    def list(self, project_id: str, target_type=None, task_id=None) -> list[dict]:
         with self._projects.activate_project_by_id(project_id):
             return [
                 self._to_dict(row)
-                for row in Schedule.select().order_by(Schedule.created_at.desc())
+                for row in Schedule.select().where(Schedule.status != "deleted").order_by(Schedule.created_at.desc())
+                if (not target_type or row.target_type == target_type)
+                and (not task_id or row.target_task_id == task_id)
             ]
 
     def get(self, project_id: str, schedule_id: str) -> dict:
@@ -268,12 +317,22 @@ class ScheduleModule:
             row = Schedule.get_or_none(Schedule.id == schedule_id)
             if row is None:
                 raise ValueError(f"Schedule not found: {schedule_id}")
+            if row.status == "deleted":
+                raise ValueError("Schedule was deleted")
+            if changes.get("target_type", row.target_type) != row.target_type or changes.get("target_task_id", row.target_task_id) != row.target_task_id:
+                raise ScheduleValidationError("Schedule target is immutable")
+            instruction = changes.get("instruction", row.instruction)
+            stop_condition = changes.get("stop_condition", row.stop_condition)
+            self._validate_target(row.target_type, row.target_task_id, instruction, stop_condition, changes.get("overlap_policy", row.overlap_policy))
+            if not str(changes.get("name", row.name)).strip():
+                raise ScheduleValidationError("name is required")
             workflow_id = changes.get("workflow_id", row.workflow_id)
             task_template = changes.get(
                 "task_template", json.loads(row.task_template_json)
             )
             existing_template = json.loads(row.task_template_json)
-            task_template = self._normalize_template(task_template)
+            task_template = (dict(task_template) if row.target_type == "task"
+                             else self._normalize_template(task_template))
             if "_creator" not in task_template and isinstance(existing_template.get("_creator"), dict):
                 task_template["_creator"] = existing_template["_creator"]
             if not task_template.get("_creator"):
@@ -286,13 +345,18 @@ class ScheduleModule:
                         "device_id": creator["creator_device_id"],
                         "device_name": creator["creator_device_name"],
                     }
-            if self._template_mode(task_template) == AGENT_MODE:
+            if row.target_type == "task":
+                if changes.get("workflow_id") or changes.get("task_template") or changes.get("execution_mode", "workflow") != "workflow":
+                    raise ScheduleValidationError("Task schedules cannot create workflow tasks")
+            elif self._template_mode(task_template) == AGENT_MODE:
                 workflow_id = str(workflow_id or "").strip()
                 self._validate_template(project, task_template)
             else:
                 workflow = self._workflow(project, workflow_id)
                 self._validate_template(project, task_template, workflow)
             rule = changes.get("rule", json.loads(row.rule_json))
+            if rule.get("kind") == "minutes":
+                rule["anchor_at"] = utc_now().isoformat()
             preview = preview_rule(rule)
             next_run = _as_utc(preview["next_runs"][0] if preview["next_runs"] else None)
             if next_run is None:
@@ -303,6 +367,11 @@ class ScheduleModule:
                 raise ScheduleValidationError("Invalid execution_mode")
             if overlap_policy not in {"skip", "parallel", "queue"}:
                 raise ScheduleValidationError("Invalid overlap_policy")
+            if "notification" in changes:
+                from services.schedule_notifications import normalize_notification
+                row.notification_json = json.dumps(normalize_notification(project_id, changes["notification"], row.target_task_id), ensure_ascii=False)
+            row.instruction = instruction.strip() if instruction else None
+            row.stop_condition = stop_condition
             row.name = str(changes.get("name", row.name)).strip()
             row.workflow_id = workflow_id
             row.task_template_json = json.dumps(task_template, ensure_ascii=False)
@@ -327,15 +396,22 @@ class ScheduleModule:
                 row = Schedule.get_or_none(Schedule.id == schedule_id)
                 if row is None:
                     raise ValueError(f"Schedule not found: {schedule_id}")
-                ScheduleRun.delete().where(ScheduleRun.schedule == row).execute()
-                row.delete_instance()
+                if row.target_type == "task":
+                    row.status = "deleted"
+                    row.next_run_at = None
+                    row.save()
+                else:
+                    ScheduleRun.delete().where(ScheduleRun.schedule == row).execute()
+                    row.delete_instance()
                 self._record_schedule_audit(project_id, row, "schedule.delete")
 
     @staticmethod
     def _run_to_dict(row: ScheduleRun) -> dict:
         # Older scheduler runs followed the workflow after task creation.
         # Their terminal workflow status does not describe the schedule trigger.
-        task_created = bool(row.task_id) and row.status in {
+        from models import CoordinatorTurn
+        turn = CoordinatorTurn.get_or_none(CoordinatorTurn.id == row.coordinator_turn_id) if row.coordinator_turn_id else None
+        task_created = not row.coordinator_turn_id and bool(row.task_id) and row.status in {
             "running", "succeeded", "failed"
         }
         return {
@@ -346,6 +422,12 @@ class ScheduleModule:
             "reason": None if task_created else row.reason,
             "task_id": row.task_id,
             "workflow_run_id": row.workflow_run_id,
+            "notification_status": row.notification_status if row.notification_json else "disabled",
+            "notification_error": row.notification_error,
+            "coordinator_turn_id": row.coordinator_turn_id,
+            "user_message_id": turn.user_message_id if turn else None,
+            "assistant_message_id": turn.assistant_message_id if turn else None,
+            "instruction": row.instruction,
             "started_at": row.started_at,
             "ended_at": row.ended_at,
             "created_at": row.created_at,
@@ -383,6 +465,8 @@ class ScheduleModule:
                 due_ids: list[str] = []
                 queued_schedule_ids: set[str] = set()
                 self._reconcile_running_rows()
+                from services.task_schedule_runtime import reconcile_task_schedules
+                reconcile_task_schedules(startup=startup, current=current)
                 active_rows = list(Schedule.select().where(Schedule.status == "active"))
                 for row in active_rows:
                     if row.next_run_at is None or row.next_run_at > current:
@@ -409,6 +493,7 @@ class ScheduleModule:
                             scheduled_for=scheduled_for,
                             status="queued",
                             created_at=current,
+                            instruction=row.instruction,
                         )
                     except Exception as exc:
                         # A unique occurrence already exists; another tick claimed it.
@@ -448,6 +533,11 @@ class ScheduleModule:
                 )
             for schedule_id in queued_schedule_ids:
                 await self._drain_queue(project.id, schedule_id)
+            if startup:
+                from services.task_schedule_runtime import restore_task_watchers
+                await restore_task_watchers(self, project.id)
+            from services.schedule_notifications import flush_notifications
+            await flush_notifications(self, project.id, startup=startup)
             await self._tick_scheduled_tasks(project.id, current, startup=startup)
 
     async def _tick_scheduled_tasks(
@@ -541,7 +631,7 @@ class ScheduleModule:
 
     def _reconcile_running_rows(self) -> None:
         for run in ScheduleRun.select().where(ScheduleRun.status == "running"):
-            if not run.task_id:
+            if run.coordinator_turn_id or not run.task_id:
                 continue
             run.status = "created"
             run.reason = None
@@ -586,22 +676,36 @@ class ScheduleModule:
         schedule_id = ""
         try:
             def start_run():
-                run = ScheduleRun.get_by_id(run_id)
-                schedule = Schedule.get_by_id(run.schedule_id)
-                template = json.loads(schedule.task_template_json)
-                run.status = "running"
-                run.started_at = utc_now()
-                run.save()
-                return (
-                    schedule.id,
-                    template,
-                    schedule.workflow_id,
-                    schedule.execution_mode,
-                )
+                with db_proxy.atomic("IMMEDIATE"):
+                    run = ScheduleRun.get_by_id(run_id)
+                    if run.status != "queued":
+                        return None
+                    schedule = Schedule.get_by_id(run.schedule_id)
+                    if schedule.status in {"deleted", "invalid", "paused"}:
+                        run.status, run.reason, run.ended_at = "stopped", "规则已关闭", utc_now()
+                        run.save()
+                        return None
+                    template = json.loads(schedule.task_template_json)
+                    run.notification_json = schedule.notification_json
+                    run.status = "running"
+                    run.started_at = utc_now()
+                    run.save()
+                    return (
+                        schedule.id,
+                        template,
+                        schedule.workflow_id,
+                        schedule.execution_mode,
+                        schedule.target_type,
+                    )
 
-            schedule_id, template, workflow_id, execution_mode = await self._run_db(
-                project_id, start_run
-            )
+            prepared = await self._run_db(project_id, start_run)
+            if prepared is None:
+                return
+            schedule_id, template, workflow_id, execution_mode, target_type = prepared
+            if target_type == "task":
+                from services.task_schedule_runtime import execute_task_schedule
+                await execute_task_schedule(self, project_id, run_id)
+                return
             from services.task_creation import create_project_task
             if self._template_mode(template) == AGENT_MODE:
                 result = await self._run_agent_attempts(
@@ -734,6 +838,11 @@ class ScheduleModule:
             run.save()
 
         await self._run_db(project_id, attach_task)
+        await self._notify_run(project_id, run_id)
+
+    async def _notify_run(self, project_id, run_id, *, retry=False):
+        from services.schedule_notifications import deliver_notification
+        await deliver_notification(self, project_id, run_id, retry=retry)
 
     def _get_row(self, project_id: str, schedule_id: str) -> Schedule:
         with self._projects.activate_project_by_id(project_id):
@@ -748,6 +857,8 @@ class ScheduleModule:
                 row = Schedule.get_or_none(Schedule.id == schedule_id)
                 if row is None:
                     raise ValueError(f"Schedule not found: {schedule_id}")
+                if row.status == "deleted":
+                    raise ValueError("Schedule was deleted")
                 row.status = "paused"
                 row.next_run_at = None
                 row.updated_at = utc_now()
@@ -761,9 +872,14 @@ class ScheduleModule:
             if row is None:
                 raise ValueError(f"Schedule not found: {schedule_id}")
             template = json.loads(row.task_template_json)
-            if self._template_mode(template) != AGENT_MODE:
+            if row.status == "deleted":
+                raise ValueError("Schedule was deleted")
+            self._validate_target(row.target_type, row.target_task_id, row.instruction, row.stop_condition, row.overlap_policy)
+            if row.target_type == "project" and self._template_mode(template) != AGENT_MODE:
                 self._workflow(project, row.workflow_id)
             rule = json.loads(row.rule_json)
+            if rule.get("kind") == "minutes":
+                rule["anchor_at"] = utc_now().isoformat()
             preview = preview_rule(rule)
             next_run = _as_utc(preview["next_runs"][0] if preview["next_runs"] else None)
             if next_run is None:
@@ -774,6 +890,7 @@ class ScheduleModule:
                 row.status = "active"
                 row.invalid_reason = None
                 row.next_run_at = next_run
+            row.rule_json = json.dumps(rule, ensure_ascii=False)
             with db_proxy.atomic("IMMEDIATE"):
                 row.updated_at = utc_now()
                 row.save()

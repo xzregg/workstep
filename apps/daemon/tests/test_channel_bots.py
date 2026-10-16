@@ -50,8 +50,11 @@ class FakeAdapter:
 
 
 @pytest.mark.parametrize('target', ['project', 'task'])
-async def test_wecom_streams_before_turn_completion_without_blocking_health(bots, target):
+@pytest.mark.parametrize('conversation_type', ['single', 'group'])
+async def test_wecom_streams_before_turn_completion_without_blocking_health(bots, target, conversation_type):
     from unittest.mock import AsyncMock
+    from engines.codex_sdk import CodexSDKEngine
+    from engines.core.agui import to_agui_events
     from services.channels.wecom import WeComAdapter
 
     manager, project, _, _, _, _ = bots
@@ -80,7 +83,19 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
     async def produce():
         scope = {'project_id': project.id, 'messageId': 'answer'}
         scope.update({'task_id': 'task-1', 'channel': 'coordinator'} if target == 'task' else {'session_id': 'session', 'channel': 'session_chat'})
-        await manager._event_bus.publish({**scope, 'type': 'TEXT_MESSAGE_CHUNK', 'delta': '部分正文'})
+        engine = CodexSDKEngine()
+        state = {'emitted_text': False, 'tool_emitted': set()}
+        for notification in (
+            SimpleNamespace(method='item/started', payload=SimpleNamespace(item=SimpleNamespace(
+                root=SimpleNamespace(type='agentMessage', id='sdk-answer'),
+            ))),
+            SimpleNamespace(method='item/agentMessage/delta', payload=SimpleNamespace(
+                item_id='sdk-answer', delta='部分正文',
+            )),
+        ):
+            for event in engine._map_notification(notification, state):
+                for translated in to_agui_events(event.to_dict()):
+                    await manager._event_bus.publish({**translated, **scope})
         await finish_turn.wait()
         await manager._event_bus.publish({**scope, 'type': 'TEXT_MESSAGE_END', 'status': 'succeeded', 'content': '完整正文'})
 
@@ -100,7 +115,7 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
         manager._responder = ChatSessionResponder(manager._event_bus, manager._project_manager, Module())
 
     pending = asyncio.create_task(manager.handle_message(IncomingMessage(
-        bot['id'], 'incoming', 'single', 'user', 'user', '问题',
+        bot['id'], 'incoming', conversation_type, 'user', 'user', '问题',
         reply_context={'headers': {'req_id': 'req'}},
     )))
     try:
@@ -111,7 +126,11 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
     finally:
         finish_turn.set()
         await asyncio.wait_for(pending, 2)
-    assert [(text, finish) for _, text, finish in calls] == [('', False), ('部分正文', False), ('完整正文', True)]
+    assert [(text, finish) for _, text, finish in calls] == [
+        ('' if conversation_type == 'single' else '正在处理…', False),
+        ('部分正文', False),
+        ('完整正文' + ('\n\n<@user>' if conversation_type == 'group' else ''), True),
+    ]
     assert len({stream_id for stream_id, _, _ in calls}) == 1
 
 
@@ -642,6 +661,7 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
     events_queue = manager._event_bus.subscribe()
 
     async def invoke(engine, model, cwd, prompt, session_id, on_event, **kwargs):
+        assert not kwargs.get("system_prompt_each_turn", False)
         calls.append((prompt, session_id, kwargs["system_prompt"]))
         await on_event(InternalEvent(type="prompt_input", data={
             "engine": engine, "attempt": 1, "session_id": session_id,
@@ -688,13 +708,14 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
         assert len(calls) == 2
         assert [call[1] for call in calls] == [None, "engine-session"]
         for prompt, _, instruction in calls:
-            assert "group:123" not in prompt and "研发群" not in prompt
-            assert prompt == "你好"
-            assert "group:123" in instruction and "研发群" in instruction
-            assert "研发机器人" in instruction and "dingtalk" in instruction
-            assert "Project role" in instruction and "小王" in instruction
-            assert "never-inject-secret" not in instruction
-        assert '"sender_name": "小李"' in calls[1][2]
+            assert "group:123" in prompt and "研发群" in prompt
+            assert prompt.endswith("你好")
+            assert "研发机器人" in prompt and "dingtalk" in prompt
+            assert "Project role" in instruction
+            assert "Channel session background" not in instruction
+            assert "小王" in prompt
+            assert "never-inject-secret" not in prompt + instruction
+        assert '"sender_name": "小李"' in calls[1][0]
         session_id = (await manager._load())["sessions"][f"{bot['id']}:group:group:123"]
         messages = await manager._project_manager.run_db(project.id, lambda _project: [
             message.prompt for message in ChatMessage.select().where(ChatMessage.session == session_id)
@@ -723,8 +744,8 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
             conversation_id="another-group", sender_id="u3", text="新群",
         ))
         assert calls[-1][1] is None
-        assert "another-group" in calls[-1][2] and "group:123" not in calls[-1][2]
-        assert '"conversation_name": ""' in calls[-1][2]
+        assert "another-group" in calls[-1][0] and "group:123" not in calls[-1][0]
+        assert '"conversation_name": ""' in calls[-1][0]
     finally:
         manager._event_bus.unsubscribe(events_queue)
         await module.shutdown()
@@ -901,7 +922,7 @@ def test_channel_browser_turn_does_not_reuse_platform_sender(monkeypatch):
     session = SimpleNamespace(session_id="chat", project_id="project", messages=[{
         "role": "user", "content": "继续", "author_id": "web-user", "author_name": "网页小李",
     }])
-    instruction = module._engine_system_prompt(session)
+    instruction = channel_module.build_channel_background(session)
     assert '"sender_id": "web-user"' in instruction
     assert '"sender_name": "网页小李"' in instruction
     assert "渠道小王" not in instruction
@@ -988,7 +1009,7 @@ async def test_channel_binding_prompt_uses_current_session_identity(bots, monkey
     module = ChannelChatModule(manager._event_bus, manager._project_manager, register=False)
     monkeypatch.setattr(module, 'get_system_prompt', lambda _project: '')
     session = SimpleNamespace(project_id=project.id, session_id=session_id, messages=[])
-    prompt = module._engine_system_prompt(session)
+    prompt = channel_module.build_channel_background(session)
     assert f'"project_id": "{project.id}"' in prompt
     assert f'"session_id": "{session_id}"' in prompt
     assert '"conversation_id": "room"' in prompt

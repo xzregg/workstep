@@ -1,3 +1,4 @@
+import type { FileChangesQuery } from '../utils/messageFileChanges'
 import { useCallback, useState } from 'react'
 import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
@@ -84,7 +85,7 @@ export interface ChatMessageBubbleProps {
   /** Engine interaction requests persisted in this message's event stream. */
   events?: InteractionEvent[]
   eventDetail?: MessageFileChangeDetails
-  onLoadEventDetails?: () => void
+  onLoadEventDetails?: (query?: FileChangesQuery) => void | Promise<unknown>
   /** Store 累积的 A2UI 载荷，按 messageId 渲染（fence 仅作回退）。 */
   a2uiMessages?: Record<string, unknown>[]
   /** Submit an ACP permission or elicitation response. */

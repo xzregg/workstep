@@ -31,6 +31,7 @@ export function applySharedMessageEvent(messages: SharedMessage[], event: Shared
   const index = messages.findIndex(message => message.id === messageId)
   const restarted = kind === 'TEXT_MESSAGE_START' && event.retry === true
   const existing: SharedMessage = !restarted && messages[index] || {
+    schedule_run_id: event.schedule_run_id,
     id: messageId, role: event.role ?? 'assistant', content: '', events: [],
     channel: event.channel ?? 'execution', step_key: event.step_key,
     engine: event.engine, model: event.model, run_status: 'running',
@@ -39,7 +40,7 @@ export function applySharedMessageEvent(messages: SharedMessage[], event: Shared
     author_id: event.actor?.id, author_name: event.actor?.name,
     author_device_id: event.actor?.device_id, author_device_name: event.actor?.device_name,
   }
-  const updated = { ...existing }
+  const updated: SharedMessage = { ...existing, ...(event.schedule_run_id ? { schedule_run_id: event.schedule_run_id } : {}) }
   if (isText) {
     updated.content = kind === 'text_delta'
       ? (existing.content ?? '') + (event.delta ?? event.text ?? '')

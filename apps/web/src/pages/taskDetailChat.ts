@@ -449,6 +449,7 @@ export function runningTaskMessageIds(
   ))
   const latest = (channel: string, stepKey?: string | null) => [...running].reverse().find(
     (message) => message.channel === channel
+      && (channel !== 'coordinator' || !message.schedule_run_id)
       && (stepKey == null || (message.context_step_key || message.step_key) === stepKey),
   )?.id as string | undefined
   return {

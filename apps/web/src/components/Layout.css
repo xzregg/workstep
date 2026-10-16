@@ -279,7 +279,7 @@
     background: transparent; color: var(--meta); text-align: left; font-size: calc(12.8px * var(--font-scale));
   }
   .layout-recent-row > svg { flex-shrink: 0; }
-  .layout-recent-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .layout-recent-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .layout-recent-row:hover { background: var(--surface); }
   .layout-recent-row[aria-current="page"] { color: var(--accent); background: var(--accent-light); }
 
