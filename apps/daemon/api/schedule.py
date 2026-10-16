@@ -38,8 +38,29 @@ async def preview_schedule(rule: dict = Body(...)):
 
 
 @router.get("/list")
-async def list_schedules(project_id: str = Query(...)):
-    return {"schedules": await _call(project_id, _module().list)}
+async def list_schedules(project_id: str = Query(...), target_type: str | None = None, task_id: str | None = None):
+    return {"schedules": await _call(project_id, _module().list, target_type=target_type, task_id=task_id)}
+
+
+@router.get("/notification-options")
+async def schedule_notification_options(project_id: str = Query(...), task_id: str | None = None):
+    from services.schedule_notifications import notification_options
+    return await _call(project_id, notification_options, task_id)
+
+
+@router.post("/{schedule_id}/runs/{run_id}/notification/retry")
+async def retry_notification(schedule_id: str, run_id: str, project_id: str = Query(...)):
+    from models import ScheduleRun
+    def verify(pid):
+        run = ScheduleRun.get_or_none((ScheduleRun.id == run_id) & (ScheduleRun.schedule == schedule_id))
+        if run is None:
+            raise ValueError("执行记录不存在")
+        sent = run.notification_status == "sent"
+        return {"ok": sent, "sent": sent, "notification_status": run.notification_status,
+                "error": None if sent else run.notification_error or "通知尚未发送成功"}
+    await _call(project_id, verify)
+    await _module()._notify_run(project_id, run_id, retry=True)
+    return await _call(project_id, verify)
 
 
 @router.post("/create")

@@ -224,6 +224,7 @@ async def _application_lifespan(app: FastAPI):
         task_service,
         workflow_runtime,
         task_agent=task_draft_module,
+        coordinator=coordinator_module,
     )
     chat_session_module = ChatSessionModule(event_bus, project_manager)
     channel_chat_module = ChannelChatModule(event_bus, project_manager)
@@ -232,6 +233,7 @@ async def _application_lifespan(app: FastAPI):
         ChatSessionResponder(event_bus, project_manager, channel_chat_module),
         workflow_runtime=workflow_runtime,
     )
+    schedule_module._notification_sender = channel_bot_manager
     await channel_bot_manager.start()
     recovered_chats = await asyncio.to_thread(
         chat_session_module.recover_interrupted_messages

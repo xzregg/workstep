@@ -1,3 +1,4 @@
+import type { FileChangesQuery } from '../utils/messageFileChanges'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState,
   type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react'
 import { taskApi } from '../api/client'
@@ -23,7 +24,7 @@ export interface TaskHistoryState {
   setHistoryMessages: Dispatch<SetStateAction<any[]>>
   historyLoading: boolean
   loadOlderHistory: () => Promise<void>
-  loadMessageEvents: (messageId: string) => Promise<void>
+  loadMessageEvents: (messageId: string, query?: FileChangesQuery) => Promise<unknown>
 }
 
 /** Owns persisted task messages, older pages, detail events, and refresh signals. */
@@ -131,8 +132,10 @@ export function useTaskHistory({ taskId, projectId, userMessageEvents,
     prependScrollHeightRef.current = null
   }, [historyMessages, chatScrollRef, lastProgrammaticScrollTopRef])
 
-  const loadMessageEvents = useCallback(async (messageId: string) => {
-    if (!taskId || !projectId || eventDetailInFlightRef.current.has(messageId)) return
+  const loadMessageEvents = useCallback(async (messageId: string, query?: FileChangesQuery) => {
+    if (!taskId || !projectId) return
+    if (query) return taskApi.messageEvents(taskId, messageId, projectId, 0, undefined, query)
+    if (eventDetailInFlightRef.current.has(messageId)) return
     const message = historyMessages.find((item) => item.id === messageId)
     if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return
     eventDetailInFlightRef.current.add(messageId)

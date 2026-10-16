@@ -1,3 +1,4 @@
+import type { MessageEventsLoader } from '../utils/messageFileChanges'
 import { useChatComposerResize } from '../hooks/useChatComposerResize'
 import ChatComposerResizeHandle from './ChatComposerResizeHandle'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
@@ -134,6 +135,7 @@ export interface TaskDetailViewProps {
   /** The URL access context only decides whether the shared composer is present. */
   actionEnabled?: boolean
   chatEnabled?: boolean
+  scheduledStopEnabled?: boolean
 
   // ── Task data ──
   task: {
@@ -177,7 +179,7 @@ export interface TaskDetailViewProps {
   // ── Messages ──
   historyMessages: any[]
   onLoadOlderHistory?: () => void
-  onLoadMessageEvents?: (messageId: string) => void
+  onLoadMessageEvents?: MessageEventsLoader
   liveMessages: Record<string, LiveMessage>
   /** 实时消息缺失 prompt 时从历史接口回填的覆盖表（失败消息也要能「查看提示词」）。 */
   livePromptOverrides?: Record<string, string>
@@ -333,6 +335,7 @@ export interface TaskDetailViewProps {
 export default function TaskDetailView({
   actionEnabled,
   chatEnabled,
+  scheduledStopEnabled,
   task,
   steps,
   workflowConnections = [],
@@ -704,6 +707,7 @@ export default function TaskDetailView({
                   key={message.id}
                   message={message}
                   canChat={canChat}
+                      scheduledStopEnabled={scheduledStopEnabled}
                   latestStepMessageIds={latestStepMessageIds}
                   latestExecutionMessageIds={latestExecutionMessageIds}
                   stepLastRef={stepLastRef}

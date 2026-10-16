@@ -26,10 +26,12 @@ def base_addresses():
     from services.config import config_store
     settings = remote_access_service.settings()
     gateway = config_store.get('gateway_platform', {})
+    managed = getattr(gateway_client, 'managed_config', None)
+    gateway_url = managed.gateway_origin if managed else gateway.get('url', '')
     from urllib.parse import quote
     return [{'kind':kind,'base_url':base.rstrip('/'),
              'task_base_url': ((base.rstrip('/')+'/workspace/'+quote(gateway_client.device_id,safe='')) if gateway_client.device_id else None) if kind=='gateway' else base.rstrip('/')}
-            for kind,base in (('gateway',gateway.get('url','')),('external',settings.get('external_base_url','')),('internal',settings.get('internal_base_url',''))) if base]
+            for kind,base in (('gateway',gateway_url),('external',settings.get('external_base_url','')),('internal',settings.get('internal_base_url',''))) if base]
 
 
 def event_kind(event):

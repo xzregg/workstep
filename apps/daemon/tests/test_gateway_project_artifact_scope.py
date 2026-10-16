@@ -72,14 +72,14 @@ async def test_project_proxy_artifacts_use_project_relative_paths(api_context, m
     await main.project_manager.run_db(visible, seed_snapshot)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
 
-    async def request(task_id, *, query_project=visible, level="read"):
+    async def request(task_id, *, query_project=visible, level="read", suffix="/artifacts"):
         frames = []
 
         async def capture(frame):
             frames.append(frame)
 
         bridge = ManagedHttpBridge(main.app, "project-artifacts", {
-            "method": "GET", "path": f"/api/task/{task_id}/artifacts",
+            "method": "GET", "path": f"/api/task/{task_id}{suffix}",
             "query": f"project_id={query_project}", "headers": [],
             "user_id": "worker", "username": "worker", "project_id": visible,
             "access_level": level,
@@ -122,7 +122,11 @@ async def test_project_proxy_artifacts_use_project_relative_paths(api_context, m
         async with AsyncClient(transport=ASGITransport(app=main.app),
                                base_url="http://test") as health_client:
             health = await asyncio.wait_for(health_client.get("/api/health"), timeout=0.2)
+        detail_code, _ = await asyncio.wait_for(
+            request("visible-artifact-task", suffix=""), timeout=0.5,
+        )
         assert health.status_code == 200
+        assert detail_code == 200
     finally:
         release.set()
         code, _ = await pending

@@ -12,6 +12,39 @@ import { useProjectStore } from '../src/stores/projectStore'
 import MessageFileChanges from '../src/components/MessageFileChanges'
 import { MarkdownAssetUrlProvider } from '../src/contexts/MarkdownAssetUrlContext'
 
+test('file index and individual patches load without requesting or hydrating process events', async () => {
+  const { window } = installDomEnvironment()
+  Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const requests: unknown[] = []
+  const loader = async (query?: unknown) => {
+    requests.push(query)
+    assert.ok(query, 'must never request all process events')
+    const path = (query as { path?: string }).path
+    return { files: [{ path: 'src/a.ts', added: 2, removed: 1, has_patch: true }],
+      ...(path ? { patch } : {}) }
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><MessageFileChanges projectId="p" events={[]}
+      eventDetail={{ available: true, loaded: false, edited_files: ['src/a.ts'] }}
+      onLoadEventDetails={loader} /></I18nProvider>))
+    assert.equal(requests.length, 0)
+    await act(async () => (document.querySelector('.message-file-changes-toggle') as HTMLElement).click())
+    assert.deepEqual(requests, [{ fileChanges: true }])
+    assert.match(document.querySelector('.message-file-change-stats')!.textContent!, /\+2-1/)
+    assert.equal(document.querySelector('.git-diff-dialog'), null)
+    await act(async () => (document.querySelector('button.message-file-change-path') as HTMLElement).click())
+    assert.deepEqual(requests, [{ fileChanges: true }, { fileChanges: true, path: 'src/a.ts' }])
+    assert.match(document.querySelector('.git-diff-dialog')!.textContent!, /old.*new.*extra/s)
+    assert.equal(document.querySelector('.file-preview-dialog'), null)
+    await act(async () => (document.querySelector('.message-file-changes-view') as HTMLElement).click())
+    assert.equal(requests.length, 2, 'patch reads reuse the cached response')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('share edited files without a project ID open new file contents through the share capability', async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
@@ -288,25 +321,71 @@ test('messages without confirmed edits have no file card and never load details 
   }
 })
 
-test('historical edit summaries show the actual file count before any detail request', async () => {
+test('historical file summaries load patches independently and reuse loaded details', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   let loads = 0
   try {
     await act(async () => root.render(<I18nProvider><ChatMessageBubble role="assistant"
-      sender="助手" initials="AI" color="var(--accent)" content="已修改" events={[]}
+      sender="助手" initials="AI" color="var(--accent)" content="已修改" events={[]} projectId="p"
       eventDetail={{ available: true, loaded: false, edited_files: ['src/a.ts', 'src/b.ts'] }}
       onLoadEventDetails={() => { loads++ }} /></I18nProvider>))
     assert.match(container.querySelector('.message-file-changes')!.textContent!, /已编辑 2 个文件/)
     assert.equal(loads, 0)
     assert.equal(container.querySelectorAll('.message-file-change-row').length, 0)
     await act(async () => (container.querySelector('.message-file-changes-toggle') as HTMLElement).click())
-    assert.equal(loads, 0)
+    assert.equal(loads, 1)
     assert.equal(container.querySelectorAll('.message-file-change-row').length, 2)
+    assert.equal((container.querySelector('button.message-file-change-path') as HTMLButtonElement).disabled, true)
+    await act(async () => (container.querySelector('button.message-file-change-path') as HTMLElement).click())
+    assert.equal(document.querySelector('.file-preview-dialog'), null)
+    await act(async () => root.render(<I18nProvider><ChatMessageBubble role="assistant"
+      sender="助手" initials="AI" color="var(--accent)" content="已修改" projectId="p"
+      events={edit('a', { path: 'src/a.ts', diff: patch })}
+      eventDetail={{ available: true, loaded: true }}
+      onLoadEventDetails={() => { loads++ }} /></I18nProvider>))
+    assert.match(container.querySelector('.message-file-changes')!.textContent!, /\+2.*-1/)
     await act(async () => (container.querySelector('.message-file-changes-toggle') as HTMLElement).click())
     await act(async () => (container.querySelector('.message-file-changes-toggle') as HTMLElement).click())
-    assert.equal(loads, 0)
+    assert.equal(loads, 1)
+    await act(async () => (container.querySelector('button.message-file-change-path') as HTMLElement).click())
+    assert.ok(document.querySelector('.git-diff-dialog'))
+    assert.match(document.querySelector('.git-diff-dialog')!.textContent!, /old.*new.*extra/s)
+    assert.equal(document.querySelector('.file-preview-dialog'), null)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('file index loading is independent, deduplicated, and retryable', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  let loads = 0
+  let rejectLoad!: (reason: Error) => void
+  const loader = async () => {
+    loads++
+    if (loads === 1) return new Promise((_, reject) => { rejectLoad = reject })
+    return { files: [{ path: 'src/a.ts', added: 1, removed: 0, has_patch: false }] }
+  }
+  const toggle = () => (document.querySelector('.message-file-changes-toggle') as HTMLElement).click()
+  try {
+    await act(async () => root.render(<I18nProvider>
+      <MessageFileChanges projectId="p" events={[]}
+        eventDetail={{ available: true, loaded: false, loading: true, edited_files: ['src/a.ts'] }}
+        onLoadEventDetails={loader} />
+    </I18nProvider>))
+    await act(async () => toggle())
+    assert.equal(loads, 1, 'process loading must not prevent the independent index request')
+    assert.match(document.querySelector('.message-file-changes')!.textContent!, /Loading process details|加载/)
+    await act(async () => toggle())
+    await act(async () => toggle())
+    assert.equal(loads, 1)
+    await act(async () => rejectLoad(new Error('读取失败')))
+    await act(async () => (document.querySelector('.message-file-changes-error') as HTMLElement).click())
+    assert.equal(loads, 2)
+    assert.equal((document.querySelector('button.message-file-change-path') as HTMLButtonElement).disabled, false)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

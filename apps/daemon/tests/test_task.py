@@ -145,7 +145,7 @@ def test_create_and_update_scheduled_start(db_and_service):
     assert steps[0].status == "pending"
 
 
-def test_running_task_cannot_be_deleted(db_and_service):
+def test_running_task_cannot_be_deleted(db_and_service, tmp_path):
     service, _ = db_and_service
     created = service.create_task(title="Running", cwd="/tmp")
     from models import Task
@@ -155,7 +155,7 @@ def test_running_task_cannot_be_deleted(db_and_service):
     task.save()
 
     with pytest.raises(RuntimeError, match="Running tasks cannot be deleted"):
-        service.delete_task(task.id, "project-1")
+        service.delete_task(task.id, "project-1", workstep_dir=tmp_path)
 
     assert Task.get_or_none(Task.id == task.id) is not None
 

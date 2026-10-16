@@ -42,6 +42,8 @@ async def task_message_events(
     project_id: str = Query(...),
     cursor: int = Query(0, ge=0),
     limit: int = Query(30000, ge=1, le=30000),
+    file_changes: bool = Query(False),
+    file_path: str | None = Query(None),
 ):
     """Return a bounded detail page from a task message's JSONL journal."""
     project = project_manager.get_project_by_id(project_id)
@@ -56,6 +58,9 @@ async def task_message_events(
                 project.workstep_dir,
                 cursor=cursor,
                 limit=limit,
+                file_changes=file_changes,
+                file_path=file_path,
+                project_root=project.path,
             ),
         )
     except ValueError as exc:

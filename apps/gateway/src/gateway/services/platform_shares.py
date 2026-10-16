@@ -634,6 +634,12 @@ async def public_share_events(call: GatewayCall, token: str, message_id: str, cu
     return await _proxy_share_request(call, token, f'/api/platform-share/events/{message_id}/{cursor}')
 
 
+async def public_share_file_changes(call: GatewayCall, token: str, message_id: str, encoded: str):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", message_id) or not re.fullmatch(r"[0-9a-f]{2,16384}", encoded):
+        raise GatewayError('not_found', 'File changes unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/file-changes/{message_id}/{encoded}')
+
+
 async def public_share_artifacts(call: GatewayCall, token: str):
     return await _proxy_share_request(call, token, '/api/platform-share/artifacts')
 

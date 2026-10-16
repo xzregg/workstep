@@ -62,7 +62,7 @@ test('sidebar running state falls back to persisted list state until a live even
   assert.deepEqual(mergeChatSessionRunningState([running], { s2: true }), { s1: true, s2: true })
 })
 
-test('chat message store only accepts session_chat events', () => {
+test('chat message store accepts ordinary chat events and rejects unrelated assistant channels', () => {
   useChatSessionStore.setState({ sessions: {} })
   useChatSessionStore.getState().newSession('chat-1')
   useChatSessionStore.getState().handleWsEvent({
@@ -115,6 +115,29 @@ test('recovery replaces stale messages but preserves updates arriving during his
   store.handleWsEvent({ type: 'TEXT_MESSAGE_CHUNK', channel: 'session_chat', session_id: 'recovery', messageId: 'm', delta: '新的实时输出' })
   store.hydrateSession('recovery', [{ id: 'm', role: 'assistant', content: '过时的快照', status: 'succeeded' }], false, beforeFetch)
   assert.equal(useChatSessionStore.getState().sessions.recovery.messages[0].content, '完整正文新的实时输出')
+})
+
+test('channel chat streams user messages and assistant replies into the shared conversation store', () => {
+  useChatSessionStore.setState({ sessions: {} })
+  const store = useChatSessionStore.getState()
+  store.newSession('channel-live')
+  const emit = (event: Parameters<typeof store.handleWsEvent>[0]) => store.handleWsEvent({
+    channel: 'channel_chat', session_id: 'channel-live', ...event,
+  })
+  emit({ type: 'TEXT_MESSAGE_START', messageId: 'user', role: 'user', content: '群里提问' })
+  emit({ type: 'TEXT_MESSAGE_START', messageId: 'reply', role: 'assistant' })
+  emit({ type: 'TEXT_MESSAGE_CHUNK', messageId: 'reply', delta: '实时' })
+  assert.equal(useChatSessionStore.getState().sessions['channel-live'].messages[1].content, '实时')
+  assert.equal(useChatSessionStore.getState().sessions['channel-live'].running, true)
+  emit({ type: 'TEXT_MESSAGE_CHUNK', messageId: 'reply', delta: '回复' })
+  emit({ type: 'TEXT_MESSAGE_END', messageId: 'reply', status: 'succeeded', content: '实时回复' })
+  const session = useChatSessionStore.getState().sessions['channel-live']
+  assert.deepEqual(session.messages.map(message => [message.role, message.content]), [
+    ['user', '群里提问'], ['assistant', '实时回复'],
+  ])
+  assert.equal(session.running, false)
+  emit({ type: 'TEXT_MESSAGE_START', channel: 'task_create', messageId: 'unrelated' })
+  assert.equal(useChatSessionStore.getState().sessions['channel-live'].messages.length, 2)
 })
 
 test('chat session stays running when history or a stream chunk contains a running assistant message', () => {

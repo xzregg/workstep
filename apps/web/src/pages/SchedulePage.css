@@ -1,0 +1,50 @@
+.schedule-list-tabs {
+  position: sticky;
+  top: -10px;
+  z-index: 1;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.schedule-list-tabs > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: calc(12px * var(--font-scale));
+  cursor: pointer;
+}
+
+.schedule-list-tabs > button[aria-selected="true"] {
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
+  box-shadow: 0 1px 4px color-mix(in oklab, var(--fg), transparent 86%);
+}
+
+.schedule-list-tabs > button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (max-width: 1023px) {
+  .schedule-list-tabs { top: 0; }
+  .schedule-list-tabs > button { min-height: var(--mobile-control-regular); }
+  .schedule-list [role="tabpanel"] > .schedule-list-item { min-height: 0; padding: 12px; }
+}
+
+.schedule-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.schedule-form-grid--spaced { margin-top: 12px; }
+.schedule-form-grid > .field { min-width: 0; }

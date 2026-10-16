@@ -520,7 +520,7 @@ public final class MainActivity extends Activity {
     }
 
     private void rememberPage(String url) {
-        if (server != null && url != null && server.contains(url))
+        if (LastPageUrl.shouldRemember(server, url))
             getPreferences(MODE_PRIVATE).edit().putString(PAGE_KEY, url).apply();
     }
 

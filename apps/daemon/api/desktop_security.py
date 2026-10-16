@@ -296,7 +296,8 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                         and not SHARE_GIT_STATUS.fullmatch(request.url.path)
                         and not SHARE_GIT_BRANCHES.fullmatch(request.url.path)
                         and not SHARE_HISTORY_PAGE.fullmatch(request.url.path)
-                        and not SHARE_EVENTS_PAGE.fullmatch(request.url.path))
+                        and not SHARE_EVENTS_PAGE.fullmatch(request.url.path)
+                        and not re.fullmatch(r"/api/platform-share/file-changes/[A-Za-z0-9_-]{1,128}/[0-9a-f]{2,16384}", request.url.path))
                     or (request.method == "POST" and (
                         share_scope.get("mode") != "interactive"
                         or (not SHARE_STEP_WRITE.fullmatch(request.url.path)

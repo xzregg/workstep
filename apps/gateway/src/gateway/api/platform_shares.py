@@ -9,6 +9,7 @@ from gateway.services.platform_shares import CreateShareInput, UnlockShareInput
 from gateway.services.platform_shares import public_share_coordinator_action as _handle_coordinator_action
 from gateway.services.platform_shares import public_share_task_operation as _handle_task_operation
 from gateway.services.platform_shares import public_share_websocket as _handle_share_websocket
+from gateway.services.platform_shares import public_share_file_changes as _handle_share_file_changes
 
 router = APIRouter(prefix="/api")
 websocket_router = APIRouter()
@@ -90,6 +91,11 @@ async def public_share_history_page(request: Request, token: str, offset: int):
 @router.get("/public/shares/{token}/events/{message_id}/{cursor}")
 async def public_share_events(request: Request, token: str, message_id: str, cursor: int):
     return await invoke(_handle_public_share_events, request=request, token=token, message_id=message_id, cursor=cursor)
+
+
+@router.get("/public/shares/{token}/file-changes/{message_id}/{encoded}")
+async def public_share_file_changes(request: Request, token: str, message_id: str, encoded: str):
+    return await invoke(_handle_share_file_changes, request=request, token=token, message_id=message_id, encoded=encoded)
 
 
 @router.get("/public/shares/{token}/artifacts")

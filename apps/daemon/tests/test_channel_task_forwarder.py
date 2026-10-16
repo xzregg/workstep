@@ -465,3 +465,12 @@ async def test_shutdown_cancels_ordered_delivery_without_hanging(setup):
     await bus.publish(event('review', 'TEXT_MESSAGE_END', status='completed', content='审核正文'))
     await until(lambda: len(forwarder._messages) == 2)
     await asyncio.wait_for(forwarder.shutdown(), .5)
+
+
+async def test_scheduled_reply_is_not_automatically_broadcast(setup):
+    forwarder,bus,event,adapter,*_ = setup
+    await bus.publish(event('coord','TEXT_MESSAGE_START',schedule_run_id='run'))
+    await bus.publish(event('coord','TEXT_MESSAGE_END',schedule_run_id='run',status='succeeded',content='已用 CLI 汇报'))
+    await forwarder.wait_for_completed(event('coord','x')['project_id'], 'task')
+    adapter.send_text.assert_not_awaited()
+    assert not forwarder._messages

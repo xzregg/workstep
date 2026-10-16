@@ -277,6 +277,7 @@ async def chat_with_coordinator(
 async def stop_coordinator(
     task_id: str,
     pid: str = Query(..., alias="project_id"),
+    message_id: str | None = Query(None),
 ):
     """Stop the currently running coordinator turn for a task."""
     from main import coordinator_module
@@ -284,7 +285,7 @@ async def stop_coordinator(
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
     await _require_scoped_task(pid, task_id)
     try:
-        stopped = await coordinator_module.stop_current(pid, task_id)
+        stopped = await coordinator_module.stop_current(pid, task_id, expected_message_id=message_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"stopped": stopped}
@@ -589,14 +590,14 @@ async def get_task_artifacts(
         raise HTTPException(status_code=404, detail="Task not found")
     project_scoped = (actor := get_current_actor()) is not None and actor.project_id is not None
 
-    def listing():
-        artifacts = list_task_artifacts(project, task_id)
-        snapshots = list_task_artifact_input_snapshots(task_id)
-        if project_scoped:
-            return project_relative_artifact_listing(project, artifacts, snapshots)
-        return artifacts, snapshots
-
-    artifacts, input_snapshots = await _run_db(pid, listing)
+    # Recursive disk scans must not occupy the project's single DB worker:
+    # task reads and execution writes would otherwise queue behind slow disks.
+    artifacts = await asyncio.to_thread(list_task_artifacts, project, task_id)
+    input_snapshots = await _run_db(pid, lambda: list_task_artifact_input_snapshots(task_id))
+    if project_scoped:
+        artifacts, input_snapshots = await asyncio.to_thread(
+            project_relative_artifact_listing, project, artifacts, input_snapshots,
+        )
     artifact_directory = Path(project.workstep_dir) / "artifacts" / (exists["workflow_id"] or "default") / task_id
     if project_scoped:
         artifact_directory = Path(".workstep") / artifact_directory.relative_to(project.workstep_dir)
@@ -759,7 +760,7 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
     try:
         deleted = await _run_db(
             pid,
-            lambda: task_service.delete_task(req.task_id, pid),
+            lambda: task_service.delete_task(req.task_id, pid, workstep_dir=project.workstep_dir),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

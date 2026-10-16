@@ -806,6 +806,15 @@ async def test_platform_share_history_pages_execution_and_coordinator_messages(a
                        created_at=utc_now())
 
     await main.project_manager.run_db(project_id, seed)
+    def seed_index(project):
+        journal = main.task_service._event_journal
+        ref = journal.start(project.workstep_dir, f"task-{task_id}", "page-99")
+        journal.record(ref, {"type": "tool_call", "data": {"tool_call_id": "edit", "kind": "edit",
+            "raw_input": {"path": "src/a.py", "diff": "@@ -1 +1 @@\n-before\n+after\n"}}})
+        journal.record(ref, {"type": "tool_call_update", "data": {"tool_call_id": "edit", "status": "completed"}})
+        journal.finish(ref)
+        Message.update(event_log_path=ref.relative_path).where(Message.id == "page-99").execute()
+    await main.project_manager.run_db(project_id, seed_index)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
     ticket, key, fingerprint = _ticket(task_id=task_id, host_project_id=project_id)
 
@@ -848,6 +857,14 @@ async def test_platform_share_history_pages_execution_and_coordinator_messages(a
     assert len(final_events["events"]) == 105
     assert final_events["next_cursor"] is None
     assert (await read("/api/platform-share/events/private-page/0"))[0] == 200
+    status, files = await read("/api/platform-share/file-changes/page-99/7b7d")
+    assert status == 200
+    assert files["files"] == [{"path": "src/a.py", "added": 1, "removed": 1, "has_patch": True}]
+    assert "patch" not in files
+    encoded = json.dumps({"path": "src/a.py"}).encode().hex()
+    status, patch = await read(f"/api/platform-share/file-changes/page-99/{encoded}")
+    assert status == 200 and "-before\n+after" in patch["patch"]
+    assert (await read("/api/platform-share/file-changes/not-this-task/7b7d"))[0] == 404
 
     from services import history as history_service
     original_events = history_service.get_message_events

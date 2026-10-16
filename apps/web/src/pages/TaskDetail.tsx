@@ -1,3 +1,4 @@
+import { useTaskMessageFocus } from '../hooks/useTaskMessageFocus'
 import { useRecordRecentVisit } from '../hooks/useRecordRecentVisit'
 import { useTaskHistory } from '../hooks/useTaskHistory'
 import { useTaskCoordinatorConfig } from '../hooks/useTaskCoordinatorConfig'
@@ -110,6 +111,7 @@ interface StepProgress extends Partial<TaskStepState> {
 }
 
 interface TaskDetailProps {
+  focusMessageId?: string
   shared?: SharedTaskDetailBinding
   project?: Project
   taskId: string
@@ -118,7 +120,7 @@ interface TaskDetailProps {
 
 const TASK_HISTORY_PAGE_SIZE = 300
 
-export default function TaskDetail({ taskId, onClose, shared, project }: TaskDetailProps) {
+export default function TaskDetail({ taskId, onClose, shared, project, focusMessageId }: TaskDetailProps) {
   const { t, locale } = useI18n()
   const { openTask } = useTaskRoute()
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -271,6 +273,7 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
     snapshot: shared?.messages,
     chatScrollRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
   })
+  useTaskMessageFocus(focusMessageId, historyMessages, historyLoading, loadOlderHistory, shouldFollowMessagesRef)
   const {
     stoppingStepKeys, restartingStepKeys, retryingFailedMessageIds,
     stopStep: handleStopStep,
@@ -364,7 +367,7 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
   }, [activeCoordinatorMessageId, historyMessages, liveMessages, projectId, taskId])
   useEffect(() => {
     if (!shared) return
-    const active = [...shared.messages].reverse().find(message => message.channel === 'coordinator'
+    const active = [...shared.messages].reverse().find(message => message.channel === 'coordinator' && !message.schedule_run_id
       && message.role === 'assistant' && ['queued', 'running'].includes(message.run_status))
     if (active) { setActiveCoordinatorMessageId(active.id); setCoordinatorRunning(true) }
   }, [shared?.messages])
@@ -928,6 +931,7 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
         {({ inputConfig: stepEngineConfig, loading: stepEngineConfigLoading, error: stepEngineConfigError }) => <TaskDetailPage
         {...headerHandlers}
         task={task}
+        scheduledStopEnabled={!shared}
         gitCapability={shared?.gitCapability || (projectId ? { api: taskGitApi, projectId, projectScoped: detailProject?.type === 'remote' } : undefined)}
         steps={steps}
         workflowConnections={detailProject?.steps?.connections || []}

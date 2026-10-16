@@ -442,6 +442,8 @@ async def public_share_message_events(
     request: Request,
     cursor: int = Query(0, ge=0),
     limit: int = Query(30000, ge=1, le=30000),
+    file_changes: bool = Query(False),
+    file_path: str | None = Query(None),
 ):
     ctx = await _require_share_session(request)
     if ctx["token"] != token:
@@ -453,7 +455,8 @@ async def public_share_message_events(
     def load(project):
         try:
             return shared_message_events(project, ctx["task_id"], message_id,
-                                         cursor=cursor, limit=limit, mode=ctx.get("mode", "read_only"))
+                                         cursor=cursor, limit=limit, mode=ctx.get("mode", "read_only"),
+                                         file_changes=file_changes, file_path=file_path)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="Task message not found") from exc
 

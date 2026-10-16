@@ -1,3 +1,4 @@
+import type { FileChangesQuery } from '../utils/messageFileChanges'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { chatSessionApi, type ChatSessionDetail } from '../api/client'
 import { useI18n } from '../i18n'
@@ -115,9 +116,10 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
     }
   }, [sessionId, messageSessionId, projectId])
 
-  const loadMessageEvents = useCallback(async (messageId: string) => {
+  const loadMessageEvents = useCallback(async (messageId: string, query?: FileChangesQuery) => {
     const currentSessionId = messageSessionId || sessionId
     if (!currentSessionId || !projectId) return
+    if (query) return chatSessionApi.messageEvents(currentSessionId, messageId, projectId, 0, undefined, query)
     const store = useChatSessionStore.getState()
     const message = store.sessions[currentSessionId]?.messages.find((item) => item.id === messageId)
     if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return

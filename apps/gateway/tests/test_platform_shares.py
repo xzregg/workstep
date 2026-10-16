@@ -138,6 +138,8 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                 if target_path.startswith("/api/platform-share/events/"):
                     return JSONResponse({"events": [{"type": "TEXT_MESSAGE_CHUNK"}],
                                          "next_cursor": None})
+                if target_path.startswith("/api/platform-share/file-changes/"):
+                    return JSONResponse({"files": [{"path": "src/a.py", "added": 1, "removed": 1, "has_patch": True}]})
                 if target_path == "/api/platform-share/artifacts":
                     return JSONResponse({"artifacts": [{"id": "a" * 64, "name": "result.txt"}]})
                 if target_path == "/api/platform-share/git/workspace":
@@ -186,6 +188,11 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert events.json()["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
         assert captured["path"] == "/api/platform-share/events/message-1/0"
         assert client.get(f"/api/public/shares/{token}/events/invalid.id/0").status_code == 404
+        changes = client.get(f"/api/public/shares/{token}/file-changes/message-1/7b7d")
+        assert changes.status_code == 200
+        assert changes.json()["files"][0]["path"] == "src/a.py"
+        assert captured["path"] == "/api/platform-share/file-changes/message-1/7b7d"
+        assert client.get(f"/api/public/shares/{token}/file-changes/invalid.id/7b7d").status_code == 404
         artifacts = client.get(f"/api/public/shares/{token}/artifacts")
         assert artifacts.status_code == 200
         assert artifacts.json()["artifacts"][0]["name"] == "result.txt"

@@ -65,6 +65,7 @@ _ADDITIVE_COLUMNS = {
         "author_source": "TEXT",
     },
     "message": {
+        "schedule_run_id": "TEXT",
         "author_id": "TEXT",
         "author_username": "TEXT",
         "author_name": "TEXT",
@@ -111,6 +112,18 @@ _ADDITIVE_COLUMNS = {
     },
     "gen_sessions": {
         "vision_model": "TEXT",
+    },
+    "schedules": {
+        "target_type": "TEXT NOT NULL DEFAULT 'project'",
+        "target_task_id": "TEXT",
+        "instruction": "TEXT",
+        "stop_condition": "TEXT NOT NULL DEFAULT 'manual'",
+        "notification_json": 'TEXT NOT NULL DEFAULT \'{"enabled": false}\'',
+    },
+    "schedule_runs": {"coordinator_turn_id": "TEXT", "instruction": "TEXT", "notification_json": "TEXT", "notification_status": "TEXT NOT NULL DEFAULT 'pending'", "notification_error": "TEXT"},
+    "coordinator_turns": {
+        "execution_scope": "TEXT NOT NULL DEFAULT 'main'",
+        "schedule_run_id": "TEXT",
     },
     "tasks": {
         "queued_run_json": "TEXT",

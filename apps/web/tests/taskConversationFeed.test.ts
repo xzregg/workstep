@@ -72,3 +72,14 @@ test('timeline merges action runs and puts a pending coordinator reply after its
   assert.equal(timeline.orderedMessages.find((message) => message.id === 'action-reply')?.content, '完成')
   assert.equal(timeline.orderedMessages.find((message) => message.id === 'action-user')?.content, '操作：检查')
 })
+
+
+test('scheduled activity does not hide the main coordinator thinking placeholder', () => {
+  const timeline = buildTaskConversationTimeline({ historyMessages:[
+    { id:'main-user', channel:'coordinator', role:'user', content:'主对话', created_at:'2026-10-16T00:00:00Z' },
+    { id:'timer-user', channel:'coordinator', role:'user', content:'汇报', schedule_run_id:'run', created_at:'2026-10-16T00:00:01Z' },
+    { id:'timer-reply', channel:'coordinator', role:'assistant', content:'正在汇报', run_status:'running', schedule_run_id:'run', created_at:'2026-10-16T00:00:02Z' },
+  ],liveMessages:{}, actionRuns:[], coordinatorRunning:true, actionTitle:title=>title })
+  const placeholder = timeline.orderedMessages?.find((message: any) => message.thinkingPlaceholder)
+  assert.equal(placeholder?.reply_to_message_id,'main-user')
+})

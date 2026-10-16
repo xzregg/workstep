@@ -8,92 +8,31 @@ description: Inspect and manage WorkStep projects, workflows, tasks, quick butto
 Use this skill when the user asks to inspect or manage WorkStep itself: projects,
 workflows, tasks, quick buttons, LLM engines, or schedules.
 
+Use this skill to inspect or manage WorkStep. Read only the relevant topic below
+before its operations; do not load all references.
+
 ## Transport
 
-The CLI is the supported HTTP adapter: it already knows the REST routes,
-request schemas, live daemon URL, and temporary desktop authentication header.
-Do not construct daemon HTTP requests directly. Do not inspect `cli.py`,
-`settings.py`, or the daemon source to rediscover those details. The commands
-below are the complete operational contract; execute the matching command
-immediately after resolving only the required WorkStep resource IDs.
+The CLI is the supported HTTP adapter. Do not construct daemon HTTP requests directly
+or inspect daemon source to rediscover routes, schemas, URLs or authentication.
+Use this order; do not probe with `echo`, `pwd`, or `which`:
 
-Use this fixed decision order. Do not probe the shell with `echo`, `pwd`, or
-`which`; restricted engines commonly reject those commands and the failed
-probes do not help complete the WorkStep operation.
+1. If `workstep_call` is in the actual tool list, use its matching operation.
+2. In this source checkout:
+   `uv run --no-sync --directory apps/daemon python -m cli <resource> <action> [options]`
+   From another project:
+   `uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli <resource> <action> [options]`
+3. In packaged desktop:
+   `"$WORKSTEP_CLI_PYTHON" "$WORKSTEP_DAEMON_DIR/cli.py" <resource> <action> [options]`
+4. When the `workstep` executable is already known to be available:
+   `workstep <resource> <action> [options]`.
 
-1. If `workstep_call` is present in the actual tool list, use it. Pass an
-   operation such as `workstep_list_workflows` or `workstep_create_task` plus
-   its JSON arguments. Do not merely assume the tool exists because this skill
-   mentions it.
-2. In a source checkout, prefer `uv`, which is allowed by WorkStep's restricted
-   command policy. When the workspace is the WorkStep repository root, use:
-
-```bash
-uv run --no-sync --directory apps/daemon python -m cli <resource> <action> [options]
-```
-
-   From any project directory, use the injected daemon directory instead:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli <resource> <action> [options]
-```
-
-3. In a packaged desktop runtime, `uv` need not be installed. Use the bundled
-   Python and CLI paths injected into the engine process:
-
-```bash
-"$WORKSTEP_CLI_PYTHON" "$WORKSTEP_DAEMON_DIR/cli.py" <resource> <action> [options]
-```
-
-   In PowerShell:
-
-```powershell
-& $env:WORKSTEP_CLI_PYTHON "$env:WORKSTEP_DAEMON_DIR/cli.py" <resource> <action> [options]
-```
-
-   In `cmd.exe`:
-
-```bat
-"%WORKSTEP_CLI_PYTHON%" "%WORKSTEP_DAEMON_DIR%\cli.py" <resource> <action> [options]
-```
-
-4. When the `workstep` executable is already known to be available, it is also
-   valid:
-
-```bash
-workstep <resource> <action> [options]
-```
-
-Add `--json` to the selected action for compact machine-readable output. The
-CLI automatically reads `WORKSTEP_DAEMON_URL` and the packaged desktop token
-from its environment. Use `--url <daemon-url>` before the resource only for an
-explicit override. Never write the runtime URL or authentication token into
-this skill file or another persistent project file.
-
-If a command-policy error rejects one transport, move directly to the next
-applicable transport above. Do not spend turns testing unrelated shell
-commands. If no listed transport is callable, report that the engine lacks a
-WorkStep transport instead of claiming the requested mutation succeeded.
-
-## First-run improvement
-
-Try the documented transports first. Only when all applicable commands fail
-may the first execution perform minimal exploration to find a working command.
-Once a reusable command is verified by a successful JSON response, immediately
-improve the canonical skill at
-`$WORKSTEP_DAEMON_DIR/data/skills/workstep-cli/SKILL.md` when that file is
-writable, so later sessions use the proven route without repeating discovery.
-
-- Update the transport decision order and add one copy-pasteable example.
-- Never edit generated copies under `.agents/skills` or `.workstep/skills`;
-  WorkStep regenerates them from the daemon skill.
-- Record only portable invocation details. Never persist temporary tokens,
-  ports, resource IDs, project-specific paths, or returned user data.
-- Preserve every working transport already documented; add a new alternative
-  instead of replacing cross-platform fallbacks with one local workaround.
-- In a source checkout, update the skill regression test when test tools are
-  available. In a packaged/read-only runtime, report the verified improvement
-  instead of attempting to modify bundled application files.
+Add `--json`. The CLI reads the daemon URL and temporary authentication from its
+environment. Use `--url <url>` before the resource only for an explicit override.
+On policy rejection, try the next applicable transport; if none works, report it.
+See [transport](references/transport.md) for PowerShell/cmd syntax and first-run
+repair rules. Never persist runtime URLs, tokens or resource IDs, and never edit
+generated skill mirrors.
 
 ## Safety rules
 
@@ -110,450 +49,28 @@ writable, so later sessions use the proven route without repeating discovery.
 - For multiple task creations, apply a clear user-requested limit, deduplicate
   candidates, and report individual failures instead of retrying indefinitely.
 
-## List output
 
-All `list` commands return summaries by default. Add `--verbose` to retain the
-full response. `--json` controls formatting only. Missing summary fields are
-omitted; pagination metadata is preserved.
+## Read the relevant topic
 
-| Command | Default summary |
+| Need | Reference |
 | --- | --- |
-| `project list` | ID, name, path, type, connection status |
-| `workflow list` | ID, name, default/deleted/running/failed flags, node count |
-| `task list` | ID, title, status, archived flag, workflow ID, creation/update times |
-| `engine list` | ID, installed/configured/verified/built-in flags, version, mode, default model |
-| `schedule list` | ID, name, workflow ID, status, rule summary, next/last run times |
-| `channel list` | ID, name, platform, enabled flag, connection status |
-
-Use `workflow get`, `task get`, or `schedule get` for one resource's details.
-For example, `engine list --verbose --json` includes configuration forms and
-capability declarations. Quick-button inspection returns full button settings
-because prompts and scripts are the purpose of that command.
-
-## Projects
-
-`project list` returns only `id`, `name`, `path`, `type`, and
-`connection_status` when present. Add `--verbose` to retrieve the full project
-payload, including workflow definitions and settings. `--json` controls output
-formatting only; it does not change which fields are returned. Use
-`workflow list` / `workflow get` for workflow summaries and details.
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project list --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project init /absolute/project/path --name "Project name" --json
-```
-
-Read every project-level quick button (prompt, display, and Action), including
-its title, content or prompt, Action script path, working-directory mode, and
-confirmation setting:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project quick-buttons \
-  --project <project_id> --json
-```
-
-The equivalent native operation is `workstep_get_project_quick_buttons` with
-`project_id`. This is read-only; it returns button settings, not script file
-contents. Use it before proposing a new project button to avoid duplicates.
-
-To create a project-wide Action shortcut, prepare a `.sh`, `.bash`, or `.py`
-script file, show the script and button settings to the user, and wait for
-explicit authorization. Then run:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project action-create \
-  --project <project_id> \
-  --action-id <stable_action_id> --title "Restart services" \
-  --script-file /absolute/path/to/restart.sh --cwd task --json
-```
-
-The equivalent native operation is `workstep_create_project_action` with
-`project_id`, `action_id`, `title`, `script_path`, `script_content`,
-`cwd_mode`, `require_confirmation`, and `confirm='yes'`. WorkStep saves the
-script under `<project>/.workstep/actions/<action_id>/` and registers the
-button in project settings. The button appears in project chats and can be
-inherited by workflows. With `--cwd task` (the default), inherited task
-Actions run in that task's artifact directory; in a project chat without a
-task, they run at the project root. `--cwd project` always runs at the project
-root. `--no-run-confirmation` only removes the later per-click confirmation;
-it does not remove the authorization required to create the shortcut.
-
-For an Action that needs one text value at execution time, add
-`--input-prompt "Enter Commit message"` (or native
-`confirmation_input_prompt`). The confirmation dialog then requires text and
-passes it unchanged in `WORKSTEP_ACTION_INPUT`. Shell scripts must always read
-it as `"$WORKSTEP_ACTION_INPUT"`; never interpolate it into generated shell
-syntax or execute it with `eval`. For example:
-
-```bash
-git commit -m "$WORKSTEP_ACTION_INPUT" && git push
-```
-
-## Workflows
-
-List workflows to resolve the target workflow ID:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow list --project <project_id> --json
-```
-
-Read the full workflow, including step definitions and step keys:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow get \
-  --project <project_id> \
-  --workflow <workflow_id> \
-  --json
-```
-
-To inspect shortcut buttons without reading the full canvas, use:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow quick-buttons \
-  --project <project_id> --workflow <workflow_id> --json
-```
-
-The result separates workflow-level buttons, stage-level buttons (with step
-keys), and project buttons actually inherited by this workflow. It also
-includes `project_button_ids`; an empty list means none are selected, while
-`inherit_all_project_buttons: true` means the legacy all-project mode. Native
-tools can obtain the same data by calling `workstep_get_workflow` and
-`workstep_get_project_quick_buttons`, then matching the workflow's
-`projectQuickButtonIds` (or legacy `inheritProjectQuickButtons`) to project
-button IDs. These read-only calls return button settings, not Action script
-contents. Inspect existing buttons before suggesting or creating another one.
-
-To create a workflow Action shortcut, first inspect the target workflow and
-relevant task repositories/worktrees. Prepare a `.sh`, `.bash`, or `.py` script
-file and show its contents and button settings to the user. After explicit
-authorization, publish the script and button together:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow action-create \
-  --project <project_id> --workflow <workflow_id> \
-  --action-id <stable_action_id> --title "Start services" \
-  --script-file /absolute/path/to/start.sh --cwd task \
-  --input-prompt "Enter Commit message" --json
-```
-
-The equivalent native operation is `workstep_create_workflow_action` with
-`project_id`, `workflow_id`, `action_id`, `title`, `script_path`,
-`script_content`, `cwd_mode`, `require_confirmation`, optional
-`confirmation_input_prompt`, optional `overwrite`,
-and `confirm='yes'`.
-The CLI performs the confirmation-gated call; do not call it merely to draft
-a suggestion. `--no-run-confirmation` removes the *later* per-click dialog,
-not the authorization required to create the shortcut. WorkStep writes the
-script under `.workstep/artifacts/<workflow_id>/actions/<action_id>/` and
-registers the workflow button. A task coordinator can instead return a
-`create_workflow_action` proposal so the user can review and confirm it in chat.
-If `workflow quick-buttons` shows an Action with the same `action_id`, do not
-create a duplicate or silently replace it. Read its existing button settings
-and script, show the proposed changes, and obtain explicit approval to replace
-it. Then reuse that `action_id` and script filename and add `--overwrite` to
-the `workflow action-create` command (or `overwrite: true` to the native call
-or coordinator proposal). Without this flag, a duplicate remains a conflict;
-the flag never replaces a prompt/display button with the same ID.
-Do not claim the shortcut exists before the write succeeds. Scripts should resolve task worktrees via
-`WORKSTEP_WORKTREES_FILE` using repository IDs or aliases, never branch names.
-For stoppable services, keep children in the Action process group and wait for
-them; avoid `nohup`, `setsid`, `disown`, or daemonizing them.
-
-## Tasks
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task list --project <project_id> --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task get --project <project_id> --task <task_id> --json
-```
-
-Create in the project default workflow:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task create \
-  --project <project_id> \
-  --title "Task title" \
-  --desc "Complete Markdown task description" \
-  --json
-```
-
-Create in a selected workflow, optionally starting from a selected step:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task create \
-  --project <project_id> \
-  --workflow <workflow_id> \
-  --start-step <step_key> \
-  --title "Task title" \
-  --desc "Complete Markdown task description" \
-  --json
-```
-
-`--cwd` is optional and defaults to the project path.
-
-For a task that needs isolated changes in only some Git repositories, inspect
-the project's repositories, then create one Worktree for each relevant one:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task repos --project <project_id> --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task worktrees --project <project_id> --task <task_id> --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task worktree-add \
-  --project <project_id> --task <task_id> \
-  --repository <repository_id> --alias <directory_name> \
-  --base main --branch workstep/<task_id>/<directory_name> --json
-```
-
-New task worktrees live at
-`<project>/.workstep/artifacts/<workflow_id>/<task_id>/.worktrees/<alias>/`.
-Existing tasks may still use their legacy worktrees; use the paths returned by
-`task worktrees` instead of constructing a path or guessing from a branch name.
-Only select repositories needed for the task. `worktree-add` creates a Git
-branch without changing the task's execution directory; the engine continues
-to start in the project root. Run it only when the user's task authorizes code
-changes.
-
-## Task stage controls
-
-For an explicit request to coordinate stage execution, inspect `task get` and
-the task's workflow first. Use existing step keys within the current project
-and task. Stage calls may run sequentially in the same turn; the user's explicit
-instruction authorizes the necessary operations without separate proposal
-confirmation for every call. Questions alone do not authorize execution.
-
-Send a message to a running execution or automatic review:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task step-message \
-  --project <project_id> --task <task_id> --step <step_key> \
-  --content "Additional requirements" --json
-```
-
-Native operation: `workstep_send_step_message`, with `project_id`, `task_id`,
-`step_key`, `content`, optional `as_guidance`, and `confirm='yes'`. Add
-`--as-guidance` to also retain the message for later attempts. Engine live-message
-support is required; queued does not mean delivered. If unsupported, report it;
-do not silently stop or restart the step.
-
-Stop one stage, including its pending interaction:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task step-stop \
-  --project <project_id> --task <task_id> --step <step_key> --json
-```
-
-Native operation: `workstep_stop_step`, with the three IDs and `confirm='yes'`.
-Re-read `task get` and wait until the step is no longer running before the next
-dependent operation. Bound the wait; if it times out, report the pending stop
-instead of repeatedly issuing it. This stops the stage, not the coordinator.
-
-Start an unstarted stage or resume a stopped/completed stage with a message:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task step-start \
-  --project <project_id> --task <task_id> --step <step_key> \
-  --content "Execute these requirements" --json
-```
-
-Native operation: `workstep_start_step`, with the three IDs, required `content`,
-optional `reset_session`, and `confirm='yes'`. A non-empty startup message is
-required; for a plain start, summarize the user's requested execution. Add
-`--reset-session` (native `reset_session=true`) only when the user explicitly
-requests a fresh session or cleared context. Otherwise preserve the session.
-
-Start uses the existing @step execution logic: it stops the old task runner and
-runs the target plus its DAG downstream using existing input rules. It is not
-an isolated or force start. If other running stages outside the user's request
-would be stopped, explain the impact and ask before starting. Running targets
-reject this operation; use live messages or stop them first as authorized.
-
-After each call, check the returned result. On errors or changed state, re-read
-the task before deciding what to do next; never blindly retry a mutation or
-also propose an operation already performed. Distinguish accepted starts from
-completed work, stop requests from completed stops, and queued messages from
-delivered messages.
-
-## Engines
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli engine list --json
-```
-
-## Schedules
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule list --project <project_id> --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule get --project <project_id> --schedule <schedule_id> --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule runs --project <project_id> --schedule <schedule_id> --json
-```
-
-Create a static recurring schedule:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule create \
-  --project <project_id> \
-  --workflow <workflow_id> \
-  --name "Schedule name" \
-  --title "Task title" \
-  --desc "Task description" \
-  --cron "0 9 * * *" \
-  --timezone "Asia/Shanghai" \
-  --execution workflow \
-  --overlap skip \
-  --json
-```
-
-Create a dynamic schedule whose task assistant selects one candidate workflow
-and creates one task per occurrence:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule create \
-  --project <project_id> \
-  --mode agent \
-  --name "Dynamic schedule" \
-  --instruction "Research today's sources and prepare one executable task" \
-  --candidates <workflow_id_1>,<workflow_id_2> \
-  --retry-count 2 \
-  --cron "0 9 * * *" \
-  --timezone "Asia/Shanghai" \
-  --execution workflow \
-  --overlap skip \
-  --json
-```
-
-Use `--at <ISO-date-time>` instead of `--cron` for a one-time schedule. The CLI
-currently accepts `--at` and five-field `--cron`; daily, weekly, monthly, and
-interval rules are available through the native `workstep_call` operation/API.
-
-Manage an existing schedule:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule update --project <project_id> --schedule <schedule_id> [fields] --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule pause --project <project_id> --schedule <schedule_id> --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule resume --project <project_id> --schedule <schedule_id> --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule delete --project <project_id> --schedule <schedule_id> --json
-```
-
-`--execution` accepts `workflow`, `immediate`, or `manual`. `--overlap` accepts
-`skip`, `parallel`, or `queue`.
-
-
-## Channel notifications
-
-List robots and active channel sessions to resolve the exact recipient first:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel list --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel sessions --project <project_id> --json
-```
-
-Send only when explicitly requested by the user or authorized by a scheduled
-instruction. This sends an external notification immediately, without starting
-an LLM turn or adding it to the conversation history. Never invent recipient IDs.
-Prefer a listed session to avoid confusing users, groups, or different robots:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
-  --project <project_id> --session <session_id> --text "Task completed" --json
-```
-
-For an explicitly specified recipient, use one robot and exactly one platform
-user ID or group ID. The robot must belong to the project, or the group must be
-bound to a task in that project:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
-  --project <project_id> --bot <bot_id> --user <platform_user_id> --text "Task completed" --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
-  --project <project_id> --bot <bot_id> --group <platform_group_id> --text "Task completed" --json
-```
-
-Do not combine `--session` with `--bot`, `--user`, or `--group`. Archived or
-reset sessions and disabled robots cannot send. Native operations are
-`workstep_list_channel_bots`, `workstep_list_channel_sessions`, and
-`workstep_send_channel_message` (mutating, requires `confirm='yes'`). Check
-`sent: true` before reporting success; transport failures return non-zero.
-
-
-## Bind the current channel group to a task
-
-When a user explicitly asks in a group to bind that group to an existing task,
-use the `session_id` and `project_id` from the channel session's system
-background. Do not copy a group ID from user text. Confirm the task ID with
-`task list` or `task get`, then bind the current group:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel bind \
-  --session <current_channel_session_id> --project <project_id> \
-  --task <existing_task_id> --json
-```
-
-The equivalent native operation is `workstep_bind_channel_group` with
-`session_id`, `project_id`, `task_id`, and `confirm='yes'`. The daemon resolves
-the robot and group from the active session and rejects private chats, reset
-sessions, tasks outside the session's project, and groups bound to another
-task. Inspect the returned JSON before telling the user the binding succeeded.
-Future group messages route to that task's coordinator.
-
-## Channel images and files
-
-`channel send` accepts repeatable `--image <local_path>` and `--file <local_path>`
-alongside optional `--text`. At least one text/image/file is required; the same
-session or bot/user/group selectors and authorization rules apply. The CLI
-uploads local files through the daemon into project uploads, then sends the
-project-relative references using the unified channel protocol:
-
-```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
-  --project <project_id> --session <session_id> --image /path/to/screenshot.png --json
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
-  --project <project_id> --bot <bot_id> --user <user_id> --text "Report" --file /path/to/report.pdf --json
-```
-
-WorkStep currently limits images to 2 MiB and files to 20 MiB, with at most 10
-attachments per send. DingTalk native files support xlsx/pdf/zip/rar/doc/docx;
-unsupported file types return an error. Platform permissions and quotas still
-apply. Native callers can use `workstep_upload_channel_attachment` with
-`project_id/filename/data_url/confirm='yes'`, then pass
-`attachments: [{kind: 'image'|'file', path: '<returned project URL>'}]` to
-`workstep_send_channel_message`. Attachment-only sends do not require text.
-
-## Custom skill drafts
-
-Use the Transport above with `skill create --json` to start an ordinary conversation in the fixed `Runtime` project root; no per-type or per-session directory is allocated. The native operation is `workstep_create_skill_draft` with `confirm='yes'`. Read the returned `prompt`, `workspace_path` and `package_path`; create a named skill package within that root without overwriting other existing work. This operation neither installs nor enables a skill. Existing installed skill roots remain unchanged, and draft directories are not skill discovery roots. Install only when explicitly requested by the user.
-
-## Custom engines
-
-When creating or updating a custom engine, read [the onboarding guide](references/custom-engine.md) and [adapter contract](references/custom-engine-contract.md) on demand. These are reference documents within this CLI skill; do not load a separate custom-engine skill. Commands accept an absolute package directory or its Python entry file.
-
-```bash
-workstep engine inspect /absolute/adapter --json
-workstep engine install /absolute/adapter --json
-workstep engine configure /absolute/adapter --config-file /private/config.json --json
-workstep engine validate /absolute/adapter --json
-workstep engine register /absolute/adapter --json
-workstep engine register /absolute/adapter --replace --json
-workstep engine export engine_id --output /absolute/engine.zip --json
-workstep engine disable engine_id --json
-workstep engine enable engine_id --json
-workstep engine rollback engine_id --json
-```
-
-Install/validate wait for the final result. Add `--no-wait` to get an operation ID, query with `engine operation ID --json`, or cancel with `engine stop ID --json`. A passed report is bound to code, dependencies and configuration; changes require validation again. Registration is atomic and requires a daemon restart to discover the new adapter. Export excludes dependencies and credentials; recipients reinstall for their own OS/architecture. Visibility switches only hide engines in selectors; `disable` actually prevents custom engine execution.
-
-
-## Custom skins
-
-For conversational skin creation, read [references/custom-skin.md](references/custom-skin.md)
-and the workspace `skin-contract.json`. Use the transport above with:
-
-```bash
-workstep skin list --json
-workstep skin contract --json
-workstep skin validate /absolute/skin --json
-workstep skin register /absolute/skin --json
-workstep skin register /absolute/skin --replace --json
-workstep skin export ocean --output /absolute/ocean.zip --json
-```
-
-Skins are declarative packages; business events stay in the application. Explicit
-replacement requires the user's update instruction. A passing format check does
-not imply visual acceptance; preview both PC and mobile in Settings → Skins.
+| Output fields, limits, filters, summaries | [Output](references/output.md) |
+| Projects, project quick buttons and Actions | [Projects](references/projects.md) |
+| Workflows, step keys, workflow buttons and Actions | [Workflows](references/workflows.md) |
+| Tasks, repositories, worktrees, stage start/stop/messages | [Tasks](references/tasks.md) |
+| Recurring/one-time schedules, existing-task instructions | [Schedules](references/schedules.md) |
+| Bots, sessions, notifications, group binding, files | [Channels](references/channels.md) |
+| Engines, skill drafts, skins | [Extensions](references/extensions.md) |
+| Custom language creation | [Languages](references/custom-language.md) |
+
+## Keep output small
+
+Lists return summaries by default; `--verbose` includes full data. Use optional
+`--limit 20` and `--fields id,name` (tasks: `id,title,status`) to locate resources,
+then request details only for selected IDs. Read more pages when `remaining > 0`;
+never mistake a limited page for all matches. Limits/field selection are local
+output controls. Existing command defaults and error responses stay intact.
+
+`task list` supports `--archived`, `--status` and `--workflow` filters.
+`--fields` also works on `get`; missing fields are omitted. Read full task and
+workflow state before stage controls. See Output for exact semantics and examples.

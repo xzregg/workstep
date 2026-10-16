@@ -5,7 +5,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import ScheduleCenter from '../src/components/ScheduleCenter'
-import { scheduleApi, workflowApi, type Project, type ProjectSchedule } from '../src/api/client'
+import { scheduleApi, workflowApi, taskApi, type Project, type ProjectSchedule } from '../src/api/client'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useProjectStore } from '../src/stores/projectStore'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
@@ -34,6 +34,7 @@ async function setup() {
   useProjectStore.setState({ projects, activeProject: projects[0], activeWorkflowId: 'flow-a' })
   useGatewaySessionStore.setState({ session: null })
   scheduleApi.list = async id => { reads.push(id); return { schedules: [schedule(id)] } }
+  scheduleApi.notificationOptions = async () => ({choices:[],default:{enabled:false}})
   scheduleApi.preview = async () => ({ cron_expression: '0 9 * * *', timezone: 'Asia/Shanghai', summary: '', next_runs: ['2026-10-15T01:00:00Z'] })
   scheduleApi.runs = async () => ({ runs: [] })
   workflowApi.get = async id => ({ id, name: id, steps: { nodes: [] } }) as any
@@ -58,7 +59,7 @@ test('global schedules reuse the project editor and switch scope without changin
   const app = await setup()
   try {
     await app.render(); await app.click('定时任务')
-    assert.equal(document.querySelectorAll('[role="tab"]').length, 2)
+    assert.equal(document.querySelectorAll('.schedule-center-tabs [role="tab"]').length, 2)
     assert.ok(document.querySelector('.schedule-page'))
     assert.match(document.querySelector('.schedule-list')!.textContent!, /定时任务A/)
     await app.click('项目B')
@@ -74,6 +75,33 @@ test('global schedules reuse the project editor and switch scope without changin
     assert.equal(document.querySelector('#route')?.textContent, '/tasks?project=项目A&workflow=flow-a')
     await app.click('关闭')
     assert.equal(document.querySelector('[role="dialog"]'), null)
+  } finally { await app.cleanup() }
+})
+
+test('a new untouched schedule can close directly from the header', async () => {
+  const app = await setup()
+  try {
+    await app.render(); await app.click('定时任务'); await app.click('新建定时任务')
+    await app.click('关闭')
+    assert.equal(document.querySelector('.confirm-dialog-panel'), null)
+    assert.equal(document.querySelector('.schedule-center-dialog'), null)
+  } finally { await app.cleanup() }
+})
+
+test('discard confirmation escapes the navigation container and closes the schedule editor', async () => {
+  const app = await setup()
+  try {
+    await app.render(); await app.click('定时任务'); await app.click('新建定时任务')
+    await act(async () => {
+      const input = [...document.querySelectorAll<HTMLInputElement>('.schedule-editor input')].find(input => input.type === 'text')!
+      Object.getOwnPropertyDescriptor(app.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '新任务')
+      input.dispatchEvent(new app.window.Event('input', { bubbles: true }))
+    })
+    await app.click('关闭')
+    const backdrop = document.querySelector('.confirm-dialog-backdrop')!
+    assert.equal(backdrop.parentElement, document.body, 'confirmation must not be clipped or hidden by the navigation container')
+    await app.click('放弃')
+    assert.equal(document.querySelector('.schedule-center-dialog'), null)
   } finally { await app.cleanup() }
 })
 
@@ -148,7 +176,7 @@ test('bound read-only sessions see only their permitted project and cannot creat
     app.window.happyDOM.setURL('http://d-device.localhost:8700/')
     useGatewaySessionStore.setState({ session: { host_project_id: 'b', access_level: 'read', permissions: ['schedule.read'] } as any })
     await app.render(); await app.click('定时任务')
-    assert.deepEqual([...document.querySelectorAll('[role="tab"]')].map(t => t.textContent), ['项目B'])
+    assert.deepEqual([...document.querySelectorAll('.schedule-center-tabs [role="tab"]')].map(t => t.textContent), ['项目B'])
     assert.deepEqual(app.reads, ['b'])
     assert.equal(document.querySelector('.schedule-new-button'), null)
   } finally { await app.cleanup() }
@@ -192,6 +220,18 @@ test('mobile entry dismisses the navigation drawer while keeping the schedules w
     await act(async () => container.querySelector<HTMLButtonElement>('.layout-sidebar-nav-button')!.click())
     assert.equal(container.querySelector('.responsive-navigation.is-open'), null)
     assert.ok(document.querySelector('.schedule-center-dialog'))
+    await app.click('新建定时任务')
+    await act(async () => {
+      const input = [...document.querySelectorAll<HTMLInputElement>('.schedule-editor input')].find(input => input.type === 'text')!
+      Object.getOwnPropertyDescriptor(app.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '移动端任务')
+      input.dispatchEvent(new app.window.Event('input', { bubbles: true }))
+    })
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-close-button')!.click())
+    const confirmation = document.querySelector('.confirm-dialog-panel')!
+    assert.ok(confirmation)
+    assert.equal(confirmation.closest('[inert], .responsive-navigation'), null)
+    await app.click('放弃')
+    assert.equal(document.querySelector('.schedule-center-dialog'), null)
   } finally { await act(async () => root.unmount()); container.remove(); await app.cleanup(); Object.assign(globalThis, { history: oldHistory }) }
 })
 
@@ -253,4 +293,70 @@ test('isolated task records load successfully without adding another project to 
   } finally {
     await act(async () => root.unmount()); container.remove(); useTaskStore.setState(previousTasks); await app.cleanup()
   }
+})
+
+
+test('schedule type tabs separate once from every recurring rule without reloading or losing edits', async () => {
+  const app = await setup()
+  const kinds = ['once', 'daily', 'weekly', 'monthly', 'interval', 'cron'] as const
+  scheduleApi.list = async id => {
+    app.reads.push(id)
+    return { schedules: kinds.map(kind => ({ ...schedule(id), id: kind,
+      task_template: { title: `分类-${kind}` },
+      rule: { ...schedule(id).rule, kind, run_at: '2026-12-01T09:00:00' } as ProjectSchedule['rule'],
+    })) }
+  }
+  const titles = () => [...document.querySelectorAll('.schedule-list-item')].map(item => item.textContent!)
+  try {
+    await app.render(); await app.click('定时任务')
+    assert.equal(document.querySelector('.schedule-list [role="tab"][aria-selected="true"]')?.textContent, '周期性')
+    assert.deepEqual([...document.querySelectorAll('.schedule-list [role="tab"]')].map(tab => tab.textContent), ['周期性', '一次性'])
+    assert.equal(titles().length, 5)
+    assert.ok(titles().every(title => !title.includes('分类-once')))
+    await app.click('一次性')
+    assert.equal(titles().length, 1)
+    assert.match(titles()[0], /分类-once/)
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    const input = [...document.querySelectorAll<HTMLInputElement>('.schedule-editor input')].find(input => input.type === 'text')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(app.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '未保存修改')
+      input.dispatchEvent(new app.window.Event('input', { bubbles: true }))
+    })
+    await app.click('周期性')
+    assert.equal(titles().length, 5)
+    assert.equal(input.value, '未保存修改')
+    await app.click('一次性')
+    assert.equal(input.value, '未保存修改')
+    assert.deepEqual(app.reads, ['a'])
+  } finally { await app.cleanup() }
+})
+
+test('an empty schedule category shows an empty state even when the other category has items', async () => {
+  const app = await setup()
+  try {
+    await app.render(); await app.click('定时任务'); await app.click('一次性')
+    assert.equal(document.querySelectorAll('.schedule-list-item').length, 0)
+    assert.match(document.querySelector('.schedule-list')!.textContent!, /暂无此类型的定时任务/)
+    const tab = app.button('一次性')
+    await act(async () => tab.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+    assert.equal(document.querySelector('.schedule-list [aria-selected="true"]')?.textContent, '周期性')
+    assert.equal(document.activeElement, app.button('周期性'))
+  } finally { await app.cleanup() }
+})
+
+
+test('task-target schedules show the rule name and task without changing project selection', async () => {
+  const app = await setup()
+  const originalList = taskApi.list
+  taskApi.list = async () => ({ tasks: [{ id:'existing-task', title:'已有任务' }] }) as any
+  scheduleApi.list = async id => ({ schedules: [{ ...schedule(id), target_type:'task', target_task_id:'existing-task', name:'每十分钟汇报', instruction:'检查任务', task_template:{}, rule:{kind:'minutes',every:10,timezone:'UTC'} }] })
+  try {
+    await app.render(); await app.click('定时任务')
+    assert.match(document.querySelector('.schedule-list')!.textContent!, /每十分钟汇报/)
+    assert.match(document.querySelector('.schedule-list')!.textContent!, /existing-task/)
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    assert.ok(document.querySelector('.task-schedule-editor'))
+    assert.equal(document.querySelector<HTMLSelectElement>('[aria-label="关联任务"]')!.disabled, true)
+    assert.equal(useProjectStore.getState().activeProject?.id, 'a')
+  } finally { taskApi.list = originalList; await app.cleanup() }
 })

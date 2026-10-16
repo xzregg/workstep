@@ -28,6 +28,7 @@ function appendCappedEvent(events: TaskEvent[] | undefined, event: TaskEvent): T
 }
 
 export interface TaskEvent {
+  schedule_run_id?: string | null
   type: string
   data?: Record<string, unknown>
   task_id?: string
@@ -66,6 +67,7 @@ export interface TaskEvent {
 }
 
 export interface LiveMessage {
+  schedule_run_id?: string | null
   id: string
   channel: 'coordinator' | 'execution' | 'review' | 'archive_experience'
   step_key?: string
@@ -446,6 +448,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         const restarted = event.type === 'TEXT_MESSAGE_START' && event.retry === true
         const current: LiveMessage = (!restarted && taskMessages[mid]) || {
           id: mid,
+          schedule_run_id: event.schedule_run_id,
           channel: event.channel || 'execution',
           step_key: event.step_key,
           role: event.type === 'TEXT_MESSAGE_START'
@@ -469,6 +472,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           restarted,
           author_id: event.actor?.id,
           author_name: event.actor?.name,
+          author_type: event.schedule_run_id && event.role === 'user' ? 'scheduler' : undefined,
           author_device_id: event.actor?.device_id,
           author_device_name: event.actor?.device_name,
           proposals: [],

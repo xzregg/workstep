@@ -1,0 +1,9 @@
+.task-schedule-editor { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; min-width: 0; }
+.task-schedule-preview { padding: 12px; border-radius: 8px; background: var(--surface); font-size: calc(12px * var(--font-scale)); overflow-wrap: anywhere; }
+.task-schedule-error { color: var(--danger); }
+.schedule-target-filter { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.task-message-schedule-source { color: var(--meta); font-size: calc(12px * var(--font-scale)); margin-bottom: 4px; }
+.schedule-task-target { overflow-wrap: anywhere; color: var(--meta); font-size: calc(11px * var(--font-scale)); margin-top: 4px; }
+
+.task-schedule-identification { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+.task-schedule-editor .field { min-width: 0; }

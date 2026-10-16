@@ -82,6 +82,26 @@ def _interval_runs(
     return results
 
 
+def _minute_runs(rule: dict, current: datetime, count: int) -> list[datetime]:
+    every = rule.get("every")
+    if type(every) is not int or not 1 <= every <= 10080:
+        raise ScheduleValidationError("minutes every must be an integer between 1 and 10080")
+    zone = _zone(rule.get("timezone") or "UTC")
+    try:
+        anchor = datetime.fromisoformat(str(rule["anchor_at"])) if rule.get("anchor_at") else current
+    except ValueError as exc:
+        raise ScheduleValidationError("invalid anchor_at") from exc
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=zone)
+    anchor = anchor.astimezone(timezone.utc)
+    start, end = _effective_range(rule, zone)
+    lower = max(current, start - timedelta(microseconds=1)) if start else current
+    period = timedelta(minutes=every)
+    index = max(1, int((lower - anchor) // period) + 1)
+    candidates = [anchor + period * (index + i) for i in range(max(1, min(count, 20)))]
+    return [value for value in candidates if not end or value < end]
+
+
 def compile_rule(rule: dict) -> tuple[str | None, str, datetime | None]:
     """Return canonical cron, timezone and one-time UTC instant."""
     kind = str(rule.get("kind") or "")
@@ -97,6 +117,9 @@ def compile_rule(rule: dict) -> tuple[str | None, str, datetime | None]:
         return None, zone_name, run_at.astimezone(timezone.utc)
 
     _effective_range(rule, zone)
+    if kind == "minutes":
+        _minute_runs(rule, datetime.now(timezone.utc), 1)
+        return None, zone_name, None
     if kind == "interval":
         _interval_runs(
             rule,
@@ -142,6 +165,8 @@ def preview_rule(
         current = current.replace(tzinfo=timezone.utc)
     if run_at is not None:
         next_runs = [run_at] if run_at > current else []
+    elif rule.get("kind") == "minutes":
+        next_runs = _minute_runs(rule, current, count)
     elif rule.get("kind") == "interval":
         next_runs = _interval_runs(
             rule,
@@ -173,6 +198,8 @@ def preview_rule(
 
 def describe_rule(rule: dict) -> str:
     kind = rule.get("kind")
+    if kind == "minutes":
+        return f"Every {rule.get('every')} minutes"
     if kind == "once":
         return f"Once at {rule.get('run_at')}"
     if kind == "daily":

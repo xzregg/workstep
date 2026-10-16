@@ -194,7 +194,7 @@ class WorkflowGenModule(AssistantRuntime):
 
     def message_events(
         self, project_id: str, workflow_id: str, message_id: str,
-        *, cursor: int = 0, limit: int = 30000,
+        *, cursor: int = 0, limit: int = 30000, file_changes: bool = False, file_path: str | None = None,
     ) -> dict:
         """Read a workflow message timeline inside the project DB executor."""
         from agent_assistants.event_replay import _detail_agui_events
@@ -204,6 +204,12 @@ class WorkflowGenModule(AssistantRuntime):
         if message is None:
             raise ValueError("Workflow message not found")
         with self._project_ctx(project_id) as project:
+            if file_changes:
+                from agent_assistants.file_change_index import legacy_changes
+                if message.get("event_log_path"):
+                    ref = self._event_journal.reopen(project.workstep_dir, message["event_log_path"])
+                    return self._event_journal.file_changes(ref, file_path=file_path, project_root=project.path)
+                return legacy_changes(message.get("events") or [], file_path=file_path, project_root=project.path)
             if message.get("event_log_path"):
                 ref = self._event_journal.reopen(project.workstep_dir, message["event_log_path"])
                 page = self._event_journal.timeline(ref, cursor=cursor, limit=limit)

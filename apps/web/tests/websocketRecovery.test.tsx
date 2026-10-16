@@ -5,6 +5,8 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushWsSubscriptionNow, useWebSocket, useWsSubscriptionStore } from '../src/hooks/useWebSocket'
 import { useProjectStore } from '../src/stores/projectStore'
+import { useRecentActivityStore } from '../src/stores/recentActivityStore'
+import { taskApi, type Task } from '../src/api/client'
 import { useTaskStore } from '../src/stores/taskStore'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
 
@@ -136,6 +138,10 @@ test('foreground recovery replaces stale sockets, restores subscriptions and ref
     })
     assert.equal(Socket.instances.length, 2)
     assert.equal(useChatSessionStore.getState().sessions['channel-chat'].messages[0].content, '实时正文')
+    await act(async () => second.receive({ type: 'TEXT_MESSAGE_CHUNK', channel: 'channel_chat',
+      session_id: 'channel-chat', messageId: 'channel-reply', delta: '渠道实时正文' }))
+    assert.equal(useChatSessionStore.getState().sessions['channel-chat'].messages[1]?.content, '渠道实时正文',
+      'channel assistant events must reach the currently displayed conversation without reloading')
     await act(async () => context.mock.timers.tick(20000))
     const ping = second.sent.find((frame) => frame.type === 'ping')
     assert.ok(ping)
@@ -177,6 +183,43 @@ test('foreground recovery replaces stale sockets, restores subscriptions and ref
     useProjectStore.setState({ fetchProjects: originalProjects })
     useChatSessionStore.setState({ sessions: {} })
     window.removeEventListener('workstep:reconnected', recovered)
+    await window.happyDOM.close()
+  }
+})
+
+
+test('recent cross-project targets receive status-only task and session subscriptions', async (context) => {
+  const { window } = installDomEnvironment()
+  const originalSocket = globalThis.WebSocket
+  const originalGet = taskApi.get
+  taskApi.get = async () => ({ status: 'ready' } as Task)
+  globalThis.WebSocket = Socket as never
+  Socket.instances = []
+  context.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  function Harness() { useWebSocket(); return null }
+  try {
+    useRecentActivityStore.getState().setTargets([
+      { kind: 'task', projectId: 'other-project', id: 'recent-task' },
+      { kind: 'session', projectId: 'other-project', id: 'recent-session' },
+    ])
+    await act(async () => root.render(<Harness />))
+    const socket = Socket.instances[0]
+    await act(async () => socket.open())
+    const subscription = socket.sent[0]
+    assert.ok((subscription.status_only_task_ids as string[]).includes('recent-task'))
+    assert.ok((subscription.session_ids as string[]).includes('recent-session'))
+    assert.ok(!(subscription.task_ids as string[]).includes('recent-task'))
+    await act(async () => useRecentActivityStore.getState().setTargets([]))
+    const updated = socket.sent.filter(item => item.type === 'subscribe').at(-1)!
+    assert.ok(!(updated.status_only_task_ids as string[]).includes('recent-task'))
+    assert.ok(!(updated.session_ids as string[]).includes('recent-session'))
+  } finally {
+    await act(async () => root.unmount())
+    useRecentActivityStore.getState().setTargets([])
+    context.mock.timers.reset()
+    globalThis.WebSocket = originalSocket
+    taskApi.get = originalGet
     await window.happyDOM.close()
   }
 })

@@ -28,7 +28,7 @@ export default function ReviewOverridesEditor({ value, onChange, lanes, startSte
   if (Object.keys(value).length === 0) {
     return <div style={{ color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', textAlign: 'center', paddingTop: 40 }}>{t('taskList.noReviewConfig')}</div>
   }
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+  return <div className="review-overrides-editor">
     {Object.entries(value).map(([key, cfg]) => {
       const lane = lanes.find((item) => item.key === key)
       const label = lane?.label || key
