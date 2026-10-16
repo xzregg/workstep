@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 import sys
@@ -20,10 +21,25 @@ PATTERNS = {
     "private key": r"-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----",
 }
 COMBINED = "(" + "|".join(PATTERNS.values()) + ")"
+# Reviewed 2026-10-16: the SecOps role lists two bare PEM opening markers
+# as detection examples, with no key body or closing marker. Pin the entire
+# content, not a directory/pattern: any edit must be reviewed again.
+REVIEWED_DOCUMENTATION = {
+    'apps/daemon/data/role-center/roles/agency-367eccc119495783b1e97dc108c4b3ea.json':
+        '6b670257b64f8746208e74c5b09621e169ea57c133033946f14e72181e8be7fd',
+}
 
 
 def matching_kinds(text: str) -> list[str]:
     return [name for name, pattern in PATTERNS.items() if re.search(pattern, text)]
+
+
+def unreviewed_kinds(path: str, content: str) -> list[str]:
+    kinds = matching_kinds(content)
+    if (kinds == ['private key'] and REVIEWED_DOCUMENTATION.get(path)
+            == hashlib.sha256(content.encode('utf-8')).hexdigest()):
+        return []
+    return kinds
 
 
 def _run(*args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
@@ -52,7 +68,7 @@ def scan() -> list[str]:
             content = (ROOT / relative).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if matching_kinds(content):
+        if unreviewed_kinds(relative, content):
             findings.add(f"worktree:{relative}")
 
     commits = _run("git", "rev-list", "--all").stdout.decode().splitlines()
@@ -63,6 +79,10 @@ def scan() -> list[str]:
             raise RuntimeError(result.stderr.decode(errors="replace"))
         for raw in result.stdout.decode(errors="replace").splitlines():
             path = raw.split(":", 1)[-1]
+            if path in REVIEWED_DOCUMENTATION:
+                content = _run('git', 'show', f'{target}:{path}').stdout.decode('utf-8')
+                if not unreviewed_kinds(path, content):
+                    continue
             findings.add(f"{target[:12]}:{path}")
     return sorted(findings)
 
