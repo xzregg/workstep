@@ -18,6 +18,7 @@ interface Props {
   taskId: string
   stepKey: string | null
   running: boolean
+  revision?: number
   children: (state: TaskStepConfigState) => ReactNode
 }
 
@@ -26,6 +27,7 @@ export default function TaskStepConfigController({
   taskId,
   stepKey,
   running,
+  revision,
   children,
 }: Props) {
   const { t } = useI18n()
@@ -57,7 +59,7 @@ export default function TaskStepConfigController({
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
     // engineRevision：设置页改了引擎的安装/配置/测试状态后重新拉取，步骤引擎下拉即时跟随。
-  }, [engineRevision, projectId, running, stepKey, taskId])
+  }, [engineRevision, projectId, running, stepKey, taskId, revision])
 
   const save = useCallback(async (
     selection: StepExecutionSelection,
@@ -162,7 +164,7 @@ export default function TaskStepConfigController({
         }
         void save(next)
       },
-      onReset: () => {
+      onReset: detail.can_reset === false ? undefined : () => {
         if (disabled) return
         setSaving(true)
         setError('')

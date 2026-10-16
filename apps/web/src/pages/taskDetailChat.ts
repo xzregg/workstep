@@ -25,6 +25,7 @@ export interface OptimisticCoordinatorMessage extends OptimisticUserMessage {
 }
 
 export interface TaskStepStartState {
+  in_workflow?: boolean
   status: string
   started_at: string | null
 }
@@ -655,9 +656,10 @@ export function findActiveStepIndex(
 }
 
 export function isTaskCompleted(steps: TaskStepStartState[]): boolean {
-  return steps.length > 0
-    && !isTaskNotStarted(steps)
-    && steps.every((step) => step.status === 'passed' || step.status === 'skipped')
+  const current = steps.filter((step) => step.in_workflow !== false)
+  return current.length > 0
+    && !isTaskNotStarted(current)
+    && current.every((step) => step.status === 'passed' || step.status === 'skipped')
 }
 
 

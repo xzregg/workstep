@@ -331,6 +331,12 @@ def load_shared_task(task_id: str) -> dict | None:
                 "name": wf.name,
                 "steps": _json.loads(wf.steps_json) if wf.steps_json else None,
             }
+            from types import SimpleNamespace
+            from services.task_workflow_config import get_task_workflow
+            project = SimpleNamespace(steps=workflow["steps"], workflow_by_id=lambda _id: workflow)
+            config = get_task_workflow(project, task_id)
+            workflow["steps"] = config["workflow"]
+            payload["workflow_configuration"] = {**config, "editable": False, "overrides": None}
         except Workflow.DoesNotExist:
             workflow = None
     payload["workflow"] = workflow

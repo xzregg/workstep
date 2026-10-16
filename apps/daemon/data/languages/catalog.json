@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "0cd798b33ded5fd8ddb2160fb94a6e0da1c68c0bd1715ba8f803c655d9be72ee",
+  "revision": "ccc81d10083f5c05429952bf362ef5c642c428324a7bf88a3d655e0ae22a6ed9",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -9,6 +9,19 @@
     "interaction.deny"
   ],
   "messages": {
+    "taskWorkflow.edit": "编辑任务流程",
+    "taskWorkflow.view": "查看任务流程",
+    "taskWorkflow.customized": "任务已自定义",
+    "taskWorkflow.sync": "同步主流程",
+    "taskWorkflow.discard": "放弃未保存的修改？",
+    "taskWorkflow.syncWarning": "将清除本任务全部自定义配置、新增阶段和连接，恢复最新主流程。历史消息、产物和执行记录保留，不会自动启动任务。",
+    "taskWorkflow.rules": "仅修改当前任务。原阶段、输入口和原产物不可删除或改名；可新增阶段、末尾追加产物和调整连接。移除连线会改变依赖，可能使阶段直接执行，并非设为手动。下一次启动自动合并主流程。",
+    "taskWorkflow.stopFirst": "当前只读：请先停止任务执行及审核后再编辑。",
+    "taskWorkflow.changed": "流程配置已变化，未保存的草稿仍保留。请关闭并重新打开编辑器后再保存。",
+    "taskWorkflow.handoff": "切换引擎时的上下文交接",
+    "taskWorkflow.smart": "智能交接",
+    "taskWorkflow.full": "完整交接",
+    "taskWorkflow.none": "不携带历史",
     "roleCenter.title": "角色中心",
     "roleCenter.intro": "管理角色提示词，自由组合专家团。内置角色可修改，升级不会覆盖已有内容。",
     "roleCenter.roles": "角色库",

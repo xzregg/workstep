@@ -162,11 +162,12 @@ def build_task_execution_report(
 
     workflow = None
     if project is not None:
-        if task.workflow_id:
-            selected = project.workflow_by_id(task.workflow_id)
-            workflow = selected.get("steps") if selected is not None else None
-        else:
-            workflow = project.steps
+        from services.task_workflow_config import resolve_task_workflow
+        from services.task_workflow import WorkflowConflict
+        try:
+            workflow = resolve_task_workflow(project, task)
+        except WorkflowConflict:
+            pass  # Historical records remain readable while configuration is repaired.
     titles = _step_titles(workflow)
     round_by_run = _rounds(runs)
     usage_by_segment: dict[tuple[str, str], dict[str, Any]] = defaultdict(_new_usage_bucket)

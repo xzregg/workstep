@@ -132,6 +132,7 @@ def create_restart_run(
     instance_id: str,
     reset_session_step_key: str | None = None,
     feedback_inputs: dict[str, dict] | None = None,
+    valid_step_keys: set[str] | None = None,
 ) -> tuple[Task, WorkflowRun]:
     """Replace a run atomically inside the selected project's DB executor."""
     now = utc_now()
@@ -179,6 +180,7 @@ def create_restart_run(
                     message.ended_at = projection["ended_at"] or now
                     message.save(only=[Message.run_status, Message.ended_at])
         routing_state = empty_routing_state()
+        routing_state["configuration_current"] = True
         routing_state["entry_step_key"] = step_key
         routing_state["execution_scope"] = sorted(execution_keys)
         if feedback_inputs:
@@ -224,6 +226,8 @@ def create_restart_run(
             )
         }
         for reusable_key in reusable:
+            if valid_step_keys is not None and reusable_key not in valid_step_keys:
+                continue
             source = (
                 StepRun.select()
                 .where(

@@ -993,6 +993,7 @@ class CoordinatorModule:
                         requested,
                         result,
                         journal_snapshot,
+                        project=self._project_manager.get_project_by_id(project_id),
                     ),
                 )
 
@@ -1200,6 +1201,7 @@ class CoordinatorModule:
         requested,
         result,
         journal_snapshot,
+        *, project=None,
     ):
         turn = CoordinatorTurn.get_by_id(turn_id)
         assistant = Message.get_by_id(turn.assistant_message_id)
@@ -1237,7 +1239,7 @@ class CoordinatorModule:
         session.updated_at = assistant.ended_at
         session.save()
         self._refresh_summary(task, session)
-        proposal = self._actions.create_proposal(task, turn, assistant, result)
+        proposal = self._actions.create_proposal(task, turn, assistant, result, project=project)
         return assistant, self._actions.proposal_to_dict(proposal) if proposal else None
 
     @staticmethod

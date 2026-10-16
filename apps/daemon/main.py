@@ -31,6 +31,7 @@ os.environ.setdefault(
 from streaming.bus import EventBus
 from api.project import router as project_router
 from api.task import router as task_router
+from api.task_workflow import router as task_workflow_router
 from api.task_archive import router as task_archive_router
 from api.task_reviews import router as task_reviews_router
 from api.action import task_router as action_task_router, run_router as action_run_router, project_router as action_project_router, session_router as action_session_router
@@ -326,6 +327,7 @@ app.add_middleware(BrowserActorMiddleware)
 # Register routers
 app.include_router(project_router)
 app.include_router(task_router)
+app.include_router(task_workflow_router)
 app.include_router(task_archive_router)
 app.include_router(task_reviews_router)
 app.include_router(action_task_router)

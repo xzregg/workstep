@@ -32,6 +32,9 @@ import {
 import { copyMessageText } from '../components/MessageResponseFooter'
 import { a2uiActionMessageParams } from '../utils/a2ui'
 import StepPromptEditor from '../components/StepPromptEditor'
+import TaskWorkflowTools from '../components/TaskWorkflowTools'
+import { taskWorkflowApi } from '../api/taskWorkflow'
+import { useTaskWorkflow } from '../hooks/useTaskWorkflow'
 import TaskDiscussionGroups from '../components/TaskDiscussionGroups'
 import ConfirmDialog from '../components/ConfirmDialog'
 import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
@@ -123,7 +126,6 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
   const { openTask } = useTaskRoute()
   const activeProject = useProjectStore((s) => s.activeProject)
   const projects = useProjectStore((s) => s.projects)
-  const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const [searchParams] = useSearchParams()
   const urlProjectName = searchParams.get('project')
   // Resolve the project this task belongs to: prefer the URL ?project= hint
@@ -185,7 +187,6 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
     title: task.title, workflowId: task.workflow_id || undefined,
   } : null)
   const taskStatus = task?.status
-  const taskCompleted = isTaskCompleted(task?.steps || [])
   const sessionIdForStep = (stepKey?: string | null): string | null => {
     if (!stepKey) return null
     const step = (task?.steps || []).find((item) => item.step_key === stepKey)
@@ -298,6 +299,16 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
     fetchTasks, refreshTask, onError: setChatError,
   })
   const [showPromptEditor, setShowPromptEditor] = useState(false)
+  const loadTaskWorkflow = useCallback(() => shared
+    ? shared.readCapabilities.loadWorkflow()
+    : taskWorkflowApi.get(taskId, projectId), [taskId, projectId, shared?.readCapabilities.loadWorkflow])
+  const { configuration: workflowConfiguration, error: workflowError, update: updateWorkflowConfiguration } = useTaskWorkflow(
+    loadTaskWorkflow, `${projectId}:${taskId}`,
+    `${task?.state_version ?? ''}:${JSON.stringify(detailProject?.steps)}`,
+    task?.status === 'running' || task?.status === 'queued'
+      || Boolean(task?.steps.some((step) => ['running', 'retrying', 'rework', 'reviewing', 'rework_waiting'].includes(step.status)))
+      || reviews.some((review) => ['pending', 'running'].includes(review.status)),
+  )
   const persistedMessageIds = useMemo(
     () => new Set(historyMessages.map((message) => String(message.id))),
     [historyMessages],
@@ -388,7 +399,7 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
 
   // Get steps from project steps
   const steps = useMemo<StepData[]>(() => {
-    const steps = detailProject?.steps
+    const steps = workflowConfiguration?.workflow
     if (steps?.nodes?.length) {
       const nodes = steps.nodes as any[]
       const keyByNodeId = new Map<string, string>()
@@ -463,8 +474,8 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
         type: o.type || 'any',
       })),
     }))
-    return [{ key: 'do', label: t('taskList.execute'), color: 'var(--accent)', engine: '', model: '', prompt: '', inputs: [], outputs: [] }]
-  }, [detailProject?.steps, t])
+    return []
+  }, [workflowConfiguration?.workflow, t])
 
   const stepProgress = useMemo<StepProgress[]>(() => {
     const stepByKey = new Map(
@@ -497,6 +508,9 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
       return { ...taskStep, visualState }
     })
   }, [steps, task?.status, task?.steps])
+  const taskCompleted = isTaskCompleted(stepProgress.map((step) => ({
+    status: step.status || 'pending', started_at: step.started_at || null,
+  })))
 
   const activeStepIndex = useMemo(() => {
     const current = stepProgress.findIndex((progress: StepProgress) =>
@@ -519,8 +533,8 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
     return 0
   }, [stepProgress, steps, task?.restart_from_step_key])
 
-  const currentStep = steps[selectedStep] || steps[0]
-  const activeStep = steps[activeStepIndex] || steps[0]
+  const currentStep = steps[selectedStep] || steps[0] || { key: '', label: '', color: '', prompt: '', inputs: [], outputs: [] }
+  const activeStep = steps[activeStepIndex] || currentStep
   const executionStepModel = activeStep?.model || task?.model || ''
 
   useEffect(() => {
@@ -924,19 +938,25 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
         taskId={task.id}
         stepKey={chatTargetStepKey}
         running={activeStepRunning}
+        revision={task.state_version}
       >
         {({ inputConfig: stepEngineConfig, loading: stepEngineConfigLoading, error: stepEngineConfigError }) => <TaskDetailPage
         {...headerHandlers}
         task={task}
         gitCapability={shared?.gitCapability || (projectId ? { api: taskGitApi, projectId, projectScoped: detailProject?.type === 'remote' } : undefined)}
         steps={steps}
-        workflowConnections={detailProject?.steps?.connections || []}
+        workflowConnections={workflowConfiguration?.workflow?.connections || []}
+        workflowTools={workflowConfiguration
+          ? <TaskWorkflowTools taskId={taskId} projectId={projectId} configuration={workflowConfiguration}
+              readOnly={Boolean(shared)} onChanged={(value) => { updateWorkflowConfiguration(value); void refreshTask(taskId, projectId) }} />
+          : workflowError ? <div role="alert">{workflowError}</div> : <Spinner />}
         stepProgress={stepProgress}
         selectedStep={selectedStep}
         onStepClick={handleStepClick}
         historyMessages={historyMessages}
         onLoadOlderHistory={shared?.loadOlderHistory || loadOlderHistory}
         readCapabilities={{
+          loadWorkflow: loadTaskWorkflow,
           artifactDirectory,
           resolveAssetUrl: ownerAssetUrl,
           filePreview: ownerFilePreview,
@@ -1019,7 +1039,8 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
         coordinatorStopping={coordinatorStopping}
         titleEditable
         descriptionEditable
-        onOpenPromptEditor={() => setShowPromptEditor(true)}
+        onOpenPromptEditor={!shared && workflowConfiguration?.editable && !workflowConfiguration.conflict
+          ? () => setShowPromptEditor(true) : undefined}
         reviewConfigEditable
         onA2uiAction={handleA2uiAction}
         onInteractionRespond={handleInteractionRespond}
@@ -1125,14 +1146,11 @@ export default function TaskDetail({ taskId, onClose, shared, project }: TaskDet
             step={currentStep}
             projectId={projectId}
             workflowId={task?.workflow_id || detailProject?.workflows?.find((workflow) => workflow.is_default)?.id || ''}
-            onSaved={(nextSteps) => {
-              if (shared) { void refreshTask(taskId, projectId); return }
-              const workflowId = task?.workflow_id || detailProject?.workflows?.find((workflow) => workflow.is_default)?.id
-              if (detailProject) setActiveProject({ ...detailProject,
-                steps: useProjectStore.getState().activeWorkflowId === workflowId ? nextSteps : detailProject.steps,
-                workflows: detailProject.workflows.map((workflow) => workflow.id === workflowId
-                  ? { ...workflow, steps: nextSteps } : workflow),
-              })
+            taskId={taskId}
+            taskWorkflow={workflowConfiguration}
+            onTaskSaved={updateWorkflowConfiguration}
+            onSaved={() => {
+              void refreshTask(taskId, projectId)
             }}
             onClose={() => setShowPromptEditor(false)}
           />}

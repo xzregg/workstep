@@ -1,4 +1,5 @@
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import type { TaskWorkflowConfiguration } from '../api/taskWorkflow'
 import { useI18n } from '../i18n'
 import type { Project, TaskArtifact } from '../api/client'
 import type { GitWorkspaceBrowser } from './git/GitApiContext'
@@ -21,6 +22,7 @@ import {
  */
 /** Both the owner and share routes must supply every task-detail viewing capability. */
 export interface TaskDetailReadCapabilities {
+  loadWorkflow: () => Promise<TaskWorkflowConfiguration>
   artifactDirectory: string
   resolveAssetUrl: MarkdownUrlResolver
   filePreview: TaskFilePreview

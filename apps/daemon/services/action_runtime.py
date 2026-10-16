@@ -59,19 +59,21 @@ def _buttons_from_setting(project_id: str) -> list[dict]:
         return [dict(button) for button in DEFAULT_QUICK_BUTTONS]
 
 
-def _workflow_steps(task: Task) -> dict:
-    workflow = Workflow.get_or_none(Workflow.id == task.workflow_id)
-    if workflow is None:
-        return {}
+def _available_buttons(project, task: Task, step_key: str | None) -> list[dict]:
+    from services.task_workflow_config import resolve_task_workflow
+    from services.workflow_definition import WorkflowValidationError
+    from types import SimpleNamespace
+
+    project_id = project.id
+    # This reader historically reads the DB rather than the project catalog.
+    # Keep that freshness, but use the same effective-configuration resolver.
+    workflow = Workflow.get_or_none((Workflow.id == task.workflow_id) & (Workflow.deleted == 0))
+    source = {"steps": json.loads(workflow.steps_json)} if workflow else None
+    context = SimpleNamespace(steps=project.steps, workflow_by_id=lambda _id: source)
     try:
-        value = json.loads(workflow.steps_json)
-        return value if isinstance(value, dict) else {}
-    except (ValueError, TypeError):
-        return {}
-
-
-def _available_buttons(project_id: str, task: Task, step_key: str | None) -> list[dict]:
-    steps = _workflow_steps(task)
+        steps = resolve_task_workflow(context, task)
+    except WorkflowValidationError as exc:
+        raise ActionError(str(exc), 409) from exc
     local = []
     for node in steps.get("nodes", steps.get("steps", [])):
         if node.get("key", node.get("type", node.get("id"))) == step_key:
@@ -230,7 +232,7 @@ class ActionRuntime:
             if task is None:
                 raise ActionError("任务不存在", 404)
             runs = list(ActionRun.select().where(ActionRun.task_id == task_id).order_by(ActionRun.started_at.desc()).limit(50))
-            return {"buttons": _available_buttons(project_id, task, step_key), "runs": [_serialize(run) for run in runs]}
+            return {"buttons": _available_buttons(_project, task, step_key), "runs": [_serialize(run) for run in runs]}
         result = await self._db(project_id, load)
         for run in result["runs"]:
             if run["status"] in ACTIVE and run["run_id"] not in self.tasks:
@@ -289,7 +291,7 @@ class ActionRuntime:
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
                 raise ActionError("任务不存在", 404)
-            button = next((item for item in _available_buttons(project_id, task, step_key)
+            button = next((item for item in _available_buttons(_project, task, step_key)
                            if item.get("id") == button_id and item.get("source") == source), None)
             if button is None or button.get("kind") != "action":
                 raise ActionError("Action 快捷按钮不存在", 404)

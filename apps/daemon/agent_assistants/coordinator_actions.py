@@ -147,7 +147,7 @@ class CoordinatorActionService:
             normalized[step_key] = round_number
         return normalized
 
-    def create_proposal(self, task, turn, assistant, result):
+    def create_proposal(self, task, turn, assistant, result, *, project=None):
         proposal_data = result.get("proposal")
         if not isinstance(proposal_data, dict):
             return None
@@ -164,8 +164,17 @@ class CoordinatorActionService:
         step_keys = {
             row.step_key for row in TaskStep.select().where(TaskStep.task == task)
         }
+        if project is not None:
+            from services.task_workflow_config import resolve_task_workflow
+            from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
+            try:
+                step_keys = {step["key"] for step in WorkflowDefinition.load(resolve_task_workflow(project, task)).compile().steps}
+            except WorkflowValidationError:
+                step_keys = set()
         if proposal_type not in {"review_decision", "create_workflow_action"} and target_step_key not in step_keys:
             return None
+        if proposal_type in {"supplement_step", "rerun_from_step"}:
+            TaskStep.get_or_create(task=task, step_key=target_step_key, defaults={"status": "pending"})
         expected_review_run_id = None
         expected_step_run_id = None
         expected_workflow_run_id = task.active_workflow_run_id

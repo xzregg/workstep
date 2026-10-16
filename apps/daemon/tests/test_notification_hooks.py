@@ -40,6 +40,26 @@ async def save(client, project, flow, hooks):
 
 
 @pytest.mark.asyncio
+async def test_step_notification_uses_task_custom_stage_title(notification_app):
+    from models import Task
+    from services.task_workflow import build_overrides, canonical_workflow
+
+    app, manager, project, flow, service, sent = notification_app
+
+    def customize(_project):
+        edited = canonical_workflow(flow['steps'])
+        edited['nodes'][0]['title'] = '任务专用测试'
+        Task.update(workflow_overrides_json=json.dumps(build_overrides(flow['steps'], edited))).where(Task.id == 'task').execute()
+
+    await manager.run_db(project.id, customize)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        await save(client, project, flow, [{'name':'步骤通知','url':'https://receiver.example/hook','events':['step_completed']}])
+    await service.capture({'type':'CUSTOM','name':'workstep.status','project_id':project.id,'task_id':'task','step_key':'test','value':{'status':'passed'}})
+    await service.deliver_due()
+    assert sent[0][1]['step'] == {'key':'test','name':'任务专用测试'}
+
+
+@pytest.mark.asyncio
 async def test_templates_persist_per_target_preview_and_delivery_share_renderer(notification_app):
     app, manager, project, flow, service, sent = notification_app
     path = f'/api/workflow/{flow["id"]}/notification-hooks'

@@ -57,6 +57,32 @@ async def test_review_rework_persists_feedback_only_on_producer(tmp_path):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("source", ["artifact", "review"])
+async def test_late_parallel_success_cannot_overwrite_a_rewind(tmp_path, source):
+    db, task, scheduler, owner, events = _setup(tmp_path)
+    try:
+        generations = {key: owner.generation(key) for key in ("build", "publish")}
+        completed, failed = {"build", "check", "publish"}, set()
+        if source == "artifact":
+            await owner.from_artifact(task, scheduler.steps["check"], scheduler, completed, failed,
+                                      ({"id": "feedback", "to": "build"},))
+        else:
+            await owner.from_review(task, scheduler.steps["check"], scheduler, completed, "KEEP_BUG", 1)
+        # Simulate in-flight engine completion after the feedback transaction.
+        completed.update({"build", "publish"})
+        TaskStep.update(status="passed").where(TaskStep.step_key.in_(["build", "publish"])).execute()
+        await owner.reconcile_batch(task, generations, completed, failed)
+        assert "build" not in completed and "publish" not in completed
+        rows = {row.step_key: row for row in TaskStep.select()}
+        assert rows["build"].status == "rework"
+        assert rows["publish"].status == ("rework_waiting" if source == "artifact" else "rework")
+        assert rows["build"].rework_feedback == (None if source == "artifact" else "KEEP_BUG")
+        assert rows["publish"].rework_feedback is None
+    finally:
+        db.close()
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("previous_status", ["passed", "failed", "skipped", "pending"])
 async def test_artifact_return_rewinds_downstream_without_stale_feedback(
     tmp_path, previous_status,

@@ -117,8 +117,12 @@ class NotificationHookService:
             step_key=event.get('step_key') if kind in {'step_completed','step_failed','waiting'} else None
             step=None
             if step_key:
-                from services.workflow_definition import WorkflowDefinition
-                steps=WorkflowDefinition.load(workflow['steps']).compile().steps
+                from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
+                from services.task_workflow_config import resolve_task_workflow
+                try:
+                    steps=WorkflowDefinition.load(resolve_task_workflow(project,task)).compile().steps
+                except WorkflowValidationError:
+                    steps=[]  # Preserve notifications/history even if the live source conflicts.
                 step={'key':step_key,'name':next((s.get('label') or step_key for s in steps if s['key']==step_key),step_key)}
                 run=StepRun.select().where((StepRun.step_key==step_key)&(StepRun.run==task.active_workflow_run_id)).order_by(StepRun.attempt.desc()).first() if task.active_workflow_run_id else None
                 state=TaskStep.get_or_none((TaskStep.task==task_id)&(TaskStep.step_key==step_key))

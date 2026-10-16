@@ -248,10 +248,16 @@ class TaskRunner:
             )
 
             if workflow_run is not None:
+                latest_attempts = {}
                 for step_run in StepRun.select().where(
-                    (StepRun.run == workflow_run)
-                    & (StepRun.status.in_(["succeeded", "reused"]))
-                ):
+                    StepRun.run == workflow_run
+                ).order_by(StepRun.attempt):
+                    latest_attempts[step_run.step_key] = step_run
+                for step_run in latest_attempts.values():
+                    # Recovery turns an interrupted attempt into failed/pending.
+                    # An older successful round must not complete its unfinished rework.
+                    if step_run.status not in {"succeeded", "reused"}:
+                        continue
                     # A persisted return/retry marker wins over historical
                     # successful attempts.  Otherwise resuming after a
                     # manually approved feedback artifact would silently
@@ -283,7 +289,13 @@ class TaskRunner:
             )
 
         completed, routing_state_json = await self._run_db(initialize_pipeline_state)
+        completed.intersection_update(scheduler.steps)
         self._artifact_routes.restore(routing_state_json, execution_scope)
+        overlay = json.loads(task.workflow_overrides_json or "{}")
+        await self._artifact_routes.reconcile_configuration(
+            scheduler, workflow_run,
+            structural_override=bool(overlay.get("added_nodes") or overlay.get("added_connections") or overlay.get("removed_connections")),
+        )
         # 重启某步骤时只重跑该步骤及其下游（scope）。范围外的步骤即便未通过
         # 也不再执行，但仍要让依赖它们的下游步骤被视为依赖已满足——否则失败的
         # 上游会被 DAG 判为 ready 而抢先执行（@ 下游却跑了上游）。
@@ -482,6 +494,7 @@ class TaskRunner:
             return  # Pipeline complete or no more work
 
         # Fan-out: run all ready steps in parallel
+        generations = {step.key: self._step_rework.generation(step.key) for step in ready}
         coros = [
             self._run_step(
                 task,
@@ -497,6 +510,7 @@ class TaskRunner:
             for step in ready
         ]
         await asyncio.gather(*coros)
+        await self._step_rework.reconcile_batch(task, generations, completed, failed)
 
         # Recurse: check for newly ready steps
         await self._execute_dag(

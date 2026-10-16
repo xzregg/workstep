@@ -247,7 +247,10 @@ class TaskService:
                 task.description = normalized
         task.updated_at = utc_now()
         if review_overrides is not None:
-            task.review_overrides_json = json.dumps(review_overrides, ensure_ascii=False)
+            from services.task_workflow_config import replace_review_overrides
+            replace_review_overrides(task, review_overrides)
+            task.review_overrides_json = None
+            task.state_version += 1
         task.save()
         return task_to_dict(task)
 
@@ -647,6 +650,9 @@ class TaskService:
                     description=original.description,
                     cwd=cwd_override or original.cwd,
                     engine=original.engine or DEFAULT_EXECUTION_ENGINE,
+                    workflow_id=original.workflow_id,
+                    workflow_overrides_json=original.workflow_overrides_json,
+                    review_overrides_json=original.review_overrides_json,
                     created_at=now,
                     updated_at=now,
                     **(creator_fields if creator_fields is not None else current_actor_task_fields()),
@@ -659,6 +665,7 @@ class TaskService:
                         step_key=step.step_key,
                         status="pending",
                         engine=step.engine,
+                        execution_config_json=step.execution_config_json,
                     )
 
                 self._audit_change(project_id, new_task.id, "task.copy", new_task.title)

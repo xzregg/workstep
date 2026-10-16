@@ -81,6 +81,17 @@ class StepArtifactRoutes:
         if execution_scope is not None:
             self._scope = execution_scope
 
+    async def reconcile_configuration(self, scheduler, workflow_run, *, structural_override=False):
+        from services.task_workflow_boundary import reconcile_workflow_routing
+
+        self._state, changed = reconcile_workflow_routing(
+            self._state, scheduler, structural_override=structural_override,
+        )
+        if changed and self._state.get("execution_scope") is not None:
+            self._scope = set(self._state["execution_scope"])
+        if workflow_run is not None:
+            await self._persist_state(workflow_run)
+
     def task_context_edges(self, scheduler: DAGScheduler) -> set[str]:
         """Boundary entry inputs and established repair context inputs."""
         entry_key = self._entry_step_key

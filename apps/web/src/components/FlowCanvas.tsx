@@ -28,6 +28,7 @@ import NodeConfigPanel from './NodeConfigPanel'
 import FlowNodeCopyDialog from './FlowNodeCopyDialog'
 import FlowTemplateDialog from './FlowTemplateDialog'
 import FlowCanvasJsonDialogs from './FlowCanvasJsonDialogs'
+import './FlowCanvas.css'
 
 /* ══════════════════════════════════════════
    Reusable flow canvas editor — shared by the
@@ -128,8 +129,13 @@ function StepNode({ data }: { data: StepNodeData }) {
     })
   })
 
-  // Output handles align with sub-outputs (1:1 mapping)
-  const outputYs = subOutputYs
+  // Legacy/source stages may declare outputs without input-owned rows.
+  const standaloneOutputs = subOutputYs.length ? [] : data.outputs
+  const outputYs = [...subOutputYs]
+  standaloneOutputs.forEach(() => {
+    outputYs.push(cursor + SUB_ROW_H / 2)
+    cursor += SUB_ROW_H
+  })
 
   const totalH = Math.max(cursor + PORT_PAD, topOffset + 20)
 
@@ -175,6 +181,12 @@ function StepNode({ data }: { data: StepNodeData }) {
       )}
 
       {/* Input labels + sub-output labels — absolute positioned */}
+      {standaloneOutputs.map((output, index) => (
+        <div key={`output-${index}`} className="flow-standalone-output"
+          style={{ top: outputYs[index] - SUB_ROW_H / 2 }}>
+          <span>↳</span><span className="flow-standalone-output-name">{output.name}</span><span>{output.type}</span>
+        </div>
+      ))}
       {data.inputs.map((inp, i) => {
         const labelTop = inputYs[i] - PORT_ROW_H / 2
         return (
@@ -214,6 +226,8 @@ const nodeTypes: NodeTypes = { step: StepNode, bookmark: FlowBookmark }
 export interface FlowCanvasProps {
   /** Canvas JSON ({ nodes, connections } or legacy { steps }). */
   initialSteps?: any
+  /** Source nodes cannot be deleted from a task-local workflow. */
+  taskWorkflowSource?: any
   readOnly?: boolean
   /** Persist the edited canvas; FlowCanvas manages dirty state + toast. */
   onSave: (steps: any) => Promise<void> | void
@@ -247,6 +261,7 @@ export interface FlowCanvasHandle {
 
 function FlowCanvasInner({
   initialSteps,
+  taskWorkflowSource,
   onSave,
   onDirtyChange,
   projectId,
@@ -266,7 +281,11 @@ function FlowCanvasInner({
   const readOnly = requestedReadOnly
   const { fitView } = useReactFlow()
   const initial = loadCanvasData(initialSteps)
-  const [nodes, setNodes, onNodesChange] = useNodesState([...canvasToFlowNodes(initial.nodes), ...loadBookmarks(initialSteps)])
+  const protectedKeys = new Set((taskWorkflowSource?.nodes || []).map((node: any) => node.type || node.key))
+  const protectNodes = (items: Node[]) => items.map((node) => ({ ...node,
+    deletable: !protectedKeys.has((node.data as StepNodeData).key),
+  }))
+  const [nodes, setNodes, onNodesChange] = useNodesState([...protectNodes(canvasToFlowNodes(initial.nodes)), ...loadBookmarks(initialSteps)])
   const [edges, setEdges, onEdgesChange] = useEdgesState(canvasToFlowEdges(initial.connections, initial.nodes))
   const [previewNode, setPreviewNode] = useState<StepNodeData | null>(null)
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
@@ -291,8 +310,8 @@ function FlowCanvasInner({
 
   const setDirty = useCallback((value: boolean) => {
     setDirtyState(value)
-    onDirtyChange?.(value)
-  }, [onDirtyChange])
+  }, [])
+  useEffect(() => { onDirtyChange?.(dirty || nodeConfigDirty) }, [dirty, nodeConfigDirty, onDirtyChange])
 
   useEffect(() => {
     setEnginesLoading(true)
@@ -328,7 +347,7 @@ function FlowCanvasInner({
     }
     savedStepsKey.current = null
     const { nodes: nn, connections: nc } = loadCanvasData(initialSteps)
-    setNodes([...canvasToFlowNodes(nn), ...loadBookmarks(initialSteps)])
+    setNodes([...protectNodes(canvasToFlowNodes(nn)), ...loadBookmarks(initialSteps)])
     setEdges(canvasToFlowEdges(nc, nn))
     setSelectedNode(null)
     setNodeConfigError('')
@@ -386,6 +405,9 @@ function FlowCanvasInner({
   }, [])
 
   const deleteNode = useCallback((nodeId: string) => {
+    const target = nodes.find((node) => node.id === nodeId)
+    if (target?.deletable === false) return
+    setDirty(true)
     setNodes((nds) => nds.filter((n) => n.id !== nodeId))
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
     if (selectedNode && String(selectedNode.nodeId) === nodeId) {
@@ -393,7 +415,7 @@ function FlowCanvasInner({
       setNodeConfigError('')
     }
     setContextMenu(null)
-  }, [setNodes, setEdges, selectedNode])
+  }, [nodes, setNodes, setEdges, selectedNode, setDirty])
 
   const handleAddNode = () => {
     const id = Date.now()
@@ -788,6 +810,7 @@ function FlowCanvasInner({
           <div style={{ display: readOnly ? 'none' : 'contents' }}>
           <NodeConfigPanel
             node={selectedNode}
+            lockedSource={loadCanvasData(taskWorkflowSource).nodes.find((node) => node.key === selectedNode.key)}
             engines={availableEngines}
             enginesLoading={enginesLoading}
             enginesError={enginesError}

@@ -7,10 +7,11 @@ interface ComboboxProps {
   onChange: (val: string) => void
   placeholder?: string
   style?: React.CSSProperties
+  disabled?: boolean
 }
 
 /** 下拉框：点击展开全部选项，也支持自由输入自定义值 */
-export default function Combobox({ value, options, onChange, placeholder, style }: ComboboxProps) {
+export default function Combobox({ value, options, onChange, placeholder, style, disabled = false }: ComboboxProps) {
   const [open, setOpen] = useState(false)
   const [inputVal, setInputVal] = useState(value)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -29,20 +30,23 @@ export default function Combobox({ value, options, onChange, placeholder, style 
   }, [])
 
   const commit = useCallback((val: string) => {
+    if (disabled) return
     setInputVal(val)
     onChange(val)
     setOpen(false)
-  }, [onChange])
+  }, [onChange, disabled])
 
   const toggle = useCallback(() => {
+    if (disabled) return
     setOpen(o => !o)
-  }, [])
+  }, [disabled])
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', ...style }}>
+    <div className="combobox" aria-disabled={disabled} ref={containerRef} style={{ position: 'relative', ...style }}>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
         <Input
           ref={inputRef}
+          disabled={disabled}
           value={inputVal}
           placeholder={placeholder}
           onFocus={() => setOpen(true)}
@@ -61,7 +65,7 @@ export default function Combobox({ value, options, onChange, placeholder, style 
           style={{ cursor: 'pointer', padding: '0 4px', fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', lineHeight: 1 }}
         >▼</span>
       </div>
-      {open && (
+      {open && !disabled && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1000,
           maxHeight: 180, overflowY: 'auto',

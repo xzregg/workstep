@@ -268,6 +268,7 @@ export interface TaskDetailViewProps {
 
   // ── Prompt editing (edit mode only) ──
   onOpenPromptEditor?: () => void
+  workflowTools?: React.ReactNode
 
   // ── Review config (edit mode only) ──
   reviewConfigEditable?: boolean
@@ -413,6 +414,7 @@ export default function TaskDetailView({
   descriptionEditable,
   // Prompt
   onOpenPromptEditor,
+  workflowTools,
   // Review config
   reviewConfigEditable,
   // A2UI
@@ -602,6 +604,7 @@ export default function TaskDetailView({
           durationNowMs={durationNowMs}
           onStepClick={handleStepClick}
         />
+        {workflowTools}
 
         <TaskStepIoPanel currentStep={currentStep} steps={steps}
           workflowConnections={workflowConnections} progress={stepProgress[selectedStep]}
