@@ -64,6 +64,15 @@ def verify_share_ticket(ticket: str, public_key_pem: str,
                 raise ValueError("Invalid share ticket scope")
             scope[name] = value
         scope["mode"] = claims["mode"]
+        if 'actor' in claims:
+            actor = claims['actor']
+            if (not isinstance(actor, dict)
+                    or set(actor) != {'user_id', 'username', 'display_name'}
+                    or any(not isinstance(actor.get(name), str) or not actor[name].strip()
+                           or len(actor[name]) > limit
+                           for name, limit in (('user_id', 64), ('username', 128), ('display_name', 256)))):
+                raise ValueError('Invalid share actor')
+            scope['actor'] = actor
         if 'provider_ids' in claims or 'provider_grant_expires_at' in claims:
             ids = claims.get('provider_ids')
             expiry = claims.get('provider_grant_expires_at')

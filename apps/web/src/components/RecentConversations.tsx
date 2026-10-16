@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react'
+import { useContext, useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useI18n } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
@@ -13,7 +13,7 @@ import { useChatListStore } from '../stores/chatSessionStore'
 import { formatConversationDateTime, formatRelativeTime } from '../utils/datetime'
 import RecentConversationActions from './RecentConversationActions'
 
-export default function RecentConversations({ now = Date.now() }: { now?: number }) {
+export default function RecentConversations({ now = Date.now(), heading, collapsed = false }: { now?: number; heading?: ReactNode; collapsed?: boolean }) {
   const { t, locale } = useI18n()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const sessionsByProject = useChatListStore(s => s.sessionsByProject)
@@ -33,8 +33,8 @@ export default function RecentConversations({ now = Date.now() }: { now?: number
     return project && permission.can(entry.kind === 'task' ? 'task.read' : 'session.read') ? [{ entry, project, canManage: permission.can('session.manage') }] : []
   })
   return <section className="layout-sidebar-recent" aria-label={t('layout.recentConversations')}>
-    <div className="layout-sidebar-section-label"><span>{t('layout.recentConversations')}</span></div>
-    <div className="layout-sidebar-recent-list">
+    {heading ?? <div className="layout-sidebar-section-label"><span>{t('layout.recentConversations')}</span></div>}
+    <div id="workspace-recent-content" className="layout-sidebar-recent-list" hidden={collapsed}>
       {visible.map(({ entry, project, canManage }) => {
         const active = params.get('project') === project.name && (entry.kind === 'session'
           ? location.pathname === '/chat' && params.get('session') === entry.id

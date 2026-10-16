@@ -12,6 +12,7 @@ router = APIRouter(prefix='/api/gateway-task-shares')
 class CreateInput(BaseModel):
     project_id: str = Field(min_length=1, max_length=128)
     task_id: str = Field(min_length=1, max_length=128)
+    require_login: bool = False
     password: str | None = Field(default=None, min_length=4, max_length=200)
     title: str = Field(default='', max_length=256)
     mode: Literal['read_only', 'interactive'] = 'read_only'

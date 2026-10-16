@@ -10,6 +10,7 @@ import { applySharedMessageEvent, capSharedHistoryEvents, mergeSharedHistorySnap
 export type SharePhase =
   | { kind: 'loading-meta' }
   | { kind: 'need-password'; meta: ShareMeta }
+  | { kind: 'need-login' }
   | { kind: 'unlocking'; meta: ShareMeta; password: string }
   | { kind: 'loading-task' }
   | { kind: 'ready'; sessionToken: string }
@@ -81,7 +82,9 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
       await loadWithSession(session_token, version)
     } catch (reason) {
       if (version !== scopeVersion.current) return
-      setPhase({ kind: 'error', message: reason instanceof Error ? reason.message : String(reason) })
+      setPhase(shareMeta.require_login && reason instanceof ApiError && reason.status === 401
+        ? { kind: 'need-login' }
+        : { kind: 'error', message: reason instanceof Error ? reason.message : String(reason) })
     }
   }, [api, token, loadWithSession, t])
 
@@ -114,7 +117,8 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
         if (!cancelled) return loadWithSession(session_token)
       }).catch((reason: Error) => {
         if (cancelled) return
-        if (/401/i.test(reason.message)) void recoverSession(shareMeta)
+        if (shareMeta.require_login && reason instanceof ApiError && reason.status === 401) setPhase({ kind: 'need-login' })
+        else if (/401/i.test(reason.message)) void recoverSession(shareMeta)
         else setPhase({ kind: 'error', message: reason.message })
       })
     }).catch((reason: Error) => {

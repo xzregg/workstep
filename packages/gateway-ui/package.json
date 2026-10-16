@@ -9,7 +9,9 @@
     "./openRemoteAccess": "./src/openRemoteAccess.ts",
     "./androidNotifications": "./src/androidNotifications.ts",
     "./NotificationCenter.css": "./src/NotificationCenter.css",
-    "./DeviceTabs.css": "./src/DeviceTabs.css"
+    "./DeviceTabs.css": "./src/DeviceTabs.css",
+    "./TaskShareLoginToggle": "./src/TaskShareLoginToggle.tsx",
+    "./TaskShareLoginToggle.css": "./src/TaskShareLoginToggle.css"
   },
   "peerDependencies": {
     "react": "^19.2.7"

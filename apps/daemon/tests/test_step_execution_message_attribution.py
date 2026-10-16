@@ -43,6 +43,7 @@ async def test_retried_execution_rechecks_scope_and_uses_current_run_actor(tmp_p
         run = WorkflowRun.create(
             id="new-run", task=task, workflow_schema_version=1, status="running", started_at=now,
             initiated_by_user_id="new-user", initiated_by_username="new",
+            initiated_by_name="New Person",
             initiated_by_device_id="new-device", initiated_by_device_name="新电脑",
         )
         task.active_workflow_run_id = run.id
@@ -53,7 +54,13 @@ async def test_retried_execution_rechecks_scope_and_uses_current_run_actor(tmp_p
     task, message_id, state = await executor.run(seed)
     runner = TaskRunner(EventBus(), source_project_id="project-test", database_executor=executor,
                         retry_message_ids={"build": message_id})
-    monkeypatch.setattr(execution, "assemble_prompt", lambda *args, **kwargs: "重试提示")
+    prompt_triggers = []
+
+    def assemble(*args, **kwargs):
+        prompt_triggers.append(args[7])
+        return "重试提示"
+
+    monkeypatch.setattr(execution, "assemble_prompt", assemble)
     slow_query_started = threading.Event()
     if source == "valid_slow":
         original = execution.attributed_actor_message_fields
@@ -98,6 +105,7 @@ async def test_retried_execution_rechecks_scope_and_uses_current_run_actor(tmp_p
                     row.initiated_by_username, row.author_device_id)
 
         values = await executor.run(snapshot)
+        assert prompt_triggers == ["New Person"]
         if source.startswith("valid"):
             assert values == ("new-engine", "", "new-engine", "new-engine", "assistant",
                               "new-user", "new", "new-device")

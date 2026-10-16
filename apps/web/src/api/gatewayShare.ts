@@ -112,7 +112,7 @@ export const gatewayShareApi: SharedTaskApi = {
   },
   buildWsUrl: (_csrf, token) => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${protocol}//${window.location.host}${base(token!)}/ws`
+    return `${protocol}//${window.location.host}/ws/public/shares/${encodeURIComponent(token!)}`
   },
 }
 

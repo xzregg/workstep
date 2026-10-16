@@ -11,7 +11,8 @@ from gateway.services.signing import GatewaySigner
 
 
 @pytest.mark.asyncio
-async def test_slow_identity_provider_with_encrypted_application_secret_does_not_block_health(tmp_path):
+@pytest.mark.parametrize("provider_id", ["dingtalk", "wecom"])
+async def test_slow_identity_provider_with_encrypted_application_secret_does_not_block_health(tmp_path, provider_id):
     settings = GatewaySettings(data_dir=tmp_path)
     app = create_app(settings)
     database = GatewayDatabase(settings)
@@ -27,22 +28,30 @@ async def test_slow_identity_provider_with_encrypted_application_secret_does_not
             provider_started.set()
             await release_provider.wait()
             return httpx.Response(200, json={"corpId": "tenant-a", "accessToken": "user-token"})
+        if request.url.path.endswith("gettoken"):
+            return httpx.Response(200, json={"errcode": 0, "access_token": "app-token"})
+        if request.url.path.endswith("getuserinfo"):
+            return httpx.Response(200, json={"errcode": 0, "UserId": "employee-1"})
+        if request.url.path.endswith("/user/get"):
+            provider_started.set()
+            await release_provider.wait()
+            return httpx.Response(200, json={"errcode": 0, "name": "张三"})
         return httpx.Response(200, json={"unionId": "employee-1", "nick": "张三"})
 
-    app.state.identity_connectors['dingtalk'].client_factory = lambda: httpx.AsyncClient(transport=httpx.MockTransport(provider))
+    app.state.identity_connectors[provider_id].client_factory = lambda: httpx.AsyncClient(transport=httpx.MockTransport(provider))
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                      base_url="https://gateway.test") as client:
             setup = await client.post("/api/platform/setup", json={
                 "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
                 "recovery_username": "recovery", "recovery_password": "RecoveryPassphrase-2026!",
-                "registration_mode": "open",
+                "registration_mode": "closed",
             })
             assert setup.status_code == 201
             source = await client.post("/api/admin/identity-sources", headers={
                 "X-CSRF-Token": setup.json()["csrf_token"],
             }, json={
-                "provider": "dingtalk", "tenant_id": "tenant-a", "client_id": "test-client",
+                "provider": provider_id, "agent_id": "1001", "tenant_id": "tenant-a", "client_id": "test-client",
                 "client_secret": "server-secret",
             })
             source_id = source.json()["id"]

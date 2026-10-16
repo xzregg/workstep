@@ -180,22 +180,63 @@ def test_startup_does_not_accept_an_old_healthy_listener(restart, monkeypatch):
         restart.start_services()
 
 
-def test_duplicate_start_refuses_before_overwriting_pid_files(tmp_path):
-    script = tmp_path / "start.sh"
-    script.write_text((SCRIPT.parents[1] / "start.sh").read_text())
-    (tmp_path / "scripts").mkdir()
-    (tmp_path / "scripts/file-limits.sh").write_text((SCRIPT.parent / "file-limits.sh").read_text())
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    lsof = bin_dir / "lsof"
-    lsof.write_text("#!/bin/sh\necho 100\nexit 0\n")
-    lsof.chmod(0o755)
-    (tmp_path / ".pids").mkdir()
-    pid = tmp_path / ".pids/daemon.pid"
-    pid.write_text("original")
-    result = subprocess.run(["bash", str(script), "8765", "dev"],
-                            env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]},
-                            capture_output=True, text=True, timeout=5)
-    assert result.returncode == 1
-    assert "端口已被占用" in result.stdout
-    assert pid.read_text() == "original"
+@pytest.mark.parametrize("mode,ports", [("dev", [8765, 5173]), ("prod", [8765])])
+@pytest.mark.parametrize("shutdown", ["term", "force", "blocked"])
+def test_start_releases_occupied_ports_before_continuing(tmp_path, mode, ports, shutdown):
+    source = (SCRIPT.parents[1] / "start.sh").read_text()
+    functions = source.split("# === 工具函数 ===", 1)[1].split("# === 预检查 ===", 1)[0]
+    precheck = source.split("# === 预检查 ===", 1)[1].split("# 检查依赖", 1)[0]
+    # Shell functions intercept every signal and port probe; no real process is touched.
+    harness = r'''set -e
+RED=
+GREEN=
+YELLOW=
+BLUE=
+NC=
+PORT=8765
+MODE=$1
+SHUTDOWN=$2
+STATE=$3
+lsof() {
+    case "$*" in
+        *:8765*) port=8765 ;;
+        *:5173*) port=5173 ;;
+        *) return 1 ;;
+    esac
+    [ -f "$STATE/$port" ] || return 1
+    cat "$STATE/$port"
+}
+kill() {
+    echo "$*" >> "$STATE/signals"
+    case "$*" in
+        *87650*) port=8765 ;;
+        *51730*) port=5173 ;;
+        *) exit 90 ;;
+    esac
+    if [ "$SHUTDOWN" = term ] || { [ "$SHUTDOWN" = force ] && [ "$1" = -9 ]; }; then
+        rm -f "$STATE/$port"
+    fi
+}
+sleep() { :; }
+'''
+    (tmp_path / "8765").write_text("87650\n")
+    (tmp_path / "5173").write_text("51730\n")
+    result = subprocess.run(
+        ["bash", "-c", harness + functions + precheck + '\necho CONTINUED',
+         "bash", mode, shutdown, str(tmp_path)],
+        capture_output=True, text=True, timeout=5,
+    )
+    signals = (tmp_path / "signals").read_text() if (tmp_path / "signals").exists() else ""
+    if shutdown == "blocked":
+        assert result.returncode != 0
+        assert "CONTINUED" not in result.stdout
+        assert "无法释放端口" in result.stdout
+    else:
+        assert result.returncode == 0, result.stderr
+        assert "CONTINUED" in result.stdout
+        for port in ports:
+            assert not (tmp_path / str(port)).exists()
+            assert str(port * 10) in signals
+        assert ("-9" in signals) == (shutdown == "force")
+        if mode == "prod":
+            assert (tmp_path / "5173").exists()

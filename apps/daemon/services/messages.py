@@ -148,6 +148,32 @@ def attributed_actor_message_fields(
     } if task.creator_name else {}
 
 
+def attributed_actor_display_name(task: Task, *, channel: str, step_key: str) -> str:
+    """Resolve a prompt's human name using the existing execution attribution.
+
+    Must run inside the project's database executor, like the field resolver.
+    Never replace an unknown saved actor with the daemon's current local user.
+    """
+    fields = attributed_actor_message_fields(task, channel=channel, step_key=step_key)
+    user_id = fields.get('initiated_by_user_id')
+    username = fields.get('initiated_by_username')
+    source = (Message.select().where(
+        (Message.task == task) & (Message.role == 'user')
+        & (Message.author_id == user_id) & (Message.author_name.is_null(False))
+        & (Message.author_name != '')
+    ).order_by(Message.sequence.desc(), Message.created_at.desc()).first()) if user_id else None
+    run = WorkflowRun.get_or_none(
+        (WorkflowRun.id == task.active_workflow_run_id) & (WorkflowRun.task == task)
+    ) if task.active_workflow_run_id else None
+    if run is not None and run.initiated_by_user_id == user_id and (
+        source is None or (run.started_at and source.created_at and source.created_at < run.started_at)
+    ):
+        return run.initiated_by_name or username or ''
+    if source is not None:
+        return source.author_name or username or ''
+    return username or ''
+
+
 _UUID7_RANDOM_BITS = 74
 _UUID7_RANDOM_MASK = (1 << _UUID7_RANDOM_BITS) - 1
 _uuid7_lock = threading.Lock()

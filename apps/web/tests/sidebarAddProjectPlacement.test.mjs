@@ -6,7 +6,7 @@ const source = await readFile(new URL('../src/components/Layout.tsx', import.met
 
 test('add project and inline search share the fixed project heading', () => {
   const addProjectIndex = source.indexOf("aria-label={t('nav.addProject')}")
-  const projectsIndex = source.indexOf("{t('layout.projects')}")
+  const projectsIndex = source.indexOf('<WorkspaceSidebarSections')
   const searchIndex = source.indexOf('className="layout-sidebar-search"')
   const listIndex = source.indexOf('className="layout-sidebar-projects"')
 
