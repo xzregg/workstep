@@ -8,6 +8,29 @@ import type { TaskArtifact } from '../src/api/client'
 import TaskStepIoPanel from '../src/components/TaskStepIoPanel'
 import type { StepData } from '../src/components/TaskDetailView'
 
+test('reopening a root stage with artifacts does not crash the IO panel', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const step: StepData = { key: 'requirements', label: '需求', color: 'var(--accent)',
+    prompt: '', inputs: [], outputs: [{ name: 'PRD', type: 'md' }] }
+  const artifact = { name: 'PRD.md', logical_name: 'PRD', declared_output: true,
+    output_port: 0, step_key: 'requirements', round: 1, path: 'PRD.md' } as TaskArtifact
+  try {
+    await act(async () => root.render(<I18nProvider><TaskStepIoPanel
+      currentStep={step} steps={[step]} workflowConnections={[]} artifacts={[artifact]}
+      artifactInputSnapshots={[]} canChat={false} locale="zh-CN"
+      onOpenArtifact={() => {}} /></I18nProvider>))
+    assert.ok(container.querySelector('.task-step-io'))
+    assert.equal(container.querySelectorAll('[role="tab"]').length, 1)
+    assert.equal(container.querySelectorAll('.task-step-io-input').length, 0)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
 test('step IO shows rounds and opens only available input artifacts', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

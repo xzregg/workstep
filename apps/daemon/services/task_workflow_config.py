@@ -87,16 +87,18 @@ def set_execution_override(project, task, key, target):
     _store_delta(task, delta)
 
 
-def set_review_override(task, key, review):
+def set_review_override(task, key, review, *, workflow_definition=None):
     """Preserve partial legacy callers, but do not pin unchanged review fields."""
     from models import Workflow
     from services.task_workflow import _diff
 
-    workflow = Workflow.get_or_none(Workflow.id == task.workflow_id) if task.workflow_id else None
-    if workflow is None:
-        set_node_override(task, key, {"review": review})
-        return
-    source = canonical_workflow(json.loads(workflow.steps_json))
+    if workflow_definition is None:
+        workflow = Workflow.get_or_none(Workflow.id == task.workflow_id) if task.workflow_id else None
+        if workflow is None:
+            set_node_override(task, key, {"review": review})
+            return
+        workflow_definition = json.loads(workflow.steps_json)
+    source = canonical_workflow(workflow_definition)
     node = next((node for node in source["nodes"] if node["type"] == key), None)
     if node is None:
         set_node_override(task, key, {"review": review})

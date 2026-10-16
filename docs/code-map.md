@@ -404,6 +404,7 @@ WorkStep Web `TaskShareButton.tsx` 统一任务详情的分享入口，`GatewayT
 | 任务弹窗位置、尺寸、四边四角缩放与键盘移动 | `TaskDetailWindow.tsx`；`TaskDetail.tsx` 只装配内容 | `taskDetailWindow.test.tsx` |
 | 任务描述展示、编辑保存及定时启动时间调整 | `TaskDetailDescription.tsx`；任务页启用编辑，分享页只读 | `taskDescriptionEditing.test.tsx`、`taskDetailProgressLayout.test.mjs` |
 | 步骤提示词快速编辑、保存和错误恢复 | `StepPromptEditor.tsx` 的任务模式读取有效任务定义，通过 `taskWorkflowApi` 只保存任务增量；主流程模式才调用 `workflowApi.updateStepPrompt`。`TaskDetail.tsx` 传任务配置与版本，并刷新任务投影；持久化分别归 `api/task_workflow.py`／`services/task_workflow_config.py` 与 `api/workflow.py::update_step_prompt`，均在数据库执行器内完成 | `stepPromptEditor.test.tsx`、`taskWorkflow.test.tsx`；`test_api_contracts.py` 的任务增量／主流程定点修改与慢 SQL canary |
+| 创建任务审核配置的继承与增量 | `TaskCreatePanel` 提交审核选择；`services/task.py::create_task` 在项目数据库工作单元中调用 `task_workflow_config.py::set_review_override`，按当前主流程仅保存真正不同的字段，继承值不写旧审核覆盖 | `test_api_contracts.py::test_task_creation_review_selection_only_persists_actual_differences`、`test_task_creation_sparse_review_write_does_not_block_health` |
 | 当前步骤提示词展示与快捷编辑入口 | `TaskStepPrompt.tsx`；任务页可编辑，分享页只读；固定样式在 `src/index.css` 的 `task-step-prompt-*` 类 | `taskStepPrompt.test.tsx`、`taskDetailProgressLayout.test.mjs` |
 | 桌面、移动及产物轮次页签 | `TaskDetailTabs.tsx`；移动端主导航右侧通过 `actions` 显示绑定 BOT 和分享，`TaskDetailView.tsx` 按屏幕模式放置 `navigationActions`；任务 ID 保留在页头，移动端为无边框静态省略文本，点击复制完整 ID | `taskDetailTabs.test.tsx`、`chatInputLayout.test.mjs` |
 | 任务详情两栏分割比例、拖动与会话持久化 | `TaskDetailSplitLayout.tsx`；`TaskDetailView.tsx` 只装配步骤、对话和移动端产物内容 | `taskDetailSplitLayout.test.tsx` |
@@ -425,7 +426,7 @@ WorkStep Web `TaskShareButton.tsx` 统一任务详情的分享入口，`GatewayT
 | 任务协调引擎配置与供应商/模型选择 | `src/hooks/useTaskCoordinatorConfig.ts`；`TaskDetail.tsx` 负责接入任务详情输入区 | `useTaskCoordinatorConfig.test.tsx` |
 | 步骤停止、丢失会话重启与失败消息重试 | `src/hooks/useTaskStepControls.ts`；任务详情提供历史刷新和错误展示回调 | `useTaskStepControls.test.tsx` |
 | 任务历史刷新合并、事件详情归并与失败重试 | `src/pages/taskHistoryModel.ts`；本地详情、分享页及历史 hook 共用 | `taskDetailChat.test.ts`、`taskHistory.test.tsx` |
-| 任务产物选择、轮次、步骤输入输出映射与接口变更判断 | `src/pages/taskArtifactRules.ts`；`TaskStepIoPanel.tsx` 展示结果，本地详情与分享页共用产物查找；`TaskStepFeedback.tsx` / `.css` 展示步骤状态反馈，长内容默认折叠、展开复用 `MarkdownMessage`，异常仅强调标题；数据沿用任务 API 的步骤 `error` | `taskDetailChat.test.ts`、`taskStepIoPanel.test.tsx` |
+| 任务产物选择、轮次、步骤输入输出映射与接口变更判断 | `src/pages/taskArtifactRules.ts`；无输入口时不将已有产物分组到不存在的输入口，避免重进起始阶段白屏。`TaskStepIoPanel.tsx` 展示结果，本地详情与分享页共用产物查找；`TaskStepFeedback.tsx` / `.css` 展示步骤状态反馈，长内容默认折叠、展开复用 `MarkdownMessage`，异常仅强调标题；数据沿用任务 API 的步骤 `error` | `taskDetailChat.test.ts`、`taskStepIoPanel.test.tsx`（含无输入口且已有产物的组件渲染） |
 | 任务产物列表加载、生成后刷新、预览与打开本地目录 | `src/hooks/useTaskArtifacts.ts`；`TaskDetail.tsx` 负责将状态接入详情页，远端项目禁用本地目录操作 | `useTaskArtifacts.test.tsx` |
 | 任务详情与分享页的产物目录浏览、文件预览及弹框布局 | `TaskArtifactBrowser.tsx` 提供目录入口；`TaskArtifactPreviewDialog.tsx` 将分享产物列表按层级适配到共用 `ProjectDirectoryBrowserDialog`，保持只读与分享文件预览上下文；弹框挂载到 `document.body`，文件预览固定样式在 `TaskArtifactPreviewDialog.css` | `sharedArtifactDirectory.test.tsx`、`taskArtifactPreviewDirectory.test.tsx`、`taskArtifactPreviewResize.test.tsx`、`projectDirectoryBrowser.test.tsx` |
 | 任务归档经验草稿、生成和确认 | `ArchiveExperienceDialog.tsx`；任务列表只负责打开和归档后移除卡片 | `archiveExperienceDialog.test.tsx`、`archiveExperienceControls.test.mjs` |

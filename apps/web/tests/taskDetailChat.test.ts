@@ -239,6 +239,12 @@ test('uses the selected round manifest outputs instead of the workflow declarati
   )
 })
 
+test('does not group root-stage artifacts under nonexistent input ports', () => {
+  assert.deepEqual(groupStepOutputsByInput([], [{ name: 'PRD', type: 'md' }], [
+    { name: 'PRD.md', logical_name: 'PRD', artifact_type: 'md', output_port: 0 },
+  ]), [])
+})
+
 test('groups declared and produced outputs under their configured input ports', () => {
   const inputs = [
     { name: '前端功能测试', outputs: [{ name: '测试报告', type: 'md' }, { name: 'Bug 列表', type: 'md' }] },

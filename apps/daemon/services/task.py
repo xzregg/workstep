@@ -143,8 +143,11 @@ class TaskService:
                 ),
             )
             if review_overrides:
-                task.review_overrides_json = json.dumps(review_overrides, ensure_ascii=False)
-                task.save()
+                from services.task_workflow_config import set_review_override
+
+                for key, review in review_overrides.items():
+                    set_review_override(task, key, review, workflow_definition=workflow)
+                task.save(only=[Task.workflow_overrides_json])
 
             for index, step in enumerate(steps):
                 TaskStep.create(
