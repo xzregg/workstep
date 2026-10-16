@@ -37,6 +37,40 @@ class StepRework:
     ):
         self._run_db = run_db
         self._publish = publish
+        self._generations: dict[str, int] = {}
+        self._rewind_statuses: dict[str, str] = {}
+        self._rewind_feedback: dict[str, str | None] = {}
+
+    def generation(self, key: str) -> int:
+        return self._generations.get(key, 0)
+
+    def _invalidate(self, statuses: dict[str, str], feedback: dict[str, str] | None = None) -> None:
+        for key, status in statuses.items():
+            self._generations[key] = self.generation(key) + 1
+            self._rewind_statuses[key] = status
+            self._rewind_feedback[key] = (feedback or {}).get(key)
+
+    async def reconcile_batch(self, task, generations, completed, failed) -> None:
+        """A parallel result finishing after a rewind cannot complete the new generation."""
+        stale = {key for key, generation in generations.items()
+                 if self.generation(key) != generation}
+        if not stale:
+            return
+        completed.difference_update(stale)
+        failed.difference_update(stale)
+
+        def persist():
+            for key in stale:
+                TaskStep.update(status=self._rewind_statuses[key], error=None,
+                                rework_feedback=self._rewind_feedback[key], started_at=None, ended_at=None).where(
+                    (TaskStep.task == task) & (TaskStep.step_key == key)
+                ).execute()
+
+        await self._run_db(persist)
+        for key in sorted(stale):
+            await self._publish(task.id, key, {"type": "status", "data": {
+                "status": self._rewind_statuses[key], "task_id": task.id, "step_key": key,
+            }})
 
     async def from_artifact(
         self,
@@ -53,6 +87,7 @@ class StepRework:
         for target in targets:
             rewind.add(target)
             rewind.update(scheduler.get_all_downstream(target))
+        self._invalidate({key: "rework" if key in targets else "rework_waiting" for key in rewind})
         completed.difference_update(rewind)
         failed.difference_update(rewind)
 
@@ -94,6 +129,7 @@ class StepRework:
 
         targets = set(step.rework_upstream)
         rework_keys = [key for key in sorted(rewind) if key != step.key]
+        self._invalidate({key: "rework" for key in rework_keys}, {key: feedback for key in targets})
         completed.difference_update(rework_keys)
 
         def persist_rework():

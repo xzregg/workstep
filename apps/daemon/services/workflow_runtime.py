@@ -1163,38 +1163,8 @@ class WorkflowRuntime:
         made to the flow (such as switching a step's engine) take effect on
         the next run instead of being frozen into the parent run's snapshot.
         """
-        workflow_data = project.steps
-        if task.workflow_id:
-            selected_workflow = project.workflow_by_id(task.workflow_id)
-            if selected_workflow is None:
-                raise ValueError(f"Workflow not found: {task.workflow_id}")
-            workflow_data = selected_workflow["steps"]
-        merged = deepcopy(workflow_data)
-        is_nodes = bool(merged.get("nodes"))
-        raw_steps = merged.get("nodes") or merged.get("steps") or []
-        by_key = {
-            str(
-                (item.get("type") or item.get("key") or item.get("id"))
-                if is_nodes
-                else (item.get("key") or item.get("id") or item.get("type"))
-                or ""
-            ): item
-            for item in raw_steps
-        }
-        for row in TaskStep.select().where(TaskStep.task == task):
-            if not row.execution_config_json or row.step_key not in by_key:
-                continue
-            try:
-                override = json.loads(row.execution_config_json)
-            except (TypeError, json.JSONDecodeError):
-                continue
-            if not isinstance(override, dict):
-                continue
-            target = by_key[row.step_key]
-            target["engine"] = str(override.get("engine") or target.get("engine") or "")
-            target["model"] = str(override.get("model") or "")
-            target["config"] = dict(override.get("config") or {})
-        return merged
+        from services.task_workflow_config import resolve_task_workflow
+        return resolve_task_workflow(project, task)
 
     async def get_step_execution_config(
         self, project_id: str, task_id: str, step_key: str,
@@ -1300,6 +1270,7 @@ class WorkflowRuntime:
                         instance_id=self._leases.instance_id,
                         reset_session_step_key=(step_key if reset_session else None),
                         feedback_inputs=inspected["feedback_inputs"],
+                        valid_step_keys={item["key"] for item in steps_config["steps"]},
                     )
                     actor = get_effective_actor()
                     record_project_audit(
@@ -1458,6 +1429,7 @@ class WorkflowRuntime:
                     workflow_run.status = "succeeded"
                 elif latest_task.status == "paused" and TaskStep.select().where(
                     (TaskStep.task == latest_task)
+                    & (TaskStep.step_key.in_([item["key"] for item in steps_config.get("steps", [])]))
                     & (TaskStep.status.in_(
                         ["awaiting_review", "rejected", "retrying"]
                     ))

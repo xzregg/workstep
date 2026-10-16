@@ -184,6 +184,40 @@ async def _wait_until(condition, timeout=5.0):
 
 
 @pytest.mark.anyio
+async def test_one_task_workflow_conflict_does_not_block_other_recovery(tmp_path):
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.task_workflow import WorkflowConflict
+    from services.workflow_recovery import prepare_project_recovery
+
+    original, manager, project, run_id = _project_with_run(tmp_path)
+
+    def recover(project):
+        now = utc_now()
+        bad = Task.create(id="conflicting-task", title="Conflict", cwd=str(project.path), status="running",
+                          created_at=now, updated_at=now)
+        WorkflowRun.create(id="conflicting-run", task=bad, status="running", workflow_schema_version=1)
+
+        def configuration(project, task):
+            if task.id == bad.id:
+                raise WorkflowConflict("Source stage removed")
+            return project.steps
+
+        result = prepare_project_recovery(project, active_task_ids=frozenset(), owner_id="test-owner",
+                                          current_workflow_steps=configuration)
+        assert [run.run_id for run in result.runs] == [run_id]
+        untouched = WorkflowRun.get_by_id("conflicting-run")
+        assert untouched.status == "running" and not untouched.recovered_count
+        assert StepRun.get_by_id("step-b-1").status == "failed"
+
+    try:
+        await manager.run_db(project.id, recover)
+    finally:
+        await asyncio.to_thread(manager.close_all)
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
 async def test_slow_recovery_database_work_does_not_block_event_loop(tmp_path, monkeypatch):
     import services.workflow_runtime as runtime_module
     from engines.core.registry import ENGINE_REGISTRY
@@ -338,10 +372,11 @@ async def test_recovery_resumes_from_last_completed_node(tmp_path):
         recovered = await runtime.recover_running_workflows()
         assert recovered == 1
 
+        # Task status is committed before WorkflowRun finalization. Wait for
+        # the runner boundary, not an intermediate projection under CPU load.
+        await _wait_until(lambda: "task-rec" not in runtime._runners)
         with pm.activate_project(project.path):
-            await _wait_until(
-                lambda: Task.get_by_id("task-rec").status == "ready"
-            )
+            assert Task.get_by_id("task-rec").status == "ready"
             run = WorkflowRun.get_by_id(run_id)
             assert run.status == "succeeded"
             steps = {
@@ -833,10 +868,9 @@ async def test_graceful_shutdown_leaves_run_recoverable(tmp_path):
         # A subsequent daemon start resumes the same run.
         RecoveryFakeEngine.delay = 0.0
         assert await runtime.recover_running_workflows() == 1
+        await _wait_until(lambda: "task-rec" not in runtime._runners)
         with pm.activate_project(project.path):
-            await _wait_until(
-                lambda: Task.get_by_id("task-rec").status == "ready"
-            )
+            assert Task.get_by_id("task-rec").status == "ready"
             assert WorkflowRun.get_by_id(run_id).status == "succeeded"
             # The interrupted attempt is failed; a fresh attempt succeeds.
             interrupted = StepRun.get_by_id(in_flight.id)
@@ -1076,10 +1110,9 @@ async def test_recovery_takes_over_expired_lease(tmp_path):
             ).where(WorkflowRun.id == run_id).execute()
 
         assert await runtime.recover_running_workflows() == 1
+        await _wait_until(lambda: "task-rec" not in runtime._runners)
         with pm.activate_project(project.path):
-            await _wait_until(
-                lambda: Task.get_by_id("task-rec").status == "ready"
-            )
+            assert Task.get_by_id("task-rec").status == "ready"
             run = WorkflowRun.get_by_id(run_id)
             assert run.status == "succeeded"
     finally:

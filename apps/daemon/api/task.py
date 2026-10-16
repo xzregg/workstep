@@ -202,15 +202,18 @@ async def update_task(
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     await _require_scoped_task(pid, task_id)
-    task = await _run_db(
-        pid,
-        lambda: task_service.update_task_description(
-            task_id,
-            req.description,
-            req.review_overrides,
-            title=req.title,
-        ),
-    )
+    try:
+        task = await _run_db(
+            pid,
+            lambda: task_service.update_task_description(
+                task_id,
+                req.description,
+                req.review_overrides,
+                title=req.title,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await event_bus.publish({
@@ -352,18 +355,21 @@ async def update_step_execution_config(
     req: StepExecutionConfigRequest,
     pid: str = Query(..., alias="project_id"),
 ):
-    from main import workflow_runtime
+    from main import workflow_runtime, event_bus
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
     await _require_scoped_task(pid, task_id)
     try:
-        return await workflow_runtime.update_step_execution_config(
+        result = await workflow_runtime.update_step_execution_config(
             pid, task_id, step_key,
             engine=req.engine,
             model=req.model,
             config=req.config,
             context_mode=req.context_mode,
         )
+        await event_bus.publish({"type": "CUSTOM", "name": "workstep.task_updated",
+                                 "task_id": task_id, "project_id": pid, "value": {}})
+        return result
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -376,12 +382,15 @@ async def reset_step_execution_config(
     step_key: str,
     pid: str = Query(..., alias="project_id"),
 ):
-    from main import workflow_runtime
+    from main import workflow_runtime, event_bus
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
     await _require_scoped_task(pid, task_id)
     try:
-        return await workflow_runtime.reset_step_execution_config(pid, task_id, step_key)
+        result = await workflow_runtime.reset_step_execution_config(pid, task_id, step_key)
+        await event_bus.publish({"type": "CUSTOM", "name": "workstep.task_updated",
+                                 "task_id": task_id, "project_id": pid, "value": {}})
+        return result
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:

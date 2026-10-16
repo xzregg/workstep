@@ -62,11 +62,14 @@ def assemble_context(
     root_dir: str | None = None,
     separate_instructions: bool = False,
 ):
-    workflow_data = project.steps
-    if task.workflow_id:
-        workflow = project.workflow_by_id(task.workflow_id)
-        if workflow is not None:
-            workflow_data = workflow["steps"]
+    from services.task_workflow_config import resolve_task_workflow
+    from services.task_workflow import WorkflowConflict
+    workflow_error = None
+    try:
+        workflow_data = resolve_task_workflow(project, task)
+    except WorkflowConflict as exc:
+        workflow_error = str(exc)
+        workflow_data = {"steps": []}
     compiled = WorkflowDefinition.load(workflow_data).compile()
     review_configs: dict[str, dict | None] = {}
     if task.review_overrides_json:
@@ -88,26 +91,31 @@ def assemble_context(
         if isinstance(step_ov, dict):
             cfg.update(step_ov)
         review_configs[key] = cfg
+    progress = {row.step_key: row for row in TaskStep.select().where(TaskStep.task == task)}
     steps = [
         {
-            "step_key": step.step_key,
-            "status": step.status,
-            "engine": step.engine,
-            "error": step.error,
+            "step_key": definition["key"],
+            "in_workflow": True,
+            "status": progress[definition["key"]].status if definition["key"] in progress else "pending",
+            "engine": definition.get("engine"),
+            "error": progress[definition["key"]].error if definition["key"] in progress else None,
             "review_mode": (
-                "auto"
-                if (review_configs.get(step.step_key) or {}).get("auto", False)
-                else "manual"
+                (review_configs.get(definition["key"]) or {}).get("mode")
+                or ("auto" if (review_configs.get(definition["key"]) or {}).get("auto", False) else "manual")
             )
-            if review_configs.get(step.step_key) is not None
+            if review_configs.get(definition["key"]) is not None
             else None,
         }
-        for step in TaskStep.select().where(TaskStep.task == task)
+        for definition in compiled.steps
     ]
+    current_keys = {definition["key"] for definition in compiled.steps}
+    steps.extend({"step_key": key, "in_workflow": False, "status": row.status,
+                  "engine": row.engine, "error": row.error, "review_mode": None}
+                 for key, row in progress.items() if key not in current_keys)
     active_step_keys = [
         step["step_key"]
         for step in steps
-        if step["status"]
+        if step.get("in_workflow") and step["status"]
         in {
             "running",
             "reviewing",
@@ -184,6 +192,7 @@ def assemble_context(
             "state_version": task.state_version,
             "active_workflow_run_id": task.active_workflow_run_id,
             "workflow_id": task.workflow_id,
+            "workflow_configuration_error": workflow_error,
         },
         "coordinator_vision_model": (
             task.coordinator_vision_model

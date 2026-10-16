@@ -19,6 +19,7 @@ import {
  * 最近 N 条；完整事件流服务端已持久化，展开详情时经 messageEvents 懒加载。
  */
 const MAX_LIVE_EVENTS_PER_TASK = 2000
+const taskRefreshRequests = new Map<string, Promise<Task>>()
 
 function appendCappedEvent(events: TaskEvent[] | undefined, event: TaskEvent): TaskEvent[] {
   const combined = [...(events || []), event]
@@ -217,13 +218,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   refreshTask: async (taskId, projectId) => {
-    const task = await taskApi.get(taskId, projectId)
-    set((s) => ({
-      tasks: s.tasks.some((item) => item.id === taskId)
-        ? s.tasks.map((item) => item.id === taskId ? task : item)
-        : [...s.tasks, task],
-    }))
-    return task
+    const key = `${projectId}:${taskId}`
+    const pending = taskRefreshRequests.get(key)
+    if (pending) return pending
+    const request = taskApi.get(taskId, projectId).then((task) => {
+      set((s) => ({
+        tasks: s.tasks.some((item) => item.id === taskId)
+          ? s.tasks.map((item) => item.id === taskId ? task : item)
+          : [...s.tasks, task],
+      }))
+      return task
+    }).finally(() => taskRefreshRequests.delete(key))
+    taskRefreshRequests.set(key, request)
+    return request
   },
 
   setActiveTask: (id) => set({ activeTaskId: id }),

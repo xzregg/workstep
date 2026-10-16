@@ -113,6 +113,7 @@ _ADDITIVE_COLUMNS = {
         "vision_model": "TEXT",
     },
     "tasks": {
+        "workflow_overrides_json": "TEXT",
         "queued_run_json": "TEXT",
         "creator_id": "TEXT",
         "creator_username": "TEXT",

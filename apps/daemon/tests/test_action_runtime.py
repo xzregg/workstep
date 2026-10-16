@@ -54,6 +54,29 @@ async def action_client(tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_task_added_stage_actions_use_effective_workflow(action_client):
+    from services.task_workflow import build_overrides, canonical_workflow
+    from services.task_workflow_config import source_workflow
+
+    client, manager, project = action_client
+
+    def customize(project):
+        task = Task.get_by_id("task-action")
+        source = source_workflow(project, task)
+        edited = canonical_workflow(source)
+        edited["nodes"].append({"id": "deploy", "type": "deploy", "quickButtons": [
+            {"id": "deploy-action", "kind": "action", "label": "Deploy", "action_id": "restart", "script_path": "restart.sh"},
+        ]})
+        task.workflow_overrides_json = json.dumps(build_overrides(source, edited))
+        task.save()
+
+    await manager.run_db(project.id, customize)
+    response = await client.get(f"/api/tasks/task-action/actions?project_id={project.id}&step_key=deploy")
+    assert response.status_code == 200, response.text
+    assert any(button["id"] == "deploy-action" and button["source"] == "stage" for button in response.json()["buttons"])
+
+
+@pytest.mark.anyio
 async def test_action_confirm_deduplicate_and_stream(action_client):
     client, _manager, project = action_client
     url = f"/api/tasks/task-action/actions/run?project_id={project.id}"

@@ -84,9 +84,14 @@ export default function SharedEditableTaskDetail({ token, session, api, task, me
     load: (path: string) => path.startsWith('artifact:') || path.startsWith('workspace:') || latestRead.current.artifacts.some(item => item.source_path && path.replace(/\\/g, '/').endsWith('/artifacts/' + item.source_path))
       ? latestRead.current.readCapabilities.filePreview.load(path) : fsApi.preview(path, project.id),
   }), [readCapabilities.filePreview, project.id])
+  const loadWorkflow = useCallback(() => readCapabilities.loadWorkflow
+    ? readCapabilities.loadWorkflow()
+    : Promise.resolve({ workflow: project.steps, source: project.steps, revision: '', editable: false,
+        has_overrides: false, conflict: null }), [readCapabilities.loadWorkflow, project.steps])
   const editableRead = useMemo(() => ({ ...readCapabilities,
+    loadWorkflow,
     browseGitWorkspace: browseEditableWorkspace, filePreview,
-  }), [readCapabilities, browseEditableWorkspace, filePreview])
+  }), [readCapabilities, browseEditableWorkspace, filePreview, loadWorkflow])
   if (ready !== bindingKey) return null
   if (previewOnly) return <MarkdownAssetUrlProvider resolver={editableRead.resolveAssetUrl} filePreview={editableRead.filePreview}>
     <FilePreviewPage />

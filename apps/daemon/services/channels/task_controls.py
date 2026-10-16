@@ -93,8 +93,8 @@ class ChannelTaskControls:
                 step_key = message.step_key
             if message and message.channel == 'coordinator':
                 return step_key, '协调', message.id, message.content
-            workflow = project.workflow_by_id(task.workflow_id)
-            definition = workflow['steps'] if workflow else project.steps
+            from services.task_workflow_config import resolve_task_workflow
+            definition = resolve_task_workflow(project, task)
             steps = WorkflowDefinition.load(definition).compile().steps
             step = next((s for s in steps if str(s['key']) == step_key), {})
             return step_key, step.get('label') or '未命名阶段', message.id if message else review_id, message.content if message else ''

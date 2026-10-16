@@ -48,6 +48,7 @@ export interface Task {
 }
 
 export interface TaskStepState {
+  in_workflow?: boolean
   step_key: string
   status: 'pending' | 'running' | 'reviewing' | 'awaiting_review' | 'retrying' | 'rework' | 'rework_waiting' | 'passed' | 'rejected' | 'failed' | 'cancelled' | 'skipped'
   engine: string | null
@@ -318,6 +319,7 @@ export interface StepExecutionConfig {
   resolved: StepExecutionSelection
   source: 'workflow' | 'task_override'
   editable: boolean
+  can_reset?: boolean
   status: string
   has_history: boolean
   message_count: number

@@ -1,0 +1,5 @@
+.artifact-outputs-editor { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 0 14px; }
+.artifact-output-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.artifact-output-row > input { flex: 1; min-width: 0; }
+.artifact-output-row > .combobox { width: 80px; flex-shrink: 0; }
+.artifact-output-remove { padding: 0; flex-shrink: 0; color: var(--danger); }

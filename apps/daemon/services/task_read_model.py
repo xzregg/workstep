@@ -5,7 +5,7 @@ from pathlib import Path
 
 from peewee import fn
 
-from models import CoordinatorSession, Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
+from models import CoordinatorSession, Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun, Workflow
 
 
 def project_relative_task_cwd(cwd: str, project_root: Path) -> str:
@@ -89,6 +89,14 @@ def task_to_dict(task: Task) -> dict:
             & (WorkflowRun.task == task)
         )
     steps = list(TaskStep.select().where(TaskStep.task == task))
+    active_keys = None
+    if task.workflow_id:
+        source = Workflow.get_or_none((Workflow.id == task.workflow_id) & (Workflow.deleted == 0))
+        if source is not None:
+            definition = json.loads(source.steps_json)
+            nodes = definition.get("nodes") if "nodes" in definition else definition.get("steps", [])
+            active_keys = {str(node.get("type") or node.get("key") or node.get("id")) for node in nodes}
+            active_keys.update(node["type"] for node in json.loads(task.workflow_overrides_json or "{}").get("added_nodes", []))
     previous_status_by_step = latest_previous_step_statuses(task)
     # 「执行过」判定：步骤是否有 execution 频道的用户/助手消息。
     # 一次分组查询取回所有已执行步骤，避免逐步骤查询。
@@ -245,7 +253,11 @@ def task_to_dict(task: Task) -> dict:
         "total_tokens": total_tokens if total_tokens > 0 else None,
         "created_at": task.created_at,
         "updated_at": task.updated_at,
-        "review_overrides": json.loads(task.review_overrides_json) if task.review_overrides_json else None,
+        "review_overrides": {
+            **json.loads(task.review_overrides_json or "{}"),
+            **{key: node["review"] for key, node in json.loads(task.workflow_overrides_json or "{}").get("nodes", {}).items()
+               if "review" in node},
+        } or None,
         "creator_id": task.creator_id,
         "creator_username": task.creator_username,
         "creator_name": task.creator_name,
@@ -262,6 +274,7 @@ def task_to_dict(task: Task) -> dict:
         "steps": [
             {
                 "step_key": step.step_key,
+                "in_workflow": active_keys is None or step.step_key in active_keys,
                 "status": step.status,
                 "engine": step.engine,
                 "session_id": step.session_id,
@@ -279,5 +292,10 @@ def task_to_dict(task: Task) -> dict:
                 ),
             }
             for step in steps
+        ] + [
+            {"step_key": key, "in_workflow": True, "status": "pending", "engine": None,
+             "session_id": None, "started_at": None, "ended_at": None, "error": None,
+             "artifact_round": None, "io_contract": None, "previous_status": None, "has_history": False}
+            for key in sorted((active_keys or set()) - {step.step_key for step in steps})
         ],
     }

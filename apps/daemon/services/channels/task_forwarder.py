@@ -183,8 +183,8 @@ class ChannelTaskForwarder:
             if message.channel == 'coordinator':
                 title = '协调'
             else:
-                workflow = project.workflow_by_id(task.workflow_id)
-                definition = workflow['steps'] if workflow else project.steps
+                from services.task_workflow_config import resolve_task_workflow
+                definition = resolve_task_workflow(project, task)
                 steps = WorkflowDefinition.load(definition).compile().steps
                 step = next((row for row in steps if str(row['key']) == message.step_key), {})
                 title = step.get('label') or '未命名阶段'

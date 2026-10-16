@@ -4,6 +4,8 @@ import re
 
 
 _TASK_DETAIL = re.compile(r"/api/task/[A-Za-z0-9_-]{1,128}\Z")
+_TASK_WORKFLOW = re.compile(r"/api/task/[A-Za-z0-9_-]{1,128}/workflow\Z")
+_TASK_WORKFLOW_SYNC = re.compile(r"/api/task/[A-Za-z0-9_-]{1,128}/workflow/sync\Z")
 _TASK_READ_DETAIL = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/"
     r"(?:execution-report|history|artifacts|reviews|coordinator-config)\Z")
@@ -163,6 +165,8 @@ def project_http_route_allowed(method: str, path: str,
         if query_pairs != [("project_id", project_id)]:
             return False
         if method == "PUT":
+            if _TASK_WORKFLOW.fullmatch(path):
+                return True
             if _WORKFLOW_HOOKS.fullmatch(path) or _NOTIFICATION_HOOKS.fullmatch(path):
                 return True
             if _WORKFLOW_DETAIL.fullmatch(path):
@@ -217,6 +221,8 @@ def project_http_route_allowed(method: str, path: str,
         if path in ("/api/fs/upload/file", "/api/fs/upload/image", "/api/fs/entry", "/api/fs/browser-upload"):
             return True
         if _TASK_CHAT.fullmatch(path) or _TASK_STEP_MESSAGE.fullmatch(path):
+            return True
+        if method == "POST" and _TASK_WORKFLOW_SYNC.fullmatch(path):
             return True
         if (_TASK_COORDINATOR_STOP.fullmatch(path) or _TASK_STEP_ACTION.fullmatch(path)
                 or _TASK_MESSAGE_ACTION.fullmatch(path)
@@ -279,6 +285,8 @@ def project_http_route_allowed(method: str, path: str,
         return all(key in ("project_id", "workflow_id", "archived")
                    for key, _ in query_pairs)
     if _TASK_DETAIL.fullmatch(path):
+        return len(query_pairs) == 1
+    if _TASK_WORKFLOW.fullmatch(path):
         return len(query_pairs) == 1
     archive_action = _TASK_ARCHIVE_EXPERIENCE.fullmatch(path)
     if archive_action and archive_action.group(1) == "draft":

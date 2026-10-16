@@ -4,6 +4,7 @@ import { OUTPUT_TYPES, DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
 import { engineLabel } from '../engineMeta'
 import { initialStepConfig } from '../utils/stepConfig'
 import { useI18n } from '../i18n'
+import ArtifactOutputsEditor from './ArtifactOutputsEditor'
 import { STEP_TYPE_PATTERN, randomStepColor, normalizeMaxReturnRounds, emptyReview, syncOutputs, DEFAULT_MAX_RETURN_ROUNDS, MAX_CONFIGURED_RETURN_ROUNDS, type InputField, type ReviewConfig, type StepNodeData } from './flowCanvasData'
 import Button from './Button'
 import Input from './Input'
@@ -26,7 +27,9 @@ const sectionTitle: React.CSSProperties = {
 /* ══════════════════════════════════════════
    Input editor with sub-outputs
    ══════════════════════════════════════════ */
-function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v: InputField[]) => void }) {
+function InputEditor({ inputs, onChange, sourceInputs, allowAppendOutputs = true }: {
+  inputs: InputField[]; onChange: (v: InputField[]) => void; sourceInputs?: InputField[]; allowAppendOutputs?: boolean
+}) {
   const { t } = useI18n()
   const updateInput = (i: number, field: 'name' | 'type', val: string) => {
     const next = [...inputs]; next[i] = { ...next[i], [field]: val }; onChange(next)
@@ -34,21 +37,6 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
   const addInput = () => onChange([...inputs, { name: '', type: DEFAULT_OUTPUT_TYPE, outputs: [] }])
   const removeInput = (i: number) => onChange(inputs.filter((_, idx) => idx !== i))
 
-  const addSubOutput = (i: number) => {
-    const next = [...inputs]
-    next[i] = { ...next[i], outputs: [...next[i].outputs, { name: '', type: DEFAULT_OUTPUT_TYPE }] }
-    onChange(next)
-  }
-  const updateSubOutput = (i: number, j: number, field: 'name' | 'type', val: string) => {
-    const next = [...inputs]
-    const subs = [...next[i].outputs]; subs[j] = { ...subs[j], [field]: val }
-    next[i] = { ...next[i], outputs: subs }; onChange(next)
-  }
-  const removeSubOutput = (i: number, j: number) => {
-    const next = [...inputs]
-    next[i] = { ...next[i], outputs: next[i].outputs.filter((_, idx) => idx !== j) }
-    onChange(next)
-  }
 
   return (
     <div>
@@ -59,25 +47,17 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
         {inputs.map((inp, i) => (
           <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 8, border: '1px solid var(--border-soft)' }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <Input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder={t('flow.name')} style={{ flex: 1, height: 28, fontSize: 'calc(13px * var(--font-scale))' }} />
-              <Combobox value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 28, fontSize: 'calc(13px * var(--font-scale))', border: '1px solid var(--border)', borderRadius: 4 }} />
-              <Button variant="icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>×</Button>
+              <Input disabled={Boolean(sourceInputs)} value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder={t('flow.name')} style={{ flex: 1, height: 28, fontSize: 'calc(13px * var(--font-scale))' }} />
+              <Combobox disabled={Boolean(sourceInputs)} value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 28, fontSize: 'calc(13px * var(--font-scale))', border: '1px solid var(--border)', borderRadius: 4 }} />
+              <Button variant="icon" disabled={Boolean(sourceInputs)} onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>×</Button>
             </div>
             {/* Sub-outputs */}
-            {inp.outputs.map((sub, j) => (
-              <div key={j} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4, marginLeft: 14 }}>
-                <span style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))' }}>↳</span>
-                <Input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder={t('flow.outputName')} style={{ flex: 1, height: 24, fontSize: 'calc(11px * var(--font-scale))' }} />
-                <Combobox value={sub.type} options={OUTPUT_TYPES} onChange={(v) => updateSubOutput(i, j, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 24, fontSize: 'calc(11px * var(--font-scale))', border: '1px solid var(--border)', borderRadius: 3 }} />
-                <Button variant="icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>×</Button>
-              </div>
-            ))}
-            <button onClick={() => addSubOutput(i)} style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--success)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4, marginLeft: 14, padding: '2px 0' }}>
-              {t('flow.addSubOutput')}
-            </button>
+            <ArtifactOutputsEditor outputs={inp.outputs} protectedCount={sourceInputs?.[i]?.outputs.length || 0}
+              appendDisabled={Boolean(sourceInputs) && (!allowAppendOutputs || i !== inputs.length - 1)}
+              onChange={(outputs) => onChange(inputs.map((input, index) => index === i ? { ...input, outputs } : input))} />
           </div>
         ))}
-        <button onClick={addInput} style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
+        <button disabled={Boolean(sourceInputs)} onClick={addInput} style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
           {t('flow.addInput')}
         </button>
       </div>
@@ -88,8 +68,9 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
 /* ══════════════════════════════════════════
    Node Config Panel — edits are local until saved
    ══════════════════════════════════════════ */
-export default function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, defaultExecutionEngine, onValidationChange, onDraftChange, onSave, onRequestDelete, onClose, onDirtyChange, projectId, workflowId }: {
+export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, engines, enginesLoading, enginesError, defaultExecutionEngine, onValidationChange, onDraftChange, onSave, onRequestDelete, onClose, onDirtyChange, projectId, workflowId }: {
   node: StepNodeData
+  lockedSource?: StepNodeData
   unavailableKeys: string[]
   engines: EngineInfo[]
   enginesLoading: boolean
@@ -357,6 +338,7 @@ export default function NodeConfigPanel({ node, unavailableKeys, engines, engine
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Input
                 id="step-type"
+                disabled={Boolean(lockedSource)}
                 value={draft.key}
                 onChange={(e) => updateDraft('key', e.target.value)}
                 required
@@ -368,6 +350,7 @@ export default function NodeConfigPanel({ node, unavailableKeys, engines, engine
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 <input
                 type="checkbox"
+                disabled={Boolean(lockedSource)}
                 checked={Boolean(draft.autoStart)}
                 onChange={(e) => {
                   const updated = { ...draft, autoStart: e.target.checked }
@@ -400,8 +383,13 @@ export default function NodeConfigPanel({ node, unavailableKeys, engines, engine
           </div>
           <InputEditor
             inputs={draft.inputs}
+            sourceInputs={lockedSource?.inputs}
+            allowAppendOutputs={!lockedSource || JSON.stringify(lockedSource.inputs.flatMap((input) => input.outputs)) === JSON.stringify(lockedSource.outputs)}
             onChange={(inputs) => updateDraft('inputs', inputs)}
           />
+          {lockedSource && (!lockedSource.inputs.length || JSON.stringify(lockedSource.inputs.flatMap((input) => input.outputs)) !== JSON.stringify(lockedSource.outputs)) &&
+            <ArtifactOutputsEditor outputs={draft.outputs} protectedCount={lockedSource.outputs.length}
+              onChange={(outputs) => updateDraft('outputs', outputs)} />}
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.engine')}</label>

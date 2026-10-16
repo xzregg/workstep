@@ -19,6 +19,17 @@ def test_unknown_required_protocol_version_is_rejected():
         assert_protocol_version(2)
 
 
+@pytest.mark.parametrize("method,path", [("GET", "/api/task/task-1/workflow"),
+                                         ("PUT", "/api/task/task-1/workflow"),
+                                         ("POST", "/api/task/task-1/workflow/sync")])
+def test_task_workflow_routes_keep_project_and_permission_boundaries(method, path):
+    allowed = project_http_route_allowed
+    assert allowed(method, path, [("project_id", "project-1")], "project-1", access_level="edit")
+    assert allowed(method, path, [("project_id", "project-1")], "project-1", access_level="read") == (method == "GET")
+    assert not allowed(method, path, [("project_id", "other")], "project-1", access_level="edit")
+    assert not allowed(method, path, [("project_id", "project-1"), ("project_id", "other")], "project-1", access_level="edit")
+
+
 def test_project_http_allowlist_matches_only_the_bound_project():
     allowed = project_http_route_allowed
     assert allowed("GET", "/api/project/host-1/summary", [], "host-1")

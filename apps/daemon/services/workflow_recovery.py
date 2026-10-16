@@ -14,7 +14,7 @@ from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.artifact_rounds import discard_artifact_round
 from services.intervention import seal_unanswered_interactions
-from services.workflow_definition import WorkflowDefinition
+from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
 
 logger = logging.getLogger(__name__)
 RUN_LEASE_STALE_SECONDS = 30.0
@@ -120,11 +120,17 @@ def prepare_project_recovery(
             )
             contended.append(workflow_run.id)
             continue
-        steps_config = (
-            WorkflowDefinition.load(current_workflow_steps(project, task))
-            .compile()
-            .to_steps_config()
-        )
+        try:
+            steps_config = (
+                WorkflowDefinition.load(current_workflow_steps(project, task))
+                .compile()
+                .to_steps_config()
+            )
+        except WorkflowValidationError as exc:
+            # Leave the interrupted run intact for repair/manual stop. One
+            # conflicting task must not prevent other tasks from recovering.
+            logger.error("Cannot recover task %s: %s", task.id, exc)
+            continue
         stale_keys = set()
         review_keys = set()
         review_step_runs = {}

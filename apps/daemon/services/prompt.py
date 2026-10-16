@@ -48,6 +48,8 @@ def render_step_prompt(
     trigger_name: str = "",
 ) -> str:
     """Render supported task and step variables in a step prompt template."""
+    if "{" not in template and "｛" not in template:
+        return template
     effective_trigger_name = trigger_name or task.creator_name or ""
     values = {
         "name": effective_trigger_name,
@@ -160,6 +162,23 @@ def _task_background_parts(
     return parts
 
 
+def _step_requirements_parts(task, step, artifacts_dir, trigger_name, previous_hashes, hashes, *, force=False):
+    requirements = render_step_prompt(
+        step.prompt or "", task, step, step_worktrees_prompt_path(task, artifacts_dir), trigger_name,
+    )
+    digest = _context_digest(requirements)
+    if hashes is not None:
+        hashes["Step requirements"] = digest
+    previous = (previous_hashes or {}).get("Step requirements")
+    if previous == digest and not force:
+        return []
+    if previous is not None and previous != digest:
+        return ["## Step requirements (updated)\n"
+                "These replace the previous step-specific requirements.\n"
+                + (requirements or "No additional step-specific requirements.")]
+    return [f"## Step requirements\n{requirements}"] if requirements else []
+
+
 def assemble_prompt(
     task: Task,
     step: Step,
@@ -241,13 +260,9 @@ def assemble_prompt(
                 )
             )
 
-    # Step prompt
-    if step.prompt:
-        worktrees_path = step_worktrees_prompt_path(task, artifacts_dir)
-        parts.append(
-            "## Step requirements\n"
-            + render_step_prompt(step.prompt, task, step, worktrees_path, trigger_name)
-        )
+    parts.extend(_step_requirements_parts(
+        task, step, artifacts_dir, trigger_name, previous_context_hashes, context_hashes, force=True,
+    ))
 
     supplements = [
         item
@@ -445,6 +460,10 @@ def assemble_followup_prompt(
     """
     parts = []
     if context_hashes is not None:
+        parts.extend(_step_requirements_parts(
+            task, step, artifacts_dir, trigger_name, previous_context_hashes, context_hashes,
+        ))
+    if context_hashes is not None:
         parts.extend(_task_background_parts(
             task, artifacts_dir, separate_instructions=separate_instructions,
             previous_context_hashes=previous_context_hashes, context_hashes=context_hashes,
@@ -510,7 +529,10 @@ def assemble_retry_prompt(
         if artifact_round is not None
         else artifacts_dir / workflow_name / task.id / step.key
     )
-    parts = [
+    parts = _step_requirements_parts(
+        task, step, artifacts_dir, "", previous_context_hashes, context_hashes,
+    ) if context_hashes is not None else []
+    parts += [
         "## Step execution update\n"
         "Continue in the existing step session and revise the previous result."
     ]

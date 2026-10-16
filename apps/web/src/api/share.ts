@@ -28,6 +28,7 @@ export interface ShareMeta {
 }
 
 export interface SharedTask {
+  workflow_configuration?: import('./taskWorkflow').TaskWorkflowConfiguration
   id: string
   title: string
   description: string | null

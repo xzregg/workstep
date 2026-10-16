@@ -1,0 +1,12 @@
+.flow-standalone-output {
+  position: absolute;
+  left: 28px;
+  right: 14px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: calc(11px * var(--font-scale));
+  color: var(--meta);
+}
+.flow-standalone-output-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -187,6 +187,7 @@ export function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connect
         if (!source || !target) return false
         const sourcePortCount = Math.max(
           1,
+          source.outputs.length,
           source.inputs.reduce(
             (count, input) => count + (input.outputs?.length || 0),
             0,

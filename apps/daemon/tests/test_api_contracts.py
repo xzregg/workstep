@@ -33,6 +33,185 @@ TEST_ACTOR_HEADERS = {
 
 
 @pytest.mark.anyio
+async def test_task_workflow_overlay_save_sync_and_conflicts(api_context):
+    import main
+    from copy import deepcopy
+    from models import StepRun, Task, WorkflowRun
+
+    client, tmp_path = api_context
+    directory = tmp_path / "task-workflow"
+    directory.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    definition = {"nodes": [{"id": 1, "type": "build", "prompt": "original", "review": {"mode": "skip"}}], "connections": []}
+    wf = (await client.post(f"/api/workflow/create?project_id={pid}", json={"name": "Flow", "steps": definition})).json()
+    task = (await client.post(f"/api/task/create?project_id={pid}", json={"title": "Local", "workflow_id": wf["id"], "auto_start": False})).json()
+    url = f"/api/task/{task['id']}/workflow?project_id={pid}"
+    config = (await client.get(url)).json()
+    assert config["has_overrides"] is False
+    assert await main.project_manager.run_db(pid, lambda _project: Task.get_by_id(task["id"]).workflow_overrides_json) is None
+    edited = config["workflow"]
+    edited["nodes"][0]["prompt"] = "task-specific"
+    edited["nodes"].append({"id": 2, "type": "deploy", "prompt": "deploy"})
+    response = await client.put(url, json={"workflow": edited, "revision": config["revision"]})
+    assert response.status_code == 200, response.text
+    saved = response.json()
+    assert saved["has_overrides"] is True
+    assert saved["workflow"]["nodes"][0]["prompt"] == "task-specific"
+    assert (await client.get(f"/api/workflow/{wf['id']}?project_id={pid}")).json()["steps"] == definition
+    assert (await client.put(url, json={"workflow": edited, "revision": config["revision"]})).status_code == 409
+    projected = (await client.get(f"/api/task/{task['id']}?project_id={pid}")).json()
+    assert "deploy" in {step["step_key"] for step in projected["steps"]}
+    added_config = (await client.get(f"/api/task/{task['id']}/step/deploy/config?project_id={pid}")).json()
+    assert added_config["can_reset"] is False
+    def record_attempt(_project):
+        run = WorkflowRun.create(id="deploy-history", task=task["id"], status="succeeded", workflow_schema_version=1)
+        StepRun.create(id="deploy-attempt", run=run, step_key="deploy", attempt=1, status="failed")
+    await main.project_manager.run_db(pid, record_attempt)
+    removed = deepcopy(saved["workflow"])
+    removed["nodes"] = [node for node in removed["nodes"] if node["type"] != "deploy"]
+    assert (await client.put(url, json={"workflow": removed, "revision": saved["revision"]})).status_code == 422
+    # Live source changes are inherited only on fields that were not overridden.
+    changed = {"nodes": [{**definition["nodes"][0], "prompt": "source-new", "model": "source-model"}], "connections": []}
+    await main.project_manager.run_db(pid, lambda project: main.project_manager.update_workflow(project, wf["id"], steps=changed))
+    latest = (await client.get(url)).json()
+    assert latest["workflow"]["nodes"][0]["prompt"] == "task-specific"
+    assert latest["workflow"]["nodes"][0]["model"] == "source-model"
+    synced = await client.post(f"/api/task/{task['id']}/workflow/sync?project_id={pid}", json={"revision": latest["revision"]})
+    assert synced.status_code == 200, synced.text
+    assert synced.json()["has_overrides"] is False
+    assert len(synced.json()["workflow"]["nodes"]) == 1
+    projected = (await client.get(f"/api/task/{task['id']}?project_id={pid}")).json()
+    assert next(step for step in projected["steps"] if step["step_key"] == "deploy")["in_workflow"] is False
+    changed["nodes"].append({"id": 3, "type": "test", "prompt": "new source stage"})
+    await main.project_manager.run_db(pid, lambda project: main.project_manager.update_workflow(project, wf["id"], steps=changed))
+    projected = (await client.get(f"/api/task/{task['id']}?project_id={pid}")).json()
+    virtual = next(step for step in projected["steps"] if step["step_key"] == "test")
+    assert virtual["status"] == "pending" and virtual["in_workflow"] is True
+    new_config_url = f"/api/task/{task['id']}/step/test/config?project_id={pid}"
+    new_config = await client.get(new_config_url)
+    assert new_config.status_code == 200, new_config.text
+    selection = new_config.json()["resolved"]
+    selection["model"] = "task-test-model"
+    assert (await client.patch(new_config_url, json=selection)).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_task_quick_config_persists_only_changed_fields(api_context):
+    import main
+    from models import Task
+
+    client, tmp_path = api_context
+    directory = tmp_path / "sparse-quick-config"
+    directory.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    definition = {"steps": [{"key": "build", "engine": "codex", "model": "old-model",
+                              "config": {"sandbox_mode": "read-only"}, "review": {"mode": "auto", "engine": "claude", "prompt": "original"}}]}
+    wf = (await client.post(f"/api/workflow/create?project_id={pid}", json={"name": "Flow", "steps": definition})).json()
+    task = (await client.post(f"/api/task/create?project_id={pid}", json={"title": "Local", "workflow_id": wf["id"], "auto_start": False})).json()
+    url = f"/api/task/{task['id']}/step/build/config?project_id={pid}"
+    result = await client.patch(url, json={"engine": "codex", "model": "task-model", "config": {"sandbox_mode": "read-only"}})
+    assert result.status_code == 200, result.text
+    delta = await main.project_manager.run_db(pid, lambda _project: json.loads(Task.get_by_id(task["id"]).workflow_overrides_json))
+    assert delta["nodes"]["build"] == {"model": "task-model"}
+    review = await client.patch(f"/api/task/{task['id']}?project_id={pid}", json={"review_overrides": {"build": {"mode": "auto", "engine": "claude", "prompt": "task review"}}})
+    assert review.status_code == 200, review.text
+    delta = await main.project_manager.run_db(pid, lambda _project: json.loads(Task.get_by_id(task["id"]).workflow_overrides_json))
+    assert delta["nodes"]["build"]["review"] == {"prompt": "task review"}
+    definition["steps"][0]["review"]["config"] = {"provider_id": "source", "permission_mode": "default"}
+    await main.project_manager.run_db(pid, lambda project: main.project_manager.update_workflow(project, wf["id"], steps=definition))
+    review = await client.patch(f"/api/task/{task['id']}?project_id={pid}", json={"review_overrides": {"build": {"config": {"provider_id": "source", "permission_mode": "task-mode"}}}})
+    assert review.status_code == 200, review.text
+    delta = await main.project_manager.run_db(pid, lambda _project: json.loads(Task.get_by_id(task["id"]).workflow_overrides_json))
+    assert delta["nodes"]["build"]["review"]["config"] == {"permission_mode": "task-mode"}
+    definition["steps"][0].update(engine="claude", config={})
+    await main.project_manager.run_db(pid, lambda project: main.project_manager.update_workflow(project, wf["id"], steps=definition))
+    resolved = (await client.get(url)).json()["resolved"]
+    assert resolved == {"engine": "claude", "model": "task-model", "config": {}}
+
+
+@pytest.mark.anyio
+async def test_task_workflow_edit_write_does_not_block_health(api_context, monkeypatch):
+    import main
+
+    client, tmp_path = api_context
+    directory = tmp_path / "slow-task-workflow"
+    directory.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    wf = (await client.post(f"/api/workflow/create?project_id={pid}", json={"name": "Flow", "steps": {"steps": [{"key": "build"}]}})).json()
+    task = (await client.post(f"/api/task/create?project_id={pid}", json={"title": "Local", "workflow_id": wf["id"], "auto_start": False})).json()
+    url = f"/api/task/{task['id']}/workflow?project_id={pid}"
+    config = (await client.get(url)).json()
+    config["workflow"]["nodes"][0]["prompt"] = "new"
+    project = main.project_manager.get_project_by_id(pid)
+    execute = project.db.execute_sql
+    entered = threading.Event()
+
+    def slow(sql, params=None, commit=None):
+        if sql.startswith('UPDATE "tasks"'):
+            entered.set()
+            time.sleep(0.25)
+        return execute(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow)
+    pending = asyncio.create_task(client.put(url, json={"workflow": config["workflow"], "revision": config["revision"]}))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - before < 0.15
+    assert (await pending).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_task_canvas_engine_switch_hands_off_all_rounds_and_share_uses_effective_flow(api_context):
+    import main
+    from models import Message, StepRun, Task, TaskStep, WorkflowRun
+    from models.fields import utc_now
+    from services import share
+
+    client, tmp_path = api_context
+    directory = tmp_path / "handoff-canvas"
+    directory.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    definition = {"steps": [{"key": "build", "engine": "codex", "prompt": "original"}]}
+    wf = (await client.post(f"/api/workflow/create?project_id={pid}", json={"name": "Flow", "steps": definition})).json()
+    task_id = (await client.post(f"/api/task/create?project_id={pid}", json={"title": "Local", "workflow_id": wf["id"], "auto_start": False})).json()["id"]
+
+    def history(_project):
+        task = Task.get_by_id(task_id)
+        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build"))
+        step.engine, step.session_id, step.status = "codex", "old-session", "passed"
+        step.save()
+        run = WorkflowRun.create(id="old-run", task=task, status="succeeded", workflow_schema_version=1)
+        for round_ in range(1, 4):
+            attempt = StepRun.create(id=f"attempt-{round_}", run=run, step_key="build", attempt=round_, artifact_round=round_, status="succeeded")
+            Message.create(id=f"response-{round_}", task=task, step_key="build", sequence=round_, channel="execution",
+                           role="assistant", content=f"round {round_}", engine="codex", run_id=f"message-{round_}",
+                           step_run_id=attempt.id, run_status="succeeded", position=round_, created_at=utc_now())
+
+    await main.project_manager.run_db(pid, history)
+    url = f"/api/task/{task_id}/workflow?project_id={pid}"
+    config = (await client.get(url)).json()
+    config["workflow"]["nodes"][0].update(engine="claude", prompt="task prompt")
+    saved = await client.put(url, json={"workflow": config["workflow"], "revision": config["revision"], "context_mode": "full"})
+    assert saved.status_code == 200, saved.text
+
+    def verify(project):
+        row = TaskStep.get((TaskStep.task == task_id) & (TaskStep.step_key == "build"))
+        metadata = json.loads(row.pending_handoff_json)
+        assert metadata["source_engine"] == "codex"
+        assert metadata["target_engine"] == "claude"
+        assert row.session_id == "old-session"  # The existing start boundary clears it, not saving.
+        assert StepRun.select().count() == 3
+        log = (Path(project.workstep_dir) / metadata["relative_path"]).read_text()
+        assert all(f"round {round_}" in log for round_ in range(1, 4))
+        projected = share.load_shared_task(task_id)
+        assert projected["workflow"]["steps"]["nodes"][0]["engine"] == "claude"
+        assert projected["workflow"]["steps"]["nodes"][0]["prompt"] == "task prompt"
+        assert projected["workflow_configuration"]["editable"] is False
+    await main.project_manager.run_db(pid, verify)
+
+
+@pytest.mark.anyio
 async def test_update_workflow_step_prompt_is_targeted_and_does_not_block_health(api_context, monkeypatch):
     import main
     from copy import deepcopy

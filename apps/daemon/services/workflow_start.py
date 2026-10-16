@@ -132,6 +132,7 @@ def prepare_start_in_project(
     steps_config = compiled.to_steps_config()
     entry_step_key, execution_scope = infer_entry_scope(task, steps_config)
     routing_state = empty_routing_state()
+    routing_state["configuration_current"] = True
     routing_state["entry_step_key"] = entry_step_key
     routing_state["execution_scope"] = (
         sorted(execution_scope) if execution_scope is not None else None

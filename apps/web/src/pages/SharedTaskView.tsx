@@ -29,6 +29,7 @@ import { MarkdownAssetUrlProvider } from '../contexts/MarkdownAssetUrlContext'
 import FilePreviewPage from './FilePreviewPage'
 import { gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
 import SharedEditableTaskDetail from './SharedEditableTaskDetail'
+import TaskWorkflowTools from '../components/TaskWorkflowTools'
 
 export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi }) {
   const { token } = useParams<{ token: string }>()
@@ -40,6 +41,15 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
     password, setPassword, error, unlock: handleUnlock, loadMessageEvents,
   } = useSharedTaskSession(token, api, { live: !standalonePreview, passwordHint: searchParams.get('_t') || '' })
   const artifactFiles = useMemo(() => sharedTaskArtifactFiles(artifacts), [artifacts])
+  const loadWorkflow = useCallback(async () => {
+    const configuration = task?.workflow_configuration
+    if (configuration) return configuration
+    const workflow = task?.workflow?.steps || { nodes: (task?.steps || []).map((step) => ({
+      id: step.step_key, type: step.step_key, title: step.step_key,
+    })), connections: [] }
+    return { workflow, source: workflow,
+      revision: '', editable: false, has_overrides: false, conflict: null }
+  }, [task])
   const sharedArtifactDirectory = artifactDirectory || (artifacts[0]?.source_path
     ? `.workstep/artifacts/${artifacts[0].source_path.split('/').slice(0, 2).join('/')}` : '')
   const [previewArtifact, setPreviewArtifact] = useState<TaskArtifact | null>(null)
@@ -224,7 +234,9 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
   const currentStepColor = currentStep.color || 'var(--accent)'
   const activeStepColor = activeStep.color || 'var(--accent)'
   const executionStepModel = activeStep?.model || task?.model || ''
-  const taskCompleted = isTaskCompleted(task?.steps || [])
+  const taskCompleted = isTaskCompleted(stepProgress.map((step) => ({
+    status: step.status || 'pending', started_at: step.started_at || null,
+  })))
   const interactive = meta?.mode === 'interactive'
   const shareSessionToken = phase.kind === 'ready' ? phase.sessionToken : ''
   const sharedGitApi = useMemo(() => createGitApi(<T,>(path: string, options?: RequestInit) =>
@@ -401,7 +413,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
     <SharePageShell>
       <SharedEditableTaskDetail previewOnly={standalonePreview} token={token} session={shareSessionToken} api={api} task={task}
         messages={messages} artifacts={artifactFiles} inputSnapshots={inputSnapshots} reviews={reviews}
-        readCapabilities={{ artifactDirectory: sharedArtifactDirectory, resolveAssetUrl: markdownUrlResolver,
+        readCapabilities={{ loadWorkflow, artifactDirectory: sharedArtifactDirectory, resolveAssetUrl: markdownUrlResolver,
           filePreview: sharedFilePreview, loadMessageEvents, openArtifact,
           loadExecutionReport: executionReportLoader, browseGitWorkspace }}
         gitCapability={{ api: sharedGitApi, projectId: 'shared', shared: true, readOnly: false,
@@ -420,12 +432,15 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
         task={task}
         steps={steps}
         workflowConnections={task?.workflow?.steps?.connections || []}
+        workflowTools={task?.workflow_configuration && <TaskWorkflowTools taskId={task.id} projectId="shared"
+          configuration={task.workflow_configuration} readOnly onChanged={() => undefined} />}
         stepProgress={stepProgress}
         selectedStep={selectedStep}
         onStepClick={setSelectedStep}
         historyMessages={messages}
         onLoadOlderHistory={loadOlderHistory}
         readCapabilities={{
+          loadWorkflow,
           artifactDirectory: sharedArtifactDirectory,
           resolveAssetUrl: markdownUrlResolver,
           filePreview: sharedFilePreview,
