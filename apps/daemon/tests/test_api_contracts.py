@@ -33,6 +33,69 @@ TEST_ACTOR_HEADERS = {
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("custom", [False, True])
+async def test_task_creation_review_selection_only_persists_actual_differences(api_context, custom):
+    import main
+    from models import Task
+    client, tmp_path = api_context
+    directory = tmp_path / "creation-review-selection"
+    directory.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    definition = {"steps": [{"key": "build", "review": {"mode": "skip"}}]}
+    wf = (await client.post(f"/api/workflow/create?project_id={pid}", json={"name": "CreationFlow", "steps": definition})).json()
+    selected = {"mode": "skip", "auto": False, "prompt": "TASK_REVIEW" if custom else "", "maxRetries": 1}
+    created = await client.post(f"/api/task/create?project_id={pid}", json={"title": "UI creation", "workflow_id": wf["id"],
+        "auto_start": False, "review_overrides": {"build": selected}})
+    assert created.status_code == 200, created.text
+    task_id = created.json()["id"]
+    config = (await client.get(f"/api/task/{task_id}/workflow?project_id={pid}")).json()
+    assert config["has_overrides"] is custom
+    delta, legacy = await main.project_manager.run_db(pid, lambda _p: (
+        Task.get_by_id(task_id).workflow_overrides_json, Task.get_by_id(task_id).review_overrides_json))
+    assert legacy is None
+    assert (json.loads(delta)["nodes"]["build"]["review"] if delta else None) == ({"prompt": "TASK_REVIEW"} if custom else None)
+    definition["steps"][0]["review"] = {"mode": "auto", "auto": True, "prompt": "NEW_SOURCE_REVIEW", "maxRetries": 4}
+    await main.project_manager.run_db(pid, lambda project: main.project_manager.update_workflow(project, wf["id"], steps=definition))
+    config = (await client.get(f"/api/task/{task_id}/workflow?project_id={pid}")).json()
+    review = config["workflow"]["nodes"][0]["review"]
+    assert review["mode"] == "auto" and review["maxRetries"] == 4
+    assert review["prompt"] == ("TASK_REVIEW" if custom else "NEW_SOURCE_REVIEW")
+
+
+@pytest.mark.anyio
+async def test_task_creation_sparse_review_write_does_not_block_health(api_context, monkeypatch):
+    import main
+
+    client, tmp_path = api_context
+    directory = tmp_path / "slow-creation-review"
+    directory.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    wf = (await client.post(f"/api/workflow/create?project_id={pid}", json={
+        "name": "CreationFlow", "steps": {"steps": [{"key": "build", "review": {"mode": "skip"}}]},
+    })).json()
+    project = main.project_manager.get_project_by_id(pid)
+    execute = project.db.execute_sql
+    entered = threading.Event()
+
+    def slow(sql, params=None, commit=None):
+        if sql.startswith('UPDATE "tasks"') and 'workflow_overrides_json' in sql:
+            entered.set()
+            time.sleep(0.25)
+        return execute(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow)
+    pending = asyncio.create_task(client.post(f"/api/task/create?project_id={pid}", json={
+        "title": "Sparse review", "workflow_id": wf["id"], "auto_start": False,
+        "review_overrides": {"build": {"prompt": "TASK_REVIEW"}},
+    }))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    assert (await asyncio.wait_for(client.get("/api/health"), 0.15)).status_code == 200
+    assert time.monotonic() - before < 0.15
+    assert (await pending).status_code == 200
+
+
+@pytest.mark.anyio
 async def test_task_workflow_overlay_save_sync_and_conflicts(api_context):
     import main
     from copy import deepcopy

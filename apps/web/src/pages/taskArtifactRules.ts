@@ -52,7 +52,7 @@ export function groupStepOutputsByInput<
       groups[inputIndex].push({ ...output, outputIndex: outputIndex++ })
     })
   })
-  if (!produced.length) return groups
+  if (!inputs.length || !produced.length) return groups
 
   const available = groups.flatMap((group, inputIndex) =>
     group.map((output) => ({ output, inputIndex })))
