@@ -97,6 +97,7 @@ async function renderShare(mode: 'read_only' | 'interactive') {
     const displayClone = document.body.cloneNode(true) as HTMLElement
     displayClone.querySelector('.task-detail-composer')?.remove()
     return {
+      hasResizeHandle: Boolean(document.querySelector('.chat-composer-resize-handle')),
       hasComposer: Boolean(document.querySelector<HTMLTextAreaElement>('.task-detail-composer textarea')),
       hasAnalysisTab: Array.from(document.querySelectorAll('[role="tab"]'))
         .some((tab) => /执行分析/.test(tab.textContent ?? '')),
@@ -118,6 +119,7 @@ async function renderShare(mode: 'read_only' | 'interactive') {
 test('interactive task share window shows the task-detail message composer', async () => {
   const rendered = await renderShare('interactive')
   assert.equal(rendered.hasComposer, true)
+  assert.equal(rendered.hasResizeHandle, true)
   assert.equal(rendered.hasAttachment, true)
   assert.equal(rendered.fileInputCount, 2)
   assert.match(rendered.text, /build/i)
@@ -130,6 +132,8 @@ test('editable shares expose task operations while both modes retain task conten
 
   assert.equal(interactive.hasComposer, true)
   assert.equal(readOnly.hasComposer, false)
+  assert.equal(interactive.hasResizeHandle, true)
+  assert.equal(readOnly.hasResizeHandle, false)
   assert.equal(interactive.hasAnalysisTab, true)
   assert.equal(readOnly.hasAnalysisTab, true)
   assert.equal(interactive.hasDescriptionEdit, true)

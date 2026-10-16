@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
-from gateway.services.external_identity import ExternalIdentityService
+from gateway.services.external_identity import DisplayNameConflict, ExternalIdentityService
 
 from gateway.services.identity_errors import IdentityError
 from gateway.services.identity import COOKIE_NAME, IdentityService, csrf_token, public_user
@@ -344,7 +344,7 @@ async def external_callback(call: GatewayCall, response: ReplyEffects, source_id
         await record_login_failure(call.database, source.provider, exc.reason, source_id=source_id)
         return_to = await _service(call).failure_return_to(source_id, state)
         if return_to:
-            failure = 'expired' if exc.reason in ('bad_input', 'unauthenticated', 'conflict') else 'denied' if exc.reason == 'forbidden' else 'unavailable'
+            failure = 'name_conflict' if isinstance(exc, DisplayNameConflict) else 'expired' if exc.reason in ('bad_input', 'unauthenticated', 'conflict') else 'denied' if exc.reason == 'forbidden' else 'unavailable'
             separator = "&" if "?" in return_to else "?"
             return RedirectTarget(f'{return_to}{separator}scan_error={failure}')
         raise

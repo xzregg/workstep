@@ -1347,6 +1347,8 @@ export const zhTW: Messages = {
     switch: '切換',
   },
   layout: {
+    sidebarSectionResize: '拖动调整最近聊天高度，双击恢复默认',
+    sidebarSectionDragHint: '拖动调整分区位置，或按 Alt + ↑/↓',
     workspaceHome: '工作台',
     recentConversations: '最近聊天',
     noRecentConversations: '打开过的任务和对话会显示在这里',
@@ -2417,6 +2419,12 @@ export const zhTW: Messages = {
     skipped: '跳过',
   },
   share: {
+    requireLogin: '驗證閘道登入',
+    loginRequired: '請先登入閘道後存取此分享。',
+    loginHint: '可操作分享必須驗證閘道登入；開啟後無需存取密鑰，操作會記錄登入使用者。',
+    loginAction: '前往登入',
+    copyLinkOnly: '複製連結',
+
     copyAddress: '存取位址：',
     copyPassword: '存取密碼：',
     copyTask: '任務',

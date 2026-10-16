@@ -32,6 +32,7 @@ test('scan error codes provide recovery without exposing provider details', () =
   assert.match(scanFailureMessage('cancelled'), /取消/)
   assert.match(scanFailureMessage('unavailable'), /暂时不可用/)
   assert.match(scanFailureMessage('denied'), /无法登录/)
+  assert.match(scanFailureMessage('name_conflict'), /多个同显示名账号/)
   assert.equal(scanFailureMessage('unknown'), '')
 })
 

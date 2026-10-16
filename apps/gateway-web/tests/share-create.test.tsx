@@ -15,6 +15,38 @@ const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-l
 const originalFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
 
+for (const interactive of [false, true]) test(`login verification replaces keys, interactive=${interactive}`, async () => {
+  let body: any
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf-token' })
+    if (url.startsWith('/api/platform-shares?')) return Response.json({ shares: [] })
+    if (url === '/api/platform-shares') {
+      body = JSON.parse(String(init?.body))
+      return Response.json({ id: 'login-share', title: 'Login share', mode: body.mode,
+        require_login: true, url: 'https://gateway.test/share/login', status: 'active' }, { status: 201 })
+    }
+    throw new Error(url)
+  }
+  render(<MemoryRouter initialEntries={['/shares/new?project_id=project-1&task_id=task-1']}>
+    <Routes><Route path="/shares/new" element={<GatewayShareCreatePage />} /></Routes>
+  </MemoryRouter>)
+  await screen.findByRole('button', { name: '创建分享' })
+  if (interactive) fireEvent.change(screen.getByLabelText('访问方式'), { target: { value: 'interactive' } })
+  else fireEvent.click(screen.getByLabelText('验证网关登录'))
+  const toggle = screen.getByLabelText('验证网关登录') as HTMLInputElement
+  assert.equal(toggle.checked, true)
+  assert.equal(toggle.disabled, interactive)
+  assert.equal(screen.queryByLabelText('访问密钥'), null)
+  fireEvent.click(screen.getByRole('button', { name: '创建分享' }))
+  const link = await screen.findByRole('link', { name: '打开分享链接' })
+  assert.equal(body.require_login, true)
+  assert.equal(body.password, null)
+  assert.equal(link.getAttribute('href'), 'https://gateway.test/share/login')
+  assert.equal(screen.queryByLabelText('访问密钥'), null)
+  assert.ok(screen.getByText('请先登录网关后访问此分享。'))
+})
+
 test('Gateway share page validates and creates a task share with CSRF', async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = []
   globalThis.fetch = async (input, init) => {

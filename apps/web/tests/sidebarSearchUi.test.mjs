@@ -5,7 +5,7 @@ import test from 'node:test'
 const source = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
 
 test('project heading exposes a button that expands sidebar search', () => {
-  const projectsIndex = source.indexOf("{t('layout.projects')}")
+  const projectsIndex = source.indexOf('<WorkspaceSidebarSections')
   const searchButtonIndex = source.indexOf("aria-label={t('layout.searchSidebar')}")
   const searchInputIndex = source.indexOf('type="search"', searchButtonIndex)
 

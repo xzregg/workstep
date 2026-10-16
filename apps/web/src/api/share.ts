@@ -4,6 +4,7 @@ import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, Rev
 // --- Public share API (no project context, session-token gated) ---
 
 export interface ShareInfo {
+  require_login?: boolean
   access_password?: string | null
   url?: string
   id: string
@@ -19,6 +20,7 @@ export interface ShareInfo {
 }
 
 export interface ShareMeta {
+  require_login?: boolean
   token: string
   title: string | null
   mode: 'read_only' | 'interactive'

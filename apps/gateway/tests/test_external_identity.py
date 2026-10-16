@@ -1,4 +1,4 @@
-"""Enterprise identity must bind by stable subject, never by display name."""
+"""Verified enterprise identities reuse unique display names, then keep stable bindings."""
 
 from urllib.parse import parse_qs, urlparse
 
@@ -46,32 +46,37 @@ def _start(client, source_id):
     return parse_qs(urlparse(response.json()["authorization_url"]).query)["state"][0]
 
 
-def test_closed_registration_requires_presynced_subject_and_rejects_replay(tmp_path, monkeypatch):
+def test_closed_registration_auto_provisions_and_rejects_replay(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     connector = FakeConnector()
-    app.state.identity_connectors = {"dingtalk": connector}
+    app.state.identity_connectors = {"dingtalk": connector, "wecom": connector}
     with TestClient(app, base_url="https://gateway.test") as client:
         csrf = _setup(client)
-        source_id = _source(client, csrf)
-        state = _start(client, source_id)
-        url = f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code"
-        assert client.get(url).status_code == 403
-        assert client.get(url).status_code == 409
-        synced = client.post(f"/api/admin/identity-sources/{source_id}/sync", headers={
-            "X-CSRF-Token": csrf,
-        }, json={"departments": [], "people": [{"subject": "employee-1", "display_name": "张三", "department_ids": []}]})
-        assert synced.status_code == 200, synced.text
-        client.cookies.clear()
-        state = _start(client, source_id)
-        logged_in = client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code")
-        assert logged_in.status_code == 200, logged_in.text
-        assert logged_in.json()["user"]["display_name"] == "张三"
-        assert logged_in.json()["user"]["username"] != "owner"
-        from datetime import timedelta
-        from gateway.services import identity
-        now = identity._now()
-        monkeypatch.setattr(identity, "_now", lambda: now + timedelta(days=1000))
-        assert client.get("/api/auth/session").status_code == 200
+        sources = [_source(client, csrf)]
+        source = client.post("/api/admin/identity-sources", headers={"X-CSRF-Token": csrf}, json={
+            "provider": "wecom", "tenant_id": "tenant-a", "client_id": "tenant-a",
+            "agent_id": "1001", "secret_env": "WORKSTEP_TEST_WECOM_SECRET",
+        })
+        assert source.status_code == 201
+        sources.append(source.json()["id"])
+        user_ids = []
+        for source_id in sources:
+            client.cookies.clear()
+            state = _start(client, source_id)
+            url = f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code"
+            logged_in = client.get(url)
+            assert logged_in.status_code == 200, logged_in.text
+            user = logged_in.json()["user"]
+            assert user["display_name"] == "张三"
+            assert user["status"] == "active"
+            assert user["username"] != "owner"
+            user_ids.append(user["id"])
+            assert client.get(url).status_code == 409
+            assert client.get("/api/auth/session").status_code == 200
+            state = _start(client, source_id)
+            again = client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code")
+            assert again.json()["user"]["id"] == user["id"]
+        assert len(set(user_ids)) == 1
 
 
 def test_cross_tenant_and_same_name_do_not_link_accounts(tmp_path):
@@ -200,7 +205,7 @@ def test_callback_secrets_are_configured_by_environment_reference(tmp_path):
         assert "CALLBACK_TOKEN" not in source.text
 
 
-def test_external_registration_waits_for_approval(tmp_path):
+def test_external_first_login_is_independent_of_password_registration_policy(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     app.state.identity_connectors = {"dingtalk": FakeConnector()}
     with TestClient(app, base_url="https://gateway.test") as client:
@@ -210,19 +215,10 @@ def test_external_registration_waits_for_approval(tmp_path):
             connection.execute("UPDATE platform_settings SET value_json='\"open_with_approval\"' WHERE key='registration_mode'")
         client.cookies.clear()
         state = _start(client, source_id)
-        pending = client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code")
-        assert pending.status_code == 202, pending.text
-        assert pending.json()["user"]["status"] == "pending"
-        assert client.get("/api/auth/session").status_code == 401
-        owner = client.post("/api/auth/login", json={
-            "username": "owner", "password": "OwnerPassphrase-2026!",
-        })
-        assert client.post(f"/api/admin/users/{pending.json()['user']['id']}/approve", headers={
-            "X-CSRF-Token": owner.json()["csrf_token"],
-        }).status_code == 204
-        client.cookies.clear()
-        state = _start(client, source_id)
-        assert client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code").status_code == 200
+        response = client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code")
+        assert response.status_code == 200, response.text
+        assert response.json()["user"]["status"] == "active"
+        assert client.get("/api/auth/session").status_code == 200
 
 
 def test_provider_reconciliation_is_atomic_and_provisions_closed_registration(tmp_path):
@@ -344,6 +340,9 @@ def test_portal_scan_failures_return_to_login_without_authenticating(tmp_path):
         )
         assert unavailable.headers["location"] == "/auth?next=%2Fdevices&scan_error=unavailable"
 
+        app.state.identity_connectors["dingtalk"].profile = ExternalProfile(
+            tenant_id="different-enterprise", subject="employee-1", display_name="张三",
+        )
         denied_state = begin()
         denied = client.get(
             f"/api/auth/external/{source_id}/callback?state={denied_state}&code=valid-code",
@@ -498,3 +497,76 @@ def test_scan_only_user_sets_strong_local_password_and_keeps_enterprise_identity
         external = client.get(f"/api/auth/external/{source}/callback?state={state}&code=valid-code")
         assert external.status_code == 200, external.text
         assert external.json()["user"]["id"] == user["id"]
+
+
+def test_first_login_reuses_unique_local_display_name_and_keeps_credentials(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    connector = FakeConnector()
+    connector.profile = ExternalProfile(tenant_id="tenant-a", subject="member-owner", display_name="Owner")
+    app.state.identity_connectors = {"dingtalk": connector}
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        owner_id = client.get("/api/auth/session").json()["user"]["id"]
+        source_id = _source(client, csrf)
+        client.cookies.clear()
+        state = _start(client, source_id)
+        response = client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code")
+        assert response.status_code == 200, response.text
+        assert response.json()["user"]["id"] == owner_id
+        assert response.json()["user"]["username"] == "owner"
+        client.cookies.clear()
+        assert client.post("/api/auth/login", json={"username": "owner", "password": "OwnerPassphrase-2026!"}).status_code == 200
+
+
+def test_first_login_rejects_ambiguous_or_disabled_display_name(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    app.state.identity_connectors = {"dingtalk": FakeConnector()}
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        source_id = _source(client, csrf)
+        with __import__("sqlite3").connect(tmp_path / "workstep_platform.db") as connection:
+            for user_id in ("same-1", "same-2"):
+                connection.execute("INSERT INTO users (id, username, display_name, status) VALUES (?, ?, '张三', 'active')", (user_id, user_id))
+        client.cookies.clear()
+        state = _start(client, source_id)
+        assert client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code").status_code == 409
+        started = client.post(f"/api/auth/external/{source_id}/start", json={"return_to": "/auth?next=%2F"})
+        state = parse_qs(urlparse(started.json()["authorization_url"]).query)["state"][0]
+        conflict = client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code", follow_redirects=False)
+        assert conflict.headers["location"] == "/auth?next=%2F&scan_error=name_conflict"
+        with __import__("sqlite3").connect(tmp_path / "workstep_platform.db") as connection:
+            connection.execute("DELETE FROM users WHERE id='same-2'")
+            connection.execute("UPDATE users SET status='disabled' WHERE id='same-1'")
+        state = _start(client, source_id)
+        assert client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code").status_code == 403
+        assert client.get("/api/auth/session").status_code == 401
+
+
+def test_first_login_does_not_match_member_id_fallback_as_display_name(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    connector = FakeConnector()
+    connector.profile = ExternalProfile(tenant_id="tenant-a", subject="Owner", display_name="Owner")
+    app.state.identity_connectors = {"dingtalk": connector}
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        source_id = _source(client, csrf)
+        client.cookies.clear()
+        state = _start(client, source_id)
+        response = client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code")
+        assert response.status_code == 200
+        assert response.json()["user"]["username"] != "owner"
+
+
+def test_directory_import_reuses_unique_local_display_name(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        owner_id = client.get("/api/auth/session").json()["user"]["id"]
+        source_id = _source(client, csrf)
+        response = client.post(f"/api/admin/identity-sources/{source_id}/sync", headers={"X-CSRF-Token": csrf}, json={
+            "departments": [], "people": [{"subject": "member-owner", "display_name": "Owner", "department_ids": []}],
+        })
+        assert response.status_code == 200, response.text
+        with __import__("sqlite3").connect(tmp_path / "workstep_platform.db") as connection:
+            assert connection.execute("SELECT user_id FROM external_identities WHERE source_id=?", (source_id,)).fetchone()[0] == owner_id
+            assert connection.execute("SELECT count(*) FROM users WHERE display_name='Owner'").fetchone()[0] == 1

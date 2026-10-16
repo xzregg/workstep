@@ -91,7 +91,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert legacy['url'] == share['url'] and legacy['access_password'] is None
         assert meta.status_code == 200, meta.text
         assert meta.json() == {"title": "Demo", "mode": "read_only",
-                               "has_password": True, "status": "active"}
+                               "has_password": True, "status": "active", "require_login": False}
         assert client.get(f"/api/public/shares/{token}/host-status").status_code == 401
         assert client.get(f"/api/public/shares/{token}/task").status_code == 401
         assert client.post(f"/api/public/shares/{token}/unlock", json={
@@ -158,7 +158,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         monkeypatch.setattr(app.state.control_connections, "daemon_health", lambda _id: False)
         monkeypatch.setattr(app.state.control_connections, "request_data", request_data)
         from starlette.websockets import WebSocketDisconnect
-        ws_url = origin.replace('https://', 'wss://').replace('http://', 'ws://') + f'/api/public/shares/{token}/ws'
+        ws_url = origin.replace('https://', 'wss://').replace('http://', 'ws://') + f'/ws/public/shares/{token}'
         with client.websocket_connect(ws_url, headers={'Origin': origin}) as ws:
             assert ws.receive_json() == {'type': 'RUN_STARTED', 'task_id': 'task-1'}
         assert captured['ws_ticket']
@@ -397,6 +397,10 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         captured.clear()
 
         token = tokens["interactive"]
+        assert client.post(f"/api/public/shares/{token}/unlock", json={}).status_code == 401
+        assert client.post('/api/auth/login', json={
+            'username': 'owner', 'password': 'OwnerPassphrase-2026!',
+        }).status_code == 200
         unlocked = client.post(f"/api/public/shares/{token}/unlock", json={"password": ""})
         assert unlocked.status_code == 200
         csrf = unlocked.json()["csrf_token"]

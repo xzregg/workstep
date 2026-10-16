@@ -60,6 +60,16 @@ def test_share_ticket_requires_pinned_key_device_and_exact_scope():
             verify_share_ticket(malformed, key, pin, "gateway-1", "device-1")
 
 
+def test_share_ticket_preserves_only_valid_signed_actor():
+    actor = {'user_id': 'visitor-1', 'username': 'visitor', 'display_name': '访问者'}
+    ticket, key, pin = _ticket(provider_scope={'actor': actor})
+    assert verify_share_ticket(ticket, key, pin, 'gateway-1', 'device-1')['actor'] == actor
+    for bad in ({}, {'user_id': 'visitor'}, {**actor, 'username': ''}, {**actor, 'display_name': 42}):
+        ticket, key, pin = _ticket(provider_scope={'actor': bad})
+        with pytest.raises(ValueError):
+            verify_share_ticket(ticket, key, pin, 'gateway-1', 'device-1')
+
+
 def test_share_provider_grants_are_signed_bounded_and_do_not_change_visitor_identity():
     import time
     expiry = int(time.time()) + 300
@@ -78,7 +88,8 @@ def test_share_provider_grants_are_signed_bounded_and_do_not_change_visitor_iden
             verify_share_ticket(token, key, fingerprint, 'gateway-1', 'device-1')
 
 @pytest.mark.anyio
-async def test_share_bridge_keeps_signed_metadata_and_visitor_actor():
+@pytest.mark.parametrize('signed_actor', [None, {'user_id': 'visitor-1', 'username': 'visitor', 'display_name': '访问者'}])
+async def test_share_bridge_keeps_signed_metadata_and_visitor_actor(signed_actor):
     import asyncio
     import base64
     import json
@@ -97,10 +108,12 @@ async def test_share_bridge_keeps_signed_metadata_and_visitor_actor():
         def check():
             actor = get_current_actor()
             return {'actor': actor.actor_id,
+                    'user_name': actor.user_name,
                     'provider_ids': sorted(actor.provider_ids or [])}
         return await asyncio.to_thread(check)
     ticket, key, pin = _ticket(mode='interactive', provider_scope={
-        'provider_ids': ['supplier'], 'provider_grant_expires_at': int(time.time()) + 300})
+        'provider_ids': ['supplier'], 'provider_grant_expires_at': int(time.time()) + 300,
+        **({'actor': signed_actor} if signed_actor else {})})
     async def request(extra):
         frames = []
         async def capture(frame): frames.append(frame)
@@ -113,5 +126,8 @@ async def test_share_bridge_keeps_signed_metadata_and_visitor_actor():
         await asyncio.wait_for(bridge._task, 3)
         body = b''.join(base64.b64decode(frame.payload['data']) for frame in frames if frame.payload.get('phase') == 'body')
         return frames[0].payload['status'], json.loads(body) if body else None
-    assert await request({}) == (200, {'actor': 'share:share-1', 'provider_ids': ['supplier']})
+    assert await request({}) == (200, {'actor': signed_actor['user_id'] if signed_actor else 'share:share-1',
+                                     'user_name': '访问者' if signed_actor else 'Share visitor',
+                                     'provider_ids': ['supplier']})
     assert (await request({'provider_ids': ['owner-supplier']}))[0] == 502
+    assert (await request({'user_id': 'owner', 'username': 'owner', 'display_name': 'Owner'}))[0] == 502

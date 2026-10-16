@@ -1,0 +1,4 @@
+.task-share-login-control { display: flex; flex-direction: column; gap: 6px; }
+.task-share-login-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.task-share-login-toggle input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; }
+.task-share-login-control p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }

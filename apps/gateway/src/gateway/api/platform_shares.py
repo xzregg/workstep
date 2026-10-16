@@ -11,8 +11,10 @@ from gateway.services.platform_shares import public_share_task_operation as _han
 from gateway.services.platform_shares import public_share_websocket as _handle_share_websocket
 
 router = APIRouter(prefix="/api")
+websocket_router = APIRouter()
 
 
+@websocket_router.websocket('/ws/public/shares/{token}')
 @router.websocket('/public/shares/{token}/ws')
 async def public_share_websocket(ws: WebSocket, token: str):
     return await invoke(_handle_share_websocket, ws=ws, token=token)

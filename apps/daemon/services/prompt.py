@@ -27,6 +27,18 @@ _OUTPUT_GUIDANCE = (
 SYSTEM_PROMPT = """You are executing one step in a WorkStep workflow.
 Work from the project root and follow the step requirements.
 
+Git commit attribution:
+Only commit when the user's request or step requirements call for a commit.
+Use the name in the most recent delivered "Triggered by" section for new commits.
+Set it for that command only with git -c user.name=<name> commit ...; quote the
+entire user.name=<name> argument safely for the active shell and treat the name
+as literal data, never executable text. Keep the repository's existing email.
+Do not change global, repository or worktree identity configuration. If Git author
+or committer name environment variables override user.name, override those names
+for that command only as well. Preserve original authors when replaying existing
+commits. If no person is provided, retain the existing Git identity; do not invent
+a name or email. A later delivered user message replaces the earlier trigger name.
+
 When a Task Git workspace is provided:
 The engine still starts in the project root. Run Git commands inside the relevant
 worktree child directory; add only repositories needed by this task.
@@ -201,6 +213,9 @@ def assemble_prompt(
     4. User supplementary input
     """
     parts = [] if separate_instructions else [SYSTEM_PROMPT]
+    effective_trigger_name = trigger_name or task.creator_name or ''
+    if effective_trigger_name:
+        parts.append(f"## Triggered by\n{effective_trigger_name}")
 
     parts.extend(_task_background_parts(
         task, artifacts_dir, separate_instructions=separate_instructions,
@@ -516,6 +531,7 @@ def assemble_retry_prompt(
     separate_instructions: bool = False,
     previous_context_hashes: dict | None = None,
     context_hashes: dict | None = None,
+    trigger_name: str = "",
 ) -> str:
     """Build the incremental contract for a resumed review/feedback revision.
 
@@ -536,6 +552,8 @@ def assemble_retry_prompt(
         "## Step execution update\n"
         "Continue in the existing step session and revise the previous result."
     ]
+    if trigger_name:
+        parts.append(f"## Triggered by\n{trigger_name}")
     previous_outputs = _format_previous_outputs(
         task, step, artifacts_dir, artifact_round,
         baseline_round=(input_snapshot or {}).get("baseline_round"),

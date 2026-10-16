@@ -106,9 +106,10 @@ class ManagedHttpBridge:
                     share_ticket, self.gateway_key, self.gateway_fingerprint,
                     self.gateway_id, self.device_id,
                 )
-                user_id = f"share:{share_scope['share_id']}"
-                username = "share-visitor"
-                display_name = "Share visitor"
+                visitor = share_scope.get('actor')
+                user_id = visitor['user_id'] if visitor else f"share:{share_scope['share_id']}"
+                username = visitor['username'] if visitor else "share-visitor"
+                display_name = visitor['display_name'] if visitor else "Share visitor"
             raw_headers = self.start.get("headers", [])
             if (not isinstance(method, str) or not method.isascii() or not method.isalpha()
                     or not isinstance(path, str) or not path.startswith("/")

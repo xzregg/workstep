@@ -125,7 +125,8 @@ class GatewaySigner:
     def sign_platform_share_ticket(self, *, gateway_id: str, device_id: str,
                                    share_id: str, project_id: str,
                                    host_project_id: str, task_id: str,
-                                   mode: str, provider_ids: list[str] | None = None) -> str:
+                                   mode: str, provider_ids: list[str] | None = None,
+                                   actor: dict[str, str] | None = None) -> str:
         if mode not in ("read_only", "interactive"):
             raise ValueError("Invalid platform share mode")
         for value, limit in ((share_id, 128), (project_id, 64),
@@ -152,6 +153,7 @@ class GatewaySigner:
             "task_id": task_id, "mode": mode,
             "jti": secrets.token_urlsafe(24), "iat": now, "exp": now + 60,
             **provider_scope,
+            **({"actor": actor} if actor is not None else {}),
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"

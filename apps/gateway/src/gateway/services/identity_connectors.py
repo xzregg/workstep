@@ -165,7 +165,16 @@ class WeComConnector:
             if profile.get("errcode") != 0 or not profile.get("UserId"):
                 raise ValueError("WeCom member identity missing")
             subject = profile["UserId"]
-            return ExternalProfile(tenant_id=source.tenant_id, subject=subject, display_name=subject)
+            display_name = subject
+            try:
+                member = _checked(await client.get("https://qyapi.weixin.qq.com/cgi-bin/user/get", params={
+                    "access_token": token["access_token"], "userid": subject,
+                }))
+                display_name = member.get("name") or subject
+            except (httpx.HTTPError, ValueError):
+                # Missing directory permissions must not invalidate verified identity.
+                pass
+            return ExternalProfile(tenant_id=source.tenant_id, subject=subject, display_name=display_name)
 
     async def fetch_directory(self, source: IdentitySource, *, selected_department_ids=None,
                               departments_only=False, progress=None, preloaded_departments=None) -> dict:

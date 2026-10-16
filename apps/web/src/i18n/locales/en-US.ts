@@ -1363,6 +1363,8 @@ export const enUS: Messages = {
     switch: 'Switch',
   },
   layout: {
+    sidebarSectionResize: '拖动调整最近聊天高度，双击恢复默认',
+    sidebarSectionDragHint: '拖动调整分区位置，或按 Alt + ↑/↓',
     workspaceHome: '工作台',
     recentConversations: '最近聊天',
     noRecentConversations: '打开过的任务和对话会显示在这里',
@@ -2433,6 +2435,12 @@ export const enUS: Messages = {
     skipped: '跳过',
   },
   share: {
+    requireLogin: 'Require Gateway login',
+    loginRequired: 'Sign in to Gateway to access this share.',
+    loginHint: 'Interactive shares require Gateway login. No access key is needed; actions record the signed-in user.',
+    loginAction: 'Sign in',
+    copyLinkOnly: 'Copy link',
+
     copyAddress: 'Access address: ',
     copyPassword: 'Access password: ',
     copyTask: 'Task',

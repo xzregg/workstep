@@ -8,6 +8,41 @@ import { gatewayShareApi } from '../src/api/gatewayShare'
 import { useSharedTaskSession } from '../src/hooks/useSharedTaskSession'
 import { ApiError } from '../src/api/transport'
 
+test('login shares request Gateway login instead of a key and clear content when login expires', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const originalSocket = globalThis.WebSocket
+  let loggedIn = false, socket: any
+  Object.assign(globalThis, { WebSocket: class {
+    onclose?: (event: { code: number }) => void
+    constructor() { socket = this }
+    close() {}
+  } })
+  const api = { ...gatewayShareApi,
+    meta: async () => ({ title: 'Login share', mode: 'interactive', require_login: true, has_password: false }),
+    restoreSession: async () => { if (!loggedIn) throw new ApiError('Login required', 401); return { session_token: 'csrf' } },
+    unlock: async () => { if (!loggedIn) throw new ApiError('Login required', 401); return { session_token: 'csrf' } },
+    task: async () => ({ id: 'task', steps: [] }), history: async () => ({ messages: [{ id: 'm', content: 'Private' }] }),
+    artifacts: async () => ({ artifacts: [] }), reviews: async () => ({ reviews: [] }),
+  } as unknown as typeof gatewayShareApi
+  let session!: ReturnType<typeof useSharedTaskSession>
+  function Harness() { session = useSharedTaskSession('login-share', api); return null }
+  try {
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    assert.equal(session.phase.kind, 'need-login')
+    loggedIn = true
+    await act(async () => session.retry())
+    assert.equal(session.phase.kind, 'ready')
+    loggedIn = false
+    await act(async () => socket.onclose({ code: 4401 }))
+    assert.equal(session.phase.kind, 'need-login')
+    assert.equal(session.task, null)
+    assert.deepEqual(session.messages, [])
+  } finally {
+    await act(async () => root.unmount()); globalThis.WebSocket = originalSocket; await window.happyDOM.close()
+  }
+})
+
 test('share password hints prefill the form without submitting and follow the selected link', async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))

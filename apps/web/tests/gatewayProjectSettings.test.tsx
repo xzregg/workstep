@@ -59,6 +59,14 @@ for (const canInvite of [false, true]) test(`remote settings expose sharing with
   }
 })
 
+function assertShareAddress(value: string | undefined, address: string, keyRequired = true) {
+  assert.ok(value)
+  const url = new URL(value)
+  assert.equal(url.origin + url.pathname, address)
+  if (keyRequired) assert.ok((url.searchParams.get('_t') || '').length >= 16)
+  else assert.equal(url.search, '')
+}
+
 test("device-wide gateway session resolves the task project before showing share", async () => {
   const { window } = installDomEnvironment()
   window.happyDOM.setURL("http://d-device-1.localhost:8700/")
@@ -106,7 +114,7 @@ test("device-wide gateway session resolves the task project before showing share
     const createButton = [...document.body.querySelectorAll('button')].find(button => button.textContent === '生成分享链接')
     assert.ok(createButton)
     await act(async () => createButton.click())
-    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value, 'http://localhost:8700/share/new-token')
+    assertShareAddress(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value, 'http://localhost:8700/share/new-token', false)
     assert.equal(window.location.pathname, '/')
     assert.equal(useGatewaySessionStore.getState().session?.project_id, null)
   } finally {
@@ -140,7 +148,7 @@ test('local workbench connected to Gateway generates a Gateway share without pub
     assert.equal(document.querySelector<HTMLInputElement>('input[name="share-access-key"]')?.type, 'text')
     await act(async () => ([...document.body.querySelectorAll('button')].find(button => button.textContent === '生成分享链接')!).click())
     assert.equal(calls[1], '/api/gateway-task-shares')
-    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value, 'https://gateway.test/share/local-token')
+    assertShareAddress(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value, 'https://gateway.test/share/local-token')
   } finally {
     await act(async () => root.unmount()); globalThis.fetch = oldFetch
     useGatewaySessionStore.setState({ session: null }); useManagedModeStore.setState({ managed: null })
@@ -174,7 +182,7 @@ for (const published of [false, true]) test(`Gateway device workbench keeps its 
     await act(async () => button.click())
     await act(async () => ([...document.body.querySelectorAll('button')].find(button => button.textContent === '生成分享链接')!).click())
     assert.ok(calls.includes('/workspace/device/api/remote/task-shares'))
-    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value, 'https://gateway.test/share/key')
+    assertShareAddress(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value, 'https://gateway.test/share/key')
   } finally { await act(async () => root.unmount()); globalThis.fetch = oldFetch; useGatewaySessionStore.setState({ session: null }); await window.happyDOM.close() }
 })
 
@@ -201,7 +209,7 @@ for (const remote of [false, true]) test(`host shares keep the task host's addre
     assert.equal(document.querySelectorAll('.task-detail-share-button').length, 1)
     await act(async () => document.querySelector<HTMLButtonElement>('.task-detail-share-button')!.click())
     await act(async () => ([...document.body.querySelectorAll('button')].find(button => button.textContent === '生成分享链接')!).click())
-    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value,
+    assertShareAddress(document.querySelector<HTMLInputElement>('[role="dialog"] input[readonly]')?.value,
       remote ? 'http://192.168.1.99:8765/share/host-token' : 'http://127.0.0.1:8767/share/host-token')
     assert.equal(calls.length, 2)
   } finally {
