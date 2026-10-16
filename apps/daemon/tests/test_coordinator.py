@@ -1796,7 +1796,7 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
             assert "wait until the target step is no longer running" in rules
             assert "current project and task" in rules
             assert "Do not silently stop or restart" in rules
-            assert "execute the agreed stage operations in this same turn" in rules
+            assert "execute the agreed step operations in this same turn" in rules
             assert "do not wait for another user message" in rules
         assert "Use a proposal for an executable stage action;" not in instructions
         assert "create task worktrees" not in instructions

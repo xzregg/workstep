@@ -1059,8 +1059,9 @@ def test_local_workbench_manages_gateway_task_shares_over_authenticated_control(
                 'host_project_id':'host-1','action':'create','payload':{'task_id':'task-1','mode':'read_only'}}
             ws.send_json(request)
             unpublished=ws.receive_json()
-            assert unpublished['ok'] is False
-            assert '发布项目' in unpublished['error']
+            assert unpublished['ok'] is True
+            assert unpublished['kind'] == 'task_share_ack'
+            assert unpublished['request_id'] == 'create-1'
             ws.send_json({'kind':'project_publish','version':1,'action':'publish','host_project_id':'host-1','name':'Backend'})
             assert ws.receive_json()['status']=='published'
             ws.send_json(request)
@@ -1071,10 +1072,13 @@ def test_local_workbench_manages_gateway_task_shares_over_authenticated_control(
             share=created['result']
             assert share['url'].startswith('https://gateway.test/share/')
             ws.send_json({**request,'request_id':'list-1','action':'list'})
-            assert ws.receive_json()['result']['shares'][0]['id']==share['id']
+            listed = ws.receive_json()['result']['shares']
+            assert {item['id'] for item in listed} == {unpublished['result']['id'], share['id']}
             ws.send_json({**request,'host_project_id':'other-host','request_id':'bad-revoke','action':'revoke','payload':{'share_id':share['id']}})
             assert ws.receive_json()['ok'] is False
             ws.send_json({**request,'request_id':'revoke-1','action':'revoke','payload':{'share_id':share['id']}})
             assert ws.receive_json()['ok'] is True
             ws.send_json({**request,'request_id':'list-2','action':'list'})
-            assert ws.receive_json()['result']['shares'][0]['status']=='revoked'
+            listed = ws.receive_json()['result']['shares']
+            assert next(item for item in listed if item['id'] == share['id'])['status'] == 'revoked'
+            assert next(item for item in listed if item['id'] == unpublished['result']['id'])['status'] == 'active'

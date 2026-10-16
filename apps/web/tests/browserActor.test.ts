@@ -56,7 +56,7 @@ test('task API requests carry the browser identity headers', async () => {
   const originalFetch = globalThis.fetch
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { localStorage: storage },
+    value: { localStorage: storage, location: new URL('http://localhost:8765/') },
   })
   globalThis.fetch = async (_input, init) => {
     const headers = new Headers(init?.headers)

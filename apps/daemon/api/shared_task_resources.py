@@ -1,7 +1,6 @@
 """Project-backed resources used by the common task-detail controller."""
 
 import asyncio
-import json
 import re
 from pathlib import Path
 
@@ -59,17 +58,10 @@ async def prepare_task_resource(path, method, query, body, project_id, task_id, 
         resolved_values = await asyncio.to_thread(targets)
         for container, key, resolved, within in resolved_values:
             if not within:
-                from models import Message
-                def edited(_project):
-                    paths = []
-                    for row in Message.select(Message.event_summary_json).where(Message.task == task_id):
-                        try:
-                            summary = json.loads(row.event_summary_json or '{}')
-                        except ValueError:
-                            continue
-                        paths.extend(summary.get('edited_files') or [])
-                    return any((Path(p) if Path(p).is_absolute() else project.path / p).resolve() == resolved for p in paths)
-                if path != '/fs/preview' or method != 'GET' or not await project_manager.run_db(project_id, edited):
+                from services.shared_task_scope import is_edited_task_file
+                if path != '/fs/preview' or method != 'GET' or not await project_manager.run_db(
+                    project_id, lambda project: is_edited_task_file(project, task_id, resolved)
+                ):
                     raise HTTPException(403, 'File is outside the shared task')
             container[key] = str(resolved)
         if path == '/fs/preview':

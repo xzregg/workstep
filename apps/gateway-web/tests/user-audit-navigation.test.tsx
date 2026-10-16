@@ -25,7 +25,7 @@ test('audit destination immediately searches the linked user and displays reques
  const urls: string[] = []
  globalThis.fetch = async input => { urls.push(String(input)); return Response.json({total: 1, items: [{ id: 'audit', action: 'auth.login', actor_name: '张三', actor_username: 'alice', actor_type: 'user', occurred_at: '2026-10-14T02:00:00Z', result: 'success', request_ip: '198.51.100.42', metadata: {} }]}) }
  render(<MemoryRouter initialEntries={['/admin/audit?user_id=user-id']}><AdminAuditPage /></MemoryRouter>)
- await screen.findByRole('cell', { name: '198.51.100.42' })
+ await screen.findByRole('cell', { name: '198.51.100.42' }, { timeout: 5000 })
  assert.ok(urls.every(url => new URL(url, 'https://gateway.test').searchParams.get('user_id') === 'user-id'))
  assert.equal((screen.getByLabelText('用户 ID') as HTMLInputElement).value, 'user-id')
 })

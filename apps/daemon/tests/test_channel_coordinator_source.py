@@ -102,7 +102,8 @@ async def test_channel_source_is_persisted_and_applied_to_current_turn_after_res
             assert f'"sender_id": "user-{index}"' in call['prompt']
             assert 'must-not-reach-engine' not in call['prompt']
             assert 'Channel request background' not in (call.get('system_prompt') or '')
-            assert call['prompt'].count('Your role is limited') == (1 if mode == 'body' and index == 1 else 0)
+            from agent_assistants.coordinator_context import COORDINATOR_ROLE_RULES
+            assert call['prompt'].count(COORDINATOR_ROLE_RULES) == (1 if mode == 'body' and index == 1 else 0)
             if mode == 'developer':
                 assert bool(call.get('system_prompt')) == (index == 1)
             def read(_project):
@@ -123,7 +124,7 @@ async def test_channel_source_is_persisted_and_applied_to_current_turn_after_res
         assert '"origin": "workstep"' in instruction
         assert '"sender_id": "web-user"' in instruction
         assert 'group-2' not in instruction
-        assert 'Your role is limited' not in instruction
+        assert COORDINATOR_ROLE_RULES not in instruction
         if mode == 'developer':
             assert not SourceEngine.calls[2].get('system_prompt')
     finally:

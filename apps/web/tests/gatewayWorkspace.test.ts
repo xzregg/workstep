@@ -8,7 +8,7 @@ test('project workspace loads only its signed project and deduplicates session l
   const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
   const oldFetch = globalThis.fetch
   Object.defineProperty(globalThis, 'window', { configurable: true,
-    value: { location: { hostname: 'd-device-1.localhost', protocol: 'http:', port: '8700' } } })
+    value: { location: { pathname: '/', hostname: 'd-device-1.localhost', protocol: 'http:', port: '8700' } } })
   const calls: string[] = []
   globalThis.fetch = async input => {
     calls.push(String(input))
@@ -62,7 +62,7 @@ test('workspace catalog adapters always include the signed project and reject an
   const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
   const oldFetch = globalThis.fetch
   Object.defineProperty(globalThis, 'window', { configurable: true,
-    value: { location: { hostname: 'd-device-1.localhost', protocol: 'http:', port: '8700' } } })
+    value: { location: { pathname: '/', hostname: 'd-device-1.localhost', protocol: 'http:', port: '8700' } } })
   useGatewaySessionStore.setState({ session: {
     device_id: 'device-1', device_name: 'PC', username: 'Alice', gateway_url: 'http://localhost:8700/devices',
     project_id: 'platform-1', host_project_id: 'host-1', access_level: 'read', task_create: false,

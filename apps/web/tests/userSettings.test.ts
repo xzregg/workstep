@@ -28,7 +28,7 @@ test('gateway account overrides the local name without overwriting local identit
   const storage = memoryStorage()
   storage.setItem(BROWSER_ACTOR_STORAGE_KEY, JSON.stringify({ id:'local', name:'本地名字', deviceId:'local', deviceName:'WorkStep' }))
   const before = storage.getItem(BROWSER_ACTOR_STORAGE_KEY)
-  Object.defineProperty(globalThis, 'window', { configurable:true, value:{ localStorage:storage, workstepDesktop:{} } })
+  Object.defineProperty(globalThis, 'window', { configurable:true, value:{ localStorage:storage, location: new URL('http://localhost:8765/'), workstepDesktop:{} } })
   let calls = 0
   globalThis.fetch = async () => { calls++; return Response.json({ user_name:'网关用户', identity_source:'gateway', gateway_username:'alice', open_mode:false }) }
   try {
@@ -164,7 +164,7 @@ test('desktop persists its name and restores identity after the sandbox origin c
   let name = ''
   const settings = () => ({ user_name: name, open_mode: false, device_id: 'sandbox-device', device_name: 'WorkStep' })
   const installWindow = () => Object.defineProperty(globalThis, 'window', {
-    configurable: true, value: { localStorage: memoryStorage(), workstepDesktop: { notify() {} } },
+    configurable: true, value: { localStorage: memoryStorage(), location: new URL('http://localhost:8765/'), workstepDesktop: { notify() {} } },
   })
   installWindow()
   globalThis.fetch = async (_input, init) => {
@@ -193,7 +193,7 @@ test('desktop migrates an existing browser name into config', async () => {
   const originalWindow = globalThis.window
   const storage = memoryStorage()
   storage.setItem(BROWSER_ACTOR_STORAGE_KEY, JSON.stringify({ id: 'old', name: '原名称', deviceId: 'old', deviceName: 'Chrome' }))
-  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: storage, workstepDesktop: { notify() {} } } })
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: storage, location: new URL('http://localhost:8765/'), workstepDesktop: { notify() {} } } })
   let name = ''
   globalThis.fetch = async (_input, init) => {
     if (init?.method === 'PUT') name = JSON.parse(String(init.body)).user_name
@@ -216,7 +216,7 @@ test('desktop prefers the current Home config over an identity from another envi
   const originalWindow = globalThis.window
   const storage = memoryStorage()
   storage.setItem(BROWSER_ACTOR_STORAGE_KEY, JSON.stringify({ id: 'native', name: '宿主名称', deviceId: 'native', deviceName: 'Chrome' }))
-  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: storage, workstepDesktop: { notify() {} } } })
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: storage, location: new URL('http://localhost:8765/'), workstepDesktop: { notify() {} } } })
   globalThis.fetch = async (_input, init) => {
     assert.equal(init?.method, undefined)
     return new Response(JSON.stringify({ user_name: '沙箱名称', open_mode: false, device_id: 'sandbox', device_name: 'WorkStep' }))
