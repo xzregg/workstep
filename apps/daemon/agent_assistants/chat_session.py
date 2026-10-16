@@ -440,6 +440,8 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
         *,
         cursor: int = 0,
         limit: int = 30000,
+        file_changes: bool = False,
+        file_path: str | None = None,
     ) -> dict:
         """Read one message's detailed timeline without loading it in history."""
         with self._project_ctx(project_id) as project:
@@ -454,6 +456,12 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             )
             if row is None:
                 raise ValueError("Chat message not found")
+            if file_changes:
+                from agent_assistants.file_change_index import legacy_changes
+                if row.event_log_path:
+                    ref = self._event_journal.reopen(project.workstep_dir, row.event_log_path)
+                    return self._event_journal.file_changes(ref, file_path=file_path, project_root=project.path)
+                return legacy_changes(_load_json(row.events_json, []), file_path=file_path, project_root=project.path)
             if row.event_log_path:
                 ref = self._event_journal.reopen(
                     project.workstep_dir,

@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from engines.core.tool_inputs import edited_file_paths
+from agent_assistants.file_change_index import IndexBuilder, build_index, read_changes, save_index
 
 
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_.:-]+$")
@@ -71,6 +73,7 @@ class _WriterState:
     buffered: list[dict[str, Any]] = field(default_factory=list)
     buffered_bytes: int = 0
     last_flush: float = field(default_factory=time.monotonic)
+    file_index: IndexBuilder | None = None
 
 
 def _storage_operation(operation):
@@ -175,7 +178,8 @@ class TurnEventJournal:
         existing = self._read(ref)
         if existing:
             next_seq = max(int(item.get("seq") or 0) for item in existing) + 1
-        self._states[path] = _WriterState(ref=ref, next_seq=next_seq)
+        self._states[path] = _WriterState(ref=ref, next_seq=next_seq,
+                                        file_index=build_index(path) if existing else IndexBuilder())
         return ref
 
     @_storage_operation
@@ -203,6 +207,9 @@ class TurnEventJournal:
         if state is not None:
             state.ref = moved
             self._states[destination.resolve()] = state
+            if state.file_index is not None:
+                save_index(destination, state.file_index)
+        source.with_suffix(".changes.json").unlink(missing_ok=True)
         return moved
 
     def reopen(self, workstep_dir: str | Path, relative_path: str) -> JournalRef:
@@ -227,7 +234,7 @@ class TurnEventJournal:
         path = self.resolve(ref.root, ref)
         state = self._states.get(path)
         if state is None:
-            state = _WriterState(ref=ref)
+            state = _WriterState(ref=ref, file_index=build_index(path))
             existing = self._read(ref)
             if existing:
                 state.next_seq = max(int(item.get("seq") or 0) for item in existing) + 1
@@ -260,13 +267,26 @@ class TurnEventJournal:
             for item in state.buffered
         ).encode("utf-8")
         with path.open("ab") as handle:
+            offset = handle.tell()
             handle.write(payload)
             handle.flush()
             if durable:
                 os.fsync(handle.fileno())
+        if state.file_index is None:
+            state.file_index = build_index(path)
+        else:
+            for line, event in zip(payload.splitlines(keepends=True), state.buffered):
+                state.file_index.observe(event, offset, len(line))
+                offset += len(line)
         state.buffered.clear()
         state.buffered_bytes = 0
         state.last_flush = time.monotonic()
+        # Sidecars are rebuildable caches. A failed cache write must not make
+        # an already-appended batch get written to the canonical log twice.
+        try:
+            save_index(path, state.file_index)
+        except OSError:
+            logger.warning("Could not save file change index for %s", path, exc_info=True)
 
     def _schedule_flush(self, ref: JournalRef) -> None:
         # Timer/task ownership stays on the event loop; storage state stays on
@@ -432,19 +452,29 @@ class TurnEventJournal:
         }
 
     @_storage_operation
+    def file_changes(self, ref: JournalRef, *, file_path: str | None = None,
+                     project_root: str | Path | None = None) -> dict:
+        self.sync(ref)
+        return read_changes(self.resolve(ref.root, ref), file_path=file_path, project_root=project_root)
+
+    @_storage_operation
     def delete_session(self, workstep_dir: str | Path, session_id: str) -> None:
+        """Remove only this owner's logs and sidecar indexes, including subfolders."""
         root = Path(workstep_dir).resolve()
-        directory = (root / "event_logs" / self._segment(session_id)).resolve()
-        directory.relative_to((root / "event_logs").resolve())
-        if not directory.exists():
-            return
-        for path in directory.glob("*.jsonl"):
-            self._states.pop(path.resolve(), None)
-            path.unlink(missing_ok=True)
-        try:
-            directory.rmdir()
-        except OSError:
-            pass
+        segment = self._segment(session_id)
+        if segment in {".", ".."}:
+            raise ValueError("Invalid journal path segment")
+        logs = root / "event_logs"
+        if logs.is_symlink():
+            raise ValueError("Journal directory cannot be a symbolic link")
+        directory = logs / segment
+        for path in tuple(self._states):
+            if path.is_relative_to(directory):
+                self._states.pop(path, None)
+        if directory.is_symlink():
+            directory.unlink()
+        elif directory.exists():
+            shutil.rmtree(directory)
 
     @_storage_operation
     def _close_files(self) -> None:

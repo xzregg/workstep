@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
 import type { WorkspaceDevice } from './MyWorkstepWorkspace'
 import type { Project } from './ProjectCard'
 import { openRemoteAccess } from './openRemoteAccess'
+import { restoredWorkspacePage } from '@workstep/gateway-ui/workspaceResume'
 
 export function DirectWorkstepWorkspace({ devices, projects, hideNavigation = false, onShowNavigation }: { devices: WorkspaceDevice[]; projects: Project[]; hideNavigation?: boolean; onShowNavigation?: () => void }) {
   const [selected, setSelected] = useState(() => {
     let previous = ''
-    try { previous = sessionStorage.getItem('workstep-device') ?? '' } catch { /* Storage may be unavailable. */ }
+    try { previous = localStorage.getItem('workstep-device') ?? restoredWorkspacePage(localStorage)?.deviceId ?? sessionStorage.getItem('workstep-device') ?? '' } catch { /* Storage may be unavailable. */ }
     return devices.find(item => item.id === previous)?.id ?? devices.find(item => item.online)?.id ?? devices[0].id
   })
   const device = devices.find(item => item.id === selected) ?? devices[0]
@@ -15,13 +16,18 @@ export function DirectWorkstepWorkspace({ devices, projects, hideNavigation = fa
   const [refresh, setRefresh] = useState(0)
   const [projectId, setProjectId] = useState('')
   const project = available.find(item => item.id === projectId) ?? available[0]
+  let resumeNext = ''
+  try {
+    const page = restoredWorkspacePage(localStorage)
+    if (page?.deviceId === device.id) resumeNext = page.next
+  } catch { /* Optional navigation memory. */ }
   const key = device.id + ':' + refresh + ':' + (device.project_only ? project?.id ?? '' : 'all')
   useEffect(() => {
     if (!device.online) onShowNavigation?.()
   }, [device.online, onShowNavigation])
   function choose(id: string) {
     setSelected(id); setProjectId('')
-    try { sessionStorage.setItem('workstep-device', id) } catch { /* Optional preference. */ }
+    try { localStorage.setItem('workstep-device', id) } catch { /* Optional preference. */ }
   }
   return <div className="gateway-direct-workspace">
     {!hideNavigation && <DeviceTabs devices={devices} currentDeviceId={device.id} onSelect={choose}
@@ -30,12 +36,12 @@ export function DirectWorkstepWorkspace({ devices, projects, hideNavigation = fa
       <div role="tablist" aria-label="切换授权项目">{available.map(item => <button type="button" role="tab" key={item.id}
         aria-selected={item.id === project?.id} onClick={() => {setProjectId(item.id)}}>{item.name}</button>)}</div>
     </div>}
-    {device.online ? <DirectConnection key={key} device={device} project={device.project_only ? project : undefined} onError={onShowNavigation} onChooseDevice={hideNavigation ? onShowNavigation : undefined}/> :
+    {device.online ? <DirectConnection key={key} device={device} project={device.project_only ? project : undefined} resumeNext={resumeNext} onError={onShowNavigation} onChooseDevice={hideNavigation ? onShowNavigation : undefined}/> :
       <div className="gateway-offline-workspace" role="status"><span aria-hidden="true">▣</span><h3>{device.name || device.id} 当前离线</h3><p>正在等待设备上线，上线后会自动连接。<br/>也可以切换到其他在线设备。</p></div>}
   </div>
 }
 
-function DirectConnection({device,project,onError,onChooseDevice}:{device:WorkspaceDevice;project?:Project;onError?:()=>void;onChooseDevice?:()=>void}) {
+function DirectConnection({device,project,resumeNext,onError,onChooseDevice}:{device:WorkspaceDevice;project?:Project;resumeNext:string;onError?:()=>void;onChooseDevice?:()=>void}) {
  const [attempt,setAttempt]=useState(0)
  const [error,setError]=useState('')
  const [permanent,setPermanent]=useState(false)
@@ -58,7 +64,7 @@ function DirectConnection({device,project,onError,onChooseDevice}:{device:Worksp
      return
     }
     const access=await response.json()
-    if(!controller.signal.aborted)openRemoteAccess(access)
+    if(!controller.signal.aborted)openRemoteAccess({...access,next:resumeNext || access.next})
    }catch(reason){
     if(controller.signal.aborted)return
     onError?.()

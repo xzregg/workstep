@@ -1,0 +1,7 @@
+.schedule-rule-editor .schedule-frequency-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+.schedule-rule-editor .field { min-width: 0; }
+.schedule-rule-editor .field-hint:empty { display: none; }
+.schedule-rule-editor .schedule-rule-wide { grid-column: 1 / -1; }
+.schedule-rule-editor input, .schedule-rule-editor select { min-width: 0; width: 100%; max-width: 100%; }
+.schedule-rule-editor .schedule-weekday-tabs > button { justify-content: center; text-align: center; }
+.task-schedule-editor .schedule-rule-editor { margin-top: 0; }

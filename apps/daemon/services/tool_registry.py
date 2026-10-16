@@ -371,8 +371,8 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         name="workstep_list_schedules",
         description="List project schedules with status and next run time.",
         method="GET", path="/api/schedule/list",
-        parameters={"project_id": {"type": "string", "description": "project id"}},
-        required=("project_id",), query_params=("project_id",),
+        parameters={"project_id": {"type": "string", "description": "project id"}, "target_type": {"type":"string", "enum":["project","task"]}, "task_id":{"type":"string"}},
+        required=("project_id",), query_params=("project_id", "target_type", "task_id"),
     ),
     WorkstepTool(
         name="workstep_get_schedule",
@@ -386,13 +386,31 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         query_params=("project_id",),
     ),
     WorkstepTool(
+        name="workstep_schedule_notification_options", description="List scoped channel destinations and bound task default.",
+        method="GET", path="/api/schedule/notification-options",
+        parameters={"project_id":{"type":"string"},"task_id":{"type":"string"}}, required=("project_id",),
+        query_params=("project_id","task_id"),
+    ),
+    WorkstepTool(
+        name="workstep_retry_schedule_notification", description="Retry a failed channel notification without rerunning the occurrence.",
+        method="POST", path="/api/schedule/{schedule_id}/runs/{run_id}/notification/retry",
+        parameters={"project_id":{"type":"string"},"schedule_id":{"type":"string"},"run_id":{"type":"string"}},
+        required=("project_id","schedule_id","run_id"), path_params=("schedule_id","run_id"), query_params=("project_id",),
+        read_only=False, side_effect="resend the configured occurrence notification",
+    ),
+    WorkstepTool(
         name="workstep_create_schedule",
         description=(
-            "Create a project schedule. rule is once/daily/weekly/monthly/cron; "
-            "task_template must contain title."
+            "Create a schedule. rule supports once/daily/weekly/monthly/interval/minutes/cron; "
+            "project target uses workflow_id and task_template; task target requires target_task_id and instruction, uses a fresh coordinator session and skip overlap."
         ),
         method="POST", path="/api/schedule/create",
         parameters={
+            "target_type": {"type":"string", "enum":["project","task"]},
+            "target_task_id": {"type":"string"},
+            "instruction": {"type":"string", "description":"Free-form instruction for task coordinator"},
+            "stop_condition": {"type":"string", "enum":["manual","task_terminal"]},
+            "notification": {"type":"object", "description":"enabled boolean; target: session_id OR bot_id and group_id. Defaults on only for task with bound group."},
             "project_id": {"type": "string", "description": "project id"},
             "workflow_id": {"type": "string", "description": "workflow id"},
             "name": {"type": "string", "description": "schedule name"},
@@ -401,16 +419,21 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
             "execution_mode": {"type": "string", "description": "workflow/immediate/manual"},
             "overlap_policy": {"type": "string", "description": "skip/parallel/queue"},
         },
-        required=("project_id", "workflow_id", "name", "task_template", "rule"),
+        required=("project_id", "name", "rule"),
         read_only=False, side_effect="create and enable a project schedule",
         query_params=("project_id",),
-        body_params=("workflow_id", "name", "task_template", "rule", "execution_mode", "overlap_policy"),
+        body_params=("target_type", "target_task_id", "instruction", "stop_condition", "notification", "workflow_id", "name", "task_template", "rule", "execution_mode", "overlap_policy"),
     ),
     WorkstepTool(
         name="workstep_update_schedule",
         description="Update an existing project schedule and recalculate its next run.",
         method="PATCH", path="/api/schedule/{schedule_id}",
         parameters={
+            "target_type": {"type":"string", "enum":["project","task"]},
+            "target_task_id": {"type":"string"},
+            "instruction": {"type":"string", "description":"Free-form instruction for task coordinator"},
+            "stop_condition": {"type":"string", "enum":["manual","task_terminal"]},
+            "notification": {"type":"object", "description":"enabled boolean; target: session_id OR bot_id and group_id. Defaults on only for task with bound group."},
             "project_id": {"type": "string", "description": "project id"},
             "schedule_id": {"type": "string", "description": "schedule id"},
             "name": {"type": "string", "description": "new name"},
@@ -423,7 +446,7 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         required=("project_id", "schedule_id"), read_only=False,
         side_effect="update and recalculate a project schedule",
         path_params=("schedule_id",), query_params=("project_id",),
-        body_params=("name", "workflow_id", "task_template", "rule", "execution_mode", "overlap_policy"),
+        body_params=("target_type", "target_task_id", "instruction", "stop_condition", "notification", "name", "workflow_id", "task_template", "rule", "execution_mode", "overlap_policy"),
     ),
     *[
         WorkstepTool(

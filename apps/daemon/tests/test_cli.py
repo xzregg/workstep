@@ -9,6 +9,111 @@ from cli import build_parser, dispatch, main
 from services.tool_registry import WorkstepClient
 
 
+def test_task_list_filters_pages_and_selects_raw_fields(capsys):
+    async def handler(request):
+        assert request.url.params["archived"] == "true"
+        return httpx.Response(200, json={"tasks": [
+            {"id": "other", "status": "running", "workflow_id": "w2"},
+            {"id": "done", "status": "completed", "workflow_id": "w1"},
+            *[{"id": f"t{i}", "status": "running", "workflow_id": "w1",
+               "description": f"detail {i}"} for i in range(3)],
+        ], "source": "test"})
+
+    assert main(["task", "list", "--project", "p", "--archived",
+                 "--status", "running", "--workflow", "w1", "--offset", "1",
+                 "--limit", "1", "--fields", "id,description", "--json"],
+                client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "tasks": [{"id": "t1", "description": "detail 1"}], "source": "test",
+        "total": 3, "offset": 1, "remaining": 1,
+    }
+
+
+@pytest.mark.parametrize("verbose", [False, True])
+def test_list_fields_override_summary_and_verbose(capsys, verbose):
+    async def handler(request):
+        return httpx.Response(200, json={"projects": [{"id": "p", "description": "详情"}],
+                                              "total": 40, "offset": 10})
+
+    args = ["project", "list", "--fields", "id,description,missing", "--json"]
+    assert main(args + (["--verbose"] if verbose else []),
+                client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert capsys.readouterr().out.strip() == (
+        '{"projects":[{"id":"p","description":"详情"}],"total":40,"offset":10}'
+    )
+
+
+@pytest.mark.parametrize("offset", [0, 20])
+def test_array_list_pagination_reports_empty_and_remaining(capsys, offset):
+    async def handler(request):
+        return httpx.Response(200, json=[{"id": "bot", "config": "large"}])
+
+    assert main(["channel", "list", "--limit", "1", "--offset", str(offset), "--json"],
+                client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "items": [{"id": "bot"}] if offset == 0 else [],
+        "total": 1, "offset": offset, "remaining": 0,
+    }
+
+
+def test_get_fields_and_errors_remain_visible(capsys):
+    async def handler(request):
+        return httpx.Response(200, json={"id": "t", "description": "long", "status": "running"})
+
+    args = ["task", "get", "--project", "p", "--task", "t", "--fields", "id,status", "--json"]
+    assert main(args, client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out) == {"id": "t", "status": "running"}
+
+    async def failed(request):
+        return httpx.Response(200, json={"ok": False, "error": "failure", "detail": "keep"})
+
+    assert main(args, client=WorkstepClient(transport=httpx.MockTransport(failed))) == 1
+    assert json.loads(capsys.readouterr().out) == {"ok": False, "error": "failure", "detail": "keep"}
+
+
+@pytest.mark.parametrize("extra", [["--limit", "0"], ["--limit", "-1"],
+                                   ["--offset", "-1"], ["--fields", ""],
+                                   ["--fields", "id,,name"], ["--fields", "steps.nodes"]])
+def test_invalid_output_options_rejected_before_request(extra):
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["project", "list", *extra])
+
+
+@pytest.mark.parametrize("command,key", [
+    ("project", "projects"), ("workflow", "workflows"), ("task", "tasks"),
+    ("engine", "engines"), ("schedule", "schedules"), ("channel", None),
+    ("skin", None), ("language", None),
+])
+def test_all_list_commands_support_output_controls_and_preserve_errors(capsys, command, key):
+    async def handler(request):
+        items = [{"id": "a", "extra": "keep"}, {"id": "b"}]
+        return httpx.Response(200, json={key: items} if key else items)
+
+    args = [command, "list", "--fields", "id,extra", "--offset", "1", "--json"]
+    if command in {"workflow", "task", "schedule"}:
+        args += ["--project", "p"]
+    assert main(args, client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        key or "items": [{"id": "b"}], "total": 2, "offset": 1, "remaining": 0,
+    }
+
+    async def failed(request):
+        return httpx.Response(200, json={"ok": False, "error": "keep"})
+
+    assert main(args, client=WorkstepClient(transport=httpx.MockTransport(failed))) == 1
+    assert json.loads(capsys.readouterr().out) == {"ok": False, "error": "keep"}
+
+
+def test_task_filter_empty_result_updates_total(capsys):
+    async def handler(request):
+        assert "archived" not in request.url.params
+        return httpx.Response(200, json={"tasks": [{"id": "t", "status": "done"}], "total": 1})
+
+    assert main(["task", "list", "--project", "p", "--status", "running", "--json"],
+                client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out) == {"tasks": [], "total": 0}
+
+
 @pytest.mark.anyio
 async def test_cli_stage_controls_stop_then_start_and_inject():
     calls = []
@@ -543,3 +648,83 @@ async def test_cli_channel_bind_uses_session_and_task_ids():
     client = WorkstepClient(transport=httpx.MockTransport(handler))
     args = build_parser().parse_args(['channel','bind','--session','session-1','--project','p1','--task','t1','--json'])
     assert (await dispatch(args, client))['group_id'] == 'g1'
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('timing', [['--at', '2099-01-01T09:00:00+08:00'], ['--cron', '0 9 * * *']])
+async def test_cli_schedule_default_timezone_is_valid_iana(timing):
+    from services.schedule_rules import preview_rule
+
+    async def handler(request):
+        body = json.loads(request.content)
+        assert body['rule']['timezone'] == 'UTC'
+        preview_rule(body['rule'])
+        return httpx.Response(200, json={'id': 'rule', **body})
+
+    args = build_parser().parse_args(['schedule', 'create', '--project', 'p', '--target', 'task',
+        '--task', 't', '--name', '时区验证', '--instruction', '汇报', *timing])
+    await dispatch(args, WorkstepClient(transport=httpx.MockTransport(handler)))
+
+
+@pytest.mark.anyio
+async def test_cli_task_schedule_create_and_update_do_not_create_templates():
+    calls = []
+    async def handler(request):
+        if request.method == "GET":
+            return httpx.Response(200, json={"target_type":"task", "target_task_id":"t", "instruction":"旧指令"})
+        body = json.loads(request.content)
+        calls.append(body)
+        return httpx.Response(200, json={"id":"rule", **body})
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    parser = build_parser()
+    created = await dispatch(parser.parse_args(["schedule","create","--project","p","--target","task","--task","t","--name","汇报","--instruction","汇报进度并通过 CLI 发送","--every-minutes","10","--stop-condition","task-terminal"]), client)
+    assert created["target_task_id"] == "t"
+    assert calls[0]["rule"] == {"kind":"minutes","every":10,"timezone":"UTC"}
+    assert calls[0]["stop_condition"] == "task_terminal"
+    assert "task_template" not in calls[0]
+    await dispatch(parser.parse_args(["schedule","update","--project","p","--schedule","rule","--instruction","检查风险"]), client)
+    assert calls[1]["instruction"] == "检查风险"
+    assert "task_template" not in calls[1]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('flags, expected', [
+    (['--notify-session','session'], {'enabled':True,'target':{'session_id':'session'}}),
+    (['--notify-bot','bot','--notify-group','group'], {'enabled':True,'target':{'bot_id':'bot','group_id':'group'}}),
+    (['--no-notify'], {'enabled':False}),
+    (['--notify'], {'enabled':True}),
+])
+async def test_cli_schedule_notification_configuration(flags, expected):
+    async def handler(request):
+        body=json.loads(request.content)
+        assert body['notification']==expected
+        return httpx.Response(200,json={'id':'rule',**body})
+    args=build_parser().parse_args(['schedule','create','--project','p','--target','task','--task','t','--name','汇报','--instruction','汇报','--every-minutes','10',*flags])
+    await dispatch(args,WorkstepClient(transport=httpx.MockTransport(handler)))
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('flags', [ ['--notify-bot','b'], ['--notify-session','s','--notify-bot','b','--notify-group','g'], ['--no-notify','--notify-session','s'] ])
+async def test_cli_schedule_notification_rejects_ambiguous_targets(flags):
+    args=build_parser().parse_args(['schedule','create','--project','p','--target','task','--task','t','--name','汇报','--instruction','汇报','--every-minutes','10',*flags])
+    with pytest.raises(ValueError):
+        await dispatch(args,WorkstepClient())
+
+
+@pytest.mark.anyio
+async def test_cli_schedule_notification_discovery_retry_and_update_preserves_target():
+    calls=[]
+    async def handler(request):
+        calls.append((request.method,request.url.path))
+        if request.url.path=='/api/schedule/notification-options':
+            assert request.url.params['task_id']=='t'
+            return httpx.Response(200,json={'choices':[],'default':{'enabled':False}})
+        if request.method=='GET':
+            return httpx.Response(200,json={'target_type':'task','notification':{'enabled':True,'target':{'session_id':'s'}}})
+        if request.method=='PATCH':
+            body=json.loads(request.content);assert body['notification']=={'enabled':True,'target':{'session_id':'s'}}
+        return httpx.Response(200,json={'ok':True})
+    client=WorkstepClient(transport=httpx.MockTransport(handler));parser=build_parser()
+    await dispatch(parser.parse_args(['schedule','notification-options','--project','p','--task','t']),client)
+    await dispatch(parser.parse_args(['schedule','retry-notification','--project','p','--schedule','rule','--run','run']),client)
+    await dispatch(parser.parse_args(['schedule','update','--project','p','--schedule','rule','--notify']),client)
+    assert ('POST','/api/schedule/rule/runs/run/notification/retry') in calls

@@ -58,7 +58,7 @@ export function buildTaskConversationTimeline({
   actionTitle: (title: string) => string
 }) {
   const feed = selectTaskConversationFeed(historyMessages, liveMessages)
-  const allCoordinatorMessages = [...historyMessages, ...feed.liveCoordinatorMessages]
+  const allCoordinatorMessages = [...historyMessages, ...feed.liveCoordinatorMessages].filter(message => !message.schedule_run_id)
   const showThinking = shouldShowAssistantThinking(
     coordinatorRunning, allCoordinatorMessages, 'coordinator',
   )

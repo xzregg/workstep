@@ -28,13 +28,17 @@ test('quickly expands and restores the Markdown editor height', async () => {
     assert.ok(textarea)
     assert.ok(toggle)
     assert.equal(toggle.getAttribute('aria-pressed'), 'false')
+    const shell = container.querySelector('.markdown-editor-shell')!
+    assert.equal(shell.getAttribute('data-expanded'), 'false')
 
     await act(async () => toggle.click())
     assert.equal(toggle.getAttribute('aria-pressed'), 'true')
+    assert.equal(shell.getAttribute('data-expanded'), 'true')
     assert.equal(textarea.style.height, '45vh')
 
     await act(async () => toggle.click())
     assert.equal(toggle.getAttribute('aria-pressed'), 'false')
+    assert.equal(shell.getAttribute('data-expanded'), 'false')
     assert.equal(textarea.style.height, '')
   } finally {
     await act(async () => root.unmount())

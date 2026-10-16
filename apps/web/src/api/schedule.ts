@@ -3,6 +3,7 @@ import { request } from './transport'
 // --- Project schedule API ---
 
 export type ScheduleRule = (
+  | { kind: 'minutes'; every: number; anchor_at?: string; timezone: string }
   | { kind: 'once'; run_at: string; timezone: string }
   | { kind: 'daily'; time: string; timezone: string }
   | { kind: 'weekly'; weekdays: number[]; time: string; timezone: string }
@@ -11,9 +12,23 @@ export type ScheduleRule = (
   | { kind: 'cron'; expression: string; timezone: string }
 ) & { start_date?: string; end_date?: string }
 
+export interface ScheduleNotification {
+  enabled: boolean
+  target?: { session_id: string } | { bot_id: string; group_id: string }
+}
+export interface ScheduleNotificationOptions {
+  choices: Array<{ id: string; bot_id: string; bot_name: string; label: string; target: NonNullable<ScheduleNotification['target']> }>
+  default: ScheduleNotification
+}
+
 export interface ProjectSchedule {
   id: string
   name: string
+  target_type?: 'project' | 'task'
+  target_task_id?: string | null
+  instruction?: string | null
+  notification?: ScheduleNotification
+  stop_condition?: 'manual' | 'task_terminal'
   workflow_id: string
   task_template: {
     mode?: 'static' | 'agent'
@@ -43,9 +58,15 @@ export interface ScheduleRun {
   id: string
   schedule_id: string
   scheduled_for: string
-  status: 'queued' | 'running' | 'created' | 'succeeded' | 'failed' | 'skipped'
+  status: 'queued' | 'running' | 'created' | 'succeeded' | 'failed' | 'skipped' | 'stopped'
+  notification_status?: 'pending' | 'sending' | 'sent' | 'failed' | 'disabled'
+  notification_error?: string | null
   reason?: string | null
   task_id?: string | null
+  user_message_id?: string | null
+  assistant_message_id?: string | null
+  coordinator_turn_id?: string | null
+  instruction?: string | null
   workflow_run_id?: string | null
   started_at?: string | null
   ended_at?: string | null
@@ -53,6 +74,11 @@ export interface ScheduleRun {
 
 export interface SchedulePayload {
   name: string
+  target_type?: 'project' | 'task'
+  target_task_id?: string | null
+  instruction?: string | null
+  notification?: ScheduleNotification
+  stop_condition?: 'manual' | 'task_terminal'
   workflow_id: string
   task_template: ProjectSchedule['task_template']
   rule: ScheduleRule
@@ -61,6 +87,12 @@ export interface SchedulePayload {
 }
 
 export const scheduleApi = {
+  notificationOptions: (projectId: string, taskId?: string) => request<ScheduleNotificationOptions>(
+    `/schedule/notification-options?project_id=${encodeURIComponent(projectId)}${taskId ? `&task_id=${encodeURIComponent(taskId)}` : ''}`,
+  ),
+  retryNotification: (projectId: string, scheduleId: string, runId: string) => request<{ok: boolean}>(
+    `/schedule/${encodeURIComponent(scheduleId)}/runs/${encodeURIComponent(runId)}/notification/retry?project_id=${encodeURIComponent(projectId)}`, {method: 'POST'},
+  ),
   list: (projectId: string) => request<{ schedules: ProjectSchedule[] }>(
     `/schedule/list?project_id=${encodeURIComponent(projectId)}`,
   ),

@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 
 from services.quick_buttons import ACTION_ID, normalize_quick_buttons
@@ -27,7 +28,7 @@ LIST_FIELDS = {
     "workflow": ("workflows", ("id", "name", "is_default", "deleted", "running", "failed", "nodeCount")),
     "task": ("tasks", ("id", "title", "status", "archived", "workflow_id", "created_at", "updated_at")),
     "engine": ("engines", ("id", "enabled", "custom", "installed", "configured", "verified", "built_in", "version", "mode", "default_model")),
-    "schedule": ("schedules", ("id", "name", "workflow_id", "status", "summary", "next_run_at", "last_run_at")),
+    "schedule": ("schedules", ("id", "name", "target_type", "target_task_id", "workflow_id", "status", "summary", "next_run_at", "last_run_at")),
     "skin": (None, ("manifest", "revision")),
     "language": (None, ("manifest", "revision")),
     "skill": (None, ("project_id", "session_id", "package_path")),
@@ -90,6 +91,27 @@ async def _create_project_action_on_existing_daemon(args, client, script_content
             "script_path": str(script.relative_to(root))}
 
 
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be positive")
+    return number
+
+
+def _nonnegative_int(value: str) -> int:
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be nonnegative")
+    return number
+
+
+def _output_fields(value: str) -> tuple[str, ...]:
+    fields = tuple(field.strip() for field in value.split(","))
+    if any(not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", field) for field in fields):
+        raise argparse.ArgumentTypeError("use comma-separated top-level field names")
+    return tuple(dict.fromkeys(fields))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="workstep",
@@ -108,7 +130,12 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="compact single-line JSON output",
         )
+        if list_output or sub.prog.endswith(" get"):
+            sub.add_argument("--fields", type=_output_fields,
+                             help="select comma-separated top-level resource fields; absent fields are omitted")
         if list_output:
+            sub.add_argument("--limit", type=_positive_int, help="maximum output items (local slicing)")
+            sub.add_argument("--offset", type=_nonnegative_int, help="skip output items (local slicing)")
             sub.add_argument(
                 "--verbose", action="store_true",
                 help="include full data instead of list summaries",
@@ -139,6 +166,9 @@ def build_parser() -> argparse.ArgumentParser:
     task_sub = task.add_subparsers(dest="subcommand", required=True)
     task_list = task_sub.add_parser("list", help="list tasks of a project")
     task_list.add_argument("--project", required=True, dest="project_id", help="project id")
+    task_list.add_argument("--archived", action="store_true", help="list archived tasks only")
+    task_list.add_argument("--status", help="filter by exact task status")
+    task_list.add_argument("--workflow", dest="workflow_id", help="filter by workflow id")
     add_json(task_list, list_output=True)
     task_get = task_sub.add_parser("get", help="get one task")
     task_get.add_argument("--project", required=True, dest="project_id", help="project id")
@@ -239,7 +269,7 @@ def build_parser() -> argparse.ArgumentParser:
     skin = subparsers.add_parser("skin", help="create and manage declarative WorkStep skins")
     skin_sub = skin.add_subparsers(dest="subcommand", required=True)
     for action in ("list", "contract"):
-        add_json(skin_sub.add_parser(action))
+        add_json(skin_sub.add_parser(action), list_output=action == "list")
     for action in ("validate", "register"):
         command = skin_sub.add_parser(action)
         command.add_argument("path")
@@ -254,7 +284,7 @@ def build_parser() -> argparse.ArgumentParser:
     language = subparsers.add_parser("language", help="create and manage Runtime WorkStep language packs")
     language_sub = language.add_subparsers(dest="subcommand", required=True)
     for action in ("list", "contract"):
-        add_json(language_sub.add_parser(action))
+        add_json(language_sub.add_parser(action), list_output=action == "list")
     for action in ("validate", "register"):
         command = language_sub.add_parser(action)
         command.add_argument("path")
@@ -296,21 +326,40 @@ def build_parser() -> argparse.ArgumentParser:
 
     schedule_list = schedule_sub.add_parser("list", help="list schedules")
     schedule_list.add_argument("--project", required=True, dest="project_id")
+    schedule_list.add_argument("--target", choices=("project", "task"), dest="target_type")
+    schedule_list.add_argument("--task", dest="target_task_id")
     add_json(schedule_list, list_output=True)
     schedule_get = schedule_sub.add_parser("get", help="get one schedule")
     schedule_get.add_argument("--project", required=True, dest="project_id")
     schedule_get.add_argument("--schedule", required=True, dest="schedule_id")
     add_json(schedule_get)
 
+    notification_options = schedule_sub.add_parser("notification-options", help="list project notification destinations and task defaults")
+    notification_options.add_argument("--project", required=True, dest="project_id")
+    notification_options.add_argument("--task", dest="target_task_id")
+    add_json(notification_options)
+    retry_notification = schedule_sub.add_parser("retry-notification", help="retry only a failed occurrence notification")
+    retry_notification.add_argument("--project", required=True, dest="project_id")
+    retry_notification.add_argument("--schedule", required=True, dest="schedule_id")
+    retry_notification.add_argument("--run", required=True, dest="run_id")
+    add_json(retry_notification)
+
     def add_schedule_fields(target, *, creating: bool) -> None:
         target.add_argument("--project", required=True, dest="project_id")
         if not creating:
             target.add_argument("--schedule", required=True, dest="schedule_id")
+        target.add_argument("--target", choices=("project", "task"), dest="target_type")
+        target.add_argument("--task", dest="target_task_id")
+        target.add_argument("--notify", action=argparse.BooleanOptionalAction, default=None, help="notify channel when this occurrence finishes")
+        target.add_argument("--notify-session", help="project channel session id")
+        target.add_argument("--notify-bot", help="bot id for a task-bound group")
+        target.add_argument("--notify-group", help="task-bound platform group id")
+        target.add_argument("--stop-condition", choices=("manual", "task-terminal"))
         target.add_argument("--workflow", dest="workflow_id")
         target.add_argument("--name", required=creating)
         target.add_argument("--title")
         target.add_argument("--desc", dest="description")
-        target.add_argument("--timezone")
+        target.add_argument("--timezone", help="IANA timezone (default: UTC)")
         target.add_argument("--start-step")
         target.add_argument("--review-overrides", help="JSON object")
         target.add_argument(
@@ -334,6 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
         rule = target.add_mutually_exclusive_group(required=creating)
         rule.add_argument("--at", help="one-time ISO date/time")
         rule.add_argument("--cron", help="five-field cron expression")
+        rule.add_argument("--every-minutes", type=int)
         add_json(target)
 
     add_schedule_fields(schedule_sub.add_parser("create", help="create schedule"), creating=True)
@@ -354,16 +404,46 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = None) -> dict | list:
-    """Return list summaries by default, keeping detail and verbose responses intact."""
+    """Filter, slice and project CLI output without changing the daemon contract."""
     result = await _dispatch(args, client)
-    if args.subcommand != "list" or getattr(args, "verbose", False):
+    if isinstance(result, dict) and result.get("ok") is False:
         return result
-    key, fields = LIST_FIELDS[args.command]
-    if isinstance(result, dict) and (result.get("ok") is False or key not in result):
+    fields = getattr(args, "fields", None)
+    if args.subcommand != "list":
+        if fields and isinstance(result, dict):
+            return {field: result[field] for field in fields if field in result}
+        return result
+    key, summary_fields = LIST_FIELDS[args.command]
+    if key and (not isinstance(result, dict) or key not in result):
         return result
     items = result[key] if key else result
-    summaries = [{field: item[field] for field in fields if field in item} for item in items]
-    return {**result, key: summaries} if key else summaries
+    if not isinstance(items, list):
+        return result
+    filtered = False
+    if args.command == "task":
+        for option, field in (("status", "status"), ("workflow_id", "workflow_id")):
+            value = getattr(args, option, None)
+            if value is not None:
+                items = [item for item in items if item.get(field) == value]
+                filtered = True
+    limit, offset = getattr(args, "limit", None), getattr(args, "offset", None)
+    paginated = limit is not None or offset is not None
+    total = len(items)
+    start = offset or 0
+    if paginated:
+        items = items[start: start + limit if limit is not None else None]
+    if fields is None and not getattr(args, "verbose", False):
+        fields = summary_fields
+    if fields is not None:
+        items = [{field: item[field] for field in fields if field in item} for item in items]
+    output = {**result, key: items} if key else items
+    if paginated:
+        if key is None:
+            output = {"items": items}
+        output.update(total=total, offset=start, remaining=max(0, total - start - len(items)))
+    elif filtered and isinstance(output, dict) and "total" in output:
+        output["total"] = total
+    return output
 
 
 async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = None) -> dict | list:
@@ -459,8 +539,11 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 arguments["reset_session"] = args.reset_session
             return await client.call(step_operations[args.subcommand], arguments)
         if args.subcommand == "list":
+            arguments = {"project_id": args.project_id}
+            if args.archived:
+                arguments["archived"] = True
             return await client.call(
-                "workstep_list_tasks", {"project_id": args.project_id}
+                "workstep_list_tasks", arguments
             )
         if args.subcommand == "get":
             return await client.call(
@@ -613,7 +696,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     if command == "schedule":
         base = {"project_id": args.project_id}
         if args.subcommand == "list":
-            return await client.call("workstep_list_schedules", base)
+            return await client.call("workstep_list_schedules", {**base, **({"target_type":args.target_type} if args.target_type else {}), **({"task_id":args.target_task_id} if args.target_task_id else {})})
         if args.subcommand == "get":
             return await client.call(
                 "workstep_get_schedule", {**base, "schedule_id": args.schedule_id}
@@ -623,6 +706,10 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 f"workstep_{args.subcommand}_schedule",
                 {**base, "schedule_id": args.schedule_id, "confirm": "yes"},
             )
+        if args.subcommand == "notification-options":
+            return await client.call("workstep_schedule_notification_options", {**base, **({"task_id":args.target_task_id} if args.target_task_id else {})})
+        if args.subcommand == "retry-notification":
+            return await client.call("workstep_retry_schedule_notification", {**base, "schedule_id":args.schedule_id, "run_id":args.run_id, "confirm":"yes"})
         if args.subcommand == "runs":
             return await client.call("workstep_list_schedule_runs", {
                 **base, "schedule_id": args.schedule_id,
@@ -633,8 +720,42 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
             existing = None
             if args.subcommand == "update":
                 arguments["schedule_id"] = args.schedule_id
+            target_type = args.target_type
+            if args.subcommand == "update" and not target_type:
+                existing = await client.call("workstep_get_schedule", {**base, "schedule_id": args.schedule_id})
+                target_type = existing.get("target_type", "project")
+            target_type = target_type or "project"
+            destination = None
+            if args.notify_session and (args.notify_bot or args.notify_group):
+                raise ValueError("--notify-session cannot be combined with --notify-bot/--notify-group")
+            if bool(args.notify_bot) != bool(args.notify_group):
+                raise ValueError("--notify-bot and --notify-group must be supplied together")
+            if args.notify_session:
+                destination = {"session_id": args.notify_session}
+            elif args.notify_bot:
+                destination = {"bot_id": args.notify_bot, "group_id": args.notify_group}
+            if args.notify is False and destination:
+                raise ValueError("--no-notify cannot include a notification destination")
+            if args.notify is not None or destination:
+                arguments["notification"] = {"enabled": args.notify is not False}
+                if destination:
+                    arguments["notification"]["target"] = destination
+                elif args.notify and existing and existing.get("notification", {}).get("target"):
+                    arguments["notification"]["target"] = existing["notification"]["target"]
+            if args.target_type is not None:
+                arguments["target_type"] = args.target_type
+            if target_type == "project" and (args.target_task_id or args.stop_condition):
+                raise ValueError("--task and --stop-condition require --target task")
+            if target_type == "task":
+                arguments["target_type"] = target_type
+                if args.target_task_id is not None:
+                    arguments["target_task_id"] = args.target_task_id
+                if args.instruction is not None:
+                    arguments["instruction"] = args.instruction
+                if args.stop_condition is not None:
+                    arguments["stop_condition"] = args.stop_condition.replace("-", "_")
             mode = getattr(args, "mode", "static") or "static"
-            if args.subcommand == "create" and mode != "agent" and not args.workflow_id:
+            if args.subcommand == "create" and target_type != "task" and mode != "agent" and not args.workflow_id:
                 raise ValueError(
                     "--workflow is required when --mode is static (default)"
                 )
@@ -647,11 +768,13 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                     arguments[target] = value
             if mode == "agent" and args.workflow_id is None:
                 arguments["workflow_id"] = ""
-            if args.at or args.cron:
+            if args.every_minutes is not None:
+                arguments["rule"] = {"kind":"minutes", "every": args.every_minutes, "timezone":args.timezone or "UTC"}
+            elif args.at or args.cron:
                 arguments["rule"] = {
                     "kind": "once" if args.at else "cron",
                     "run_at" if args.at else "expression": args.at or args.cron,
-                    "timezone": args.timezone or str(__import__("datetime").datetime.now().astimezone().tzinfo),
+                    "timezone": args.timezone or "UTC",
                 }
             elif args.subcommand == "update" and args.timezone:
                 existing = await client.call("workstep_get_schedule", {
@@ -681,6 +804,12 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 ]
             if args.retry_count is not None:
                 template["retry_count"] = args.retry_count
+            if target_type == "task":
+                if args.subcommand == "create" and (not args.target_task_id or not args.instruction):
+                    raise ValueError("--task and --instruction are required for task schedules")
+                if args.workflow_id or args.title or args.description or args.start_step or args.review_overrides or args.candidates or args.retry_count is not None or mode != "static":
+                    raise ValueError("Task schedules cannot contain project task creation options")
+                template = {}
             if template:
                 if args.subcommand == "update":
                     existing = existing or await client.call("workstep_get_schedule", {
@@ -706,7 +835,8 @@ def main(argv: list[str] | None = None, client: WorkstepClient | None = None) ->
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
     indent = None if getattr(args, "json", False) else 2
-    print(json.dumps(result, ensure_ascii=False, indent=indent))
+    print(json.dumps(result, ensure_ascii=False, indent=indent,
+                     separators=(",", ":") if getattr(args, "json", False) else None))
     if isinstance(result, dict) and result.get("ok") is False:
         return 1
     return 0

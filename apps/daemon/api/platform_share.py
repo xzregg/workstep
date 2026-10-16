@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path, PureWindowsPath
 from urllib.parse import unquote
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -672,8 +672,25 @@ async def _history_page(request: Request, offset: int):
     return result
 
 
+@router.get("/file-changes/{message_id}/{encoded}")
+async def read_platform_share_file_changes(request: Request, message_id: str, encoded: str):
+    if not re.fullmatch(r"[0-9a-f]{2,16384}", encoded):
+        raise HTTPException(status_code=404, detail="File changes unavailable")
+    try:
+        options = json.loads(bytes.fromhex(encoded))
+        if not isinstance(options, dict) or set(options) - {"path"}:
+            raise ValueError("Invalid options")
+        path = options.get("path")
+        if path is not None and (not isinstance(path, str) or not path):
+            raise ValueError("Invalid path")
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=404, detail="File changes unavailable") from exc
+    return await read_platform_share_events(request, message_id, 0, file_changes=True, file_path=path)
+
+
 @router.get("/events/{message_id}/{cursor}")
-async def read_platform_share_events(request: Request, message_id: str, cursor: int):
+async def read_platform_share_events(request: Request, message_id: str, cursor: int,
+                                     file_changes: bool = Query(False), file_path: str | None = Query(None)):
     scope = _share_scope(request)
     if not _MESSAGE_ID.fullmatch(message_id) or not 0 <= cursor <= 999999999:
         raise HTTPException(status_code=404, detail="Message events unavailable")
@@ -688,7 +705,8 @@ async def read_platform_share_events(request: Request, message_id: str, cursor: 
     def load(project):
         try:
             return shared_message_events(project, scope["task_id"], message_id,
-                                         cursor=cursor, limit=3000, mode=scope["mode"])
+                                         cursor=cursor, limit=3000, mode=scope["mode"],
+                                         file_changes=file_changes, file_path=file_path)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="Message events unavailable") from exc
 

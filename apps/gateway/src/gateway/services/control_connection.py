@@ -564,6 +564,8 @@ class DataConnection:
                     r"/api/platform-share/events/[A-Za-z0-9_-]{1,128}/(?:0|[1-9][0-9]{0,8})",
                     target_path or ""))
             read_path = read_path or re.fullmatch(
+                r"/api/platform-share/file-changes/[A-Za-z0-9_-]{1,128}/[0-9a-f]{2,16384}", target_path or "")
+            read_path = read_path or re.fullmatch(
                 r"/api/platform-share/git/read/(?:repositories|history|changes|diff|blame|remotes|browse|preview|content)/[0-9a-f]{2,16384}", target_path or "")
             write_path = re.fullmatch(
                 r"/api/platform-share/steps/[A-Za-z0-9_-]{1,128}/(?:message|resume|cancel)",

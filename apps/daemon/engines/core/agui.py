@@ -80,6 +80,7 @@ class AGUIContext:
 
     task_id: str | None = None
     project_id: str | None = None
+    schedule_run_id: str | None = None
     step_key: str | None = None
     message_id: str | None = None
     channel: str | None = None
@@ -97,6 +98,7 @@ class AGUIContext:
         return cls(
             task_id=overrides.get("task_id", event.get("task_id")),
             project_id=overrides.get("project_id", event.get("project_id")),
+            schedule_run_id=overrides.get("schedule_run_id", event.get("schedule_run_id")),
             step_key=overrides.get("step_key", event.get("step_key")),
             message_id=overrides.get("message_id", event.get("message_id")),
             channel=overrides.get("channel", event.get("channel")),
@@ -141,6 +143,7 @@ def _base_fields(event: Mapping[str, Any], ctx: AGUIContext) -> dict[str, Any]:
     fields: dict[str, Any] = {}
     for key, value in (
         ("project_id", ctx.project_id),
+        ("schedule_run_id", ctx.schedule_run_id),
         ("task_id", ctx.task_id),
         ("step_key", ctx.step_key),
         ("channel", ctx.channel),

@@ -179,8 +179,8 @@ export interface AssistantStore {
 }
 
 export interface AssistantStoreConfig {
-  /** Only accept WebSocket events emitted by this assistant channel. */
-  channel?: string
+  /** Only accept WebSocket events emitted by these assistant channels. */
+  channel?: string | readonly string[]
   /** WS event type carrying structured choice cards (e.g. 'flow_proposals'). */
   proposalEvent?: string
   /** Extract choice cards from a proposal event's data payload. */
@@ -548,7 +548,9 @@ export function createAssistantStore(
 
     handleWsEvent: (event) => {
       const sessionId = event.session_id
-      if (!sessionId || (config.channel && event.channel !== config.channel)) return
+      if (!sessionId || (config.channel && (typeof config.channel === 'string'
+        ? event.channel !== config.channel
+        : !config.channel.includes(event.channel || '')))) return
       const mid = messageId(event)
       set((s) => {
         const session = s.sessions[sessionId] || emptySession()

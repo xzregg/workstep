@@ -71,6 +71,8 @@ def test_session_action_run_is_edit_only_and_project_bound():
  ('DELETE','/api/workflow/generate/history',[('workflow_id','flow-1')]),
  ('POST','/api/task-draft/chat',[]), ('POST','/api/task-draft/session-1/stop',[]),
  ('POST','/api/project/save-steps',[('workflow_id','flow-1')]),
+ ('GET','/api/schedule/notification-options',[('task_id','task-1')]),
+ ('POST','/api/schedule/schedule-1/runs/run-1/notification/retry',[]),
  ('GET','/api/schedule/list',[]), ('POST','/api/schedule/create',[]),
  ('GET','/api/schedule/schedule-1/runs',[('limit','100'),('offset','0')]),
  ('GET','/api/pending-message-inserts',[('target_message_id','message-1')]),
@@ -130,3 +132,16 @@ def test_personal_appearance_does_not_require_project_write_permission(level):
     for method in ('POST', 'PUT', 'DELETE'):
         assert not project_http_route_allowed(method, path, [], 'p', access_level=level)
     assert project_http_route_allowed('GET', '/appearance', [], 'p', access_level=level)
+
+
+@pytest.mark.parametrize('path,extra', [
+    ('/api/task/t/messages/m/events', []),
+    ('/api/chat-sessions/s/messages/m/events', []),
+    ('/api/workflow/generate/history/messages/m/events', [('workflow_id', 'w')]),
+])
+def test_file_change_index_reads_keep_project_scope(path, extra):
+    query = [('project_id', 'p'), ('file_changes', 'true'), ('file_path', 'src/a.py'), *extra]
+    assert project_http_route_allowed('GET', path, query, 'p', access_level='read')
+    assert not project_http_route_allowed('GET', path, query, 'other', access_level='read')
+    assert not project_http_route_allowed('GET', path, [*query, ('unexpected', 'x')], 'p')
+    assert not project_http_route_allowed('GET', path, [*query, ('file_path', 'b.py')], 'p')

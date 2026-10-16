@@ -8,6 +8,7 @@
     "./NotificationCenterView": "./src/NotificationCenterView.tsx",
     "./openRemoteAccess": "./src/openRemoteAccess.ts",
     "./androidNotifications": "./src/androidNotifications.ts",
+    "./workspaceResume": "./src/workspaceResume.ts",
     "./NotificationCenter.css": "./src/NotificationCenter.css",
     "./DeviceTabs.css": "./src/DeviceTabs.css",
     "./TaskShareLoginToggle": "./src/TaskShareLoginToggle.tsx",

@@ -68,6 +68,8 @@ def test_registry_defines_expected_tool_set():
         "workstep_list_schedules",
         "workstep_get_schedule",
         "workstep_create_schedule",
+        "workstep_schedule_notification_options",
+        "workstep_retry_schedule_notification",
         "workstep_update_schedule",
         "workstep_pause_schedule",
         "workstep_resume_schedule",

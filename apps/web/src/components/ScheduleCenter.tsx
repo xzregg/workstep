@@ -92,8 +92,8 @@ export default function ScheduleCenter() {
         </>}
       </ResizablePanel>
     </div>, document.body)}
-    <ConfirmDialog open={pending !== null} title={t('schedules.unsavedTitle')}
+    {pending !== null && createPortal(<ConfirmDialog open title={t('schedules.unsavedTitle')}
       message={t('schedules.unsavedMessage')} confirmText={t('common.discard')}
-      onCancel={() => setPending(null)} onConfirm={() => { if (pending) apply(pending) }} />
+      onCancel={() => setPending(null)} onConfirm={() => apply(pending)} />, document.body)}
   </>
 }

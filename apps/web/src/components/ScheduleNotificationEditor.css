@@ -1,0 +1,6 @@
+.schedule-notification-editor { margin-block: 16px; }
+.schedule-notification-toggle { display: flex; align-items: center; gap: 8px; font-size: calc(13px * var(--font-scale)); cursor: pointer; min-height: var(--mobile-control-regular, 32px); }
+.schedule-notification-toggle input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; }
+.schedule-notification-target { display: grid; gap: 10px; margin-top: 12px; min-width: 0; }
+.schedule-notification-hint { color: var(--danger); font-size: calc(12px * var(--font-scale)); }
+.schedule-notification-run { display: flex; align-items: center; gap: 6px; margin-top: 5px; color: var(--meta); font-size: calc(12px * var(--font-scale)); }

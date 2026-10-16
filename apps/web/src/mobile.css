@@ -320,7 +320,10 @@
     padding: 12px !important;
   }
   .schedule-split-handle { display: none !important; }
-  .schedule-form-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .schedule-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px; }
+  .schedule-editor .field-hint:empty { display: none; }
+  .schedule-editor .schedule-frequency-section { margin-top: 10px; }
+  .schedule-editor .schedule-effective-range { margin-top: 10px; }
   .schedule-frequency-tabs { display: flex; width: 100%; }
   .schedule-frequency-tabs > button {
     flex: 1 1 0;
@@ -463,14 +466,25 @@
   .mobile-assistant-tab { height: var(--mobile-button-height); min-height: var(--mobile-button-height); padding: 0 16px; flex-shrink: 0; border-bottom: 1px solid var(--border-soft); }
   .mobile-assistant-tab[aria-pressed="true"] { color: var(--accent); }
   .task-create-assistant { display: none !important; }
+  .task-create-panel[data-tab="assistant"] .task-create-body { flex-direction: column; }
+  .task-create-panel[data-tab="assistant"] .task-create-form { flex: 0 0 auto; }
+  .task-create-panel[data-tab="assistant"] .task-create-footer { display: none; }
   .task-create-panel[data-tab="assistant"] .task-create-assistant {
     display: flex !important;
-    position: absolute;
-    inset: 45px 0 auto;
-    bottom: calc(128px + max(0px, env(safe-area-inset-bottom) - 16px));
+    flex: 1;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
+  }
+  .review-overrides-editor .markdown-editor-shell textarea.markdown-editor-input,
+  .review-overrides-editor .markdown-editor-preview {
+    /* Reserve room for all three controls in the shared right-side toolbar. */
+    min-height: calc(3 * var(--mobile-control-regular) + 14px) !important;
+  }
+  .review-overrides-editor .markdown-editor-shell[data-expanded="true"] textarea.markdown-editor-input,
+  .review-overrides-editor .markdown-editor-shell[data-expanded="true"] .markdown-editor-preview {
+    height: 50dvh !important;
+    max-height: 50dvh !important;
   }
   .task-create-panel .panel-footer { margin-top: auto; }
   .modal-overlay { padding: 12px !important; }
@@ -1061,4 +1075,20 @@
 @media (max-width: 1023px) {
   .mobile-header--device { display: grid; grid-template-columns: minmax(68px, 1fr) minmax(0, 3fr) minmax(68px, 1fr); }
   .mobile-header--device .mobile-header-actions { justify-content: flex-end; }
+}
+
+@media (max-width: 1023px) {
+  .schedule-editor .task-schedule-editor { gap: 10px; padding-top: 8px; }
+  .task-schedule-editor .task-schedule-identification,
+  .schedule-notification-editor .schedule-notification-target { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .task-schedule-editor .field-hint:empty,
+  .schedule-notification-editor .field-hint:empty { display: none; }
+  .task-schedule-editor input, .task-schedule-editor select,
+  .schedule-notification-target select { min-width: 0; max-width: 100%; }
+  .task-schedule-editor .schedule-notification-editor { margin-block: 0; }
+  .schedule-notification-editor { margin-block: 8px; }
+  .schedule-notification-editor .schedule-notification-target { margin-top: 6px; }
+  .schedule-notification-target .field { min-width: 0; }
+  .schedule-notification-target > .schedule-notification-hint { grid-column: 1 / -1; }
+  .schedule-notification-hint { overflow-wrap: anywhere; }
 }

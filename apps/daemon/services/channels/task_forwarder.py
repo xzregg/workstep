@@ -122,6 +122,8 @@ class ChannelTaskForwarder:
                 self._messages.pop(key, None)
                 while key in self._completed:
                     self._completed.remove(key)
+            if event.get('schedule_run_id'):
+                continue
             if key in self._completed or event.get('role') == 'user':
                 continue
             state = self._messages.get(key)

@@ -1,3 +1,4 @@
+import type { MessageEventsLoader } from '../utils/messageFileChanges'
 import ChatComposerResizeHandle from './ChatComposerResizeHandle'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCompactLayout } from '../hooks/useCompactLayout'
@@ -125,7 +126,7 @@ export interface AssistantChatPanelProps {
   /** 用户消息上方是否显示身份标签（默认隐藏；仅任务详情对话与分享页显示）。 */
   showUserTag?: boolean
   /** Load one persisted message's JSONL process timeline on demand. */
-  onLoadMessageEvents?: (messageId: string) => void
+  onLoadMessageEvents?: MessageEventsLoader
   /** Fetch older messages; capture the scroll position immediately before prepending. */
   onLoadOlderHistory?: (beforePrepend?: () => void) => Promise<void>
   /** Optional message-level fork action, shown on completed assistant replies. */
@@ -148,7 +149,7 @@ interface MessageItemProps {
     response: Record<string, unknown>,
   ) => Promise<void>
   onViewPrompt: (value: string | null) => void
-  onLoadMessageEvents?: (messageId: string) => void
+  onLoadMessageEvents?: MessageEventsLoader
   onForkMessage?: (messageId: string, preferSmart?: boolean) => void
   onSendToInput: (content: string) => void
   onAsyncQuestionSubmit: (content: string) => Promise<boolean>
@@ -193,7 +194,7 @@ const MessageItem = memo(function MessageItem({
       content={message.content}
       events={message.events}
       eventDetail={message.event_detail}
-      onLoadEventDetails={onLoadMessageEvents ? () => onLoadMessageEvents(message.id) : undefined}
+      onLoadEventDetails={onLoadMessageEvents ? query => onLoadMessageEvents(message.id, query) : undefined}
       interactionsEnabled={canEdit && message.status === 'running'}
       a2uiMessages={a2uiEntry}
       onInteractionRespond={canEdit ? respondInteraction : undefined}

@@ -2,7 +2,7 @@
  * chatSessionStore — Codex-style session chat stores.
  *
  * Message streaming reuses the generic assistant store (`assistantStore.ts`)
- * with the `session_chat` channel: sessions are keyed by the chat session id.
+ * with the `session_chat` and `channel_chat` channels: sessions are keyed by the chat session id.
  * A companion list store tracks the project's sessions (flat, newest first)
  * and the per-project quick buttons (both come from the chat-sessions API).
  */
@@ -17,8 +17,10 @@ import {
 import { createAssistantStore } from './assistantStore.ts'
 import { zhCNT } from '../i18n'
 
+export const CHAT_SESSION_CHANNELS: readonly string[] = ['session_chat', 'channel_chat']
+
 export const useChatSessionStore = createAssistantStore({
-  channel: 'session_chat',
+  channel: CHAT_SESSION_CHANNELS,
 })
 
 export function pinChannelSessions(sessions: ChatSessionSummary[]): ChatSessionSummary[] {

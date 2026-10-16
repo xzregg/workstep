@@ -678,7 +678,7 @@ async def _wait_for_reply(
 @pytest.mark.anyio
 @pytest.mark.parametrize("source", ["page", "channel"])
 async def test_coordinator_can_call_stage_tools_sequentially_without_proposals(api_context, monkeypatch, source):
-    """A single coordinator turn may stop, inspect, start and inject via task APIs."""
+    """Discussion stays read-only; follow-up authorization runs tools in that turn."""
     import httpx
     import main
     from engines.core.registry import ENGINE_REGISTRY
@@ -717,9 +717,21 @@ async def test_coordinator_can_call_stage_tools_sequentially_without_proposals(a
         )
 
     stage_client = WorkstepClient(base_url="http://test", transport=httpx.MockTransport(transport))
+    discussion = "先讨论方案：停止 A，重置会话启动 B，向 B 追加验收条件，暂时不要执行"
+    authorization = "按刚才讨论的方案直接执行，不需要等我确认"
+    engine_turns = []
 
     class StageCoordinator(CoordinatorFakeEngine):
         async def spawn(self, **kwargs):
+            engine_turns.append(kwargs["prompt"])
+            if len(engine_turns) == 1:
+                assert discussion in kwargs["prompt"]
+                yield InternalEvent("agent_message_chunk", {"content": {"text": json.dumps({
+                    "version": 1, "reply": "方案已明确：停止 A，重置会话启动 B，再向 B 追加验收条件；尚未执行", "proposal": None,
+                }, ensure_ascii=False)}})
+                return
+            assert authorization in kwargs["prompt"]
+            assert discussion in kwargs["prompt"]
             common = {"project_id": project_id, "task_id": task_id, "confirm": "yes"}
             stopped = await stage_client.call("workstep_stop_step", {**common, "step_key": step_a})
             assert stopped["cancelled"] is True
@@ -737,25 +749,30 @@ async def test_coordinator_can_call_stage_tools_sequentially_without_proposals(a
             }, ensure_ascii=False)}})
 
     monkeypatch.setitem(ENGINE_REGISTRY, "claude", StageCoordinator)
-    if source == "page":
-        accepted = (await client.post(
-            f"/api/task/{task_id}/chat?project_id={project_id}",
-            headers={"Idempotency-Key": "stage-controls-page"},
-            json={"content": "停 A，启动 B 并补充要求"},
-        )).json()
-        message_id = accepted["assistant_message_id"]
-    else:
-        with actor_context(ActorSnapshot(
-            actor_id="channel-user", user_name="渠道用户", device_id="bot",
-            device_name="演示机器人", source="channel", project_id=project_id,
-        )):
-            accepted = await main.coordinator_module.submit_message(
-                project_id, task_id, "停 A，启动 B 并补充要求", "stage-controls-channel",
-                channel_source={"platform": "dingtalk", "bot_id": "demo-bot", "chat_type": "group"},
+    for index, content in enumerate((discussion, authorization)):
+        if source == "page":
+            response = await client.post(
+                f"/api/task/{task_id}/chat?project_id={project_id}",
+                headers={"Idempotency-Key": f"stage-controls-page-{index}"},
+                json={"content": content},
             )
-        message_id = accepted.assistant_message_id
-    reply = await _wait_for_reply(client, project_id, task_id, message_id)
-    assert reply["run_status"] == "succeeded"
+            assert response.status_code == 200
+            message_id = response.json()["assistant_message_id"]
+        else:
+            with actor_context(ActorSnapshot(
+                actor_id="channel-user", user_name="渠道用户", device_id="bot",
+                device_name="演示机器人", source="channel", project_id=project_id,
+            )):
+                accepted = await main.coordinator_module.submit_message(
+                    project_id, task_id, content, f"stage-controls-channel-{index}",
+                    channel_source={"platform": "dingtalk", "bot_id": "demo-bot", "chat_type": "group"},
+                )
+            message_id = accepted.assistant_message_id
+        reply = await _wait_for_reply(client, project_id, task_id, message_id)
+        assert reply["run_status"] == "succeeded"
+        if index == 0:
+            assert calls == []
+    assert len(engine_turns) == 2
     assert [call[0] for call in calls] == ["stop", "inspect", "start", "inject"]
     assert calls[0][1] == (project_id, task_id, step_a)
     assert calls[2][1] == (project_id, task_id, step_b, "按新要求执行")
@@ -1779,7 +1796,21 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
             assert "wait until the target step is no longer running" in rules
             assert "current project and task" in rules
             assert "Do not silently stop or restart" in rules
+            assert "execute the agreed stage operations in this same turn" in rules
+            assert "do not wait for another user message" in rules
+        assert "Use a proposal for an executable stage action;" not in instructions
         assert "create task worktrees" not in instructions
+        assert len(instructions) < 5200
+        assert "nohup" not in instructions
+        assert "WORKSTEP_WORKTREES_FILE" not in instructions
+        assert "independent scheduled execution" not in instructions
+        turn.execution_scope = "scheduled"
+        _, scheduled_instructions, _ = assemble_context(
+            StubProject(), task, turn, separate_instructions=True
+        )
+        assert "independent scheduled execution" in scheduled_instructions
+        assert "saved instruction is the authorized request" in scheduled_instructions
+        assert "not automatically broadcast to channels" in scheduled_instructions
     finally:
         db.close()
 
@@ -2231,6 +2262,90 @@ async def test_coordinator_pushes_reply_before_engine_turn_finishes(
     finally:
         StreamingCoordinatorFakeEngine.release.set()
         main.coordinator_module._event_bus.unsubscribe(event_queue)
+
+
+@pytest.mark.anyio
+async def test_wecom_group_coordinator_streams_sdk_text_before_turn_finishes(api_context, monkeypatch):
+    from unittest.mock import AsyncMock
+    from engines.codex_sdk import CodexSDKEngine
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.channels.base import IncomingMessage
+    from services.channels.bots import BotManager
+    from services.channels.wecom import WeComAdapter
+    import main
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    release, progress = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    class Engine(CoordinatorFakeEngine):
+        async def spawn(self, **kwargs):
+            mapper = CodexSDKEngine()
+            state = {'emitted_text': False, 'tool_emitted': set()}
+            parts = ['{"version":1,"reply":"实时',
+                     '回复","intent":"answer","target_step_key":null,"artifact_requests":[],"proposal":null}']
+            notifications = [SimpleNamespace(method='item/started', payload=SimpleNamespace(
+                item=SimpleNamespace(root=SimpleNamespace(type='agentMessage', id='sdk-answer')),
+            ))]
+            for index, part in enumerate(parts):
+                if index:
+                    await release.wait()
+                notifications.append(SimpleNamespace(method='item/agentMessage/delta', payload=SimpleNamespace(
+                    item_id='sdk-answer', delta=part,
+                )))
+                for notification in notifications:
+                    for event in mapper._map_notification(notification, state):
+                        yield event
+                notifications.clear()
+            for event in mapper._map_notification(SimpleNamespace(method='item/completed', payload=SimpleNamespace(
+                item=SimpleNamespace(root=SimpleNamespace(
+                    type='agentMessage', id='sdk-answer', phase='final_answer', text=''.join(parts),
+                )),
+            )), state):
+                yield event
+
+    monkeypatch.setitem(ENGINE_REGISTRY, 'claude', Engine)
+
+    async def reply_stream(frame, stream_id, text, finish):
+        calls.append((stream_id, text, finish))
+        if text == '@协调\n实时' and not finish:
+            progress.set()
+
+    def adapter_factory(bot, on_message, on_state):
+        adapter = WeComAdapter(bot, on_message, on_state)
+        adapter._client = SimpleNamespace(reply_stream=reply_stream, send_message=AsyncMock())
+        adapter.start = AsyncMock()
+        adapter.stop = AsyncMock()
+        return adapter
+
+    manager = BotManager(MemoryConfigStore(), main.project_manager, main.coordinator_module._event_bus,
+                         main.coordinator_module, AsyncMock(), adapter_factories={'wecom': adapter_factory})
+    pending = None
+    try:
+        await manager.start()
+        bot = await manager.create_bot({'platform': 'wecom', 'name': '流式测试', 'app_id': 'bot',
+                                       'secret': 'test', 'enabled': True})
+        await manager.bind_group(project_id, task_id, bot['id'], 'group')
+        pending = asyncio.create_task(manager.handle_message(IncomingMessage(
+            bot['id'], 'incoming', 'group', 'group', 'member', '实时告诉我进展',
+            reply_context={'headers': {'req_id': 'req'}},
+        )))
+        await asyncio.wait_for(progress.wait(), 2)
+        assert not pending.done()
+        assert not release.is_set()
+        assert calls[0][1:] == ('正在处理…', False)
+        assert all(not finish for _, _, finish in calls)
+        assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
+        release.set()
+        await asyncio.wait_for(pending, 3)
+        assert [text for _, text, finish in calls if finish] == ['@协调\n实时回复\n\n<@member>']
+        assert len({stream_id for stream_id, _, _ in calls}) == 1
+    finally:
+        release.set()
+        if pending is not None:
+            await asyncio.wait_for(pending, 3)
+        await manager.shutdown()
 
 
 @pytest.mark.anyio
@@ -3728,3 +3843,196 @@ async def test_coordinator_actual_input_and_persisted_view(api_context, monkeypa
         payload = response.json()
         rows = payload if isinstance(payload, list) else payload["messages"]
         assert next(row for row in rows if row["id"] == message_id)["prompt"] == view
+
+
+@pytest.mark.anyio
+async def test_scheduled_turn_runs_beside_main_session_and_preserves_it(api_context, monkeypatch):
+    import main
+    from models import ScheduleRun, CoordinatorSession, CoordinatorTurn, Message
+    from services.schedule import ScheduleModule
+    from models.fields import utc_now
+    from engines.core.registry import ENGINE_REGISTRY
+
+    scheduled_started, release = asyncio.Event(), asyncio.Event()
+    class Engine(CoordinatorFakeEngine):
+        @property
+        def supports_resume(self):
+            return True
+        async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+            if "独立定时指令" in prompt:
+                assert session_id is None
+                scheduled_started.set()
+                await release.wait()
+            async for event in super().spawn(prompt, cwd, model, session_id, **kwargs):
+                yield event
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", Engine)
+    client, root = api_context
+    project_id, task_id = await _create_task(client, root)
+    module = ScheduleModule(main.project_manager, main.task_service, main.workflow_runtime, coordinator=main.coordinator_module)
+    def prepare(_project):
+        session = CoordinatorSession.create(task=task_id, engine="claude", session_id="main-session", created_at=utc_now(), updated_at=utc_now())
+        row = module.create(project_id, name="定时汇报", target_type="task", target_task_id=task_id, instruction="独立定时指令", rule={"kind":"minutes", "every":10,"timezone":"UTC"})
+        ScheduleRun.create(id="scheduled-isolation", schedule=row["id"], instruction=row["instruction"], status="running", scheduled_for=utc_now(), created_at=utc_now())
+    await main.project_manager.run_db(project_id, prepare)
+    accepted = await main.coordinator_module.submit_scheduled(project_id, "scheduled-isolation")
+    try:
+        await asyncio.wait_for(scheduled_started.wait(), 2)
+        response = await client.post(f"/api/task/{task_id}/chat?project_id={project_id}", headers={"Idempotency-Key":"main-during-scheduled"}, json={"content":"用户正在对话"})
+        assert response.status_code == 200
+        reply = await _wait_for_reply(client, project_id, task_id, response.json()["assistant_message_id"])
+        assert reply["run_status"] == "succeeded"
+        assert not release.is_set()
+    finally:
+        release.set()
+    reply = await _wait_for_reply(client, project_id, task_id, accepted.assistant_message_id)
+    assert reply["run_status"] == "succeeded"
+    assert reply["schedule_run_id"] == "scheduled-isolation"
+    def check(_project):
+        assert CoordinatorTurn.get_by_id(accepted.turn_id).execution_scope == "scheduled"
+        assert Message.get_by_id(accepted.user_message_id).author_type == "scheduler"
+        assert CoordinatorSession.get_by_id(task_id).session_id == "main-session"
+    await main.project_manager.run_db(project_id, check)
+
+
+@pytest.mark.anyio
+async def test_task_schedule_tick_overlap_and_exact_stop(api_context, monkeypatch):
+    import main
+    from datetime import timedelta
+    from models import ScheduleRun, Schedule
+    from services.schedule import ScheduleModule
+    from engines.core.registry import ENGINE_REGISTRY
+    entered, release = asyncio.Event(), asyncio.Event()
+    class Engine(CoordinatorFakeEngine):
+        async def spawn(self, **kwargs):
+            entered.set()
+            await release.wait()
+            async for event in super().spawn(**kwargs):
+                yield event
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", Engine)
+    client, root = api_context
+    project_id, task_id = await _create_task(client, root)
+    module = ScheduleModule(main.project_manager, main.task_service, main.workflow_runtime, coordinator=main.coordinator_module)
+    monkeypatch.setattr(main, "schedule_module", module)
+    response = await client.post(f"/api/schedule/create?project_id={project_id}", json={"name":"周期检查", "target_type":"task", "target_task_id":task_id, "instruction":"检查任务", "rule":{"kind":"minutes","every":10,"timezone":"UTC"}})
+    assert response.status_code == 200, response.text
+    rule = response.json()
+    from datetime import datetime
+    due = datetime.fromisoformat(rule["next_run_at"])
+    try:
+        await module.tick(due)
+        await asyncio.wait_for(entered.wait(), 2)
+        await module.tick(due + timedelta(minutes=10))
+        runs = (await client.get(f"/api/schedule/{rule['id']}/runs?project_id={project_id}")).json()["runs"]
+        assert sorted(run["status"] for run in runs) == ["running", "skipped"]
+        # Unqualified stop belongs only to the main conversation.
+        assert (await client.post(f"/api/task/{task_id}/coordinator/stop?project_id={project_id}")).json() == {"stopped":False}
+        def message_id(_project):
+            from models import CoordinatorTurn
+            run = ScheduleRun.get_or_none(ScheduleRun.coordinator_turn_id.is_null(False))
+            return CoordinatorTurn.get_by_id(run.coordinator_turn_id).assistant_message_id
+        mid = await main.project_manager.run_db(project_id, message_id)
+        assert (await client.post(f"/api/task/{task_id}/coordinator/stop?project_id={project_id}&message_id={mid}")).json() == {"stopped":True}
+        await asyncio.wait_for(module.wait_idle(), 2)
+        runs = (await client.get(f"/api/schedule/{rule['id']}/runs?project_id={project_id}")).json()["runs"]
+        assert sorted(run["status"] for run in runs) == ["skipped", "stopped"]
+    finally:
+        release.set()
+        await module.shutdown()
+
+
+@pytest.mark.anyio
+async def test_task_schedule_slow_database_keeps_health_responsive(api_context, monkeypatch):
+    import main
+    from services.schedule import ScheduleModule
+    client, root = api_context
+    project_id, task_id = await _create_task(client, root)
+    module = ScheduleModule(main.project_manager, main.task_service, main.workflow_runtime, coordinator=main.coordinator_module)
+    monkeypatch.setattr(main, "schedule_module", module)
+    original = module._validate_target
+    entered, release = threading.Event(), threading.Event()
+    def slow(*args):
+        entered.set(); release.wait(2)
+        return original(*args)
+    monkeypatch.setattr(module, "_validate_target", slow)
+    request = asyncio.create_task(client.post(f"/api/schedule/create?project_id={project_id}", json={"name":"检查", "target_type":"task","target_task_id":task_id,"instruction":"检查进度", "rule":{"kind":"minutes","every":10,"timezone":"UTC"}}))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert (await asyncio.wait_for(client.get("/api/health"), .3)).status_code == 200
+    finally:
+        release.set()
+    assert (await request).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_running_scheduled_turn_is_not_replayed_after_restart(api_context, monkeypatch):
+    import main
+    from services.schedule import ScheduleModule
+    from models import ScheduleRun, CoordinatorTurn, Message
+    from models.fields import utc_now
+    client, root = api_context
+    project_id, task_id = await _create_task(client, root)
+    coordinator = main.coordinator_module
+    module = ScheduleModule(main.project_manager, None, None)
+    # Persist a run as if the previous daemon died after engine execution began.
+    def seed(project):
+        rule = module.create(project_id, name="检查", target_type="task", target_task_id=task_id, instruction="不要重放", rule={"kind":"minutes","every":10,"timezone":"UTC"})
+        ScheduleRun.create(id="interrupted-run", schedule=rule["id"], status="running", scheduled_for=utc_now(), created_at=utc_now())
+        accepted, _, _ = coordinator._persist_submission(project_id, task_id, "不要重放", "scheduled-restart", author_name="定时任务", schedule_run_id="interrupted-run")
+        CoordinatorTurn.update(status="running").where(CoordinatorTurn.id == accepted.turn_id).execute()
+        ScheduleRun.update(coordinator_turn_id=accepted.turn_id, task_id=task_id).where(ScheduleRun.id=="interrupted-run").execute()
+        return accepted
+    accepted = await main.project_manager.run_db(project_id, seed)
+    assert await coordinator.reconcile_orphaned_state() == 0
+    def check(_project):
+        assert CoordinatorTurn.get_by_id(accepted.turn_id).status == "failed"
+        assert Message.get_by_id(accepted.assistant_message_id).run_status == "failed"
+    await main.project_manager.run_db(project_id, check)
+    assert accepted.turn_id not in coordinator._scheduled_turns
+
+
+@pytest.mark.anyio
+async def test_task_schedule_notification_default_delivery_and_api_retry(api_context, monkeypatch):
+    import main
+    import services.schedule_notifications as notices
+    from services.schedule import ScheduleModule
+    from services.channels.sender import ChannelMessageSender
+    from engines.core.registry import ENGINE_REGISTRY
+    client,root=api_context
+    project_id,task_id=await _create_task(client,root)
+    class Engine(CoordinatorFakeEngine):
+        calls=[]
+        reply={'version':1,'reply':'通知专用回复','intent':'answer','target_step_key':None,'artifact_requests':[],'proposal':None}
+    monkeypatch.setitem(ENGINE_REGISTRY,'claude',Engine)
+    data={'bots':[{'id':'bot','name':'机器人','platform':'dingtalk','enabled':True,'default_project_id':project_id}],
+          'groups':[{'bot_id':'bot','group_id':'group','group_name':'绑定群','project_id':project_id,'task_id':task_id}], 'sessions':{}}
+    store=MemoryConfigStore();store.set('channel_bots',data)
+    monkeypatch.setattr(notices,'config_store',store)
+    deliveries=[]
+    class Adapter:
+        async def send_text(self,recipient,text):
+            deliveries.append(text)
+            if len(deliveries)==1:raise RuntimeError('模拟渠道失败')
+    async def load():return data
+    from types import SimpleNamespace
+    sender=ChannelMessageSender(main.project_manager,load,{'bot':Adapter()})
+    module=ScheduleModule(main.project_manager,main.task_service,main.workflow_runtime,coordinator=main.coordinator_module,
+                          notification_sender=SimpleNamespace(send_message=sender.send))
+    monkeypatch.setattr(main,'schedule_module',module)
+    response=await client.post(f'/api/schedule/create?project_id={project_id}',json={'name':'通知','target_type':'task','target_task_id':task_id,'instruction':'汇报','rule':{'kind':'minutes','every':10,'timezone':'UTC'}})
+    assert response.status_code==200,response.text
+    rule=response.json();assert rule['notification']['enabled'] is True
+    from datetime import datetime
+    try:
+        await module.tick(datetime.fromisoformat(rule['next_run_at']))
+        await asyncio.wait_for(module.wait_idle(),3)
+        runs=(await client.get(f'/api/schedule/{rule["id"]}/runs?project_id={project_id}')).json()['runs']
+        assert len(runs)==1 and runs[0]['status']=='succeeded'
+        assert runs[0]['notification_status']=='failed'
+        assert len(Engine.calls)==1 and len(deliveries)==1 and '通知专用回复' in deliveries[0]
+        assert 'Your final reply will be sent' in Engine.calls[0]['prompt']
+        retried=await client.post(f'/api/schedule/{rule["id"]}/runs/{runs[0]["id"]}/notification/retry?project_id={project_id}')
+        assert retried.status_code==200,retried.text
+        assert len(Engine.calls)==1 and len(deliveries)==2
+        updated=(await client.get(f'/api/schedule/{rule["id"]}/runs?project_id={project_id}')).json()['runs'][0]
+        assert updated['notification_status']=='sent' and updated['status']=='succeeded'
+    finally:await module.shutdown()

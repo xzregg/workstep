@@ -402,13 +402,16 @@ async def test_project_websocket_subscription_cannot_escape_project_or_send_comm
                                  "project_id": "project-1", "channel": "channel_bots"})
         assert (await q.get())["name"] == "channel.session_changed"
         assert q.empty()
-        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
-                                 "channel": "session_chat", "session_id": "visible-chat"})
-        assert (await q.get())["session_id"] == "visible-chat"
-        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
-                                 "channel": "session_chat", "session_id": "other-chat"})
-        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-2",
-                                 "channel": "session_chat", "session_id": "visible-chat"})
+        for channel in ("session_chat", "channel_chat"):
+            await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                     "channel": channel, "session_id": "visible-chat"})
+            assert not q.empty(), f"subscribed {channel} stream must be delivered"
+            assert (await q.get())["session_id"] == "visible-chat"
+            await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                     "channel": channel, "session_id": "other-chat"})
+            await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-2",
+                                     "channel": channel, "session_id": "visible-chat"})
+            assert q.empty()
         await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
                                  "channel": "flow_gen", "session_id": "visible-chat"})
         assert q.empty()

@@ -119,3 +119,14 @@ test('expanded complete share timelines are not truncated by subsequent live eve
   const appended = applySharedMessageEvent([refreshing], { type: 'CUSTOM', name: 'workstep.plan', messageId: 'm' })
   assert.equal(appended[0].events.length, 2002, 'an incremental refresh must retain cached events')
 })
+
+
+test('shared scheduled coordinator streams retain scope and remain outside main composer state', async () => {
+  const { runningTaskMessageIds } = await import('../src/pages/taskDetailChat')
+  let messages = applySharedMessageEvent([], { type:'TEXT_MESSAGE_START', messageId:'scheduled', channel:'coordinator', role:'assistant', schedule_run_id:'run' })
+  assert.equal(messages[0].schedule_run_id,'run')
+  assert.equal(runningTaskMessageIds(messages,{},null).coordinator,undefined)
+  messages = applySharedMessageEvent(messages,{ type:'TEXT_MESSAGE_END', messageId:'scheduled', channel:'coordinator', schedule_run_id:'run', status:'succeeded', content:'汇报完成' })
+  assert.equal(messages[0].content,'汇报完成')
+  assert.equal(messages[0].schedule_run_id,'run')
+})
