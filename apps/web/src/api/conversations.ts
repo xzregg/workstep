@@ -1,3 +1,4 @@
+import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
 import { FULL_PAGE_LIMIT, request, singleFlight } from './transport'
 
 // --- Workflow generation chat API (AI-assisted flow design) ---
@@ -99,10 +100,10 @@ export const workflowGenApi = {
         `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}`,
       ),
     ),
-  messageEvents: (projectId: string, workflowId: string, messageId: string, cursor = 0) =>
+  messageEvents: (projectId: string, workflowId: string, messageId: string, cursor = 0, query?: FileChangesQuery) =>
     request<ChatMessageEventsPage>(
       `/workflow/generate/history/messages/${encodeURIComponent(messageId)}/events`
-      + `?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}&cursor=${cursor}`,
+      + `?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}&cursor=${cursor}${fileChangesQuery(query)}`,
     ),
   reset: (projectId: string, workflowId: string) =>
     request<{ reset: boolean; session_id: string }>(
@@ -450,9 +451,10 @@ export const chatSessionApi = {
     projectId: string,
     cursor = 0,
     limit = FULL_PAGE_LIMIT,
+    query?: FileChangesQuery,
   ) => request<ChatMessageEventsPage>(
     `/chat-sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/events`
-    + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}`,
+    + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}${fileChangesQuery(query)}`,
   ),
   rename: (sessionId: string, projectId: string, title: string) =>
     request<ChatSessionSummary>(

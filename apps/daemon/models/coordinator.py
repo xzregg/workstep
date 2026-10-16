@@ -38,6 +38,8 @@ class CoordinatorTurn(BaseModel):
         Message,
         backref="coordinator_assistant_turns",
     )
+    execution_scope = pw.TextField(default="main")
+    schedule_run_id = pw.TextField(null=True)
     idempotency_key = pw.TextField()
     status = pw.TextField(default="queued")
     engine = pw.TextField(null=True)

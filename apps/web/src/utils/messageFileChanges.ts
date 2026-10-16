@@ -2,6 +2,13 @@ import { isToolEvent, toolCallId } from './agui'
 import type { MessageTimelineEvent, MessageTimelineItem, ToolActivity } from './messageTimeline'
 import { extractToolTarget, toolKind } from './toolInput'
 
+export interface FileChangesQuery { fileChanges: true; path?: string }
+export interface FileChangesPage { files: (MessageFileChange & { has_patch: boolean })[]; patch?: string | null }
+export type MessageEventsLoader = (messageId: string, query?: FileChangesQuery) => void | Promise<unknown>
+export function fileChangesQuery(query?: FileChangesQuery): string {
+  return query ? `&file_changes=true${query.path === undefined ? '' : `&file_path=${encodeURIComponent(query.path)}`}` : ''
+}
+
 export interface MessageFileChange {
   path: string
   /** 累计编辑行数；没有可靠来源时不显示统计。 */

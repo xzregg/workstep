@@ -1,3 +1,4 @@
+import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
 import { BASE, FULL_PAGE_LIMIT, fileDataUrl, request, shareRequest } from './transport'
 import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, ReviewRun, DirectoryBrowseResult, ActionProposal, TaskArtifactInputSnapshot } from './client'
 
@@ -116,9 +117,9 @@ export const shareApi = {
     }
     return { messages, limit, offset }
   },
-  messageEvents: (token: string, sessionToken: string, messageId: string, cursor = 0) =>
+  messageEvents: (token: string, sessionToken: string, messageId: string, cursor = 0, query?: FileChangesQuery) =>
     shareRequest<{ events: any[]; complete: boolean; next_cursor: number | null; last_event_seq?: number }>(
-      `/task-share/public/${encodeURIComponent(token)}/messages/${encodeURIComponent(messageId)}/events?cursor=${cursor}`,
+      `/task-share/public/${encodeURIComponent(token)}/messages/${encodeURIComponent(messageId)}/events?cursor=${cursor}${fileChangesQuery(query)}`,
       sessionToken,
     ),
   artifacts: (token: string, sessionToken: string) =>

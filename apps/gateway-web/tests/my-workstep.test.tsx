@@ -6,12 +6,31 @@ import { ProjectsPage } from '../src/ProjectsPage'
 import { PortalHeader } from '../src/PortalHeader'
 
 const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'https://gateway.test/'})
-Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver,Event:dom.window.Event})
+Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver,Event:dom.window.Event,localStorage:dom.window.localStorage,sessionStorage:dom.window.sessionStorage})
 Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator})
 const {cleanup,render,screen,fireEvent,waitFor}=await import('@testing-library/react')
 const originalFetch=globalThis.fetch
 const originalSubmit=dom.window.HTMLFormElement.prototype.submit
-afterEach(()=>{cleanup();globalThis.fetch=originalFetch;dom.window.HTMLFormElement.prototype.submit=originalSubmit})
+afterEach(()=>{cleanup();globalThis.fetch=originalFetch;dom.window.HTMLFormElement.prototype.submit=originalSubmit;
+ dom.window.localStorage.removeItem('workstep-device');dom.window.localStorage.removeItem('workstep:last-workspace-page');dom.window.sessionStorage.removeItem('workstep-device')})
+
+test('returning after a long absence opens the saved device conversation',async()=>{
+ dom.window.localStorage.setItem('workstep:last-workspace-page',JSON.stringify({deviceId:'device-2',next:'chat?project=demo&session=reply-7'}))
+ dom.window.localStorage.setItem('workstep-device','device-2')
+ let submittedNext=''
+ dom.window.HTMLFormElement.prototype.submit=function(){submittedNext=(this.elements.namedItem('next') as HTMLInputElement)?.value ?? ''}
+ globalThis.fetch=async input=>{
+  const url=String(input)
+  if(url==='/api/auth/session')return Response.json({user:{id:'u'}})
+  if(url==='/api/devices')return Response.json({devices:[{id:'device-1',name:'第一台',online:true},{id:'device-2',name:'上次设备',online:true}]})
+  if(url==='/api/projects')return Response.json({projects:[]})
+  if(url==='/api/devices/device-2/access')return Response.json({url:'https://gateway.test/workspace/device-2/',ticket:'ticket'})
+  throw Error(url)
+ }
+ render(<MemoryRouter><ProjectsPage/></MemoryRouter>)
+ await waitFor(()=>assert.equal(submittedNext,'chat?project=demo&session=reply-7'))
+ assert.ok(screen.getByRole('tab',{name:/上次设备/}).getAttribute('aria-selected')==='true')
+})
 
 test('automatic entry keeps portal navigation and device tabs out of the first screen until requested',async()=>{
  let acceptSession!:(response:Response)=>void

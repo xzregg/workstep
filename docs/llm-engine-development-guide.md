@@ -30,7 +30,7 @@
 
 `agent_assistants/chat_session.py` 将项目设置中的「全局提示词」（`project_settings.chat_system_prompt`，不是跨项目的系统设置）作为独立 `system_prompt` 提供；正文仅保留用户输入及必要交接/重建背景，空配置不补默认角色。普通对话使用默认首次正文降级策略，固定规则不在恢复轮次重复插入；原生适配器按自身 system/developer 配置追加。
 
-`agent_assistants/channel_chat.py` 也选择该入口，独立提供角色、项目配置、渠道会话背景和当前发送者。它通过 `system_prompt_each_turn=True` 要求正文降级引擎在恢复会话时也传递最新背景。
+`agent_assistants/channel_chat.py` 通过该入口独立提供固定角色与项目配置，采用默认恢复策略，不强制每轮注入。渠道会话背景和当前发送者由 `build_channel_background` 每轮放入正文上下文，恢复及线程重建时保持最新，用户消息正文仍只保存原文。Codex SDK 等确认原生规则已保存后复用；需要每次启动配置的引擎继续按各自适配器传递。回归见 `tests/test_channel_prompt.py` 和 `tests/test_channel_bots.py`。
 
 `capture_prompt_input=True` 在统一入口的降级与重试选择后捕获本轮实际适配器输入，不改变首次／每轮降级策略；参数由统一入口消费，不传给 SDK。`agent_assistants/prompt_input.py` 只展示实传独立指令、正文及明确传入的历史／图片；没有独立指令时不显示该区块。持久化助手复用原字段保存格式化输入：普通／渠道对话为 `chat_messages.prompt`，流程为 `gen_sessions.messages_json` 内消息的 `prompt`，协调与经验归档为 `messages.prompt_json` 的 `prompt`。用户正文仍独立保存在 `content`；内部 `prompt_input` 不进入过程日志。历史读取优先使用对应当轮记录，不使用当前配置重新组合；重启或缓存清除后已存输入仍可查看，未捕获的历史不补造。固定角色／输出规则通过独立指令提供，变化画布／草稿／任务状态作为本轮正文背景；协调恢复轮次刷新任务快照，权限和角色规则由协调助手上下文层统一提供，捕获路径不再由 ACP 追加第二套 guard。任务创建／定时生成等创建态会话仍默认仅内存；步骤／审核的固定角色与结果格式也通过此入口传入，任务要求留在正文；`messages.prompt_json` 和 `review_runs.prompt_json` 中 `prompt` 保存实际查看记录、`input_prompt` 保存恢复用原始输入，恢复读取兼容仅有 `prompt` 的旧记录。回归见 `tests/test_prompt_input.py`、`tests/test_engine_system_prompt.py`、`tests/test_chat_session.py`（真实 API、恢复后的实际输入、配置修改不改变历史、慢读取健康检查）、`tests/test_channel_bots.py`、`tests/test_workflow_gen.py`、`tests/test_coordinator.py`、`tests/test_review_gate.py`（执行与审核的原生／正文降级、同会话重跑、检查点恢复、慢输入保存健康检查）和 `tests/test_pydantic_ai_harness.py`。
 
@@ -969,7 +969,7 @@ corepack yarn build
 - [ ] 设置页连接测试通过。
 - [ ] 单元测试、ACP 契约测试、三步骤场景的工作流测试和前端构建通过。
 
-Pydantic AI 的 `_prepare_prompt_input` 在输入捕获前异步检查持久化历史，只有匹配的 WorkStep 系统消息存在时才省略新注入；不只依赖 Session ID。`harness_runtime.py::_with_session_system_prompt` 用独立来源标记保存／替换规则，系统消息位于历史前部滑动窗口通过 WorkStep 包装保留该消息，摘要压缩继续保留系统消息。渠道的 `system_prompt_each_turn` 仍显式刷新来源背景，但不累积多份消息。查看记录仍显示本次传给引擎的新输入参数，不补造恢复历史；模型请求仍包含恢复的系统规则。测试见 `test_pydantic_ai_harness.py`（真实 SQLite 重启恢复、规则更新／清空、压缩、模型输入和慢读取健康检查）。
+Pydantic AI 的 `_prepare_prompt_input` 在输入捕获前异步检查持久化历史，只有匹配的 WorkStep 系统消息存在时才省略新注入；不只依赖 Session ID。`harness_runtime.py::_with_session_system_prompt` 用独立来源标记保存／替换规则，系统消息位于历史前部滑动窗口通过 WorkStep 包装保留该消息，摘要压缩继续保留系统消息。渠道固定规则同样使用恢复检查，动态来源背景放入每轮正文上下文。查看记录仍显示本次传给引擎的新输入参数，不补造恢复历史；模型请求仍包含恢复的系统规则。测试见 `test_pydantic_ai_harness.py`（真实 SQLite 重启恢复、规则更新／清空、压缩、模型输入和慢读取健康检查）。
 
 
 ### 原生系统指令的恢复与重复设置

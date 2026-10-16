@@ -19,7 +19,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { useTaskStore } from '../stores/taskStore'
 import { useWorkflowGenStore } from '../stores/workflowGenStore'
 import { useTaskDraftStore } from '../stores/taskDraftStore'
-import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import { CHAT_SESSION_CHANNELS, useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import { useRecentActivityStore } from '../stores/recentActivityStore'
 import { useProjectStore } from '../stores/projectStore'
 import { completionNotice, notificationUrl, notifyCompletion, unwatchPendingCompletion, completionScopeName,
   type CompletionNotice } from '../utils/completionNotifications'
@@ -82,6 +83,7 @@ export function useWebSocket() {
   const sidebarChatSessionIds = useChatListStore(
     useShallow((s) => Object.values(s.sessionsByProject).flat().map((session) => session.id)),
   )
+  const recentTargets = useRecentActivityStore(s => s.targets)
   const activeProjectId = useProjectStore((s) => s.activeProject?.id)
 
   const send = useCallback((msg: object) => {
@@ -93,10 +95,18 @@ export function useWebSocket() {
   const buildSubscription = useCallback(() => ({
     type: 'subscribe',
     project_id: useProjectStore.getState().activeProject?.id,
-    remote_project_ids: useWsSubscriptionStore.getState().remoteProjectIds,
+    remote_project_ids: [...new Set([
+      ...useWsSubscriptionStore.getState().remoteProjectIds,
+      ...useRecentActivityStore.getState().targets.map(target => target.projectId)
+        .filter(id => useProjectStore.getState().projects.some(project => project.id === id && project.type === 'remote')),
+    ])],
     task_ids: useWsSubscriptionStore.getState().taskIds,
-    status_only_task_ids: useTaskStore.getState().tasks.map((t) => t.id),
+    status_only_task_ids: [...new Set([
+      ...useTaskStore.getState().tasks.map((t) => t.id),
+      ...useRecentActivityStore.getState().targets.filter(target => target.kind === 'task').map(target => target.id),
+    ])],
     session_ids: [...new Set([
+      ...useRecentActivityStore.getState().targets.filter(target => target.kind === 'session').map(target => target.id),
       ...Object.keys(useWorkflowGenStore.getState().sessions),
       ...Object.keys(useTaskDraftStore.getState().sessions),
       ...Object.keys(useChatSessionStore.getState().sessions),
@@ -136,7 +146,7 @@ export function useWebSocket() {
     } else {
       void clearBrowserPushWatch().catch(() => undefined)
     }
-  }, [flushSubscription, detailTaskIds, remoteProjectIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId])
+  }, [flushSubscription, detailTaskIds, remoteProjectIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId, recentTargets])
 
   useEffect(() => {
     let active = true
@@ -246,7 +256,7 @@ export function useWebSocket() {
             }
           }
           if (parsed.type === 'TEXT_MESSAGE_START' && parsed.role === 'assistant' && parsed.project_id && parsed.messageId && (parsed.session_id || parsed.task_id)) {
-            const taskId = parsed.channel === 'session_chat' && parsed.session_id ? null : parsed.task_id || null
+            const taskId = CHAT_SESSION_CHANNELS.includes(parsed.channel || '') && parsed.session_id ? null : parsed.task_id || null
             const watch = {
               id: `${parsed.project_id}:${parsed.session_id || parsed.task_id}:${parsed.messageId}`,
               projectId: parsed.project_id,
@@ -280,7 +290,8 @@ export function useWebSocket() {
           }
           if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)
           if (parsed.session_id && parsed.channel === 'task_create') handleTaskDraftEvent(parsed)
-          if (parsed.session_id && parsed.channel === 'session_chat') handleChatSessionEvent(parsed)
+          if (parsed.session_id && CHAT_SESSION_CHANNELS.includes(parsed.channel || '')) handleChatSessionEvent(parsed)
+          void useRecentActivityStore.getState().handleWsEvent(parsed)
           handleEvent(parsed)
         } catch (error) {
           console.warn('[WS] invalid message:', error)

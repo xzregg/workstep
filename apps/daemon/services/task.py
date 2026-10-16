@@ -289,6 +289,7 @@ class TaskService:
                 "author_id": msg.author_id,
                 "author_username": msg.author_username,
                 "author_name": msg.author_name,
+                "schedule_run_id": msg.schedule_run_id,
                 "author_type": msg.author_type,
                 "initiated_by_user_id": msg.initiated_by_user_id,
                 "initiated_by_username": msg.initiated_by_username,
@@ -588,13 +589,16 @@ class TaskService:
                 )
             return True
 
-    def delete_task(self, task_id: str, project_id: str) -> bool:
+    def delete_task(self, task_id: str, project_id: str, *, workstep_dir: str | Path) -> bool:
         """Delete a task."""
         try:
             with Task._meta.database.atomic():
                 task = Task.get_by_id(task_id)
                 if task.status == "running":
                     raise RuntimeError("Running tasks cannot be deleted")
+                from services.task_schedule_runtime import invalidate_task_schedules
+                invalidate_task_schedules(task_id)
+                self._event_journal.delete_session(workstep_dir, f"task-{task_id}")
                 task.delete_instance(recursive=True)
                 self._audit_change(project_id, task_id, "task.delete", task.title)
                 return True
@@ -608,6 +612,8 @@ class TaskService:
                 task = Task.get_by_id(task_id)
                 if task.status == "running":
                     raise RuntimeError("Running tasks cannot be archived")
+                from services.task_schedule_runtime import invalidate_task_schedules
+                invalidate_task_schedules(task_id)
                 task.archived = 1
                 self.clear_scheduled_start(task_id)
                 task.updated_at = utc_now()

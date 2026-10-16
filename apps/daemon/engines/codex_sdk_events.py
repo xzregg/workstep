@@ -264,6 +264,13 @@ class CodexSDKNotificationMapper:
             }))
         events: list[InternalEvent] = []
         for event in raw_events:
+            item = state.get("message_items", {}).get(event.data.get("source_item_id"), {})
+            if event.type == "agent_message_chunk" and item.get("streaming") and not event.data.get("phase"):
+                # Live deltas cannot be classified using future items without
+                # delaying the whole reply. Preserve their unknown phase.
+                events.extend(state["unphased"].flush())
+                events.append(event)
+                continue
             events.extend(state["unphased"].offer(
                 event,
                 terminal=_is_codex_sdk_terminal_event(event),
@@ -285,7 +292,8 @@ class CodexSDKNotificationMapper:
 
         ``state`` tracks message phases and emitted text per item, and which
         tool IDs already produced a start event. Unidentified text is buffered
-        until its item metadata arrives; completed items never duplicate deltas.
+        until its item starts; an optional phase must not hold up live text.
+        Completed items never duplicate deltas.
         """
         events: list[InternalEvent] = []
         method = self._notification_method(notification)
@@ -309,11 +317,10 @@ class CodexSDKNotificationMapper:
                 item = items.setdefault(item_id, {"text": "", "pending": ""})
                 if item.get("completed"):
                     return events
-                if item_id and (
-                    not item.get("started") or not item.get("phase")
-                ):
+                if item_id and not item.get("started"):
                     item["pending"] += str(delta)
                 else:
+                    item["streaming"] = True
                     rendered = self._visualize_stream(state, item_id).feed(str(delta))
                     item["text"] += str(delta)
                     if rendered:
@@ -344,9 +351,11 @@ class CodexSDKNotificationMapper:
                 phase = getattr(root, "phase", None)
                 item["started"] = True
                 item["phase"] = getattr(phase, "value", phase)
-                if item["pending"] and item["phase"]:
+                if item["pending"]:
+                    item["streaming"] = True
                     rendered = self._visualize_stream(state, item_id).feed(item["pending"])
                     if rendered:
+                        state["emitted_text"] = True
                         events.append(agent_message_chunk(
                             rendered, phase=item["phase"], source_item_id=item_id,
                         ))

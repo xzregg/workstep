@@ -86,20 +86,7 @@ COORDINATOR_CONFIG = AssistantConfig(
     channel=COORDINATOR_CHANNEL,
     scope=SCOPE_TASK,
     system_prompt_transport=True,
-    system_prompt=(
-        COORDINATOR_ROLE_RULES
-        + "You are the WorkStep task coordinator. Use task and workflow context to "
-        "answer questions. When you need to inspect or operate on WorkStep workflows, "
-        "inspect the workstep-cli skill and use its documented native tools or CLI "
-        "transport. Keep using available WorkStep tools for other operations. "
-        "Mutating actions require explicit user authorization (confirm='yes'). "
-        "At most one action proposal (supplement_step / rerun_from_step / "
-        "review_decision / create_workflow_action) may be proposed. This limit "
-        "applies to proposals, not sequential user-authorized stage tool calls. "
-        "Do not propose an operation that you already performed through a tool. For workflow "
-        "Action creation in task chat, return a proposal for user review; do not "
-        "call the CLI write operation before proposal confirmation. Never execute workflow actions directly."
-    ),
+    system_prompt=COORDINATOR_ROLE_RULES,
     engine_label="Coordinator engine",
     workstep_tools=True,
 )
@@ -198,6 +185,19 @@ class CoordinatorModule:
         ):
             if turn.id in scheduled or turn.id in running:
                 continue
+            from agent_assistants.coordinator_schedules import can_restore_scheduled
+            if turn.execution_scope == "scheduled" and not can_restore_scheduled(turn):
+                turn.status, turn.error, turn.ended_at = "stopped", "定时目标或规则已失效", now
+                turn.save()
+                Message.update(run_status="stopped", ended_at=now).where(Message.id == turn.assistant_message_id).execute()
+                continue
+            if turn.status == "running" and turn.execution_scope == "scheduled":
+                turn.status = "failed"
+                turn.error = "定时执行因服务重启中断，未自动重放"
+                turn.ended_at = now
+                turn.save()
+                Message.update(run_status="failed", content=turn.error, ended_at=now).where(Message.id == turn.assistant_message_id).execute()
+                continue
             if turn.status == "running":
                 with db_proxy.atomic():
                     assistant = Message.get_by_id(turn.assistant_message_id)
@@ -250,6 +250,7 @@ class CoordinatorModule:
 
         def consume(task: asyncio.Task) -> None:
             self._turn_tasks.pop(turn_id, None)
+            self._turn_locks.pop((project_id, turn_id), None)
             self._scheduled_turns.discard(turn_id)
             self._cancelled_turns.discard(turn_id)
             self._consume_background(task)
@@ -282,6 +283,10 @@ class CoordinatorModule:
         return await self._archive_drafts.stop_archive_experience(
             project_id, task_id, message_id,
         )
+
+    async def submit_scheduled(self, project_id: str, run_id: str):
+        from agent_assistants.coordinator_schedules import submit_scheduled
+        return await submit_scheduled(self, project_id, run_id)
 
     async def submit_message(
         self,
@@ -342,8 +347,9 @@ class CoordinatorModule:
         reset_session: bool = False,
         replay_pending: bool = False,
         channel_source: dict | None = None,
+        schedule_run_id: str | None = None,
     ):
-        if not replay_pending:
+        if not replay_pending and not schedule_run_id:
             require_user_actor()
         with self._project_manager.activate_project_by_id(project_id) as project:
             existing = CoordinatorTurn.get_or_none(
@@ -382,6 +388,7 @@ class CoordinatorModule:
                     active_turn = CoordinatorTurn.get_or_none(
                         (CoordinatorTurn.task == task_id)
                         & (CoordinatorTurn.status.in_(["queued", "running"]))
+                        & (CoordinatorTurn.execution_scope == "main")
                     )
                     if active_turn is not None:
                         raise ValueError("Cannot reset a running coordinator session")
@@ -402,6 +409,8 @@ class CoordinatorModule:
                 assistant_sequence = user_sequence + 1
                 current.next_message_sequence = assistant_sequence + 1
                 actor_fields = current_actor_message_fields()
+                if schedule_run_id:
+                    actor_fields.update(author_type="scheduler", author_name=author_name or "定时任务")
                 if author_name.strip():
                     if author_name.strip() != actor_fields.get("author_name"):
                         actor_fields = {"author_name": author_name.strip()}
@@ -413,6 +422,7 @@ class CoordinatorModule:
                     channel=COORDINATOR_CHANNEL,
                     sequence=user_sequence,
                     role="user",
+                    schedule_run_id=schedule_run_id,
                     content=normalized,
                     prompt_json=(json.dumps({'channel_source': source_snapshot(channel_source)}, ensure_ascii=False)
                                  if channel_source else None),
@@ -443,6 +453,7 @@ class CoordinatorModule:
                     sequence=assistant_sequence,
                     reply_to_message_id=user_message_id,
                     role="assistant",
+                    schedule_run_id=schedule_run_id,
                     content="",
                     engine=engine,
                     model=model,
@@ -458,6 +469,8 @@ class CoordinatorModule:
                     task=current,
                     user_message=user_message_id,
                     assistant_message=assistant_message_id,
+                    execution_scope="scheduled" if schedule_run_id else "main",
+                    schedule_run_id=schedule_run_id,
                     idempotency_key=idempotency_key,
                     status="queued",
                     engine=engine,
@@ -726,7 +739,26 @@ class CoordinatorModule:
         await self._event_journal.aclose()
 
     async def _run_turn(self, project_id: str, task_id: str, turn_id: str) -> None:
-        lock = self._turn_locks.setdefault((project_id, task_id), asyncio.Lock())
+        from agent_assistants.coordinator_schedules import execution_identity
+        scope, actor = await self._run_db(project_id, lambda: execution_identity(turn_id))
+        if scope == "scheduled":
+            with replayed_actor_context(actor):
+                try:
+                    await self._run_turn_scoped(project_id, task_id, turn_id, scope)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    from agent_assistants.coordinator_schedules import fail_scheduled_preparation
+                    logger.exception("Scheduled coordinator preparation failed: %s", turn_id)
+                    assistant = await self._run_db(project_id, lambda: fail_scheduled_preparation(turn_id, str(exc)))
+                    if assistant is not None:
+                        await self._publish_message_event(project_id, task_id, assistant, "message_completed", {"status": "failed", "error": str(exc)}, 0)
+        else:
+            await self._run_turn_scoped(project_id, task_id, turn_id, scope)
+
+    async def _run_turn_scoped(self, project_id, task_id, turn_id, scope):
+        lock_key = (project_id, turn_id if scope == "scheduled" else task_id)
+        lock = self._turn_locks.setdefault(lock_key, asyncio.Lock())
         async with lock:
             if turn_id in self._cancelled_turns:
                 await self._mark_turn_stopped(project_id, task_id, turn_id)
@@ -1142,7 +1174,10 @@ class CoordinatorModule:
         assistant.run_status = "running"
         assistant.started_at = turn.started_at
         assistant.save()
-        session = self._prepare_session(task, turn.engine or "", turn.model)
+        from types import SimpleNamespace
+        session = (SimpleNamespace(session_id=None, engine_state_json=None)
+                   if turn.execution_scope == "scheduled"
+                   else self._prepare_session(task, turn.engine or "", turn.model))
         engine_state = None
         if session.engine_state_json:
             try:
@@ -1226,19 +1261,20 @@ class CoordinatorModule:
         turn.requested_artifact_ids_json = json.dumps(requested)
         turn.ended_at = assistant.ended_at
         turn.save()
-        session = CoordinatorSession.get_by_id(task_id)
-        session.session_id = session_id
-        session.status = "active"
-        session.last_error = None
-        for engine_event in events:
-            if engine_event.get("type") == "engine_state":
-                state = (engine_event.get("data") or {}).get("state")
-                if state is not None:
-                    session.engine_state_json = json.dumps(state, ensure_ascii=False)
-                break
-        session.updated_at = assistant.ended_at
-        session.save()
-        self._refresh_summary(task, session)
+        if turn.execution_scope == "main":
+            session = CoordinatorSession.get_by_id(task_id)
+            session.session_id = session_id
+            session.status = "active"
+            session.last_error = None
+            for engine_event in events:
+                if engine_event.get("type") == "engine_state":
+                    state = (engine_event.get("data") or {}).get("state")
+                    if state is not None:
+                        session.engine_state_json = json.dumps(state, ensure_ascii=False)
+                    break
+            session.updated_at = assistant.ended_at
+            session.save()
+            self._refresh_summary(task, session)
         proposal = self._actions.create_proposal(task, turn, assistant, result, project=project)
         return assistant, self._actions.proposal_to_dict(proposal) if proposal else None
 
@@ -1614,6 +1650,7 @@ class CoordinatorModule:
             "project_id": project_id,
             "task_id": task_id,
             "channel": message.channel,
+            "schedule_run_id": getattr(message, "schedule_run_id", None),
             "message_id": message.id,
             "engine": message.engine,
             "model": message.model,
@@ -1624,6 +1661,8 @@ class CoordinatorModule:
             "created_at": utc_now().isoformat(),
             **current_actor_event_fields(),
         }
+        if getattr(message, "schedule_run_id", None) and getattr(message, "role", None) == "user":
+            payload["actor"] = {"id": message.author_id, "name": message.author_name, "device_id": message.author_device_id, "device_name": message.author_device_name}
         ctx = AGUIContext.from_event(payload)
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)
@@ -1642,6 +1681,7 @@ class CoordinatorModule:
                 CoordinatorTurn.select()
                 .where(
                     (CoordinatorTurn.task == task_id)
+                    & (CoordinatorTurn.execution_scope == "main")
                     & (CoordinatorTurn.status == "running")
                 )
                 .order_by(CoordinatorTurn.created_at.desc())
@@ -1652,6 +1692,7 @@ class CoordinatorModule:
                     CoordinatorTurn.select()
                     .where(
                         (CoordinatorTurn.task == task_id)
+                        & (CoordinatorTurn.execution_scope == "main")
                         & (CoordinatorTurn.status == "queued")
                     )
                     .order_by(CoordinatorTurn.created_at.desc())
@@ -1671,11 +1712,12 @@ class CoordinatorModule:
         await self._mark_turn_stopped(project_id, task_id, turn_id)
         assistant_message_id = await self._run_db(
             project_id,
-            lambda: CoordinatorTurn.get_by_id(turn_id).assistant_message_id,
+            lambda: getattr(CoordinatorTurn.get_or_none(CoordinatorTurn.id == turn_id), "assistant_message_id", None),
         )
-        await self._consume_pending_inserts(
-            project_id, task_id, assistant_message_id,
-        )
+        if assistant_message_id:
+            await self._consume_pending_inserts(
+                project_id, task_id, assistant_message_id,
+            )
         if engine is not None:
             try:
                 await asyncio.wait_for(
@@ -1704,8 +1746,8 @@ class CoordinatorModule:
     ) -> None:
         """Persist a stopped turn and notify listeners."""
         def persist_stopped():
-            turn = CoordinatorTurn.get_by_id(turn_id)
-            if turn.status in {"stopped", "succeeded", "failed"}:
+            turn = CoordinatorTurn.get_or_none(CoordinatorTurn.id == turn_id)
+            if turn is None or turn.status in {"stopped", "succeeded", "failed"}:
                 return None
             assistant = Message.get_by_id(turn.assistant_message_id)
             project = self._project_manager.get_project_by_id(project_id)
@@ -1738,7 +1780,7 @@ class CoordinatorModule:
             assistant.ended_at = now
             assistant.save()
             session = CoordinatorSession.get_or_none(CoordinatorSession.task == task_id)
-            if session is not None:
+            if session is not None and turn.execution_scope == "main":
                 session.last_error = None
                 session.updated_at = now
                 session.save()

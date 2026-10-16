@@ -1,6 +1,7 @@
 import { useSkinSidebar } from '../hooks/useSkinSidebar'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { rememberWorkspacePage } from '@workstep/gateway-ui/workspaceResume'
 import SidebarConversationTabs from './SidebarConversationTabs'
 import ChatSessionSourceBadge from './ChatSessionSourceBadge'
 import { useVisualViewport } from '../hooks/useVisualViewport'
@@ -76,6 +77,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   useVisualViewport()
   const navigate = useNavigate()
   const location = useLocation()
+  useEffect(() => {
+    try { rememberWorkspacePage(window.location.href, window.localStorage) } catch { /* Optional navigation memory. */ }
+  }, [location.pathname, location.search])
   const [searchParams] = useSearchParams()
   // 侧栏会话列表的相对时间基准，每分钟刷新一次（Codex 风格）
   const [sidebarNow, setSidebarNow] = useState(() => Date.now())

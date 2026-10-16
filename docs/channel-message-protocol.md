@@ -23,6 +23,8 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 
 企业微信入站消息先发送空的等待气泡；项目渠道助手和任务协调助手收到 LLM 正文事件后，通过统一 `update_reply` 接口更新同一气泡。`reply_stream.py::ChannelReplyStream` 在独立异步任务中发送累计正文，首段立即发送，后续更新至少间隔 0.5 秒；等待平台回执时只保留最新快照，避免网络阻塞 LLM 事件消费或堆积发送队列。思考和工具事件不作为正文推送。
 
+Codex SDK 收到消息开始帧后，正文增量不等待可选的 `phase` 标记，缺少阶段时原样透传，不合成阶段；先到的增量在开始帧到达时冲刷。完成帧去重已发送正文，只补尾部。只有完成帧的旧协议仍按原有方式处理，因此实际是否能实时更新也取决于上游是否提供实时增量。群聊首帧显示「正在处理…」，私聊为空首帧。`test_codex_sdk_streaming.py`、`test_channel_bots.py` 与 `test_coordinator.py::test_wecom_group_coordinator_streams_sdk_text_before_turn_finishes` 验证引擎尚未结束时，项目渠道对话和任务协调回复已调用企微正文更新接口；测试使用模拟平台回执，不代表已完成真实客户端验收。
+
 最终发送前取消并等待中间更新任务，成功、失败和停止都收尾；中间更新超时或失败后停止预览更新，最终发送仍重试并保留主动发送兜底。根据 [官方 SDK 的流式接口](https://github.com/WecomTeam/aibot-node-sdk#replystream-详细说明)，单气泡正文最多 20480 字节，预览按 UTF-8 边界限长，最终超长正文的剩余部分按 4096 字节主动消息分段发送，完整内容不丢失。图片和文件在完成后上传发送；只有附件的最终回复也会结束等待气泡。
 
 此路径用于拥有入站回调 `req_id` 的回复；CLI 主动通知和 WorkStep 内发起的完成回复没有该回调，继续走主动发送。行为、慢网络健康检查及消息隔离见 `tests/test_channel_streaming.py`、`tests/test_channel_bots.py` 和 `tests/test_channel_chat_responder.py`。

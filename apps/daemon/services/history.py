@@ -113,6 +113,7 @@ def translate_events(
     step_key: str | None = None,
     message_id: str | None = None,
     channel: str | None = None,
+    schedule_run_id: str | None = None,
     engine: str | None = None,
     model: str | None = None,
 ) -> list[dict]:
@@ -126,6 +127,7 @@ def translate_events(
         step_key=step_key,
         message_id=message_id,
         channel=channel,
+        schedule_run_id=schedule_run_id,
         engine=engine,
         model=model,
     )
@@ -180,6 +182,7 @@ def restore_running_projection(
         step_key=msg.step_key,
         message_id=msg.id,
         channel=msg.channel,
+        schedule_run_id=msg.schedule_run_id,
         engine=msg.engine,
         model=msg.model,
     )
@@ -233,6 +236,7 @@ def project_terminal_message_state(entry: dict, msg: Message) -> None:
 def message_author_snapshot(msg: Message) -> dict:
     """Expose the stored author without inferring an identity for old rows."""
     return {
+        "schedule_run_id": msg.schedule_run_id,
         "author_id": msg.author_id,
         "author_username": msg.author_username,
         "author_name": msg.author_name,
@@ -295,6 +299,7 @@ def get_task_history(
             step_key=msg.step_key,
             message_id=msg.id,
             channel=msg.channel,
+        schedule_run_id=msg.schedule_run_id,
             engine=msg.engine,
             model=msg.model,
         )
@@ -365,6 +370,7 @@ def get_step_history(
                 step_key=step_key,
                 message_id=msg.id,
                 channel=msg.channel,
+        schedule_run_id=msg.schedule_run_id,
                 engine=msg.engine,
                 model=msg.model,
             )
@@ -398,6 +404,9 @@ def get_message_events(
     *,
     cursor: int = 0,
     limit: int = 30000,
+    file_changes: bool = False,
+    file_path: str | None = None,
+    project_root: str | Path | None = None,
 ) -> dict:
     """Read one task message's detailed timeline without loading it in history."""
     msg = Message.get_or_none(
@@ -405,6 +414,16 @@ def get_message_events(
     )
     if msg is None:
         raise ValueError("Task message not found")
+    if file_changes:
+        from agent_assistants.file_change_index import legacy_changes
+        if msg.event_log_path:
+            ref = _event_journal.reopen(workstep_dir, msg.event_log_path)
+            return _event_journal.file_changes(ref, file_path=file_path, project_root=project_root)
+        try:
+            events = json.loads(msg.events_json or "[]")
+        except ValueError:
+            events = []
+        return legacy_changes(events, file_path=file_path, project_root=project_root)
     if msg.event_log_path:
         ref = _event_journal.reopen(workstep_dir, msg.event_log_path)
         page = _event_journal.timeline(ref, cursor=cursor, limit=limit)
@@ -414,6 +433,7 @@ def get_message_events(
             step_key=msg.step_key,
             message_id=msg.id,
             channel=msg.channel,
+        schedule_run_id=msg.schedule_run_id,
             engine=msg.engine,
             model=msg.model,
         )
@@ -435,6 +455,7 @@ def get_message_events(
             step_key=msg.step_key,
             message_id=msg.id,
             channel=msg.channel,
+        schedule_run_id=msg.schedule_run_id,
             engine=msg.engine,
             model=msg.model,
         ),

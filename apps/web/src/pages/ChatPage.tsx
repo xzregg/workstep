@@ -139,6 +139,12 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
   const [goalMode, setGoalMode] = useState(false)
   const [configReopenSignal, setConfigReopenSignal] = useState(0)
 
+  // 输入模式只属于当前会话，切换项目或会话时恢复默认。
+  useEffect(() => {
+    setPlanMode(false)
+    setGoalMode(false)
+  }, [routeProjectId, sessionParam])
+
   const session = useChatSessionStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const messages = session?.messages ?? []
   // A streaming bubble is authoritative too: history hydration or a missed START
@@ -408,9 +414,6 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
     }
   }, [activeProject, assistantConfig, creating, projectParam, navigate, t])
 
-  const handleMessageEventsLoad = useCallback((messageId: string) => {
-    void loadMessageEvents(messageId)
-  }, [loadMessageEvents])
   const handleForkMessage = useCallback((messageId: string, preferSmart?: boolean) => {
     openFork(selectedEngine, messageId, preferSmart)
   }, [openFork, selectedEngine])
@@ -494,7 +497,7 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
         onSendContent={sendPendingContent}
         onStop={() => void stop()}
         onAttachmentError={setSendError}
-        onLoadMessageEvents={handleMessageEventsLoad}
+        onLoadMessageEvents={loadMessageEvents}
         onLoadOlderHistory={loadOlderHistory}
         onForkMessage={embedded ? undefined : handleForkMessage}
         quickPromptsLabel={t('chatSession.quickPromptsLabel')}

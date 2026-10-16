@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from services.skill_center import SkillCenter
 
@@ -20,6 +21,18 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert mirrored.is_file()
     text = mirrored.read_text(encoding="utf-8")
     assert "quick buttons" in text.split("---", 2)[1]
+    assert len(text) < 6500
+    references = re.findall(r"\]\((references/[^)]+)\)", text)
+    assert len(set(references)) >= 8
+    for reference in references:
+        source = BUILTIN_SKILLS / "workstep-cli" / reference
+        assert (mirrored.parent / reference).read_text() == source.read_text()
+    text += "\n" + "\n".join(
+        path.read_text() for path in sorted((mirrored.parent / "references").glob("*.md"))
+    )
+    assert "--fields" in text
+    assert "--limit" in text
+    assert "--offset" in text
     assert "python -m cli workflow list" in text
     assert "python -m cli workflow get" in text
     assert "python -m cli workflow action-create" in text

@@ -7,13 +7,14 @@ import Icon from './Icon'
 
 type Session = Pick<ChatSessionSummary, 'id' | 'title' | 'created_at' | 'updated_at'>
 
-export default function SessionRowActions({ session, hovered, now, onArchive, onMore, showMore = false }: {
+export default function SessionRowActions({ session, hovered, now, onArchive, onMore, showMore = false, archiveLabel }: {
   session: Session
   hovered: boolean
   now: number
   onArchive: () => void
-  onMore: (event: MouseEvent) => void
+  onMore?: (event: MouseEvent) => void
   showMore?: boolean
+  archiveLabel?: string
 }) {
   const { t, locale } = useI18n()
   const [revealed, setRevealed] = useState(false)
@@ -35,11 +36,11 @@ export default function SessionRowActions({ session, hovered, now, onArchive, on
       className="ws-more-btn"
       onPointerDown={event => event.stopPropagation()}
       onClick={event => { event.stopPropagation(); onArchive() }}
-      title={t('chatSession.archive')}
-      aria-label={t('chatSession.archive')}
+      title={archiveLabel || t('chatSession.archive')}
+      aria-label={archiveLabel || t('chatSession.archive')}
       style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0, opacity: revealed ? 1 : undefined, pointerEvents: revealed ? 'auto' : undefined }}
     ><Icon name="archive" size={13} /></Button>}
-    {(hovered || !timestamp || showMore) && <Button
+    {onMore && (hovered || !timestamp || showMore) && <Button
       variant="icon"
       className="ws-more-btn"
       onPointerDown={event => event.stopPropagation()}

@@ -66,7 +66,7 @@ async def _local_project_summary(project_id: str) -> dict[str, Any] | None:
 
 _SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels", "remote_project_ids")
 _PROJECT_EVENT_CHANNELS = frozenset({
-    "execution", "coordinator", "review", "archive_experience", "session_chat", "channel_bots",
+    "execution", "coordinator", "review", "archive_experience", "session_chat", "channel_chat", "channel_bots",
 })
 
 
@@ -147,7 +147,7 @@ def _make_subscription_predicate(sub: WsSubscription):
                 return False
             if channel in ("review", "archive_experience") and not event.get("task_id"):
                 return False
-            if channel == "session_chat":
+            if channel in ("session_chat", "channel_chat"):
                 return bool(sub.active and event.get("session_id") in sub.session_ids)
             if event.get("session_id") and not event.get("task_id"):
                 return False

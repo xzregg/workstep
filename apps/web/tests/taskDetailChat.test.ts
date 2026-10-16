@@ -1228,3 +1228,12 @@ test('adds the live coordinator prompt to an already persisted queued message', 
   assert.equal(resolveMessagePrompt(null, '  complete coordinator prompt  '), 'complete coordinator prompt')
   assert.equal(resolveMessagePrompt('persisted prompt', undefined), 'persisted prompt')
 })
+
+
+test('scheduled coordinator messages remain visible without occupying the main composer', () => {
+  const scheduled = { id:'timer', channel:'coordinator', role:'assistant', run_status:'running', schedule_run_id:'run' }
+  assert.equal(runningTaskMessageIds([scheduled], {}, null).coordinator, undefined)
+  const main = { id:'main', channel:'coordinator', role:'assistant', run_status:'running' }
+  assert.equal(runningTaskMessageIds([main,scheduled], {}, null).coordinator, 'main')
+  assert.equal(runningTaskMessageIds([], { timer:scheduled }, null).coordinator, undefined)
+})

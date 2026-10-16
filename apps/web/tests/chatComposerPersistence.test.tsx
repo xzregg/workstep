@@ -161,6 +161,54 @@ async function renderChat(container: HTMLElement): Promise<Root> {
   return root
 }
 
+test('plan mode stays in the current session and resets when switching or creating sessions', async () => {
+  const window = new Window({ url: 'http://localhost/' })
+  Object.assign(globalThis, {
+    window, document: window.document, navigator: window.navigator,
+    localStorage: window.localStorage, sessionStorage: window.sessionStorage,
+    Event: window.Event, InputEvent: window.InputEvent,
+    HTMLElement: window.HTMLElement, HTMLTextAreaElement: window.HTMLTextAreaElement,
+    requestAnimationFrame: (callback: FrameRequestCallback) => window.setTimeout(callback, 0),
+    cancelAnimationFrame: (id: number) => window.clearTimeout(id),
+    IS_REACT_ACT_ENVIRONMENT: true,
+  })
+  const restoreApis = installApiStubs()
+  const originalCreate = chatSessionApi.create
+  chatSessionApi.create = async () => chatSessionApi.get('session-new', project.id)
+  useProjectStore.setState({ projects: [project] as never, activeProject: project as never, loading: false })
+  useChatListStore.setState({ sessionsByProject: {}, quickButtons: [], listLoadingByProject: {} })
+  useChatSessionStore.setState({ sessions: {} })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const planButton = () => container.querySelector<HTMLButtonElement>('button[data-kind="plan"]')!
+  try {
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={['/chat?project=demo&session=session-a']}>
+        <I18nProvider><ChatSessionSwitchHarness /></I18nProvider>
+      </MemoryRouter>,
+    ))
+    assert.equal(planButton().getAttribute('aria-pressed'), 'false')
+    await act(async () => planButton().click())
+    assert.equal(planButton().getAttribute('aria-pressed'), 'true')
+    const quickPrompt = [...container.querySelectorAll('button')].find(button => button.textContent === '填入草稿')!
+    await act(async () => quickPrompt.click())
+    assert.equal(planButton().getAttribute('aria-pressed'), 'true')
+    await act(async () => container.querySelector<HTMLButtonElement>('#go-session-b')!.click())
+    assert.equal(planButton().getAttribute('aria-pressed'), 'false')
+    await act(async () => planButton().click())
+    const createButton = [...container.querySelectorAll('button')].find(button => ['新建对话', 'New conversation'].includes(button.title))!
+    assert.ok(createButton)
+    await act(async () => createButton.click())
+    assert.ok(useChatListStore.getState().sessionsByProject[project.id]?.some(session => session.id === 'session-new'))
+    assert.equal(planButton().getAttribute('aria-pressed'), 'false')
+  } finally {
+    await act(async () => root.unmount())
+    chatSessionApi.create = originalCreate
+    restoreApis()
+    await window.happyDOM.close()
+  }
+})
+
 test('chat draft survives leaving and returning to the page', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {

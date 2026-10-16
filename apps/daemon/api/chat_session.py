@@ -293,6 +293,8 @@ async def get_message_events(
     project_id: str = Query(..., alias="project_id"),
     cursor: int = Query(0, ge=0),
     limit: int = Query(30000, ge=1, le=30000),
+    file_changes: bool = Query(False),
+    file_path: str | None = Query(None),
 ):
     """Return a bounded detail page from the host-side JSONL journal."""
     try:
@@ -304,6 +306,8 @@ async def get_message_events(
                 message_id,
                 cursor=cursor,
                 limit=limit,
+                file_changes=file_changes,
+                file_path=file_path,
             ),
         )
     except ValueError as exc:

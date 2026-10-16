@@ -17,6 +17,7 @@ class Message(BaseModel):
     sequence = pw.IntegerField(null=True)
     reply_to_message_id = pw.TextField(null=True)
     role = pw.TextField()  # 'user' / 'assistant'
+    schedule_run_id = pw.TextField(null=True)
     content = pw.TextField(default="")  # user input / concatenated text_delta
     author_id = pw.TextField(null=True)
     author_username = pw.TextField(null=True)

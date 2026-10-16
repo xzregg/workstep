@@ -53,6 +53,8 @@ async def workflow_gen_message_events(
     workflow_id: str = Query(...),
     cursor: int = Query(0, ge=0),
     limit: int = Query(30000, ge=1, le=30000),
+    file_changes: bool = Query(False),
+    file_path: str | None = Query(None),
 ):
     from main import project_manager, workflow_gen_module
 
@@ -63,6 +65,7 @@ async def workflow_gen_message_events(
             project_id,
             lambda _project: workflow_gen_module.message_events(
                 project_id, workflow_id, message_id, cursor=cursor, limit=limit,
+                file_changes=file_changes, file_path=file_path,
             ),
         )
     except ValueError as exc:

@@ -7,6 +7,43 @@ import { I18nProvider } from '../src/i18n'
 import { gitApi, type GitDiff } from '../src/api/git'
 import GitDiffDialog from '../src/components/git/GitDiffDialog'
 
+test('lazy recorded patches show loading, retry failures, and load only the selected file', async () => {
+  const { window } = installDomEnvironment()
+  Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
+  const original = gitApi.diff
+  gitApi.diff = async () => { throw new Error('must not load current workspace') }
+  const requests: string[] = []
+  let rejectFirst!: (reason: Error) => void
+  const loader = async (path: string): Promise<GitDiff> => {
+    requests.push(path)
+    if (requests.length === 1) return new Promise((_, reject) => { rejectFirst = reject })
+    return { path, old_path: path, base: null, target: null, before: '', after: '',
+      patch: `@@ -1 +1 @@\n-old\n+${path}\n`, binary: false, truncated: false, submodule: false }
+  }
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const render = (path: string) => root.render(<I18nProvider><GitDiffDialog id="p"
+    files={['a.ts', 'b.ts']} path={path} comparison={{}} recordedDiffLoader={loader}
+    onSelect={render} onClose={() => {}} /></I18nProvider>)
+  try {
+    await act(async () => render('a.ts'))
+    assert.ok(document.querySelector('.git-diff-scroll .git-spin'))
+    await act(async () => rejectFirst(new Error('patch unavailable')))
+    assert.match(document.querySelector('.git-error')!.textContent!, /patch unavailable/)
+    await act(async () => (document.querySelector('.git-error button') as HTMLElement).click())
+    assert.match(document.querySelector('.git-diff-content')!.textContent!, /a.ts/)
+    await act(async () => (document.querySelector('[title="b.ts"]') as HTMLElement).click())
+    assert.deepEqual(requests, ['a.ts', 'a.ts', 'b.ts'])
+    assert.match(document.querySelector('.git-diff-content')!.textContent!, /b.ts/)
+    assert.equal(document.querySelector('.git-error'), null)
+    assert.equal(document.querySelector('.git-copy-block'), null)
+    assert.doesNotMatch(document.querySelector('.git-diff-toolbar')!.textContent!, /编辑文件|上次修改人/)
+  } finally {
+    gitApi.diff = original
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 for (const width of [320, 390, 1023]) {
   test(`mobile diff at ${width}px keeps native long press and toolbar attribution`, async () => {
     const { window } = installDomEnvironment()

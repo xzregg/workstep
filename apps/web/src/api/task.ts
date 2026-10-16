@@ -1,3 +1,4 @@
+import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
 import { FULL_PAGE_LIMIT, request } from './transport'
 import type { ShareInfo } from './share'
 import type { EngineInfo } from './client'
@@ -386,9 +387,10 @@ export const taskApi = {
     projectId: string,
     cursor = 0,
     limit = FULL_PAGE_LIMIT,
+    query?: FileChangesQuery,
   ) => request<ChatMessageEventsPage>(
     `/task/${encodeURIComponent(taskId)}/messages/${encodeURIComponent(messageId)}/events`
-    + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}`,
+    + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}${fileChangesQuery(query)}`,
   ),
   respondInteraction: (interactionId: string, data: Record<string, unknown>, projectId?: string) =>
     request<{ delivered: boolean }>(`/intervention/respond${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`, {
@@ -413,9 +415,9 @@ export const taskApi = {
       headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify({ content, pending_insert_ids: pendingInsertIds, reset_session: resetSession }),
     }),
-  stopCoordinator: (taskId: string, projectId: string) =>
+  stopCoordinator: (taskId: string, projectId: string, messageId?: string) =>
     request<{ stopped: boolean }>(
-      `/task/${taskId}/coordinator/stop?project_id=${encodeURIComponent(projectId)}`,
+      `/task/${taskId}/coordinator/stop?project_id=${encodeURIComponent(projectId)}${messageId ? `&message_id=${encodeURIComponent(messageId)}` : ''}`,
       { method: 'POST' },
     ),
   sendStepMessage: (taskId: string, stepKey: string, content: string, projectId: string, asGuidance = false) =>

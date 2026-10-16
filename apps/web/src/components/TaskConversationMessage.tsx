@@ -5,6 +5,7 @@ import type { TaskDetailViewProps } from './TaskDetailView'
 import { useI18n } from '../i18n'
 import { CoordinatorProposalCard } from './CoordinatorProposalCard'
 import { useCoordinatorProposalActions } from '../contexts/CoordinatorProposalContext'
+import ScheduledMessageStatus from './ScheduledMessageStatus'
 import ChatMessageBubble from './ChatMessageBubble'
 import StreamingStatusText from './StreamingStatusText'
 import MessageMetaBar from './MessageMetaBar'
@@ -40,6 +41,7 @@ function terminalMessageStatus(status?: string) {
 }
 
 interface TaskConversationMessageProps extends Pick<TaskDetailViewProps,
+  | 'scheduledStopEnabled'
   | 'task'
   | 'steps'
   | 'stepProgress'
@@ -82,6 +84,7 @@ interface TaskConversationMessageProps extends Pick<TaskDetailViewProps,
 export default function TaskConversationMessage({
   message,
   canChat,
+  scheduledStopEnabled,
   latestStepMessageIds,
   latestExecutionMessageIds,
   stepLastRef,
@@ -133,7 +136,8 @@ export default function TaskConversationMessage({
       ? t('aiFlow.agent')
       : stepInfo?.label || stepKey
   return (
-    <div className="task-conversation-message">
+    <div className="task-conversation-message" data-task-message-id={message.id} tabIndex={-1}>
+      {message.schedule_run_id && <ScheduledMessageStatus taskId={task?.id || ''} projectId={projectId} message={message} canStop={canChat && Boolean(scheduledStopEnabled)} />}
       {msgs.map(
         (msg: any, i: number) => {
           const isUser =
@@ -345,7 +349,7 @@ export default function TaskConversationMessage({
               content={messageContent}
               eventDetail={msg.event_detail}
               onLoadEventDetails={msg.event_detail?.available && onLoadMessageEvents
-                ? () => onLoadMessageEvents(msg.id) : undefined}
+                ? query => onLoadMessageEvents(msg.id, query) : undefined}
               projectId={projectId}
               error={resolveMessageError(processEvents) || undefined}
               errorActions={(() => {

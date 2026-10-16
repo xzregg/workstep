@@ -170,6 +170,7 @@ export default function MarkdownEditor({
       <div
         className="markdown-editor-shell"
         data-dragging={dragActive}
+        data-expanded={expanded}
         onDragEnter={(event) => {
           if (!projectId || disabled) return
           event.preventDefault()

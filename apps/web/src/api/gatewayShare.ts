@@ -60,7 +60,11 @@ export const gatewayShareApi: SharedTaskApi = {
     }))]
     return { ...page, messages, limit, offset }
   },
-  messageEvents: (token, csrf, message, cursor = 0) => read(token, `/events/${segment(message)}/${cursor}`, csrf),
+  messageEvents: (token, csrf, message, cursor = 0, query) => {
+    const options = Array.from(new TextEncoder().encode(JSON.stringify(query?.path === undefined ? {} : { path: query.path })),
+      byte => byte.toString(16).padStart(2, '0')).join('')
+    return read(token, query ? `/file-changes/${segment(message)}/${options}` : `/events/${segment(message)}/${cursor}`, csrf)
+  },
   artifacts: async (token, csrf) => {
     const result = await read<{ artifacts: any[]; input_snapshots?: any[] }>(token, '/artifacts', csrf)
     return { artifact_directory: '', input_snapshots: result.input_snapshots || [], artifacts: result.artifacts.map(artifact => ({
