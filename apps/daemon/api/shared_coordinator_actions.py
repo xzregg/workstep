@@ -13,21 +13,15 @@ class ShareActionConfirmation(BaseModel):
 
 async def apply_shared_coordinator_action(project_id, task_id, proposal_id, confirmation=None):
     from main import coordinator_module, project_manager
-    from models import ActionProposal
+    from services.shared_task_scope import validate_proposal
+    from api.shared_task_scope import run_scope_db
 
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", proposal_id):
         raise HTTPException(404, "Action proposal unavailable")
     if coordinator_module is None or project_manager is None:
         raise HTTPException(503, "Coordinator is not initialized")
 
-    def validate(_project):
-        proposal = ActionProposal.get_or_none(
-            (ActionProposal.id == proposal_id) & (ActionProposal.task == task_id)
-        )
-        if proposal is None:
-            raise HTTPException(404, "Action proposal unavailable")
-
-    await project_manager.run_db(project_id, validate)
+    await run_scope_db(project_id, lambda project: validate_proposal(project, task_id, proposal_id))
     try:
         if confirmation is None:
             return await coordinator_module.cancel_action(project_id, task_id, proposal_id)

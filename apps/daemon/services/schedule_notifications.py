@@ -13,6 +13,15 @@ from services.config import config_store
 from services.schedule_rules import ScheduleValidationError
 
 
+def notification_run_status(project_id, schedule_id, run_id):
+    run = ScheduleRun.get_or_none((ScheduleRun.id == run_id) & (ScheduleRun.schedule == schedule_id))
+    if run is None:
+        raise ValueError("执行记录不存在")
+    sent = run.notification_status == "sent"
+    return {"ok": sent, "sent": sent, "notification_status": run.notification_status,
+            "error": None if sent else run.notification_error or "通知尚未发送成功"}
+
+
 def notification_options(project_id, task_id=None):
     data = config_store.get('channel_bots', {})
     bots = {b['id']: b for b in data.get('bots', []) if b.get('enabled')}

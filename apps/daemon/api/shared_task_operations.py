@@ -24,8 +24,8 @@ class SharedTaskOperation(BaseModel):
 
 async def dispatch_shared_task_operation(request: Request, project_id: str, task_id: str,
                                          operation: SharedTaskOperation):
-    from main import project_manager
-    from models import Task, Message, PendingMessageInsert, ActionProposal, ActionRun, ReviewRun
+    from services.shared_task_scope import validate_operation
+    from api.shared_task_scope import run_scope_db
     from services.remote_access import ActorSnapshot, actor_context, get_current_actor
 
     url = urlsplit(operation.path)
@@ -44,55 +44,9 @@ async def dispatch_shared_task_operation(request: Request, project_id: str, task
         raise HTTPException(413, "Operation body too large")
     method = operation.method
     task_path = '/task/' + task_id
-    workflow_id = None
-
-    def validate(_project):
-        nonlocal workflow_id
-        task = Task.get_or_none(Task.id == task_id)
-        if task is None:
-            raise HTTPException(404, "Task unavailable")
-        workflow_id = task.workflow_id
-
-        def message(identifier):
-            if not Message.select().where((Message.id == identifier) & (Message.task == task_id)).exists():
-                raise HTTPException(404, "Task message unavailable")
-
-        def insert(identifier):
-            row = PendingMessageInsert.get_or_none(PendingMessageInsert.id == identifier)
-            if row is None:
-                raise HTTPException(404, "Pending insert unavailable")
-            message(row.target_message_id)
-
-        if path == '/pending-message-inserts' or path.startswith('/pending-message-inserts/'):
-            targets = [container.get('target_message_id') for container in (query, body) if container.get('target_message_id')]
-            if targets:
-                for target in targets:
-                    message(target)
-            elif method in {'GET', 'POST', 'PUT'} or path == '/pending-message-inserts':
-                raise HTTPException(422, "Target message required")
-            if path.startswith('/pending-message-inserts/') and not path.endswith('/reorder'):
-                insert(path.rsplit('/', 1)[-1])
-            for identifier in body.get('ids', []):
-                insert(identifier)
-        if path.startswith(task_path + '/messages/'):
-            message(path[len(task_path + '/messages/'):].split('/')[0])
-        if path.startswith(task_path + '/actions/'):
-            identifier = path[len(task_path + '/actions/'):].split('/')[0]
-            if not ActionProposal.select().where((ActionProposal.id == identifier) & (ActionProposal.task == task_id)).exists():
-                raise HTTPException(404, "Action proposal unavailable")
-        for identifier in body.get('pending_insert_ids', []):
-            insert(identifier)
-        if body.get('review_run_id'):
-            if not ReviewRun.select().where((ReviewRun.id == body['review_run_id']) & (ReviewRun.task == task_id)).exists():
-                raise HTTPException(404, "Review unavailable")
-        if path.startswith('/action-runs/'):
-            identifier = path.split('/')[2]
-            if not ActionRun.select().where((ActionRun.id == identifier) & (ActionRun.task_id == task_id)).exists():
-                raise HTTPException(404, "Action run unavailable")
-        if body.get('task_id') not in (None, task_id):
-            raise HTTPException(403, "Task scope denied")
-
-    await project_manager.run_db(project_id, validate)
+    workflow_id = await run_scope_db(
+        project_id, lambda project: validate_operation(project, task_id, path, method, query, body)
+    )
     allowed = False
     suffix = path[len(task_path):] if path.startswith(task_path) else None
     if suffix is not None:

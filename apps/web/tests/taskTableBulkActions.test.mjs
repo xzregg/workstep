@@ -9,7 +9,6 @@ const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 test('keeps task card metadata and fixed action buttons on one line', () => {
   assert.match(taskCardSource, /className="task-card-meta"/)
   assert.match(taskCardSource, /text=\{cardMetaText\}/)
-  assert.match(taskCardSource, /forceActive/)
   assert.match(taskCardSource, /className="card-action-buttons task-board-card-buttons"/)
   assert.match(css, /\.task-board-card-buttons\s*\{[^}]*flex-wrap:\s*nowrap/s)
   assert.match(css, /\.task-board-card-buttons\s*\{[^}]*flex-shrink:\s*0/s)

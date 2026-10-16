@@ -198,7 +198,7 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
     monkeypatch.setattr(
         main,
         "ScheduleModule",
-        lambda project_manager, task_service, runtime, task_agent=None: ScheduleStub(),
+        lambda project_manager, task_service, runtime, task_agent=None, coordinator=None: ScheduleStub(),
     )
     monkeypatch.setattr(
         main,
