@@ -16,7 +16,10 @@ export interface SkinLayout {
   density?: 'standard' | 'compact' | 'comfortable'; stepsSide?: 'left' | 'right';
   stepsRatio?: number; splitHandleWidth?: number; composerToolsPosition?: 'top' | 'bottom';
   engineAppearance?: 'list' | 'cards'; backgroundGlow?: 'none' | 'accent';
+  composerPosition?: 'top' | 'bottom' | 'left' | 'right';
 }
+export interface SkinMenu { id: string; label: string; position?: 'top' | 'bottom' | 'left' | 'right'; items: { label: string; action: string; args?: Record<string, unknown> }[] }
+export interface SkinEffects { reveal?: boolean; charsPerSecond?: number; maxDurationMs?: number }
 export interface SkinDocument {
   manifest: { id: string; name: string; version: string; schema_version: number; color_scheme: 'light' | 'dark'; description?: string };
   tokens: Record<string, string>; styles: SkinStyles; layout: SkinLayout;
@@ -24,6 +27,7 @@ export interface SkinDocument {
   mobile?: { tokens?: Record<string, string>; styles?: SkinStyles; layout?: SkinLayout };
   revision: string; asset_base: string;
   coverage?: { overridden: string[]; inherited: string[] };
+  css?: string; script?: string; file_base?: string; menus?: SkinMenu[]; effects?: SkinEffects;
 }
 
 export function defaultSkin(): SkinDocument {
@@ -46,12 +50,13 @@ export function validateCssValue(value: string, kind = 'value') {
 
 const cssProperty = (name: string) => name.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase())
 export function compileSkin(skin: SkinDocument): string {
-  if (!skin || skin.manifest?.schema_version !== 1 || !/^[a-z][a-z0-9_-]{0,63}$/.test(skin.manifest.id) || !['light', 'dark'].includes(skin.manifest.color_scheme)) throw new Error('皮肤清单无效')
+  if (!skin || ![1, 2].includes(skin.manifest?.schema_version) || !/^[a-z][a-z0-9_-]{0,63}$/.test(skin.manifest.id) || !['light', 'dark'].includes(skin.manifest.color_scheme)) throw new Error('皮肤清单无效')
+  const important = skin.manifest.schema_version === 1 ? ' !important' : ''
   const scope = `html[data-skin-id="${skin.manifest.id}"]`
   const tokens = (values: Record<string, string> = {}) => Object.entries(values).map(([name, value]) => {
     if (!Object.hasOwn(skinContract.tokens, name)) throw new Error('未知或受保护的样式变量')
     validateCssValue(value, skinContract.token_kinds[name])
-    return `--${name}:${value} !important;`
+    return `--${name}:${value}${important};`
   }).join('')
   const rules = (styles: SkinStyles = {}) => Object.entries(styles).flatMap(([part, states]) => {
     if (!Object.hasOwn(skinContract.parts, part)) throw new Error('未知组件部位')
@@ -66,7 +71,7 @@ export function compileSkin(skin: SkinDocument): string {
           const [base, query] = skin.asset_base.split('?')
           value = `url("${base}/${value.slice(7)}${query ? '?' + query : ''}")`
         }
-        return `${cssProperty(name)}:${value} !important;`
+        return `${cssProperty(name)}:${value}${important};`
       }).join('')
       const selectors = skinContract.parts[part].split(',').map(selector => {
         const pseudo = selector.trim().match(/^(.*?)(::[a-z-]+)$/)
@@ -83,9 +88,13 @@ export function compileSkin(skin: SkinDocument): string {
       if (!spec || (spec.values ? !spec.values.includes(String(value)) : typeof value !== 'number' || !Number.isFinite(value) || value < spec.min! || value > spec.max!)) throw new Error('布局配置无效')
     }
   }
+  for (const [name, value] of Object.entries(skin.effects ?? {})) {
+    if (name === 'reveal' ? typeof value !== 'boolean' : !['charsPerSecond', 'maxDurationMs'].includes(name) || typeof value !== 'number' || !Number.isFinite(value) || value < 10 || value > (name === 'charsPerSecond' ? 1000 : 10000)) throw new Error('消息动效配置无效')
+  }
   return `${scope}{${tokens(skin.tokens)}}\n${rules(skin.styles)}\n` +
     `@media (min-width: 1024px){${scope}{${tokens(skin.desktop?.tokens)}}${rules(skin.desktop?.styles)}}\n` +
-    `@media (max-width: 1023px){${scope}{${tokens(skin.mobile?.tokens)}}${rules(skin.mobile?.styles)}}`
+    `@media (max-width: 1023px){${scope}{${tokens(skin.mobile?.tokens)}}${rules(skin.mobile?.styles)}}` +
+    (skin.manifest.schema_version === 2 ? skin.css ?? '' : '')
 }
 
 export function resolvedSkinLayout(skin: SkinDocument, compact = false): Required<SkinLayout> {

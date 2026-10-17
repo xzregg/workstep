@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { StrictMode, act, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
+import { applySkin } from '../src/skins/runtime'
+import { defaultSkin } from '../src/skins/contract'
 import useStreamReveal, {
   MAX_CATCH_UP_FRAMES,
   MAX_REVEAL_DURATION_MS,
@@ -254,6 +256,26 @@ test('catch-up pacing keeps a long backlog within the 10s budget', () => {
 test('small backlogs keep the steady reveal pace', () => {
   const step = revealStepFor(30, REVEAL_STEP_CHARS)
   assert.equal(step, REVEAL_STEP_CHARS, 'small backlog must not speed up')
+})
+
+test('skin pacing changes the steady speed and catch-up budget without raising frame frequency', () => {
+  const options = { charsPerSecond: 40, maxDurationMs: 1000 }
+  assert.equal(revealStepFor(10, 0, options), 4)
+  const step = revealStepFor(5000, 0, options)
+  assert.ok(Math.ceil(5000 / step) * MIN_REVEAL_FRAME_MS <= 1000 + MIN_REVEAL_FRAME_MS)
+})
+
+test('skin can disable reveal on the existing message without replacing its content', async () => {
+  outputs = []
+  const h = await renderHarness({ content: '', streaming: true })
+  try {
+    await h.set({ content: 'a'.repeat(100) })
+    await act(async () => applySkin({ ...defaultSkin(), effects: { reveal: false } }))
+    assert.equal(outputs.at(-1), 'a'.repeat(100))
+  } finally {
+    await h.unmount()
+    applySkin(defaultSkin())
+  }
 })
 
 test('revealStepFor never decreases while a backlog drains', () => {

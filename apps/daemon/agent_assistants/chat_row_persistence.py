@@ -64,6 +64,8 @@ class ChatRowPersistence(PersistenceAdapter):
             return
         session.messages = self._load_messages(row)
         session.resolved_session_id = row.engine_session_id
+        session.extra['role_checkpoint'] = _load_json(row.role_checkpoint_json, None)
+        session.extra['role_binding'] = _load_json(row.role_binding_json, None)
         if row.engine_state_json:
             try:
                 session.engine_state = json.loads(row.engine_state_json)
@@ -170,6 +172,8 @@ class ChatRowPersistence(PersistenceAdapter):
             row.title = title
             row.engine_session_id = session.resolved_session_id
             row.engine_state_json = self._dump_state(session.engine_state)
+            if 'role_checkpoint' in session.extra:
+                row.role_checkpoint_json = self._dump_state(session.extra['role_checkpoint'])
             pending_handoff = session.extra.get("pending_handoff")
             if isinstance(pending_handoff, dict):
                 last = session.messages[-1] if session.messages else {}

@@ -204,6 +204,7 @@ export interface ChatSessionSummary {
   vision_model?: string | null
   provider_id?: string | null
   permission_mode?: string
+  role_binding?: import('./chatRoles').ChatRoleReference | null
   engine_session_id?: string | null
   parent_session_id?: string | null
   forked_from_message_id?: string | null

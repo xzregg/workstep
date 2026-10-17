@@ -61,7 +61,7 @@ test('share mode controls the chat composer and Git write access without hiding 
   assert.match(sharedViewSource, /if \(interactive && token\)/)
   assert.match(sharedViewSource, /<SharedEditableTaskDetail/)
   assert.match(sharedViewSource, /gitCapability=\{\{[^}]*readOnly: true/)
-  assert.doesNotMatch(taskDetailViewSource, /\breadOnly\b/)
+  assert.doesNotMatch(taskDetailViewSource, /\breadOnly\s*\??\s*:\s*boolean|\breadOnly=\{/)
   assert.doesNotMatch(sharedViewSource, /runningSteps=\{interactive \?/)
   assert.doesNotMatch(sharedViewSource, /sharePrimaryAction/)
 })

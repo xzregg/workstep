@@ -1,6 +1,7 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const zhTW: Messages = {
+  skinExtensions: zhCN.skinExtensions,
   taskWorkflow: zhCN.taskWorkflow,
   roleCenter: zhCN.roleCenter,
   projectAudit: {

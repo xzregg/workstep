@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "ddbc04fc9ca6edbfc01b84a2d742f78a125b283730632c904857802f02866434",
+  "revision": "5aaf24f30b3c8eec50cc59ebb5eb58cd595ef8b9cf6036aed614e3c93c0efe0c",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -9,6 +9,13 @@
     "interaction.deny"
   ],
   "messages": {
+    "skinExtensions.features": "附加功能",
+    "skinExtensions.codeDisabled": "此皮肤的自定义组件尚未启用，仅应用外观。",
+    "skinExtensions.enable": "启用自定义组件",
+    "skinExtensions.trust": "仅启用你信任的皮肤。组件与当前界面拥有相同权限，可以访问当前账号数据和浏览器存储；这不是隔离运行环境。",
+    "skinExtensions.loading": "正在加载自定义组件…",
+    "skinExtensions.failed": "自定义组件加载或运行失败。",
+    "skinExtensions.discard": "放弃组件中未保存的修改？",
     "taskWorkflow.edit": "编辑任务流程",
     "taskWorkflow.view": "查看任务流程",
     "taskWorkflow.customized": "任务已自定义",
@@ -22,6 +29,16 @@
     "taskWorkflow.smart": "智能交接",
     "taskWorkflow.full": "完整交接",
     "taskWorkflow.none": "不携带历史",
+    "roleCenter.chooseForChat": "角色／专家团",
+    "roleCenter.searchChatAssets": "搜索角色或专家团",
+    "roleCenter.selectRoleLabel": "选择角色：{name}",
+    "roleCenter.selectTeamLabel": "选择专家团：{name}",
+    "roleCenter.selectToPreview": "选择角色或专家团，查看将加载的提示词。",
+    "roleCenter.loadIntoChat": "加载到对话",
+    "roleCenter.chatBindingHint": "用于当前对话，直到移除。专家团的角色提示词由当前模型统一使用。",
+    "roleCenter.boundRoleLabel": "查看已加载角色：{name}",
+    "roleCenter.removeChatRole": "移除已加载角色",
+    "roleCenter.missingChatRole": "角色或成员已失效，请重新选择。",
     "roleCenter.title": "角色中心",
     "roleCenter.intro": "管理角色提示词，自由组合专家团。内置角色可修改，升级不会覆盖已有内容。",
     "roleCenter.roles": "角色库",

@@ -130,6 +130,7 @@ export default function SettingsPage({
         }} />
       <ResizablePanel
         className="modal settings-dialog-panel"
+        data-ui="settings"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="modal-header settings-dialog-header">

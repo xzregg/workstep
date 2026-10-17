@@ -118,7 +118,7 @@ export async function initializeAppearancePreferences() {
   }
   const saved = response.preferences
   let skin = defaultSkin()
-  if (saved.skin_id !== 'default') {
+  if (saved.skin_id !== 'default' && new URLSearchParams(window.location.search).get('skin') !== 'default') {
     try { skin = await skinsApi.get(saved.skin_id) } catch { /* Missing packages recover to default. */ }
   }
   if (current !== generation) return

@@ -46,7 +46,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
       </div>
     </header>
     {compact && open && <div className="mobile-overlay-backdrop navigation-backdrop" onClick={() => setOpen(false)} />}
-    <aside id="workstep-navigation" ref={ref} style={style} className={`responsive-navigation${className ? ` ${className}` : ''}${open ? ' is-open' : ''}`}
+    <aside data-ui="navigation" id="workstep-navigation" ref={ref} style={style} className={`responsive-navigation${className ? ` ${className}` : ''}${open ? ' is-open' : ''}`}
       role={compact && open ? 'dialog' : undefined} aria-modal={compact && open ? true : undefined}
       aria-label={t('mobile.navigation')} inert={compact && !open ? true : undefined} tabIndex={-1}>
       {compact && <button className="navigation-close" aria-label={t('common.close')} onClick={() => setOpen(false)}><Icon name="x" size={20} /></button>}

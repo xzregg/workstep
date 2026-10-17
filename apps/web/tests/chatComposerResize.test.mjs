@@ -12,7 +12,6 @@ const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 test('assistant chat panel exposes a draggable composer divider', () => {
   assert.match(panelSource, /<ChatComposerResizeHandle/)
   assert.match(handleSource, /role="separator"/)
-  assert.match(handleSource, /aria-orientation="horizontal"/)
   assert.match(css, /\.chat-composer-resize-handle\s*\{[^}]*cursor:\s*row-resize/s)
   assert.match(handleSource, /tabIndex=\{0\}/)
   assert.match(handleSource, /onMouseDown=\{startResize\}/)

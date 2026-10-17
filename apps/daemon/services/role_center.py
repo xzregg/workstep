@@ -10,6 +10,7 @@ import os
 import re
 import tempfile
 import threading
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -29,6 +30,8 @@ class RoleCenter:
     def __init__(self, root: Path | None = None):
         self._root = root
         self._lock = threading.RLock()
+        self._catalog_cache = None
+        self._catalog_root = None
 
     @property
     def root(self):
@@ -67,6 +70,7 @@ class RoleCenter:
 
     def ensure_defaults(self):
         with self._lock:
+            self._catalog_cache = None
             # Only populate missing files. Edited shipped roles stay editable.
             for kind in ("roles", "teams"):
                 directory = self._directory(kind)
@@ -117,6 +121,9 @@ class RoleCenter:
 
     def catalog(self):
         with self._lock:
+            root = self.root
+            if self._catalog_cache is not None and self._catalog_root == root:
+                return deepcopy(self._catalog_cache)
             warnings = []
             roles, teams = self._list("roles", warnings), self._list("teams", warnings)
             path = self.root / "categories.json"
@@ -129,12 +136,15 @@ class RoleCenter:
                     categories.append({"id": item["category"], "name": item["category"]})
                     known.add(item["category"])
             # Catalog reads do not send hundreds of full prompts to the client.
-            return {
+            catalog = {
                 "categories": categories,
                 "roles": [{key: value for key, value in item.items() if key != "prompt"} for item in roles],
                 "teams": [{key: value for key, value in item.items() if key != "prompt"} for item in teams],
                 "warnings": warnings,
             }
+            self._catalog_cache = catalog
+            self._catalog_root = root
+            return deepcopy(catalog)
 
     def _save(self, kind, asset_id, request):
         with self._lock:
@@ -161,6 +171,7 @@ class RoleCenter:
                 data.update(builtin=existing["builtin"] if existing else False,
                             source=existing["source"] if existing else None)
             self._atomic_write(self._path(kind, asset_id), data)
+            self._catalog_cache = None
             return self._read(kind, asset_id)
 
     def save_role(self, request: RoleWrite, role_id=None):

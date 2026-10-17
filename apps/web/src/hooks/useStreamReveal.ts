@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useActiveSkin } from '../skins/runtime'
+import type { SkinEffects } from '../skins/contract'
+
+function subscribeReducedMotion(listener: () => void) {
+  const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+  media.addEventListener('change', listener)
+  return () => media.removeEventListener('change', listener)
+}
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /**
  * 两次揭示帧之间的最小间隔。
@@ -48,12 +57,15 @@ export const MAX_CATCH_UP_FRAMES = Math.max(
 export function revealStepFor(
   remaining: number,
   currentStep: number = REVEAL_STEP_CHARS,
+  options: SkinEffects = {},
 ): number {
-  if (remaining <= 0) return REVEAL_STEP_CHARS
+  const base = Math.max(1, Math.ceil(((options.charsPerSecond ?? REVEAL_CHARS_PER_SECOND) * MIN_REVEAL_FRAME_MS) / 1000))
+  const frames = Math.max(1, Math.ceil((options.maxDurationMs ?? MAX_REVEAL_DURATION_MS) / MIN_REVEAL_FRAME_MS))
+  if (remaining <= 0) return base
   return Math.max(
     currentStep,
-    REVEAL_STEP_CHARS,
-    Math.ceil(remaining / MAX_CATCH_UP_FRAMES),
+    base,
+    Math.ceil(remaining / frames),
   )
 }
 
@@ -74,6 +86,11 @@ export default function useStreamReveal(
   frozen: boolean,
   enabled: boolean,
 ): string {
+  const effects = useActiveSkin().effects
+  const reduce = useSyncExternalStore(subscribeReducedMotion, reducedMotion, () => false)
+  enabled = enabled && effects?.reveal !== false && !reduce
+  const settings = useRef(effects); settings.current = effects
+  const baseStep = revealStepFor(0, 0, effects)
   // 只有“空气泡挂载后再收到 token”才是本次页面中的新流。
   // 首屏已带正文表示它来自历史恢复；即使后端仍标记 running，
   // 也必须直接显示，避免刷新页面后重新“打一遍字”。
@@ -89,7 +106,8 @@ export default function useStreamReveal(
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 当前每帧步长。常规时等于 REVEAL_STEP_CHARS；积压过多时动态升速，
   // 并保持到这批积压排空，避免"指数逼近"永远追不上 10 秒上限。
-  const stepRef = useRef(REVEAL_STEP_CHARS)
+  const stepRef = useRef(baseStep)
+  useEffect(() => { stepRef.current = baseStep }, [baseStep, effects?.maxDurationMs])
 
   useEffect(() => {
     const stopTimer = () => {
@@ -141,17 +159,17 @@ export default function useStreamReveal(
         const target = contentRef.current
         const remaining = target.length - shownRef.current.length
         if (remaining <= 0) {
-          stepRef.current = REVEAL_STEP_CHARS
+          stepRef.current = revealStepFor(0, 0, settings.current)
           return
         }
         // 动态调速：积压多 → 升速，保证最多 10 秒排空；积压少 → 常规节奏。
-        stepRef.current = revealStepFor(remaining, stepRef.current)
+        stepRef.current = revealStepFor(remaining, stepRef.current, settings.current)
         const step = Math.min(remaining, stepRef.current)
         resetTo(target.slice(0, shownRef.current.length + step))
         if (contentRef.current.length - shownRef.current.length > 0) {
           timerRef.current = setTimeout(tick, MIN_REVEAL_FRAME_MS)
         } else {
-          stepRef.current = REVEAL_STEP_CHARS
+          stepRef.current = revealStepFor(0, 0, settings.current)
         }
       }
       timerRef.current = setTimeout(tick, MIN_REVEAL_FRAME_MS)

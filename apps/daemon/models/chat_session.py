@@ -34,6 +34,8 @@ class ChatSession(BaseModel):
     fork_context_json = pw.TextField(null=True)
     fork_status = pw.TextField(default="ready")
     permission_mode = pw.TextField(null=True)
+    role_binding_json = pw.TextField(null=True)
+    role_checkpoint_json = pw.TextField(null=True)
     created_at = UTCDateTimeField()
     updated_at = UTCDateTimeField()
 

@@ -9,6 +9,7 @@ import threading
 import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
+from services.skin_extensions import CONFIG_KEYS, FILE_TYPES, compile_css, validate_extensions
 
 CONTRACT_FILE = Path(__file__).resolve().parent.parent / "data" / "skins" / "contract.json"
 MAX_FILE = 8 * 1024 * 1024
@@ -56,7 +57,7 @@ def validate_document(manifest, tokens, components, contract):
     checked_id(manifest.get("id"))
     if manifest["id"] == "default":
         raise ValueError("默认皮肤不可覆盖")
-    if manifest.get("schema_version") != 1 or isinstance(manifest.get("schema_version"), bool):
+    if manifest.get("schema_version") not in (1, 2) or isinstance(manifest.get("schema_version"), bool):
         raise ValueError("不支持的皮肤规范版本")
     for key in ("name", "version"):
         if not isinstance(manifest.get(key), str) or not manifest[key].strip() or len(manifest[key]) > 100:
@@ -146,10 +147,14 @@ class SkinManager:
                     raise ValueError("只允许 assets 子目录")
                 continue
             name = file.relative_to(root).as_posix()
-            if not file.is_file() or (name not in {"skin.json", "tokens.json", "components.json"} and not name.startswith("assets/")):
+            if not file.is_file() or (name not in {"skin.json", "tokens.json", "components.json", "theme.css", "theme.js"} and not name.startswith("assets/")):
                 raise ValueError("皮肤包包含未允许的文件")
             if name.startswith("assets/"):
-                css_value(name, "asset")
+                if file.suffix.lower() == '.woff2':
+                    if not re.fullmatch(r'assets/[A-Za-z0-9_./-]+', name) or '..' in PurePosixPath(name).parts:
+                        raise ValueError('字体路径无效')
+                else:
+                    css_value(name, "asset")
             if file.stat().st_size > MAX_FILE:
                 raise ValueError("皮肤文件过大")
             data = file.read_bytes()
@@ -157,7 +162,7 @@ class SkinManager:
             if len(data) > MAX_FILE or size > MAX_PACKAGE or len(files) >= MAX_FILES:
                 raise ValueError("皮肤包过大")
             if name.startswith("assets/"):
-                valid = (name.lower().endswith(".png") and data.startswith(b"\x89PNG\r\n\x1a\n")) or (name.lower().endswith((".jpg", ".jpeg")) and data.startswith(b"\xff\xd8\xff")) or (name.lower().endswith(".webp") and data[:4] == b"RIFF" and data[8:12] == b"WEBP")
+                valid = (name.lower().endswith(".png") and data.startswith(b"\x89PNG\r\n\x1a\n")) or (name.lower().endswith((".jpg", ".jpeg")) and data.startswith(b"\xff\xd8\xff")) or (name.lower().endswith(".webp") and data[:4] == b"RIFF" and data[8:12] == b"WEBP") or (name.lower().endswith('.woff2') and data.startswith(b'wOF2'))
                 if not valid:
                     raise ValueError("图片内容与类型不匹配")
             files[name] = data
@@ -167,6 +172,19 @@ class SkinManager:
             components = json.loads(files.get("components.json", b"{}"))
         except (KeyError, ValueError, UnicodeError) as exc:
             raise ValueError("皮肤 JSON 无效或缺少 skin.json") from exc
+        if not isinstance(manifest, dict):
+            raise ValueError('皮肤清单必须是 JSON 对象')
+        extension = {}
+        if manifest.get('schema_version') == 2:
+            extension = {key: manifest[key] for key in CONFIG_KEYS if key in manifest}
+            manifest = {key: value for key, value in manifest.items() if key not in CONFIG_KEYS}
+            if 'tokens.json' in files or 'components.json' in files:
+                raise ValueError('v2 配置统一写入 skin.json')
+            tokens = extension.get('tokens', {})
+            components = {key: extension[key] for key in ('styles', 'layout', 'desktop', 'mobile') if key in extension}
+            validate_extensions(extension)
+        elif any(name in files for name in ('theme.css', 'theme.js')) or any(name.endswith('.woff2') for name in files):
+            raise ValueError('自由样式和组件需要 v2 皮肤')
         contract = read_contract()
         coverage = validate_document(manifest, tokens, components, contract)
         for styles in [components.get("styles", {}), *[components.get(mode, {}).get("styles", {}) for mode in ("desktop", "mobile")]]:
@@ -182,6 +200,16 @@ class SkinManager:
                 "styles": components.get("styles", {}), "layout": components.get("layout", {}),
                 "desktop": components.get("desktop", {}), "mobile": components.get("mobile", {}),
                 "revision": revision, "asset_base": f"/api/skins/assets/{revision}"}
+        if manifest['schema_version'] == 2:
+            try:
+                source = files.get('theme.css', b'').decode('utf-8')
+                files.get('theme.js', b'').decode('utf-8')
+            except UnicodeError as exc:
+                raise ValueError('CSS 和 JavaScript 必须为 UTF-8') from exc
+            skin.update(css=compile_css(source, manifest['id'], revision, files),
+                        script='theme.js' if 'theme.js' in files else '',
+                        file_base=f'/api/skins/files/{revision}',
+                        menus=extension.get('menus', []), effects=extension.get('effects', {}))
         return skin, coverage, files
 
     def _snapshot(self, revision, files):
@@ -224,7 +252,12 @@ class SkinManager:
             tokens = document.get('tokens', {})
             components = {key: document[key] for key in ('styles', 'layout', 'desktop', 'mobile') if key in document}
             validate_document(manifest, tokens, components, read_contract())
-            for name, value in [('skin.json', manifest), ('tokens.json', tokens), ('components.json', components)]:
+            if manifest.get('schema_version') == 2:
+                validate_extensions(document)
+                changes = [('skin.json', {**manifest, **{key: document[key] for key in CONFIG_KEYS if key in document}})]
+            else:
+                changes = [('skin.json', manifest), ('tokens.json', tokens), ('components.json', components)]
+            for name, value in changes:
                 files[name] = (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode()
             # Validate the entire candidate, including referenced assets, before touching the draft.
             staging = root.parent / ('.skin-edit-' + uuid.uuid4().hex)
@@ -236,7 +269,7 @@ class SkinManager:
                 # Writers stage in the same filesystem; each JSON replacement is atomic.
                 if self._read_package(root)[0]['revision'] != expected_revision:
                     raise SkinConflict('草稿已变更，请重新读取')
-                for name in ('skin.json', 'tokens.json', 'components.json'):
+                for name, _ in changes:
                     (staging / name).replace(root / name)
                 return self._validate(root)
             finally:
@@ -264,11 +297,12 @@ class SkinManager:
                     if original['revision'] != source_revision:
                         raise ValueError('原皮肤资源校验不匹配')
                     for name, content in files.items():
-                        if name.startswith('assets/'):
+                        if name.startswith('assets/') or (manifest.get('schema_version') == 2 and name in ('theme.css', 'theme.js')):
                             target = staging / name
                             target.parent.mkdir(parents=True, exist_ok=True)
                             target.write_bytes(content)
-            for name, value in [('skin.json', manifest), ('tokens.json', tokens), ('components.json', components)]:
+            changes = [('skin.json', {**manifest, **{key: document[key] for key in CONFIG_KEYS if key in document}})] if manifest.get('schema_version') == 2 else [('skin.json', manifest), ('tokens.json', tokens), ('components.json', components)]
+            for name, value in changes:
                 (staging / name).write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
             self._read_package(staging)
             try:
@@ -393,6 +427,23 @@ class SkinManager:
 
     async def asset(self, revision, name):
         return await asyncio.to_thread(self._asset, revision, name)
+
+    def _file(self, revision, name):
+        if not re.fullmatch(r'[a-f0-9]{64}', revision) or not re.fullmatch(r'[A-Za-z0-9_./-]+', name) or any(part in ('.', '..') for part in name.split('/')):
+            raise ValueError('皮肤文件路径无效')
+        if name not in ('theme.css', 'theme.js') and not name.startswith('assets/'):
+            raise ValueError('皮肤文件不可读取')
+        suffix = PurePosixPath(name).suffix.lower()
+        if suffix not in FILE_TYPES or (name.startswith('assets/') and suffix in ('.css', '.js')):
+            raise ValueError('皮肤文件类型无效')
+        root = self.root / 'skin-assets' / revision
+        file = root / name
+        if file.is_symlink() or not file.resolve().is_relative_to(root.resolve()):
+            raise ValueError('皮肤文件路径无效')
+        return file.read_bytes(), FILE_TYPES[suffix]
+
+    async def file(self, revision, name):
+        return await asyncio.to_thread(self._file, revision, name)
 
 
 skin_manager = SkinManager()

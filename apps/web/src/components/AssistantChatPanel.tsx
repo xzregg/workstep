@@ -1,3 +1,6 @@
+import ConversationLayout from './ConversationLayout'
+import { SkinExtensionSlot } from './SkinExtensions'
+import { useSkinActions } from '../skins/actions'
 import type { MessageEventsLoader } from '../utils/messageFileChanges'
 import ChatComposerResizeHandle from './ChatComposerResizeHandle'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
@@ -31,6 +34,7 @@ import ChatInput, {
   type ChatInputEngineConfig,
   type ChatInputPermission,
   type ChatInputPlan,
+  type ChatInputRoleBinding,
 } from './ChatInput'
 import ChatMessageBubble from './ChatMessageBubble'
 import AssistantThinkingMessage from './AssistantThinkingMessage'
@@ -113,6 +117,7 @@ export interface AssistantChatPanelProps {
   /** Floating content anchored immediately above the composer. */
   composerOverlay?: ReactNode
   composerStatus?: ReactNode
+  roleBinding?: ChatInputRoleBinding
   afterMessages?: ReactNode
   actionRuns?: ActionRun[]
   onStopAction?: (runId: string) => void
@@ -275,7 +280,7 @@ const MessageItem = memo(function MessageItem({
 export default function AssistantChatPanel({
   projectId, visibilityPermission = 'session.chat', sessionId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
+  onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
   onLoadMessageEvents, onLoadOlderHistory, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
@@ -307,7 +312,7 @@ export default function AssistantChatPanel({
   const prependHeightRef = useRef<number | null>(null)
   const prependedRef = useRef(false)
   const {
-    rootRef, composerRef, composerInnerRef, height: composerHeight,
+    rootRef, composerRef, composerInnerRef, height: composerHeight, position: composerPosition, horizontal: composerHorizontal, composerStyle,
     startResize: startComposerResize, resetHeight: resetComposerHeight,
     handleResizeKey: handleComposerResizeKey,
   } = useChatComposerResize()
@@ -465,12 +470,26 @@ export default function AssistantChatPanel({
     )
     : messages
 
+  const sendFromComposer = () => {
+    if (!input.trim() || !canEdit || (running && !effectiveAllowSendWhileRunning)) return
+    followRef.current = true
+    setHasUnreadMessages(false)
+    if (running && queueEnabled) void queueCurrentInput()
+    else { setAwaitingReply(true); onSend() }
+  }
+  useSkinActions({
+    'input.set': { enabled: () => canEdit, run: args => { onInputChange(String(args?.text ?? '')); inputRef.current?.focus() } },
+    'chat.send': { enabled: () => canEdit && !!input.trim() && (!running || effectiveAllowSendWhileRunning), run: sendFromComposer },
+    'chat.stop': { enabled: () => canEdit && running && !!onStop && !stopping, run: () => onStop?.() },
+    'action.run': { enabled: () => can('action.run') && !!onQuickPromptItemSelect, run: args => {
+      const item = quickPrompts?.find(item => item.kind === 'action' && item.id === args?.id && !item.disabled)
+      if (!item) throw new Error('快捷操作不可用')
+      onQuickPromptItemSelect?.(item)
+    } },
+  }, { projectId, sessionId: sessionId ?? undefined, readOnly: !canEdit })
   return (
-    <div className="assistant-chat-panel" ref={rootRef}>
-      <div className="assistant-chat-header" style={{
-        height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
-        padding: '0 12px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)',
-      }}>
+    <div className="assistant-chat-panel" ref={rootRef} data-ui="conversation">
+      <div className="assistant-chat-header" data-ui="chat-header">
         <span className="assistant-chat-header-title" title={title}>{title}</span>
         {running && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
@@ -482,11 +501,13 @@ export default function AssistantChatPanel({
         {onClose && <Button variant="icon" aria-label={copy.closePrompt} onClick={onClose}>✕</Button>}
       </div>
 
+      <SkinExtensionSlot name="chat-header" />
       {headerContext}
+      <ConversationLayout position={composerPosition} editable={canEdit}>
 
       {/* 输入区上方的悬浮面板（如「待插入消息」）会遮住会话底部：
           由包裹层留出「面板高度 + 10px」，滚动容器随之整体变矮。 */}
-      <div className={`chat-history-wrapper${scrolledToBottom ? ' is-at-bottom' : ''}`} style={{ flex: 1, minHeight: 0, position: 'relative', paddingBottom: overlayPaddingBottom(5) }}>
+      <div className={`chat-history-wrapper${scrolledToBottom ? ' is-at-bottom' : ''}`} data-ui="messages" style={{ paddingBottom: composerPosition === 'bottom' ? overlayPaddingBottom(5) : 5 }}>
         <div
           className={`chat-history-scroll chat-history-scroll--assistant${onLoadOlderHistory ? ' chat-history-scroll--paged' : ''}`}
           ref={listRef}
@@ -641,12 +662,12 @@ export default function AssistantChatPanel({
           onSelect={() => { if (can('action.run')) onQuickPromptItemSelect?.(item) }} />)}
       </div>}
       {canEdit && <>
-      <ChatComposerResizeHandle startResize={startComposerResize} resetHeight={resetComposerHeight} handleResizeKey={handleComposerResizeKey} />
+      <ChatComposerResizeHandle horizontal={composerHorizontal} startResize={startComposerResize} resetHeight={resetComposerHeight} handleResizeKey={handleComposerResizeKey} />
 
       <div
         ref={composerRef}
         className="chat-composer-outer"
-        style={!compactLayout && composerHeight !== null ? { height: composerHeight } : undefined}
+        data-ui="composer" style={composerStyle}
       >
         <ComposerOverlayHostContext.Provider value={registerOverlay}>
           {pendingPanel}
@@ -683,24 +704,16 @@ export default function AssistantChatPanel({
                 ))}
               </div>
             )}
+          <SkinExtensionSlot name="composer-before" />
           <ChatInput
+            roleBinding={roleBinding}
             projectId={projectId}
             sessionId={sessionId}
             availableCommands={availableCommands}
             inputRef={inputRef}
             value={input}
             onChange={onInputChange}
-            onSend={() => {
-              if (!input.trim() || (running && !effectiveAllowSendWhileRunning)) return
-              followRef.current = true
-              setHasUnreadMessages(false)
-              if (running && queueEnabled) {
-                void queueCurrentInput()
-              } else {
-                setAwaitingReply(true)
-                onSend()
-              }
-            }}
+            onSend={sendFromComposer}
             onStop={onStop}
             disabled={running && !effectiveAllowSendWhileRunning}
             running={running}
@@ -751,10 +764,12 @@ export default function AssistantChatPanel({
               </>
             ) : undefined}
           />
+          <SkinExtensionSlot name="composer-after" />
         </div>
       </div>
 
       </>}
+      </ConversationLayout>
 
       {viewingPrompt && (
         <PromptViewerDialog

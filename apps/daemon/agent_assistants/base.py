@@ -1282,6 +1282,10 @@ class AssistantRuntime:
         """Assistant-specific hook after the target engine session starts."""
         return None
 
+    async def _on_context_compacted(self, session: AssistantSession) -> None:
+        """Invalidate assistant-specific context checkpoints when observable."""
+        return None
+
     # ── turn execution ──────────────────────────────────────────────────
 
     async def _run_turn(
@@ -1311,6 +1315,7 @@ class AssistantRuntime:
             active_segment_events: list[dict] = []
             live_split_count = [0]
             turn_persisted = [False]
+            active_prompt = ['']
 
             async def record_turn_error(exc: BaseException) -> None:
                 """把回合落为 error 终态（含落库与广播），供各异常分支复用。"""
@@ -1466,6 +1471,8 @@ class AssistantRuntime:
                             if resolved:
                                 session.resolved_session_id = resolved
                                 await self._on_engine_session_started(session)
+                        elif event.type == "compacted":
+                            await self._on_context_compacted(session)
                         elif event.type == "engine_state":
                             state = event.data.get("state")
                             if state is not None:
@@ -1791,6 +1798,10 @@ class AssistantRuntime:
                 await self._record_unstreamed_journal_events(
                     active_journal_ref[0], _events, journaled_events
                 )
+                if any(item.get('type') == 'compacted' for item in _events) and not any(
+                    item.get('type') == 'compacted' for item in journaled_events
+                ):
+                    await self._on_context_compacted(session)
                 if self._turn_states[turn_id]["status"] == "stopping":
                     raise asyncio.CancelledError
                 session.resolved_session_id = resolved
