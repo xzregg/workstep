@@ -187,7 +187,19 @@ export interface ChatInputMentions {
   onSelect: (id: string) => void
 }
 
+export interface ChatInputRoleBinding {
+  name: string
+  missing: boolean
+  loading: boolean
+  disabled: boolean
+  error: string
+  onOpen: () => void
+  onRemove: () => void
+  onRetry: () => void
+}
+
 export interface ChatInputProps {
+  roleBinding?: ChatInputRoleBinding
   value: string
   onChange: (value: string) => void
   onSend: () => void
@@ -278,6 +290,7 @@ export default function ChatInput({
   resetStep,
   mentions,
   imageAttach,
+  roleBinding,
   left,
   onPaste,
   title,
@@ -328,6 +341,7 @@ export default function ChatInput({
   const attachFileInputRef = useRef<HTMLInputElement>(null)
   const valueRef = useChatInputDraft({ sessionId, taskId, value, onChange })
   const canSend = !disabled
+    && !roleBinding?.loading
     && (!running || allowSendWhileRunning)
     && !stopping
     && value.trim().length > 0
@@ -712,6 +726,18 @@ export default function ChatInput({
 
   return (
     <div className="chat-input-root">
+      {roleBinding?.name && <div className="chat-role-binding" data-missing={roleBinding.missing || undefined}>
+        <button type="button" className="chat-role-binding-name" disabled={roleBinding.disabled} onClick={roleBinding.onOpen}
+          aria-label={t('roleCenter.boundRoleLabel', { name: roleBinding.name })}>
+          {roleBinding.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="drama" size={14} />}<span>{roleBinding.name}</span>
+        </button>
+        <button type="button" className="chat-role-binding-remove" disabled={roleBinding.disabled} onClick={roleBinding.onRemove}
+          aria-label={t('roleCenter.removeChatRole')}><Icon name="x" size={13} /></button>
+      </div>}
+      {(roleBinding?.error || roleBinding?.missing) && <div className="chat-role-binding-error" role="alert">
+        {roleBinding.error || t('roleCenter.missingChatRole')}
+        {roleBinding.error && <button type="button" onClick={roleBinding.onRetry} disabled={roleBinding.loading}>{t('roleCenter.retry')}</button>}
+      </div>}
       {statusOpen && !skillMenuVisible && !mentionMenuVisible && (
         <div className="chat-command-status" role="status">
           <div className="chat-command-status-header">
@@ -949,8 +975,9 @@ export default function ChatInput({
         <div className="chat-input-toolbar">
           <div className="chat-input-toolbar-scroll">
             {left}
-            {imageAttach && (
+            {(imageAttach || roleBinding) && (
             <>
+              {imageAttach && <>
               <input
                 ref={attachInputRef}
                 type="file"
@@ -974,6 +1001,7 @@ export default function ChatInput({
                   e.target.value = ''
                 }}
               />
+              </>}
               <div className="chat-input-attach-anchor">
                 <button
                   type="button"
@@ -1009,6 +1037,7 @@ export default function ChatInput({
                 </button>
                 {attachMenuOpen && (
                   <ResponsivePopover title={t('chatInput.attachMenuTitle')} onClose={() => setAttachMenuOpen(false)} className="chat-input-menu chat-input-attach-menu">
+                      {imageAttach && <>
                       <button
                         type="button"
                         className="chat-input-menu-item"
@@ -1035,6 +1064,12 @@ export default function ChatInput({
                         </span>
                         <span className="chat-input-menu-name">{t('chatInput.attachFile')}</span>
                       </button>
+                      </>}
+                      {roleBinding && <button type="button" className="chat-input-menu-item" disabled={roleBinding.disabled}
+                        onClick={() => { setAttachMenuOpen(false); roleBinding.onOpen() }}>
+                        <span className="chat-input-menu-icon">{roleBinding.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="drama" size={14} strokeWidth={1.8} />}</span>
+                        <span className="chat-input-menu-name">{t('roleCenter.chooseForChat')}</span>
+                      </button>}
                       {plan && (
                         <button
                           type="button"

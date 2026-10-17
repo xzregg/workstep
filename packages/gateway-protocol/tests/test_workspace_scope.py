@@ -123,6 +123,19 @@ def test_skin_catalog_is_read_only_and_bound_to_project():
         assert not project_http_route_allowed("GET", path, [("project_id", "p")], "p", access_level="edit")
 
 
+@pytest.mark.parametrize('name', ['theme.js', 'theme.css', 'assets/image.png', 'assets/font.woff2'])
+def test_skin_v2_files_are_read_only_and_project_bound(name):
+    path = '/api/skins/files/' + 'a' * 64 + '/' + name
+    allowed = project_http_route_allowed
+    assert allowed('GET', path, [('project_id', 'visible')], 'visible')
+    assert not allowed('GET', path, [('project_id', 'private')], 'visible')
+    assert not allowed('GET', path, [], 'visible')
+    assert not allowed('GET', path, [('project_id', 'visible'), ('extra', '1')], 'visible')
+    assert not allowed('POST', path, [('project_id', 'visible')], 'visible', access_level='edit')
+    for file in ['skin.json', 'assets/../theme.js', 'assets/code.js', 'assets/.secret']:
+        assert not allowed('GET', '/api/skins/files/' + 'a' * 64 + '/' + file, [('project_id', 'visible')], 'visible')
+
+
 @pytest.mark.parametrize('level', ['read', 'edit'])
 def test_personal_appearance_does_not_require_project_write_permission(level):
     path = '/api/appearance/preferences'

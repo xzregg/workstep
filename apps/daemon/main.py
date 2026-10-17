@@ -51,6 +51,7 @@ from api.task_draft import router as task_draft_router
 from api.task_dispatch import router as task_dispatch_router
 from api.schedule import router as schedule_router
 from api.chat_session import router as chat_session_router
+from api.chat_roles import router as chat_roles_router
 from api.statistics import router as statistics_router
 from api.share import router as share_router
 from api.assistant import router as assistant_router
@@ -356,6 +357,7 @@ app.include_router(task_draft_router)
 app.include_router(task_dispatch_router)
 app.include_router(schedule_router)
 app.include_router(chat_session_router)
+app.include_router(chat_roles_router)
 app.include_router(pending_message_inserts_router)
 app.include_router(project_audit_router)
 app.include_router(channel_bots_router)

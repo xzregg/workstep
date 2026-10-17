@@ -1,4 +1,9 @@
 export const zhCN = {
+  skinExtensions: {
+    features: '附加功能', codeDisabled: '此皮肤的自定义组件尚未启用，仅应用外观。',
+    enable: '启用自定义组件', trust: '仅启用你信任的皮肤。组件与当前界面拥有相同权限，可以访问当前账号数据和浏览器存储；这不是隔离运行环境。',
+    loading: '正在加载自定义组件…', failed: '自定义组件加载或运行失败。', discard: '放弃组件中未保存的修改？',
+  },
   taskWorkflow: {
     edit: '编辑任务流程', view: '查看任务流程', customized: '任务已自定义',
     sync: '同步主流程', discard: '放弃未保存的修改？',
@@ -9,6 +14,12 @@ export const zhCN = {
     handoff: '切换引擎时的上下文交接', smart: '智能交接', full: '完整交接', none: '不携带历史',
   },
   roleCenter: {
+    chooseForChat: '角色／专家团', searchChatAssets: '搜索角色或专家团',
+    selectRoleLabel: '选择角色：{name}', selectTeamLabel: '选择专家团：{name}',
+    selectToPreview: '选择角色或专家团，查看将加载的提示词。', loadIntoChat: '加载到对话',
+    chatBindingHint: '用于当前对话，直到移除。专家团的角色提示词由当前模型统一使用。',
+    boundRoleLabel: '查看已加载角色：{name}', removeChatRole: '移除已加载角色',
+    missingChatRole: '角色或成员已失效，请重新选择。',
     title: '角色中心',
     intro: '管理角色提示词，自由组合专家团。内置角色可修改，升级不会覆盖已有内容。',
     roles: '角色库', teams: '专家团', newRole: '新增角色', newTeam: '新增专家团',

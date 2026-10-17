@@ -13,7 +13,14 @@ async function documentPath(path: string): Promise<SkinDocument> {
 }
 function prepareSkin(skin: SkinDocument, path = '') {
   const query = path.split('?')[1]
-  return { ...skin, asset_base: skin.asset_base ? gatewayWorkspacePath() + skin.asset_base + (query ? '?' + query : '') : '' }
+  const prefix = gatewayWorkspacePath()
+  let css = skin.css
+  if (css && skin.file_base) {
+    css = css.replaceAll(`url("${skin.file_base}/`, `url("${prefix}${skin.file_base}/`)
+    if (query) css = css.replace(/url\("([^"?]+)"\)/g, (_, url: string) => `url("${url}?${query}")`)
+  }
+  return { ...skin, css, file_base: skin.file_base ? prefix + skin.file_base + (query ? '?' + query : '') : undefined,
+    asset_base: skin.asset_base ? prefix + skin.asset_base + (query ? '?' + query : '') : '' }
 }
 async function binary(path: string, options?: RequestInit) {
   const res = await gatewayFetch(BASE + path, { ...options, headers: { ...browserActorHeaders(), ...options?.headers } })

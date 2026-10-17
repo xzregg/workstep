@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
+import ChatRoleBinding from '../components/role-center/ChatRoleBinding'
 import ChannelConversationContext from '../components/ChannelConversationContext'
 import ChatSessionGoalBar from '../components/ChatSessionGoalBar'
 import { latestGoalFromMessages } from '../utils/goal'
@@ -111,7 +112,7 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showMobileDirectoryBrowser, setShowMobileDirectoryBrowser] = useState(false)
   const compact = useCompactLayout()
-  const { can, canOpenSettings } = useGatewayProjectPermissions(activeProject?.id)
+  const { can, canOpenSettings, bound: projectScopedAccess } = useGatewayProjectPermissions(activeProject?.id)
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
@@ -309,7 +310,7 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
     }
   }, [sessionParam, activeProject?.id, resetEnhance, setSendError])
 
-  const { loadMessageEvents, loadOlderHistory, historyError, historyLoading, retryHistory } = useChatSessionHistory({
+  const { loadMessageEvents, loadOlderHistory, historyError, historyLoading, historyReady, retryHistory } = useChatSessionHistory({
     sessionId: sessionParam,
     messageSessionId: sessionId,
     projectId: activeProject?.id,
@@ -431,7 +432,7 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
     )
   }
 
-  if (historyLoading && sessionId && !messages.length) {
+  if (historyLoading && !historyReady && sessionId && !messages.length) {
     return <div className="chat-session-empty" role="status"><Spinner size={16} />{t('common.loading')}</div>
   }
 
@@ -471,7 +472,10 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
 
   return (
     <>
-      <AssistantChatPanel
+      <ChatRoleBinding key={`${activeProject.id}/${sessionId}`} projectId={activeProject.id} sessionId={sessionId} running={running}
+        enabled={(!sessionParam || historyReady) && !isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('session.config')}>
+      {roleBinding => <AssistantChatPanel
+        roleBinding={roleBinding}
         projectId={activeProject.id}
         sessionId={sessionId}
         headerContext={<ChannelConversationContext projectId={activeProject.id} sessionId={sessionId} />}
@@ -614,7 +618,8 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
         quota={visibleQuota}
         onRefreshQuota={() => { void refreshQuota() }}
         quotaRefreshing={quotaRefreshing}
-      />
+      />}
+      </ChatRoleBinding>
 
       {transitionDialogs}
 

@@ -39,10 +39,10 @@ test('readonly project detail preserves history and viewing without exposing its
     await act(async () => element.querySelector('[data-task-title]')!.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
     assert.equal(element.querySelector('.task-title-input'), null)
     assert.match(readonly, /task-chat-history/)
-    assert.doesNotMatch(readonly, /class="chat-input/)
+    assert.equal(element.querySelector('.chat-input-root'), null)
     assert.equal(element.querySelector('.chat-composer-resize-handle'), null)
     await act(async () => { useGatewaySessionStore.setState({ session: { ...session, access_level: 'edit' } }); render() })
-    assert.match(element.innerHTML, /class="chat-input/)
+    assert.ok(element.querySelector('.chat-input-root'))
     const separator = element.querySelector<HTMLElement>('.chat-composer-resize-handle')!
     assert.ok(separator)
     const conversation = element.querySelector<HTMLElement>('.task-conversation-body')!

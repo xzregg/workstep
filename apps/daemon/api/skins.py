@@ -107,6 +107,12 @@ async def asset(revision: str, name: str):
     return Response(data, media_type=mime, headers={"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"})
 
 
+@router.get('/files/{revision}/{name:path}', dependencies=[Depends(authorize_read)])
+async def package_file(revision: str, name: str):
+    data, mime = await invoke(manager.file(revision, name))
+    return Response(data, media_type=mime, headers={'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff'})
+
+
 @router.get("/{skin_id}/export", dependencies=[Depends(authorize)])
 async def export(skin_id: str):
     try: checked_id(skin_id)

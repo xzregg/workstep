@@ -54,7 +54,7 @@ test('mobile task header keeps a plain compact id and moves bot and share to nav
   assert.match(taskShareButton, /className="task-detail-share-label"/)
   assert.match(taskDetailPage, /className="task-detail-id-text"/)
   assert.match(taskDetailPage, /await copyMessageText\(task\.id\)/)
-  assert.match(taskDetail, /actions=\{compact\s*\?\s*navigationActions\s*:\s*undefined\}/)
+  assert.match(taskDetail, /actions=\{compact\s*\?\s*<>\{schedulesControl\}\{navigationActions\}<\/>\s*:\s*undefined\}/)
   assert.match(mobileCss, /\.task-detail-discussion-button,\s*\.task-detail-share-button\s*\{[^}]*height:\s*var\(--mobile-control-regular\)/s)
   assert.match(mobileCss, /\.task-detail-id-button\s*\{[^}]*height:\s*var\(--task-detail-badge-height\)[^}]*border:\s*0[^}]*background:\s*transparent/s)
   assert.match(mobileCss, /\.task-detail-share-label\s*\{[^}]*display:\s*none/s)

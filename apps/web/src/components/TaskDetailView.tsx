@@ -1,3 +1,6 @@
+import ConversationLayout from './ConversationLayout'
+import { SkinExtensionSlot } from './SkinExtensions'
+import { useSkinActions } from '../skins/actions'
 import type { MessageEventsLoader } from '../utils/messageFileChanges'
 import { useChatComposerResize } from '../hooks/useChatComposerResize'
 import ChatComposerResizeHandle from './ChatComposerResizeHandle'
@@ -521,6 +524,16 @@ export default function TaskDetailView({
   // ── Split ratio (draggable divider between left panel & conversation) ──
   const compact = useCompactLayout()
   const composerResize = useChatComposerResize()
+  useSkinActions({
+    'input.set': { enabled: () => canChat && !!onPromptChange, run: args => { onPromptChange?.(String(args?.text ?? '')); chatInputRef?.current?.focus() } },
+    'chat.send': { enabled: () => canChat && !!onSend && !!prompt?.trim() && !composerState.disabled && !(projectId && chatTarget !== 'coordinator' && (stepEngineConfigLoading || !stepEngineConfig || stepEngineConfig.saving)), run: () => onSend?.() },
+    'chat.stop': { enabled: () => can('task.stop') && composerState.running && (chatTarget !== 'coordinator' ? !!onStopStep && selectedStepRunning : !!onStop), run: () => chatTarget !== 'coordinator' && selectedStepRunning ? onStopStep?.(chatTarget ?? '') : onStop?.() },
+    'action.run': { enabled: () => canRunActions && !taskActions.busy, run: args => {
+      const button = taskActions.buttons.find(button => button.id === args?.id)
+      if (!button) throw new Error('快捷操作不可用')
+      return taskActions.run(button)
+    } },
+  }, { projectId, taskId: task?.id, readOnly: !canChat })
   const mobileReviewRef = useRef<HTMLDivElement>(null)
   const [mobileTab, setMobileTab] = useState<'conversation' | 'steps' | 'artifacts'>('conversation')
   const [detailMode, setDetailMode] = useState<'detail' | 'artifacts' | 'analysis' | 'git'>('detail')
@@ -643,9 +656,9 @@ export default function TaskDetailView({
 
   const renderConversation = () => {
     return (
-      <div className="task-conversation-body" ref={composerResize.rootRef}>
+      <div className="task-conversation-body" ref={composerResize.rootRef} data-ui="conversation">
         {/* Chat header */}
-        <div className="task-conversation-header">
+        <div className="task-conversation-header" data-ui="chat-header">
           <span className="task-conversation-heading">
             {t('taskDetail.conversation')}
           </span>
@@ -655,10 +668,12 @@ export default function TaskDetailView({
           </span>
         </div>
 
+        <SkinExtensionSlot name="chat-header" />
+        <ConversationLayout position={composerResize.position} editable={canChat}>
         {/* Chat messages */}
         <div
           className="task-chat-history-wrapper"
-          style={{ paddingBottom: overlayPaddingBottom(1) }}
+          data-ui="messages" style={{ paddingBottom: composerResize.position === 'bottom' ? overlayPaddingBottom(1) : 1 }}
         >
           <div
             className="chat-history-scroll task-chat-history-scroll"
@@ -840,7 +855,7 @@ export default function TaskDetailView({
         {canChat && (<>
           <ChatComposerResizeHandle {...composerResize} />
           <div ref={composerResize.composerRef} className="chat-composer-outer"
-            style={!compact && composerResize.height !== null ? { height: composerResize.height } : undefined}>
+            data-ui="composer" style={composerResize.composerStyle}>
           <div
             ref={composerResize.composerInnerRef}
             className={`task-detail-composer${!compact && composerResize.height !== null ? ' is-resized' : ''}`}
@@ -881,6 +896,7 @@ export default function TaskDetailView({
               </div>
             )}
 
+            <SkinExtensionSlot name="composer-before" />
             <ChatInput
               projectId={projectId}
               taskId={task?.id}
@@ -1096,9 +1112,11 @@ export default function TaskDetailView({
                         )
               }
             />
+            <SkinExtensionSlot name="composer-after" />
           </div>
           </div>
         </>)}
+        </ConversationLayout>
       </div>
     )
   }

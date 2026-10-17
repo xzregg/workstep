@@ -157,3 +157,56 @@ async def test_project_scoped_actors_cannot_manage_global_role_assets(center):
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
             assert (await client.get("/api/role-center")).status_code == 403
             assert (await create_role(client)).status_code == 403
+
+
+async def test_catalog_cache_skips_scans_and_refreshes_after_role_and_team_writes(center, monkeypatch):
+    manager, app = center
+    original_list = manager._list
+    scans = []
+
+    def counted(kind, warnings):
+        scans.append(kind)
+        return original_list(kind, warnings)
+
+    monkeypatch.setattr(manager, "_list", counted)
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+        first = (await client.get("/api/role-center")).json()
+        assert scans == ["roles", "teams"]
+        scans.clear()
+        assert (await client.get("/api/role-center")).json() == first
+        assert scans == []
+
+        role = (await create_role(client)).json()
+        catalog = (await client.get("/api/role-center")).json()
+        assert any(item["id"] == role["id"] for item in catalog["roles"])
+        team_payload = {"name": "缓存评审团", "prompt": "按顺序汇总", "members": [{"role_id": role["id"], "duty": "审核"}]}
+        team = (await client.post("/api/role-center/teams", json=team_payload)).json()
+        assert (await client.get("/api/role-center")).json()["teams"][0]["id"] == team["id"]
+
+        role_payload = {key: role[key] for key in ("name", "category", "description", "prompt")}
+        role_payload.update(name="更新的检索专家", category="custom", expected_revision=role["revision"])
+        assert (await client.put("/api/role-center/roles/" + role["id"], json=role_payload)).status_code == 200
+        catalog = (await client.get("/api/role-center")).json()
+        assert next(item for item in catalog["roles"] if item["id"] == role["id"])["name"] == role_payload["name"]
+        assert {"id": "custom", "name": "custom"} in catalog["categories"]
+        team_payload.update(name="更新的缓存评审团", expected_revision=team["revision"])
+        assert (await client.put("/api/role-center/teams/" + team["id"], json=team_payload)).status_code == 200
+        assert (await client.get("/api/role-center")).json()["teams"][0]["name"] == team_payload["name"]
+        scans.clear()
+        await client.get("/api/role-center")
+        assert scans == []
+
+
+def test_catalog_cache_returns_independent_values_and_tracks_storage_root(center, tmp_path):
+    manager, _ = center
+    first = manager.catalog()
+    first["roles"][0]["name"] = "不能污染缓存"
+    first["categories"].clear()
+    second = manager.catalog()
+    assert second["roles"][0]["name"] != "不能污染缓存"
+    assert len(second["categories"]) == 18
+    other_root = tmp_path / "other"
+    other_root.mkdir()
+    (other_root / "categories.json").write_text("[]")
+    manager._root = other_root
+    assert manager.catalog()["roles"] == []

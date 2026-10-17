@@ -29,6 +29,8 @@ interface Options {
 export function useChatSessionHistory({ sessionId, messageSessionId, projectId, onLoaded, onMissing }: Options) {
   const [historyError, setHistoryError] = useState('')
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [loadedScope, setLoadedScope] = useState('')
+  const historyReady = Boolean(projectId && sessionId && loadedScope === `${projectId}/${sessionId}`)
   const retryRef = useRef<() => void>(() => {})
   const retryHistory = useCallback(() => retryRef.current(), [])
   const pageRef = useRef({ key: '', offset: 0, hasOlder: false, loading: false })
@@ -68,6 +70,7 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
             detail.running,
             unchangedMessages,
           )
+          setLoadedScope(`${projectId}/${sessionId}`)
         })
         .catch((reason) => {
           page.loading = false
@@ -156,5 +159,5 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
     }
   }, [sessionId, messageSessionId, projectId, t])
 
-  return { loadMessageEvents, loadOlderHistory, historyError, historyLoading, retryHistory }
+  return { loadMessageEvents, loadOlderHistory, historyError, historyLoading, historyReady, retryHistory }
 }

@@ -52,6 +52,7 @@ from agent_assistants.context_handoff import (
     render_handoff_reference,
 )
 from agent_assistants.chat_session_transitions import ChatSessionTransitions
+from agent_assistants.chat_roles import ChatRoleBindings
 from services.chat_permissions import is_valid_permission_mode
 from services.channels.session_source import channel_session_source
 from services.config import config_store, resolve_execution_engine
@@ -108,7 +109,7 @@ DEFAULT_QUICK_BUTTONS = [
 ]
 
 
-class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
+class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRuntime):
     """The Codex-style session chat assistant and session operations."""
 
     def __init__(self, event_bus, project_manager):
@@ -643,6 +644,7 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             "vision_model": row.vision_model,
             "provider_id": row.provider_id,
             "permission_mode": row.permission_mode or "",
+            "role_binding": _load_json(row.role_binding_json, None),
             "engine_session_id": row.engine_session_id,
             "parent_session_id": row.parent_session_id,
             "forked_from_message_id": row.forked_from_message_id,
@@ -891,6 +893,9 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
         return ""
 
     def _build_prompt(self, session) -> str:
+        return self._with_role_prompt(session, self._build_chat_prompt(session))
+
+    def _build_chat_prompt(self, session) -> str:
         """Build user/context input; configured chat rules travel independently."""
         prompt = self._prompt_system_instruction(session)
         pending_handoff = session.extra.get("pending_handoff")
@@ -942,7 +947,7 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
 
     def _build_rebuild_prompt(self, session) -> str:
         """Rebuild a lost engine thread from the persisted conversation."""
-        prompt = self._build_prompt(session)
+        prompt = self._build_chat_prompt(session)
         if session.resolved_session_id:
             turns = [
                 item for item in session.messages
@@ -961,7 +966,7 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
                 if self._prompt_system_instruction(session)
                 else tail
             )
-        return prompt
+        return self._with_role_prompt(session, prompt, force=True)
 
     def _system_prompt_for_display(self, session) -> str:
         """Show the project-specific instruction, including on resumed turns."""

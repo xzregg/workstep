@@ -1,3 +1,4 @@
+import SkinWorkspaceFrame from './SkinExtensions'
 import { useSkinSidebar } from '../hooks/useSkinSidebar'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
@@ -457,7 +458,8 @@ export default function Layout({ onSelectProject, children }: Props) {
   }
 
   return (
-    <div className="app-shell">
+    <SkinWorkspaceFrame onOpenSettings={section => { setSettingsSection(section); setSettingsFocus(undefined); setShowSettings(true) }}>
+    <div className="app-shell" data-ui="app-shell">
       {/* Sidebar */}
       <ResponsiveNavigation className="layout-sidebar" onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth + (compact ? 0 : WORKSPACE_TOOL_RAIL_WIDTH) }}>
         <div className="layout-sidebar-header">
@@ -1218,7 +1220,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       )}
 
       {/* Main content */}
-      <main className="app-main layout-main">
+      <main className="app-main layout-main" data-ui="main">
         {children}
       </main>
 
@@ -1328,5 +1330,6 @@ export default function Layout({ onSelectProject, children }: Props) {
         )}
       </ConfirmDialog>
     </div>
+    </SkinWorkspaceFrame>
   )
 }
