@@ -111,6 +111,8 @@ async def _check_provider_grants(call, device_id: str, user_id: str, provider_id
 
 
 async def proxy_remote_request(call: GatewayCall):
+    from gateway.services.html_preview_access import preview_resource_identity
+    call = preview_resource_identity(call)
     user, device_id, auth_session, host_project_id = await _remote_identity(call)
     provider_ids, _ = await compiled_provider_access(call.database, device_id, user.id)
     provider_grant_expires_at = int(time.time()) + 300

@@ -114,6 +114,14 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
         assert client.get(f"{remote_url}/api/health").json() == {"proxied": "/api/health"}
         assert client.get(f"{remote_url}/").json() == {"proxied": "/"}
         assert client.get(f"{remote_url}/assets/main.js").json() == {"proxied": "/assets/main.js"}
+        preview_resource = '/api/fs/html-resource/project-1/' + 'a' * 43 + '/data.json'
+        assert client.get(remote_url + preview_resource, headers={'Origin': 'null'}).json() == {'proxied': preview_resource}
+        preflight = client.options(remote_url + preview_resource, headers={
+            'Origin': 'null', 'Access-Control-Request-Method': 'GET',
+            'Access-Control-Request-Headers': 'x-workstep-desktop-token',
+        })
+        assert preflight.status_code == 204
+        assert preflight.headers['access-control-allow-origin'] == 'null'
         with client.websocket_connect("wss://d-device-1.gateway.test/ws",
                                       headers={"origin": remote_url}) as socket:
             assert socket.receive_text() == "remote-ready"
@@ -387,3 +395,14 @@ def test_unauthorized_workspace_documents_return_to_portal_but_api_keeps_json(tm
         assert denied.json()['error']['message'] == 'Device access denied'
         assert client.get(root + 'assets/index.js', follow_redirects=False).status_code == 403
         assert client.post(root, follow_redirects=False).status_code == 403
+
+
+def test_preview_preflight_is_narrow_and_does_not_authenticate_resource_reads(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, public_origin='https://gateway.test'))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        path = '/workspace/device-1/api/fs/html-resource/project-1/' + 'a' * 43 + '/data.json'
+        preflight = client.options(path, headers={'Origin': 'null', 'Access-Control-Request-Method': 'GET'})
+        assert preflight.status_code == 204
+        assert preflight.headers['access-control-allow-methods'] == 'GET'
+        assert client.get(path).status_code == 401
+        assert client.options('/workspace/device-1/api/admin/users').status_code == 401

@@ -38,9 +38,9 @@ class RemoteProjectProxyMiddleware(BaseHTTPMiddleware):
 
         body = await request.body()
         project_id = request.query_params.get("project_id")
-        if not project_id and request.url.path.startswith("/api/fs/project-raw/"):
-            remainder = request.url.path.removeprefix("/api/fs/project-raw/")
-            project_id = remainder.split("/", 1)[0] or None
+        for prefix in ('/api/fs/project-raw/', '/api/fs/html-resource/'):
+            if not project_id and request.url.path.startswith(prefix):
+                project_id = request.url.path.removeprefix(prefix).split('/', 1)[0] or None
         if not project_id and "application/json" in request.headers.get("content-type", ""):
             try:
                 payload = json.loads(body or b"{}")
@@ -77,8 +77,14 @@ class RemoteProjectProxyMiddleware(BaseHTTPMiddleware):
                 {"detail": f"远程项目连接不可用：{exc}"},
                 status_code=502,
             )
+        headers = dict(response.headers)
+        from workstep_gateway_protocol.html_preview import html_preview_policy, PREVIEW_RESOURCES_HEADER
+        root = headers.get(PREVIEW_RESOURCES_HEADER.lower())
+        if root is not None:
+            headers['content-security-policy'] = html_preview_policy(
+                f'{request.url.scheme}://{request.url.netloc}', root if root != 'none' else None)
         return Response(
             content=response.body,
             status_code=response.status,
-            headers=response.headers,
+            headers=headers,
         )

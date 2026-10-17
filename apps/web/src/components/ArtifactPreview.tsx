@@ -12,7 +12,7 @@ import MarkdownMessage from './MarkdownMessage'
 import CodeFilePreview from './CodeFilePreview'
 import { copyText } from '../utils/clipboard'
 import ProjectDirectoryBrowser from './ProjectDirectoryBrowser'
-import { isolatedHtmlDocument, prepareFrame } from '../utils/htmlPreviewCompat'
+import { HTML_PREVIEW_SANDBOX, isolatedHtmlDocument, prepareFrame } from '../utils/htmlPreviewCompat'
 import { useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
 
 interface ArtifactPreviewProps {
@@ -297,11 +297,11 @@ export default function ArtifactPreview({
         ))}
         <div className="artifact-html-frame-container">
           <iframe
-            src={taskFilePreview?.isolatedHtml ? undefined : rawUrl}
-            srcDoc={taskFilePreview?.isolatedHtml ? isolatedHtmlDocument(content || '') : undefined}
+            src={preview.html_preview ? fsApi.htmlPreviewUrl(preview.html_preview, projectId) : undefined}
+            srcDoc={preview.html_preview ? undefined : isolatedHtmlDocument(content || '')}
             title={t('artifact.htmlFile')}
-            sandbox={taskFilePreview?.isolatedHtml ? 'allow-scripts allow-popups' : 'allow-scripts allow-same-origin allow-popups'}
-            referrerPolicy={taskFilePreview?.isolatedHtml ? 'no-referrer' : undefined}
+            sandbox={HTML_PREVIEW_SANDBOX}
+            referrerPolicy="no-referrer"
             onLoad={(event) => prepareFrame(event.currentTarget)}
             className="artifact-html-frame"
           />

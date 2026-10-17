@@ -688,6 +688,13 @@ class DataConnection:
             response_headers = first.payload.get("headers", [])
             if not isinstance(response_headers, list):
                 raise ValueError("Invalid proxy headers")
+            if status == 200 and call.operation == 'GET' and call.target.path == '/api/fs/preview':
+                from gateway.services.html_preview_access import register_preview_grant, GRANT_HEADER
+                for pair in response_headers:
+                    if (isinstance(pair, list) and len(pair) == 2
+                            and isinstance(pair[0], str) and isinstance(pair[1], str)
+                            and pair[0].lower() == GRANT_HEADER):
+                        register_preview_grant(call, pair[1])
 
             async def body():
                 try:
@@ -719,6 +726,14 @@ class DataConnection:
             settings = getattr(call, 'settings', None) if call.settings is not None else None
             public_scheme = urlsplit(settings.public_origin).scheme if settings and settings.public_origin else call.target.scheme
             websocket_scheme = "ws" if public_scheme == "http" else "wss"
+            from workstep_gateway_protocol.html_preview import html_preview_policy, PREVIEW_RESOURCES_HEADER
+            preview_root = next((pair[1] for pair in response_headers
+                                 if isinstance(pair, list) and len(pair) == 2
+                                 and isinstance(pair[0], str) and isinstance(pair[1], str)
+                                 and pair[0].lower() == PREVIEW_RESOURCES_HEADER.lower()), None)
+            preview_response = preview_root == 'none' or bool(
+                isinstance(preview_root, str) and re.fullmatch(
+                    r'/api/fs/html-resource/[^/]+/[A-Za-z0-9_-]{43}/', preview_root))
             for pair in response_headers:
                 if (isinstance(pair, list) and len(pair) == 2
                         and all(isinstance(item, str) for item in pair)
@@ -737,7 +752,7 @@ class DataConnection:
                         and pair[0].lower() not in ("connection", "transfer-encoding",
                                                     "content-length", "set-cookie",
                                                     "content-security-policy", "x-frame-options",
-                                                    "access-control-allow-origin")):
+                                                    "access-control-allow-origin", "access-control-allow-credentials")):
                     value = pair[1]
                     if pair[0].lower() == "location":
                         parsed = urlsplit(value)
@@ -758,7 +773,17 @@ class DataConnection:
                 "object-src 'none'", "base-uri 'self'", "form-action 'self'",
                 "frame-ancestors 'self'" if call.workspace_path else "frame-ancestors 'none'",
             ))
-            if call.workspace_path and not call.target.path.startswith('/api/') and any(key.lower() == 'content-type' and value.startswith('text/html') for key, value in response.headers.extra):
+            if preview_response:
+                # Rebuild capability sources for the public device path. Never
+                # widen connect-src back to the whole authenticated application.
+                public_root = ((call.workspace_path or '').rstrip('/') + preview_root
+                               if preview_root != 'none' else None)
+                response.headers['Content-Security-Policy'] = html_preview_policy(
+                    f'{public_scheme}://{remote_host}', public_root)
+                if public_root:
+                    response.headers['Access-Control-Allow-Origin'] = 'null'
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+            if call.workspace_path and not preview_response and not call.target.path.startswith('/api/') and any(key.lower() == 'content-type' and value.startswith('text/html') for key, value in response.headers.extra):
                 from gateway.services.workspace_paths import rewrite_workspace_html
                 response.chunks = rewrite_workspace_html(response.chunks, call.workspace_path)
                 response.headers["Cache-Control"] = "no-store"

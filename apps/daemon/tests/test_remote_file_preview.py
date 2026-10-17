@@ -116,6 +116,26 @@ async def test_remote_raw_files_bind_authenticated_project_and_reject_escape(rem
     assert escaped.status_code == 403
 
 
+async def test_remote_preview_ticket_and_security_headers_survive_both_dispatchers(remote_files):
+    client, _, _ = remote_files
+    preview = await client.get('/api/fs/preview', params={
+        'project_id': 'remote:abc', 'path': '.workstep/artifacts/task/ui/2/UI 设计稿.html',
+    })
+    assert preview.status_code == 200, preview.text
+    grant = preview.json()['html_preview']
+    prefix = f"/api/fs/html-resource/remote%3Aabc/{grant['token']}/"
+    for filename in ('UI%20设计稿.html', 'theme.css', 'app.js', 'image.svg'):
+        response = await client.get(prefix + filename)
+        assert response.status_code == 200, response.text
+        assert 'sandbox allow-scripts' in response.headers['content-security-policy']
+        assert 'allow-same-origin' not in response.headers['content-security-policy']
+        assert response.headers['access-control-allow-origin'] == 'null'
+        assert response.headers['cache-control'] == 'no-store'
+        assert 'workstep.internal' not in response.headers['content-security-policy']
+        assert 'connect-src http://client/api/fs/html-resource/' in response.headers['content-security-policy']
+    assert (await client.get(prefix + 'escape.html')).status_code == 403
+
+
 async def test_remote_html_slow_file_resolution_keeps_health_responsive(remote_files, monkeypatch):
     client, _, _ = remote_files
     started = threading.Event()
