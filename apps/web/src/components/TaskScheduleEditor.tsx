@@ -13,15 +13,18 @@ import MarkdownEditor from './MarkdownEditor'
 import './TaskScheduleEditor.css'
 
 /** Owns the task-target form, task lookup, preview, validation and save lifecycle. */
-export default function TaskScheduleEditor({ projectId, schedule, workflows = [], onSaved, onEditorStateChange }: {
+export type BoundScheduleTask = Pick<Task, 'id' | 'title' | 'workflow_id'>
+
+export default function TaskScheduleEditor({ projectId, schedule, workflows = [], boundTask, onSaved, onEditorStateChange }: {
   projectId: string; schedule: ProjectSchedule | null
   workflows?: Array<{ id: string; name: string }>
+  boundTask?: BoundScheduleTask
   onSaved: (schedule: ProjectSchedule) => void
   onEditorStateChange?: (state: ScheduleEditorState) => void
 }) {
   const { t } = useI18n()
   const [name, setName] = useState(schedule?.name || '')
-  const [taskId, setTaskId] = useState(schedule?.target_task_id || '')
+  const [taskId, setTaskId] = useState(boundTask?.id || schedule?.target_task_id || '')
   const [workflowFilter, setWorkflowFilter] = useState('')
   const [tasks, setTasks] = useState<Task[]>([])
   const [instruction, setInstruction] = useState(schedule?.instruction || '')
@@ -34,11 +37,12 @@ export default function TaskScheduleEditor({ projectId, schedule, workflows = []
   const [notification, setNotification] = useState<NotificationEditorState>({value: schedule?.notification || {enabled:false}, valid:true})
   const acceptDefaults = useScheduleDraftState(JSON.stringify({ name, taskId, instruction, stop, rule, notification:notification.value }), revision, true, busy, onEditorStateChange)
   useEffect(() => {
+    if (boundTask) { setTasks([boundTask as Task]); return }
     let active = true
     taskApi.list(projectId).then(result => { if (active) setTasks(result.tasks || []) })
       .catch(cause => { if (active) setError((cause as Error).message) })
     return () => { active = false }
-  }, [projectId])
+  }, [projectId, boundTask])
   useEffect(() => {
     let active = true
     setPreview([])
@@ -47,7 +51,7 @@ export default function TaskScheduleEditor({ projectId, schedule, workflows = []
     }).catch(() => { if (active) setPreview([]) }), 250)
     return () => { active = false; window.clearTimeout(timer) }
   }, [rule])
-  const selectedWorkflow = schedule ? tasks.find(task => task.id === taskId)?.workflow_id || '' : workflowFilter
+  const selectedWorkflow = boundTask?.workflow_id || (schedule ? tasks.find(task => task.id === taskId)?.workflow_id || '' : workflowFilter)
   const visibleTasks = tasks.filter(task => !selectedWorkflow || task.workflow_id === selectedWorkflow)
   const changeWorkflow = (workflowId: string) => {
     setWorkflowFilter(workflowId)
@@ -68,13 +72,13 @@ export default function TaskScheduleEditor({ projectId, schedule, workflows = []
   return <div className="task-schedule-editor">
     <div className="task-schedule-identification">
     <Field label={t('schedules.ruleName')} required><Input aria-label={t('schedules.ruleName')} value={name} onChange={e => setName(e.target.value)} /></Field>
-    <Field label={t('schedules.workflow')}><Select aria-label={t('schedules.workflow')} value={selectedWorkflow} disabled={Boolean(schedule)} onChange={e => changeWorkflow(e.target.value)}>
+    <Field label={t('schedules.workflow')}><Select aria-label={t('schedules.workflow')} value={selectedWorkflow} disabled={Boolean(schedule || boundTask)} onChange={e => changeWorkflow(e.target.value)}>
       <option value="">{t('schedules.allWorkflows')}</option>
       {workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}
       {selectedWorkflow && !workflows.some(workflow => workflow.id === selectedWorkflow) && <option value={selectedWorkflow}>{selectedWorkflow}</option>}
     </Select></Field>
     </div>
-    <Field label={t('schedules.targetTask')} required><TaskPicker key={selectedWorkflow} tasks={visibleTasks} value={taskId} onChange={setTaskId} disabled={Boolean(schedule)} label={t('schedules.targetTask')} /></Field>
+    <Field label={t('schedules.targetTask')} required><TaskPicker key={selectedWorkflow} tasks={visibleTasks} value={taskId} onChange={setTaskId} disabled={Boolean(schedule || boundTask)} label={t('schedules.targetTask')} /></Field>
     <Field label={t('schedules.taskInstruction')} required help={t('schedules.taskInstructionHelp')}><MarkdownEditor value={instruction} onChange={setInstruction} projectId={projectId} /></Field>
     <ScheduleRuleEditor value={rule} onChange={setRule} />
     <Field label={t('schedules.stopCondition')}><Select value={stop} onChange={e => setStop(e.target.value as typeof stop)}><option value="manual">{t('schedules.stopManual')}</option><option value="task_terminal">{t('schedules.stopTerminal')}</option></Select></Field>

@@ -52,11 +52,21 @@ for (const { interactive, standalone } of [
   globalThis.fetch = async (input, init) => {
     const path = String(input); calls.push(path)
     const prefix = '/api/public/shares/handle'
+    if (path === prefix + '/schedules') return Response.json({schedules:[{
+      id:'task-rule',name:'分享任务定时汇报',status:'active',summary:'每 10 分钟',
+      instruction:'检查当前任务',rule:{kind:'minutes',every:10,timezone:'UTC'},
+    }]})
     if (path === prefix + '/operation') {
       assert.equal(new Headers(init?.headers).get('X-Share-CSRF'), 'restored-csrf')
       const operation = JSON.parse(String(init?.body))
       operations.push(operation)
       const target = new URL(operation.path, 'http://localhost').pathname
+      if (target === '/schedule/list') return Response.json({schedules:[{
+        id:'task-rule',name:'分享任务定时汇报',target_type:'task',target_task_id:'task',status:'active',summary:'每10分钟',
+        instruction:'检查当前任务',rule:{kind:'minutes',every:10,timezone:'UTC'},
+        workflow_id:'',task_template:{},notification:{enabled:false},
+      }]})
+      if (target === '/schedule/preview') return Response.json({next_runs:['2099-01-01T00:00:00Z'],summary:'',timezone:'UTC',cron_expression:null})
       if (target === '/task/task/coordinator-config') return Response.json({
         configured: { engine: '', model: '', fast_model: '', vision_model: '', thinking_effort: '', provider_id: '' },
         resolved: { engine: 'codex', model: 'gpt-test', fast_model: '', vision_model: '', thinking_effort: '', provider_id: '' },
@@ -149,6 +159,15 @@ for (const { interactive, standalone } of [
       return
     }
     assert.ok(element.querySelector('.task-detail-header'))
+    assert.equal(element.querySelector('.task-schedules-count')?.textContent,'1')
+    assert.equal(element.querySelector('.chat-input .task-schedules-trigger'),null)
+    assert.ok(element.querySelector('.task-detail-header .task-schedules-trigger'))
+    await act(async()=>element.querySelector<HTMLButtonElement>('.task-schedules-trigger')!.click())
+    const scheduleDialog=document.querySelector('.task-schedules-dialog')!
+    assert.match(scheduleDialog.textContent!,/分享任务定时汇报/)
+    assert.equal(Boolean(scheduleDialog.querySelector('.schedule-page')),interactive)
+    await act(async()=>scheduleDialog.querySelector<HTMLButtonElement>('[aria-label="关闭"]')!.click())
+    assert.ok(calls.includes('/api/public/shares/handle/schedules'))
     assert.ok(shareSocket, 'gateway shares must connect their task-scoped websocket')
     await act(async () => shareSocket.onopen())
     assert.equal(poll, undefined, 'a connected share must not schedule snapshot polling')

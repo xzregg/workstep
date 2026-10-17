@@ -132,6 +132,7 @@ function hasProcessEvents(events: any[]) {
 // ─── Props ───────────────────────────────────────────────────────────────
 
 export interface TaskDetailViewProps {
+  schedulesControl?: React.ReactNode
   /** The URL access context only decides whether the shared composer is present. */
   actionEnabled?: boolean
   chatEnabled?: boolean
@@ -336,6 +337,7 @@ export interface TaskDetailViewProps {
 export default function TaskDetailView({
   actionEnabled,
   chatEnabled,
+  schedulesControl,
   scheduledStopEnabled,
   task,
   steps,
@@ -1128,13 +1130,13 @@ export default function TaskDetailView({
       {/* Header */}
       {task && <TaskDetailHeader task={task} projectId={projectId} titleEditable={titleEditable} locale={locale} activeStep={activeStep}
         activeStepColor={activeStepColor} taskCompleted={taskCompleted}
-        headerActions={<>{!compact && navigationActions}{headerActions}</>} taskHeaderExtra={taskHeaderExtra} onClose={onClose}
+        headerActions={<>{!compact && <>{schedulesControl}{navigationActions}</>}{headerActions}</>} taskHeaderExtra={taskHeaderExtra} onClose={onClose}
         onHeaderPointerDown={onHeaderPointerDown} onHeaderKeyDown={onHeaderKeyDown}
         onHeaderDoubleClick={onHeaderDoubleClick} />}
 
-      {(!compact || canShowAnalysis || gitEnabled || navigationActions) && <TaskDetailTabs
+      {(!compact || canShowAnalysis || gitEnabled || navigationActions || schedulesControl) && <TaskDetailTabs
         className="task-detail-primary-tabs" ariaLabel={t('executionAnalysis.title')}
-        actions={compact ? navigationActions : undefined}
+        actions={compact ? <>{schedulesControl}{navigationActions}</> : undefined}
         selected={detailMode} onSelect={setDetailMode}
         tabs={[
           { id: 'detail', label: t('taskDetail.detailTab') },

@@ -22,6 +22,18 @@ export default function FirstUseDialog() {
 
   useEffect(() => {
     void load()
+    const reconnect = () => { void load(true) }
+    const retry = () => {
+      if (document.visibilityState !== 'hidden' && useUserSettingsStore.getState().error) void load()
+    }
+    window.addEventListener('workstep:reconnected', reconnect)
+    window.addEventListener('focus', retry)
+    document.addEventListener('visibilitychange', retry)
+    return () => {
+      window.removeEventListener('workstep:reconnected', reconnect)
+      window.removeEventListener('focus', retry)
+      document.removeEventListener('visibilitychange', retry)
+    }
   }, [load])
 
   if (!loaded) return null

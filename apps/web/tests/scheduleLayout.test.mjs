@@ -41,12 +41,6 @@ test('opens without selecting a schedule and reveals the editor only on demand',
   assert.match(source, /\{\(selected \|\| creating\) && \(<fieldset/)
 })
 
-test('renders a one-time schedule summary on two lines', () => {
-  assert.match(source, /function ScheduleSummary/)
-  assert.match(source, /<br \/>/)
-  assert.match(source, /<ScheduleSummary summary=\{item\.summary\} \/>/)
-})
-
 test('renders each schedule as a two-row item with title/status then time/summary', () => {
   assert.match(source, /import MarqueeText from '\.\.\/components\/MarqueeText'/)
   assert.match(source, /className="schedule-list-item"/)

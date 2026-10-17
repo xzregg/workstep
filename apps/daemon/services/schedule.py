@@ -298,12 +298,18 @@ class ScheduleModule:
 
     def list(self, project_id: str, target_type=None, task_id=None) -> list[dict]:
         with self._projects.activate_project_by_id(project_id):
-            return [
+            items = [
                 self._to_dict(row)
                 for row in Schedule.select().where(Schedule.status != "deleted").order_by(Schedule.created_at.desc())
                 if (not target_type or row.target_type == target_type)
                 and (not task_id or row.target_task_id == task_id)
             ]
+            task_ids = {item["target_task_id"] for item in items if item["target_type"] == "task"}
+            titles = dict(Task.select(Task.id, Task.title).where(Task.id.in_(task_ids)).tuples()) if task_ids else {}
+            for item in items:
+                if item["target_type"] == "task":
+                    item["target_task_title"] = titles.get(item["target_task_id"])
+            return items
 
     def get(self, project_id: str, schedule_id: str) -> dict:
         with self._projects.activate_project_by_id(project_id):
@@ -311,6 +317,12 @@ class ScheduleModule:
             if row is None:
                 raise ValueError(f"Schedule not found: {schedule_id}")
             return self._to_dict(row)
+
+    def task_summaries(self, project_id: str, task_id: str) -> dict:
+        """Task-share viewing projection excludes project and notification configuration."""
+        fields = ("id", "name", "rule", "summary", "status", "next_run_at", "instruction")
+        return {"schedules": [{key: row[key] for key in fields}
+                              for row in self.list(project_id, target_type="task", task_id=task_id)]}
 
     def update(self, project_id: str, schedule_id: str, **changes) -> dict:
         with self._projects.activate_project_by_id(project_id) as project:

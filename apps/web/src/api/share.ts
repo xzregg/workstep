@@ -1,4 +1,5 @@
 import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
+import type { TaskScheduleSummary } from './schedule'
 import { BASE, FULL_PAGE_LIMIT, fileDataUrl, request, shareRequest } from './transport'
 import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, ReviewRun, DirectoryBrowseResult, ActionProposal, TaskArtifactInputSnapshot } from './client'
 
@@ -103,6 +104,8 @@ export const shareApi = {
       `/task-share/public/${encodeURIComponent(token)}/execution-report`,
       sessionToken,
     ),
+  schedules: (token: string, sessionToken: string) =>
+    shareRequest<{ schedules: TaskScheduleSummary[] }>(`/task-share/public/${encodeURIComponent(token)}/schedules`, sessionToken),
   history: async (token: string, sessionToken: string, limit = FULL_PAGE_LIMIT, offset = 0) => {
     let messages: any[] = []
     while (messages.length < limit) {

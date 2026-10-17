@@ -43,7 +43,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   loading: false,
   error: '',
   load: async (force = false) => {
-    if ((get().loaded && !force) || get().loading) return
+    if ((get().loaded && !get().error && !force) || get().loading) return
     set({ loading: true, error: '' })
     const actor = loadBrowserActor()
     try {

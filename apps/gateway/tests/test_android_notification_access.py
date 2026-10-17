@@ -49,6 +49,24 @@ def test_android_destination_rechecks_access_without_collected_notification(tmp_
             return [dict(id='project', name='演示 & 项目')]
 
         monkeypatch.setattr(controls, 'request_project_catalog', catalog)
+        # Channel/email links may open without this device's remote-session cookie.
+        # Preserve the source instead of falling through the portal's last device.
+        page = 'tasks' if target == 'task_id' else 'chat'
+        target_key = 'task' if target == 'task_id' else 'session'
+        destination = dict(project='演示 & 项目', workflow='flow-1', **{target_key:'target/1'})
+        redirect = client.get('/workspace/one/'+page, params={**destination,'device':'wrong-device'},
+                              headers={'accept':'text/html'}, follow_redirects=False)
+        assert redirect.status_code == 303
+        location = urlsplit(redirect.headers['location'])
+        assert location.path == '/'+page
+        assert parse_qs(location.query) == {**{key:[value] for key,value in destination.items()},'device':['one']}
+        recovered = client.get('/api/completion-notifications/access', params={
+            'project_id':'演示 & 项目','device_id':'one','workflow_id':'flow-1',target:'target/1'})
+        assert recovered.status_code == 200, recovered.text
+        assert recovered.json()['url'] == 'https://gateway.test/workspace/one/'
+        assert parse_qs(urlsplit(recovered.json()['next']).query) == {key:[value] for key,value in destination.items()}
+        assert client.get('/api/completion-notifications/access', params={
+            'project_id':'演示 & 项目','device_id':'other',target:'target/1'}).status_code == 404
         params = dict(project_id='gateway/one/project', **{target: 'target/1'})
         with ThreadPoolExecutor() as pool:
             pending = pool.submit(client.get, '/api/completion-notifications/access', params=params)
@@ -74,6 +92,8 @@ def test_android_destination_rechecks_access_without_collected_notification(tmp_
         assert client.get('/api/completion-notifications/access', params={'project_id': params['project_id']}).status_code == 422
         monkeypatch.setattr(controls, 'is_online', lambda _: False)
         assert client.get('/api/completion-notifications/access', params=params).status_code == 409
+        assert client.get('/api/completion-notifications/access', params={
+            'project_id':'演示 & 项目','device_id':'one',target:'target/1'}).status_code == 409
         monkeypatch.setattr(controls, 'is_online', lambda _: True)
 
         async def revoke():
@@ -86,4 +106,6 @@ def test_android_destination_rechecks_access_without_collected_notification(tmp_
 
         client.portal.call(revoke)
         assert client.get('/api/completion-notifications/access', params=params).status_code == (404 if whole_device else 403)
+        assert client.get('/api/completion-notifications/access', params={
+            'project_id':'演示 & 项目','device_id':'one',target:'target/1'}).status_code == (404 if whole_device else 403)
         assert client.get('/api/completion-notifications/access', params={**params, 'project_id': 'gateway/one/project/extra'}).status_code == 422

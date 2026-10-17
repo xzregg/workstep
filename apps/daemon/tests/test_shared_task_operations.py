@@ -135,6 +135,43 @@ async def test_editable_share_reuses_task_routes_with_bound_scope_and_responsive
         Message.create(id='own-message', task=task_id, step_key='req', channel='coordinator',
                        role='assistant', content='', position=0, sequence=1, created_at=utc_now())
     await main.project_manager.run_db(project_id, seed)
+    schedule_body = {'name':'任务汇报', 'target_type':'task', 'target_task_id':task_id,
+                     'instruction':'检查当前状态', 'notification':{'enabled':False},
+                     'rule':{'kind':'minutes','every':10,'timezone':'UTC'}}
+    foreign_schedule = await main.project_manager.run_db(project_id, lambda _project:
+        main.schedule_module.create(project_id, **{**schedule_body, 'target_task_id':'foreign-task'}))
+    assert (await operation('/schedule/create', method='POST', body={**schedule_body,'target_task_id':'foreign-task'}))[0] == 403
+    assert (await operation('/schedule/create', method='POST', body={**schedule_body,'target_type':'project'}))[0] == 403
+    assert (await operation('/schedule/create', method='POST', body=schedule_body, mode='read_only'))[0] == 403
+    status, schedule = await operation('/schedule/create', method='POST', body=schedule_body)
+    assert status == 200, schedule
+    schedule_path = '/schedule/' + schedule['id']
+    status, listing = await operation('/schedule/list?project_id=foreign')
+    assert status == 200
+    assert [item['id'] for item in listing['schedules']] == [schedule['id']]
+    assert (await operation('/schedule/list?task_id=foreign-task'))[0] == 403
+    for method, suffix in [('PATCH',''),('DELETE',''),('GET','/runs'),('POST','/pause')]:
+        assert (await operation('/schedule/'+foreign_schedule['id']+suffix,method=method,body={}))[0] == 404
+    assert (await operation(schedule_path, method='PATCH', body={'target_task_id':'foreign-task'}))[0] == 403
+    assert (await operation(schedule_path, method='PATCH', body={'name':'已修改'}))[1]['name'] == '已修改'
+    status, history = await operation(schedule_path+'/runs')
+    assert status == 200 and history['runs'] == []
+    assert (await operation('/schedule/preview', method='POST', body=schedule_body['rule']))[0] == 200
+    from models import Schedule
+    original_schedule_get = Schedule.get_or_none
+    schedule_entered = threading.Event()
+    def slow_schedule_get(*args, **kwargs):
+        schedule_entered.set(); time.sleep(0.35)
+        return original_schedule_get(*args, **kwargs)
+    monkeypatch.setattr(Schedule, 'get_or_none', slow_schedule_get)
+    pending_schedule = asyncio.create_task(operation(schedule_path+'/pause', method='POST'))
+    assert await asyncio.to_thread(schedule_entered.wait, 2)
+    started_schedule = time.monotonic()
+    assert (await client.get('/api/health')).status_code == 200
+    assert time.monotonic() - started_schedule < 0.2
+    assert (await pending_schedule)[1]['status'] == 'paused'
+    monkeypatch.setattr(Schedule, 'get_or_none', original_schedule_get)
+    assert (await operation(schedule_path, method='DELETE'))[0] == 200
     assert (await operation('/pending-message-inserts', method='POST', body={
         'project_id': 'foreign', 'target_message_id': 'unknown-message', 'content': 'No',
     }))[0] == 404

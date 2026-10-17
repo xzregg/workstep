@@ -1,9 +1,10 @@
 """Synchronous database work units for authenticated task-share boundaries."""
 
 import json
+import re
 from pathlib import Path
 
-from models import ActionProposal, ActionRun, Message, PendingMessageInsert, ReviewRun, Task
+from models import ActionProposal, ActionRun, Message, PendingMessageInsert, ReviewRun, Schedule, Task
 
 
 class SharedTaskScopeError(Exception):
@@ -17,6 +18,22 @@ def validate_operation(_project, task_id, path, method, query, body):
     task = Task.get_or_none(Task.id == task_id)
     if task is None:
         raise SharedTaskScopeError(404, "Task unavailable")
+
+    if path.startswith('/schedule/'):
+        if path in {'/schedule/list', '/schedule/notification-options'}:
+            if query.get('task_id') not in (None, task_id) or query.get('target_type') not in (None, 'task'):
+                raise SharedTaskScopeError(403, "Task schedule scope denied")
+        elif path == '/schedule/create':
+            if body.get('target_type') != 'task' or body.get('target_task_id') != task_id:
+                raise SharedTaskScopeError(403, "Task schedule scope denied")
+        elif path != '/schedule/preview':
+            match = re.fullmatch(r'/schedule/([A-Za-z0-9_-]+)(?:/(?:pause|resume|runs|runs/[A-Za-z0-9_-]+/notification/retry))?', path)
+            if match:
+                row = Schedule.get_or_none((Schedule.id == match[1]) & (Schedule.target_type == 'task') & (Schedule.target_task_id == task_id))
+                if row is None:
+                    raise SharedTaskScopeError(404, "Task schedule unavailable")
+                if body.get('target_type', 'task') != 'task' or body.get('target_task_id', task_id) != task_id:
+                    raise SharedTaskScopeError(403, "Task schedule scope denied")
 
     def message(identifier):
         if not Message.select().where((Message.id == identifier) & (Message.task == task_id)).exists():

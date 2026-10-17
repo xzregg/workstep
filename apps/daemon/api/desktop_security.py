@@ -302,7 +302,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                         "/api/platform-share/artifacts", "/api/platform-share/reviews",
                         "/api/platform-share/interventions",
                         "/api/platform-share/git/workspace",
-                        "/api/platform-share/execution-report")
+                        "/api/platform-share/execution-report", "/api/platform-share/schedules")
                         and not SHARE_ARTIFACT_CONTENT.fullmatch(request.url.path)
                         and not SHARE_UPLOAD_CONTENT.fullmatch(request.url.path)
                         and not SHARE_GIT_READ.fullmatch(request.url.path)

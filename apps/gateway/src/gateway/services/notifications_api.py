@@ -166,36 +166,48 @@ async def legacy_feed(ws):
     await feed(call,legacy=True)
 
 
-async def legacy_access(call,project_id,task_id=None,session_id=None):
+async def legacy_access(call,project_id,task_id=None,session_id=None,device_id=None,workflow_id=None):
     user=await actor(call)
     if not task_id and not session_id:
         raise GatewayError('invalid','Notification target required')
+    if device_id:
+        # A regular workspace link carries the source project name, not Android's
+        # gateway/device/project identity. Resolve it only within that device.
+        return await _source_access(call,user,device_id,project_id,task_id,session_id,workflow_id,by_name=True)
     rows=await legacy_rows(call,user.id,project_id,task_ids=[task_id] if task_id else [],
         session_ids=[session_id] if session_id else [],recent=True)
     if rows:
-        return await open_notification(call,rows[-1].sequence)
+        access=await open_notification(call,rows[-1].sequence)
+        if workflow_id: access['next']+='&'+urlencode({'workflow':workflow_id})
+        return access
     # Android can receive the device event before the Gateway collector stores it.
     # Its scoped link identifies the source; normal access tickets still enforce
     # current authorization without requiring a retained notification row.
     if not project_id.startswith('gateway/'):
         raise GatewayError('not_found','Notification target unavailable')
     _,device_id,host_project_id=project_id.split('/')  # Validated by legacy_rows.
+    return await _source_access(call,user,device_id,host_project_id,task_id,session_id,workflow_id)
+
+
+async def _source_access(call,user,device_id,project_selector,task_id,session_id,workflow_id,*,by_name=False):
     async with call.database.session() as session:
         whole=await has_device_access(session,user.id,device_id)
         project=await session.scalar(select(PlatformProject).where(
-            PlatformProject.device_id==device_id,PlatformProject.host_project_id==host_project_id))
+            PlatformProject.device_id==device_id,
+            PlatformProject.name==project_selector if by_name else PlatformProject.host_project_id==project_selector))
     if whole:
         access=await device_access_for_user(call,device_id,user.id)
         try:
             catalog=await call.control_connections.request_project_catalog(device_id)
         except (ConnectionError,asyncio.TimeoutError) as exc:
             raise GatewayError('upstream_failed','Source device unavailable') from exc
-        source=next((item for item in catalog if item['id']==host_project_id),None)
+        source=next((item for item in catalog if item['name' if by_name else 'id']==project_selector),None)
         if source is None: raise GatewayError('not_found','Source project unavailable')
         name=source['name']
     else:
         if project is None: raise GatewayError('not_found','Source project unavailable')
         access=await project_access(call,project.id)
         name=project.name
-    query=urlencode({'project':name,'task' if task_id else 'session':task_id or session_id})
+    query=urlencode({'project':name,**({'workflow':workflow_id} if workflow_id else {}),
+                     'task' if task_id else 'session':task_id or session_id})
     return dict(access,next=('tasks' if task_id else 'chat')+'?'+query)

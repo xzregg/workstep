@@ -48,6 +48,21 @@ async def dispatch_shared_task_operation(request: Request, project_id: str, task
         project_id, lambda project: validate_operation(project, task_id, path, method, query, body)
     )
     allowed = False
+    if path in {'/schedule/list', '/schedule/notification-options'} and method == 'GET':
+        query['task_id'] = task_id
+        if path == '/schedule/list':
+            query['target_type'] = 'task'
+        allowed = True
+    if path in {'/schedule/create', '/schedule/preview'} and method == 'POST':
+        allowed = True
+    if re.fullmatch(r'/schedule/[A-Za-z0-9_-]+', path) and path not in {
+        '/schedule/list', '/schedule/create', '/schedule/preview', '/schedule/notification-options',
+    } and method in {'PATCH', 'DELETE'}:
+        allowed = True
+    if re.fullmatch(r'/schedule/[A-Za-z0-9_-]+/(?:pause|resume|runs/[A-Za-z0-9_-]+/notification/retry)', path) and method == 'POST':
+        allowed = True
+    if re.fullmatch(r'/schedule/[A-Za-z0-9_-]+/runs', path) and method == 'GET':
+        allowed = True
     suffix = path[len(task_path):] if path.startswith(task_path) else None
     if suffix is not None:
         allowed = (

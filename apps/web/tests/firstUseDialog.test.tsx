@@ -8,6 +8,44 @@ import FirstUseDialog from '../src/components/FirstUseDialog'
 import { useUserSettingsStore } from '../src/stores/userSettingsStore'
 import { useGatewayConnectionStore } from '../src/stores/gatewayConnectionStore'
 
+test('reconnect and returning to the page recover developer mode after failed reads', async () => {
+  const { window } = installDomEnvironment()
+  useUserSettingsStore.setState({ loaded:false, loading:false, openMode:false, userName:'', identitySource:'local', error:'' })
+  const original = globalThis.fetch
+  let online = false; let calls = 0
+  globalThis.fetch = async () => {
+    calls++
+    if (!online) throw new Error('Gateway reconnecting')
+    return Response.json({ user_name:'用户', identity_source:'local', open_mode:true })
+  }
+  const container = document.body.appendChild(document.createElement('div')); const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><FirstUseDialog /></I18nProvider>))
+    assert.equal(calls, 1)
+    online = true
+    await act(async () => window.dispatchEvent(new window.Event('workstep:reconnected')))
+    assert.equal(useUserSettingsStore.getState().openMode, true)
+    assert.equal(calls, 2)
+    // A later reconnect refreshes a stale successful snapshot too.
+    useUserSettingsStore.setState({ openMode:false })
+    await act(async () => window.dispatchEvent(new window.Event('workstep:reconnected')))
+    assert.equal(useUserSettingsStore.getState().openMode, true)
+    // A failed refresh preserves the known setting and can retry on focus.
+    online = false
+    await act(async () => window.dispatchEvent(new window.Event('workstep:reconnected')))
+    assert.equal(useUserSettingsStore.getState().openMode, true)
+    online = true
+    await act(async () => window.dispatchEvent(new window.Event('focus')))
+    assert.equal(useUserSettingsStore.getState().error, '')
+    const recoveredCalls = calls
+    await act(async () => window.dispatchEvent(new window.Event('focus')))
+    assert.equal(calls, recoveredCalls)
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.fetch = original; container.remove(); await window.happyDOM.close()
+  }
+})
+
 test('gateway desktop opens platform authentication without requiring a local name', async () => {
   const { window } = installDomEnvironment()
   Object.defineProperty(window, 'workstepDesktop', { configurable:true, value:{ notify() {} } })

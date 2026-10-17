@@ -40,6 +40,7 @@ import TaskDiscussionGroups from '../components/TaskDiscussionGroups'
 import ConfirmDialog from '../components/ConfirmDialog'
 import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
 import TaskShareButton from '../components/TaskShareButton'
+import { scheduleApi } from '../api/schedule'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import TaskStepConfigController from '../components/TaskStepConfigController'
 import {
@@ -181,6 +182,9 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
     () => taskApi.executionReport(taskId, projectId),
     [taskId, projectId],
   )
+  const loadSchedules = useCallback(() => shared
+    ? shared.readCapabilities.loadSchedules()
+    : scheduleApi.list(projectId || '', taskId), [projectId, taskId, shared?.readCapabilities.loadSchedules])
   const { task, status: taskReadStatus, error: taskReadError, retry: retryTaskRead } = useTaskRecord(
     taskId, projectId, shared?.task, Boolean(project && projectId !== activeProject?.id),
   )
@@ -960,6 +964,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
         historyMessages={historyMessages}
         onLoadOlderHistory={shared?.loadOlderHistory || loadOlderHistory}
         readCapabilities={{
+          loadSchedules,
           loadWorkflow: loadTaskWorkflow,
           artifactDirectory,
           resolveAssetUrl: ownerAssetUrl,
@@ -969,6 +974,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
           loadExecutionReport: ownerExecutionReport,
           browseGitWorkspace,
         } satisfies TaskDetailReadCapabilities}
+        scheduleProject={detailProject || undefined}
         liveMessages={liveMessages}
         livePromptOverrides={livePromptOverrides}
         availableCommands={availableCommands}

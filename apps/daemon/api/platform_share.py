@@ -541,6 +541,14 @@ async def read_platform_share_execution_report(request: Request):
     return report
 
 
+@router.get('/schedules')
+async def read_platform_share_schedules(request: Request):
+    scope = _share_scope(request)
+    from main import project_manager, schedule_module
+    return await project_manager.run_db(scope['host_project_id'], lambda _project:
+        schedule_module.task_summaries(scope['host_project_id'], scope['task_id']))
+
+
 @router.post("/steps/{step_key}/message")
 async def send_platform_share_step_message(request: Request, step_key: str,
                                            body: ShareStepMessage):

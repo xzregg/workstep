@@ -239,6 +239,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
   })))
   const interactive = meta?.mode === 'interactive'
   const shareSessionToken = phase.kind === 'ready' ? phase.sessionToken : ''
+  const loadSchedules = useCallback(() => api.schedules(token || '', shareSessionToken), [api, token, shareSessionToken])
   const sharedGitApi = useMemo(() => createGitApi(<T,>(path: string, options?: RequestInit) =>
     api.gitRequest<T>(token || '', shareSessionToken, path, options),
   ), [api, token, shareSessionToken])
@@ -422,7 +423,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
     <SharePageShell>
       <SharedEditableTaskDetail previewOnly={standalonePreview} token={token} session={shareSessionToken} api={api} task={task}
         messages={messages} artifacts={artifactFiles} inputSnapshots={inputSnapshots} reviews={reviews}
-        readCapabilities={{ loadWorkflow, artifactDirectory: sharedArtifactDirectory, resolveAssetUrl: markdownUrlResolver,
+        readCapabilities={{ loadSchedules, loadWorkflow, artifactDirectory: sharedArtifactDirectory, resolveAssetUrl: markdownUrlResolver,
           filePreview: sharedFilePreview, loadMessageEvents, openArtifact,
           loadExecutionReport: executionReportLoader, browseGitWorkspace }}
         gitCapability={{ api: sharedGitApi, projectId: 'shared', shared: true, readOnly: false,
@@ -449,6 +450,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
         historyMessages={messages}
         onLoadOlderHistory={loadOlderHistory}
         readCapabilities={{
+          loadSchedules,
           loadWorkflow,
           artifactDirectory: sharedArtifactDirectory,
           resolveAssetUrl: markdownUrlResolver,

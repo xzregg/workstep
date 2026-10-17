@@ -1452,6 +1452,50 @@ async def test_sqlite_write_lock_does_not_block_health_check(api_context):
 
 
 @pytest.mark.anyio
+async def test_schedule_list_resolves_task_title_without_blocking_health(api_context, monkeypatch):
+    import main
+    from models import Task
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "schedule-list-title"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={"path": str(project_dir)})).json()["id"]
+    def seed(_project):
+        Task.create(id="schedule-target", title="关联任务的名称", cwd=str(project_dir),
+                    created_at=utc_now(), updated_at=utc_now())
+
+    await main.project_manager.run_db(project_id, seed)
+    created = await client.post("/api/schedule/create", params={"project_id": project_id}, json={
+        "name": "单次汇报", "target_type": "task", "target_task_id": "schedule-target", "instruction": "检查进度",
+        "rule": {"kind": "once", "run_at": "2099-01-01T00:00:00Z", "timezone": "UTC"},
+    })
+    assert created.status_code == 200
+    project = __import__("main").project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    entered = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def slow_title_query(sql, params=None, commit=None):
+        if sql.startswith("SELECT") and '"title"' in sql and 'FROM "tasks"' in sql:
+            loop.call_soon_threadsafe(entered.set)
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_title_query)
+    listing = asyncio.create_task(client.get("/api/schedule/list", params={"project_id": project_id}))
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    started = time.perf_counter()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.perf_counter() - started < 0.2
+    assert not listing.done()
+    response = await listing
+    assert response.status_code == 200
+    assert response.json()["schedules"][0]["target_task_title"] == "关联任务的名称"
+
+
+@pytest.mark.anyio
 async def test_schedule_write_does_not_block_health_check(api_context, monkeypatch):
     """Schedule persistence must run outside the FastAPI event loop."""
     client, tmp_path = api_context

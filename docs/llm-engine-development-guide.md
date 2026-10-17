@@ -26,7 +26,7 @@
 
 原生适配器声明 `SYSTEM_PROMPT_MODE`：Codex SDK 使用 `developer`，映射为线程的 `developer_instructions`，保留 `base_instructions`；Claude/Qoder SDK 使用 `system`，分别通过 `claude_code` / `qodercli` 预设的 `append` 追加；Pydantic AI 使用 `system`，通过持久化的 `SystemPromptPart` 与现有 harness 能力指令共同生效，固定规则随会话历史恢复；相同规则不重新注入，变更／清空只替换 WorkStep 自己的系统消息，历史缺失时重新初始化。未声明的引擎默认为 `body`，基类只在新会话或无恢复能力时前置正文，恢复与恢复重试不重复前置。
 
-任务协调助手的固定规则由 `coordinator_context.py` 构建，当前任务、用户消息和来源背景属于每轮正文上下文；不得因来源背景变化而把固定规则整体设为 `system_prompt_each_turn=True`。Codex SDK 检查原生已保存规则，不能只凭会话 ID 省略注入：兼容 `turn_context.developer_instructions`，并识别原生 `response_item` 中带 `<workstep_system_rules>` 标记的开发者消息；实际运行时可能不保存前一个字段。只比较最新规则，用户消息不能作为恢复凭据；压缩后未确认规则保留则重新初始化。旧记录没有标记且缺少设置字段时首次补注入一次。原生恢复用的空指令标记不表示新指令，提示词查看页不显示空的独立指令区块。渠道普通助手仍按自身传输约定提供每轮来源背景。
+任务协调助手的固定规则由 `coordinator_context.py` 构建，当前任务、用户消息和来源背景属于每轮正文上下文；不得因来源背景变化而把固定规则整体设为 `system_prompt_each_turn=True`。Codex SDK 按会话恢复能力决定注入：有 session ID 且支持恢复时复用原会话指令，不扫描原生 rollout、不比较当前规则；首次、无恢复能力或显式 `system_prompt_each_turn=True` 时传入指令。已有会话沿用原指令，规则修改在新会话生效。内部空指令标记不表示新指令，提示词查看页不显示空的独立指令区块。渠道普通助手仍按自身传输约定提供每轮来源背景。
 
 `agent_assistants/chat_session.py` 将项目设置中的「全局提示词」（`project_settings.chat_system_prompt`，不是跨项目的系统设置）作为独立 `system_prompt` 提供；正文仅保留用户输入及必要交接/重建背景，空配置不补默认角色。普通对话使用默认首次正文降级策略，固定规则不在恢复轮次重复插入；原生适配器按自身 system/developer 配置追加。
 
@@ -974,18 +974,18 @@ Pydantic AI 的 `_prepare_prompt_input` 在输入捕获前异步检查持久化�
 
 ### 原生系统指令的恢复与重复设置
 
-ACP 统一接受固定配置，是否省略本轮设置由引擎依据原生持久化状态判断，不能仅根据 `SYSTEM_PROMPT_MODE` 或 Session ID 判断。
+ACP 统一接受固定配置，各引擎按自己的恢复约定决定是否传入；Codex SDK 依据 session ID 与 `supports_resume`，Pydantic AI 依据持久化系统消息，Claude/Qoder SDK 仍保留每轮启动配置。
 
 | 引擎 | 同会话固定规则的处理 |
 |---|---|
 | Pydantic AI | 从 Harness 的系统消息恢复；规则相同不新增，变更／清空替换自己的消息 |
-| Codex SDK | 从原生 rollout 最新 `turn_context.developer_instructions` 验证规则及自定义 developer 配置；匹配才省略线程覆盖。旧版本不保存该字段、记录不完整、工作目录不匹配或历史丢失时继续设置 |
+| Codex SDK | 有 session ID 且支持恢复时不覆盖固定指令，不读取原生日志；首次、无恢复能力或显式每轮注入时设置。已有会话继续使用原指令，变更新会话生效 |
 | Claude Agent SDK | 当前适配器每轮创建新进程；保持 preset append，不凭 ID 省略。SDK 未设置 system_prompt 时可生成空 `--system-prompt`；较新 Claude 的 snapshot 是版本相关能力，尚未在本适配器接入 |
 | Qoder SDK | 每轮创建新进程，当前接口未验证系统配置随 resume 恢复；继续设置 preset append，不能将聊天历史恢复视作系统配置恢复 |
 
-Codex 的恢复检查在 `codex_sdk.py::_prepare_prompt_input` 中、输入捕获之前完成，所有配置／原生日志读取均在线程中。确认恢复时内部空字符串标记表示不重新覆盖 developer 配置，实际 SDK 的 `thread_resume` 不携带新的 `developer_instructions`，`config` 中也不携带旧自定义覆盖；原生历史继续提供规则。变更、首次和 `system_prompt_each_turn=True` 仍传递独立规则。此优化不另建数据库字段，不写入原生会话文件。
+Codex 的恢复判断在 `codex_sdk.py::_prepare_prompt_input` 中、输入捕获之前完成，无配置或原生日志 I/O。内部空字符串标记表示不重新覆盖 developer 配置，实际 SDK 的 `thread_resume` 不携带新的 `developer_instructions`，`config` 中也不携带自定义 developer 覆盖；原生会话负责恢复规则。首次和 `system_prompt_each_turn=True` 仍传递独立规则。恢复失败沿用引擎错误处理，不通过读取日志猜测或补写指令。此逻辑不另建数据库字段，不写入原生会话文件。
 
-Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多条系统消息。实际设置时，「查看提示词」继续显示它；不得为了让查看变短而隐藏实际参数。渠道动态来源仍按每轮策略传递。回归见 `test_engine_system_prompt.py`，覆盖实际 SDK 参数、首次／恢复／重建、自定义规则合并、原生记录缺失／不完整、规则变更、每轮策略和慢读取健康检查。
+Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多条系统消息。实际设置时，「查看提示词」继续显示它；不得为了让查看变短而隐藏实际参数。渠道动态来源仍按每轮策略传递。回归见 `test_engine_system_prompt.py`，覆盖实际 SDK 参数、首次／恢复／重建、自定义规则合并、无日志／配置读取的恢复判断、规则修改后继续复用原会话、每轮策略。
 
 依据：[Claude 系统提示词及 snapshot 版本语义](https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts#change-the-prompt-of-an-existing-session)、[Qoder 会话恢复](https://docs.qoder.com/cli/sdk/session-control)、[Codex 原生会话与配置](https://github.com/openai/codex/blob/main/codex-rs/core/src/session/turn_context.rs)。
 

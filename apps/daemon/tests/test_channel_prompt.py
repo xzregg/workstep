@@ -41,7 +41,6 @@ async def test_channel_codex_resume_keeps_saved_rules_and_new_background(monkeyp
     engine = CodexSDKEngine()
     rules = module._engine_system_prompt(SimpleNamespace(project_id="project"))
     monkeypatch.setattr("engines.codex_sdk.config_store.get_codex_sdk_config", lambda: {})
-    monkeypatch.setattr(engine, "_saved_developer_instructions", lambda *_: engine._combined_developer_instructions({}, rules))
     for sender in ("Alice", "Bob"):
         prepared = await engine._prepare_prompt_input(
             {"prompt": f"Current sender: {sender}\n\nHello", "session_id": "native", "cwd": str(tmp_path)},

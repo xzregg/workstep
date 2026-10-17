@@ -1,0 +1,18 @@
+.chat-input-attach.task-schedules-trigger { width: auto; min-width: 26px; padding: 0; gap: 3px; flex-shrink: 0; }
+.task-schedules-count { color: var(--accent); font-size: calc(10px * var(--font-scale)); font-weight: 600; }
+.task-schedules-overlay { z-index: 1400; padding: 16px; }
+.modal.task-schedules-dialog { width: 560px; height: min(600px, calc(100dvh - 32px)); max-width: calc(100vw - 32px); display: flex; flex-direction: column; }
+.modal.task-schedules-dialog--manage { width: min(1500px, 96vw); height: min(1080px, calc(100dvh - 32px)); }
+.task-schedules-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border-soft); flex-shrink: 0; }
+.task-schedules-header button { padding: 0; }
+.task-schedules-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px; }
+.task-schedules-item { padding: 14px 0; border-bottom: 1px solid var(--border-soft); overflow-wrap: anywhere; }
+.task-schedules-item-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.task-schedules-item-heading > span { flex-shrink: 0; color: var(--meta); font-size: calc(11px * var(--font-scale)); }
+.task-schedules-time { margin-top: 6px; color: var(--meta); font-size: calc(12px * var(--font-scale)); }
+.task-schedules-instruction { margin: 8px 0 0; white-space: pre-wrap; font-size: calc(13px * var(--font-scale)); }
+@media (max-width: 1023px) {
+  .task-schedules-overlay { padding: 0; }
+  .modal.task-schedules-dialog { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .chat-input-attach.task-schedules-trigger { min-height: var(--mobile-control-regular); min-width: var(--mobile-control-regular); }
+}

@@ -48,6 +48,7 @@ export const gatewayShareApi: SharedTaskApi = {
   },
   task: (token, csrf) => read(token, '/task', csrf),
   executionReport: (token, csrf) => read(token, '/execution-report', csrf),
+  schedules: (token, csrf) => read(token, '/schedules', csrf),
   history: async (token, csrf, limit = 100, offset = 0) => {
     const page = await read<{ messages: any[]; next_offset: number | null; interventions?: any[] }>(token,
       offset ? `/history/${offset}` : '/history', csrf)

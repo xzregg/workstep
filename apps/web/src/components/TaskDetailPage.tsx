@@ -6,6 +6,7 @@ import type { GitWorkspaceBrowser } from './git/GitApiContext'
 import Button from './Button'
 import PromptViewerDialog from './PromptViewerDialog'
 import TaskDetailView, { type TaskDetailViewProps } from './TaskDetailView'
+import TaskSchedules, { type TaskSchedulesLoader } from './TaskSchedules'
 import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
 import TaskArtifactPreviewDialog from './TaskArtifactPreviewDialog'
 import { GitApiContext } from './git/GitApiContext'
@@ -22,6 +23,7 @@ import {
  */
 /** Both the owner and share routes must supply every task-detail viewing capability. */
 export interface TaskDetailReadCapabilities {
+  loadSchedules: TaskSchedulesLoader
   loadWorkflow: () => Promise<TaskWorkflowConfiguration>
   artifactDirectory: string
   resolveAssetUrl: MarkdownUrlResolver
@@ -47,6 +49,7 @@ export interface TaskDetailPageProps extends Omit<
   'onLoadMessageEvents' | 'onOpenArtifact' | 'executionReportLoader' | 'gitEnabled' | 'gitProjectId'
 > {
   readCapabilities: TaskDetailReadCapabilities
+  scheduleProject?: Project
   gitCapability?: TaskDetailGitCapability
   proposalActions?: CoordinatorProposalActions
   artifactNotice?: string
@@ -73,6 +76,7 @@ export default function TaskDetailPage({
   onCloseViewingPrompt,
   overlays,
   readCapabilities,
+  scheduleProject,
   gitCapability,
   proposalActions,
   onClose,
@@ -119,6 +123,8 @@ export default function TaskDetailPage({
         onLoadMessageEvents={readCapabilities.loadMessageEvents}
         onOpenArtifact={readCapabilities.openArtifact}
         executionReportLoader={readCapabilities.loadExecutionReport}
+        schedulesControl={viewProps.task && <TaskSchedules key={viewProps.task.id} taskId={viewProps.task.id} load={readCapabilities.loadSchedules}
+          project={scheduleProject} task={viewProps.task}/>}
       />
 
       {artifactNotice && (

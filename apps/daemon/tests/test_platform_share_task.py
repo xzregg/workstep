@@ -477,6 +477,13 @@ async def test_platform_share_task_read_scope_and_slow_db_health(api_context, mo
     report_status, report = await request_share(ticket, '/api/platform-share/execution-report')
     assert report_status == 200
     assert isinstance(report['summary']['run_count'], int)
+    await main.project_manager.run_db(project_id, lambda _project:
+        main.schedule_module.create(project_id, name="分享任务汇报", target_type="task", target_task_id=task_id,
+            instruction="检查进度", rule={"kind":"minutes","every":10,"timezone":"UTC"}))
+    schedules_status, schedules = await request_share(ticket, '/api/platform-share/schedules')
+    assert schedules_status == 200
+    assert [item['name'] for item in schedules['schedules']] == ["分享任务汇报"]
+    assert 'notification' not in schedules['schedules'][0]
 
 
 @pytest.mark.anyio

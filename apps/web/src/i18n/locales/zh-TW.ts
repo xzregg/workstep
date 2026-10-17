@@ -1891,6 +1891,7 @@ export const zhTW: Messages = {
     importErrors: '{count} 个导入失败',
   },
   schedules: {
+    taskEmpty: '当前任务暂无待执行的定时任务',
     intervalMinutes: '间隔（分钟）',
     intervalHours: '间隔（小时）',
     notifyChannel: '执行完成后通知渠道机器人',
