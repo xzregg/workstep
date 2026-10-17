@@ -15,6 +15,47 @@ from gateway.contracts import GatewaySocket
 from urllib.parse import urlsplit
 
 
+@pytest.mark.parametrize('workspace', [False, True])
+@pytest.mark.parametrize('resources', [False, True])
+async def test_preview_policy_rewritten_without_granting_system_api_access(workspace, resources):
+    from workstep_gateway_protocol.html_preview import html_preview_policy, PREVIEW_RESOURCES_HEADER
+    root = '/api/fs/html-resource/project-1/' + 'a' * 43 + '/'
+    prefix = '/workspace/device-1' if workspace else ''
+    path = prefix + (root + 'demo.html' if resources else '/api/fs/project-raw/project-1/demo.html')
+    content = b'<button onclick="this.textContent=1">Run</button>'
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'end':
+                headers = [['content-type', 'text/html'],
+                           ['Access-Control-Allow-Origin', 'null'], ['Access-Control-Allow-Credentials', 'true'],
+                           [PREVIEW_RESOURCES_HEADER, root if resources else 'none'],
+                           ['Content-Security-Policy', html_preview_policy('http://workstep.internal', root if resources else None)]]
+                for payload in ({'phase': 'start', 'status': 200, 'headers': headers},
+                                {'phase': 'body', 'data': base64.b64encode(content).decode()}, {'phase': 'end'}):
+                    await connection.deliver(ProxyFrame(stream_id=frame.stream_id, type=FrameType.http_response, payload=payload))
+    connection = DataConnection('device-1', Socket())
+    app = FastAPI()
+    @app.get(path)
+    async def proxy(request: Request):
+        return await invoke(connection.proxy_http, request=request, user_id='user-1', username='admin')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='https://gateway.test') as client:
+        response = await client.get(path)
+    assert response.status_code == 200
+    assert response.content == content, 'API HTML resources must never receive the workspace SPA base injection'
+    policy = response.headers['content-security-policy']
+    assert 'allow-same-origin' not in policy
+    assert 'http://workstep.internal' not in policy
+    assert "connect-src 'self'" not in policy
+    assert "form-action 'none'" in policy
+    if resources:
+        assert f'connect-src https://gateway.test{prefix}{root}' in policy
+        assert response.headers['access-control-allow-origin'] == 'null'
+        assert response.headers.get_list('access-control-allow-credentials') == ['true']
+    else:
+        assert "connect-src 'none'" in policy
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('path,share_target', [
     ('/api/public/shares/token/git/read/content/7b7d',

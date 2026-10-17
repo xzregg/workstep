@@ -229,6 +229,8 @@ def _guard_exempt(path: str, method: str) -> bool:
         return True
     if path == "/api/health":
         return True
+    if method.upper() in ('GET', 'OPTIONS') and re.fullmatch(r'/api/fs/html-resource/[^/]+/[A-Za-z0-9_-]{1,128}/.+', path):
+        return True  # The resource handler verifies its read-only capability.
     # OAuth-style Gateway callbacks are protected by one-time PKCE state and
     # must remain reachable from the external system browser.
     if path == "/api/gateway-platform/callback" and method.upper() == "GET":

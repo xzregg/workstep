@@ -127,6 +127,14 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def device_host_boundary(request: Request, call_next):
+        if request.method == 'OPTIONS':
+            import re
+            if re.fullmatch(r'(?:/workspace/[^/]+)?/api/fs/html-resource/[^/]+/[A-Za-z0-9_-]{43}/.+', request.url.path):
+                from starlette.responses import Response
+                from workstep_gateway_protocol.html_preview import preview_preflight_headers
+                # Preflights contain no credentials. Only announce this exact
+                # GET transport; the resource read still checks login and ticket.
+                return Response(status_code=204, headers=preview_preflight_headers())
         path_parts = request.url.path.split('/', 3)
         if len(path_parts) == 4 and path_parts[1] == 'workspace' and path_parts[2]:
             local_path = '/' + path_parts[3]

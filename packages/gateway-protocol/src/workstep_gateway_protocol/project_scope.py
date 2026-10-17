@@ -64,6 +64,7 @@ _SESSION_ACTION_RUN = re.compile(r"/api/project-actions/sessions/[A-Za-z0-9_-]{1
 _TASK_HISTORY = re.compile(r"/api/task/[A-Za-z0-9_-]{1,128}/history\Z")
 _UPLOAD_FILE = re.compile(r"/api/fs/serve/[A-Za-z0-9_.-]{1,256}\Z")
 _PROJECT_RAW = re.compile(r"/api/fs/project-raw/[A-Za-z0-9_-]{1,128}/.+\Z")
+_HTML_RESOURCE = re.compile(r"/api/fs/html-resource/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{43}/.+\Z")
 _ENGINE_MODELS = re.compile(r"/api/engine/[A-Za-z0-9_-]{1,128}/models\Z")
 _ENGINE_QUOTA = re.compile(r"/api/engine/[A-Za-z0-9_-]{1,128}/quota\Z")
 _WORKSPACE_ASSET = re.compile(
@@ -247,6 +248,9 @@ def project_http_route_allowed(method: str, path: str,
             key in ("projectId", "query", "status", "engine", "start_date",
                     "end_date", "limit", "offset") for key, _ in query_pairs)
     values = [value for key, value in query_pairs if key == "project_id"]
+    if _HTML_RESOURCE.fullmatch(path):
+        return (path.split('/')[4] == project_id
+                and query_pairs in ([], [('project_id', project_id)]))
     if values != [project_id]:
         return False
     if (path in ("/api/skins", "/api/skins/contract")

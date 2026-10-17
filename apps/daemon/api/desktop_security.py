@@ -243,6 +243,19 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
     """Authenticate privileged desktop APIs and attach browser hardening headers."""
 
     async def dispatch(self, request: Request, call_next):
+        if request.method == 'OPTIONS' and re.fullmatch(
+                r'/api/fs/html-resource/[^/]+/[A-Za-z0-9_-]{43}/.+', request.url.path):
+            from starlette.responses import Response
+            from workstep_gateway_protocol.html_preview import preview_preflight_headers
+            return Response(status_code=204, headers=preview_preflight_headers())
+        if (request.scope.get('gateway_remote_actor') is None
+                and authenticated_remote_dispatch() is None
+                and request.method == 'GET' and re.fullmatch(
+                    r'/api/fs/html-resource/[^/]+/[A-Za-z0-9_-]{1,128}/.+', request.url.path)):
+            # This exact read-only route authenticates with its expiring file
+            # capability. It must never inherit the viewer's browser identity.
+            with actor_context(None):
+                return await call_next(request)
         from workstep_gateway_protocol.hooks import HOOK_PATH
         if HOOK_PATH.fullmatch(request.url.path):
             # Only this narrow ingress authenticates with its own hook token.

@@ -7,8 +7,8 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from services.config import CONFIG_DIR
@@ -25,6 +25,16 @@ router.include_router(browser_router)
 # Root-level router for project-relative upload URLs:
 # /{project_name}/.workstep/uploads/{filename} (as stored in markdown).
 uploads_router = APIRouter()
+
+
+def _sandbox_file(response):
+    """Also protect direct navigation to active uploads/raw files."""
+    from workstep_gateway_protocol.html_preview import html_preview_policy, PREVIEW_RESOURCES_HEADER
+    response.headers['Content-Security-Policy'] = html_preview_policy('')
+    response.headers[PREVIEW_RESOURCES_HEADER] = 'none'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
 
 
 class OpenDirectoryRequest(BaseModel):
@@ -389,7 +399,7 @@ def _serve_upload_file(upload_dir: Path, filename: str) -> FileResponse:
     if not filepath.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
-    return FileResponse(str(filepath))
+    return _sandbox_file(FileResponse(str(filepath)))
 
 
 @router.get("/serve/{filename}")
@@ -444,7 +454,7 @@ async def serve_file(path: str, project_id: str | None = Query(None)):
         if not file_path.is_file():
             raise HTTPException(status_code=400, detail=_path_error_detail("Not a file", file_path))
         content_type, _ = mimetypes.guess_type(str(file_path))
-        return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+        return _sandbox_file(FileResponse(file_path, media_type=content_type or "application/octet-stream"))
 
     return await asyncio.to_thread(response)
 
@@ -461,7 +471,7 @@ async def serve_raw_file(full_path: str, project_id: str | None = Query(None)):
         if not file_path.is_file():
             raise HTTPException(status_code=400, detail=_path_error_detail("Not a file", file_path))
         content_type, _ = mimetypes.guess_type(str(file_path))
-        return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+        return _sandbox_file(FileResponse(file_path, media_type=content_type or "application/octet-stream"))
 
     return await asyncio.to_thread(response)
 
@@ -486,7 +496,7 @@ async def serve_project_raw_file(
         if not file_path.is_file():
             raise HTTPException(status_code=400, detail=_path_error_detail("Not a file", file_path))
         content_type, _ = mimetypes.guess_type(str(file_path))
-        return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+        return _sandbox_file(FileResponse(file_path, media_type=content_type or "application/octet-stream"))
 
     return await asyncio.to_thread(response)
 
@@ -498,7 +508,52 @@ async def preview_file(
     absolute: bool = Query(False),
 ):
     """Preview a file content for display."""
-    return await asyncio.to_thread(_preview_file_sync, path, project_id, absolute)
+    def load():
+        preview = _preview_file_sync(path, project_id, absolute)
+        if preview['content_type'] == 'text/html':
+            from services.html_preview import issue_ticket
+            preview['html_preview'] = issue_ticket(
+                _resolve_project_file(path, project_id, allow_absolute=absolute), project_id,
+            )
+        return preview
+    preview = await asyncio.to_thread(load)
+    if 'html_preview' in preview:
+        return JSONResponse(preview, headers={
+            'X-WorkStep-Preview-Grant': preview['html_preview']['token'], 'Cache-Control': 'no-store',
+        })
+    return preview
+
+
+@router.get('/html-resource/{project_ref}/{token}/{resource_path:path}')
+async def html_preview_resource(request: Request, project_ref: str, token: str,
+                                resource_path: str, project_id: str | None = Query(None)):
+    from urllib.parse import quote
+    from services.html_preview import resource_file, prepare_html
+    from workstep_gateway_protocol.html_preview import html_preview_policy, PREVIEW_RESOURCES_HEADER
+    # The query is rewritten by authenticated remote dispatch; the path preserves
+    # the client's remote-project routing hint for relative assets.
+    effective_project = project_id or (project_ref if project_ref != '_' else None)
+    _require_actor_project(effective_project)
+    root = f'/api/fs/html-resource/{quote(project_ref, safe="")}/{quote(token, safe="")}/'
+    origin = f'{request.url.scheme}://{request.url.netloc}'
+    def load():
+        target = resource_file(token, effective_project, resource_path)
+        media, _ = mimetypes.guess_type(str(target))
+        if media == 'text/html':
+            response = HTMLResponse(prepare_html(target.read_text(encoding='utf-8')))
+        else:
+            response = FileResponse(target, media_type=media or 'application/octet-stream')
+        response.headers.update({
+            'Content-Security-Policy': html_preview_policy(origin, root),
+            PREVIEW_RESOURCES_HEADER: root,
+            'Access-Control-Allow-Origin': 'null',
+            'Access-Control-Allow-Credentials': 'true',
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+            'Referrer-Policy': 'no-referrer',
+        })
+        return response
+    return await asyncio.to_thread(load)
 
 
 def _preview_file_sync(path: str, project_id: str | None, absolute: bool):

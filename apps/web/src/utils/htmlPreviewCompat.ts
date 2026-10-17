@@ -38,10 +38,17 @@ export function replaceLightDarkWithLightFallback(css: string): string {
 }
 
 const preparedFrames = new WeakSet<HTMLIFrameElement>()
+export const HTML_PREVIEW_SANDBOX = 'allow-scripts allow-forms allow-popups allow-downloads'
 
 /** Keep fragment navigation within an opaque srcdoc rather than the share URL. */
 export function isolatedHtmlDocument(content: string): string {
-  return content + `<script>
+  // This comes before untrusted markup: its scripts cannot loosen the policy.
+  // No ambient API/file access for shares or older backends without resource tickets.
+  const policy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; object-src 'none'; frame-src blob: data:; worker-src 'none'; base-uri 'none'; form-action 'none'"
+  const restriction = `<meta http-equiv="Content-Security-Policy" content="${policy}">`
+  const doctype = content.match(/^[\s\uFEFF]*<!doctype[^>]*>/i)?.[0] || ''
+  const source = doctype + restriction + content.slice(doctype.length)
+  return source + `<script>
 document.addEventListener('click', function (event) {
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   var link = event.target instanceof Element && event.target.closest('a[href^="#"]');

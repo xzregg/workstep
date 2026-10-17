@@ -225,3 +225,12 @@ def test_websocket_messages_are_chunked_and_reassembled_with_size_limit():
     assert assembler.add(payloads[-1]) == ("bytes", message)
     with pytest.raises(ValueError):
         assembler.add({"kind": "text", "data": "%%%", "final": True})
+# Preview tickets authorize only resource reads for the selected project.
+def test_html_preview_resource_scope():
+    from workstep_gateway_protocol import project_http_route_allowed
+    path = '/api/fs/html-resource/project-1/' + 'a' * 43 + '/site/data.json'
+    for query in ([], [('project_id', 'project-1')]):
+        assert project_http_route_allowed('GET', path, query, 'project-1')
+        assert not project_http_route_allowed('GET', path, query, 'other-project')
+        assert not project_http_route_allowed('POST', path, query, 'project-1', access_level='edit')
+    assert not project_http_route_allowed('GET', path, [('project_id', 'other-project')], 'project-1')

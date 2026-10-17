@@ -195,7 +195,10 @@ class RemoteRouteDispatcher:
             headers={
                 key: value
                 for key, value in response.headers.items()
-                if key.lower() in {"content-type", "content-disposition", "etag"}
+                if key.lower() in {"content-type", "content-disposition", "etag",
+                                   "content-security-policy", "x-workstep-preview-resources", "x-workstep-preview-grant",
+                                   "access-control-allow-origin", "access-control-allow-credentials",
+                                   "cache-control", "x-content-type-options", "referrer-policy"}
             },
             body=response.content,
         )

@@ -261,6 +261,7 @@ export interface FilePreview {
   file_size: number
   extension?: string
   relative_path?: string | null
+  html_preview?: { token: string; entry: string }
 }
 
 export interface DirectoryOpener {
@@ -292,6 +293,8 @@ export interface FileSearchResult {
 }
 
 export const fsApi = {
+  htmlPreviewUrl: (grant: { token: string; entry: string }, projectId?: string) =>
+    `${BASE}/fs/html-resource/${encodeURIComponent(projectId || '_')}/${encodeURIComponent(grant.token)}/${encodeURIComponent(grant.entry)}`,
   readMemory: (projectId: string) =>
     request<{ path: string; content: string }>(
       `/fs/memory?project_id=${encodeURIComponent(projectId)}`
