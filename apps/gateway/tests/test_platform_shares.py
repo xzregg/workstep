@@ -133,6 +133,8 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                 await authorization_check()
                 captured["ticket"] = share_ticket
                 captured["path"] = target_path
+                if target_path == "/api/platform-share/schedules":
+                    return JSONResponse({"schedules": [{"id": "bound-rule", "name": "Task report"}]})
                 if target_path.startswith("/api/platform-share/history"):
                     return JSONResponse({"messages": [{"id": "message-1", "content": "Visible"}]})
                 if target_path.startswith("/api/platform-share/events/"):
@@ -175,6 +177,10 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert task.status_code == 200, task.text
         assert task.json()["id"] == "task-1"
         assert captured["path"] == "/api/platform-share/task"
+        schedules = client.get(f"/api/public/shares/{token}/schedules")
+        assert schedules.status_code == 200, schedules.text
+        assert schedules.json()["schedules"][0]["id"] == "bound-rule"
+        assert captured["path"] == "/api/platform-share/schedules"
         history = client.get(f"/api/public/shares/{token}/history")
         assert history.status_code == 200, history.text
         assert history.json()["messages"][0]["content"] == "Visible"

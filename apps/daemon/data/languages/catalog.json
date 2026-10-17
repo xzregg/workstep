@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "8404f7314213f92a91a26a86a69c60b2961eef60f798c9e8f67b03ba68a3aa1f",
+  "revision": "ddbc04fc9ca6edbfc01b84a2d742f78a125b283730632c904857802f02866434",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -2341,6 +2341,7 @@
     "providerSettings.importImported": "已导入 {count} 个供应商",
     "providerSettings.importSkipped": "跳过 {count} 个（已存在同名）",
     "providerSettings.importErrors": "{count} 个导入失败",
+    "schedules.taskEmpty": "当前任务暂无待执行的定时任务",
     "schedules.intervalMinutes": "间隔（分钟）",
     "schedules.intervalHours": "间隔（小时）",
     "schedules.notifyChannel": "执行完成后通知渠道机器人",

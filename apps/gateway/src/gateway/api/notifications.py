@@ -37,5 +37,7 @@ async def legacy_recent(request:Request,project_id:str=Query(min_length=1,max_le
     return await invoke(service.legacy_recent,request=request,project_id=project_id,since=since)
 
 @compat_router.get('/api/completion-notifications/access')
-async def legacy_access(request:Request,project_id:str=Query(min_length=1,max_length=256),task_id:str|None=None,session_id:str|None=None):
-    return await invoke(service.legacy_access,request=request,project_id=project_id,task_id=task_id,session_id=session_id)
+async def legacy_access(request:Request,project_id:str=Query(min_length=1,max_length=256),task_id:str|None=None,session_id:str|None=None,
+                        device_id:str|None=Query(default=None,min_length=1,max_length=256),workflow_id:str|None=Query(default=None,max_length=256)):
+    return await invoke(service.legacy_access,request=request,project_id=project_id,task_id=task_id,session_id=session_id,
+                        device_id=device_id,workflow_id=workflow_id)

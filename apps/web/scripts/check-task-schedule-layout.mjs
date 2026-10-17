@@ -13,6 +13,9 @@ import { scheduleApi, workflowApi } from '../src/api/client.ts'
 import { useProjectStore } from '../src/stores/projectStore.ts'
 import { renderToStaticMarkup } from 'react-dom/server'
 import TaskScheduleEditor from '../src/components/TaskScheduleEditor.tsx'
+import TaskSchedules from '../src/components/TaskSchedules.tsx'
+import ChatInput from '../src/components/ChatInput.tsx'
+import TaskDetailTabs from '../src/components/TaskDetailTabs.tsx'
 import { useLocaleStore, I18nProvider } from '../src/i18n/index.tsx'
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'workstep-task-schedule-layout-'))
@@ -32,7 +35,7 @@ const markup = renderToStaticMarkup(h(I18nProvider, null,
     ),
   ),
 ))
-const css = ['index.css', 'mobile.css', 'pages/SchedulePage.css', 'components/TaskScheduleEditor.css', 'components/ScheduleRuleEditor.css', 'components/TaskPicker.css', 'components/ScheduleNotificationEditor.css'].map(file => fs.readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8')).join('\n')
+const css = ['index.css', 'mobile.css', 'pages/SchedulePage.css', 'components/TaskSchedules.css', 'components/TaskScheduleEditor.css', 'components/ScheduleRuleEditor.css', 'components/TaskPicker.css', 'components/ScheduleNotificationEditor.css'].map(file => fs.readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8')).join('\n')
 const { window } = installDomEnvironment()
 const project = { id:'demo-project',name:'演示项目',path:'/tmp/demo',steps:{},workflows:[{id:'flow',name:'演示流程',nodeCount:0}] }
 useProjectStore.setState({activeProject:project,projects:[project]})
@@ -49,10 +52,49 @@ for (const select of container.querySelectorAll('select')) {
 }
 const projectMarkup=container.innerHTML
 assert.ok(container.querySelector('.schedule-rule-editor'),'project form uses the shared editor')
+scheduleApi.list = async () => ({ schedules: [{ ...schedule,
+  target_task_title:'操作手册演示：这是一个用于验证窄屏省略显示的很长的关联任务名称'.repeat(3),
+  name:'今晚23点任务状态', workflow_id:'', task_template:{}, status:'completed', next_run_at:null,
+  rule:{kind:'once',run_at:'2026-10-16T23:00:00+08:00',timezone:'Asia/Shanghai'},
+  summary:'Once at 2026-10-16T23:00:00+08:00',
+}] })
 await act(async()=>root.unmount())
+const listRoot=createRoot(container)
+await act(async()=>listRoot.render(h(MemoryRouter,null,h(I18nProvider,null,h(SchedulePage,{project})))))
+await act(async()=>[...container.querySelectorAll('button')].find(button=>button.textContent==='一次性').click())
+const listMarkup=container.innerHTML
+assert.ok(container.querySelector('.schedule-task-target'))
+await act(async()=>listRoot.unmount())
+const entryRoot=createRoot(container)
+const load=async()=>({schedules:[{
+  id:'bound-rule',name:'每十分钟汇报当前任务进度',status:'active',rule:schedule.rule,
+  summary:'每 10 分钟',instruction:schedule.instruction,
+}]})
+await act(async()=>entryRoot.render(h(I18nProvider,null,
+  h(TaskDetailTabs, {className:'task-detail-primary-tabs',selected:'detail',onSelect:()=>{},
+    tabs:[{id:'detail',label:'任务详情'},{id:'analysis',label:'执行分析'},{id:'git',label:'Git工作区'}],
+    actions:h(React.Fragment,null,h(TaskSchedules,{taskId:'demo-task',load}),
+      h('button',{className:'btn btn-ghost task-detail-discussion-button'},'绑定BOT'),
+      h('button',{className:'btn btn-ghost task-detail-share-button','aria-label':'分享'},'↗')),
+  }),
+  h(ChatInput,{value:'',onChange:()=>{},onSend:()=>{},resetStep:{active:false,onChange:()=>{}}}),
+)))
+const entryMarkup=container.innerHTML
+await act(async()=>container.querySelector('.task-schedules-trigger').click())
+const taskSchedulesMarkup=document.querySelector('.task-schedules-overlay').outerHTML
+await act(async()=>entryRoot.unmount())
+const managedRoot=createRoot(container)
+await act(async()=>managedRoot.render(h(MemoryRouter,null,h(I18nProvider,null,h(TaskSchedules,{
+  taskId:'demo-task',load,project,task:{id:'demo-task',title:'当前任务',workflow_id:'flow'},
+})))))
+await act(async()=>container.querySelector('.task-schedules-trigger').click())
+await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.includes('新建定时任务')).click())
+const managedMarkup=document.querySelector('.task-schedules-overlay').outerHTML
+assert.equal(document.querySelector('[aria-label="关联任务"]').value,'当前任务')
+await act(async()=>managedRoot.unmount())
 await window.happyDOM.close()
 const files = new Map()
-for (const [name,content] of [['task',markup],['project',projectMarkup]]) {
+for (const [name,content] of [['task',markup],['project',projectMarkup],['list',listMarkup],['entry',entryMarkup],['taskSchedules',taskSchedulesMarkup],['managed',managedMarkup]]) {
   const file=path.join(dir,`${name}.html`)
   fs.writeFileSync(file, `<!doctype html><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}\nbody{margin:0}.schedule-layout{display:grid;grid-template-columns:minmax(0,700px);justify-content:center}.schedule-editor{padding:18px;min-width:0}</style>${content}`)
   files.set(name,file)
@@ -101,7 +143,32 @@ try {
     assert.equal(measured.centered,true,`${name} ${width}px: frequency tab labels are centered`)
     assert.equal(measured.overflow, false, `${width}px: no horizontal overflow`)
     if (name==='task') assert.match(measured.instruction, /CLI/)
-    if (width <= 1023) {
+    if (name==='list') {
+      const {result: listResult}=await call('Runtime.evaluate',{returnByValue:true,expression:`(() => {
+        const target=document.querySelector('.schedule-task-target'), time=document.querySelector('.schedule-list-time');
+        const rect=time.getBoundingClientRect();
+        return {ellipsis:getComputedStyle(target).textOverflow, clipped:target.scrollWidth>target.clientWidth,
+          text:document.querySelector('.schedule-list-item').textContent, timeHeight:rect.height,
+          lineHeight:parseFloat(getComputedStyle(time).lineHeight), right:rect.right};
+      })()`},sessionId)
+      const list=listResult.result.value
+      assert.equal(list.ellipsis,'ellipsis')
+      assert.ok(list.clipped,`${width}px: long task title is truncated`)
+      assert.doesNotMatch(list.text,/Once at|demo-task|任务协调指令|—/)
+      assert.ok(list.timeHeight<=list.lineHeight+1,`${width}px: execution time stays on one line`)
+      assert.ok(list.right<=width,`${width}px: execution time fits`)
+    }
+    if (name==='entry' || name==='taskSchedules') {
+      const {result: controlResult}=await call('Runtime.evaluate',{returnByValue:true,expression:`(() => {
+        const node=document.querySelector('.task-schedules-trigger, .task-schedules-dialog'), rect=node.getBoundingClientRect();
+        return {left:rect.left,right:rect.right,height:rect.height,text:node.textContent};
+      })()`},sessionId)
+      const control=controlResult.result.value
+      assert.ok(control.left>=0 && control.right<=width,`${width}px: schedule control fits`)
+      assert.ok(control.height>=26,`${width}px: usable schedule control`)
+      assert.match(control.text,name==='entry'?/1/:/每十分钟汇报当前任务进度/)
+    }
+    if (width <= 1023 && ['task','project'].includes(name)) {
       if (name==='task') {
       assert.ok(Math.abs(measured.rows.frequency - measured.rows.interval) < 2, `${width}px: frequency and interval share a row`)
       assert.ok(Math.abs(measured.rows.bot - measured.rows.session) < 2, `${width}px: bot and session share a row`)

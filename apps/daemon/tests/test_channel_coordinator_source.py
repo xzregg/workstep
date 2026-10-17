@@ -51,12 +51,6 @@ async def test_channel_source_is_persisted_and_applied_to_current_turn_after_res
     monkeypatch.setitem(ENGINE_REGISTRY,'source_test',SourceEngine)
     monkeypatch.setattr(SourceEngine,'SYSTEM_PROMPT_MODE',mode)
     SourceEngine.calls = []
-    if mode == 'developer':
-        from engines.codex_sdk import CodexSDKEngine
-        monkeypatch.setattr('engines.codex_sdk.config_store.get_codex_sdk_config', lambda: {'custom_config': ''})
-        monkeypatch.setattr(CodexSDKEngine, '_saved_developer_instructions', staticmethod(
-            lambda cwd, session_id: SourceEngine.calls[0].get('system_prompt') if SourceEngine.calls else None,
-        ))
     projects = ProjectManager()
     project = projects.init_project(tmp_path/'project')
     await projects.run_db(project.id,lambda _project: Task.create(id='task',title='任务',cwd=str(project.path),coordinator_engine='source_test',created_at='2026-10-04',updated_at='2026-10-04'))

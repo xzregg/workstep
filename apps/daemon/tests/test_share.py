@@ -445,6 +445,59 @@ async def test_public_share_exposes_task_execution_report(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["read_only", "interactive"])
+async def test_shared_schedules_are_task_scoped_and_nonblocking(manager, tmp_path, monkeypatch, mode):
+    import asyncio
+    import time
+    import main
+    import services.project as project_service
+    from services.schedule import ScheduleModule
+    from models import Task
+    from models.fields import utc_now
+
+    project, task = _create_task_in_project(manager, tmp_path / "shared-schedules")
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    monkeypatch.setattr(main, "project_manager", manager)
+    module = ScheduleModule(manager, None, None)
+    monkeypatch.setattr(main, "schedule_module", module)
+    def seed(_project):
+        share = share_service.create_share(task["id"], mode=mode)
+        Task.create(id="other-target", title="其它任务", cwd=str(project.path),
+                    created_at=utc_now(), updated_at=utc_now())
+        module.create(project.id, name="其它任务的私有规则", target_type="task", target_task_id="other-target",
+                      instruction="不应泄漏", rule={"kind":"minutes","every":10,"timezone":"UTC"})
+        own = module.create(project.id, name="本任务汇报", target_type="task", target_task_id=task["id"],
+                            instruction="检查进度", rule={"kind":"minutes","every":10,"timezone":"UTC"})
+        return share, own
+
+    share, own = await manager.run_db(project.id, seed)
+    original = module.list
+    entered = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def slow_list(*args, **kwargs):
+        loop.call_soon_threadsafe(entered.set)
+        time.sleep(0.35)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "list", slow_list)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        unlocked = await client.post(f"/api/task-share/public/{share['token']}/unlock", json={"password":""})
+        headers = {"X-Share-Session":unlocked.json()["session_token"]}
+        request = asyncio.create_task(client.get(f"/api/task-share/public/{share['token']}/schedules",
+            params={"task_id":"other-target"}, headers=headers))
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        started = time.monotonic()
+        assert (await client.get("/api/health")).status_code == 200
+        assert time.monotonic() - started < 0.2
+        assert not request.done()
+        result = await request
+    assert result.status_code == 200
+    assert [row["id"] for row in result.json()["schedules"]] == [own["id"]]
+    assert set(result.json()["schedules"][0]) == {"id","name","rule","summary","status","next_run_at","instruction"}
+
+
+@pytest.mark.asyncio
 async def test_slow_shared_execution_report_does_not_block_health(
     manager,
     tmp_path,

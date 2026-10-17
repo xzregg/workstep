@@ -349,14 +349,33 @@ test('task-target schedules show the rule name and task without changing project
   const app = await setup()
   const originalList = taskApi.list
   taskApi.list = async () => ({ tasks: [{ id:'existing-task', title:'已有任务' }] }) as any
-  scheduleApi.list = async id => ({ schedules: [{ ...schedule(id), target_type:'task', target_task_id:'existing-task', name:'每十分钟汇报', instruction:'检查任务', task_template:{}, rule:{kind:'minutes',every:10,timezone:'UTC'} }] })
+  scheduleApi.list = async id => ({ schedules: [{ ...schedule(id), target_type:'task', target_task_id:'existing-task', target_task_title:'已有任务', name:'每十分钟汇报', instruction:'检查任务', task_template:{}, rule:{kind:'minutes',every:10,timezone:'UTC'} }] })
   try {
     await app.render(); await app.click('定时任务')
     assert.match(document.querySelector('.schedule-list')!.textContent!, /每十分钟汇报/)
-    assert.match(document.querySelector('.schedule-list')!.textContent!, /existing-task/)
+    assert.equal(document.querySelector('.schedule-task-target')!.textContent, '已有任务')
+    assert.doesNotMatch(document.querySelector('.schedule-list-item')!.textContent!, /existing-task|任务协调指令|检查任务/)
     await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
     assert.ok(document.querySelector('.task-schedule-editor'))
     assert.equal(document.querySelector<HTMLSelectElement>('[aria-label="关联任务"]')!.disabled, true)
     assert.equal(useProjectStore.getState().activeProject?.id, 'a')
   } finally { taskApi.list = originalList; await app.cleanup() }
+})
+
+test('once schedules show a single compact local execution time even after completion', async () => {
+  const app = await setup()
+  scheduleApi.list = async id => ({ schedules: [{ ...schedule(id), status:'completed', next_run_at:null,
+    rule:{kind:'once',run_at:'2026-10-16T23:00:00+08:00',timezone:'Asia/Shanghai'},
+    summary:'Once at 2026-10-16T23:00:00+08:00',
+  }] })
+  try {
+    await app.render(); await app.click('定时任务'); await app.click('一次性')
+    const meta = document.querySelector('.schedule-list-meta')!
+    const date = new Date('2026-10-16T23:00:00+08:00')
+    const pad = (value: number) => String(value).padStart(2, '0')
+    assert.equal(meta.textContent, `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`)
+    assert.equal(meta.querySelectorAll('time').length, 1)
+    assert.equal(meta.querySelector('time')?.dateTime, '2026-10-16T23:00:00+08:00')
+    assert.doesNotMatch(meta.textContent!, /Once|T23|08:00|—/)
+  } finally { await app.cleanup() }
 })

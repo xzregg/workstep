@@ -48,3 +48,23 @@
 .schedule-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .schedule-form-grid--spaced { margin-top: 12px; }
 .schedule-form-grid > .field { min-width: 0; }
+
+.schedule-list-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px 8px;
+  margin-top: 5px;
+  color: var(--meta);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.45;
+}
+.schedule-list-time { min-width: 0; }
+.schedule-list-summary { text-align: right; overflow-wrap: anywhere; }
+.schedule-list-item .schedule-task-target {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}

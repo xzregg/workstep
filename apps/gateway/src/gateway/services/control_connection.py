@@ -544,7 +544,7 @@ class DataConnection:
                 "/api/platform-share/artifacts", "/api/platform-share/reviews",
                 "/api/platform-share/interventions",
                 "/api/platform-share/git/workspace",
-                "/api/platform-share/execution-report")
+                "/api/platform-share/execution-report", "/api/platform-share/schedules")
                 or re.fullmatch(
                     r"/api/platform-share/artifacts/[0-9a-f]{64}/(?:content|preview)",
                     target_path or "")

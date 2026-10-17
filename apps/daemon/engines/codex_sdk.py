@@ -11,7 +11,7 @@ import tomllib
 import uuid
 from typing import Any, AsyncIterator
 
-from engines.codex_compaction import _find_rollout_path, compact_codex_thread
+from engines.codex_compaction import compact_codex_thread
 from engines.codex_sdk_events import CodexSDKNotificationMapper
 from engines.codex_image_input import codex_sdk_input, codex_wire_input
 from engines.core.acp_base import AcpEngineBase
@@ -95,82 +95,17 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 pass
         return "\n\n".join(part for part in (existing, instruction) if part)
 
-    @staticmethod
-    def _saved_developer_instructions(cwd: str, session_id: str) -> str | None:
-        """Only trust the latest durable native settings, never just a thread ID.
-
-        Runtimes without a turn_context setting persist tagged developer messages.
-        A partial write, compaction or unknown history requires reinjection.
-        """
-        from pathlib import Path
-
-        try:
-            path = _find_rollout_path(session_id, None)
-            if path is None:
-                return None
-            verified_session = False
-            saved = None
-            message_rules = None
-            with path.open(encoding="utf-8") as stream:
-                for line in stream:
-                    if not line.endswith("\n"):
-                        return None
-                    record = json.loads(line)
-                    if not isinstance(record, dict):
-                        return None
-                    payload = record.get("payload") or {}
-                    if not isinstance(payload, dict):
-                        return None
-                    if record.get("type") == "session_meta":
-                        verified_session = (
-                            payload.get("id") == session_id
-                            and Path(payload.get("cwd") or "").resolve() == Path(cwd).resolve()
-                        )
-                    elif record.get("type") == "turn_context":
-                        saved = payload.get("developer_instructions")
-                    elif record.get("type") == "compacted":
-                        # A summary is not proof that the original rules survived.
-                        saved = message_rules = None
-                    elif record.get("type") == "response_item" and (
-                        payload.get("type") == "message" and payload.get("role") == "developer"
-                    ):
-                        for item in payload.get("content") or []:
-                            if not isinstance(item, dict) or item.get("type") != "input_text":
-                                continue
-                            match = re.fullmatch(
-                                r"<workstep_system_rules>\n(.*)\n</workstep_system_rules>",
-                                item.get("text") or "", re.DOTALL,
-                            )
-                            if match:
-                                message_rules = match.group(1)
-            restored = saved if isinstance(saved, str) else message_rules
-            if isinstance(restored, str):
-                match = re.fullmatch(
-                    r"<workstep_system_rules>\n(.*)\n</workstep_system_rules>", restored, re.DOTALL,
-                )
-                if match:
-                    restored = match.group(1)
-            return restored if verified_session else None
-        except (OSError, ValueError, TypeError):
-            return None
-
     async def _prepare_prompt_input(self, kwargs, system_prompt, *, each_turn=False):
         prepared = await super()._prepare_prompt_input(kwargs, system_prompt, each_turn=each_turn)
-        instruction = prepared.get("system_prompt")
-        session_id = prepared.get("session_id")
-        if not instruction or not session_id or each_turn:
-            return prepared
-
-        def restored():
-            config = self.merge_config_overrides(
-                config_store.get_codex_sdk_config(), kwargs.get("config_overrides"),
-            )
-            expected = self._combined_developer_instructions(config, instruction)
-            return self._saved_developer_instructions(kwargs["cwd"], session_id) == expected
-
-        if await asyncio.to_thread(restored):
-            # Empty is an internal restore sentinel: do not override the native
-            # setting with either WorkStep rules or custom developer config.
+        if (
+            prepared.get("system_prompt")
+            and prepared.get("session_id")
+            and self.supports_resume
+            and not each_turn
+        ):
+            # Resume owns the saved instructions. Do not scan native logs or
+            # override them when the application's rules change mid-session.
+            # Empty also suppresses custom developer config in thread_resume.
             prepared["system_prompt"] = ""
         return prepared
 

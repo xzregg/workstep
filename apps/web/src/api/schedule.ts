@@ -26,6 +26,7 @@ export interface ProjectSchedule {
   name: string
   target_type?: 'project' | 'task'
   target_task_id?: string | null
+  target_task_title?: string | null
   instruction?: string | null
   notification?: ScheduleNotification
   stop_condition?: 'manual' | 'task_terminal'
@@ -72,6 +73,9 @@ export interface ScheduleRun {
   ended_at?: string | null
 }
 
+export type TaskScheduleSummary = Pick<ProjectSchedule,
+  'id' | 'name' | 'rule' | 'summary' | 'status' | 'next_run_at' | 'instruction'>
+
 export interface SchedulePayload {
   name: string
   target_type?: 'project' | 'task'
@@ -93,8 +97,8 @@ export const scheduleApi = {
   retryNotification: (projectId: string, scheduleId: string, runId: string) => request<{ok: boolean}>(
     `/schedule/${encodeURIComponent(scheduleId)}/runs/${encodeURIComponent(runId)}/notification/retry?project_id=${encodeURIComponent(projectId)}`, {method: 'POST'},
   ),
-  list: (projectId: string) => request<{ schedules: ProjectSchedule[] }>(
-    `/schedule/list?project_id=${encodeURIComponent(projectId)}`,
+  list: (projectId: string, taskId?: string) => request<{ schedules: ProjectSchedule[] }>(
+    `/schedule/list?project_id=${encodeURIComponent(projectId)}${taskId ? `&target_type=task&task_id=${encodeURIComponent(taskId)}` : ''}`,
   ),
   create: (projectId: string, payload: SchedulePayload) => request<ProjectSchedule>(
     `/schedule/create?project_id=${encodeURIComponent(projectId)}`,

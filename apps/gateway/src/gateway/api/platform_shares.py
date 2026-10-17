@@ -10,6 +10,7 @@ from gateway.services.platform_shares import public_share_coordinator_action as 
 from gateway.services.platform_shares import public_share_task_operation as _handle_task_operation
 from gateway.services.platform_shares import public_share_websocket as _handle_share_websocket
 from gateway.services.platform_shares import public_share_file_changes as _handle_share_file_changes
+from gateway.services.platform_shares import public_share_schedules as _handle_share_schedules
 
 router = APIRouter(prefix="/api")
 websocket_router = APIRouter()
@@ -71,6 +72,11 @@ async def public_share_task(request: Request, token: str):
 @router.get('/public/shares/{token}/execution-report')
 async def public_share_execution_report(request: Request, token: str):
     return await invoke(_handle_public_share_execution_report, request=request, token=token)
+
+
+@router.get('/public/shares/{token}/schedules')
+async def public_share_schedules(request: Request, token: str):
+    return await invoke(_handle_share_schedules, request=request, token=token)
 
 
 @router.get("/public/shares/{token}/host-status")

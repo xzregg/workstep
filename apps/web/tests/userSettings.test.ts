@@ -21,6 +21,25 @@ const resetStore = () => useUserSettingsStore.setState({
   error: '',
 })
 
+test('failed settings reads can retry and restore saved developer mode', async () => {
+  resetStore()
+  const originalFetch = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = async () => {
+    calls++
+    if (calls === 1) throw new Error('Gateway reconnecting')
+    return Response.json({ user_name: '网关用户', identity_source: 'gateway', open_mode: true })
+  }
+  try {
+    await useUserSettingsStore.getState().load()
+    assert.ok(useUserSettingsStore.getState().error)
+    await useUserSettingsStore.getState().load()
+    assert.equal(calls, 2)
+    assert.equal(useUserSettingsStore.getState().openMode, true)
+    assert.equal(useUserSettingsStore.getState().error, '')
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('gateway account overrides the local name without overwriting local identity', async () => {
   resetStore()
   const originalFetch = globalThis.fetch

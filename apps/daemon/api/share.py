@@ -412,6 +412,16 @@ async def public_share_execution_report(token: str, request: Request):
     return report
 
 
+@router.get("/public/{token}/schedules")
+async def public_share_schedules(token: str, request: Request):
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    from main import project_manager, schedule_module
+    return await project_manager.run_db(ctx["project_id"], lambda _project:
+        schedule_module.task_summaries(ctx["project_id"], ctx["task_id"]))
+
+
 @router.get("/public/{token}/history")
 async def public_share_history(
     token: str,

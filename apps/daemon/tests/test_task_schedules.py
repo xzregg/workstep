@@ -33,6 +33,10 @@ def test_task_schedule_crud_and_history(tmp_path):
         assert row["target_task_id"] == task.id
         assert row["instruction"] == "汇报并通过 CLI 发送"
         assert module.list(project.id, task_id=task.id)[0]["id"] == row["id"]
+        assert module.list(project.id)[0]["target_task_title"] == "目标"
+        task.title = "改名后的目标"
+        task.save()
+        assert module.list(project.id)[0]["target_task_title"] == "改名后的目标"
         assert module.pause(project.id, row["id"])["status"] == "paused"
         assert module.resume(project.id, row["id"])["status"] == "active"
         assert module.update(project.id, row["id"], instruction="检查阻塞")["instruction"] == "检查阻塞"

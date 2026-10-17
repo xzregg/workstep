@@ -610,6 +610,10 @@ async def public_share_execution_report(call: GatewayCall, token: str):
     return await _proxy_share_request(call, token, '/api/platform-share/execution-report')
 
 
+async def public_share_schedules(call: GatewayCall, token: str):
+    return await _proxy_share_request(call, token, '/api/platform-share/schedules')
+
+
 async def public_share_host_status(call: GatewayCall, token: str):
 
     share, _ = await _authorized_visitor(call, token)
