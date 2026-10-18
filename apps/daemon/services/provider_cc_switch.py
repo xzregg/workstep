@@ -9,7 +9,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from services.engine_config_rules import CLAUDE_MODEL_MAP_ALIASES
+from engines._config.claude import CLAUDE_MODEL_MAP_ALIASES
 from services.provider_catalog import (
     detect_provider_type,
     normalize_provider_protocol,

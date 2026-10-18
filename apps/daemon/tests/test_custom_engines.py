@@ -105,6 +105,40 @@ async def test_worker_stream_config_and_stop(custom_environment):
 
 
 @pytest.mark.asyncio
+async def test_custom_config_schema_and_saved_values_reach_worker(custom_environment):
+    from services.custom_engines import custom_engine_manager as manager
+    from engines.core.custom_proxy import make_custom_engine
+    adapter = custom_environment / "engine.py"
+    adapter.write_text(ADAPTER.replace(
+        'from engines.core.schema import EngineConfigField',
+        'from engines.core.schema import EngineConfigField, EngineConfigOption',
+    ).replace(
+        'return [EngineConfigField(key="token", label="Token", sensitive=True, type="password")]',
+        'return [EngineConfigField(key="mode", label="执行模式", type="select", '
+        'default="light", options=(EngineConfigOption("light", "轻度"), '
+        'EngineConfigOption("deep", "深度")))]',
+    ).replace(
+        'yield agent_message_chunk("WORKSTEP_ENGINE_OK")',
+        'yield agent_message_chunk(self.get_config_values()["mode"])',
+    ))
+    info = (await manager.inspect(str(custom_environment)))["engine"]
+    engine = make_custom_engine(custom_environment, info)()
+    field = engine.config_schema()[0]
+    assert [(option.value, option.label) for option in field.options] == [
+        ("light", "轻度"), ("deep", "深度"),
+    ]
+    assert engine.get_config_values()["mode"] == "light"
+    with pytest.raises(ValueError, match="配置选项无效"):
+        await engine.save_config_values({"mode": "unknown"})
+    for mode in ("deep", "light"):
+        await engine.save_config_values({"mode": mode})
+        events = [event async for event in engine.spawn("hello", str(custom_environment))]
+        assert any(event.type == "agent_message_chunk" and event.data["content"]["text"] == mode
+                   for event in events)
+    await engine.stop()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("bad_code", ["raise RuntimeError('broken import')", "import os; os._exit(9)", "import time; time.sleep(60)"])
 async def test_broken_import_isolated_and_health_canary(custom_environment, bad_code):
     from services.custom_engines import custom_engine_manager as manager

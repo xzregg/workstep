@@ -77,7 +77,8 @@ async def test_codex_list_models_uses_cli_catalog(monkeypatch, tmp_path):
             return (
                 b'{"models":['
                 b'{"slug":"gpt-visible","display_name":"GPT Visible",'
-                b'"description":"Selectable","visibility":"list"},'
+                b'"description":"Selectable","visibility":"list",'
+                b'"supported_reasoning_levels":[{"effort":"none"},{"effort":"minimal"},{"effort":"high"}]},'
                 b'{"slug":"gpt-hidden","display_name":"GPT Hidden",'
                 b'"description":"Internal","visibility":"hide"}'
                 b']}',
@@ -108,6 +109,7 @@ async def test_codex_list_models_uses_cli_catalog(monkeypatch, tmp_path):
     assert [(model.id, model.label, model.description) for model in models] == [
         ("gpt-visible", "GPT Visible", "Selectable"),
     ]
+    assert models[0].supported_reasoning_efforts == ["none", "minimal", "high"]
 
 
 def test_codex_broken_launcher_is_not_reported_as_installed(monkeypatch):
@@ -3031,6 +3033,12 @@ async def test_codex_sdk_list_models_uses_codex_config(monkeypatch):
         display_name = "GPT Test"
         description = "test model"
         hidden = False
+        supported_reasoning_efforts = [
+            SimpleNamespace(reasoning_effort="low"),
+            SimpleNamespace(reasoning_effort="high"),
+            SimpleNamespace(reasoning_effort="xhigh"),
+        ]
+        is_default = True
 
     class Response:
         data = [Model()]
@@ -3050,6 +3058,8 @@ async def test_codex_sdk_list_models_uses_codex_config(monkeypatch):
     models = await CodexSDKEngine().list_models("/tmp/project")
 
     assert [model.id for model in models] == ["gpt-test"]
+    assert models[0].supported_reasoning_efforts == ["low", "high", "xhigh"]
+    assert models[0].is_default is True
     assert captured["config"].cwd == "/tmp/project"
 
 
@@ -4504,6 +4514,34 @@ def test_codex_sdk_registered_in_registry():
 
 # --- Engine config schema (backend-driven settings forms) ---
 
+@pytest.mark.parametrize("engine_cls", [CodexEngine, CodexSDKEngine])
+def test_codex_select_options_have_chinese_labels(engine_cls):
+    for field in engine_cls.config_schema():
+        for option in field.options or ():
+            assert any("\u4e00" <= char <= "\u9fff" for char in option.label), (
+                field.key, option.value, option.label,
+            )
+
+
+@pytest.mark.parametrize("engine_cls", [CodexEngine, CodexSDKEngine])
+def test_codex_reasoning_options_display_chinese_with_native_values(engine_cls):
+    field = next(
+        field for field in engine_cls.config_schema()
+        if field.key == "model_reasoning_effort"
+    )
+    assert [(option.value, option.label) for option in field.options] == [
+        ("auto", "自动"),
+        ("none", "关闭"),
+        ("minimal", "极简"),
+        ("low", "低"),
+        ("medium", "中"),
+        ("high", "高"),
+        ("xhigh", "极高"),
+        ("max", "最高"),
+        ("ultra", "超高"),
+    ]
+
+
 def test_engine_config_schemas_are_declared():
     pydantic_fields = {
         field.key for field in PydanticAIEngine.config_schema()
@@ -5664,7 +5702,7 @@ def test_config_overrides_can_clear_a_saved_value_for_a_draft_test():
 
 def test_claude_sandbox_env_only_for_bypass_permissions():
     """只有 bypassPermissions 才注入 IS_SANDBOX（容器 root 下的必需声明）。"""
-    from services.config import claude_sandbox_env
+    from engines._config.claude import claude_sandbox_env
 
     assert claude_sandbox_env("bypassPermissions") == {"IS_SANDBOX": "1"}
     for mode in ("acceptEdits", "default", "plan", "manual", "", None):
@@ -5673,7 +5711,7 @@ def test_claude_sandbox_env_only_for_bypass_permissions():
 
 def test_claude_engines_inject_sandbox_env_for_bypass_permissions():
     """CLI 与 SDK 引擎都必须把 IS_SANDBOX 合并进子进程环境。"""
-    from services.config import claude_sandbox_env
+    from engines._config.claude import claude_sandbox_env
 
     cli_env = {"ANTHROPIC_BASE_URL": "http://x", **claude_sandbox_env("bypassPermissions")}
     assert cli_env["IS_SANDBOX"] == "1"

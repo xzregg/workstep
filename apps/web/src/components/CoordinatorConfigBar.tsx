@@ -15,6 +15,7 @@ import {
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
 import StepConfigFields from './StepConfigFields'
+import { engineEffortOptions, thinkingEffortLabel } from '../utils/thinkingEffort'
 
 /* ══════════════════════════════════════════
    CoordinatorConfigBar — shared coordinator
@@ -72,15 +73,6 @@ export interface CoordinatorConfigBarProps {
   onStepFieldChange?: (key: string, value: string) => void
   requireCoordinator?: boolean
   allowDefault?: boolean
-}
-
-export const THINKING_EFFORT_LEVELS = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
-const CODEX_THINKING_EFFORT_LEVELS = ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const
-
-export function getThinkingEffortLevels(engineId: string) {
-  return engineId === 'codex' || engineId === 'codex_sdk'
-    ? CODEX_THINKING_EFFORT_LEVELS
-    : THINKING_EFFORT_LEVELS
 }
 
 interface MenuOption {
@@ -210,10 +202,9 @@ export default function CoordinatorConfigBar({
   allowDefault = true,
 }: CoordinatorConfigBarProps) {
   const { t } = useI18n()
-  const [models, setModels] = useState<EngineModel[]>([])
+  const [catalog, setCatalog] = useState<{ scope: string; models: EngineModel[] }>({ scope: '', models: [] })
 
   const engineId = engine || defaultEngine
-  const thinkingEffortLevels = getThinkingEffortLevels(engineId)
   const selectedEngine = engines.find((item) => item.id === engineId)
   const supportsProvider = Boolean(selectedEngine?.supports_provider)
   const compatibleProviders = providers.filter((item) => (
@@ -221,46 +212,37 @@ export default function CoordinatorConfigBar({
       (item.protocols?.length ? item.protocols : [item.protocol]).includes(protocol),
     )
   ))
+  const catalogScope = `${engineId}::${supportsProvider ? providerId : ''}::${projectId || ''}`
+  const models = catalog.scope === catalogScope ? catalog.models : []
+  const thinkingOptions = engineEffortOptions(selectedEngine)
   useEffect(() => {
     if (!engineId) {
-      setModels([])
+      setCatalog({ scope: catalogScope, models: [] })
       return
     }
     const effectiveProvider = supportsProvider ? providerId : ''
     const cached = getCachedEngineModels(engineId, effectiveProvider, projectId)
     if (cached) {
-      setModels(cached.models || [])
+      setCatalog({ scope: catalogScope, models: cached.models || [] })
       return
     }
     let active = true
     fetchEngineModels(engineId, false, effectiveProvider, projectId)
       .then((result) => {
-        if (active) setModels(result.models || [])
+        if (active) setCatalog({ scope: catalogScope, models: result.models || [] })
       })
       .catch(() => {
-        if (active) setModels([])
+        if (active) setCatalog({ scope: catalogScope, models: [] })
       })
     return () => { active = false }
-  }, [engineId, providerId, supportsProvider, projectId])
+  }, [engineId, providerId, supportsProvider, projectId, catalogScope])
 
   const modelDisabled = disabled || models.length === 0
   const isMenu = variant === 'menu'
   const effectiveThinkingEffort = defaultThinkingEffort
   const thinkingEffortDefaultLabel = effectiveThinkingEffort
     ? `${t('coord.thinkingEffortDefault')}（${
-      CODEX_THINKING_EFFORT_LEVELS.includes(effectiveThinkingEffort as typeof CODEX_THINKING_EFFORT_LEVELS[number])
-        ? {
-          auto: t('coord.thinkingLevels.auto'),
-          none: t('coord.thinkingLevels.none'),
-          minimal: t('coord.thinkingLevels.minimal'),
-          low: t('coord.thinkingLevels.low'),
-          medium: t('coord.thinkingLevels.medium'),
-          high: t('coord.thinkingLevels.high'),
-          xhigh: t('coord.thinkingLevels.xhigh'),
-          max: t('coord.thinkingLevels.max'),
-          ultra: t('coord.thinkingLevels.ultra'),
-        }[effectiveThinkingEffort]
-        : effectiveThinkingEffort
+      thinkingEffortLabel(effectiveThinkingEffort, t, thinkingOptions)
     }）`
     : t('coord.thinkingEffortDefault')
   return (
@@ -362,9 +344,9 @@ export default function CoordinatorConfigBar({
               onChange={onThinkingEffortChange}
               options={[
                 { value: '', label: thinkingEffortDefaultLabel },
-                ...thinkingEffortLevels.map((level) => ({
-                  value: level,
-                  label: t(`coord.thinkingLevels.${level}`),
+                ...thinkingOptions.map((option) => ({
+                  value: option.value,
+                  label: thinkingEffortLabel(option.value, t, thinkingOptions),
                 })),
               ]}
             />
@@ -455,9 +437,9 @@ export default function CoordinatorConfigBar({
               className="coordinator-config-select"
             >
               <option value="">{thinkingEffortDefaultLabel}</option>
-              {thinkingEffortLevels.map((level) => (
-                <option key={level} value={level}>
-                  {t(`coord.thinkingLevels.${level}`)}
+              {thinkingOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {thinkingEffortLabel(option.value, t, thinkingOptions)}
                 </option>
               ))}
             </Select>

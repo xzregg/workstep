@@ -33,29 +33,8 @@ def resolve_execution_engine(engine_id: str | None) -> str:
         or DEFAULT_EXECUTION_ENGINE
     )
 
-from services.engine_config_rules import (
-    CLAUDE_MODEL_MAP_ALIASES,
-    CLAUDE_MODEL_MAP_MAX_LEN,
-    CLAUDE_PERMISSION_MODES,
-    CODEX_APPROVAL_POLICIES,
-    CODEX_REASONING_EFFORTS,
-    CODEX_SANDBOX_MODES,
-    CODEX_SDK_APPROVAL_MODES,
-    PROVIDER_PROTOCOLS,
-    QODER_PERMISSION_MODES,
-    OPENCODE_PERMISSION_MODES,
-    claude_custom_settings_env,
-    claude_custom_settings_json,
-    claude_custom_settings_payload,
-    claude_custom_settings_rest,
-    claude_model_map_env,
-    claude_model_map_json,
-    claude_sandbox_env,
-    normalize_claude_custom_settings,
-    normalize_claude_model_map,
-    normalize_codex_custom_config,
-    parse_codex_custom_config,
-)
+from services.provider_protocols import PROVIDER_PROTOCOLS
+
 
 def default_provider_protocols(type_id: str) -> list[str]:
     """Return the default wire-protocol list for one provider preset.
@@ -385,7 +364,7 @@ class ConfigStore:
 
     def get_coordinator_default_thinking_effort(self) -> str:
         value = self.get("coordinator_default_thinking_effort", "")
-        return value if value in CODEX_REASONING_EFFORTS else ""
+        return value if isinstance(value, str) else ""
 
     def set_coordinator_defaults(
         self,
@@ -395,8 +374,6 @@ class ConfigStore:
         vision_model: str = "",
         thinking_effort: str = "",
     ) -> None:
-        if thinking_effort and thinking_effort not in CODEX_REASONING_EFFORTS:
-            raise ValueError(f"Unsupported thinking effort: {thinking_effort}")
         self.set("coordinator_default_engine", engine)
         self.set("coordinator_default_model", model)
         self.set("coordinator_default_fast_model", fast_model)
@@ -489,7 +466,8 @@ class ConfigStore:
         engine_id = (engine_id or "").strip()
         if not engine_id:
             return ""
-        raw = self.get(f"{engine_id}_engine", {})
+        custom = self.get("custom_engine_config", {})
+        raw = (custom.get(engine_id, {}) if isinstance(custom, dict) else {}) or self.get(f"{engine_id}_engine", {})
         if not isinstance(raw, dict):
             return ""
         for key in (
@@ -498,7 +476,7 @@ class ConfigStore:
             "reasoning_effort",
         ):
             value = str(raw.get(key) or "").strip()
-            if value in CODEX_REASONING_EFFORTS:
+            if value:
                 return value
         return ""
 
@@ -617,25 +595,11 @@ class ConfigStore:
             bindings.pop(engine_id, None)
         self.set("engine_providers", bindings)
 
+    # Legacy entry points delegate to engine-owned adapters. New engines use
+    # generic get/set storage or CustomEngineBase; do not add adapters here.
     def get_pydantic_ai_engine_config(self) -> dict[str, Any]:
-        raw = self.get("pydantic_ai_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        sandbox = str(raw.get("sandbox") or "workspace-write")
-        if sandbox not in CODEX_SANDBOX_MODES:
-            sandbox = "workspace-write"
-        return {
-            "provider_id": raw.get("provider_id")
-            or os.environ.get("PYDANTIC_AI_PROVIDER_ID", ""),
-            "model": raw.get("model")
-            or self.get_engine_default_model("pydantic_ai")
-            or os.environ.get("PYDANTIC_AI_MODEL", ""),
-            "fast_model": str(raw.get("fast_model") or "")
-            or self.get_coordinator_default_fast_model(),
-            "mcp_servers": raw.get("mcp_servers") or [],
-            "harness": raw.get("harness") or "auto",
-            "sandbox": sandbox,
-        }
+        from engines._config.pydantic_ai import get_pydantic_ai_engine_config
+        return get_pydantic_ai_engine_config(self)
 
     def set_pydantic_ai_engine_config(
         self,
@@ -647,38 +611,20 @@ class ConfigStore:
         sandbox: str = "",
         fast_model: str = "",
     ) -> None:
-        sandbox = str(sandbox or "").strip() or "workspace-write"
-        if sandbox not in CODEX_SANDBOX_MODES:
-            sandbox = "workspace-write"
-        self.set(
-            "pydantic_ai_engine",
-            {
-                "provider_id": provider_id,
-                "model": model,
-                "fast_model": str(fast_model or ""),
-                "mcp_servers": list(mcp_servers or []),
-                "harness": harness,
-                "sandbox": sandbox,
-            },
+        from engines._config.pydantic_ai import set_pydantic_ai_engine_config
+        return set_pydantic_ai_engine_config(
+            self,
+            provider_id=provider_id,
+            model=model,
+            mcp_servers=mcp_servers,
+            harness=harness,
+            sandbox=sandbox,
+            fast_model=fast_model,
         )
-        self.set_engine_default_model("pydantic_ai", model)
 
     def get_deepseek_harness_config(self) -> dict[str, Any]:
-        """Return the official DeepSeek Harness SDK adapter configuration."""
-        raw = self.get("deepseek_harness_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        preset = str(raw.get("preset") or "standard")
-        return {
-            "provider_id": str(raw.get("provider_id") or ""),
-            "model": str(
-                raw.get("model")
-                or self.get_engine_default_model("deepseek_harness")
-                or "deepseek-v4-flash"
-            ),
-            "max_tokens": str(raw.get("max_tokens") or ""),
-            "preset": preset if preset == "standard" else "standard",
-        }
+        from engines._config.deepseek_harness import get_deepseek_harness_config
+        return get_deepseek_harness_config(self)
 
     def set_deepseek_harness_config(
         self,
@@ -688,91 +634,46 @@ class ConfigStore:
         max_tokens: str = "",
         preset: str = "standard",
     ) -> None:
-        self.set(
-            "deepseek_harness_engine",
-            {
-                "provider_id": str(provider_id or "").strip(),
-                "model": str(model or "").strip() or "deepseek-v4-flash",
-                "max_tokens": str(max_tokens or "").strip(),
-                "preset": str(preset or "").strip() or "standard",
-            },
-        )
-        self.set_engine_default_model(
-            "deepseek_harness",
-            str(model or "").strip() or "deepseek-v4-flash",
+        from engines._config.deepseek_harness import set_deepseek_harness_config
+        return set_deepseek_harness_config(
+            self,
+            provider_id=provider_id,
+            model=model,
+            max_tokens=max_tokens,
+            preset=preset,
         )
 
     def get_claude_permission_mode(self) -> str:
-        mode = self.get("claude_permission_mode", "")
-        return mode if mode in CLAUDE_PERMISSION_MODES else ""
+        from engines._config.claude import get_claude_permission_mode
+        return get_claude_permission_mode(self)
 
     def set_claude_permission_mode(self, mode: str):
-        if mode not in CLAUDE_PERMISSION_MODES:
-            raise ValueError(f"Unsupported Claude permission mode: {mode}")
-        self.set("claude_permission_mode", mode)
+        from engines._config.claude import set_claude_permission_mode
+        return set_claude_permission_mode(self, mode)
 
     # --- Claude Code CLI config ---
 
     def get_claude_code_config(self) -> dict[str, str]:
-        """Claude Code CLI engine section.
-
-        ``model_map`` 与 ``custom_settings`` 都走传输层字符串（引擎配置表单
-        的 value 全是字符串），无内容时为空串。
-        """
-        raw = self.get("claude_code_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        return {
-            "model_map": claude_model_map_json(
-                normalize_claude_model_map(raw.get("model_map"))
-            ),
-            "custom_settings": claude_custom_settings_json(
-                raw.get("custom_settings")
-            ),
-        }
+        from engines._config.claude import get_claude_code_config
+        return get_claude_code_config(self)
 
     def set_claude_code_model_map(self, model_map: Any) -> None:
-        self.set_claude_code_config(model_map=model_map)
+        from engines._config.claude import set_claude_code_model_map
+        return set_claude_code_model_map(self, model_map)
 
     def set_claude_code_config(
         self,
         model_map: Any = None,
         custom_settings: Any = None,
     ) -> None:
-        raw = self.get("claude_code_engine", {})
-        raw = dict(raw) if isinstance(raw, dict) else {}
-        if model_map is not None:
-            normalized = normalize_claude_model_map(model_map)
-            if normalized:
-                raw["model_map"] = normalized
-            else:
-                raw.pop("model_map", None)
-        if custom_settings is not None:
-            normalized_settings = normalize_claude_custom_settings(custom_settings)
-            if normalized_settings:
-                raw["custom_settings"] = normalized_settings
-            else:
-                raw.pop("custom_settings", None)
-        self.set("claude_code_engine", raw)
+        from engines._config.claude import set_claude_code_config
+        return set_claude_code_config(self, model_map, custom_settings)
 
     # --- Claude Agent SDK config ---
 
     def get_claude_agent_sdk_config(self) -> dict[str, Any]:
-        raw = self.get("claude_agent_sdk_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        max_turns = raw.get("max_turns", "")
-        return {
-            "permission_mode": self.get_claude_permission_mode(),
-            "max_turns": str(max_turns) if max_turns not in (None, "") else "",
-            "fallback_model": str(raw.get("fallback_model", "") or ""),
-            "model_map": claude_model_map_json(
-                normalize_claude_model_map(raw.get("model_map"))
-            ),
-            "custom_settings": claude_custom_settings_json(
-                raw.get("custom_settings")
-            ),
-        }
+        from engines._config.claude import get_claude_agent_sdk_config
+        return get_claude_agent_sdk_config(self)
 
     def set_claude_agent_sdk_config(
         self,
@@ -782,57 +683,21 @@ class ConfigStore:
         model_map: str | dict[str, Any] | None = None,
         custom_settings: str | dict[str, Any] | None = None,
     ) -> None:
-        if permission_mode is not None:
-            self.set_claude_permission_mode(permission_mode)
-        raw = self.get("claude_agent_sdk_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        raw = dict(raw)
-        max_turns = str(max_turns or "").strip()
-        if max_turns:
-            try:
-                value = int(max_turns)
-            except ValueError:
-                raise ValueError("最大轮数必须是正整数")
-            if value <= 0:
-                raise ValueError("最大轮数必须是正整数")
-            raw["max_turns"] = value
-        else:
-            raw.pop("max_turns", None)
-        fallback_model = str(fallback_model or "").strip()
-        if fallback_model:
-            raw["fallback_model"] = fallback_model
-        else:
-            raw.pop("fallback_model", None)
-        if model_map is not None:
-            # None = 保持原值（部分调用方只改轮数/备用模型）；"" = 显式清空。
-            normalized_map = normalize_claude_model_map(model_map)
-            if normalized_map:
-                raw["model_map"] = normalized_map
-            else:
-                raw.pop("model_map", None)
-        if custom_settings is not None:
-            normalized_settings = normalize_claude_custom_settings(custom_settings)
-            if normalized_settings:
-                raw["custom_settings"] = normalized_settings
-            else:
-                raw.pop("custom_settings", None)
-        self.set("claude_agent_sdk_engine", raw)
+        from engines._config.claude import set_claude_agent_sdk_config
+        return set_claude_agent_sdk_config(
+            self,
+            max_turns,
+            permission_mode,
+            fallback_model,
+            model_map,
+            custom_settings,
+        )
 
     # --- Codex CLI config ---
 
     def get_codex_config(self) -> dict[str, str]:
-        raw = self.get("codex_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        return {
-            "sandbox_mode": raw.get("sandbox_mode", "workspace-write"),
-            "model_reasoning_effort": raw.get("model_reasoning_effort", ""),
-            "approval_policy": raw.get("approval_policy", ""),
-            "custom_config": normalize_codex_custom_config(
-                raw.get("custom_config")
-            ),
-        }
+        from engines._config.codex import get_codex_config
+        return get_codex_config(self)
 
     def set_codex_config(
         self,
@@ -841,40 +706,20 @@ class ConfigStore:
         approval_policy: str = "",
         custom_config: str = "",
     ) -> None:
-        sandbox_mode = str(sandbox_mode or "").strip() or "workspace-write"
-        if sandbox_mode not in CODEX_SANDBOX_MODES:
-            raise ValueError("不支持的沙箱模式")
-        effort = str(model_reasoning_effort or "").strip()
-        if effort and effort not in CODEX_REASONING_EFFORTS:
-            raise ValueError("不支持的推理强度")
-        policy = str(approval_policy or "").strip()
-        if policy and policy not in CODEX_APPROVAL_POLICIES:
-            raise ValueError("不支持的审批策略")
-        custom = normalize_codex_custom_config(custom_config)
-        self.set("codex_engine", {
-            "sandbox_mode": sandbox_mode,
-            "model_reasoning_effort": effort,
-            "approval_policy": policy,
-            "custom_config": custom,
-        })
+        from engines._config.codex import set_codex_config
+        return set_codex_config(
+            self,
+            sandbox_mode,
+            model_reasoning_effort,
+            approval_policy,
+            custom_config,
+        )
 
     # --- Qoder Agent SDK config ---
 
     def get_qoder_sdk_config(self) -> dict[str, Any]:
-        raw = self.get("qoder_sdk_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        return {
-            "personal_access_token": raw.get("personal_access_token")
-            or os.environ.get("QODER_PERSONAL_ACCESS_TOKEN", ""),
-            "permission_mode": raw.get("permission_mode") or "default",
-            "model": raw.get("model")
-            or self.get_engine_default_model("qoder_sdk")
-            or "",
-            "allowed_tools": str(raw.get("allowed_tools") or ""),
-            "max_turns": str(raw.get("max_turns") or ""),
-            "include_partial_messages": raw.get("include_partial_messages", True),
-        }
+        from engines._config.qoder import get_qoder_sdk_config
+        return get_qoder_sdk_config(self)
 
     def set_qoder_sdk_config(
         self,
@@ -886,78 +731,32 @@ class ConfigStore:
         max_turns: str = "",
         include_partial_messages: bool = True,
     ) -> None:
-        raw = self.get("qoder_sdk_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        raw = dict(raw)
-        if personal_access_token is not None:
-            token = str(personal_access_token).strip()
-            if token:
-                raw["personal_access_token"] = token
-            else:
-                raw.pop("personal_access_token", None)
-        permission_mode = str(permission_mode or "").strip() or "default"
-        if permission_mode not in QODER_PERMISSION_MODES:
-            raise ValueError(f"Unsupported Qoder permission mode: {permission_mode}")
-        raw["permission_mode"] = permission_mode
-        model = str(model or "").strip()
-        if model:
-            raw["model"] = model
-        else:
-            raw.pop("model", None)
-        allowed_tools = str(allowed_tools or "").strip()
-        if allowed_tools:
-            raw["allowed_tools"] = allowed_tools
-        else:
-            raw.pop("allowed_tools", None)
-        max_turns = str(max_turns or "").strip()
-        if max_turns:
-            try:
-                value = int(max_turns)
-            except ValueError:
-                raise ValueError("最大轮数必须是正整数")
-            if value <= 0:
-                raise ValueError("最大轮数必须是正整数")
-            raw["max_turns"] = value
-        else:
-            raw.pop("max_turns", None)
-        raw["include_partial_messages"] = bool(include_partial_messages)
-        self.set("qoder_sdk_engine", raw)
+        from engines._config.qoder import set_qoder_sdk_config
+        return set_qoder_sdk_config(
+            self,
+            personal_access_token=personal_access_token,
+            permission_mode=permission_mode,
+            model=model,
+            allowed_tools=allowed_tools,
+            max_turns=max_turns,
+            include_partial_messages=include_partial_messages,
+        )
 
     # --- OpenCode engine config ---
 
     def get_opencode_config(self) -> dict[str, Any]:
-        raw = self.get("opencode_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        mode = str(raw.get("permission_mode") or "").strip() or "ask"
-        if mode not in OPENCODE_PERMISSION_MODES:
-            mode = "ask"
-        return {"permission_mode": mode}
+        from engines._config.opencode import get_opencode_config
+        return get_opencode_config(self)
 
     def set_opencode_config(self, permission_mode: str = "ask") -> None:
-        mode = str(permission_mode or "").strip() or "ask"
-        if mode not in OPENCODE_PERMISSION_MODES:
-            raise ValueError(f"Unsupported OpenCode permission mode: {mode}")
-        raw = self.get("opencode_engine", {})
-        raw = dict(raw) if isinstance(raw, dict) else {}
-        raw["permission_mode"] = mode
-        self.set("opencode_engine", raw)
+        from engines._config.opencode import set_opencode_config
+        return set_opencode_config(self, permission_mode)
 
     # --- Codex Agent SDK config ---
 
     def get_codex_sdk_config(self) -> dict[str, str]:
-        raw = self.get("codex_sdk_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        return {
-            "model_reasoning_effort": raw.get("model_reasoning_effort", ""),
-            "approval_mode": raw.get("approval_mode", ""),
-            "sandbox": raw.get("sandbox", "workspace-write"),
-            "custom_config": normalize_codex_custom_config(
-                raw.get("custom_config")
-            ),
-        }
+        from engines._config.codex import get_codex_sdk_config
+        return get_codex_sdk_config(self)
 
     def set_codex_sdk_config(
         self,
@@ -966,22 +765,14 @@ class ConfigStore:
         sandbox: str = "",
         custom_config: str = "",
     ) -> None:
-        effort = str(model_reasoning_effort or "").strip()
-        if effort and effort not in CODEX_REASONING_EFFORTS:
-            raise ValueError("不支持的推理强度")
-        mode = str(approval_mode or "").strip()
-        if mode and mode not in CODEX_SDK_APPROVAL_MODES:
-            raise ValueError("不支持的审批模式")
-        sandbox = str(sandbox or "").strip() or "workspace-write"
-        if sandbox not in CODEX_SANDBOX_MODES:
-            raise ValueError("不支持的沙箱模式")
-        custom = normalize_codex_custom_config(custom_config)
-        self.set("codex_sdk_engine", {
-            "model_reasoning_effort": effort,
-            "approval_mode": mode,
-            "sandbox": sandbox,
-            "custom_config": custom,
-        })
+        from engines._config.codex import set_codex_sdk_config
+        return set_codex_sdk_config(
+            self,
+            model_reasoning_effort,
+            approval_mode,
+            sandbox,
+            custom_config,
+        )
 
 
     # --- Providers (global LLM API suppliers) ---

@@ -3,6 +3,7 @@ import Input from './Input'
 import Select from './Select'
 import Textarea from './Textarea'
 import { useI18n } from '../i18n'
+import { engineConfigOptionLabel } from '../utils/thinkingEffort'
 
 export interface StepConfigFieldsProps {
   engineId: string
@@ -38,6 +39,7 @@ const StepConfigFields = ({
         const isSelect = field.type === 'select'
         const isCheckbox = field.type === 'checkbox'
         const isTextarea = field.type === 'textarea'
+        const options = field.options || []
         return (
           <div
             key={field.key}
@@ -59,8 +61,10 @@ const StepConfigFields = ({
                 <option value="">
                   {field.placeholder || (field.required ? t('engineForm.selectPlaceholder') : '')}
                 </option>
-                {(field.options || []).map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+                {options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {engineConfigOptionLabel(field, option, t)}
+                  </option>
                 ))}
               </Select>
             ) : isCheckbox ? (

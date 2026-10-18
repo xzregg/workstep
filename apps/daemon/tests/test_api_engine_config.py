@@ -157,7 +157,7 @@ class MemoryEngineConfigStore:
         }
 
     def set_claude_code_config(self, model_map=None, custom_settings=None):
-        from services.config import (
+        from engines._config.claude import (
             claude_model_map_json,
             normalize_claude_custom_settings,
             normalize_claude_model_map,
@@ -187,7 +187,7 @@ class MemoryEngineConfigStore:
     ):
         if permission_mode is not None:
             self.set_claude_permission_mode(permission_mode)
-        from services.config import (
+        from engines._config.claude import (
             claude_model_map_json,
             normalize_claude_custom_settings,
             normalize_claude_model_map,
@@ -984,6 +984,27 @@ async def test_native_engine_models_are_persisted_and_reused(engine_client, monk
 
 
 @pytest.mark.anyio
+async def test_model_efforts_survive_refresh_and_cached_reads(engine_client, monkeypatch):
+    client, _store = engine_client
+
+    class NativeEngine:
+        def resolve_provider_runtime(self, provider_id=""):
+            return None
+
+        async def list_models(self, cwd):
+            return [EngineModel(id="official", label="Official", is_default=True,
+                                supported_reasoning_efforts=["none", "low", "high"])]
+
+    monkeypatch.setattr(engine_api, "create_engine", lambda _engine_id: NativeEngine())
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **_kwargs: None)
+    refreshed = (await client.get("/api/engine/native/models?refresh=1")).json()
+    cached = (await client.get("/api/engine/native/models")).json()
+    assert refreshed["models"] == cached["models"]
+    assert cached["models"][0]["supported_reasoning_efforts"] == ["none", "low", "high"]
+    assert cached["models"][0]["is_default"] is True
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("type_id", ["deepseek", "custom", "openai"])
 async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
     engine_client,
@@ -1366,6 +1387,23 @@ async def test_provider_delete_blocked_while_in_use(engine_client):
 
 
 # --- Engine list / config contracts ---
+
+
+@pytest.mark.anyio
+async def test_execution_engine_list_embeds_chinese_codex_options(engine_client):
+    client, _store = engine_client
+    response = await client.get("/api/engine/list")
+    assert response.status_code == 200
+    engines = {item["id"]: item for item in response.json()["engines"]}
+    for engine_id in ("codex", "codex_sdk"):
+        for field in engines[engine_id]["config"]["fields"]:
+            for option in field.get("options") or []:
+                assert any("\u4e00" <= char <= "\u9fff" for char in option["label"])
+        fields = {field["key"]: field for field in engines[engine_id]["config"]["fields"]}
+        options = {option["value"]: option["label"]
+                   for option in fields["model_reasoning_effort"]["options"]}
+        assert options["none"] == "关闭"
+        assert options["minimal"] == "极简"
 
 
 @pytest.mark.anyio

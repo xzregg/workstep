@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+# Accepted by the assistant configuration envelope across engines. This is
+# not a model capability list; adapters decide which values they can execute.
+ASSISTANT_THINKING_EFFORTS = (
+    "auto", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+)
+
 
 @dataclass(frozen=True)
 class EngineConfigOption:
@@ -35,6 +41,8 @@ class EngineConfigField:
     # 结构化编辑类字段（如 model_map）暂不支持步骤级覆盖：步骤表单没有对应控件，
     # 且 merge_config_overrides 会整段替换全局值，语义不可控。
     step_hidden: bool = False
+    # Optional capability metadata; does not restrict engine-wide choices.
+    model_capability: str = ""
 
 
 @dataclass(frozen=True, slots=True)

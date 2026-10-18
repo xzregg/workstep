@@ -15,6 +15,7 @@ import ModelMapEditor from './ModelMapEditor'
 import Select from './Select'
 import Textarea from './Textarea'
 import { useI18n } from '../i18n'
+import { engineConfigOptionLabel } from '../utils/thinkingEffort'
 
 export interface EngineConfigFormHandle {
   save: () => void
@@ -237,6 +238,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
     const isTextarea = field.type === 'textarea'
     const isJson = field.type === 'json'
     const isModelMap = field.type === 'model_map'
+    const options = field.options || []
 
     return (
       <div key={field.key} style={{ minWidth: 0, gridColumn: isModelMap || isTextarea || isJson ? '1 / -1' : undefined }}>
@@ -257,8 +259,10 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
             <option value="">
               {field.placeholder || (field.required ? t('engineForm.selectPlaceholder') : '')}
             </option>
-            {(field.options || []).map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+            {options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {engineConfigOptionLabel(field, option, t)}
+              </option>
             ))}
           </Select>
         ) : isPassword ? (

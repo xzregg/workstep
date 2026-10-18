@@ -2,7 +2,10 @@ import json
 
 import pytest
 
-from services.engine_config_rules import claude_model_map_env, normalize_claude_model_map
+from engines._config.claude import (
+    claude_model_map_env,
+    normalize_claude_model_map,
+)
 
 
 def test_normalize_claude_model_map_defaults_name_to_model():

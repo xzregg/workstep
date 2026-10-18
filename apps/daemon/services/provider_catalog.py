@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from services.config import default_provider_protocol, default_provider_protocols
-from services.engine_config_rules import PROVIDER_PROTOCOLS
+from services.provider_protocols import PROVIDER_PROTOCOLS
 
 @dataclass(frozen=True)
 class ProviderType:

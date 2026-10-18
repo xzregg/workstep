@@ -22,12 +22,11 @@ from engines.core.base import (
     sdk_turn_watchdog,
 )
 
-from engines.core.events import (
-    InternalEvent,
-)
+from engines.core.events import InternalEvent
 from engines.core.interactions import elicitation_request
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
-from services.config import QODER_PERMISSION_MODES, config_store
+from engines._config.qoder import QODER_PERMISSION_MODES
+from services.config import config_store
 from services.chat_permissions import map_permission_overrides
 
 logger = logging.getLogger(__name__)

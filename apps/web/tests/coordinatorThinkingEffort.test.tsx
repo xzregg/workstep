@@ -5,6 +5,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import CoordinatorConfigBar from '../src/components/CoordinatorConfigBar'
 import { I18nProvider } from '../src/i18n'
+import { engineApi, fetchEngineModels, invalidateEngineModels, type CoordinatorEngineSummary, type EngineConfigField } from '../src/api/client'
 
 function installDom() {
   const window = new Window({ url: 'http://localhost/' })
@@ -25,49 +26,62 @@ function installDom() {
   return window
 }
 
-test('Codex selectors expose native efforts and preserve the selected value', async () => {
+test('selectors keep all engine-declared efforts selectable regardless of model catalog', async () => {
   const window = installDom()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
+  const original = engineApi.models
   try {
-    for (const engine of ['codex_sdk', 'codex', 'claude']) {
+    for (const [engine, efforts] of [
+      ['codex_sdk', ['low', 'medium', 'high', 'xhigh', 'max']],
+      ['codex', ['none', 'minimal', 'low', 'high']],
+      ['example_custom', ['high', 'minimal', 'low']],
+    ] as const) {
       let selected = ''
+      invalidateEngineModels(engine)
+      engineApi.models = async () => ({
+        engine_id: engine, models: [{ id: 'native', label: 'Native', description: null,
+          supported_reasoning_efforts: [...efforts], is_default: true }],
+        default_model: 'native', error: null,
+      })
+      await fetchEngineModels(engine)
+      const declared = engine === 'example_custom' ? [...efforts, 'ultra']
+        : ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']
+      const field: EngineConfigField = {
+        key: 'model_reasoning_effort', label: '推理强度', type: 'select',
+        model_capability: 'supported_reasoning_efforts',
+        options: declared.map(value => ({ value, label: value })),
+        default: '', placeholder: '', help: '', required: false, sensitive: false, confirm_values: [],
+      }
       await act(async () => {
         root.render(
           <I18nProvider>
             <CoordinatorConfigBar
-              engines={[]}
-              engine=""
-              defaultEngine={engine}
-              model=""
-              fastModel=""
-              thinkingEffort=""
-              defaultThinkingEffort={engine === 'claude' ? 'low' : 'ultra'}
-              onEngineChange={() => {}}
-              onModelChange={() => {}}
-              onFastModelChange={() => {}}
+              engines={[{ id: engine, config: { fields: [field], values: {}, secrets: {}, step_fields: [] } } as CoordinatorEngineSummary]}
+              engine="" defaultEngine={engine} model="native" fastModel=""
+              thinkingEffort="" defaultThinkingEffort="low"
+              onEngineChange={() => {}} onModelChange={() => {}} onFastModelChange={() => {}}
               onThinkingEffortChange={(value) => { selected = value }}
             />
           </I18nProvider>,
         )
       })
       const select = Array.from(container.querySelectorAll('select')).find(
-        (element) => Array.from(element.options).some((option) => option.value === 'xhigh'),
+        element => Array.from(element.options).some(option => option.value === 'ultra'),
       )!
       assert.ok(select)
-      assert.deepEqual(Array.from(select.options).map((option) => option.value), engine === 'claude'
-        ? ['', 'auto', 'minimal', 'low', 'medium', 'high', 'xhigh']
-        : ['', 'auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
-      if (engine !== 'claude') {
-        assert.match(select.options[0].textContent || '', /默认（超高）/)
-        await act(async () => {
-          select.value = 'ultra'
-          select.dispatchEvent(new window.Event('change', { bubbles: true }))
-        })
-        assert.equal(selected, 'ultra')
-      }
+      assert.deepEqual(Array.from(select.options).map(option => option.value), ['', ...declared])
+      assert.match(select.options[0].textContent || '', /默认（低）/)
+      assert.ok(Array.from(select.options).every(option => !option.disabled))
+      await act(async () => {
+        select.value = efforts[0]
+        select.dispatchEvent(new window.Event('change', { bubbles: true }))
+      })
+      assert.equal(selected, efforts[0])
+      invalidateEngineModels(engine)
     }
   } finally {
+    engineApi.models = original
     await act(async () => root.unmount())
     await window.happyDOM.close()
   }

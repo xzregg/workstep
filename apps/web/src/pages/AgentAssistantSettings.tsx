@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { assistantApi, providerApi, fetchEngineModels, getCachedEngineModels, type AssistantConfigInfo, type AssistantConfiguredDefaults, type EngineInfo, type EngineModel, type ProviderInfo } from '../api/client'
 import EngineSelect from '../components/EngineSelect'
-import { getThinkingEffortLevels } from '../components/CoordinatorConfigBar'
+import { engineEffortOptions, thinkingEffortLabel } from '../utils/thinkingEffort'
 import Button from '../components/Button'
 import Select from '../components/Select'
 import { useI18n, type TFunction, type TKey } from '../i18n'
@@ -85,6 +85,7 @@ export default function AgentAssistantSettings() {
 
   engineRef.current = engine
   const selectedEngineInfo = engines.find((item) => item.id === engine)
+  const thinkingOptions = engineEffortOptions(engines.find(item => item.id === (engine || resolvedDefaults?.engine)))
   const engineSupportsProvider = Boolean(selectedEngineInfo?.supports_provider)
   const compatibleProviders = providers.filter((item) => (
     (selectedEngineInfo?.provider_protocols || []).some((protocol) =>
@@ -367,13 +368,13 @@ export default function AgentAssistantSettings() {
               <option value="">
                 {resolvedDefaults?.thinking_effort
                   ? t('settings.followEngineDefaultWithValue', {
-                    value: t(`coord.thinkingLevels.${resolvedDefaults.thinking_effort as 'auto'}`),
+                    value: thinkingEffortLabel(resolvedDefaults.thinking_effort, t, thinkingOptions),
                   })
                   : t('settings.followEngineDefault')}
               </option>
-              {getThinkingEffortLevels(engine || resolvedDefaults?.engine || '').map((level) => (
-                <option key={level} value={level}>
-                  {t(`coord.thinkingLevels.${level}`)}
+              {thinkingOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {thinkingEffortLabel(option.value, t, thinkingOptions)}
                 </option>
               ))}
             </Select>

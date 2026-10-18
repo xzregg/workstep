@@ -36,10 +36,12 @@ from agent_assistants.thought_aggregation import ThoughtChunkAggregator
 from engines.core.registry import create_engine
 from engines.core.schema import EngineImage
 from models.fields import utc_now
-from services.chat_permissions import (
-    is_valid_permission_mode,
+from services.chat_permissions import is_valid_permission_mode
+from services.engine_efforts import is_supported_effort
+from services.config import (
+    config_store,
+    resolve_execution_engine,
 )
-from services.config import CODEX_REASONING_EFFORTS, config_store, resolve_execution_engine
 from services.remote_project import get_effective_actor
 from streaming.bus import EventBus
 
@@ -338,8 +340,6 @@ class AssistantRuntime:
             normalized_effort = reader(self._config.name).get(
                 "thinking_effort", ""
             ) or ""
-        if normalized_effort and normalized_effort not in CODEX_REASONING_EFFORTS:
-            raise ValueError(f"Invalid thinking effort: {normalized_effort}")
         normalized_permission = (permission_mode or "").strip()
         if normalized_permission and not is_valid_permission_mode(normalized_permission):
             raise ValueError(f"Invalid permission mode: {normalized_permission}")
@@ -386,6 +386,9 @@ class AssistantRuntime:
         model = model or default_model
         fast_model = fast_model or default_fast_model
         vision_model = vision_model or default_vision_model
+        # Submission and schema validation run in the project DB executor.
+        if not is_supported_effort(normalized_effort, engine_id, model or "", self._config.name):
+            raise ValueError(f"Invalid thinking effort: {normalized_effort}")
         session = self._get_or_create_session(
             project_id,
             session_id,

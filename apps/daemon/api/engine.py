@@ -19,8 +19,8 @@ from engines.core.registry import (
     list_all_engines,
     refresh_registry,
 )
+from services.engine_efforts import is_supported_effort
 from services.config import (
-    CODEX_REASONING_EFFORTS,
     DEFAULT_EXECUTION_ENGINE,
     config_store,
 )
@@ -230,7 +230,7 @@ async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
     fast_model = req.fast_model.strip()
     vision_model = req.vision_model.strip()
     thinking_effort = req.thinking_effort.strip()
-    if thinking_effort and thinking_effort not in CODEX_REASONING_EFFORTS:
+    if not await asyncio.to_thread(is_supported_effort, thinking_effort, engine_id, model, "task_coordinator"):
         raise HTTPException(status_code=400, detail="不支持的思考强度")
     if engine_id:
         await asyncio.to_thread(_validate_engine, engine_id, coordinator=True)
@@ -498,7 +498,7 @@ async def list_engine_models(
                 await asyncio.to_thread(
                     config_store.set_engine_models,
                     engine_id,
-                    [asdict(model) for model in models],
+                    [model.to_dict() for model in models],
                     fetched_at,
                 )
             elif entry:
@@ -511,6 +511,8 @@ async def list_engine_models(
                             if item.get("description") is not None
                             else None
                         ),
+                        supported_reasoning_efforts=item.get("supported_reasoning_efforts"),
+                        is_default=bool(item.get("is_default", False)),
                     )
                     for item in entry.get("models", [])
                     if isinstance(item, dict) and str(item.get("id") or "").strip()
@@ -527,7 +529,7 @@ async def list_engine_models(
         error = "读取模型列表失败" if scoped else (str(exc) or "读取模型列表失败")
     return {
         "engine_id": engine_id,
-        "models": [asdict(model) for model in models],
+        "models": [model.to_dict() for model in models],
         "default_model": await asyncio.to_thread(
             config_store.get_engine_default_model, engine_id
         ),

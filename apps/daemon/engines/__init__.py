@@ -6,36 +6,33 @@
 无需改动任何其他代码。
 """
 
-from engines.core import registry
-from engines.core.events import InternalEvent
-from engines.core.base import BaseLLMEngine, EngineModel, EngineTestResult
-from engines.core.acp_base import AcpEngineBase
-from engines.core.registry import (
-    ENGINE_REGISTRY,
-    _ALL_ENGINES,
-    create_engine,
-    get_available_engines,
-    list_all_engines,
-    refresh_registry,
-)
+# Keep package imports side-effect free: configuration modules and provider
+# services must be importable before the global config singleton exists.
+from importlib import import_module
 
-__all__ = [
-    "InternalEvent",
-    "BaseLLMEngine",
-    "EngineTestResult",
-    "EngineModel",
-    "AcpEngineBase",
-    "ENGINE_REGISTRY",
-    "get_available_engines",
-    "create_engine",
-    "refresh_registry",
-    "list_all_engines",
-]
+_EXPORTS = {
+    "InternalEvent": "engines.core.events",
+    "BaseLLMEngine": "engines.core.base",
+    "EngineTestResult": "engines.core.base",
+    "EngineModel": "engines.core.base",
+    "AcpEngineBase": "engines.core.acp_base",
+    "ENGINE_REGISTRY": "engines.core.registry",
+    "_ALL_ENGINES": "engines.core.registry",
+    "get_available_engines": "engines.core.registry",
+    "create_engine": "engines.core.registry",
+    "refresh_registry": "engines.core.registry",
+    "list_all_engines": "engines.core.registry",
+}
 
-# 自动注册的引擎类直接暴露在 engines 命名空间
-for _engine_cls in _ALL_ENGINES.values():
-    globals()[_engine_cls.__name__] = _engine_cls
-    if _engine_cls.__name__ not in __all__:
-        __all__.append(_engine_cls.__name__)
 
-del _engine_cls
+def __getattr__(name):
+    if name in _EXPORTS:
+        return getattr(import_module(_EXPORTS[name]), name)
+    if name == "__all__" or name.endswith("Engine") or name.startswith("Custom_"):
+        registry = import_module("engines.core.registry")
+        classes = {cls.__name__: cls for cls in registry._ALL_ENGINES.values()}
+        if name == "__all__":
+            return [key for key in _EXPORTS if not key.startswith("_")] + list(classes)
+        if name in classes:
+            return classes[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
