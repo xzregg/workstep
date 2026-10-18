@@ -10,7 +10,8 @@ from engines.core.registry import create_engine, get_available_engines
 from api.project_scope import require_catalog_project
 from services.project_scope import workspace_engine_catalog
 from services import providers as provider_service
-from services.config import CODEX_REASONING_EFFORTS, config_store
+from services.engine_efforts import is_supported_effort
+from services.config import config_store
 
 router = APIRouter(prefix="/api/assistant")
 
@@ -206,7 +207,7 @@ async def set_assistant_config(name: str, req: AssistantConfigRequest):
     vision_model = req.vision_model.strip()
     thinking_effort = req.thinking_effort.strip()
     provider_id = req.provider_id.strip()
-    if thinking_effort and thinking_effort not in CODEX_REASONING_EFFORTS:
+    if not await asyncio.to_thread(is_supported_effort, thinking_effort, engine, model, name):
         raise HTTPException(status_code=400, detail="不支持的思考强度")
     if engine:
         candidate = await asyncio.to_thread(create_engine, engine)

@@ -349,7 +349,11 @@ OpenAI 协议不使用该重试。旧版单值 `protocol` / `base_url` 继续作
 | DeepSeek Harness（`engines/deepseek_harness.py`） | `provider_id`、`max_tokens`、`preset`（当前为 `standard`） | 复用兼容供应商的 OpenAI Chat Completions 协议地址 / `api_key`，写入官方 `DeepSeekHarness`，不限制供应商类型；模型沿用通用引擎默认模型；`preset` 解析为我方随版本校验的 Cordis composition |
 | Pydantic AI（`engines/pydantic_ai/engine.py`） | `provider_id` | 供应商 base_url/key 构建模型（`model` / `thinking_effort` 由助手配置经 `spawn` 参数传入）；`thinking_effort` 映射为 `Thinking` capability；Harness 核心能力固定挂载，压缩与持久化按 `auto` 处理（见 4.7） |
 
-校验规则集中在 `services/config.py`（`set_codex_config` / `set_codex_sdk_config` / `set_claude_agent_sdk_config` / `set_qoder_sdk_config`）：`max_turns` 必须为正整数，枚举值非法时抛中文 `ValueError`。
+内置引擎专属规则和存储适配器由 `engines/_config/` 下对应引擎家族的文件维护：Claude CLI/SDK 共用 `claude.py`，Codex CLI/SDK 共用 `codex.py`，其余为 `qoder.py`、`opencode.py`、`pydantic_ai.py` 和 `deepseek_harness.py`。适配器接收通用 store，不导入全局单例、SDK 或注册表；`services/config.py` 的既有方法仅作兼容转发，保留原配置键和读写锁。新增引擎自行实现配置存取或复用 `CustomEngineBase`，不向公共配置文件追加专属常量/方法。`max_turns` 仍须为正整数，非法枚举仍抛 `ValueError`。
+
+模型能力由 `EngineModel.supported_reasoning_efforts`（可省略）声明，`is_default` 标记官方默认模型；`to_dict()` 在没有这些元数据时保留旧响应形状。Codex CLI 解析官方 `supported_reasoning_levels`，SDK 解析 `supported_reasoning_efforts`，保留官方顺序。执行引擎配置展示 `config_schema()` 中声明的全部思考模式，不随所选模型变化，也不依赖模型目录是否刷新。字段的 `model_capability` 是能力元数据标记，不用于过滤或禁用配置选项。前端 `utils/thinkingEffort.ts` 统一中文显示和引擎 schema 选项读取；仅翻译名称，提交原生值。模型是否接受该值由引擎执行接口判断；新原生值可经目录校验后原样传递。
+
+助手通用覆盖的合法性由 `services/engine_efforts.py` 检查通用值、引擎字段选项及所选模型目录，而不是依赖某一引擎的枚举；需要读取 schema/目录的路径须在线程或项目数据库执行器中运行。
 
 #### DeepSeek Harness preset 与插件组合
 
@@ -1003,6 +1007,8 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 可移植包由 manifest.json、一个 Python 入口及 files 白名单声明的测试/资源组成；规范与步骤见 [接入指南](../apps/daemon/data/skills/workstep-cli/references/custom-engine.md) 和 [接口契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md)。CLI 可 inspect 指定目录或 py 文件，然后 install/configure/validate/register；install/validate 可异步查询或取消。只有公开验收通过，签名及代码/依赖/配置指纹一致才允许原子注册。注册后在设置的引擎页面点击“重新扫描”即可发现并同步到引擎选择列表，无需重启；已加载代理发现文件变化会拒绝执行并要求重新验收。
 
 每个引擎自行实现异步 install，按系统/架构判断下载依赖，获取 staged target_dir 而不修改后台 Python 环境；SDK import 必须延迟到依赖存在后。Python SDK、CLI、Node 桥接均可接入，Node 并非桌面包保证提供的运行时，需要引擎检测并安装或说明环境要求。导出 ZIP 仅携带源码/测试/资源及安全测试摘要，不含 dependencies/cache/凭据；接收方按其平台重新安装与验证。支持复用现有供应商及自定义供应商，按协议声明进行匹配；配置 schema 自动生成设置表单，敏感值脱敏。
+
+配置加载链路为：适配器的 `config_schema()` → 隔离 worker 的 `describe` → 验收注册后的 `installation.json` 元数据 → 主进程 `CustomEngineProxy.config_schema()` → `/api/engine/list` 内嵌 `config.fields` → 通用 `EngineConfigForm`。`options` 的 `label` 是显示名称、`value` 是执行值，可直接声明中文名称。保存时代理根据 schema 校验必填项、选项、类型和确认要求，再按 `custom_engine_config.<engine-id>` 存入配置目录的 `config.json`。每次调用 worker 都传入最新配置快照，适配器通过 `CustomEngineBase.get_config_values()` 读取非敏感配置，通过 `raw_config(self.ENGINE_ID)` 读取执行所需的敏感值；前端只接收脱敏值和 secret 存在标记。整个链路无需修改内置引擎配置模块。
 
 主进程只扫描清单和安装元数据，不执行用户模块。用户代码在独立进程运行，管理请求有超时，取消/停止会终止进程树，畸形响应和导入异常不会终止后台。`WORKSTEP_SKIP_CUSTOM_ENGINES=1` 可跳过所有自定义引擎恢复启动。进程隔离保护后台稳定性，用户代码仍有宿主机文件和网络权限。设置的“显示在引擎选择中”只控制下拉可见性；自定义引擎“停用运行”才停止并禁止调用。
 

@@ -19,6 +19,119 @@ function installDom() {
   return window
 }
 
+test('engine forms display schema labels and keep native values for built-in and custom engines', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const ref = createRef<EngineConfigFormHandle>()
+  const config: EngineConfigPayload = {
+    fields: [{
+      key: 'sandbox', label: '沙箱模式', type: 'select',
+      options: [
+        { value: 'read-only', label: '只读' },
+        { value: 'workspace-write', label: '工作区可写' },
+      ],
+      placeholder: '', required: false, help: '', default: 'workspace-write',
+      sensitive: false, confirm_values: [], step_hidden: false,
+    }],
+    step_fields: [], values: { sandbox: 'workspace-write' }, secrets: {},
+  }
+  try {
+    for (const engineId of ['codex_sdk', 'example_custom']) {
+      await act(async () => {
+        root.render(<I18nProvider>
+          <EngineConfigForm key={engineId} ref={ref} engineId={engineId} config={config} />
+        </I18nProvider>)
+      })
+      const select = container.querySelector('select')!
+      assert.ok(select)
+      assert.equal(select.selectedOptions[0].textContent, '工作区可写')
+      assert.equal(select.options[1].textContent, '只读')
+      await act(async () => {
+        select.value = 'read-only'
+        select.dispatchEvent(new window.Event('change', { bubbles: true }))
+      })
+      assert.equal(ref.current?.getTestInput().values.sandbox, 'read-only')
+    }
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('execution engine form translates legacy English effort options without model metadata', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const ref = createRef<EngineConfigFormHandle>()
+  const config: EngineConfigPayload = {
+    fields: [{
+      key: 'model_reasoning_effort', label: '推理强度', type: 'select',
+      options: ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']
+        .map(value => ({ value, label: value })),
+      placeholder: '默认不覆盖', required: false, help: '', default: '', sensitive: false, confirm_values: [],
+    }],
+    step_fields: [], values: { model_reasoning_effort: 'medium' }, secrets: {},
+  }
+  try {
+    await act(async () => {
+      root.render(<I18nProvider><EngineConfigForm ref={ref} engineId="codex_sdk" config={config} /></I18nProvider>)
+    })
+    const select = container.querySelector('select')!
+    assert.deepEqual(Array.from(select.options).map(option => option.textContent),
+      ['默认不覆盖', '自动', '关闭', '极简', '低', '中', '高', '极高', '最高', '超高'])
+    assert.equal(select.value, 'medium')
+    await act(async () => {
+      select.value = 'high'
+      select.dispatchEvent(new window.Event('change', { bubbles: true }))
+    })
+    assert.equal(ref.current?.getTestInput().values.model_reasoning_effort, 'high')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('execution engine form keeps all engine efforts selectable without model metadata', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const ref = createRef<EngineConfigFormHandle>()
+  const efforts = ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']
+  const config: EngineConfigPayload = {
+    fields: [{
+      key: 'model_reasoning_effort', label: '推理强度', type: 'select',
+      model_capability: 'supported_reasoning_efforts',
+      options: efforts.map(value => ({ value, label: value })),
+      placeholder: '默认不覆盖', required: false, help: '', default: '', sensitive: false, confirm_values: [],
+    }],
+    step_fields: [], values: { model_reasoning_effort: 'medium' }, secrets: {},
+  }
+  try {
+    for (const models of [[], [{ id: 'five', label: 'Five', description: null,
+      supported_reasoning_efforts: ['low', 'medium', 'high', 'xhigh', 'max'], is_default: true }]]) {
+      await act(async () => {
+        root.render(<I18nProvider><EngineConfigForm ref={ref} engineId="codex_sdk"
+          config={config} modelOptions={models} /></I18nProvider>)
+      })
+      const select = container.querySelector('select')!
+      assert.deepEqual(Array.from(select.options).map(option => option.value), ['', ...efforts])
+      assert.ok(Array.from(select.options).every(option => !option.disabled))
+      assert.ok(!container.textContent?.includes('当前模型未声明支持'))
+      for (const value of efforts) {
+        await act(async () => {
+          select.value = value
+          select.dispatchEvent(new window.Event('change', { bubbles: true }))
+        })
+        assert.equal(ref.current?.getTestInput().values.model_reasoning_effort, value)
+      }
+    }
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('engine config form renders a full-width model map and submits its JSON value', async () => {
   const window = installDom()
   const original = engineApi.saveConfig

@@ -47,7 +47,7 @@ from engines.core.schema import EngineImage
 from engines.core.stream_lines import ChunkedLineReader
 from services import providers as provider_service
 from services.config import config_store
-from services.engine_config_rules import OPENCODE_PERMISSION_MODES
+from engines._config.opencode import OPENCODE_PERMISSION_MODES
 
 logger = logging.getLogger(__name__)
 

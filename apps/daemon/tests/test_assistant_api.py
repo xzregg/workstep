@@ -393,6 +393,42 @@ async def test_assistant_config_accepts_native_efforts(assistant_client, monkeyp
     assert response.status_code == 400
 
 
+async def test_custom_effort_schema_is_accepted_without_blocking_health(assistant_client, monkeypatch):
+    import asyncio
+    import threading
+    import time
+    from types import SimpleNamespace
+    from engines.core.registry import _ALL_ENGINES
+    from engines.core.schema import EngineConfigField, EngineConfigOption
+
+    client, store = assistant_client
+    entered = threading.Event()
+
+    class CustomEngine:
+        @classmethod
+        def config_schema(cls):
+            entered.set()
+            time.sleep(.2)
+            return [EngineConfigField(key="thinking_effort", label="思考强度", type="select",
+                                      options=(EngineConfigOption("deep-custom", "深入"),))]
+
+    monkeypatch.setitem(_ALL_ENGINES, "test_custom", CustomEngine)
+    monkeypatch.setattr(config_module, "config_store", store)
+    monkeypatch.setattr(assistant_api, "create_engine", lambda _id: SimpleNamespace(
+        capabilities=SimpleNamespace(supports_coordinator=True),
+    ))
+    pending = asyncio.create_task(client.put("/api/assistant/task_create/config", json={
+        "engine": "test_custom", "thinking_effort": "deep-custom",
+    }))
+    assert await asyncio.to_thread(entered.wait, 1)
+    health = await asyncio.wait_for(client.get("/api/health"), .1)
+    assert health.status_code == 200
+    response = await pending
+    assert response.status_code == 200
+    assert response.json()["configured"]["thinking_effort"] == "deep-custom"
+    assert store.get_assistant_defaults("task_create")["thinking_effort"] == "deep-custom"
+
+
 def test_assistant_defaults_provider_override(tmp_path, monkeypatch):
     """供应商作为引擎动态配置存于助手默认值；未设置时为空（跟随引擎配置）。"""
     store = _config_store(tmp_path, monkeypatch)

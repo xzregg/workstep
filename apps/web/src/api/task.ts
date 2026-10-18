@@ -1,7 +1,7 @@
 import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
 import { FULL_PAGE_LIMIT, request } from './transport'
 import type { ShareInfo } from './share'
-import type { EngineInfo } from './client'
+import type { EngineInfo, EngineConfigPayload } from './client'
 import type { ChatMessageEventsPage } from './conversations'
 
 // --- Task API ---
@@ -249,6 +249,7 @@ export interface ActionProposal {
 }
 
 export interface CoordinatorEngineSummary {
+  config?: EngineConfigPayload | null
   name?: string
   description?: string
   enabled?: boolean

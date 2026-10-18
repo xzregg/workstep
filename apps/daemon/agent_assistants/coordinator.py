@@ -48,8 +48,8 @@ from models import (
 )
 from models.base import db_proxy
 from models.fields import utc_now
+from services.engine_efforts import is_supported_effort
 from services.config import (
-    CODEX_REASONING_EFFORTS,
     DEFAULT_EXECUTION_ENGINE,
     config_store,
 )
@@ -609,7 +609,12 @@ class CoordinatorModule:
                     raise ValueError("供应商不存在")
                 if not provider.get("enabled", True):
                     raise ValueError("所选供应商已停用")
-            if normalized_effort and normalized_effort not in CODEX_REASONING_EFFORTS:
+            if not is_supported_effort(
+                normalized_effort,
+                normalized_engine or task.coordinator_engine or "",
+                normalized_model or task.coordinator_model or "",
+                "task_coordinator",
+            ):
                 raise ValueError(
                     f"Unsupported thinking effort: {normalized_effort}"
                 )

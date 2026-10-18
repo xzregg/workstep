@@ -127,6 +127,17 @@ class EngineModel:
     id: str
     label: str
     description: str | None = None
+    supported_reasoning_efforts: list[str] | None = None
+    is_default: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Keep legacy catalogs unchanged when capability metadata is absent."""
+        result: dict[str, Any] = {"id": self.id, "label": self.label, "description": self.description}
+        if self.supported_reasoning_efforts is not None:
+            result["supported_reasoning_efforts"] = self.supported_reasoning_efforts
+        if self.is_default:
+            result["is_default"] = True
+        return result
 
 
 @dataclass(frozen=True)
@@ -405,7 +416,8 @@ class BaseLLMEngine(ABC):
     @classmethod
     def provider_protocols(cls, provider: dict[str, Any]) -> list[str]:
         """The provider's wire protocols, normalized (ordered, deduped)."""
-        from services.config import PROVIDER_PROTOCOLS, default_provider_protocol
+        from services.provider_protocols import PROVIDER_PROTOCOLS
+        from services.config import default_provider_protocol
 
         result: list[str] = []
         raw = provider.get("protocols")

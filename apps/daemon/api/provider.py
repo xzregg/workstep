@@ -491,7 +491,7 @@ async def provider_models_preview(provider_id: str, protocol: str = ""):
         error = str(exc) or "读取模型列表失败"
     return {
         "provider_id": provider_id,
-        "models": [asdict(model) for model in models],
+        "models": [model.to_dict() for model in models],
         "error": error,
     }
 
@@ -569,7 +569,7 @@ async def provider_models(
             "provider_id": provider_id,
             "models": (
                 [
-                    asdict(model)
+                    model.to_dict()
                     for model in await asyncio.to_thread(
                         provider_service.saved_models,
                         provider_id,
@@ -598,7 +598,7 @@ async def provider_models(
         error = str(exc) or "读取模型列表失败"
     return {
         "provider_id": provider_id,
-        "models": [asdict(model) for model in models],
+        "models": [model.to_dict() for model in models],
         "fetched_at": (
             await asyncio.to_thread(
                 config_store.get_provider_models,

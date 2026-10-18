@@ -20,14 +20,12 @@ from engines.core.base import (
     install_with_command,
 )
 
-from engines.core.events import (
-    InternalEvent,
-)
+from engines.core.events import InternalEvent
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from engines.core.stream_lines import iter_stream_lines
 from services import providers as provider_service
 from services.config import config_store
-from services.engine_config_rules import (
+from engines._config.claude import (
     CLAUDE_PERMISSION_MODES,
     claude_custom_settings_env,
     claude_custom_settings_rest,

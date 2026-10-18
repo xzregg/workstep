@@ -1,4 +1,4 @@
-"""Pure validation and serialization rules for engine configuration."""
+"""claude configuration rules and legacy storage compatibility."""
 
 import json
 from typing import Any
@@ -12,39 +12,8 @@ CLAUDE_PERMISSION_MODES = {
     "plan",
 }
 
-CODEX_SANDBOX_MODES = {"read-only", "workspace-write", "danger-full-access"}
-# Native Codex SDK ReasoningEffort values, in display order. "auto" is only
-# WorkStep's sentinel for omitting the override; it is never sent to Codex.
-CODEX_REASONING_EFFORTS = (
-    "auto", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
-)
-CODEX_APPROVAL_POLICIES = {"never", "on-failure", "on-request", "full-auto"}
-CODEX_SDK_APPROVAL_MODES = {"auto_review", "deny_all"}
-
-QODER_PERMISSION_MODES = {
-    "default",
-    "acceptEdits",
-    "bypassPermissions",
-    "plan",
-    "dontAsk",
-    "auto",
-}
-
-OPENCODE_PERMISSION_MODES = {
-    "ask",
-    "allow",
-    "deny",
-}
-
-PROVIDER_PROTOCOLS = {
-    "anthropic_messages",
-    "openai_responses",
-    "openai_chat_completions",
-}
-
-# Claude Code 内部的四个模型档位。CLI 用 ANTHROPIC_DEFAULT_{档位}_MODEL 解析
-# `--model sonnet` 这类档位名，绑定第三方中转后必须把它们映射到真实模型 id。
 CLAUDE_MODEL_MAP_ALIASES = ("fable", "haiku", "opus", "sonnet")
+
 CLAUDE_MODEL_MAP_MAX_LEN = 256
 
 
@@ -200,40 +169,121 @@ def claude_custom_settings_rest(raw: Any) -> dict[str, Any]:
     return payload
 
 
-def normalize_codex_custom_config(raw: Any) -> str:
-    """校验 Codex 自定义 config 覆盖并返回要存储的文本。
+def get_claude_permission_mode(store) -> str:
+    mode = store.get("claude_permission_mode", "")
+    return mode if mode in CLAUDE_PERMISSION_MODES else ""
 
-    Codex 的配置不是 JSON，而是 ``key=value`` 形式（对应 CLI 的 ``-c``）。
-    接受多行文本；空行与 ``#`` 注释行忽略。只校验、不格式化，原样保留
-    用户输入的空格与换行。
+
+def set_claude_permission_mode(store, mode: str):
+    if mode not in CLAUDE_PERMISSION_MODES:
+        raise ValueError(f"Unsupported Claude permission mode: {mode}")
+    store.set("claude_permission_mode", mode)
+
+
+def get_claude_code_config(store) -> dict[str, str]:
+    """Claude Code CLI engine section.
+
+    ``model_map`` 与 ``custom_settings`` 都走传输层字符串（引擎配置表单
+    的 value 全是字符串），无内容时为空串。
     """
-    if raw is None:
-        return ""
-    text = str(raw)
-    if not text.strip():
-        return ""
-    for index, line in enumerate(text.splitlines(), 1):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if "=" not in stripped:
-            raise ValueError(f"第 {index} 行不是 key=value 格式")
-        key, _value = stripped.split("=", 1)
-        if not key.strip():
-            raise ValueError(f"第 {index} 行缺少配置键")
-    return text
+    raw = store.get("claude_code_engine", {})
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        "model_map": claude_model_map_json(
+            normalize_claude_model_map(raw.get("model_map"))
+        ),
+        "custom_settings": claude_custom_settings_json(
+            raw.get("custom_settings")
+        ),
+    }
 
 
-def parse_codex_custom_config(raw: Any) -> list[tuple[str, str]]:
-    """把自定义覆盖解析为 ``[(key, value), ...]``；无配置返回空列表。"""
-    normalized = normalize_codex_custom_config(raw)
-    entries: list[tuple[str, str]] = []
-    if not normalized:
-        return entries
-    for line in normalized.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        key, value = stripped.split("=", 1)
-        entries.append((key.strip(), value.strip()))
-    return entries
+def set_claude_code_model_map(store, model_map: Any) -> None:
+    set_claude_code_config(store, model_map=model_map)
+
+
+def set_claude_code_config(
+    store,
+    model_map: Any = None,
+    custom_settings: Any = None,
+) -> None:
+    raw = store.get("claude_code_engine", {})
+    raw = dict(raw) if isinstance(raw, dict) else {}
+    if model_map is not None:
+        normalized = normalize_claude_model_map(model_map)
+        if normalized:
+            raw["model_map"] = normalized
+        else:
+            raw.pop("model_map", None)
+    if custom_settings is not None:
+        normalized_settings = normalize_claude_custom_settings(custom_settings)
+        if normalized_settings:
+            raw["custom_settings"] = normalized_settings
+        else:
+            raw.pop("custom_settings", None)
+    store.set("claude_code_engine", raw)
+
+
+def get_claude_agent_sdk_config(store) -> dict[str, Any]:
+    raw = store.get("claude_agent_sdk_engine", {})
+    if not isinstance(raw, dict):
+        raw = {}
+    max_turns = raw.get("max_turns", "")
+    return {
+        "permission_mode": get_claude_permission_mode(store),
+        "max_turns": str(max_turns) if max_turns not in (None, "") else "",
+        "fallback_model": str(raw.get("fallback_model", "") or ""),
+        "model_map": claude_model_map_json(
+            normalize_claude_model_map(raw.get("model_map"))
+        ),
+        "custom_settings": claude_custom_settings_json(
+            raw.get("custom_settings")
+        ),
+    }
+
+
+def set_claude_agent_sdk_config(
+    store,
+    max_turns: str = "",
+    permission_mode: str | None = None,
+    fallback_model: str = "",
+    model_map: str | dict[str, Any] | None = None,
+    custom_settings: str | dict[str, Any] | None = None,
+) -> None:
+    if permission_mode is not None:
+        set_claude_permission_mode(store, permission_mode)
+    raw = store.get("claude_agent_sdk_engine", {})
+    if not isinstance(raw, dict):
+        raw = {}
+    raw = dict(raw)
+    max_turns = str(max_turns or "").strip()
+    if max_turns:
+        try:
+            value = int(max_turns)
+        except ValueError:
+            raise ValueError("最大轮数必须是正整数")
+        if value <= 0:
+            raise ValueError("最大轮数必须是正整数")
+        raw["max_turns"] = value
+    else:
+        raw.pop("max_turns", None)
+    fallback_model = str(fallback_model or "").strip()
+    if fallback_model:
+        raw["fallback_model"] = fallback_model
+    else:
+        raw.pop("fallback_model", None)
+    if model_map is not None:
+        # None = 保持原值（部分调用方只改轮数/备用模型）；"" = 显式清空。
+        normalized_map = normalize_claude_model_map(model_map)
+        if normalized_map:
+            raw["model_map"] = normalized_map
+        else:
+            raw.pop("model_map", None)
+    if custom_settings is not None:
+        normalized_settings = normalize_claude_custom_settings(custom_settings)
+        if normalized_settings:
+            raw["custom_settings"] = normalized_settings
+        else:
+            raw.pop("custom_settings", None)
+    store.set("claude_agent_sdk_engine", raw)

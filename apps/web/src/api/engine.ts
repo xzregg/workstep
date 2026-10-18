@@ -129,6 +129,8 @@ export interface EngineModel {
   id: string
   label: string
   description: string | null
+  supported_reasoning_efforts?: string[]
+  is_default?: boolean
 }
 
 export interface EngineModelsResult {
@@ -183,6 +185,7 @@ export interface EngineConfigField {
   sensitive: boolean
   confirm_values: string[]
   step_hidden?: boolean
+  model_capability?: string
 }
 
 export interface EngineConfigSchema {

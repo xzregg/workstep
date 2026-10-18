@@ -21,7 +21,6 @@ from engines.core.base import (
     ProviderRuntimeConfig,
     WIRE_API_BY_PROTOCOL,
     install_python_package,
-    resolve_thinking_effort,
 )
 
 from engines.core.events import (
@@ -41,10 +40,13 @@ from engines.core.packages import RuntimePackage
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from services import providers as provider_service
 from services.config import config_store
-from services.engine_config_rules import (
+from engines._config.codex import (
+    codex_model_efforts,
+    resolve_codex_thinking_effort,
     CODEX_REASONING_EFFORTS,
-    CODEX_SANDBOX_MODES,
-    CODEX_SDK_APPROVAL_MODES,
+    CODEX_REASONING_EFFORT_LABELS,
+    CODEX_SANDBOX_LABELS,
+    CODEX_SDK_APPROVAL_LABELS,
     normalize_codex_custom_config,
     parse_codex_custom_config,
 )
@@ -196,10 +198,11 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         return [
             EngineConfigField(
                 key="model_reasoning_effort",
+                model_capability="supported_reasoning_efforts",
                 label="推理强度",
                 type="select",
                 options=tuple(
-                    EngineConfigOption(level, level)
+                    EngineConfigOption(level, CODEX_REASONING_EFFORT_LABELS[level])
                     for level in CODEX_REASONING_EFFORTS
                 ),
                 placeholder="默认不覆盖",
@@ -210,17 +213,19 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 label="审批模式",
                 type="select",
                 options=tuple(
-                    EngineConfigOption(mode, mode) for mode in CODEX_SDK_APPROVAL_MODES
+                    EngineConfigOption(mode, label)
+                    for mode, label in CODEX_SDK_APPROVAL_LABELS.items()
                 ),
-                placeholder="默认 auto_review",
-                help="SDK 的 ApprovalMode：auto_review 自动放行，deny_all 拒绝所有工具调用。",
+                placeholder="默认自动审批",
+                help="自动审批：自动放行；拒绝所有工具调用：拒绝执行工具。",
             ),
             EngineConfigField(
                 key="sandbox",
                 label="沙箱模式",
                 type="select",
                 options=tuple(
-                    EngineConfigOption(mode, mode) for mode in CODEX_SANDBOX_MODES
+                    EngineConfigOption(mode, label)
+                    for mode, label in CODEX_SANDBOX_LABELS.items()
                 ),
                 default="workspace-write",
                 help="工具执行沙箱；danger-full-access 对应 SDK 的 full-access。",
@@ -270,6 +275,8 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 id=model.id,
                 label=model.display_name or model.id,
                 description=model.description,
+                supported_reasoning_efforts=codex_model_efforts(model),
+                is_default=bool(getattr(model, "is_default", False)),
             )
             for model in response.data
             if not getattr(model, "hidden", False)
@@ -475,9 +482,8 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             "model_reasoning_summary": "detailed",
             "model_supports_reasoning_summaries": True,
         }
-        reasoning_effort = resolve_thinking_effort(
+        reasoning_effort = resolve_codex_thinking_effort(
             thinking_effort, sdk_config["model_reasoning_effort"],
-            supported_levels=CODEX_REASONING_EFFORTS,
         )
         if reasoning_effort:
             thread_config["model_reasoning_effort"] = reasoning_effort

@@ -19,7 +19,6 @@ from engines.core.base import (
     ProviderRuntimeConfig,
     WIRE_API_BY_PROTOCOL,
     install_with_command,
-    resolve_thinking_effort,
 )
 
 from engines.core.events import (
@@ -34,10 +33,13 @@ from engines.core.schema import EngineConfigField, EngineConfigOption, EngineIma
 from engines.core.stream_lines import ChunkedLineReader
 from services import providers as provider_service
 from services.config import config_store
-from services.engine_config_rules import (
-    CODEX_APPROVAL_POLICIES,
+from engines._config.codex import (
+    codex_model_efforts,
+    resolve_codex_thinking_effort,
+    CODEX_APPROVAL_LABELS,
     CODEX_REASONING_EFFORTS,
-    CODEX_SANDBOX_MODES,
+    CODEX_REASONING_EFFORT_LABELS,
+    CODEX_SANDBOX_LABELS,
     normalize_codex_custom_config,
     parse_codex_custom_config,
 )
@@ -188,6 +190,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 id=str(model["slug"]),
                 label=str(model.get("display_name") or model["slug"]),
                 description=str(model.get("description") or ""),
+                supported_reasoning_efforts=codex_model_efforts(model),
             )
             for model in models
             if isinstance(model, dict)
@@ -205,17 +208,19 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 label="沙箱模式",
                 type="select",
                 options=tuple(
-                    EngineConfigOption(mode, mode) for mode in CODEX_SANDBOX_MODES
+                    EngineConfigOption(mode, label)
+                    for mode, label in CODEX_SANDBOX_LABELS.items()
                 ),
                 default="workspace-write",
                 help="模型生成的 shell 命令在此沙箱策略下执行。",
             ),
             EngineConfigField(
                 key="model_reasoning_effort",
+                model_capability="supported_reasoning_efforts",
                 label="推理强度",
                 type="select",
                 options=tuple(
-                    EngineConfigOption(level, level)
+                    EngineConfigOption(level, CODEX_REASONING_EFFORT_LABELS[level])
                     for level in CODEX_REASONING_EFFORTS
                 ),
                 placeholder="默认不覆盖",
@@ -226,8 +231,8 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 label="审批策略",
                 type="select",
                 options=tuple(
-                    EngineConfigOption(policy, policy)
-                    for policy in CODEX_APPROVAL_POLICIES
+                    EngineConfigOption(policy, label)
+                    for policy, label in CODEX_APPROVAL_LABELS.items()
                 ),
                 placeholder="默认不覆盖",
                 help="等价于 config.toml 的 approval_policy，控制自动审批级别。",
@@ -377,9 +382,8 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
             if model:
                 cmd.extend(["--model", model])
 
-            reasoning_effort = resolve_thinking_effort(
+            reasoning_effort = resolve_codex_thinking_effort(
                 thinking_effort, codex_config["model_reasoning_effort"],
-                supported_levels=CODEX_REASONING_EFFORTS,
             )
             if reasoning_effort:
                 cmd.extend(

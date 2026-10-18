@@ -17,7 +17,8 @@ import httpx
 from engines.core.base import EngineModel, EngineTestResult
 from engines.core.schema import validate_api_base_url
 from services.config import config_store
-from services.engine_config_rules import CLAUDE_MODEL_MAP_ALIASES, PROVIDER_PROTOCOLS
+from engines._config.claude import CLAUDE_MODEL_MAP_ALIASES
+from services.provider_protocols import PROVIDER_PROTOCOLS
 from services.provider_catalog import (
     PROTOCOL_LABELS,
     PROVIDER_TYPES,
@@ -140,6 +141,8 @@ def saved_models(provider_id: str, protocol: str = "") -> list[EngineModel]:
             id=model_id,
             label=str(item.get("label") or "").strip() or model_id,
             description=item.get("description"),
+            supported_reasoning_efforts=item.get("supported_reasoning_efforts"),
+            is_default=bool(item.get("is_default", False)),
         ))
     return result
 
@@ -148,12 +151,11 @@ def save_models(
     provider: dict, models: list[EngineModel], protocol: str = ""
 ) -> None:
     """Persist a provider's model list in the global config (no per-project DB)."""
-    from dataclasses import asdict
     from datetime import datetime, timezone
 
     config_store.set_provider_models(
         str(provider.get("id") or ""),
-        [asdict(model) for model in models],
+        [model.to_dict() for model in models],
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
         protocol,
     )
