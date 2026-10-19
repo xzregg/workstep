@@ -1,3 +1,6 @@
+# Optional prebuilt browser runtime; default builds keep the slim Node base.
+ARG WORKSTEP_RUNTIME_IMAGE=node:24-bookworm-slim
+
 # ============================================================
 # 阶段 1：前端构建（web + gateway-web + landing）
 # 完整 node:24-bookworm 提供 yarn（corepack）与编译工具，产物仅拷贝进最终镜像
@@ -58,7 +61,7 @@ RUN curl -fsSL https://www.kernel.org/pub/software/scm/git/git-2.50.1.tar.xz -o 
 # - Python 3.14：由 uv 按 UV_PYTHON 自动下载 standalone 解释器（无需系统 python）
 # - 依赖缓存与字节码在构建后立即清理，尽量减小镜像体积
 # ============================================================
-FROM node:24-bookworm-slim
+FROM ${WORKSTEP_RUNTIME_IMAGE}
 
 # 最小系统依赖（git/curl 供应用内安装 LLM 引擎使用，jq 供 JSON 处理）
 RUN apt-get update \
