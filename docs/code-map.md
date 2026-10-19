@@ -458,7 +458,7 @@ WorkStep Web `TaskShareButton.tsx` 统一任务详情的分享入口，`GatewayT
 | 分享链接携带密码提示与多语言复制 | `packages/gateway-ui/src/taskShareDefaults.ts::taskShareAccessUrl` 编码 `_t`，`taskShareClipboard` 统一文案；Web `ShareDialog.tsx` 与门户 `GatewayShareCreatePage.tsx` 共用，`SharedTaskView.tsx` 向 `useSharedTaskSession.ts` 传入提示值，仅填写、不自动提交 | Web `useSharedTaskSession.test.tsx`、`shareDialogFocus.test.tsx`、`i18n.test.ts`，门户 `share-create.test.tsx` |
 | 任务元数据跨页面同步 | daemon `api/task.py::update_task` 发布 `workstep.task_updated`，`engines/core/agui.py` 纳入状态订阅；Web `taskStore.ts` 按所属项目刷新单个任务，分享 hook 刷新快照 | Web `taskMetadataSync.test.ts`、daemon `test_shared_task_operations.py` |
 | 新建任务、起始步骤与启动方式、审核覆盖、AI 草稿和关闭保护 | `TaskCreatePanel.tsx`；`TaskList.tsx` 只负责入口和当前项目/流程选择；样式在 `src/index.css` 的 `task-create-*` 类 | `taskCreatePanel.test.tsx`、`assistantPanelToggle.test.mjs` |
-| 项目记忆 `.workstep/MEMORY.md` 读取、编辑、保存与放弃确认 | `ProjectMemoryPanel.tsx`；任务列表只负责打开入口；样式在 `src/index.css` 的 `project-memory-*` 类；daemon `api/fs.py`、`services/prompt.py`、`agent_assistants/task_draft.py` 与 `services/task_archive.py` 复用 `services/project_memory.py` 的数据根范围检查与同步 I/O 工作单元，由调用方在线程/项目执行器内运行 | `projectMemoryPanel.test.tsx`、daemon `test_fs_security_boundaries.py`、`test_memory_consumers.py` |
+| 项目记忆 `.workstep/MEMORY.md` 读取、编辑、保存与放弃确认 | `ProjectMemoryPanel.tsx`；任务列表只负责打开入口（桌面工具栏、移动端「筛选与操作」菜单，均需文件编辑权限）；样式在 `src/index.css` 的 `project-memory-*` 类；daemon `api/fs.py`、`services/prompt.py`、`agent_assistants/task_draft.py` 与 `services/task_archive.py` 复用 `services/project_memory.py` 的数据根范围检查与同步 I/O 工作单元，由调用方在线程/项目执行器内运行 | `projectMemoryPanel.test.tsx`、`mobileProjectMemory.test.tsx`、daemon `test_fs_security_boundaries.py`、`test_memory_consumers.py` |
 
 ## 修改路径
 
