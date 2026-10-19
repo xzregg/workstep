@@ -1,4 +1,5 @@
 from .base import Base
+from .third_party_auth import ThirdPartyAuthCode
 from .identity import PlatformSetting, User, AuthSession, AdminAssignment, IdentitySource, ExternalIdentity, ExternalLoginAttempt, DirectoryDepartment, DirectoryPerson, DirectoryMembership, DirectoryEventReceipt, DirectorySyncState
 from .devices import UsedDeviceAccessTicket, Device, DeviceGroup, DeviceGroupMembership, DesktopAuthCode, ClientRelease, DeviceConnection, UserDevice, GroupDevice, CapabilityAssignment
 from .projects import PlatformShare, PlatformShareSession, UserGroup, GroupMembership, GroupProject, GroupCapabilityAssignment, PlatformProject, ProjectAccessGrant, ProjectInvitation, ProjectInvitationAcceptance

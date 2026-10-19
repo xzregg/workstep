@@ -8,6 +8,7 @@ import { DeviceAdminPage } from './DeviceAdminPage'
 import { ClientDownloadPage } from './ClientDownloadPage'
 import { ProjectsPage } from './ProjectsPage'
 import { PortalAuthPage } from './PortalAuthPage'
+import { ThirdPartyAuthorizePage } from './ThirdPartyAuthorizePage'
 import { AccountPage } from './AccountPage'
 import { AdminUsersPage } from './AdminUsersPage'
 import { AdminRolesPage } from './AdminRolesPage'
@@ -51,6 +52,7 @@ function GatewayPortalApp() {
       {location.pathname !== '/' && !location.pathname.startsWith('/admin') && !deviceAuthentication && <PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />}
       <AdminPortalRegion admin={location.pathname.startsWith('/admin')} roles={adminAccess.access?.roles ?? []}>
       <Routes>
+        <Route path="/auth/authorize" element={<ThirdPartyAuthorizePage />} />
         <Route path="/" element={<ProjectsPage autoEnter portalHeader={<PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />} />} />
         <Route path="/tasks" element={<LegacyCompletionDestinationPage />} />
         <Route path="/chat" element={<LegacyCompletionDestinationPage />} />

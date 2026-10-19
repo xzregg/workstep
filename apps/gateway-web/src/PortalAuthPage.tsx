@@ -74,7 +74,10 @@ export function PortalAuthPage() {
 
   async function signIn(username: string, password: string) {
     setBusy(true); setError(''); setScanNotice('')
-    try { await post('/api/auth/login', { username, password }); navigate(next, { replace: true }) }
+    try {
+      const result = await post('/api/auth/login', { username, password })
+      navigate(result.status === 202 ? `/auth/pending?next=${encodeURIComponent(next)}` : next, { replace: true })
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败。') }
     finally { setBusy(false) }
   }

@@ -3,6 +3,7 @@ import { PlatformAddress } from './PlatformAddress'
 import { AdminPlatformAddressDialog } from './AdminPlatformAddressDialog'
 import { OrganizationSyncSettings } from './OrganizationSyncSettings'
 import { AdminLoginPolicyDialog } from './AdminLoginPolicyDialog'
+import { ThirdPartyAuthSettings } from './ThirdPartyAuthSettings'
 import { useEffect, useState } from 'react'
 import { AdminRegistrationPolicyDialog, registrationLabels } from './AdminRegistrationPolicyDialog'
 import type { RegistrationMode } from './AdminRegistrationPolicyDialog'
@@ -81,6 +82,7 @@ export function AdminPlatformSettingsPage() {
       </section>
      ) },
      { id: 'organization', label: '组织同步与扫码登录', content: <OrganizationSyncSettings csrf={csrf} platformAddress={settings.public_origin} /> },
+     { id: 'third-party', label: '第三方登录授权', content: <ThirdPartyAuthSettings csrf={csrf} /> },
      { id: 'data', label: '客户端与数据', content: (
       <section className="gateway-project-grants"><h3>客户端与数据</h3>
         <dl className="gateway-account-summary">
