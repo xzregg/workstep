@@ -376,6 +376,10 @@ export default function TaskList() {
             <Icon name="clock" size={16} />
             {t('schedules.title')}
           </Button>}
+          {can('file.edit') && <Button onClick={() => { setFiltersOpen(false); setMemoryOpen(true) }} disabled={!activeProject} title={t('taskList.memoryButtonTitle')}>
+            <Icon name="book" size={16} />
+            {t('taskList.memory')}
+          </Button>}
           {can('file.read') && <MobileOpenLocationButton disabled={!activeProject} onClick={() => { setFiltersOpen(false); setShowMobileDirectoryBrowser(true) }} />}
           <ProjectGitButton project={activeProject} />
           {canOpenSettings && <Button onClick={() => { setFiltersOpen(false); setShowSettingsPanel(true) }}>
