@@ -1,0 +1,5 @@
+.gateway-third-party-settings code { overflow-wrap: anywhere; }
+.gateway-third-party-editor { max-width: 760px; }
+.gateway-third-party-editor > label { display: block; margin-bottom: 8px; font-weight: 600; }
+.gateway-third-party-editor textarea { box-sizing: border-box; width: 100%; min-height: 160px; padding: 10px; resize: vertical; font: inherit; }
+.gateway-third-party-editor > .gateway-dialog-actions { justify-content: flex-start; }

@@ -1,5 +1,7 @@
 # Gateway 开发与部署
 
+第三方系统登录授权：超级管理员在「平台设置 → 第三方登录授权」维护完整 HTTP/HTTPS 回调 URL；第三方从 `/auth/authorize` 发起登录，以 `code + request_id` 调用 `/api/auth/exchange` 一次兑换用户 ID、账号、显示名。详见 [第三方接入指南](gateway-third-party-login-integration.md) 和 [实现说明与流程图](../plans/gateway-third-party-login.md)。
+
 Docker 部署使用根目录 `Dockerfile` 构建的 `workstep:latest` 共用镜像。
 先取消 `docker-compose.yaml` 中 `gateway` 配置块的注释，再执行
 `docker-compose -f docker-compose.yaml up -d --build gateway` 单独启动平台，默认宿主端口为 8700；

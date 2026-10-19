@@ -199,6 +199,17 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(identity_router)
+    from gateway.api.third_party_auth import router as third_party_auth_router
+    app.include_router(third_party_auth_router)
+
+    @app.middleware('http')
+    async def third_party_auth_privacy(request: Request, call_next):
+        response = await call_next(request)
+        if (request.url.path in ('/auth/authorize', '/api/auth/exchange')
+                or request.url.path.startswith('/api/auth/third-party/')):
+            response.headers.update({'Cache-Control': 'no-store', 'Pragma': 'no-cache',
+                                     'Referrer-Policy': 'no-referrer'})
+        return response
     app.include_router(workflow_hooks_router)
     app.include_router(notifications_router)
     app.include_router(legacy_notifications_router)

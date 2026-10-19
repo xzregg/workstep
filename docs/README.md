@@ -12,6 +12,7 @@
 - [Code map](code-map.md) *(简体中文)* — find feature owners, API and service boundaries, tests, and change workflow.
 - [Gateway 开发与部署](gateway-development.md) *(简体中文)* — Gateway 分层、账号、授权、接口及部署入口；未完成验收仍以平台计划为准。
 - [Gateway 运维](gateway-operations.md) *(简体中文)* — 域名、TLS、备份恢复和客户端发布。
+- [第三方登录接入](gateway-third-party-login-integration.md) *(简体中文)* — 回调白名单、code 与登录流水号兑换用户信息，含可复制示例。
 - [企业微信与钉钉渠道机器人](channel-bots.md) *(简体中文)* — 平台凭证、长连接配置、任务群绑定与路由限制。
 - [Project skill center](skill-center.md) — discovery, project selection, mirroring, API, and engine isolation.
 - [GitHub settings](github-settings.md) — repository features, rulesets, security, Pages, and analytics.

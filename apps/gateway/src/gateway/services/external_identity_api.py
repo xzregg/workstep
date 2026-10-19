@@ -349,7 +349,11 @@ async def external_callback(call: GatewayCall, response: ReplyEffects, source_id
             return RedirectTarget(f'{return_to}{separator}scan_error={failure}')
         raise
     if return_to:
-        redirect = RedirectTarget(return_to if user.status == 'active' else '/auth/pending')
+        destination = return_to if user.status == 'active' else '/auth/pending'
+        if user.status != 'active' and return_to.startswith('/auth?'):
+            # Preserve the validated portal destination through account approval.
+            destination += '?' + urlsplit(return_to).query
+        redirect = RedirectTarget(destination)
         if new_token:
             _set_session_cookie(redirect, new_token, call)
         return redirect
