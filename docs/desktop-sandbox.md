@@ -79,6 +79,76 @@ Docker 原镜像与容器保持不变，启用后的沙箱运行无需 Docker �
 和自有资源删除均通过；Windows 与 Linux 的本地导入尚未完成实机验收。
 手工 Docker Compose 继续使用 `workstep:latest`。
 
+### 浏览器运行时试验
+
+`Dockerfile.browser-runtime` 在现有 `node:24-bookworm-slim` 上安装固定版本的
+Playwright、Chromium（含 headless shell）、系统依赖和中文字体，不安装完整桌面。
+浏览器和驱动放在 `/opt/workstep-browser`，不受沙箱 `/root` 持久化挂载影响。
+普通镜像默认仍使用原 Node 基础；本地试验按以下顺序构建：
+
+```bash
+docker build -f Dockerfile.browser-runtime -t workstep-runtime:node24-browser-v1 .
+docker build --build-arg WORKSTEP_RUNTIME_IMAGE=workstep-runtime:node24-browser-v1 \
+  -t workstep:browser .
+docker run --rm --network none --tmpfs /root --entrypoint node \
+  --mount type=bind,src="$PWD/scripts/verify-browser-image.cjs",dst=/tmp/verify-browser-image.cjs,readonly \
+  workstep:browser /tmp/verify-browser-image.cjs
+```
+
+验证会在容器内部启动临时 HTTP 服务，测试网页导航、中文表单、点击、JavaScript
+和 PNG 截图，不读取宿主 Home 或凭据，也不访问外网。验证脚本也可直接用于
+`workstep-runtime:node24-browser-v1`，单独检查浏览器基础环境。
+容器内 Node 脚本使用
+`require('/opt/workstep-browser/node_modules/playwright')`；命令行可直接使用 `playwright`。
+这只提供浏览器与脚本运行环境，尚未为各 AI 引擎自动配置浏览器 MCP 或操作工具。
+
+浏览器基础镜像只在 Node、Playwright 或系统依赖升级时重建，日常 WorkStep 打包
+复用它。跨机器 CI 使用预先发布且固定摘要的同架构/多架构基础镜像；本地标签不会
+自动出现在远端构建机。本试验不更改正式发布流水线。
+首次构建会下载浏览器和系统包；再次构建命中缓存时不重复安装。
+使用临时基础镜像会让应用运行时层首次重建，后续应用代码修改不影响浏览器层。
+
+当前 WorkStep 以 root 运行，默认 Playwright 启动不启用 Chromium 自身的 sandbox；
+容器隔离与浏览器 sandbox 是两层不同机制。若用于任意外部网站，需进一步验证
+非 root 浏览器运行方式和 Podman 权限配置。此试验不要求 privileged、新增 capability
+或共享宿主 IPC。高并发页面如出现共享内存不足，可单独调整容器 `/dev/shm` 配额。
+
+2026-10-19 本地 Docker `linux/arm64` 试验（耗时随网络及机器变化）：
+
+| 项目 | 实测 |
+| --- | --- |
+| 浏览器基础镜像成功构建 / 缓存重建 | 92.71 秒 / 0.27 秒 |
+| 使用浏览器基础镜像的应用首次构建 / 缓存重建 | 187.28 秒 / 0.55 秒 |
+| `docker image ls` 显示的普通版 / 浏览器版大小 | 2.07 GB / 3.73 GB |
+| 浏览器基础镜像大小（包含 Node） | 2.02 GB |
+
+首次 HTTP 取包出现 502；加入重试、安装 CA 证书并切换 HTTPS 后成功，上表耗时
+不含失败尝试。缓存重建没有修改源码，不代表源码变更后的完整构建时间。
+普通版完整构建和已有 8 项共享镜像测试通过；浏览器基础镜像及完整应用镜像均通过
+离线浏览器验证。完整应用验证使用原 `workstep-entrypoint` 和空 Home，Chromium
+版本为 `156.0.8078.4`。尚未验证 amd64、桌面 Podman 切换及 Codex/MCP 端到端调用。
+
+体积复核：上述 `docker image ls` 数字为本机 containerd 存储的磁盘占用，包含
+压缩内容和解压层，不是网络下载大小。容器内浏览器目录约 680 MiB，其中完整
+Chromium 401 MiB、headless shell 276 MiB；字体目录约 152 MiB。主要 npm/uv/apt
+下载缓存已清理，但原应用构建仍残留约 9 MB Volta 临时安装包，且网关依赖缓存
+在后续层才删除，后续可优化；运行时种子归档用于空 Home 离线初始化，不属于缓存。
+另已用独立 Home 的长期测试容器启动完整应用，复用现有实例的供应商、模型和引擎
+配置（不复制项目、BOT 或网关激活状态），验证 React 页面渲染、健康与引擎接口 200、
+无页面 JavaScript 异常，以及浏览器表单操作和截图。不调用付费模型。
+
+`scripts/verify-browser-ui.cjs` 提供实际页面操作与截图报告验证，只在独立测试容器中
+执行。它会通过界面创建唯一测试目录和项目、验证刷新恢复、修改外观与语言、检查
+390px 移动端布局，并创建空会话填写草稿，不点击发送。输出目录包含 `report.html`
+（内嵌全部 PNG，可离线打开）、`results.json` 和逐项截图。每次执行会留下新的测试
+项目和空会话；不要对日常实例运行。2026-10-19 本地容器验证 10 项全部通过。
+
+```bash
+docker cp scripts/verify-browser-ui.cjs <测试容器>:/tmp/verify-browser-ui.cjs
+docker exec <测试容器> node /tmp/verify-browser-ui.cjs /tmp/browser-report
+docker cp <测试容器>:/tmp/browser-report ./browser-report
+```
+
 ## 配置、权限和清理
 
 WorkStep 配置迁移从普通模式的 `~/.workstep/config.json`（设置了 `WORKSTEP_CONFIG_DIR` 时以其为准）
