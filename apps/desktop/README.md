@@ -86,7 +86,7 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 ./build.sh --no-web     # 复用已有 apps/web/dist
 ```
 
-推送 `v*` tag 后，CI 在 Windows x64、macOS ARM64 和 Linux x64 分别完成以下流程；Windows 安装包内置与自身架构一致的 CPython：
+推送 `v*` tag 后，CI 在 Windows x64、macOS ARM64、macOS Intel x64 和 Linux x64 分别完成以下流程；安装包内置与自身架构一致的 CPython。Mac ARM64 使用 `macos-15`，Intel 使用 `macos-15-intel` 原生构建；两者分别产出 `WorkStep-macos-arm64.dmg` 和 `WorkStep-macos-x64.dmg`，不能混用。Mac 上传前从真实 DMG 安装到临时目录，验证架构、签名、首次启动、后台版本、认证、UTF-8 配置持久化与重启退出；实机 Gatekeeper、既有安装升级和真实模型／沙箱仍需另行验收：
 
 1. 构建 React 前端。
 2. 下载可重定位的 CPython，并安装锁定的基础 `requirements-prod.txt`（不含可点击安装的引擎 SDK）。

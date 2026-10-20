@@ -12,8 +12,6 @@ import secrets
 import threading
 import time
 
-from fastapi import HTTPException
-
 TTL_SECONDS = 3600
 MAX_TICKETS = 256
 MAX_RESOURCE_BYTES = 25 * 1024 * 1024
@@ -29,6 +27,13 @@ class PreviewTicket:
 
 _tickets: OrderedDict[str, PreviewTicket] = OrderedDict()
 _lock = threading.Lock()
+
+
+class HtmlPreviewError(Exception):
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
 
 
 def issue_ticket(file_path: Path, project_id: str | None) -> dict:
@@ -48,17 +53,17 @@ def resource_file(token: str, project_id: str | None, path: str) -> Path:
     with _lock:
         ticket = _tickets.get(token)
     if ticket is None or ticket.expires <= time.monotonic() or ticket.project_id != project_id:
-        raise HTTPException(status_code=404, detail='Preview expired or unavailable')
+        raise HtmlPreviewError(status_code=404, detail='Preview expired or unavailable')
     candidate = Path(path)
     if candidate.is_absolute() or '\\' in path or any(part.startswith('.') for part in candidate.parts):
-        raise HTTPException(status_code=403, detail='Preview resource denied')
+        raise HtmlPreviewError(status_code=403, detail='Preview resource denied')
     target = (ticket.root / candidate).resolve()
     if not target.is_relative_to(ticket.root) or target.suffix.lower() not in RESOURCE_EXTENSIONS:
-        raise HTTPException(status_code=403, detail='Preview resource denied')
+        raise HtmlPreviewError(status_code=403, detail='Preview resource denied')
     if not target.is_file():
-        raise HTTPException(status_code=404, detail='Preview resource unavailable')
+        raise HtmlPreviewError(status_code=404, detail='Preview resource unavailable')
     if target.stat().st_size > MAX_RESOURCE_BYTES:
-        raise HTTPException(status_code=413, detail='Preview resource too large')
+        raise HtmlPreviewError(status_code=413, detail='Preview resource too large')
     return target
 
 

@@ -47,13 +47,22 @@ The image build restores and exports a separate GHCR `buildcache` tag with
 The first successful cache export populates it; a missing cache falls back to a normal
 build. Keep this cache tag when cleaning release images. Local builds reuse the same
 Docker builder's cache; avoid `--no-cache` and pruning that cache when rebuilding.
-It creates unsigned installers for Windows x64, macOS arm64 and Linux x64, updater metadata,
+It creates unsigned installers for Windows x64, macOS arm64 / Intel x64 and Linux x64, updater metadata,
 SHA-256 checksums, and a CycloneDX SBOM. It then creates a draft
 Release. Before publishing the draft, install every platform artifact on a clean
 machine and verify first launch, sidecar startup, deep links, task execution,
 the Settings desktop version check and GitHub download link, upgrade, and uninstall behavior.
 Desktop updates only query the latest published GitHub Release daily; packages are
 downloaded and installed manually. Publishing the draft is an explicit release step.
+
+macOS builds use a native runner matrix (`macos-15` arm64 and `macos-15-intel`
+x64), with an explicit matching CPython request and architecture checks. Each DMG
+must pass `scripts/macos-desktop-acceptance.cjs` before its artifact is uploaded:
+mount, copy, signature/architecture, actual first launch and restart, daemon version
+and authentication, UTF-8 settings persistence and sidecar exit. Reports and
+sanitized screenshots are uploaded separately from release installers. This does
+not cover real-user Gatekeeper/quarantine, existing-installation upgrade/uninstall,
+real LLM calls, or the Podman sandbox.
 
 ## Windows 安装包自动验收
 

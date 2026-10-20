@@ -61,10 +61,14 @@ def test_release_workflow_builds_supported_desktop_architectures_only():
     macos_job, windows_and_later = workflow.split("  windows:\n", 1)
     windows_job = windows_and_later.split("  linux:\n", 1)[0]
 
-    assert "runs-on: macos-15" in macos_job
-    assert "macos-15-intel" not in macos_job
-    assert "--arm64" in macos_job
-    assert "desktop-macos-arm64" in macos_job
+    assert "runs-on: ${{ matrix.runner }}" in macos_job
+    assert "runner: macos-15" in macos_job
+    assert "runner: macos-15-intel" in macos_job
+    assert "arch: arm64" in macos_job and "arch: x64" in macos_job
+    assert '--${{ matrix.arch }}' in macos_job
+    assert "desktop-macos-${{ matrix.arch }}" in macos_job
+    assert 'macos-desktop-acceptance.cjs' in macos_job
+    assert 'lipo -archs' in macos_job
 
     assert "runs-on: windows-2025" in windows_job
     assert "WORKSTEP_WINDOWS_PYTHON_ARCH: x86_64" in windows_job
@@ -72,7 +76,6 @@ def test_release_workflow_builds_supported_desktop_architectures_only():
     assert "desktop-windows-x64" in windows_job
     assert '"dist/WorkStep-windows-x64.exe"' in windows_job
     assert "ia32" not in workflow
-    assert "macos-x64" not in workflow
     assert "$env:WORKSTEP_WINDOWS_PYTHON_ARCH" in backend_builder
     assert '"cpython-$PythonVersion-windows-$PythonArch-none"' in backend_builder
 
@@ -184,5 +187,5 @@ def test_repository_readmes_present_the_product_and_current_desktop_support():
         assert "macOS Apple Silicon" in content
         assert "Windows x64" in content
         assert "Linux x64" in content
-        assert "macOS Intel" not in content
+        assert "macOS Intel" in content
         assert "Windows x86" not in content

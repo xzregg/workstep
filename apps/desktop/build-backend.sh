@@ -18,11 +18,24 @@ output_dir="$output_root/main.dist"
 stage_dir="$(mktemp -d)"
 python_install_dir="$stage_dir/python-install"
 python_version="3.12.13"
+python_request="$python_version"
+if [[ "$platform_name" == "mac" ]]; then
+  mac_arch="${WORKSTEP_MACOS_ARCH:-$(uname -m)}"
+  case "$mac_arch" in
+    arm64) python_request="cpython-$python_version-macos-aarch64-none" ;;
+    x86_64) python_request="cpython-$python_version-macos-x86_64-none" ;;
+    *) echo "Unsupported macOS architecture: $mac_arch" >&2; exit 1 ;;
+  esac
+  if [[ "$(uname -m)" != "$mac_arch" ]]; then
+    echo "Build on a native $mac_arch runner to keep Python dependencies aligned" >&2
+    exit 1
+  fi
+fi
 trap 'rm -rf "$stage_dir"' EXIT
 
 # Keep the desktop daemon self-contained but writable: optional Python SDK
 # engines are installed into this bundled runtime only after the user clicks.
-uv python install --managed-python --no-bin --install-dir "$python_install_dir" "$python_version"
+uv python install --managed-python --no-bin --install-dir "$python_install_dir" "$python_request"
 python_root="$(find "$python_install_dir" -mindepth 1 -maxdepth 1 -type d -name 'cpython-3.12*' -print -quit)"
 test -n "$python_root"
 python_bin="$(find "$python_root/bin" -maxdepth 1 -type f -name 'python3.12' -print -quit)"

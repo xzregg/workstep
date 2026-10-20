@@ -14,7 +14,7 @@ WorkStep is an AI development workspace for individual developers and small team
 [![Release](https://img.shields.io/github/v/release/xzregg/workstep?display_name=tag&style=flat-square)](https://github.com/xzregg/workstep/releases/latest)
 [![License](https://img.shields.io/github/license/xzregg/workstep?style=flat-square)](LICENSE)
 ![Local First](https://img.shields.io/badge/local--first-yes-22c55e?style=flat-square)
-![Desktop](https://img.shields.io/badge/desktop-macOS%20ARM64%20%7C%20Windows%20x64%20%7C%20Linux%20x64-2563eb?style=flat-square)
+![Desktop](https://img.shields.io/badge/desktop-macOS%20ARM64%2Fx64%20%7C%20Windows%20x64%20%7C%20Linux%20x64-2563eb?style=flat-square)
 ![Status](https://img.shields.io/badge/status-early%20access-f59e0b?style=flat-square)
 
 </div>
@@ -36,7 +36,8 @@ Reuse the workflow for later tasks to reduce repeated briefing, manual handoffs,
 
 Visit [GitHub Releases](https://github.com/xzregg/workstep/releases/latest), download the package for your system, then install and open WorkStep:
 
-- **macOS Apple Silicon**: DMG or ZIP
+- **macOS Apple Silicon**: ARM64 DMG or ZIP
+- **macOS Intel**: x64 DMG or ZIP
 - **Windows x64**: NSIS installer
 - **Linux x64**: AppImage
 
@@ -91,7 +92,7 @@ Enable manual review on a step to wait for your decision. Inspect the output, ad
 | 🛡️ | **Human control** | Approve sensitive tools, pause or stop work, resume sessions, and retry failed stages. |
 | 💾 | **Local-first storage** | Keep project data, execution records, and artifacts on your device or infrastructure. |
 | 🔁 | **Recoverable context** | Continue tasks and supported engine sessions after interruption or restart. |
-| 📦 | **Web and desktop** | Run from source or use unsigned early-access packages for macOS Apple Silicon, Windows x64, and Linux x64. |
+| 📦 | **Web and desktop** | Run from source or use unsigned early-access packages for macOS Apple Silicon / macOS Intel, Windows x64, and Linux x64. |
 | 🔗 | **Controlled collaboration** | Authorize remote access per project and device instead of uploading every project to a central service. |
 
 ## Engines, one workflow model
