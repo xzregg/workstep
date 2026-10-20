@@ -159,9 +159,13 @@ async def test_task_workflow_overlay_save_sync_and_conflicts(api_context):
 
 
 @pytest.mark.anyio
-async def test_task_quick_config_persists_only_changed_fields(api_context):
+async def test_task_quick_config_persists_only_changed_fields(api_context, monkeypatch):
     import main
     from models import Task
+    from engines.codex import CodexEngine
+    from engines.claude_code import ClaudeCodeEngine
+    monkeypatch.setitem(ENGINE_REGISTRY, 'codex', CodexEngine)
+    monkeypatch.setitem(ENGINE_REGISTRY, 'claude', ClaudeCodeEngine)
 
     client, tmp_path = api_context
     directory = tmp_path / "sparse-quick-config"
@@ -225,11 +229,15 @@ async def test_task_workflow_edit_write_does_not_block_health(api_context, monke
 
 
 @pytest.mark.anyio
-async def test_task_canvas_engine_switch_hands_off_all_rounds_and_share_uses_effective_flow(api_context):
+async def test_task_canvas_engine_switch_hands_off_all_rounds_and_share_uses_effective_flow(api_context, monkeypatch):
     import main
     from models import Message, StepRun, Task, TaskStep, WorkflowRun
     from models.fields import utc_now
     from services import share
+    from engines.codex import CodexEngine
+    from engines.claude_code import ClaudeCodeEngine
+    monkeypatch.setitem(ENGINE_REGISTRY, 'codex', CodexEngine)
+    monkeypatch.setitem(ENGINE_REGISTRY, 'claude', ClaudeCodeEngine)
 
     client, tmp_path = api_context
     directory = tmp_path / "handoff-canvas"

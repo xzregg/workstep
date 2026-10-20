@@ -14,7 +14,7 @@ WorkStep 是面向个人开发者与小团队的 AI 开发工作台。连接 Cod
 [![Release](https://img.shields.io/github/v/release/xzregg/workstep?display_name=tag&style=flat-square)](https://github.com/xzregg/workstep/releases/latest)
 [![License](https://img.shields.io/github/license/xzregg/workstep?style=flat-square)](LICENSE)
 ![本地优先](https://img.shields.io/badge/本地优先-是-22c55e?style=flat-square)
-![桌面平台](https://img.shields.io/badge/桌面端-macOS%20ARM64%20%7C%20Windows%20x64%20%7C%20Linux%20x64-2563eb?style=flat-square)
+![桌面平台](https://img.shields.io/badge/桌面端-macOS%20ARM64%2Fx64%20%7C%20Windows%20x64%20%7C%20Linux%20x64-2563eb?style=flat-square)
 ![项目状态](https://img.shields.io/badge/状态-早期版本-f59e0b?style=flat-square)
 
 </div>
@@ -36,7 +36,8 @@ WorkStep 是面向个人开发者与小团队的 AI 开发工作台。连接 Cod
 
 前往 [GitHub Releases](https://github.com/xzregg/workstep/releases/latest)，下载对应系统的安装包，安装后打开 WorkStep：
 
-- **macOS Apple Silicon**：DMG 或 ZIP
+- **macOS Apple Silicon**：ARM64 DMG 或 ZIP
+- **macOS Intel**：x64 DMG 或 ZIP
 - **Windows x64**：NSIS 安装程序
 - **Linux x64**：AppImage
 
@@ -91,7 +92,7 @@ WorkStep 是面向个人开发者与小团队的 AI 开发工作台。连接 Cod
 | 🛡️ | **人工确认与干预** | 审批敏感工具，暂停或终止任务，恢复会话，并重试失败阶段。 |
 | 💾 | **本地优先存储** | 项目数据、执行记录和产物保存在你的设备或自管环境中。 |
 | 🔁 | **上下文可恢复** | 在中断或重启后继续任务，并恢复受支持引擎的原生会话。 |
-| 📦 | **Web 与桌面端** | 可从源码运行，也提供 macOS Apple Silicon、Windows x64 和 Linux x64 早期安装包。 |
+| 📦 | **Web 与桌面端** | 可从源码运行，也提供 macOS Apple Silicon / macOS Intel、Windows x64 和 Linux x64 早期安装包。 |
 | 🔗 | **受控远程协作** | 按项目和设备授权远程访问，而不是默认把所有项目上传到中心化服务。 |
 
 ## 多种引擎，一套工作流

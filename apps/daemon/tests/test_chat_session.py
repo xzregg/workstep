@@ -168,6 +168,7 @@ async def chat_module(tmp_path, monkeypatch):
     monkeypatch.setattr(assistant_base, "config_store", config_store)
     monkeypatch.setattr(chat_service, "create_engine", lambda engine_id: FakeEngine())
     monkeypatch.setattr(assistant_base, "create_engine", lambda engine_id: FakeEngine())
+    monkeypatch.setattr("agent_assistants.chat_roles.create_engine", lambda engine_id: FakeEngine())
 
     manager = ProjectManager()
     bus = EventBus()

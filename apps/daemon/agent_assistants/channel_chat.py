@@ -99,9 +99,9 @@ class ChannelChatModule(ChatSessionModule):
 
     def _build_rebuild_prompt(self, session) -> str:
         prompt = super()._build_rebuild_prompt(session)
-        # The parent replaces the normal prompt with history for a lost thread.
-        # Without a resolved thread it already calls our _build_prompt above.
-        return self._with_channel_background(session, prompt) if session.resolved_session_id else prompt
+        # The parent rebuilds from _build_chat_prompt, bypassing our ordinary
+        # prompt hook even when no native thread has been established yet.
+        return self._with_channel_background(session, prompt)
 
     def _system_prompt_for_display(self, session) -> str:
         if self._config.name != "channel_chat":

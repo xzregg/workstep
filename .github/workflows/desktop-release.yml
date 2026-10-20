@@ -66,7 +66,17 @@ jobs:
 
   macos:
     needs: [validate, sandbox-image]
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            machine: arm64
+          - runner: macos-15-intel
+            arch: x64
+            machine: x86_64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ inputs.tag || github.ref }}" }
@@ -91,6 +101,7 @@ jobs:
       - name: Build bundled backend
         env:
           BUILD_PLATFORM: mac
+          WORKSTEP_MACOS_ARCH: ${{ matrix.machine }}
           WORKSTEP_BUILD_VERSION: ${{ inputs.tag || github.ref_name }}
         run: ./apps/desktop/build-backend.sh
       - name: Build unsigned macOS package and update metadata
@@ -105,7 +116,7 @@ jobs:
           if [ -n "${{ inputs.tag }}" ]; then version="${{ inputs.tag }}"; version="${version#v}"; fi
           npm version "$version" --no-git-tag-version --allow-same-version
           ./inject-backend.sh
-          yarn electron-builder --mac dmg zip --arm64 --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-arm64
+          yarn electron-builder --mac dmg zip --${{ matrix.arch }} --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-${{ matrix.arch }}
           codesign --verify --deep --strict --verbose=2 "$(find dist -maxdepth 2 -type d -name WorkStep.app -print -quit)"
           test -x resources-placeholder/backend/python/bin/python3
           test -f resources-placeholder/backend/legal/LICENSE
@@ -114,9 +125,21 @@ jobs:
           test -f resources-placeholder/backend/legal/sbom.cdx.json
           app_path="$(find dist -name 'WorkStep*.app' -type d -print -quit)"
           test -n "$app_path"
+          test "$(lipo -archs "$app_path/Contents/MacOS/WorkStep")" = "${{ matrix.machine }}"
+          test "$(resources-placeholder/backend/python/bin/python3 -c 'import platform; print(platform.machine())')" = "${{ matrix.machine }}"
+      - name: Verify installed macOS DMG before publishing
+        run: node scripts/macos-desktop-acceptance.cjs --installer apps/desktop/dist/WorkStep-macos-${{ matrix.arch }}.dmg --version "${{ inputs.tag || github.ref_name }}" --arch ${{ matrix.arch }}
+      - name: Upload macOS acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macos-acceptance-${{ matrix.arch }}
+          path: ${{ runner.temp }}/macos-acceptance-${{ matrix.arch }}
+          if-no-files-found: warn
+          retention-days: 14
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: desktop-macos-arm64
+          name: desktop-macos-${{ matrix.arch }}
           path: |
             apps/desktop/dist/*.dmg
             apps/desktop/dist/*.zip
