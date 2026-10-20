@@ -136,7 +136,7 @@ async def test_e2e_task_run_publishes_events(tmp_path, monkeypatch):
 
         # Verify task status updated
         updated = ts.get_task(task["id"])
-        assert updated["status"] == "ready"  # completed → back to ready
+        assert updated["status"] == "completed"
 
         # Verify events persisted to message
         from models import Message

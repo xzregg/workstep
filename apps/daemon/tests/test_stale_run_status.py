@@ -156,7 +156,7 @@ async def test_retry_restores_stale_paused_rows_while_step_runs(tmp_path):
         # The retry ran with both rows back in ``running`` and the stale
         # ``ended_at`` cleared, so the card shows 运行中 instead of 暂停.
         assert StaleStatusStepEngine.observed == [("running", "running", None)]
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         # 收尾状态由 WorkflowRuntime 负责，这里只要求不被留在 failed。
         assert WorkflowRun.get_by_id(workflow_run.id).status != "failed"
         assert TaskStep.get(
