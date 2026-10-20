@@ -19,6 +19,19 @@ function validateOptions(options, platform = process.platform, env = process.env
   return { ...options, version, machine: options.arch === 'x64' ? 'x86_64' : 'arm64' }
 }
 
+async function stopChild(child, graceMs = 3000) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return
+  const exited = new Promise(resolve => child.once('exit', resolve))
+  child.kill('SIGTERM')
+  let timer
+  try { await Promise.race([exited, new Promise(resolve => { timer = setTimeout(resolve, graceMs) })]) }
+  finally { clearTimeout(timer) }
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill('SIGKILL')
+    await exited
+  }
+}
+
 async function runAcceptance(input) {
   const options = validateOptions(input)
   const reportDir = path.join(process.env.RUNNER_TEMP, `macos-acceptance-${options.arch}`)
@@ -89,7 +102,7 @@ async function runAcceptance(input) {
       record(`${label}: desktop quit stops bundled daemon`)
     } finally {
       await cleanupBrowser(browser)
-      if (child && child.exitCode === null) child.kill()
+      await stopChild(child)
       await log.close()
     }
   }
@@ -118,4 +131,4 @@ if (require.main === module) {
   const completed = installCompletionGuard()
   runAcceptance(values).then(completed, error => { completed(); console.error(error); process.exitCode = 1 })
 }
-module.exports = { validateOptions }
+module.exports = { validateOptions, stopChild }
