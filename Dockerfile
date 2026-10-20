@@ -1,6 +1,3 @@
-# Optional prebuilt browser runtime; default builds keep the slim Node base.
-ARG WORKSTEP_RUNTIME_IMAGE=node:24-bookworm-slim
-
 # ============================================================
 # 阶段 1：前端构建（web + gateway-web + landing）
 # 完整 node:24-bookworm 提供 yarn（corepack）与编译工具，产物仅拷贝进最终镜像
@@ -54,14 +51,32 @@ RUN curl -fsSL https://www.kernel.org/pub/software/scm/git/git-2.50.1.tar.xz -o 
     && make prefix=/root/.workstep/runtime/base/git NO_GETTEXT=YesPlease NO_TCLTK=YesPlease -j"$(nproc)" all \
     && make prefix=/root/.workstep/runtime/base/git NO_GETTEXT=YesPlease NO_TCLTK=YesPlease install
 
+# Browser dependencies are independent of application source and cached across builds.
+FROM node:24-bookworm-slim AS browser-runtime
+
+ARG PLAYWRIGHT_VERSION=1.64.1
+ARG NPM_REGISTRY=https://registry.npmjs.org
+# /root is replaced by the desktop sandbox HOME mount. Keep immutable browser
+# binaries and their matching driver outside HOME so first launch stays offline.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/workstep-browser/browsers
+RUN printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80workstep-retries \
+    && apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && npm install --prefix /opt/workstep-browser --registry="$NPM_REGISTRY" \
+      --omit=dev --no-audit --no-fund --save-exact "playwright@$PLAYWRIGHT_VERSION" \
+    && /opt/workstep-browser/node_modules/.bin/playwright install --with-deps chromium \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk \
+    && ln -s /opt/workstep-browser/node_modules/.bin/playwright /usr/local/bin/playwright \
+    && rm -rf /var/lib/apt/lists/* /root/.npm /root/.cache
+
 # ============================================================
-# 阶段 2：运行时镜像（最小化）
+# 阶段 2：应用运行时镜像（默认包含浏览器）
 # - 基础镜像 node:24-bookworm-slim（Node 24 + npm，约 1/5 体积）
-# - 最小系统依赖：git / curl / ca-certificates / jq（引擎安装与 JSON 处理）
+# - Chromium / Playwright / 中文字体，以及 git / curl / ca-certificates / jq
 # - Python 3.14：由 uv 按 UV_PYTHON 自动下载 standalone 解释器（无需系统 python）
 # - 依赖缓存与字节码在构建后立即清理，尽量减小镜像体积
 # ============================================================
-FROM ${WORKSTEP_RUNTIME_IMAGE}
+FROM browser-runtime
 
 # 最小系统依赖（git/curl 供应用内安装 LLM 引擎使用，jq 供 JSON 处理）
 RUN apt-get update \

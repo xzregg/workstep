@@ -42,6 +42,11 @@ Before tagging:
 
 The workflow publishes a sandbox image for Linux amd64 and arm64 to GHCR under
 the release tag and `latest`, and pins its immutable digest into every desktop package.
+The image build restores and exports a separate GHCR `buildcache` tag with
+`mode=max`, preserving browser and intermediate build layers across fresh CI runners.
+The first successful cache export populates it; a missing cache falls back to a normal
+build. Keep this cache tag when cleaning release images. Local builds reuse the same
+Docker builder's cache; avoid `--no-cache` and pruning that cache when rebuilding.
 It creates unsigned installers for Windows x64, macOS arm64 and Linux x64, updater metadata,
 SHA-256 checksums, and a CycloneDX SBOM. It then creates a draft
 Release. Before publishing the draft, install every platform artifact on a clean
