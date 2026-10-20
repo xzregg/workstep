@@ -64,6 +64,19 @@ sanitized screenshots are uploaded separately from release installers. This does
 not cover real-user Gatekeeper/quarantine, existing-installation upgrade/uninstall,
 real LLM calls, or the Podman sandbox.
 
+### v1.0.13 首轮安装包验收
+
+2026-10-20 的[首轮构建](https://github.com/xzregg/workstep/actions/runs/39374390007)
+成功发布双架构沙箱镜像并生成 Linux 包。macOS arm64 实际 DMG 启动、Windows
+实际安装启动均发现后台缺少 `tinycss2`；皮肤模块已加入 daemon 锁文件，但桌面
+`requirements-prod.txt` 未同步，导致导入失败。本轮已取消，未创建或正式发布 Release，
+不能把“成功生成安装包”视为“启动验收通过”。Intel 验收尚未完成。
+
+桌面依赖清单补齐 `tinycss2` 和 `webencodings`，CI 增加与 frozen daemon export
+逐项比较的检查，覆盖版本、哈希和平台条件；仍排除按需安装的 SDK 引擎。
+macOS 验收的失败清理增加有时限的自有子进程终止，避免启动错误对话框令任务悬挂。
+新包须重新构建并完成验收后才能正式发布；本段不是重新验收通过的声明。
+
 ## Windows 安装包自动验收
 
 ### v1.0.12 首次构建启动回归

@@ -1,8 +1,22 @@
 import json
 from pathlib import Path
+import subprocess
 
 
 DESKTOP_DIR = Path(__file__).resolve().parents[1]
+
+
+def test_desktop_base_requirements_match_frozen_daemon_export(tmp_path):
+    exported = tmp_path / "requirements.txt"
+    subprocess.run([
+        "uv", "export", "--project", "apps/daemon", "--frozen", "--no-dev",
+        "--no-emit-project", "--no-emit-local", "--no-emit-package", "openai-codex",
+        "--no-emit-package", "openai-codex-cli-bin", "--no-emit-package", "claude-agent-sdk",
+        "--no-header", "--quiet", "--output-file", str(exported),
+    ], cwd=DESKTOP_DIR.parents[1], check=True, timeout=30)
+    # Ignore only the generated command header; compare every package/hash/marker.
+    current = (DESKTOP_DIR / "backend/requirements-prod.txt").read_text().splitlines()[2:]
+    assert current == exported.read_text().splitlines(), "Regenerate desktop requirements from the daemon lock"
 
 
 def test_desktop_base_requirements_exclude_click_installed_sdk_engines():
