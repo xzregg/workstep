@@ -221,7 +221,7 @@ async def test_rejected_verifier_reworks_upstream_with_feedback(tmp_path):
             workflow_run=workflow_run,
         )
 
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         assert TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "build")
         ).status == "passed"

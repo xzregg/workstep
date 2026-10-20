@@ -300,7 +300,7 @@ async def test_recovered_execution_message_keeps_persisted_run_initiator(tmp_pat
 
         async def finished():
             return await manager.run_db(
-                project.id, lambda _project: Task.get_by_id("task-rec").status == "ready",
+                project.id, lambda _project: Task.get_by_id("task-rec").status == "completed",
             )
 
         for _ in range(250):
@@ -376,7 +376,7 @@ async def test_recovery_resumes_from_last_completed_node(tmp_path):
         # the runner boundary, not an intermediate projection under CPU load.
         await _wait_until(lambda: "task-rec" not in runtime._runners)
         with pm.activate_project(project.path):
-            assert Task.get_by_id("task-rec").status == "ready"
+            assert Task.get_by_id("task-rec").status == "completed"
             run = WorkflowRun.get_by_id(run_id)
             assert run.status == "succeeded"
             steps = {
@@ -497,7 +497,7 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
     try:
         assert await runtime.recover_running_workflows() == 1
         with pm.activate_project(project.path):
-            await _wait_until(lambda: Task.get_by_id(task.id).status == "ready")
+            await _wait_until(lambda: Task.get_by_id(task.id).status == "completed")
             assert TaskStep.get(
                 (TaskStep.task == task) & (TaskStep.step_key == "a")
             ).status == "passed"
@@ -635,7 +635,7 @@ async def test_recovery_preserves_direct_entry_and_boundary_inputs(tmp_path):
         assert await runtime.recover_running_workflows() == 1
         with pm.activate_project(project.path):
             await _wait_until(
-                lambda: Task.get_by_id(task.id).status == "ready"
+                lambda: Task.get_by_id(task.id).status == "completed"
             )
             assert {
                 row.step_key: row.status
@@ -670,7 +670,7 @@ async def test_online_reconciler_recovers_own_running_run_without_runner(tmp_pat
 
         with pm.activate_project(project.path):
             await _wait_until(
-                lambda: Task.get_by_id("task-rec").status == "ready"
+                lambda: Task.get_by_id("task-rec").status == "completed"
             )
             assert WorkflowRun.get_by_id(run_id).status == "succeeded"
             attempts = list(
@@ -870,7 +870,7 @@ async def test_graceful_shutdown_leaves_run_recoverable(tmp_path):
         assert await runtime.recover_running_workflows() == 1
         await _wait_until(lambda: "task-rec" not in runtime._runners)
         with pm.activate_project(project.path):
-            assert Task.get_by_id("task-rec").status == "ready"
+            assert Task.get_by_id("task-rec").status == "completed"
             assert WorkflowRun.get_by_id(run_id).status == "succeeded"
             # The interrupted attempt is failed; a fresh attempt succeeds.
             interrupted = StepRun.get_by_id(in_flight.id)
@@ -994,7 +994,7 @@ async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
         with pm.activate_project(project.path):
             await _wait_until(
                 lambda: (
-                    Task.get_by_id(task_id).status == "ready"
+                    Task.get_by_id(task_id).status == "completed"
                     and WorkflowRun.get_by_id(run_id).status == "succeeded"
                 )
             )
@@ -1112,7 +1112,7 @@ async def test_recovery_takes_over_expired_lease(tmp_path):
         assert await runtime.recover_running_workflows() == 1
         await _wait_until(lambda: "task-rec" not in runtime._runners)
         with pm.activate_project(project.path):
-            assert Task.get_by_id("task-rec").status == "ready"
+            assert Task.get_by_id("task-rec").status == "completed"
             run = WorkflowRun.get_by_id(run_id)
             assert run.status == "succeeded"
     finally:

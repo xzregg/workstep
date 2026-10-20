@@ -506,7 +506,7 @@ async def test_nonempty_feedback_output_reworks_target_before_forward_branch(tmp
             workflow_run=run,
         )
 
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         assert {row.step_key: row.status for row in TaskStep.select()} == {
             "requirements": "passed",
             "develop": "passed",
@@ -720,7 +720,7 @@ async def test_review_rejection_cannot_bypass_artifact_feedback_route(tmp_path):
             workflow_run=run,
         )
 
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         assert len(calls["develop"]) == 2
         assert len(calls["test"]) == 3
         assert len(calls["review"]) == 3
@@ -806,7 +806,7 @@ async def test_missing_output_skips_only_its_connected_branch(tmp_path):
             workflow_run=run,
         )
 
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         statuses = {row.step_key: row.status for row in TaskStep.select()}
         assert statuses == {
             "choose": "passed",
@@ -967,7 +967,7 @@ async def test_manual_approval_routes_the_approved_artifact_port(tmp_path):
         )
         await runtime.wait(resumed)
 
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         assert len(calls["target"]) == 1
         assert "有效产物.md" in calls["target"][0]
         assert "LATEST TARGET REQUIREMENT" in calls["target"][0]
@@ -1196,7 +1196,7 @@ async def test_manual_approval_of_feedback_artifact_resumes_target_rework(tmp_pa
         )
         await runtime.wait(finished)
 
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         assert len(calls["publish"]) == 1
     finally:
         await runtime.shutdown()
