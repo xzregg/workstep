@@ -53,8 +53,10 @@ async def get_pending_inserts(
 
 @router.post("")
 async def add_pending_insert(req: PendingInsertCreateRequest):
+    from main import coordinator_module
+
     try:
-        return await _run_db(
+        created = await _run_db(
             req.project_id,
             lambda: create_pending_insert(
                 req.target_message_id,
@@ -62,6 +64,11 @@ async def add_pending_insert(req: PendingInsertCreateRequest):
                 None,
             ),
         )
+        if coordinator_module is not None:
+            created["consumed"] = await coordinator_module.consume_finished_pending(
+                req.project_id, req.target_message_id,
+            )
+        return created
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

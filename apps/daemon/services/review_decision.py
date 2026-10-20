@@ -249,7 +249,7 @@ def persist_review_decision(
             & (Message.run_status == "running")
             & (Message.step_run_id.in_(current_step_run_ids))
         ).execute()
-        task.status = "ready"
+        task.status = "completed"
         task.state_version += 1
         task.updated_at = now
         task.save()

@@ -76,6 +76,10 @@ logger = logging.getLogger(__name__)
 COORDINATOR_RECONCILE_SECONDS = 15.0
 COORDINATOR_STOP_TIMEOUT_SECONDS = 10.0
 
+
+class PendingInsertBatchChanged(ValueError):
+    """A queued batch was already consumed or removed before submission."""
+
 # Registered in the shared assistant registry: the task coordinator is one
 # assistant, described declaratively (its task-specific conversation logic
 # lives in CoordinatorModule below). It loads the WorkStep internal tools:
@@ -351,6 +355,11 @@ class CoordinatorModule:
     ):
         if not replay_pending and not schedule_run_id:
             require_user_actor()
+        if pending_insert_ids:
+            # Automatic continuation and manual send must claim the same batch,
+            # even when they arrive with different request idempotency keys.
+            batch_key = json.dumps(sorted(set(pending_insert_ids)))
+            idempotency_key = f"pending-insert-batch:{uuid.uuid5(uuid.NAMESPACE_URL, batch_key)}"
         with self._project_manager.activate_project_by_id(project_id) as project:
             existing = CoordinatorTurn.get_or_none(
                 (CoordinatorTurn.task == task_id)
@@ -371,6 +380,18 @@ class CoordinatorModule:
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
                 raise ValueError(f"Task not found: {task_id}")
+            if pending_insert_ids:
+                selected = list(
+                    PendingMessageInsert.select(PendingMessageInsert)
+                    .join(Message, on=(PendingMessageInsert.target_message_id == Message.id))
+                    .where(
+                        (PendingMessageInsert.id.in_(pending_insert_ids))
+                        & (Message.task == task_id)
+                        & (Message.channel == COORDINATOR_CHANNEL)
+                    )
+                )
+                if len(selected) != len(set(pending_insert_ids)):
+                    raise PendingInsertBatchChanged("待插入消息已发送或删除，请刷新队列")
             engine, model, _, _ = self._resolve_engine_models(task)
             context_step_key = self._single_active_step(task)
             now = utc_now()
@@ -1128,6 +1149,22 @@ class CoordinatorModule:
                 turn.assistant_message_id,
             )
 
+    async def consume_finished_pending(self, project_id: str, target_message_id: str) -> bool:
+        """Close the race between turn completion and a late queue insertion."""
+        def finished_task_id():
+            message = Message.get_or_none(Message.id == target_message_id)
+            if (message is not None and message.channel == COORDINATOR_CHANNEL
+                    and message.role == "assistant"
+                    and message.run_status in {"succeeded", "completed", "failed", "stopped", "cancelled"}):
+                return message.task_id
+            return None
+
+        task_id = await self._run_db(project_id, finished_task_id)
+        if task_id is None:
+            return False
+        await self._consume_pending_inserts(project_id, task_id, target_message_id)
+        return True
+
     async def _consume_pending_inserts(
         self,
         project_id: str,
@@ -1142,15 +1179,19 @@ class CoordinatorModule:
         if not ids or not content:
             return
         with replayed_actor_context(actor):
-            await self.submit_message(
-                project_id,
-                task_id,
-                content,
-                f"pending-inserts:{target_message_id}",
-                author_name=username,
-                pending_insert_ids=ids,
-                replay_pending=True,
-            )
+            try:
+                await self.submit_message(
+                    project_id,
+                    task_id,
+                    content,
+                    f"pending-inserts:{target_message_id}",
+                    author_name=username,
+                    pending_insert_ids=ids,
+                    replay_pending=True,
+                )
+            except PendingInsertBatchChanged:
+                # A manual send won the race; its successor owns any leftovers.
+                return
 
     def _record_unstreamed_journal_events(
         self,

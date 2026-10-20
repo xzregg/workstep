@@ -911,7 +911,7 @@ async def test_automatic_review_retries_with_feedback(tmp_path):
             workflow_run=workflow_run,
         )
 
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         step_runs = list(
             StepRun.select()
             .where(StepRun.run == workflow_run)
@@ -1235,7 +1235,7 @@ async def test_review_skip_mode_passes_without_review(tmp_path):
             tmp_path / "artifacts",
             workflow_run=workflow_run,
         )
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         # 只有阶段执行调用过一次引擎，审核 Agent 从未启动
         assert len(calls) == 1
         assert (
@@ -1672,7 +1672,7 @@ async def test_terminated_manual_review_can_be_set_complete_only_with_artifact(
             "succeeded" if schedule_downstream else "stopped"
         )
         assert Task.get_by_id(task.id).status == (
-            "ready" if schedule_downstream else "stopped"
+            "completed" if schedule_downstream else "stopped"
         )
         assert len(calls) == (2 if schedule_downstream else 1)
     finally:
@@ -1964,7 +1964,7 @@ async def test_pending_manual_review_set_complete_preserves_downstream(tmp_path,
             "succeeded" if schedule_downstream else "paused"
         )
         assert Task.get_by_id(task.id).status == (
-            "ready" if schedule_downstream else "paused"
+            "completed" if schedule_downstream else "paused"
         )
         assert len(calls) == (2 if schedule_downstream else 1)
     finally:
@@ -2028,7 +2028,7 @@ async def test_manual_review_can_complete_task_and_later_restart_skipped_step(tm
         assert ReviewRun.get_by_id(review.id).decision == "complete_task"
         assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "passed"
         assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == "skipped"
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         assert WorkflowRun.get_by_id(first.id).status == "succeeded"
         assert len(calls) == 1
 
@@ -2041,7 +2041,7 @@ async def test_manual_review_can_complete_task_and_later_restart_skipped_step(tm
             await asyncio.sleep(0.01)
         assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "passed"
         assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == "passed"
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         assert WorkflowRun.get_by_id(first.id).status == "superseded"
         assert WorkflowRun.get_by_id(later["run_id"]).status == "succeeded"
     finally:

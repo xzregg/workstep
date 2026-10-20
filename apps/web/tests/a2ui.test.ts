@@ -91,6 +91,17 @@ test('accumulates pretty-printed multi-line JSON without losing messages', () =>
   }
 })
 
+test('recovers an omitted A2UI version but rejects unsupported and ambiguous envelopes', () => {
+  const payloads = [
+    { createSurface: { surfaceId: 'brief', catalogId: 'default' } },
+    { version: 'v0.8', createSurface: { surfaceId: 'old', catalogId: '' } },
+    { createSurface: {}, updateComponents: {} },
+    { unrelated: {} },
+  ]
+  const messages = extractA2uiMessages(`\`\`\`a2ui\n${payloads.map((m) => JSON.stringify(m)).join('\n')}\n\`\`\``)
+  assert.deepEqual(messages, [{ ...payloads[0], version: 'v0.9.1' }])
+})
+
 test('skips stray non-JSON text inside a fence', () => {
   const content = [
     '```a2ui',

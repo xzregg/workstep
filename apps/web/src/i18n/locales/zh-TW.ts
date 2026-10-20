@@ -2363,7 +2363,7 @@ export const zhTW: Messages = {
     stepEngineFixedHint: '執行中，引擎與模型由步驟配置決定，不可修改',
     stepEngineTitle: '目前步驟執行中，使用步驟配置的引擎與模型，不可切換',
     stepPlaceholder: '輸入訊息，按下 Enter 後加入上方「插入訊息」面板，確認後注入「{step}」步驟執行...',
-    coordinatorProcessing: '協調處理中...',
+    coordinatorProcessing: '可補充訊息，本輪結束後處理',
     coordinatorPlaceholder: '輸入問題、補充說明或操作請求...',
     stepInputTitle: '傳送給當前步驟 Agent，先加入「插入訊息」面板，確認後注入執行',
     stopCoordinatorTitle: '停止協調處理',

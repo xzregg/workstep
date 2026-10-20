@@ -9,6 +9,9 @@ function queueKey(projectId: string, targetMessageId: string): string {
   return `${projectId}:${targetMessageId}`
 }
 
+// Only retain tombstones while a read is in flight, including rows not yet cached.
+const discardedDuringRead = new Map<string, Set<string>>()
+
 interface PendingMessageInsertState {
   queues: Record<string, PendingMessageInsertItem[]>
   loaded: Record<string, boolean>
@@ -33,23 +36,47 @@ export const usePendingMessageInsertStore = create<PendingMessageInsertState>((s
     const key = queueKey(projectId, targetMessageId)
     const state = get()
     if (state.loaded[key] || state.loading[key]) return
+    const discarded = new Set<string>()
+    discardedDuringRead.set(key, discarded)
     set((current) => ({ loading: { ...current.loading, [key]: true } }))
+    const before = state.queues[key] || []
     try {
       const result = await pendingMessageInsertApi.list(projectId, targetMessageId)
-      set((current) => ({
-        queues: { ...current.queues, [key]: result.items },
-        loaded: { ...current.loaded, [key]: true },
-      }))
+      set((current) => {
+        const now = current.queues[key] || []
+        const beforeById = new Map(before.map(item => [item.id, item]))
+        const nowById = new Map(now.map(item => [item.id, item]))
+        const merged = result.items
+          .filter(item => !discarded.has(item.id))
+          .filter(item => !beforeById.has(item.id) || nowById.has(item.id))
+          .map(item => {
+            const local = nowById.get(item.id)
+            return local && local !== beforeById.get(item.id) ? local : item
+          })
+        const ids = new Set(merged.map(item => item.id))
+        merged.push(...now.filter(item => !beforeById.has(item.id) && !ids.has(item.id)))
+        return {
+          queues: { ...current.queues, [key]: merged },
+          loaded: { ...current.loaded, [key]: true },
+        }
+      })
     } finally {
+      discardedDuringRead.delete(key)
       set((current) => ({ loading: { ...current.loading, [key]: false } }))
     }
   },
 
   add: async (projectId, targetMessageId, content) => {
     const item = await pendingMessageInsertApi.create(projectId, targetMessageId, content)
+    if (item.consumed) {
+      get().discard(projectId, targetMessageId, [item.id])
+      return
+    }
     const key = queueKey(projectId, targetMessageId)
     set((current) => ({
-      queues: { ...current.queues, [key]: [...(current.queues[key] || []), item] },
+      queues: { ...current.queues, [key]: [
+        ...(current.queues[key] || []).filter(entry => entry.id !== item.id), item,
+      ] },
       loaded: { ...current.loaded, [key]: true },
     }))
   },
@@ -67,13 +94,7 @@ export const usePendingMessageInsertStore = create<PendingMessageInsertState>((s
 
   remove: async (projectId, targetMessageId, id) => {
     await pendingMessageInsertApi.remove(projectId, id)
-    const key = queueKey(projectId, targetMessageId)
-    set((current) => ({
-      queues: {
-        ...current.queues,
-        [key]: (current.queues[key] || []).filter((entry) => entry.id !== id),
-      },
-    }))
+    get().discard(projectId, targetMessageId, [id])
   },
 
   clear: async (projectId, targetMessageId) => {
@@ -109,6 +130,7 @@ export const usePendingMessageInsertStore = create<PendingMessageInsertState>((s
 
   discard: (projectId, targetMessageId, ids) => {
     const key = queueKey(projectId, targetMessageId)
+    ids.forEach(id => discardedDuringRead.get(key)?.add(id))
     const consumed = new Set(ids)
     set((current) => ({
       queues: {

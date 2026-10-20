@@ -24,6 +24,19 @@ export interface OptimisticCoordinatorMessage extends OptimisticUserMessage {
   context_step_key: string
 }
 
+/** History/WS refresh can persist the user message before HTTP acknowledges it. */
+export function acknowledgeCoordinatorMessage(
+  messages: any[], optimisticId: string, userMessageId: string,
+): any[] {
+  const persisted = messages.find((message) => message.id === userMessageId)
+  return messages.flatMap((message) => {
+    if (message.id !== optimisticId) return [message]
+    return persisted ? [] : [{
+      ...message, id: userMessageId, channel: 'coordinator', run_status: 'completed',
+    }]
+  })
+}
+
 export interface TaskStepStartState {
   in_workflow?: boolean
   status: string

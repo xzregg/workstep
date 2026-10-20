@@ -50,7 +50,13 @@ function parseFenceBody(body: string): A2uiMessage[] {
     if (!trimmed && !buffer) continue
     buffer += (buffer ? '\n' : '') + rawLine
     try {
-      const parsed = JSON.parse(buffer) as unknown
+      let parsed = JSON.parse(buffer) as unknown
+      // Model-authored v0.9 envelopes sometimes omit version. Recover only
+      // recognized message shapes; explicit unsupported versions stay rejected.
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const record = parsed as Record<string, unknown>
+        if (record.version === undefined) parsed = { ...record, version: 'v0.9.1' }
+      }
       if (isA2uiMessage(parsed)) messages.push(parsed)
       buffer = ''
     } catch {
@@ -302,7 +308,16 @@ export function normalizeA2uiInteractiveComponents(
         delete next.mutuallyExclusive
       }
 
+      if (next.component === 'ChoicePicker') {
+        if (next.variant === 'chips') {
+          next.variant = 'mutuallyExclusive'
+          next.displayStyle = 'chips'
+        }
+        if (next.value === undefined) next.value = []
+      }
+
       if (next.component === 'TextField') {
+        if (next.value === undefined) next.value = ''
         if (typeof next.label !== 'string') {
           next.label = typeof next.placeholder === 'string' ? next.placeholder : ''
         }

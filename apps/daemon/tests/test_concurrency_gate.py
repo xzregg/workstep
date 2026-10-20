@@ -287,7 +287,7 @@ async def test_runtime_queues_task_when_channel_full(tmp_path):
         # Task A finishes -> B is woken and runs to completion.
         await runtime.wait(handle_a)
         await runtime.wait(handle_b)
-        assert Task.get_by_id("task-b").status == "ready"
+        assert Task.get_by_id("task-b").status == "completed"
     finally:
         from engines.core.registry import ENGINE_REGISTRY
 
@@ -386,7 +386,7 @@ async def test_restart_requeue_starts_immediately_when_slot_is_available(tmp_pat
     try:
         assert await runtime.requeue_queued_tasks() == 1
         deadline = asyncio.get_running_loop().time() + 3
-        while Task.get_by_id("task-requeued").status != "ready":
+        while Task.get_by_id("task-requeued").status != "completed":
             if asyncio.get_running_loop().time() > deadline:
                 raise AssertionError("requeued task did not start")
             await asyncio.sleep(0.02)
@@ -425,7 +425,7 @@ async def test_restart_requeue_preserves_starting_user_and_input(tmp_path):
         assert Task.get_by_id("task-queued-actor").queued_run_json
         assert await runtime.requeue_queued_tasks() == 1
         deadline = asyncio.get_running_loop().time() + 3
-        while Task.get_by_id("task-queued-actor").status != "ready":
+        while Task.get_by_id("task-queued-actor").status != "completed":
             if asyncio.get_running_loop().time() > deadline:
                 raise AssertionError("queued task did not start")
             await asyncio.sleep(0.02)
@@ -478,7 +478,7 @@ async def test_scheduled_requeue_keeps_scheduler_source_and_creator(tmp_path):
         ] == {}
         assert await runtime.requeue_queued_tasks() == 1
         deadline = asyncio.get_running_loop().time() + 3
-        while Task.get_by_id("task-queued-schedule").status != "ready":
+        while Task.get_by_id("task-queued-schedule").status != "completed":
             if asyncio.get_running_loop().time() > deadline:
                 raise AssertionError("scheduled queued task did not start")
             await asyncio.sleep(0.02)

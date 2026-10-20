@@ -2512,7 +2512,7 @@ export const zhCN = {
     stepEngineFixedHint: '执行中，引擎与模型由步骤配置决定，不可修改',
     stepEngineTitle: '当前步骤执行中，使用步骤配置的引擎与模型，不可切换',
     stepPlaceholder: '输入消息，回车后加入上方「插入消息」面板，确认后注入「{step}」步骤执行...',
-    coordinatorProcessing: '协调处理中...',
+    coordinatorProcessing: '可补充消息，本轮结束后处理',
     coordinatorPlaceholder: '输入问题、补充说明或操作请求...',
     stepInputTitle: '发送给当前步骤 Agent，先加入「插入消息」面板，确认后注入执行',
     stopCoordinatorTitle: '停止协调处理',

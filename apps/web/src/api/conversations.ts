@@ -312,6 +312,7 @@ export interface PendingMessageInsertItem {
   username: string
   created_at: string
   updated_at: string
+  consumed?: boolean
 }
 
 export const pendingMessageInsertApi = {

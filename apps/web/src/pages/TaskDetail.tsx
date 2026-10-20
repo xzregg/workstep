@@ -44,6 +44,7 @@ import { scheduleApi } from '../api/schedule'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import TaskStepConfigController from '../components/TaskStepConfigController'
 import {
+  acknowledgeCoordinatorMessage,
   createOptimisticCoordinatorMessage,
   createOptimisticUserMessage,
   resolveTaskChatTarget,
@@ -768,16 +769,9 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
         [],
         resetStep,
       )
-      setHistoryMessages((current) => current.map((message) => (
-        message.id === optimisticId
-          ? {
-              ...message,
-              id: accepted.user_message_id,
-              channel: 'coordinator',
-              run_status: 'completed',
-            }
-          : message
-      )))
+      setHistoryMessages((current) => acknowledgeCoordinatorMessage(
+        current, optimisticId, accepted.user_message_id,
+      ))
       setActiveCoordinatorMessageId(accepted.assistant_message_id)
       watchAcceptedCompletion(projectId, { taskId }, accepted.assistant_message_id)
       if (resetStep) setResetStep(false)
@@ -849,16 +843,9 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
     flushWsSubscriptionNow()
     taskApi.chat(taskId, content, projectId, randomUuid())
       .then((accepted) => {
-        setHistoryMessages((current) => current.map((message) => (
-          message.id === optimisticId
-            ? {
-                ...message,
-                id: accepted.user_message_id,
-                channel: 'coordinator',
-                run_status: 'completed',
-              }
-            : message
-        )))
+        setHistoryMessages((current) => acknowledgeCoordinatorMessage(
+          current, optimisticId, accepted.user_message_id,
+        ))
         setActiveCoordinatorMessageId(accepted.assistant_message_id)
         watchAcceptedCompletion(projectId, { taskId }, accepted.assistant_message_id)
       })

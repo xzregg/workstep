@@ -258,6 +258,7 @@ async def chat_with_coordinator(
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
 ):
     """Queue one engine-backed coordinator turn without starting a workflow."""
+    from agent_assistants.coordinator import PendingInsertBatchChanged
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
@@ -271,6 +272,8 @@ async def chat_with_coordinator(
             pending_insert_ids=req.pending_insert_ids,
             reset_session=req.reset_session,
         )
+    except PendingInsertBatchChanged as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return accepted.to_dict()

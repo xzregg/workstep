@@ -251,7 +251,7 @@ async def test_task_overrides_survive_artifact_rework_matrix(scenario, engine, t
     await s.unchanged_source()
     await s.source_update(lambda f: [n.update(prompt=f"NEW_SOURCE_{n['type']}") for n in f["nodes"]])
     s.script.feedback_rounds = returns
-    assert await s.start("requirements") == "ready"
+    assert await s.start("requirements") == "completed"
     calls = s.script.select()
     counts = Counter(call["stage"] for call in calls)
     assert counts["requirements"] == counts["publish"] == 1
@@ -278,7 +278,7 @@ async def test_task_overrides_survive_artifact_rework_matrix(scenario, engine, t
         .where((WorkflowRun.task == s.task_id) & (StepRun.step_key == "develop")).order_by(StepRun.artifact_round)])
     assert rounds == list(range(1, returns + 2))
     if topology == "disconnected":
-        assert await s.start("extra", step_followup="MANUAL_EXTRA") == "ready"
+        assert await s.start("extra", step_followup="MANUAL_EXTRA") == "completed"
         assert len(s.script.select("extra")) == 1
         statuses = await s.db(lambda _p: {row.step_key: row.status for row in TaskStep.select().where(TaskStep.task == s.task_id)})
         assert all(statuses[key] == "passed" for key in ("requirements", "develop", "test", "publish"))
@@ -301,7 +301,7 @@ async def test_manual_review_of_feedback_artifact_reworks_customized_stage(scena
         response = await s.client.post(f"/api/task/{s.task_id}/steps/test/review/approve?project_id={s.pid}",
             json={"review_run_id": review_id})
         assert response.status_code == 200, response.text
-        assert await s.idle() == ("paused" if ordinal == 1 else "ready")
+        assert await s.idle() == ("paused" if ordinal == 1 else "completed")
     assert len(s.script.select("develop")) == 2
     assert all(call["engine"] == "codex_sdk" for call in s.script.select("develop"))
     assert "BugList.md" in s.script.select("develop")[1]["prompt"]
@@ -362,7 +362,7 @@ async def test_stop_stage_and_review_then_edit_task_and_rerun(scenario, channel)
         flow["connections"] += [edge("test", "extra")]
     await s.save(edit)
     s.script.block = None
-    assert await s.start("develop") == "ready"
+    assert await s.start("develop") == "completed"
     assert "TASK_AFTER_STOP" in s.script.select("develop")[-1]["prompt"]
     assert s.script.select("develop")[-1]["engine"] == "codex_sdk"
     assert len(s.script.select("extra")) == 1
@@ -373,7 +373,7 @@ async def test_stop_stage_and_review_then_edit_task_and_rerun(scenario, channel)
 async def test_task_and_other_task_inherit_source_addition_without_cross_contamination(scenario):
     s = scenario
     await s.save(lambda f: f["nodes"][1].update(engine="codex_sdk", prompt="TASK_ONLY"))
-    assert await s.start() == "ready"
+    assert await s.start() == "completed"
 
     def add_source(flow):
         flow["nodes"][1]["prompt"] = "SOURCE_V2"
@@ -382,7 +382,7 @@ async def test_task_and_other_task_inherit_source_addition_without_cross_contami
     await s.source_update(add_source)
     config = await s.config()
     assert {n["type"] for n in config["workflow"]["nodes"]} == {"requirements", "develop", "test", "publish", "source_new"}
-    assert await s.start("develop") == "ready"
+    assert await s.start("develop") == "completed"
     assert s.script.select("develop")[-1]["engine"] == "codex_sdk"
     assert len(s.script.select("source_new")) == 1
 
@@ -411,7 +411,7 @@ async def test_coordinator_starts_task_added_stage_using_effective_configuration
         extra.update(engine="codex_sdk", prompt="TASK_EXTRA_COORDINATOR")
         flow["nodes"].append(extra)
     await s.save(add)
-    assert await s.start("requirements") == "ready"
+    assert await s.start("requirements") == "completed"
     service = CoordinatorActionService(main.project_manager, s.runtime)
 
     def propose(project):
@@ -431,7 +431,7 @@ async def test_coordinator_starts_task_added_stage_using_effective_configuration
     key = str(uuid4())
     result = await service.confirm_action(s.pid, s.task_id, proposal_id, key)
     assert result["status"] == "succeeded"
-    assert await s.idle() == "ready"
+    assert await s.idle() == "completed"
     assert len(s.script.select("extra")) == 1
     call = s.script.select("extra")[0]
     assert call["engine"] == "codex_sdk"
@@ -452,7 +452,7 @@ async def test_task_review_override_reject_resume_and_engine_stays_local(scenari
 
     await s.save(customize)
     s.script.reject_reviews = 1 if mode == "auto" else 0
-    assert await s.start() == ("ready" if mode == "auto" else "paused")
+    assert await s.start() == ("completed" if mode == "auto" else "paused")
     if mode == "manual":
         def pending(_p):
             return ReviewRun.get((ReviewRun.task == s.task_id) & (ReviewRun.status == "pending")).id
@@ -466,7 +466,7 @@ async def test_task_review_override_reject_resume_and_engine_stays_local(scenari
         response = await s.client.post(f"/api/task/{s.task_id}/steps/develop/review/approve?project_id={s.pid}",
             json={"review_run_id": await s.db(pending)})
         assert response.status_code == 200, response.text
-        assert await s.idle() == "ready"
+        assert await s.idle() == "completed"
     developers = s.script.select("develop")
     assert len(developers) == 2
     assert {call["engine"] for call in developers} == {"codex_sdk"}
@@ -479,19 +479,19 @@ async def test_task_review_override_reject_resume_and_engine_stays_local(scenari
 @pytest.mark.anyio
 async def test_task_quick_engine_persists_across_followup_reset_and_sync(scenario):
     s = scenario
-    assert await s.start() == "ready"
+    assert await s.start() == "completed"
     original_session = s.script.select("develop")[-1]["session"]
     response = await s.client.patch(f"/api/task/{s.task_id}/step/develop/config?project_id={s.pid}",
         json={"engine": "codex_sdk", "model": "task-model", "config": {}, "context_mode": "full"})
     assert response.status_code == 200, response.text
     await s.runtime.resume_step_with_message(s.pid, s.task_id, "develop", "CHANGE_TO_B")
-    assert await s.idle() == "ready"
+    assert await s.idle() == "completed"
     first_b = s.script.select("develop")[-1]
     assert first_b["engine"] == "codex_sdk" and first_b["session"] != original_session
     assert "CHANGE_TO_B" in first_b["prompt"]
-    assert await s.start("develop") == "ready"
+    assert await s.start("develop") == "completed"
     assert s.script.select("develop")[-1]["session"] == first_b["session"]
-    assert await s.start("develop", reset_session=True) == "ready"
+    assert await s.start("develop", reset_session=True) == "completed"
     reset = s.script.select("develop")[-1]
     assert reset["engine"] == "codex_sdk" and reset["session"] != first_b["session"]
     before = len(s.script.calls)
@@ -499,7 +499,7 @@ async def test_task_quick_engine_persists_across_followup_reset_and_sync(scenari
     response = await s.client.post(f"/api/task/{s.task_id}/workflow/sync?project_id={s.pid}", json={"revision": config["revision"]})
     assert response.status_code == 200, response.text
     assert not response.json()["has_overrides"] and len(s.script.calls) == before
-    assert await s.start("develop") == "ready"
+    assert await s.start("develop") == "completed"
     assert s.script.select("develop")[-1]["engine"] == "codex"
     assert s.script.select("develop")[-1]["session"] != reset["session"]
     await s.unchanged_source()
@@ -518,14 +518,14 @@ async def test_inflight_configuration_is_frozen_then_new_stage_runs_after_stop(s
     s.script.release.set()
     await asyncio.wait_for(s.runtime.wait(handle), 8)
     assert "SOURCE_TEST_V2" not in s.script.select("test")[0]["prompt"]
-    assert await s.idle() == "ready"
+    assert await s.idle() == "completed"
 
     def add(flow):
         flow["nodes"].append(node("extra", ["Extra"], ["Report"]))
         flow["connections"].remove(edge("test", "publish"))
         flow["connections"] += [edge("test", "extra"), edge("extra", "publish")]
     await s.save(add)
-    assert await s.start("develop") == "ready"
+    assert await s.start("develop") == "completed"
     assert "SOURCE_TEST_V2" in s.script.select("test")[-1]["prompt"]
     assert len(s.script.select("extra")) == 1
     assert s.script.select("develop")[-1]["engine"] == "codex_sdk"
@@ -556,7 +556,7 @@ async def test_daemon_recovery_preserves_task_engine_and_only_restarts_interrupt
     s.script.block = None
     try:
         assert await replacement.recover_running_workflows() == 1
-        assert await s.idle() == "ready"
+        assert await s.idle() == "completed"
         assert len(s.script.select("requirements")) == 1
         assert len(s.script.select("develop")) == before + (1 if channel == "execution" else 0)
         assert all(call["engine"] == "codex_sdk" for call in s.script.select("develop"))
@@ -578,7 +578,7 @@ async def test_network_failure_retry_uses_task_engine_without_duplicate_message(
         & (Message.step_key == "develop") & (Message.channel == "execution") & (Message.run_status == "failed")).get().id)
     assert len(s.script.select("develop")) == 2
     await s.runtime.retry_failed_message(s.pid, s.task_id, failed_id)
-    assert await s.idle() == "ready"
+    assert await s.idle() == "completed"
     assert {call["engine"] for call in s.script.select("develop")} == {"codex_sdk"}
     assert await s.db(lambda _p: Message.get_by_id(failed_id).run_status) == "succeeded"
     assert await s.db(lambda _p: Message.select().where((Message.task == s.task_id)
@@ -620,7 +620,7 @@ async def test_late_parallel_branch_reexecutes_with_latest_custom_output(scenari
     assert (await s.client.get("/api/health")).status_code == 200
     assert time.monotonic() - started < .15
     await asyncio.wait_for(s.runtime.wait(handle), 8)
-    assert await s.idle() == "ready"
+    assert await s.idle() == "completed"
     assert len(s.script.select("extra")) == 2
     assert "/develop/2/TaskExtra.md" in s.script.select("extra")[-1]["prompt"]
     assert "/extra/2/Extra.md" in s.script.select("publish")[0]["prompt"]
@@ -642,7 +642,7 @@ async def test_task_added_workflow_dispatch_and_child_task_configuration(scenari
                 "targetStartStepKey": "publish", "startMode": "immediate"}})
         flow["connections"].append(edge("publish", "handoff"))
     await s.save(add_dispatch)
-    assert await s.start() == "ready"
+    assert await s.start() == "completed"
     child = await s.db(lambda _p: Task.get(Task.source_task_id == s.task_id).id)
     async with asyncio.timeout(8):
         while child in s.runtime._runners:
@@ -684,7 +684,7 @@ async def test_source_removes_overridden_stage_fails_explicitly_and_sync_repairs
     assert response.status_code == 200, response.text
     assert not response.json()["has_overrides"] and not response.json()["conflict"]
     assert not s.script.calls
-    assert await s.start("requirements") == "ready"
+    assert await s.start("requirements") == "completed"
     assert not s.script.select("develop")
     await s.unchanged_source()
 
@@ -704,7 +704,7 @@ async def test_all_start_origins_use_task_configuration_and_two_input_entry_cont
         flow["nodes"].append(node("extra", ["Extra"], ["Delivery"]))
         flow["connections"].append(edge("publish", "extra"))
     await target.save(customize)
-    assert await target.start(source=source) == "ready"
+    assert await target.start(source=source) == "completed"
     assert not s.script.select("requirements") and not s.script.select("develop") and not s.script.select("test")
     assert len(s.script.select("publish")) == len(s.script.select("extra")) == 1
     call = s.script.select("publish")[0]
@@ -725,7 +725,7 @@ async def test_copy_task_copies_overrides_but_not_sessions_or_execution_history(
         flow["nodes"].append(node("extra", ["Extra"], ["Delivery"]))
         flow["connections"].append(edge("publish", "extra"))
     await s.save(customize)
-    assert await s.start() == "ready"
+    assert await s.start() == "completed"
     original_session = s.script.select("develop")[-1]["session"]
     response = await s.client.post(f"/api/task/copy?project_id={s.pid}",
         json={"task_id": s.task_id, "newTitle": "CopiedTask"})
@@ -737,7 +737,7 @@ async def test_copy_task_copies_overrides_but_not_sessions_or_execution_history(
     assert await clone.db(lambda _p: all(row.session_id is None and row.status == "pending"
         for row in TaskStep.select().where(TaskStep.task == clone.task_id)))
     assert await clone.db(lambda _p: not Message.select().where(Message.task == clone.task_id).exists())
-    assert await clone.start() == "ready"
+    assert await clone.start() == "completed"
     call = s.script.select("develop")[-1]
     assert call["engine"] == "codex_sdk" and "TASK_COPY_PROMPT" in call["prompt"]
     assert call["session"] != original_session
