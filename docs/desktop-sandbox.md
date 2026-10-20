@@ -79,41 +79,47 @@ Docker 原镜像与容器保持不变，启用后的沙箱运行无需 Docker �
 和自有资源删除均通过；Windows 与 Linux 的本地导入尚未完成实机验收。
 手工 Docker Compose 继续使用 `workstep:latest`。
 
-### 浏览器运行时试验
+### 内置浏览器运行时
 
-`Dockerfile.browser-runtime` 在现有 `node:24-bookworm-slim` 上安装固定版本的
+主 `Dockerfile` 默认在 `node:24-bookworm-slim` 上安装固定版本的
 Playwright、Chromium（含 headless shell）、系统依赖和中文字体，不安装完整桌面。
 浏览器和驱动放在 `/opt/workstep-browser`，不受沙箱 `/root` 持久化挂载影响。
-普通镜像默认仍使用原 Node 基础；本地试验按以下顺序构建：
+只维护一个默认带浏览器的应用镜像，不需要预先构建基础镜像或传入运行时参数：
 
 ```bash
-docker build -f Dockerfile.browser-runtime -t workstep-runtime:node24-browser-v1 .
-docker build --build-arg WORKSTEP_RUNTIME_IMAGE=workstep-runtime:node24-browser-v1 \
-  -t workstep:browser .
+docker build -t workstep:latest .
 docker run --rm --network none --tmpfs /root --entrypoint node \
   --mount type=bind,src="$PWD/scripts/verify-browser-image.cjs",dst=/tmp/verify-browser-image.cjs,readonly \
-  workstep:browser /tmp/verify-browser-image.cjs
+  workstep:latest /tmp/verify-browser-image.cjs
 ```
 
 验证会在容器内部启动临时 HTTP 服务，测试网页导航、中文表单、点击、JavaScript
-和 PNG 截图，不读取宿主 Home 或凭据，也不访问外网。验证脚本也可直接用于
-`workstep-runtime:node24-browser-v1`，单独检查浏览器基础环境。
+和 PNG 截图，不读取宿主 Home 或凭据，也不访问外网。
+需要单独调试浏览器构建阶段时，可使用 `docker build --target browser-runtime`。
 容器内 Node 脚本使用
 `require('/opt/workstep-browser/node_modules/playwright')`；命令行可直接使用 `playwright`。
 这只提供浏览器与脚本运行环境，尚未为各 AI 引擎自动配置浏览器 MCP 或操作工具。
 
-浏览器基础镜像只在 Node、Playwright 或系统依赖升级时重建，日常 WorkStep 打包
-复用它。跨机器 CI 使用预先发布且固定摘要的同架构/多架构基础镜像；本地标签不会
-自动出现在远端构建机。本试验不更改正式发布流水线。
+浏览器作为主 Dockerfile 中独立的 `browser-runtime` 构建阶段，不依赖应用源码。
+日常修改应用代码时复用浏览器层缓存；全新构建机需下载依赖，可通过构建缓存加速。
+现有 Docker Compose 和正式发布流水线直接使用主 Dockerfile，也会默认包含浏览器。
+本机重新打包使用同一个 Docker builder 并保留构建缓存，不使用 `--no-cache`，也不清理
+仍需复用的 builder 缓存。修改应用代码不会重新执行浏览器安装；升级 Node 基础镜像、
+Playwright 版本或修改浏览器安装指令时，才会使对应层失效。
+正式发布流水线通过 GHCR 同仓库的 `buildcache` 标签恢复和保存 registry 构建缓存，
+使用 `mode=max` 保留中间构建阶段。首次成功发布缓存后，后续全新 CI runner 可复用
+浏览器层，只需拉取缓存层。首次运行、缓存不存在或缓存被删除时仍需安装。
+构建缓存独立于交付镜像，不会把下载缓存塞进用户镜像；该标签仅供构建使用。
 首次构建会下载浏览器和系统包；再次构建命中缓存时不重复安装。
-使用临时基础镜像会让应用运行时层首次重建，后续应用代码修改不影响浏览器层。
+修改浏览器基础环境会使应用运行时层重建，后续应用代码修改不影响浏览器层。
 
 当前 WorkStep 以 root 运行，默认 Playwright 启动不启用 Chromium 自身的 sandbox；
 容器隔离与浏览器 sandbox 是两层不同机制。若用于任意外部网站，需进一步验证
 非 root 浏览器运行方式和 Podman 权限配置。此试验不要求 privileged、新增 capability
 或共享宿主 IPC。高并发页面如出现共享内存不足，可单独调整容器 `/dev/shm` 配额。
 
-2026-10-19 本地 Docker `linux/arm64` 试验（耗时随网络及机器变化）：
+2026-10-19 拆分构建的本地 Docker `linux/arm64` 试验记录（合并为单一 Dockerfile
+前测得，耗时随网络及机器变化）：
 
 | 项目 | 实测 |
 | --- | --- |
@@ -121,6 +127,14 @@ docker run --rm --network none --tmpfs /root --entrypoint node \
 | 使用浏览器基础镜像的应用首次构建 / 缓存重建 | 187.28 秒 / 0.55 秒 |
 | `docker image ls` 显示的普通版 / 浏览器版大小 | 2.07 GB / 3.73 GB |
 | 浏览器基础镜像大小（包含 Node） | 2.02 GB |
+
+2026-10-20 已改为单一 Dockerfile：不传运行时参数的完整构建成功，浏览器安装阶段
+命中缓存；本机此次应用构建 90.46 秒，缓存重建 0.56 秒，显示磁盘占用约 3.73 GB。
+9 项共享镜像检查通过，新镜像在断网、空 Home 下通过网页导航、中文表单、点击、
+JavaScript 和 PNG 截图验证。
+另在隔离目录实际修改应用源码后重新打包，验证应用 COPY 层重建、浏览器安装层
+仍为 `CACHED`，该轮构建耗时 21.67 秒。远端缓存配置通过本地检查，尚未执行真实
+CI 发布验证。
 
 首次 HTTP 取包出现 502；加入重试、安装 CA 证书并切换 HTTPS 后成功，上表耗时
 不含失败尝试。缓存重建没有修改源码，不代表源码变更后的完整构建时间。

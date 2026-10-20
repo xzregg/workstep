@@ -100,7 +100,7 @@ async function main() {
       assert.equal((await response.json()).status, 'ok')
     })
     const summary = {
-      generatedAt: new Date().toISOString(), image: 'workstep:browser', platform: 'linux/arm64',
+      generatedAt: new Date().toISOString(), image: process.env.WORKSTEP_TEST_IMAGE || 'workstep:latest', platform: `${process.platform}/${process.arch}`,
       browser: `Chromium ${browser.version()}`, viewport: '1440×1000 / 390×844',
       passed: results.filter(result => result.status === 'PASS').length,
       failed: results.filter(result => result.status === 'FAIL').length,

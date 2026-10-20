@@ -15,6 +15,24 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class SharedImageTests(unittest.TestCase):
+    def test_default_build_includes_browser_without_external_runtime(self):
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        stages = re.split(r"(?m)^FROM ", dockerfile)[1:]
+        browser = next((stage for stage in stages if stage.splitlines()[0].endswith(" AS browser-runtime")), None)
+        self.assertIsNotNone(browser, "Default image must build its own browser runtime")
+        self.assertEqual(stages[-1].splitlines()[0], "browser-runtime")
+        self.assertIn("playwright install --with-deps chromium", browser)
+        self.assertIn("PLAYWRIGHT_BROWSERS_PATH=/opt/workstep-browser/browsers", browser)
+        self.assertNotRegex(browser, r"(?m)^(?:COPY|ADD)\s", "Application files must not invalidate browser installation")
+        self.assertNotIn("WORKSTEP_RUNTIME_IMAGE", dockerfile)
+        self.assertFalse((ROOT / "Dockerfile.browser-runtime").exists())
+
+    def test_release_build_restores_and_exports_all_intermediate_layers(self):
+        workflow = (ROOT / ".github/workflows/desktop-release.yml").read_text()
+        build = workflow.split("docker buildx build", 1)[1].split("digest=", 1)[0]
+        self.assertIn('--cache-from "type=registry,ref=$repository:buildcache"', build)
+        self.assertIn('--cache-to "type=registry,ref=$repository:buildcache,mode=max"', build)
+
     def test_system_git_points_to_image_managed_git(self):
         self.assertIn("RUN ln -sf /root/.workstep/runtime/base/git/bin/git /usr/bin/git",
                       (ROOT / "Dockerfile").read_text())
