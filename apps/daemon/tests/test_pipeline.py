@@ -2108,7 +2108,7 @@ async def test_task_runner_inherited_global_provider_change_starts_new_session(
 
 
 @pytest.mark.anyio
-async def test_task_runner_linear_pipeline(tmp_path):
+async def test_task_runner_linear_pipeline(tmp_path, monkeypatch):
     """Run a 2-step linear pipeline: A → B."""
     from models import init_db, Task
     from engines.core.registry import ENGINE_REGISTRY
@@ -2137,7 +2137,34 @@ async def test_task_runner_linear_pipeline(tmp_path):
         artifacts_dir = tmp_path / "artifacts"
         artifacts_dir.mkdir()
 
-        await runner.run_pipeline(task, steps_config, artifacts_dir)
+        # Completion persistence must stay off the event loop even under slow SQL.
+        import threading
+        from httpx import ASGITransport, AsyncClient
+        import main
+
+        writing = threading.Event()
+        release_write = threading.Event()
+        write_finished = threading.Event()
+        original_sql = db.execute_sql
+
+        def slow_completion(sql, params=None, *args, **kwargs):
+            if sql.startswith('UPDATE "tasks"') and params and params[0] == "completed":
+                writing.set()
+                release_write.wait(5)
+                write_finished.set()
+            return original_sql(sql, params, *args, **kwargs)
+
+        monkeypatch.setattr(db, "execute_sql", slow_completion)
+        pipeline = asyncio.create_task(runner.run_pipeline(task, steps_config, artifacts_dir))
+        try:
+            assert await asyncio.to_thread(writing.wait, 2)
+            async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+                assert (await asyncio.wait_for(client.get("/api/health"), 1)).status_code == 200
+            assert not write_finished.is_set(), "health must respond while completion SQL is blocked"
+        finally:
+            release_write.set()
+        await pipeline
+        await runner.close()
 
         # Collect events
         events = []
@@ -2153,7 +2180,9 @@ async def test_task_runner_linear_pipeline(tmp_path):
 
         # Task should be done
         task = Task.get_by_id(task.id)
-        assert task.status == "ready"
+        assert task.status == "completed"
+        assert any(e["type"] == "RUN_FINISHED" and e.get("status") == "completed"
+                   and not e.get("step_key") for e in events)
 
         # Should have events for both steps
         step_keys_in_events = {e.get("step_key") for e in events if "step_key" in e}
@@ -2199,7 +2228,7 @@ async def test_task_runner_slow_engine_factory_keeps_event_loop_responsive(tmp_p
         assert time.perf_counter() - waiting_since < 0.2
         await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
         await running
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
@@ -2648,7 +2677,7 @@ async def test_task_runner_parallel_branches(tmp_path):
         assert step_statuses == {"a": "passed", "b": "passed", "c": "passed", "d": "passed"}
 
         task = Task.get_by_id(task.id)
-        assert task.status == "ready"
+        assert task.status == "completed"
 
     finally:
         ENGINE_REGISTRY.clear()

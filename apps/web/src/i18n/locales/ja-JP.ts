@@ -2363,7 +2363,7 @@ export const jaJP: Messages = {
     stepEngineFixedHint: '実行中です。エンジンとモデルはステップ設定で決定され、変更できません',
     stepEngineTitle: 'このステップは実行中です。ステップ設定のエンジンとモデルが使用され、切り替えできません',
     stepPlaceholder: 'メッセージを入力して Enter で上の「メッセージを挿入」パネルに追加。確認後「{step}」ステップ実行に注入...',
-    coordinatorProcessing: 'コーディネーター処理中...',
+    coordinatorProcessing: '追加メッセージは現在の応答後に送信',
     coordinatorPlaceholder: '質問、補足説明、操作リクエストを入力...',
     stepInputTitle: '現在のステップ Agent に送信。まず「メッセージを挿入」パネルに追加し、確認後に実行へ注入',
     stopCoordinatorTitle: 'コーディネーターの処理を停止',

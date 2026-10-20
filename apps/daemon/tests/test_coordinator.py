@@ -2349,6 +2349,176 @@ async def test_wecom_group_coordinator_streams_sdk_text_before_turn_finishes(api
 
 
 @pytest.mark.anyio
+async def test_pending_insert_arriving_after_coordinator_finished_is_consumed(api_context, monkeypatch):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    accepted = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "late-insert-target"}, json={"content": "当前回合"},
+    )
+    target = accepted.json()["assistant_message_id"]
+    await _wait_for_reply(client, project_id, task_id, target)
+    queued = await client.post("/api/pending-message-inserts", json={
+        "project_id": project_id, "target_message_id": target, "content": "刚结束时发送的补充",
+    })
+    assert queued.status_code == 200
+    for _ in range(100):
+        history = await client.get(f"/api/task/{task_id}/history?project_id={project_id}")
+        users = [m for m in history.json()["messages"] if m["role"] == "user"
+                 and m["content"] == "刚结束时发送的补充"]
+        if users:
+            break
+        await asyncio.sleep(0.01)
+    assert len(users) == 1, "补充消息不能滞留在已结束回合"
+    pending = await client.get("/api/pending-message-inserts", params={
+        "project_id": project_id, "target_message_id": target,
+    })
+    assert pending.json()["items"] == []
+
+
+@pytest.mark.anyio
+async def test_late_pending_lookup_keeps_health_responsive(api_context, monkeypatch):
+    import main
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    accepted = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "late-insert-canary"}, json={"content": "当前回合"},
+    )
+    target = accepted.json()["assistant_message_id"]
+    await _wait_for_reply(client, project_id, task_id, target)
+    project = main.project_manager.get_project_by_id(project_id)
+    execute = project.db.execute_sql
+    entered, release = threading.Event(), threading.Event()
+    threads = []
+
+    def slow_lookup(sql, params=None, *args, **kwargs):
+        if 'FROM "message"' in sql and not entered.is_set():
+            threads.append(threading.get_ident())
+            entered.set()
+            release.wait(2)
+        return execute(sql, params, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_lookup)
+    request = asyncio.create_task(client.post("/api/pending-message-inserts", json={
+        "project_id": project_id, "target_message_id": target, "content": "慢数据库补充",
+    }))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert threads[0] != threading.get_ident()
+        assert (await asyncio.wait_for(client.get("/api/health"), 0.3)).status_code == 200
+    finally:
+        release.set()
+        response = await request
+    assert response.status_code == 200
+    assert response.json()["consumed"] is True
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("automatic_first", [True, False])
+async def test_pending_insert_auto_and_manual_send_share_one_turn(
+    api_context, monkeypatch, automatic_first,
+):
+    import main
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    StreamingCoordinatorFakeEngine.release = asyncio.Event()
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", StreamingCoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    current = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "before-send-race"},
+        json={"content": "当前回合"},
+    )
+    target = current.json()["assistant_message_id"]
+    queued = await client.post("/api/pending-message-inserts", json={
+        "project_id": project_id, "target_message_id": target, "content": "只发送一次",
+    })
+    ids = [queued.json()["id"]]
+
+    async def automatic():
+        # The automatic consumer has already read this batch when manual send arrives.
+        accepted = await main.coordinator_module.submit_message(
+            project_id, task_id, "只发送一次", f"pending-inserts:{target}",
+            pending_insert_ids=ids, replay_pending=True,
+        )
+        return accepted.to_dict()
+
+    async def manual():
+        response = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "manual-send-race"},
+            json={"content": "只发送一次", "pending_insert_ids": ids},
+        )
+        assert response.status_code == 200
+        return response.json()
+
+    try:
+        first = await (automatic() if automatic_first else manual())
+        second = await (manual() if automatic_first else automatic())
+        assert first["turn_id"] == second["turn_id"]
+        history = await client.get(f"/api/task/{task_id}/history?project_id={project_id}")
+        assert sum(m["role"] == "user" and m["content"] == "只发送一次"
+                   for m in history.json()["messages"]) == 1
+    finally:
+        StreamingCoordinatorFakeEngine.release.set()
+
+
+@pytest.mark.anyio
+async def test_stale_partial_pending_batch_cannot_create_another_turn(api_context, monkeypatch):
+    import main
+    from agent_assistants.coordinator import PendingInsertBatchChanged
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    StreamingCoordinatorFakeEngine.release = asyncio.Event()
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", StreamingCoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    current = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "before-partial-race"}, json={"content": "当前回合"},
+    )
+    target = current.json()["assistant_message_id"]
+    ids = []
+    for content in ("消息 A", "消息 B"):
+        queued = await client.post("/api/pending-message-inserts", json={
+            "project_id": project_id, "target_message_id": target, "content": content,
+        })
+        ids.append(queued.json()["id"])
+    try:
+        sent = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "partial-race"},
+            json={"content": "消息 A", "pending_insert_ids": [ids[0]]},
+        )
+        assert sent.status_code == 200
+        with pytest.raises(PendingInsertBatchChanged):
+            await main.coordinator_module.submit_message(
+                project_id, task_id, "消息 A\n\n消息 B", f"pending-inserts:{target}",
+                pending_insert_ids=ids, replay_pending=True,
+            )
+        stale = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "stale-partial-race"},
+            json={"content": "消息 A\n\n消息 B", "pending_insert_ids": ids},
+        )
+        assert stale.status_code == 409
+        remaining = await client.get("/api/pending-message-inserts", params={
+            "project_id": project_id, "target_message_id": sent.json()["assistant_message_id"],
+        })
+        assert [item["id"] for item in remaining.json()["items"]] == [ids[1]]
+    finally:
+        StreamingCoordinatorFakeEngine.release.set()
+
+
+@pytest.mark.anyio
 async def test_coordinator_can_send_pending_inserts_immediately(
     api_context,
     monkeypatch,

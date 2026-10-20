@@ -348,7 +348,7 @@ test('task store keeps latest commands per task conversation target', () => {
   )
 })
 
-test('task store updates task status from workstep.status CUSTOM events', () => {
+test('a stage passing does not reset task status from workstep.status CUSTOM events', () => {
   useTaskStore.setState({
     tasks: [{
       id: 'task-1',
@@ -374,7 +374,7 @@ test('task store updates task status from workstep.status CUSTOM events', () => 
     step_key: 's1',
     value: { status: 'passed', step_key: 's1' },
   })
-  assert.equal(useTaskStore.getState().tasks[0].status, 'ready')
+  assert.equal(useTaskStore.getState().tasks[0].status, 'running')
 })
 
 test('task detail can refresh a stale created-task snapshot from the server', async () => {

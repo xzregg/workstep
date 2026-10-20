@@ -431,7 +431,8 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-detail-header-badge[data-status="running"] { --badge-color: var(--status-running); }
 .task-detail-header-badge[data-status="paused"] { --badge-color: var(--status-paused); }
 .task-detail-header-badge[data-status="stopped"] { --badge-color: var(--status-stopped); }
-.task-detail-header-badge[data-status="done"] { --badge-color: var(--status-done); }
+.task-detail-header-badge[data-status="done"],
+.task-detail-header-badge[data-status="completed"] { --badge-color: var(--status-done); }
 .task-detail-header-badge[data-status="failed"] { --badge-color: var(--status-failed); }
 .task-detail-header-badge[data-status="cancelled"] { --badge-color: var(--status-cancelled); }
 .task-detail-header-meta {
@@ -5074,7 +5075,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .status-badge[data-s="running"]  { background: color-mix(in oklab, var(--status-running), transparent 85%); color: var(--status-running); }
 .status-badge[data-s="paused"]   { background: color-mix(in oklab, var(--status-paused), transparent 85%); color: var(--status-paused); }
 .status-badge[data-s="stopped"]  { background: color-mix(in oklab, var(--status-stopped), transparent 85%); color: var(--status-stopped); }
-.status-badge[data-s="done"]     { background: color-mix(in oklab, var(--status-done), transparent 85%); color: var(--status-done); }
+.status-badge[data-s="done"],
+.status-badge[data-s="completed"] { background: color-mix(in oklab, var(--status-done), transparent 85%); color: var(--status-done); }
 .status-badge[data-s="passed"]   { background: color-mix(in oklab, var(--status-done), transparent 85%); color: var(--status-done); }
 .status-badge[data-s="pending"]  { background: color-mix(in oklab, var(--status-ready), transparent 85%); color: var(--status-ready); }
 .status-badge[data-s="failed"]   { background: color-mix(in oklab, var(--status-failed), transparent 85%); color: var(--status-failed); }

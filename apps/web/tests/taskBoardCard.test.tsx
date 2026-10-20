@@ -98,7 +98,7 @@ test('completed tasks can still enter the archive flow outside the running state
   let archived = 0
   try {
     await act(async () => root.render(<I18nProvider><TaskBoardCard
-      task={{ ...task, status: 'done', steps: [{ ...task.steps[0], status: 'passed', started_at: '2026-01-01T00:00:00Z' }] }}
+      task={{ ...task, status: 'completed', steps: [] }}
       durationNowMs={Date.now()} showArchived={false} starting={false}
       onOpen={() => {}} onStart={() => {}} onArchive={() => { archived++ }}
       onRestore={() => {}} onDelete={() => {}}
@@ -106,6 +106,8 @@ test('completed tasks can still enter the archive flow outside the running state
     /></I18nProvider>))
     await act(async () => container.querySelector<HTMLButtonElement>('[data-task-action="archive"]')!.click())
     assert.equal(archived, 1)
+    assert.match(container.textContent || '', /已完成|Completed|Done/)
+    assert.doesNotMatch(container.textContent || '', /预备中|Ready/)
   } finally {
     await act(async () => root.unmount())
     container.remove()

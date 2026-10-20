@@ -7,6 +7,7 @@ import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useManagedMode } from '../hooks/useManagedMode'
 import MobileSheet from '../components/MobileSheet'
+import MobileTaskRow from '../components/MobileTaskRow'
 import StatusBadge from '../components/StatusBadge'
 import Icon from '../components/Icon'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
@@ -587,10 +588,15 @@ export default function TaskList() {
       {compact && <div className="mobile-task-list">
         {loading && <div role="status">{t('common.loading')}</div>}
         {!loading && visibleTasks.filter(task => !mobileStep || getCardLane(task.id) === mobileStep).length === 0 && <p className="mobile-empty">{t('mobile.emptyTasks')}</p>}
-        {visibleTasks.filter(task => !mobileStep || getCardLane(task.id) === mobileStep).map(task => <button className="mobile-task-row" key={task.id} onClick={() => handleSelectTask(task.id)}>
+        {visibleTasks.filter(task => !mobileStep || getCardLane(task.id) === mobileStep).map(task => <MobileTaskRow key={task.id} title={task.title} status={task.status} archived={showArchived}
+          canArchive={can('task.archive')} canDelete={can('task.delete')}
+          onOpen={() => handleSelectTask(task.id)}
+          onArchive={() => setArchiveTarget({ id: task.id, title: task.title })}
+          onRestore={() => { void handleUnarchive(task.id) }}
+          onDelete={() => setConfirmDeleteTaskId(task.id)}>
           <span className="mobile-task-row-title">{task.title}</span>
           <span className="mobile-task-row-meta"><StatusBadge status={task.status} loading={['running', 'reviewing', 'retrying'].includes(task.status)} label={t(`status.${task.status === 'completed' ? 'passed' : task.status || 'ready'}` as 'status.ready')} />{task.creator_name && <span>{t('taskList.creator')}：{task.creator_name}</span>}<span>{lanes.find(lane => lane.key === getCardLane(task.id))?.label}</span><time>{new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
-        </button>)}
+        </MobileTaskRow>)}
       </div>}
       <div className={`desktop-task-board ${boardView === 'lanes' ? 'task-board-lanes' : 'task-board-table'}`}>
         {loading && (

@@ -15,12 +15,24 @@ import {
   failedExecutionCompletionRound,
   runningTaskMessageIds,
   isCoordinatorReplyFinished,
+  acknowledgeCoordinatorMessage,
 } from '../src/pages/taskDetailChat.ts'
 import { artifactsForMessage, artifactsForStepRoundOutputs, findPreferredArtifact,
   findStepRoundInputArtifact, findStepRoundInputPort, groupStepOutputsByInput,
   downstreamInputsForOutput, hasStepIoContractChanged } from '../src/pages/taskArtifactRules.ts'
 import { loadTaskHistoryWithRetry, mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory } from '../src/pages/taskHistoryModel.ts'
+
+test('coordinator acknowledgement merges history loaded before the send response', () => {
+  const persisted = { id: 'user-1', role: 'user', channel: 'coordinator', sequence: 23,
+    content: '只发送一次', run_status: 'completed', author_name: '用户' }
+  const optimistic = { ...persisted, id: 'pending-1', sequence: undefined }
+  const messages = acknowledgeCoordinatorMessage([optimistic, persisted], 'pending-1', 'user-1')
+  assert.deepEqual(messages, [persisted])
+  assert.deepEqual(acknowledgeCoordinatorMessage([optimistic], 'pending-1', 'user-1'), [
+    { ...optimistic, id: 'user-1' },
+  ])
+})
 
 test('recovered coordinator completion releases a stale sending state', () => {
   const live = { reply: { id: 'reply', channel: 'coordinator', status: 'running' } }

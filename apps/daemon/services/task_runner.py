@@ -330,7 +330,7 @@ class TaskRunner:
             # Check if all steps completed
             all_keys = set(scheduler.steps.keys())
             if completed == all_keys:
-                task.status = "ready"  # all done
+                task.status = "completed"
             else:
                 task.status = "paused"  # some failed
         finally:
@@ -364,6 +364,11 @@ class TaskRunner:
 
             task.updated_at = finished_at
             await self._run_db(persist_pipeline_status)
+            if final_status == "completed":
+                await self._publish(task.id, "", {
+                    "type": "status",
+                    "data": {"task_id": task.id, "status": final_status},
+                })
 
     async def _execute_dag(
         self,

@@ -9,7 +9,7 @@ import type { TaskDetailViewProps, StepData } from './TaskDetailView'
 
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready', running: 'status.running', paused: 'status.paused',
-  stopped: 'status.stopped', done: 'status.done',
+  stopped: 'status.stopped', done: 'status.done', completed: 'status.done',
 }
 
 interface TaskDetailHeaderProps {

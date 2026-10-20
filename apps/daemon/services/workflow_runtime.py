@@ -881,7 +881,7 @@ class WorkflowRuntime:
                     "task_id": task_id,
                     "step_key": "",
                     "type": "status",
-                    "data": {"task_id": task_id, "status": "ready"},
+                    "data": {"task_id": task_id, "status": "completed"},
                     **current_actor_event_fields(),
                 }
                 ctx = AGUIContext.from_event(status_event)
@@ -1425,7 +1425,7 @@ class WorkflowRuntime:
                 latest_run = WorkflowRun.get_by_id(workflow_run.id)
                 if latest_run.status == 'stopped':
                     workflow_run.status = 'stopped'
-                elif latest_task.status == "ready":
+                elif latest_task.status == "completed":
                     workflow_run.status = "succeeded"
                 elif latest_task.status == "paused" and TaskStep.select().where(
                     (TaskStep.task == latest_task)

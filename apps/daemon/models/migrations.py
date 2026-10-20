@@ -128,6 +128,8 @@ _ADDITIVE_COLUMNS = {
         "schedule_run_id": "TEXT",
     },
     "tasks": {
+        "status": "TEXT NOT NULL DEFAULT 'ready'",
+        "active_workflow_run_id": "TEXT",
         "workflow_overrides_json": "TEXT",
         "queued_run_json": "TEXT",
         "creator_id": "TEXT",
@@ -151,6 +153,7 @@ _ADDITIVE_COLUMNS = {
         "session_provider": "TEXT",
     },
     "workflow_runs": {
+        "task_id": "TEXT",
         "workflow_snapshot_json": "TEXT NOT NULL DEFAULT '{}'",
         "owner_id": "TEXT",
         "heartbeat_at": "DATETIME",
@@ -207,6 +210,15 @@ def migrate_database(db: pw.SqliteDatabase) -> int:
                     f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}'
                 )
     db.create_tables(ALL_MODELS, safe=True)
+    # Old runners used ready for both unstarted and successfully finished tasks.
+    # Only the task's current run is authoritative; an older success may have
+    # been followed by a failed or interrupted rerun. Preserve timestamps.
+    db.execute_sql(
+        "UPDATE tasks SET status = 'completed' WHERE status = 'ready' "
+        "AND EXISTS (SELECT 1 FROM workflow_runs r "
+        "WHERE r.id = tasks.active_workflow_run_id AND r.task_id = tasks.id "
+        "AND r.status = 'succeeded')"
+    )
     # Full workflow definitions are no longer execution state.  Keep the
     # legacy NOT NULL column small for compatibility with existing SQLite
     # tables and make their pages reusable without running a blocking VACUUM.

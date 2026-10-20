@@ -5108,9 +5108,9 @@ async def test_review_flow_end_to_end_via_api(api_context, monkeypatch):
         )
         assert approve.status_code == 200, approve.text
         task = await _wait_for_task_status(
-            client, project_id, task_id, {"ready", "paused"}
+            client, project_id, task_id, {"completed", "paused"}
         )
-        assert task["status"] == "ready"
+        assert task["status"] == "completed"
         steps = {step["step_key"]: step["status"] for step in task["steps"]}
         assert steps == {
             "plan": "passed", "build": "passed", "verify": "passed",
@@ -5365,7 +5365,7 @@ async def test_review_completion_api_keeps_health_responsive_during_slow_db(
             "skipped" if decision == "complete-task" else "pending"
         )
         assert Task.get_by_id(task_id).status == (
-            "ready" if decision == "complete-task" else "paused"
+            "completed" if decision == "complete-task" else "paused"
         )
         assert WorkflowRun.get_by_id(run.id).status == (
             "succeeded" if decision == "complete-task" else "paused"

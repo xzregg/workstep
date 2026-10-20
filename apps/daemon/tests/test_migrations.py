@@ -497,3 +497,41 @@ def test_migrate_database_adds_hot_query_indexes_to_existing_tables(tmp_path):
         names = {index.name for index in db.get_indexes(table)}
         assert expected <= names, f"missing indexes on {table}"
     db.close()
+
+
+def test_legacy_ready_tasks_only_promote_current_successful_run(tmp_path):
+    from models import Task, WorkflowRun, init_db
+    from models.fields import utc_now
+
+    path = str(tmp_path / "legacy-status.db")
+    db = init_db(path)
+    now = utc_now()
+    try:
+        for name, status, active_status in [
+            ("finished", "ready", "succeeded"),
+            ("new", "ready", None),
+            ("paused", "paused", "succeeded"),
+            ("rerun", "ready", "running"),
+            ("failed", "ready", "failed"),
+        ]:
+            task = Task.create(id=name, title=name, cwd=str(tmp_path), status=status,
+                               created_at=now, updated_at=now)
+            # An older success must not hide a newer run's state.
+            WorkflowRun.create(id=name + "-old", task=task, status="succeeded", workflow_schema_version="1", started_at=now)
+            if active_status:
+                run = WorkflowRun.create(id=name + "-active", task=task,
+                                         status=active_status, workflow_schema_version="1", started_at=now)
+                task.active_workflow_run_id = run.id
+                task.save()
+        db.close()
+        for _ in range(2):
+            db = init_db(path)
+            assert {t.id: t.status for t in Task.select()} == {
+                "finished": "completed", "new": "ready", "paused": "paused",
+                "rerun": "ready", "failed": "ready",
+            }
+            assert Task.get_by_id("finished").updated_at == now
+            db.close()
+    finally:
+        if not db.is_closed():
+            db.close()

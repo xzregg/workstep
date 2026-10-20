@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { taskApi } from '../api/client'
+import { ApiError, taskApi } from '../api/client'
 import { useI18n } from '../i18n'
-import { createOptimisticCoordinatorMessage, createOptimisticUserMessage } from '../pages/taskDetailChat'
+import { acknowledgeCoordinatorMessage, createOptimisticCoordinatorMessage, createOptimisticUserMessage } from '../pages/taskDetailChat'
 import { pendingInsertQueueKey, usePendingMessageInsertStore } from '../stores/pendingMessageInsertStore'
 import { randomUuid } from '../utils/uuid'
 import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
@@ -43,7 +43,7 @@ export function useTaskPendingInserts({
   const items = usePendingMessageInsertStore((state) => state.queues[queueKey] || EMPTY_ITEMS)
   const actions = usePendingMessageInsertStore(useShallow((state) => ({
     load: state.load, add: state.add, update: state.update, remove: state.remove,
-    clear: state.clear, reorder: state.reorder, discard: state.discard,
+    clear: state.clear, reorder: state.reorder, discard: state.discard, invalidate: state.invalidate,
   })))
   const reportError = useCallback((error: unknown) => onError(
     error instanceof Error ? error.message : t('taskDetail.sendFailed'),
@@ -125,9 +125,9 @@ export function useTaskPendingInserts({
       if (channel === 'coordinator') {
         const accepted = await taskApi.chat(taskId, content, projectId, randomUuid(), ids)
         actions.discard(projectId, targetMessageId, ids)
-        setHistoryMessages((current) => current.map((message) => message.id === optimisticId
-          ? { ...message, id: accepted.user_message_id, channel: 'coordinator', run_status: 'completed' }
-          : message))
+        setHistoryMessages((current) => acknowledgeCoordinatorMessage(
+          current, optimisticId, accepted.user_message_id,
+        ))
         onCoordinatorRunning(true)
         onCoordinatorAccepted(accepted.assistant_message_id)
         watchAcceptedCompletion(projectId, { taskId }, accepted.assistant_message_id)
@@ -145,6 +145,10 @@ export function useTaskPendingInserts({
     } catch (error) {
       if (channel === 'coordinator') unwatchPendingCompletion(projectId, { taskId })
       setHistoryMessages((current) => current.filter((message) => message.id !== optimisticId))
+      if (channel === 'coordinator' && error instanceof ApiError && error.status === 409) {
+        actions.invalidate(projectId, targetMessageId)
+        await actions.load(projectId, targetMessageId).catch(() => undefined)
+      }
       reportError(error)
     } finally {
       ids.forEach((id) => sendingRef.current.delete(id))

@@ -2379,7 +2379,7 @@ export const enUS: Messages = {
     stepEngineFixedHint: 'Running step: engine and model are fixed by the step config',
     stepEngineTitle: 'This step is executing; engine and model come from the step config and cannot be changed',
     stepPlaceholder: 'Type a message and press Enter to add it to the "Insert message" panel above; confirm to inject into the "{step}" step execution...',
-    coordinatorProcessing: 'Coordinator processing...',
+    coordinatorProcessing: 'Add a follow-up for after this turn',
     coordinatorPlaceholder: 'Ask a question, add a note, or request an action...',
     stepInputTitle: 'Send to the current step Agent; first added to the "Insert message" panel, then injected on confirm',
     stopCoordinatorTitle: 'Stop coordinator processing',

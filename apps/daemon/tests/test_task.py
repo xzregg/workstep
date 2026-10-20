@@ -595,7 +595,7 @@ async def test_run_task_success(subscriber, tmp_path):
     q, service, bus = subscriber
 
     # Patch registry to use mock engine
-    from engines import registry
+    from engines.core import registry
     original = registry.ENGINE_REGISTRY.copy()
     registry.ENGINE_REGISTRY["pydantic_ai"] = lambda: MockEngine(events=[
         InternalEvent(
@@ -626,9 +626,9 @@ async def test_run_task_success(subscriber, tmp_path):
         assert "RUN_STARTED" in types
         assert "TEXT_MESSAGE_CHUNK" in types
 
-        # Task should be back to ready (single stage completed)
+        # Successful single-stage execution is completed
         updated = service.get_task(task["id"])
-        assert updated["status"] == "ready"
+        assert updated["status"] == "completed"
 
         # Usage (incl. cache hit) must be persisted to message.usage_json
         from models import Message
@@ -661,7 +661,7 @@ async def test_run_task_slow_engine_factory_keeps_loop_responsive(
     subscriber, tmp_path,
 ):
     import threading
-    from engines import registry
+    from engines.core import registry
 
     _q, service, _bus = subscriber
     original = registry.ENGINE_REGISTRY.copy()
@@ -695,7 +695,7 @@ async def test_run_task_failure(subscriber):
     """run_task handles engine failure gracefully."""
     q, service, bus = subscriber
 
-    from engines import registry
+    from engines.core import registry
     original = registry.ENGINE_REGISTRY.copy()
 
     class FailEngine(MockEngine):
@@ -723,7 +723,7 @@ async def test_run_task_error_event_is_a_failed_run(subscriber):
     """An engine-reported error is terminal even when the iterator exits normally."""
     q, service, bus = subscriber
 
-    from engines import registry
+    from engines.core import registry
     from models import Message, TaskStep
 
     original = registry.ENGINE_REGISTRY.copy()
@@ -783,7 +783,7 @@ async def test_cancel_task_finalizes_running_records(subscriber):
     """Stopping an active engine leaves no run or step in a successful/running state."""
     q, service, bus = subscriber
 
-    from engines import registry
+    from engines.core import registry
     from models import Message, TaskStep
 
     class BlockingEngine(MockEngine):

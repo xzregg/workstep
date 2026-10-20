@@ -14,7 +14,7 @@ import TaskRecoveredBadge from './TaskRecoveredBadge'
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
   queued: 'status.queued',
-  done: 'status.done',
+  done: 'status.done', completed: 'status.done',
   reviewing: 'status.reviewing', awaiting_review: 'status.awaiting_review',
   retrying: 'status.retrying', rejected: 'status.rejected',
   cancelled: 'status.cancelled',
@@ -27,7 +27,7 @@ const STATUS_COLORS: Record<string, string> = {
   paused: 'var(--status-paused)',
   stopped: 'var(--status-stopped)',
   queued: '#a16207',
-  done: 'var(--status-done)',
+  done: 'var(--status-done)', completed: 'var(--status-done)',
   passed: 'var(--status-done)',
   failed: 'var(--status-failed)',
   reviewing: 'var(--accent)',

@@ -1404,7 +1404,7 @@ async def test_rerun_upstream_with_new_artifact_restarts_previously_blocked_down
         assert TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "handoff")
         ).status == "passed"
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()
@@ -3046,7 +3046,7 @@ async def test_resume_step_after_cancel_persists_message_and_reruns(tmp_path):
         await _wait_run_finished(accepted["run_id"])
         step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
         assert step.status == "passed"
-        assert Task.get_by_id(task.id).status == "ready"
+        assert Task.get_by_id(task.id).status == "completed"
         assert "触发者：阶段触发人；任务创建者：任务创建者" in instances[1].prompts[0]
         assert "请改用中文输出" in instances[1].prompts[0]
     finally:

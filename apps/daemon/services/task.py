@@ -445,7 +445,7 @@ class TaskService:
             else:
                 step_status = "passed"
                 step_error = None
-                task_status = "ready"
+                task_status = "completed"
         finally:
             try:
                 await self._event_journal.afinish(
@@ -476,6 +476,11 @@ class TaskService:
                 "type": "status",
                 "data": {"status": step_status, "task_id": task_id},
             })
+            if task_status == "completed":
+                await self._publish(task_id, "", {
+                    "type": "status",
+                    "data": {"status": task_status, "task_id": task_id},
+                })
 
     async def shutdown(self) -> None:
         await self._event_journal.aclose()

@@ -393,12 +393,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         const isRunning = ['running', 'reviewing', 'retrying', 'rework', 'rework_waiting'].includes(status)
         if (isRunning) {
           useProjectStore.getState().setProjectRunning(eventId, true)
-        } else if (['passed', 'failed', 'cancelled', 'ready', 'stopped', 'paused', 'skipped'].includes(status)) {
+        } else if (['passed', 'completed', 'failed', 'cancelled', 'ready', 'stopped', 'paused', 'skipped'].includes(status)) {
           // For the active project we have the full tasks array; check if
           // any task is still running before clearing the flag.
           const { activeProject } = useProjectStore.getState()
           if (activeProject?.id === eventId) {
-            const stillRunning = useTaskStore.getState().tasks.some((t) => t.status === 'running')
+            const taskCompleted = status === 'completed' && !(event.step_key || value.step_key)
+            const stillRunning = useTaskStore.getState().tasks.some((t) =>
+              t.status === 'running' && !(taskCompleted && t.id === taskId))
             useProjectStore.getState().setProjectRunning(eventId, stillRunning)
           }
           // Non-active projects: leave as true (conservative; corrected on reload).
@@ -579,8 +581,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         })
         if (status === 'passed') {
           newTasks = s.tasks.map((t) =>
-            t.id === taskId ? { ...updateTaskStep(t), status: 'ready' } : t,
+            t.id === taskId ? updateTaskStep(t) : t,
           )
+        } else if (status === 'completed' && !stepKey) {
+          newTasks = s.tasks.map((t) => t.id === taskId ? { ...t, status: 'completed' } : t)
         } else if (['running', 'reviewing', 'retrying', 'rework', 'rework_waiting'].includes(status)) {
           newTasks = s.tasks.map((t) =>
             t.id === taskId ? { ...updateTaskStep(t), status: 'running' } : t,
