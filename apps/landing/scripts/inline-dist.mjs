@@ -21,7 +21,11 @@ export function inlineDocument({ html, javascript, stylesheet, favicon, brandMar
   const safeStylesheet = stylesheet
     .replace(/url\((['"]?)[^)]*brand-mark\.svg\1\)/g, `url("${brandMarkData}")`)
     .replace(/<\/style/gi, '<\\/style')
-  const safeJavascript = javascript.replace(/<\/script/gi, '<\\/script')
+  // Imported media URLs were relative to the entry bundle in assets/. Keep
+  // that base after moving the code into index.html, including under file://.
+  const scriptReference = requiredMatch(html, /<script\s+type="module"(?:\s+crossorigin)?\s+src="([^"]+)"><\/script>/, '入口脚本')[1]
+  const moduleBase = `new URL(${JSON.stringify(`./assets/${path.basename(scriptReference)}`)}, document.baseURI).href`
+  const safeJavascript = javascript.replace(/\bimport\.meta\.url\b/g, moduleBase).replace(/<\/script/gi, '<\\/script')
 
   const output = html
     .replace(
@@ -83,4 +87,4 @@ async function main() {
   console.log(`单文件页面已生成：dist/index.html (${Math.ceil(Buffer.byteLength(output) / 1024)} KiB)`)
 }
 
-await main()
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main()

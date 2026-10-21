@@ -113,7 +113,10 @@ class ManagedHttpBridge:
             raw_headers = self.start.get("headers", [])
             if (not isinstance(method, str) or not method.isascii() or not method.isalpha()
                     or not isinstance(path, str) or not path.startswith("/")
-                    or path.startswith("//") or path.startswith("/api/managed")
+                    or path.startswith("//")
+                    or (path.startswith("/api/managed") and not (
+                        method.upper() == "GET" and path == "/api/managed/mode"
+                        and project_id is None and share_scope is None))
                     or not isinstance(query, str) or not isinstance(username, str)
                     or not isinstance(user_id, str) or not user_id or not username
                     or not isinstance(display_name, str) or not display_name.strip()

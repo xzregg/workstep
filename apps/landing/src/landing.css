@@ -473,6 +473,24 @@ button {
 
 /* ── Real-app hero preview ── */
 
+.hero-recorded { padding: 52px 0 48px; }
+.hero-recorded .hero-grid { gap: 28px; }
+.hero-header { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 44px; }
+.hero-recorded .hero-copy { max-width: none; margin: 0; text-align: left; }
+.hero-recorded .hero-eyebrow { padding: 0; margin: 0 0 18px; border: 0; border-radius: 0; background: transparent; }
+.hero-recorded h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.12; margin-bottom: 0; }
+.hero-recorded .hero-promise { color: var(--fg); }
+.hero-recorded .hero-lede { margin: 0 0 20px; font-size: 15px; }
+.hero-recorded .hero-actions { justify-content: flex-start; }
+.hero-recorded .hero-setup { margin: 14px 0 0; }
+.hero-recorded .hero-meta { margin-top: 0; }
+.demo-card .spin { animation: none; }
+
+@media (max-width: 920px) {
+  .hero-header { grid-template-columns: 1fr; gap: 24px; }
+  .hero-recorded { padding-top: 36px; }
+}
+
 .hero-preview {
   position: relative;
   padding-top: 18px;

@@ -3,6 +3,7 @@ import { afterEach, test } from 'node:test'
 import { JSDOM } from 'jsdom'
 import { MemoryRouter } from 'react-router-dom'
 import { AdminUsagePage } from '../src/AdminUsagePage'
+import { UsageMetricStrip } from '../src/UsageMetricStrip'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'https://gateway.test/admin/usage',
@@ -18,6 +19,29 @@ const { cleanup, fireEvent, render, screen, waitFor, configure } = await import(
 configure({ asyncUtilTimeout: 5000 })
 const originalFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
+
+test('comparison table formats all time boundaries as readable UTC dates', async () => {
+  const totals = { event_count: 0, unmetered_count: 0, input_tokens: 0, output_tokens: 0,
+    cache_read_tokens: 0, cache_write_tokens: 0, total_tokens: 0,
+    estimated_cost: null, billed_cost: null, currency: null }
+  globalThis.fetch = async () => Response.json(totals)
+  const filters = new URLSearchParams({ from_time: '2026-09-21T14:41:54.785+08:00',
+    to_time: '2026-10-21T06:41:54.785Z' }).toString()
+  const view = render(<UsageMetricStrip summary={totals} filters={filters} overview />)
+  await waitFor(() => assert.ok(!screen.queryByRole('status')))
+  const rows = Array.from(view.container.querySelectorAll('tbody tr'))
+  const boundaries = rows.map(row => Array.from(row.querySelectorAll('td')).slice(1, 3).map(cell => cell.textContent))
+  assert.deepEqual(boundaries.slice(0, 3), [
+    ['2026-09-21 06:41:54', '2026-10-21 06:41:54'],
+    ['2026-08-22 06:41:54', '2026-09-21 06:41:54'],
+    ['2025-09-21 06:41:54', '2025-10-21 06:41:54'],
+  ])
+  for (const value of boundaries[3]) assert.match(value!, /^\d{4}-\d{2}-01 00:00:00$/)
+  view.rerender(<UsageMetricStrip summary={totals} filters="" overview />)
+  await waitFor(() => assert.ok(!screen.queryByRole('status')))
+  assert.equal(screen.getAllByText('不限').length, 2)
+  assert.equal(screen.getAllByText('未指定').length, 4)
+})
 
 test('usage page filters summaries and locates unmetered and metered events', async () => {
   const urls: string[] = []

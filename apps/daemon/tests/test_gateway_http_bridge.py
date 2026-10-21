@@ -18,6 +18,57 @@ from tests.test_gateway_share_ticket import _ticket
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('owner', [True, False])
+async def test_gateway_bridge_reads_project_picker_capability(owner):
+    from api.managed import router
+    app = FastAPI()
+    app.state.gateway_client = type('Client', (), {'managed_config': object()})()
+    app.add_middleware(DesktopSecurityMiddleware)
+    app.include_router(router)
+    frames = []
+
+    async def capture(frame):
+        frames.append(frame)
+
+    bridge = ManagedHttpBridge(app, 'picker-capability', {
+        'method': 'GET', 'path': '/api/managed/mode', 'headers': [],
+        'user_id': 'user-1', 'username': 'alice', 'device_owner': owner,
+    }, capture, 'device-1')
+    bridge.start_task()
+    await asyncio.wait_for(bridge._task, timeout=1)
+    assert frames[0].payload['status'] == 200
+    body = b''.join(base64.b64decode(frame.payload['data']) for frame in frames
+                    if frame.payload.get('phase') == 'body')
+    assert json.loads(body) == {'managed': True, 'can_manage_remote_projects': owner}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('method,path,project_id', [
+    ('POST', '/api/managed/mode', None),
+    ('POST', '/api/managed/bootstrap', None),
+    ('GET', '/api/managed/control-status', None),
+    ('GET', '/api/managed/mode/extra', None),
+    ('GET', '/api/managed/mode', 'project-1'),
+])
+async def test_gateway_bridge_keeps_other_managed_routes_blocked(method, path, project_id):
+    async def app(scope, receive, send):
+        pytest.fail('Restricted managed request reached daemon')
+
+    frames = []
+    async def capture(frame):
+        frames.append(frame)
+
+    bridge = ManagedHttpBridge(app, 'restricted-managed', {
+        'method': method, 'path': path, 'headers': [],
+        'user_id': 'user-1', 'username': 'alice', 'device_owner': True,
+        'project_id': project_id, 'access_level': 'edit' if project_id else None,
+    }, capture, 'device-1')
+    bridge.start_task()
+    await asyncio.wait_for(bridge._task, timeout=1)
+    assert frames[0].payload['status'] == 502
+
+
+@pytest.mark.asyncio
 async def test_large_response_waits_for_gateway_receive_window():
     async def app(scope, receive, send):
         await send({"type": "http.response.start", "status": 200, "headers": []})

@@ -9,9 +9,10 @@ interface DemoPlayerProps {
   autoplay?: boolean
   showControls?: boolean
   loop?: boolean
+  previewTimeMs?: number
 }
 
-export function DemoPlayer({ demo, autoplay = true, showControls = true, loop = true }: DemoPlayerProps) {
+export function DemoPlayer({ demo, autoplay = true, showControls = true, loop = true, previewTimeMs }: DemoPlayerProps) {
   const { t } = useI18n()
   const timeline = useDemoTimeline({ durationMs: demo.durationMs, autoplay, loop })
   const Scene = demo.Scene
@@ -20,7 +21,7 @@ export function DemoPlayer({ demo, autoplay = true, showControls = true, loop = 
     <div className="demo-player">
       <div className="demo-window">
         <div className="demo-viewport">
-          <Scene time={timeline.time} />
+          <Scene time={previewTimeMs ?? timeline.time} />
         </div>
       </div>
 
