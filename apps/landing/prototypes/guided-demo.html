@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WorkStep · 镜头与逐步讲解原型</title>
+  <style>
+    :root{color-scheme:dark;--bg:#090b12;--panel:#10131e;--text:#f3f2fa;--muted:#8d91a8;--accent:#b2a1ff;--line:#ffffff12;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC",sans-serif}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}button,input,a{-webkit-tap-highlight-color:transparent}button{font:inherit;cursor:pointer}a{color:inherit;text-decoration:none}button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:5px}
+    .page{max-width:1440px;margin:auto;padding:0 44px}.nav{height:72px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:650;letter-spacing:-.7px}.mark{display:flex;align-items:end;gap:3px;height:25px;transform:rotate(-12deg)}.mark i{width:6px;height:11px;border-radius:2px;background:var(--accent)}.mark i:nth-child(2){height:18px}.mark i:nth-child(3){height:25px}.nav-note{font-size:11px;color:var(--muted);letter-spacing:1px}.intro{padding:28px 0 24px;display:flex;align-items:end;justify-content:space-between;gap:20px}.eyebrow{font-size:10px;letter-spacing:2px;color:var(--accent);margin:0 0 10px}h1{font-size:30px;font-weight:600;letter-spacing:-1px;margin:0;line-height:1.3}h1 span{color:var(--accent)}.intro-copy{font-size:12px;line-height:1.8;color:var(--muted);margin:0;text-align:right}
+    .theater{overflow:hidden;border:1px solid #ffffff25;border-radius:14px;background:var(--panel);box-shadow:0 24px 65px #0006}.stage{position:relative}.screen-viewport{position:relative;aspect-ratio:16/9;overflow:hidden;background:var(--panel)}.camera{position:absolute;inset:0;transform-origin:0 0;will-change:transform}#recording{display:block;width:100%;height:100%;object-fit:cover}.scrim{position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--bg) 99%,transparent) 0%,color-mix(in srgb,var(--bg) 94%,transparent) 25%,color-mix(in srgb,var(--bg) 75%,transparent) 39%,color-mix(in srgb,var(--bg) 22%,transparent) 53%,transparent 68%)}
+    .guide{position:absolute;z-index:2;top:50%;left:4.5%;width:38%;transform:translateY(-50%);pointer-events:none}.chapter-number{display:flex;align-items:center;gap:12px;color:var(--accent);font:11px ui-monospace,monospace;letter-spacing:2px}.chapter-number:before{content:"";width:28px;height:1px;background:var(--accent)}.guide h2{font-size:clamp(30px,3.4vw,48px);line-height:1.22;letter-spacing:-1.6px;font-weight:750;margin:20px 0 26px;text-shadow:0 3px 12px #0005}.guide-list{margin:0;padding:0;list-style:none;display:grid;gap:16px}.guide-item{display:flex;align-items:start;gap:11px;font-size:14px;font-weight:500;line-height:1.65;color:#c8cad8;opacity:0;transform:translateX(-18px);transition:opacity .45s ease,transform .55s ease,color .3s}.guide-item.is-visible{opacity:1;transform:translateX(0)}.guide-item.is-current{color:var(--text)}.item-check{display:grid;place-items:center;flex-shrink:0;width:18px;height:18px;margin-top:2px;padding:0;border-radius:4px;background:var(--accent);color:#171328}.item-check svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}.item-text{min-width:0}.guide-foot{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);margin:25px 0 0}.guide-foot:before{content:"";height:1px;width:16px;background:var(--muted)}
+    .guide.entering .chapter-number{animation:group-in .45s ease both}.guide.entering h2{animation:group-in .65s ease both}@keyframes group-in{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:translateX(0)}}.scene-label{position:absolute;right:25px;top:24px;display:flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid #ffffff25;border-radius:5px;background:color-mix(in srgb,var(--bg) 82%,transparent);color:var(--text);font-size:11px;pointer-events:none}.scene-label:before{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent)}.scene-counter{position:absolute;bottom:25px;left:4.5%;font:10px ui-monospace,monospace;color:var(--muted);letter-spacing:2px}.scene-counter strong{color:var(--accent);font-weight:400}.recording-empty{position:absolute;inset:0;z-index:4;display:grid;place-items:center;padding:30px;background:var(--panel);font-size:14px;text-align:center}.recording-empty[hidden]{display:none}
+    .chapter-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line)}.chapter{display:flex;align-items:center;gap:10px;padding:18px 22px;border:0;border-right:1px solid var(--line);border-bottom:2px solid transparent;background:transparent;color:var(--muted);text-align:left;font-size:12px}.chapter:last-child{border-right:0}.chapter:hover{background:#ffffff05;color:var(--text)}.chapter[aria-current=step]{color:var(--text);background:color-mix(in srgb,var(--accent) 6%,transparent);border-bottom-color:var(--accent)}.step-index{font:10px ui-monospace,monospace;color:var(--accent)}.chapter-time{margin-left:auto;font:10px ui-monospace,monospace;opacity:.6}
+    .controls{display:flex;align-items:center;gap:14px;padding:14px 20px;border-top:1px solid var(--line);background:var(--bg)}.icon-button{display:grid;place-items:center;flex-shrink:0;width:32px;height:32px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted)}.icon-button:hover{background:#ffffff12;color:var(--text)}.icon-button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.play{background:var(--accent);color:#171328}.play:hover{background:#c2b5ff;color:#171328}.seek{flex:1;min-width:20px;height:22px;margin:0;appearance:none;background:transparent;cursor:pointer;accent-color:var(--accent)}.seek::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:linear-gradient(90deg,var(--accent) var(--progress,0%),#282b3b var(--progress,0%))}.seek::-webkit-slider-thumb{appearance:none;width:9px;height:9px;border-radius:50%;background:var(--accent);margin-top:-3px}.seek::-moz-range-track{height:3px;background:#282b3b}.seek::-moz-range-progress{height:3px;background:var(--accent)}.seek::-moz-range-thumb{width:9px;height:9px;border:0;background:var(--accent)}.time{font:10px ui-monospace,monospace;color:var(--muted);white-space:nowrap}.control-note{padding-left:14px;border-left:1px solid var(--line);color:var(--muted);font-size:10px;white-space:nowrap}.below{display:flex;justify-content:space-between;gap:20px;padding:19px 0 30px;font-size:11px;color:var(--muted);line-height:1.8}.below span:last-child{text-align:right}
+    @media(max-width:1100px){.page{padding:0 28px}.guide{width:40%}.guide h2{font-size:32px;letter-spacing:-1px;margin:15px 0 20px}.guide-list{gap:11px}.guide-item{font-size:12px;gap:9px}.item-check{width:16px;height:16px}.guide-foot{margin-top:18px}.chapter{padding:16px}.chapter-time{display:none}}
+    @media(max-width:760px){.page{padding:0 16px}.nav{height:64px}.brand{font-size:18px}.nav-note{font-size:9px;letter-spacing:0}.intro{padding:25px 0 20px;display:block}.eyebrow{font-size:9px}h1{font-size:25px}.intro-copy{font-size:11px;text-align:left;margin-top:12px}.intro-copy br{display:none}.stage{display:flex;flex-direction:column}.guide{position:relative;order:0;left:auto;top:auto;transform:none;width:auto;height:310px;padding:24px 20px 20px;background:var(--bg)}.guide h2{font-size:30px;margin:14px 0 18px;line-height:1.2}.chapter-number{font-size:9px}.guide-list{gap:10px}.guide-item{font-size:12px;gap:10px}.guide-foot{display:none}.screen-viewport{order:1;aspect-ratio:16/10}.scrim{display:none}.scene-label{top:auto;bottom:12px;right:12px;font-size:9px;padding:6px 8px}.scene-counter{display:none}.chapter{display:grid;justify-items:center;gap:7px;padding:13px 2px;font-size:10px;text-align:center}.chapter-time{display:none}.controls{gap:8px;padding:12px}.control-note{display:none}.time{font-size:9px}.below{display:block;font-size:10px}.below span{display:block}.below span:last-child{text-align:left;margin-top:6px}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}.camera{will-change:auto}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <nav class="nav" aria-label="原型导航"><a class="brand" href="../index.html"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>WorkStep</a><span class="nav-note">操作演示 · 镜头与逐步讲解</span></nav>
+    <header class="intro"><div><p class="eyebrow">PRODUCT WALKTHROUGH / 02</p><h1>跟着操作，<span>走完每一步。</span></h1></div><p class="intro-copy">真实操作作为背景，镜头跟随当前焦点。<br>左侧说明逐条浮现，已经讲过的步骤继续保留。</p></header>
+    <section class="theater" id="demo" aria-label="WorkStep 真实操作与逐步讲解">
+      <div class="stage">
+        <div class="screen-viewport"><div class="camera" id="camera"><video id="recording" preload="auto" playsinline muted aria-label="WorkStep 真实界面操作录屏"><source src="media/workstep-tutorial.webm" type="video/webm"></video></div><div class="scrim" aria-hidden="true"></div></div>
+        <aside class="guide" aria-label="当前操作步骤">
+          <div class="chapter-number" id="chapter-number">01 · 查看流程</div>
+          <h2 id="heading">先看流程，<br>再开始动手。</h2>
+          <ol class="guide-list" id="guide-list"></ol>
+          <p class="guide-foot">操作继续播放，说明随步骤展开</p>
+        </aside>
+        <div class="scene-label" id="scene-label">查看流程</div>
+        <div class="scene-counter" aria-hidden="true"><strong id="scene-index">01</strong> / 04</div>
+        <div class="recording-empty" id="recording-empty">正在载入真实操作录屏…</div>
+      </div>
+      <div class="chapter-list" aria-label="演示章节">
+        <button type="button" class="chapter" aria-current="step"><span class="step-index">01</span><span>查看流程</span><span class="chapter-time">00:00</span></button>
+        <button type="button" class="chapter"><span class="step-index">02</span><span>新建任务</span><span class="chapter-time">00:09</span></button>
+        <button type="button" class="chapter"><span class="step-index">03</span><span>补充说明</span><span class="chapter-time">00:15</span></button>
+        <button type="button" class="chapter"><span class="step-index">04</span><span>保存查看</span><span class="chapter-time">00:24</span></button>
+      </div>
+      <div class="controls"><button type="button" class="icon-button play" id="play" aria-label="播放演示"><svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></svg></button><button type="button" class="icon-button" id="restart" aria-label="重播演示"><svg viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/></svg></button><input class="seek" id="seek" type="range" min="0" max="32" step="0.01" value="0" aria-label="演示进度"><span class="time" id="time">00:00 / 00:32</span><span class="control-note">真实操作 · 焦点放大 · 逐条讲解</span></div>
+    </section>
+    <footer class="below"><span>镜头、勾选说明与真实操作同步；暂停或跳转时保持一致。</span><span>隔离演示项目录制 · 不会操作你的项目</span></footer>
+  </main>
+  <script>
+    const $=id=>document.getElementById(id);
+    const video=$('recording'),guide=document.querySelector('.guide'),chapters=[...document.querySelectorAll('.chapter')];
+    const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+    const mobile=matchMedia('(max-width: 760px)');
+    const cues=[
+      {at:0,label:'查看流程',heading:['先看流程，','再开始动手。'],items:[['看清流程里的工作步骤',.6],['打开步骤，查看具体配置',2.7],['核对提示词、引擎与输入输出',4.5],['回到看板，准备创建任务',6.8]]},
+      {at:9.244,label:'新建任务',heading:['一个好任务，','从明确目标开始。'],items:[['点击看板上的「新建」',.4],['在弹出的面板中填写标题',1.7],['用一句话说清要做什么',3.1],['接着补充任务的详细要求',4.7]]},
+      {at:15,label:'补充说明',heading:['先说清楚，','再交给 AI。'],items:[['写明主题：介绍工作流编排',.5],['说明读者：第一次使用的新用户',2.2],['约定验收：覆盖流程、任务与交付',4.2],['选择「手动开始」，确认后再启动',6.8]]},
+      {at:24.346,label:'保存查看',heading:['保存之后，','每一步都有依据。'],items:[['点击「创建任务」保存内容',.4],['在看板中找到刚创建的任务',2],['打开详情，查看说明和步骤',4],['任务保持预备中，等待手动开始',5.8]]}
+    ];
+    // [视频时间，放大倍数，原录屏中的焦点 X、Y]。左侧遮罩允许留出讲解空间，将焦点移到右侧。
+    const cameraKeys=[
+      [0,1,.5,.5],[1.4,1.25,.34,.52],[3.2,1.6,.81,.35],[6.5,1.6,.81,.35],
+      [8.1,1.05,.6,.4],[9.3,1.1,.48,.22],[11.3,1.5,.47,.22],[14.3,1.65,.46,.19],
+      [15.8,1.7,.46,.3],[21,1.7,.46,.33],[23.1,1.55,.45,.44],[24.35,1.42,.46,.88],
+      [26.6,1.6,.36,.26],[28.4,1.6,.36,.38],[31.6,1.45,.4,.38]
+    ];
+    const check='<span class="item-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m3 8 3 3 7-7"/></svg></span>';
+    let active=-1,rows=[],raf=0,frameWidth=1,frameHeight=1;
+    const format=t=>String(Math.floor(t/60)).padStart(2,'0')+':'+String(Math.floor(t%60)).padStart(2,'0');
+    const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
+    function measure(){const viewport=document.querySelector('.screen-viewport');frameWidth=viewport.clientWidth||1;frameHeight=viewport.clientHeight||1}
+    function renderCamera(time){
+      if(reduced.matches){$('camera').style.transform='matrix(1,0,0,1,0,0)';return}
+      const index=Math.max(0,cameraKeys.findLastIndex(key=>time>=key[0]));
+      const from=cameraKeys[index],to=cameraKeys[Math.min(index+1,cameraKeys.length-1)];
+      let p=to[0]===from[0]?0:clamp((time-from[0])/(to[0]-from[0]),0,1);p=p*p*(3-2*p);
+      const values=from.map((value,i)=>value+(to[i]-value)*p);
+      const zoom=mobile.matches?1+(values[1]-1)*.65:values[1];
+      const sourceWidth=video.videoWidth||1440,sourceHeight=video.videoHeight||900;
+      const fit=Math.max(frameWidth/sourceWidth,frameHeight/sourceHeight);
+      const x=(values[2]*sourceWidth*fit-(sourceWidth*fit-frameWidth)/2)/frameWidth;
+      const y=(values[3]*sourceHeight*fit-(sourceHeight*fit-frameHeight)/2)/frameHeight;
+      const targetX=mobile.matches ? .5 : .5+.22*clamp((zoom-1)/.25,0,1);
+      const tx=clamp(targetX-zoom*x,1-zoom,mobile.matches ? 0 : .3)*frameWidth;
+      const ty=clamp(.5-zoom*y,1-zoom,0)*frameHeight;
+      $('camera').style.transform=`matrix(${zoom},0,0,${zoom},${tx},${ty})`;
+    }
+    function render(){
+      const time=video.currentTime,index=Math.max(0,cues.findLastIndex(cue=>time>=cue.at)),cue=cues[index],local=time-cue.at;
+      if(index!==active){
+        active=index;$('chapter-number').textContent=String(index+1).padStart(2,'0')+' · '+cue.label;
+        $('heading').replaceChildren(document.createTextNode(cue.heading[0]),document.createElement('br'),document.createTextNode(cue.heading[1]));
+        $('guide-list').replaceChildren(...cue.items.map(([text])=>{const li=document.createElement('li');li.className='guide-item';li.setAttribute('aria-hidden','true');li.innerHTML=check;const span=document.createElement('span');span.className='item-text';span.textContent=text;li.append(span);return li}));
+        rows=[...$('guide-list').children];
+        guide.classList.remove('entering');void guide.offsetWidth;guide.classList.add('entering');
+        $('scene-label').textContent=cue.label+' · 真实操作';$('scene-index').textContent=String(index+1).padStart(2,'0');
+        chapters.forEach((button,i)=>{i===index?button.setAttribute('aria-current','step'):button.removeAttribute('aria-current')});
+      }
+      const revealed=cue.items.filter(([,at])=>local>=at).length;
+      rows.forEach((row,i)=>{row.classList.toggle('is-visible',i<revealed);row.classList.toggle('is-current',i===revealed-1);row.setAttribute('aria-hidden',String(i>=revealed))});
+      renderCamera(time);
+      const duration=Number.isFinite(video.duration)&&video.duration>0?video.duration:32;
+      $('seek').max=duration;$('seek').value=time;$('seek').style.setProperty('--progress',100*time/duration+'%');$('seek').setAttribute('aria-valuetext',format(time)+'，'+cue.label);$('time').textContent=format(time)+' / '+format(Math.ceil(duration));
+      const label=video.paused?'播放演示':'暂停演示';
+      if($('play').getAttribute('aria-label')!==label){$('play').setAttribute('aria-label',label);$('play').innerHTML=video.paused?'<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></svg>':'<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>'}
+    }
+    function tick(){render();if(!video.paused&&!video.ended)raf=requestAnimationFrame(tick)}
+    async function play(){try{await video.play()}catch{render()}}
+    $('play').addEventListener('click',()=>{if(video.ended)video.currentTime=0;video.paused?play():video.pause()});
+    $('restart').addEventListener('click',()=>{video.currentTime=0;play()});
+    $('seek').addEventListener('input',event=>{video.currentTime=Number(event.target.value);render()});
+    chapters.forEach((button,i)=>button.addEventListener('click',()=>{video.currentTime=cues[i].at;render()}));
+    video.addEventListener('play',()=>{cancelAnimationFrame(raf);tick()});
+    ['pause','ended'].forEach(event=>video.addEventListener(event,()=>{cancelAnimationFrame(raf);render()}));
+    ['timeupdate','seeked'].forEach(event=>video.addEventListener(event,render));
+    video.addEventListener('loadeddata',()=>{$('recording-empty').hidden=true;measure();render();if(!reduced.matches)play()});
+    const failed=()=>{$('recording-empty').hidden=false;$('recording-empty').textContent='录屏素材无法读取，请保留 HTML 旁的 media 目录。'};
+    video.addEventListener('error',failed);video.querySelector('source').addEventListener('error',failed);
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)video.pause()});
+    window.addEventListener('resize',()=>{measure();render()});
+    reduced.addEventListener('change',()=>{if(reduced.matches)video.pause();render()});
+    measure();render();
+  </script>
+</body>
+</html>

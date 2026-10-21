@@ -1,5 +1,10 @@
 import { useUsageComparisons } from './useUsageComparisons'
 import { usageCacheRate, usageChange, usageCompact, usageCount, usageCost, usageTokenTotal, type UsageTotals } from './usageStatistics'
+function formatUtcTime(value: string | null | undefined, fallback: string) {
+ if (!value) return fallback
+ const date = new Date(value)
+ return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 19).replace('T', ' ') : fallback
+}
 export function UsageMetricStrip({ summary, filters, overview }: { summary: UsageTotals; filters: string; overview: boolean }) {
  const comparisons = useUsageComparisons(filters, overview)
  const billed = new URLSearchParams(filters).get('source') === 'provider_reconciled'
@@ -22,8 +27,8 @@ export function UsageMetricStrip({ summary, filters, overview }: { summary: Usag
   {overview && comparisons.failed && <p role="alert">部分对比用量加载失败。<button type="button" onClick={comparisons.retry}>重试对比</button></p>}
   {overview && <details className="gateway-usage-comparison-details"><summary>查看对比口径与完整用量</summary><p>环比：前一个等长区间；同比：去年同期；上月：上个完整 UTC 自然月。增减基于已上报 Token，未计量不补零。缓存率是缓存读取占输入的比例，读取大于输入时不计算。</p>
    <div className="gateway-admin-table-scroll"><table className="gateway-admin-table"><thead><tr><th>统计区间</th><th>开始（UTC，含）</th><th>结束（UTC，不含）</th><th>总 Token</th></tr></thead><tbody>
-    <tr><td>当前区间</td><td>{new URLSearchParams(filters).get('from_time') ?? '不限'}</td><td>{new URLSearchParams(filters).get('to_time') ?? '不限'}</td><td>{usageCount(current)}</td></tr>
-    {(['previous','year','month'] as const).map(key => <tr key={key}><td>{{previous:'环比基期',year:'同比基期',month:'上月'}[key]}</td><td>{comparisons.ranges[key]?.from ?? '未指定'}</td><td>{comparisons.ranges[key]?.to ?? '未指定'}</td><td>{usageCount(usageTokenTotal(comparisons.values[key] ?? null))}</td></tr>)}
+    <tr><td>当前区间</td><td>{formatUtcTime(new URLSearchParams(filters).get('from_time'), '不限')}</td><td>{formatUtcTime(new URLSearchParams(filters).get('to_time'), '不限')}</td><td>{usageCount(current)}</td></tr>
+    {(['previous','year','month'] as const).map(key => <tr key={key}><td>{{previous:'环比基期',year:'同比基期',month:'上月'}[key]}</td><td>{formatUtcTime(comparisons.ranges[key]?.from, '未指定')}</td><td>{formatUtcTime(comparisons.ranges[key]?.to, '未指定')}</td><td>{usageCount(usageTokenTotal(comparisons.values[key] ?? null))}</td></tr>)}
    </tbody></table></div>
   </details>}
  </>

@@ -24,7 +24,12 @@ export default function ProjectConnectionDialog({
 }: ProjectConnectionDialogProps) {
   const { t } = useI18n()
   const canManageRemoteProjects = useManagedModeStore(state => state.canManageRemoteProjects)
+  const managed = useManagedModeStore(state => state.managed)
+  const managedLoading = useManagedModeStore(state => state.loading)
+  const loadManagedMode = useManagedModeStore(state => state.load)
+  const [permissionChecked, setPermissionChecked] = useState(false)
   const remoteBrowser = isGatewayRemoteBrowser()
+  const permissionPending = remoteBrowser && (managedLoading || (managed === null && !permissionChecked))
   const remoteDenied = remoteBrowser && !canManageRemoteProjects
   const initProject = useProjectStore((state) => state.initProject)
   const addRemoteProject = useProjectStore((state) => state.addRemoteProject)
@@ -40,15 +45,21 @@ export default function ProjectConnectionDialog({
   const loadSettings = useUserSettingsStore((state) => state.load)
 
   useEffect(() => {
+    if (open && remoteBrowser) void loadManagedMode().then(() => setPermissionChecked(true))
+  }, [open, remoteBrowser, loadManagedMode])
+
+  useEffect(() => {
     if (open && !remoteDenied) void loadSettings()
   }, [open, loadSettings, remoteDenied])
 
   if (!open) return null
 
-  if (remoteDenied) return <div className="modal-overlay" onClick={onClose}>
+  if (permissionPending || remoteDenied) return <div className="modal-overlay" onClick={onClose}>
     <ResizablePanel className="modal" onClick={(event) => event.stopPropagation()}>
       <div className="modal-header"><span className="modal-title">{t('layout.initTitle')}</span></div>
-      <div className="modal-body"><p>{t('gatewayRemote.localOnly')}</p></div>
+      <div className="modal-body">{permissionPending
+        ? <Button loading disabled>{t('common.loading')}</Button>
+        : <p>{t('gatewayRemote.localOnly')}</p>}</div>
       <div className="modal-footer"><Button variant="primary" onClick={onClose}>{t('common.close')}</Button></div>
     </ResizablePanel>
   </div>

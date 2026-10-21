@@ -12,7 +12,7 @@ export function Demos({ onOpen }: DemosProps) {
   const { t } = useI18n()
 
   return (
-    <section className="section section-alt" id="demos">
+    <section className="section section-alt" id="mechanisms">
       <div className="container">
         <div className="section-eyebrow">{t('demos.eyebrow')}</div>
         <h2 className="section-title">{t('demos.title')}</h2>
@@ -33,7 +33,7 @@ export function Demos({ onOpen }: DemosProps) {
               }}
               aria-label={t(`demos.item${index + 1}Title`)}
             >
-              <DemoPlayer demo={demo} autoplay showControls={false} />
+              <DemoPlayer demo={demo} autoplay={false} showControls={false} previewTimeMs={demo.durationMs * .7} />
               <div className="demo-card-copy">
                 <h3>{t(`demos.item${index + 1}Title`)}</h3>
                 <p>{t(`demos.item${index + 1}Desc`)}</p>

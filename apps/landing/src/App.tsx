@@ -18,7 +18,7 @@ import type { DemoDef } from './demo/demos'
 import { getExperienceHref } from './config/entryPoints'
 
 function scrollToDemos() {
-  document.getElementById('demos')?.scrollIntoView({ behavior: 'smooth' })
+  document.getElementById('demos')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
 }
 
 export default function App() {

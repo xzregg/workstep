@@ -55,10 +55,13 @@ describe('landing positioning', () => {
     expect(html).not.toContain('小周创建了“实现登录页”任务')
   })
 
-  it('keeps the hero preview and all three interactive demos', () => {
+  it('leads with a recorded walkthrough and retains three optional mechanism demos', () => {
     const html = renderLanding()
 
-    expect(html).toContain('class="hero-preview"')
+    expect(html).toContain('class="guided-walkthrough"')
+    expect(html).toContain('<video')
+    expect(html).not.toContain('class="hero-preview"')
+    expect(html.indexOf('class="guided-walkthrough"')).toBeLessThan(html.indexOf('例如：给项目加一个搜索功能'))
     expect(DEMOS.map((demo) => demo.id)).toEqual(['canvas', 'stream', 'parallel'])
     expect(html.match(/class="demo-card"/g)).toHaveLength(3)
   })

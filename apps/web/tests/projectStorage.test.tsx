@@ -99,6 +99,68 @@ test('project creation defaults to following project and sends explicit external
 })
 
 
+for (const owner of [true, false]) {
+test(`gateway project picker loads permission before browsing on a phone: owner=${owner}`, async () => {
+  const { window } = installDomEnvironment()
+  window.location.href = 'http://192.168.52.156:8700/workspace/device-one/'
+  window.innerWidth = 390
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const managedState = useManagedModeStore.getState()
+  const settingsState = useUserSettingsStore.getState()
+  const originalInit = useProjectStore.getState().initProject
+  const originalFetch = globalThis.fetch
+  useManagedModeStore.setState({ managed: null, loading: false, canManageRemoteProjects: false })
+  useUserSettingsStore.setState({ loaded: true, defaultProjectDirectory: '/demo', load: async () => {} })
+  const calls: string[] = []
+  let resolvePermission!: (response: Response) => void
+  const permission = new Promise<Response>(resolve => { resolvePermission = resolve })
+  const added: string[] = []
+  useProjectStore.setState({ initProject: async path => {
+    added.push(path)
+    return { id: 'new', name: 'demo', path, steps: [], workflows: [] }
+  } })
+  globalThis.fetch = async input => {
+    const path = String(input)
+    calls.push(path)
+    if (path.endsWith('/managed/mode')) return permission
+    return Response.json({ path: '/demo', parent: '/', entries: [{ name: 'project', path: '/demo/project', type: 'directory' }] })
+  }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    const render = () => root.render(<I18nProvider><ProjectConnectionDialog open onClose={() => {}} onConnected={() => {}} /></I18nProvider>)
+    await act(async () => render())
+    assert.deepEqual(calls, ['/workspace/device-one/api/managed/mode'])
+    assert.doesNotMatch(container.textContent ?? '', /仅在电脑本机可用/)
+    assert.equal(container.querySelector('[role="option"]'), null)
+    await act(async () => resolvePermission(Response.json({ managed: true, can_manage_remote_projects: owner })))
+    if (!owner) {
+      assert.match(container.textContent ?? '', /仅在电脑本机可用/)
+      assert.equal(container.querySelector('[role="option"]'), null)
+      assert.deepEqual(added, [])
+      assert.equal(calls.length, 1)
+      return
+    }
+    const directory = container.querySelector('[role="option"]')!
+    assert.ok(directory)
+    await act(async () => directory.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    const confirm = [...container.querySelectorAll('button')].find(button => button.textContent === '确定')!
+    await act(async () => confirm.click())
+    assert.deepEqual(added, ['/demo/project'])
+    await act(async () => render())
+    assert.equal(calls.filter(path => path.endsWith('/managed/mode')).length, 1)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    globalThis.fetch = originalFetch
+    useManagedModeStore.setState(managedState, true)
+    useUserSettingsStore.setState(settingsState, true)
+    useProjectStore.setState({ initProject: originalInit })
+    await window.happyDOM.close()
+  }
+})
+}
+
 for (const owner of [true,false]) {
  test(`gateway project picker permits device owner only: ${owner}`,async()=>{
   const {window}=installDomEnvironment();window.location.href='http://192.168.52.156:8700/workspace/device-one/'

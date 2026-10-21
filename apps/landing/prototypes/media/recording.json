@@ -1,0 +1,23 @@
+{
+  "source": "http://127.0.0.1:8777",
+  "project": "操作手册演示",
+  "durationSeconds": 31.55,
+  "recordedAt": "2026-10-21T03:45:31.319Z",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "cues": [
+    0,
+    9.244,
+    15,
+    24.346
+  ],
+  "actions": [
+    "查看流程与步骤配置",
+    "打开新建任务并填写标题",
+    "填写任务说明并选择手动开始",
+    "保存并打开任务详情"
+  ],
+  "engineExecuted": false
+}
