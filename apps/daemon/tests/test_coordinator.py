@@ -1094,6 +1094,98 @@ async def test_reconcile_abandoned_executing_coordinator_action(api_context):
 
 
 @pytest.mark.anyio
+async def test_archive_background_preparation_survives_request_and_is_deduplicated(
+    api_context, monkeypatch,
+):
+    import main
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    calls = []
+
+    async def draft(*args):
+        calls.append(args)
+        entered.set()
+        await release.wait()
+        return "- Error: build failed; Cause: wrong type; Fix: check types."
+
+    monkeypatch.setattr(main.coordinator_module, "draft_archive_experience", draft)
+    url = (f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
+           "&message_id=background-draft&background=true")
+    first = await asyncio.wait_for(client.post(url), timeout=0.5)
+    assert first.status_code == 202
+    assert first.json() == {"status": "running", "message_id": "background-draft"}
+    await asyncio.wait_for(entered.wait(), timeout=0.5)
+    try:
+        # Each poll is independent of the request which started generation.
+        poll = await asyncio.wait_for(client.post(url), timeout=0.5)
+        assert poll.status_code == 202
+        assert (await asyncio.wait_for(client.get("/api/health"), 0.2)).status_code == 200
+        assert len(calls) == 1
+    finally:
+        release.set()
+    for _ in range(50):
+        response = await client.post(url)
+        if response.status_code != 202:
+            break
+        await asyncio.sleep(0.01)
+    assert response.status_code == 200
+    assert response.json()["experience"].startswith("- Error:")
+    assert (await client.post(url)).json() == response.json()
+    assert len(calls) == 1
+    saved = await client.get(
+        f"/api/task/{task_id}/archive-experience/draft?project_id={project_id}"
+    )
+    assert saved.json()["message_id"] == "background-draft"
+    assert not (tmp_path / "coordinator-project" / ".workstep" / "MEMORY.md").exists()
+
+
+@pytest.mark.anyio
+async def test_archive_background_preparation_can_be_stopped_and_reports_errors(
+    api_context, monkeypatch,
+):
+    import main
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    entered = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def draft(*args):
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(main.coordinator_module, "draft_archive_experience", draft)
+    base = f"/api/task/{task_id}/archive-experience"
+    url = f"{base}/prepare?project_id={project_id}&message_id=stoppable&background=true"
+    assert (await client.post(url)).status_code == 202
+    await asyncio.wait_for(entered.wait(), 0.5)
+    stopped = await client.post(f"{base}/stop?project_id={project_id}&message_id=stoppable")
+    assert stopped.json() == {"stopped": True}
+    await asyncio.wait_for(cancelled.wait(), 0.5)
+    assert (await client.post(url)).status_code == 409
+
+    async def failing(*args):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(main.coordinator_module, "draft_archive_experience", failing)
+    failed_url = url.replace("stoppable", "failed-draft")
+    assert (await client.post(failed_url)).status_code == 202
+    for _ in range(50):
+        response = await client.post(failed_url)
+        if response.status_code != 202:
+            break
+        await asyncio.sleep(0.01)
+    assert response.status_code == 502
+    assert response.json()["detail"] == "model unavailable"
+
+
+@pytest.mark.anyio
 async def test_archive_experience_uses_coordinator_with_task_history(
     api_context, monkeypatch
 ):
@@ -1250,11 +1342,13 @@ async def test_archive_experience_streams_visible_coordinator_progress(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("background", [False, True])
 async def test_archive_experience_can_be_stopped_by_message_id(
-    api_context, monkeypatch
+    api_context, monkeypatch, background,
 ):
     """A visible archive draft run has its own stoppable lifecycle."""
     from engines.core.registry import ENGINE_REGISTRY
+    import main
 
     client, tmp_path = api_context
     monkeypatch.setitem(ENGINE_REGISTRY, "claude", BlockingArchiveCoordinatorFakeEngine)
@@ -1263,13 +1357,11 @@ async def test_archive_experience_can_be_stopped_by_message_id(
     BlockingArchiveCoordinatorFakeEngine.stopped = False
     project_id, task_id = await _create_task(client, tmp_path)
     message_id = "archive-progress-stoppable"
+    events = main.coordinator_module._event_bus.subscribe()
+    url = (f"/api/task/{task_id}/archive-experience/prepare"
+           f"?project_id={project_id}&message_id={message_id}&background={str(background).lower()}")
 
-    prepare = asyncio.create_task(
-        client.post(
-            f"/api/task/{task_id}/archive-experience/prepare"
-            f"?project_id={project_id}&message_id={message_id}"
-        )
-    )
+    prepare = asyncio.create_task(client.post(url))
     await asyncio.wait_for(BlockingArchiveCoordinatorFakeEngine.started.wait(), 1)
 
     stopped = await client.post(
@@ -1277,11 +1369,24 @@ async def test_archive_experience_can_be_stopped_by_message_id(
         f"?project_id={project_id}&message_id={message_id}"
     )
     prepared = await asyncio.wait_for(prepare, 1)
+    if background:
+        assert prepared.status_code == 202
+        for _ in range(50):
+            prepared = await client.post(url)
+            if prepared.status_code != 202:
+                break
+            await asyncio.sleep(0.01)
 
     assert stopped.status_code == 200
     assert stopped.json() == {"stopped": True}
     assert BlockingArchiveCoordinatorFakeEngine.stopped is True
     assert prepared.status_code == 409
+    timeline = []
+    while not events.empty():
+        timeline.append(events.get_nowait())
+    main.coordinator_module._event_bus.unsubscribe(events)
+    assert any(event["type"] == "TEXT_MESSAGE_END" and event.get("status") == "stopped"
+               for event in timeline)
 
 
 @pytest.mark.anyio

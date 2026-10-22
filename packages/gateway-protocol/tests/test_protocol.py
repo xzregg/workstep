@@ -198,6 +198,23 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("project_id", "host-1")], "host-1", access_level="edit")
 
 
+def test_background_archive_requires_edit_scope_and_unique_safe_parameters():
+    from workstep_gateway_protocol import project_http_route_allowed as allowed
+
+    path = "/api/task/task-1/archive-experience/prepare"
+    query = [("project_id", "host-1"), ("message_id", "draft-1"), ("background", "true")]
+    assert allowed("POST", path, query, "host-1", access_level="edit")
+    assert not allowed("POST", path, query, "host-1", access_level="read")
+    assert not allowed("POST", path, query, "host-2", access_level="edit")
+    assert not allowed("POST", path.replace("prepare", "stop"), query, "host-1", access_level="edit")
+    for invalid in (
+        query + [("background", "false")], query + [("unknown", "true")],
+        [query[0], query[2]], [query[0], ("message_id", "../other"), query[2]],
+        [*query[:2], ("background", "invalid")],
+    ):
+        assert not allowed("POST", path, invalid, "host-1", access_level="edit")
+
+
 def test_control_envelope_requires_known_version_and_target():
     message = ControlEnvelope(
         version=1, message_id="message-1", kind="heartbeat", device_id="device-1",

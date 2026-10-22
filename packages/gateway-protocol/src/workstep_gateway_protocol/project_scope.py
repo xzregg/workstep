@@ -160,10 +160,15 @@ def project_http_route_allowed(method: str, path: str,
         if method == "POST" and archive_action and archive_action.group(1) in ("prepare", "stop"):
             if query_pairs == [("project_id", project_id)]:
                 return archive_action.group(1) == "prepare"
-            if len(query_pairs) != 2:
+            if len(query_pairs) not in (2, 3):
                 return False
             params = dict(query_pairs)
+            if "background" in params:
+                if (archive_action.group(1) != "prepare" or len(params) != 3
+                        or params.pop("background") not in ("true", "false")):
+                    return False
             return (len(params) == 2 and params.get("project_id") == project_id
+                    and len(query_pairs) == len(dict(query_pairs))
                     and _SAFE_MESSAGE_ID.fullmatch(params.get("message_id", "")) is not None)
         if query_pairs != [("project_id", project_id)]:
             return False

@@ -12,7 +12,7 @@
 
 ## 功能方案与待验收边界
 
-- [数字员工订阅平台](digital-employee-marketplace.md) — 规划草案；覆盖用户发布员工包、老板月订阅、本地主动研发员工及后续远端托管，尚未实现。
+- [数字员工订阅平台](digital-employee-marketplace.md) — 规划草案；以可验证执行边界为前置，覆盖员工包发布、老板月订阅、本地主动研发员工及后续远端托管，尚未实现。
 - [Git 合并预览与三栏冲突解决](git-merge-conflict-resolution.md) — 尚未实现；现有 Git 行为见 [开发指南](../docs/development.md#git-管理的现行边界)。
 - [移动端适配与验收](mobile-adaptation.md) — 已实现的适配及仍待完成的 Safari/Chrome 真机检查；现行尺寸规范见 [前端设计](../docs/frontend-design.md)。
 - [助手提示词传输与查看](assistant-prompt-transport.md) — 已接入各入口，保留适配器恢复、指令更新及输入持久化边界。

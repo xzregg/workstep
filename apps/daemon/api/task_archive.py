@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query
+from starlette.responses import JSONResponse
 
 from api.task_context import _project, _require_scoped_task, _run_db, _release_task_channel_bindings
 from schemas.base import BaseSchema
@@ -74,6 +75,7 @@ async def prepare_archive_experience(
     task_id: str,
     pid: str = Query(..., alias="project_id"),
     message_id: str | None = Query(None),
+    background: bool = Query(False),
 ):
     """Generate and cache an experience draft without writing project Memory."""
     from agent_assistants.coordinator import ArchiveExperienceStopped
@@ -82,9 +84,30 @@ async def prepare_archive_experience(
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
     await _require_scoped_task(pid, task_id)
-    try:
-        progress_message_id = message_id or str(uuid.uuid4())
+    progress_message_id = message_id or str(uuid.uuid4())
+    if background:
+        if not message_id:
+            raise HTTPException(status_code=422, detail="Background preparation requires message_id")
+        try:
+            result = coordinator_module.poll_archive_preparation(
+                pid, task_id, progress_message_id,
+                lambda: _generate_archive_experience(pid, task_id, progress_message_id),
+            )
+        except ArchiveExperienceStopped as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        return result if result is not None else JSONResponse(
+            {"status": "running", "message_id": progress_message_id}, status_code=202,
+        )
+    return await _generate_archive_experience(pid, task_id, progress_message_id)
 
+
+async def _generate_archive_experience(pid: str, task_id: str, progress_message_id: str):
+    from agent_assistants.coordinator import ArchiveExperienceStopped
+    from main import coordinator_module
+
+    try:
         initiator_fields = await _run_db(pid, lambda: snapshot_archive_initiator(task_id, progress_message_id))
         raw_experience = await coordinator_module.draft_archive_experience(
             pid,
