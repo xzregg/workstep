@@ -45,7 +45,7 @@ async def archive_context(api_context, monkeypatch):
                         lambda *_args: None)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
 
-    async def prepare(message_id):
+    async def prepare(message_id, *, background=False, wait=True):
         frames = []
 
         async def capture(frame):
@@ -53,7 +53,7 @@ async def archive_context(api_context, monkeypatch):
 
         bridge = ManagedHttpBridge(main.app, "archive-scope", {
             "method": "POST", "path": "/api/task/target/archive-experience/prepare",
-            "query": f"project_id={project_id}&message_id={message_id}",
+            "query": f"project_id={project_id}&message_id={message_id}&background={str(background).lower()}",
             "headers": [], "user_id": "operator", "username": "alice",
             "display_name": "Alice", "project_id": project_id,
             "access_level": "edit",
@@ -62,7 +62,14 @@ async def archive_context(api_context, monkeypatch):
         await bridge.feed(ProxyFrame(stream_id="archive-scope", type=FrameType.http_request,
                                      payload={"phase": "end"}))
         await asyncio.wait_for(bridge._task, 3)
-        return frames[0].payload["status"]
+        status = frames[0].payload["status"]
+        if status == 202 and wait:
+            for _ in range(300):
+                await asyncio.sleep(0.01)
+                status = await prepare(message_id, background=True, wait=False)
+                if status != 202:
+                    break
+        return status
 
     async def read(message_id):
         def operation(_project):
@@ -77,16 +84,18 @@ async def archive_context(api_context, monkeypatch):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("message_id", ["other-draft", "execution-message"])
-async def test_archive_rejects_unrelated_message_before_model_call(archive_context, message_id):
+@pytest.mark.parametrize("background", [False, True])
+async def test_archive_rejects_unrelated_message_before_model_call(archive_context, message_id, background):
     prepare, read, draft, _ = archive_context
     before = await read(message_id)
-    assert await prepare(message_id) == 404
+    assert await prepare(message_id, background=background) == 404
     assert await read(message_id) == before
     draft.assert_not_awaited()
 
 
 @pytest.mark.anyio
-async def test_archive_rechecks_message_ownership_after_generation(archive_context):
+@pytest.mark.parametrize("background", [False, True])
+async def test_archive_rechecks_message_ownership_after_generation(archive_context, background):
     import main
 
     prepare, read, draft, project_id = archive_context
@@ -100,7 +109,7 @@ async def test_archive_rechecks_message_ownership_after_generation(archive_conte
         return "New experience"
 
     draft.side_effect = collision
-    assert await prepare("racing-message") == 404
+    assert await prepare("racing-message", background=background) == 404
     assert (await read("racing-message"))["content"] == "Other task wins"
 
 
@@ -117,8 +126,9 @@ async def test_archive_draft_records_current_operator_on_create_and_regenerate(a
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("background", [False, True])
 async def test_slow_archive_message_validation_keeps_health_responsive(
-    archive_context, monkeypatch,
+    archive_context, monkeypatch, background,
 ):
     import services.task_archive as archive_service
     import main
@@ -133,10 +143,36 @@ async def test_slow_archive_message_validation_keeps_health_responsive(
         return original(*args)
 
     monkeypatch.setattr(archive_service, "_archive_draft_message", delayed)
-    pending = asyncio.create_task(prepare("slow-draft"))
+    pending = asyncio.create_task(prepare("slow-draft", background=background))
     assert await asyncio.to_thread(entered.wait, 2)
     started = time.monotonic()
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
         assert (await client.get("/api/health")).status_code == 200
     assert time.monotonic() - started < 0.5
     assert await pending == 200
+
+
+@pytest.mark.anyio
+async def test_background_archive_outlives_managed_stream_and_keeps_initiator(archive_context):
+    prepare, read, draft, _ = archive_context
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def delayed(*_args):
+        entered.set()
+        await release.wait()
+        return "New experience"
+
+    draft.side_effect = delayed
+    try:
+        assert await prepare("detached-draft", background=True, wait=False) == 202
+        await asyncio.wait_for(entered.wait(), 0.5)
+        # The initiating bridge has fully exited; a second bridge polls the same job.
+        assert await prepare("detached-draft", background=True, wait=False) == 202
+    finally:
+        release.set()
+    assert await prepare("detached-draft", background=True) == 200
+    assert await prepare("detached-draft", background=True) == 200
+    draft.assert_awaited_once()
+    row = await read("detached-draft")
+    assert (row["initiated_by_user_id"], row["initiated_by_username"]) == ("operator", "alice")

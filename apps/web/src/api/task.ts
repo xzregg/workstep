@@ -1,5 +1,5 @@
 import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
-import { FULL_PAGE_LIMIT, request } from './transport'
+import { ApiError, FULL_PAGE_LIMIT, request } from './transport'
 import type { ShareInfo } from './share'
 import type { EngineInfo, EngineConfigPayload } from './client'
 import type { ChatMessageEventsPage } from './conversations'
@@ -597,11 +597,23 @@ export const taskApi = {
     }>(
       `/task/${encodeURIComponent(taskId)}/archive-experience/draft?project_id=${encodeURIComponent(projectId)}`,
     ),
-  prepareArchiveExperience: (taskId: string, projectId: string, messageId: string) =>
-    request<{ message_id: string; experience: string; has_experience: boolean; cached: boolean }>(
-      `/task/${encodeURIComponent(taskId)}/archive-experience/prepare?project_id=${encodeURIComponent(projectId)}&message_id=${encodeURIComponent(messageId)}`,
-      { method: 'POST' },
-    ),
+  prepareArchiveExperience: async (taskId: string, projectId: string, messageId: string) => {
+    type Draft = { message_id: string; experience: string; has_experience: boolean; cached: boolean }
+    const path = `/task/${encodeURIComponent(taskId)}/archive-experience/prepare?project_id=${encodeURIComponent(projectId)}&message_id=${encodeURIComponent(messageId)}&background=true`
+    let failures = 0
+    for (;;) {
+      try {
+        const result = await request<Draft | { status: 'running'; message_id: string }>(path, { method: 'POST' })
+        if (!('status' in result)) return result
+        failures = 0
+      } catch (error) {
+        const transient = error instanceof TypeError
+          || (error instanceof ApiError && [502, 503, 504].includes(error.status))
+        if (!transient || ++failures >= 3) throw error
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  },
   stopArchiveExperience: (taskId: string, projectId: string, messageId: string) =>
     request<{ stopped: boolean }>(
       `/task/${encodeURIComponent(taskId)}/archive-experience/stop?project_id=${encodeURIComponent(projectId)}&message_id=${encodeURIComponent(messageId)}`,

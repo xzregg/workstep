@@ -274,6 +274,11 @@ class CoordinatorModule:
             project_id, task_id, message_id,
         )
 
+    def poll_archive_preparation(self, project_id, task_id, message_id, prepare):
+        return self._archive_drafts.poll_preparation(
+            project_id, task_id, message_id, prepare,
+        )
+
     def take_archive_experience_journal(
         self, project_id: str, task_id: str, message_id: str,
     ) -> dict | None:
@@ -760,7 +765,7 @@ class CoordinatorModule:
         self._scheduled_turns.clear()
         self._turn_tasks.clear()
         self._actions.executing_actions.clear()
-        self._archive_drafts.clear()
+        await self._archive_drafts.close()
         self._running_engines.clear()
         await self._event_journal.aclose()
 

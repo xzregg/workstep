@@ -139,6 +139,8 @@ Gateway 自主账号注册：`apps/gateway-web/src/PortalAuthPage.tsx` 编排平
 
 归档经验消息隔离：`apps/daemon/services/task_archive.py::_archive_draft_message` 在模型调用前和持久化前核对已有消息的任务、频道及角色；生成与重新生成均保存本次操作者作为发起人。真实受管代理及慢数据库健康检查测试在 `apps/daemon/tests/test_gateway_archive_message_scope.py`。
 
+归档提炼的远程断连恢复：Web `api/task.ts::prepareArchiveExperience` 以固定 `message_id` 调用 `prepare?background=true`，用短请求轮询并有限重试瞬时连接错误；daemon `api/task_archive.py` 继续复用原生成与草稿持久化工作单元，`ArchiveExperienceDraftService.poll_preparation` 持有独立后台任务并按项目／任务／消息去重，HTTP 或远程连接结束不取消生成。停止覆盖尚在读取证据的后台任务；完成结果短期留存，草稿仍存入原消息表，只有用户确认才写入 Memory。关闭协调助手时回收后台任务。共享协议 `packages/gateway-protocol/src/workstep_gateway_protocol/project_scope.py` 仅向编辑票据开放 prepare 的 background 参数，并要求唯一安全消息 ID，停止入口不接受此参数。行为入口：`tests/test_coordinator.py`、`tests/test_gateway_archive_message_scope.py`（独立受管流、操作者归属、跨任务隔离及慢 SQL 健康检查）、共享协议 `tests/test_protocol.py`、Web `archiveExperienceApi.test.ts`。
+
 Gateway 平台模式阶段 0 入口：独立服务 `apps/gateway/src/gateway/app.py`、配置 `config.py`、门户路由 `apps/gateway-web/src/App.tsx`、共享协议 `packages/gateway-protocol/src/workstep_gateway_protocol/__init__.py`；daemon 仅在 `main.py` 生命周期调用 `services/gateway_client/service.py`。行为测试分别在 `apps/gateway/tests/test_app.py`、`apps/gateway-web/tests/app.test.tsx`、`packages/gateway-protocol/tests/test_protocol.py` 和 `apps/daemon/tests/test_gateway_client.py`。部署见 [Gateway 开发与部署](gateway-development.md)。
 
 Gateway 阶段 1 数据层在 `apps/gateway/src/gateway/database.py`、`models/` 和 `migrations/`，测试见 `apps/gateway/tests/test_database.py`；受管包配置模型在共享协议包，daemon 验签在 `services/gateway_client/managed_config.py`，Desktop 验签及打包脚本在 `apps/desktop/src/managed-config.cjs` 与 `scripts/`，测试见 `apps/daemon/tests/test_gateway_managed_config.py`、`apps/desktop/tests/managed-config.test.cjs`。

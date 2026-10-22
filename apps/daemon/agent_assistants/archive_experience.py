@@ -1,5 +1,6 @@
 """Reviewable task archive experience drafts and their live lifecycle."""
 
+import asyncio
 import json
 import logging
 import uuid
@@ -42,6 +43,8 @@ class ArchiveExperienceDraftService:
         self._active_archive_experience_runs: set[str] = set()
         self._cancelled_archive_experience_runs: set[str] = set()
         self._completed_archive_experience_journals: dict[str, dict] = {}
+        self._preparations: dict[str, asyncio.Task] = {}
+        self._preparation_expiry: dict[str, asyncio.TimerHandle] = {}
 
     async def _run_db(self, project_id: str, operation):
         return await self._project_manager.run_db(
@@ -49,9 +52,55 @@ class ArchiveExperienceDraftService:
         )
 
     def clear(self) -> None:
+        for task in self._preparations.values():
+            task.cancel()
+        for handle in self._preparation_expiry.values():
+            handle.cancel()
+        self._preparations.clear()
+        self._preparation_expiry.clear()
         self._active_archive_experience_runs.clear()
         self._cancelled_archive_experience_runs.clear()
         self._completed_archive_experience_journals.clear()
+
+    async def close(self) -> None:
+        tasks = list(self._preparations.values())
+        self.clear()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    def poll_preparation(self, project_id, task_id, message_id, prepare):
+        """Own generation beyond HTTP/socket lifetime and deduplicate retries."""
+        key = self._archive_experience_run_key(project_id, task_id, message_id)
+        task = self._preparations.get(key)
+        if task is None:
+            if len(self._preparations) >= 128:
+                # Completed results are also in the database; retain active jobs.
+                for old_key, old_task in list(self._preparations.items()):
+                    if old_task.done():
+                        self._forget_preparation(old_key)
+            if len(self._preparations) >= 128:
+                raise RuntimeError("Too many archive preparations")
+            task = asyncio.create_task(prepare())
+            self._preparations[key] = task
+
+            def completed(done):
+                self._cancelled_archive_experience_runs.discard(key)
+                if not done.cancelled():
+                    done.exception()  # Observe errors even if the browser never returns.
+                if self._preparations.get(key) is done:
+                    self._preparation_expiry[key] = asyncio.get_running_loop().call_later(
+                        900, self._forget_preparation, key,
+                    )
+
+            task.add_done_callback(completed)
+        if task.cancelled():
+            raise ArchiveExperienceStopped("Archive experience generation stopped")
+        return task.result() if task.done() else None
+
+    def _forget_preparation(self, key):
+        self._preparations.pop(key, None)
+        handle = self._preparation_expiry.pop(key, None)
+        if handle is not None:
+            handle.cancel()
 
     async def draft_archive_experience(
         self,
@@ -236,6 +285,10 @@ class ArchiveExperienceDraftService:
                 "prompt": get_prompt_view(loaded["workstep_dir"], progress_message_id),
             }
             return experience
+        except asyncio.CancelledError:
+            if run_key in self._cancelled_archive_experience_runs:
+                await publish("message_completed", {"status": "stopped"})
+            raise
         except ArchiveExperienceStopped:
             await publish("message_completed", {"status": "stopped"})
             raise
@@ -364,7 +417,9 @@ class ArchiveExperienceDraftService:
     ) -> bool:
         """Stop a visible archive experience draft without persisting anything."""
         run_key = self._archive_experience_run_key(project_id, task_id, message_id)
-        if run_key not in self._active_archive_experience_runs:
+        preparation = self._preparations.get(run_key)
+        pending_preparation = preparation is not None and not preparation.done()
+        if run_key not in self._active_archive_experience_runs and not pending_preparation:
             return False
         self._cancelled_archive_experience_runs.add(run_key)
         engine = self._running_engines.get(run_key)
@@ -376,6 +431,8 @@ class ArchiveExperienceDraftService:
                     "Engine stop raised while stopping archive experience %s",
                     run_key,
                 )
+        if pending_preparation:
+            preparation.cancel()
         return True
 
     async def _publish_archive_experience_event(
