@@ -14,11 +14,14 @@ test('software and image preparation happen before project selection, cached ima
     await fs.mkdir(path.join(hostHome, '.workstep'), { recursive: true })
     await fs.writeFile(path.join(hostHome, '.workstep/config.json'), JSON.stringify({ providers: [{ id: 'test', api_key: 'secret' }], projects: [{ path: project, id: 'old-id', name: 'Old' }] }))
     const image = 'ghcr.io/test/workstep@sha256:' + 'a'.repeat(64), calls = []
+    let imageMissing = false
     const id = 'sha256:' + 'b'.repeat(64)
     const manager = new SandboxManager({ stateDir: path.join(base, 'state'), platform: 'linux', arch: 'x64', hostHome, image,
       install: async () => ({ executable: '/managed/podman', helpers: [] }),
       execute: async (_file, args) => {
         calls.push(args)
+        if (args.includes('load')) imageMissing = false
+        if (args.includes('inspect') && imageMissing) throw new Error('image not found')
         if (args.includes('inspect')) return JSON.stringify([{ Id: id.slice(7), Os: 'linux', Architecture: 'amd64', Config: { Entrypoint: ['/usr/local/bin/workstep-entrypoint'] } }])
         if (args.includes('save')) await fs.writeFile(args[args.indexOf('--output') + 1], 'trusted image archive')
         return ''
@@ -38,7 +41,10 @@ test('software and image preparation happen before project selection, cached ima
     await assert.rejects(manager.prepare(settings), /缓存校验/)
     await manager.prepareImage({ root })
     await manager.prepare(settings)
-    assert.ok(calls.some(a => a.includes('load')))
+    assert.ok(!calls.some(a => a.includes('load')), 'cached image already present in Podman is not loaded a second time')
+    imageMissing = true
+    await manager.prepare(settings)
+    assert.equal(calls.filter(a => a.includes('load')).length, 1, 'missing image is restored from the verified cache')
     assert.ok(!calls.some(a => a.includes('pull')))
     assert.ok(!calls.some(a => a.includes('rmi') || a.includes('prune')), 'image preparation never removes other images')
     await manager.migrateSettings({ providers: true, engines: true, preferences: true })

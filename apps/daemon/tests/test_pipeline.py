@@ -342,8 +342,34 @@ def test_assemble_prompt_basic(tmp_path):
     assert "## Step requirements\nWrite a PRD" in prompt
     assert not re.search(r"\bstage\b", prompt, re.IGNORECASE)
     assert "Write a PRD" in prompt
-    assert f"artifacts/default/{task.id}/req" in prompt
+    assert "## Artifact output directory" not in prompt
     db.close()
+
+
+@pytest.mark.parametrize("prompt_kind", ["initial", "retry", "followup"])
+def test_step_without_inputs_or_outputs_has_no_artifact_prompt(tmp_path, prompt_kind):
+    from models import Task, init_db
+
+    db = init_db(str(tmp_path / "test.db"))
+    try:
+        task = Task.create(
+            id="task", title="同步仓库", cwd=str(tmp_path), created_at=1, updated_at=1,
+        )
+        step = Step(key="sync", label="同步", prompt="同步 staging 分支")
+        artifacts = tmp_path / ".workstep" / "artifacts"
+        if prompt_kind == "initial":
+            prompt = assemble_prompt(task, step, artifacts, artifact_round=1)
+        elif prompt_kind == "retry":
+            prompt = assemble_retry_prompt(task, step, artifacts, {}, artifact_round=2)
+        else:
+            prompt = assemble_followup_prompt(task, step, artifacts, "继续", artifact_round=2)
+
+        assert "## Artifact output directory" not in prompt
+        assert "## Outputs" not in prompt
+        assert "## Output specification" not in prompt
+        assert ".workstep/artifacts/" not in prompt
+    finally:
+        db.close()
 
 
 def test_previous_outputs_are_available_to_new_and_resumed_sessions(tmp_path):
@@ -640,7 +666,7 @@ def test_assemble_prompt_honours_explicit_upstream_round(tmp_path):
     assert "req (round 1)" in prompt
     assert "req/1/manifest.json" in prompt
     assert "req/2/manifest.json" not in prompt
-    assert "ui/3" in prompt
+    assert "## Artifact output directory" not in prompt
     db.close()
 
 
@@ -1822,7 +1848,8 @@ async def test_task_runner_persists_usage_json(tmp_path):
         assert "## Task\n" in persisted_prompt
         assert "实现完整提示词展示" in persisted_prompt
         raw_input = _json.loads(msg.prompt_json)["input_prompt"]
-        assert raw_input.endswith(f"artifacts/default/{task.id}/a")
+        assert raw_input.endswith("## Step requirements\nDo A")
+        assert "## Artifact output directory" not in raw_input
         assert "### 正文" not in raw_input
         assert "## Step requirements\nDo A" in persisted_prompt
         assert msg.usage_json is not None

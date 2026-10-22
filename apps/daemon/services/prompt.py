@@ -318,9 +318,6 @@ def assemble_prompt(
     if user_input:
         parts.append(f"## User input\n{user_input}")
 
-    if not step.outputs:
-        parts.append(f"## Artifact output directory\n{prompt_out_dir}")
-
     return "\n\n".join(parts)
 
 
@@ -608,8 +605,6 @@ def assemble_retry_prompt(
         parts.append(_format_retry_output_paths(
             [step.outputs[index] for index in output_ports], prompt_out_dir,
         ))
-    elif not step.outputs:
-        parts.append(f"## Artifact output directory\n{prompt_out_dir}")
     return "\n\n".join(parts)
 
 

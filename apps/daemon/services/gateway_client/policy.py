@@ -149,11 +149,20 @@ def require_managed_capability(action: str, *, creator_fields: dict | None = Non
                                project_id: str | None = None) -> None:
     """Fail closed at a shared service entry when this daemon is Gateway-managed."""
     from main import gateway_client
-    from services.remote_access import get_current_actor
+    from services.remote_access import authenticated_remote_dispatch, get_current_actor
 
     if gateway_client.managed_config is None:
         return
     actor = get_current_actor()
+    principal = authenticated_remote_dispatch()
+    # Native project connections authenticate their device/project separately
+    # from Gateway users, just as native task-share management does.
+    if (action == "task.create" and principal is not None
+            and principal.project_id == project_id
+            and actor is not None and actor.source == "remote"
+            and principal.actor.source == "remote"
+            and actor.device_id == principal.actor.device_id):
+        return
     if actor is not None and actor.source == "managed" and actor.project_id is not None:
         if (action == "task.create" and actor.project_id == project_id
                 and actor.access_level == "edit" and actor.remote_task_create):

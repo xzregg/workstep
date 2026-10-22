@@ -78,11 +78,31 @@
   }
   .ai-flow-editor-panel > .assistant-chat-panel { flex: 1; min-height: 0; }
   .ai-flow-editor-error { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); }
-  .flow-canvas-toolbar { min-height: calc(var(--mobile-toolbar-control-height) + 8px); height: calc(var(--mobile-toolbar-control-height) + 8px) !important; }
-  .flow-canvas-toolbar > :not(.flow-canvas-toolbar-spacer) { flex: 0 0 auto; }
-  .flow-canvas-toolbar-spacer { flex: 1 0 0; min-width: 0; }
-  .flow-canvas-toolbar-slot { display: flex; align-items: center; gap: 8px; }
-  .flow-canvas-toolbar-slot > * { flex-shrink: 0; }
+  .flow-canvas-toolbar {
+    min-height: calc(var(--mobile-toolbar-control-height) + 8px);
+    height: auto;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding: 4px 8px;
+    gap: 4px;
+  }
+  .flow-canvas-toolbar > button { flex: 0 0 auto; }
+  .flow-canvas-toolbar-spacer { display: none; }
+  .flow-canvas-toolbar-slot {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+  }
+  .flow-canvas-toolbar-mid > div {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 4px !important;
+  }
+  .flow-canvas-toolbar-title:empty { display: none; }
   .flow-canvas-toolbar button,
   .flow-canvas-toolbar [role="button"] {
     height: var(--mobile-toolbar-control-height) !important;
@@ -90,10 +110,10 @@
     padding-block: 0 !important;
   }
   .flow-canvas-toolbar select {
-    min-width: 120px;
+    min-width: 0;
     height: var(--mobile-toolbar-control-height);
     min-height: var(--mobile-toolbar-control-height);
-    flex-shrink: 0;
+    flex-shrink: 1;
   }
   .flow-node-config-panel {
     position: absolute;

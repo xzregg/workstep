@@ -141,3 +141,34 @@ def test_remote_project_task_creation_uses_its_own_capability(monkeypatch):
                                      remote_task_create=True)):
         with pytest.raises(PermissionError):
             require_managed_capability("task.create", project_id="host-1")
+
+
+def test_native_remote_task_creation_requires_trusted_matching_project(monkeypatch):
+    import main
+    from services.remote_access import RemotePrincipal, _remote_dispatch_principal
+
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(
+        managed_config=object(), policy_cache=ManagedPolicyCache(),
+    ))
+    actor = ActorSnapshot("guest", "Guest", "remote-device", "Remote PC", "remote")
+    with actor_context(actor):
+        # A remote-looking actor alone is not an authenticated connection.
+        with pytest.raises(PermissionError):
+            require_managed_capability("task.create", project_id="host-1")
+        token = _remote_dispatch_principal.set(RemotePrincipal("host-1", actor))
+        try:
+            require_managed_capability("task.create", project_id="host-1")
+            for project_id in (None, "host-2"):
+                with pytest.raises(PermissionError):
+                    require_managed_capability("task.create", project_id=project_id)
+            for action in ("engine.install", "project.publish", "provider.local"):
+                with pytest.raises(PermissionError):
+                    require_managed_capability(action, project_id="host-1")
+            from dataclasses import replace
+            for untrusted_actor in (replace(actor, device_id="other-device"),
+                                    replace(actor, source="managed")):
+                with actor_context(untrusted_actor):
+                    with pytest.raises(PermissionError):
+                        require_managed_capability("task.create", project_id="host-1")
+        finally:
+            _remote_dispatch_principal.reset(token)

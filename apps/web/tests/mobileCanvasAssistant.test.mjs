@@ -77,7 +77,7 @@ test('mobile task and workflow toolbars share one compact control size', () => {
   assert.doesNotMatch(mobileCss, /\.mobile-header button, \.navigation-close, \.mobile-task-toolbar > button/)
   assert.match(mobileCss, /\.mobile-task-toolbar > button\s*\{[^}]*height: var\(--mobile-toolbar-control-height\)[^}]*width: auto/s)
   assert.match(mobileCss, /\.mobile-toolbar-icon-button\s*\{[^}]*width: var\(--mobile-toolbar-control-height\)/s)
-  assert.match(mobileCss, /\.flow-canvas-toolbar select\s*\{[^}]*min-width: 120px/s)
+  assert.match(mobileCss, /\.flow-canvas-toolbar select\s*\{[^}]*min-width: 0/s)
 })
 
 test('mobile task menu sits beside new task and includes Git', () => {
@@ -129,11 +129,13 @@ test('mobile task and chat menus open the project directory browser', () => {
   assert.ok(sheet.indexOf('<ProjectGitButton') < sheet.indexOf("t('taskList.settings')"))
 })
 
-test('mobile workflow toolbar items never shrink into each other', () => {
+test('mobile workflow toolbar wraps controls without horizontal scrolling', () => {
   assert.match(flowCanvasSource, /className="flow-canvas-toolbar-slot flow-canvas-toolbar-mid"/)
   assert.match(flowCanvasSource, /className="flow-canvas-toolbar-spacer"/)
-  assert.match(mobileCss, /\.flow-canvas-toolbar > :not\(\.flow-canvas-toolbar-spacer\)\s*\{[^}]*flex:\s*0 0 auto/s)
-  assert.match(mobileCss, /\.flow-canvas-toolbar-spacer\s*\{[^}]*flex:\s*1 0 0/s)
+  assert.match(mobileCss, /\.flow-canvas-toolbar\s*\{[^}]*height: auto[^}]*flex-wrap: wrap[^}]*overflow-x: visible/s)
+  assert.match(mobileCss, /\.flow-canvas-toolbar-spacer\s*\{[^}]*display: none/s)
+  assert.match(mobileCss, /\.flow-canvas-toolbar-slot\s*\{[^}]*min-width: 0[^}]*max-width: 100%[^}]*flex-wrap: wrap/s)
+  assert.match(mobileCss, /\.flow-canvas-toolbar-mid > div\s*\{[^}]*min-width: 0[^}]*flex-wrap: wrap/s)
 })
 
 test('desktop workflow actions stay aligned to the right', () => {

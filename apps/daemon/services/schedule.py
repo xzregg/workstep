@@ -12,6 +12,7 @@ from models.base import db_proxy
 from models.fields import utc_now
 from services.config import DEFAULT_EXECUTION_ENGINE, config_store
 from services.messages import current_actor_task_fields
+from services.remote_access import get_effective_actor
 from services.schedule_rules import (
     ScheduleValidationError,
     _as_utc,
@@ -242,13 +243,16 @@ class ScheduleModule:
         if rule.get("kind") == "minutes":
             rule["anchor_at"] = utc_now().isoformat()
         creator = current_actor_task_fields()
-        if creator and "_creator" not in task_template:
+        task_template.pop("_creator", None)
+        if creator:
+            actor = get_effective_actor()
             task_template["_creator"] = {
                 "id": creator["creator_id"],
                 "username": creator["creator_username"],
                 "name": creator["creator_name"],
                 "device_id": creator["creator_device_id"],
                 "device_name": creator["creator_device_name"],
+                "source": actor.source if actor is not None else None,
             }
         if execution_mode not in {"workflow", "immediate", "manual"}:
             raise ScheduleValidationError("Invalid execution_mode")
@@ -345,17 +349,20 @@ class ScheduleModule:
             existing_template = json.loads(row.task_template_json)
             task_template = (dict(task_template) if row.target_type == "task"
                              else self._normalize_template(task_template))
-            if "_creator" not in task_template and isinstance(existing_template.get("_creator"), dict):
+            task_template.pop("_creator", None)
+            if isinstance(existing_template.get("_creator"), dict):
                 task_template["_creator"] = existing_template["_creator"]
             if not task_template.get("_creator"):
                 creator = current_actor_task_fields()
                 if creator:
+                    actor = get_effective_actor()
                     task_template["_creator"] = {
                         "id": creator["creator_id"],
                         "username": creator["creator_username"],
                         "name": creator["creator_name"],
                         "device_id": creator["creator_device_id"],
                         "device_name": creator["creator_device_name"],
+                        "source": actor.source if actor is not None else None,
                     }
             if row.target_type == "task":
                 if changes.get("workflow_id") or changes.get("task_template") or changes.get("execution_mode", "workflow") != "workflow":
@@ -738,6 +745,7 @@ class ScheduleModule:
                     execution_mode=execution_mode,
                     source="schedule",
                     creator_fields=self._template_creator_fields(template),
+                    creator_source=(template.get("_creator") or {}).get("source"),
                 )
             await self._attach_task_result(project_id, run_id, result)
         except asyncio.CancelledError:
@@ -833,6 +841,7 @@ class ScheduleModule:
             execution_mode=execution_mode,
             source="schedule",
             creator_fields=self._template_creator_fields(template),
+            creator_source=(template.get("_creator") or {}).get("source"),
         )
 
     async def _attach_task_result(self, project_id, run_id, result) -> None:

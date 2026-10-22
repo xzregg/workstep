@@ -23,10 +23,24 @@ test('Docker import saves by ID, verifies Podman identity and removes temporary 
     if (args[0] === 'save') await fs.writeFile(args[2], 'archive')
   }
   try {
-    assert.equal(await importDockerImage({ root, id, execute, platform: 'darwin', arch: 'arm64', command: async args => { calls.push(args); return args[1] === 'inspect' ? importedId.slice(7) : '' } }), importedId)
+    let loaded = false
+    assert.equal(await importDockerImage({ root, id, execute, platform: 'darwin', arch: 'arm64', command: async args => {
+      calls.push(args)
+      if (args[0] === 'load') loaded = true
+      if (args[1] === 'inspect' && !loaded) throw new Error('image not found')
+      return args[1] === 'inspect' ? importedId.slice(7) : ''
+    } }), importedId)
     assert.ok(calls.some(args => args[0] === 'save' && args[3] === id))
     assert.ok(calls.some(args => args[0] === 'load'))
     assert.deepEqual(await fs.readdir(path.join(root, 'desktop')), [])
+    calls.length = 0
+    await importDockerImage({ root, id, execute, platform: 'darwin', arch: 'arm64', command: async args => { calls.push(args); return importedId.slice(7) } })
+    assert.ok(!calls.some(args => args[0] === 'load'), 'an imported config digest avoids another load and its temporary copies')
+    await assert.rejects(importDockerImage({ root, id, execute, platform: 'darwin', arch: 'arm64', command: async args => {
+      if (args[0] === 'load') throw new Error('no space left on device')
+      throw new Error('image not found')
+    } }), /no space left/)
+    assert.deepEqual(await fs.readdir(path.join(root, 'desktop')), [], 'failed imports remove their exported archives too')
     await assert.rejects(importDockerImage({ root, id: '--bad', execute }), /镜像 ID/)
   } finally { await fs.rm(root, { recursive: true, force: true }) }
 })
