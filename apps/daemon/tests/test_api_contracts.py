@@ -1137,6 +1137,122 @@ async def test_managed_task_creation_uses_live_signed_policy(api_context, monkey
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("copy", [False, True])
+async def test_native_remote_task_creation_on_managed_host(api_context, monkeypatch, copy):
+    import main
+    from services.remote_access import ActorSnapshot, RemotePrincipal
+    from services.remote_protocol import RemoteHttpRequest
+    from streaming.remote_host import RemoteRouteDispatcher
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "native-remote-task"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    body = {"title": "Remote task", "workflow_id": workflow_id, "auto_start": False}
+    if copy:
+        original = await client.post(f"/api/task/create?project_id={project_id}", json=body)
+        assert original.status_code == 200, original.text
+        body = {"task_id": original.json()["id"], "newTitle": "Remote copy"}
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    main.gateway_client.policy_cache.clear()
+    principal = RemotePrincipal(project_id, ActorSnapshot(
+        "remote-device", "Remote User", "remote-device", "Remote PC", "remote",
+    ))
+    project = main.project_manager.get_project_by_id(project_id)
+    execute = project.db.execute_sql
+    entered = threading.Event()
+
+    def slow_insert(sql, params=None, commit=None):
+        if sql.startswith('INSERT INTO "tasks"'):
+            entered.set()
+            time.sleep(0.3)
+        return execute(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_insert)
+    dispatcher = RemoteRouteDispatcher(main.app)
+    path = "/api/task/copy" if copy else "/api/task/create"
+    try:
+        pending = asyncio.create_task(dispatcher.dispatch(RemoteHttpRequest(
+            request_id="native-create", method="POST", path=path,
+            query={"project_id": "remote:client-alias"},
+            headers={"content-type": "application/json"}, body=json.dumps(body).encode(),
+            actor={"actor_id": "delegated-user", "user_name": "Delegated User", "username": "guest"},
+        ), principal))
+        reached_insert = await asyncio.to_thread(entered.wait, 2)
+        if not reached_insert:
+            response = await pending
+            pytest.fail(f"Task write was denied: {response.status} {response.body!r}")
+        assert (await asyncio.wait_for(client.get("/api/health"), 0.15)).status_code == 200
+        response = await pending
+        assert response.status == 200, response.body
+        result = response.json()
+        assert result["workflow_id"] == workflow_id
+        assert result["creator_id"] == "delegated-user"
+        assert result["creator_name"] == "Delegated User"
+        assert result["title"] == ("Remote copy" if copy else "Remote task")
+        # Plain HTTP cannot manufacture the trusted dispatcher context.
+        forged = await client.post(path, params={"project_id": project_id}, json=body,
+                                   headers=TEST_ACTOR_HEADERS)
+        assert forged.status_code in (401, 403)
+    finally:
+        await dispatcher.aclose()
+
+
+@pytest.mark.anyio
+async def test_native_remote_schedule_on_managed_host_keeps_health_responsive(api_context, monkeypatch):
+    import main
+    from datetime import timezone
+    from services.remote_access import ActorSnapshot, RemotePrincipal
+    from services.remote_protocol import RemoteHttpRequest
+    from streaming.remote_host import RemoteRouteDispatcher
+
+    client, tmp_path = api_context
+    directory = tmp_path / "native-schedule"
+    directory.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    workflow_id = (await _create_test_workflow(client, pid))["id"]
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    main.gateway_client.policy_cache.clear()
+    actor = ActorSnapshot("guest", "Remote User", "native-device", "Remote PC", "remote")
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_devices(project_id):
+        entered.set()
+        assert release.wait(3)
+        return [{"project_id": pid, "device_id": actor.device_id, "status": "active"}]
+
+    monkeypatch.setattr(main.remote_access_service, "settings", lambda: {"enabled": True})
+    monkeypatch.setattr(main.remote_access_service, "list_devices", slow_devices)
+    dispatcher = RemoteRouteDispatcher(main.app)
+    try:
+        response = await dispatcher.dispatch(RemoteHttpRequest(
+            request_id="create-schedule", method="POST", path="/api/schedule/create",
+            query={"project_id": "remote:alias"}, headers={"content-type": "application/json"},
+            body=json.dumps({
+                "name": "Remote schedule", "workflow_id": workflow_id,
+                "task_template": {"title": "Background task"}, "execution_mode": "manual",
+                "rule": {"kind": "once", "run_at": "2099-01-02T03:04:00", "timezone": "UTC"},
+            }).encode(),
+        ), RemotePrincipal(pid, actor))
+        assert response.status == 200, response.body
+        schedule_id = response.json()["id"]
+        await main.schedule_module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+        assert await asyncio.to_thread(entered.wait, 2)
+        assert (await asyncio.wait_for(client.get("/api/health"), 0.15)).status_code == 200
+    finally:
+        release.set()
+        await main.schedule_module.wait_idle()
+        await dispatcher.aclose()
+    runs = await main.project_manager.run_db(pid, lambda _: main.schedule_module.list_runs(pid, schedule_id))
+    assert runs[0]["status"] == "created", runs
+    task = await main.project_manager.run_db(pid, lambda _: main.task_service.get_task(runs[0]["task_id"]))
+    assert task["creator_id"] == actor.actor_id
+
+
+@pytest.mark.anyio
 async def test_project_only_remote_actor_creates_task_in_host_project(api_context, monkeypatch):
     import base64
     import main

@@ -739,7 +739,7 @@ function FlowCanvasInner({
         </dl>}
       </MobileSheet>
       {/* Toolbar */}
-      <div className="flow-canvas-toolbar" style={{ height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 8, flexShrink: 0, overflowX: 'auto' }}>
+      <div className="flow-canvas-toolbar">
         {toolbarLeft && <div className="flow-canvas-toolbar-slot flow-canvas-toolbar-left">{toolbarLeft}</div>}
         <span className="flow-canvas-toolbar-title" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}>{title ?? t('flow.editorTitle')}</span>
         {toolbarMid && <div className="flow-canvas-toolbar-slot flow-canvas-toolbar-mid">{toolbarMid}</div>}

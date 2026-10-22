@@ -1,5 +1,6 @@
 """Shared task-creation seam for REST requests and scheduled dispatch."""
 
+import asyncio
 from dataclasses import dataclass
 from contextlib import nullcontext
 from datetime import datetime
@@ -7,7 +8,38 @@ from datetime import datetime
 from services.config import DEFAULT_EXECUTION_ENGINE
 from services.workflow_definition import WorkflowDefinition
 from services.gateway_client.policy import require_managed_capability
-from services.remote_access import get_current_actor
+from services.remote_access import get_current_actor, replayed_actor_context
+
+
+async def _require_scheduled_creation(
+    project_id: str, creator_fields: dict | None, creator_source: str | None,
+) -> None:
+    """Recheck saved native device grants; never borrow the scheduler's actor."""
+    from main import gateway_client, remote_access_service
+
+    if (gateway_client.managed_config is not None
+            and creator_source in {None, "remote"} and creator_fields):
+        device_id = creator_fields.get("creator_device_id")
+
+        def native_device_allowed():
+            if not device_id:
+                return None
+            for device in remote_access_service.list_devices(project_id):
+                if device["project_id"] == project_id and device["device_id"] == device_id:
+                    return (remote_access_service.settings().get("enabled", False)
+                            and device["status"] == "active")
+            return None
+
+        # Legacy schedules lack source metadata. A current project/device grant
+        # is still required; being disconnected does not revoke that grant.
+        allowed = await asyncio.to_thread(native_device_allowed)
+        if allowed:
+            return
+        if allowed is False or creator_source == "remote":
+            raise PermissionError("Managed capability denied: task.create")
+    with replayed_actor_context(None):
+        require_managed_capability("task.create", creator_fields=creator_fields,
+                                   project_id=project_id)
 
 
 @dataclass(frozen=True)
@@ -39,12 +71,16 @@ async def create_project_task(
     dispatch_lineage: list[str] | None = None,
     source: str = "manual",
     creator_fields: dict | None = None,
+    creator_source: str | None = None,
 ) -> TaskCreationResult:
     """Create one task and optionally start it using a single policy interface."""
     if execution_mode not in {"workflow", "immediate", "manual"}:
         raise ValueError(f"Invalid execution mode: {execution_mode}")
-    require_managed_capability("task.create", creator_fields=creator_fields,
-                               project_id=project_id)
+    if source == "schedule":
+        await _require_scheduled_creation(project_id, creator_fields, creator_source)
+    else:
+        require_managed_capability("task.create", creator_fields=creator_fields,
+                                   project_id=project_id)
     actor = get_current_actor()
     if actor is not None and actor.project_id is not None:
         cwd = None

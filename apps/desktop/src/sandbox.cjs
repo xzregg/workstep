@@ -7,6 +7,7 @@ const { setTimeout: delay } = require('node:timers/promises')
 const { appendRotatingLog, LOG_MAX_BYTES } = require('./diagnostics.cjs')
 const { run, installRuntime, ASSETS } = require('./sandbox-runtime.cjs')
 const { listDockerImages, importDockerImage } = require('./sandbox-docker.cjs')
+const { MACHINE_DISK_GIB, ensureMachineDisk, storageError } = require('./sandbox-storage.cjs')
 const { migrateConfig, readConfig, projectCatalog, mapProjects, localProviderWarnings } = require('./sandbox-config.cjs')
 
 const IMPORTS = { codex: ['.codex'], claude: ['.claude', '.claude.json'], agents: ['.agents'] }
@@ -282,7 +283,7 @@ class SandboxManager {
         let machines = JSON.parse(await podman(['machine', 'list', '--format=json']))
         let existing = machines.find(item => (item.Name || item.name) === machine)
         if (!existing) {
-          const args = ['machine', 'init', '--cpus=2', '--memory=2048', '--disk-size=20']
+          const args = ['machine', 'init', '--cpus=2', '--memory=2048', `--disk-size=${MACHINE_DISK_GIB}`]
           if (this.platform === 'win32') args.push('--update-connection=false')
           if (this.platform === 'darwin') {
             args.push('--volume', `${path.join(config.root, 'home')}:/var/mnt/workstep-home`, '--volume', `${path.join(config.root, 'desktop/managed-gateway')}:/var/mnt/workstep-managed`)
@@ -305,13 +306,19 @@ class SandboxManager {
             // Recreate on next attempt rather than run with outdated host shares.
             return this.setup(config)
           }
+          // WSL manages its own growing virtual disk. Resize only our macOS VM,
+          // using Podman's supported operation rather than recreating its data.
+          if (this.platform === 'darwin') await ensureMachineDisk(podman, machine, existing.Running || existing.running)
         }
         await fs.writeFile(path.join(config.root, 'desktop/machine-mounts.json'), JSON.stringify({ layout: 2, project: config.project, mounts: config.mounts }))
         machines = JSON.parse(await podman(['machine', 'list', '--format=json']))
         existing = machines.find(item => (item.Name || item.name) === machine)
         if (!(existing?.Running || existing?.running)) await podman(['machine', 'start', ...(this.platform === 'win32' ? ['--update-connection=false'] : []), machine])
       }
-      const command = (args, options) => podman(this.platform === 'linux' ? ['--signature-policy', path.join(config.root, 'podman/config/policy.json'), ...args] : ['--connection', machine, ...args], options)
+      const command = async (args, options) => {
+        try { return await podman(this.platform === 'linux' ? ['--signature-policy', path.join(config.root, 'podman/config/policy.json'), ...args] : ['--connection', machine, ...args], options) }
+        catch (error) { throw storageError(error, this.platform) }
+      }
       try { await command(['info', '--format=json']) } catch (error) {
         if (this.platform === 'linux') error.message += '\nLinux 需启用用户命名空间并配置 subuid/subgid，安装 uidmap、nsenter；AppArmor/SELinux 也需允许此运行时。'
         throw error
@@ -349,8 +356,11 @@ class SandboxManager {
         }
         else if (seed?.source === image) {
           if (await fileDigest(seed.archive) !== seed.sha256) throw new Error('镜像缓存校验失败，请返回镜像步骤重新准备')
-          await session.command(['load', '--input', seed.archive])
-          config.image = await this.inspectImage(session.command, seed.id)
+          try { config.image = await this.inspectImage(session.command, seed.id) }
+          catch {
+            await session.command(['load', '--input', seed.archive])
+            config.image = await this.inspectImage(session.command, seed.id)
+          }
           if (config.image !== seed.id) throw new Error('导入后的镜像身份不匹配')
           if (!config.dockerImage) config.releaseImage = this.image
         }

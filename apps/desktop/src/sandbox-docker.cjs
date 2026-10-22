@@ -47,6 +47,9 @@ async function importDockerImage({ root, id, execute, command, platform, arch })
     if (typeof config !== 'string' || !/^[a-zA-Z0-9_./-]+$/.test(config) || config.startsWith('/') || config.split('/').includes('..')) throw new Error('Docker 镜像清单路径无效')
     await execute('tar', ['-xf', archive, '-C', temporary, config])
     const importedId = 'sha256:' + createHash('sha256').update(await fs.readFile(path.join(temporary, config))).digest('hex')
+    let existing
+    try { existing = await command(['image', 'inspect', '--format={{.Id}}', importedId]) } catch { /* not imported yet */ }
+    if (existing?.trim().replace(/^sha256:/, '') === importedId.slice(7)) return importedId
     await command(['load', '--input', archive])
     const imported = await command(['image', 'inspect', '--format={{.Id}}', importedId])
     if (imported.trim().replace(/^sha256:/, '') !== importedId.slice(7)) throw new Error('导入后的镜像 ID 校验失败')

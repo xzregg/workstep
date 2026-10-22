@@ -385,6 +385,18 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .btn-ghost { border: 1px solid var(--border); }
 .btn-ghost:hover { background: var(--surface); }
 
+.flow-canvas-toolbar {
+  height: 48px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
 /* Keep the workflow actions anchored to the right on desktop. */
 .flow-canvas-toolbar-spacer {
   flex: 1 0 0;
