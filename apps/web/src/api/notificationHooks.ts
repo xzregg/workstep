@@ -6,7 +6,7 @@ export const notificationEvents: NotificationEvent[] = ['started','completed','f
 export interface NotificationHook {
   id?: string
   name: string
-  platform: 'dingtalk' | 'wecom' | 'generic'
+  platform: 'dingtalk' | 'wecom' | 'feishu' | 'lark' | 'generic'
   url: string
   secret: string
   enabled: boolean

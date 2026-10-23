@@ -51,12 +51,23 @@ test('workspace waits for its session and project, then removes content after se
     await act(async () => { await assert.rejects(useGatewaySessionStore.getState().load(true)) })
     // The shared session state must revoke content immediately, before the next poll.
     assert.equal(element.querySelector('[data-workspace]'), null)
+    assert.match(element.querySelector('.gateway-remote-loading')!.textContent!, /登录|授权/)
+    assert.ok(element.querySelector('.gateway-recovery-actions button'))
+    assert.equal(element.querySelector<HTMLAnchorElement>('.gateway-recovery-actions a')?.href, 'http://localhost:8700/devices')
     fail = false
     await act(async () => {
       window.dispatchEvent(new window.Event('workstep:resume'))
       await new Promise(resolve => setTimeout(resolve, 0))
     })
     assert.ok(element.querySelector('[data-workspace]'), 'returning to the APK retries the gateway session immediately')
+    globalThis.fetch = async input => String(input) === '/api/remote/session'
+      ? Response.json({}, {status:503}) : oldFetch(input)
+    await act(async () => {
+      window.dispatchEvent(new window.Event('workstep:resume'))
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+    assert.match(element.querySelector('.gateway-remote-loading')!.textContent!, /正在重连/)
+    assert.ok(element.querySelector('.gateway-remote-loading .spinner'))
   } finally {
     await act(async () => root.unmount())
     element.remove()
@@ -163,6 +174,55 @@ test('ordinary mobile Web has no gateway device entry or gateway requests', asyn
     await act(async () => root.unmount())
     element.remove()
     globalThis.fetch = oldFetch
+    await window.happyDOM.close()
+  }
+})
+
+test('gateway restart retries automatically, recovers, and stops polling an expired authorization', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('http://d-device-1.localhost:8700/')
+  const oldFetch = globalThis.fetch
+  const oldTimeout = window.setTimeout
+  const retries: Array<{delay: number; run: () => void}> = []
+  window.setTimeout = ((run: () => void, delay: number) => {
+    if (delay === 5000 || delay === 20000) { retries.push({delay, run}); return 99999 }
+    return oldTimeout(run, delay)
+  }) as typeof window.setTimeout
+  let status = 503
+  let checks = 0
+  globalThis.fetch = async input => {
+    if (String(input) === '/api/remote/session') {
+      checks++
+      return status === 200 ? Response.json({device_id:'device-1',gateway_url:'http://localhost:8700/',project_id:null,host_project_id:null}) : Response.json({}, {status})
+    }
+    return Response.json({devices:[]})
+  }
+  useGatewaySessionStore.setState({session:null,error:'',errorStatus:null,loading:false})
+  const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
+  try {
+    await act(async () => root.render(<I18nProvider><GatewayRemoteFrame><div data-workspace>Ready</div></GatewayRemoteFrame></I18nProvider>))
+    assert.equal(retries.at(-1)?.delay, 5000)
+    assert.match(element.textContent!, /正在重连/)
+    status = 200
+    await act(async () => { retries.pop()!.run(); await new Promise(resolve => setTimeout(resolve, 0)) })
+    assert.ok(element.querySelector('[data-workspace]'))
+    assert.equal(retries.at(-1)?.delay, 20000)
+    status = 401
+    await act(async () => { retries.pop()!.run(); await new Promise(resolve => setTimeout(resolve, 0)) })
+    assert.equal(element.querySelector('[data-workspace]'), null)
+    assert.equal(element.querySelector('.gateway-remote-loading .spinner'), null)
+    assert.equal(retries.length, 0, 'expired authorization must not be retried on a timer')
+    assert.equal(checks, 3)
+    status = 200
+    await act(async () => {
+      element.querySelector<HTMLButtonElement>('.gateway-recovery-actions button')!.click()
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+    assert.ok(element.querySelector('[data-workspace]'))
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.fetch = oldFetch
+    useGatewaySessionStore.setState({session:null,error:'',errorStatus:null,loading:false})
     await window.happyDOM.close()
   }
 })

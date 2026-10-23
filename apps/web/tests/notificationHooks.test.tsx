@@ -169,3 +169,44 @@ test('robot template drafts validate before save and reach preview without sendi
     assert.equal(saved?.markdown_template,null)
   }finally{await ui.cleanup()}
 })
+
+for (const [platform, host, label] of [['feishu','open.feishu.cn','飞书群机器人'],['lark','open.larksuite.com','Lark 群机器人']] as const) {
+  test(`${platform} notification configuration saves signing credentials and previews native cards`,async()=>{
+    const ui=await mountNotificationDialog()
+    const catalog={default_markdown_template:'**{event_name}**\n{task_title}',template_variables:['event_name','task_title']}
+    let saved:NotificationHook|undefined,previewed:NotificationHook|undefined,sent=0
+    notificationHooksApi.get=async()=>({hooks:[ui.hook],addresses:[],...catalog})
+    notificationHooksApi.save=async(_,__,hooks)=>{saved=structuredClone(hooks[0]);return {hooks,addresses:[],...catalog}}
+    notificationHooksApi.preview=async(_,__,hook)=>{previewed=hook;return {payload:{msg_type:'interactive',card:{elements:[{tag:'div',text:{tag:'lark_md',content:'**任务完成**'}}]}},snapshot:{task:{title:'演示任务'}},subscribed:true}}
+    notificationHooksApi.test=async()=>{sent++;return {delivery_id:'test'}}
+    try {
+      await ui.render()
+      const select=ui.document.querySelector<HTMLSelectElement>('select')!
+      assert.ok([...select.options].some(option=>option.value===platform&&option.textContent===label))
+      await act(async()=>{select.value=platform;select.dispatchEvent(new Event('change',{bubbles:true}))})
+      assert.match(ui.document.body.textContent||'',/群自定义机器人/)
+      await ui.input('[data-testid="notification-url"]',`https://${host}/open-apis/bot/v2/hook/demo`)
+      await ui.input('[aria-label="签名密钥（可选）"]','webhook-secret')
+      const template=ui.document.querySelector<HTMLTextAreaElement>('textarea')!
+      await act(async()=>{
+        Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value')!.set!.call(template,'**自定义：{event_name}**')
+        template.dispatchEvent(new Event('input',{bubbles:true}))
+      })
+      await ui.click('保存')
+      assert.equal(saved?.platform,platform)
+      assert.equal(saved?.secret,'webhook-secret')
+      assert.equal(saved?.url,`https://${host}/open-apis/bot/v2/hook/demo`)
+      assert.equal(saved?.markdown_template,'**自定义：{event_name}**')
+      await ui.click('模拟通知');await ui.click('生成预览')
+      assert.equal(previewed?.platform,platform)
+      assert.equal(ui.document.querySelector('.notification-hooks-message strong')?.textContent,'任务完成')
+      assert.equal(sent,0)
+      await ui.click('发送测试通知');assert.equal(sent,0)
+      await ui.click('确认发送');assert.equal(sent,1)
+      await ui.click('通知配置')
+      const current=ui.document.querySelector<HTMLSelectElement>('select')!
+      await act(async()=>{current.value=platform==='feishu'?'lark':'feishu';current.dispatchEvent(new Event('change',{bubbles:true}))})
+      assert.equal(ui.document.querySelector<HTMLInputElement>('[aria-label="签名密钥（可选）"]')?.value,'')
+    } finally {await ui.cleanup()}
+  })
+}

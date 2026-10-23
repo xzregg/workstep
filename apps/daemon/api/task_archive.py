@@ -191,7 +191,7 @@ async def confirm_archive_experience(
     project = _project(pid)
 
     try:
-        archived = await _run_db(pid, lambda: persist_experience_and_archive(
+        archived, memory_saved = await _run_db(pid, lambda: persist_experience_and_archive(
             project, task_service, pid, task_id, experience,
         ))
     except PermissionError as exc:
@@ -203,7 +203,7 @@ async def confirm_archive_experience(
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     await _release_task_channel_bindings(pid, task_id)
-    return {"archived": archived, "memory_saved": True}
+    return {"archived": archived, "memory_saved": memory_saved}
 
 
 @router.post("/unarchive")

@@ -933,3 +933,333 @@ def test_schedule_rule_module_owns_compilation_and_keeps_public_aliases():
         "kind": "daily", "time": "09:30", "timezone": "UTC",
     })
     assert (expression, zone, run_at) == ("30 9 * * *", "UTC", None)
+
+
+@pytest.mark.parametrize("creator", [
+    {"name": "张三", "username": "zhangsan"},
+    {"name": "", "username": "lisi"},
+    {"name": "旧用户"},
+    None,
+])
+def test_schedule_list_exposes_creator_display_fields(tmp_path, creator):
+    import json
+    from models import Schedule
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    module = ScheduleModule(manager, None, None)
+    created = module.create(
+        project.id, name="Creator display", workflow_id="",
+        task_template={"mode": "agent", "instruction": "生成任务"},
+        rule={"kind": "once", "run_at": "2099-01-01T00:00:00Z", "timezone": "UTC"},
+    )
+    with manager.activate_project_by_id(project.id):
+        template = {"mode": "agent", "instruction": "生成任务"}
+        if creator is not None:
+            template["_creator"] = {**creator, "id": "private-id", "source": "browser"}
+        Schedule.update(task_template_json=json.dumps(template)).where(Schedule.id == created["id"]).execute()
+    public = module.list(project.id)[0]
+    assert public["creator_name"] == ((creator or {}).get("name") or None)
+    assert public["creator_username"] == ((creator or {}).get("username") or None)
+    assert "_creator" not in public["task_template"]
+
+
+@pytest.mark.anyio
+async def test_dynamic_schedule_creates_five_tasks_with_independent_start_times(tmp_path):
+    from services.project import ProjectManager, DEFAULT_STEPS
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+    from models import Task
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    await manager.run_db(project.id, lambda p: manager.create_workflow(p, "流程", DEFAULT_STEPS))
+    workflow_id = project.default_workflow()["id"]
+    drafts = [{"title": f"任务{i}", "description": "内容", "workflow_id": workflow_id,
+               "scheduled_start_at": f"2099-02-0{i+1}T09:00:00+08:00", "engine": "codex"} for i in range(5)]
+    started = []
+
+    class Runtime:
+        async def start(self, project_id, task_id, prompt, source="manual"):
+            started.append((task_id, source))
+
+    module = ScheduleModule(manager, TaskService(EventBus()), Runtime(), task_agent=StubTaskAgent([drafts]))
+    schedule = _agent_schedule(module, project)
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+    run = module.list_runs(project.id, schedule["id"])[0]
+    assert run["status"] == "created", run
+    assert len(run["created_tasks"]) == 5
+    tasks = await manager.run_db(project.id, lambda _: [
+        (t.id, t.title, t.scheduled_start_at, t.scheduled_start_state, t.engine) for t in Task.select()
+    ])
+    assert {t[0] for t in tasks} == {t["id"] for t in run["created_tasks"]}
+    assert len({t[2] for t in tasks}) == 5
+    assert all(t[3:] == ("pending", "codex") for t in tasks)
+    assert run["task_id"] == run["created_tasks"][0]["id"]
+    await module.tick(datetime(2099, 1, 2, 3, 5, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+    assert await manager.run_db(project.id, lambda _: Task.select().count()) == 5
+
+    assert started == []
+    for day in range(1, 6):
+        await module.tick(datetime(2099, 2, day, 1, 0, 1, tzinfo=timezone.utc))
+        await module.wait_idle()
+        assert len(started) == day
+    assert {item[0] for item in started} == {item[0] for item in tasks}
+    assert all(item[1] == "scheduled_start" for item in started)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("invalid_batch", [None, "time", "workflow", "step"])
+async def test_dynamic_batch_keeps_partial_results_and_does_not_repeat_creations(tmp_path, monkeypatch, invalid_batch):
+    from services.project import ProjectManager, DEFAULT_STEPS
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+    from models import Task
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    await manager.run_db(project.id, lambda p: manager.create_workflow(p, "流程", DEFAULT_STEPS))
+    drafts = [{"title": f"任务{i}", "description": "内容", "workflow_id": project.default_workflow()["id"]} for i in range(3)]
+    if invalid_batch == "time":
+        drafts[2]["scheduled_start_at"] = "invalid"
+    elif invalid_batch == "workflow":
+        drafts[2]["workflow_id"] = "missing"
+    elif invalid_batch == "step":
+        drafts[2]["start_step_key"] = "missing"
+    service = TaskService(EventBus())
+    original = service.create_task
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 2:
+            raise RuntimeError("disk full")
+        return original(**kwargs)
+
+    monkeypatch.setattr(service, "create_task", create)
+    module = ScheduleModule(manager, service, None, task_agent=StubTaskAgent([drafts]))
+    schedule = _agent_schedule(module, project)
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+    run = module.list_runs(project.id, schedule["id"])[0]
+    assert run["status"] == "failed"
+    assert len(run["created_tasks"]) == (0 if invalid_batch else 1)
+    assert len(calls) == (0 if invalid_batch else 2)
+    await module.tick(datetime(2099, 1, 2, 3, 5, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+    assert await manager.run_db(project.id, lambda _: Task.select().count()) == (0 if invalid_batch else 1)
+
+
+@pytest.mark.anyio
+async def test_slow_batch_creation_does_not_block_event_loop(tmp_path, monkeypatch):
+    from services.project import ProjectManager, DEFAULT_STEPS
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    await manager.run_db(project.id, lambda p: manager.create_workflow(p, "流程", DEFAULT_STEPS))
+    drafts = [{"title": f"任务{i}", "description": "内容", "workflow_id": project.default_workflow()["id"]} for i in range(2)]
+    service = TaskService(EventBus())
+    original = service.create_task
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_create(**kwargs):
+        if kwargs["title"] == "任务1":
+            entered.set()
+            assert release.wait(3)
+        return original(**kwargs)
+
+    monkeypatch.setattr(service, "create_task", slow_create)
+    module = ScheduleModule(manager, service, None, task_agent=StubTaskAgent([drafts]))
+    schedule = _agent_schedule(module, project)
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        started = time.perf_counter()
+        await asyncio.sleep(0.02)
+        assert time.perf_counter() - started < 0.2
+    finally:
+        release.set()
+    await module.wait_idle()
+    run = module.list_runs(project.id, schedule["id"])[0]
+    assert run["status"] == "created"
+    assert len(run["created_tasks"]) == 2
+
+
+@pytest.mark.anyio
+async def test_batch_records_created_task_even_when_immediate_start_fails(tmp_path):
+    from services.project import ProjectManager, DEFAULT_STEPS
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+    from models import Task
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / 'project')
+    workflow = await manager.run_db(project.id, lambda p: manager.create_workflow(p, '流程', DEFAULT_STEPS))
+    drafts = [{'title': '已创建但启动失败', 'description': '内容', 'workflow_id': workflow['id'], 'auto_start': True}]
+
+    class Runtime:
+        async def start(self, *args, **kwargs):
+            raise RuntimeError('engine unavailable')
+
+    module = ScheduleModule(manager, TaskService(EventBus()), Runtime(), task_agent=StubTaskAgent([drafts]))
+    schedule = _agent_schedule(module, project)
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+    run = module.list_runs(project.id, schedule['id'])[0]
+    assert run['status'] == 'failed'
+    assert 'engine unavailable' in run['reason']
+    assert len(run['created_tasks']) == 1
+    assert await manager.run_db(project.id, lambda _: Task.get_by_id(run['created_tasks'][0]['id']).title) == '已创建但启动失败'
+
+
+@pytest.mark.anyio
+async def test_zero_agent_retries_means_one_attempt(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / 'project')
+    agent = StubTaskAgent([RuntimeError('generation failed')] * 3)
+    module = ScheduleModule(manager, None, None, task_agent=agent)
+    schedule = _agent_schedule(module, project, retry_count=0)
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+    assert len(agent.calls) == 1
+    assert module.list_runs(project.id, schedule['id'])[0]['status'] == 'failed'
+
+
+@pytest.mark.anyio
+async def test_batch_task_and_run_index_roll_back_together(tmp_path, monkeypatch):
+    from services.project import ProjectManager, DEFAULT_STEPS
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+    from models import ScheduleRun, Task
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / 'project')
+    workflow = await manager.run_db(project.id, lambda p: manager.create_workflow(p, '流程', DEFAULT_STEPS))
+    module = ScheduleModule(manager, TaskService(EventBus()), None, task_agent=StubTaskAgent([[
+        {'title': '索引写入失败', 'description': '内容', 'workflow_id': workflow['id']},
+    ]]))
+    schedule = _agent_schedule(module, project)
+    original = ScheduleRun.save
+
+    def fail_index(row, *args, **kwargs):
+        if row.created_tasks_json:
+            raise RuntimeError('index write failed')
+        return original(row, *args, **kwargs)
+
+    monkeypatch.setattr(ScheduleRun, 'save', fail_index)
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+    run = module.list_runs(project.id, schedule['id'])[0]
+    assert run['status'] == 'failed'
+    assert 'index write failed' in run['reason']
+    assert run['created_tasks'] == []
+    assert await manager.run_db(project.id, lambda _: Task.select().count()) == 0
+
+
+@pytest.mark.anyio
+async def test_cancelled_batch_keeps_committed_task_and_restart_does_not_duplicate_it(tmp_path, monkeypatch):
+    from services.project import ProjectManager, DEFAULT_STEPS
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+    from models import Task
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / 'project')
+    workflow = await manager.run_db(project.id, lambda p: manager.create_workflow(p, '流程', DEFAULT_STEPS))
+    drafts = [{'title': str(i), 'description': '内容', 'workflow_id': workflow['id']} for i in range(2)]
+    service = TaskService(EventBus())
+    original = service.create_task
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_create(**kwargs):
+        entered.set()
+        assert release.wait(3)
+        return original(**kwargs)
+
+    monkeypatch.setattr(service, 'create_task', slow_create)
+    module = ScheduleModule(manager, service, None, task_agent=StubTaskAgent([drafts]))
+    schedule = _agent_schedule(module, project)
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        worker = next(item for item in module._workers if item.get_name().startswith('schedule-run:'))
+        worker.cancel()
+    finally:
+        release.set()
+    await module.wait_idle()
+    assert await manager.run_db(project.id, lambda _: Task.select().count()) == 1
+    # Ordinary ticks must not turn a partially recorded batch into success.
+    await module.tick(datetime(2099, 1, 2, 3, 5, 1, tzinfo=timezone.utc))
+    assert module.list_runs(project.id, schedule['id'])[0]['status'] == 'running'
+    await module.tick(datetime(2099, 1, 2, 3, 6, 1, tzinfo=timezone.utc), startup=True)
+    run = module.list_runs(project.id, schedule['id'])[0]
+    assert run['status'] == 'failed'
+    assert len(run['created_tasks']) == 1
+    await module.wait_idle()
+    assert await manager.run_db(project.id, lambda _: Task.select().count()) == 1
+
+
+def test_batch_history_column_migrates_without_losing_legacy_runs(tmp_path):
+    from models import init_db, Schedule, ScheduleRun
+    from models.fields import utc_now
+    from services.schedule import ScheduleModule
+
+    path = str(tmp_path / 'legacy.db')
+    db = init_db(path)
+    try:
+        Schedule.create(id='old', name='旧定时', workflow_id='flow', task_template_json='{}', rule_json='{}',
+                        timezone='UTC', created_at=utc_now(), updated_at=utc_now())
+        ScheduleRun.create(id='old-run', schedule='old', task_id='old-task', status='failed',
+                           scheduled_for=utc_now(), created_at=utc_now())
+        db.execute_sql('ALTER TABLE schedule_runs DROP COLUMN created_tasks_json')
+        db.close()
+        db = init_db(path)
+        run = ScheduleModule._run_to_dict(ScheduleRun.get_by_id('old-run'))
+        assert run['task_id'] == 'old-task'
+        assert run['created_tasks'] == []
+        assert run['status'] == 'created'
+    finally:
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_restart_terminates_interrupted_generation_without_blocking_future_occurrences(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+    from models import ScheduleRun
+    from models.fields import utc_now
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / 'project')
+    agent = StubTaskAgent([RuntimeError("new generation")])
+    module = ScheduleModule(manager, None, None, task_agent=agent)
+    schedule = _agent_schedule(module, project, retry_count=0)
+    await manager.run_db(project.id, lambda _: ScheduleRun.create(
+        id='interrupted-generation', schedule=schedule['id'], status='running',
+        scheduled_for=utc_now(), created_at=utc_now(),
+    ))
+    await module.tick(utc_now(), startup=True)
+    run = module.list_runs(project.id, schedule['id'])[0]
+    assert run['status'] == 'failed'
+    assert run['created_tasks'] == []
+    assert '重启' in run['reason']
+
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+    assert len(agent.calls) == 1
+    assert len(module.list_runs(project.id, schedule['id'])) == 2

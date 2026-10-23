@@ -21,6 +21,7 @@ from gateway.api.identity_api import router as identity_router
 from gateway.api.external_identity_api import router as external_identity_router
 from gateway.api.directory_callbacks import router as directory_callbacks_router
 from gateway.services.identity_connectors import DingTalkConnector, WeComConnector
+from gateway.services.feishu_identity import FeishuConnector
 from gateway.services.rate_limit import IdentityRateLimiter
 from gateway.services.reconciliation import DirectoryReconciler
 from gateway.services.signing import GatewaySigner
@@ -111,7 +112,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     async def resolve_identity_secret(source):
         from gateway.services.organization_settings import application_secret
         return await application_secret(app.state.database, app.state.gateway_signer, source)
-    app.state.identity_connectors = {"dingtalk": DingTalkConnector(secret_resolver=resolve_identity_secret), "wecom": WeComConnector(secret_resolver=resolve_identity_secret)}
+    app.state.identity_connectors = {"dingtalk": DingTalkConnector(secret_resolver=resolve_identity_secret), "wecom": WeComConnector(secret_resolver=resolve_identity_secret),
+                                     "feishu": FeishuConnector(secret_resolver=resolve_identity_secret), "lark": FeishuConnector(secret_resolver=resolve_identity_secret)}
     app.state.control_connections = ControlConnections()
     app.state.command_scheduler_lock = asyncio.Lock()
     app.state.usage_ledger_lock = asyncio.Lock()

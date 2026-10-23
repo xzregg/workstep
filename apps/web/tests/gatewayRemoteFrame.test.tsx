@@ -41,7 +41,10 @@ test('remote host reserves a desktop Tab header while waiting for device context
     const projectDialog = renderToString(<I18nProvider><ProjectConnectionDialog
       open onClose={() => undefined} onConnected={() => undefined}
     /></I18nProvider>)
-    assert.match(projectDialog, /本机目录与桌面应用操作仅在电脑本机可用/)
+    // SSR has not resolved the remote permission request yet; creation fields
+    // must remain unavailable until the client finishes that check.
+    assert.match(projectDialog, /aria-busy="true"/)
+    assert.doesNotMatch(projectDialog, /id="project-path"/)
   } finally {
     if (existing) Object.defineProperty(globalThis, 'window', existing)
     else Reflect.deleteProperty(globalThis, 'window')

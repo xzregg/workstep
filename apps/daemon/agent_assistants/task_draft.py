@@ -10,6 +10,7 @@ import re
 import uuid
 from dataclasses import dataclass
 
+from models.fields import utc_now
 from engines.core.registry import COORDINATOR_FALLBACK_ORDER, create_engine
 from agent_assistants.base import (
     AssistantConfig,
@@ -37,12 +38,13 @@ Return valid JSON:
 When clarification is needed: {"reply":"question","task_draft":null}
 Do not repeat the full task description in reply."""
 
-SYSTEM_PROMPT_SCHEDULE = """You are the WorkStep scheduled task execution assistant. Turn the schedule generation instruction into a concrete task: final title, complete Markdown task content, target workflow, and start step.
+SYSTEM_PROMPT_SCHEDULE = """You are the WorkStep scheduled task execution assistant. Turn the schedule generation instruction into one or more concrete tasks with task-creation parameters.
 
-Understand the instruction using project memory and any reference title/notes. Use read-only Skill and workstep_* tools when needed. Do not ask the user. Keep a provided reference title unchanged; otherwise create a concise title. Produce complete task content covering goal, background, scope, constraints, and verifiable acceptance criteria. Choose the best workflow from the candidate list (empty means all active workflows) and its best start step. Do not choose outside the candidate list. Do not call side-effect tools, request permissions, or ask questions; the system creates the task after receiving your structured result.
+Understand the instruction using project memory and any reference title/notes. Use read-only Skill and workstep_* tools when needed. Do not ask the user. For a single task keep a provided reference title unchanged; otherwise create concise task titles. Produce complete task content covering goal, background, scope, constraints, and verifiable acceptance criteria. Choose the best workflow from the candidate list (empty means all active workflows) and its best start step. Do not choose outside the candidate list. Do not call side-effect tools, request permissions, or ask questions; the system creates the task after receiving your structured result.
 
 Return valid JSON:
-{"reply":"Markdown explanation for the user or execution log","task_draft":{"title":"task title","description":"complete Markdown task content","workflow_id":"selected candidate workflow id","start_step_key":"step key (optional; defaults to the first step)"}}
+{"reply":"Markdown explanation for the user or execution log","task_drafts":[{"title":"task title","description":"complete Markdown task content","workflow_id":"selected candidate workflow id","start_step_key":"optional step key","scheduled_start_at":"optional ISO 8601 future timestamp with timezone"}]}
+Return one entry per requested task. Each entry uses the task creation parameters: title, description, workflow_id, start_step_key, cwd, engine, auto_start, review_overrides, scheduled_start_at. Omit optional fields unless requested. auto_start=true means immediate, false means manual; when omitted use the schedule execution mode. scheduled_start_at sets an independent future start and must not be combined with auto_start=true. Use explicit timezone offsets, based on current_time in the context. Never include creator or project identity fields.
 Return JSON only. Do not repeat the full task content in reply."""
 @dataclass(frozen=True, slots=True)
 class ChatAccepted:
@@ -174,11 +176,11 @@ class TaskDraftModule(AssistantRuntime):
         candidate_workflow_ids: list[str] | None = None,
         retry_feedback: str | None = None,
         timeout: float = SCHEDULE_ATTEMPT_TIMEOUT_SECONDS,
-    ) -> dict:
+    ) -> list[dict]:
         """Run one headless task-agent turn for a scheduled task.
 
         Returns the validated structured result
-        ``{"title", "description", "workflow_id", "start_step_key"?}``.
+        a list of task-creation parameter dictionaries.
         Raises ``RuntimeError`` when the assistant failed or returned an
         invalid result. The assistant never creates a Task row — creation is
         performed by the caller through ``create_project_task``.
@@ -216,7 +218,7 @@ class TaskDraftModule(AssistantRuntime):
         if session is None:
             raise RuntimeError("Scheduled task agent session was lost")
         result = session.extra.get("schedule_result")
-        if not isinstance(result, dict):
+        if not isinstance(result, list) or not result:
             raise RuntimeError("Scheduled task agent returned no result")
         return result
 
@@ -294,6 +296,7 @@ class TaskDraftModule(AssistantRuntime):
                         "memory": memory,
                     },
                     "schedule": {
+                        "current_time": utc_now().isoformat(),
                         "instruction": session.extra.get("instruction", ""),
                         "reference_title": session.extra.get("title", ""),
                         "reference_description": session.extra.get(
@@ -403,36 +406,25 @@ class TaskDraftModule(AssistantRuntime):
             if step.get("key")
         }
 
-    def _validate_schedule_draft(self, session, draft: dict) -> list[dict]:
-        title = str(draft.get("title") or "").strip()
-        description = str(draft.get("description") or "").strip()
-        workflow_id = str(draft.get("workflow_id") or "").strip()
-        if not title or not description or not workflow_id:
-            raise RuntimeError("Scheduled task agent returned incomplete task")
-        allowed = {
-            wf["id"]
-            for wf in self._allowed_workflow_ids(session)
-        }
-        if workflow_id not in allowed:
-            raise RuntimeError(
-                "Scheduled task agent chose a workflow outside the candidates"
-            )
-        valid_keys = self._valid_step_keys_for(session, workflow_id)
-        start_step_key = draft.get("start_step_key")
-        if start_step_key is not None:
-            start_step_key = str(start_step_key)
-            if start_step_key not in valid_keys:
-                raise RuntimeError(
-                    "Scheduled task agent returned an invalid start step"
-                )
-        result = {
-            "title": title,
-            "description": description,
-            "workflow_id": workflow_id,
-        }
-        if start_step_key:
-            result["start_step_key"] = start_step_key
-        return [result]
+    def _validate_schedule_draft(self, session, draft: dict | list[dict]) -> list[dict]:
+        from schemas.task import ScheduledTaskDraft
+
+        drafts = draft if isinstance(draft, list) else [draft]
+        if not drafts or not all(isinstance(item, dict) for item in drafts):
+            raise RuntimeError("Scheduled task agent returned an invalid task list")
+        allowed = {wf["id"] for wf in self._allowed_workflow_ids(session)}
+        results = []
+        for item in drafts:
+            try:
+                params = ScheduledTaskDraft.model_validate(item)
+            except ValueError as exc:
+                raise RuntimeError(f"Scheduled task agent returned invalid creation parameters: {exc}") from exc
+            if params.workflow_id not in allowed:
+                raise RuntimeError("Scheduled task agent chose a workflow outside the candidates")
+            if params.start_step_key is not None and params.start_step_key not in self._valid_step_keys_for(session, params.workflow_id):
+                raise RuntimeError("Scheduled task agent returned an invalid start step")
+            results.append(params.model_dump(mode="json", exclude_unset=True))
+        return results
 
     async def _resolve_draft(self, session, raw: str):
         schedule_mode = bool(session.extra.get("schedule_mode"))
@@ -440,7 +432,7 @@ class TaskDraftModule(AssistantRuntime):
             reply, draft = self._parse_reply(raw)
             validated = self._validate_draft(session, draft)
             if schedule_mode and validated:
-                session.extra["schedule_result"] = validated[-1]
+                session.extra["schedule_result"] = validated
             return reply, validated, []
         except RuntimeError:
             valid_keys = (
@@ -460,7 +452,7 @@ class TaskDraftModule(AssistantRuntime):
             reply, draft = self._parse_reply(repaired)
             validated = self._validate_draft(session, draft)
             if schedule_mode and validated:
-                session.extra["schedule_result"] = validated[-1]
+                session.extra["schedule_result"] = validated
             return reply, validated, events
 
     def _repair_instruction(self, session, valid_keys: set[str], raw: str) -> tuple[str, str]:
@@ -470,9 +462,9 @@ class TaskDraftModule(AssistantRuntime):
             )
             return (
                 "Repair the response into valid scheduled task-creation JSON of "
-                'the form {"reply":"...","task_draft":{"title":"...",'
-                '"description":"...","workflow_id":"chosen candidate workflow id",'
-                '"start_step_key":"valid workflow step key or omit"}}. '
+                'the form {"reply":"...","task_drafts":[{"title":"...",'
+                '"description":"...","workflow_id":"chosen candidate workflow id"}]}. '
+                "Preserve all requested tasks and valid task creation parameters, including scheduled_start_at with timezone. "
                 "Return JSON only.",
                 f"Valid workflow ids: {allowed_ids}\n\n"
                 f"Valid step keys: {sorted(valid_keys)}\n\n"
@@ -500,7 +492,7 @@ class TaskDraftModule(AssistantRuntime):
         return keys
 
     @staticmethod
-    def _parse_reply(raw: str) -> tuple[str, dict | None]:
+    def _parse_reply(raw: str) -> tuple[str, dict | list[dict] | None]:
         candidates = []
         fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
         if fenced:
@@ -515,17 +507,17 @@ class TaskDraftModule(AssistantRuntime):
                 continue
             if not isinstance(parsed, dict) or not isinstance(parsed.get("reply"), str):
                 continue
+            if "task_drafts" in parsed:
+                drafts = parsed["task_drafts"]
+                if not isinstance(drafts, list) or not drafts or not all(isinstance(item, dict) for item in drafts):
+                    raise RuntimeError("Task creation agent returned an invalid task list")
+                return parsed["reply"], drafts
             draft = parsed.get("task_draft")
             if draft is None:
                 return parsed["reply"], None
             description = draft.get("description") if isinstance(draft, dict) else None
             if isinstance(description, str) and description.strip():
-                return parsed["reply"], {
-                    "description": description.strip(),
-                    "start_step_key": draft.get("start_step_key"),
-                    "title": draft.get("title"),
-                    "workflow_id": draft.get("workflow_id"),
-                }
+                return parsed["reply"], {**draft, "description": description.strip()}
         raise RuntimeError("Task creation agent returned invalid JSON")
 
     def _valid_step_keys(self, session) -> set[str]:
@@ -539,11 +531,13 @@ class TaskDraftModule(AssistantRuntime):
             if step.get("key")
         }
 
-    def _validate_draft(self, session, draft: dict | None) -> list[dict]:
+    def _validate_draft(self, session, draft: dict | list[dict] | None) -> list[dict]:
         if draft is None:
             return []
         if session.extra.get("schedule_mode"):
             return self._validate_schedule_draft(session, draft)
+        if isinstance(draft, list):
+            raise RuntimeError("Multiple drafts require schedule mode")
         start_step_key = draft.get("start_step_key")
         valid_keys = self._valid_step_keys(session)
         if not isinstance(start_step_key, str) or start_step_key not in valid_keys:
@@ -568,7 +562,7 @@ class TaskDraftModule(AssistantRuntime):
             session,
             assistant_message_id,
             "task_draft",
-            drafts[-1],
+            {**drafts[0], "task_drafts": drafts} if session.extra.get("schedule_mode") else drafts[-1],
             seq,
         )
         return seq, []

@@ -244,6 +244,11 @@
     padding: 0 !important;
   }
   .mobile-task-toolbar > .mobile-task-new-button { width: auto; padding-inline: 12px; }
+  .mobile-task-notice {
+    color: var(--danger);
+    overflow-wrap: anywhere;
+  }
+
   .mobile-task-menu {
     display: flex;
     flex-direction: column;

@@ -1,3 +1,4 @@
+import type { EnterpriseProvider } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
@@ -13,7 +14,7 @@ type DesktopRequest = {
   code_challenge: string
 }
 
-type IdentitySource = { id: string; provider: 'dingtalk' | 'wecom' }
+type IdentitySource = { id: string; provider: EnterpriseProvider }
 
 export function parseDesktopRequest(search: string): DesktopRequest | null {
   const params = new URLSearchParams(search)

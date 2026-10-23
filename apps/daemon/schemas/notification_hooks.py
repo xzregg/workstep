@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 from urllib.parse import urlsplit, parse_qs
 
@@ -13,7 +14,7 @@ EVENT_NAMES = {'started':'任务开始', 'completed':'任务完成', 'failed':'�
 class NotificationHookDraft(BaseSchema):
     id: str | None = Field(default=None, max_length=128)
     name: str = Field(min_length=1, max_length=128)
-    platform: Literal['dingtalk', 'wecom', 'generic'] = 'generic'
+    platform: Literal['dingtalk', 'wecom', 'feishu', 'lark', 'generic'] = 'generic'
     url: str = Field(min_length=1, max_length=4096)
     secret: str = Field(default='', max_length=1024)
     enabled: bool = True
@@ -45,11 +46,15 @@ class NotificationHookDraft(BaseSchema):
         if url.scheme not in {'http','https'} or not url.hostname or url.username or url.password or url.fragment:
             raise ValueError('请输入无用户名和片段的 HTTP(S) 地址')
         if any(ord(c) < 33 for c in self.url): raise ValueError('地址不能包含空白或控制字符')
-        if self.platform != 'generic':
+        if self.platform in {'feishu', 'lark'}:
+            host = 'open.feishu.cn' if self.platform == 'feishu' else 'open.larksuite.com'
+            if url.scheme != 'https' or url.hostname != host or port not in (None,443) or not re.fullmatch(r'/open-apis/bot/v2/hook/[A-Za-z0-9_-]+', url.path):
+                raise ValueError('请输入所选平台的群自定义机器人 Webhook 地址')
+        elif self.platform != 'generic':
             host, path, token = ('oapi.dingtalk.com','/robot/send','access_token') if self.platform == 'dingtalk' else ('qyapi.weixin.qq.com','/cgi-bin/webhook/send','key')
             if url.scheme != 'https' or url.hostname != host or url.path != path or port not in (None,443) or not parse_qs(url.query).get(token):
                 raise ValueError('请输入所选平台的机器人 Webhook 地址')
-        if self.platform != 'dingtalk': self.secret = ''
+        if self.platform not in {'dingtalk', 'feishu', 'lark'}: self.secret = ''
         self.events = list(dict.fromkeys(self.events))
         return self
 

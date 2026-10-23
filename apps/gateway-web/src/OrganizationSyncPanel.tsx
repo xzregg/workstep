@@ -1,3 +1,4 @@
+import { enterpriseProviderName, type EnterpriseProvider } from './enterpriseProviders'
 import { OrganizationSyncUsers, type SyncUser } from './OrganizationSyncUsers'
 import { OrganizationSyncResult, type SyncResult } from './OrganizationSyncResult'
 import { useEffect, useRef, useState } from 'react'
@@ -15,10 +16,9 @@ type Job = { id?: string; status: 'idle' | 'queued' | 'fetching' | 'applying' | 
  completed?: number; total?: number; current_department?: string | null; error_code?: string;
  result?: SyncResult & {user_candidates?: SyncUser[]} }
 const active = (job: Job | null) => !!job && ['queued', 'fetching', 'applying'].includes(job.status)
-const names = { wecom: '企业微信', dingtalk: '钉钉' }
 
 export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCompleted }: {
- sourceId: string; provider: 'wecom' | 'dingtalk'; csrf: string; onClose: () => void; onCompleted: () => void
+ sourceId: string; provider: EnterpriseProvider; csrf: string; onClose: () => void; onCompleted: () => void
 }) {
  const [departments, setDepartments] = useState<Department[]>([])
  const [selected, setSelected] = useState<string[]>([])
@@ -159,7 +159,7 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
   if (!running && savedSignature.current && (groupsOnly || selectionSignature(mode,departments,selected,selectedUsers)!==savedSignature.current)) setDiscard(true)
   else onClose()
  }
- return <GatewayModal explicitCloseOnly className="gateway-organization-sync-dialog" title={names[provider] + ' · 选择同步组织与用户'} onClose={close} footer={<>
+ return <GatewayModal explicitCloseOnly className="gateway-organization-sync-dialog" title={enterpriseProviderName(provider) + ' · 选择同步组织与用户'} onClose={close} footer={<>
   <span>已选 {selected.length} / {departments.length} 个组织</span>
   <button type="button" className="gateway-dialog-cancel" disabled={starting} onClick={close}>{running ? '后台运行并关闭' : '取消'}</button>
   <button type="button" disabled={locked || !csrf || !selected.length || (mode==='users' && job?.status==='preview' && !selectedUsers.length)} onClick={() => void (job?.status === 'preview' ? confirm() : start())}>{starting && <span className="gateway-spinner" />}{starting ? '正在提交…' : job?.status === 'preview' ? `同步 ${selectedUsers.length} 位用户 · 应用组织变更` : '读取通讯录'}</button>

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { taskApi, type EngineInputItem, type Task, type TaskStepState } from '../api/client.ts'
 import { useProjectStore } from './projectStore.ts'
+import { useRecentVisitsStore } from './recentVisitsStore.ts'
 import { zhCNT } from '../i18n'
 import {
   CUSTOM,
@@ -302,6 +303,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   deleteTask: async (taskId, projectId, deleteWorkspace) => {
     await taskApi.delete(taskId, projectId, deleteWorkspace)
+    useRecentVisitsStore.getState().removeTasks(projectId, [taskId])
     set((s) => ({
       tasks: s.tasks.filter((t) => t.id !== taskId),
       activeTaskId: s.activeTaskId === taskId ? null : s.activeTaskId,

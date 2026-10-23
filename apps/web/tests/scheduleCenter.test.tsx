@@ -255,11 +255,14 @@ test('saving blocks switching; failures retain the editor and its discard protec
   } finally { await app.cleanup() }
 })
 
-test('opening a run uses the tab project even when the board URL points at another project', async () => {
+for (const batch of [false, true]) test(`opening a ${batch ? 'batch' : 'legacy'} run uses the tab project even when the board URL points at another project`, async () => {
   const app = await setup()
   const oldTaskState = useTaskStore.getState(), calls: string[] = []
   useTaskStore.setState({ tasks: [] })
-  scheduleApi.runs = async () => ({ runs: [{ id: 'run-b', schedule_id: 'schedule-b', scheduled_for: '2026-10-14T01:00:00Z', status: 'succeeded', task_id: 'run-task' }] })
+  scheduleApi.runs = async () => ({ runs: [{ id: 'run-b', schedule_id: 'schedule-b', scheduled_for: '2026-10-14T01:00:00Z',
+    status: batch ? 'failed' : 'succeeded', task_id: batch ? 'first-task' : 'run-task',
+    created_tasks: batch ? [{id:'first-task',title:'第一项',workflow_id:'flow-b'}, {id:'run-task',title:'第二项',workflow_id:'flow-b'}] : undefined,
+  }] })
   globalThis.fetch = async input => {
     const url = String(input); calls.push(url)
     if (/\/task\/run-task\?/.test(url)) return Response.json({ detail: 'Task not found' }, { status: 404 })
@@ -268,7 +271,7 @@ test('opening a run uses the tab project even when the board URL points at anoth
   try {
     await app.render(); await app.click('定时任务'); await app.click('项目B')
     await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
-    await app.click('查看任务')
+    await app.click(batch ? '第二项' : '查看任务')
     assert.ok(calls.includes('/api/task/run-task?project_id=b'))
     assert.ok(!calls.includes('/api/task/run-task?project_id=a'))
     assert.ok(!calls.some(url => url.includes('/task/list')), 'opening a run must not replace the board list')
@@ -377,5 +380,37 @@ test('once schedules show a single compact local execution time even after compl
     assert.equal(meta.querySelectorAll('time').length, 1)
     assert.equal(meta.querySelector('time')?.dateTime, '2026-10-16T23:00:00+08:00')
     assert.doesNotMatch(meta.textContent!, /Once|T23|08:00|—/)
+  } finally { await app.cleanup() }
+})
+
+
+test('schedule list shows creator names, falls back to usernames and hides missing creators', async () => {
+  const app = await setup()
+  try {
+    scheduleApi.list = async () => ({ schedules: [
+      { ...schedule('named'), creator_name: '张三', creator_username: 'zhangsan' },
+      { ...schedule('account'), creator_name: '  ', creator_username: 'lisi' },
+      schedule('legacy'),
+      { ...schedule('once'), creator_name: '王五', rule: { kind: 'once', run_at: '2099-01-01T00:00:00Z', timezone: 'UTC' } },
+      { ...schedule('task'), target_type: 'task', creator_name: '赵六' },
+    ] })
+    await app.render(); await app.click('定时任务')
+    const creators = () => [...document.querySelectorAll('.schedule-list-creator')].map(node => node.textContent)
+    assert.deepEqual(creators(), ['张三', 'lisi', '赵六'])
+    await app.click('一次性')
+    assert.deepEqual(creators(), ['王五'])
+  } finally { await app.cleanup() }
+})
+
+
+test('batch run history lists every created task including partial failures', async () => {
+  const app = await setup()
+  try {
+    scheduleApi.runs = async () => ({ runs: [{ id: 'batch-run', schedule_id: 'schedule-a', scheduled_for: '', status: 'failed', reason: 'disk full',
+      task_id: 'first', created_tasks: [{ id: 'first', title: '批量任务一' }, { id: 'second', title: '批量任务二' }] }] })
+    await app.render(); await app.click('定时任务')
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    assert.deepEqual([...document.querySelectorAll('.schedule-run-task-link')].map(node => node.textContent), ['批量任务一', '批量任务二'])
+    assert.match(document.querySelector('.schedule-page')!.textContent!, /disk full/)
   } finally { await app.cleanup() }
 })

@@ -1,6 +1,6 @@
 import { request } from './transport'
 
-export type BotPlatform = 'wecom' | 'dingtalk'
+export type BotPlatform = 'wecom' | 'dingtalk' | 'feishu' | 'lark'
 export type BotTargetType = '' | 'project' | 'task'
 
 export interface BotTaskBinding extends DiscussionGroup {

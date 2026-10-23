@@ -1,6 +1,7 @@
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
@@ -28,18 +29,18 @@ test('project storage change requires confirmation and preserves selection after
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><ProjectStorageSettings projectId="id" /></I18nProvider>))
-    assert.equal(container.querySelector<HTMLInputElement>('input')?.checked, true)
-    await act(async () => container.querySelector<HTMLInputElement>('input')!.click())
+    assert.equal(container.querySelector('[role="switch"]')?.getAttribute('aria-checked'), 'true')
+    await act(async () => container.querySelector<HTMLButtonElement>('[role="switch"]')!.click())
     assert.equal(calls, 0)
     assert.match(document.body.textContent ?? '', /保留 .workstep\/project.json/)
     const confirm = () => [...document.querySelectorAll('button')].find(button => button.textContent === '确认')!
     await act(async () => confirm().click())
     assert.equal(calls, 1)
     assert.match(document.body.textContent ?? '', /运行中的任务/)
-    assert.equal(container.querySelector<HTMLInputElement>('input')?.checked, true)
+    assert.equal(container.querySelector('[role="switch"]')?.getAttribute('aria-checked'), 'true')
     await act(async () => confirm().click())
     assert.equal(calls, 2)
-    assert.equal(container.querySelector<HTMLInputElement>('input')?.checked, false)
+    assert.equal(container.querySelector('[role="switch"]')?.getAttribute('aria-checked'), 'false')
     assert.match(container.textContent ?? '', /projects\/id/)
   } finally {
     await act(async () => root.unmount())
@@ -58,6 +59,29 @@ test('shared storage field explains identity and computer migration', async () =
     assert.match(container.textContent ?? '', /跨电脑迁移/)
     assert.match(container.textContent ?? '', /原数据不会被删除/)
   } finally { await act(async () => root.unmount()); container.remove() }
+})
+
+test('storage switch label keeps its flex alignment inside modal forms', async () => {
+  installDomEnvironment()
+  const style = document.head.appendChild(document.createElement('style'))
+  style.textContent = readFileSync(new URL('../src/components/ProjectStorageField.css', import.meta.url), 'utf8')
+    + '\n' + readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
+  const container = document.body.appendChild(document.createElement('div'))
+  container.className = 'modal-body'
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ProjectStorageField value onChange={() => {}} /></I18nProvider>))
+    const label = container.querySelector('label')!
+    const computed = getComputedStyle(label)
+    assert.equal(computed.display, 'flex')
+    assert.equal(computed.alignItems, 'center')
+    assert.equal(computed.gap, '8px')
+    assert.equal(computed.marginBottom, '0px')
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    style.remove()
+  }
 })
 
 
@@ -82,14 +106,14 @@ test('project creation defaults to following project and sends explicit external
     await act(async () => root.render(<I18nProvider><ProjectConnectionDialog open onClose={() => {}} onConnected={() => {}} /></I18nProvider>))
     const confirm = () => [...container.querySelectorAll('button')].find(button => button.textContent === '确定')!
     assert.equal(confirm().disabled, true)
-    assert.equal(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked, true)
+    assert.equal(container.querySelector('[role="switch"]')?.getAttribute('aria-checked'), 'true')
     const directory = container.querySelector('[role="option"]')!
     await act(async () => directory.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     assert.equal(confirm().disabled, false)
-    await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('[role="switch"]')!.click())
     await act(async () => confirm().click())
     assert.deepEqual(selections, [false])
-    assert.equal(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked, true)
+    assert.equal(container.querySelector('[role="switch"]')?.getAttribute('aria-checked'), 'true')
   } finally {
     await act(async () => root.unmount()); container.remove()
     globalThis.fetch = originalFetch

@@ -20,7 +20,7 @@ type Filters = { device_id: string; from_time: string; to_time: string; user_id:
 const emptyFilters: Filters = { device_id: '', from_time: '', to_time: '', user_id: '', project_id: '',
   action: '', result: '', q: '' }
 const pageSize = 25
-const loginMethods: Record<string, string> = { password: '账号密码', dingtalk: '钉钉', wecom: '企业微信', scan: '企业扫码（历史会话）', unknown: '未知' }
+const loginMethods: Record<string, string> = { password: '账号密码', dingtalk: '钉钉', wecom: '企业微信', feishu: '飞书', lark: 'Lark', scan: '企业扫码（历史会话）', unknown: '未知' }
 const loginActions: Record<string, string> = { 'auth.login': '平台登录', 'auth.device.login': '进入设备工作台', 'auth.desktop.login': '设备授权登录', 'auth.identity.bind': '绑定企业身份' }
 const auditResults: Record<string, string> = { success: '成功', succeeded: '成功', denied: '拒绝', failed: '失败' }
 const value = (item: string | null | undefined) => item || '未知'

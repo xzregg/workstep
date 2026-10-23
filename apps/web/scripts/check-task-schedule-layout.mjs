@@ -54,7 +54,7 @@ const projectMarkup=container.innerHTML
 assert.ok(container.querySelector('.schedule-rule-editor'),'project form uses the shared editor')
 scheduleApi.list = async () => ({ schedules: [{ ...schedule,
   target_task_title:'操作手册演示：这是一个用于验证窄屏省略显示的很长的关联任务名称'.repeat(3),
-  name:'今晚23点任务状态', workflow_id:'', task_template:{}, status:'completed', next_run_at:null,
+  name:'今晚23点任务状态', creator_name:'演示创建人长姓名'.repeat(12), workflow_id:'', task_template:{}, status:'completed', next_run_at:null,
   rule:{kind:'once',run_at:'2026-10-16T23:00:00+08:00',timezone:'Asia/Shanghai'},
   summary:'Once at 2026-10-16T23:00:00+08:00',
 }] })
@@ -64,6 +64,14 @@ await act(async()=>listRoot.render(h(MemoryRouter,null,h(I18nProvider,null,h(Sch
 await act(async()=>[...container.querySelectorAll('button')].find(button=>button.textContent==='一次性').click())
 const listMarkup=container.innerHTML
 assert.ok(container.querySelector('.schedule-task-target'))
+scheduleApi.runs = async () => ({runs:[{
+  id:'demo-batch', schedule_id:'demo-rule', status:'failed', reason:'演示：第三项创建失败，已创建的任务保留。',
+  scheduled_for:'2026-10-16T23:00:00+08:00', task_id:'demo-1',
+  created_tasks:[1,2,3,4,5].map(id=>({id:`demo-${id}`,title:`任务${id}：${'无空格长任务名称'.repeat(20)}`,workflow_id:'flow'})),
+}]})
+await act(async()=>container.querySelector('.schedule-list-item').click())
+const batchRunsMarkup=container.innerHTML
+assert.equal(container.querySelectorAll('.schedule-run-task-link').length,5)
 await act(async()=>listRoot.unmount())
 const entryRoot=createRoot(container)
 const load=async()=>({schedules:[{
@@ -94,7 +102,7 @@ assert.equal(document.querySelector('[aria-label="关联任务"]').value,'当前
 await act(async()=>managedRoot.unmount())
 await window.happyDOM.close()
 const files = new Map()
-for (const [name,content] of [['task',markup],['project',projectMarkup],['list',listMarkup],['entry',entryMarkup],['taskSchedules',taskSchedulesMarkup],['managed',managedMarkup]]) {
+for (const [name,content] of [['task',markup],['project',projectMarkup],['list',listMarkup],['batchRuns',batchRunsMarkup],['entry',entryMarkup],['taskSchedules',taskSchedulesMarkup],['managed',managedMarkup]]) {
   const file=path.join(dir,`${name}.html`)
   fs.writeFileSync(file, `<!doctype html><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}\nbody{margin:0}.schedule-layout{display:grid;grid-template-columns:minmax(0,700px);justify-content:center}.schedule-editor{padding:18px;min-width:0}</style>${content}`)
   files.set(name,file)
@@ -157,6 +165,27 @@ try {
       assert.doesNotMatch(list.text,/Once at|demo-task|任务协调指令|—/)
       assert.ok(list.timeHeight<=list.lineHeight+1,`${width}px: execution time stays on one line`)
       assert.ok(list.right<=width,`${width}px: execution time fits`)
+      const {result: creatorResult}=await call('Runtime.evaluate',{returnByValue:true,expression:`(() => {
+        const node=document.querySelector('.schedule-list-creator'), rect=node.getBoundingClientRect();
+        return {text:node.textContent,ellipsis:getComputedStyle(node).textOverflow,clipped:node.scrollWidth>node.clientWidth,right:rect.right};
+      })()`},sessionId)
+      const creator=creatorResult.result.value
+      assert.equal(creator.ellipsis,'ellipsis')
+      assert.ok(creator.clipped,`${width}px: long creator name is truncated`)
+      assert.ok(creator.right<=width,`${width}px: creator fits`)
+      assert.doesNotMatch(creator.text,/创建者：|未记录/)
+
+    }
+    if (name==='batchRuns') {
+      const {result: linksResult}=await call('Runtime.evaluate',{returnByValue:true,expression:`[...document.querySelectorAll('.schedule-run-task-link')].map(node=>{
+        const r=node.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,clientWidth:node.clientWidth,scrollWidth:node.scrollWidth};
+      })`},sessionId)
+      const links=linksResult.result.value
+      assert.equal(links.length,5)
+      for(const link of links) {
+        assert.ok(link.left>=0 && link.right<=width,`${width}px: batch task link fits`)
+        assert.ok(link.scrollWidth<=link.clientWidth+1,`${width}px: full long task label wraps within its button`)
+      }
     }
     if (name==='entry' || name==='taskSchedules') {
       const {result: controlResult}=await call('Runtime.evaluate',{returnByValue:true,expression:`(() => {
@@ -181,6 +210,9 @@ try {
       assert.ok(field.left >= 0 && field.right <= width, `${width}px: fields remain in viewport`)
       assert.ok(field.height >= (field.compact ? 16 : 30), `${width}px: controls remain usable`)
     }
+    if (name==='batchRuns') await call('Runtime.evaluate', {
+      expression:"document.querySelector('.schedule-runs').scrollIntoView({block:'start'})",
+    },sessionId)
     const screenshot = await call('Page.captureScreenshot', { format: 'png' }, sessionId)
     fs.writeFileSync(path.join(dir, `${name}-${width}.png`), Buffer.from(screenshot.result.data, 'base64'))
     console.log(`${name} ${width}px: schedule fields visible, no overflow`)

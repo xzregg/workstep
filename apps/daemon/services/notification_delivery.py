@@ -57,11 +57,23 @@ def notification_payload(hook, snapshot):
     text = TEMPLATE_VARIABLE.sub(lambda match: values[match.group(1)], template)
     text = re.sub(r'\n{3,}', '\n\n', text).strip()
     text = text.encode()[:MAX_MARKDOWN_BYTES].decode('utf-8', errors='ignore')
+    if hook['platform'] in {'feishu', 'lark'}:
+        markdown = {'tag':'lark_md', 'content':text}
+        payload = {'msg_type':'interactive', 'card':{
+            'config':{'wide_screen_mode':True},
+            'header':{'title':{'tag':'plain_text', 'content':title}},
+            'elements':[{'tag':'div', 'text':markdown}],
+        }}
+        # JSON escaping can expand control characters; reserve room for signing.
+        while len(json.dumps(payload, ensure_ascii=False).encode()) > 19500:
+            markdown['content'] = markdown['content'][:len(markdown['content'])*3//4]
+        return payload
     return {'msgtype':'markdown', 'markdown': {'title': title, 'text': text} if hook['platform']=='dingtalk' else {'content':text}}
 
 
 async def send_notification(hook, payload, *, client=None, now=None):
     url = hook['url']
+    feishu = hook['platform'] in {'feishu', 'lark'}
     if hook['platform'] == 'dingtalk' and hook.get('secret'):
         timestamp = str(int((time.time() if now is None else now)*1000))
         secret = hook['secret']
@@ -69,6 +81,11 @@ async def send_notification(hook, payload, *, client=None, now=None):
         parts = urlsplit(url)
         pairs = [(k,v) for k,v in parse_qsl(parts.query) if k not in {'timestamp','sign'}]
         url = urlunsplit(parts._replace(query=urlencode(pairs+[('timestamp',timestamp),('sign',sign)])))
+    elif feishu and hook.get('secret'):
+        timestamp = str(int(time.time() if now is None else now))
+        key = f"{timestamp}\n{hook['secret']}".encode()
+        sign = base64.b64encode(hmac.new(key, b'', hashlib.sha256).digest()).decode()
+        payload = {**payload, 'timestamp':timestamp, 'sign':sign}
     async def post(session):
         try:
             async with session.stream('POST', url, json=payload, timeout=10, follow_redirects=False) as response:
@@ -81,13 +98,14 @@ async def send_notification(hook, payload, *, client=None, now=None):
                     if len(body)>16384: raise DeliveryError('平台响应超过限制')
                 try:
                     data = json.loads(body)
-                    code = data.get('errcode')
+                    code = data.get('code', data.get('StatusCode')) if feishu else data.get('errcode')
                 except (ValueError, AttributeError):
                     raise DeliveryError('平台响应格式无效') from None
                 if type(code) is not int:
                     raise DeliveryError('平台响应格式无效')
                 if code != 0:
-                    raise DeliveryError(f'平台错误码 {code}', retryable=code in {130101,45009,-1})
+                    retry_codes = {11232,-1} if feishu else {130101,45009,-1}
+                    raise DeliveryError(f'平台错误码 {code}', retryable=code in retry_codes)
         except httpx.TimeoutException:
             raise DeliveryError('连接超时',retryable=True) from None
         except httpx.RequestError:

@@ -17,7 +17,7 @@ async def password_login_enabled(session):
 async def scan_sources(session):
     rows = (await session.execute(select(IdentitySource, PlatformSetting).outerjoin(
         PlatformSetting, PlatformSetting.key == 'identity-options:' + IdentitySource.id
-    ).where(IdentitySource.enabled == 1, IdentitySource.provider.in_(['dingtalk', 'wecom']))
+    ).where(IdentitySource.enabled == 1, IdentitySource.provider.in_(['dingtalk', 'wecom', 'feishu', 'lark']))
         .order_by(IdentitySource.created_at, IdentitySource.id))).all()
     return [(source, json.loads(setting.value_json) if setting else {}) for source, setting in rows
             if not setting or json.loads(setting.value_json).get('login_enabled', True)]

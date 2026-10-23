@@ -1,6 +1,7 @@
 """Archive experience database work units; callers must use the project executor."""
 
 import json
+import re
 from services.project_memory import read_memory_bytes, write_memory_bytes, delete_memory
 
 
@@ -11,9 +12,29 @@ def normalize_archive_experience(experience: str) -> tuple[str, bool]:
         "未发现值得记录的错误经验",
         "未发现值得提炼的错误经验",
         "未发现值得提炼的内容",
+        "无可复用的错误经验",
+        "未发现可复用的错误经验",
+        "No reusable error lessons found",
     }:
         return "", False
     return normalized, bool(normalized)
+
+
+def deduplicate_archive_experience(experience: str, existing: str) -> str:
+    """Keep new lines only; semantic coverage is judged against Memory by the model."""
+    def key(line):
+        return re.sub(r"\s+", "", line.lstrip("-•* ").rstrip("。.!！ "))
+
+    seen = {key(line) for line in existing.splitlines() if line.strip()}
+    lines = []
+    for line in experience.splitlines():
+        if not line.strip():
+            continue
+        normalized = key(line)
+        if normalized and normalized not in seen:
+            lines.append(line.strip())
+            seen.add(normalized)
+    return "\n".join(lines)
 
 
 def load_archive_experience_draft(task_id: str, workstep_dir=None):
@@ -155,7 +176,8 @@ def persist_archive_draft(
     )
 
 
-def persist_experience_and_archive(project, task_service, pid, task_id, experience):
+def persist_experience_and_archive(project, task_service, pid, task_id, experience) -> tuple[bool, bool]:
+    """Return (archived, memory_saved) after checking the latest Memory for duplicates."""
     from models import Task
 
     task = Task.get_or_none(Task.id == task_id)
@@ -168,6 +190,13 @@ def persist_experience_and_archive(project, task_service, pid, task_id, experien
 
     previous = read_memory_bytes(project.workstep_dir)
     existing = previous.decode("utf-8") if previous is not None else ""
+    experience, _ = normalize_archive_experience(experience)
+    experience = deduplicate_archive_experience(experience, existing)
+    if not experience:
+        archived = task_service.archive_task(task_id, pid)
+        if not archived:
+            raise ValueError("Task not found")
+        return archived, False
     separator = "\n\n" if existing.rstrip() else ""
     content = (
         f"{existing.rstrip()}{separator}"
@@ -190,4 +219,4 @@ def persist_experience_and_archive(project, task_service, pid, task_id, experien
             else:
                 write_memory_bytes(project.workstep_dir, previous)
         raise
-    return archived
+    return archived, True

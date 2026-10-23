@@ -101,7 +101,8 @@ class ScheduleModule:
     def _to_dict(row: Schedule) -> dict:
         rule = json.loads(row.rule_json)
         task_template = dict(json.loads(row.task_template_json))
-        task_template.pop("_creator", None)
+        creator = task_template.pop("_creator", None)
+        creator = creator if isinstance(creator, dict) else {}
         return {
             "id": row.id,
             "name": row.name,
@@ -112,6 +113,8 @@ class ScheduleModule:
             "notification": json.loads(row.notification_json),
             "workflow_id": row.workflow_id,
             "task_template": task_template,
+            "creator_name": str(creator.get("name") or "").strip() or None,
+            "creator_username": str(creator.get("username") or "").strip() or None,
             "rule": rule,
             "summary": describe_rule(rule),
             "cron_expression": row.cron_expression,
@@ -430,7 +433,7 @@ class ScheduleModule:
         # Their terminal workflow status does not describe the schedule trigger.
         from models import CoordinatorTurn
         turn = CoordinatorTurn.get_or_none(CoordinatorTurn.id == row.coordinator_turn_id) if row.coordinator_turn_id else None
-        task_created = not row.coordinator_turn_id and bool(row.task_id) and row.status in {
+        task_created = not row.created_tasks_json and not row.coordinator_turn_id and bool(row.task_id) and row.status in {
             "running", "succeeded", "failed"
         }
         return {
@@ -440,6 +443,7 @@ class ScheduleModule:
             "status": "created" if task_created else row.status,
             "reason": None if task_created else row.reason,
             "task_id": row.task_id,
+            "created_tasks": json.loads(row.created_tasks_json) if row.created_tasks_json else [],
             "workflow_run_id": row.workflow_run_id,
             "notification_status": row.notification_status if row.notification_json else "disabled",
             "notification_error": row.notification_error,
@@ -483,7 +487,7 @@ class ScheduleModule:
             def claim_due():
                 due_ids: list[str] = []
                 queued_schedule_ids: set[str] = set()
-                self._reconcile_running_rows()
+                self._reconcile_running_rows(startup=startup)
                 from services.task_schedule_runtime import reconcile_task_schedules
                 reconcile_task_schedules(startup=startup, current=current)
                 active_rows = list(Schedule.select().where(Schedule.status == "active"))
@@ -648,12 +652,21 @@ class ScheduleModule:
             "task_id": task_id,
         })
 
-    def _reconcile_running_rows(self) -> None:
+    def _reconcile_running_rows(self, *, startup=False) -> None:
         for run in ScheduleRun.select().where(ScheduleRun.status == "running"):
-            if run.coordinator_turn_id or not run.task_id:
+            if run.coordinator_turn_id:
                 continue
-            run.status = "created"
-            run.reason = None
+            if not run.task_id:
+                if startup and run.schedule.target_type == "project":
+                    run.status = "failed"
+                    run.reason = "服务重启中断任务生成，尚未创建任务"
+                    run.ended_at = utc_now()
+                    run.save()
+                continue
+            if run.created_tasks_json and not startup:
+                continue
+            run.status = "failed" if run.created_tasks_json else "created"
+            run.reason = "服务重启中断批量创建，请检查已创建任务" if run.created_tasks_json else None
             run.ended_at = run.ended_at or utc_now()
             run.save()
 
@@ -728,7 +741,7 @@ class ScheduleModule:
             from services.task_creation import create_project_task
             if self._template_mode(template) == AGENT_MODE:
                 result = await self._run_agent_attempts(
-                    project_id, template, execution_mode
+                    project_id, template, execution_mode, run_id=run_id
                 )
             else:
                 result = await create_project_task(
@@ -786,12 +799,18 @@ class ScheduleModule:
         project_id: str,
         template: dict,
         execution_mode: str,
-    ) -> object:
+        *,
+        run_id: str | None = None,
+    ) -> list:
         """Run the task agent (with retries), then create the task from its result."""
-        from services.task_creation import create_project_task
+        from services.task_creation import TaskCreationResult, create_project_task, _require_scheduled_creation
 
         if self._task_agent is None:
             raise RuntimeError("Task agent is not initialized")
+        await _require_scheduled_creation(
+            project_id, self._template_creator_fields(template),
+            (template.get("_creator") or {}).get("source"),
+        )
         instruction = str(template.get("instruction") or "").strip()
         if not instruction:
             raise ScheduleValidationError(
@@ -800,7 +819,7 @@ class ScheduleModule:
         candidates = list(template.get("candidate_workflow_ids") or [])
         try:
             retry_count = int(
-                template.get("retry_count") or DEFAULT_AGENT_RETRY_COUNT
+                template.get("retry_count", DEFAULT_AGENT_RETRY_COUNT)
             )
         except (TypeError, ValueError):
             retry_count = DEFAULT_AGENT_RETRY_COUNT
@@ -827,38 +846,94 @@ class ScheduleModule:
                 "Scheduled task agent failed after "
                 f"{retry_count + 1} attempts: {last_error}"
             )
-        return await create_project_task(
-            project_manager=self._projects,
-            task_service=self._tasks,
-            workflow_runtime=self._runtime,
-            project_id=project_id,
-            title=str(result["title"]),
-            description=result.get("description"),
-            engine=self._resolve_engine(template),
-            workflow_id=result["workflow_id"],
-            start_step_key=result.get("start_step_key"),
-            review_overrides=None,
-            execution_mode=execution_mode,
-            source="schedule",
-            creator_fields=self._template_creator_fields(template),
-            creator_source=(template.get("_creator") or {}).get("source"),
-        )
+        from schemas.task import ScheduledTaskDraft
 
-    async def _attach_task_result(self, project_id, run_id, result) -> None:
-        task = result.task
+        raw_drafts = result if isinstance(result, list) else [result]
+        if not raw_drafts:
+            raise ScheduleValidationError("Scheduled task agent returned no tasks")
+        # Validate the complete batch before the first write, including when the
+        # task-agent adapter supplies a legacy single result.
+        drafts = [ScheduledTaskDraft.model_validate(item) for item in raw_drafts]
+        def validate_workflows():
+            from services.workflow_definition import WorkflowDefinition
 
-        def attach_task():
-            run = ScheduleRun.get_by_id(run_id)
-            run.task_id = task["id"]
-            run.workflow_run_id = (
-                result.run_handle.id if result.run_handle is not None else None
+            workflows = {
+                wf["id"]: wf for wf in self._projects.get_project_by_id(project_id).workflows
+                if not wf.get("deleted") and (not candidates or wf["id"] in candidates)
+            }
+            for draft in drafts:
+                workflow = workflows.get(draft.workflow_id)
+                if workflow is None:
+                    raise ScheduleValidationError("Scheduled task agent chose a workflow outside the candidates")
+                definition = WorkflowDefinition.load(workflow["steps"]).compile()
+                if draft.start_step_key is not None and draft.start_step_key not in {
+                    step["key"] for step in definition.steps
+                }:
+                    raise ScheduleValidationError("Scheduled task agent returned an invalid start step")
+
+        await self._run_db(project_id, validate_workflows)
+        results = []
+        for draft in drafts:
+            mode = execution_mode
+            if draft.auto_start is not None:
+                mode = "immediate" if draft.auto_start else "manual"
+            if draft.scheduled_start_at is not None:
+                mode = "manual"
+            created = await create_project_task(
+                project_manager=self._projects,
+                task_service=self._tasks,
+                workflow_runtime=self._runtime,
+                project_id=project_id,
+                title=draft.title,
+                description=draft.description,
+                cwd=draft.cwd,
+                engine=draft.engine or await asyncio.to_thread(self._resolve_engine, template),
+                workflow_id=draft.workflow_id,
+                start_step_key=draft.start_step_key,
+                review_overrides=draft.review_overrides,
+                execution_mode=mode,
+                scheduled_start_at=draft.scheduled_start_at,
+                source="schedule",
+                creator_fields=self._template_creator_fields(template),
+                creator_source=(template.get("_creator") or {}).get("source"),
+                on_persisted=(lambda task: self._store_task_results(
+                    run_id, [*results, TaskCreationResult(task, None)],
+                )) if run_id is not None else None,
             )
+            results.append(created)
+            if run_id is not None:
+                # Keep successful items visible if a later task fails. Creation
+                # failures are not retried as AI generation attempts.
+                await self._record_task_results(project_id, run_id, results)
+        return results
+
+    @staticmethod
+    def _store_task_results(run_id, results, *, complete=False):
+        """Persist a batch projection inside the caller's database work unit."""
+        run = ScheduleRun.get_by_id(run_id)
+        run.created_tasks_json = json.dumps([
+            {"id": result.task["id"], "title": result.task.get("title", result.task["id"]),
+             "workflow_id": result.task.get("workflow_id"),
+             "scheduled_start_at": result.task.get("scheduled_start_at"),
+             "workflow_run_id": result.run_handle.id if result.run_handle else None}
+            for result in results
+        ], ensure_ascii=False, default=str)
+        run.task_id = results[0].task["id"]
+        run.workflow_run_id = results[0].run_handle.id if results[0].run_handle else None
+        if complete:
             run.status = "created"
             run.reason = None
             run.ended_at = utc_now()
-            run.save()
+        run.save()
 
-        await self._run_db(project_id, attach_task)
+    async def _record_task_results(self, project_id, run_id, results, *, complete=False):
+        await self._run_db(project_id, lambda: self._store_task_results(
+            run_id, results, complete=complete,
+        ))
+
+    async def _attach_task_result(self, project_id: str, run_id: str, result) -> None:
+        results = result if isinstance(result, list) else [result]
+        await self._record_task_results(project_id, run_id, results, complete=True)
         await self._notify_run(project_id, run_id)
 
     async def _notify_run(self, project_id, run_id, *, retry=False):

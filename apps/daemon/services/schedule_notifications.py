@@ -78,6 +78,8 @@ async def deliver_notification(module, project_id, run_id, *, retry=False):
                 return None
             if (schedule.target_type == 'task' and run.status not in {'succeeded', 'failed', 'stopped'}) or (schedule.target_type == 'project' and not run.task_id):
                 return None
+            if schedule.target_type == 'project' and run.created_tasks_json and run.status not in {'created', 'failed', 'stopped'}:
+                return None  # A batch may have saved progress while still creating tasks.
             if run.notification_status not in ({'failed'} if retry else {'pending'}):
                 return None
             task = Task.get_or_none(Task.id == run.task_id)
@@ -90,7 +92,9 @@ async def deliver_notification(module, project_id, run_id, *, retry=False):
                 content = (message.content if message else '') or run.reason or '执行已结束'
                 text = f'定时任务：{schedule.name}\n任务：{task.title}\n状态：{run.status}\n\n{content}'
             else:
-                text = f'定时任务：{schedule.name}\n已创建任务：{task.title}'
+                created_tasks = json.loads(run.created_tasks_json) if run.created_tasks_json else []
+                titles = '、'.join(item['title'] for item in created_tasks) if created_tasks else task.title
+                text = f'定时任务：{schedule.name}\n已创建任务：{titles}'
             from urllib.parse import urlencode
             workflow = module._projects.get_project_by_id(project_id).workflow_by_id(task.workflow_id)
             import os, sys

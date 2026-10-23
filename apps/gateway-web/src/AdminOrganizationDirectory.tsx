@@ -1,3 +1,4 @@
+import { enterpriseProviderName } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
@@ -40,7 +41,7 @@ function DepartmentNode({ department, selectedId, select, revision }: {
       <button type="button" className={selectedId === department.id ? 'gateway-org-selected' : ''}
         onClick={() => select(department)}>
         <strong>{department.display_name}</strong>
-        <span>{department.provider === 'wecom' ? '企业微信' : '钉钉'} · 直属成员 {department.direct_members} · {
+        <span>{enterpriseProviderName(department.provider)} · 直属成员 {department.direct_members} · {
           department.active ? '有效' : '第三方已删除'}</span>
       </button>
     </div>

@@ -95,7 +95,7 @@ export default function BotSettings() {
     <p>{t('channelBot.intro')}</p>
     <div className="bot-settings-list">
       {bots.map((bot) => <div className="bot-settings-card" key={bot.id}><div className="bot-settings-row">
-        <div><strong>{bot.name}</strong><span>{bot.platform === 'wecom' ? t('channelBot.wecom') : t('channelBot.dingtalk')} · {bot.app_id}</span></div>
+        <div><strong>{bot.name}</strong><span>{t(`channelBot.${bot.platform}`)} · {bot.app_id}</span></div>
         <span role="status">{t(`channelBot.status.${bot.status}` as 'channelBot.status.connected')}{bot.error ? ` · ${bot.error}` : ''}</span>
         <BotPrivateWhitelist botId={bot.id} />
         <BotPrivateWhitelist botId={bot.id} scope="group" />
@@ -109,10 +109,11 @@ export default function BotSettings() {
     <div className="bot-settings-form">
       <label>{t('channelBot.platform')}<Select value={draft.platform} disabled={!!editingId} onChange={(event) => setField('platform', event.target.value as BotPlatform)}>
         <option value="wecom">{t('channelBot.wecom')}</option><option value="dingtalk">{t('channelBot.dingtalk')}</option>
+        <option value="feishu">{t('channelBot.feishu')}</option><option value="lark">{t('channelBot.lark')}</option>
       </Select></label>
       <label>{t('channelBot.name')}<Input value={draft.name} onChange={(event) => setField('name', event.target.value)} /></label>
-      <label>{draft.platform === 'wecom' ? 'Bot ID' : 'Client ID'}<Input value={draft.app_id} onChange={(event) => setField('app_id', event.target.value)} /></label>
-      <label>{draft.platform === 'wecom' ? 'Secret' : 'Client Secret'}<Input type="password" value={draft.secret} placeholder={editingId ? t('channelBot.keepSecret') : ''} onChange={(event) => setField('secret', event.target.value)} /></label>
+      <label>{draft.platform === 'wecom' ? 'Bot ID' : draft.platform === 'dingtalk' ? 'Client ID' : 'App ID'}<Input value={draft.app_id} onChange={(event) => setField('app_id', event.target.value)} /></label>
+      <label>{draft.platform === 'wecom' ? 'Secret' : draft.platform === 'dingtalk' ? 'Client Secret' : 'App Secret'}<Input type="password" value={draft.secret} placeholder={editingId ? t('channelBot.keepSecret') : ''} onChange={(event) => setField('secret', event.target.value)} /></label>
       {draft.platform === 'dingtalk' && <label>{t('channelBot.cardTemplate')}<Input value={draft.card_template_id || ''} placeholder={t('channelBot.cardTemplatePlaceholder')} onChange={(event) => setField('card_template_id', event.target.value)} /></label>}
       {draft.platform === 'dingtalk' && <label>{t('channelBot.reviewCardTemplate')}<Input value={draft.review_card_template_id || ''} placeholder={t('channelBot.reviewCardTemplatePlaceholder')} onChange={(event) => setField('review_card_template_id', event.target.value)} /></label>}
       <label>{t('channelBot.defaultProject')}<Select required value={draft.default_project_id} onChange={(event) => setDraft((current) => ({ ...current, default_project_id: event.target.value, default_task_id: '' }))}>
@@ -130,7 +131,10 @@ export default function BotSettings() {
         <a href="https://open.dingtalk.com/document/orgapp/create-and-deliver-cards" target="_blank" rel="noopener noreferrer">{t('channelBot.cardPermissionDocs')}</a>
       </div>
     </div>}
-    <p className="bot-settings-hint">{draft.platform === 'wecom' ? t('channelBot.wecomHint') : t('channelBot.dingtalkHint')}</p>
+    <p className="bot-settings-hint">{draft.platform === 'wecom' ? t('channelBot.wecomHint') : draft.platform === 'dingtalk' ? t('channelBot.dingtalkHint') : t('channelBot.feishuHint')}</p>
+    {(draft.platform === 'feishu' || draft.platform === 'lark') && <div className="bot-settings-help-links">
+      <a href={draft.platform === 'feishu' ? 'https://open.feishu.cn/app' : 'https://open.larksuite.com/app'} target="_blank" rel="noopener noreferrer">{t(draft.platform === 'feishu' ? 'channelBot.feishuConsole' : 'channelBot.larkConsole')}</a>
+    </div>}
     {error && <p className="bot-settings-error" role="alert">{error}</p>}
     <div className="bot-settings-actions"><Button variant="primary" loading={busy} disabled={!valid} onClick={() => void save()}>{t('common.save')}</Button>{editingId && <Button variant="ghost" onClick={reset}>{t('common.cancel')}</Button>}</div>
     <ConfirmDialog open={!!deleteId} title={t('channelBot.deleteTitle')} message={t('channelBot.deleteHint')} danger loading={busy} onCancel={() => setDeleteId(null)} onConfirm={() => void remove()} />

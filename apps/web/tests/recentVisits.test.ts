@@ -4,7 +4,47 @@ import test from 'node:test'
 import { setAppearanceScope } from '../src/utils/appearanceStorage'
 import { useRecentVisitsStore, recentVisitPath } from '../src/stores/recentVisitsStore'
 import { useChatListStore } from '../src/stores/chatSessionStore'
-import { chatSessionApi } from '../src/api/client'
+import { chatSessionApi, taskApi, type Task } from '../src/api/client'
+import { useTaskStore } from '../src/stores/taskStore'
+
+test('task deletion removes its recent visit only after success and persists the removal', async () => {
+  installDomEnvironment()
+  setAppearanceScope(null)
+  const recent = useRecentVisitsStore.getState()
+  recent.visit({ kind: 'task', id: 'deleted', projectId: 'p', title: '待删除任务' })
+  recent.visit({ kind: 'task', id: 'kept', projectId: 'p', title: '保留任务' })
+  recent.visit({ kind: 'task', id: 'deleted', projectId: 'other', title: '其他项目' })
+  recent.visit({ kind: 'session', id: 'deleted', projectId: 'p', title: '同 ID 会话' })
+  const before = useRecentVisitsStore.getState().entries
+  const originalDelete = taskApi.delete
+  const originalState = useTaskStore.getState()
+  const tasks = [{ id: 'deleted' }, { id: 'kept' }] as Task[]
+  useTaskStore.setState({ tasks, activeTaskId: 'deleted' })
+  try {
+    taskApi.delete = async () => { throw new Error('删除失败') }
+    await assert.rejects(useTaskStore.getState().deleteTask('deleted', 'p'), /删除失败/)
+    assert.deepEqual(useRecentVisitsStore.getState().entries, before)
+    assert.deepEqual(useTaskStore.getState().tasks, tasks)
+    assert.equal(useTaskStore.getState().activeTaskId, 'deleted')
+
+    taskApi.delete = async (...args) => {
+      assert.deepEqual(args, ['deleted', 'p', true])
+      assert.deepEqual(useRecentVisitsStore.getState().entries, before)
+      return { status: 'deleted' }
+    }
+    await useTaskStore.getState().deleteTask('deleted', 'p', true)
+    const expected = before.filter(x => !(x.kind === 'task' && x.projectId === 'p' && x.id === 'deleted'))
+    assert.deepEqual(useRecentVisitsStore.getState().entries, expected)
+    useRecentVisitsStore.setState({ entries: [] })
+    recent.hydrate()
+    assert.deepEqual(useRecentVisitsStore.getState().entries, expected)
+    assert.deepEqual(useTaskStore.getState().tasks, [{ id: 'kept' }])
+    assert.equal(useTaskStore.getState().activeTaskId, null)
+  } finally {
+    taskApi.delete = originalDelete
+    useTaskStore.setState(originalState)
+  }
+})
 
 test('bulk deletion clears only successfully deleted sessions in the owning project', async () => {
   installDomEnvironment()

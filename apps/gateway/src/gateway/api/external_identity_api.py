@@ -20,7 +20,7 @@ async def create_source(request: Request, body: SourceInput):
 
 @router.get("/admin/identity-sources")
 async def list_sources(request: Request, q: str = Query('', max_length=128),
-                       provider: Literal['dingtalk', 'wecom'] | None = None,
+                       provider: Literal['dingtalk', 'wecom', 'feishu', 'lark'] | None = None,
                        status: Literal['enabled', 'disabled'] | None = None,
                        sort: Literal['created_at', 'tenant_id'] = 'created_at',
                        direction: Literal['asc', 'desc'] = 'desc',

@@ -24,6 +24,8 @@ export interface ScheduleNotificationOptions {
 export interface ProjectSchedule {
   id: string
   name: string
+  creator_name?: string | null
+  creator_username?: string | null
   target_type?: 'project' | 'task'
   target_task_id?: string | null
   target_task_title?: string | null
@@ -64,6 +66,7 @@ export interface ScheduleRun {
   notification_error?: string | null
   reason?: string | null
   task_id?: string | null
+  created_tasks?: Array<{ id: string; title: string; workflow_id?: string | null; scheduled_start_at?: string | null; workflow_run_id?: string | null }>
   user_message_id?: string | null
   assistant_message_id?: string | null
   coordinator_turn_id?: string | null

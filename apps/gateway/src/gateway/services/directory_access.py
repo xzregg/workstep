@@ -5,7 +5,7 @@ from sqlalchemy import select,update
 from gateway.models import User,AuthSession,PlatformSetting,DirectoryPerson
 
 PREFIX='directory-disabled:'
-ENTERPRISE_ACCOUNT_SOURCES={'directory_sync','dingtalk','wecom'}
+ENTERPRISE_ACCOUNT_SOURCES={'directory_sync','dingtalk','wecom','feishu','lark'}
 
 async def disable_access(session,user_ids,source_id=None):
     if not user_ids:return

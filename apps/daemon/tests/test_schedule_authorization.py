@@ -29,9 +29,11 @@ async def test_native_remote_schedule_rechecks_project_device_authorization(
     workflow = await manager.run_db(project.id, lambda p: manager.create_workflow(p, "流程", DEFAULT_STEPS))
     actor = ActorSnapshot("remote-user", "远程用户", "remote-device", "远程电脑", "remote")
     agent = SimpleNamespace()
+    agent_calls = []
 
     async def generate(*args, **kwargs):
-        return {"title": "Generated task", "workflow_id": workflow["id"]}
+        agent_calls.append(kwargs)
+        return {"title": "Generated task", "description": "Generated content", "workflow_id": workflow["id"]}
 
     # Use the same agent seam as the real scheduled task assistant.
     agent.run_schedule = generate
@@ -73,7 +75,9 @@ async def test_native_remote_schedule_rechecks_project_device_authorization(
         assert task.creator_id == actor.actor_id
     else:
         assert run["status"] == "failed", run
-        assert run["reason"] == "Managed capability denied: task.create"
+        assert run["reason"].startswith("Managed capability denied: task.create")
+        assert run["reason"] != "Managed capability denied: task.create"
+        assert not agent_calls
         assert await manager.run_db(project.id, lambda _: Task.select().count()) == 0
 
 
@@ -134,3 +138,33 @@ async def test_scheduled_creation_does_not_borrow_actor_or_confuse_authorities(m
         else:
             with pytest.raises(PermissionError, match="Managed capability denied"):
                 await _require_scheduled_creation("project", fields, source)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("case,detail", [
+    ("missing-creator", "定时规则缺少创建人身份"),
+    ("missing-policy", "网关权限快照尚未就绪"),
+    ("expired-policy", "网关权限快照已过期"),
+    ("legacy-local", "定时规则创建人与当前网关用户不匹配"),
+    ("denied", "定时规则创建人没有目标项目的任务创建权限"),
+])
+async def test_schedule_denial_explains_required_repair(monkeypatch, case, detail):
+    import main
+    from services.gateway_client.policy import ManagedPolicy, ManagedPolicyCache
+    from services.task_creation import _require_scheduled_creation
+
+    cache = ManagedPolicyCache()
+    now = int(time.time())
+    if case != "missing-policy":
+        cache.apply(ManagedPolicy(
+            "gateway", "device", "owner", 1, now,
+            now - 1 if case == "expired-policy" else now + 600,
+            frozenset(), frozenset(), False, case != "denied", False, False, False,
+        ))
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(managed_config=object(), policy_cache=cache))
+    fields = {} if case == "missing-creator" else {
+        "creator_id": "old-device-identity" if case == "legacy-local" else "owner",
+        "creator_device_id": "device",
+    }
+    with pytest.raises(PermissionError, match=detail):
+        await _require_scheduled_creation("project", fields, "local" if case == "legacy-local" else "managed")

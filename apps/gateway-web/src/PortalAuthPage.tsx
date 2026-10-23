@@ -1,3 +1,4 @@
+import type { EnterpriseProvider } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
@@ -8,7 +9,7 @@ import { safeNextPath } from './portalAccount'
 import type { RegistrationMode } from './portalAccount'
 export { safeNextPath, validPortalAccount } from './portalAccount'
 
-type IdentitySource = { id: string; provider: 'dingtalk' | 'wecom' }
+type IdentitySource = { id: string; provider: EnterpriseProvider }
 
 export function PortalAuthPage() {
   const navigate = useNavigate()

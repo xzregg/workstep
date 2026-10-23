@@ -26,11 +26,14 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
   const gatewayUrl = gatewayRemotePortalUrl()
   const context = useGatewaySessionStore(state => state.session)
   const sessionError = useGatewaySessionStore(state => state.error)
+  const sessionErrorStatus = useGatewaySessionStore(state => state.errorStatus)
+  const loading = useGatewaySessionStore(state => state.loading)
   const load = useGatewaySessionStore(state => state.load)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(false)
   const appearanceIdentity = useRef<string | null>(null)
   const disconnected = error || !!sessionError
+  const requiresEntry = !!sessionError && (sessionErrorStatus === 401 || sessionErrorStatus === 403)
   const lastContext=useRef(context)
   if(context)lastContext.current=context
   const displayContext=context ?? lastContext.current
@@ -43,6 +46,7 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
     async function refresh() {
       if (!active || refreshing) return
       refreshing = true
+      let retryDelay = 20000
       window.clearTimeout(timer)
       try {
         const next = await load(true)
@@ -64,10 +68,12 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
         }
         if (active) { setReady(true); setError(false) }
       } catch {
+        retryDelay = 5000
         if (active) { setReady(false); setError(true) }
       } finally {
         refreshing = false
-        if (active) timer = window.setTimeout(() => void refresh(), 20000)
+        const status = useGatewaySessionStore.getState().errorStatus
+        if (active && status !== 401 && status !== 403) timer = window.setTimeout(() => void refresh(), retryDelay)
       }
     }
     const resume = () => void refresh()
@@ -109,8 +115,12 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
     </div>}
     <div className="gateway-remote-body">
       <div className="gateway-remote-content">{ready && context ? <NavigationHeaderContext.Provider value={deviceTrigger}>{children}</NavigationHeaderContext.Provider> : <div className="gateway-remote-loading" role="status">
-      {!disconnected && <Spinner size={16} />}
-      {disconnected ? t('gatewayRemote.disconnected') : t('gatewayRemote.loading')}
+      {(!requiresEntry || loading) && <Spinner size={16} />}
+      <span>{requiresEntry ? t('gatewayRemote.sessionExpired') : disconnected ? t('gatewayRemote.reconnecting') : t('gatewayRemote.loading')}</span>
+      <div className="gateway-recovery-actions">
+        <button type="button" className="btn-secondary" disabled={loading} onClick={() => window.dispatchEvent(new Event('workstep:resume'))}>{t('gatewayRemote.retryNow')}</button>
+        <a href={gatewayUrl}>{t('gatewayRemote.back')}</a>
+      </div>
     </div>}</div>
     </div>
   </div>

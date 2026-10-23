@@ -10,8 +10,8 @@ export default function ChatSessionSourceBadge({ source, platform, conversationT
 }) {
   const { t } = useI18n()
   if (source !== 'channel') return null
-  const platformLabel = platform === 'wecom' ? t('channelBot.wecom')
-    : platform === 'dingtalk' ? t('channelBot.dingtalk') : t('chatSession.channelSource')
+  const platformLabel = platform === 'wecom' || platform === 'dingtalk' || platform === 'feishu' || platform === 'lark'
+    ? t(`channelBot.${platform}`) : t('chatSession.channelSource')
   const typeLabel = conversationType
     ? t(conversationType === 'single' ? 'chatSession.channelPrivate' : 'chatSession.channelGroup') : null
   const label = [platformLabel, typeLabel].filter(Boolean).join(' · ')

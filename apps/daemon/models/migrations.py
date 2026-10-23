@@ -122,7 +122,7 @@ _ADDITIVE_COLUMNS = {
         "stop_condition": "TEXT NOT NULL DEFAULT 'manual'",
         "notification_json": 'TEXT NOT NULL DEFAULT \'{"enabled": false}\'',
     },
-    "schedule_runs": {"coordinator_turn_id": "TEXT", "instruction": "TEXT", "notification_json": "TEXT", "notification_status": "TEXT NOT NULL DEFAULT 'pending'", "notification_error": "TEXT"},
+    "schedule_runs": {"created_tasks_json": "TEXT", "coordinator_turn_id": "TEXT", "instruction": "TEXT", "notification_json": "TEXT", "notification_status": "TEXT NOT NULL DEFAULT 'pending'", "notification_error": "TEXT"},
     "coordinator_turns": {
         "execution_scope": "TEXT NOT NULL DEFAULT 'main'",
         "schedule_run_id": "TEXT",

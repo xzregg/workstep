@@ -1,0 +1,8 @@
+.task-draft-preview {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 9px 11px;
+  margin-bottom: 8px;
+}
+.task-draft-preview-time { display: block; margin-top: 6px; color: var(--meta); }

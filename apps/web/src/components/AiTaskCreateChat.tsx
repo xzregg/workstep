@@ -21,6 +21,7 @@ import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import AssistantChatPanel from './AssistantChatPanel'
 import MarkdownMessage from './MarkdownMessage'
+import './TaskDraftPreview.css'
 
 
 export interface AiTaskCreateChatProps {
@@ -260,14 +261,15 @@ export default function AiTaskCreateChat({
           <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
             {t('taskList.aiDraftTitle')}
           </div>
-          <div style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface)', padding: '9px 11px' }}>
-            {typeof latestResult.title === 'string' && latestResult.title.trim() && (
-              <div style={{ fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))' }}>{latestResult.title}</div>
+          {((latestResult as TaskDraftResult).task_drafts || [latestResult]).map((draft, index) => <div className="task-draft-preview" key={index}>
+            {typeof draft.title === 'string' && draft.title.trim() && (
+              <div style={{ fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))' }}>{draft.title}</div>
             )}
-            <div style={{ marginTop: typeof latestResult.title === 'string' && latestResult.title.trim() ? 6 : 0, fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6 }}>
-              <MarkdownMessage content={String(latestResult.description || '')} projectId={projectId} />
+            <div style={{ marginTop: typeof draft.title === 'string' && draft.title.trim() ? 6 : 0, fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6 }}>
+              <MarkdownMessage content={String(draft.description || '')} projectId={projectId} />
             </div>
-          </div>
+            {typeof draft.scheduled_start_at === 'string' && <time className="task-draft-preview-time" dateTime={draft.scheduled_start_at}>{new Date(draft.scheduled_start_at).toLocaleString()}</time>}
+          </div>)}
         </div>
       ) : undefined}
       quickPromptsLabel={t('taskList.aiQuickPromptsLabel')}

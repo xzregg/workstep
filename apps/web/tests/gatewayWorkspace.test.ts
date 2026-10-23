@@ -8,7 +8,8 @@ test('project workspace loads only its signed project and deduplicates session l
   const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
   const oldFetch = globalThis.fetch
   Object.defineProperty(globalThis, 'window', { configurable: true,
-    value: { location: { pathname: '/', hostname: 'd-device-1.localhost', protocol: 'http:', port: '8700' } } })
+    value: { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout,
+      location: { pathname: '/', hostname: 'd-device-1.localhost', protocol: 'http:', port: '8700' } } })
   const calls: string[] = []
   globalThis.fetch = async input => {
     calls.push(String(input))

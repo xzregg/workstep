@@ -68,3 +68,22 @@
   text-overflow: ellipsis;
   overflow-wrap: normal;
 }
+
+.schedule-list-creator {
+  margin-top: 5px;
+  color: var(--meta);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.45;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.schedule-run-task-link {
+  margin-top: 7px;
+  margin-right: 6px;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

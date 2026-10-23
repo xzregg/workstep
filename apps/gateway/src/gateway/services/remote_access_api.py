@@ -189,11 +189,11 @@ async def redeem_device_ticket(call: GatewayCall):
     auth_session, token = IdentityService._create_session(user_id)
     auth_session.device_id = device_id
     login_method = claims.get("login_method", "unknown")
-    if login_method not in {"password", "dingtalk", "wecom", "scan", "unknown"}:
+    if login_method not in {"password", "dingtalk", "wecom", "feishu", "lark", "scan", "unknown"}:
         login_method = "unknown"
     if login_method == "unknown":
         auth_session.authentication_provider = "unknown"
-    if login_method in {"dingtalk", "wecom", "scan"}:
+    if login_method in {"dingtalk", "wecom", "feishu", "lark", "scan"}:
         auth_session.authentication_method = "scan"
         auth_session.authentication_provider = login_method if login_method != "scan" else None
     if claims["kind"] == "project.access":

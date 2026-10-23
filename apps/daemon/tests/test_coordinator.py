@@ -1222,6 +1222,118 @@ async def test_archive_experience_uses_coordinator_with_task_history(
     assert len(CoordinatorFakeEngine.calls) == 1
     assert "曾遇到构建失败，需要修正类型错误" in CoordinatorFakeEngine.calls[0]["prompt"]
     assert "Record only directly evidenced mistakes" in CoordinatorFakeEngine.calls[0]["prompt"]
+    prompt = CoordinatorFakeEngine.calls[0]["prompt"]
+    assert "at least two distinct corrections or rejections about the SAME mistake" in prompt
+    assert "Default to zero lessons" in prompt
+    assert "even when worded differently" in prompt
+    assert "Simplified Chinese" in prompt
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("reply", ["- " + "长" * 51, "- 一\n- 二\n- 三\n- 四"])
+async def test_archive_rejects_verbose_generated_lessons(api_context, monkeypatch, reply):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    monkeypatch.setattr(CoordinatorFakeEngine, "reply", {"reply": reply})
+    prepared = await client.post(
+        f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
+    )
+    assert prepared.status_code == 502
+    assert "每条不超过 50 字" in prepared.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_archive_existing_rule_is_not_a_new_draft(api_context, monkeypatch):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    rule = "- 环境配置不得提交。"
+    await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": rule})
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    monkeypatch.setattr(CoordinatorFakeEngine, "reply", {"reply": rule})
+    prepared = await client.post(
+        f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
+    )
+    assert prepared.status_code == 200
+    assert prepared.json()["has_experience"] is False
+    confirmed = await client.post(
+        f"/api/task/{task_id}/archive-experience/confirm?project_id={project_id}",
+        json={"experience": rule},
+    )
+    assert confirmed.json() == {"archived": True, "memory_saved": False}
+    memory = await client.get(f"/api/fs/memory?project_id={project_id}")
+    assert memory.json()["content"] == rule
+
+
+@pytest.mark.anyio
+async def test_archive_evidence_includes_late_corrections_and_existing_memory(
+    api_context, monkeypatch,
+):
+    from models import Message
+    from models.fields import utc_now
+    import main
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    project = main.project_manager.get_project_by_id(project_id)
+    memory = "- 提交前核对类型错误。"
+    await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": memory})
+
+    def history(_project):
+        for index in range(205):
+            Message.create(
+                id=f"archive-history-{index}", task=task_id, step_key="frontend",
+                role="user", channel="coordinator", sequence=1000 + index,
+                position=index, created_at=utc_now(),
+                content=("再次提醒：禁止提交环境配置" if index >= 203 else "普通进度查询"),
+            )
+        Message.create(
+            id="old-archive-draft", task=task_id, step_key="archive",
+            role="assistant", channel="archive_experience", sequence=1300,
+            position=300, created_at=utc_now(), content="旧提炼不能作为重复发生的证据",
+        )
+
+    await main.project_manager.run_db(project_id, history)
+    loaded = await main.project_manager.run_db(
+        project_id,
+        lambda _project: main.coordinator_module._archive_drafts._load_archive_evidence_sync(
+            project_id, task_id,
+        ),
+    )
+    evidence = loaded["evidence"]
+    assert evidence["existing_memory"] == memory
+    assert {"archive-history-203", "archive-history-204"} <= {
+        message["id"] for message in evidence["messages"]
+    }
+    assert all(message["channel"] != "archive_experience" for message in evidence["messages"])
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("reply", ["- No reusable error lessons found.", "无可复用的错误经验"])
+async def test_archive_no_lessons_does_not_create_memory(api_context, monkeypatch, reply):
+    from engines.core.registry import ENGINE_REGISTRY
+    import main
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    monkeypatch.setattr(CoordinatorFakeEngine, "reply", {"reply": reply})
+    prepared = await client.post(
+        f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
+    )
+    assert prepared.status_code == 200
+    assert prepared.json()["has_experience"] is False
+    confirmed = await client.post(
+        f"/api/task/{task_id}/archive-experience/confirm?project_id={project_id}",
+        json={"experience": ""},
+    )
+    assert confirmed.json() == {"archived": True, "memory_saved": False}
+    project = main.project_manager.get_project_by_id(project_id)
+    assert not (project.workstep_dir / "MEMORY.md").exists()
 
 
 @pytest.mark.anyio
