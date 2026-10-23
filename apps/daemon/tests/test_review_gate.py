@@ -926,8 +926,10 @@ async def test_automatic_review_retries_with_feedback(tmp_path):
             tmp_path / "artifacts" / "default" / task.id / "build" / "2"
         ).is_dir()
         assert "第 2 轮" not in calls[0]
-        assert "/1" in calls[0]
-        assert "/2" in calls[2]
+        # This workflow declares no output ports, so its execution prompts do
+        # not include output paths. Round-specific storage is asserted above.
+        assert "## Step requirements\n完成构建" in calls[0]
+        assert "## Step requirements\n完成构建" in calls[2]
         reviews = list(
             ReviewRun.select()
             .where(ReviewRun.workflow_run == workflow_run)

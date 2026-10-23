@@ -35,7 +35,7 @@ typing-inspection==0.4.2
 uvicorn==0.51.0
 uvloop==0.22.1
 watchfiles==1.2.0
-websockets==16.0
+websockets==15.0.1
 
 # The following packages were excluded from the output:
 # workstep-gateway-protocol

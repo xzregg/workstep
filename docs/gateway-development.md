@@ -1,5 +1,17 @@
 # Gateway 开发与部署
 
+## 飞书与 Lark 企业身份
+
+管理后台「平台设置 → 组织同步与扫码登录」支持添加飞书／Lark 企业自建应用。填写企业 `Tenant Key`（开放平台返回的 `tenant_key`）、`App ID` 和 `App Secret`，分别控制应用、扫码登录和组织同步的启用状态。密钥沿用网关加密存储，列表不回显。`provider` 分别为 `feishu`、`lark`；登录、同步及管理 API 沿用现有 `/api/admin/identity-sources` 和 `/api/auth/external/{source_id}/…` 路径。
+
+在对应开放平台配置页面展示的完整登录回调地址 `/api/auth/external/{source_id}/callback`。登录采用授权码和 PKCE S256、一次性 state，回调兑换使用相同地址；服务端读取真实 `tenant_key` 校验所属企业。登录与通讯录均以应用内 `open_id` 作为稳定 subject，沿用现有账号关联、禁用和设备授权策略；已同步成员登录不会重复创建账号。由于 `open_id` 随应用变化，已保存的飞书／Lark App ID 不可修改，更换应用须新建身份源。飞书使用 `accounts.feishu.cn`／`open.feishu.cn`，Lark 使用 `accounts.larksuite.com`／`open.larksuite.com`，不自动切换区域。
+
+组织同步需授权读取部门、用户基础信息和通讯录授权范围，并设置应用的数据可见范围。复用「读取预览 → 选择组织／用户 → 检查变更 → 确认同步」、用户组映射、每天／每周计划、进度恢复与失败记录；当前不配置飞书通讯录实时回调。连接器分页读取部门、成员和授权范围，部门标识采用 `open_department_id`，多部门成员按 `open_id` 合并。已离职、离开企业或冻结的成员标记为不可用；只有明确证明读取范围完整时，才允许依据缺失数据推断移除，读取受限或分页失败不会当作空目录应用。
+
+连接器职责为 `services/feishu_identity.py`，HTTP 使用异步 `httpx`，不在同步流程中引入官方 SDK 的同步 I/O。自动化覆盖 `tests/test_feishu_identity.py`（双区域、真实 API 回调、同一成员同步／登录、重放、应用 ID 固定、分页、受限权限与健康检查）及既有身份／组织同步测试。配置字段和入口见 Gateway Web `OrganizationSyncSettings`、`EnterpriseLoginChoices`，平台名称与后台链接集中在 `enterpriseProviders.ts`。
+
+官方接口：[授权码](https://open.feishu.cn/document/authentication-management/access-token/obtain-oauth-code)、[用户信息](https://open.feishu.cn/document/server-docs/authentication-management/login-state-management/get)、[通讯录授权范围](https://open.feishu.cn/document/server-docs/contact-v3/scope/list)。真实租户的扫码、通讯录授权范围和同步结果仍需联调；本机渠道机器人需另行配置，见[渠道机器人](channel-bots.md#飞书与国际版-lark)。
+
 第三方系统登录授权：超级管理员在「平台设置 → 第三方登录授权」维护完整 HTTP/HTTPS 回调 URL；第三方从 `/auth/authorize` 发起登录，以 `code + request_id` 调用 `/api/auth/exchange` 一次兑换用户 ID、账号、显示名。详见 [第三方接入指南](gateway-third-party-login-integration.md) 和 [实现说明与流程图](../plans/gateway-third-party-login.md)。
 
 Docker 部署使用根目录 `Dockerfile` 构建的 `workstep:latest` 共用镜像。

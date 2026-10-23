@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom'
 import { OrganizationSyncNotice } from '../src/OrganizationSyncNotice'
 import { OrganizationSyncHistory } from '../src/OrganizationSyncHistory'
 import { OrganizationSyncSettings } from '../src/OrganizationSyncSettings'
+import { EnterpriseLoginChoices } from '../src/EnterpriseLoginChoices'
 import { AdminUsersPage } from '../src/AdminUsersPage'
 import { MemoryRouter } from 'react-router-dom'
 const dom = new JSDOM('<html><body></body></html>', {url:'https://gateway.test/admin/settings'})
@@ -12,6 +13,36 @@ Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window
 const {render,screen,fireEvent,waitFor,cleanup,within}=await import('@testing-library/react')
 const original=globalThis.fetch
 afterEach(()=>{cleanup();globalThis.fetch=original})
+
+test('Feishu and Lark editors submit tenant and application IDs with region-specific links', async () => {
+ for (const [provider, label, host] of [['feishu', '飞书', 'open.feishu.cn'], ['lark', 'Lark', 'open.larksuite.com']]) {
+  let saved: Record<string, unknown> | undefined
+  globalThis.fetch = async (_input, init) => {
+   if (init?.method === 'POST') { saved = JSON.parse(String(init.body)); return Response.json({id:'source'}, {status:201}) }
+   return Response.json({sources:[]})
+  }
+  render(<OrganizationSyncSettings csrf="csrf" />)
+  fireEvent.click(await screen.findByRole('button', {name:`添加${label}应用`}))
+  const dialog = within(screen.getByRole('dialog', {name:`${label}应用配置`}))
+  assert.equal(new URL(dialog.getByRole('link').getAttribute('href')!).host, host)
+  fireEvent.change(dialog.getByLabelText(/Tenant Key/), {target:{value:'tenant'}})
+  fireEvent.change(dialog.getByLabelText('App ID'), {target:{value:'cli_app'}})
+  fireEvent.change(dialog.getByLabelText('应用 Secret'), {target:{value:'secret'}})
+  fireEvent.click(dialog.getByRole('button', {name:'保存配置'}))
+  await waitFor(() => assert.equal(saved?.provider, provider))
+  assert.equal(saved?.tenant_id, 'tenant'); assert.equal(saved?.client_id, 'cli_app')
+  assert.equal(saved?.agent_id, null)
+  cleanup()
+ }
+})
+
+test('enterprise login choices display distinct Feishu and Lark entries', () => {
+ const selected: string[] = []
+ render(<EnterpriseLoginChoices sources={[{id:'cn',provider:'feishu'},{id:'intl',provider:'lark'}]} passwordEnabled={false} onSelect={id=>selected.push(id)}/>)
+ fireEvent.click(screen.getByRole('button', {name:'飞书扫码登录'}))
+ fireEvent.click(screen.getByRole('button', {name:'Lark扫码登录'}))
+ assert.deepEqual(selected, ['cn', 'intl'])
+})
 
 test('each application editor links to its provider console in a new tab',async()=>{
  globalThis.fetch=async()=>Response.json({sources:[]})

@@ -100,8 +100,8 @@ export default function NotificationHooksDialog({projectId,workflowId,workflowNa
     setConfirm('')
   }
   const switchType=()=>{if(busy)return;if(dirty)setConfirm('switch');else onSwitchType()}
-  const payload=preview?.payload as {markdown?:{text?:string;content?:string}}|undefined
-  const message=payload?.markdown?.text||payload?.markdown?.content
+  const payload=preview?.payload as {markdown?:{text?:string;content?:string};card?:{elements?:{text?:{content?:string}}[]}}|undefined
+  const message=payload?.markdown?.text||payload?.markdown?.content||payload?.card?.elements?.map(element=>element.text?.content||'').join('\n\n')
   return createPortal(<div className="workflow-hooks-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}>
     <ResizablePanel ref={dialogRef} className="workflow-hooks-dialog" role="dialog" aria-modal="true" aria-label={t('notificationHooks.notification')} minWidth={650} minHeight={480}>
       <header className="workflow-hooks-header"><strong>{t('workflowHooks.title')} · {workflowName}</strong><Button onClick={close} disabled={!!busy}>{t('workflowHooks.close')}</Button></header>
@@ -117,10 +117,11 @@ export default function NotificationHooksDialog({projectId,workflowId,workflowNa
           {tab==='config'&&<fieldset className="workflow-hooks-editor notification-hooks-columns" disabled={!!busy}>
             <div><label>{t('workflowHooks.name')}<input value={hook.name} maxLength={128} onChange={e=>change({name:e.target.value})}/></label>
               <label className="workflow-hooks-checkbox"><input type="checkbox" checked={hook.enabled} onChange={e=>change({enabled:e.target.checked})}/>{t('workflowHooks.enabled')}</label>
-              <label>{t('notificationHooks.platform')}<Select value={hook.platform} onChange={e=>change({platform:e.target.value as NotificationHook['platform'],secret:'',...(e.target.value==='generic'?{markdown_template:null}:{})})}>{(['dingtalk','wecom','generic'] as const).map(p=><option key={p} value={p}>{platformLabel(p)}</option>)}</Select></label>
+              <label>{t('notificationHooks.platform')}<Select value={hook.platform} onChange={e=>change({platform:e.target.value as NotificationHook['platform'],secret:'',...(e.target.value==='generic'?{markdown_template:null}:{})})}>{(['dingtalk','wecom','feishu','lark','generic'] as const).map(p=><option key={p} value={p}>{platformLabel(p)}</option>)}</Select></label>
               <label>{t('notificationHooks.url')}<input data-testid="notification-url" type={showUrl?'text':'password'} autoComplete="off" value={hook.url} maxLength={4096} onChange={e=>change({url:e.target.value})}/></label>
               <Button onClick={()=>setShowUrl(v=>!v)}>{t(showUrl?'workflowHooks.hide':'workflowHooks.show')}</Button><p className="workflow-hooks-hint">{t('notificationHooks.urlHint')}</p>
-              {hook.platform==='dingtalk'&&<label>{t('notificationHooks.secret')}<input type="password" autoComplete="off" value={hook.secret} maxLength={1024} onChange={e=>change({secret:e.target.value})}/></label>}
+              {(hook.platform==='feishu'||hook.platform==='lark')&&<p className="workflow-hooks-hint">{t('notificationHooks.feishuHint')}</p>}
+              {['dingtalk','feishu','lark'].includes(hook.platform)&&<label>{t(hook.platform==='dingtalk'?'notificationHooks.secret':'notificationHooks.signingSecret')}<input aria-label={t(hook.platform==='dingtalk'?'notificationHooks.secret':'notificationHooks.signingSecret')} type="password" autoComplete="off" value={hook.secret} maxLength={1024} onChange={e=>change({secret:e.target.value})}/></label>}
               <h3>{t('notificationHooks.delivery')}</h3><p className="workflow-hooks-hint">{t('notificationHooks.deliveryHint')}</p>
               <Button onClick={()=>setConfirm('delete')}>{t('workflowHooks.delete')}</Button>
             </div><div><h3>{t('notificationHooks.subscribe')}</h3><p className="workflow-hooks-hint">{t('notificationHooks.eventHint')}</p>

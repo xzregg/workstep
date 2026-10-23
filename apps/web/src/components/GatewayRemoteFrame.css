@@ -21,7 +21,12 @@
   justify-content: center;
   flex: 1;
   gap: 8px;
+  flex-direction: column;
+  padding: 24px;
+  text-align: center;
 }
+
+.gateway-recovery-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; }
 
 .gateway-remote-banner {
   display: flex;

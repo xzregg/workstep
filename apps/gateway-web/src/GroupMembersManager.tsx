@@ -89,7 +89,7 @@ export function GroupMembersManager({groupId, csrf, onChanged}: {
     <td>{member.source==='manual'?<div className="gateway-row-actions">
      <button type="button" disabled={loading || !csrf} aria-label={`调整${member.display_name}的角色`} onClick={()=>change('set_role',[member.user_id],member.role==='leader'?'member':'leader')}>{member.role==='leader'?'设为成员':'设为组长'}</button>
      <button type="button" disabled={loading || !csrf} aria-label={`移除 ${member.display_name}`} onClick={()=>change('remove',[member.user_id])}>移除</button>
-    </div>:<span className="gateway-person-note" title="请在钉钉或企业微信中调整，再同步组织">由组织同步管理</span>}</td>
+    </div>:<span className="gateway-person-note" title="请在对应企业平台中调整，再同步组织">由组织同步管理</span>}</td>
    </tr>)}
   </AdminRecordTable>
   {!loading && !members.length && <p>尚无成员。</p>}

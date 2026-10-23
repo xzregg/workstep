@@ -1595,6 +1595,17 @@ async def test_schedule_list_resolves_task_title_without_blocking_health(api_con
         "rule": {"kind": "once", "run_at": "2099-01-01T00:00:00Z", "timezone": "UTC"},
     })
     assert created.status_code == 200
+
+    def seed_creator(_project):
+        import json
+        from models import Schedule
+        row = Schedule.get_by_id(created.json()["id"])
+        template = json.loads(row.task_template_json)
+        template["_creator"] = {"name": "定时创建人", "username": "schedule-owner", "source": "local"}
+        row.task_template_json = json.dumps(template)
+        row.save()
+
+    await main.project_manager.run_db(project_id, seed_creator)
     project = __import__("main").project_manager.get_project_by_id(project_id)
     original_execute_sql = project.db.execute_sql
     entered = asyncio.Event()
@@ -1617,6 +1628,9 @@ async def test_schedule_list_resolves_task_title_without_blocking_health(api_con
     response = await listing
     assert response.status_code == 200
     assert response.json()["schedules"][0]["target_task_title"] == "关联任务的名称"
+    assert response.json()["schedules"][0]["creator_name"] == "定时创建人"
+    assert response.json()["schedules"][0]["creator_username"] == "schedule-owner"
+    assert "_creator" not in response.json()["schedules"][0]["task_template"]
 
 
 @pytest.mark.anyio
@@ -6439,3 +6453,74 @@ async def test_project_init_slow_connection_close_does_not_block_health(api_cont
     assert response.status_code == 200
     assert len(closed_states) >= 2
     assert all(closed_states)
+
+
+@pytest.mark.anyio
+async def test_dynamic_schedule_batch_api_preserves_creation_parameters_and_health(api_context, monkeypatch):
+    import main
+    from datetime import timezone
+    from types import SimpleNamespace
+    from services.remote_access import ActorSnapshot, actor_context
+
+    client, tmp_path = api_context
+    directory = tmp_path / 'dynamic-batch-api'
+    directory.mkdir()
+    pid = (await client.post('/api/project/init', json={'path': str(directory)})).json()['id']
+    workflow = (await client.post(f'/api/workflow/create?project_id={pid}', json={
+        'name': 'BatchFlow', 'steps': {'steps': [{'key': 'build', 'review': {'mode': 'skip'}}]},
+    })).json()
+    drafts = [{
+        'title': f'批量任务{i}', 'description': f'内容{i}', 'workflow_id': workflow['id'],
+        'cwd': str(directory), 'engine': 'codex', 'start_step_key': 'build',
+        'auto_start': False, 'review_overrides': {'build': {'prompt': f'审核{i}'}},
+        'scheduled_start_at': f'2099-02-0{i+1}T09:00:00+08:00',
+    } for i in range(5)]
+    agent = SimpleNamespace(run_schedule=AsyncMock(return_value=drafts))
+    monkeypatch.setattr(main.schedule_module, '_task_agent', agent)
+    with actor_context(ActorSnapshot('batch-owner', '创建人', 'batch-device', '测试设备', 'local', username='owner')):
+        created = await client.post(f'/api/schedule/create?project_id={pid}', json={
+            'name': '五任务计划', 'task_template': {'mode': 'agent', 'instruction': '生成五个任务，分别定时启动'},
+            'rule': {'kind': 'once', 'run_at': '2099-01-02T03:04:00Z', 'timezone': 'UTC'},
+            'execution_mode': 'immediate',
+        })
+    assert created.status_code == 200, created.text
+    schedule_id = created.json()['id']
+    entered, release = threading.Event(), threading.Event()
+    project = main.project_manager.get_project_by_id(pid)
+    original = project.db.execute_sql
+
+    def slow_insert(sql, *args, **kwargs):
+        if sql.startswith('INSERT INTO "tasks"'):
+            entered.set()
+            assert release.wait(3)
+        return original(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, 'execute_sql', slow_insert)
+    await main.schedule_module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        response = await asyncio.wait_for(client.get('/api/health'), timeout=0.2)
+        assert response.status_code == 200
+    finally:
+        release.set()
+    await main.schedule_module.wait_idle()
+    response = await client.get(f'/api/schedule/{schedule_id}/runs?project_id={pid}')
+    assert response.status_code == 200, response.text
+    run = response.json()['runs'][0]
+    assert run['status'] == 'created', run
+    assert len(run['created_tasks']) == 5
+    assert len({task['id'] for task in run['created_tasks']}) == 5
+    for i, task in enumerate(run['created_tasks']):
+        fetched = await client.get(f'/api/task/{task["id"]}?project_id={pid}')
+        assert fetched.status_code == 200, fetched.text
+        saved = fetched.json()
+        assert saved['title'] == f'批量任务{i}'
+        assert saved['creator_id'] == 'batch-owner'
+        assert saved['creator_username'] == 'owner'
+        assert saved['engine'] == 'codex'
+        assert saved['cwd'] == str(directory)
+        assert saved['scheduled_start_state'] == 'pending'
+        assert saved['scheduled_start_at'] == f'2099-02-0{i+1}T01:00:00+00:00'
+        config = (await client.get(f'/api/task/{task["id"]}/workflow?project_id={pid}')).json()
+        assert config['workflow']['nodes'][0]['review']['prompt'] == f'审核{i}'
+    assert agent.run_schedule.await_count == 1

@@ -22,8 +22,8 @@ uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule creat
   --json
 ```
 
-Create a dynamic schedule whose task assistant selects one candidate workflow
-and creates one task per occurrence:
+Create a dynamic schedule whose task assistant selects candidate workflows
+and creates one or more tasks per occurrence:
 
 ```bash
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule create \
@@ -39,6 +39,18 @@ uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule creat
   --overlap skip \
   --json
 ```
+
+The instruction can request multiple tasks with independent creation parameters,
+for example: "Create 5 tasks and start each tomorrow at 09:00, 10:00, 11:00,
+14:00 and 15:00 Asia/Shanghai." The assistant returns `task_drafts`, using the
+normal creation fields: `title`, `description`, `workflow_id`, `start_step_key`,
+`cwd`, `engine`, `auto_start`, `review_overrides`, `scheduled_start_at`.
+`scheduled_start_at` must be a future ISO timestamp with an explicit timezone;
+it delays startup and cannot be combined with `auto_start: true`. Omitted
+startup settings follow the schedule's execution mode. Creator identity comes
+from the saved schedule. Run history exposes every created task in
+`created_tasks`, with `task_id` retained as the first task for compatibility.
+A creation failure retains earlier successes and does not rerun the batch.
 
 Use `--at <ISO-date-time>` instead of `--cron` for a one-time schedule.
 The timezone defaults to `UTC`; pass `--timezone Asia/Shanghai` (or another IANA name) for local clock-based rules. The CLI

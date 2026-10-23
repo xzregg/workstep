@@ -7,7 +7,7 @@ import type { BulkAction } from './AdminBulkActionDialog'
 import { AdminUserActionDialog } from './AdminUserActionDialog'
 import type { AdminUser } from './AdminUsersPage'
 
-const sources: Record<string,string> = {local:'自主注册',admin_created:'管理员创建',directory_sync:'组织同步',dingtalk:'钉钉',wecom:'企业微信'}
+const sources: Record<string,string> = {local:'自主注册',admin_created:'管理员创建',directory_sync:'组织同步',dingtalk:'钉钉',wecom:'企业微信',feishu:'飞书',lark:'Lark'}
 export function AdminUserTable({users, csrf, loading, resetKey, onRefresh, canViewAudit = false}: {
  users: AdminUser[]; csrf: string; loading: boolean; resetKey: unknown; onRefresh: () => void; canViewAudit?: boolean
 }) {

@@ -12,8 +12,8 @@ from services.channels.media import incoming_content, load_outgoing_attachment
 
 def test_registry_discovers_concrete_channels_and_declares_media_capabilities():
     channels = discover_channels()
-    assert {'wecom', 'dingtalk'} <= channels.keys()
-    for key in ('wecom','dingtalk'):
+    assert {'wecom', 'dingtalk', 'feishu', 'lark'} <= channels.keys()
+    for key in ('wecom','dingtalk','feishu','lark'):
         assert issubclass(channels[key],ChannelAdapter)
         assert channels[key].CHANNEL_ID == key
         caps = channels[key].CAPABILITIES

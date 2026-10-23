@@ -4,12 +4,13 @@ import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 import { AdminRecordTable } from './AdminRecordTable'
 import { OrganizationSyncHistory } from './OrganizationSyncHistory'
 import { OrganizationSyncPanel } from './OrganizationSyncPanel'
+import { enterpriseProviders, enterpriseProviderName, isFeishuProvider, type EnterpriseProvider } from './enterpriseProviders'
 
-type Application = { id: string; provider: 'dingtalk' | 'wecom'; tenant_id: string; client_id: string; agent_id?: string;
+type Application = { id: string; provider: EnterpriseProvider; tenant_id: string; client_id: string; agent_id?: string;
  enabled: boolean; login_enabled?: boolean; sync_enabled?: boolean; secret_configured?: boolean;
  sync_schedule?: {frequency: 'off' | 'daily' | 'weekly'; time?: string; timezone?: string; weekday?: number}; next_sync_at?: string | null;
  sync_state?: { last_success_at: string | null; last_error_code: string | null } }
-const names = { dingtalk: '钉钉', wecom: '企业微信' }
+const names = Object.fromEntries(Object.entries(enterpriseProviders).map(([key, value]) => [key, value.name])) as Record<EnterpriseProvider, string>
 
 function ApplicationEditor({ provider, source, csrf, platformAddress, onClose, onSaved }: { platformAddress?: string | null; provider: Application['provider']; source?: Application; csrf: string; onClose: () => void; onSaved: () => void }) {
  const initial = { tenant: source?.tenant_id ?? '', client: source?.client_id ?? '', agent: source?.agent_id ?? '', secret: '',
@@ -36,10 +37,11 @@ function ApplicationEditor({ provider, source, csrf, platformAddress, onClose, o
   finally { submitting.current = false; setBusy(false) }
  }
  return <><GatewayConfirmDialog title={names[provider] + '应用配置'} message="配置企业应用并选择组织同步及扫码登录。" confirmLabel="保存配置" disabled={!valid} busy={busy} onConfirm={() => void save()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
-  <p><a href={provider === 'dingtalk' ? 'https://open-dev.dingtalk.com/' : 'https://work.weixin.qq.com/wework_admin/'} target="_blank" rel="noopener noreferrer">打开{names[provider]}{provider === 'dingtalk' ? '开发者' : '管理'}后台</a><br />{provider === 'dingtalk' ? '在后台查看企业 Corp ID；进入应用的「凭证与基础信息」获取 Client ID 和 Client Secret。' : '在「我的企业 → 企业信息」获取企业 Corp ID；进入「应用管理 → 自建应用」获取 Agent ID 和 Secret。'}</p>
+  <p><a href={enterpriseProviders[provider].console} target="_blank" rel="noopener noreferrer">打开{names[provider]}{provider === 'wecom' ? '管理' : '开发者'}后台</a><br />{isFeishuProvider(provider) ? '创建企业自建应用，在「凭证与基础信息」获取 App ID、App Secret，并填写所属企业 Tenant Key。飞书与 Lark 使用各自平台的凭证。' : provider === 'dingtalk' ? '在后台查看企业 Corp ID；进入应用的「凭证与基础信息」获取 Client ID 和 Client Secret。' : '在「我的企业 → 企业信息」获取企业 Corp ID；进入「应用管理 → 自建应用」获取 Agent ID 和 Secret。'}</p>
   <div className="gateway-application-fields">
-   <label>企业 Corp ID<input value={draft.tenant} disabled={busy} onChange={event => change('tenant', event.target.value)} /><small>{provider === 'dingtalk' ? '企业 ID（通常以 ding 开头），用于登录企业校验；不是应用 AgentId 或 App ID。' : '企业微信的企业 ID，用于获取企业凭证和扫码登录。'}</small></label>
+   <label>{isFeishuProvider(provider) ? '企业 Tenant Key' : '企业 Corp ID'}<input value={draft.tenant} disabled={busy} onChange={event => change('tenant', event.target.value)} /><small>{isFeishuProvider(provider) ? '用于核对登录成员所属企业，不是 App ID；从企业信息或开放平台获取。' : provider === 'dingtalk' ? '企业 ID（通常以 ding 开头），用于登录企业校验；不是应用 AgentId 或 App ID。' : '企业微信的企业 ID，用于获取企业凭证和扫码登录。'}</small></label>
    {provider === 'dingtalk' && <label>App Key / Client ID<input value={draft.client} disabled={busy} onChange={event => change('client', event.target.value)} /></label>}
+   {isFeishuProvider(provider) && <label>App ID<input aria-label="App ID" value={draft.client} disabled={busy || !!source} onChange={event => change('client', event.target.value)} /><small>已有应用的 App ID 保持固定；更换应用请添加新配置。</small></label>}
    {provider === 'wecom' && <label>Agent ID<input value={draft.agent} disabled={busy} onChange={event => change('agent', event.target.value)} /></label>}
    <label>应用 Secret<input type="password" autoComplete="new-password" value={draft.secret} disabled={busy} placeholder={source ? '留空保留已保存的密钥' : '请输入应用密钥'} onChange={event => change('secret', event.target.value)} /></label>
    <label className="gateway-check-label"><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={event => change('enabled', event.target.checked)} />启用应用</label>
@@ -48,7 +50,7 @@ function ApplicationEditor({ provider, source, csrf, platformAddress, onClose, o
    {draft.frequency !== 'off' && <><label>执行时间<input type="time" value={draft.time} disabled={busy} onChange={event => change('time', event.target.value)} /></label><label>时区<input value={draft.zone} disabled={busy} onChange={event => change('zone', event.target.value)} /></label>{draft.frequency === 'weekly' && <label>星期<select value={draft.weekday} disabled={busy} onChange={event => change('weekday', event.target.value)}>{['一','二','三','四','五','六','日'].map((day,index)=><option key={index} value={index}>星期{day}</option>)}</select></label>}</>}
    <label className="gateway-check-label"><input type="checkbox" checked={draft.login} disabled={busy} onChange={event => change('login', event.target.checked)} />启用扫码登录</label>
   </div>
-  {source && draft.tenant.trim() !== source.tenant_id && <p role="status">正在更正企业 Corp ID；已有用户组和成员关联会保留。请确认仍是原企业，改为另一企业应添加新应用。</p>}
+  {source && draft.tenant.trim() !== source.tenant_id && <p role="status">正在更正企业标识；已有用户组和成员关联会保留。请确认仍是原企业，改为另一企业应添加新应用。</p>}
   <p>自动同步需先完成一次组织选择并确认同步；之后沿用该范围。自动同步失败五分钟后重试，有变更或失败时在管理后台显示组织同步提示。</p>
   <p>密钥加密保存，保存后不再回显。请在企业应用后台授权通讯录读取权限，并配置本平台的登录回调域。</p>
   {source && <label>登录回调地址<input readOnly value={(platformAddress || window.location.origin).replace(/\/+$/, '') + '/api/auth/external/' + source.id + '/callback'} /></label>}
@@ -74,7 +76,7 @@ export function OrganizationSyncSettings({ csrf, platformAddress }: { csrf: stri
   return () => controller.abort()
  }, [revision, page])
  return <section className="gateway-project-grants gateway-organization-settings"><div className="gateway-admin-toolbar"><h3>组织同步与扫码登录</h3>
-  <div className="gateway-device-actions"><OrganizationSyncNotice/><button type="button" disabled={!csrf} onClick={() => setEditor({ provider: 'dingtalk' })}>添加钉钉应用</button><button type="button" disabled={!csrf} onClick={() => setEditor({ provider: 'wecom' })}>添加企业微信应用</button></div>
+  <div className="gateway-device-actions"><OrganizationSyncNotice/>{(Object.keys(enterpriseProviders) as EnterpriseProvider[]).map(provider => <button key={provider} type="button" disabled={!csrf} onClick={() => setEditor({ provider })}>添加{enterpriseProviderName(provider)}应用</button>)}</div>
  </div><p>同步将按企业部门层级创建用户组及成员；启用扫码登录后，对应入口会出现在平台登录页。</p>
  {loading && <p role="status"><span className="gateway-spinner" /> 正在加载企业应用…</p>}
  {error && <p role="alert" className="gateway-auth-error">{error}<button type="button" onClick={() => setRevision(value => value+1)}>重试</button></p>}

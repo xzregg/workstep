@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from schemas.base import BaseSchema
 
@@ -18,6 +18,34 @@ class CreateTaskRequest(BaseSchema):
     review_overrides: dict[str, object] | None = None
     workflow_id: str | None = None
     scheduled_start_at: datetime | None = None
+
+
+class ScheduledTaskDraft(CreateTaskRequest):
+    """AI-generated creation parameters, validated before any task is persisted."""
+
+    model_config = ConfigDict(extra="forbid")
+    title: str
+    description: str
+    workflow_id: str
+
+    @field_validator("title", "description", "workflow_id")
+    @classmethod
+    def nonempty(cls, value):
+        if not value.strip():
+            raise ValueError("Scheduled task parameters cannot be blank")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_start(self):
+        if self.scheduled_start_at is not None:
+            from models.fields import utc_now
+            if self.scheduled_start_at.tzinfo is None:
+                raise ValueError("scheduled_start_at must include a timezone")
+            if self.scheduled_start_at <= utc_now():
+                raise ValueError("scheduled_start_at must be in the future")
+            if self.auto_start is True:
+                raise ValueError("scheduled_start_at conflicts with auto_start")
+        return self
 
 
 class RunTaskRequest(BaseSchema):

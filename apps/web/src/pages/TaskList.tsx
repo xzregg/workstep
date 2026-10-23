@@ -8,6 +8,7 @@ import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useManagedMode } from '../hooks/useManagedMode'
 import MobileSheet from '../components/MobileSheet'
 import MobileTaskRow from '../components/MobileTaskRow'
+import { isTaskNotStarted } from './taskDetailChat'
 import StatusBadge from '../components/StatusBadge'
 import Icon from '../components/Icon'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
@@ -586,9 +587,13 @@ export default function TaskList() {
 
       {/* Kanban board */}
       {compact && <div className="mobile-task-list">
+        {directoryNotice && <p className="mobile-task-notice" role="status">{directoryNotice}</p>}
         {loading && <div role="status">{t('common.loading')}</div>}
         {!loading && visibleTasks.filter(task => !mobileStep || getCardLane(task.id) === mobileStep).length === 0 && <p className="mobile-empty">{t('mobile.emptyTasks')}</p>}
         {visibleTasks.filter(task => !mobileStep || getCardLane(task.id) === mobileStep).map(task => <MobileTaskRow key={task.id} title={task.title} status={task.status} archived={showArchived}
+          projectId={activeProject?.id} taskId={task.id} readOnly={!canEdit}
+          canStart={can('task.run') && isTaskNotStarted(task.steps || [])}
+          starting={startingTaskId === task.id} onStart={() => setConfirmStartTaskId(task.id)}
           canArchive={can('task.archive')} canDelete={can('task.delete')}
           onOpen={() => handleSelectTask(task.id)}
           onArchive={() => setArchiveTarget({ id: task.id, title: task.title })}

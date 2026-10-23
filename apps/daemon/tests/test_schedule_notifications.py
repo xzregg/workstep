@@ -166,3 +166,35 @@ def test_notification_link_prefers_active_managed_gateway(monkeypatch,origin,dev
     original=config_store.get
     monkeypatch.setattr(config_store,'get',lambda key,default=None: {} if key=='gateway_platform' else original(key,default))
     assert next(b['task_base_url'] for b in base_addresses() if b.get('task_base_url'))==expected
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('terminal_status', ['created', 'failed'])
+async def test_batch_notification_waits_for_completion_and_lists_all_created_tasks(setup_notifications, terminal_status):
+    from models import ScheduleRun
+    from models.fields import utc_now
+    from services.schedule_notifications import deliver_notification
+
+    s = setup_notifications
+    calls = []
+
+    class Sender:
+        async def send_message(self, **kwargs):
+            calls.append(kwargs)
+            return {'sent': True}
+
+    s.module._notification_sender = Sender()
+    rule = s.module.create(s.project.id, name='批量创建', workflow_id=s.workflow['id'], task_template={'title': '批量'},
+                           rule={'kind': 'daily', 'time': '09:00', 'timezone': 'UTC'},
+                           notification={'enabled': True, 'target': {'session_id': 'session'}})
+    def seed(_):
+        ScheduleRun.create(id='batch', schedule=rule['id'], status='running', task_id='bound',
+                           created_tasks_json=json.dumps([{'id': 'bound', 'title': '任务一'}, {'id': 'unbound', 'title': '任务二'}]),
+                           notification_json=json.dumps(rule['notification']), scheduled_for=utc_now(), created_at=utc_now())
+    await s.manager.run_db(s.project.id, seed)
+    await deliver_notification(s.module, s.project.id, 'batch')
+    assert calls == []
+    await s.manager.run_db(s.project.id, lambda _: ScheduleRun.update(status=terminal_status).where(ScheduleRun.id == 'batch').execute())
+    await asyncio.gather(deliver_notification(s.module, s.project.id, 'batch'), deliver_notification(s.module, s.project.id, 'batch'))
+    assert len(calls) == 1
+    assert '任务一' in calls[0]['text'] and '任务二' in calls[0]['text']

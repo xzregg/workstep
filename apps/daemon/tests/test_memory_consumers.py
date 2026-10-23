@@ -8,6 +8,24 @@ from services.prompt import _load_project_memory
 from services.task_archive import persist_experience_and_archive
 
 
+def test_archive_deduplicates_rules_across_tasks(tmp_path, archive_task):
+    memory = tmp_path / "MEMORY.md"
+    original = "# 项目约定\n\n- 提交前核对类型错误。\n"
+    memory.write_text(original)
+    service = SimpleNamespace(archive_task=lambda *_args: True)
+    project = SimpleNamespace(workstep_dir=tmp_path)
+    assert persist_experience_and_archive(
+        project, service, "pid", "tid", "- 提交前核对类型错误。",
+    ) == (True, False)
+    assert memory.read_text() == original
+    assert persist_experience_and_archive(
+        project, service, "pid", "tid",
+        "- 提交前核对类型错误。\n- 环境配置不得提交。\n- 环境配置不得提交。",
+    ) == (True, True)
+    assert memory.read_text().count("提交前核对类型错误") == 1
+    assert memory.read_text().count("环境配置不得提交") == 1
+
+
 @pytest.mark.parametrize("linked", [False, True])
 def test_prompt_memory_preserves_regular_files_and_in_root_links(tmp_path, linked):
     data = tmp_path / "data"
@@ -75,7 +93,7 @@ def test_archive_memory_append_and_rollback_preserve_allowed_targets(
             persist_experience_and_archive(project, service, "pid", "tid", "新经验")
         assert target.read_bytes() == "已有经验\n".encode()
     else:
-        assert persist_experience_and_archive(project, service, "pid", "tid", "新经验")
+        assert persist_experience_and_archive(project, service, "pid", "tid", "新经验") == (True, True)
         assert target.read_text() == "已有经验\n\n## 错误经验：经验任务\n\n新经验\n"
     assert memory.is_symlink() is linked
 

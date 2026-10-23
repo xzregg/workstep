@@ -156,7 +156,7 @@ class ExternalIdentityService:
                 return attempt.return_to
 
     async def complete(self, source_id: str, state: str, code: str, connector,
-                       browser_session_id: str | None = None) -> tuple[User, str | None, str | None]:
+                       browser_session_id: str | None = None, *, redirect_uri: str | None = None) -> tuple[User, str | None, str | None]:
         source = await self.source(source_id, purpose="login")
         async with self.database.session() as session:
             attempt = await session.get(ExternalLoginAttempt, _state_digest(state))
@@ -178,7 +178,8 @@ class ExternalIdentityService:
                 if result.rowcount != 1:
                     raise GatewayError('conflict', 'Scan callback already used')
         try:
-            profile = await connector.exchange_code(source, code, nonce)
+            kwargs = {'redirect_uri': redirect_uri} if getattr(connector, 'supports_redirect_uri', False) else {}
+            profile = await connector.exchange_code(source, code, nonce, **kwargs)
         except Exception as exc:
             raise GatewayError('upstream_failed', 'Identity provider unavailable') from exc
         if profile.tenant_id != source.tenant_id or not profile.subject or len(profile.subject) > 256:

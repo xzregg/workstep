@@ -37,7 +37,7 @@ from gateway.services.directory_schedule import SyncSchedule, next_run
 
 
 class SourceInput(BaseModel):
-    provider: Literal["dingtalk", "wecom"]
+    provider: Literal["dingtalk", "wecom", "feishu", "lark"]
     tenant_id: str = Field(min_length=1, max_length=128)
     client_id: str = Field(min_length=1, max_length=256)
     secret_env: str | None = Field(default=None, min_length=1, max_length=128)
@@ -52,6 +52,8 @@ class SourceInput(BaseModel):
 
     @model_validator(mode="after")
     def valid_callback_configuration(self):
+        if self.provider in {'feishu', 'lark'} and (self.callback_token_env or self.callback_aes_key_env):
+            raise ValueError('Feishu/Lark directory events are not configured; use scheduled sync')
         if bool(self.callback_token_env) != bool(self.callback_aes_key_env):
             raise ValueError("Both callback environment references are required")
         for reference in (self.callback_token_env, self.callback_aes_key_env):
@@ -174,7 +176,7 @@ async def create_source(call: GatewayCall, body: SourceInput):
 
 
 async def list_sources(call: GatewayCall, q: str = '',
-                       provider: Literal['dingtalk', 'wecom'] | None = None,
+                       provider: Literal['dingtalk', 'wecom', 'feishu', 'lark'] | None = None,
                        status: Literal['enabled', 'disabled'] | None = None,
                        sort: Literal['created_at', 'tenant_id'] = 'created_at',
                        direction: Literal['asc', 'desc'] = 'desc',
@@ -338,7 +340,10 @@ async def external_callback(call: GatewayCall, response: ReplyEffects, source_id
         except IdentityError:
             pass
     try:
-        user, new_token, return_to = await _service(call).complete(source_id, state, authorization_code, _connector(call, source.provider), browser_session_id)
+        redirect_uri = str(call.callback_url('external_callback', source_id=source_id))
+        if call.settings.public_origin:
+            redirect_uri = call.settings.public_origin + urlsplit(redirect_uri).path
+        user, new_token, return_to = await _service(call).complete(source_id, state, authorization_code, _connector(call, source.provider), browser_session_id, redirect_uri=redirect_uri)
     except GatewayError as exc:
         from gateway.services.login_audit import record_login_failure
         await record_login_failure(call.database, source.provider, exc.reason, source_id=source_id)
@@ -376,6 +381,8 @@ async def update_source(call: GatewayCall, source_id: str, body: SourceInput):
             if source is None: raise GatewayError('not_found', 'Identity source not found')
             if source.provider != body.provider:
                 raise GatewayError('invalid', 'Provider cannot change')
+            if source.provider in {'feishu', 'lark'} and source.client_id != body.client_id:
+                raise GatewayError('conflict', 'Application ID cannot change; create a new identity source')
             duplicate = await session.scalar(select(IdentitySource.id).where(
                 IdentitySource.provider == body.provider, IdentitySource.tenant_id == body.tenant_id,
                 IdentitySource.id != source_id))

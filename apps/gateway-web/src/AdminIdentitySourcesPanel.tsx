@@ -1,3 +1,4 @@
+import { enterpriseProviderName } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -101,7 +102,7 @@ export function AdminIdentitySourcesPanel({ onSourceChange, onReconciled }: {
     <div className="gateway-admin-filters">
       <select aria-label="身份源类型" value={filters.provider} onChange={event => setFilters(current => (
         { ...current, provider: event.target.value, page: 1 }))}>
-        <option value="">全部类型</option><option value="dingtalk">钉钉</option><option value="wecom">企业微信</option>
+        <option value="">全部类型</option><option value="dingtalk">钉钉</option><option value="wecom">企业微信</option><option value="feishu">飞书</option><option value="lark">Lark</option>
       </select>
       <select aria-label="身份源状态" value={filters.status} onChange={event => setFilters(current => (
         { ...current, status: event.target.value, page: 1 }))}>
@@ -122,7 +123,7 @@ export function AdminIdentitySourcesPanel({ onSourceChange, onReconciled }: {
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && sources.length === 0 && <p>没有符合条件的身份源。</p>}
     {!loading && !error && <ul className="gateway-device-list">{sources.map(source => <li key={source.id}>
-      <div><strong>{source.provider === 'wecom' ? '企业微信' : '钉钉'} · {source.tenant_id}</strong>
+      <div><strong>{enterpriseProviderName(source.provider)} · {source.tenant_id}</strong>
         <p>{source.enabled ? '已启用' : '已停用'} · {source.callback_configured ? '已配置回调' : '未配置回调'}</p>
         <p>最近成功：{source.sync_state?.last_success_at
           ? new Date(source.sync_state.last_success_at).toLocaleString() : '尚未同步'}</p>

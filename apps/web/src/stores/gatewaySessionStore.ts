@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { request } from '../api/transport'
+import { ApiError, request } from '../api/transport'
 
 export interface GatewayRemoteSession {
   user_id?: string
@@ -19,30 +19,34 @@ export interface GatewayRemoteSession {
 interface GatewaySessionState {
   session: GatewayRemoteSession | null
   error: string
+  errorStatus: number | null
   loading: boolean
   load: (force?: boolean) => Promise<GatewayRemoteSession>
 }
 
 let pending: Promise<GatewayRemoteSession> | null = null
 export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => ({
-  session: null, error: '', loading: false,
+  session: null, error: '', errorStatus: null, loading: false,
   load: (force = false) => {
     if (pending) return pending
     if (!force && get().session) return Promise.resolve(get().session!)
-    set({ loading: true, error: '' })
-    pending = request<GatewayRemoteSession>('/remote/session').then(session => {
+    set({ loading: true })
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 10000)
+    pending = request<GatewayRemoteSession>('/remote/session', {signal: controller.signal}).then(session => {
       if (!session.device_id || !session.gateway_url ||
           (!!session.project_id !== !!session.host_project_id) ||
           (session.project_id && !['read', 'edit'].includes(session.access_level ?? '')) ||
           (session.permissions != null && (!Array.isArray(session.permissions) || session.permissions.some((key: unknown) => typeof key !== 'string')))) {
         throw new Error('远程项目会话无效，请从平台重新打开。')
       }
-      set({ session })
+      set({ session, error: '', errorStatus: null })
       return session
     }).catch(reason => {
-      set({ session: null, error: reason instanceof Error ? reason.message : '远程会话已失效。' })
+      set({ session: null, error: reason instanceof Error ? reason.message : '远程会话已失效。',
+        errorStatus: reason instanceof ApiError ? reason.status : null })
       throw reason
-    }).finally(() => { pending = null; set({ loading: false }) })
+    }).finally(() => { window.clearTimeout(timeout); pending = null; set({ loading: false }) })
     return pending
   },
 }))

@@ -3,8 +3,15 @@ import { useI18n } from '../i18n'
 import MobileSheet from './MobileSheet'
 import Button from './Button'
 import Icon from './Icon'
+import TaskCopyButton from './TaskCopyButton'
 
-export default function MobileTaskRow({ title, status, archived, canArchive, canDelete, onOpen, onArchive, onRestore, onDelete, children }: {
+export default function MobileTaskRow({ title, status, archived, canArchive, canDelete, onOpen, onArchive, onRestore, onDelete, projectId, taskId, canStart = false, starting = false, readOnly = false, onStart, children }: {
+  projectId?: string
+  taskId?: string
+  canStart?: boolean
+  starting?: boolean
+  readOnly?: boolean
+  onStart?: () => void
   title: string
   status: string
   archived: boolean
@@ -22,7 +29,7 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
   const suppressClick = useRef(false)
   const allowArchive = canArchive && (archived || status !== 'running')
   const allowDelete = canDelete && status !== 'running'
-  const hasActions = allowArchive || allowDelete
+  const allowStart = canStart && !archived && !['running', 'queued'].includes(status) && Boolean(onStart)
   const cancel = () => {
     if (pending.current) clearTimeout(pending.current.timer)
     pending.current = null
@@ -34,7 +41,7 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
   const start = (event: PointerEvent<HTMLButtonElement>) => {
     cancel()
     suppressClick.current = false
-    if (!hasActions || event.button !== 0 || event.pointerType === 'mouse') return
+    if (event.button !== 0 || event.pointerType === 'mouse') return
     pending.current = {
       x: event.clientX, y: event.clientY,
       timer: setTimeout(() => {
@@ -49,7 +56,7 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
     callback()
   }
   return <>
-    <button type="button" className="mobile-task-row" aria-haspopup={hasActions ? 'dialog' : undefined}
+    <button type="button" className="mobile-task-row" aria-haspopup="dialog"
       onPointerDown={start}
       onPointerMove={event => {
         if (pending.current && Math.hypot(event.clientX - pending.current.x, event.clientY - pending.current.y) > 10) cancel()
@@ -58,7 +65,7 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
       onContextMenu={event => {
         event.preventDefault()
         cancel()
-        if (hasActions) { suppressClick.current = true; setMenuOpen(true) }
+        suppressClick.current = true; setMenuOpen(true)
       }}
       onClick={() => {
         if (suppressClick.current) { suppressClick.current = false; return }
@@ -66,8 +73,15 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
       }}>
       {children}
     </button>
-    <MobileSheet open={menuOpen && hasActions} title={title} onClose={() => setMenuOpen(false)}>
+    <MobileSheet open={menuOpen} title={title} onClose={() => setMenuOpen(false)}>
       <div className="mobile-task-menu">
+        {allowStart && <Button data-task-action="start" disabled={starting} loading={starting} onClick={() => action(onStart!)}>
+          <Icon name="play" size={16} />{t('taskList.startTask')}
+        </Button>}
+        <Button onClick={() => action(onOpen)}>
+          <Icon name={readOnly ? 'eye' : 'pencil'} size={16} />{t(readOnly ? 'common.view' : 'common.edit')}
+        </Button>
+        {projectId && taskId && <TaskCopyButton taskId={taskId} projectId={projectId} title={title} presentation="menu" onCopied={() => setMenuOpen(false)} />}
         {allowArchive && <Button onClick={() => action(archived ? onRestore : onArchive)}>
           <Icon name={archived ? 'rotate-ccw' : 'archive'} size={16} />{t(archived ? 'taskList.restoreToBoard' : 'taskList.archiveTask')}
         </Button>}

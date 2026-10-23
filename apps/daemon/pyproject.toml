@@ -24,6 +24,7 @@ dependencies = [
     "cryptography>=43.0",
     "pywebpush>=2.5.0",
     "tinycss2>=1.4,<2",
+    "lark-oapi>=1.7.5,<1.8",
 ]
 
 [tool.uv.sources]

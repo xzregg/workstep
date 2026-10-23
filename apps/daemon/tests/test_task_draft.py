@@ -533,12 +533,12 @@ async def test_run_schedule_returns_validated_result_without_creating_task(
         candidate_workflow_ids=[workflow["id"]],
     )
 
-    assert result == {
+    assert result == [{
         "title": "生成的标题",
         "description": "## 内容\n\n任务说明。",
         "workflow_id": workflow["id"],
         "start_step_key": first_key,
-    }
+    }]
     assert "生成日报任务" in prompts[0]
     assert "scheduled task execution assistant" not in prompts[0]
     from agent_assistants.task_draft import SYSTEM_PROMPT_SCHEDULE
@@ -675,3 +675,75 @@ async def test_task_assistant_actual_system_input(draft_module, monkeypatch, sch
     view = session.messages[-1]["prompt"]
     assert expected in view and calls[0]["prompt"] in view
     assert "独立指令（system）" in view
+
+
+@pytest.mark.anyio
+async def test_schedule_batch_preserves_creation_parameters(draft_module, monkeypatch):
+    module, bus, _, project, _ = draft_module
+    drafts = [{"title": f"任务{i}", "description": "内容", "workflow_id": project.default_workflow()["id"],
+               "scheduled_start_at": f"2099-01-0{i+1}T09:00:00+08:00", "auto_start": False,
+               "engine": "codex", "cwd": str(project.path), "review_overrides": {}} for i in range(5)]
+
+    async def invoke(*args, **kwargs):
+        return json.dumps({"reply": "已生成", "task_drafts": drafts}), [], None
+
+    monkeypatch.setattr(module, "_invoke", invoke)
+    queue = bus.subscribe()
+    result = await module.run_schedule(project.id, instruction="生成5个任务，各自在不同时间启动")
+    assert len(result) == 5
+    assert [item["title"] for item in result] == [item["title"] for item in drafts]
+    assert all(item["engine"] == "codex" and item["auto_start"] is False for item in result)
+    assert all(item["scheduled_start_at"] for item in result)
+    with project.db.bind_ctx([Task]):
+        assert Task.select().count() == 0
+
+    while True:
+        event = await asyncio.wait_for(queue.get(), timeout=2)
+        if event.get('name') == 'workstep.task_draft':
+            break
+    assert event['channel'] == 'task_create'
+    assert event['session_id'].startswith('schedule-')
+    assert event['value']['task_drafts'] == result
+    from models import Message, ChatSession
+    assert await module._project_manager.run_db(project.id, lambda _: (Message.select().count(), ChatSession.select().count())) == (0, 0)
+
+
+@pytest.mark.parametrize("changes", [
+    {"scheduled_start_at": "2099-01-01T09:00:00"},
+    {"scheduled_start_at": "2000-01-01T09:00:00Z"},
+    {"scheduled_start_at": "2099-01-01T09:00:00Z", "auto_start": True},
+    {"auto_start": "invalid"},
+])
+def test_schedule_draft_rejects_invalid_creation_parameters(changes):
+    from schemas.task import ScheduledTaskDraft
+    with pytest.raises(ValueError):
+        ScheduledTaskDraft.model_validate({"title": "任务", "description": "内容", "workflow_id": "flow", **changes})
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('payload', [
+    {'task_drafts': []},
+    {'task_drafts': [{}]},
+    {'task_drafts': [None]},
+    {'task_drafts': {'title': 'not a list'}},
+    {'task_drafts': [{'title': ' ', 'description': '内容', 'workflow_id': 'flow'}]},
+    {'task_drafts': [{'title': '任务', 'description': '内容', 'workflow_id': 'flow', 'creator_id': 'forged'}]},
+])
+async def test_invalid_batch_payload_never_publishes_partial_drafts(draft_module, monkeypatch, payload):
+    module, bus, _, project, _ = draft_module
+    published = []
+    original = bus.publish
+
+    async def capture(event):
+        published.append(event)
+        await original(event)
+
+    async def invoke(*args, **kwargs):
+        return json.dumps({'reply': '无效草稿', **payload}), [], None
+
+    monkeypatch.setattr(bus, 'publish', capture)
+    monkeypatch.setattr(module, '_invoke', invoke)
+    with pytest.raises(RuntimeError):
+        await module.run_schedule(project.id, instruction='生成任务')
+    assert not any(event.get('name') == 'workstep.task_draft' for event in published)
+    assert await module._project_manager.run_db(project.id, lambda _: Task.select().count()) == 0

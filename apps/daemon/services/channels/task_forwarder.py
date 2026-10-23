@@ -290,10 +290,10 @@ class ChannelTaskForwarder:
             origin = self._origins.get(state.key)
             is_origin = origin and (origin[0].bot_id, origin[0].conversation_id) == (bot_id, group_id)
             self._reply_status(adapter, recipient, state, title)
-            # DingTalk can actively create and update a stage card without an
+            # These platforms can actively create and update a stage card without an
             # inbound message. Broadcast controls allow members of this group
             # to stop only the execution identified by this assistant message.
-            stage_control = bool(step_key) and getattr(adapter, 'CHANNEL_ID', '') == 'dingtalk'
+            stage_control = bool(step_key) and getattr(adapter, 'CHANNEL_ID', '') in {'dingtalk', 'feishu', 'lark'}
             if self._controls and (is_origin or stage_control) and not state.status:
                 scope = await self._controls.begin(recipient, state.key[0], task_id=state.key[1],
                     assistant_message_id=state.key[2], step_key=step_key, title='@' + title,

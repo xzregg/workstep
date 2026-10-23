@@ -88,3 +88,14 @@ test('allows an agent-mode result without a start step', () => {
   assert.equal(result?.workflow_id, 'wf-2')
   assert.equal(result?.start_step_key, '')
 })
+
+
+test('keeps all batch drafts and independent scheduled start times', () => {
+  useTaskDraftStore.setState({ sessions: {} })
+  const store = useTaskDraftStore.getState()
+  store.newSession('batch')
+  const drafts = [1, 2].map(i => ({ title: `任务${i}`, description: '内容', workflow_id: 'wf', scheduled_start_at: `2099-01-0${i}T09:00:00+08:00` }))
+  store.handleWsEvent({ type: 'CUSTOM', name: 'workstep.task_draft', channel: 'task_create', session_id: 'batch',
+    value: { ...drafts[0], task_drafts: drafts } })
+  assert.deepEqual(useTaskDraftStore.getState().sessions.batch.latestResult?.task_drafts, drafts)
+})

@@ -679,6 +679,7 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-identity-icon { display: block; width: 28px; height: 28px; flex: 0 0 28px; }
 .gateway-identity-icon--dingtalk { color: var(--gateway-admin-accent); }
 .gateway-identity-icon--wecom { color: var(--gateway-admin-accent); }
+.gateway-identity-icon--feishu, .gateway-identity-icon--lark { color: var(--gateway-admin-accent); }
 .gateway-auth-external--only { border-top: 0; padding-top: 0; }
 .gateway-my-workstep { max-width: 1360px; }
 .gateway-workstep-window { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 60vh; border: 1px solid var(--gateway-admin-separator); border-radius: var(--gateway-admin-window-radius); overflow: hidden; background: var(--gateway-admin-canvas); }
