@@ -6,11 +6,17 @@ import zhCN from 'antd/locale/zh_CN.js'
 import zhTW from 'antd/locale/zh_TW.js'
 import enUS from 'antd/locale/en_US.js'
 import jaJP from 'antd/locale/ja_JP.js'
+import frFR from 'antd/locale/fr_FR.js'
+import deDE from 'antd/locale/de_DE.js'
+import ar from 'antd/locale/ar_EG.js'
 import dayjs, { type Dayjs } from 'dayjs'
 import 'dayjs/locale/zh-cn.js'
 import 'dayjs/locale/zh-tw.js'
 import 'dayjs/locale/en.js'
 import 'dayjs/locale/ja.js'
+import 'dayjs/locale/fr.js'
+import 'dayjs/locale/de.js'
+import 'dayjs/locale/ar.js'
 import { useEffect } from 'react'
 import { useI18n } from '../i18n'
 
@@ -39,11 +45,17 @@ export default function DateTimePicker({ value, min, onChange, disabled }: DateT
   const antdLocale = locale === 'en-US' ? enUS
     : locale === 'zh-TW' ? zhTW
       : locale === 'ja-JP' ? jaJP
-        : zhCN
+        : locale === 'fr-FR' ? frFR
+          : locale === 'de-DE' ? deDE
+            : locale === 'ar' ? ar
+              : zhCN
   const dayjsLocale = locale === 'en-US' ? 'en'
     : locale === 'zh-TW' ? 'zh-tw'
       : locale === 'ja-JP' ? 'ja'
-        : 'zh-cn'
+        : locale === 'fr-FR' ? 'fr'
+          : locale === 'de-DE' ? 'de'
+            : locale === 'ar' ? 'ar'
+              : 'zh-cn'
   useEffect(() => {
     dayjs.locale(dayjsLocale)
   }, [dayjsLocale])

@@ -33,6 +33,13 @@ for (const projectScoped of [false, true]) test(`appearance settings embeds the 
     await act(async () => { language.value = 'en-US'; language.dispatchEvent(new window.Event('change', { bubbles: true })) })
     assert.equal(useLocaleStore.getState().locale, 'en-US')
     assert.equal(document.documentElement.lang, 'en-US')
+    for (const [locale, label] of [['fr-FR', 'Français'], ['de-DE', 'Deutsch'], ['ar', 'العربية']]) {
+      assert.equal(language.querySelector(`option[value="${locale}"]`)?.textContent, label)
+      await act(async () => { language.value = locale; language.dispatchEvent(new window.Event('change', { bubbles: true })) })
+      assert.equal(useLocaleStore.getState().locale, locale)
+      assert.equal(document.documentElement.lang, locale)
+    }
+    await act(async () => useLocaleStore.getState().setLocale('en-US'))
     const family = element.querySelector<HTMLSelectElement>('#appearance-font-family')!
     assert.ok(family)
     await act(async () => { family.value = 'pingfang'; family.dispatchEvent(new window.Event('change', { bubbles: true })) })

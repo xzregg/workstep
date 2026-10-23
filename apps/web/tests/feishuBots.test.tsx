@@ -4,7 +4,7 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
-import BotSettings from '../src/pages/BotSettings'
+import BotSettingsEditor from '../src/components/BotSettingsEditor'
 import ChatSessionSourceBadge from '../src/components/ChatSessionSourceBadge'
 import { useProjectStore } from '../src/stores/projectStore'
 
@@ -21,10 +21,9 @@ test('Feishu and Lark bots use App ID credentials and preserve their platform wh
   }
   const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
   try {
-   await act(async()=>root.render(<I18nProvider><BotSettings/><ChatSessionSourceBadge source="channel" platform={platform} conversationType="group"/></I18nProvider>))
+   await act(async()=>root.render(<I18nProvider><BotSettingsEditor platform={platform as 'feishu' | 'lark'} onPlatformChange={()=>{}} onSaved={()=>{}} onCancel={()=>{}} onDirtyChange={()=>{}} onBusyChange={()=>{}}/><ChatSessionSourceBadge source="channel" platform={platform} conversationType="group"/></I18nProvider>))
    const selects = container.querySelectorAll<HTMLSelectElement>('select')
    assert.ok(selects[0].querySelector(`option[value="${platform}"]`))
-   await act(async()=>{selects[0].value=platform;selects[0].dispatchEvent(new window.Event('change',{bubbles:true}))})
    assert.match(container.querySelector('.bot-settings-form')!.textContent!, /App ID/)
    assert.match(container.querySelector('.chat-session-source-badge')!.textContent!, platform==='feishu'?/飞书/:/Lark/)
    assert.ok(container.querySelector(`a[href="https://${platform==='feishu'?'open.feishu.cn':'open.larksuite.com'}/app"]`))

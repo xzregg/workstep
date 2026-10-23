@@ -86,7 +86,7 @@ export function useChatSessionActions({
         const summary = sessions.find((item) => item.id === finalSessionId)
         if (summary?.title) {
           onTitleChange(summary.title)
-          useChatListStore.getState().renameSession(finalSessionId, summary.title)
+          useChatListStore.getState().renameSession(finalSessionId, summary.title, projectId)
         }
       }).catch(() => undefined)
       return true

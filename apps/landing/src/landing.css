@@ -284,6 +284,7 @@ button {
   cursor: pointer;
 }
 .nav-lang {
+  max-width: 110px;
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0 13px;
@@ -3324,6 +3325,20 @@ button {
 }
 
 @media (max-width: 760px) {
+  .nav .nav-row {
+    height: auto;
+    min-height: 64px;
+    padding-block: 10px;
+    flex-wrap: wrap;
+  }
+
+  .nav-actions {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-inline-start: auto;
+  }
+
   .nav-links {
     display: none;
   }

@@ -113,8 +113,9 @@ class BotManager:
     @staticmethod
     def _public(bot: dict, status: dict | None = None) -> dict:
         return {
-            **{key: value for key, value in bot.items() if key != "secret"},
+            **{key: value for key, value in bot.items() if key not in {"secret", "app_token"}},
             "has_secret": bool(bot.get("secret")),
+            "has_app_token": bool(bot.get("app_token")),
             "protocol_version": 1,
             "capabilities": {
                 "receive": sorted(discover_channels()[bot["platform"]].CAPABILITIES.receive),
@@ -224,6 +225,13 @@ class BotManager:
         name = str(values.get("name") or "").strip()
         app_id = str(values.get("app_id") or "").strip()
         secret = str(values.get("secret") or "").strip()
+        app_token = str(values.get("app_token") or "").strip()
+        if platform == "telegram":
+            app_id = secret.partition(":")[0]
+            if not app_id.isdecimal() or not secret.partition(":")[2]:
+                raise ValueError("Telegram Bot Token 格式无效")
+        if platform == "slack" and not app_token:
+            raise ValueError("Slack App-Level Token 为必填项")
         kind = str(values.get("default_target_type") or "")
         project_id = str(values.get("default_project_id") or "")
         task_id = str(values.get("default_task_id") or "")
@@ -233,6 +241,7 @@ class BotManager:
         bot = {
             "id": str(uuid.uuid4()), "platform": platform, "name": name,
             "app_id": app_id, "secret": secret,
+            **({"app_token": app_token} if platform == "slack" else {}),
             "card_template_id": str(values.get("card_template_id") or "").strip(),
             "review_card_template_id": str(values.get("review_card_template_id") or "").strip(),
             "enabled": bool(values.get("enabled", False)),
@@ -260,8 +269,17 @@ class BotManager:
             for key in ("name", "app_id", "default_target_type", "default_project_id", "default_task_id", "enabled", "card_template_id", "review_card_template_id"):
                 if key in values:
                     updated[key] = values[key]
-            if values.get("secret"):
-                updated["secret"] = str(values["secret"])
+            if str(values.get("secret") or "").strip():
+                updated["secret"] = str(values["secret"]).strip()
+            if bot["platform"] == "slack":
+                if str(values.get("app_token") or "").strip():
+                    updated["app_token"] = str(values["app_token"]).strip()
+                if not updated.get("app_token"):
+                    raise ValueError("Slack App-Level Token 为必填项")
+            if bot["platform"] == "telegram":
+                updated["app_id"] = updated["secret"].partition(":")[0]
+                if not updated["app_id"].isdecimal() or not updated["secret"].partition(":")[2]:
+                    raise ValueError("Telegram Bot Token 格式无效")
             updated["name"] = str(updated["name"]).strip()
             updated["app_id"] = str(updated["app_id"]).strip()
             updated["default_target_type"] = str(updated["default_target_type"] or "")

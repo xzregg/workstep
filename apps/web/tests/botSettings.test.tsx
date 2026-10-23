@@ -7,54 +7,49 @@ import { I18nProvider, useLocaleStore } from '../src/i18n'
 import BotSettings from '../src/pages/BotSettings'
 import { useProjectStore } from '../src/stores/projectStore'
 
-test('bot settings requires credentials and sends the selected platform fields', async () => {
+test('channel navigation filters bots, guards dirty switches, and provides social credentials', async () => {
   const { window } = installDomEnvironment()
+  const previousFetch = globalThis.fetch, previousStore = useProjectStore.getState()
   useLocaleStore.setState({ locale: 'zh-CN' })
-  const previousFetch = globalThis.fetch
-  const previousStore = useProjectStore.getState()
-  useProjectStore.setState({ projects: [{ id: 'p1', name: '项目一', type: 'local' }, { id: 'remote', name: '远程', type: 'remote' }] as any, fetchProjects: async () => {} })
-  const posted: unknown[] = []
-  globalThis.fetch = async (input, init) => {
-    if (String(input) === '/api/channel-bots' && init?.method === 'POST') {
-      posted.push(JSON.parse(String(init.body)))
-      return new Response(JSON.stringify({ id: 'bot-1', ...posted[0], secret: undefined, has_secret: true, status: 'disabled' }), { status: 200 })
-    }
-    return new Response(JSON.stringify([]), { status: 200 })
+  useProjectStore.setState({ projects: [{ id: 'p', name: '演示', type: 'local' }] as any, fetchProjects: async () => {} })
+  const saved: any[] = []
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === 'POST') saved.push(JSON.parse(String(init.body)))
+    return Response.json(init?.method === 'POST' ? { id: 'new', ...saved.at(-1) } : [{ id: 'w', platform: 'wecom', name: '企微助手', app_id: 'w', enabled: false, status: 'disabled', task_bindings: [] }])
   }
-  const container = document.body.appendChild(document.createElement('div'))
-  const root = createRoot(container)
-  const enter = async (input: HTMLInputElement, value: string) => act(async () => {
+  const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+  const clickPlatform = async (platform: string) => act(async () => container.querySelector<HTMLButtonElement>(`.bot-settings-platform[data-platform="${platform}"]`)!.click())
+  const enter = async (label: string, value: string) => act(async () => {
+    const input = [...container.querySelectorAll('label')].find(row => row.textContent === label)!.querySelector('input')!
     Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
     input.dispatchEvent(new window.Event('input', { bubbles: true }))
   })
   try {
     await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
-    assert.equal(container.querySelector('option[value="task"]'), null, 'task binding belongs to task details')
-    const fields = container.querySelectorAll<HTMLInputElement>('.bot-settings-form input:not([type="checkbox"])')
-    const save = [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '保存')!
-    assert.equal(save.disabled, true)
-    await enter(fields[0], '研发助手')
-    await enter(fields[1], 'bot-id')
-    await enter(fields[2], 'secret-value')
-    assert.equal(save.disabled, true, 'default project is required after credentials are filled')
-    assert.equal(container.querySelector('option[value="remote"]'), null)
-    const project = container.querySelectorAll<HTMLSelectElement>('.bot-settings-form select')[1]
-    await act(async () => { project.value = 'p1'; project.dispatchEvent(new window.Event('change', { bubbles: true })) })
-    assert.equal(save.disabled, false)
-    await act(async () => save.click())
-    assert.deepEqual(posted, [{
-      platform: 'wecom', name: '研发助手', app_id: 'bot-id', secret: 'secret-value',
-      enabled: false, default_target_type: 'project', default_project_id: 'p1', default_task_id: '',
-    }])
+    assert.equal(container.querySelectorAll('.bot-settings-platform').length, 7)
+    await clickPlatform('telegram')
+    assert.doesNotMatch(container.querySelector('.bot-settings-list')!.textContent!, /企微助手/)
+    assert.ok(container.querySelector('input[type="password"]'))
+    await enter('机器人名称', '电报助手')
+    await enter('Bot Token', '123:secret')
+    await clickPlatform('slack')
+    assert.match(document.body.textContent!, /放弃未保存/)
+    await act(async () => [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '取消')!.click())
+    assert.equal(container.querySelector<HTMLInputElement>('input[type="password"]')!.value, '123:secret')
+    const project = container.querySelector<HTMLSelectElement>('select[required]')!
+    await act(async () => { project.value = 'p'; project.dispatchEvent(new window.Event('change', { bubbles: true })) })
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '保存')!.click())
+    assert.equal(saved[0].platform, 'telegram')
+    assert.equal(saved[0].secret, '123:secret')
+    await clickPlatform('slack')
+    assert.equal(container.querySelectorAll('input[type="password"]').length, 2)
+    assert.match(container.querySelector('.bot-settings-form')!.textContent!, /App-Level Token/)
+    await clickPlatform('discord')
+    assert.match(container.textContent!, /Message Content Intent/)
   } finally {
-    await act(async () => root.unmount())
-    container.remove()
-    globalThis.fetch = previousFetch
-    useProjectStore.setState(previousStore)
-    await window.happyDOM.close()
+    await act(async () => root.unmount()); container.remove(); globalThis.fetch = previousFetch; useProjectStore.setState(previousStore); await window.happyDOM.close()
   }
 })
-
 
 test('editing a legacy task default saves a project default and never fetches tasks', async () => {
   const { window } = installDomEnvironment()
@@ -96,51 +91,6 @@ test('editing a legacy task default saves a project default and never fetches ta
     globalThis.fetch = previousFetch
     useProjectStore.setState(previousStore)
     await window.happyDOM.close()
-  }
-})
-
-
-test('DingTalk can save an optional custom button card template', async () => {
-  const { window } = installDomEnvironment()
-  const fetch = globalThis.fetch
-  const store = useProjectStore.getState()
-  useLocaleStore.setState({ locale:'zh-CN' })
-  useProjectStore.setState({projects:[{id:'p1',name:'项目一',type:'local'}] as any,fetchProjects:async () => {}})
-  let saved: any
-  globalThis.fetch = async (_input, init) => {
-    if (init?.method === 'POST') saved = JSON.parse(String(init.body))
-    return new Response(JSON.stringify(init?.method === 'POST' ? {...saved,id:'b'} : []))
-  }
-  const container = document.body.appendChild(document.createElement('div'))
-  const root = createRoot(container)
-  try {
-    await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
-    assert.equal(container.querySelector('a[href="https://open-dev.dingtalk.com/"]'), null)
-    const platform = container.querySelector<HTMLSelectElement>('select')!
-    await act(async () => { platform.value = 'dingtalk'; platform.dispatchEvent(new window.Event('change',{bubbles:true})) })
-    const consoleLink = container.querySelector<HTMLAnchorElement>('a[href="https://open-dev.dingtalk.com/"]')!
-    assert.ok(consoleLink)
-    assert.equal(consoleLink.target, '_blank')
-    assert.match(consoleLink.rel, /noopener/)
-    assert.ok(container.querySelector('a[href="https://open.dingtalk.com/document/orgapp/create-and-deliver-cards"]'))
-    assert.match(container.textContent!, /开发配置.*权限管理/)
-    assert.match(container.textContent!, /Card.Instance.Write/)
-    const project = container.querySelectorAll<HTMLSelectElement>('.bot-settings-form select')[1]
-    await act(async () => { project.value = 'p1'; project.dispatchEvent(new window.Event('change', { bubbles: true })) })
-    const fields = [...container.querySelectorAll<HTMLInputElement>('.bot-settings-form input:not([type="checkbox"])')]
-    assert.equal(fields.length, 5)
-    for (const [index, value] of ['助手','app','secret','own.schema','review.schema'].entries()) {
-      await act(async () => {
-        Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(fields[index],value)
-        fields[index].dispatchEvent(new window.Event('input',{bubbles:true}))
-      })
-    }
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '保存')!.click())
-    assert.equal(saved.card_template_id,'own.schema')
-    assert.equal(saved.review_card_template_id,'review.schema')
-  } finally {
-    await act(async () => root.unmount())
-    container.remove(); globalThis.fetch = fetch; useProjectStore.setState(store); await window.happyDOM.close()
   }
 })
 

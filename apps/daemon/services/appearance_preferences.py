@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class AppearanceSelection(BaseModel):
     model_config = ConfigDict(extra='forbid')
     skin_id: str = Field(default='default', pattern=r'^[a-z][a-z0-9_-]{0,63}$')
-    language: str = Field(default='zh-CN', pattern=r'^(?:zh-CN|zh-TW|en-US|ja-JP|pack:[a-z][a-z0-9_-]{0,63})$')
+    language: str = Field(default='zh-CN', pattern=r'^(?:zh-CN|zh-TW|en-US|ja-JP|fr-FR|de-DE|ar|pack:[a-z][a-z0-9_-]{0,63})$')
     font_family: Literal['system', 'pingfang', 'serif'] = 'system'
     font_size: Literal['small', 'standard', 'large', 'extraLarge'] = 'standard'
 

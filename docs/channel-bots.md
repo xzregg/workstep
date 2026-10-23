@@ -1,6 +1,28 @@
-# 企业微信、钉钉、飞书与 Lark 渠道机器人
+# 渠道机器人
 
-WorkStep 使用平台官方长连接接收机器人消息。daemon 主动连出，不需要给本机开放公网回调地址。支持文本、图片与文件；任务群消息进入对应任务的协调助手，未绑定群和单聊使用机器人的默认项目。添加机器人必须选择默认本地项目，未选择时保存按钮禁用；没有本地项目时，先创建或打开项目。创建 API 同步要求非空默认项目，更新 API 不允许显式清空默认项目；历史无默认项目配置不自动选择项目，在界面编辑保存时需补选。任务绑定可在任务详情「绑定 BOT」设置，也可在未绑定群中 @机器人要求绑定已有任务。
+WorkStep 通过官方长连接或长轮询接收机器人消息。daemon 主动连出，不需要给本机开放公网回调地址。企业微信、钉钉、飞书与 Lark 支持文本、图片与文件；Telegram、Discord 与 Slack 当前支持文字收发。任务群消息进入对应任务的协调助手，未绑定群和单聊使用机器人的默认项目。添加机器人必须选择默认本地项目，未选择时保存按钮禁用；没有本地项目时，先创建或打开项目。创建 API 同步要求非空默认项目，更新 API 不允许显式清空默认项目；历史无默认项目配置不自动选择项目，在界面编辑保存时需补选。任务绑定可在任务详情「绑定 BOT」设置，也可在未绑定群中 @机器人要求绑定已有任务。
+
+设置页左侧选择渠道，右侧显示该渠道已配置的机器人和配置表单；窄屏渠道列表横向滚动。同平台可添加不同应用标识的多个机器人。编辑现有机器人时，Token／Secret 留空保留原值；切换渠道或编辑其他机器人前，对未保存修改进行确认。
+
+## Telegram
+
+1. 通过 [@BotFather](https://t.me/BotFather) 创建机器人，在 WorkStep 选择 Telegram，填写名称、Bot Token 和默认项目。Bot ID 从 Token 自动读取，无需另填。
+2. 勾选「启用机器人」并保存。接入采用 [Bot API 的 getUpdates 长轮询](https://core.telegram.org/bots/api#getupdates)；同一机器人不能同时被其他程序轮询，已配置 Webhook 时需先由管理员移除，WorkStep 不自动删除。
+3. 私聊直接发送文字；群内 @机器人或回复机器人消息。群标识采用 `chat.id`，论坛主题中的即时回复保留 `message_thread_id`；同群不同主题仍共享群绑定和会话。
+
+## Discord
+
+1. 在 [Developer Portal](https://discord.com/developers/applications) 创建应用和 Bot，复制 Application ID、Bot Token。
+2. 开启 **Message Content Intent**，用 `bot` 权限将机器人邀请到服务器，授予 `View Channels`、`Send Messages`；线程还需 `Send Messages in Threads`。在 WorkStep 选择 Discord，填入凭据、默认项目，启用并保存。
+3. 私聊直接发送文字；服务器频道必须 @机器人。通过 [Gateway](https://docs.discord.com/developers/events/gateway) 接收消息，保留序列号及会话恢复信息，并处理心跳和重连。任务绑定使用频道／线程的 `channel_id`，不使用服务器 ID。自动发送的正文禁用批量提及，避免助手正文意外触发通知。
+
+## Slack
+
+1. 在 [Slack 应用后台](https://api.slack.com/apps) 创建应用，开启 [Socket Mode](https://docs.slack.dev/apis/events-api/using-socket-mode/)，创建具有 `connections:write` 的 App-Level Token（`xapp-`）。
+2. Bot OAuth 权限配置 `chat:write`、`app_mentions:read`、`im:history`，订阅 `app_mention` 和 `message.im`，安装／重新安装应用到工作区，复制 App ID 和 Bot Token（`xoxb-`）。
+3. WorkStep 选择 Slack，填写 App ID、两份 Token 和默认项目，启用保存。私聊直接发送文字；频道需要先邀请机器人，再 @它。即时回复使用原消息的 `thread_ts`，群绑定采用频道 ID；同频道的多个线程共享会话。平台回执先确认，助手执行独立运行，不阻塞 Socket Mode 消息回执。
+
+新增三种渠道均复用既有私聊／群聊白名单、会话、去重和任务绑定，最终正文按平台容量分段发送。目前不声明图片、文件、流式正文、等待气泡或交互卡片能力；停止、权限回答、提案确认和审核操作需回 WorkStep 完成。自动化通过模拟官方帧与异步网络覆盖，尚未使用真实 Token 完成三平台联调，连接权限、安装和实际客户端收发仍需验收。
 
 ## 飞书与国际版 Lark
 

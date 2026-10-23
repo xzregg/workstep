@@ -271,6 +271,13 @@ export const zhCN = {
 
   gatewayRemote: { reconnecting: '连接中断，正在重连…', sessionExpired: '登录或访问授权已失效，请返回网关平台重新进入。', retryNow: '立即重试', switchDevices: '切换设备', devices: '我的设备', devicesFailed: '设备列表加载失败，请刷新重试。', deviceOffline: '设备离线', switchFailed: '切换设备失败，请检查权限后重试。', refreshDevices: '刷新设备', loading: '远程电脑', disconnected: '连接已断开', online: '在线', back: '返回网关平台', backCompact: '返回平台', localOnly: '本机目录与桌面应用操作仅在电脑本机可用。' },
   channelBot: {
+    telegram: 'Telegram', discord: 'Discord', slack: 'Slack',
+    botCount: '{count} 个机器人', openConsole: '打开机器人管理后台',
+    discardConfig: '放弃未保存的机器人配置？', discardConfigHint: '当前配置尚未保存，切换后需要重新填写。',
+    telegramHint: '通过 @BotFather 创建机器人，填写 Bot Token；Bot ID 自动从 Token 读取。使用长轮询，无需公网回调；请先移除已有 Webhook，且勿让其他程序同时轮询此机器人。私聊直接发送，群内 @机器人或回复它的消息。',
+    discordHint: '在 Discord Developer Portal 创建应用和 Bot，填写 Application ID 与 Bot Token；开启 Message Content Intent，用 bot 权限邀请机器人，并授予 View Channels、Send Messages 和 Send Messages in Threads。私聊直接发送，服务器频道内 @机器人。',
+    slackHint: '在 Slack 应用后台开启 Socket Mode，创建带 connections:write 的 App-Level Token（xapp-）；安装应用并填写 App ID、Bot Token（xoxb-）。授予 chat:write、app_mentions:read、im:history，订阅 app_mention 和 message.im，将机器人加入频道。私聊直接发送，频道内 @机器人，回复保留在原消息线程。',
+    textOnlyHint: '当前支持文字收发、私聊／群聊白名单和任务绑定；回复完成后发送，暂不支持图片、文件、流式正文及交互卡片。',
     feishu: '飞书', lark: 'Lark',
     feishuConsole: '打开飞书开发者后台', larkConsole: '打开 Lark 开发者后台',
     feishuHint: '创建企业自建应用并启用机器人能力，填写 App ID 和 App Secret；配置长连接接收 im.message.receive_v1 和 card.action.trigger，授予私聊、群内 @消息、发送消息及图片／文件权限后发布应用。群聊仅被 @时回复；审核意见通过下一条文字填写。',
@@ -294,7 +301,7 @@ export const zhCN = {
     whitelistDiscard: '放弃未保存的白名单修改？',
 
     taskBindingHint: '任务群绑定请在任务详情「绑定 BOT」中设置。旧版默认任务配置在此保存后改为默认项目，已有群绑定保留。',
-    title: '渠道机器人', intro: '通过官方长连接接入企业微信、钉钉、飞书或 Lark 机器人。群可绑定任务，消息会进入该任务的协调助手。',
+    title: '渠道机器人', intro: '选择渠道并配置机器人，让私聊和群聊接入项目助手，也可将群绑定到任务协调助手。',
     reviewCardTemplate: '审核卡片模板 ID（可选）',
     reviewCardTemplatePlaceholder: '留空使用按钮卡片＋消息填写意见',
     reviewCardTemplateHint: '卡片内填写意见需发布 WorkStep 审核模板并填写其 ID；设置方法见仓库 docs/channel-bots.md。未配置时点击「填写意见」后发送文字。',
@@ -308,7 +315,7 @@ export const zhCN = {
     wecom: '企业微信', dingtalk: '钉钉', platform: '平台', name: '机器人名称',
     add: '添加机器人', edit: '编辑机器人', empty: '尚未添加机器人',
     keepSecret: '留空则保持原密钥', defaultTarget: '默认绑定', none: '不绑定', project: '项目', task: '任务',
-    selectProject: '选择项目', selectTask: '选择任务', enabled: '启用长连接',
+    selectProject: '选择项目', selectTask: '选择任务', enabled: '启用机器人',
     defaultProject: '默认项目（必选）',
     defaultProjectHint: '未绑定任务的群聊和私聊由默认项目的渠道助手回复；已绑定任务的群聊仍由任务协调助手回复。',
     noLocalProject: '请先创建或打开一个本地项目，再添加渠道机器人。',

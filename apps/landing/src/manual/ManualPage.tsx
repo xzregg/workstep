@@ -22,7 +22,7 @@ export function ManualPage({ chapterId }: { chapterId: string }) {
       </nav></details>
     </aside>
     <article className="manual-article" lang="zh-CN" key={chapter.id}>
-      {lang === 'en-US' && <p className="manual-language-note">{t('manual.chineseNotice')}</p>}
+      {lang !== 'zh-CN' && <p className="manual-language-note">{t('manual.chineseNotice')}</p>}
       <h2>{chapter.title}</h2><p className="manual-summary">{chapter.summary}</p>
       {chapter.sections.map((section, sectionIndex) => {
         const source = section.screenshot && screenshotUrl(section.screenshot.id)

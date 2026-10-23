@@ -1,5 +1,6 @@
 import { useI18n } from '../i18n'
 import './ChatSessionSourceBadge.css'
+import { BOT_PLATFORMS, type BotPlatform } from '../api/channelBots'
 
 export default function ChatSessionSourceBadge({ source, platform, conversationType }: {
   source?: 'chat' | 'channel'
@@ -10,8 +11,8 @@ export default function ChatSessionSourceBadge({ source, platform, conversationT
 }) {
   const { t } = useI18n()
   if (source !== 'channel') return null
-  const platformLabel = platform === 'wecom' || platform === 'dingtalk' || platform === 'feishu' || platform === 'lark'
-    ? t(`channelBot.${platform}`) : t('chatSession.channelSource')
+  const platformLabel = BOT_PLATFORMS.includes(platform as BotPlatform)
+    ? t(`channelBot.${platform as BotPlatform}`) : t('chatSession.channelSource')
   const typeLabel = conversationType
     ? t(conversationType === 'single' ? 'chatSession.channelPrivate' : 'chatSession.channelGroup') : null
   const label = [platformLabel, typeLabel].filter(Boolean).join(' · ')

@@ -2,20 +2,27 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { enUS } from './en-US'
 import { resolvePath, type I18nDict } from './keys'
 import { zhCN } from './zh-CN'
+import { frFR } from './fr-FR'
+import { deDE } from './de-DE'
+import { ar } from './ar'
 
-export type Lang = 'zh-CN' | 'en-US'
+export type Lang = 'zh-CN' | 'en-US' | 'fr-FR' | 'de-DE' | 'ar'
 
 const DICTS: Record<Lang, I18nDict> = {
   'zh-CN': zhCN,
   'en-US': enUS,
+  'fr-FR': frFR,
+  'de-DE': deDE,
+  ar,
 }
 
 const STORAGE_KEY = 'workstep-landing-lang'
 
-function initialLang(): Lang {
-  if (typeof window === 'undefined') return 'zh-CN'
-  const stored = window.localStorage.getItem(STORAGE_KEY)
-  return stored === 'en-US' ? 'en-US' : 'zh-CN'
+export function initialLang(stored: string | null = null, browserLanguage = ''): Lang {
+  if (stored && Object.hasOwn(DICTS, stored)) return stored as Lang
+  const language = browserLanguage.toLowerCase().split('-')[0]
+  return language === 'fr' ? 'fr-FR' : language === 'de' ? 'de-DE'
+    : language === 'ar' ? 'ar' : language === 'en' ? 'en-US' : 'zh-CN'
 }
 
 interface I18nContextValue {
@@ -27,7 +34,8 @@ interface I18nContextValue {
 const I18nContext = createContext<I18nContextValue | null>(null)
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(initialLang)
+  const [lang, setLangState] = useState<Lang>(() => typeof window === 'undefined' ? 'zh-CN'
+    : initialLang(window.localStorage.getItem(STORAGE_KEY), window.navigator?.language))
 
   useEffect(() => {
     document.documentElement.lang = lang

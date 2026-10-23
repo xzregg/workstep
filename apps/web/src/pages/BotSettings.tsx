@@ -1,142 +1,113 @@
-import Select from '../components/Select'
 import { useEffect, useState } from 'react'
-import { channelBotApi, type BotDraft, type ChannelBot, type BotPlatform } from '../api/channelBots'
+import { BOT_PLATFORMS, channelBotApi, type ChannelBot, type BotPlatform } from '../api/channelBots'
 import Button from '../components/Button'
+import BotSettingsEditor from '../components/BotSettingsEditor'
 import BotPrivateWhitelist from '../components/BotPrivateWhitelist'
 import BotTaskBindings from '../components/BotTaskBindings'
 import ConfirmDialog from '../components/ConfirmDialog'
-import Input from '../components/Input'
+import Spinner from '../components/Spinner'
 import { useI18n } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import './BotSettings.css'
 
-const emptyDraft = (): BotDraft => ({
-  platform: 'wecom', name: '', app_id: '', secret: '', enabled: false,
-  default_target_type: 'project', default_project_id: '', default_task_id: '',
-})
+const initials: Record<BotPlatform, string> = { wecom: '企', dingtalk: '钉', feishu: '飞', lark: 'L', telegram: 'T', discord: 'D', slack: 'S' }
 
 export default function BotSettings() {
   const { t } = useI18n()
-  const projects = useProjectStore((state) => state.projects)
-  const localProjects = projects.filter((project) => project.type !== 'remote')
-  const fetchProjects = useProjectStore((state) => state.fetchProjects)
+  const fetchProjects = useProjectStore(state => state.fetchProjects)
   const [bots, setBots] = useState<ChannelBot[]>([])
-  const [draft, setDraft] = useState<BotDraft>(emptyDraft)
+  const [platform, setPlatform] = useState<BotPlatform>('wecom')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [editorVersion, setEditorVersion] = useState(0)
+  const [dirty, setDirty] = useState(false)
+  const [pending, setPending] = useState<(() => void) | null>(null)
   const [busy, setBusy] = useState(false)
+  const [editorBusy, setEditorBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const reload = async () => setBots(await channelBotApi.list())
   useEffect(() => {
+    let active = true, inFlight = false
     void fetchProjects()
-    void reload().catch((reason) => setError(String(reason)))
-    const timer = window.setInterval(() => {
-      void channelBotApi.list().then(setBots).catch(() => undefined)
-    }, 10000)
-    return () => window.clearInterval(timer)
+    const refresh = async () => {
+      if (inFlight) return
+      inFlight = true
+      try {
+        const rows = await channelBotApi.list()
+        if (active) { setBots(rows); setError('') }
+      } catch (reason) {
+        if (active) setError(String(reason))
+      } finally {
+        inFlight = false
+        if (active) setLoading(false)
+      }
+    }
+    void refresh()
+    const timer = window.setInterval(() => { void refresh() }, 10000)
+    return () => { active = false; window.clearInterval(timer) }
   }, [fetchProjects])
 
-  const setField = <K extends keyof BotDraft>(key: K, value: BotDraft[K]) => {
-    setDraft((current) => ({ ...current, [key]: value }))
+  const reset = () => { setEditingId(null); setDirty(false); setEditorVersion(value => value + 1) }
+  const change = (action: () => void) => { if (dirty) setPending(() => action); else action() }
+  const selectPlatform = (value: BotPlatform) => {
+    if (value !== platform) change(() => { setPlatform(value); reset() })
   }
-  const edit = (bot: ChannelBot) => {
-    setEditingId(bot.id)
-    setDraft({
-      platform: bot.platform, name: bot.name, app_id: bot.app_id, secret: '',
-      enabled: bot.enabled, default_target_type: 'project',
-      default_project_id: bot.default_project_id, default_task_id: '',
-      ...(bot.platform === 'dingtalk' ? { card_template_id: bot.card_template_id || '', review_card_template_id: bot.review_card_template_id || '' } : {}),
-    })
-    setError('')
-  }
-  const reset = () => { setEditingId(null); setDraft(emptyDraft()); setError('') }
-  const valid = draft.name.trim() && draft.app_id.trim() && (editingId || draft.secret.trim())
-    && localProjects.some((project) => project.id === draft.default_project_id)
-
-
-  const save = async () => {
-    if (!valid) return
-    setBusy(true)
-    setError('')
-    try {
-      if (editingId) {
-        const values: Partial<BotDraft> = { ...draft }
-        if (!values.secret) delete values.secret
-        await channelBotApi.update(editingId, values)
-      } else {
-        await channelBotApi.create(draft)
-      }
-      await reload()
-      reset()
-    } catch (reason) {
-      setError(String(reason))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const saved = () => { reset(); void reload().catch(reason => setError(String(reason))) }
   const remove = async () => {
     if (!deleteId) return
-    setBusy(true)
+    setBusy(true); setError('')
     try {
       await channelBotApi.remove(deleteId)
-      await reload()
       if (editingId === deleteId) reset()
       setDeleteId(null)
+      await reload()
     } catch (reason) {
       setError(String(reason))
     } finally {
       setBusy(false)
     }
   }
-
+  const platformBots = bots.filter(bot => bot.platform === platform)
   return <div className="bot-settings">
-    <h1>{t('channelBot.title')}</h1>
-    <p>{t('channelBot.intro')}</p>
-    <div className="bot-settings-list">
-      {bots.map((bot) => <div className="bot-settings-card" key={bot.id}><div className="bot-settings-row">
-        <div><strong>{bot.name}</strong><span>{t(`channelBot.${bot.platform}`)} · {bot.app_id}</span></div>
-        <span role="status">{t(`channelBot.status.${bot.status}` as 'channelBot.status.connected')}{bot.error ? ` · ${bot.error}` : ''}</span>
-        <BotPrivateWhitelist botId={bot.id} />
-        <BotPrivateWhitelist botId={bot.id} scope="group" />
-        <BotTaskBindings bindings={bot.task_bindings} onChanged={reload} />
-        <Button variant="ghost" onClick={() => edit(bot)}>{t('common.edit')}</Button>
-        <Button variant="ghost" onClick={() => setDeleteId(bot.id)}>{t('common.delete')}</Button>
-      </div></div>)}
-      {!bots.length && <p>{t('channelBot.empty')}</p>}
-    </div>
-    <h2>{editingId ? t('channelBot.edit') : t('channelBot.add')}</h2>
-    <div className="bot-settings-form">
-      <label>{t('channelBot.platform')}<Select value={draft.platform} disabled={!!editingId} onChange={(event) => setField('platform', event.target.value as BotPlatform)}>
-        <option value="wecom">{t('channelBot.wecom')}</option><option value="dingtalk">{t('channelBot.dingtalk')}</option>
-        <option value="feishu">{t('channelBot.feishu')}</option><option value="lark">{t('channelBot.lark')}</option>
-      </Select></label>
-      <label>{t('channelBot.name')}<Input value={draft.name} onChange={(event) => setField('name', event.target.value)} /></label>
-      <label>{draft.platform === 'wecom' ? 'Bot ID' : draft.platform === 'dingtalk' ? 'Client ID' : 'App ID'}<Input value={draft.app_id} onChange={(event) => setField('app_id', event.target.value)} /></label>
-      <label>{draft.platform === 'wecom' ? 'Secret' : draft.platform === 'dingtalk' ? 'Client Secret' : 'App Secret'}<Input type="password" value={draft.secret} placeholder={editingId ? t('channelBot.keepSecret') : ''} onChange={(event) => setField('secret', event.target.value)} /></label>
-      {draft.platform === 'dingtalk' && <label>{t('channelBot.cardTemplate')}<Input value={draft.card_template_id || ''} placeholder={t('channelBot.cardTemplatePlaceholder')} onChange={(event) => setField('card_template_id', event.target.value)} /></label>}
-      {draft.platform === 'dingtalk' && <label>{t('channelBot.reviewCardTemplate')}<Input value={draft.review_card_template_id || ''} placeholder={t('channelBot.reviewCardTemplatePlaceholder')} onChange={(event) => setField('review_card_template_id', event.target.value)} /></label>}
-      <label>{t('channelBot.defaultProject')}<Select required value={draft.default_project_id} onChange={(event) => setDraft((current) => ({ ...current, default_project_id: event.target.value, default_task_id: '' }))}>
-        <option value="">{t('channelBot.selectProject')}</option>{localProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-      </Select></label>
-      <label className="bot-settings-checkbox"><input type="checkbox" checked={draft.enabled} onChange={(event) => setField('enabled', event.target.checked)} />{t('channelBot.enabled')}</label>
-    </div>
-    <p className="bot-settings-hint">{localProjects.length ? t('channelBot.defaultProjectHint') : t('channelBot.noLocalProject')}</p>
-    <p className="bot-settings-hint">{t('channelBot.taskBindingHint')}</p>
-    {draft.platform === 'dingtalk' && <div className="bot-settings-hint">
-      <p>{t('channelBot.cardTemplateHint')}</p>
-      <p>{t('channelBot.reviewCardTemplateHint')}</p>
-      <div className="bot-settings-help-links">
-        <a href="https://open-dev.dingtalk.com/" target="_blank" rel="noopener noreferrer">{t('channelBot.dingtalkConsole')}</a>
-        <a href="https://open.dingtalk.com/document/orgapp/create-and-deliver-cards" target="_blank" rel="noopener noreferrer">{t('channelBot.cardPermissionDocs')}</a>
+    <header className="bot-settings-heading"><h1>{t('channelBot.title')}</h1><p>{t('channelBot.intro')}</p></header>
+    <div className="bot-settings-workspace">
+      <nav className="bot-settings-platforms" aria-label={t('channelBot.platform')}>
+        {BOT_PLATFORMS.map(value => {
+          const rows = bots.filter(bot => bot.platform === value)
+          return <button key={value} type="button" className="bot-settings-platform" data-platform={value} disabled={busy || editorBusy} aria-pressed={platform === value} onClick={() => selectPlatform(value)}>
+            <span className="bot-settings-platform-icon" aria-hidden="true">{initials[value]}</span>
+            <span>{t(`channelBot.${value}`)}</span>
+            <span className="bot-settings-platform-count">{rows.length || ''}</span>
+            {rows.some(bot => bot.status === 'connected') && <span className="bot-settings-connected-dot" aria-label={t('channelBot.status.connected')} />}
+          </button>
+        })}
+      </nav>
+      <div className="bot-settings-content">
+        <header className="bot-settings-section-heading"><h2>{t(`channelBot.${platform}`)}</h2><span>{t('channelBot.botCount', { count: platformBots.length })}</span></header>
+        {loading && <div className="bot-settings-loading" role="status"><Spinner />{t('common.loading')}</div>}
+        {error && <p className="bot-settings-error" role="alert">{error}<Button onClick={() => void reload().then(() => setError('')).catch(reason => setError(String(reason)))}>{t('common.retry')}</Button></p>}
+        <div className="bot-settings-list">
+          {platformBots.map(bot => <div className="bot-settings-card" key={bot.id}>
+            <div className="bot-settings-row"><div><strong>{bot.name}</strong><span>{bot.app_id}</span></div>
+              <span className="bot-settings-status" role="status" data-status={bot.status}>{['connecting', 'reconnecting'].includes(bot.status) && <Spinner size={12} />}{t(`channelBot.status.${bot.status}` as 'channelBot.status.connected')}{bot.error ? ` · ${bot.error}` : ''}</span>
+            </div>
+            <div className="bot-settings-card-actions">
+              <BotPrivateWhitelist botId={bot.id} />
+              <BotPrivateWhitelist botId={bot.id} scope="group" />
+              <BotTaskBindings bindings={bot.task_bindings} onChanged={reload} />
+              <Button disabled={busy || editorBusy} onClick={() => { if (bot.id !== editingId) change(() => { setEditingId(bot.id); setDirty(false) }) }}>{t('common.edit')}</Button>
+              <Button disabled={busy || editorBusy} onClick={() => setDeleteId(bot.id)}>{t('common.delete')}</Button>
+            </div>
+          </div>)}
+          {!loading && !error && !platformBots.length && <p className="bot-settings-empty">{t('channelBot.empty')}</p>}
+        </div>
+        {editingId && <div className="bot-settings-actions"><Button disabled={busy || editorBusy} onClick={() => change(reset)}>{t('channelBot.add')}</Button></div>}
+        <BotSettingsEditor key={`${platform}:${editingId || 'new'}:${editorVersion}`} platform={platform} bot={bots.find(bot => bot.id === editingId)} onPlatformChange={selectPlatform} onSaved={saved} onCancel={() => change(reset)} onDirtyChange={setDirty} onBusyChange={setEditorBusy} />
       </div>
-    </div>}
-    <p className="bot-settings-hint">{draft.platform === 'wecom' ? t('channelBot.wecomHint') : draft.platform === 'dingtalk' ? t('channelBot.dingtalkHint') : t('channelBot.feishuHint')}</p>
-    {(draft.platform === 'feishu' || draft.platform === 'lark') && <div className="bot-settings-help-links">
-      <a href={draft.platform === 'feishu' ? 'https://open.feishu.cn/app' : 'https://open.larksuite.com/app'} target="_blank" rel="noopener noreferrer">{t(draft.platform === 'feishu' ? 'channelBot.feishuConsole' : 'channelBot.larkConsole')}</a>
-    </div>}
-    {error && <p className="bot-settings-error" role="alert">{error}</p>}
-    <div className="bot-settings-actions"><Button variant="primary" loading={busy} disabled={!valid} onClick={() => void save()}>{t('common.save')}</Button>{editingId && <Button variant="ghost" onClick={reset}>{t('common.cancel')}</Button>}</div>
+    </div>
     <ConfirmDialog open={!!deleteId} title={t('channelBot.deleteTitle')} message={t('channelBot.deleteHint')} danger loading={busy} onCancel={() => setDeleteId(null)} onConfirm={() => void remove()} />
+    <ConfirmDialog open={!!pending} title={t('channelBot.discardConfig')} message={t('channelBot.discardConfigHint')} onCancel={() => setPending(null)} onConfirm={() => { pending?.(); setPending(null) }} />
   </div>
 }

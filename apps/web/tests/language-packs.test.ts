@@ -13,6 +13,14 @@ test('runtime translations fall back to declared builtin and preserve placeholde
  assert.equal(t('common.save'), 'Save')
  assert.equal(t('taskDetail.artifactNotFound', {name:'x'}), 'No artifact file found for "x"')
 })
+test('new builtins can be fallbacks but cannot be replaced by runtime packs', () => {
+ for (const [locale, save] of [['fr-FR', 'Enregistrer'], ['de-DE', 'Speichern'], ['ar', 'حفظ']]) {
+  const pack = document(); pack.manifest.fallback_locale = locale
+  assert.equal(createLanguageT(validateLanguage(pack))('common.save'), save)
+  pack.manifest.locale = locale
+  assert.throws(() => validateLanguage(pack))
+ }
+})
 test('invalid cached or downloaded language cannot replace active language', () => {
  for (const mutate of [p => delete p.messages['interaction.deny'], p => p.messages['common.confirm'] = '{bad}', p => p.messages['common.cancel'] = '<script>x</script>', p => p.manifest.locale = 'zh-CN']) {
   const p = document(); mutate(p); assert.throws(() => validateLanguage(p))

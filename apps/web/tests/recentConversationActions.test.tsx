@@ -89,6 +89,8 @@ for (const action of ['archive', 'rename', 'delete'] as const) test(`recent conv
         input.dispatchEvent(new window.Event('input', { bubbles: true }))
       })
       await act(async () => button('保存').click())
+      assert.equal(container.querySelector('.layout-recent-title')?.textContent, '新标题')
+      assert.equal(container.querySelector('.layout-recent-row')?.getAttribute('title'), '新标题')
       assert.equal(useRecentVisitsStore.getState().entries[0].title, '新标题')
       assert.equal(useRecentVisitsStore.getState().entries[0].visitedAt, visitedAt)
     } else if (action === 'delete') {

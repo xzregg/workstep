@@ -7,8 +7,6 @@ import { RELEASES_URL } from '../config/downloads'
 export function Nav() {
   const { t, lang, setLang } = useI18n()
   const [theme, setTheme] = useState(initialTheme)
-  const otherLang: Lang = lang === 'zh-CN' ? 'en-US' : 'zh-CN'
-  const otherLabel = lang === 'zh-CN' ? 'EN' : '中文'
   const themeLabel = theme === 'light' ? t('nav.themeDark') : t('nav.themeLight')
 
   const handleThemeToggle = () => {
@@ -36,9 +34,13 @@ export function Nav() {
           <a href={RELEASES_URL} className="nav-control nav-download">
             {t('common.download')}
           </a>
-          <button type="button" className="nav-control nav-lang" onClick={() => setLang(otherLang)}>
-            {otherLabel}
-          </button>
+          <select className="nav-control nav-lang" aria-label={t('nav.language')} value={lang} onChange={event => setLang(event.target.value as Lang)}>
+            <option value="zh-CN">简体中文</option>
+            <option value="en-US">English</option>
+            <option value="fr-FR">Français</option>
+            <option value="de-DE">Deutsch</option>
+            <option value="ar">العربية</option>
+          </select>
           <button
             type="button"
             className="nav-control nav-theme"

@@ -13,7 +13,7 @@ from pathlib import Path
 from services.skins import checked_id
 
 MAX_PACKAGE = 8 * 1024 * 1024
-BUILTINS = {'zh-CN', 'zh-TW', 'en-US', 'ja-JP'}
+BUILTINS = {'zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'fr-FR', 'de-DE', 'ar'}
 FILES = {'manifest.json', 'messages.json', 'glossary.json'}
 
 class LanguageConflict(ValueError):

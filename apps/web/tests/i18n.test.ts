@@ -10,14 +10,53 @@ import { zhCN } from '../src/i18n/locales/zh-CN.ts'
 import { enUS } from '../src/i18n/locales/en-US.ts'
 import { zhTW } from '../src/i18n/locales/zh-TW.ts'
 import { jaJP } from '../src/i18n/locales/ja-JP.ts'
+import { frFR } from '../src/i18n/locales/fr-FR.ts'
+import { deDE } from '../src/i18n/locales/de-DE.ts'
+import { ar } from '../src/i18n/locales/ar.ts'
+import { builtinLocales } from '../src/i18n/languagePack.ts'
+import { resolveInitialLocale, useLocaleStore } from '../src/i18n/index.tsx'
 
 const zhKeys = Object.keys(flatten(zhCN)).sort()
+const zhMessages = flatten(zhCN)
 const locales = {
   'zh-CN': zhCN,
   'en-US': enUS,
   'zh-TW': zhTW,
   'ja-JP': jaJP,
+  'fr-FR': frFR,
+  'de-DE': deDE,
+  ar,
 }
+
+test('detects regional browser variants of the new builtin languages', () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  try {
+    for (const [language, locale] of [['fr-CA', 'fr-FR'], ['de-AT', 'de-DE'], ['ar-SA', 'ar'], ['ar', 'ar'], ['zh-HK', 'zh-TW'], ['ja-JP', 'ja-JP'], ['es-ES', 'en-US']]) {
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { language } })
+      assert.equal(resolveInitialLocale(), locale)
+    }
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'navigator', original)
+    else Reflect.deleteProperty(globalThis, 'navigator')
+  }
+})
+
+test('new builtin languages are selectable and preserve interpolation and placeholders', () => {
+  const expected = { 'fr-FR': 'Enregistrer', 'de-DE': 'Speichern', ar: 'حفظ' }
+  try {
+    for (const [locale, save] of Object.entries(expected)) {
+      assert.ok(builtinLocales.includes(locale as typeof builtinLocales[number]))
+      useLocaleStore.getState().setLocale(locale)
+      assert.equal(useLocaleStore.getState().locale, locale)
+      assert.equal(zhCNT('common.save'), save)
+      assert.ok(zhCNT('taskDetail.artifactNotFound', { name: 'report.md' }).includes('report.md'))
+      for (const [key, value] of Object.entries(flatten(locales[locale]))) {
+        assert.deepEqual([...value.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort(),
+          [...zhMessages[key].matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort(), `${locale}: ${key}`)
+      }
+    }
+  } finally { useLocaleStore.getState().setLocale('zh-CN') }
+})
 
 test('all locale dictionaries share identical key sets', () => {
   for (const [name, dict] of Object.entries(locales)) {
@@ -119,6 +158,9 @@ test('share clipboard localizes its labels without translating task names or cre
     'en-US': '原始任务\nAccess address: https://host/share/token?_t=actual-secret\nAccess password: actual-secret',
     'zh-TW': '原始任务\n存取位址：https://host/share/token?_t=actual-secret\n存取密碼：actual-secret',
     'ja-JP': '原始任务\nアクセス先：https://host/share/token?_t=actual-secret\nアクセスパスワード：actual-secret',
+    'fr-FR': '原始任务\nAdresse d’accès : https://host/share/token?_t=actual-secret\nMot de passe : actual-secret',
+    'de-DE': '原始任务\nZugriffsadresse: https://host/share/token?_t=actual-secret\nPasswort: actual-secret',
+    ar: '原始任务\nعنوان الوصول: https://host/share/token?_t=actual-secret\nكلمة المرور: actual-secret',
   }
   for (const [locale, dict] of Object.entries(locales)) {
     const t = createT(dict)

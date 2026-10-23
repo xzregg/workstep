@@ -15,8 +15,9 @@ task_group_router = APIRouter(prefix="/api/task", tags=["任务讨论群"])
 class CreateBotRequest(BaseModel):
     platform: str
     name: str = Field(min_length=1)
-    app_id: str = Field(min_length=1)
+    app_id: str = ""
     secret: str = Field(min_length=1)
+    app_token: str = Field(default="", max_length=2000)
     enabled: bool = False
     default_target_type: Literal['project', 'task'] = "project"
     default_project_id: str = Field(min_length=1)
@@ -35,6 +36,7 @@ class UpdateBotRequest(BaseModel):
     name: str | None = None
     app_id: str | None = None
     secret: str | None = None
+    app_token: str | None = Field(default=None, max_length=2000)
     enabled: bool | None = None
     default_target_type: str | None = None
     default_project_id: str | None = None

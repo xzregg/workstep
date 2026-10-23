@@ -69,7 +69,7 @@ interface ChatListState {
   reorderSessions: (projectId: string, orderedIds: string[]) => Promise<void>
   addSession: (session: ChatSessionSummary) => void
   removeSession: (sessionId: string) => void
-  renameSession: (sessionId: string, title: string) => void
+  renameSession: (sessionId: string, title: string, projectId?: string) => void
 
   /** Update selection based on click modifiers (plain / Cmd / Shift). */
   handleSelect: (id: string, opts: SelectOptions, projectId?: string) => void
@@ -196,16 +196,25 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       }
     }),
 
-  renameSession: (sessionId, title) =>
+  renameSession: (sessionId, title, projectId) => {
+    const recent = useRecentVisitsStore.getState()
+    for (const entry of recent.entries) {
+      if (entry.kind === 'session' && entry.id === sessionId
+        && (projectId ? entry.projectId === projectId
+          : get().sessionsByProject[entry.projectId]?.some(session => session.id === sessionId))) {
+        recent.update({ ...entry, title })
+      }
+    }
     set((state) => {
       const sessionsByProject = Object.fromEntries(
-        Object.entries(state.sessionsByProject).map(([projectId, sessions]) => [
-          projectId,
-          sessions.map((item) => item.id === sessionId ? { ...item, title } : item),
+        Object.entries(state.sessionsByProject).map(([ownerProjectId, sessions]) => [
+          ownerProjectId,
+          sessions.map((item) => item.id === sessionId && (!projectId || ownerProjectId === projectId) ? { ...item, title } : item),
         ]),
       )
       return { sessionsByProject }
-    }),
+    })
+  },
 
   // ── Multi-select logic ──
 

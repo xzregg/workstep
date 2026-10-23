@@ -1,6 +1,6 @@
 import catalog from '../../../daemon/data/languages/catalog.json' with { type: 'json' }
 export const languageCatalog = catalog as {revision: string; required_keys: string[]; messages: Record<string, string>}
-export const builtinLocales = ['zh-CN', 'zh-TW', 'en-US', 'ja-JP'] as const
+export const builtinLocales = ['zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'fr-FR', 'de-DE', 'ar'] as const
 export type BuiltinLocale = typeof builtinLocales[number]
 export interface LanguageManifest { schema_version: number; id: string; locale: string; name: string; native_name: string; version: string; fallback_locale: BuiltinLocale; direction: 'ltr'; catalog_revision: string }
 export interface LanguageDocument { manifest: LanguageManifest; messages: Record<string, string>; revision: string; coverage?: {total: number; translated: number; missing: string[]} }

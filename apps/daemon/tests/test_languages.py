@@ -19,6 +19,24 @@ def package(root):
     return root
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('locale', ['fr-FR', 'de-DE', 'ar'])
+async def test_new_builtin_languages_are_protected_and_available_as_fallbacks(tmp_path, locale):
+    from services.languages import LanguageManager
+    from services.appearance_preferences import AppearanceSelection
+    assert AppearanceSelection(language=locale).language == locale
+    root = package(tmp_path / 'draft')
+    manifest_path = root / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    manifest['fallback_locale'] = locale
+    manifest_path.write_text(json.dumps(manifest))
+    manager = LanguageManager(tmp_path / 'runtime')
+    assert (await manager.validate(str(root)))['ok']
+    manifest['locale'] = locale
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='内置语言不可覆盖'):
+        await manager.validate(str(root))
+
+@pytest.mark.asyncio
 async def test_language_install_is_immutable_with_coverage_and_conflicts(tmp_path):
     from services.languages import LanguageManager, LanguageConflict
     manager = LanguageManager(tmp_path / 'runtime')
