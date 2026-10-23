@@ -5,6 +5,12 @@ import { fileURLToPath } from 'node:url'
 import { enUS } from '../src/i18n/en-US'
 import { flattenKeys, resolvePath } from '../src/i18n/keys'
 import { zhCN } from '../src/i18n/zh-CN'
+import { frFR } from '../src/i18n/fr-FR'
+import { deDE } from '../src/i18n/de-DE'
+import { ar } from '../src/i18n/ar'
+import { initialLang } from '../src/i18n'
+
+const dictionaries = { 'zh-CN': zhCN, 'en-US': enUS, 'fr-FR': frFR, 'de-DE': deDE, ar }
 
 function walkFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -25,18 +31,29 @@ function staticTKeys(): string[] {
 }
 
 describe('i18n dictionaries', () => {
-  it('zh-CN and en-US expose identical key sets', () => {
+  it('all builtins expose identical key sets', () => {
     const zhKeys = flattenKeys(zhCN).sort()
-    const enKeys = flattenKeys(enUS).sort()
-    expect(enKeys).toEqual(zhKeys)
+    for (const dict of Object.values(dictionaries)) expect(flattenKeys(dict).sort()).toEqual(zhKeys)
   })
 
   it('every leaf value is a non-empty string', () => {
-    const zhValues = flattenKeys(zhCN).map((key) => resolvePath(zhCN, key))
-    const enValues = flattenKeys(enUS).map((key) => resolvePath(enUS, key))
-    for (const value of [...zhValues, ...enValues]) {
+    for (const value of Object.values(dictionaries).flatMap(dict => flattenKeys(dict).map(key => resolvePath(dict, key)))) {
       expect(value).toBeTruthy()
       expect(typeof value).toBe('string')
+    }
+  })
+
+  it('translates the download action in the new languages', () => {
+    expect(frFR.hero.ctaPrimary).toBe('Télécharger l’application')
+    expect(deDE.hero.ctaPrimary).toBe('Desktop-App herunterladen')
+    expect(ar.hero.ctaPrimary).toBe('تنزيل تطبيق سطح المكتب')
+  })
+
+  it('restores each saved language and detects browser languages', () => {
+    for (const lang of Object.keys(dictionaries)) expect(initialLang(lang, 'en-US')).toBe(lang)
+    for (const [browser, expected] of [['fr-CA', 'fr-FR'], ['de-AT', 'de-DE'], ['ar-SA', 'ar'], ['en-GB', 'en-US'], ['zh-HK', 'zh-CN'], ['es-ES', 'zh-CN']]) {
+      expect(initialLang(null, browser)).toBe(expected)
+      expect(initialLang('invalid', browser)).toBe(expected)
     }
   })
 

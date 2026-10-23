@@ -8,6 +8,9 @@ import { zhCN, type Messages } from './locales/zh-CN'
 import { enUS } from './locales/en-US'
 import { zhTW } from './locales/zh-TW'
 import { jaJP } from './locales/ja-JP'
+import { frFR } from './locales/fr-FR'
+import { deDE } from './locales/de-DE'
+import { ar } from './locales/ar'
 import { builtinLocales, validateLanguage, type BuiltinLocale, type LanguageDocument, type LanguageSummary } from './languagePack'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 import { appearanceStorage, appearanceScope } from '../utils/appearanceStorage'
@@ -54,7 +57,8 @@ export function createT(dict: Messages): TFunction {
 }
 
 function builtinDictionary(locale: string): Messages {
- return locale === 'en-US' ? enUS : locale === 'zh-TW' ? zhTW : locale === 'ja-JP' ? jaJP : zhCN
+ return locale === 'en-US' ? enUS : locale === 'zh-TW' ? zhTW : locale === 'ja-JP' ? jaJP
+  : locale === 'fr-FR' ? frFR : locale === 'de-DE' ? deDE : locale === 'ar' ? ar : zhCN
 }
 export function createLanguageT(pack: LanguageDocument): TFunction {
  const fallback = flatten(builtinDictionary(pack.manifest.fallback_locale))
@@ -88,13 +92,16 @@ interface LocaleState {
 let selectionGeneration = 0
 let catalogRequest: Promise<void> | null = null
 
-function resolveInitialLocale(): Locale {
+export function resolveInitialLocale(): Locale {
   if (typeof navigator !== 'undefined' && typeof navigator.language === 'string') {
     const lang = navigator.language.toLowerCase()
     if (lang.startsWith('zh')) {
       return /zh-(tw|hk|mo)/.test(lang) ? 'zh-TW' : 'zh-CN'
     }
     if (lang.startsWith('ja')) return 'ja-JP'
+    if (lang.startsWith('fr')) return 'fr-FR'
+    if (lang.startsWith('de')) return 'de-DE'
+    if (lang.startsWith('ar')) return 'ar'
     return 'en-US'
   }
   return 'zh-CN'

@@ -28,7 +28,7 @@ export default function ChatSessionRenameDialog({
     setError('')
     try {
       const updated = await chatSessionApi.rename(sessionId, projectId, nextTitle)
-      useChatListStore.getState().renameSession(sessionId, updated.title)
+      useChatListStore.getState().renameSession(sessionId, updated.title, projectId)
       onRenamed(updated.title)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('chatSession.renameFailed'))

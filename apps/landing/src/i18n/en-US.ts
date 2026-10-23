@@ -28,6 +28,7 @@ export const enUS: I18nDict = {
     docs: 'Docs',
   },
   nav: {
+    language: 'Language',
     features: 'Features',
     remote: 'Remote',
     demos: 'Demos',

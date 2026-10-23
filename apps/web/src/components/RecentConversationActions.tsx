@@ -4,7 +4,7 @@ import type { ChatSessionSummary } from '../api/client'
 import { useI18n } from '../i18n'
 import { useSidebarSessionActions } from '../hooks/useSidebarSessionActions'
 import { useOverlay } from '../hooks/useOverlay'
-import { useRecentVisitsStore, type RecentVisit } from '../stores/recentVisitsStore'
+import type { RecentVisit } from '../stores/recentVisitsStore'
 import SessionRowActions from './SessionRowActions'
 import { SidebarActionItem, SidebarActionMenu } from './SidebarActionMenu'
 import ChatSessionRenameDialog from './ChatSessionRenameDialog'
@@ -63,8 +63,7 @@ export default function RecentConversationActions({ entry, session, hovered, now
         <SidebarActionItem icon="trash" danger onClick={() => { setMenu(null); setMode('delete') }}>{t('common.delete')}</SidebarActionItem>
       </SidebarActionMenu>}
       {mode === 'rename' && <ChatSessionRenameDialog projectId={entry.projectId} sessionId={entry.id} title={session.title}
-        onClose={() => setMode(null)} onRenamed={title => {
-          useRecentVisitsStore.getState().update({ ...entry, title })
+        onClose={() => setMode(null)} onRenamed={() => {
           setMode(null)
         }} />}
       <ConfirmDialog open={mode === 'delete'} title={t('chatSession.deleteTitle')}

@@ -26,6 +26,7 @@ export const zhCN = {
     docs: '文档',
   },
   nav: {
+    language: '语言',
     features: '特性',
     remote: '远程',
     demos: '演示',

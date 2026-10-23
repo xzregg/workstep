@@ -62,7 +62,7 @@ export function useSidebarSessionActions() {
     if (!trimmed) return
     try {
       const updated = await chatSessionApi.rename(sessionId, projectId, trimmed)
-      useChatListStore.getState().renameSession(sessionId, updated.title)
+      useChatListStore.getState().renameSession(sessionId, updated.title, projectId)
     } catch {
       // Keep the old title on failure.
     }

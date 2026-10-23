@@ -1,6 +1,7 @@
 import { request } from './transport'
 
-export type BotPlatform = 'wecom' | 'dingtalk' | 'feishu' | 'lark'
+export const BOT_PLATFORMS = ['wecom', 'dingtalk', 'feishu', 'lark', 'telegram', 'discord', 'slack'] as const
+export type BotPlatform = typeof BOT_PLATFORMS[number]
 export type BotTargetType = '' | 'project' | 'task'
 
 export interface BotTaskBinding extends DiscussionGroup {
@@ -18,6 +19,7 @@ export interface ChannelBot {
   review_card_template_id?: string
   task_bindings?: BotTaskBinding[]
   has_secret: boolean
+  has_app_token?: boolean
   status: string
   error: string
   default_target_type: BotTargetType
@@ -26,6 +28,7 @@ export interface ChannelBot {
 }
 
 export interface BotDraft {
+  app_token?: string
   card_template_id?: string
   review_card_template_id?: string
   platform: BotPlatform

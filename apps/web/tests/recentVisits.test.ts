@@ -70,6 +70,29 @@ test('bulk deletion clears only successfully deleted sessions in the owning proj
   }
 })
 
+test('session renames persist recent titles without changing visit order or other targets', () => {
+  installDomEnvironment()
+  setAppearanceScope(null)
+  const recent = useRecentVisitsStore.getState()
+  recent.visit({ kind: 'session', id: 'renamed', projectId: 'p', title: '旧标题' })
+  recent.visit({ kind: 'session', id: 'renamed', projectId: 'other', title: '其他项目' })
+  recent.visit({ kind: 'task', id: 'renamed', projectId: 'p', title: '同 ID 任务' })
+  const before = useRecentVisitsStore.getState().entries
+  const originalList = useChatListStore.getState()
+  useChatListStore.setState({ sessionsByProject: {} })
+  try {
+    useChatListStore.getState().renameSession('renamed', '新标题', 'p')
+    const expected = before.map(entry => entry.kind === 'session' && entry.projectId === 'p'
+      ? { ...entry, title: '新标题' } : entry)
+    assert.deepEqual(useRecentVisitsStore.getState().entries, expected)
+    useRecentVisitsStore.setState({ entries: [] })
+    recent.hydrate()
+    assert.deepEqual(useRecentVisitsStore.getState().entries, expected)
+  } finally {
+    useChatListStore.setState(originalList)
+  }
+})
+
 test('recent visits persist locally, deduplicate by project and type, and keep the latest twenty', () => {
   installDomEnvironment()
   setAppearanceScope(null)

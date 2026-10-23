@@ -64,6 +64,9 @@ export default function AppearanceSettings() {
             <option value="zh-TW">繁體中文</option>
             <option value="en-US">English</option>
             <option value="ja-JP">日本語</option>
+            <option value="fr-FR">Français</option>
+            <option value="de-DE">Deutsch</option>
+            <option value="ar">العربية</option>
             {installed.map(item => <option key={item.manifest.id} value={'pack:' + item.manifest.id}>{item.manifest.native_name} · {item.manifest.name}</option>)}
             {language && !installed.some(item => item.manifest.id === language.manifest.id) && <option value={'pack:' + language.manifest.id}>{language.manifest.native_name}</option>}
           </Select>
