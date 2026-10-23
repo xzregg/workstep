@@ -2972,7 +2972,7 @@ wheels = [
 
 [[package]]
 name = "workstep-daemon"
-version = "1.0.13"
+version = "1.0.14"
 source = { virtual = "." }
 dependencies = [
     { name = "agent-client-protocol" },
