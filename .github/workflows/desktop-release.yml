@@ -119,7 +119,8 @@ jobs:
           ./inject-backend.sh
           # The bundled SDK tree can exceed macOS runner descriptor defaults.
           WORKSTEP_NOFILE_LIMIT=65536 source ../../scripts/file-limits.sh
-          yarn electron-builder --mac dmg zip --${{ matrix.arch }} --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-${{ matrix.arch }}
+          # Apply EMFILE backpressure before the signer loads its fs helpers.
+          node -e 'require("graceful-fs").gracefulify(require("fs")); process.argv.splice(1, 0, require.resolve("electron-builder/cli.js")); require("electron-builder/cli.js")' -- --mac dmg zip --${{ matrix.arch }} --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-${{ matrix.arch }}
           codesign --verify --deep --strict --verbose=2 "$(find dist -maxdepth 2 -type d -name WorkStep.app -print -quit)"
           test -x resources-placeholder/backend/python/bin/python3
           test -f resources-placeholder/backend/legal/LICENSE

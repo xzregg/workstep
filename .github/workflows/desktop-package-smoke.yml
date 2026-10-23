@@ -204,7 +204,7 @@ jobs:
           yarn install --frozen-lockfile
           ./inject-backend.sh
           WORKSTEP_NOFILE_LIMIT=65536 source ../../scripts/file-limits.sh
-          yarn electron-builder --mac dmg zip --arm64 --publish never --config.mac.notarize=false
+          node -e 'require("graceful-fs").gracefulify(require("fs")); process.argv.splice(1, 0, require.resolve("electron-builder/cli.js")); require("electron-builder/cli.js")' -- --mac dmg zip --arm64 --publish never --config.mac.notarize=false
           test -x resources-placeholder/backend/python/bin/python3
           test -f resources-placeholder/backend/legal/sbom.cdx.json
           test -n "$(find dist -name 'WorkStep*.app' -type d -print -quit)"

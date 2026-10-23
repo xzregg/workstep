@@ -18,7 +18,7 @@
     "start": "electron .",
     "test": "node --test tests/*.test.cjs",
     "dist": "electron-builder --publish never",
-    "dist:mac:local": "electron-builder --mac dmg --arm64 --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-arm64",
+    "dist:mac:local": "node -e 'require(\"graceful-fs\").gracefulify(require(\"fs\")); process.argv.splice(1, 0, require.resolve(\"electron-builder/cli.js\")); require(\"electron-builder/cli.js\")' -- --mac dmg --arm64 --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-arm64",
     "bundle:managed": "node scripts/create-managed-bundle.cjs",
     "dist:managed": "node scripts/build-managed.cjs"
   },

@@ -209,8 +209,8 @@ def test_local_macos_package_script_rebuilds_version_icons_and_runtime() -> None
     assert "-name 'WorkStep-*-macos-arm64.zip'" in script
     assert '"$desktop_dir/dist/WorkStep-$version-macos-arm64.dmg"' in script
 
-    assert 'electron-builder --mac dmg --arm64' in package
-    assert 'electron-builder --mac dmg zip --arm64' not in package
+    assert '-- --mac dmg --arm64' in package
+    assert '-- --mac dmg zip --arm64' not in package
     assert '"artifactName": "WorkStep-macos-${arch}.${ext}"' in package
 
 
