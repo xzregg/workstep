@@ -203,6 +203,7 @@ jobs:
           corepack enable
           yarn install --frozen-lockfile
           ./inject-backend.sh
+          WORKSTEP_NOFILE_LIMIT=65536 source ../../scripts/file-limits.sh
           yarn electron-builder --mac dmg zip --arm64 --publish never --config.mac.notarize=false
           test -x resources-placeholder/backend/python/bin/python3
           test -f resources-placeholder/backend/legal/sbom.cdx.json

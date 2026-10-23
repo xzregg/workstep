@@ -69,6 +69,7 @@ find "$desktop_dir/dist" -maxdepth 1 -type f \( \
   -name 'WorkStep-macos-arm64.zip' -o \
   -name 'WorkStep-macos-arm64.zip.blockmap' \
 \) -delete
+WORKSTEP_NOFILE_LIMIT=65536 source "$repo_dir/scripts/file-limits.sh"
 run_yarn dist:mac:local \
   --config.electronFuses.enableCookieEncryption=false \
   --config.mac.artifactName="WorkStep-${version}-macos-\${arch}.\${ext}"
