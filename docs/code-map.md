@@ -590,6 +590,8 @@ Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_ru
 
 ## 官网用户操作手册
 
+官网手册目录由 `apps/landing/src/manual/content.ts::manualGroups/getManualGroups` 维护六类章节及跨章节内容搜索；`ManualPage.tsx::ManualDirectory` 自管理当前分类展开，搜索时展开匹配分类，页面持有手机目录整体开关。`manual.css` 保证桌面目录始终可见并支持减少动态效果；章节深链接不变。行为入口：`apps/landing/tests/manual.test.tsx`（章节恰好归类一次、搜索、当前分类与深链接）。
+
 官网“文档”入口使用 `#docs/<chapter-id>`，兼容 GitHub Pages、Daemon `/landing/` 和本地单文件打开，无需服务器路由回退。`apps/landing/src/manual/ManualPage.tsx` 拥有章节导航、内容搜索、操作步骤和截图展示；`manual/content.ts` 统一章节与截图映射，入门与功能内容分文件维护。截图来自 `manual/screenshots/`，与功能入口和预期状态一起更新。中文为当前正文语言，英文界面明确提示中文手册。行为测试为 `apps/landing/tests/manual.test.tsx`；`manual:check` 检查截图覆盖。仅在 `dev` 合并到本地 `main` 并提交本批代码时集中同步手册和截图，日常开发不逐功能触发；截图复用本机 `8777` 的固定演示项目，发布时复核已合并版本，规则见 AGENTS.md、`docs/manual-demo.md` 与发布清单。
 
 

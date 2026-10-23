@@ -2,11 +2,30 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import * as manualContent from '../src/manual/content'
 import { ManualPage } from '../src/manual/ManualPage'
-import { manualChapters, getManualChapterId, isManualHash } from '../src/manual/content'
+import { manualChapters, manualGroups, getManualGroups, getManualChapterId, isManualHash } from '../src/manual/content'
 import { Nav } from '../src/components/Nav'
 import { I18nProvider } from '../src/i18n'
 
 describe('operation manual', () => {
+  it('categorizes every chapter exactly once, keeping SDK setup in quick start', () => {
+    const ids = manualGroups.flatMap(group => group.chapterIds)
+    expect([...ids].sort()).toEqual(manualChapters.map(chapter => chapter.id).sort())
+    expect(manualGroups.find(group => group.id === 'getting-started')?.chapterIds).toContain('sdk-installation')
+  })
+  it('searches chapter content across categories without empty groups', () => {
+    const groups = getManualGroups('  SDK  ')
+    expect(groups.length).toBeGreaterThan(1)
+    expect(groups.every(group => group.chapters.length > 0)).toBe(true)
+    expect(groups.flatMap(group => group.chapters).some(chapter => chapter.id === 'sdk-installation')).toBe(true)
+    expect(getManualGroups('不存在的手册词条12345')).toEqual([])
+  })
+  it('opens only the current category and highlights deep-linked chapters', () => {
+    const html = renderToStaticMarkup(<I18nProvider><ManualPage chapterId="appearance" /></I18nProvider>)
+    expect(html).toContain('对话与个性化')
+    expect(html.match(/class="manual-group-toggle"[^>]*aria-expanded="true"/g)).toHaveLength(1)
+    expect(html).toContain('href="#docs/appearance" aria-current="page"')
+    expect(html).not.toContain('href="#docs/sdk-installation"')
+  })
   it('shows a clear notice when a declared screenshot is still missing', () => {
     const screenshot = vi.spyOn(manualContent, 'screenshotUrl').mockReturnValue(undefined)
     try {
