@@ -55,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { ref: "${{ inputs.ref }}" }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with: { node-version: "22" }
       - name: Record Windows virtualization prerequisites
         shell: pwsh
@@ -99,7 +99,7 @@ jobs:
           if ($sandboxReport.success -ne $true) { throw "Windows sandbox acceptance did not complete" }
       - name: Upload real sandbox acceptance evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-sandbox-evidence
           path: ${{ runner.temp }}/windows-sandbox-report
@@ -113,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { ref: "${{ inputs.ref }}" }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with: { node-version: "22" }
       - name: Install acceptance tooling
         working-directory: apps/desktop
@@ -163,7 +163,7 @@ jobs:
           if ($report.success -ne $true) { throw "Windows acceptance did not complete" }
       - name: Upload Windows acceptance evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-acceptance-evidence
           path: ${{ runner.temp }}/windows-acceptance-report
@@ -178,8 +178,8 @@ jobs:
         with: { ref: "${{ inputs.ref }}" }
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12" }
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: yarn
@@ -208,7 +208,7 @@ jobs:
           test -x resources-placeholder/backend/python/bin/python3
           test -f resources-placeholder/backend/legal/sbom.cdx.json
           test -n "$(find dist -name 'WorkStep*.app' -type d -print -quit)"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-smoke-macos-arm64
           path: |
@@ -227,8 +227,8 @@ jobs:
         with: { ref: "${{ inputs.ref }}" }
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12" }
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
       - name: Verify native Windows socket isolation
@@ -283,13 +283,13 @@ jobs:
           if ($report.success -ne $true) { throw "Windows acceptance did not complete" }
       - name: Upload Windows acceptance evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-acceptance-evidence
           path: ${{ runner.temp }}/windows-acceptance-report
           if-no-files-found: warn
           retention-days: 14
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() && steps.windows_installer.outcome == 'success' }}
         with:
           name: desktop-smoke-windows-x64
@@ -307,8 +307,8 @@ jobs:
         with: { ref: "${{ inputs.ref }}" }
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12" }
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: yarn
@@ -335,7 +335,7 @@ jobs:
           test -x resources-placeholder/backend/python/bin/python3
           test -f resources-placeholder/backend/legal/sbom.cdx.json
           test -f dist/WorkStep-linux-x64.AppImage
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-smoke-linux-x64
           path: |
