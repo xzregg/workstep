@@ -1,5 +1,5 @@
 .manual-layout { max-width: 1240px; margin: 0 auto; padding: 100px 28px 64px; display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 48px; }
-.manual-sidebar { position: sticky; top: 88px; align-self: start; max-height: calc(100vh - 112px); overflow-y: auto; padding-right: 8px; }
+.manual-sidebar { position: sticky; top: 88px; align-self: start; max-height: calc(100vh - 112px); overflow-y: auto; padding-inline-end: 8px; }
 .manual-sidebar h1 { font-size: 20px; margin: 24px 0 16px; }
 .manual-home { font-size: 15px; }
 .manual-search-label { display: block; font-size: 12px; margin-bottom: 8px; }
@@ -9,12 +9,12 @@
 .manual-group-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; border: 0; border-radius: 12px; padding: 10px 8px; background: transparent; color: var(--fg-2); font: inherit; font-size: 15px; font-weight: 600; text-align: start; cursor: pointer; }
 .manual-group-toggle:hover { background: var(--surface); }
 .manual-group-toggle:disabled { opacity: 1; cursor: default; }
-.manual-group-title { flex: 1; }
+.manual-group-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .manual-group-count { font-size: 12px; font-weight: 400; color: var(--muted); }
 .manual-group-chevron { font-size: 20px; line-height: 1; transition: transform 150ms; }
 .manual-group-toggle[aria-expanded="true"] .manual-group-chevron { transform: rotate(90deg); }
 .manual-group-current { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.manual-group-links { display: grid; gap: 2px; margin: 2px 0 10px 16px; padding-left: 8px; border-left: 1px solid var(--border-soft); }
+.manual-group-links { display: grid; gap: 2px; margin-block: 2px 10px; margin-inline: 16px 0; padding-inline-start: 8px; border-inline-start: 1px solid var(--border-soft); }
 .manual-group-links[hidden] { display: none; }
 .manual-sidebar nav a { padding: 8px 10px; border-radius: 12px; font-size: 15px; line-height: 1.5; text-decoration: none; color: inherit; }
 .manual-sidebar nav a:hover { background: var(--surface); }
@@ -24,8 +24,8 @@
 .manual-summary { font-size: 15px; line-height: 1.8; color: var(--fg-2); }
 .manual-section { padding: 24px 0; border-bottom: 1px solid var(--border-soft); }
 .manual-section h3 { font-size: 20px; margin: 0 0 16px; }
-.manual-section ol { padding-left: 24px; margin: 0; }
-.manual-section li { padding-left: 6px; margin: 12px 0; line-height: 1.9; overflow-wrap: anywhere; }
+.manual-section ol { padding-inline-start: 24px; padding-inline-end: 0; margin: 0; }
+.manual-section li { padding-inline-start: 6px; margin: 12px 0; line-height: 1.9; overflow-wrap: anywhere; }
 .manual-tip, .manual-language-note { background: var(--surface); border: 1px solid var(--border-soft); padding: 12px 16px; line-height: 1.8; border-radius: var(--radius-lg); }
 .manual-section figure { margin: 24px 0 0; }
 .manual-section img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 12px; }
@@ -39,7 +39,11 @@
 @media (max-width: 400px) { .nav-row.container { padding: 0 12px; } .nav-row .brand-mark { display: none; } .nav-row .nav-download, .nav-row .nav-lang { padding: 0 8px; } }
 
 .manual-directory-toggle { display: none; cursor: pointer; padding: 12px 0; background: transparent; color: inherit; border: 0; font: inherit; font-weight: 600; font-size: 15px; text-align: start; }
-.manual-directory-toggle::before { content: '›'; display: inline-block; margin-right: 8px; }
+.manual-directory-toggle::before { content: '›'; display: inline-block; margin-inline-end: 8px; }
 .manual-directory-toggle[aria-expanded="true"]::before { transform: rotate(90deg); }
 @media (min-width: 761px) { .manual-directory-content[hidden] { display: block; } }
 @media (max-width: 760px) { .manual-directory-toggle { display: block; min-height: 44px; } }
+.manual-layout[dir="rtl"] .manual-group-chevron,
+.manual-layout[dir="rtl"] .manual-directory-toggle::before { transform: rotate(180deg); }
+.manual-layout[dir="rtl"] .manual-group-toggle[aria-expanded="true"] .manual-group-chevron,
+.manual-layout[dir="rtl"] .manual-directory-toggle[aria-expanded="true"]::before { transform: rotate(90deg); }

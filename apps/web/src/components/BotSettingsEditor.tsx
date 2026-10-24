@@ -11,6 +11,7 @@ const consoles: Record<BotPlatform, string> = {
   feishu: 'https://open.feishu.cn/app', lark: 'https://open.larksuite.com/app',
   telegram: 'https://t.me/BotFather', discord: 'https://discord.com/developers/applications',
   slack: 'https://api.slack.com/apps',
+  qq: 'https://q.qq.com/',
 }
 
 export default function BotSettingsEditor({ platform, bot, onPlatformChange, onSaved, onCancel, onDirtyChange, onBusyChange }: {
@@ -90,7 +91,7 @@ export default function BotSettingsEditor({ platform, bot, onPlatformChange, onS
     </fieldset>
     <div className="bot-settings-guidance">
       <p className="bot-settings-hint">{t(`channelBot.${hintKey}Hint`)}</p>
-      {['telegram', 'discord', 'slack'].includes(platform) && <p className="bot-settings-hint">{t('channelBot.textOnlyHint')}</p>}
+      {['telegram', 'discord', 'slack', 'qq'].includes(platform) && <p className="bot-settings-hint">{t('channelBot.textOnlyHint')}</p>}
       {platform === 'dingtalk' && <>
         <p className="bot-settings-hint">{t('channelBot.cardTemplateHint')}</p>
         <p className="bot-settings-hint">{t('channelBot.reviewCardTemplateHint')}</p>

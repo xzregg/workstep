@@ -16,6 +16,12 @@ const DICTS: Record<Lang, I18nDict> = {
   ar,
 }
 
+export function translate(lang: Lang, key: string) { return resolvePath(DICTS[lang], key) }
+
+function storedLanguage() {
+  try { return window.localStorage.getItem(STORAGE_KEY) } catch { return null }
+}
+
 const STORAGE_KEY = 'workstep-landing-lang'
 
 export function initialLang(stored: string | null = null, browserLanguage = ''): Lang {
@@ -35,10 +41,15 @@ const I18nContext = createContext<I18nContextValue | null>(null)
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => typeof window === 'undefined' ? 'zh-CN'
-    : initialLang(window.localStorage.getItem(STORAGE_KEY), window.navigator?.language))
+    : initialLang(storedLanguage(), window.navigator?.language))
 
   useEffect(() => {
     document.documentElement.lang = lang
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
+    document.title = translate(lang, 'meta.title')
+    document.querySelector('meta[name="description"]')?.setAttribute('content', translate(lang, 'meta.description'))
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', translate(lang, 'meta.title'))
+    document.querySelector('meta[property="og:description"]')?.setAttribute('content', translate(lang, 'meta.description'))
   }, [lang])
 
   const value = useMemo<I18nContextValue>(
@@ -46,9 +57,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       lang,
       setLang: (next: Lang) => {
         setLangState(next)
-        window.localStorage.setItem(STORAGE_KEY, next)
+        try { window.localStorage.setItem(STORAGE_KEY, next) } catch { /* Language switching also works without browser storage. */ }
       },
-      t: (key: string) => resolvePath(DICTS[lang], key),
+      t: (key: string) => translate(lang, key),
     }),
     [lang],
   )

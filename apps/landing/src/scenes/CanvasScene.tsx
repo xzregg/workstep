@@ -147,7 +147,7 @@ export function CanvasScene({ time }: { time: number }) {
               </div>
               <div className="stage-node-sub">
                 <span className="sub-arrow">↳</span>
-                <span className="sub-name">产物清单</span>
+                <span className="sub-name">{t('scene.canvas.artifactList')}</span>
                 <span className="sub-type">text</span>
                 <span className="sub-dot" style={{ background: '#16a34a' }} />
               </div>

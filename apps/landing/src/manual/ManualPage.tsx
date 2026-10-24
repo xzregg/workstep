@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { useI18n } from '../i18n'
-import { manualChapters, manualGroups, getManualGroups, screenshotUrl } from './content'
+import { getManualChapters, manualGroups, getManualGroups, screenshotUrl } from './content'
 import './manual.css'
 
 function ManualDirectory({ chapterId, query }: { chapterId: string; query: string }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [expandedGroup, setExpandedGroup] = useState(() => manualGroups.find(group => group.chapterIds.includes(chapterId))?.id)
-  const groups = getManualGroups(query)
+  const groups = getManualGroups(query, lang)
   const searching = Boolean(query.trim())
-  return <nav className="manual-groups" aria-label={t('manual.chapters')} lang="zh-CN">
+  return <nav className="manual-groups" aria-label={t('manual.chapters')} lang={lang}>
     {groups.map(group => {
       const expanded = searching || expandedGroup === group.id
       const current = group.chapterIds.includes(chapterId)
@@ -32,11 +32,14 @@ export function ManualPage({ chapterId }: { chapterId: string }) {
   const { t, lang } = useI18n()
   const [query, setQuery] = useState('')
   const [directoryOpen, setDirectoryOpen] = useState(true)
-  const chapter = manualChapters.find(c => c.id === chapterId) ?? manualChapters[0]
-  const index = manualChapters.indexOf(chapter)
-  return <main className="manual-layout" id="manual">
+  const chapters = getManualChapters(lang)
+  const chapter = chapters.find(c => c.id === chapterId) ?? chapters[0]
+  const index = chapters.indexOf(chapter)
+  const previousArrow = lang === 'ar' ? '→' : '←'
+  const nextArrow = lang === 'ar' ? '←' : '→'
+  return <main className="manual-layout" id="manual" lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
     <aside className="manual-sidebar">
-      <a className="manual-home" href="#top">← {t('manual.home')}</a>
+      <a className="manual-home" href="#top">{previousArrow} {t('manual.home')}</a>
       <h1>{t('manual.title')}</h1>
       <label className="manual-search-label" htmlFor="manual-search">{t('manual.search')}</label>
       <input id="manual-search" type="search" value={query} onChange={e => {
@@ -50,8 +53,8 @@ export function ManualPage({ chapterId }: { chapterId: string }) {
         </div>
       </div>
     </aside>
-    <article className="manual-article" lang="zh-CN" key={chapter.id}>
-      {lang !== 'zh-CN' && <p className="manual-language-note">{t('manual.chineseNotice')}</p>}
+    <article className="manual-article" lang={lang} key={chapter.id}>
+      {lang !== 'zh-CN' && <p className="manual-language-note">{t('manual.screenshotNotice')}</p>}
       <h2>{chapter.title}</h2><p className="manual-summary">{chapter.summary}</p>
       {chapter.sections.map((section, sectionIndex) => {
         const source = section.screenshot && screenshotUrl(section.screenshot.id)
@@ -64,8 +67,8 @@ export function ManualPage({ chapterId }: { chapterId: string }) {
         </section>
       })}
       <nav className="manual-pagination" aria-label={t('manual.pagination')}>
-        {index > 0 && <a href={`#docs/${manualChapters[index - 1].id}`}>← {manualChapters[index - 1].title}</a>}
-        {index < manualChapters.length - 1 && <a href={`#docs/${manualChapters[index + 1].id}`}>{manualChapters[index + 1].title} →</a>}
+        {index > 0 && <a href={`#docs/${chapters[index - 1].id}`}>{previousArrow} {chapters[index - 1].title}</a>}
+        {index < chapters.length - 1 && <a href={`#docs/${chapters[index + 1].id}`}>{chapters[index + 1].title} {nextArrow}</a>}
       </nav>
     </article>
   </main>

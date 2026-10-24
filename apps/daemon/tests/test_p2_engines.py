@@ -3449,7 +3449,13 @@ async def test_codex_sdk_goal_start_explicitly_uses_default_mode(with_image):
         async def thread_goal_clear(self, thread_id):
             calls.append(("clear", thread_id))
 
-        async def turn_start(self, thread_id, prompt, params=None):
+        async def turn_start(self, *args, **kwargs):
+            raise RuntimeError("thread has an active goal operation: thread-1")
+
+        async def request(self, method, payload, response_model=None):
+            assert method == "turn/start"
+            thread_id, prompt = payload["threadId"], payload["input"]
+            params = payload
             calls.append(("turn", thread_id, prompt, params))
             return SimpleNamespace(turn=SimpleNamespace(id="first-turn"))
 
@@ -3475,7 +3481,7 @@ async def test_codex_sdk_goal_start_explicitly_uses_default_mode(with_image):
     )
 
     turn = next(call for call in calls if isinstance(call, tuple) and call[0] == "turn")
-    assert turn[1:3] == ("thread-1", initial_input if with_image else "完成计划")
+    assert turn[1:3] == ("thread-1", initial_input if with_image else [{"type": "text", "text": "完成计划"}])
     goal = next(call for call in calls if isinstance(call, tuple) and call[0] == "goal")
     assert goal[2]["objective"] == "完成计划"
     assert turn[3]["collaborationMode"]["mode"] == "default"
@@ -3501,7 +3507,13 @@ async def test_codex_sdk_goal_start_interrupts_first_turn_if_goal_set_fails():
         async def thread_goal_clear(self, thread_id):
             pass
 
-        async def turn_start(self, thread_id, prompt, params=None):
+        async def turn_start(self, *args, **kwargs):
+            raise RuntimeError("thread has an active goal operation: thread-1")
+
+        async def request(self, method, payload, response_model=None):
+            assert method == "turn/start"
+            thread_id, prompt = payload["threadId"], payload["input"]
+            params = payload
             return SimpleNamespace(turn=SimpleNamespace(id="first-turn"))
 
         async def thread_goal_set(self, thread_id, **kwargs):
@@ -3556,8 +3568,14 @@ async def test_codex_sdk_goal_stream_waits_for_goal_completion_across_turns(monk
         async def thread_goal_clear(self, thread_id):
             assert thread_id == "thread-1"
 
-        async def turn_start(self, thread_id, prompt, params=None):
-            assert (thread_id, prompt) == ("thread-1", "修复性能问题")
+        async def turn_start(self, *args, **kwargs):
+            raise RuntimeError("thread has an active goal operation: thread-1")
+
+        async def request(self, method, payload, response_model=None):
+            assert method == "turn/start"
+            thread_id, prompt = payload["threadId"], payload["input"]
+            params = payload
+            assert (thread_id, prompt) == ("thread-1", [{"type": "text", "text": "修复性能问题"}])
             assert params["collaborationMode"]["mode"] == "default"
             return SimpleNamespace(turn=SimpleNamespace(id="first-turn"))
 

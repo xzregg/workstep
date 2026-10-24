@@ -1,17 +1,35 @@
 import type { I18nDict } from './keys'
 
 export const deDE: I18nDict = {
-  "manual": {
+  meta: {
+    "title": "WorkStep — KI-Entwicklung Schritt für Schritt, unter Ihrer Kontrolle",
+    "description": "Verbinden Sie KI-Programmierwerkzeuge für Anforderungsanalyse, Implementierung, Tests und Prüfung in wiederverwendbaren Workflows. Prüfen Sie Ergebnisse und fordern Sie Nacharbeit an."
+  },
+  privacy: {
+    "title": "Datenschutzhinweis zu WorkStep",
+    "localData": "Die WorkStep-Desktop-App enthält keine Nutzungstelemetrie. Projekt-, Aufgaben- und Ausführungsdaten bleiben standardmäßig auf Ihrem Gerät. Die Website erfasst nur dann zusammengefasste Besuchsstatistiken, wenn die Verantwortlichen Cloudflare Web Analytics konfigurieren; dabei werden keine websiteübergreifenden Tracking-Cookies verwendet. GitHub erfasst Repository-Aufrufe und Release-Downloads nach seinen eigenen Richtlinien.",
+    "externalServices": "Remote-Freigaben und LLM-Engines von Drittanbietern werden freiwillig aktiviert und unterliegen den Bedingungen der jeweiligen Anbieter. Veröffentlichen Sie niemals Zugangsdaten, private Projektinhalte oder persönliche Pfade in öffentlichen Issues.",
+    "home": "Zurück zu WorkStep"
+  },
+  manual: {
     "title": "Benutzerhandbuch",
     "home": "Zur Startseite",
     "search": "Handbuch durchsuchen",
     "searchPlaceholder": "Funktionen oder Fragen suchen",
     "chapters": "Handbuchkapitel",
     "noResults": "Keine passenden Kapitel",
-    "chineseNotice": "Das Handbuch ist derzeit auf Chinesisch verfügbar. Die Bildschirmfotos zeigen die chinesische Oberfläche.",
     "enlarge": "Vollständiges Bild anzeigen",
     "pagination": "Vorheriges und nächstes Kapitel",
-    "screenshotPending": "Bildschirmfotos für diesen Abschnitt stehen noch aus."
+    "screenshotPending": "Bildschirmfotos für diesen Abschnitt stehen noch aus.",
+    "screenshotNotice": "Die Bildschirmfotos zeigen die chinesische Oberfläche. Die Schaltflächennamen in der Anleitung helfen beim Zuordnen der Bedienelemente.",
+    "groups": {
+      "getting-started": "Erste Schritte",
+      "automation": "Workflows und Automatisierung",
+      "delivery": "Aufgaben und Ergebnisse",
+      "personalization": "Chat und Anpassung",
+      "collaboration": "Freigabe und Zusammenarbeit",
+      "help": "Einstellungen und Hilfe"
+    }
   },
   "common": {
     "download": "Herunterladen",
@@ -383,6 +401,7 @@ export const deDE: I18nDict = {
       "prompt5": "Tests ausführen und Bericht erstellen",
       "prompt6": "Erstellen und ausliefern",
       "reworkLabel": "Rückmeldung zur Nacharbeit",
+      "artifactList": "Ergebnisliste",
       "reworkDesc": "Durchgezogen = Datenfluss · Gestrichelt = Nacharbeit (rückwärts gerichtete Verbindungen werden automatisch gestrichelt)",
       "node1": "Anforderungen",
       "node2": "Entwurf",

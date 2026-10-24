@@ -1,0 +1,1568 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Download, install and open WorkStep",
+    "summary": "Install WorkStep first, then an SDK engine. The desktop app includes its backend runtime; you do not need to install Python first.",
+    "sections": [
+      {
+        "title": "Choose an installer",
+        "steps": [
+          "Use the website download link to choose the desktop installer for your operating system and chip. On Mac, choose the arm64 DMG for Apple M-series chips or the x64 DMG for Intel.",
+          "Install and open WorkStep using your system's normal installation process. Wait for the local backend to become ready and the workspace to open.",
+          "On first launch, enter a display name when prompted. To revisit onboarding, open Settings → System settings → Onboarding (设置 → 系统设置 → 新手引导), then click Onboarding."
+        ],
+        "tips": [
+          "Desktop installers do not include optional engines such as Codex SDK or Claude Agent SDK. Install them through the interface in the next chapter.",
+          "Early unsigned macOS or Windows builds may trigger system security prompts. Verify the download source before following your system's instructions.",
+          "Standalone local use does not require Gateway login. If you voluntarily enable Gateway and authentication cannot start, the local entry attempts to return to local mode and disable Gateway, retaining its address for later reconnection. A Gateway-bound installation or remote visitor cannot use this to disable the host's Gateway. If returning to local mode fails, verify the local backend and refresh to retry."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Identity setup and quick-start entry on first launch",
+          "caption": "Enter a local display name to enter the workspace or begin quick setup. This image uses a demonstration identity."
+        }
+      },
+      {
+        "title": "Understand three concepts",
+        "steps": [
+          "An engine executes tasks and calls tools. This manual recommends Codex SDK or Claude Agent SDK first; a separately installed CLI engine is not required.",
+          "A provider supplies the model API, API address and credentials. It is separate from the execution engine, and its protocol must match one supported by that engine.",
+          "A model actually processes your request. Install an engine, authenticate it, select and test a model, then create a task."
+        ],
+        "tips": [
+          "An SDK may include or invoke an underlying executable. Choosing an SDK does not mean there are no subprocesses.",
+          "WorkStep stores project data locally. During execution, the chosen engine and provider send task context to the model service."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Step 1: install an SDK engine",
+    "summary": "Start with an SDK. Download and manage engines through Install & versions (安装与版本), without copying terminal installation commands.",
+    "sections": [
+      {
+        "title": "Download and install through the interface",
+        "steps": [
+          "Open Settings → Execution engines (设置 → 执行引擎). Find the Codex or Claude Code card marked sdk, corresponding to Codex SDK and Claude Agent SDK. Initially install just the one you intend to use.",
+          "Click Install & versions, wait for the version list, then choose an appropriate version under Select version.",
+          "Click Install selected version and verify the version. If third-party terms appear, read and accept them before clicking Confirm installation.",
+          "Wait for the main package download, engine and dependency installation, and version verification. Confirm that the new version is displayed.",
+          "Changing an SDK version requires restarting the backend. Desktop users can finish current work, quit and reopen WorkStep, then continue configuration."
+        ],
+        "tips": [
+          "The percentage covers only the main package. Dependency downloads and extraction may have no percentage; use the phase description to judge progress.",
+          "Installation continues when its section is collapsed. Do not submit again merely because progress has temporarily stopped changing.",
+          "If no suitable version appears, refresh the list and check network and platform support. When a custom executable path is configured, clear it as instructed before managing versions."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "SDK engine installation and version selection",
+          "caption": "Click Install & versions, Select version, then Install selected version."
+        }
+      },
+      {
+        "title": "Verify installation and maintain versions",
+        "steps": [
+          "Reopen Execution engines and check that the SDK is detected as installed with the expected version.",
+          "Use Install & versions for later upgrades. If a rollback version is available, click Roll back to… and confirm; rollback downloads the older version again.",
+          "If installation fails, read the error in that section, check the network, disk space and installation path, then retry. Installation success does not mean model authentication succeeded: complete configuration and testing next."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Version and progress after SDK installation",
+          "caption": "Check the current version after installation. The remaining 100% indicator means installation has completed, not that downloading continues."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Configure providers, authentication and connection tests",
+    "summary": "Configure a compatible provider in WorkStep and bind it to your SDK. Users with an existing native login can also reuse the engine's authentication.",
+    "sections": [
+      {
+        "title": "Add a provider",
+        "steps": [
+          "Open Settings → Providers → Add provider (设置 → 供应商 → 添加供应商). Enter a recognizable name and choose the service's type and API protocol.",
+          "For Claude Agent SDK, select a compatible Anthropic Messages endpoint; for Codex SDK, select a compatible OpenAI Responses endpoint. An 'OpenAI-compatible' claim alone does not establish protocol compatibility.",
+          "Enter the API address and API Key supplied by the provider. Keep version paths such as /v1 or /v2; do not use the full chat endpoint as the base address.",
+          "Save the provider and click Test connection. To obtain models, click Get models, select the models you need, then Save selected.",
+          "Ensure the provider is enabled. After its test passes, return to the SDK to complete binding and engine testing."
+        ],
+        "tips": [
+          "Account subscriptions, API credentials and billing are determined by the service provider. Installing an SDK does not supply credentials.",
+          "When editing a provider, leaving the key blank retains the old value. Enter a new key to replace it, and hide keys before screenshots or sharing configuration.",
+          "In enterprise-managed mode, providers may be assigned by the platform. Use an authorized provider rather than adding it again."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Provider name, protocol and API address settings",
+          "caption": "Configure a compatible protocol, save, then test the connection. The image shows a public API address with an empty key field."
+        }
+      },
+      {
+        "title": "Bind and verify the SDK",
+        "steps": [
+          "Return to Settings → Execution engines, expand the installed SDK's configuration, and select the compatible provider you saved.",
+          "Claude Agent SDK requires a Permission mode. Read its description, choose and confirm; other advanced fields can remain at their defaults. For Codex SDK, initially retain the default reasoning, approval and sandbox settings.",
+          "Click Save configuration and check the default model. For a bound provider, Refresh models rereads only saved selections, rather than fetching all models. The list is empty if no cache or selections exist. To add models, return to Settings → Providers, Get models and Save selected, then refresh the engine.",
+          "Click Test on the engine card, wait for the result, and confirm Verified (已验证). This is your checkpoint before running tasks."
+        ],
+        "tips": [
+          "Engine testing invokes the selected engine and may incur model service charges.",
+          "Codex SDK reasoning effort, approval and sandbox options have Chinese labels. The effort list shows engine-supported settings even if the model catalog is empty; it does not imply that every model supports every level. Start with defaults. If a model rejects a level, return to Automatic or a supported value.",
+          "Without a provider binding, Codex SDK reuses local Codex authentication, while Claude Agent SDK uses its native authentication configuration. New users without an existing login should start with provider configuration.",
+          "For authentication errors, check the key, API address, protocol and account permissions. For model errors, check the model ID and provider support. If marked Not installed, return to installation."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Test, Verified and Save configuration on a Codex SDK card",
+          "caption": "The Codex sdk card displays Verified, indicating that this engine passed its test."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Set the default execution engine and model",
+    "summary": "Make the tested SDK the default execution engine for steps that do not specify another engine.",
+    "sections": [
+      {
+        "title": "Save the defaults",
+        "steps": [
+          "Under Settings → Execution engines → Default execution engine, select the SDK you just verified.",
+          "Click Save defaults and confirm the success message. Do not leave after merely selecting a dropdown value.",
+          "Choose a model in that SDK card's default-model selector. Steps without a separate model use this default.",
+          "After creating a workflow, recheck each step's engine and model. Explicit step settings do not automatically change when global defaults change."
+        ],
+        "tips": [
+          "Assistants have separate configuration entries. Changing the default execution engine does not change every assistant.",
+          "First complete a workflow with one verified SDK and one model, then try different models for different steps."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Default execution engine selector and Save defaults button",
+          "caption": "The default engine selector and Save defaults entry. Pydantic AI is unconfigured in this image; no default has been changed or verified."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Connect a local project",
+    "summary": "A project corresponds to a local code directory. Its data follows the project by default, or can be stored by project ID under the current user's Home.",
+    "sections": [
+      {
+        "title": "Understand the automatically prepared default workspace",
+        "steps": [
+          "On first entry, the sidebar includes Default workspace (默认工作区). With no selected project, WorkStep opens its ordinary chat page. Existing project selections and remote bindings take precedence.",
+          "After configuring an SDK, use this workspace for ordinary chat. To work on your code, use Add project to connect its actual directory; the default workspace is not an already-connected repository.",
+          "The default workspace is also shared by skill, engine, skin and language-pack creation. These entries reuse ordinary chat and store their outputs in that workspace."
+        ],
+        "tips": [
+          "You can rename the default workspace but cannot remove it from the project list. It does not automatically create a workflow.",
+          "The default workspace is a project; an SDK is an execution engine. Having a project does not mean an engine is installed or authenticated."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Default workspace and ordinary chat entry in the sidebar",
+          "caption": "An empty ordinary chat in the default workspace, with no conversations or workflows yet. Create a conversation here; code projects still need to be connected explicitly."
+        }
+      },
+      {
+        "title": "Start with a demonstration directory",
+        "steps": [
+          "Prepare a separate demonstration folder, such as workstep-demo. For existing code, select its project root.",
+          "Click Sidebar → Add project → Local project (侧边栏 → 添加项目 → 本地项目), select that folder in the directory browser and confirm.",
+          "Check that the project appears in the sidebar and switch to it. New projects have no workflow by default; create one next.",
+          "When reconnecting the same directory later, workflows, tasks and messages are restored from project data. Do not delete .workstep just to reopen a project."
+        ],
+        "tips": [
+          "Engines may read or modify project files according to task instructions. Practice in a separate directory and retain version history before editing real code.",
+          "By default, project data is in .workstep/workstep.db, uploads in .workstep/uploads/, and artifacts in .workstep/artifacts/. With centralized storage, back up the corresponding project data directory under Home and the project identity file.",
+          "New or renamed project names cannot contain spaces, tabs or other whitespace."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Add a local project and select its root directory",
+          "caption": "Select the demonstration directory, then enter the connected project from the sidebar."
+        }
+      },
+      {
+        "title": "Open the project directory and inspect generated files",
+        "steps": [
+          "Select the project and click Open directory on its task or project-chat page. Use this to inspect actual generated files after a task finishes.",
+          "In the desktop app, the right-hand arrow lists detected local file managers, editors and terminals. Selecting one immediately opens the directory and remembers the local choice. Only detected, available applications appear.",
+          "Remote projects and remote browser access use the web directory browser. Desktop builds without the directory-opening bridge also use it; a desktop editor need not be installed inside the container."
+        ],
+        "tips": [
+          "Desktop sandbox project paths are mapped back to host mount directories before opening. If no mount matches, check the project mount configuration.",
+          "If Open directory fails, check that the selected application and directory still exist, or inspect the project directly in your system file manager."
+        ]
+      },
+      {
+        "title": "Reorder sidebar projects",
+        "steps": [
+          "In the sidebar, drag Manual demonstration (操作手册演示) before or after the desired project.",
+          "Local and remote projects can be interleaved. Releasing saves the order to local configuration, and reopening preserves it."
+        ],
+        "tips": [
+          "Ordering affects only this device's display, not project order on a remote host. Follow the error message and retry if saving fails."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Two local demonstration projects and workflows in the sidebar",
+          "caption": "The latest sidebar shows two local demonstration projects and the default workspace. Drag project rows to reorder; no remote device is connected."
+        }
+      },
+      {
+        "title": "Choose where project data is stored",
+        "steps": [
+          "After selecting a directory under Sidebar → Add project → Local project, check Data directory follows project directory (数据目录跟随项目目录), enabled by default for new projects.",
+          "When checked, tasks, workflows, attachments, logs, artifacts, skills and memory are stored in the project's .workstep/. Unchecking uses ~/.workstep/projects/<项目ID>/, leaving only .workstep/project.json as the identity file in the project directory.",
+          "For an existing project, inspect its actual data path under Project configuration → General. Change the checkbox and confirm migration. First stop tasks, conversations and quick actions; remove existing Git workspaces.",
+          "Wait for migration, then check the new path and original tasks. Failure preserves original data. A nonempty destination is not overwritten; resolve the reported issue and retry."
+        ],
+        "tips": [
+          "Re-adding an existing project preserves the storage mode in its identity file; it does not automatically move data.",
+          "Keep .workstep/project.json when moving or renaming a project, then re-add it to recognize the original project. Deleting that identity file does not delete Home data, but prevents automatic association.",
+          "A copy with the same project ID cannot coexist with the registered original directory: the system reports an ID conflict. For migration between computers, also copy the corresponding Home data directory.",
+          "Centralized storage still automatically ignores .workstep/ in the project. Ordinary compression does not automatically apply Git ignore rules, but the identity file contains no task data."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Data-storage option and identity-file notice when adding a project",
+          "caption": "The real Add project interface: unchecking the default shows the Home path and instructions for moving or migrating between computers."
+        }
+      },
+      {
+        "title": "Move an existing project's data",
+        "steps": [
+          "Open General in project configuration and verify the current data path.",
+          "Click Data directory follows project directory, read and confirm the migration, then wait. Active work or a nonempty destination produces an error."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Data-storage location in demonstration project settings",
+          "caption": "Verify the current path. Changing the checkbox still requires confirming migration in the dialog."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Create your first two-step workflow",
+    "summary": "Use Requirements analysis → Execute task to understand steps, inputs, outputs and connections.",
+    "sections": [
+      {
+        "title": "Create an example through onboarding",
+        "steps": [
+          "Ensure you saved a default execution engine and selected the connected local project. If onboarding is closed, reopen Settings → System settings → Onboarding and click Onboarding.",
+          "Under Create a two-step workflow, click Create example workflow. Wait for success and the canvas to open.",
+          "The example is named Analysis and execution (分析与执行). Its first step, Requirements analysis (需求分析), outputs an Execution plan (执行计划), connected to the second step, Execute task (执行任务).",
+          "Open both steps and check the engine, model, prompt, inputs and outputs, ensuring they use a verified SDK. The example neither starts on creation nor runs reviews; once started, its two steps execute in dependency order."
+        ],
+        "tips": [
+          "An ordinary new workflow starts with an empty canvas, without example steps. Choose a template explicitly.",
+          "Do not judge setup solely by the line's appearance: verify that the output port matches the next step's input requirements."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Two-step canvas for requirements analysis and task execution",
+          "caption": "Requirements analysis produces an execution plan for Execute task. Click each step to inspect its configuration."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Create and complete your first task",
+    "summary": "Use a small, explicit, easy-to-check task to verify that your SDK, project and workflow work together.",
+    "sections": [
+      {
+        "title": "Write a verifiable request",
+        "steps": [
+          "Prepare README.md and example.txt in the demonstration directory. README.md should list five operations to explain, with supplementary notes in example.txt. Use demonstration content rather than private material.",
+          "Open the demonstration project's task page, select Analysis and execution, then click New task. The onboarding Create task entry also opens it.",
+          "Start at Requirements analysis and enter the title Organize project instructions (整理项目说明).",
+          "Example description: Read README.md and example.txt, produce an execution plan, then create 使用说明.md at the project root. List five operations in Markdown, one sentence per operation. Only read those two existing files; do not modify them. You may create 使用说明.md, but do not modify other files. Report the generated file's location when finished.",
+          "Select Manual start and click Create task. Check the request and starting step, then Start task. Alternatively, choose Start immediately after creation."
+        ],
+        "tips": [
+          "Specify the goal, permitted actions, delivery format and acceptance criteria; this makes results easier to check than a vague request.",
+          "Starting at a later step skips earlier ones. For your first exercise, start with Requirements analysis.",
+          "Opening the task-creation panel from onboarding does not itself execute a task; the panel's startup option controls execution."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Task title, description, starting step and startup mode",
+          "caption": "Write a concrete request, select its starting step and explicitly choose when execution begins."
+        }
+      },
+      {
+        "title": "Follow the steps and check outputs",
+        "steps": [
+          "Open task details and watch the current step, status and messages. Wait while the engine runs, and respond to explicit questions or approval requests in the interface.",
+          "After Requirements analysis finishes, Execute task starts automatically according to the dependency connection. No additional Start click is needed. Read the first step's plan and check that the second used it.",
+          "After Execute task finishes, read the final message and open 使用说明.md at the project root. Check that it is Markdown, includes five operations, and uses one sentence for each.",
+          "If a message shows Edited … files, expand it and click a filename. View the recorded patch when available; otherwise preview the current file. Historical changes may differ from the file now, so still inspect the actual output.",
+          "Verify README.md and example.txt were unchanged and only the permitted 使用说明.md was added. Use the project's file entry or your system file manager. Completion status alone does not prove correctness."
+        ],
+        "tips": [
+          "If waiting continues, distinguish waiting to start, approval, review and active execution: each needs a different response.",
+          "On failure, preserve the error and first test the SDK connection again. After repairing configuration, use the task's available recovery or retry entry.",
+          "If an API reports that it returned a webpage, confirm the backend was updated and restarted, then refresh and retry. Failure to load execution details alone does not mean execution failed; do not create a duplicate task for that reason."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Output 使用说明.md after completing the two-step task",
+          "caption": "After both steps complete, inspect 使用说明.md and its five operation descriptions."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Edit workflows",
+    "summary": "Break work into steps and configure execution engines, inputs, outputs and review rules.",
+    "sections": [
+      {
+        "title": "Add and connect steps",
+        "steps": [
+          "Select a project and workflow on the left and enter Workflow canvas. A new workflow is empty; add steps or explicitly apply a template.",
+          "Click + Step and enter its name and identifier, for example Organize requirements with requirements. Identifiers must be unique within the workflow, start with an English letter, and contain only letters, digits, underscores or hyphens.",
+          "Write a prompt with a clear goal, constraints and deliverables. For example: Read the task description, list acceptance criteria and an implementation plan, and save a requirements document.",
+          "Configure an installed, verified SDK engine and model. To inherit defaults, select the default execution engine or engine default model.",
+          "After setting inputs and outputs, drag from an upstream output port to the matching downstream input, then Save."
+        ],
+        "tips": [
+          "Solid lines carry data. Connecting back upstream creates a dashed return connection for rework feedback.",
+          "An Unsaved changes notice means canvas edits have not yet been persisted."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Workflow canvas with two steps and input/output connections",
+          "caption": "Find the Add step button, connection ports and Save entry."
+        }
+      },
+      {
+        "title": "Configure inputs, outputs and return connections",
+        "steps": [
+          "Open the step editor, name outputs clearly and configure the inputs required downstream.",
+          "Connect each required output to its corresponding downstream input. During execution, check availability under Step inputs and outputs in task details.",
+          "For rework, create a return connection and set Maximum returns for that step. Before saving, read warnings about potentially unrunnable stages and check whether initial execution depends on rework artifacts not yet generated."
+        ],
+        "tips": [
+          "Maximum returns controls dashed return connections and is separate from retries after failed review.",
+          "Declaring an output port does not create a file. Require actual deliverables in the prompt and inspect them afterward."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Input artifacts and corresponding outputs in the node editor",
+          "caption": "The input declares task requirements with execution plan as its corresponding output. Return-count settings are not shown."
+        }
+      },
+      {
+        "title": "Set review and automatic startup",
+        "steps": [
+          "Under Step review in the editor, choose Manual review, Automatic review or Skip review. Manual review is recommended initially.",
+          "Manual review pauses after execution for your decision. For automatic review, write verifiable criteria and optionally choose its engine and model.",
+          "Set retries after an automatic review rejects the result. Errors in the review agent itself switch to manual handling.",
+          "Set Start automatically after creation as needed, then save. For initial practice, disable it so you can inspect a task before starting."
+        ],
+        "tips": [
+          "Install and configure SDK engines before using them for either execution or review."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Step-review mode controls in the node editor",
+          "caption": "Select review mode in the node editor. Check automatic startup separately as described above."
+        }
+      },
+      {
+        "title": "Dispatch across workflows and reuse canvas elements",
+        "steps": [
+          "To hand outputs to another project or workflow, add a Workflow step and choose the target project, workflow, starting step and startup mode.",
+          "Configure upstream input artifacts and save. This step passes immediately after creating the downstream task and cannot connect to further steps of its parent workflow.",
+          "To reuse a step, choose Copy nodes from workflow, select a project, workflow and nodes, preview, copy and save.",
+          "Use Layout to arrange nodes. Add bookmarks for notes, or export workflow JSON as a backup. Before importing, check what will be replaced."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Downstream task destination and startup settings",
+          "caption": "Inspect the target project, workflow and starting step."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Workflow trigger and notification hooks",
+    "summary": "Create tasks from external requests or send workflow status to a chosen platform.",
+    "sections": [
+      {
+        "title": "Create tasks with a trigger hook",
+        "steps": [
+          "Select a project and workflow. Open Workflow hooks in the task-list toolbar or mobile menu, then Trigger hooks.",
+          "Add a hook, enter its name, default title and creator, choose a starting step and whether it starts automatically, then save. For example: Requirements intake, with title External request.",
+          "Choose a configured LAN, external or Gateway address and copy the invocation URL. Its token is a credential: give it only to trusted systems.",
+          "Under Simulate call, enter a title, creator and body to inspect the preview. Simulation does not create a task.",
+          "Have an external system POST to the copied URL using JSON, plain text or Markdown, for example: Organize acceptance criteria for this request. After receiving a task ID, check the task contents and startup state."
+        ],
+        "tips": [
+          "Project editing permission is required. Every valid request creates a task. This version does not recognize GitHub/GitLab events automatically, deduplicate requests or buffer requests while the device is offline.",
+          "Repair missing addresses or disconnected devices first. Resetting the token invalidates the old URL. If automatic startup fails, the task still exists: inspect run_error and task details before retrying delivery."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Unsaved trigger-hook name, default fields and starting-stage configuration",
+          "caption": "This disabled draft only creates tasks. Its token is hidden; it has not been saved and no invocation URL has been generated."
+        }
+      },
+      {
+        "title": "Send workflow notifications to external platforms",
+        "steps": [
+          "In the same Workflow hooks window, switch to Notification hooks and add a destination.",
+          "Enter a name, choose DingTalk group bot, WeCom group bot or generic JSON Webhook, then enter its destination URL. Supply a DingTalk signing secret if needed.",
+          "Select subscribed events, defaulting to task completion and failure. Optionally set a title prefix and the Gateway, external or LAN address for task links, then save.",
+          "Generate a preview under Simulate notification and check message content and links. Preview sends no request. For a real test, confirm and click Send test notification; it sends to a saved, enabled destination.",
+          "Inspect status, attempts and redacted errors in delivery records. After repairing configuration, retry failed records. After task completion, check the receiving platform and task-link access."
+        ],
+        "tips": [
+          "The device sends notifications directly; Gateway does not relay them. They contain neither chat bodies, artifact contents nor task-creation credentials. Task links still require normal access rights.",
+          "Temporary errors are retried automatically. Timeouts and recovery can cause duplicate delivery; generic receivers can deduplicate by event_id. Disabling or deleting a destination cannot retract sent notifications.",
+          "A preview alone does not prove integration works: verify actual delivery to the platform."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "DingTalk notification platform, subscribed events and empty address fields",
+          "caption": "An unsaved, disabled draft in the latest interface, with task completion and failure selected. Webhook and signing-secret fields are empty; nothing was sent."
+        }
+      },
+      {
+        "title": "Customize Markdown notification templates",
+        "steps": [
+          "Choose a DingTalk or WeCom group bot in notification hooks and scroll to Markdown message template. Generic JSON Webhooks do not use these Markdown templates.",
+          "Expand Template variables (click to copy), then insert placeholders such as {task_title}. Do not use unknown variables or an empty template. Keep {task_link} or {task_url} when a task link is needed.",
+          "Save and use Simulate notification to check substitution and links without sending. Read the confirmation before restoring the default template."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Markdown notification body and template-variable entry",
+          "caption": "A draft displays the default Markdown body and variables. No template has been submitted or notification delivered externally."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Templates and the AI workflow assistant",
+    "summary": "Start from a template, or ask AI to propose steps and confirm what to apply.",
+    "sections": [
+      {
+        "title": "Apply and save templates",
+        "steps": [
+          "Open Workflow templates on the canvas, search names or descriptions, and review each template's purpose and step count.",
+          "Select a suitable template and confirm. Applying replaces every step and connection on the current canvas.",
+          "Check each step's engine, model, prompt and review requirements, adapt them and save.",
+          "To reuse your design, choose Save current as workflow template and enter a name and description. Manage editable custom templates under Settings → Workflow templates."
+        ],
+        "tips": [
+          "New projects do not automatically create workflows, and new workflows do not automatically apply templates.",
+          "Built-in templates cannot be deleted. After applying one, still verify its required engines are available."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Built-in Contract management result in canvas template search",
+          "caption": "Search Contract management to see its purpose and step count. Check the replacement scope before selecting."
+        }
+      },
+      {
+        "title": "Ask AI to create or modify a workflow",
+        "steps": [
+          "Open the AI workflow assistant on the canvas and first choose a configured engine and model.",
+          "Explain the goal, step breakdown, output format and review needs, for example: Create requirements analysis → implementation → testing, with manual review at each stage, using an installed SDK.",
+          "Compare proposal cards by title, step count and summary, then apply a suitable proposal to the canvas.",
+          "For existing workflows, inspect step changes. Under Apply changes, select the additions, updates or deletions you want, then apply and save."
+        ],
+        "tips": [
+          "AI proposals require your confirmation. Generation success alone is not a reason to run them: inspect connections, engines and review criteria."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Two-step proposal card from the AI workflow assistant",
+          "caption": "The card shows the number of modified steps and Apply changes. Click to confirm the specific step changes."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Create and manage tasks",
+    "summary": "A workflow defines how to work; a task specifies what to do this time.",
+    "sections": [
+      {
+        "title": "Prepare multiple tasks with the task assistant",
+        "steps": [
+          "Open the task assistant on the task page. Explicitly request multiple tasks with individual times, for example: Generate three independent tasks starting tomorrow at 09:00, 10:00 and 11:00.",
+          "Check each draft's title, contents, workflow, starting step and scheduled start time, then confirm creation through the interface.",
+          "Return to the task list and verify each result. If some fail, inspect existing tasks before resubmitting the whole batch."
+        ],
+        "tips": [
+          "Generating drafts does not create or execute tasks. Specify timezones for future times; scheduled startup requires the backend to remain running."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Batch task drafts and their individual scheduled times",
+          "caption": "Real screenshot pending: batch drafts and individual times. An old single-task draft must not substitute for it."
+        }
+      },
+      {
+        "title": "Create a task and let AI organize requirements",
+        "steps": [
+          "Choose a project and workflow, open its task page, then click New or Add in the appropriate stage.",
+          "Enter a title and description with context, goals, permitted changes, output paths and acceptance criteria. Markdown and pasted reference images are supported.",
+          "If needed, open Task assistant, inspect its generated title, contents and workflow selection, then confirm.",
+          "Check the starting step and review settings for this run, then create the task. With automatic startup disabled, click Start task."
+        ],
+        "tips": [
+          "Example: Read README and generate docs/getting-started.md without changing program code. Include installation, startup and three common questions.",
+          "Creation and startup are separate actions; startup mode and step settings determine whether execution begins immediately."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Task creation form with the task assistant expanded",
+          "caption": "Enter title and description and choose startup mode. The assistant can organize requirements; review settings are on another tab."
+        }
+      },
+      {
+        "title": "Find tasks on the board or table",
+        "steps": [
+          "Switch between Lanes and Table on the task page, inspect tasks by stage and search by title.",
+          "Click a task to open details, including its current step, status, creator and update time.",
+          "Archive finished tasks if desired. Find them under View archive and restore them to the board. Check selections before bulk operations."
+        ],
+        "tips": [
+          "Queued usually means concurrency capacity is full. Waiting for review requires confirmation; it does not mean the app is stuck.",
+          "Deletion differs from archiving. Read the confirmation before permanent deletion."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Task board showing statuses and stages",
+          "caption": "The demonstration task is ready. Toolbar entries include views, workflow hooks, archive and Open directory. Creation time is below the card; copying is covered next."
+        }
+      },
+      {
+        "title": "Modify only the current task's workflow",
+        "steps": [
+          "Open task details and click Edit task workflow beneath the progress graph. Stop execution or review first; the canvas is read-only while active.",
+          "Change this task's step prompts, engines, models and reviews. Add steps, append artifacts at the end and adjust connections. Existing steps, input ports and original artifacts cannot be deleted or renamed.",
+          "Save to update the progress graph. The next startup merges the latest main workflow with task-specific differences, without changing the main workflow or other tasks.",
+          "To clear all customization, click Sync main workflow and confirm. Added steps leave the current workflow, but historical messages, artifacts and execution records remain. This does not start execution."
+        ],
+        "tips": [
+          "Without actual changes, no full workflow copy is made. Unoverridden fields inherit main-workflow updates; task overrides take precedence.",
+          "Selecting a step in the composer and changing its engine saves it to that task. Reset step resets only the next run's session, not the main workflow's engine.",
+          "Removing connections changes dependencies and can allow direct execution; it does not make a step manual."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Task-specific workflow editing and synchronization entries",
+          "caption": "The demonstration task's separate canvas shows handoff mode, Sync main workflow and Save. No settings were changed or execution started."
+        }
+      },
+      {
+        "title": "Copy a task",
+        "steps": [
+          "Click the Copy task icon beside a task in a card or table.",
+          "Inspect the new task titled with (copy), check its description, workflow customization and starting step, then run it. Copied steps start pending; original progress and chat history are not copied."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Copy task icon beside a task name in table view",
+          "caption": "The small icon next to the name is the copy entry. No task was copied or started in this image."
+        }
+      },
+      {
+        "title": "Manage tasks on a phone",
+        "steps": [
+          "Tap a task row to open details. Hold for about half a second to open its action menu; mouse right-click also works.",
+          "Depending on permissions, start, edit or view, copy, archive, restore or delete. Running or queued tasks cannot be started; running tasks cannot be archived or deleted. Read the deletion confirmation.",
+          "After all workflow steps execute and pass, the task shows Completed, including after reopening details or restarting. Completion does not archive the task; choose whether to archive it."
+        ],
+        "tips": [
+          "Scrolling or moving your finger cancels a long press to avoid accidental actions. Read-only access can still open viewing entries without receiving edit rights."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Archive and delete menu for a task row at 390px",
+          "caption": "Captured from a ready task in v1.0.13; nothing was archived or deleted and completion is not shown. The newly added start, edit and copy entries still need an updated screenshot."
+        }
+      },
+      {
+        "title": "Return to tasks or sessions from Recent chats",
+        "steps": [
+          "Find a visited task or session in Recent chats (最近聊天) in the sidebar and click to return to its original project details. Both kinds appear here.",
+          "Inspect running, failed and completed-unread indicators. Opening the relevant details clears that unread indication. Authorized entries have archive or delete menus; read confirmations.",
+          "On desktop, collapse Projects or Recent chats, drag headings to swap their order, and drag the divider to resize them. Double-click the divider to restore the default ratio."
+        ],
+        "tips": [
+          "Recent visits retain at most 20 items under this browser's device identity. Clearing browser data removes this index, not task content. Historical entries do not bypass project authorization.",
+          "Archiving, deleting and clearing unread state have different effects. If an old link fails, check that the project and session still exist and the connection is working."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "One demonstration task visit in Recent chats",
+          "caption": "The sidebar shows one demonstration task visit, without session entries or unread-state examples."
+        }
+      },
+      {
+        "title": "Open navigation in a mobile browser",
+        "steps": [
+          "Open WorkStep in a phone browser and tap the round navigation bubble at the page edge to expand the same sidebar navigation as on desktop.",
+          "Select a project, workflow, task or conversation to continue. Tap the bubble again to collapse navigation.",
+          "If the bubble covers content, hold and drag it to an empty part of the viewport. Dragging does not toggle navigation."
+        ],
+        "tips": [
+          "The bubble appears only in ordinary mobile browsers. Desktop and Android apps use their own navigation entries."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Navigation bubble and expanded sidebar in a phone browser",
+          "caption": "Expanded sidebar at 390px, with the round bubble on the right to collapse it. Only isolated demonstration projects are shown."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Execution, approvals and reviews",
+    "summary": "Understand runtime states, handle permission requests and decide whether outputs can move to the next stage.",
+    "sections": [
+      {
+        "title": "Inspect execution and permission requests",
+        "steps": [
+          "Open task details and inspect the progress graph and chat records to identify the active step.",
+          "Expand process records to inspect tool calls, results and errors. Expand subagent records when the engine reports them.",
+          "When messages include file changes, expand the list and view recorded differences. These describe that message's changes; opening the file shows its current contents, which later edits may have changed. Without a saved diff, current contents cannot reconstruct full history.",
+          "When tool approval appears, read the command, paths and impact before allowing or denying. Answer questions using the supplied options or requested input.",
+          "If a task fails, first read its latest error, then check engine configuration, model permissions, network and project directory rather than repeatedly retrying."
+        ],
+        "tips": [
+          "Approval appears only when an engine requests it. Process information and permission choices vary by engine; missing details do not mean no execution occurred.",
+          "A rotating icon indicates asynchronous work. When waiting for the user, handle the current question or approval."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Step progress and actual execution records in task details",
+          "caption": "Progress and execution records are visible. No permission request is shown; approvals appear only when the engine actually requests them."
+        }
+      },
+      {
+        "title": "Approve, reject or terminate a review",
+        "steps": [
+          "While awaiting manual review, inspect output artifacts, review results, files and test results against acceptance criteria.",
+          "If satisfactory, click Approve and continue. Otherwise enter specific feedback and choose Reject and redo.",
+          "During automatic review, inspect its records. Rejection triggers configured reruns; review errors or requests for manual handling require your decision.",
+          "If execution is no longer wanted, choose Terminate and verify the confirmation. Force approval skips the current review, so first check that outputs are usable."
+        ],
+        "tips": [
+          "A process ending does not prove quality. Manual review is your checkpoint before the next step."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Manual review feedback and approval/rejection buttons",
+          "caption": "Review results, artifacts and action entries."
+        }
+      },
+      {
+        "title": "Coordinator fixed rules and current messages",
+        "steps": [
+          "Open task details, select Coordinator in the composer, choose the Codex SDK engine and ask a task question such as: Which stage is unfinished?",
+          "Continue in the same coordinator session. Task status and current sender update as turn-specific context; fixed coordinator rules remain in session history.",
+          "For debugging, use developer mode to inspect messages with actual input records. Unchanged fixed rules confirmed as retained in that session are not separately reinjected."
+        ],
+        "tips": [
+          "Older sessions may receive one initial reinjection after upgrading. New rules, new sessions, missing history or uncertain retention after compaction cause reinjection. Requests can still use rules in history; skipping a new injection does not mean there are no rules."
+        ]
+      },
+      {
+        "title": "Add information during a coordinator reply",
+        "steps": [
+          "Select Coordinator as recipient and send supplementary instructions while it is replying. They enter the current reply's pending-insertion queue.",
+          "Inspect, edit, reorder or delete unsent entries, or send selected ones immediately. Multiple selected entries are merged in order. Remaining entries automatically continue into the next turn after the current reply ends; do not repeatedly send.",
+          "If told a message was already sent or deleted, refresh and inspect the queue instead of resending the batch."
+        ],
+        "tips": [
+          "Coordinator and step queues are separate. Verify the recipient first. Stopping does not undo tool operations already performed."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Pending messages during a coordinator reply",
+          "caption": "Real screenshot pending: Coordinator recipient, supplementary messages during execution and the continuation queue."
+        }
+      },
+      {
+        "title": "Supplement, stop and rerun",
+        "steps": [
+          "Check the recipient before typing. Coordinator handles questions and operation requests; only a specific step receives input into that step's execution context.",
+          "Messages to a running step enter Insert messages. Edit, reorder, send immediately or send all; unsent messages can trigger another round after execution ends.",
+          "After stopping a step, send it explicit supplementary instructions and follow the prompts to rerun.",
+          "To change this task, edit and save step prompts, engines or review settings. Overrides take effect next execution; unoverridden fields merge the main workflow at next startup. To clear all customization, confirm Sync main workflow."
+        ],
+        "tips": [
+          "Changing the coordinator composer's engine affects only subsequent coordinator messages, not workflow step engines.",
+          "If rerunning affects other active steps, inspect the impact confirmation and rerun scope. If native session records are lost, follow the prompt to rerun with a new session."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Step recipient and supplementary draft in a completed task",
+          "caption": "Execute task is selected in the composer. The supplementary message is still unsent; no insertion queue is shown."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artifacts, execution analysis and project memory",
+    "summary": "Inspect delivered files, understand consumption and retain reusable lessons.",
+    "sections": [
+      {
+        "title": "Inspect inputs, outputs and artifact files",
+        "steps": [
+          "Open Step inputs and outputs in task details to check available inputs and completed outputs.",
+          "Click View for a file, or open the artifact browser and switch by step and execution round.",
+          "Preview files. On desktop, Open containing directory lets you inspect actual files. Remote project files remain on the host and should be viewed through the web interface.",
+          "Compare the right rounds when rerunning. Same as round… means identical content, not that execution did not occur."
+        ],
+        "tips": [
+          "If an artifact is missing, check whether a file was generated, whether its output declaration matches, and the execution messages."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Task artifacts grouped by step",
+          "caption": "Requirements analysis and Execute task each list one first-round artifact. Open its file or directory."
+        }
+      },
+      {
+        "title": "Inspect local runtime resources",
+        "steps": [
+          "Enter the workspace through local localhost or a loopback address, then Statistics → System runtime (数据统计 → 系统运行). Ordinary remote browsers and Gateway workspaces do not show this tab.",
+          "Inspect CPU, memory, the disk holding configuration, network rates, and resources, threads and file descriptors or handles for the WorkStep backend and children.",
+          "Choose trend metrics and inspect sampling times. Pause, resume or manually refresh the display. Wait during initial collection, and retry failed reads."
+        ],
+        "tips": [
+          "Statistics cover the current backend environment and children, excluding the desktop shell. Container measurements are not complete host-machine resources.",
+          "Defaults are roughly five-second sampling and 30-minute history; the page states actual values. Pausing display refresh does not stop tasks. Unavailable metrics and gaps are not zero; old samples are retained and marked stale. Descriptor warnings indicate resource pressure, not automatic repair."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "System-resource statistics sampled by the current version",
+          "caption": "Local resources and backend sampling status. No engine child processes were running, so this does not show task-execution consumption."
+        }
+      },
+      {
+        "title": "Inspect duration, tokens and cost",
+        "steps": [
+          "Open Execution analysis in task details to inspect total duration, step attempts, tokens and costs.",
+          "Select a run round and click a timeline segment for its engine, model and usage.",
+          "For project-wide information, open Statistics. To estimate costs, maintain model prices by provider or engine under Settings → Model settings."
+        ],
+        "tips": [
+          "Unreported usage does not become an accurate number automatically. Check coverage and Estimated labels; the model service bill is authoritative."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Execution-analysis rounds and timeline",
+          "caption": "Duration, coverage and cost-source indicators."
+        }
+      },
+      {
+        "title": "Save memory and archive lessons",
+        "steps": [
+          "Click Memory on the task page. Edit MEMORY.md in the project data directory into short, concrete long-term rules and save.",
+          "When archiving one task, choose direct archive or organize failure lessons. Inspect the AI draft, then confirm writing memory and archiving.",
+          "Use the archive list to revisit history. After restoring an archived task, recheck required external bindings."
+        ],
+        "tips": [
+          "Bulk archiving does not extract lessons individually. Archiving or deleting a task removes its channel-group bindings; restoring it does not restore old bindings."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Project-memory editor containing demonstration conventions",
+          "caption": "Edit and save conventions in .workstep/MEMORY.md. No archive-lesson confirmation is shown."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Project chat and skills",
+    "summary": "Collaborate directly in project context and choose which local skills a project may use.",
+    "sections": [
+      {
+        "title": "Load a role or expert team into chat",
+        "steps": [
+          "Prepare role prompts or expert-team members and responsibilities under Settings → Role center.",
+          "Open ordinary chat in a local project. Use + → Role / Expert team, search categories or keywords, preview and Load into chat. For example, select Code Reviewer, then send a specific review scope.",
+          "Check the loaded name in the composer. Selecting does not send a message. Binding is saved with the session and restored after refresh; new sessions start unbound. Click the name to inspect or replace it, or remove it."
+        ],
+        "tips": [
+          "You cannot switch while running. Read or save failures preserve the current selection; retry as prompted. Reselect missing roles. Loading only changes session binding; send a concrete question to invoke the model.",
+          "Expert teams pass member prompts and responsibilities to the current model; they do not start independent engines. Tasks, workflow steps, channels, remote projects and project-scoped tickets are not integrated. A full-device Gateway workspace can use this for a local project."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Code Reviewer search and prompt preview in ordinary chat",
+          "caption": "Code Reviewer is selected in an empty demonstration conversation. Its prompt and loading button are visible; no role was loaded or message sent."
+        }
+      },
+      {
+        "title": "Open project memory on a phone",
+        "steps": [
+          "Open the project task list, use More in the upper right, then Memory.",
+          "Enter short conventions, such as Run project tests before committing, in the memory editor. Check and save; this applies to the whole project."
+        ],
+        "tips": [
+          "Choosing Memory collapses More. On desktop, click Memory directly on the task page."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Memory entry in the More menu of a 390px task page",
+          "caption": "The mobile task list's expanded More menu includes Memory. Clicking opens its editor; no memory was changed here."
+        }
+      },
+      {
+        "title": "Create conversations and change configuration",
+        "steps": [
+          "Create an ordinary session in the project's Conversations section on the left. Select its engine, provider, model and permission mode. Start with a verified SDK.",
+          "Enter a concrete request. Enter sends; Shift+Enter inserts a newline. Attach or paste reference images only after checking engine image support.",
+          "Stop a reply while generating if needed. Additional inserted messages queue, and their order can be changed.",
+          "When changing engine or provider with existing context, choose Smart handoff, Full chat history or None in the dialog. Fork a conversation for independent exploration and confirm its context mode."
+        ],
+        "tips": [
+          "Project chat is stored separately from workflow task records. Create a task when you need stage tracking and reviews.",
+          "Native forking is available only when actually supported by the engine. Otherwise continue through explicit context handoff."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Project-chat engine, provider and model menu",
+          "caption": "Configure the engine, provider, reasoning model and related options for this conversation only. Permissions are selected separately."
+        }
+      },
+      {
+        "title": "Enable skills and organize conversations",
+        "steps": [
+          "Open the current project's Configuration → Skill center, rescan and search by name, description or source path.",
+          "Read skill purposes and enable what you need. Check the selected range before bulk changes. Skills are saved per project and apply next run or new session.",
+          "Type / in the composer to select skills actually offered by the current engine. Lists vary by engine.",
+          "Use the session menu to rename or archive. Search the archive list and restore required conversations."
+        ],
+        "tips": [
+          "Skill center selects existing local skills. If none appear, check local sources first. Remote projects cannot currently manage the host's local skills."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "No results after searching manual-demo in Skill center",
+          "caption": "Skill center offers name search and source filtering. No matching skill or enable switch is displayed."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Quick buttons and script actions",
+    "summary": "Turn common prompts, display content and project scripts into reusable buttons.",
+    "sections": [
+      {
+        "title": "Create prompt and display buttons",
+        "steps": [
+          "Open Quick buttons in project configuration, add a button and select its type.",
+          "For Prompt, enter its label and prompt and choose whether clicking immediately sends it, for example: Inspect current changes and list uncovered acceptance criteria.",
+          "For Display, enter content and preview its safe HTML rendering. This type sends no message.",
+          "Save and return to chat or a task to inspect the button. Drag the configuration list to reorder. Workflow settings control inherited project buttons; stage buttons are configured separately."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Project-button inheritance and add entry in workflow quick buttons",
+          "caption": "Select project buttons to inherit and add workflow buttons on the left. No button content has been entered."
+        }
+      },
+      {
+        "title": "Configure and run an Action",
+        "steps": [
+          "Add the Action type, enter its Action ID and select a script from its corresponding Action directory.",
+          "Choose the execution directory: project, workflow task directory or Git workspace selected by the script. Preview and check the script.",
+          "Enable confirmation before actions that modify files or external state. For input such as commit messages, configure a confirmation prompt; the script receives it through WORKSTEP_ACTION_INPUT.",
+          "Save and click the button, confirm script and directory, and inspect output and exit code. Running actions can be stopped."
+        ],
+        "tips": [
+          "Quick actions directly run project scripts. Understand the script and choose the right directory first. Files outside the current Action directory cannot be arbitrarily selected as its script."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Action configuration with no script selected",
+          "caption": "Fields include Action ID, script, execution directory and confirmation. No script was run."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Scheduled tasks",
+    "summary": "Create new tasks on a schedule, or send timed coordinator instructions to existing tasks, and track execution and notifications.",
+    "sections": [
+      {
+        "title": "Generate multiple tasks from one schedule",
+        "steps": [
+          "Create a Project creates tasks schedule, select AI dynamic and specify the scope and individual times of multiple tasks. Select candidate workflows.",
+          "First use Test generation to check each draft, then save. Task coordinator instructions still operate on one selected task and do not create batches.",
+          "After triggering, open each created task from run records. Failed records also retain tasks already created; inspect the reason before creating replacements."
+        ],
+        "tips": [
+          "Task creation does not mean all workflows have finished. Do not rerun a whole batch after partial creation or startup failure."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Scheduled batch-generation preview and multiple-task run records",
+          "caption": "Real screenshot pending: batch drafts and already-created tasks after partial failure."
+        }
+      },
+      {
+        "title": "Manage scheduled instructions from task details",
+        "steps": [
+          "Open task details and click the clock beside Bind BOT; on phones it is to the right of the main tabs. Its count includes task rules except completed one-time rules, not just enabled rules. Check paused and other states in the list.",
+          "Inspect this task's rules in the window. With editing permission, add, edit, pause, resume or delete rules and view run records. New rules bind automatically to the current task.",
+          "Enter a title, frequency and coordinator instruction, for example: Check progress and summarize every ten minutes. Check the stop condition and save. When closing with unsaved edits, choose to continue or discard.",
+          "Read-only shares use the same clock to inspect this task's rules. With operation rights, use management entries actually offered by the current share."
+        ],
+        "tips": [
+          "The one-time list retains execution times of completed rules; the task badge excludes them, so counts can differ."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Task-scoped schedule window opened from the detail clock",
+          "caption": "Creating a rule from the clock locks workflow and task to the demonstration task. Title and instructions are empty; nothing was saved or executed."
+        }
+      },
+      {
+        "title": "Create a fixed schedule",
+        "steps": [
+          "Open Scheduled tasks from the sidebar tool rail, choose a project tab, then create a Project creates tasks schedule. Select workflow, starting step, title and contents.",
+          "Choose once, daily, weekly, monthly, hourly interval or Cron. Check timezone, effective dates and the next-run preview.",
+          "Choose Follow workflow, Immediate or Manual execution, and set overlap handling to Skip, Parallel or Queue.",
+          "Check review settings and save. Verify a near-term one-time schedule before enabling a long-running recurring plan."
+        ],
+        "tips": [
+          "The WorkStep backend must be running to trigger schedules. Do not assume they trigger normally while the computer sleeps or the backend is stopped."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Fixed task contents, daily frequency and next-run preview",
+          "caption": "Set contents, frequency, startup and overlap policy, then inspect upcoming execution times."
+        }
+      },
+      {
+        "title": "Send scheduled instructions to an existing task",
+        "steps": [
+          "Open Scheduled tasks in the sidebar, select a project and switch new-rule type to Task coordinator instructions. It operates on an existing task rather than creating one each time.",
+          "Enter Title, filter by workflow and search for the target task. Write a concrete instruction, such as: Check progress and report whether human action is needed; do not automatically confirm dangerous actions. Saved rules cannot be rebound to another task.",
+          "Set one-time or recurring execution, including Every few minutes. Verify next-run times and choose Continue until manually disabled or Stop when task ends.",
+          "Find the saved rule in one-time or recurring lists. Filter by target type and task ID. Open a task from a run record to locate that coordinator reply and inspect scheduled-message status in its history."
+        ],
+        "tips": [
+          "Each trigger uses a separate coordinator session and may queue while the task is busy. Proposals needing confirmation still require you. Stopping one scheduled reply stops only that message; pause or disable the rule to prevent later triggers.",
+          "Archiving or deleting a target invalidates the rule. With Stop when task ends, completed, failed or stopped terminal states end it. Runs interrupted by backend restart are not guaranteed to replay; inspect records before resending."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Unsaved task coordinator schedule form",
+          "caption": "The demonstration repeats every ten minutes until manually disabled. It is unsaved, with no execution results."
+        }
+      },
+      {
+        "title": "Configure channel notifications for scheduled runs",
+        "steps": [
+          "In a project schedule or task coordinator rule, inspect Notify channel bot after execution.",
+          "Choose a send-capable bot and conversation. A task's bound group may be selected by default, but check it before saving. Without a destination, configure the bot and task binding first or disable notification.",
+          "Inspect notification status and failure reasons in run records. Retry notification failures without rerunning the task. For unknown delivery results, check the channel first to avoid duplicates."
+        ],
+        "tips": [
+          "Scheduled notifications and workflow Webhooks are configured separately. A successful run does not prove delivery, and a failed notification does not mean task failure.",
+          "Task-coordinator notifications follow completion of that reply. Notification after a project schedule creates a task does not mean the entire workflow has finished."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Channel notification without a selected target in a project-task form",
+          "caption": "Notification is checked but no bot or conversation is selected, so saving is disabled. Nothing was executed or sent."
+        }
+      },
+      {
+        "title": "AI dynamic generation and run records",
+        "steps": [
+          "Change generation to AI dynamic, describe what to generate each time, optionally fix a reference title, and choose candidate workflows.",
+          "Configure generation retries and use Test generation to inspect whether output meets expectations.",
+          "Save, then filter run records on the right by status. Inspect trigger time, failure or skip reasons and open the corresponding task.",
+          "Pause schedules no longer needed, then delete after checking."
+        ],
+        "tips": [
+          "AI generation retries, step-review retries and return-connection limits are separate settings."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "AI dynamic scheduled-task creation form",
+          "caption": "Enter instructions, candidate workflows and retry count. No task has been generated or run records shown."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Git and task workspaces",
+    "summary": "Inspect code changes, isolate parallel tasks in separate working directories, then merge and push their work.",
+    "sections": [
+      {
+        "title": "Inspect files, diffs and history",
+        "steps": [
+          "Click Git on a local or connected remote project's task page and select the root or a discovered child repository. Remote Git operations execute on the host device.",
+          "Inspect changed files and diffs to verify AI changes against requirements; use commit history to check committed work.",
+          "Handle uncommitted changes before switching branches. Refresh remote state to check ahead, behind or diverged status.",
+          "Pull fast-forwards; Push sends only committed content. Choose a remote and branch, confirm and execute."
+        ],
+        "tips": [
+          "Cached remote records are not live status. Synchronization may be blocked while project tasks or chats are active.",
+          "Reconnect offline or unauthorized remote projects first. The browser does not copy host repositories to your computer. Reading requires Git-view permission; commit, branch, merge and synchronization actions have separate grants. Check permissions if buttons are missing."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Uncommitted changes in a Git repository",
+          "caption": "A local repository's pending files. Commit history is on another tab; remote permissions and expanded file diffs are not shown."
+        }
+      },
+      {
+        "title": "Create a Worktree for a task",
+        "steps": [
+          "Open Git workspace in task details and select repositories the task actually needs.",
+          "Enter a task directory name, source branch and new branch, then Create Worktree. If the root is not yet a Git repository, initialize it and make the first commit.",
+          "After execution, inspect and commit changes in the workspace. In Git, merge into the current branch or merge the current branch into a target.",
+          "Check the merged result and push manually as needed. Read the exact effects and uncommitted-change warnings before cleanup or history recovery."
+        ],
+        "tips": [
+          "Creating a workspace does not merge or push automatically. Only committed changes participate in branch merges.",
+          "Deleting a task workspace may remove directories and feature branches. Cleanup is not a way to save results."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Task Git workspace with an existing Worktree",
+          "caption": "The demonstration workspace exists without file differences. Open it, add repositories or manage branches; this is not its creation form."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Task sharing and remote projects",
+    "summary": "Distinguish a link to one task from remote access to a whole device.",
+    "sections": [
+      {
+        "title": "Share one task",
+        "steps": [
+          "Click Share in task details and choose Read-only or Interactive.",
+          "The form generates a random password and defaults to seven days' validity. Change or clear the password as needed; when set, it must have at least four characters. Add an optional title, ensure expiry is within the next 90 days, then generate and copy the link.",
+          "Open it in a separate browser window, enter a password if set, and check progress, messages, artifacts and selected permissions.",
+          "To stop sharing, open the current share and revoke it. Already-open viewers also lose continued access."
+        ],
+        "tips": [
+          "Read-only is for viewing. Interactive visitors use the original task controller: they can send coordinator or step messages, stop execution, handle approvals and questions, and use available task configuration and Git workspace actions. These affect the original task, within that share's task scope. For viewing only, choose Read-only and verify the mode in a separate browser.",
+          "Recipients must reach the backend address in the link. Generating a link does not create a public network tunnel."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Interactive task-share form before link generation",
+          "caption": "Interactive mode is selected and the password empty. No share link has been created."
+        }
+      },
+      {
+        "title": "Configure host access and invite devices",
+        "steps": [
+          "On the host, open Settings → Remote access, enable connections and check the internal address. Public access requires a reachable HTTPS/WSS external address.",
+          "Set and save an access key, then test reachability from another device.",
+          "Generate a project invitation under Project configuration → Sharing. Import it in another WorkStep's Remote access entry and follow connection prompts.",
+          "Inspect authorized devices and active invitations. Change authorization periods or revoke as needed. If disconnected, check host availability, address, key and expiry."
+        ],
+        "tips": [
+          "WorkStep has no built-in public relay. Provide a reachable network entry yourself. Task passwords, host access keys and device invitations are separate.",
+          "Remote directories and engines stay on the host. Your local file manager cannot directly open its directories."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Remote-access switch and address form before values are entered",
+          "caption": "Internal and external fields show example placeholders and the key is empty. No device-authorization list is shown."
+        }
+      },
+      {
+        "title": "Connect an enterprise Gateway when needed",
+        "steps": [
+          "If your organization provides Gateway, enter its address in Remote access → Gateway platform.",
+          "Explicitly enable Gateway mode and save, then sign in to authorize this computer. Saving an address alone does not enable it.",
+          "If administrator approval is pending, complete approval and authenticate again. Once connected, use project publication and access grants within your permissions.",
+          "Disable Gateway mode and save to return to local use."
+        ],
+        "tips": [
+          "Standalone local use needs no Gateway. Organizational permissions and approval depend on the actual platform."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Platform address before Gateway mode is enabled",
+          "caption": "Gateway is disabled and the address is a placeholder. Saving an address and enabling Gateway are distinct actions."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Gateway workspace and local sharing",
+    "summary": "Distinguish local invitations, platform grants and task shares, and continue work across devices.",
+    "sections": [
+      {
+        "title": "Configure Feishu or Lark enterprise identity",
+        "steps": [
+          "An administrator opens Platform settings → Organization synchronization and QR login, adds a Feishu or Lark custom enterprise application, and enters Tenant Key, App ID and App Secret.",
+          "Copy the complete displayed login callback into the matching developer platform. Set application, QR-login and organization-sync switches separately. Existing App IDs cannot change; use a new identity source for another application.",
+          "Authorize directory reads, limit application visibility and follow Read preview → Select organizations or users → Inspect changes → Confirm synchronization. Verify results and failure records."
+        ],
+        "tips": [
+          "Gateway enterprise identity and local channel bots are separate and do not automatically share credentials. Real tenant QR login and directory permissions still require integration testing; simulated API success does not prove real connectivity."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Feishu or Lark identity source and directory-sync settings",
+          "caption": "Credential-free configuration screenshot from an isolated Gateway is pending."
+        }
+      },
+      {
+        "title": "Let other websites sign in through Gateway",
+        "steps": [
+          "A superadministrator opens Gateway Platform settings → Third-party login authorization and clicks Edit callback allowlist.",
+          "Enter one complete callback URL per line, such as https://business.example.com/login/callback, up to 100 entries. Scheme, port, path and fixed query parameters must match exactly. Complete administrator verification and save.",
+          "Start login from the integrating website. If not signed into Gateway, first use its existing password or enterprise QR login, then return. The site's backend exchanges a one-time authorization code for user ID, account and display name.",
+          "To discontinue an integration, remove its URL and save. An empty allowlist disables third-party login authorization; pending codes for removed addresses become invalid immediately."
+        ],
+        "tips": [
+          "Callbacks support HTTP/HTTPS, not wildcards, fragments, embedded credentials or preset code, state or request_id parameters. Use HTTPS in production.",
+          "If a callback is unauthorized, check its full URL. If a code expired or was used, restart login from the integrating site. Protocol and runnable examples are in docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Third-party callback allowlist in Gateway settings",
+          "caption": "Real isolated demonstration Gateway screenshot pending; do not use everyday accounts or actual callback settings."
+        }
+      },
+      {
+        "title": "Manage two kinds of project sharing",
+        "steps": [
+          "Open Sharing in project settings. Configuring a Gateway address enables Platform access. The local interface also offers remote-project invitations; Gateway remote browsers cannot configure local invitations.",
+          "For local invitations, choose LAN or external address and device access period, then generate and copy. A custom expiry must be in the future; invitation redemption and device authorization expiries are shown separately.",
+          "After import on the receiving device, inspect its name, IP, connection and expiry under Authorized devices. Change periods or revoke as needed. Platform access instead uses accounts, project publication and grants.",
+          "For one task, choose mode, password and title in its Share window. Local and Gateway shares both default to seven days and allow at most 90. Test in a separate browser, then manage or revoke from the original window."
+        ],
+        "tips": [
+          "Sharing a local task through a connected Gateway requires a valid platform identity. An address or desktop credential alone does not confer platform permission.",
+          "Local task links use the host address; Gateway shares use the platform-returned address. Never publish invitation credentials, share links or passwords in screenshots.",
+          "Both types support expiry. Gateway can require login; interactive Gateway shares must require it and use login instead of an access key. Check fields in the current share window."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Remote-access sharing tab and device authorization period",
+          "caption": "With no Gateway configured, Remote access is shown. No devices are authorized and no invitation generated."
+        }
+      },
+      {
+        "title": "Switch devices and inspect aggregate notifications",
+        "steps": [
+          "Enter an authorized device workspace on the platform, then use top device tabs to switch to another online device.",
+          "Each account and device remembers the last project, task or session page in this browser. Returning still checks authorization and does not bypass inaccessible targets.",
+          "Remote projects load only when selected. After loading failure or disconnection, click the current project again to refresh manually; devices are not continuously polled in the background.",
+          "Open Notification center for completion or failure summaries from authorized devices. Click to open the task or session. Workspace live messages still belong to the current device.",
+          "Use Return to Gateway platform to choose another device. An expired browser authorization callback restarts login; after cancelling desktop authorization, retry manually or return to the local workspace."
+        ],
+        "tips": [
+          "Page memory is browser-local, not synchronized across browsers. Access works without browser storage but locations are not retained.",
+          "Reconnect as prompted for offline devices, revoked authorization or network failures. Saved locations do not replace permissions.",
+          "Real device-tab and aggregate-notification screenshots from the fixed demonstration project remain pending."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Device tabs and aggregate notification center",
+          "caption": "Real screenshot pending: device switching, location restoration and notification navigation; not yet captured."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Channel bots and group notifications",
+    "summary": "Configure WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack or QQ, distinguishing chat from Webhook notifications.",
+    "sections": [
+      {
+        "title": "Choose a channel and connect a new platform",
+        "steps": [
+          "Open Settings → Channel bots, select a platform on the left, and enter a name, credentials and default local project on the right. Enable and save. Empty secrets retain existing values when editing; check unsaved changes before switching.",
+          "For Feishu or Lark, create a custom enterprise app with bot support and enter App ID and App Secret. After connection, enable long-connection events, subscribe to im.message.receive_v1 and card.action.trigger, configure message/card permissions and publish. Send a private message or mention the bot in a group.",
+          "For Telegram, create a bot with BotFather and enter its Bot Token. Long polling is used; no other program can poll that bot simultaneously. Administrators must remove any existing Webhook first. Send private text, or mention/reply to it in groups.",
+          "For Discord, enter Application ID and Bot Token, enable Message Content Intent and grant channel read/send permissions. Mention the bot in server channels; bind tasks using channel or thread IDs.",
+          "For Slack, enable Socket Mode and enter App ID, an App-Level Token with connections:write, and Bot Token. Configure chat:write, app_mentions:read and im:history, subscribe to app_mention and message.im, then install. Invite the bot before mentioning it in channels.",
+          "For QQ, create an official bot on the QQ Open Platform, select WebSocket access and enable private/group message events. Enter App ID, App Secret and a default local project, enable and save. Send private text or mention the bot in a group. After receiving a message, bind tasks using group_openid and configure allowlists with member OpenIDs, not QQ account or group numbers. Text only; passive replies have time and count limits. Read long results in WorkStep.",
+          "Return to WorkStep to inspect connections and channel sessions, then bind tasks as needed. For failures, check region, credentials, platform permissions and backend networking."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack and QQ currently support text only. Return to WorkStep for stopping, permission answers, proposal confirmation and review; images, files and interactive cards are not promised.",
+          "New-platform tests use simulated frames. Real tenant installation, permissions and messaging still require integration testing. Keep secrets, full tokens and private group IDs out of screenshots."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Channel selector and separate bot editor",
+          "caption": "Credential-free real screenshot of the new multichannel layout is pending. The old form does not represent it."
+        }
+      },
+      {
+        "title": "Send notifications only to Feishu or Lark groups",
+        "steps": [
+          "In the task page's Workflow hooks → Notification hooks, add a Feishu or Lark group-bot target and paste the complete custom-bot Webhook URL for that region.",
+          "If signing is enabled, enter that bot's signing secret, not App ID or App Secret. Configure required keywords, events and Markdown template, save and inspect simulation.",
+          "Confirm the recipient group before sending a test and inspecting delivery records. Preview sends nothing; after a timeout, check the group before retrying."
+        ],
+        "tips": [
+          "Webhooks send workflow events only and do not receive group chat. Use an application bot for two-way conversations."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Feishu or Lark notification URL, signature and template",
+          "caption": "Credential-free configuration and card-preview screenshots are pending; actual delivery is not claimed."
+        }
+      },
+      {
+        "title": "Add a bot",
+        "steps": [
+          "Open Settings → Channel bots, select WeCom or DingTalk on the left, add a bot and name it.",
+          "For WeCom, select long connection in intelligent-bot settings and copy Bot ID and Secret. For DingTalk, create an app, enable its Stream bot and copy Client ID and Client Secret.",
+          "Choose a default project, enable the long connection, save and wait for Connected.",
+          "Add the bot to a group, mention it with a test message, and inspect the conversation and reply under project Channel chats."
+        ],
+        "tips": [
+          "Enter secrets only in settings, not screenshots or messages. For connection failures, check platform mode, credentials and backend networking.",
+          "DingTalk button cards require create, deliver and update permissions. Custom templates must match the fields described in the interface."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Old Add bot form before credentials are entered",
+          "caption": "The old form illustrates name, credentials and default-project fields only. It was not saved or connected; the new left-side platform list still needs a screenshot."
+        }
+      },
+      {
+        "title": "Bind a task group and handle reviews",
+        "steps": [
+          "Open Bind BOT in task details and select an enabled bot.",
+          "Mention it once in the group, then choose the group under Recently received groups. Alternatively paste a known group ID, verify the current task and bind.",
+          "Group questions enter that task's coordinator. Inspect stage results and forwarded attachments.",
+          "When review or question cards appear, read before acting and return to WorkStep to verify if needed. Unbind when no longer required."
+        ],
+        "tips": [
+          "The default project handles channel chat not bound to a task. Group bindings determine which task receives that group's messages.",
+          "Archiving or deleting a task removes bindings; restoring requires rebinding. Button rendering depends on channel clients. If unavailable, act in task details."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Task BOT dialog with no bound group",
+          "caption": "Choose a bot and recent group, then enter and bind its identifier. No task group is bound yet."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Desktop sandbox",
+    "summary": "Run the backend and engines in a separate container, with explicitly associated project directories.",
+    "sections": [
+      {
+        "title": "Complete the five-step sandbox guide",
+        "steps": [
+          "On desktop, open Sandbox, the last Settings item. Finish active tasks and conversations and verify virtualization support; Windows needs WSL2.",
+          "First choose separate sandbox storage and download/prepare helper software.",
+          "Second check the image and download the recommended release image, or scan running local Docker for a compatible WorkStep image.",
+          "Third select existing or new project directories; fourth choose provider, engine and preference migration; fifth inspect the summary and save or confirm and restart."
+        ],
+        "tips": [
+          "Associating a project does not copy its files. Sandbox edits still affect the original directory. Do not run the same project in both environments simultaneously.",
+          "Unassociated projects are temporarily hidden, not erased. Sandbox and project directories cannot contain one another."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Project selection and confirmation in the five-step sandbox guide",
+          "caption": "Inspect storage, project association and configuration migration."
+        }
+      },
+      {
+        "title": "Switch modes and maintain configuration",
+        "steps": [
+          "After restart, check the Sandbox mode sidebar badge to verify the actual environment.",
+          "Recheck provider addresses, engine installation and login. Host localhost means something different in the container, and paths may need adjustment.",
+          "Before importing or changing directories, disable the sandbox and restart, then use sandbox management. Read backup and replacement details before import.",
+          "Disable the sandbox and restart to return to ordinary mode. For errors, open the log directory and inspect progress and failures."
+        ],
+        "tips": [
+          "Ordinary and sandbox modes maintain separate configuration. Switching does not synchronize changes back automatically.",
+          "Consider compatibility permissions only if an engine's inner sandbox cannot run; the interface explains reduced isolation. Sandbox-data deletion is irreversible: inspect what will be retained first."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Common settings and troubleshooting",
+    "summary": "Understand configuration scope, read status and errors first, then make targeted repairs.",
+    "sections": [
+      {
+        "title": "Check the desktop version and download updates",
+        "steps": [
+          "On desktop, open Settings → System settings → Desktop updates to inspect the current version.",
+          "Click Check for updates to find the latest official GitHub release. If newer, click Download from GitHub.",
+          "Choose your system's installer on the release page, finish active work and install it yourself."
+        ],
+        "tips": [
+          "Desktop checks once daily without automatically downloading, installing or restarting. Only a newer official Release triggers an update, not code pushes or drafts.",
+          "Retry failed checks later. The web version has no desktop-update entry."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Current desktop version and update-check entry in system settings",
+          "caption": "Check manually, then download from GitHub when an update is available."
+        }
+      },
+      {
+        "title": "Concurrency, assistants and display",
+        "steps": [
+          "When running many tasks, set task and conversation capacity in global Concurrency limits or project configuration, and inspect effective values.",
+          "If scheduled tasks should not consume capacity, verify adequate resources before enabling that option. Excess tasks and chats queue.",
+          "Configure each assistant's engine and model under Assistants. Check step-execution and task-coordinator settings separately.",
+          "Change the user name in system settings. Language, fonts, size and skins are under Settings → Appearance; repository scanning scope is under Git settings."
+        ],
+        "tips": [
+          "Changing the default execution engine affects new tasks and steps, not existing task or step settings."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Global task and conversation concurrency limits",
+          "caption": "Set global capacities and the scheduled-task exception."
+        }
+      },
+      {
+        "title": "Troubleshoot in order",
+        "steps": [
+          "If a task does not start, distinguish ready, queued and waiting-for-review states. Check starting step, automatic startup and engine availability.",
+          "On execution failure, read the latest error. Check SDK installation, provider authentication, model name, network and file permissions, then rerun.",
+          "For history or API loading errors, use Retry. If the API returned a webpage, confirm backend version and restart using your usual method.",
+          "If native session history was lost, read Rerun with a new session, supply current goals and required artifact references, and do not treat it as full native-context recovery.",
+          "For missing artifacts or remote access failure, check actual file generation or host availability, address, key and authorization expiry respectively."
+        ],
+        "tips": [
+          "When reporting issues, include version, OS, engine, reproduction steps and redacted error screenshots, never credentials."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Demonstration failure caused by a nonexistent model",
+          "caption": "The error says the chosen model is unsupported. Repair the step's model configuration before running again; it is not repaired in this image."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Appearance, skins and languages",
+    "summary": "Choose personal display preferences or create previewable skins and language packs through ordinary project chat.",
+    "sections": [
+      {
+        "title": "Choose a built-in language",
+        "steps": [
+          "In Settings → Appearance, choose Simplified Chinese, Traditional Chinese, English, Japanese, French, German or Arabic and inspect common entries and date controls.",
+          "On the website, use the top language dropdown for Chinese, English, French, German or Arabic. Your browser saves the choice; without a saved preference, browser language is detected."
+        ],
+        "tips": [
+          "French, German and Arabic app translations currently cover major entries; other strings may remain Chinese, and the app's Arabic layout is still left-to-right. Website and manual text follow the top language selector, with right-to-left Arabic layout. Real screenshots remain Chinese. Language switching does not translate past conversations or user files."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Built-in language selectors in the app and website",
+          "caption": "Real screenshots of the added language choices are pending."
+        }
+      },
+      {
+        "title": "Use v2 skin layouts and feature extensions",
+        "steps": [
+          "Under Settings → Appearance, install and validate a trusted v2 skin, preview and apply it. For features such as notes, ask the author in appearance-creation chat to include components.",
+          "Read the enablement confirmation for packages with code. Updating a package or changing identity may ask again. Open panels through the skin's menus or feature entries, which depend on the package. Notes or calendars are not preinstalled app features.",
+          "The package can position the composer above, below, left or right. Compact views retain vertical arrangement. After switching, check messages, composer and settings remain usable.",
+          "Extension data is separate by browser identity, device, skin and feature. Switching or deleting a skin does not erase it. Use the extension's own export for backup. If the interface breaks, add skin=default to the URL and refresh."
+        ],
+        "tips": [
+          "Component code has the current page's privileges. Enable trusted sources only. Cancelling preview restores appearance but does not undo code already executed.",
+          "Extension data is not included in skin ZIP exports or synchronized between browsers/devices. Back up before clearing storage; failed saving must not be treated as success."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "v2 component enablement confirmation and feature-panel entry",
+          "caption": "Real execution screenshot of a trusted demonstration package is pending. Format validation is not visual acceptance."
+        }
+      },
+      {
+        "title": "Choose and save personal appearance",
+        "steps": [
+          "For full-device access, open Settings → Appearance. Project-authorized users enter Appearance and skins from the sidebar.",
+          "Choose font, size and language. Search or filter installed skins, preview then apply. The fixed preview bar lets you cancel or confirm.",
+          "Authenticated Gateway users' choices are saved per account and device, restoring in another browser on the same device. Retry failed saves. Local choices without platform login remain in this browser."
+        ],
+        "tips": [
+          "Packages and creation records are shared on the device; personal selections are isolated. Project-authorized users can only choose installed packages.",
+          "Missing or broken packages fall back to default appearance. Add ?skin=default or ?language=default to restore the default skin or Simplified Chinese."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Fonts, size, language and installed skins in Appearance",
+          "caption": "The real settings page shows defaults and built-in examples on the right. No personal preferences were changed."
+        }
+      },
+      {
+        "title": "Create skins and languages through chat",
+        "steps": [
+          "With host-management rights, click Let's discuss appearance, choose an installed, verified engine and describe a goal, such as: Make a dark skin, preserve layout and use an upward send arrow.",
+          "Chat is on the left, editing and preview on the right; phones switch tabs. Adjust name, colors, font, size, send icon and layout, then Save adjustments into the same draft package. Editing is disabled while chat runs. Check PC and phone previews.",
+          "For a language pack, ask in the same chat, for example: Add Spanish while preserving appearance. Switch the right side to Language. It loads after generation; use Read and validate to check its directory, coverage, missing strings and examples.",
+          "For skins, click Save appearance and preview; for languages, Install and preview. Confirm or cancel in the preview bar. Saving to the library does not confirm personal application. Export ZIP to reuse, and inspect replacement prompts for same-ID imports or updates."
+        ],
+        "tips": [
+          "Creation reuses the fixed Runtime project and ordinary chat, invoking your model. Continue earlier work through Conversation history above the window. Preview examples themselves do not run tasks.",
+          "Fonts use installed system fonts. Historical messages and files are not automatically translated. Built-in send icons can be selected in adjustments; custom vector icons must be supplied by a validated draft.",
+          "Language packs are independent of skins and currently support left-to-right languages. Missing strings and date controls use the specified built-in fallback. Coverage does not prove translation quality; use chat to update outdated string catalogs."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat and editing/preview areas in appearance creation",
+          "caption": "An authorized empty creation chat and adjustment form. Its composer is prefilled; no message was sent, model run or skin saved."
+        }
+      },
+      {
+        "title": "Read and preview a language pack",
+        "steps": [
+          "Switch the appearance studio's right side to Language and check Language-pack directory. Generate through the same chat or import an existing language ZIP.",
+          "Generated packs load automatically. Read and validate checks coverage, missing strings and examples. A waiting-for-generation notice for an empty directory means creation is unfinished.",
+          "After validation, Install and preview, then confirm or cancel personal application. Coverage cannot replace a translation-quality review."
+        ],
+        "tips": [
+          "Only left-to-right languages are currently supported. Date controls and missing strings use the pack's specified built-in fallback."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Language directory and validation entry in an empty creation chat",
+          "caption": "The Language tab offers directory, Read and validate and ZIP import. No language pack has been generated, installed or applied."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Project remote-operation audit",
+    "summary": "Inspect remote visitors' actions and whether they succeeded, were denied or failed.",
+    "sections": [
+      {
+        "title": "Filter and inspect remote operations",
+        "steps": [
+          "On the device hosting the project, open the local project's Configuration → Operation audit. Remote projects, Gateway workspaces and project-bound access do not offer this tab.",
+          "Filter by action and result, then inspect actor, time, source and task, workflow or file identifier.",
+          "Go to the next page or first page, refresh for latest records and retry failed loading."
+        ],
+        "tips": [
+          "This audit covers remote-source actions and denied/failed results, not full chats, and stores no credentials. The API is local-only on the host. Default retention is 30 days; follow the page's actual duration. Public share visitors' real names are unknown; Remote browser (self-reported identity) is not authenticated identity."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Audit filters and empty records for a local project",
+          "caption": "The actual local audit entry and action/result filters. No remote records exist in the demonstration project; no actions or identities were fabricated."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Frequently asked questions",
+    "summary": "Understand engines, model services, file changes and recovery boundaries before starting.",
+    "sections": [
+      {
+        "title": "How do SDK and CLI differ, and which should I start with?",
+        "steps": [
+          "Both are engine integration methods for model capabilities. SDK integrates through developer APIs; CLI runs command-line programs. Neither is a model name.",
+          "Start by installing Codex SDK or Claude Agent SDK, complete authentication, choose and verify a model, then make it the default execution engine. Existing CLI users may choose that engine instead.",
+          "The provider supplies service address and authentication, the model identifies what handles the request, and the engine provides sessions, tools and execution. Follow the selected engine's form; credentials are not necessarily interchangeable."
+        ],
+        "tips": [
+          "SDK installation only establishes runtime dependencies, not authentication, permissions or quota. Distinguish Codex and Claude Code SDK entries from those marked CLI."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "SDK and CLI choices in engine settings",
+          "caption": "Inspect recommended SDK engines and their separate installation and verification states."
+        }
+      },
+      {
+        "title": "How are software and model calls charged?",
+        "steps": [
+          "Check the selected model service's plan, authentication and quota before a small initial task. An SDK itself is not model credit.",
+          "Task execution, automatic review, assistants and retries can all invoke models. Inspect models separately in step, review and assistant settings.",
+          "Use execution analysis to inspect usage and cost sources. Estimates help explain consumption; final charges follow the service provider's rules and bill."
+        ],
+        "tips": [
+          "Do not assume downloading an SDK or signing in makes calls free, or that one subscription applies to every engine."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Token usage and cost sources in execution analysis",
+          "caption": "Provider-reported cost and coverage are shown. Estimated cost is labeled only when pricing estimates are actually used."
+        }
+      },
+      {
+        "title": "Where is data stored, and can AI modify my files?",
+        "steps": [
+          "Local tasks, workflows and messages are stored in project .workstep by default. Disabling Data directory follows project directory uses ~/.workstep/projects/<项目ID>/. The project's .workstep/project.json reassociates original data.",
+          "Requests and context read by the engine may be sent to your configured model service. Channels, sharing and remote access also disclose information within their authorized scope to the corresponding parties.",
+          "AI with write permission can modify project files. Practice in a separate project, check permissions before execution and inspect Git diffs and actual artifacts afterward.",
+          "Sandbox associations still modify original mounted files. Task Worktrees provide separate directories, but merge results still need inspection."
+        ],
+        "tips": [
+          "Local storage does not mean offline model calls. Keep keys, account credentials and irrelevant sensitive files out of task descriptions, attachments and screenshots."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Conversation permission-mode panel on a phone",
+          "caption": "Default, Read-only, Workspace write and other choices are listed. Actual support and behavior depend on the engine."
+        }
+      },
+      {
+        "title": "How do stopping, retrying, rework and recovery differ?",
+        "steps": [
+          "Stopping interrupts current execution or a reply but does not undo files already written. Inspect existing results before continuing.",
+          "Retrying or rerunning invokes the engine again, possibly continuing context or using a new session as prompted. It does not revert every change to its pre-run state.",
+          "Rework corrects outputs according to review feedback or return connections, subject to workflow dependencies and limits. Read confirmations when rerun scope changes.",
+          "After reopening WorkStep, inspect task and session state first. Engines supporting recovery may resume their native session; lost native records require a new session and rerun."
+        ],
+        "tips": [
+          "Automatic recovery depends on engine and available history. Full recovery is not guaranteed for every engine or interruption."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Reset step selected in a completed task",
+          "caption": "This completed task has Reset step selected, affecting only the next step message. It is not a deletion confirmation or missing-session warning."
+        }
+      }
+    ]
+  }
+]

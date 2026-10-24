@@ -9,7 +9,7 @@ import { useProjectStore } from '../src/stores/projectStore'
 import type { BotPlatform } from '../src/api/channelBots'
 
 test('social credentials require the platform fields and failed saves retain the draft for retry', async () => {
- for (const platform of ['telegram', 'discord', 'slack'] as BotPlatform[]) {
+ for (const platform of ['telegram', 'discord', 'slack', 'qq'] as BotPlatform[]) {
   const { window } = installDomEnvironment()
   const previousFetch = globalThis.fetch, previousStore = useProjectStore.getState()
   useLocaleStore.setState({ locale: 'zh-CN' })
