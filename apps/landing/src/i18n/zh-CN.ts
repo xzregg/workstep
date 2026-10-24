@@ -1,15 +1,33 @@
 export const zhCN = {
+  meta: {
+    "title": "WorkStep — 让 AI 按步骤开发，关键结果由你把关",
+    "description": "连接 AI 编程引擎，按步骤分析需求、实现代码、测试和审查，查看结果并审核返工。"
+  },
+  privacy: {
+    "title": "WorkStep 隐私说明",
+    "localData": "WorkStep 桌面应用不包含使用行为遥测。项目、任务和执行数据默认保留在你的设备上。官网仅在维护者配置 Cloudflare Web Analytics token 时收集聚合访问量；该服务不使用跨站跟踪 cookie。GitHub 会按其自身政策记录仓库访问和 Release 下载。",
+    "externalServices": "远程分享和第三方 LLM 引擎是用户主动启用的功能，数据处理受对应服务条款约束。不要在公开 Issue 中提交密钥、私人项目内容或个人路径。",
+    "home": "返回官网"
+  },
   manual: {
-    title: "操作手册",
-    home: "返回官网",
-    search: "搜索手册",
-    searchPlaceholder: "输入功能或问题",
-    chapters: "手册章节",
-    noResults: "没有找到相关章节",
-    chineseNotice: "手册目前提供中文内容。",
-    enlarge: "查看大图",
-    pagination: "上一章与下一章",
-    screenshotPending: "本节界面截图待补充。",
+    "title": "操作手册",
+    "home": "返回官网",
+    "search": "搜索手册",
+    "searchPlaceholder": "输入功能或问题",
+    "chapters": "手册章节",
+    "noResults": "没有找到相关章节",
+    "enlarge": "查看大图",
+    "pagination": "上一章与下一章",
+    "screenshotPending": "本节界面截图待补充。",
+    "screenshotNotice": "截图来自中文界面，按钮名称可与正文中的指引对应。",
+    "groups": {
+      "getting-started": "快速入门",
+      "automation": "流程与自动化",
+      "delivery": "任务与交付",
+      "personalization": "对话与个性化",
+      "collaboration": "共享与协作",
+      "help": "设置与帮助"
+    }
   },
   common: {
     download: '下载',
@@ -348,6 +366,7 @@ export const zhCN = {
       prompt5: '运行测试并生成回归报告',
       prompt6: '执行构建并发布上线',
       reworkLabel: '返工反馈',
+      artifactList: '产物清单',
       reworkDesc: '实线 = 数据流 · 虚线 = 返工反馈（连回上游自动变虚线）',
     },
     board: {

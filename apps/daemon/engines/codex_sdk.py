@@ -759,7 +759,9 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         initial_input: str | list[dict] | None = None,
     ) -> None:
         """Run one native goal operation through the shared engine event stream."""
-        from openai_codex.generated.v2_all import ThreadGoalGetResponse, ThreadGoalStatus
+        from openai_codex.generated.v2_all import (
+            ThreadGoalGetResponse, ThreadGoalStatus, TurnStartResponse,
+        )
 
         raw = client._client
         if action in {"status", "pause", "clear"}:
@@ -793,8 +795,15 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 # attach the goal to that running turn. Later turns remain native.
                 await raw.thread_goal_clear(thread.id)
                 goal_state.activate_turn_routing()
-                started = await raw.turn_start(
-                    thread.id, initial_input if initial_input is not None else objective, params={
+                # turn_start rejects threads with a registered goal route.
+                # Use the protocol request: the goal route already captures
+                # first-turn notifications, including those before the reply.
+                turn_input = initial_input if initial_input is not None else objective
+                if isinstance(turn_input, str):
+                    turn_input = [{"type": "text", "text": turn_input}]
+                started = await raw.request("turn/start", {
+                    "threadId": thread.id,
+                    "input": turn_input,
                     "collaborationMode": {
                         "mode": "default",
                         "settings": {
@@ -803,7 +812,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                             "developer_instructions": None,
                         },
                     },
-                })
+                }, response_model=TurnStartResponse)
                 started_turn_id = str(started.turn.id)
                 await raw.thread_goal_set(
                     thread.id, objective=objective, status=ThreadGoalStatus.active,

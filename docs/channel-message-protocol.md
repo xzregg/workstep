@@ -11,6 +11,7 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 - `sender.py`：接收者解析、项目范围与状态校验，供 CLI 通知与完成回复推送复用。
 - `media.py`：附件大小限制、项目范围校验、异步网络和文件 I/O、入站附件存储及出站 Markdown 附件提取。
 - `social.py`：Telegram／Discord／Slack 共用的异步生命周期、重连、消息任务取消和 UTF-16 限长分段；三个平台分别使用长轮询、Gateway、Socket Mode，当前仅声明文本接收／发送，等待、流式和卡片能力均为关闭。平台专属字段（如主题和线程）通过 `reply_context` 在即时回复中传递。Telegram 的消息 ID 加上 chat ID，避免跨会话去重冲突；其含 Token 的 URL 在 HTTP 请求日志中脱敏。真实平台联调边界见 [渠道机器人](channel-bots.md)。
+- `qq.py` 同样复用 `SocialAdapter`，仅订阅官方 QQ 的单聊与群 @事件。去重 ID 包含会话类型与 OpenID，原始 `msg_id` 及已分配的 `msg_seq` 仅放在 `reply_context`；主动发送不使用 WorkStep 生成的消息 ID 冒充被动回复 ID。单聊／群聊分别守住每条入站消息 4／5 次被动回复上限，过长内容明确提示回 WorkStep 查看。凭据缓存、错误码及权限／真实联调限制见 [QQ 官方机器人](channel-bots.md#qq-官方机器人)。
 
 ## 消息结构
 

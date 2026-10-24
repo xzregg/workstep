@@ -10,7 +10,7 @@ import { useI18n } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import './BotSettings.css'
 
-const initials: Record<BotPlatform, string> = { wecom: '企', dingtalk: '钉', feishu: '飞', lark: 'L', telegram: 'T', discord: 'D', slack: 'S' }
+const initials: Record<BotPlatform, string> = { wecom: '企', dingtalk: '钉', feishu: '飞', lark: 'L', telegram: 'T', discord: 'D', slack: 'S', qq: 'Q' }
 
 export default function BotSettings() {
   const { t } = useI18n()

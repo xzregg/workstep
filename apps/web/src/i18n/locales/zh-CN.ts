@@ -271,7 +271,8 @@ export const zhCN = {
 
   gatewayRemote: { reconnecting: '连接中断，正在重连…', sessionExpired: '登录或访问授权已失效，请返回网关平台重新进入。', retryNow: '立即重试', switchDevices: '切换设备', devices: '我的设备', devicesFailed: '设备列表加载失败，请刷新重试。', deviceOffline: '设备离线', switchFailed: '切换设备失败，请检查权限后重试。', refreshDevices: '刷新设备', loading: '远程电脑', disconnected: '连接已断开', online: '在线', back: '返回网关平台', backCompact: '返回平台', localOnly: '本机目录与桌面应用操作仅在电脑本机可用。' },
   channelBot: {
-    telegram: 'Telegram', discord: 'Discord', slack: 'Slack',
+    telegram: 'Telegram', discord: 'Discord', slack: 'Slack', qq: 'QQ',
+    qqHint: '在 QQ 开放平台创建官方机器人，填写 App ID 和 App Secret，在后台选择 WebSocket 并开通单聊／群聊事件权限。私聊直接发送，群内 @机器人；群绑定与白名单使用平台 OpenID，不是 QQ 号码或群号。被动回复受平台时间与次数限制，过长结果会提示到 WorkStep 查看；主动通知还需平台授权。当前未接入 QQ 频道、Webhook 或 NapCat。',
     botCount: '{count} 个机器人', openConsole: '打开机器人管理后台',
     discardConfig: '放弃未保存的机器人配置？', discardConfigHint: '当前配置尚未保存，切换后需要重新填写。',
     telegramHint: '通过 @BotFather 创建机器人，填写 Bot Token；Bot ID 自动从 Token 读取。使用长轮询，无需公网回调；请先移除已有 Webhook，且勿让其他程序同时轮询此机器人。私聊直接发送，群内 @机器人或回复它的消息。',

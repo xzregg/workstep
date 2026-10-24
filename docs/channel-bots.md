@@ -1,6 +1,6 @@
 # 渠道机器人
 
-WorkStep 通过官方长连接或长轮询接收机器人消息。daemon 主动连出，不需要给本机开放公网回调地址。企业微信、钉钉、飞书与 Lark 支持文本、图片与文件；Telegram、Discord 与 Slack 当前支持文字收发。任务群消息进入对应任务的协调助手，未绑定群和单聊使用机器人的默认项目。添加机器人必须选择默认本地项目，未选择时保存按钮禁用；没有本地项目时，先创建或打开项目。创建 API 同步要求非空默认项目，更新 API 不允许显式清空默认项目；历史无默认项目配置不自动选择项目，在界面编辑保存时需补选。任务绑定可在任务详情「绑定 BOT」设置，也可在未绑定群中 @机器人要求绑定已有任务。
+WorkStep 通过官方长连接或长轮询接收机器人消息。daemon 主动连出，不需要给本机开放公网回调地址。企业微信、钉钉、飞书与 Lark 支持文本、图片与文件；Telegram、Discord、Slack 与 QQ 当前支持文字收发。任务群消息进入对应任务的协调助手，未绑定群和单聊使用机器人的默认项目。添加机器人必须选择默认本地项目，未选择时保存按钮禁用；没有本地项目时，先创建或打开项目。创建 API 同步要求非空默认项目，更新 API 不允许显式清空默认项目；历史无默认项目配置不自动选择项目，在界面编辑保存时需补选。任务绑定可在任务详情「绑定 BOT」设置，也可在未绑定群中 @机器人要求绑定已有任务。
 
 设置页左侧选择渠道，右侧显示该渠道已配置的机器人和配置表单；窄屏渠道列表横向滚动。同平台可添加不同应用标识的多个机器人。编辑现有机器人时，Token／Secret 留空保留原值；切换渠道或编辑其他机器人前，对未保存修改进行确认。
 
@@ -22,7 +22,18 @@ WorkStep 通过官方长连接或长轮询接收机器人消息。daemon 主动�
 2. Bot OAuth 权限配置 `chat:write`、`app_mentions:read`、`im:history`，订阅 `app_mention` 和 `message.im`，安装／重新安装应用到工作区，复制 App ID 和 Bot Token（`xoxb-`）。
 3. WorkStep 选择 Slack，填写 App ID、两份 Token 和默认项目，启用保存。私聊直接发送文字；频道需要先邀请机器人，再 @它。即时回复使用原消息的 `thread_ts`，群绑定采用频道 ID；同频道的多个线程共享会话。平台回执先确认，助手执行独立运行，不阻塞 Socket Mode 消息回执。
 
-新增三种渠道均复用既有私聊／群聊白名单、会话、去重和任务绑定，最终正文按平台容量分段发送。目前不声明图片、文件、流式正文、等待气泡或交互卡片能力；停止、权限回答、提案确认和审核操作需回 WorkStep 完成。自动化通过模拟官方帧与异步网络覆盖，尚未使用真实 Token 完成三平台联调，连接权限、安装和实际客户端收发仍需验收。
+Telegram、Discord、Slack 与 QQ 均复用既有私聊／群聊白名单、会话、去重和任务绑定，最终正文按平台容量分段发送。目前不声明图片、文件、流式正文、等待气泡或交互卡片能力；停止、权限回答、提案确认和审核操作需回 WorkStep 完成。自动化通过模拟官方帧与异步网络覆盖，尚未使用真实凭证完成这四个平台的联调，连接权限、安装和实际客户端收发仍需验收。
+
+## QQ 官方机器人
+
+1. 在 [QQ 开放平台](https://q.qq.com/)创建机器人，取得 App ID 和 App Secret。在「事件与回调」中选择 **WebSocket**，按平台要求开通 QQ 单聊及群聊事件权限、发布／测试范围和网络访问配置。
+2. WorkStep「设置 → 渠道机器人」选择 QQ，填写名称、App ID、App Secret 和默认本地项目，勾选「启用机器人」并保存。无需填写已弃用的机器人 Token；后台按[官方凭证接口](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/access-token.html)取得并缓存 access_token，临近过期刷新，HTTP 401 时仅刷新重试一次。凭据不通过机器人列表返回前端。
+3. 私聊直接发送文字；群内必须 @机器人。通过[官方 Gateway](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html)接收 `C2C_MESSAGE_CREATE` 和 `GROUP_AT_MESSAGE_CREATE`，仅订阅 `GROUP_AND_C2C_EVENT`。机器人自己的消息、群内非 @事件和纯附件不会触发助手。
+4. 群内发送一条 @消息后，在任务详情「绑定 BOT」的最近群中选择并绑定。群标识为 `group_openid`，私聊与群成员白名单使用平台返回的 OpenID，不能用 QQ 号码、群号或昵称替代。平台未返回昵称／群名时沿用标识显示。
+
+即时回复使用入站消息的原始 `msg_id`，分段递增 `msg_seq`；同一消息多次发送不会重用序号。QQ 当前限制单聊被动回复最多 4 条、群聊最多 5 条，超出可用次数的长结果会在末条明确提示「完整结果请在 WorkStep 查看」，完整正文仍保留在 WorkStep。被动回复的时间窗口和权限由 QQ 平台校验，超时会报告发送失败，不自动改成主动消息。依据：[单聊发送](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_openid_messages.post.html)、[群聊发送](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html)。
+
+WorkStep 内续聊、自动任务阶段推送与 CLI 通知没有入站回复上下文时使用主动发送，受[平台主动消息权限、拒收及频控](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/overview.html)约束，不伪造或缓存过期 `msg_id`。当前不接入 QQ 频道、频道私信、Webhook、NapCat／个人 QQ 登录，也不支持图片、文件或交互卡片。`tests/test_qq_channel.py` 覆盖鉴权缓存、刷新、Gateway 登录／恢复／心跳、消息归一化、序号与配额、真实管理 API、共享业务路由和慢网络健康检查；真实机器人收发仍需联调。
 
 ## 飞书与国际版 Lark
 

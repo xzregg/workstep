@@ -1,0 +1,1568 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Installation und erster Start",
+    "summary": "Installieren Sie zuerst WorkStep, dann eine SDK-Engine. Die Desktop-App enthält die Backend-Laufzeit; Python muss nicht vorab installiert werden.",
+    "sections": [
+      {
+        "title": "Installationspaket wählen",
+        "steps": [
+          "Wählen Sie auf der Website das Paket für Betriebssystem und Prozessor. Macs mit M-Chip benötigen arm64-DMG, Intel-Macs x64-DMG.",
+          "Installieren und öffnen Sie WorkStep gemäß den Systemanweisungen. Warten Sie, bis das lokale Backend bereit ist und der Arbeitsbereich erscheint.",
+          "Geben Sie beim ersten Start einen Anzeigenamen ein. Den Assistenten öffnen Sie erneut unter Einstellungen → Systemeinstellungen → Erste Schritte über die gleichnamige Schaltfläche."
+        ],
+        "tips": [
+          "Optionale Engines wie Codex SDK und Claude Agent SDK sind nicht vorinstalliert; das nächste Kapitel erklärt die Installation in der Oberfläche.",
+          "Frühe, unsignierte macOS- und Windows-Versionen können Sicherheitsmeldungen auslösen. Prüfen Sie die Downloadquelle und folgen Sie den Systemhinweisen.",
+          "Für lokale Nutzung ist keine Gateway-Anmeldung nötig. Scheitert nach freiwilliger Aktivierung der Authentifizierungsstart, versucht der lokale Einstieg zum lokalen Modus zurückzukehren und den Gateway-Modus auszuschalten; die Plattformadresse bleibt gespeichert. Gateway-gebundene Installationen und Fernzugriffe dürfen damit das Host-Gateway nicht abschalten. Scheitert die Rückkehr, prüfen Sie das lokale Backend und laden Sie erneut."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Identitätseinstellungen und Schnellstart beim ersten Öffnen von WorkStep",
+          "caption": "Geben Sie einen lokalen Anzeigenamen ein und öffnen Sie den Arbeitsbereich oder die Schnelleinrichtung. Abgebildet ist eine Demo-Identität."
+        }
+      },
+      {
+        "title": "Drei Grundbegriffe",
+        "steps": [
+          "Die Engine führt Aufgaben aus und ruft Werkzeuge auf. Für den Einstieg empfehlen wir Codex SDK oder Claude Agent SDK; eine separate CLI-Engine ist nicht erforderlich.",
+          "Ein Anbieter stellt Modellschnittstellen, API-Adresse und Zugangsdaten bereit; er ist keine Ausführungsengine. Sein Schnittstellenprotokoll muss zur Engine passen.",
+          "Das Modell bearbeitet die eigentliche Anfrage. Installieren und authentifizieren Sie zuerst die Engine, wählen und testen Sie dann das Modell und erstellen Sie zuletzt eine Aufgabe."
+        ],
+        "tips": [
+          "Ein SDK kann ein zugrunde liegendes Programm mitbringen oder starten; SDK-Nutzung schließt Unterprozesse nicht aus.",
+          "WorkStep speichert Projektdaten lokal. Bei der Ausführung sendet es den Aufgabenkontext über Engine und Anbieter an den Modelldienst."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Schritt 1: SDK-Engine installieren",
+    "summary": "Beginnen Sie mit einem SDK. Über Installation und Version verwalten Sie Downloads ohne kopierte Terminalbefehle.",
+    "sections": [
+      {
+        "title": "In der Oberfläche herunterladen und installieren",
+        "steps": [
+          "Öffnen Sie Einstellungen → Ausführungsengines. Die Codex- bzw. Claude-Code-Karte mit Kennzeichnung sdk entspricht Codex SDK bzw. Claude Agent SDK. Installieren Sie zunächst nur eine davon.",
+          "Klicken Sie auf Installation und Version, warten Sie auf die Versionsliste und wählen Sie unter Version wählen eine geeignete Version.",
+          "Klicken Sie auf Gewählte Version installieren und prüfen Sie die Version. Lesen und akzeptieren Sie gegebenenfalls die Drittanbieterbedingungen, dann bestätigen Sie die Installation.",
+          "Warten Sie auf Download, Installation von Engine und Abhängigkeiten sowie Versionsprüfung. Kontrollieren Sie anschließend die angezeigte Version.",
+          "Nach einem SDK-Versionswechsel muss das Backend neu starten. Beenden und öffnen Sie die Desktop-App nach Abschluss laufender Arbeit erneut und konfigurieren Sie danach weiter."
+        ],
+        "tips": [
+          "Die Prozentanzeige bezieht sich nur auf das Hauptpaket. Downloads von Abhängigkeiten und Entpacken können ohne Prozentangabe laufen; beachten Sie die Phasenbeschreibung.",
+          "Auch bei eingeklapptem Installationsbereich läuft die Installation weiter. Starten Sie sie bei vorübergehend unverändertem Fortschritt nicht mehrfach.",
+          "Ist keine passende Version verfügbar, aktualisieren Sie die Liste und prüfen Netzwerk und Plattformunterstützung. Entfernen Sie gegebenenfalls zuerst einen benutzerdefinierten Programmpfad, wie in der Oberfläche verlangt."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "Versionswahl und Installation einer SDK-Engine",
+          "caption": "Öffnen Sie Installation und Version, wählen Sie eine Version und klicken Sie auf Gewählte Version installieren."
+        }
+      },
+      {
+        "title": "Installation prüfen und Versionen pflegen",
+        "steps": [
+          "Öffnen Sie Ausführungsengines erneut und prüfen Sie, ob das SDK installiert erkannt wird und die richtige Version erscheint.",
+          "Auch Upgrades erfolgen über Installation und Version. Falls verfügbar, wählen und bestätigen Sie Zurück zu …; dabei wird die alte Version erneut heruntergeladen.",
+          "Lesen Sie bei Fehlern die Meldung und prüfen Sie Netzwerk, freien Speicher und Installationspfad vor dem Wiederholen. Eine erfolgreiche Installation ersetzt keine Modellanmeldung; fahren Sie mit Konfiguration und Test fort."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Version und Fortschrittsanzeige nach abgeschlossener SDK-Installation",
+          "caption": "Prüfen Sie nach der Installation die Version. Die verbleibenden 100 % bedeuten abgeschlossen, nicht einen laufenden Download."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Anbieter, Anmeldung und Verbindungstest",
+    "summary": "Konfigurieren Sie einen kompatiblen Anbieter in WorkStep und binden Sie ihn an das SDK. Vorhandene native Anmeldungen können ebenfalls genutzt werden.",
+    "sections": [
+      {
+        "title": "Anbieter hinzufügen",
+        "steps": [
+          "Öffnen Sie Einstellungen → Anbieter → Anbieter hinzufügen. Vergeben Sie einen erkennbaren Namen und wählen Sie Diensttyp und Schnittstellenprotokoll.",
+          "Claude Agent SDK benötigt eine kompatible Anthropic-Messages-Schnittstelle, Codex SDK eine kompatible OpenAI-Responses-Schnittstelle. Die Angabe „OpenAI unterstützt“ allein genügt nicht.",
+          "Übernehmen Sie API-Adresse und API Key vom Anbieter. Behalten Sie Versionspfade wie /v1 oder /v2 bei; verwenden Sie nicht den vollständigen Chat-Endpunkt als Basisadresse.",
+          "Speichern Sie den Anbieter und wählen Sie Verbindung testen. Für eine Modellliste wählen Sie Modelle abrufen, markieren die benötigten Modelle und klicken auf Auswahl speichern.",
+          "Prüfen Sie, dass der Anbieter aktiviert ist. Nach dessen Verbindungstest müssen Sie noch die SDK-Bindung und den Engine-Test durchführen."
+        ],
+        "tips": [
+          "Abonnements, API Keys und Modellpreise legt der Dienstanbieter fest. Die SDK-Installation erzeugt keine gültigen Zugangsdaten.",
+          "Ein leeres Schlüsselfeld beim Bearbeiten behält den bisherigen Schlüssel; zum Ersetzen geben Sie einen neuen ein. Verbergen Sie Schlüssel vor Screenshots oder Freigaben.",
+          "In verwalteten Unternehmensinstallationen kann die Plattform Anbieter zuweisen. Verwenden Sie einen autorisierten Anbieter statt ihn doppelt anzulegen."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Anbietername, Protokoll und API-Adresse",
+          "caption": "Wählen Sie ein kompatibles Protokoll, speichern und testen Sie. Die Abbildung zeigt eine öffentliche API-Adresse und ein leeres Schlüsselfeld."
+        }
+      },
+      {
+        "title": "SDK binden und Ausführung prüfen",
+        "steps": [
+          "Öffnen Sie unter Einstellungen → Ausführungsengines die Konfiguration des installierten SDK und wählen Sie den gespeicherten kompatiblen Anbieter.",
+          "Beim Claude Agent SDK ist Berechtigungsmodus erforderlich; lesen und bestätigen Sie die Auswahl. Andere erweiterte Felder können unverändert bleiben. Beim Codex SDK können Sie zunächst die Standardwerte für Denken, Genehmigung und Sandbox verwenden.",
+          "Klicken Sie auf Konfiguration speichern und prüfen Sie das Standardmodell. Modelle aktualisieren liest bei gebundenem Anbieter nur die gespeicherte Auswahl, keine vollständige Modellliste. Ohne Cache oder Auswahl bleibt sie leer. Neue Modelle laden und speichern Sie unter Einstellungen → Anbieter und aktualisieren danach die Engine-Liste.",
+          "Klicken Sie auf der Engine-Karte auf Testen und warten Sie auf Verifiziert. Prüfen Sie dies vor der ersten Aufgabe."
+        ],
+        "tips": [
+          "Engine-Tests rufen die Engine tatsächlich auf und können Modellkosten verursachen.",
+          "Codex SDK zeigt Denkstärke, Genehmigung und Sandbox mit übersetzten Bezeichnungen. Die Denkstärkenliste bleibt auch ohne Modellkatalog verfügbar, garantiert aber nicht jede Stufe für jedes Modell. Beginnen Sie mit den Standardwerten; bei Ablehnung wählen Sie Automatisch oder einen vom Modell unterstützten Wert.",
+          "Ohne Anbieterbindung nutzt Codex SDK die lokale Codex-Anmeldung, Claude Agent SDK seine nativen Zugangsdaten. Ohne vorhandene Anmeldung empfehlen wir die Anbieterkonfiguration.",
+          "Bei Authentifizierungsfehlern prüfen Sie Schlüssel, Adresse, Protokoll und Kontoberechtigungen. Bei Modellfehlern prüfen Sie Modell-ID und Anbieterunterstützung; bei Nicht installiert gehen Sie zum Installationskapitel zurück."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Testen, Verifiziert und Konfiguration speichern auf der Codex-SDK-Karte",
+          "caption": "Die sdk-Karte von Codex zeigt Verifiziert: Die Engine hat den Test bestanden."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Standardengine und Standardmodell festlegen",
+    "summary": "Wählen Sie das getestete SDK als Standardengine für Schritte ohne eigene Engine-Auswahl.",
+    "sections": [
+      {
+        "title": "Standardwerte speichern",
+        "steps": [
+          "Wählen Sie unter Einstellungen → Ausführungsengines → Standardengine das gerade verifizierte SDK.",
+          "Klicken Sie auf Standardwerte speichern und warten Sie auf die Erfolgsmeldung. Eine Auswahl allein genügt nicht.",
+          "Wählen Sie auf der SDK-Karte ein Standardmodell. Es gilt, wenn ein Schritt kein eigenes Modell festlegt.",
+          "Prüfen Sie nach der Erstellung einer Pipeline deren Schritte. Explizite Engine- und Modellwerte ändern sich nicht automatisch mit den globalen Standardwerten."
+        ],
+        "tips": [
+          "Assistenten haben eigene Konfigurationen; eine neue Standardengine stellt nicht automatisch sämtliche Assistenten um.",
+          "Nutzen Sie zunächst ein verifiziertes SDK und ein Modell für die ganze Pipeline. Unterschiedliche Modelle pro Schritt können Sie danach ausprobieren."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Standardengine und Schaltfläche Standardwerte speichern",
+          "caption": "Gezeigt werden Auswahl und Speicherfunktion. Pydantic AI ist hier noch nicht konfiguriert oder verifiziert; der Standard wurde nicht verändert."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Lokale Projekte einbinden",
+    "summary": "Ein Projekt entspricht einem lokalen Codeverzeichnis. Daten liegen standardmäßig darin oder zentral nach Projekt-ID im Benutzer-Home.",
+    "sections": [
+      {
+        "title": "Den automatisch vorbereiteten Standardarbeitsbereich verstehen",
+        "steps": [
+          "Beim ersten Einstieg erscheint Standardarbeitsbereich in der Seitenleiste. Ohne bisherige Projektauswahl öffnet WorkStep dessen Chat; vorhandene Auswahlen und Fernbindungen haben Vorrang.",
+          "Nach der SDK-Konfiguration können Sie dort chatten. Für eigenen Code binden Sie das tatsächliche Verzeichnis über Projekt hinzufügen ein; der Standardarbeitsbereich ist nicht Ihr bereits eingebundenes Repository.",
+          "Der Standardarbeitsbereich ist zugleich das gemeinsame Projekt zur Erstellung von Skills, Engines, Skins und Sprachpaketen. Diese Einstiege verwenden normale Chats und speichern Ergebnisse dort."
+        ],
+        "tips": [
+          "Sie können den Standardarbeitsbereich umbenennen, aber nicht aus der Projektliste löschen. Er erstellt keine Pipeline automatisch.",
+          "Der Standardarbeitsbereich ist ein Projekt, das SDK eine Engine. Ein vorhandenes Projekt bedeutet nicht, dass eine Engine installiert oder angemeldet ist."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Standardarbeitsbereich und normaler Chat in der Seitenleiste",
+          "caption": "Leerer Chat des Standardarbeitsbereichs ohne Gespräche oder Pipelines. Sie können einen Chat beginnen; Codeprojekte müssen separat eingebunden werden."
+        }
+      },
+      {
+        "title": "Zunächst ein Demoverzeichnis wählen",
+        "steps": [
+          "Bereiten Sie einen eigenen Demoordner wie workstep-demo vor. Bei vorhandenem Code wählen Sie das Projektwurzelverzeichnis.",
+          "Öffnen Sie Seitenleiste → Projekt hinzufügen → Lokales Projekt, wählen Sie den Ordner im Verzeichnisbrowser und bestätigen Sie.",
+          "Prüfen Sie den Eintrag in der Seitenleiste und wechseln Sie zum Projekt. Neue Projekte haben noch keine Pipeline; erstellen Sie diese anschließend selbst.",
+          "Beim erneuten Einbinden desselben Verzeichnisses werden Pipelines, Aufgaben und Nachrichten aus den Projektdaten wiederhergestellt. Löschen Sie dafür nicht .workstep."
+        ],
+        "tips": [
+          "Die Engine kann je nach Auftrag Dateien lesen oder ändern. Üben Sie in einem separaten Ordner und sichern Sie Codeänderungen in der Versionsverwaltung.",
+          "Standardmäßig liegen Daten in .workstep/workstep.db, Uploads in .workstep/uploads/ und Artefakte in .workstep/artifacts/. Bei zentraler Speicherung sichern Sie das entsprechende Home-Datenverzeichnis sowie die Projektidentitätsdatei.",
+          "Projektbezeichnungen dürfen beim Erstellen oder Umbenennen keine Leerzeichen, Tabs oder andere Leerraumzeichen enthalten."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Lokales Projekt hinzufügen und Wurzelverzeichnis wählen",
+          "caption": "Wählen Sie den Demoordner und öffnen Sie das eingebundene Projekt über die Seitenleiste."
+        }
+      },
+      {
+        "title": "Projektverzeichnis öffnen und Ergebnisse prüfen",
+        "steps": [
+          "Wählen Sie ein Projekt und klicken Sie auf Verzeichnis öffnen auf der Aufgaben- oder Chatseite. Prüfen Sie dort nach Abschluss die tatsächlich erzeugten Dateien.",
+          "In der Desktop-App wählen Sie über den rechten Pfeil erkannte lokale Dateimanager, Editoren oder Terminals. Die Auswahl öffnet sofort den Ordner und wird lokal gespeichert; das Menü zeigt nur verfügbare Anwendungen.",
+          "Fernprojekte und entfernte Browserzugriffe verwenden den Web-Verzeichnisbrowser. Auch Desktop-Versionen ohne Verzeichnisbrücke nutzen ihn; im Container ist kein Desktop-Editor erforderlich."
+        ],
+        "tips": [
+          "Sandbox-Projektpfade werden vor dem Öffnen auf Host-Mounts abgebildet. Gibt es keinen passenden Mount, prüfen Sie nach der Fehlermeldung die Projekt-Mount-Konfiguration.",
+          "Scheitert Verzeichnis öffnen, prüfen Sie Anwendung und Pfad. Alternativ öffnen Sie das Projekt direkt im Dateimanager des Systems."
+        ]
+      },
+      {
+        "title": "Projektreihenfolge ändern",
+        "steps": [
+          "Ziehen Sie das Projekt Handbuch-Demo in der Seitenleiste vor oder hinter das gewünschte Projekt.",
+          "Lokale und entfernte Projekte lassen sich gemeinsam sortieren. Nach dem Loslassen wird die Reihenfolge lokal gespeichert und beim nächsten Öffnen beibehalten."
+        ],
+        "tips": [
+          "Das verändert nur die lokale Anzeige, nicht die Reihenfolge auf dem entfernten Host. Bei Speicherfehlern folgen Sie der Meldung und versuchen es erneut."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Zwei lokale Demoprojekte und ihre Pipelines in der Seitenleiste",
+          "caption": "Die aktuelle Seitenleiste zeigt zwei lokale Demoprojekte und den Standardarbeitsbereich. Projektzeilen lassen sich verschieben; kein Fernsystem ist verbunden."
+        }
+      },
+      {
+        "title": "Speicherort der Projektdaten wählen",
+        "steps": [
+          "Prüfen Sie nach der Ordnerwahl unter Projekt hinzufügen → Lokales Projekt die Option Datenverzeichnis im Projekt speichern. Sie ist bei neuen Projekten aktiviert.",
+          "Aktiviert speichert sie Aufgaben, Pipelines, Anhänge, Logs, Artefakte, Skills und Gedächtnis unter .workstep/. Deaktiviert verwendet sie ~/.workstep/projects/<项目ID>/; im Projekt verbleibt nur .workstep/project.json als Identität.",
+          "Bei bestehenden Projekten sehen Sie den tatsächlichen Pfad unter Projektkonfiguration → Allgemein. Ändern Sie das Kontrollkästchen und bestätigen Sie die Migration. Stoppen Sie vorher Aufgaben, Chats und Schnellaktionen; entfernen Sie vorhandene Git-Arbeitsbereiche.",
+          "Prüfen Sie nach der Migration Pfad und bisherige Aufgaben. Bei Fehlern bleiben Originaldaten erhalten; nicht leere Zielordner werden nicht überschrieben. Beheben Sie den Fehler und wiederholen Sie."
+        ],
+        "tips": [
+          "Erneutes Hinzufügen übernimmt den Speichermodus aus der Identitätsdatei und verschiebt Daten nicht automatisch.",
+          "Behalten Sie beim Verschieben oder Umbenennen .workstep/project.json bei. Erneutes Hinzufügen erkennt dann das Projekt. Löschen der Identität entfernt keine Home-Daten, verhindert aber die automatische Zuordnung.",
+          "Eine Projektkopie mit derselben ID kann nicht gleichzeitig mit dem bereits registrierten Original benutzt werden; es entsteht ein ID-Konflikt. Für einen Rechnerwechsel kopieren Sie auch das zugehörige Home-Datenverzeichnis.",
+          "Auch zentrale Speicherung ignoriert .workstep/ im Projekt automatisch. Normales Komprimieren berücksichtigt Git-Ignore-Regeln nicht automatisch; die Identitätsdatei enthält keine Aufgabendaten."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Speicheroption und Hinweise zur Identitätsdatei beim Hinzufügen",
+          "caption": "Tatsächlicher Dialog: Nach Abwahl der Voreinstellung erscheinen Home-Pfad und Hinweise zu Umzug und Rechnerwechsel."
+        }
+      },
+      {
+        "title": "Speicherort eines bestehenden Projekts wechseln",
+        "steps": [
+          "Öffnen Sie Allgemein in der Projektkonfiguration und prüfen Sie den aktuellen Datenpfad.",
+          "Ändern Sie Datenverzeichnis im Projekt speichern, lesen und bestätigen Sie die Migration und warten Sie. Laufende Arbeit oder ein nicht leeres Ziel führt zu einer Fehlermeldung."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Datenspeicherort in den allgemeinen Einstellungen des Demoprojekts",
+          "caption": "Prüfen Sie den Pfad. Nach Änderung des Kontrollkästchens ist zusätzlich die Migrationsbestätigung erforderlich."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Erste Pipeline mit zwei Schritten erstellen",
+    "summary": "Lernen Sie Schritte, Ein-/Ausgaben und Verbindungen anhand von Anforderungsanalyse → Aufgabe ausführen kennen.",
+    "sections": [
+      {
+        "title": "Beispiel mit dem Einstiegsassistenten erstellen",
+        "steps": [
+          "Prüfen Sie die gespeicherte Standardengine und wählen Sie das lokale Projekt. Öffnen Sie den Assistenten bei Bedarf unter Einstellungen → Systemeinstellungen → Erste Schritte erneut.",
+          "Klicken Sie im Abschnitt Pipeline mit zwei Schritten auf Beispielpipeline erstellen und warten Sie auf die Leinwand.",
+          "Die Beispielpipeline heißt Analyse und Ausführung. Anforderungsanalyse erzeugt einen Ausführungsplan, den die Verbindung an Aufgabe ausführen übergibt.",
+          "Prüfen Sie Engine, Modell, Prompt sowie Ein-/Ausgaben beider Schritte und verwenden Sie das verifizierte SDK. Das Beispiel startet nicht automatisch bei Aufgabenerstellung und überspringt Reviews; nach dem Aufgabenstart laufen beide Schritte gemäß Abhängigkeiten weiter."
+        ],
+        "tips": [
+          "Neue normale Pipelines beginnen leer; Beispielschritte und Vorlagen werden nicht automatisch übernommen.",
+          "Prüfen Sie neben der sichtbaren Verbindung, ob Ausgabeport und benötigter Eingang tatsächlich zusammenpassen."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Leinwand mit Anforderungsanalyse und Aufgabe ausführen",
+          "caption": "Die Analyse liefert den Plan an den Ausführungsschritt. Klicken Sie auf Schritte, um ihre Einstellungen zu prüfen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Erste Aufgabe erstellen und abschließen",
+    "summary": "Eine kleine, eindeutig prüfbare Aufgabe zeigt, ob SDK, Projekt und Pipeline zusammenarbeiten.",
+    "sections": [
+      {
+        "title": "Prüfbare Anforderungen eingeben",
+        "steps": [
+          "Legen Sie README.md und example.txt im Demoordner an: README.md nennt fünf zu beschreibende Aktionen, example.txt ergänzt Hinweise. Verwenden Sie Demoinhalte statt privater Daten.",
+          "Öffnen Sie die Aufgabenseite, wählen Sie Analyse und Ausführung und klicken Sie auf Neue Aufgabe, alternativ Aufgabe erstellen im Einstiegsassistenten.",
+          "Beginnen Sie bei Anforderungsanalyse und verwenden Sie den Titel Projektanleitung erstellen.",
+          "Beispielbeschreibung: Lies README.md und example.txt, erstelle zuerst einen Ausführungsplan und danach 使用说明.md im Projektwurzelverzeichnis. Beschreibe darin fünf Aktionen als Markdown mit jeweils einem Satz. Lies die beiden bestehenden Dateien nur und ändere sie nicht. Nur 使用说明.md darf neu angelegt werden; ändere keine anderen Dateien. Nenne anschließend den Speicherort.",
+          "Wählen Sie Manuell starten und Aufgabe erstellen. Prüfen Sie Inhalt und Startschritt und klicken Sie dann auf Aufgabe starten. Alternativ wählen Sie Sofort nach Erstellung starten."
+        ],
+        "tips": [
+          "Ziel, erlaubte Aktionen, Ausgabeformat und Abnahmekriterien machen das Ergebnis leichter prüfbar als eine ungenaue Bitte.",
+          "Ein späterer Startschritt überspringt vorherige Schritte. Beginnen Sie beim ersten Versuch mit der Analyse.",
+          "Das Öffnen des Erstellungsdialogs durch den Assistenten startet keine Aufgabe; entscheidend ist die gewählte Startart."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Aufgabentitel, Beschreibung, Startschritt und Startart",
+          "caption": "Beschreiben Sie den Auftrag konkret, wählen Sie den Startschritt und legen Sie den Startzeitpunkt fest."
+        }
+      },
+      {
+        "title": "Fortschritt und Ergebnisse prüfen",
+        "steps": [
+          "Öffnen Sie die Aufgabendetails und beobachten Sie Schritt, Status und Nachrichten. Warten Sie während der Ausführung; beantworten Sie konkrete Fragen und Genehmigungen über die Oberfläche.",
+          "Nach der Analyse startet der Ausführungsschritt entsprechend der Verbindung automatisch. Ein weiterer Startklick ist unnötig. Prüfen Sie, ob der Plan aus Schritt eins verwendet wurde.",
+          "Öffnen Sie nach Abschluss die letzte Nachricht und 使用说明.md im Projektwurzelverzeichnis. Prüfen Sie Markdown, fünf Aktionen und jeweils einen Erklärungssatz.",
+          "Erscheint Bearbeitete Dateien in einer Nachricht, klappen Sie die Liste auf und wählen einen Dateinamen. Mit gespeichertem Patch sehen Sie die Änderungen dieser Runde, andernfalls den aktuellen Dateiinhalt. Historische Änderungen können vom heutigen Zustand abweichen; prüfen Sie weiterhin die tatsächliche Datei.",
+          "Prüfen Sie, dass README.md und example.txt unverändert sind und nur 使用说明.md hinzugekommen ist. Nutzen Sie Projektdateiansicht oder Dateimanager; der Abschlussstatus allein genügt nicht."
+        ],
+        "tips": [
+          "Bei langem Warten unterscheiden Sie zwischen Start ausstehend, Genehmigung, Review und laufender Ausführung.",
+          "Bewahren Sie bei Fehlern die Meldung auf und testen Sie zuerst die SDK-Verbindung. Nach Behebung verwenden Sie die angebotene Fortsetzungs- oder Wiederholungsaktion.",
+          "Bei „Die Schnittstelle hat eine Webseite zurückgegeben; Daten können nicht gelesen werden“ aktualisieren und starten Sie das Backend neu und laden die Seite erneut. Ein Fehler beim Laden von Ausführungsdetails bedeutet nicht, dass die Aufgabe scheiterte; erstellen Sie deshalb keine Doppelaufgabe."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Abgeschlossene Zweischrittaufgabe mit erzeugter 使用说明.md",
+          "caption": "Prüfen Sie nach beiden Schritten 使用说明.md und die fünf beschriebenen Aktionen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Pipelines bearbeiten",
+    "summary": "Teilen Sie Arbeit in Schritte auf und konfigurieren Sie Engine, Ein-/Ausgaben und Review-Regeln.",
+    "sections": [
+      {
+        "title": "Schritte hinzufügen und verbinden",
+        "steps": [
+          "Wählen Sie links Projekt und Pipeline und öffnen Sie die Pipeline-Leinwand. Neue Pipelines sind leer; fügen Sie Schritte oder eine Vorlage selbst hinzu.",
+          "Klicken Sie auf + Schritt und vergeben Sie Name und Kennung, etwa Anforderungen ordnen und requirements. Die Kennung muss innerhalb der Pipeline eindeutig sein, mit einem englischen Buchstaben beginnen und nur Buchstaben, Ziffern, Unterstriche oder Bindestriche enthalten.",
+          "Schreiben Sie einen Prompt mit Ziel, Grenzen und Ergebnis, etwa: Lies die Aufgabenbeschreibung, liste Abnahmekriterien und Vorgehen auf und speichere ein Anforderungsdokument.",
+          "Wählen Sie installiertes, verifiziertes SDK und Modell oder die Standardengine bzw. das Standardmodell der Engine.",
+          "Konfigurieren Sie Ein-/Ausgaben, ziehen Sie vom Ausgabeport des Vorgängers zum Eingangsport des Nachfolgers und speichern Sie."
+        ],
+        "tips": [
+          "Durchgezogene Linien übertragen Daten. Rückverbindungen zu Vorgängern erscheinen gestrichelt und dienen Nacharbeitsfeedback.",
+          "Bei Ungespeicherte Änderungen ist die Leinwand noch nicht dauerhaft gespeichert."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Pipeline-Leinwand mit zwei Schritten und verbundenen Ein-/Ausgaben",
+          "caption": "Erkennen Sie Schritt hinzufügen, Ports und Speichern."
+        }
+      },
+      {
+        "title": "Ein-/Ausgaben und Rückverbindungen konfigurieren",
+        "steps": [
+          "Bearbeiten Sie einen Schritt, benennen Sie seine Ausgabe verständlich und konfigurieren Sie den benötigten Folgeeingang.",
+          "Verbinden Sie die Ausgabe mit dem passenden Eingang. Während der Ausführung prüfen Sie unter Schritteingaben/-ausgaben in den Aufgabendetails, ob sie verfügbar ist.",
+          "Legen Sie für Nacharbeit eine Rückverbindung und Maximale Rückläufe fest. Lesen Sie vor dem Speichern Hinweise zu nicht ausführbaren Phasen: Der erste Durchlauf darf nicht von erst durch Nacharbeit erzeugten Artefakten abhängen."
+        ],
+        "tips": [
+          "Die maximale Rücklaufzahl steuert gestrichelte Rückverbindungen; Wiederholungen nach abgelehntem Review werden getrennt eingestellt.",
+          "Ein deklarierter Ausgabeport erzeugt keine Datei von selbst. Fordern Sie im Prompt tatsächliche Ergebnisse und prüfen Sie diese anschließend."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Eingabeartefakte und zugeordnete Ausgaben im Schritteditor",
+          "caption": "Die Eingabe beschreibt Aufgabenanforderungen, die Ausgabe einen Ausführungsplan. Rücklaufgrenzen sind hier nicht abgebildet."
+        }
+      },
+      {
+        "title": "Reviews und automatischen Start einstellen",
+        "steps": [
+          "Wählen Sie im Schritteditor unter Schritt-Review Manuell, Automatisch oder Überspringen. Für den Einstieg empfehlen wir manuell.",
+          "Ein manuelles Review hält nach der Ausführung zur Prüfung an. Für automatisches Review geben Sie überprüfbare Kriterien und gegebenenfalls eigene Engine und Modell an.",
+          "Legen Sie die Wiederholungszahl nach automatischer Ablehnung fest. Fehler des Review-Agenten wechseln zur manuellen Bearbeitung.",
+          "Aktivieren Sie bei Bedarf Nach Erstellung automatisch starten und speichern Sie. Lassen Sie dies beim ersten Versuch aus, um neue Aufgaben vor dem Start zu prüfen."
+        ],
+        "tips": [
+          "SDKs für Ausführung und Review müssen jeweils installiert und konfiguriert sein."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Review-Modus im Schritteditor",
+          "caption": "Wählen Sie hier den Review-Modus. Die automatische Startoption prüfen Sie separat nach der Anleitung."
+        }
+      },
+      {
+        "title": "Pipelineübergreifend weiterleiten und Leinwand wiederverwenden",
+        "steps": [
+          "Fügen Sie einen Pipeline-Schritt hinzu, um Ergebnisse an ein anderes Projekt oder eine Pipeline zu übergeben. Wählen Sie Zielprojekt, Zielpipeline, Startschritt und Startart.",
+          "Konfigurieren Sie die vorgelagerten Artefakte und speichern Sie. Ein solcher Schritt ist nach Erstellung der Folgeaufgabe sofort bestanden und darf keine weiteren Schritte der Elternpipeline anschließen.",
+          "Verwenden Sie Knoten aus Pipeline kopieren, wählen Sie Projekt, Pipeline und Knoten, prüfen Sie die Vorschau und kopieren und speichern Sie.",
+          "Ordnen Sie Knoten über Layout. Fügen Sie Lesezeichen als Notizen hinzu oder exportieren Sie JSON zur Sicherung; prüfen Sie beim Import den zu ersetzenden Inhalt."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Ziel und Startart der Folgeaufgabe",
+          "caption": "Prüfen Sie Zielprojekt, Pipeline und Startschritt."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Trigger- und Benachrichtigungs-Hooks",
+    "summary": "Erstellen Sie Aufgaben durch externe Anfragen oder senden Sie Pipelinezustände an andere Plattformen.",
+    "sections": [
+      {
+        "title": "Aufgaben über Trigger-Hooks erstellen",
+        "steps": [
+          "Wählen Sie Projekt und Pipeline, öffnen Sie Pipeline-Hooks in der Aufgabenwerkzeugleiste beziehungsweise im Mobilmenü und wählen Sie Trigger-Hooks.",
+          "Legen Sie einen Hook mit Name, Standardtitel und Ersteller an, wählen Sie Startschritt und automatischen Start und speichern Sie. Beispiel: Anforderungseingang, Titel Externe Anforderung.",
+          "Wählen Sie die konfigurierte interne, externe oder Gateway-Adresse und kopieren Sie den Aufruflink. Dessen Token ist ein Zugangsschlüssel; geben Sie ihn nur vertrauenswürdigen Systemen.",
+          "Prüfen Sie Titel, Ersteller und Text unter Aufruf simulieren in der Vorschau. Die Simulation erstellt keine Aufgabe.",
+          "Senden Sie vom externen System einen POST an den kopierten Link, mit JSON, Klartext oder Markdown, etwa Bitte Abnahmekriterien dieser Anforderung ordnen. Prüfen Sie nach Rückgabe einer Aufgaben-ID Inhalt und Startstatus in der Aufgabenliste."
+        ],
+        "tips": [
+          "Projektbearbeitungsrecht ist erforderlich. Jeder gültige Aufruf erstellt eine neue Aufgabe. Diese Version erkennt keine GitHub-/GitLab-Ereignisse automatisch, entfernt keine Duplikate und puffert keine Offline-Anfragen.",
+          "Fehlende Adressen oder Verbindungen zuerst reparieren. Ein Token-Reset macht alte Links ungültig. Scheitert der Autostart, ist die Aufgabe trotzdem erstellt: Prüfen Sie run_error und Details vor einer erneuten Zustellung."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Ungespeicherter Trigger-Hook mit Name, Standardfeldern und Startphase",
+          "caption": "Der Demoentwurf ist deaktiviert und erstellt nur Aufgaben. Das Token bleibt verborgen; nichts wurde gespeichert oder ein Aufruflink erzeugt."
+        }
+      },
+      {
+        "title": "Pipelinebenachrichtigungen nach außen senden",
+        "steps": [
+          "Wechseln Sie im selben Pipeline-Hooks-Fenster zu Benachrichtigungs-Hooks und fügen Sie ein Ziel hinzu.",
+          "Geben Sie Name und Zieltyp an: DingTalk-Gruppenbot, WeCom-Gruppenbot oder allgemeiner JSON Webhook. Ergänzen Sie Zieladresse und bei DingTalk gegebenenfalls Signaturschlüssel.",
+          "Wählen Sie Ereignisse, standardmäßig Abschluss und Fehler. Legen Sie bei Bedarf Titelpräfix sowie Gateway-, externe oder interne Basisadresse für Aufgabenlinks fest und speichern Sie.",
+          "Erzeugen Sie unter Benachrichtigung simulieren eine Vorschau und prüfen Sie Text und Links. Sie sendet nichts. Für einen echten Test bestätigen Sie Testbenachrichtigung senden; dies sendet an das gespeicherte, aktivierte Ziel.",
+          "Prüfen Sie Zustellstatus, Anzahl und bereinigte Fehler im Protokoll. Nach Korrektur können fehlgeschlagene Zustellungen erneut versucht werden. Prüfen Sie nach Aufgabenabschluss Empfang und Zugriffsrechte des Links."
+        ],
+        "tips": [
+          "Das Gerät sendet direkt, nicht das Gateway. Benachrichtigungen enthalten weder Chattext noch Artefaktinhalt oder Aufgabenerstellungs-Zugangsdaten. Aufgabenlinks benötigen weiterhin normale Zugriffsrechte.",
+          "Vorübergehende Fehler werden wiederholt; Zeitüberschreitungen und Wiederherstellung können Duplikate erzeugen. JSON-Empfänger können nach event_id deduplizieren. Deaktivieren oder Löschen zieht bereits versendete Meldungen nicht zurück.",
+          "Eine Vorschau allein belegt keine erfolgreiche Anbindung; testen Sie die tatsächliche Zustellung."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "DingTalk-Benachrichtigungsziel, Ereignisauswahl und leere Adresse",
+          "caption": "Aktueller ungespeicherter, deaktivierter Entwurf mit Abschluss und Fehler vorausgewählt. Webhook-Adresse und Signaturschlüssel sind leer; es wurde nichts gesendet."
+        }
+      },
+      {
+        "title": "Markdown-Benachrichtigungsvorlage anpassen",
+        "steps": [
+          "Wählen Sie einen DingTalk- oder WeCom-Gruppenbot und scrollen Sie zur Markdown-Nachrichtenvorlage. Allgemeine JSON Webhooks nutzen diese Markdown-Vorlagen nicht.",
+          "Öffnen Sie Vorlagenvariablen (zum Kopieren klicken) und setzen Sie Platzhalter wie {task_title} ein. Verwenden Sie keine unbekannten Variablen oder leere Vorlage; für Aufgabenlinks behalten Sie {task_link} oder {task_url}.",
+          "Speichern Sie und prüfen Sie Ersetzungen und Links per Simulation, die nichts sendet. Lesen und bestätigen Sie den Dialog, wenn Sie die Standardvorlage wiederherstellen möchten."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Markdown-Vorlagentext und Variablenauswahl",
+          "caption": "Ein ungespeicherter Entwurf zeigt Standardtext und Variableneinstieg. Die Vorlage wurde weder gespeichert noch extern zugestellt."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Vorlagen und KI-Pipelineassistent",
+    "summary": "Starten Sie mit einer Vorlage oder lassen Sie Schritte vorschlagen und bestätigen Sie deren Übernahme.",
+    "sections": [
+      {
+        "title": "Vorlagen anwenden und speichern",
+        "steps": [
+          "Öffnen Sie Pipelinevorlagen auf der Leinwand. Suchen Sie nach Name oder Beschreibung und prüfen Sie Zweck und Schrittzahl.",
+          "Wählen und bestätigen Sie eine Vorlage. Sie ersetzt sämtliche Schritte und Verbindungen der aktuellen Leinwand.",
+          "Prüfen Sie jede Engine, jedes Modell, jeden Prompt und jedes Review und speichern Sie Ihre angepasste Konfiguration.",
+          "Zur Wiederverwendung wählen Sie Aktuelle Pipeline als Vorlage speichern und geben Name und Beschreibung an. Eigene bearbeitbare Vorlagen verwalten Sie unter Einstellungen → Pipelinevorlagen."
+        ],
+        "tips": [
+          "Neue Projekte erzeugen keine Pipeline automatisch; neue Pipelines wenden auch keine Vorlage automatisch an.",
+          "Integrierte Vorlagen lassen sich nicht löschen. Prüfen Sie nach der Übernahme die Verfügbarkeit aller benötigten Engines."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Suchergebnis für die integrierte Vertragsverwaltungsvorlage",
+          "caption": "Die Suche nach Vertragsverwaltung zeigt Zweck und Schrittzahl. Prüfen Sie den Ersetzungsumfang vor der Auswahl."
+        }
+      },
+      {
+        "title": "Pipeline mit KI erstellen oder ändern",
+        "steps": [
+          "Öffnen Sie den KI-Pipelineassistenten auf der Leinwand und wählen Sie konfigurierte Engine und Modell.",
+          "Beschreiben Sie Ziel, Phasen, Ausgabeformat und Review-Anforderungen, etwa: Erstelle Anforderungsanalyse → Implementierung → Test, jede Phase mit manuellem Review und installiertem SDK.",
+          "Vergleichen Sie Titel, Schrittzahl und Zusammenfassung der Vorschlagskarten und übernehmen Sie den passenden Vorschlag.",
+          "Bei Änderungen prüfen Sie die betroffenen Schritte und markieren unter Änderungen anwenden die gewünschten Ergänzungen, Änderungen oder Löschungen; anschließend anwenden und speichern."
+        ],
+        "tips": [
+          "KI-Vorschläge müssen bestätigt werden. Erfolgreiche Erzeugung allein genügt nicht: Prüfen Sie Verbindungen, Engines und Review-Bedingungen."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Vom KI-Assistenten erzeugte Vorschlagskarte mit zwei Schritten",
+          "caption": "Die Karte zeigt die Zahl geänderter Schritte und Änderungen anwenden. Danach bestätigen Sie die konkreten Schrittänderungen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Aufgaben erstellen und verwalten",
+    "summary": "Die Pipeline beschreibt das Vorgehen, die Aufgabe den konkreten Auftrag.",
+    "sections": [
+      {
+        "title": "Mehrere Aufgaben mit dem Assistenten vorbereiten",
+        "steps": [
+          "Öffnen Sie den Aufgabenassistenten und nennen Sie mehrere Aufgaben und ihre Zeiten, etwa drei unabhängige Aufgaben morgen um 09:00, 10:00 und 11:00.",
+          "Prüfen Sie jeden Entwurf auf Titel, Inhalt, Pipeline, Startschritt und geplante Startzeit und bestätigen Sie die Erstellung über die Oberfläche.",
+          "Prüfen Sie die Aufgaben einzeln in der Liste. Bei Teilerfolgen kontrollieren Sie vorhandene Aufgaben, statt den gesamten Auftrag erneut einzureichen."
+        ],
+        "tips": [
+          "Ein Entwurf ist noch keine erstellte oder gestartete Aufgabe. Geben Sie für zukünftige Zeiten die Zeitzone an; das Backend muss zum Start laufen."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Mehrere Aufgabenentwürfe und ihre geplanten Zeiten",
+          "caption": "Echte Aufnahme noch ausstehend: mehrere Entwürfe mit individuellen Zeiten, kein Ersatz durch einen alten Einzelentwurf."
+        }
+      },
+      {
+        "title": "Aufgabe erstellen und Anforderungen mit KI ordnen",
+        "steps": [
+          "Wählen Sie Projekt und Pipeline und klicken Sie auf Neu oder Hinzufügen in der gewünschten Phase.",
+          "Geben Sie Titel und Beschreibung mit Hintergrund, Ziel, Änderungsumfang, Ausgabepfad und Abnahmekriterien ein. Markdown und eingefügte Bilder sind möglich.",
+          "Öffnen Sie bei Bedarf den Aufgabenassistenten und bestätigen Sie erst nach Prüfung von KI-Titel, Inhalt und Pipelineauswahl.",
+          "Prüfen Sie Startschritt und Review-Einstellungen und erstellen Sie die Aufgabe. Bei deaktiviertem Autostart klicken Sie auf Aufgabe starten."
+        ],
+        "tips": [
+          "Beispiel: README lesen und docs/getting-started.md erzeugen, ohne Programmcode zu ändern; mit Installation, Start und drei häufigen Fragen.",
+          "Erstellen und Starten sind getrennte Aktionen. Startart und Schritteinstellungen bestimmen, ob sofort ausgeführt wird."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Erstellungsformular mit geöffnetem Aufgabenassistenten",
+          "caption": "Geben Sie Titel, Beschreibung und Startart an. Rechts hilft der Assistent; Review-Einstellungen liegen in einem anderen Reiter."
+        }
+      },
+      {
+        "title": "Aufgaben auf Kanban und in Tabellen finden",
+        "steps": [
+          "Wechseln Sie zwischen Bahnen und Tabelle, sehen Sie Aufgaben nach Phase und suchen Sie nach Titeln.",
+          "Öffnen Sie eine Aufgabe und prüfen Sie aktuellen Schritt, Status, Ersteller und Aktualisierungszeit.",
+          "Archivieren Sie abgeschlossene Arbeit. Unter Archiv ansehen können Sie Aufgaben wieder aufs Board holen. Prüfen Sie vor Stapelaktionen jede Auswahl."
+        ],
+        "tips": [
+          "Warteschlange bedeutet meist ausgeschöpfte Parallelität; Review ausstehend verlangt Bestätigung und ist kein Stillstand des Programms.",
+          "Löschen ist nicht Archivieren. Lesen Sie vor endgültigem Löschen den Bestätigungsdialog."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Aufgabenboard mit Phasen und Status",
+          "caption": "Die Demoaufgabe ist in Vorbereitung. Die Werkzeugleiste bietet Ansicht, Hooks, Archiv und Verzeichnisöffnung. Unter der Karte steht die Erstellungszeit; Kopieren folgt im nächsten Abschnitt."
+        }
+      },
+      {
+        "title": "Nur die Pipeline dieser Aufgabe ändern",
+        "steps": [
+          "Öffnen Sie die Aufgabendetails und unter dem Fortschrittsdiagramm Aufgabenpipeline bearbeiten. Stoppen Sie laufende Ausführung oder Reviews zuerst; währenddessen ist die Leinwand schreibgeschützt.",
+          "Ändern Sie Prompts, Engines, Modelle und Reviews dieser Aufgabe; neue Schritte, zusätzliche Artefakte am Ende und geänderte Verbindungen sind möglich. Bestehende Schritte, Eingänge und ursprüngliche Artefakte dürfen nicht gelöscht oder umbenannt werden.",
+          "Nach Speichern zeigt der Fortschritt die Aufgabenkonfiguration. Beim nächsten Start werden aktuelle Hauptpipeline und aufgabenspezifische Abweichungen zusammengeführt; andere Aufgaben und Hauptpipeline bleiben unverändert.",
+          "Mit Hauptpipeline synchronisieren und Bestätigung entfernen alle Anpassungen. Zusätzliche Schritte verlassen die aktuelle Pipeline, historische Nachrichten, Artefakte und Ausführungen bleiben; es erfolgt kein Autostart."
+        ],
+        "tips": [
+          "Ohne echte Änderung wird keine komplette Pipeline kopiert. Nicht überschriebene Felder erben Hauptpipelineänderungen, eigene Werte haben Vorrang.",
+          "Ein Enginewechsel bei gewähltem Schritt im Eingabefeld wird für diese Aufgabe gespeichert. Schritt zurücksetzen erneuert nur die Sitzung für den nächsten Lauf und stellt nicht die Hauptpipeline-Engine wieder her.",
+          "Entfernte Verbindungen ändern Abhängigkeiten und können einen Schritt direkt ausführbar machen; das ist kein manueller Schrittmodus."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Eigenständiger Pipelineeditor und Synchronisierung in den Aufgabendetails",
+          "caption": "Leinwand der festen Demoaufgabe mit Übergabeart, Hauptpipeline-Synchronisierung und Speichern. Nichts wurde geändert oder gestartet."
+        }
+      },
+      {
+        "title": "Aufgabe kopieren",
+        "steps": [
+          "Klicken Sie auf das Symbol Aufgabe kopieren neben der Karte oder dem Tabelleneintrag.",
+          "Prüfen Sie die neue Aufgabe mit dem Zusatz Kopie, Beschreibung, Pipelineanpassungen und Startschritt vor der Ausführung. Schritte beginnen ausstehend; Fortschritt und Chatverlauf werden nicht kopiert."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Kopiersymbol neben dem Aufgabennamen in der Tabelle",
+          "caption": "Das kleine Symbol dient zum Kopieren. In der Abbildung wurde weder kopiert noch gestartet."
+        }
+      },
+      {
+        "title": "Aufgaben auf dem Telefon ordnen",
+        "steps": [
+          "Tippen öffnet Details, etwa eine halbe Sekunde langes Drücken das Aktionsmenü. Ein Rechtsklick funktioniert ebenfalls.",
+          "Je nach Recht können Sie starten, bearbeiten oder ansehen, kopieren, archivieren, wiederherstellen oder löschen. Laufende oder wartende Aufgaben bieten keinen Start; laufende Aufgaben kein Archivieren oder Löschen. Lesen Sie die Löschbestätigung.",
+          "Sind alle Schritte ausgeführt und bestanden, bleibt die Aufgabe auch nach Wiederöffnen oder Neustart abgeschlossen. Abschluss ist keine Archivierung; darüber entscheiden Sie."
+        ],
+        "tips": [
+          "Scrollen oder Fingerbewegung bricht langes Drücken ab. Schreibgeschützter Zugriff erlaubt Ansehen, aber dadurch kein Bearbeiten."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Archivierungs- und Löschmenü einer mobilen Aufgabenzeile bei 390 px",
+          "caption": "Aufnahme eines vorbereiteten Tasks in v1.0.13, ohne Archivierung, Löschung oder Abschlussstatus. Für die neu ergänzten Aktionen Starten, Bearbeiten und Kopieren ist eine aktualisierte Aufnahme noch nötig."
+        }
+      },
+      {
+        "title": "Über Letzte Chats zurückkehren",
+        "steps": [
+          "Wählen Sie in Letzte Chats einen besuchten Task oder Chat, um dessen Originaldetails im ursprünglichen Projekt zu öffnen. Beide Typen erscheinen gemeinsam.",
+          "Beachten Sie Lauf-, Fehler- und erledigten Status. Öffnen entfernt den jeweiligen Ungelesenhinweis. Über berechtigte Menüs können Sie archivieren oder löschen; lesen Sie die Bestätigung.",
+          "Am Desktop können Projekte und Letzte Chats eingeklappt, durch Ziehen der Titel vertauscht und per Trennlinie in der Höhe verändert werden. Doppelklick setzt das Verhältnis zurück."
+        ],
+        "tips": [
+          "Bis zu 20 Besuche werden für die Geräteidentität im aktuellen Browser gespeichert. Browserdaten löschen entfernt Indizes, nicht Aufgabeninhalte; Verlauf umgeht keine Projektrechte.",
+          "Archivieren, Löschen und bloßes Als-gelesen-Markieren sind verschieden. Bei alten ungültigen Links prüfen Sie Projekt, Chat und Verbindung."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Ein simulierter Aufgabenbesuch in Letzte Chats",
+          "caption": "Die Seitenleiste zeigt einen Demo-Aufgabenbesuch, keine Chatzeile und keinen Ungelesenzustand."
+        }
+      },
+      {
+        "title": "Navigation im mobilen Browser öffnen",
+        "steps": [
+          "Öffnen Sie WorkStep im Mobilbrowser und tippen Sie auf den runden Navigationsknopf am Rand, um die gleiche Seitennavigation wie am Desktop einzublenden.",
+          "Wählen Sie Projekt, Pipeline, Aufgabe oder Chat; erneutes Antippen klappt die Navigation ein.",
+          "Verdeckt der Knopf Inhalte, halten und ziehen Sie ihn an eine freie Stelle im Sichtbereich. Ziehen schaltet das Menü nicht versehentlich um."
+        ],
+        "tips": [
+          "Dieser Knopf erscheint nur in normalen Mobilbrowsern. Desktop und Android-App nutzen eigene Navigationseinstiege."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Navigationsknopf und geöffnete Seitennavigation im Mobilbrowser",
+          "caption": "Geöffnete Navigation bei 390 px. Der runde Knopf rechts klappt sie ein; gezeigt wird ausschließlich das isolierte Demoprojekt."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Ausführung, Genehmigungen und Reviews",
+    "summary": "Verstehen Sie den Status, bearbeiten Sie Berechtigungsanfragen und entscheiden Sie über den nächsten Schritt.",
+    "sections": [
+      {
+        "title": "Ablauf und Berechtigungsanfragen ansehen",
+        "steps": [
+          "Öffnen Sie die Details und prüfen Sie Fortschrittsdiagramm und Chat, um den laufenden Schritt zu erkennen.",
+          "Klappen Sie Prozessaufzeichnungen in Nachrichten auf und prüfen Sie Werkzeugaufrufe, Ergebnisse und Fehler. Gemeldete Unteragenten können ebenfalls aufgeklappt werden.",
+          "Bei Dateiänderungen öffnen Sie die Liste und gespeicherte Differenzen. Sie gehören zur jeweiligen Nachricht; Dateivorschauen zeigen den aktuellen Inhalt, der später verändert sein kann. Ohne gespeicherte Differenz ist keine vollständige Historie ableitbar.",
+          "Lesen Sie vor Werkzeugfreigaben Befehl, Pfad und Auswirkungen und erlauben oder verweigern Sie. Fragen beantworten Sie über Optionen oder Eingabe.",
+          "Prüfen Sie bei Fehlern zuerst letzte Meldung, Engine, Modellrechte, Netzwerk und Projektpfad statt wiederholt blind zu starten."
+        ],
+        "tips": [
+          "Genehmigungen erscheinen nur auf Anfrage der Engine. Prozessinformationen und Optionen unterscheiden sich; fehlende Informationen bedeuten nicht fehlende Ausführung.",
+          "Drehende Statussymbole zeigen laufende asynchrone Arbeit. Bei Warten auf Benutzer bearbeiten Sie die aktuelle Frage oder Freigabe."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Schrittfortschritt und tatsächliche Ausführungsaufzeichnungen",
+          "caption": "Die Aufgabendetails zeigen Fortschritt und Verlauf, aber keine Genehmigungsanfrage. Diese erscheint nur bei tatsächlicher Engine-Anfrage."
+        }
+      },
+      {
+        "title": "Review bestehen, ablehnen oder beenden",
+        "steps": [
+          "Prüfen Sie beim manuellen Review Ausgaben, Artefakte, Dateien und Tests anhand der Abnahmekriterien.",
+          "Bei Erfolg wählen Sie Bestehen und fortfahren; sonst schreiben Sie konkrete Hinweise und wählen Ablehnen und nacharbeiten.",
+          "Beachten Sie automatische Review-Aufzeichnungen. Ablehnung wiederholt gemäß Einstellung; bei Fehlern oder manueller Eskalation entscheiden Sie.",
+          "Beenden Sie nur, wenn wirklich keine Ausführung mehr gewünscht ist, und prüfen Sie die Bestätigung. Erzwungenes Bestehen überspringt das Review; prüfen Sie vorher das Ergebnis."
+        ],
+        "tips": [
+          "Ein beendeter Prozess beweist keine Qualität. Das manuelle Review ist Ihre Freigabe zum nächsten Schritt."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Kommentare und Bestehen-/Ablehnen-Schaltflächen im manuellen Review",
+          "caption": "Gezeigt werden Review-Ergebnis, Artefakte und Aktionen."
+        }
+      },
+      {
+        "title": "Feste Koordinatorregeln und aktuelle Nachricht",
+        "steps": [
+          "Wählen Sie in der Eingabe der Aufgabendetails Koordination sowie Codex SDK und fragen Sie etwa Welche Phase fehlt noch?",
+          "Fragen Sie in derselben Sitzung weiter. Aufgabenstatus und aktueller Absender aktualisieren den Rundenkontext; feste Regeln bleiben im Sitzungsverlauf.",
+          "Für Diagnose können Sie im Entwicklermodus Nachrichten mit tatsächlichen Eingabeaufzeichnungen prüfen. Nachweislich erhaltene unveränderte Regeln werden in derselben Sitzung nicht neu separat eingefügt."
+        ],
+        "tips": [
+          "Alte Sitzungen können nach einem Upgrade einmal ergänzt werden. Neue Regeln oder Sitzungen, verlorener Verlauf oder unsichere Erhaltung nach Komprimierung führen zur erneuten Einfügung. Historische Regeln stehen weiterhin jeder Modellanfrage zur Verfügung; keine neue Einfügung bedeutet nicht keine Regeln."
+        ]
+      },
+      {
+        "title": "Während einer Koordinatorantwort ergänzen",
+        "steps": [
+          "Wählen Sie Koordination als Empfänger und senden Sie während der Antwort Ergänzungen; sie landen in der Einfügewarteschlange dieser Antwort.",
+          "Prüfen, bearbeiten, sortieren oder löschen Sie ungesendete Inhalte oder senden Sie ausgewählte Nachrichten aktiv. Mehrere werden der Reihe nach zusammengeführt. Nach Antwortende laufen verbliebene Inhalte automatisch in der nächsten Runde weiter; erneutes Senden ist unnötig.",
+          "Bei bereits gesendet oder gelöscht aktualisieren Sie die Warteschlange und prüfen Sie, statt dieselbe Gruppe erneut zu senden."
+        ],
+        "tips": [
+          "Koordinator- und Schrittwarteschlangen sind unabhängig. Prüfen Sie den Empfänger. Stoppen macht bereits ausgeführte Werkzeuge nicht rückgängig."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Einfügewarteschlange einer Koordinatorantwort",
+          "caption": "Echte Aufnahme noch ausstehend: Koordinationsempfänger, Ergänzungen während der Ausführung und Fortsetzungswarteschlange."
+        }
+      },
+      {
+        "title": "Nachrichten ergänzen, stoppen und neu ausführen",
+        "steps": [
+          "Prüfen Sie den Empfänger: Koordination dient Fragen und Aktionswünschen, ein konkreter Schritt erhält die Nachricht in seinem Ausführungskontext.",
+          "Nachrichten an laufende Schritte landen im Einfügen-Panel, wo Sie bearbeiten, sortieren, sofort oder alle senden können. Nicht sofort gesendete Inhalte können nach Laufende eine neue Runde auslösen.",
+          "Nach Stoppen eines Schritts senden Sie zur Fortsetzung eindeutige Ergänzungen an ihn und starten gemäß Oberfläche erneut.",
+          "Ändern und speichern Sie bei Bedarf Prompt, Engine oder Review für diese Aufgabe. Überschreibungen gelten beim nächsten Lauf; andere Felder erben beim Start die Hauptpipeline. Alle Anpassungen entfernen Sie mit bestätigtem Hauptpipeline synchronisieren."
+        ],
+        "tips": [
+          "Enginewechsel im Koordinator beeinflusst nur spätere Koordinatornachrichten, nicht die Pipeline-Engines.",
+          "Beeinflusst Neuausführung andere aktive Schritte, prüfen Sie die Bestätigung samt Stop-/Wiederholungsumfang. Bei verlorener Engine-Sitzung können Sie gemäß Hinweis mit neuer Sitzung starten."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Schrittempfänger und Ergänzungsentwurf in einer abgeschlossenen Aufgabe",
+          "caption": "Der Empfänger ist der Ausführungsschritt; die Ergänzung ist ungesendet. Keine Einfügewarteschlange ist abgebildet."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artefakte, Analyse und Projektgedächtnis",
+    "summary": "Prüfen Sie tatsächliche Dateien, verstehen Sie Verbrauch und speichern Sie wiederverwendbare Erfahrungen.",
+    "sections": [
+      {
+        "title": "Ein-/Ausgaben und Artefakte ansehen",
+        "steps": [
+          "Öffnen Sie Schritteingaben/-ausgaben in den Details und prüfen Sie verfügbare Eingaben und fertige Ausgaben.",
+          "Klicken Sie bei einer Datei auf Ansehen oder öffnen Sie den Artefaktbereich und wechseln Sie Schritt und Ausführungsrunde.",
+          "Nutzen Sie die Vorschau und am Desktop Enthaltenden Ordner öffnen. Fernprojektdateien liegen auf dem Host; verwenden Sie die Webansicht.",
+          "Vergleichen Sie bei mehreren Runden die Ergebnisse. Identisch mit Runde … bedeutet gleicher Inhalt, nicht dass diese Runde nicht lief."
+        ],
+        "tips": [
+          "Fehlende Artefakte: Prüfen Sie tatsächliche Dateierzeugung, passende Ausgabedeklarationen und Ausführungsnachrichten."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Nach Schritten gruppierte Artefaktliste",
+          "caption": "Analyse und Ausführung zeigen je ein Artefakt der ersten Runde. Dateien oder Ordner lassen sich öffnen."
+        }
+      },
+      {
+        "title": "Lokale Systemressourcen ansehen",
+        "steps": [
+          "Öffnen Sie den lokalen Arbeitsbereich über localhost oder Loopback und unter Datenstatistik den Reiter Systembetrieb. Normale Fernbrowser und Gateway-Arbeitsbereiche zeigen ihn nicht.",
+          "Prüfen Sie CPU, Speicher, Datenträger des Konfigurationsordners, Netzwerkraten sowie Ressourcen, Threads und Dateideskriptoren beziehungsweise Handles des Backends und seiner Unterprozesse.",
+          "Wählen Sie Trendkennzahl und beachten Sie die Erfassungszeit. Pausieren, fortsetzen oder manuell aktualisieren ist möglich. Warten Sie auf Samples und wiederholen Sie fehlgeschlagene Abfragen nach Hinweis."
+        ],
+        "tips": [
+          "Die Statistik umfasst die aktuelle Backend-Umgebung samt Unterprozessen, nicht die Desktop-Hülle. Containerwerte sind keine vollständigen Hostwerte.",
+          "Standardmäßig wird etwa alle 5 Sekunden gemessen und rund 30 Minuten aufbewahrt; die Seite ist maßgeblich. Anzeigepause stoppt keine Aufgaben. Fehlende Werte oder Lücken sind nicht null; alte Daten bleiben als veraltet markiert. Deskriptorwarnungen diagnostizieren Druck, reparieren ihn aber nicht automatisch."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Tatsächliche Systemmessungen der aktuellen Version",
+          "caption": "Lokale Ressourcen und Erfassungsstatus. Bei Aufnahme lief keine Engine als Unterprozess; daraus folgt kein Verbrauch unter Aufgabenausführung."
+        }
+      },
+      {
+        "title": "Zeit, Token und Kosten prüfen",
+        "steps": [
+          "Öffnen Sie Ausführungsanalyse in den Details und prüfen Sie Gesamtdauer, Schrittversuche, Token und Kosten.",
+          "Wählen Sie eine Runde und einen Zeitlinienabschnitt für Engine, Modell und Verbrauch.",
+          "Projektweite Auswertungen finden Sie unter Datenstatistik. Für Schätzungen pflegen Sie Modellpreise je Anbieter oder Engine unter Einstellungen → Modelleinstellungen."
+        ],
+        "tips": [
+          "Nicht gemeldeter Verbrauch wird nicht automatisch exakt. Beachten Sie Abdeckung und Geschätzt; maßgeblich ist die Dienstanbieterrechnung."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Runden und Zeitlinie der Ausführungsanalyse",
+          "caption": "Gezeigt werden Dauer, Abdeckung und Herkunft der Kosten."
+        }
+      },
+      {
+        "title": "Gedächtnis und Archivierungserfahrungen speichern",
+        "steps": [
+          "Klicken Sie auf Gedächtnis auf der Aufgabenseite und schreiben Sie kurze, konkrete langfristige Regeln in MEMORY.md im Projektdatenverzeichnis; speichern Sie.",
+          "Bei Einzelarchivierung wählen Sie direktes Archivieren oder Aufbereitung von Fehlererfahrungen. Prüfen Sie den KI-Entwurf vor bestätigtem Schreiben ins Gedächtnis und Archivieren.",
+          "Öffnen Sie für Historie die Archivliste. Nach Wiederherstellung prüfen Sie benötigte externe Bindungen erneut."
+        ],
+        "tips": [
+          "Stapelarchivierung extrahiert keine individuellen Erfahrungen. Archivieren oder Löschen löst Kanalgruppenbindungen; Wiederherstellen setzt diese nicht zurück."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Gedächtniseditor mit Demo-Projektregeln",
+          "caption": "Bearbeiten und speichern Sie Regeln in .workstep/MEMORY.md. Der Erfahrungsbestätigungsablauf ist nicht abgebildet."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Projektchats und Skills",
+    "summary": "Arbeiten Sie direkt im Projektkontext und wählen Sie verfügbare lokale Skills.",
+    "sections": [
+      {
+        "title": "Rollen oder Expertenteams in Chats laden",
+        "steps": [
+          "Bereiten Sie unter Einstellungen → Rollenzentrum Rollenprompts oder Teammitglieder mit Aufgabenverteilung vor.",
+          "Öffnen Sie einen normalen Chat im lokalen Projekt und wählen Sie + → Rolle/Expertenteam. Suchen Sie nach Kategorie oder Stichwort, prüfen Sie die Vorschau und wählen Sie In Chat laden, etwa Codeprüfer vor Angabe des Review-Umfangs.",
+          "Prüfen Sie den geladenen Namen am Eingabefeld. Die Auswahl sendet nichts, wird pro Sitzung gespeichert und nach Neuladen wiederhergestellt; neue Chats beginnen ohne Bindung. Klicken Sie zum Ansehen oder Ersetzen auf den Namen beziehungsweise zum Aufheben auf Entfernen."
+        ],
+        "tips": [
+          "Während der Ausführung ist kein Wechsel möglich. Bei Lese-/Speicherfehlern bleibt die Auswahl; versuchen Sie es erneut. Ungültige Rollen neu wählen. Erst eine konkrete gesendete Frage ruft das Modell auf, nicht die Rollenbindung.",
+          "Expertenteams übergeben Prompts und Aufgabenverteilung an das aktuelle Modell, starten keine unabhängigen Engines. Aufgaben, Pipelineschritte, Kanäle, Fernprojekte und projektgebundene Tickets unterstützen dies noch nicht; lokales Projekt im Gateway-Gesamtgerätearbeitsbereich ist möglich."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Rollensuche und Promptvorschau für Codeprüfung im normalen Chat",
+          "caption": "Im leeren Demochat ist Code Reviewer gesucht und ausgewählt, mit Prompt und Ladeschaltfläche. Noch keine Rolle geladen oder Nachricht gesendet."
+        }
+      },
+      {
+        "title": "Projektgedächtnis mobil öffnen",
+        "steps": [
+          "Öffnen Sie in der Projektaufgabenliste oben rechts Mehr → Gedächtnis.",
+          "Schreiben Sie kurze Regeln wie Vor dem Commit Projekttests ausführen und speichern Sie nach Prüfung; sie gelten für das gesamte Projekt."
+        ],
+        "tips": [
+          "Nach Auswahl schließt das Mehr-Menü. Am Desktop ist Gedächtnis direkt auf der Aufgabenseite verfügbar."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Gedächtniseinstieg im Mehr-Menü bei 390 px",
+          "caption": "Geöffnetes Mobilmenü mit Gedächtnis. Es öffnet den Editor; hier wurde nichts bearbeitet."
+        }
+      },
+      {
+        "title": "Chat erstellen und Konfiguration wechseln",
+        "steps": [
+          "Erstellen Sie links unter Chats eine normale Sitzung und wählen Sie Engine, Anbieter, Modell und Berechtigungsmodus. Beginnen Sie mit einem verifizierten SDK.",
+          "Schreiben Sie einen konkreten Auftrag; Enter sendet, Shift+Enter fügt einen Zeilenumbruch ein. Referenzbilder können angehängt oder eingefügt werden, sofern die Engine Bilder unterstützt.",
+          "Während der Erzeugung können Sie stoppen. Ergänzende Nachrichten werden eingereiht und lassen sich umordnen.",
+          "Bei bestehendem Kontext und Engine-/Anbieterwechsel wählen Sie im Dialog intelligente Übergabe, vollständigen Verlauf oder nichts laden. Für unabhängige Versuche verzweigen Sie den Chat und bestätigen die Kontextart."
+        ],
+        "tips": [
+          "Projektchats sind unabhängige Sitzungen, keine Aufgabennachrichten. Für Phasenfortschritt und Reviews erstellen Sie eine Aufgabe.",
+          "Native Verzweigung gibt es nur bei tatsächlich unterstützenden Engines; andernfalls erfolgt eine ausdrückliche Kontextübergabe."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Konfigurationsmenü für Engine, Anbieter und Modell im Projektchat",
+          "caption": "Die Auswahl etwa von Engine, Anbieter und Denkmodell gilt für diesen Chat. Berechtigungen haben einen separaten Einstieg."
+        }
+      },
+      {
+        "title": "Skills aktivieren und Chats ordnen",
+        "steps": [
+          "Öffnen Sie Konfiguration → Skill-Zentrum im aktuellen Projekt, scannen Sie erneut und suchen Sie nach Name, Beschreibung oder Herkunftspfad.",
+          "Lesen und aktivieren Sie benötigte Skills. Prüfen Sie vor Stapelaktivierung die Auswahl. Einstellungen gelten pro Projekt ab nächstem Lauf oder neuer Sitzung.",
+          "Geben Sie / ein und wählen Sie aus den tatsächlich von der Engine angebotenen Skills; die Listen unterscheiden sich.",
+          "Benennen oder archivieren Sie Chats über das Sitzungsmenü. Suchen und restaurieren Sie benötigte Chats im Archiv."
+        ],
+        "tips": [
+          "Das Skill-Zentrum verwendet vorhandene lokale Skills. Bei leerer Liste prüfen Sie lokale Quellen; Fernprojekte können Host-Skills noch nicht verwalten."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Keine Treffer für manual-demo im Skill-Zentrum",
+          "caption": "Such- und Quellenfilter sind sichtbar, aber kein passender Skill und deshalb kein Aktivierungsschalter."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Schnellschaltflächen und Skriptaktionen",
+    "summary": "Machen Sie häufige Prompts, Anzeigen oder Projektskripte wiederverwendbar.",
+    "sections": [
+      {
+        "title": "Prompt- und Anzeigeschaltflächen erstellen",
+        "steps": [
+          "Öffnen Sie Schnellschaltflächen in der Projektkonfiguration, fügen Sie eine hinzu und wählen Sie den Typ.",
+          "Für Prompt geben Sie Beschriftung und Text an und entscheiden über sofortiges Senden, etwa Aktuelle Änderungen auf nicht abgedeckte Abnahmekriterien prüfen.",
+          "Für Anzeige geben Sie den Inhalt ein und prüfen Sie die sichere HTML-Vorschau; dieser Typ sendet keine Nachricht.",
+          "Speichern Sie und prüfen Sie die Schaltfläche im Chat oder Task. Ziehen Sie Konfigurationszeilen zum Sortieren; Pipelineeinstellungen bestimmen geerbte Projektschaltflächen, Phasenschaltflächen werden separat konfiguriert."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Vererbung von Projektschaltflächen und Hinzufügen in der Pipeline",
+          "caption": "Markieren Sie geerbte Projektschaltflächen und fügen Sie links eigene Pipelinebuttons hinzu; hier ist noch kein Inhalt eingetragen."
+        }
+      },
+      {
+        "title": "Action konfigurieren und ausführen",
+        "steps": [
+          "Fügen Sie Typ Aktion hinzu, geben Sie eine Action ID an und wählen Sie ein Skript aus dessen Action-Verzeichnis.",
+          "Wählen Sie Projekt-, Pipelineaufgaben- oder skriptbestimmtes Git-Arbeitsverzeichnis und prüfen Sie das Skript.",
+          "Aktivieren Sie Bestätigung für Datei-/Zustandsänderungen. Für Eingaben wie Committext konfigurieren Sie einen Bestätigungshinweis; das Skript liest WORKSTEP_ACTION_INPUT.",
+          "Klicken Sie nach dem Speichern auf den Button, bestätigen Sie Skript und Verzeichnis und prüfen Sie Ausgabe und Exitcode. Laufende Aktionen können gestoppt werden."
+        ],
+        "tips": [
+          "Aktionen führen Projektskripte direkt aus. Prüfen Sie Verzeichnis und Skript vorab; beliebige Dateien außerhalb des Action-Verzeichnisses sind nicht als dessen Skript auswählbar."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Action-Formular ohne gewähltes Skript",
+          "caption": "Enthält Action ID, Skriptwahl, Ausführungsverzeichnis und Bestätigung. Es wurde kein Skript ausgeführt."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Zeitpläne",
+    "summary": "Erstellen Sie Aufgaben zeitgesteuert oder senden Sie Koordinatoranweisungen an vorhandene Aufgaben und verfolgen Sie Ausführung und Zustellung.",
+    "sections": [
+      {
+        "title": "Mehrere Aufgaben aus einem Plan erzeugen",
+        "steps": [
+          "Erstellen Sie einen Plan Projektaufgaben erstellen mit KI dynamisch. Nennen Sie Umfang und Einzelzeiten der Aufgaben und wählen Sie zulässige Pipelines.",
+          "Prüfen Sie zuerst jeden Entwurf mit Testgenerierung und speichern Sie. Aufgaben-Koordinatoranweisung arbeitet weiter nur an der ausgewählten vorhandenen Aufgabe, nicht als Stapelerstellung.",
+          "Öffnen Sie nach Auslösung jede erzeugte Aufgabe im Laufprotokoll. Auch Fehlerläufe bewahren bereits erstellte Aufgaben; prüfen Sie den Grund vor Ergänzungen."
+        ],
+        "tips": [
+          "Erstellung bedeutet nicht Abschluss aller Pipelines. Bei teilweisem Erstellungs- oder Startfehler führen Sie nicht den gesamten Stapel erneut aus."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Vorschau mehrerer Aufgaben und Laufprotokoll",
+          "caption": "Echte Aufnahme noch ausstehend: mehrere Entwürfe und bereits erstellte Aufgaben bei Teilerfolg."
+        }
+      },
+      {
+        "title": "Zeitgesteuerte Anweisungen in Aufgabendetails verwalten",
+        "steps": [
+          "Klicken Sie auf die Uhr neben BOT binden, mobil rechts neben dem Hauptreiter. Die Zahl zählt Aufgabenregeln außer abgeschlossenen einmaligen Regeln; sie zählt nicht nur aktivierte Regeln. Pausenstatus prüfen Sie in der Liste.",
+          "Prüfen Sie im Fenster die Regeln der aktuellen Aufgabe. Mit Bearbeitungsrecht können Sie anlegen, ändern, pausieren, fortsetzen, löschen und Läufe ansehen. Neue Regeln binden automatisch diese Aufgabe.",
+          "Geben Sie Titel, Frequenz und Koordinatoranweisung an, etwa Alle 10 Minuten Fortschritt prüfen und zusammenfassen. Prüfen Sie die Endbedingung und speichern Sie. Bei ungespeicherten Änderungen entscheiden Sie vor dem Schließen zwischen Weiterbearbeiten und Verwerfen.",
+          "Schreibgeschützte Freigaben verwenden dieselbe Uhr zum Ansehen. Verwaltungsaktionen hängen von den tatsächlich gewährten Rechten der Freigabe ab."
+        ],
+        "tips": [
+          "Die Einmalliste behält Ausführungszeiten abgeschlossener Regeln. Die Aufgabenplakette schließt diese aus; beide Zahlen dürfen abweichen."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Aufgabenregel-Dialog über die Uhr, an aktuelle Aufgabe gebunden",
+          "caption": "Neue Regel für die Demoaufgabe mit gesperrter Pipeline- und Aufgabenwahl. Titel und Anweisung sind leer, nichts gespeichert oder ausgeführt."
+        }
+      },
+      {
+        "title": "Festes Schema erstellen",
+        "steps": [
+          "Öffnen Sie Zeitpläne in der seitlichen Werkzeugleiste, wählen Sie den Projektreiter und einen neuen Plan Projektaufgaben erstellen mit Pipeline, Startschritt, Titel und Inhalt.",
+          "Wählen Sie einmalig, täglich, wöchentlich, monatlich, stündliches Intervall oder Cron und prüfen Sie Zeitzone, Gültigkeit und nächste Ausführung.",
+          "Wählen Sie Pipeline erben, sofort oder manuell ausführen sowie die Überlappung: überspringen, parallel oder einreihen.",
+          "Prüfen Sie Reviews und speichern Sie. Testen Sie zuerst einen baldigen Einmaltermin vor langfristigen Wiederholungen."
+        ],
+        "tips": [
+          "Das Backend muss laufen. Bei Ruhezustand oder beendetem Backend dürfen Sie keine zuverlässige Auslösung annehmen."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Fester Plan mit Inhalt, täglichem Rhythmus und nächstem Termin",
+          "caption": "Prüfen Sie Inhalt, Frequenz, Startart, Überlappung und Folgetermine."
+        }
+      },
+      {
+        "title": "Anweisungen an vorhandene Aufgaben planen",
+        "steps": [
+          "Öffnen Sie Zeitpläne, wählen Sie das Projekt und beim Anlegen Aufgaben-Koordinatoranweisung. Diese Regel bearbeitet eine vorhandene Aufgabe, statt jedes Mal eine neue zu erstellen.",
+          "Geben Sie Titel an, filtern Sie nach Pipeline und suchen Sie die Zielaufgabe. Beispielanweisung: Fortschritt prüfen, nötigen Eingriff nennen und gefährliche Aktionen nicht automatisch bestätigen. Gespeicherte Regeln lassen sich nicht an andere Aufgaben binden.",
+          "Wählen Sie einmalig oder wiederholt, etwa alle paar Minuten, prüfen Sie den nächsten Termin und Bis manuell ausgeschaltet oder Bei Aufgabenende stoppen.",
+          "Suchen Sie die Regel in Einmal-/Wiederholungsliste, gegebenenfalls nach Zieltyp oder Aufgaben-ID. Öffnen Sie aus einem Lauf die Aufgabe zur jeweiligen Koordinatorantwort und prüfen Sie geplante Nachrichten im Aufgabenverlauf."
+        ],
+        "tips": [
+          "Fällige Anweisungen nutzen eine unabhängige Koordinatorsitzung und können bei beschäftigter Aufgabe warten. Bestätigungspflichtige Vorschläge brauchen weiterhin Menschen. Stoppen einer Antwort beendet nur diese Nachricht; pausieren oder deaktivieren Sie die Regel gegen erneute Auslösung.",
+          "Archivieren oder Löschen des Ziels macht die Regel ungültig. Bei Aufgabenende stoppen beendet bei Abschluss, Fehler oder Stop. Unterbrochene Läufe nach Backendneustart werden nicht garantiert wiederholt; prüfen Sie Protokolle vor erneutem Senden."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Ungespeicherte Zeitregel für Koordinatoranweisungen",
+          "caption": "Demoanweisung alle 10 Minuten bis manueller Abschaltung, noch nicht gespeichert und ohne Laufergebnis."
+        }
+      },
+      {
+        "title": "Kanalbenachrichtigungen für geplante Läufe",
+        "steps": [
+          "Prüfen Sie Nach Ausführung Kanalbot benachrichtigen im Plan- oder Koordinatorregel-Editor.",
+          "Wählen Sie einen sendefähigen Bot und eine Sitzung. Eine gebundene Aufgabengruppe kann vorausgewählt sein; prüfen Sie vor Speichern. Ohne Ziel konfigurieren Sie Bot und Aufgabenbindung zuerst oder schalten Benachrichtigungen aus.",
+          "Prüfen Sie Zustellstatus und Fehler im Laufprotokoll. Benachrichtigung erneut versuchen startet nicht die Aufgabe neu. Bei ungewissem Sendeergebnis prüfen Sie den Kanal gegen Duplikate."
+        ],
+        "tips": [
+          "Zeitplanbenachrichtigungen und Pipeline-Webhooks sind getrennt. Erfolgreiche Ausführung beweist keine Zustellung; Zustellfehler beweist keinen Aufgabenfehler.",
+          "Koordinatorbenachrichtigungen folgen dem Ende dieser Antwort. Benachrichtigung nach Aufgabenerstellung aus einem Projektplan bedeutet nicht Pipelineabschluss."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Kanalbenachrichtigung ohne Ziel im Projekterstellungsplan",
+          "caption": "Benachrichtigung ist markiert, Bot und Sitzung fehlen, deshalb ist Speichern nicht möglich. Nichts ausgeführt oder gesendet."
+        }
+      },
+      {
+        "title": "Dynamische KI-Erzeugung und Laufprotokolle",
+        "steps": [
+          "Wählen Sie KI dynamisch, geben Sie die Erzeugungsanweisung, optional festen Referenztitel und mögliche Pipelines an.",
+          "Legen Sie Generierungswiederholungen fest und prüfen Sie das Ergebnis mit Testgenerierung.",
+          "Speichern Sie und filtern Sie rechts Läufe nach Status. Prüfen Sie Zeit, Fehler-/Überspringungsgrund und öffnen Sie die zugehörige Aufgabe.",
+          "Pausieren Sie unnötige Pläne zuerst und löschen Sie nach Prüfung."
+        ],
+        "tips": [
+          "Generierungswiederholungen, Review-Wiederholungen und Rückverbindungsgrenzen sind drei unabhängige Einstellungen."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "Formular zur KI-dynamischen Zeitplanerstellung",
+          "caption": "Anweisung, mögliche Pipelines und Wiederholungszahl. Noch keine erzeugte Aufgabe oder Laufaufzeichnung."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Git und Aufgabenarbeitsbereiche",
+    "summary": "Prüfen Sie Codeänderungen, isolieren Sie parallele Aufgaben in eigenen Verzeichnissen und führen Sie Ergebnisse zusammen.",
+    "sections": [
+      {
+        "title": "Dateien, Differenzen und Historie ansehen",
+        "steps": [
+          "Klicken Sie auf Git in der Aufgabenseite eines lokalen oder verbundenen Fernprojekts und wählen Sie Wurzel- oder gefundenes Unterrepository. Fern-Git-Befehle laufen auf dem Hostgerät.",
+          "Prüfen Sie geänderte Dateien und Differenzen gegen die Anforderungen und bereits gespeicherte Inhalte in der Commit-Historie.",
+          "Bereinigen Sie ungespeicherte Änderungen vor dem Branchwechsel. Aktualisieren Sie Fernstatus bewusst und prüfen Sie voraus, zurück oder divergiert.",
+          "Pull aktualisiert per Fast-Forward; Push sendet nur Commits. Wählen Sie Remote und Branch und bestätigen Sie."
+        ],
+        "tips": [
+          "Gecachte Ferninformationen sind nicht aktuell garantiert. Aktive Aufgaben oder Chats können Synchronisation verhindern.",
+          "Stellen Sie bei Offline- oder Berechtigungsfehlern zuerst die Hostverbindung wieder her. Der Browser kopiert das Repository nicht auf Ihren Rechner. Lesen benötigt Git-Leserecht; Commit, Branch, Merge und Synchronisation haben eigene Rechte. Prüfen Sie diese bei fehlenden Schaltflächen."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Liste nicht committeter Änderungen",
+          "caption": "Lokales Repository mit ausstehenden Dateien. Historie liegt in einem anderen Reiter; Fernrechte und Dateidifferenzen sind nicht geöffnet."
+        }
+      },
+      {
+        "title": "Worktree für eine Aufgabe erstellen",
+        "steps": [
+          "Öffnen Sie Git-Arbeitsbereich in den Aufgabendetails und wählen Sie das tatsächlich benötigte Repository.",
+          "Geben Sie Aufgabenordner, Quellbranch und neuen Branch an und wählen Sie Worktree erstellen. Initialisieren Sie ein noch nicht versioniertes Wurzelprojekt und erstellen Sie zuerst einen Commit.",
+          "Prüfen und committen Sie nach Ausführung im Arbeitsbereich. Wählen Sie auf der Git-Seite In aktuellen Branch mergen oder aktuellen Branch in Zielbranch mergen.",
+          "Prüfen Sie den Merge und pushen Sie bei Bedarf selbst. Lesen Sie vor Bereinigung oder Historienwiederherstellung Auswirkungen und Hinweise zu uncommitteten Inhalten."
+        ],
+        "tips": [
+          "Ein neuer Worktree mergt oder pusht nicht automatisch. Nur committete Inhalte gehen in einen Branch-Merge ein.",
+          "Löschen kann Ordner und Featurebranch entfernen. Bereinigung ist kein Speichern Ihrer Ergebnisse."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Git-Arbeitsbereich mit angelegtem Worktree",
+          "caption": "Der Demoarbeitsbereich existiert ohne Dateidifferenzen. Öffnen, Repository hinzufügen und Branchverwaltung sind möglich; dies ist nicht das Erstellungsformular."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Aufgabenfreigaben und Fernprojekte",
+    "summary": "Unterscheiden Sie den Link für eine einzelne Aufgabe von der Verbindung zu einem ganzen Gerät.",
+    "sections": [
+      {
+        "title": "Eine Aufgabe teilen",
+        "steps": [
+          "Öffnen Sie Teilen in den Details und wählen Sie Schreibgeschützt oder Interaktiv.",
+          "Voreingestellt sind Zufallspasswort und sieben Tage Gültigkeit. Ändern oder leeren Sie das Passwort bei Bedarf; gesetzt braucht es mindestens vier Zeichen. Optionaler Titel und Ablauf müssen geprüft werden, maximal 90 Tage in der Zukunft; erzeugen und kopieren Sie den Link.",
+          "Öffnen Sie ihn in einem separaten Browserfenster, geben Sie gegebenenfalls das Passwort ein und prüfen Sie Fortschritt, Nachrichten, Artefakte und Rechte.",
+          "Widerrufen Sie unnötige Freigaben im ursprünglichen Fenster; auch bereits geöffnete Besucher verlieren weiteren Zugriff."
+        ],
+        "tips": [
+          "Schreibgeschützt dient dem Ansehen. Interaktive Besucher nutzen den ursprünglichen Aufgabencontroller: Koordinator-/Schrittnachrichten, Stoppen, Genehmigungen, Fragen sowie angebotene Aufgaben- und Git-Arbeitsbereichsaktionen wirken direkt auf die Originalaufgabe, begrenzt auf deren Freigabeumfang. Wählen Sie zum Ansehen schreibgeschützt und prüfen Sie den Modus separat.",
+          "Empfänger müssen die Backendadresse erreichen können. Ein Freigabelink erzeugt keinen öffentlichen Tunnel."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Interaktives Aufgabenfreigabeformular vor Linkerstellung",
+          "caption": "Interaktiv ist ausgewählt, Passwort leer und noch kein Link erstellt."
+        }
+      },
+      {
+        "title": "Hostzugriff und Geräteeinladungen konfigurieren",
+        "steps": [
+          "Aktivieren Sie unter Host-Einstellungen → Fernzugriff die Verbindung und prüfen Sie die interne Adresse. Öffentlich brauchen Sie eine erreichbare externe HTTPS/WSS-Adresse.",
+          "Setzen und speichern Sie den Zugriffsschlüssel und testen Sie die Erreichbarkeit mit einem zweiten Gerät.",
+          "Erzeugen Sie unter Projektkonfiguration → Teilen eine Projekteinladung und importieren Sie sie unter Fernzugriff einer anderen WorkStep-Installation; schließen Sie die Verbindung gemäß Hinweis ab.",
+          "Prüfen Sie autorisierte Geräte und gültige Einladungen, ändern Sie Fristen oder widerrufen Sie. Bei Abbruch prüfen Sie Onlinezustand, Adresse und Schlüssel."
+        ],
+        "tips": [
+          "WorkStep enthält keinen öffentlichen Relaydienst; richten Sie einen erreichbaren Netzeinstieg selbst ein. Aufgabenpasswort, Hostzugriffsschlüssel und Geräteeinladung sind getrennt.",
+          "Verzeichnisse und Engines von Fernprojekten bleiben auf dem Host. Ihr lokaler Dateimanager kann diese nicht direkt öffnen."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Fernzugriffsschalter und leere Adressfelder",
+          "caption": "Interne und externe Adressen sind Platzhalter und das Schlüsselfeld leer. Keine Geräteberechtigungsliste ist abgebildet."
+        }
+      },
+      {
+        "title": "Unternehmensgateway bei Bedarf anbinden",
+        "steps": [
+          "Tragen Sie ein von Ihrer Organisation bereitgestelltes Gateway unter Fernzugriff → Gateway-Plattform ein.",
+          "Aktivieren und speichern Sie den Gateway-Modus ausdrücklich und melden Sie sich zur Geräteautorisierung an. Nur die Adresse zu speichern aktiviert nichts.",
+          "Bei ausstehender Administratorfreigabe authentifizieren Sie nach Genehmigung erneut. Nutzen Sie Veröffentlichung und Zugriff gemäß gewährten Rechten.",
+          "Für lokale Nutzung schalten Sie den Gateway-Modus aus und speichern Sie."
+        ],
+        "tips": [
+          "Unabhängige lokale Nutzung benötigt kein Gateway. Organisationsrechte und Freigaben legt die jeweilige Plattform fest."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Plattformadresse bei ausgeschaltetem Gateway-Modus",
+          "caption": "Der Modus ist aus, die Adresse nur ein Platzhalter. Adressspeicherung und Aktivierung werden getrennt gesteuert."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Gateway-Arbeitsbereich und lokale Freigaben",
+    "summary": "Unterscheiden Sie lokale Einladungen, Plattformrechte und Aufgabenfreigaben und setzen Sie Arbeit auf anderen Geräten fort.",
+    "sections": [
+      {
+        "title": "Feishu- oder Lark-Unternehmensidentität konfigurieren",
+        "steps": [
+          "Administratoren öffnen Plattformeinstellungen → Organisationssynchronisation und QR-Anmeldung und fügen eine eigene Feishu-/Lark-Unternehmens-App mit Tenant Key, App ID und App Secret hinzu.",
+          "Tragen Sie die vollständige angezeigte Rückrufadresse auf der Entwicklerplattform ein und setzen Sie getrennt App-, QR-Anmelde- und Synchronisationsschalter. Eine bestehende App ID ist unveränderlich; für einen Wechsel legen Sie eine neue Identitätsquelle an.",
+          "Erlauben Sie Verzeichnislesen und begrenzen Sie App-Sichtbarkeit. Folgen Sie Vorschau lesen → Organisation/Benutzer wählen → Änderungen prüfen → Synchronisation bestätigen und prüfen Sie Ergebnisse und Fehler."
+        ],
+        "tips": [
+          "Gateway-Identität und lokale Kanalbots haben getrennte Konfigurationen und teilen keine Zugangsdaten automatisch. QR-Anmeldung und Verzeichnisrechte des echten Mandanten müssen real getestet werden; simulierte Schnittstellen genügen nicht."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Gateway-Identitätsquelle Feishu/Lark und Organisationssynchronisation",
+          "caption": "Echte Aufnahme der isolierten Gateway-Konfiguration ohne echte Zugangsdaten noch ausstehend."
+        }
+      },
+      {
+        "title": "Andere Websites über das Gateway anmelden lassen",
+        "steps": [
+          "Superadministratoren öffnen Plattformeinstellungen → Drittanbieter-Anmeldeautorisierung → Rückruf-Whitelist ändern.",
+          "Geben Sie pro Zeile eine vollständige Rückruf-URL des Dienstes ein, etwa https://business.example.com/login/callback. Maximal 100 Einträge; Protokoll, Port, Pfad und feste Queryparameter müssen exakt passen. Führen Sie die verlangte Administratorprüfung durch und speichern Sie.",
+          "Starten Sie die Anmeldung auf der angebundenen Website. Melden Sie sich gegebenenfalls zuerst per bestehendem Passwort oder Unternehmens-QR an, dann kehren Sie zurück. Das Backend des Dienstes tauscht einen einmaligen Code gegen Benutzer-ID, Konto und Anzeigename.",
+          "Entfernen und speichern Sie die Adresse zum Abschalten der Anbindung. Eine leere Liste deaktiviert Drittanmeldungen; offene Codes entfernter Adressen werden sofort ungültig."
+        ],
+        "tips": [
+          "HTTP/HTTPS sind erlaubt, keine Wildcards, Fragmente, URL-Zugangsdaten oder vorgegebenen Parameter code, state, request_id. Verwenden Sie produktiv HTTPS.",
+          "Bei nicht autorisiertem Rückruf prüfen Sie die vollständige Adresse. Abgelaufene oder verbrauchte Codes erfordern erneute Anmeldung über die Zielwebsite. Protokoll und ausführbares Beispiel: docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Rückruf-Whitelist in den Gateway-Plattformeinstellungen",
+          "caption": "Echte Aufnahme am isolierten Demogateway noch ausstehend; keine Alltagskonten oder echten Rückrufkonfigurationen verwenden."
+        }
+      },
+      {
+        "title": "Zwei Arten von Projektfreigaben verwalten",
+        "steps": [
+          "Öffnen Sie Teilen in den Projekteinstellungen. Nach Gateway-Konfiguration steht Plattformzugriff bereit. Die lokale Oberfläche bietet außerdem Fernprojekteinladungen, nicht der entfernte Gateway-Browser.",
+          "Lokale Einladung: Wählen Sie interne/externe Adresse und Gerätezugriffsfrist, erzeugen und kopieren Sie die Einladung. Eigene Fristen müssen zukünftig sein; Einlöse- und Gerätezugriffsfrist werden getrennt gezeigt.",
+          "Prüfen Sie nach Import am Empfänger autorisierte Geräte auf Name, IP, Verbindungsstatus und Frist; ändern oder widerrufen Sie bei Bedarf. Plattformzugriff nutzt Konten, Projektveröffentlichung und erteilte Rechte.",
+          "Für eine einzelne Aufgabe wählen Sie Modus, Passwort und Titel im Freigabefenster. Lokale und Gateway-Freigaben gelten standardmäßig 7, maximal 90 Tage. Prüfen Sie den Link in einem separaten Browser und verwalten oder widerrufen Sie im Originalfenster."
+        ],
+        "tips": [
+          "Lokale Aufgabenfreigabe über ein verbundenes Gateway braucht eine gültige Plattformidentität. Eine gespeicherte Adresse oder Desktop-Zugangsdaten allein verleihen keine Plattformrechte.",
+          "Lokale Links verwenden die Hostadresse, Gateway-Freigaben die Plattformadresse. Veröffentlichen Sie Einladungsdaten, Links oder Passwörter nicht in Screenshots.",
+          "Beide Freigabetypen unterstützen Ablauf. Gateway kann Anmeldung prüfen; interaktive Gateway-Freigaben verlangen sie. Mit Anmeldeprüfung entfällt der Zugriffsschlüssel. Maßgeblich sind die aktuellen Formularfelder."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Fernzugriffsreiter und Gerätefrist in der Projektfreigabe",
+          "caption": "Ohne Gateway erscheint Fernzugriff. Noch kein Gerät autorisiert und keine Einladung erzeugt."
+        }
+      },
+      {
+        "title": "Geräte wechseln und Benachrichtigungen bündeln",
+        "steps": [
+          "Öffnen Sie einen berechtigten Gerätearbeitsbereich auf der Plattform und wechseln Sie über die oberen Gerätereiter zu einem anderen Onlinegerät.",
+          "Pro Konto und Gerät merkt sich dieser Browser das letzte Projekt und Task-/Chatseiten. Bei Rückkehr werden Rechte neu geprüft; ein gespeichertes Ziel umgeht keine Autorisierung.",
+          "Fernprojekte laden erst bei Auswahl. Klicken Sie nach Fehler oder Abbruch erneut auf das aktuelle Projekt zum Aktualisieren; kein dauerhaftes Geräte-Polling im Hintergrund.",
+          "Das Benachrichtigungszentrum zeigt Abschluss-/Fehlerzusammenfassungen berechtigter Geräte. Ein Klick öffnet Aufgabe oder Chat; Echtzeitmeldungen des Arbeitsbereichs gehören weiterhin zum aktuellen Gerät.",
+          "Zurück zur Gateway-Plattform ermöglicht neue Gerätewahl. Abgelaufene Browser-Rückrufe starten die Anmeldung erneut; nach abgebrochener Desktop-Autorisierung können Sie erneut versuchen oder lokal zurückkehren."
+        ],
+        "tips": [
+          "Seitenpositionen werden nur im aktuellen Browser gespeichert, nicht browserübergreifend synchronisiert. Ohne Browserspeicher funktioniert Zugriff, aber keine Positionswiederherstellung.",
+          "Verbinden Sie bei Offlinezustand, Widerruf oder Netzfehler gemäß Hinweis erneut. Gespeicherte Positionen ersetzen keine Rechte.",
+          "Echte Aufnahme der Gerätereiter und Sammelbenachrichtigungen im festen Demoprojekt noch ausstehend."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Gerätereiter und Benachrichtigungszentrum",
+          "caption": "Noch keine echte Aufnahme: Gerätewechsel, Seitenwiederherstellung und Benachrichtigungssprung müssen ergänzt werden."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Kanalbots und Gruppenmeldungen",
+    "summary": "Konfigurieren Sie WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack oder QQ und trennen Sie Chat von Webhook-Benachrichtigungen.",
+    "sections": [
+      {
+        "title": "Kanal wählen und neue Plattform anbinden",
+        "steps": [
+          "Öffnen Sie Einstellungen → Kanalbots, wählen Sie links die Plattform und rechts Name, Zugangsdaten und lokales Standardprojekt. Aktivieren und speichern Sie. Leere Schlüsselfelder behalten beim Bearbeiten alte Werte; prüfen Sie ungespeicherte Änderungen vor Wechsel.",
+          "Feishu/Lark: Eigene Unternehmens-App mit Bot erstellen, App ID und App Secret eintragen. Aktivieren Sie nach Verbindung Langverbindungsereignisse, abonnieren Sie im.message.receive_v1 und card.action.trigger, erteilen Sie Nachrichten-/Kartenrechte und veröffentlichen Sie. Senden Sie privat oder per @Bot in Gruppen.",
+          "Telegram: Bot über BotFather erstellen und Bot Token eintragen. Long Polling erlaubt keinen zweiten gleichzeitigen Poller; bestehende Webhooks muss ein Administrator entfernen. Privat Text senden, in Gruppen erwähnen oder auf den Bot antworten.",
+          "Discord: Application ID und Bot Token eintragen, Message Content Intent sowie Kanal-Lese-/Schreibrechte aktivieren. In Serverkanälen Bot erwähnen; Aufgabenbindungen verwenden Kanal- oder Thread-ID.",
+          "Slack: Socket Mode aktivieren, App ID, App-Level Token mit connections:write und Bot Token eintragen. chat:write, app_mentions:read, im:history erteilen, app_mention und message.im abonnieren und App installieren. In Kanäle erst einladen, dann erwähnen.",
+          "QQ: Erstellen Sie einen offiziellen Bot auf der QQ Open Platform, wählen Sie WebSocket und aktivieren Sie private und Gruppenereignisse. Tragen Sie App ID, App Secret und ein lokales Standardprojekt ein, aktivieren und speichern Sie. Senden Sie privat Text oder erwähnen Sie den Bot in Gruppen. Nach einer Nachricht Aufgaben mit group_openid binden und Mitglieder-OpenIDs für Freigabelisten verwenden, nicht QQ- oder Gruppennummern. Nur Text; passive Antworten sind zeitlich und mengenmäßig begrenzt. Lange Ergebnisse in WorkStep lesen.",
+          "Prüfen Sie Verbindung und Kanalchats in WorkStep und binden Sie bei Bedarf Aufgaben. Bei Fehlern zuerst Region, Zugangsdaten, Plattformrechte und Backendnetzwerk prüfen."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack und QQ unterstützen derzeit nur Text. Stoppen, Berechtigungsantworten, Vorschlagsbestätigung und Review in WorkStep erledigen; Bilder, Dateien oder interaktive Karten sind nicht zugesichert.",
+          "Neue Plattformen sind mit simulierten Frames getestet; Installation, Rechte und Kommunikation echter Mandanten brauchen Integrationstests. Keine Schlüssel, vollständigen Tokens oder privaten Gruppenkennungen in Screenshots."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Plattformliste und eigener Bot-Editor",
+          "caption": "Echte neue Mehrkanalansicht ohne Zugangsdaten noch ausstehend; das alte Formular zeigt nicht das neue Layout."
+        }
+      },
+      {
+        "title": "Nur Feishu-/Lark-Gruppen benachrichtigen",
+        "steps": [
+          "Erstellen Sie unter Pipeline-Hooks → Benachrichtigungs-Hooks ein Ziel Feishu- oder Lark-Gruppenbot und fügen Sie die vollständige Webhook-Adresse des benutzerdefinierten Bots der passenden Region ein.",
+          "Bei Signaturprüfung tragen Sie dessen Signaturschlüssel ein, nicht App ID oder App Secret. Konfigurieren Sie vorgeschriebene Schlüsselwörter, Ereignisse und Markdown-Vorlage, speichern und prüfen Sie die Vorschau.",
+          "Prüfen Sie die Empfängergruppe vor einem echten Test und kontrollieren Sie das Zustellprotokoll. Vorschau sendet nichts; nach Timeout erst die Gruppe prüfen und dann wiederholen."
+        ],
+        "tips": [
+          "Webhooks senden nur Pipelineereignisse und empfangen keine Gruppenchats. Für beide Richtungen nutzen Sie einen App-Bot."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Adresse, Signatur und Vorlage für Feishu-/Lark-Gruppenmeldungen",
+          "caption": "Konfiguration ohne Zugangsdaten und Kartenvorschau noch ausstehend; reale Zustellung ist nicht bestätigt."
+        }
+      },
+      {
+        "title": "Bot hinzufügen",
+        "steps": [
+          "Öffnen Sie Kanalbots, wählen Sie WeCom oder DingTalk und fügen Sie einen benannten Bot hinzu.",
+          "WeCom: Bei intelligentem Bot Langverbindung wählen und Bot ID/Secret kopieren. DingTalk: App mit Stream-Bot erstellen und Client ID/Client Secret kopieren.",
+          "Wählen Sie ein Standardprojekt, aktivieren und speichern Sie die Langverbindung und warten Sie auf Verbunden.",
+          "Fügen Sie den Bot zur Gruppe hinzu und erwähnen Sie ihn in einer Testnachricht. Prüfen Sie Kanalchats des Projekts auf Sitzung und Antwort."
+        ],
+        "tips": [
+          "Schlüssel gehören nur in Einstellungen, nicht in Bilder oder Nachrichten. Bei Fehlern prüfen Sie Plattformmodus, Zugangsdaten und Netzwerk.",
+          "DingTalk-Schaltflächenkarten brauchen Erstellungs-, Zustell- und Aktualisierungsrechte. Eigene Vorlagen müssen die beschriebenen Felder unterstützen."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Altes Botformular ohne Zugangsdaten",
+          "caption": "Nur Referenz für Name, Zugangsdaten und Standardprojekt; nichts gespeichert oder verbunden. Neue Plattformliste noch nicht aufgenommen."
+        }
+      },
+      {
+        "title": "Aufgabengruppe binden und Reviews bearbeiten",
+        "steps": [
+          "Öffnen Sie BOT binden in den Aufgabendetails und wählen Sie einen aktivierten Bot.",
+          "Erwähnen Sie ihn zuerst in der Gruppe und wählen Sie deren Kennung unter Zuletzt empfangene Gruppen oder fügen Sie eine bekannte ID ein. Prüfen und binden Sie die aktuelle Aufgabe.",
+          "Gruppenfragen gehen an deren Koordinator. Prüfen Sie Phasenergebnisse und Anhänge in der Gruppe.",
+          "Lesen Sie Review-/Fragekarten vor der Aktion und prüfen Sie bei Bedarf den Zustand in WorkStep. Lösen Sie unnötige Bindungen."
+        ],
+        "tips": [
+          "Das Standardprojekt erhält Kanalchats ohne Aufgabenbindung. Die Gruppenbindung legt fest, welche Aufgabe Gruppenmeldungen erhält.",
+          "Archivieren oder Löschen löst die Bindung; nach Wiederherstellen neu binden. Kartenbuttons hängen vom Kanalclient ab; andernfalls in WorkStep handeln."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "BOT-Bindungsdialog ohne gebundene Gruppe",
+          "caption": "Wählen Sie Bot und zuletzt empfangene Gruppe oder geben Sie die Kennung ein. Noch keine Gruppe gebunden."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Desktop-Sandbox",
+    "summary": "Führen Sie Backend und Engines in einem getrennten Container aus und ordnen Sie Projektverzeichnisse ausdrücklich zu.",
+    "sections": [
+      {
+        "title": "Sandbox in fünf Schritten einrichten",
+        "steps": [
+          "Öffnen Sie am Desktop den letzten Einstellungspunkt Sandbox. Beenden Sie aktive Aufgaben und Chats und prüfen Sie Virtualisierung; Windows benötigt WSL2.",
+          "Wählen Sie zuerst einen separaten Sandboxspeicher und laden und bereiten Sie Hilfssoftware vor.",
+          "Prüfen Sie zweitens das Image und laden Sie das empfohlene Release-Image oder scannen Sie bei laufendem Docker nach kompatiblen lokalen WorkStep-Images.",
+          "Wählen Sie drittens vorhandene Projekte oder neue Verzeichnisse, viertens die zu übernehmenden Anbieter-, Engine- und Präferenzwerte und prüfen Sie fünftens die Zusammenfassung. Speichern Sie oder bestätigen Sie den Neustart."
+        ],
+        "tips": [
+          "Vorhandene Projektdateien werden nicht kopiert; Sandboxänderungen beeinflussen das Original. Nutzen Sie dasselbe Projekt nicht gleichzeitig in beiden Umgebungen.",
+          "Nicht zugeordnete Projekte sind vorübergehend unsichtbar, Daten bleiben. Sandbox- und Projektverzeichnisse dürfen einander nicht enthalten."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Projektwahl und Zusammenfassung des fünfstufigen Assistenten",
+          "caption": "Prüfen Sie Speicherort, Projektbindung und Konfigurationsmigration."
+        }
+      },
+      {
+        "title": "Modus wechseln und Konfiguration pflegen",
+        "steps": [
+          "Prüfen Sie nach Neustart die Kennzeichnung Sandbox-Modus in der Seitenleiste und die tatsächlich laufende Umgebung.",
+          "Prüfen Sie Anbieteradressen, Engineinstallation und Anmeldung erneut. Host-localhost bedeutet im Container etwas anderes; Pfadkonfigurationen müssen eventuell angepasst werden.",
+          "Schalten Sie die Sandbox aus und starten Sie neu, bevor Sie Verzeichnisse ändern oder Konfiguration importieren. Lesen Sie vor Import Backup-/Überschreibungshinweise.",
+          "Sandbox ausschalten und neustarten führt zurück zum Normalmodus. Öffnen Sie bei Fehlern das Logverzeichnis für Fortschritt und Meldungen."
+        ],
+        "tips": [
+          "Normalmodus und Sandbox speichern getrennte Konfigurationen; ein Wechsel synchronisiert sie nicht automatisch zurück.",
+          "Kompatibilitätsrechte nur erwägen, wenn die innere Engine-Sandbox nicht läuft; sie schwächen laut Hinweis die Isolation. Sandboxdaten löschen ist endgültig: Prüfen Sie vorher den Erhaltungsumfang."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Einstellungen und Fehlerbehebung",
+    "summary": "Verstehen Sie den Konfigurationsumfang und lesen Sie Status und Fehler vor gezielten Korrekturen.",
+    "sections": [
+      {
+        "title": "Desktopversion und Updates prüfen",
+        "steps": [
+          "Öffnen Sie am Desktop Einstellungen → Systemeinstellungen → Desktopupdates und prüfen Sie die Version.",
+          "Wählen Sie Updates prüfen für das neueste reguläre GitHub-Release; bei neuer Version klicken Sie auf Auf GitHub herunterladen.",
+          "Wählen Sie auf der Releaseseite das Systempaket und installieren Sie selbst nach Abschluss laufender Arbeit."
+        ],
+        "tips": [
+          "Der Desktop prüft täglich, lädt oder installiert aber nicht automatisch und startet nicht neu. Nur höhere reguläre Releases gelten als Updates; Code-Push oder Entwurf genügen nicht.",
+          "Bei Fehlern versuchen Sie später erneut. Die Webversion zeigt keine Desktopupdatefunktion."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Aktuelle Version und Updateprüfung in den Desktop-Systemeinstellungen",
+          "caption": "Prüfen Sie manuell und wechseln Sie bei neuer Version zum GitHub-Download."
+        }
+      },
+      {
+        "title": "Parallelität, Assistenten und Anzeige",
+        "steps": [
+          "Setzen Sie für viele parallele Aufgaben unter Parallelitätslimit oder Projektkonfiguration Task-/Chatlimits und prüfen Sie den wirksamen Wert.",
+          "Sollen Zeitpläne nicht mitzählen, aktivieren Sie die Ausnahme erst bei genügend Ressourcen. Überzählige Aufgaben und Chats warten.",
+          "Konfigurieren Sie Assistentenengine und -modell unter Assistenten. Prüfen Sie Schrittausführung und Aufgabenkoordination separat.",
+          "Benutzernamen ändern Sie im System, Sprache, Schrift, Größe und Skin unter Einstellungen → Erscheinungsbild; Repository-Scanumfang unter Git."
+        ],
+        "tips": [
+          "Eine geänderte Standardengine gilt für neue Aufgaben und Schritte und ersetzt keine bestehenden Konfigurationen."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Globale Task- und Chatparallelität",
+          "caption": "Setzen Sie Task-/Chatlimits und Zeitplanausnahmen."
+        }
+      },
+      {
+        "title": "Probleme systematisch prüfen",
+        "steps": [
+          "Kein Start: Status Vorbereitung, Warteschlange oder Review prüfen, dann Startschritt, Autostart und Engineverfügbarkeit.",
+          "Ausführungsfehler: Letzte Meldung, SDK-Installation, Anbieteranmeldung, Modellname, Netzwerk und Dateirechte prüfen und erst nach Korrektur neu starten.",
+          "Historien-/Schnittstellenfehler: Wiederholen über die Oberfläche. Bei Schnittstelle hat Webseite zurückgegeben Backendversion prüfen und über Ihren üblichen Startweg neu starten.",
+          "Verlorene Sitzung nach Wiederherstellung: Hinweis Mit neuer Sitzung neu ausführen lesen und Ziel sowie notwendige Ergebnisverweise mitgeben. Eine neue Sitzung ist keine vollständige native Kontextwiederherstellung.",
+          "Fehlende Artefakte oder Fernzugriff: Tatsächliche Dateierzeugung beziehungsweise Host-Onlinezustand, Adressen, Schlüssel und Fristen getrennt prüfen."
+        ],
+        "tips": [
+          "Melden Sie Version, System, Engine, Reproduktionsschritte und bereinigten Fehlerscreenshot; keine Schlüssel senden."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Demoaufgabe mit ungültigem Modell fehlgeschlagen",
+          "caption": "Die Meldung nennt ein nicht unterstütztes Modell. Prüfen Sie den Schritt vor erneutem Start; der Fehler wurde hier noch nicht behoben."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Erscheinungsbild, Skins und Sprachen",
+    "summary": "Wählen Sie persönliche Anzeigepräferenzen oder erstellen Sie Skins und Sprachpakete in normalen Projektchats mit Vorschau.",
+    "sections": [
+      {
+        "title": "Integrierte Sprache wählen",
+        "steps": [
+          "Wählen Sie unter Einstellungen → Erscheinungsbild vereinfachtes/traditionelles Chinesisch, Englisch, Japanisch, Französisch, Deutsch oder Arabisch und prüfen Sie Navigation und Datumsfelder.",
+          "Die Website bietet oben Chinesisch, Englisch, Französisch, Deutsch und Arabisch. Der Browser speichert die Wahl; ohne gespeicherte Präferenz gilt die Browsersprache."
+        ],
+        "tips": [
+          "Französisch, Deutsch und Arabisch decken in der App derzeit Haupteinstiege ab; weitere Texte können chinesisch bleiben. Arabisch bleibt in der App links nach rechts. Website und Handbuch wechseln vollständig mit der oberen Sprachwahl; Arabisch liest sich dort rechts nach links. Echte Screenshots bleiben chinesisch. Historische Chats und Benutzerdateien werden nicht übersetzt."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Integrierte Sprachwahl in App und Website",
+          "caption": "Echte Aufnahme der neuen Sprachoptionen noch ausstehend."
+        }
+      },
+      {
+        "title": "Layouts und Erweiterungen mit v2-Skins",
+        "steps": [
+          "Installieren und validieren Sie vertrauenswürdige v2-Skins unter Einstellungen → Erscheinungsbild und bestätigen Sie nach Vorschau. Für Funktionen wie Notizzettel bitten Sie im Designchat um mitgelieferte Komponenten.",
+          "Lesen Sie bei Aktivierung von Komponentencode die Bestätigung. Nach Paketupdate oder Identitätswechsel kann sie erneut nötig sein. Öffnen Sie danach vom Skin bereitgestellte Menüs oder Panels; Funktionen hängen vom Paket ab, Notizen/Kalender sind nicht vorinstalliert.",
+          "Das Paket kann die Eingabe oben, unten, links oder rechts platzieren; kompakte Ansichten bleiben vertikal. Prüfen Sie nach Wechsel Chat, Eingabe und Einstellungen auf Bedienbarkeit.",
+          "Erweiterungsdaten werden je Browseridentität, Gerät, Skin und Funktion gespeichert und beim Skinwechsel/-löschen nicht automatisch entfernt. Nutzen Sie eigene Exportfunktionen zur Sicherung. Bei unbedienbarer Oberfläche fügen Sie skin=default zur URL hinzu und laden neu."
+        ],
+        "tips": [
+          "Komponentencode besitzt dieselben Rechte wie die Seite. Aktivieren Sie nur vertrauenswürdige Quellen. Vorschau abbrechen stellt nur die Anzeige zurück, nicht bereits ausgeführte Aktionen.",
+          "Erweiterungsdaten sind nicht im Skin-ZIP und werden nicht zwischen Browsern oder Geräten synchronisiert. Sichern Sie vor Browserbereinigung; ein Speicherfehler ist kein Erfolg."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Aktivierungsbestätigung und Panelzugriff eines v2-Skins",
+          "caption": "Echte Ausführung eines vertrauenswürdigen Demopakets im festen Demoaufbau noch aufzunehmen. Formatprüfung ersetzt keine visuelle Abnahme."
+        }
+      },
+      {
+        "title": "Persönliches Erscheinungsbild wählen und speichern",
+        "steps": [
+          "Bei Gerätezugriff öffnen Sie Einstellungen → Erscheinungsbild, bei Projektberechtigung Erscheinungsbild und Skins in der Seitenleiste.",
+          "Wählen Sie Schrift, Größe und Sprache. Suchen/filtern Sie installierte Skins, zeigen Sie eine Vorschau und bestätigen Sie. Die feste Vorschauleiste bietet Abbrechen und Bestätigen.",
+          "Authentifizierte Gateway-Benutzer speichern pro Konto und Gerät; derselbe Gerätezugriff in anderem Browser stellt die Wahl wieder her. Bei Fehler erneut versuchen. Ohne Plattformanmeldung bleiben lokale Präferenzen im Browser."
+        ],
+        "tips": [
+          "Pakete und Herstellungshistorie werden auf dem Gerät geteilt, persönliche Auswahl bleibt getrennt. Projektberechtigte können nur installierte Pakete wählen.",
+          "Fehlende oder beschädigte Pakete fallen auf Standard zurück. ?skin=default oder ?language=default stellt Standardskin beziehungsweise vereinfachtes Chinesisch wieder her."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Schrift, Größe, Sprache und installierte Skins",
+          "caption": "Echte Einstellungsseite mit Standardskin. Rechts steht ein integriertes Muster; persönliche Präferenzen wurden nicht geändert."
+        }
+      },
+      {
+        "title": "Skins und Sprachen im Chat erstellen",
+        "steps": [
+          "Mit Hostverwaltungsrecht klicken Sie auf Über Aussehen sprechen, wählen eine installierte verifizierte Engine und beschreiben im normalen Chat etwa Dunkler Skin, Layout behalten, Sendepfeil nach oben.",
+          "Links ist Chat, rechts Bearbeitung und Vorschau; mobil wechseln Sie Reiter. Ändern Sie Name, Farben, Schrift, Größen, Sendesymbol und Layout und klicken Sie Feinanpassungen speichern für denselben Entwurf. Während Chatlauf gesperrt. Prüfen Sie PC-/Mobilvorschau.",
+          "Fordern Sie im selben Chat ein Sprachpaket an, etwa Spanisch hinzufügen, Aussehen behalten, und wählen rechts Sprache. Nach Erzeugung wird automatisch gelesen; Lesen und validieren prüft bei Bedarf Paketordner, Abdeckung, fehlende Texte und Beispiele.",
+          "Für Skins Aussehen speichern und Vorschau anzeigen, für Sprache Installieren und Vorschau anzeigen wählen und in der Vorschauleiste bestätigen oder abbrechen. Bibliotheksspeicherung ist keine persönliche Anwendung. Exportieren Sie ZIP zur Wiederverwendung; prüfen Sie vor gleichnamigem Import/Update die Ersetzung."
+        ],
+        "tips": [
+          "Die Erstellung nutzt das feste Runtime-Projekt und normale Chats und ruft das gewählte Modell auf. Über Chatverlauf oben können Sie fortsetzen. Vorschau allein führt keine Aufgabe aus.",
+          "Schriften kommen vom System; alte Nachrichten und Dateien werden nicht automatisch übersetzt. Integrierte Sendesymbole sind auswählbar, eigene Vektorsymbole müssen im Entwurf enthalten und validiert sein.",
+          "Sprachpakete sind unabhängig von Skins und unterstützen derzeit Links-nach-rechts-Sprachen. Fehltexte und Datumsfelder nutzen die festgelegte integrierte Rückfallsprache. Abdeckung ist keine Qualitätsprüfung; alte Textkataloge können im Chat ergänzt werden."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat-, Editor- und Vorschaubereich des Designfensters",
+          "caption": "Autorisierter leerer Designchat mit Feinanpassung. Der Prompt ist vorbefüllt, nicht gesendet; kein Modellaufruf und kein Skin gespeichert."
+        }
+      },
+      {
+        "title": "Sprachpaket lesen und in der Vorschau anzeigen",
+        "steps": [
+          "Wechseln Sie rechts im Designfenster zu Sprache und prüfen Sie Sprachpaketordner. Erzeugen Sie es im selben Chat oder importieren Sie ein vorhandenes Sprach-ZIP.",
+          "Nach Erstellung wird automatisch gelesen, alternativ Lesen und validieren für Abdeckung, fehlende Texte und Beispiele. Wartet der leere Ordner auf Erzeugung, ist das Paket nicht fertig.",
+          "Nach Validierung wählen Sie Installieren und Vorschau anzeigen und bestätigen oder verwerfen die persönliche Anwendung. Abdeckungszahlen ersetzen keine Übersetzungsprüfung."
+        ],
+        "tips": [
+          "Derzeit Links-nach-rechts-Sprachen; Datumsfelder und fehlende Texte nutzen die im Paket angegebene integrierte Rückfallsprache."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Sprachpaketordner und Validierungsfunktion im leeren Designchat",
+          "caption": "Der Sprachreiter bietet Ordner, Lesen und validieren und ZIP-Import. Noch kein Paket erzeugt, installiert oder angewendet."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Audit entfernter Projektaktionen",
+    "summary": "Prüfen Sie Aktionen entfernter Besucher und deren Erfolg, Ablehnung oder Fehler.",
+    "sections": [
+      {
+        "title": "Fernaktionen filtern und ansehen",
+        "steps": [
+          "Öffnen Sie lokal auf dem Projektgerät Konfiguration → Aktionsaudit eines lokalen Projekts. Fernprojekte, Gateway-Arbeitsbereiche und projektgebundener Zugriff bieten diesen Reiter nicht.",
+          "Filtern Sie nach Aktion und Ergebnis und prüfen Sie Akteur, Zeit, Quelle sowie Task-, Pipeline- oder Dateikennung.",
+          "Blättern Sie weiter oder zur ersten Seite und aktualisieren Sie für neue Einträge. Fehlgeschlagene Abfragen können wiederholt werden."
+        ],
+        "tips": [
+          "Audit protokolliert Fernaktionen samt Ablehnungen/Fehlern, keinen vollständigen Chat oder Zugangsdaten. Die Schnittstelle ist nur auf dem Projektgerät lokal verfügbar. Standardaufbewahrung 30 Tage, maßgeblich ist die Anzeige. Echte Namen öffentlicher Freigabebesucher sind unbekannt; Selbstangabe im Fernbrowser ist keine authentifizierte Identität."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Auditfilter und leere Liste im lokalen Projekt",
+          "caption": "Tatsächliche lokale Auditoberfläche mit Aktions- und Ergebnisfilter. Keine Fernaufzeichnungen im Demoprojekt, keine erfundenen Aktionen oder Identitäten."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Häufige Einstiegsfragen",
+    "summary": "Klären Sie Engines, Modelldienste, Dateiänderungen und Wiederherstellungsgrenzen vor dem Start.",
+    "sections": [
+      {
+        "title": "SDK oder CLI: Was ist der Unterschied?",
+        "steps": [
+          "Beides sind Engine-Anbindungen an Modellfähigkeiten. SDK integriert per Entwicklerschnittstelle, CLI läuft als Kommandozeilenprogramm; beides sind keine Modellnamen.",
+          "Installieren Sie zunächst Codex SDK oder Claude Agent SDK, authentifizieren Sie, wählen und verifizieren Sie das Modell und setzen Sie die Standardengine. Bei vorhandener CLI-Erfahrung ist auch die entsprechende CLI-Engine möglich.",
+          "Anbieter liefert Adresse und Anmeldung, Modell bezeichnet das konkrete Modell, Engine liefert Sitzung, Werkzeuge und Ausführung. Verwenden Sie das passende Formular; unterschiedliche Engines müssen nicht dieselben Zugangsdaten nutzen."
+        ],
+        "tips": [
+          "SDK-Installation belegt nur verfügbare Laufzeitabhängigkeiten, nicht Anmeldung, Rechte oder Kontingent. Unterscheiden Sie Codex-/Claude-Code-SDK-Karten von CLI-Einträgen."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "SDK- und CLI-Auswahl in den Engineeinstellungen",
+          "caption": "Empfohlene SDKs mit getrenntem Installations- und Prüfstatus."
+        }
+      },
+      {
+        "title": "Was kosten Software und Modellaufrufe?",
+        "steps": [
+          "Prüfen Sie Tarif, Anmeldung und Kontingent des Modelldiensts vor der kleinen Erstaufgabe. Das SDK selbst ist kein Modellguthaben.",
+          "Ausführung, automatische Reviews, Assistentenerzeugung und Wiederholungen können Modellaufrufe verursachen. Prüfen Sie Modelle in Schritt-, Review- und Assistenteneinstellungen getrennt.",
+          "Die Ausführungsanalyse zeigt Verbrauch und Kostenherkunft. Schätzungen dienen der Orientierung; abgerechnet wird nach Anbieterregeln und Rechnung."
+        ],
+        "tips": [
+          "SDK-Download oder Anmeldung garantiert keine kostenlosen Aufrufe; ein Abonnement gilt nicht zwangsläufig für alle Engines."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Tokenverbrauch und Kostenherkunft in der Ausführungsanalyse",
+          "caption": "Gezeigt sind gemeldete Anbieterkosten und Abdeckung. Geschätzt wird nur bei tatsächlich verwendeter Preisberechnung markiert."
+        }
+      },
+      {
+        "title": "Wo sind Daten, und verändert KI meine Dateien?",
+        "steps": [
+          "Aufgaben, Pipelines und Nachrichten liegen standardmäßig unter .workstep im Projekt. Ohne Datenverzeichnis im Projekt speichern liegen sie in ~/.workstep/projects/<项目ID>/. .workstep/project.json ordnet sie wieder zu.",
+          "Anfragetext und gelesener Kontext können an den konfigurierten Modelldienst gesendet werden. Kanäle, Freigaben und Fernzugriffe liefern berechtigte Informationen zusätzlich an ihre Teilnehmer.",
+          "KI mit Schreibrecht darf Dateien verändern. Üben Sie getrennt, prüfen Sie Rechte vorher sowie Git-Differenzen und reale Artefakte danach.",
+          "Eine Sandbox mit Original-Mount ändert weiterhin Originaldateien. Aufgaben-Worktrees bieten eigene Arbeitsordner; Merge-Ergebnisse bleiben zu prüfen."
+        ],
+        "tips": [
+          "Lokale Speicherung bedeutet keine Offline-Modellnutzung. Keine Schlüssel, Kontozugangsdaten oder irrelevanten sensiblen Dateien in Beschreibungen, Anhängen oder Screenshots."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Berechtigungsmodus im mobilen Chat",
+          "caption": "Standard, schreibgeschützt und Arbeitsbereich beschreibbar sind sichtbar; tatsächliche Unterstützung und Wirkung hängen von der Engine ab."
+        }
+      },
+      {
+        "title": "Stoppen, Wiederholen, Nacharbeiten und Wiederherstellen",
+        "steps": [
+          "Stoppen unterbricht aktuelle Ausführung oder Antwort, macht geschriebene Dateien aber nicht rückgängig. Prüfen Sie vorhandene Ergebnisse vor Fortsetzung.",
+          "Wiederholung ruft die Engine erneut auf, mit Kontextfortsetzung oder neuer Sitzung laut Oberfläche. Sie setzt nicht sämtliche Änderungen auf den Ausgangszustand zurück.",
+          "Nacharbeit korrigiert anhand Review oder Rückverbindung und unterliegt Abhängigkeiten und Wiederholungsgrenzen. Lesen Sie bei geändertem Ausführungsumfang die Bestätigung.",
+          "Prüfen Sie nach Wiederöffnen Task- und Chatstatus. Unterstützende Engines können native Sitzungen weiterverwenden; verlorene Aufzeichnungen erfordern einen neuen Lauf mit neuer Sitzung."
+        ],
+        "tips": [
+          "Automatische Wiederherstellung hängt von Engine und verfügbarer Historie ab. Vollständige Wiederherstellung ist nicht für jede Engine und Unterbrechung zugesichert."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Gewählte Schritt-zurücksetzen-Option einer abgeschlossenen Aufgabe",
+          "caption": "Die Option gilt nur für die nächste Schrittnachricht. Gezeigt wird weder Löschbestätigung noch Sitzungsverlust."
+        }
+      }
+    ]
+  }
+]

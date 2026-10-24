@@ -1,6 +1,6 @@
 import { request } from './transport'
 
-export const BOT_PLATFORMS = ['wecom', 'dingtalk', 'feishu', 'lark', 'telegram', 'discord', 'slack'] as const
+export const BOT_PLATFORMS = ['wecom', 'dingtalk', 'feishu', 'lark', 'telegram', 'discord', 'slack', 'qq'] as const
 export type BotPlatform = typeof BOT_PLATFORMS[number]
 export type BotTargetType = '' | 'project' | 'task'
 

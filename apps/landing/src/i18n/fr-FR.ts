@@ -1,17 +1,35 @@
 import type { I18nDict } from './keys'
 
 export const frFR: I18nDict = {
-  "manual": {
+  meta: {
+    "title": "WorkStep — Le développement IA étape par étape, sous votre contrôle",
+    "description": "Connectez des moteurs de développement IA pour analyser les besoins, coder, tester et réviser dans des workflows réutilisables. Vérifiez les résultats et demandez des corrections."
+  },
+  privacy: {
+    "title": "Confidentialité de WorkStep",
+    "localData": "L’application de bureau WorkStep ne contient aucune télémétrie d’utilisation. Les données de projet, de tâche et d’exécution restent par défaut sur votre appareil. Le site collecte uniquement des statistiques de visites agrégées lorsque les responsables configurent Cloudflare Web Analytics ; ce service n’utilise pas de cookies de suivi intersites. GitHub enregistre les visites du dépôt et les téléchargements des versions selon ses propres règles.",
+    "externalServices": "Le partage à distance et les moteurs LLM tiers sont activés volontairement par l’utilisateur et soumis aux conditions de leurs fournisseurs. Ne publiez jamais d’identifiants, de contenu de projets privés ou de chemins personnels dans les tickets publics.",
+    "home": "Retour à WorkStep"
+  },
+  manual: {
     "title": "Manuel d’utilisation",
     "home": "Retour à l’accueil",
     "search": "Rechercher dans le manuel",
     "searchPlaceholder": "Rechercher des fonctionnalités ou questions",
     "chapters": "Chapitres du manuel",
     "noResults": "Aucun chapitre correspondant",
-    "chineseNotice": "Le manuel est actuellement disponible en chinois. Les captures montrent l’interface chinoise.",
     "enlarge": "Voir l’image complète",
     "pagination": "Chapitre précédent et suivant",
-    "screenshotPending": "Les captures de cette section sont en préparation."
+    "screenshotPending": "Les captures de cette section sont en préparation.",
+    "screenshotNotice": "Les captures montrent l’interface chinoise. Les noms des boutons dans les instructions vous aident à retrouver les commandes correspondantes.",
+    "groups": {
+      "getting-started": "Premiers pas",
+      "automation": "Workflows et automatisation",
+      "delivery": "Tâches et livrables",
+      "personalization": "Conversations et personnalisation",
+      "collaboration": "Partage et collaboration",
+      "help": "Paramètres et aide"
+    }
   },
   "common": {
     "download": "Télécharger",
@@ -383,6 +401,7 @@ export const frFR: I18nDict = {
       "prompt5": "Exécuter les tests et produire un rapport",
       "prompt6": "Compiler et livrer",
       "reworkLabel": "Retours de reprise",
+      "artifactList": "Liste des livrables",
       "reworkDesc": "Trait plein = flux de données · Pointillé = retour de reprise (les liens vers l’amont deviennent pointillés automatiquement)",
       "node1": "Exigences",
       "node2": "Conception",

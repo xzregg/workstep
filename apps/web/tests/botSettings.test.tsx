@@ -26,7 +26,11 @@ test('channel navigation filters bots, guards dirty switches, and provides socia
   })
   try {
     await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
-    assert.equal(container.querySelectorAll('.bot-settings-platform').length, 7)
+    assert.equal(container.querySelectorAll('.bot-settings-platform').length, 8)
+    await clickPlatform('qq')
+    assert.match(container.querySelector('.bot-settings-form')!.textContent!, /App ID.*App Secret/)
+    assert.ok(container.querySelector('a[href="https://q.qq.com/"]'))
+    assert.match(container.textContent!, /OpenID/)
     await clickPlatform('telegram')
     assert.doesNotMatch(container.querySelector('.bot-settings-list')!.textContent!, /企微助手/)
     assert.ok(container.querySelector('input[type="password"]'))

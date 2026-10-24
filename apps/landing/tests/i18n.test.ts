@@ -8,7 +8,7 @@ import { zhCN } from '../src/i18n/zh-CN'
 import { frFR } from '../src/i18n/fr-FR'
 import { deDE } from '../src/i18n/de-DE'
 import { ar } from '../src/i18n/ar'
-import { initialLang } from '../src/i18n'
+import { initialLang, translate } from '../src/i18n'
 
 const dictionaries = { 'zh-CN': zhCN, 'en-US': enUS, 'fr-FR': frFR, 'de-DE': deDE, ar }
 
@@ -47,6 +47,15 @@ describe('i18n dictionaries', () => {
     expect(frFR.hero.ctaPrimary).toBe('Télécharger l’application')
     expect(deDE.hero.ctaPrimary).toBe('Desktop-App herunterladen')
     expect(ar.hero.ctaPrimary).toBe('تنزيل تطبيق سطح المكتب')
+  })
+
+  it('provides localized page metadata, privacy and manual category names', () => {
+    for (const lang of ['en-US', 'fr-FR', 'de-DE', 'ar'] as const) {
+      for (const key of ['meta.title', 'meta.description', 'privacy.title', 'privacy.localData', 'privacy.externalServices', 'manual.groups.getting-started']) {
+        expect(translate(lang, key)).not.toBe(translate('zh-CN', key))
+      }
+      expect(translate(lang, 'manual.screenshotNotice')).not.toBe('')
+    }
   })
 
   it('restores each saved language and detects browser languages', () => {

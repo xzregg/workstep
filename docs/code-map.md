@@ -18,6 +18,8 @@
 
 # 按功能查找代码
 
+QQ 官方机器人复用「设置 → 渠道机器人」的 `BotSettings.tsx`、`BotSettingsEditor.tsx` 和 `BOT_PLATFORMS`，凭据为 App ID／App Secret。daemon `services/channels/qq.py::QQAdapter` 自动注册 `qq`，复用 `SocialAdapter` 的异步生命周期，持有 access_token 缓存／刷新、Gateway 心跳／恢复、QQ 单聊和群 @事件归一化、被动回复 `msg_id/msg_seq` 和次数限制。平台 OpenID 经既有 `/api/channel-bots`、`BotManager`、白名单与任务绑定路由，当前只声明文字收发；主动通知单独受 QQ 平台权限约束。测试：daemon `test_qq_channel.py`（含真实管理 API 和慢网络 canary），Web `botSettings.test.tsx`、`botSettingsEditor.test.tsx`。配置与边界见 [QQ 官方机器人](channel-bots.md#qq-官方机器人)。
+
 渠道机器人配置入口为「设置 → 渠道机器人」：`apps/web/src/pages/BotSettings.tsx` 持有渠道导航、同平台多机器人列表和切换保护，`components/BotSettingsEditor.tsx` 自管理凭据、默认项目、校验、保存和错误恢复；`api/channelBots.ts::BOT_PLATFORMS` 与 `ChatSessionSourceBadge` 共用平台集合。新增 Telegram／Discord／Slack 分别由 daemon `services/channels/telegram.py`、`discord.py`、`slack.py` 自动发现，`social.py` 复用异步连接、取消、消息任务和文本分段；分别采用长轮询、Gateway、Socket Mode，只声明文字能力。统一 `/api/channel-bots`、`BotManager`、私聊／群聊白名单、项目会话与任务群绑定继续持有业务路由；Slack 双 Token 均不返回前端，Telegram Bot ID 从 Token 读取。测试入口：Web `botSettings.test.tsx`、`botSettingsEditor.test.tsx`、`feishuBots.test.tsx`，daemon `test_social_channels.py`（平台帧、鉴权、游标、心跳、恢复、回执、共享路由、Token 脱敏和慢网络健康检查）。配置与联调边界见 [渠道机器人](channel-bots.md)。
 
 飞书／Lark 网关身份入口为 Gateway「平台设置 → 组织同步与扫码登录」及网页登录／桌面授权页；`apps/gateway/src/gateway/services/feishu_identity.py::FeishuConnector` 持有双区域 OAuth、PKCE、通讯录分页和可见范围完整性判定，现有 external identity API、目录同步任务和用户组／权限继续持有账号、持久化与维护策略。Gateway Web `enterpriseProviders.ts` 统一类型、名称与后台地址，`OrganizationSyncSettings`／`EnterpriseLoginChoices` 装配配置和入口。测试：Gateway `test_feishu_identity.py`、Gateway Web `organization-settings.test.tsx`。接入与验收边界见 [Gateway 开发](gateway-development.md#飞书与-lark-企业身份)。

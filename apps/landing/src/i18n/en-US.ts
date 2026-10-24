@@ -1,17 +1,35 @@
 import type { I18nDict } from './keys'
 
 export const enUS: I18nDict = {
+  meta: {
+    "title": "WorkStep — AI development, step by step, with you in control",
+    "description": "Connect AI coding engines to analyze requirements, implement code, test and review in reusable workflows. Inspect results and request revisions."
+  },
+  privacy: {
+    "title": "WorkStep privacy notice",
+    "localData": "The WorkStep desktop app contains no usage telemetry. Project, task, and execution data stays on your device by default. The website records aggregate traffic only when maintainers configure Cloudflare Web Analytics; it does not use cross-site tracking cookies. GitHub records repository traffic and release downloads under its own policies.",
+    "externalServices": "Remote sharing and third-party LLM engines are opt-in and subject to their providers’ terms. Never post credentials, private project content, or personal paths in public Issues.",
+    "home": "Back to WorkStep"
+  },
   manual: {
-    title: "User manual",
-    home: "Back to home",
-    search: "Search manual",
-    searchPlaceholder: "Search features or questions",
-    chapters: "Manual chapters",
-    noResults: "No matching chapters",
-    chineseNotice: "The manual is currently available in Chinese. Screenshots show the Chinese interface.",
-    enlarge: "View full image",
-    pagination: "Previous and next chapter",
-    screenshotPending: "Screenshots for this section are pending.",
+    "title": "User manual",
+    "home": "Back to home",
+    "search": "Search manual",
+    "searchPlaceholder": "Search features or questions",
+    "chapters": "Manual chapters",
+    "noResults": "No matching chapters",
+    "enlarge": "View full image",
+    "pagination": "Previous and next chapter",
+    "screenshotPending": "Screenshots for this section are pending.",
+    "screenshotNotice": "Screenshots show the Chinese interface. Use the button names in the instructions to locate the corresponding controls.",
+    "groups": {
+      "getting-started": "Getting started",
+      "automation": "Workflows and automation",
+      "delivery": "Tasks and delivery",
+      "personalization": "Chat and personalization",
+      "collaboration": "Sharing and collaboration",
+      "help": "Settings and help"
+    }
   },
   common: {
     download: 'Download',
@@ -350,6 +368,7 @@ export const enUS: I18nDict = {
       prompt5: 'Run tests and generate a report',
       prompt6: 'Build and ship',
       reworkLabel: 'Rework feedback',
+      artifactList: 'Artifact list',
       reworkDesc: 'Solid line = data flow · Dashed line = rework feedback (edges back upstream turn dashed automatically)',
     },
     board: {

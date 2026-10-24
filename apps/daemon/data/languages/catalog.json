@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "323b305fca05e260b838d83ef4d8068d03da78cdb4d0dba9f818e2042af5b429",
+  "revision": "3b4829e5e2044310a71ee48669708b21fbef1752fc93aac8df4a91939598ead5",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -612,6 +612,8 @@
     "channelBot.telegram": "Telegram",
     "channelBot.discord": "Discord",
     "channelBot.slack": "Slack",
+    "channelBot.qq": "QQ",
+    "channelBot.qqHint": "在 QQ 开放平台创建官方机器人，填写 App ID 和 App Secret，在后台选择 WebSocket 并开通单聊／群聊事件权限。私聊直接发送，群内 @机器人；群绑定与白名单使用平台 OpenID，不是 QQ 号码或群号。被动回复受平台时间与次数限制，过长结果会提示到 WorkStep 查看；主动通知还需平台授权。当前未接入 QQ 频道、Webhook 或 NapCat。",
     "channelBot.botCount": "{count} 个机器人",
     "channelBot.openConsole": "打开机器人管理后台",
     "channelBot.discardConfig": "放弃未保存的机器人配置？",
