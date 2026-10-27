@@ -174,6 +174,14 @@ def build_parser() -> argparse.ArgumentParser:
     task_get.add_argument("--project", required=True, dest="project_id", help="project id")
     task_get.add_argument("--task", required=True, dest="task_id", help="task id")
     add_json(task_get)
+    for operation in ('history', 'reviews'):
+        reader = task_sub.add_parser(operation, help=f'read task {operation}')
+        reader.add_argument('--project', required=True, dest='project_id')
+        reader.add_argument('--task', required=True, dest='task_id')
+        if operation == 'history':
+            reader.add_argument('--limit', type=int, default=50, choices=range(1, 301), metavar='1..300')
+            reader.add_argument('--offset', type=int, default=0)
+        add_json(reader)
     for action, help_text in (
         ("step-message", "inject a message into a running step"),
         ("step-stop", "request cancellation of one step"),
@@ -550,6 +558,13 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 "workstep_get_task",
                 {"project_id": args.project_id, "task_id": args.task_id},
             )
+        if args.subcommand in ('history', 'reviews'):
+            arguments = {'project_id': args.project_id, 'task_id': args.task_id}
+            if args.subcommand == 'history':
+                if args.offset < 0:
+                    raise ValueError('--offset must be nonnegative')
+                arguments.update(limit=args.limit, offset=args.offset)
+            return await client.call(f'workstep_get_task_{args.subcommand}', arguments)
         if args.subcommand == "repos":
             return await client.call("workstep_list_git_repositories", {"project_id": args.project_id})
         if args.subcommand == "worktrees":

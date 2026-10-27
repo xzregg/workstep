@@ -51,6 +51,7 @@ interface ChatListState {
   /** Sessions grouped by project so multiple expanded projects cannot share rows. */
   sessionsByProject: Record<string, ChatSessionSummary[]>
   quickButtons: ChatQuickButton[]
+  quickButtonsByProject: Record<string, ChatQuickButton[]>
   listLoadingByProject: Record<string, boolean>
   listErrorByProject: Record<string, string | undefined>
 
@@ -87,6 +88,7 @@ const pendingSessionRefreshes = new Set<string>()
 export const useChatListStore = create<ChatListState>((set, get) => ({
   sessionsByProject: {},
   quickButtons: [],
+  quickButtonsByProject: {},
   listLoadingByProject: {},
   listErrorByProject: {},
 
@@ -305,7 +307,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     if (!projectId) return
     try {
       const { buttons } = await chatSessionApi.quickButtons(projectId)
-      set({ quickButtons: buttons })
+      set(state => ({ quickButtons: buttons, quickButtonsByProject: { ...state.quickButtonsByProject, [projectId]: buttons } }))
     } catch {
       // Defaults come from the backend; keep the last known state.
     }
@@ -313,7 +315,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
 
   saveQuickButtons: async (projectId, buttons) => {
     const saved = await chatSessionApi.saveQuickButtons(projectId, buttons)
-    set({ quickButtons: saved.buttons })
+    set(state => ({ quickButtons: saved.buttons, quickButtonsByProject: { ...state.quickButtonsByProject, [projectId]: saved.buttons } }))
     return saved.buttons
   },
 }))

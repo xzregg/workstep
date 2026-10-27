@@ -14,8 +14,10 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
 import SessionRowActions from './SessionRowActions'
+import ChatSessionRenameDialog from './ChatSessionRenameDialog'
 import { useTaskStore } from '../stores/taskStore'
 import { useChatListStore } from '../stores/chatSessionStore'
+import { writeChatSessionDrag } from '../utils/chatSessionDrag'
 import { useSidebarActivityStore } from '../stores/sidebarActivityStore'
 import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import { useSidebarActivity } from '../hooks/useSidebarActivity'
@@ -140,7 +142,6 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [dragSessionId, setDragSessionId] = useState<string | null>(null)
   const [dropSessionId, setDropSessionId] = useState<string | null>(null)
   const [pendingWfSwitch, setPendingWfSwitch] = useState<{ project: Project; workflowId: string } | null>(null)
-  const renameSessionInputRef = useRef<HTMLInputElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   const sessionMenuRef = useRef<HTMLDivElement>(null)
   const sidebarLongPressRef = useRef<{
@@ -160,7 +161,6 @@ export default function Layout({ onSelectProject, children }: Props) {
     sessionError: sessionDeleteError,
     clearSessionError,
     createSession,
-    renameSession,
     deleteSession,
     archiveSession,
   } = useSidebarSessionActions()
@@ -203,13 +203,6 @@ export default function Layout({ onSelectProject, children }: Props) {
       conversationsByProject: sessionSectionOpen,
     })
   }, [expandedProjectIds, flowSectionOpen, sessionSectionOpen])
-
-  useEffect(() => {
-    if (renameSessionId) {
-      const t = setTimeout(() => renameSessionInputRef.current?.focus(), 0)
-      return () => clearTimeout(t)
-    }
-  }, [renameSessionId])
 
   // Any mousedown outside the open menus dismisses them (row-level
   // stopPropagation handlers must not be able to swallow the close event).
@@ -437,13 +430,6 @@ export default function Layout({ onSelectProject, children }: Props) {
       atCursor ? e.clientX : rect.left,
       atCursor ? e.clientY : rect.bottom + 4,
     )
-  }
-
-  const handleRenameSession = async (sessionId: string, title: string, projectId?: string) => {
-    const ownerProjectId = projectId || renameSessionProjectId || activeProject?.id
-    if (ownerProjectId) await renameSession(sessionId, ownerProjectId, title)
-    setRenameSessionId(null)
-    setRenameSessionProjectId(null)
   }
 
   const handleDeleteSession = async () => {
@@ -948,15 +934,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                           data-active={location.pathname === '/chat' && activeSessionId === session.id}
                           data-dragging={isDragSource}
                           data-drop-target={isDropTarget}
-                          draggable={can('session.manage') && renameSessionId !== session.id && !isMultiSelect}
+                          draggable={!compact && can('session.read') && renameSessionId !== session.id && !isMultiSelect}
                           onDragStart={(e) => {
                             e.stopPropagation()
-                            e.dataTransfer.effectAllowed = 'move'
-                            e.dataTransfer.setData('text/plain', session.id)
+                            writeChatSessionDrag(e.dataTransfer, p.id, session.id)
                             setDragSessionId(session.id)
                           }}
                           onDragOver={(e) => {
-                            if (isMultiSelect) return
+                            if (isMultiSelect || !can('session.manage')) return
                             e.preventDefault()
                             e.dataTransfer.dropEffect = 'move'
                             if (dropSessionId !== session.id) setDropSessionId(session.id)
@@ -966,7 +951,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             if (dropSessionId === session.id) setDropSessionId(null)
                           }}
                           onDrop={(e) => {
-                            if (isMultiSelect) return
+                            if (isMultiSelect || !can('session.manage')) return
                             e.preventDefault()
                             e.stopPropagation()
                             const dragId = dragSessionId || e.dataTransfer.getData('text/plain')
@@ -995,22 +980,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             </span>
                           )}
                           <Icon name="bot" size={11.6} strokeWidth={2} className="layout-session-bot" />
-                          {renameSessionId === session.id ? (
-                            <Input
-                              ref={renameSessionInputRef}
-                              value={renameSessionValue}
-                              onChange={(e) => setRenameSessionValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') { void handleRenameSession(session.id, renameSessionValue, p.id) }
-                                if (e.key === 'Escape') { setRenameSessionId(null); setRenameSessionProjectId(null) }
-                              }}
-                              onBlur={() => { if (renameSessionId === session.id) void handleRenameSession(session.id, renameSessionValue, p.id) }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="layout-session-rename-input"
-                            />
-                          ) : (
-                            <MarqueeText text={session.title} />
-                          )}
+                          <MarqueeText text={session.title} />
                           <ChatSessionSourceBadge source={session.source} platform={session.channel_platform} botName={session.channel_name} conversationType={session.channel_conversation_type} peerName={session.channel_peer_name} />
                           <SidebarStatusIndicator
                             running={sessionRunning}
@@ -1191,6 +1161,12 @@ export default function Layout({ onSelectProject, children }: Props) {
         </SidebarActionMenu>
       )}
 
+
+      {renameSessionId && renameSessionProjectId && <ChatSessionRenameDialog
+        projectId={renameSessionProjectId} sessionId={renameSessionId} title={renameSessionValue}
+        onRenamed={() => { setRenameSessionId(null); setRenameSessionProjectId(null) }}
+        onClose={() => { setRenameSessionId(null); setRenameSessionProjectId(null) }}
+      />}
 
       <ConfirmDialog
         open={deleteSessionTarget !== null}

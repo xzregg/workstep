@@ -668,7 +668,7 @@
           "Pour abandonner, choisissez Terminer et vérifiez la confirmation. Forcer la validation saute la revue : vérifiez d’abord les résultats."
         ],
         "tips": [
-          "La fin du processus ne prouve pas la qualité. La revue manuelle est votre point de contrôle avant la suite."
+          "La fin du processus ne prouve pas la qualité. La revue manuelle est votre point de contrôle avant la suite. Une tâche en pause dont une étape attend une revue affiche En attente de revue ; une tâche terminée conserve son état terminé."
         ],
         "screenshot": {
           "id": "task-review",
@@ -801,6 +801,25 @@
     "title": "Conversations de projet et compétences",
     "summary": "Collaborez dans le contexte du projet et choisissez ses compétences locales autorisées.",
     "sections": [
+      {
+        "title": "Travailler dans plusieurs conversations de projet",
+        "steps": [
+          "Sur ordinateur, ouvrez une conversation ordinaire et choisissez Fenêtres de conversation (对话窗口) → Ajouter une fenêtre (增加对话窗口), à droite de Nouvelle conversation.",
+          "Glissez une conversation de la barre latérale ou des conversations récentes dans la zone de discussion. Les projets autorisés peuvent être mélangés, avec au maximum 4 panneaux ; une conversation déjà ouverte est simplement sélectionnée. Les tâches ne se glissent pas comme conversations.",
+          "Cliquez sur le panneau à utiliser avant de choisir une conversation latérale. Chaque panneau conserve son projet, sa session, son brouillon et ses réglages moteur ; vérifiez le projet et la session avant envoi.",
+          "Dans Fenêtres de conversation → Disposition (对话排列), choisissez horizontal ou vertical. Faites glisser le séparateur, ou sélectionnez-le et utilisez les flèches pour ajuster la taille.",
+          "Avec plusieurs panneaux, × ferme seulement le panneau, sans arrêter ni supprimer la conversation. Utilisez le bouton Arrêter de la conversation pour interrompre la génération."
+        ],
+        "tips": [
+          "Sur ordinateur, double-cliquez une conversation latérale ou son titre pour ouvrir le dialogue commun de renommage, puis confirmez le nouveau nom.",
+          "Sur téléphone, seul le panneau actif apparaît, sans séparateurs ; les autres panneaux ouverts conservent leur état. La disposition appartient à la page et le retour de tous les panneaux après actualisation n’est pas garanti."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Panneaux de conversation de plusieurs projets et menu de disposition",
+          "caption": "Capture réelle du projet de démonstration fixe à fournir : menu des fenêtres, panneaux multiples et séparateurs déplaçables."
+        }
+      },
       {
         "title": "Charger un rôle ou une équipe d’experts",
         "steps": [
@@ -1208,7 +1227,7 @@
       {
         "title": "Choisir un canal et connecter une plateforme",
         "steps": [
-          "Dans Paramètres → Robots de canal, choisissez à gauche, puis nom, identifiants et projet local par défaut à droite. Activez et enregistrez. Une clé vide conserve l’ancienne en modification ; vérifiez les brouillons avant changement.",
+          "Dans Paramètres → Robots de canal, choisissez à gauche, puis nom, identifiants et projet local par défaut à droite. Activez et enregistrez. Une clé vide conserve l’ancienne en modification ; vérifiez les brouillons avant changement. Fermer les paramètres, appuyer sur Échap ou changer de rubrique demande confirmation si des modifications ne sont pas enregistrées ; annuler conserve le brouillon.",
           "Feishu/Lark : créez une application d’entreprise avec robot, renseignez App ID et App Secret. Après connexion, activez les événements longs, abonnez im.message.receive_v1 et card.action.trigger, donnez les droits messages/cartes puis publiez. Écrivez en privé ou mentionnez le robot.",
           "Telegram : créez via BotFather et saisissez Bot Token. Le sondage long ne peut être partagé avec un autre programme ; l’administrateur doit retirer tout Webhook existant. Écrivez en privé, mentionnez ou répondez au robot en groupe.",
           "Discord : Application ID et Bot Token, Message Content Intent activé, droits de lecture et envoi. Mention obligatoire en canal de serveur ; liaisons par ID de canal ou fil.",
@@ -1367,7 +1386,7 @@
           "Pour livrable ou accès distant : vérifiez fichier réellement créé ou disponibilité de l’hôte, adresse, clé et échéance."
         ],
         "tips": [
-          "Signalez version, système, moteur, reproduction et capture expurgée ; jamais de clés."
+          "Signalez version, système, moteur, reproduction et capture expurgée ; jamais de clés. Sans configuration explicite, 20 minutes consécutives sans événement moteur déclenchent le délai d’inactivité en conservant la session. Les délais personnalisés restent inchangés ; 0 le désactive. Réflexion ou outils silencieux ne sont pas forcément bloqués : consultez les journaux avant de relancer."
         ],
         "screenshot": {
           "id": "task-error",

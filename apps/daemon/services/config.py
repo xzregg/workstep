@@ -545,17 +545,16 @@ class ConfigStore:
         self.set("assistant_defaults", overrides)
 
     def get_engine_idle_timeout_seconds(self) -> int:
-        """Stage-level engine idle timeout in seconds; 0 disables the watchdog.
+        """Engine idle timeout in seconds; defaults to twenty minutes.
 
-        When the engine produces no events for this long (e.g. a stalled API
-        connection), the runner terminates it and fails the step, preserving
-        the session so a re-run can resume it.
+        A positive value enables the watchdog; 0 disables it. The longer
+        default allows quiet thinking and tools while bounding stalled runs.
         """
-        value = self.get("engine_idle_timeout_seconds", 600)
+        value = self.get("engine_idle_timeout_seconds", 1200)
         try:
             value = int(value)
         except (TypeError, ValueError):
-            return 600
+            return 1200
         return max(0, value)
 
     def get_engine_binary_path(self, engine_id: str) -> str:

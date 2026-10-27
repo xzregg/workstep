@@ -3,7 +3,15 @@
 ```bash
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task list --project <project_id> --json
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task get --project <project_id> --task <task_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task history --project <project_id> --task <task_id> --limit 100 --offset 0 --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task reviews --project <project_id> --task <task_id> --json
 ```
+
+`history` reads messages (including coordinator replies and proposals) through the
+same project connection, including remote projects. `--limit` is 1–300 and
+`--offset` is a nonnegative server-side offset; keep paging until fewer messages
+than the requested limit are returned. `reviews` reads persisted review rounds
+and decisions. Both operations are read-only and preserve remote permissions.
 
 Create in the project default workflow:
 
@@ -116,4 +124,3 @@ the task before deciding what to do next; never blindly retry a mutation or
 also propose an operation already performed. Distinguish accepted starts from
 completed work, stop requests from completed stops, and queued messages from
 delivered messages.
-

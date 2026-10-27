@@ -38,7 +38,7 @@ test('remote metadata subscription merges snapshots with no catalog or single-pr
   let snapshotCalls = 0
   useProjectStore.setState({ projects: [remote], activeProject: remote, activeWorkflowId: null,
     fetchProjects: async () => { catalogCalls++ }, fetchRemoteProject: async () => { snapshotCalls++ } })
-  useWsSubscriptionStore.setState({ remoteProjectIds: [remote.id] })
+  useWsSubscriptionStore.setState({ remoteProjectIds: [remote.id], chatProjectIds: ['remote:chat-pane'] })
   globalThis.WebSocket = Socket as never
   Socket.instances = []
   context.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
@@ -48,7 +48,9 @@ test('remote metadata subscription merges snapshots with no catalog or single-pr
     await act(async () => root.render(<Harness />))
     const socket = Socket.instances[0]
     await act(async () => socket.open())
-    assert.deepEqual(socket.sent[0].remote_project_ids, [remote.id])
+    assert.deepEqual(socket.sent[0].remote_project_ids, [remote.id, 'remote:chat-pane'])
+    await act(async () => useWsSubscriptionStore.setState({ chatProjectIds: [] }))
+    assert.deepEqual(socket.sent.at(-1)?.remote_project_ids, [remote.id], 'closing remote chat panes preserves the sidebar subscription')
     await act(async () => socket.receive({ type: 'CUSTOM', name: 'workstep.remote_project_status', project_id: remote.id,
       value: { project_id: remote.id, status: 'updated', project: { ...remote,
         workflows: [{ id: 'flow', name: 'Updated flow', is_default: true, nodeCount: 1 }] } } }))

@@ -668,7 +668,7 @@
           "Beenden Sie nur, wenn wirklich keine Ausführung mehr gewünscht ist, und prüfen Sie die Bestätigung. Erzwungenes Bestehen überspringt das Review; prüfen Sie vorher das Ergebnis."
         ],
         "tips": [
-          "Ein beendeter Prozess beweist keine Qualität. Das manuelle Review ist Ihre Freigabe zum nächsten Schritt."
+          "Ein beendeter Prozess beweist keine Qualität. Das manuelle Review ist Ihre Freigabe zum nächsten Schritt. Bei pausierter Aufgabe mit prüfungsbereitem Schritt erscheint Wartet auf Review; abgeschlossene Aufgaben behalten den Abschlussstatus."
         ],
         "screenshot": {
           "id": "task-review",
@@ -801,6 +801,25 @@
     "title": "Projektchats und Skills",
     "summary": "Arbeiten Sie direkt im Projektkontext und wählen Sie verfügbare lokale Skills.",
     "sections": [
+      {
+        "title": "Mehrere Projektgespräche gleichzeitig bearbeiten",
+        "steps": [
+          "Öffnen Sie bei Desktopbreite ein normales Projektgespräch und wählen Sie rechts neben Neues Gespräch das Menü Gesprächsfenster (对话窗口) → Fenster hinzufügen (增加对话窗口).",
+          "Ziehen Sie ein Gespräch aus der Seitenleiste oder den letzten Chats in den Chatbereich. Berechtigte Projekte können gemischt werden, maximal 4 Bereiche; bereits geöffnete Gespräche werden fokussiert. Aufgabeneinträge lassen sich nicht als Chats hineinziehen.",
+          "Klicken Sie vor der Auswahl eines Seitenleistengesprächs den gewünschten Bereich an. Jeder Bereich behält Projekt, Sitzung, Entwurf und Engine-Einstellungen; prüfen Sie Projekt und Sitzung vor dem Senden.",
+          "Wählen Sie Gesprächsfenster → Anordnung (对话排列), dann horizontal oder vertikal. Ziehen Sie die Trennlinie, oder fokussieren Sie sie und ändern Sie die Größe mit Pfeiltasten.",
+          "Bei mehreren Bereichen schließt × nur diesen Bereich, ohne das Gespräch zu stoppen oder zu löschen. Nutzen Sie zum Abbrechen der Generierung die Stopptaste des Gesprächs."
+        ],
+        "tips": [
+          "Doppelklicken Sie am Desktop ein Gespräch in der Seitenleiste oder dessen Kopftitel, um den gemeinsamen Umbenennungsdialog zu öffnen und den Namen zu bestätigen.",
+          "Auf Mobilgeräten ist nur der aktive Bereich sichtbar; Trennlinien sind ausgeblendet, andere geöffnete Bereiche behalten ihren Zustand. Die Anordnung gilt für die aktuelle Seite; nach Neuladen wird die Wiederherstellung aller Bereiche nicht zugesichert."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Projektübergreifende Gesprächsbereiche und Anordnungsmenü",
+          "caption": "Echter Screenshot des festen Demoprojekts ausstehend: Fenstermenü, mehrere Bereiche und ziehbare Trennlinien."
+        }
+      },
       {
         "title": "Rollen oder Expertenteams in Chats laden",
         "steps": [
@@ -1208,7 +1227,7 @@
       {
         "title": "Kanal wählen und neue Plattform anbinden",
         "steps": [
-          "Öffnen Sie Einstellungen → Kanalbots, wählen Sie links die Plattform und rechts Name, Zugangsdaten und lokales Standardprojekt. Aktivieren und speichern Sie. Leere Schlüsselfelder behalten beim Bearbeiten alte Werte; prüfen Sie ungespeicherte Änderungen vor Wechsel.",
+          "Öffnen Sie Einstellungen → Kanalbots, wählen Sie links die Plattform und rechts Name, Zugangsdaten und lokales Standardprojekt. Aktivieren und speichern Sie. Leere Schlüsselfelder behalten beim Bearbeiten alte Werte; prüfen Sie ungespeicherte Änderungen vor Wechsel. Beim Schließen, mit Escape oder beim Wechsel des Einstellungsbereichs werden ungespeicherte Änderungen bestätigt; Abbrechen bewahrt den Entwurf.",
           "Feishu/Lark: Eigene Unternehmens-App mit Bot erstellen, App ID und App Secret eintragen. Aktivieren Sie nach Verbindung Langverbindungsereignisse, abonnieren Sie im.message.receive_v1 und card.action.trigger, erteilen Sie Nachrichten-/Kartenrechte und veröffentlichen Sie. Senden Sie privat oder per @Bot in Gruppen.",
           "Telegram: Bot über BotFather erstellen und Bot Token eintragen. Long Polling erlaubt keinen zweiten gleichzeitigen Poller; bestehende Webhooks muss ein Administrator entfernen. Privat Text senden, in Gruppen erwähnen oder auf den Bot antworten.",
           "Discord: Application ID und Bot Token eintragen, Message Content Intent sowie Kanal-Lese-/Schreibrechte aktivieren. In Serverkanälen Bot erwähnen; Aufgabenbindungen verwenden Kanal- oder Thread-ID.",
@@ -1367,7 +1386,7 @@
           "Fehlende Artefakte oder Fernzugriff: Tatsächliche Dateierzeugung beziehungsweise Host-Onlinezustand, Adressen, Schlüssel und Fristen getrennt prüfen."
         ],
         "tips": [
-          "Melden Sie Version, System, Engine, Reproduktionsschritte und bereinigten Fehlerscreenshot; keine Schlüssel senden."
+          "Melden Sie Version, System, Engine, Reproduktionsschritte und bereinigten Fehlerscreenshot; keine Schlüssel senden. Ohne ausdrückliche Konfiguration lösen 20 Minuten ohne Engine-Ereignis das Leerlaufzeitlimit aus, die Sitzung bleibt erhalten. Vorhandene eigene Zeitlimits bleiben; 0 deaktiviert es. Stilles Denken oder Werkzeuge sind nicht unbedingt blockiert: vor erneutem Start Protokolle prüfen."
         ],
         "screenshot": {
           "id": "task-error",

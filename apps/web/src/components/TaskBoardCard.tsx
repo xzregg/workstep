@@ -5,6 +5,7 @@ import { isTaskCompleted, isTaskNotStarted } from '../pages/taskDetailChat'
 import { formatConversationDateTime, formatDuration, toMilliseconds } from '../utils/datetime'
 import { formatScheduledStart } from '../utils/scheduledStart'
 import { formatTokenTotal } from '../utils/statistics'
+import { taskDisplayStatus } from '../utils/taskDisplayStatus'
 import Button from './Button'
 import Icon from './Icon'
 import MarqueeText from './MarqueeText'
@@ -68,11 +69,7 @@ export default function TaskBoardCard({
   const status = task.status || 'ready'
   const taskNotStarted = isTaskNotStarted(task.steps || [])
   const taskCompleted = isTaskCompleted(task.steps || [])
-  const stepStatus = ['reviewing', 'awaiting_review', 'retrying', 'rejected']
-    .find((candidate) =>
-      (task.steps || []).some((step: any) => step.status === candidate)
-    )
-  const displayStatus = taskCompleted ? 'done' : stepStatus || status
+  const { stepStatus, displayStatus } = taskDisplayStatus(status, task.steps || [], taskCompleted)
   const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
   const isRunning = status === 'running'
   const startedMs = toMilliseconds(task.first_message_at)

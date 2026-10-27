@@ -2015,6 +2015,10 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
             assert "Do not silently stop or restart" in rules
             assert "execute the agreed step operations in this same turn" in rules
             assert "do not wait for another user message" in rules
+            assert "For consultation, explanations, status questions or plan discussion, answer directly" in rules
+            assert "proposal=null and questions=[]" in rules
+            assert "Do not invent a step operation or ask for execution confirmation" in rules
+            assert "Only propose an action when a concrete operation needs user confirmation" in rules
         assert "Use a proposal for an executable stage action;" not in instructions
         assert "create task worktrees" not in instructions
         assert len(instructions) < 5200
@@ -2490,6 +2494,12 @@ async def test_wecom_group_coordinator_streams_sdk_text_before_turn_finishes(api
     from services.channels.bots import BotManager
     from services.channels.wecom import WeComAdapter
     import main
+
+    # This test owns a fake engine; probing installed CLI binaries can consume
+    # its streaming deadline before any fake-engine event is emitted.
+    monkeypatch.setattr("agent_assistants.coordinator.get_available_engines", lambda: [
+        {"id": "claude", "installed": True, "supports_coordinator": True},
+    ])
 
     client, tmp_path = api_context
     project_id, task_id = await _create_task(client, tmp_path)

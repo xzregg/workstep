@@ -97,7 +97,7 @@ class SystemCollector:
         disk_path = self.config_dir
         while not disk_path.exists() and disk_path != disk_path.parent:
             disk_path = disk_path.parent
-        disk = read(lambda: psutil.disk_usage(disk_path))
+        disk = read(lambda: psutil.disk_usage(str(disk_path)))
         network = read(psutil.net_io_counters)
         recv_rate = sent_rate = None
         if network is not None:

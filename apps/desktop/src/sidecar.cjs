@@ -72,7 +72,7 @@ function backendLaunch(resourcesPath, platform = process.platform) {
   }
 }
 
-function startSidecar({ executable, args = [], port, env = process.env, timeoutMs = 30_000, logger }) {
+function startSidecar({ executable, args = [], port, env = process.env, timeoutMs = 120_000, logger }) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, [...args, ...buildBackendArgs(port)], {
       env,

@@ -14,6 +14,16 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('builtin language selection', () => {
   for (const lang of ['zh-CN', 'en-US', 'fr-FR', 'de-DE', 'ar'] as const) {
+    it(`documents the desktop conversation workspace in ${lang}`, () => {
+      const chapter = getManualChapters(lang).find(chapter => chapter.id === 'chat-skills')!
+      const section = chapter.sections.find(section => section.screenshot?.id === 'chat-workspace')!
+      expect(section).toBeDefined()
+      expect(section.steps.length).toBeGreaterThanOrEqual(4)
+      expect(section.steps.join(' ')).toContain('4')
+      expect(section.tips?.length).toBeGreaterThanOrEqual(2)
+    })
+  }
+  for (const lang of ['zh-CN', 'en-US', 'fr-FR', 'de-DE', 'ar'] as const) {
     it(`documents QQ setup and OpenID binding in ${lang}`, () => {
       const chapter = getManualChapters(lang).find(chapter => chapter.id === 'bots')!
       expect(chapter.summary).toContain('QQ')

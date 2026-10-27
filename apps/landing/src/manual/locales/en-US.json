@@ -668,7 +668,7 @@
           "If execution is no longer wanted, choose Terminate and verify the confirmation. Force approval skips the current review, so first check that outputs are usable."
         ],
         "tips": [
-          "A process ending does not prove quality. Manual review is your checkpoint before the next step."
+          "A process ending does not prove quality. Manual review is your checkpoint before the next step. When a task is paused with a step awaiting review, it displays Awaiting review; a completed task still displays its completed state."
         ],
         "screenshot": {
           "id": "task-review",
@@ -801,6 +801,25 @@
     "title": "Project chat and skills",
     "summary": "Collaborate directly in project context and choose which local skills a project may use.",
     "sections": [
+      {
+        "title": "Work with multiple project conversations",
+        "steps": [
+          "At desktop width, open an ordinary project conversation and choose Conversation windows (对话窗口) → Add conversation window (增加对话窗口), to the right of New conversation.",
+          "Drag a conversation from the sidebar or Recent chats into the chat area. Authorized projects may be mixed, with at most 4 panes; dropping an already open conversation focuses its pane. Task records cannot be dragged in as chats.",
+          "Click the pane you want to use before selecting a sidebar conversation. Each pane keeps its own project, session, draft and engine settings; verify the project and session before sending.",
+          "Choose Conversation windows → Conversation arrangement (对话排列), then horizontal or vertical. Drag the separator to resize; focus it and use arrow keys for keyboard resizing.",
+          "With multiple panes, × closes only that pane, without stopping or deleting the conversation. Use the conversation's Stop button to stop generation."
+        ],
+        "tips": [
+          "On desktop, double-click a sidebar conversation or its header title to open the shared rename dialog, then enter and confirm the name.",
+          "On phones, only the active pane is shown and resize separators are hidden; other open pane states remain. Arrangement is page-local and all panes are not guaranteed to return after refresh."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Desktop conversation panes across projects and arrangement menu",
+          "caption": "Real screenshot from the fixed demo project is pending: conversation window menu, multiple panes and draggable separators."
+        }
+      },
       {
         "title": "Load a role or expert team into chat",
         "steps": [
@@ -1208,7 +1227,7 @@
       {
         "title": "Choose a channel and connect a new platform",
         "steps": [
-          "Open Settings → Channel bots, select a platform on the left, and enter a name, credentials and default local project on the right. Enable and save. Empty secrets retain existing values when editing; check unsaved changes before switching.",
+          "Open Settings → Channel bots, select a platform on the left, and enter a name, credentials and default local project on the right. Enable and save. Empty secrets retain existing values when editing; check unsaved changes before switching. Closing settings, pressing Escape or switching settings sections asks for confirmation when changes are unsaved; canceling preserves the draft.",
           "For Feishu or Lark, create a custom enterprise app with bot support and enter App ID and App Secret. After connection, enable long-connection events, subscribe to im.message.receive_v1 and card.action.trigger, configure message/card permissions and publish. Send a private message or mention the bot in a group.",
           "For Telegram, create a bot with BotFather and enter its Bot Token. Long polling is used; no other program can poll that bot simultaneously. Administrators must remove any existing Webhook first. Send private text, or mention/reply to it in groups.",
           "For Discord, enter Application ID and Bot Token, enable Message Content Intent and grant channel read/send permissions. Mention the bot in server channels; bind tasks using channel or thread IDs.",
@@ -1367,7 +1386,7 @@
           "For missing artifacts or remote access failure, check actual file generation or host availability, address, key and authorization expiry respectively."
         ],
         "tips": [
-          "When reporting issues, include version, OS, engine, reproduction steps and redacted error screenshots, never credentials."
+          "When reporting issues, include version, OS, engine, reproduction steps and redacted error screenshots, never credentials. Without an explicit setting, 20 continuous minutes without engine events triggers the idle timeout while retaining the session. Existing custom timeouts remain; 0 disables it. Quiet thinking or tools are not necessarily stalled: inspect logs before rerunning."
         ],
         "screenshot": {
           "id": "task-error",

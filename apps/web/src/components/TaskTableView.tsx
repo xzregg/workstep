@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import type { Task } from '../api/client'
 import { useI18n, type TKey } from '../i18n'
 import { formatDuration, toMilliseconds } from '../utils/datetime'
+import { taskDisplayStatus } from '../utils/taskDisplayStatus'
 import { isTaskCompleted } from '../pages/taskDetailChat'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -53,9 +54,7 @@ const TABLE_COLUMN_WIDTHS = ['5%', '35%', '14%', '13%', '15%', '18%']
 function getDisplayInfo(task: Task, durationNowMs: number) {
   const status = task.status || 'ready'
   const taskCompleted = isTaskCompleted(task.steps || [])
-  const stepStatus = ['reviewing', 'awaiting_review', 'retrying', 'rejected']
-    .find((candidate) => (task.steps || []).some((step) => step.status === candidate))
-  const displayStatus = taskCompleted ? 'done' : stepStatus || status
+  const { stepStatus, displayStatus } = taskDisplayStatus(status, task.steps || [], taskCompleted)
   const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
   const startedMs = toMilliseconds(task.first_message_at)
   const createdMs = toMilliseconds(task.created_at)

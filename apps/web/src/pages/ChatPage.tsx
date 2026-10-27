@@ -69,21 +69,23 @@ export interface EmbeddedProjectChat {
   placeholder?: string
 }
 
-export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat } = {}) {
+export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjectChat; pane?: EmbeddedProjectChat & { active?: boolean; headerActions?: ReactNode; closeAction?: ReactNode } } = {}) {
+  const controlled = embedded || pane
+  const isControlled = Boolean(controlled)
   const isEmbedded = Boolean(embedded)
   const beforeSend = embedded?.beforeSend
   const { t, locale } = useI18n()
   const routeNavigate = useNavigate()
-  const changeEmbeddedSession = embedded?.onSessionChange
+  const changeEmbeddedSession = controlled?.onSessionChange
   const navigate = useMemo(() => !changeEmbeddedSession ? routeNavigate : ((to: unknown) => {
     if (typeof to === 'string' && to.startsWith('/chat')) {
       changeEmbeddedSession(new URL(to, window.location.origin).searchParams.get('session'))
     }
   }) as NavigateFunction, [routeNavigate, changeEmbeddedSession])
   const [searchParams] = useSearchParams()
-  const projectParam = embedded ? embedded.project.name : searchParams.get('project')
-  const workflowParam = embedded ? null : searchParams.get('workflow')
-  const sessionParam = embedded ? embedded.sessionId : searchParams.get('session')
+  const projectParam = controlled ? controlled.project.name : searchParams.get('project')
+  const workflowParam = controlled ? null : searchParams.get('workflow')
+  const sessionParam = controlled ? controlled.sessionId : searchParams.get('session')
 
   const {
     projects,
@@ -93,11 +95,11 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
     setActiveProject,
     setActiveWorkflow,
   } = useProjectStore()
-  const activeProject = embedded?.project || selectedProject
+  const activeProject = controlled?.project || selectedProject
 
   // 草稿/队列等本地状态必须按 URL 中的项目归属保存；
   // activeProject 可能因点击侧栏其他项目的流程而先行变化。
-  const routeProjectId = embedded?.project.id || (
+  const routeProjectId = controlled?.project.id || (
     projectParam
       ? projects.find((item) => item.name === projectParam)?.id
       : activeProject?.id
@@ -205,7 +207,8 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
     navigate,
     onHandoffSettled: () => { setConfigReopenSignal((n) => n + 1) },
   })
-  const quickButtons = useChatListStore((s) => s.quickButtons)
+  const scopedQuickButtons = useChatListStore((s) => s.quickButtonsByProject[routeProjectId])
+  const quickButtons = useMemo(() => scopedQuickButtons || [], [scopedQuickButtons])
   const projectActions = useProjectActions(activeProject?.id, sessionId)
   // AssistantChatPanel 的消息行是 memo 化的：copy/quickPrompts/回调必须引用稳定，
   // 否则流式期间每个 token 都会击穿 memo，历史气泡全量重渲染。
@@ -235,7 +238,7 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
 
   // Resolve project/workflow from the URL (mirrors CanvasEditor's loader).
   useEffect(() => {
-    if (isEmbedded) return
+    if (isControlled) return
     if (!projectParam) return
     const match = projects.find((project) => project.name === projectParam)
     if (!match) {
@@ -251,7 +254,7 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
       const targetWf = match.workflows?.find((workflow) => workflow.id === workflowParam)
       if (targetWf) setActiveWorkflow(targetWf.id)
     }
-  }, [isEmbedded, projectParam, workflowParam, projects, projectsLoading, fetchProjects, setActiveProject, setActiveWorkflow])
+  }, [isControlled, projectParam, workflowParam, projects, projectsLoading, fetchProjects, setActiveProject, setActiveWorkflow])
 
   // Engine defaults + per-project quick buttons.
   // Only re-fetch when the project changes; session switching does not affect config.
@@ -433,14 +436,14 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
   }
 
   if (historyLoading && !historyReady && sessionId && !messages.length) {
-    return <div className="chat-session-empty" role="status"><Spinner size={16} />{t('common.loading')}</div>
+    return <div className="chat-session-empty" role="status"><Spinner size={16} />{t('common.loading')}{!compact && pane?.closeAction}</div>
   }
 
   if (historyError && sessionId) {
     return <div className="chat-session-empty" role="alert">
       <EmptyState icon={<Icon name="bot" size={40} strokeWidth={1.5} />}
         title={t('chatSession.title')} description={historyError}
-        action={<Button variant="primary" onClick={retryHistory}>{t('common.retry')}</Button>} />
+        action={<div className="chat-session-empty-actions"><Button variant="primary" onClick={retryHistory}>{t('common.retry')}</Button>{!compact && pane?.closeAction}</div>} />
     </div>
   }
 
@@ -457,6 +460,8 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
                 {can('session.create') && <Button variant="primary" loading={creating} onClick={() => void createSession()}>
                   {t('chatSession.createFirst')}
                 </Button>}
+                {!compact && pane?.closeAction}
+                {!compact && pane?.headerActions}
                 {can('session.manage') && <Button variant="ghost" onClick={() => setShowArchive(true)}>
                   <Icon name="archive" size={13} />{t('chatSession.viewArchive')}
                 </Button>}
@@ -480,6 +485,8 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
         sessionId={sessionId}
         headerContext={<ChannelConversationContext projectId={activeProject.id} sessionId={sessionId} />}
         title={sessionTitle || t('chatSession.title')}
+        onTitleDoubleClick={!compact && !isEmbedded && can('session.manage') ? () => setRenameOpen(true) : undefined}
+        hideHeaderStatus={!isEmbedded}
         messages={messages}
         actionRuns={projectActions.runs}
         onStopAction={(runId) => { void projectActions.stop(runId) }}
@@ -527,6 +534,8 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
             >
               {t('chatSession.newSession')}
             </Button>}
+            {!compact && pane?.closeAction}
+            {!compact && pane?.headerActions}
             {can('session.manage') && <Button
               variant="ghost"
               size="sm"
@@ -636,7 +645,7 @@ export default function ChatPage({ embedded }: { embedded?: EmbeddedProjectChat 
         onClose={() => setShowSettingsPanel(false)}
       />
       {can('session.manage') && showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
-      {!embedded && compact && createPortal(
+      {!embedded && pane?.active !== false && compact && createPortal(
         <button
           className="mobile-session-kebab"
           aria-label={t('chatSession.sessionMenu')}

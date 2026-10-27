@@ -12,7 +12,7 @@ import './BotSettings.css'
 
 const initials: Record<BotPlatform, string> = { wecom: '企', dingtalk: '钉', feishu: '飞', lark: 'L', telegram: 'T', discord: 'D', slack: 'S', qq: 'Q' }
 
-export default function BotSettings() {
+export default function BotSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
   const { t } = useI18n()
   const fetchProjects = useProjectStore(state => state.fetchProjects)
   const [bots, setBots] = useState<ChannelBot[]>([])
@@ -26,6 +26,11 @@ export default function BotSettings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+    return () => onDirtyChange?.(false)
+  }, [dirty, onDirtyChange])
 
   const reload = async () => setBots(await channelBotApi.list())
   useEffect(() => {

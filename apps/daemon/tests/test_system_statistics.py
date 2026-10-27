@@ -197,6 +197,74 @@ def test_windows_handles_and_network_counter_reset(monkeypatch, tmp_path):
     assert collector()['host']['network_recv_per_second'] is None
 
 
+def test_windows_disk_usage_receives_string_for_nearest_existing_directory(monkeypatch, tmp_path):
+    import services.system_statistics as module
+    collector, _, _, _, _ = setup_collector(monkeypatch, tmp_path)
+    monkeypatch.setattr(module.platform, 'system', lambda: 'Windows')
+    collector.config_dir = tmp_path / 'not-created' / 'config'
+    paths = []
+
+    def disk_usage(path):
+        if not isinstance(path, str):
+            raise TypeError('argument 1 must be str, not WindowsPath')
+        paths.append(path)
+        return SimpleNamespace(total=10000, used=3000, free=7000, percent=30)
+
+    monkeypatch.setattr(module.psutil, 'disk_usage', disk_usage)
+    report = collector()
+    assert paths == [str(tmp_path)]
+    assert report['host']['disk_free'] == 7000
+    assert report['partial'] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('disk_denied', [False, True])
+async def test_windows_collector_publishes_system_api_sample(monkeypatch, tmp_path, disk_denied):
+    import time
+    import api.statistics as api
+    import services.system_statistics as module
+
+    real_monotonic, real_time = time.monotonic, time.time
+    collector, _, _, _, _ = setup_collector(monkeypatch, tmp_path)
+    # The async sampler and canary must use the actual event-loop clock.
+    monkeypatch.setattr(module.time, 'monotonic', real_monotonic)
+    monkeypatch.setattr(module.time, 'time', real_time)
+    monkeypatch.setattr(module.platform, 'system', lambda: 'Windows')
+
+    def disk_usage(path):
+        if not isinstance(path, str):
+            raise TypeError('argument 1 must be str, not WindowsPath')
+        if disk_denied:
+            raise PermissionError('disk access denied')
+        return SimpleNamespace(total=10000, used=3000, free=7000, percent=30)
+
+    monkeypatch.setattr(module.psutil, 'disk_usage', disk_usage)
+    service = SystemStatistics(collector=collector, interval=.01)
+    monkeypatch.setattr(api, 'system_statistics', service)
+    app = FastAPI()
+    app.include_router(api.router)
+    await service.start()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app, client=('127.0.0.1', 123)),
+                               base_url='http://localhost') as client:
+            for _ in range(100):
+                response = await asyncio.wait_for(client.get('/api/statistics/system'), .2)
+                assert response.status_code == 200
+                report = response.json()
+                if len(report['history']) >= 2:
+                    break
+                await asyncio.sleep(.01)
+        assert report['status'] == 'ok'
+        assert len(report['history']) >= 2
+        assert report['sample']['platform'] == 'Windows'
+        assert report['sample']['descriptor_kind'] == 'handles'
+        assert report['sample']['daemon']['descriptors'] == 12
+        assert report['sample']['host']['disk_free'] == (None if disk_denied else 7000)
+        assert report['sample']['partial'] is disk_denied
+    finally:
+        await service.close()
+
+
 def test_real_system_collector_returns_only_process_counts_and_not_private_details(tmp_path):
     report = SystemCollector(tmp_path)()
     assert report['daemon']['pid'] > 0

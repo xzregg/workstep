@@ -667,7 +667,7 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 
 ### 8.1 空闲超时保护
 
-`TaskRunner` 对每个步骤执行带空闲看门狗：引擎在 `engine_idle_timeout_seconds`（配置 `~/.workstep/config.json`，默认 600s，0 表示关闭）内没有产生任何事件（如 API 链路卡死）时，runner 会调用 `engine.stop()` 终止引擎、关闭事件流，并把步骤标记为 `failed`（错误信息含「引擎空闲超时」）。**不会清除引擎 Session**：`taskstep.session_id` 保留，重新执行该步骤会以同一 session 恢复（如 Claude Agent SDK `--resume`）。
+`TaskRunner` 与共享聊天运行时 `AssistantRuntime` 的空闲看门狗默认 1200 秒（20 分钟），为长时间思考和工具执行留出更长等待时间，同时限制持续静默的执行。可在 `~/.workstep/config.json` 设置 `engine_idle_timeout_seconds` 调整（单位秒；默认 1200；0 表示关闭；无效配置回退到 1200）。启用后，超过设定时间没有引擎事件，运行时会调用 `engine.stop()` 停止执行；流程步骤标记为 `failed`，聊天回合标记为 `error`，错误信息含「引擎空闲超时」。**不会清除引擎 Session**：重新执行步骤或重新发送消息可使用保留的会话恢复。配置读取遵循 `WORKSTEP_CONFIG_DIR`。
 
 进程内 SDK 引擎（Claude Agent SDK、Qoder SDK）的 session 在回合结束后仍保持打开，需要主动结束。它们的输入采用**流式 prompt 源**：初始 prompt 与后续插入消息都经 `client.query(AsyncIterable)` 写入 stdin，输入源结束 → SDK `end_input()` 关闭 stdin → CLI 收到 EOF 处理完当前回合后优雅退出 → SDK 发出流结束帧（`end`），事件流随之结束。这就是确定性的「主动结束事件」，不依赖超时兜底。
 

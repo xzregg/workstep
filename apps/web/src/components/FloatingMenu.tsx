@@ -21,6 +21,8 @@ export interface FloatingMenuOption {
   label: string
   description?: string
   disabled?: boolean
+  /** Allow a menu entry to reveal another level without dismissing the menu. */
+  keepOpen?: boolean
 }
 
 export interface AnchorRect {
@@ -38,8 +40,8 @@ export interface FloatingMenuProps {
   onClose: () => void
   /** Trigger button: clicks on it do not close the menu (toggle handled by the caller). */
   triggerRef?: RefObject<HTMLElement | null>
-  /** Which way the menu opens from the trigger: right (default) or above. */
-  side?: 'right' | 'top'
+  /** Which way the menu opens from the trigger. */
+  side?: 'right' | 'top' | 'bottom'
   /** Called with true/false while the pointer enters/leaves the menu (hover flyouts). */
   onHoverChange?: (hovering: boolean) => void
   icon?: 'terminal' | 'sparkles' | 'sliders-horizontal' | 'image' | 'shield'
@@ -105,15 +107,16 @@ export default function FloatingMenu({
     const gutter = 8
     let left: number
     let top: number
-    if (side === 'top') {
-      // Open above the trigger, right-aligned with its right edge.
+    if (side === 'top' || side === 'bottom') {
+      // Open vertically, right-aligned with the trigger, flipping at the viewport edge.
       left = anchor.left + anchor.width - menuWidth
       if (left < gutter) left = Math.max(gutter, anchor.left)
       if (left + menuWidth > window.innerWidth - gutter) {
         left = Math.max(gutter, window.innerWidth - menuWidth - gutter)
       }
-      top = anchor.top - menuHeight - 6
-      if (top < gutter) top = anchor.top + anchor.height + 6
+      top = side === 'top' ? anchor.top - menuHeight - 6 : anchor.top + anchor.height + 6
+      if (side === 'top' && top < gutter) top = anchor.top + anchor.height + 6
+      if (side === 'bottom' && top + menuHeight > window.innerHeight - gutter) top = Math.max(gutter, anchor.top - menuHeight - 6)
     } else {
       // Open to the right of the trigger; when that would overflow the
       // viewport, open to its left instead (kept adjacent, never covering
@@ -192,7 +195,7 @@ export default function FloatingMenu({
             disabled={option.disabled}
             onClick={() => {
               onSelect(option.value)
-              onClose()
+              if (!option.keepOpen) onClose()
             }}
             style={{
               height: 'auto', minHeight: 30, paddingTop: 5, paddingBottom: 5,

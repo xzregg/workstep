@@ -7,6 +7,7 @@ const {
   parseReadyPort,
   protocolPath,
   resolveBackendPort,
+  startSidecar,
 } = require('../src/sidecar.cjs')
 const {
   isAllowedExternalUrl,
@@ -16,6 +17,18 @@ const {
   sessionsHaveActiveWork,
   primaryNetworkIPv4,
 } = require('../src/security.cjs')
+
+test('cold backend startup has a bounded two-minute readiness budget', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = startSidecar({
+    executable: process.execPath,
+    args: ['-e', 'setInterval(() => {}, 1000)'],
+    port: 0,
+  })
+  const rejected = assert.rejects(pending, /within 120000ms/)
+  t.mock.timers.tick(120_000)
+  await rejected
+})
 
 test('packaged desktop launches the bundled writable Python runtime', () => {
   assert.deepEqual(backendLaunch('/Applications/WorkStep/resources', 'darwin'), {

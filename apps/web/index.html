@@ -37,6 +37,20 @@
       // This must run without importing the application: its module may fail to load or evaluate.
       (function () {
         var root = document.getElementById('root');
+        function freshReload() {
+          var target = new URL(window.location.href);
+          target.searchParams.set('_workstep_reload', String(Date.now()));
+          window.location.replace(target.href);
+        }
+        // An open tab can still refer to a chunk removed by an application update.
+        window.addEventListener('vite:preloadError', function (event) {
+          if (new URL(window.location.href).searchParams.has('_workstep_reload')) {
+            showFailure('WorkStep 资源加载失败，请检查网络后重新加载。');
+            return;
+          }
+          event.preventDefault();
+          freshReload();
+        });
         function waiting() { return !root.firstElementChild || !!root.querySelector('.app-loading'); }
         function cleanup() {
           clearTimeout(timer);
@@ -56,7 +70,7 @@
           actions.className = 'app-startup-actions';
           var retry = document.createElement('button');
           retry.textContent = '重新加载';
-          retry.onclick = function () { window.location.reload(); };
+          retry.onclick = freshReload;
           actions.appendChild(retry);
           if (/^\/workspace\/[^/]+(?:\/|$)/.test(window.location.pathname)) {
             var back = document.createElement('a');

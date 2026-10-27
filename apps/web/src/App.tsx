@@ -11,7 +11,7 @@ import TaskList from './pages/TaskList'
 import CanvasEditor from './pages/CanvasEditor'
 import StatisticsPage from './pages/StatisticsPage'
 import SchedulePage from './pages/SchedulePage'
-import ChatPage from './pages/ChatPage'
+import ChatWorkspace from './pages/ChatWorkspace'
 import GitWorkspace from './pages/GitWorkspace'
 import SharedTaskView from './pages/SharedTaskView'
 import { gatewayShareApi, isGatewayPublicShare } from './api/gatewayShare'
@@ -83,7 +83,7 @@ export function AppRoutes() {
         <Route path="/canvas" element={<ProjectPermissionGate permission="workflow.read"><CanvasEditor /></ProjectPermissionGate>} />
         <Route path="/statistics" element={<ProjectPermissionGate permission="statistics.read"><StatisticsPage /></ProjectPermissionGate>} />
         <Route path="/schedules" element={activeProject ? <ProjectPermissionGate permission="schedule.read"><SchedulePage /></ProjectPermissionGate> : <WelcomeView />} />
-        <Route path="/chat" element={activeProject ? <ProjectPermissionGate permission="session.read"><ChatPage /></ProjectPermissionGate> : <WelcomeView />} />
+        <Route path="/chat" element={activeProject ? <ProjectPermissionGate permission="session.read"><ChatWorkspace /></ProjectPermissionGate> : <WelcomeView />} />
         <Route path="/appearance" element={<main className="personal-appearance-page"><AppearanceSettings /></main>} />
         <Route path="*" element={<WelcomeView />} />
       </Routes>

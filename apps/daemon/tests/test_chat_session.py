@@ -4241,6 +4241,49 @@ async def test_invoke_engine_image_config_does_not_block_event_loop(monkeypatch)
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("use_config_getter", [False, True])
+@pytest.mark.parametrize("silent_seconds, expected_status", [(601, "completed"), (1201, "error")])
+async def test_chat_silent_turn_uses_twenty_minute_default_timeout(
+    chat_module, monkeypatch, use_config_getter, silent_seconds, expected_status,
+):
+    import agent_assistants.base as base
+    from services.config import ConfigStore
+
+    module, _bus, _manager, project, config_store = chat_module
+    if use_config_getter:
+        monkeypatch.setattr(
+            config_store, "get_engine_idle_timeout_seconds",
+            lambda: ConfigStore.get_engine_idle_timeout_seconds(config_store),
+            raising=False,
+        )
+    elapsed = 0
+    original_monotonic = time.monotonic
+    monkeypatch.setattr(
+        base, "time", SimpleNamespace(monotonic=lambda: original_monotonic() + elapsed)
+    )
+    monkeypatch.setattr(base, "IDLE_WATCHDOG_POLL_SECONDS", 0.01)
+    session = module.create_session(project.id)
+
+    async def silent_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs
+    ):
+        nonlocal elapsed
+        elapsed += silent_seconds
+        await asyncio.sleep(0.05)
+        return "长时间执行后的结果", [], "silent-session"
+
+    monkeypatch.setattr(module, "_invoke", silent_invoke)
+    accepted = module.submit_message(project.id, session["id"], "hi", "silent-1")
+    assert await _wait_turn(module, accepted.turn_id) == expected_status
+    detail = module.get_session(project.id, session["id"])
+    content = detail["messages"][-1]["content"]
+    if expected_status == "completed":
+        assert content == "长时间执行后的结果"
+    else:
+        assert "1200s 无输出" in content
+
+
+@pytest.mark.anyio
 async def test_chat_turn_idle_timeout_errors_and_preserves_session(
     chat_module, monkeypatch
 ):

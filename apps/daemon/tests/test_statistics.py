@@ -518,6 +518,38 @@ def test_statistics_rejects_invalid_scope_and_range(statistics_fixture):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize('timezone_name', [
+    'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Kolkata', 'Europe/London',
+    'America/New_York', 'Australia/Sydney', 'UTC',
+])
+async def test_statistics_api_without_system_timezone_database(statistics_fixture, monkeypatch, timezone_name):
+    import zoneinfo
+    from fastapi import FastAPI
+    import api.statistics as statistics_api
+
+    manager, project, _, base = statistics_fixture
+    monkeypatch.setattr(statistics_api, "project_manager", manager)
+    app = FastAPI()
+    app.include_router(statistics_api.router)
+    original_path = zoneinfo.TZPATH
+    zoneinfo.reset_tzpath(())  # Windows has no system IANA timezone database.
+    zoneinfo.ZoneInfo.clear_cache()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/statistics/overview", params={
+                "project_id": project.id, "range": "custom",
+                "start": base.isoformat(), "end": (base + timedelta(days=1)).isoformat(),
+                "timezone": timezone_name,
+            })
+            assert response.status_code == 200, response.text
+            invalid = await client.get("/api/statistics/overview", params={"timezone": "Mars/Olympus"})
+            assert invalid.status_code == 422
+    finally:
+        zoneinfo.reset_tzpath(original_path)
+        zoneinfo.ZoneInfo.clear_cache()
+
+
+@pytest.mark.anyio
 async def test_statistics_api_returns_overview(statistics_fixture, monkeypatch):
     import api.statistics as statistics_api
     import main

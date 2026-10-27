@@ -16,6 +16,46 @@ from services.tool_registry import WorkstepClient
 from services.local_cli import LocalCliRuntime, local_cli_headers, credential_path
 
 
+def test_cli_credentials_follow_the_shared_config_directory(tmp_path, monkeypatch):
+    import services.config as config
+    monkeypatch.delenv('WORKSTEP_CONFIG_DIR', raising=False)
+    monkeypatch.setattr(config, 'CONFIG_DIR', tmp_path / 'isolated-config')
+    assert credential_path('http://127.0.0.1:8765').parent == config.CONFIG_DIR / 'cli-runtime'
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='PID liveness is verified on POSIX')
+def test_another_process_cannot_replace_a_live_cli_instance(tmp_path, monkeypatch):
+    monkeypatch.setenv('WORKSTEP_CONFIG_DIR', str(tmp_path))
+    runtime = LocalCliRuntime('http://127.0.0.1:8765')
+    runtime.publish()
+    path = credential_path(runtime.url)
+    value = json.loads(path.read_text())
+    value['pid'] = os.getppid()
+    path.write_text(json.dumps(value))
+    original = path.read_bytes()
+    replacement = LocalCliRuntime(runtime.url)
+    with pytest.raises(RuntimeError, match='another live process'):
+        replacement.publish()
+    replacement.close()
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize('failure', ['rejected', 'timeout'])
+def test_windows_acl_failure_records_cause_without_environment(tmp_path, monkeypatch, caplog, failure):
+    import services.local_cli as cli
+    monkeypatch.setattr(cli, 'os', SimpleNamespace(name='nt', environ={'SECRET': 'never-log-this'}))
+
+    def run(arguments, **kwargs):
+        if failure == 'timeout':
+            raise cli.subprocess.TimeoutExpired(arguments, 10)
+        return SimpleNamespace(returncode=1, stderr=b'Access is denied')
+
+    monkeypatch.setattr(cli.subprocess, 'run', run)
+    assert not cli._windows_private([tmp_path], protect=True)
+    assert ('Access is denied' if failure == 'rejected' else 'timed out') in caplog.text
+    assert 'never-log-this' not in caplog.text
+
+
 def test_windows_acl_child_does_not_inherit_incompatible_powershell_module_path(tmp_path, monkeypatch):
     import services.local_cli as cli
     inherited = {'PSMODULEPATH': 'powershell-seven-modules', 'OTHER': 'retained'}
@@ -68,6 +108,53 @@ async def test_local_cli_reads_projects_in_gateway_mode_without_login(tmp_path, 
         assert (await client.get('/api/project/list', headers=headers)).status_code == 401
     await asyncio.to_thread(runtime.close)
     assert local_cli_headers(url) == {}
+
+
+@pytest.mark.anyio
+async def test_local_cli_reads_remote_tasks_without_forwarding_local_credentials(tmp_path, monkeypatch):
+    from api.remote_project_proxy import RemoteProjectProxyMiddleware
+    from services.remote_protocol import RemoteHttpResponse
+    from services.remote_registry import RemoteProjectRegistry
+    from tests.test_remote_project import MemoryConfig
+
+    monkeypatch.setenv('WORKSTEP_CONFIG_DIR', str(tmp_path))
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.delenv('WORKSTEP_DESKTOP_TOKEN', raising=False)
+    url = 'http://127.0.0.1:8765'
+    runtime = LocalCliRuntime(url)
+    await asyncio.to_thread(runtime.publish)
+    config = MemoryConfig()
+    config.set('remote_projects', [{'id': 'remote:abc', 'name': 'Remote project'}])
+    forwarded = []
+    remote_status = 200
+
+    class Manager:
+        async def request(self, project_id, request):
+            forwarded.append((project_id, request))
+            return RemoteHttpResponse(
+                request_id=request.request_id, status=remote_status,
+                headers={'content-type': 'application/json'},
+                body=json.dumps({'id': 'task-1', 'status': 'paused'} if remote_status == 200
+                                else {'detail': 'project scope denied'}).encode(),
+            )
+
+    app = FastAPI()
+    app.state.local_cli_runtime = runtime
+    app.state.gateway_client = SimpleNamespace(managed_config=object(), local_sessions=ManagedLocalSessions())
+    app.add_middleware(RemoteProjectProxyMiddleware, registry=RemoteProjectRegistry(config), client_manager=Manager())
+    app.add_middleware(DesktopSecurityMiddleware)
+    transport = httpx.ASGITransport(app=app, client=('127.0.0.1', 43210))
+    try:
+        client = WorkstepClient(base_url=url, transport=transport)
+        result = await client.call('workstep_get_task', {'project_id': 'remote:abc', 'task_id': 'task-1'})
+        assert result == {'id': 'task-1', 'status': 'paused'}
+        assert forwarded[0][0] == 'remote:abc'
+        assert not any('token' in key.lower() for key in forwarded[0][1].headers)
+        remote_status = 403
+        result = await client.call('workstep_get_task', {'project_id': 'remote:abc', 'task_id': 'task-1'})
+        assert result == {'ok': False, 'error': 'project scope denied'}
+    finally:
+        await asyncio.to_thread(runtime.close)
 
 
 def test_credentials_are_port_scoped_private_and_restart_safe(tmp_path, monkeypatch):
@@ -125,6 +212,19 @@ async def test_credential_disk_io_does_not_block_cli_event_loop(tmp_path, monkey
     assert time.monotonic() - started < 0.08
     assert not task.done()
     await task
+
+
+@pytest.mark.anyio
+async def test_missing_local_credentials_explain_daemon_repair_instead_of_browser_login(tmp_path, monkeypatch):
+    monkeypatch.setenv('WORKSTEP_CONFIG_DIR', str(tmp_path))
+    monkeypatch.delenv('WORKSTEP_DESKTOP_TOKEN', raising=False)
+    result = await WorkstepClient(base_url='http://127.0.0.1:8765', transport=httpx.MockTransport(
+        lambda request: httpx.Response(401, json={'detail': 'desktop authentication required'}),
+    )).call('workstep_list_projects')
+    assert result['ok'] is False
+    assert '本机 CLI 凭据' in result['error']
+    assert '重启目标 daemon' in result['error']
+    assert '无需在浏览器登录' in result['error']
 
 
 @pytest.mark.anyio

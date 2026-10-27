@@ -17,9 +17,12 @@ import { formatConversationDateTime, formatRelativeTime } from '../utils/datetim
 import RecentConversationActions from './RecentConversationActions'
 import RecentTaskActions from './RecentTaskActions'
 import { deriveSessionFailedStateFromLastStatus, useSidebarActivityStore } from '../stores/sidebarActivityStore'
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import { writeChatSessionDrag } from '../utils/chatSessionDrag'
 
 export default function RecentConversations({ now = Date.now(), heading, collapsed = false }: { now?: number; heading?: ReactNode; collapsed?: boolean }) {
   const { t, locale } = useI18n()
+  const compact = useCompactLayout()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const sessionsByProject = useChatListStore(s => s.sessionsByProject)
   const runningTasks = useRecentActivityStore(s => s.runningTasks)
@@ -99,6 +102,12 @@ export default function RecentConversations({ now = Date.now(), heading, collaps
           onPointerEnter={event => { if (event.pointerType === 'mouse') setHoveredId(rowKey) }}
           onPointerLeave={event => { if (event.pointerType === 'mouse') setHoveredId(null) }}>
           <button className="layout-recent-row"
+          draggable={!compact && entry.kind === 'session'}
+          onDragStart={event => {
+            if (entry.kind !== 'session') return
+            event.stopPropagation()
+            writeChatSessionDrag(event.dataTransfer, entry.projectId, entry.id)
+          }}
           aria-current={active ? 'page' : undefined} title={cached?.title || entry.title}
           onClick={() => {
             if (entry.kind === 'session') useSidebarActivityStore.getState().markSessionRead(entry.id)

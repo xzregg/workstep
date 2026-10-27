@@ -186,6 +186,23 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         query_params=("project_id",),
     ),
     WorkstepTool(
+        name="workstep_get_task_history",
+        description="Read paginated task messages, including coordinator conversation and proposals.",
+        method="GET", path="/api/task/{task_id}/history",
+        parameters={"project_id": {"type": "string"}, "task_id": {"type": "string"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 300},
+                    "offset": {"type": "integer", "minimum": 0}},
+        required=("project_id", "task_id"), path_params=("task_id",),
+        query_params=("project_id", "limit", "offset"),
+    ),
+    WorkstepTool(
+        name="workstep_get_task_reviews",
+        description="Read persisted task review history and decisions.",
+        method="GET", path="/api/task/{task_id}/reviews",
+        parameters={"project_id": {"type": "string"}, "task_id": {"type": "string"}},
+        required=("project_id", "task_id"), path_params=("task_id",), query_params=("project_id",),
+    ),
+    WorkstepTool(
         name="workstep_send_step_message",
         description="Queue a message for a running step or automatic review. Requires an engine supporting live step messages; queued does not mean delivered. Do not stop/restart as an automatic fallback.",
         method="POST",
@@ -714,6 +731,9 @@ class WorkstepClient:
                     detail = str(exc.response.json().get("detail", ""))
                 except Exception:
                     detail = exc.response.text[:300]
+                if (origin is not None and not headers and exc.response.status_code == 401
+                        and detail == "desktop authentication required"):
+                    detail = "本机 CLI 凭据缺失或不可用，请重启目标 daemon 后重试；无需在浏览器登录。"
                 return {
                     "ok": False,
                     "error": detail or f"HTTP {exc.response.status_code}",

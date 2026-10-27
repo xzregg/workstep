@@ -9,6 +9,24 @@ from cli import build_parser, dispatch, main
 from services.tool_registry import WorkstepClient
 
 
+@pytest.mark.parametrize('operation', ['history', 'reviews'])
+def test_task_diagnostics_read_remote_history_and_reviews(capsys, operation):
+    async def handler(request):
+        assert request.method == 'GET'
+        assert request.url.path == f'/api/task/task-1/{operation}'
+        assert request.url.params['project_id'] == 'remote:abc'
+        if operation == 'history':
+            assert request.url.params['limit'] == '100'
+            assert request.url.params['offset'] == '20'
+        return httpx.Response(200, json={operation: [{'id': 'record-1'}]})
+
+    args = ['task', operation, '--project', 'remote:abc', '--task', 'task-1', '--json']
+    if operation == 'history':
+        args += ['--limit', '100', '--offset', '20']
+    assert main(args, client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out) == {operation: [{'id': 'record-1'}]}
+
+
 def test_task_list_filters_pages_and_selects_raw_fields(capsys):
     async def handler(request):
         assert request.url.params["archived"] == "true"

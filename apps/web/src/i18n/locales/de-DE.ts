@@ -736,4 +736,17 @@ export const deDE: Messages = {
     running: "In Bearbeitung",
     stop: "Gestoppt",
   },
+  chatWorkspace: {
+    resize: '拖动调整对话窗口大小',
+    arrange: '对话排列',
+    title: '对话窗口',
+    horizontal: '横向排列',
+    vertical: '竖向排列',
+    add: '增加对话窗口',
+    close: '关闭对话窗口',
+    closeHint: '关闭窗口，对话继续运行',
+    dropHint: '拖动左侧对话到此处，打开新窗口',
+    limitHint: '最多打开 4 个窗口，拖入已打开的对话可定位窗口',
+    pane: '对话窗口 {count}',
+  },
 }

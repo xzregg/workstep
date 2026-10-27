@@ -5,11 +5,14 @@ import MarqueeText from './MarqueeText'
 import TaskRecoveredBadge from './TaskRecoveredBadge'
 import TaskDetailTitle from './TaskDetailTitle'
 import { useI18n, type TKey } from '../i18n'
+import { taskDisplayStatus } from '../utils/taskDisplayStatus'
 import type { TaskDetailViewProps, StepData } from './TaskDetailView'
 
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready', running: 'status.running', paused: 'status.paused',
   stopped: 'status.stopped', done: 'status.done', completed: 'status.done',
+  reviewing: 'status.reviewing', awaiting_review: 'status.awaiting_review',
+  retrying: 'status.retrying', rejected: 'status.rejected', queued: 'status.queued',
 }
 
 interface TaskDetailHeaderProps {
@@ -33,7 +36,7 @@ export default function TaskDetailHeader({ task, locale, activeStep, activeStepC
   onHeaderKeyDown, onHeaderDoubleClick, projectId, titleEditable }: TaskDetailHeaderProps) {
   const { t } = useI18n()
   const draggable = Boolean(onHeaderPointerDown)
-  const status = taskCompleted ? 'done' : task.status
+  const { displayStatus: status } = taskDisplayStatus(task.status, task.steps || [], taskCompleted)
   const createdAt = new Date(task.created_at).toLocaleString(locale)
   const meta = task.creator_name ? `${t('taskDetail.creator')}：${task.creator_name} · ${createdAt}` : createdAt
   return (

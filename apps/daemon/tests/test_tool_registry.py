@@ -28,6 +28,8 @@ def test_registry_defines_expected_tool_set():
         "workstep_create_workflow_action",
         "workstep_list_tasks",
         "workstep_get_task",
+        "workstep_get_task_history",
+        "workstep_get_task_reviews",
         "workstep_send_step_message",
         "workstep_stop_step",
         "workstep_start_step",

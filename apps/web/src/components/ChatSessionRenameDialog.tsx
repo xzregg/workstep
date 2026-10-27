@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { chatSessionApi } from '../api/client'
 import { useI18n } from '../i18n'
 import { useChatListStore } from '../stores/chatSessionStore'
@@ -20,6 +20,11 @@ export default function ChatSessionRenameDialog({
   const [value, setValue] = useState(title)
   const [error, setError] = useState('')
   const [renaming, setRenaming] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
 
   const rename = async () => {
     const nextTitle = value.trim()
@@ -48,6 +53,7 @@ export default function ChatSessionRenameDialog({
   >
     <div className="chat-session-rename-form">
       <Input
+        ref={inputRef}
         autoFocus
         className="chat-session-rename-input"
         value={value}

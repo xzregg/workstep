@@ -432,14 +432,23 @@ if web_dist.exists() or landing_dist.exists():
                         _resolve_static, landing_dist, rel
                     )
                     if candidate is not None:
-                        return _FileResponse(candidate)
-                return _FileResponse(_landing_dist_index)
+                        return _FileResponse(
+                            candidate,
+                            headers={"Cache-Control": "no-store"} if candidate.suffix == ".html" else None,
+                        )
+                return _FileResponse(_landing_dist_index, headers={"Cache-Control": "no-store"})
             return _JSONResponse({"detail": "Not found"}, status_code=404)
         # Web 应用接管 home。
         if fullpath:
             candidate = await asyncio.to_thread(_resolve_static, web_dist, fullpath)
             if candidate is not None:
-                return _FileResponse(candidate)
+                return _FileResponse(
+                    candidate,
+                    headers={"Cache-Control": "no-store"} if candidate.suffix == ".html" else None,
+                )
+        if fullpath == "assets" or fullpath.startswith("assets/"):
+            return _JSONResponse({"detail": "Not found"}, status_code=404,
+                                 headers={"Cache-Control": "no-store"})
         if _web_dist_index is not None:
-            return _FileResponse(_web_dist_index)
+            return _FileResponse(_web_dist_index, headers={"Cache-Control": "no-store"})
         return _JSONResponse({"detail": "Not found"}, status_code=404)

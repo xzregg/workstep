@@ -54,11 +54,13 @@ export default function SettingsPage({
   const settingsDialogRef = useRef<HTMLDivElement>(null)
   const sandboxDirty = useRef(false)
   const roleCenterDirty = useRef(false)
+  const channelBotDirty = useRef(false)
   const [pendingExit, setPendingExit] = useState<{ section?: SettingsSection } | null>(null)
   const onSandboxDirty = useCallback((dirty: boolean) => { sandboxDirty.current = dirty }, [])
   const onRoleCenterDirty = useCallback((dirty: boolean) => { roleCenterDirty.current = dirty }, [])
-  const closeSettings = () => sandboxDirty.current || roleCenterDirty.current ? setPendingExit({}) : onClose()
-  const selectSection = (section: SettingsSection) => sandboxDirty.current || roleCenterDirty.current ? setPendingExit({ section }) : setActiveSection(section)
+  const onChannelBotDirty = useCallback((dirty: boolean) => { channelBotDirty.current = dirty }, [])
+  const closeSettings = () => sandboxDirty.current || roleCenterDirty.current || channelBotDirty.current ? setPendingExit({}) : onClose()
+  const selectSection = (section: SettingsSection) => sandboxDirty.current || roleCenterDirty.current || channelBotDirty.current ? setPendingExit({ section }) : setActiveSection(section)
   useOverlay(true, closeSettings, settingsDialogRef, compactLayout)
   const userName = useUserSettingsStore((state) => state.userName)
   const gatewayIdentity = useUserSettingsStore((state) => state.identitySource === 'gateway')
@@ -121,11 +123,12 @@ export default function SettingsPage({
         if (event.target === event.currentTarget) closeSettings()
       }}
     >
-      <ConfirmDialog open={Boolean(pendingExit)} title={t(roleCenterDirty.current ? 'roleCenter.discardTitle' : 'sandbox.discard')}
+      <ConfirmDialog open={Boolean(pendingExit)} title={t(channelBotDirty.current ? 'channelBot.discardConfig' : roleCenterDirty.current ? 'roleCenter.discardTitle' : 'sandbox.discard')}
         onCancel={() => setPendingExit(null)} onConfirm={() => {
           const section = pendingExit?.section
           sandboxDirty.current = false; setPendingExit(null)
           roleCenterDirty.current = false
+          channelBotDirty.current = false
           if (section) setActiveSection(section); else onClose()
         }} />
       <ResizablePanel
@@ -164,7 +167,7 @@ export default function SettingsPage({
         ) : activeSection === 'roles' ? (
           <RoleCenterSettings onDirtyChange={onRoleCenterDirty} />
         ) : activeSection === 'channels' ? (
-          <BotSettings />
+          <BotSettings onDirtyChange={onChannelBotDirty} />
         ) : activeSection === 'remote' ? (
           <RemoteAccessSettings />
         ) : activeSection === 'concurrency' ? (

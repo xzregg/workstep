@@ -41,3 +41,40 @@ test('startup guard leaves a mounted application alone', async () => {
     assert.equal(window.document.querySelector('main')?.textContent, 'Ready')
   } finally { await window.happyDOM.close() }
 })
+
+
+test('startup retry fetches a fresh entry while preserving workspace, query and hash', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.test/workspace/device/chat?session=keep#message')
+  window.document.body.innerHTML = '<div id="root"><div class="app-loading">Loading</div></div>'
+  try {
+    window.eval(html.match(/<script id="workstep-startup-guard">([\s\S]*?)<\/script>/)![1])
+    window.dispatchEvent(new window.ErrorEvent('error', { message: 'startup failure' }))
+    ;(window.document.querySelector('button') as HTMLButtonElement).click()
+    const target = new URL(window.location.href)
+    assert.equal(target.pathname, '/workspace/device/chat')
+    assert.equal(target.searchParams.get('session'), 'keep')
+    assert.equal(target.hash, '#message')
+    assert.ok(target.searchParams.get('_workstep_reload'))
+  } finally { await window.happyDOM.close() }
+})
+
+test('missing lazy assets trigger one fresh navigation, then expose recovery on repeat failure', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.test/workspace/device/tasks?task=keep')
+  window.document.body.innerHTML = '<div id="root"><main>Ready</main></div>'
+  try {
+    const script = html.match(/<script id="workstep-startup-guard">([\s\S]*?)<\/script>/)![1]
+    window.eval(script)
+    const event = new window.Event('vite:preloadError', { cancelable: true })
+    window.dispatchEvent(event)
+    assert.equal(event.defaultPrevented, true)
+    assert.ok(new URL(window.location.href).searchParams.get('_workstep_reload'))
+    window.document.body.innerHTML = '<div id="root"><div class="app-loading">Loading</div></div>'
+    window.eval(script)
+    const before = window.location.href
+    window.dispatchEvent(new window.Event('vite:preloadError', { cancelable: true }))
+    assert.equal(window.location.href, before)
+    assert.ok(window.document.querySelector('[role=alert]'))
+  } finally { await window.happyDOM.close() }
+})

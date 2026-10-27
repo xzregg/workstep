@@ -43,9 +43,10 @@ function notificationUrlFor(notice: CompletionNotice): string {
  * Which task detail panels are open (full event streams). Populated by
  * pages that render a task detail (e.g. TaskList) via setDetailTaskIds.
  */
-export const useWsSubscriptionStore = create<{ taskIds: string[]; remoteProjectIds: string[] }>(() => ({
+export const useWsSubscriptionStore = create<{ taskIds: string[]; remoteProjectIds: string[]; chatProjectIds: string[] }>(() => ({
   taskIds: [],
   remoteProjectIds: [],
+  chatProjectIds: [],
 }))
 
 export function setDetailTaskIds(taskIds: string[]) {
@@ -76,6 +77,7 @@ export function useWebSocket() {
   // ids actually change (message chunks mutate session content, not keys).
   const detailTaskIds = useWsSubscriptionStore((s) => s.taskIds)
   const remoteProjectIds = useWsSubscriptionStore((s) => s.remoteProjectIds)
+  const chatProjectIds = useWsSubscriptionStore((s) => s.chatProjectIds)
   const tasks = useTaskStore(useShallow((s) => s.tasks))
   const genSessionIds = useWorkflowGenStore(useShallow((s) => Object.keys(s.sessions)))
   const draftSessionIds = useTaskDraftStore(useShallow((s) => Object.keys(s.sessions)))
@@ -97,6 +99,7 @@ export function useWebSocket() {
     project_id: useProjectStore.getState().activeProject?.id,
     remote_project_ids: [...new Set([
       ...useWsSubscriptionStore.getState().remoteProjectIds,
+      ...useWsSubscriptionStore.getState().chatProjectIds,
       ...useRecentActivityStore.getState().targets.map(target => target.projectId)
         .filter(id => useProjectStore.getState().projects.some(project => project.id === id && project.type === 'remote')),
     ])],
@@ -146,7 +149,7 @@ export function useWebSocket() {
     } else {
       void clearBrowserPushWatch().catch(() => undefined)
     }
-  }, [flushSubscription, detailTaskIds, remoteProjectIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId, recentTargets])
+  }, [flushSubscription, detailTaskIds, remoteProjectIds, chatProjectIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId, recentTargets])
 
   useEffect(() => {
     let active = true

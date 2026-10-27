@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -14,6 +15,7 @@ from urllib.parse import urlsplit
 
 HEADER = 'X-WorkStep-CLI-Token'
 LOOPBACK = {'127.0.0.1', '::1', 'localhost'}
+logger = logging.getLogger(__name__)
 
 
 def local_origin(url: str) -> str | None:
@@ -33,7 +35,8 @@ def credential_path(url: str) -> Path:
     origin = local_origin(url)
     if origin is None:
         raise ValueError('CLI discovery requires a loopback daemon URL')
-    root = Path(os.environ.get('WORKSTEP_CONFIG_DIR') or Path.home() / '.workstep')
+    from services.config import CONFIG_DIR
+    root = Path(os.environ.get('WORKSTEP_CONFIG_DIR') or CONFIG_DIR).expanduser()
     return root / 'cli-runtime' / f'cli-{hashlib.sha256(origin.encode()).hexdigest()[:24]}.json'
 
 
@@ -86,8 +89,18 @@ foreach ($path in (ConvertFrom-Json $env:WORKSTEP_CLI_ACL_PATHS)) {
             env={**environment, 'WORKSTEP_CLI_ACL_PATHS': json.dumps([str(p) for p in paths]),
                  'WORKSTEP_CLI_ACL_PROTECT': '1' if protect else '0'},
             capture_output=True, timeout=10)
+        if result.returncode != 0:
+            # The helper handles only ACL metadata; do not log its environment,
+            # which can also contain desktop and engine credentials.
+            logger.warning('CLI Windows ACL check failed (protect=%s, code=%s): %s',
+                           protect, result.returncode,
+                           result.stderr.decode(errors='replace')[-2000:].strip())
         return result.returncode == 0
-    except (OSError, subprocess.SubprocessError):
+    except subprocess.TimeoutExpired:
+        logger.warning('CLI Windows ACL check timed out (protect=%s)', protect)
+        return False
+    except (OSError, subprocess.SubprocessError) as error:
+        logger.warning('CLI Windows ACL helper failed (protect=%s): %s', protect, error)
         return False
 
 
@@ -139,6 +152,11 @@ class LocalCliRuntime:
 
     def publish(self) -> None:
         path = credential_path(self.url)
+        current = _read(self.url)
+        # _read verifies PID liveness on POSIX. Windows relies on the server
+        # nonce instead, so an old file there must remain replaceable.
+        if os.name != 'nt' and current and current['pid'] != os.getpid():
+            raise RuntimeError('CLI credentials belong to another live process for this daemon URL')
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         info = path.parent.lstat()
         if not stat.S_ISDIR(info.st_mode) or not _private(info, 0o700):

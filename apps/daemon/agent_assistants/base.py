@@ -2174,8 +2174,7 @@ class AssistantRuntime:
     async def _engine_idle_timeout_seconds(self) -> float:
         """聊天回合引擎空闲超时（秒）；<=0 表示关闭看门狗。
 
-        复用工作流侧 ``engine_idle_timeout_seconds`` 配置（默认 600），
-        聊天助手之前没有接这个看门狗， stall 的连接会无限等下去。
+        复用工作流侧 ``engine_idle_timeout_seconds`` 配置，默认 1200 秒。
         """
         getter = getattr(
             config_store, "get_engine_idle_timeout_seconds", None
@@ -2191,7 +2190,7 @@ class AssistantRuntime:
         try:
             return float(
                 await asyncio.to_thread(
-                    config_store.get, "engine_idle_timeout_seconds", 600
+                    config_store.get, "engine_idle_timeout_seconds", 1200
                 )
             )
         except Exception:

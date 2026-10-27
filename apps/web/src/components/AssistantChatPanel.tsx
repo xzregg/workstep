@@ -83,6 +83,8 @@ export interface AssistantChatPanelProps {
   /** Stable WorkStep conversation id shown in message metadata. */
   sessionId?: string | null
   title: string
+  onTitleDoubleClick?: () => void
+  hideHeaderStatus?: boolean
   messages: AssistantChatMessage[]
   running: boolean
   stopping: boolean
@@ -278,7 +280,7 @@ const MessageItem = memo(function MessageItem({
 
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
-  projectId, visibilityPermission = 'session.chat', sessionId, title, messages, running, stopping, input, sendError, copy,
+  projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeaderStatus = false, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
   onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
@@ -490,8 +492,8 @@ export default function AssistantChatPanel({
   return (
     <div className="assistant-chat-panel" ref={rootRef} data-ui="conversation">
       <div className="assistant-chat-header" data-ui="chat-header">
-        <span className="assistant-chat-header-title" title={title}>{title}</span>
-        {running && (
+        <span className="assistant-chat-header-title" title={title} onDoubleClick={onTitleDoubleClick}>{title}</span>
+        {running && !hideHeaderStatus && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
             <span className="task-status-spinner" aria-hidden="true" /> {copy.thinking}
           </span>
