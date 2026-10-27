@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import stat
 import subprocess
+import sys
 
 
 REPO_DIR = Path(__file__).resolve().parents[3]
@@ -15,6 +16,29 @@ BACKEND_BUILD_SCRIPTS = (
     REPO_DIR / "apps" / "desktop" / "build-backend.sh",
     REPO_DIR / "apps" / "desktop" / "build-backend.ps1",
 )
+
+
+def test_windows_cli_check_can_resolve_daemon_config(tmp_path: Path) -> None:
+    for name in ("desktop-release.yml", "desktop-package-smoke.yml"):
+        workflow = (REPO_DIR / ".github/workflows" / name).read_text(encoding="utf-8")
+        step = workflow.split("- name: Verify native Windows CLI credential isolation", 1)[1].split("\n      -", 1)[0]
+        assert 'PYTHONPATH: ${{ github.workspace }}/apps/daemon' in step
+    config_dir = tmp_path / "配置 WorkStep"
+    result = subprocess.run(
+        [sys.executable, "-c", """
+import importlib.util
+import os
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('standalone_cli', Path(os.environ['PYTHONPATH']) / 'services/local_cli.py')
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+assert cli.credential_path('http://127.0.0.1:43123').parent == Path(os.environ['WORKSTEP_CONFIG_DIR']) / 'cli-runtime'
+"""],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(REPO_DIR / "apps/daemon"), "WORKSTEP_CONFIG_DIR": str(config_dir)},
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def _write_executable(path: Path, content: str) -> None:
