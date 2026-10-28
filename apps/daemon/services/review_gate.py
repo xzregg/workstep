@@ -128,6 +128,12 @@ class ReviewGate:
             artifact_round,
         )
         now = utc_now()
+        manual_report = {
+            "passed": False,
+            "score": None,
+            "summary": "步骤执行完成，等待用户审核。",
+            "issues": [],
+        }
         # 同一 step_run 下可能先后有自动审核与转人工审核等多条记录，
         # attempt 按已有记录递增，避免 (step_run, attempt) 唯一约束冲突。
         def create_review():
@@ -147,7 +153,9 @@ class ReviewGate:
                 status="pending" if mode == "manual" else "running",
                 engine=engine_id if mode == "auto" else None,
                 model=model if mode == "auto" else None,
-                prompt_json=json.dumps({"prompt": None, "input_prompt": prompt}, ensure_ascii=False),
+                prompt_json=(None if mode == "manual" else
+                             json.dumps({"prompt": None, "input_prompt": prompt}, ensure_ascii=False)),
+                report_json=json.dumps(manual_report, ensure_ascii=False) if mode == "manual" else None,
                 started_at=now,
             )
             ts = TaskStep.get_or_none(
@@ -158,21 +166,9 @@ class ReviewGate:
         review_run, review_session_id = await self._run_db(create_review)
 
         if mode == "manual":
-            report = {
-                "passed": False,
-                "score": None,
-                "summary": "步骤执行完成，等待用户审核。",
-                "issues": [],
-            }
-            def finish_manual_review():
-                row = ReviewRun.get_by_id(review_run.id)
-                row.report_json = json.dumps(report, ensure_ascii=False)
-                row.prompt_json = None
-                row.status = "pending"
-                row.save()
-                return row
-
-            review_run = await self._run_db(finish_manual_review)
+            # Publish a fully initialized review in one DB work unit: a later
+            # pending write must never overwrite an early user decision.
+            report = manual_report
             await self._emit(task, step, step_run, review_run, "awaiting_review", report)
             return ReviewOutcome("awaiting_review", review_run, report)
 

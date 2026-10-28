@@ -43,9 +43,23 @@ async def start_parallel(s, *, manual_sibling=False):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("decision", ["approve", "force-approve", "reject"])
-async def test_parallel_review_is_accepted_and_continues_without_repeating_sibling(scenario, decision):
+@pytest.mark.parametrize("early_decision", [False, True])
+async def test_parallel_review_is_accepted_and_continues_without_repeating_sibling(scenario, decision, early_decision, monkeypatch):
+    from services.task_runner import TaskRunner
+    applying, release_result = asyncio.Event(), asyncio.Event()
+    original_apply = TaskRunner._apply_review_result
+
+    async def delayed_apply(runner, *args, **kwargs):
+        if early_decision and not applying.is_set():
+            applying.set()
+            await release_result.wait()
+        return await original_apply(runner, *args, **kwargs)
+
+    monkeypatch.setattr(TaskRunner, "_apply_review_result", delayed_apply)
     s = scenario
     handle, review = await start_parallel(s)
+    if early_decision:
+        await asyncio.wait_for(applying.wait(), 5)
     url = f"/api/task/{s.task_id}/steps/requirements/review/{decision}?project_id={s.pid}"
     try:
         response = await asyncio.wait_for(s.client.post(url, json={
@@ -58,6 +72,7 @@ async def test_parallel_review_is_accepted_and_continues_without_repeating_sibli
         assert len(s.script.select("develop")) == 1
         assert not s.script.select("publish")
     finally:
+        release_result.set()
         s.script.release.set()
     await s.runtime.wait(handle)
     if decision == "reject":

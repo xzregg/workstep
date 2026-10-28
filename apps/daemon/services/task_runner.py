@@ -578,9 +578,10 @@ class TaskRunner:
             completed.add(step_key)
         elif outcome.status == "awaiting_review":
             ts = await self._persist_step_status(
-                task.id, step_key, "awaiting_review", previous_error, None
+                task.id, step_key, "awaiting_review", previous_error, None,
+                pending_review_id=outcome.review_run.id,
             )
-            failed.add(step_key)
+            (completed if ts.status == "passed" else failed).add(step_key)
         elif (outcome.status == "rejected"
               and step_run.attempt <= int(review_config.get("maxRetries", 1))):
             has_feedback_route = any(
@@ -622,11 +623,14 @@ class TaskRunner:
             )
             message_persisted = False
             ts = await self._persist_step_status(
-                task.id, step_key, "awaiting_review", outcome.feedback, None
+                task.id, step_key, "awaiting_review", outcome.feedback, None,
+                pending_review_id=outcome.review_run.id,
             )
-            failed.add(step_key)
+            (completed if ts.status == "passed" else failed).add(step_key)
 
-        if not message_persisted:
+        if not message_persisted and not (
+            outcome.status == "awaiting_review" and ts.status != "awaiting_review"
+        ):
             await self._review_messages.persist_result(
                 task, step_key, step_run, artifacts_dir,
                 step_run.artifact_round, outcome,
@@ -1287,13 +1291,19 @@ class TaskRunner:
             )
 
     async def _persist_step_status(
-        self, task_id, step_key, status, error, ended_at
+        self, task_id, step_key, status, error, ended_at, *, pending_review_id=None
     ):
         def persist():
             with db_proxy.atomic("IMMEDIATE"):
                 row = TaskStep.get(
                     (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
                 )
+                # The review API may decide an exposed manual review before
+                # the engine coroutine consumes its original pending result.
+                if pending_review_id is not None:
+                    review = ReviewRun.get_by_id(pending_review_id)
+                    if review.decision:
+                        return row
                 row.status = status
                 row.error = error
                 row.ended_at = ended_at
