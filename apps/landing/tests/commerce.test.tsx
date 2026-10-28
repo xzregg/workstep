@@ -31,6 +31,9 @@ describe('public pricing, support and legal information', () => {
     expect(html).toContain('early-access')
     expect(html).not.toContain('id="demos"')
     expect(html).toContain('href="#privacy"')
+    expect(html).toContain('WorkStep 是本地优先的 AI 研发工作台。')
+    expect(html).toContain('WorkStep is a local-first AI development workspace.')
+    expect(html).not.toContain('maintained by independent developer')
   })
 
   it('explains support correspondence and Creem data processing on the privacy route', () => {
