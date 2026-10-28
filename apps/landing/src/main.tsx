@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { I18nProvider } from './i18n'
 import './landing.css'
+import './editorial.css'
 import { installWebAnalytics } from './analytics'
 
 if (import.meta.env.PROD) {

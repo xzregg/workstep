@@ -5,7 +5,7 @@ export function FinalCta({ experienceHref }: { experienceHref: string }) {
   const { t } = useI18n()
 
   return (
-    <section className="final-cta">
+    <section className="final-cta" id="download">
       <div className="container final-cta-inner">
         <div>
           <h2>{t('finalCta.title')}</h2>

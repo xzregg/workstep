@@ -80,7 +80,7 @@ test('legacy channel task avatars use the first two characters of the user name'
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   try {
-    for (const [author, initials] of [['企业微信 · ZhangSanFeng', 'Zh'], ['企业微信 · 张三丰', '张三'], ['钉钉 · 小王', '小王']]) {
+    for (const [author, initials] of [['企业微信 · DemoMember', 'De'], ['企业微信 · 演示用户', '演示'], ['钉钉 · 小王', '小王']]) {
       await act(async () => root.render(<I18nProvider><TaskConversationMessage
         message={{ id: 'message', role: 'user', channel: 'coordinator', step_key: 'coordinator',
           author_name: author, author_device_name: author.split(' · ')[0],

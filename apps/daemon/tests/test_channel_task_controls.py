@@ -212,14 +212,14 @@ async def test_wecom_review_callback_from_group_member_persists_source_user(setu
         group,payload = client.send_message.await_args_list[0].args
         card_id = payload['template_card']['task_id']
         await handlers['event.template_card_event']({'headers':{'req_id':'callback'},'body':{
-            'chatid':group,'chattype':'group','from':{'userid':'ZhangSanFeng'},
+            'chatid':group,'chattype':'group','from':{'userid':'DemoMember'},
             'event':{'eventtype':'template_card_event','template_card_event':{'task_id':card_id,'event_key':'0'}}}})
         client.update_template_card.assert_awaited_once()
         def read(_project):
             row = ReviewRun.get_by_id('review')
             return row.reviewer_id, row.reviewer_name, row.decision
-        assert await projects.run_db(project.id, read) == ('channel:wecom:ZhangSanFeng','ZhangSanFeng','approve')
-        assert client.send_message.await_args.args[1]['markdown']['content'] == 'ZhangSanFeng 审核通过'
+        assert await projects.run_db(project.id, read) == ('channel:wecom:DemoMember','DemoMember','approve')
+        assert client.send_message.await_args.args[1]['markdown']['content'] == 'DemoMember 审核通过'
     finally:
         await adapter.stop()
 

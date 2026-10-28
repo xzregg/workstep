@@ -63,7 +63,8 @@ describe('landing positioning', () => {
     expect(html).not.toContain('class="hero-preview"')
     expect(html.indexOf('class="guided-walkthrough"')).toBeLessThan(html.indexOf('例如：给项目加一个搜索功能'))
     expect(DEMOS.map((demo) => demo.id)).toEqual(['canvas', 'stream', 'parallel'])
-    expect(html.match(/class="demo-card"/g)).toHaveLength(3)
+    expect(html.match(/id="mechanism-tab-\d"/g)).toHaveLength(3)
+    expect(html).toContain('id="start"')
   })
 
   it('places the example and demos before advanced capabilities and collaboration', () => {

@@ -1,8 +1,9 @@
+import { legalCopy } from '../i18n/legal'
 import { useI18n } from '../i18n'
-import { SupportLink } from './CommerceInfo'
+import { SupportLink } from './SupportLink'
 
 export function Footer() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
 
   return (
     <footer className="footer">
@@ -17,8 +18,8 @@ export function Footer() {
           <a href="#features">{t('nav.features')}</a>
           <a href="#demos">{t('nav.demos')}</a>
           <a href="#privacy">{t('footer.privacy')}</a>
-          <a href="#terms">使用条款 / Terms</a>
-          <a href="#pricing">免费 / Free</a>
+          <a href="https://github.com/xzregg/workstep/blob/main/LICENSE" target="_blank" rel="noreferrer">Apache License 2.0</a>
+          <a href="#terms">{legalCopy[lang].title}</a>
           <SupportLink />
           <a href="https://github.com/xzregg/workstep" target="_blank" rel="noreferrer">GitHub</a>
         </div>

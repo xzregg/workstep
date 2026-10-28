@@ -2,7 +2,7 @@ import { Moon, Sun } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n, supportedLanguages, type Lang } from '../i18n'
 import { applyTheme, initialTheme, nextTheme } from '../theme'
-import { RELEASES_URL } from '../config/downloads'
+import { RELEASES_URL, REPOSITORY_URL } from '../config/downloads'
 
 export function Nav() {
   const { t, lang, setLang } = useI18n()
@@ -31,6 +31,7 @@ export function Nav() {
         <div className="nav-spacer" />
         <div className="nav-actions">
           <a href="#docs" className="nav-control nav-docs">{t('common.docs')}</a>
+          <a href={REPOSITORY_URL} className="nav-github" target="_blank" rel="noreferrer">GitHub ↗</a>
           <a href={RELEASES_URL} className="nav-control nav-download">
             {t('common.download')}
           </a>

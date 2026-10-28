@@ -16,9 +16,10 @@ import { RemoteShare } from './components/RemoteShare'
 import { Workflow } from './components/Workflow'
 import type { DemoDef } from './demo/demos'
 import { getExperienceHref } from './config/entryPoints'
-import { PrivacyPage } from './components/PrivacyPage'
-import { CommerceInfo } from './components/CommerceInfo'
 import { TermsPage } from './components/TermsPage'
+import { PrivacyPage } from './components/PrivacyPage'
+import { GuidedWalkthrough } from './components/GuidedWalkthrough'
+import { GettingStarted } from './components/GettingStarted'
 
 function scrollToDemos() {
   document.getElementById('demos')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
@@ -43,15 +44,16 @@ export default function App() {
       <Nav />
       {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : <main>
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
+        <div className="container recorded-section"><GuidedWalkthrough /></div>
         <Philosophy />
         <Demos onOpen={setOpenDemo} />
+        <GettingStarted />
         <Features />
         <EnginesStrip />
         <Workflow />
         <Compare />
         <Channels />
         <RemoteShare />
-        <CommerceInfo />
         <FinalCta experienceHref={experienceHref} />
       </main>}
       <Footer />
