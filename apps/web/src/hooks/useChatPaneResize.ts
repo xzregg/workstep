@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
+import type { ChatPaneSizes } from '../stores/chatWorkspaceStore'
 
 type Layout = 'horizontal' | 'vertical'
 const minimum = { horizontal: 360, vertical: 320 }
 
 /** Keeps each orientation's pane proportions; transient pointer moves bypass React. */
-export function useChatPaneResize(ids: string[], layout: Layout, compact: boolean) {
+export function useChatPaneResize(ids: string[], layout: Layout, compact: boolean, initialSizes: ChatPaneSizes = {}) {
   const ref = useRef<HTMLDivElement>(null)
   const cleanup = useRef<(() => void) | null>(null)
   const scope = ids.join('/')
-  const [saved, setSaved] = useState<Partial<Record<Layout, { scope: string; values: number[] }>>>({})
+  const [saved, setSaved] = useState<ChatPaneSizes>(() => initialSizes)
   const values = saved[layout]?.scope === scope ? saved[layout]!.values : ids.map(() => 1)
   const dimension = layout === 'horizontal' ? 'width' : 'height'
   const property = layout === 'horizontal' ? 'gridTemplateColumns' : 'gridTemplateRows'
@@ -77,5 +78,5 @@ export function useChatPaneResize(ids: string[], layout: Layout, compact: boolea
     event.stopPropagation()
     save(adjusted(sizes, index, event.key === direction[0] ? -24 : 24))
   }
-  return { ref, style, startResize, resizeWithKeys }
+  return { ref, style, startResize, resizeWithKeys, sizes: saved }
 }

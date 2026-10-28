@@ -431,17 +431,17 @@ class TaskService:
             })
             step_status = "failed"
             step_error = str(e)
-            task_status = "stopped"
+            task_status = "failed"
         else:
             if task_id in self._cancelled_tasks:
                 # 手动停止：与普通失败区分，前端显示「手动停止」。
                 step_status = "cancelled"
                 step_error = "手动停止"
-                task_status = "paused"
+                task_status = "stopped"
             elif reported_error is not None:
                 step_status = "failed"
                 step_error = reported_error
-                task_status = "stopped"
+                task_status = "failed"
             else:
                 step_status = "passed"
                 step_error = None
@@ -491,6 +491,7 @@ class TaskService:
         except Task.DoesNotExist:
             return None
         task.status = "running"
+        task.status_reason = 'execution'
         task.updated_at = utc_now()
         task.save()
         step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
@@ -531,6 +532,7 @@ class TaskService:
         step.ended_at = utc_now()
         step.save()
         task.status = task_status
+        task.status_reason = {'failed': 'engine_error', 'stopped': 'user_stop'}.get(task_status)
         task.updated_at = utc_now()
         task.save()
         msg = Message.get_by_id(msg_id)
@@ -578,7 +580,8 @@ class TaskService:
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
                 return False
-            task.status = "paused"
+            task.status = "stopped"
+            task.status_reason = 'user_stop'
             task.updated_at = utc_now()
             task.save()
             if project_id:
@@ -590,7 +593,7 @@ class TaskService:
                     project_id=project_id, task_id=task_id,
                     action="task.pause", result="succeeded",
                     mode="managed" if actor is not None and actor.source == "managed" else "local",
-                    metadata={"status": "paused"},
+                    metadata={"status": "stopped"},
                 )
             return True
 
@@ -599,7 +602,8 @@ class TaskService:
         try:
             with Task._meta.database.atomic():
                 task = Task.get_by_id(task_id)
-                if task.status == "running":
+                from services.task_state import task_has_active_execution
+                if task_has_active_execution(task):
                     raise RuntimeError("Running tasks cannot be deleted")
                 from services.task_schedule_runtime import invalidate_task_schedules
                 invalidate_task_schedules(task_id)
@@ -615,7 +619,8 @@ class TaskService:
         try:
             with Task._meta.database.atomic():
                 task = Task.get_by_id(task_id)
-                if task.status == "running":
+                from services.task_state import task_has_active_execution
+                if task_has_active_execution(task):
                     raise RuntimeError("Running tasks cannot be archived")
                 from services.task_schedule_runtime import invalidate_task_schedules
                 invalidate_task_schedules(task_id)

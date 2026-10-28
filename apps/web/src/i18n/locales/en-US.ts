@@ -695,6 +695,10 @@ export const enUS: Messages = {
     wrongPassword: 'Incorrect access password',
   },
   status: {
+    waiting: 'Waiting for confirmation',
+    tool_approval: 'Waiting for tool approval',
+    user_input: 'Waiting for input',
+    pending_confirmations: '{count} pending',
     ready: 'Ready',
     running: 'Running',
     paused: 'Paused',

@@ -10,7 +10,7 @@ export interface StatusBadgeProps {
 }
 
 const ASYNC_STATUSES = new Set([
-  'running', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting',
+  'running', 'reviewing', 'retrying', 'rework',
 ])
 
 /** 状态徽标：语义色 + 「进行中/审核中」等异步状态自动附旋转加载图标 */

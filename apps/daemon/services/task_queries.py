@@ -10,10 +10,12 @@ def task_exists(task_id):
 
 
 def task_workspace_state(task_id):
+    from services.task_state import task_has_active_execution
     task = Task.get_or_none(Task.id == task_id)
     if task is None:
         return None
-    return {"status": task.status, "creator_name": task.creator_name or "", "workflow_id": task.workflow_id}
+    return {"status": task.status, "creator_name": task.creator_name or "", "workflow_id": task.workflow_id,
+            "has_active_execution": task_has_active_execution(task)}
 
 
 def workflow_exists(workflow_id):

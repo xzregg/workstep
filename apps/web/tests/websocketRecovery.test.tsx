@@ -27,6 +27,55 @@ class Socket {
   receive(value: object) { this.onmessage?.({ data: JSON.stringify(value) }) }
 }
 
+test('focusing task messages probes the live socket without reconnecting or refreshing data', async (context) => {
+  const { window } = installDomEnvironment()
+  const originalSocket = globalThis.WebSocket
+  let refreshes = 0
+  let recoveries = 0
+  const recovered = () => recoveries++
+  context.mock.method(useProjectStore.getState(), 'refreshProjects', () => { refreshes++ })
+  context.mock.method(useTaskStore.getState(), 'fetchTasks', async () => { refreshes++ })
+  context.mock.method(useChatListStore.getState(), 'refreshSessions', () => { refreshes++ })
+  globalThis.WebSocket = Socket as never
+  Socket.instances = []
+  window.addEventListener('workstep:reconnected', recovered)
+  context.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  function Harness() { useWebSocket(); return <button>任务消息</button> }
+  const focus = async () => act(async () => {
+    window.dispatchEvent(new window.Event('focus'))
+    context.mock.timers.tick(1)
+  })
+  try {
+    await act(async () => root.render(<Harness />))
+    const socket = Socket.instances[0]
+    await focus()
+    assert.equal(Socket.instances.length, 1, 'focus preserves a connecting socket')
+    await act(async () => socket.open())
+    for (let i = 0; i < 3; i++) {
+      await focus()
+      assert.equal(Socket.instances.length, 1, 'returning from DevTools must preserve the connection')
+      const ping = socket.sent.at(-1)!
+      assert.equal(ping.type, 'ping')
+      await act(async () => socket.receive({ type: 'pong', nonce: ping.nonce }))
+      await act(async () => context.mock.timers.tick(3000))
+    }
+    assert.equal(refreshes, 0)
+    assert.equal(recoveries, 0, 'healthy focus must not broadcast a global data refresh')
+    await focus()
+    await act(async () => context.mock.timers.tick(2000))
+    await focus()
+    await act(async () => context.mock.timers.tick(1000))
+    assert.equal(Socket.instances.length, 2, 'repeated focus must not postpone recovery of a dead socket')
+  } finally {
+    await act(async () => root.unmount())
+    context.mock.timers.reset()
+    globalThis.WebSocket = originalSocket
+    window.removeEventListener('workstep:reconnected', recovered)
+    await window.happyDOM.close()
+  }
+})
+
 test('remote metadata subscription merges snapshots with no catalog or single-project HTTP refresh', async (context) => {
   const { window } = installDomEnvironment()
   const originalSocket = globalThis.WebSocket
@@ -71,6 +120,7 @@ test('remote metadata subscription merges snapshots with no catalog or single-pr
     await act(async () => {
       window.dispatchEvent(new window.Event('workstep:resume'))
       context.mock.timers.tick(1)
+      context.mock.timers.tick(3000)
     })
     await act(async () => Socket.instances[1].open())
     assert.equal(taskCalls, 0, 'remote reconnect does not load tasks automatically')
@@ -115,6 +165,7 @@ test('foreground recovery replaces stale sockets, restores subscriptions and ref
     await act(async () => {
       window.dispatchEvent(new window.Event('workstep:resume'))
       context.mock.timers.tick(1)
+      context.mock.timers.tick(3000)
     })
     assert.equal(first.readyState, 3)
     assert.equal(Socket.instances.length, 2)
@@ -174,7 +225,9 @@ test('foreground recovery replaces stale sockets, restores subscriptions and ref
       window.dispatchEvent(new window.Event('online'))
       context.mock.timers.tick(1)
     })
-    assert.equal(Socket.instances.length, 5, 'foreground and network notifications coalesce')
+    assert.equal(Socket.instances.length, 4, 'foreground and network notifications probe before reconnecting')
+    await act(async () => context.mock.timers.tick(3000))
+    assert.equal(Socket.instances.length, 5, 'foreground and network notifications coalesce into one recovery')
   } finally {
     await act(async () => root.unmount())
     context.mock.timers.reset()

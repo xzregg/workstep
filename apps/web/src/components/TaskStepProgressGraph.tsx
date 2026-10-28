@@ -48,6 +48,8 @@ const ACTIVE_STATES: StepVisualState[] = [
   'current',
   'reviewing',
   'awaiting_review',
+  'tool_approval',
+  'user_input',
   'retrying',
   'rework',
   'rework_waiting',
@@ -65,6 +67,8 @@ const STATE_LABEL_KEYS: Record<StepVisualState, TKey> = {
   current: 'status.running',
   reviewing: 'status.reviewing',
   awaiting_review: 'status.awaiting_review',
+  tool_approval: 'status.tool_approval',
+  user_input: 'status.user_input',
   retrying: 'status.retrying',
   rework: 'status.rework',
   rework_waiting: 'status.rework_waiting',
@@ -79,6 +83,8 @@ const STATE_ICONS: Record<StepVisualState, IconName> = {
   current: 'loader-circle',
   reviewing: 'search',
   awaiting_review: 'clock',
+  tool_approval: 'shield',
+  user_input: 'clock',
   retrying: 'loader-circle',
   rework: 'undo-2',
   rework_waiting: 'clock',
@@ -617,7 +623,7 @@ export default function TaskStepProgressGraph({
             const isSelected = node.index === selectedStep
             const isCurrentStep = node.index === currentNode?.index
             const dimmed = !selectedRelated.has(node.index)
-            const badgeState = node.visualState === 'current' && taskStatus === 'paused'
+            const badgeState = node.visualState === 'current' && (taskStatus === 'paused' || taskStatus === 'waiting')
               ? 'awaiting_review'
               : node.visualState
 

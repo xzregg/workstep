@@ -5,16 +5,18 @@ import { isTaskCompleted, isTaskNotStarted } from '../pages/taskDetailChat'
 import { formatConversationDateTime, formatDuration, toMilliseconds } from '../utils/datetime'
 import { formatScheduledStart } from '../utils/scheduledStart'
 import { formatTokenTotal } from '../utils/statistics'
-import { taskDisplayStatus } from '../utils/taskDisplayStatus'
+import { taskDisplayStatus, hasActiveTaskExecution } from '../utils/taskDisplayStatus'
 import Button from './Button'
 import Icon from './Icon'
 import MarqueeText from './MarqueeText'
 import TaskCopyButton from './TaskCopyButton'
 import TaskRecoveredBadge from './TaskRecoveredBadge'
+import TaskPendingConfirmations from './TaskPendingConfirmations'
 
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
   queued: 'status.queued',
+  waiting: 'status.waiting', failed: 'status.failed', tool_approval: 'status.tool_approval', user_input: 'status.user_input',
   done: 'status.done', completed: 'status.done',
   reviewing: 'status.reviewing', awaiting_review: 'status.awaiting_review',
   retrying: 'status.retrying', rejected: 'status.rejected',
@@ -69,9 +71,9 @@ export default function TaskBoardCard({
   const status = task.status || 'ready'
   const taskNotStarted = isTaskNotStarted(task.steps || [])
   const taskCompleted = isTaskCompleted(task.steps || [])
-  const { stepStatus, displayStatus } = taskDisplayStatus(status, task.steps || [], taskCompleted)
+  const { stepStatus, displayStatus } = taskDisplayStatus(status, task.steps || [], taskCompleted, task.status_reason)
   const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
-  const isRunning = status === 'running'
+  const isRunning = hasActiveTaskExecution(task)
   const startedMs = toMilliseconds(task.first_message_at)
   const createdMs = toMilliseconds(task.created_at)
   let cardDurationMs: number | null = null
@@ -143,6 +145,7 @@ export default function TaskBoardCard({
             <span className="task-status-spinner" aria-hidden="true" />
           )}
           {t(STATUS_LABEL_KEYS[displayStatus] ?? (displayStatus as TKey))}
+          <TaskPendingConfirmations task={task} />
           {status === 'queued' && task.queue_position != null && task.queue_position > 0 && (
             <span className="task-board-card-queue-position">{` #${task.queue_position}`}</span>
           )}
@@ -171,7 +174,7 @@ export default function TaskBoardCard({
             onClick={(e) => { e.stopPropagation(); onOpen() }}>
             <Icon name={readOnly ? "eye" : "pencil"} size={12} strokeWidth={2} />
           </Button>
-          {canArchive && !showArchived && status !== 'running' && (
+          {canArchive && !showArchived && !isRunning && (
             <Button variant="icon" data-task-action="archive"
               title={t('taskList.archiveTask')} aria-label={t('taskList.archiveTask')}
               onClick={(e) => { e.stopPropagation(); onArchive() }}

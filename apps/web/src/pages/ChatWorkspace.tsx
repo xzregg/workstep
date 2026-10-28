@@ -1,4 +1,4 @@
-import { Fragment, startTransition, useEffect, useRef, useState } from 'react'
+import { Fragment, startTransition, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
 import Icon from '../components/Icon'
@@ -16,9 +16,10 @@ import { useWsSubscriptionStore } from '../hooks/useWebSocket'
 import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 import { resolveProjectPermissions } from '../utils/projectPermissions'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { appearanceStorageKey } from '../utils/appearanceStorage'
+import { useChatWorkspaceStore, type ChatWorkspacePane as Pane } from '../stores/chatWorkspaceStore'
 import './ChatWorkspace.css'
 
-interface Pane { id: string; projectId: string; sessionId: string | null }
 interface WorkspaceState { panes: Pane[]; activeId: string; routeKey: string }
 
 /** Each pane reuses the complete session UI; only selection and arrangement live here. */
@@ -26,6 +27,8 @@ export default function ChatWorkspace() {
   const [params] = useSearchParams()
   const projects = useProjectStore(s => s.projects)
   const selectedProject = useProjectStore(s => s.activeProject)
+  useGatewaySessionStore(s => s.session)
+  const workspaceScope = appearanceStorageKey('chat-workspace')
   const projectName = params.get('project')
   const project = projectName ? projects.find(p => p.name === projectName) : selectedProject
   useEffect(() => {
@@ -36,17 +39,24 @@ export default function ChatWorkspace() {
     }
   }, [project, params])
   if (!project) return <ChatPage />
-  return <ProjectChatWorkspace project={project} />
+  return <ProjectChatWorkspace key={workspaceScope} project={project} workspaceScope={workspaceScope} />
 }
 
-function ProjectChatWorkspace({ project }: { project: NonNullable<ReturnType<typeof useProjectStore.getState>['activeProject']> }) {
+function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullable<ReturnType<typeof useProjectStore.getState>['activeProject']>; workspaceScope: string }) {
   const { t } = useI18n()
   const compact = useCompactLayout()
   const [params, setParams] = useSearchParams()
   const sessionId = params.get('session')
   const projects = useProjectStore(s => s.projects)
   const routeKey = JSON.stringify([project.id, sessionId])
-  const [layout, setLayout] = useState<'horizontal' | 'vertical'>('horizontal')
+  const [initial] = useState(() => {
+    const saved = useChatWorkspaceStore.getState().workspaces[workspaceScope]
+    if (!saved) return undefined
+    const panes = saved.panes.filter(pane => projects.some(project => project.id === pane.projectId)
+      && resolveProjectPermissions(isGatewayRemoteBrowser(), useGatewaySessionStore.getState().session, pane.projectId).can('session.read')).slice(0, 4)
+    return panes.length ? { ...saved, panes } : undefined
+  })
+  const [layout, setLayout] = useState<'horizontal' | 'vertical'>(() => initial?.layout || 'horizontal')
   const [dropping, setDropping] = useState(false)
   useEffect(() => {
     const clear = () => setDropping(false)
@@ -57,9 +67,14 @@ function ProjectChatWorkspace({ project }: { project: NonNullable<ReturnType<typ
       window.removeEventListener('drop', clear)
     }
   }, [])
-  const [state, setState] = useState<WorkspaceState>(() => ({
-    panes: [{ id: 'initial', projectId: project.id, sessionId }], activeId: 'initial', routeKey,
-  }))
+  const [state, setState] = useState<WorkspaceState>(() => {
+    const panes = initial?.panes || [{ id: 'initial', projectId: project.id, sessionId }]
+    return {
+      panes, activeId: panes[0].id,
+      routeKey: initial && sessionId ? JSON.stringify([panes[0].projectId, panes[0].sessionId]) : routeKey,
+    }
+  })
+  const restoreRoute = useRef(Boolean(initial && !sessionId))
   // Reconcile external navigation before children render, so a sidebar click never
   // briefly hydrates the previous pane with another session's history.
   if (state.routeKey !== routeKey) {
@@ -75,7 +90,7 @@ function ProjectChatWorkspace({ project }: { project: NonNullable<ReturnType<typ
       routeKey,
     })
   }
-  const commit = (panes: Pane[], activeId: string, replace = false) => {
+  const commit = useCallback((panes: Pane[], activeId: string, replace = false) => {
     const activePane = panes.find(p => p.id === activeId)!
     const nextProject = projects.find(p => p.id === activePane.projectId)
     if (!nextProject) return
@@ -89,10 +104,18 @@ function ProjectChatWorkspace({ project }: { project: NonNullable<ReturnType<typ
       setState({ panes, activeId, routeKey: JSON.stringify([activePane.projectId, nextSession]) })
       setParams(next, { replace })
     })
-  }
+  }, [params, projects, setParams])
   const latest = useRef(state)
   latest.current = state
-  const resize = useChatPaneResize(state.panes.map(p => p.id), layout, compact)
+  const resize = useChatPaneResize(state.panes.map(p => p.id), layout, compact, initial?.sizes)
+  useEffect(() => {
+    useChatWorkspaceStore.getState().save(workspaceScope, { panes: state.panes, layout, sizes: resize.sizes })
+  }, [workspaceScope, state.panes, layout, resize.sizes])
+  useEffect(() => {
+    if (!restoreRoute.current) return
+    restoreRoute.current = false
+    commit(latest.current.panes, latest.current.activeId, true)
+  }, [commit])
   const remotePaneIds = JSON.stringify([...new Set(state.panes.map(p => p.projectId)
     .filter(id => projects.some(project => project.id === id && project.type === 'remote')))])
   useEffect(() => {

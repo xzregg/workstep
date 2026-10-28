@@ -336,6 +336,7 @@ test('failed image preparation stops only the dedicated VM and remains removable
           return JSON.stringify([{ Name: 'user-existing-machine', Running: true }, ...(exists ? [{ Name: `workstep-${settings.id}`, Running: running }] : [])])
         }
         if (args.includes('pull')) throw new Error('image unavailable')
+        if (args.includes('df')) return `Size\n${63 * 2 ** 30}`
         return '{}'
       } })
     await assert.rejects(manager.prepare({ root: path.join(base, 'sandbox'), project: path.join(base, 'project'), mounts: [] }), /image unavailable/)

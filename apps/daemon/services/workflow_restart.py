@@ -255,6 +255,7 @@ def create_restart_run(
             )
         TaskStep.update(
             status="pending",
+            waiting_interactions_json=None,
             started_at=None,
             ended_at=None,
             error=None,
@@ -284,6 +285,7 @@ def create_restart_run(
             ]))
         ).execute()
         task.status = "running"
+        task.status_reason = 'execution'
         task.active_workflow_run_id = child.id
         task.state_version += 1
         task.updated_at = now

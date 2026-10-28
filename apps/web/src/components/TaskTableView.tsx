@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import type { Task } from '../api/client'
 import { useI18n, type TKey } from '../i18n'
 import { formatDuration, toMilliseconds } from '../utils/datetime'
-import { taskDisplayStatus } from '../utils/taskDisplayStatus'
+import { taskDisplayStatus, hasActiveTaskExecution } from '../utils/taskDisplayStatus'
 import { isTaskCompleted } from '../pages/taskDetailChat'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -10,6 +10,7 @@ import DeleteTaskConfirmation from './DeleteTaskConfirmation'
 import Icon from './Icon'
 import Input from './Input'
 import TaskCopyButton from './TaskCopyButton'
+import TaskPendingConfirmations from './TaskPendingConfirmations'
 
 interface Lane {
   key: string
@@ -36,6 +37,7 @@ interface TaskTableViewProps {
 
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
+  waiting: 'status.waiting', failed: 'status.failed', tool_approval: 'status.tool_approval', user_input: 'status.user_input',
   queued: 'status.queued', done: 'status.done', completed: 'status.done', reviewing: 'status.reviewing',
   awaiting_review: 'status.awaiting_review', retrying: 'status.retrying', rejected: 'status.rejected',
   cancelled: 'status.cancelled', rework: 'status.rework', rework_waiting: 'status.rework_waiting',
@@ -54,7 +56,7 @@ const TABLE_COLUMN_WIDTHS = ['5%', '35%', '14%', '13%', '15%', '18%']
 function getDisplayInfo(task: Task, durationNowMs: number) {
   const status = task.status || 'ready'
   const taskCompleted = isTaskCompleted(task.steps || [])
-  const { stepStatus, displayStatus } = taskDisplayStatus(status, task.steps || [], taskCompleted)
+  const { stepStatus, displayStatus } = taskDisplayStatus(status, task.steps || [], taskCompleted, task.status_reason)
   const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
   const startedMs = toMilliseconds(task.first_message_at)
   const createdMs = toMilliseconds(task.created_at)
@@ -106,7 +108,7 @@ export default function TaskTableView({
   }, [lanes, locale, normalizedSearchQuery, tasksByLane])
   const actionableIds = useMemo(
     () => lanes.flatMap((lane) => visibleTasksByLane[lane.key] || [])
-      .filter((task) => task.status !== 'running')
+      .filter((task) => !hasActiveTaskExecution(task))
       .map((task) => task.id),
     [lanes, visibleTasksByLane],
   )
@@ -276,7 +278,7 @@ export default function TaskTableView({
                   {laneTasks.map((task) => {
                     const info = getDisplayInfo(task, durationNowMs)
                     const updatedLabel = new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                    const isActionable = task.status !== 'running'
+                    const isActionable = !hasActiveTaskExecution(task)
                     return (
                       <tr
                         key={task.id}
@@ -300,6 +302,7 @@ export default function TaskTableView({
                           <span className="status-badge" data-s={info.displayStatus} style={info.stepStatus ? { color: info.statusColor, background: `color-mix(in oklab, ${info.statusColor}, transparent 86%)` } : undefined}>
                             {(info.displayStatus === 'running' || info.displayStatus === 'reviewing') && <span className="task-status-spinner" aria-hidden="true" />}
                             {t(STATUS_LABEL_KEYS[info.displayStatus] ?? (info.displayStatus as TKey))}
+                            <TaskPendingConfirmations task={task} />
                           </span>
                         </td>
                         <td style={cellStyle}>{task.creator_name || '—'}</td>

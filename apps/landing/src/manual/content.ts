@@ -1,15 +1,63 @@
 import { onboardingChapters } from './onboarding'
 import { featureChapters } from './features'
 import { translate, type Lang } from '../i18n'
+import zhTW from './locales/zh-TW.json'
 import enUS from './locales/en-US.json'
+import jaJP from './locales/ja-JP.json'
+import koKR from './locales/ko-KR.json'
 import frFR from './locales/fr-FR.json'
 import deDE from './locales/de-DE.json'
+import itIT from './locales/it-IT.json'
+import nlNL from './locales/nl-NL.json'
+import ruRU from './locales/ru-RU.json'
+import plPL from './locales/pl-PL.json'
+import trTR from './locales/tr-TR.json'
+import hiIN from './locales/hi-IN.json'
+import idID from './locales/id-ID.json'
+import viVN from './locales/vi-VN.json'
 import ar from './locales/ar.json'
+import esES from './locales/es-ES.json'
+import ptBR from './locales/pt-BR.json'
+import svSE from './locales/sv-SE.json'
+import daDK from './locales/da-DK.json'
+import nbNO from './locales/nb-NO.json'
+import fiFI from './locales/fi-FI.json'
+import csCZ from './locales/cs-CZ.json'
+import elGR from './locales/el-GR.json'
+import heIL from './locales/he-IL.json'
+import thTH from './locales/th-TH.json'
 export interface ManualScreenshot { id: string; alt: string; caption: string }
 export interface ManualSection { title: string; steps: string[]; tips?: string[]; screenshot?: ManualScreenshot }
 export interface ManualChapter { id: string; title: string; summary: string; sections: ManualSection[] }
 export const manualChapters: ManualChapter[] = [...onboardingChapters, ...featureChapters]
-const localizedChapters: Record<Lang, ManualChapter[]> = { 'zh-CN': manualChapters, 'en-US': enUS, 'fr-FR': frFR, 'de-DE': deDE, ar }
+const localizedChapters: Record<Lang, ManualChapter[]> = {
+  'zh-CN': manualChapters,
+  'zh-TW': zhTW,
+  'en-US': enUS,
+  'ja-JP': jaJP,
+  'ko-KR': koKR,
+  'fr-FR': frFR,
+  'de-DE': deDE,
+  'it-IT': itIT,
+  'nl-NL': nlNL,
+  'ru-RU': ruRU,
+  'pl-PL': plPL,
+  'tr-TR': trTR,
+  'hi-IN': hiIN,
+  'id-ID': idID,
+  'vi-VN': viVN,
+  'th-TH': thTH,
+  'es-ES': esES,
+  'pt-BR': ptBR,
+  'sv-SE': svSE,
+  'da-DK': daDK,
+  'nb-NO': nbNO,
+  'fi-FI': fiFI,
+  'cs-CZ': csCZ,
+  'el-GR': elGR,
+  'he-IL': heIL,
+  'ar': ar,
+}
 export function getManualChapters(lang: Lang = 'zh-CN') { return localizedChapters[lang] }
 export const manualGroups = [
   { id: 'getting-started', title: '快速入门', chapterIds: onboardingChapters.map(chapter => chapter.id) },

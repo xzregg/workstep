@@ -7,7 +7,7 @@ const { setTimeout: delay } = require('node:timers/promises')
 const { appendRotatingLog, LOG_MAX_BYTES } = require('./diagnostics.cjs')
 const { run, installRuntime, ASSETS } = require('./sandbox-runtime.cjs')
 const { listDockerImages, importDockerImage } = require('./sandbox-docker.cjs')
-const { MACHINE_DISK_GIB, ensureMachineDisk, storageError } = require('./sandbox-storage.cjs')
+const { MACHINE_DISK_GIB, ensureMachineDisk, ensureMachineFilesystem, storageError } = require('./sandbox-storage.cjs')
 const { migrateConfig, readConfig, projectCatalog, mapProjects, localProviderWarnings } = require('./sandbox-config.cjs')
 
 const IMPORTS = { codex: ['.codex'], claude: ['.claude', '.claude.json'], agents: ['.agents'] }
@@ -314,6 +314,7 @@ class SandboxManager {
         machines = JSON.parse(await podman(['machine', 'list', '--format=json']))
         existing = machines.find(item => (item.Name || item.name) === machine)
         if (!(existing?.Running || existing?.running)) await podman(['machine', 'start', ...(this.platform === 'win32' ? ['--update-connection=false'] : []), machine])
+        if (this.platform === 'darwin') await ensureMachineFilesystem(podman, machine)
       }
       const command = async (args, options) => {
         try { return await podman(this.platform === 'linux' ? ['--signature-policy', path.join(config.root, 'podman/config/policy.json'), ...args] : ['--connection', machine, ...args], options) }

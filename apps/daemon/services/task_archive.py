@@ -185,7 +185,8 @@ def persist_experience_and_archive(project, task_service, pid, task_id, experien
         raise ValueError("Task not found")
     if task.archived:
         raise RuntimeError("Task is already archived")
-    if task.status == "running":
+    from services.task_state import task_has_active_execution
+    if task_has_active_execution(task):
         raise RuntimeError("Running tasks cannot be archived")
 
     previous = read_memory_bytes(project.workstep_dir)

@@ -120,6 +120,17 @@ def test_status_maps_to_run_events():
     assert failed["status"] == "failed"
 
 
+def test_task_aggregate_status_preserves_reasons_and_pending_decisions():
+    pending = [{'step_key': 'backend', 'reason': 'manual_review'}]
+    for status, expected in [('running', 'RUN_STARTED'), ('stopped', 'RUN_FINISHED'), ('failed', 'RUN_ERROR')]:
+        event = to_agui_events(InternalEvent(type='status', data={
+            'status': status, 'status_reason': 'execution', 'pending_confirmations': pending,
+        }), _ctx())[0]
+        assert event['type'] == expected
+        assert event['status_reason'] == 'execution'
+        assert event['pending_confirmations'] == pending
+
+
 def test_status_step_level_maps_to_custom():
     event = to_agui_events(
         InternalEvent(type="status", data={"status": "awaiting_review", "step_key": "step-a"}),

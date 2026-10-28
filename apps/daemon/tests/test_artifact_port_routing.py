@@ -601,7 +601,8 @@ async def test_feedback_connection_stops_after_three_returns(tmp_path):
             workflow_run=run,
         )
 
-        assert Task.get_by_id(task.id).status == "paused"
+        assert Task.get_by_id(task.id).status == "failed"
+        assert Task.get_by_id(task.id).status_reason == "step_failed"
         test_step = TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "test")
         )
@@ -881,7 +882,8 @@ async def test_missing_only_forward_output_fails_required_downstream(tmp_path):
             workflow_run=run,
         )
 
-        assert Task.get_by_id(task.id).status == "paused"
+        assert Task.get_by_id(task.id).status == "failed"
+        assert Task.get_by_id(task.id).status_reason == "step_failed"
         assert TaskStep.get_by_id((task.id, "source")).status == "passed"
         target = TaskStep.get_by_id((task.id, "target"))
         assert target.status == "failed"
@@ -1063,7 +1065,8 @@ async def test_manual_approval_with_empty_output_fails_required_downstream(tmp_p
         target_step = TaskStep.get_by_id((task.id, "target"))
         assert target_step.status == "failed"
         assert "缺少必需的上游产物" in target_step.error
-        assert Task.get_by_id(task.id).status == "paused"
+        assert Task.get_by_id(task.id).status == "failed"
+        assert Task.get_by_id(task.id).status_reason == "step_failed"
         assert calls["target"] == []
     finally:
         await runtime.shutdown()
@@ -1396,7 +1399,8 @@ async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope
         if input_case == "missing_reworked_output":
             assert len(calls["backend"]) == 2
             assert len(calls["frontend"]) == len(calls["test"]) == 1
-            assert Task.get_by_id(task.id).status == "paused"
+            assert Task.get_by_id(task.id).status == "failed"
+            assert Task.get_by_id(task.id).status_reason == "step_failed"
             assert TaskStep.get(
                 (TaskStep.task == task) & (TaskStep.step_key == "frontend")
             ).status == "failed"
@@ -1433,7 +1437,8 @@ async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope
 
 
 @pytest.mark.anyio
-async def test_forward_and_feedback_outputs_in_same_round_pause_as_conflict(tmp_path):
+@pytest.mark.parametrize('manual', [False, True])
+async def test_forward_and_feedback_outputs_in_same_round_pause_as_conflict(tmp_path, manual):
     db = init_db(str(tmp_path / "workstep.db"))
     task = Task.create(
         id="route-conflict-task",
@@ -1453,6 +1458,7 @@ async def test_forward_and_feedback_outputs_in_same_round_pause_as_conflict(tmp_
             {
                 "id": 2, "type": "test", "title": "测试",
                 "engine": "both-outputs-engine",
+                "review": {"mode": "manual" if manual else "skip", "auto": False},
                 "inputs": [{"name": "开发结果"}],
                 "outputs": [
                     {"name": "测试报告", "type": "md"},
@@ -1507,7 +1513,26 @@ async def test_forward_and_feedback_outputs_in_same_round_pause_as_conflict(tmp_
             workflow_run=run,
         )
 
-        assert Task.get_by_id(task.id).status == "paused"
+        if manual:
+            from types import SimpleNamespace
+            from models import ReviewRun
+            from services.review_decision import persist_review_decision
+            notifications = []
+            review = ReviewRun.get((ReviewRun.task == task) & (ReviewRun.step_key == 'test'))
+            assert Task.get_by_id(task.id).status == 'waiting'
+            result = persist_review_decision(
+                SimpleNamespace(id='conflict-project', path=tmp_path, workstep_dir=tmp_path),
+                task.id, 'test', review.id, 'approve', None, {}, None,
+                active_runners={}, instance_id='test-instance',
+                current_workflow_steps=lambda _project, _task: workflow,
+                notifications=notifications,
+            )
+            assert result is None
+            assert WorkflowRun.get_by_id(run.id).status == 'failed'
+            assert any(event.get('type') == 'task_lifecycle' and event['data']['event'] == 'failed'
+                       for event in notifications)
+        assert Task.get_by_id(task.id).status == "failed"
+        assert Task.get_by_id(task.id).status_reason == ('workflow_blocked' if manual else 'step_failed')
         test_step = TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "test")
         )

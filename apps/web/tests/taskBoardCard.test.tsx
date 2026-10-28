@@ -142,6 +142,30 @@ test('a running card hides destructive actions and shows an active status', asyn
   }
 })
 
+test('tool approval waits hide destructive card actions without a spinner', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><TaskBoardCard
+      task={{ ...task, status: 'waiting', status_reason: 'tool_approval',
+        steps: [{ ...task.steps[0], status: 'running', waiting_reason: 'tool_approval' }] }}
+      durationNowMs={Date.now()} showArchived={false} starting={false}
+      onOpen={() => {}} onStart={() => {}} onArchive={() => assert.fail('archive')}
+      onRestore={() => {}} onDelete={() => assert.fail('delete')}
+      onDragStart={() => {}} onDragEnd={() => {}}
+    /></I18nProvider>))
+    assert.equal(container.querySelector('[data-task-action="archive"]'), null)
+    assert.equal(container.querySelector('[data-task-action="delete"]'), null)
+    assert.equal(container.querySelector('.task-status-spinner'), null)
+    assert.ok(container.querySelector('[data-s="tool_approval"]'))
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
 test('scheduled time and description preview stay within the task card', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

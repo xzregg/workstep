@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { hasActiveTaskExecution } from '../src/utils/taskDisplayStatus.ts'
 
 const taskCardSource = await readFile(new URL('../src/components/TaskBoardCard.tsx', import.meta.url), 'utf8')
 const tableSource = await readFile(new URL('../src/components/TaskTableView.tsx', import.meta.url), 'utf8')
@@ -35,7 +36,10 @@ test('table selection offers confirmed bulk archive and delete actions', () => {
   assert.match(tableSource, /<DeleteTaskConfirmation/)
 })
 
-test('running tasks cannot be selected for destructive bulk actions', () => {
-  assert.match(tableSource, /task\.status !== 'running'/)
+test('active and tool-waiting executions remain protected from destructive actions', () => {
+  assert.equal(hasActiveTaskExecution({ status: 'running', steps: [] }), true)
+  assert.equal(hasActiveTaskExecution({ status: 'waiting', steps: [{ status: 'running' }] }), true)
+  assert.equal(hasActiveTaskExecution({ status: 'waiting', steps: [{ status: 'awaiting_review' }] }), false)
+  assert.equal(hasActiveTaskExecution({ status: 'stopped', steps: [] }), false)
   assert.match(tableSource, /disabled=\{!isActionable\}/)
 })

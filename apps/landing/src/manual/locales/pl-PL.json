@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Pobierz, zainstaluj i otwórz WorkStep",
+    "summary": "Najpierw zainstaluj WorkStep, a następnie silnik SDK. Aplikacja komputerowa zawiera środowisko wykonawcze zaplecza; nie musisz najpierw instalować Python.",
+    "sections": [
+      {
+        "title": "Wybierz instalatora",
+        "steps": [
+          "Skorzystaj z łącza do pobrania ze strony internetowej, aby wybrać instalator komputerowy dla swojego systemu operacyjnego i układu. Na komputerze Mac wybierz arm64 DMG dla chipów Apple z serii M lub x64 DMG dla Intel.",
+          "Zainstaluj i otwórz WorkStep, korzystając z normalnego procesu instalacji systemu. Poczekaj, aż lokalny backend będzie gotowy i otworzy się obszar roboczy.",
+          "Przy pierwszym uruchomieniu wprowadź nazwę wyświetlaną, gdy zostaniesz o to poproszony. Aby ponownie odwiedzić proces wdrażania, otwórz Ustawienia → Ustawienia systemu → Wdrożenie (设置 → 系统设置 → 新手引导), a następnie kliknij Wdrożenie."
+        ],
+        "tips": [
+          "Instalatory na komputery stacjonarne nie zawierają opcjonalnych silników, takich jak Codex SDK lub Claude Agent SDK. Zainstaluj je poprzez interfejs opisany w następnym rozdziale.",
+          "Wczesne niepodpisane kompilacje macOS lub Windows mogą powodować wyświetlanie monitów dotyczących zabezpieczeń systemu. Przed wykonaniem instrukcji systemu sprawdź źródło pobierania.",
+          "Samodzielne użycie lokalne nie wymaga logowania do Gateway. Jeśli dobrowolnie włączysz bramę i nie będzie można rozpocząć uwierzytelniania, wpis lokalny podejmie próbę powrotu do trybu lokalnego i wyłączy bramę, zachowując jej adres do późniejszego ponownego połączenia. Instalacja powiązana z bramą lub zdalny gość nie mogą tego użyć do wyłączenia bramy hosta. Jeśli powrót do trybu lokalnego nie powiedzie się, sprawdź lokalne zaplecze i odśwież, aby spróbować ponownie."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Konfiguracja tożsamości i szybki start przy pierwszym uruchomieniu",
+          "caption": "Wprowadź lokalną nazwę wyświetlaną, aby wejść do obszaru roboczego lub rozpocząć szybką konfigurację. Ten obraz wykorzystuje tożsamość demonstracyjną."
+        }
+      },
+      {
+        "title": "Zrozum trzy pojęcia",
+        "steps": [
+          "Silnik wykonuje zadania i wywołuje narzędzia. W tej instrukcji w pierwszej kolejności zaleca się Codex SDK lub Claude Agent SDK; oddzielnie instalowany silnik CLI nie jest wymagany.",
+          "Dostawca dostarcza adres i dane uwierzytelniające modelu API, API. Jest niezależny od silnika wykonawczego, a jego protokół musi być zgodny z protokołem obsługiwanym przez ten silnik.",
+          "Model faktycznie przetwarza Twoje żądanie. Zainstaluj silnik, uwierzytelnij go, wybierz i przetestuj model, a następnie utwórz zadanie."
+        ],
+        "tips": [
+          "SDK może zawierać lub wywoływać podstawowy plik wykonywalny. Wybór SDK nie oznacza braku podprocesów.",
+          "WorkStep przechowuje dane projektu lokalnie. Podczas wykonywania wybrany silnik i dostawca wysyłają kontekst zadania do usługi modelowej."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Krok 1: zainstaluj silnik SDK",
+    "summary": "Zacznij od SDK. Pobieraj silniki i zarządzaj nimi za pomocą opcji Zainstaluj i wersje (安装与版本), bez kopiowania poleceń instalacji terminala.",
+    "sections": [
+      {
+        "title": "Pobierz i zainstaluj poprzez interfejs",
+        "steps": [
+          "Otwórz Ustawienia → Silniki wykonawcze (设置 → 执行引擎). Znajdź kartę Codex lub Claude Code oznaczoną sdk, odpowiadającą Codex SDK i Claude Agent SDK. Początkowo zainstaluj tylko ten, którego zamierzasz używać.",
+          "Kliknij opcję Zainstaluj i wersje, poczekaj na listę wersji, a następnie wybierz odpowiednią wersję w obszarze Wybierz wersję.",
+          "Kliknij Zainstaluj wybraną wersję i sprawdź wersję. Jeśli pojawią się warunki stron trzecich, przeczytaj je i zaakceptuj przed kliknięciem Potwierdź instalację.",
+          "Poczekaj na pobranie głównego pakietu, instalację silnika i zależności oraz weryfikację wersji. Upewnij się, że wyświetla się nowa wersja.",
+          "Zmiana wersji SDK wymaga ponownego uruchomienia backendu. Użytkownicy komputerów stacjonarnych mogą zakończyć bieżącą pracę, wyjść i ponownie otworzyć WorkStep, a następnie kontynuować konfigurację."
+        ],
+        "tips": [
+          "Procent obejmuje tylko pakiet główny. Pobieranie i wyodrębnianie zależności może nie mieć wartości procentowej; użyj opisu fazy, aby ocenić postęp.",
+          "Instalacja jest kontynuowana, gdy jej sekcja zostanie zwinięta. Nie przesyłaj ponownie tylko dlatego, że postęp chwilowo przestał się zmieniać.",
+          "Jeśli nie pojawi się odpowiednia wersja, odśwież listę i sprawdź obsługę sieci i platformy. Jeśli skonfigurowana jest niestandardowa ścieżka pliku wykonywalnego, wyczyść ją zgodnie z instrukcją przed zarządzaniem wersjami."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "Instalacja silnika SDK i wybór wersji",
+          "caption": "Kliknij Zainstaluj i wersje, Wybierz wersję, a następnie Zainstaluj wybraną wersję."
+        }
+      },
+      {
+        "title": "Sprawdź wersję instalacyjną i konserwację",
+        "steps": [
+          "Otwórz ponownie silniki wykonawcze i sprawdź, czy SDK został wykryty jako zainstalowany w oczekiwanej wersji.",
+          "Użyj opcji Instalacja i wersje w przypadku późniejszych aktualizacji. Jeśli dostępna jest wersja wycofana, kliknij Przywróć do… i potwierdź; wycofanie powoduje ponowne pobranie starszej wersji.",
+          "Jeśli instalacja się nie powiedzie, przeczytaj błąd w tej sekcji, sprawdź sieć, miejsce na dysku i ścieżkę instalacji, a następnie spróbuj ponownie. Pomyślna instalacja nie oznacza pomyślnego uwierzytelnienia modelu: następnie wykonaj pełną konfigurację i testowanie."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Wersja i postęp po instalacji SDK",
+          "caption": "Sprawdź aktualną wersję po instalacji. Pozostały wskaźnik 100% oznacza, że ​​instalacja została zakończona, a nie, że pobieranie jest kontynuowane."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Skonfiguruj dostawców, testy uwierzytelniania i połączenia",
+    "summary": "Skonfiguruj kompatybilnego dostawcę w WorkStep i powiąż go z SDK. Użytkownicy z istniejącym loginem natywnym mogą również ponownie skorzystać z uwierzytelnienia silnika.",
+    "sections": [
+      {
+        "title": "Dodaj dostawcę",
+        "steps": [
+          "Otwórz Ustawienia → Dostawcy → Dodaj dostawcę (设置 → 供应商 → 添加供应商). Wpisz rozpoznawalną nazwę i wybierz typ usługi oraz protokół API.",
+          "W przypadku Claude Agent SDK wybierz kompatybilny punkt końcowy Anthropic Messages; w przypadku modelu Codex SDK wybierz zgodny punkt końcowy OpenAI Responses. Samo stwierdzenie „kompatybilny z OpenAI” nie stanowi o zgodności protokołu.",
+          "Wprowadź adres API i klucz API dostarczone przez dostawcę. Zachowaj ścieżki wersji, takie jak /v1 lub /v2; nie używaj pełnego punktu końcowego czatu jako adresu podstawowego.",
+          "Zapisz dostawcę i kliknij Testuj połączenie. Aby uzyskać modele, kliknij Pobierz modele, wybierz potrzebne modele, a następnie Zapisz wybrane.",
+          "Upewnij się, że dostawca jest włączony. Po pomyślnym zakończeniu testu wróć do SDK, aby dokończyć wiązanie i testowanie silnika."
+        ],
+        "tips": [
+          "Subskrypcje kont, dane uwierzytelniające API i rozliczenia są ustalane przez usługodawcę. Zainstalowanie SDK nie zapewnia poświadczeń.",
+          "Podczas edytowania dostawcy pozostawienie klucza pustego powoduje zachowanie starej wartości. Wprowadź nowy klucz, aby go zastąpić, i ukryj klucze przed wykonaniem zrzutów ekranu lub udostępnieniem konfiguracji.",
+          "W trybie zarządzanym przez przedsiębiorstwo platforma może wyznaczać dostawców. Skorzystaj z autoryzowanego dostawcy, zamiast dodawać go ponownie."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Ustawienia nazwy dostawcy, protokołu i adresu API",
+          "caption": "Skonfiguruj zgodny protokół, zapisz, a następnie przetestuj połączenie. Obrazek przedstawia publiczny adres API z pustym polem klucza."
+        }
+      },
+      {
+        "title": "Powiąż i zweryfikuj SDK",
+        "steps": [
+          "Wróć do Ustawienia → Silniki wykonawcze, rozwiń zainstalowaną konfigurację SDK i wybierz zapisanego kompatybilnego dostawcę.",
+          "Claude Agent SDK wymaga trybu uprawnień. Przeczytaj jego opis, wybierz i potwierdź; inne pola zaawansowane mogą pozostać przy ustawieniach domyślnych. W przypadku Codex SDK początkowo zachowaj domyślne ustawienia rozumowania, zatwierdzania i piaskownicy.",
+          "Kliknij Zapisz konfigurację i sprawdź model domyślny. W przypadku powiązanego dostawcy funkcja Odśwież modele ponownie odczytuje tylko zapisane selekcje, zamiast pobierać wszystkie modele. Lista jest pusta, jeśli nie istnieje żadna pamięć podręczna ani selekcja. Aby dodać modele, wróć do Ustawienia → Dostawcy, Pobierz modele i Zapisz wybrane, a następnie odśwież silnik.",
+          "Kliknij Test na karcie silnika, poczekaj na wynik i potwierdź Zweryfikowano (已验证). To jest Twój punkt kontrolny przed uruchomieniem zadań."
+        ],
+        "tips": [
+          "Testowanie silnika wywołuje wybrany silnik i może wiązać się z opłatami za usługę modelu.",
+          "Opcje rozumowania, zatwierdzania i piaskownicy Codex SDK mają chińskie etykiety. Lista nakładów pokazuje ustawienia obsługiwane przez silnik, nawet jeśli katalog modeli jest pusty; nie oznacza to, że każdy model obsługuje każdy poziom. Zacznij od ustawień domyślnych. Jeśli model odrzuci poziom, wróć do wartości Automatycznej lub obsługiwanej.",
+          "Bez powiązania dostawcy, Codex SDK ponownie wykorzystuje lokalne uwierzytelnianie Codex, podczas gdy Claude Agent SDK używa swojej natywnej konfiguracji uwierzytelniania. Nowi użytkownicy bez istniejącego loginu powinni zacząć od konfiguracji dostawcy.",
+          "W przypadku błędów uwierzytelnienia sprawdź klucz, adres API, protokół i uprawnienia konta. W przypadku błędów modelu sprawdź identyfikator modelu i obsługę dostawcy. Jeśli zaznaczono opcję Nie zainstalowano, wróć do instalacji."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Przetestuj, zweryfikuj i zapisz konfigurację na karcie Codex SDK",
+          "caption": "Karta Codex SDK wyświetla komunikat Verified, wskazując, że ten silnik przeszedł test."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Ustaw domyślny silnik wykonawczy i model",
+    "summary": "Ustaw testowany SDK jako domyślny silnik wykonawczy dla kroków, które nie określają innego silnika.",
+    "sections": [
+      {
+        "title": "Zapisz ustawienia domyślne",
+        "steps": [
+          "W Ustawieniach → Silniki wykonawcze → Domyślny silnik wykonawczy wybierz właśnie zweryfikowany SDK.",
+          "Kliknij Zapisz ustawienia domyślne i potwierdź komunikat o powodzeniu. Nie wychodź po prostu wybierając wartość rozwijaną.",
+          "Wybierz model w domyślnym selektorze modelu tej karty SDK. Kroki bez oddzielnego modelu korzystają z tego ustawienia domyślnego.",
+          "Po utworzeniu przepływu pracy sprawdź ponownie silnik i model każdego kroku. Jawne ustawienia kroków nie zmieniają się automatycznie po zmianie globalnych ustawień domyślnych."
+        ],
+        "tips": [
+          "Asystenci mają osobne wpisy konfiguracyjne. Zmiana domyślnego silnika wykonawczego nie powoduje zmiany każdego asystenta.",
+          "Najpierw wykonaj przepływ pracy, korzystając z jednego zweryfikowanego modelu SDK i jednego modelu, a następnie wypróbuj różne modele w różnych krokach."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Selektor domyślnego mechanizmu wykonywania i przycisk Zapisz ustawienia domyślne",
+          "caption": "Domyślny selektor silnika i wpis Zapisz ustawienia domyślne. Na tym obrazie Pydantic AI jest nieskonfigurowany; żadna wartość domyślna nie została zmieniona ani zweryfikowana."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Połącz projekt lokalny",
+    "summary": "Projekt odpowiada lokalnemu katalogowi kodu. Jego dane są domyślnie zgodne z projektem lub mogą być przechowywane według identyfikatora projektu w Strona główna bieżącego użytkownika.",
+    "sections": [
+      {
+        "title": "Zapoznaj się z automatycznie przygotowanym domyślnym obszarem roboczym",
+        "steps": [
+          "Przy pierwszym wpisie pasek boczny zawiera domyślny obszar roboczy (默认工作区). Bez wybranego projektu WorkStep otwiera swoją zwykłą stronę czatu. Istniejące wybory projektów i zdalne powiązania mają pierwszeństwo.",
+          "Po skonfigurowaniu SDK użyj tego obszaru roboczego do zwykłego czatu. Aby pracować nad kodem, użyj opcji Dodaj projekt, aby połączyć jego rzeczywisty katalog; domyślny obszar roboczy nie jest już połączonym repozytorium.",
+          "Domyślny obszar roboczy jest także współdzielony przez tworzenie umiejętności, silnika, skórki i pakietu językowego. Wpisy te ponownie korzystają ze zwykłego czatu i przechowują swoje dane wyjściowe w tym obszarze roboczym."
+        ],
+        "tips": [
+          "Możesz zmienić nazwę domyślnego obszaru roboczego, ale nie możesz go usunąć z listy projektów. Nie tworzy automatycznie przepływu pracy.",
+          "Domyślnym obszarem roboczym jest projekt; SDK to silnik wykonawczy. Posiadanie projektu nie oznacza, że ​​silnik jest zainstalowany lub uwierzytelniony."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Domyślny obszar roboczy i zwykły wpis czatu na pasku bocznym",
+          "caption": "Pusty zwykły czat w domyślnym obszarze roboczym, bez jeszcze rozmów i przepływów pracy. Utwórz tutaj rozmowę; projekty kodu nadal muszą być połączone jawnie."
+        }
+      },
+      {
+        "title": "Zacznij od katalogu demonstracyjnego",
+        "steps": [
+          "Przygotuj oddzielny folder demonstracyjny, np. workstep-demo. W przypadku istniejącego kodu wybierz jego katalog główny projektu.",
+          "Kliknij Pasek boczny → Dodaj projekt → Projekt lokalny (侧边栏 → 添加项目 → 本地项目), wybierz ten folder w przeglądarce katalogów i potwierdź.",
+          "Sprawdź, czy projekt pojawia się na pasku bocznym i przejdź do niego. Nowe projekty domyślnie nie mają przepływu pracy; utwórz następny.",
+          "Kiedy później ponownie połączysz ten sam katalog, przepływy pracy, zadania i komunikaty zostaną przywrócone z danych projektu. Nie usuwaj .workstep tylko po to, aby ponownie otworzyć projekt."
+        ],
+        "tips": [
+          "Silniki mogą czytać lub modyfikować pliki projektu zgodnie z instrukcjami zadania. Poćwicz w oddzielnym katalogu i zachowaj historię wersji przed edycją prawdziwego kodu.",
+          "Domyślnie dane projektu znajdują się w .workstep/workstep.db,, przesyłane są w .workstep/uploads/,, a artefakty w .workstep/artifacts/.. W przypadku scentralizowanego przechowywania należy utworzyć kopię zapasową odpowiedniego katalogu danych projektu w obszarze Strona główna i pliku tożsamości projektu.",
+          "Nazwy projektów nowych lub o zmienionych nazwach nie mogą zawierać spacji, tabulacji ani innych białych znaków."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Dodaj projekt lokalny i wybierz jego katalog główny",
+          "caption": "Wybierz katalog demonstracyjny, a następnie wprowadź podłączony projekt z paska bocznego."
+        }
+      },
+      {
+        "title": "Otwórz katalog projektu i sprawdź wygenerowane pliki",
+        "steps": [
+          "Wybierz projekt i kliknij Otwórz katalog na stronie zadania lub czatu projektu. Użyj tej opcji, aby sprawdzić aktualnie wygenerowane pliki po zakończeniu zadania.",
+          "W aplikacji komputerowej strzałka po prawej stronie wyświetla listę wykrytych lokalnych menedżerów plików, edytorów i terminali. Wybranie jednego powoduje natychmiastowe otwarcie katalogu i zapamiętywanie lokalnego wyboru. Pojawiają się tylko wykryte, dostępne aplikacje.",
+          "Zdalne projekty i zdalny dostęp przez przeglądarkę korzystają z przeglądarki katalogów internetowych. Kompilacje komputerów stacjonarnych bez mostka otwierającego katalogi również go używają; edytor pulpitu nie musi być instalowany wewnątrz kontenera."
+        ],
+        "tips": [
+          "Ścieżki projektów piaskownicy pulpitu są przed otwarciem mapowane z powrotem do katalogów montowania hosta. Jeśli żaden montaż nie pasuje, sprawdź konfigurację montażu projektu.",
+          "Jeśli otwarcie katalogu nie powiedzie się, sprawdź, czy wybrana aplikacja i katalog nadal istnieją, lub sprawdź projekt bezpośrednio w systemowym menedżerze plików."
+        ]
+      },
+      {
+        "title": "Zmień kolejność projektów paska bocznego",
+        "steps": [
+          "Na pasku bocznym przeciągnij demonstrację ręczną (操作手册演示) przed lub za żądanym projektem.",
+          "Projekty lokalne i zdalne można przeplatać. Zwolnienie zapisuje zamówienie w konfiguracji lokalnej, a ponowne otwarcie zachowuje je."
+        ],
+        "tips": [
+          "Zamawianie wpływa tylko na wyświetlacz tego urządzenia, a nie na kolejność projektów na zdalnym hoście. Postępuj zgodnie z komunikatem o błędzie i spróbuj ponownie, jeśli zapisywanie się nie powiedzie."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Dwa lokalne projekty demonstracyjne i przepływy pracy na pasku bocznym",
+          "caption": "Najnowszy pasek boczny pokazuje dwa lokalne projekty demonstracyjne i domyślny obszar roboczy. Przeciągnij wiersze projektu, aby zmienić ich kolejność; żadne urządzenie zdalne nie jest podłączone."
+        }
+      },
+      {
+        "title": "Wybierz miejsce przechowywania danych projektu",
+        "steps": [
+          "Po wybraniu katalogu w obszarze Pasek boczny → Dodaj projekt → Projekt lokalny zaznacz opcję Katalog danych podąża za katalogiem projektu (数据目录跟随项目目录), domyślnie włączony dla nowych projektów.",
+          "Po zaznaczeniu zadania, przepływy pracy, załączniki, dzienniki, artefakty, umiejętności i pamięć są przechowywane w .workstep/. projektu. Odznaczenie używa ~/.workstep/projects/<项目ID>/, pozostawiając jedynie .workstep/project.json jako plik tożsamości w katalogu projektu.",
+          "W przypadku istniejącego projektu sprawdź jego rzeczywistą ścieżkę danych w Konfiguracja projektu → Ogólne. Zmień pole wyboru i potwierdź migrację. Najpierw zatrzymaj zadania, rozmowy i szybkie działania; usuń istniejące obszary robocze Git.",
+          "Poczekaj na migrację, a następnie sprawdź nową ścieżkę i oryginalne zadania. Awaria powoduje zachowanie oryginalnych danych. Niepusty cel nie jest nadpisywany; rozwiąż zgłoszony problem i spróbuj ponownie."
+        ],
+        "tips": [
+          "Ponowne dodanie istniejącego projektu zachowuje tryb przechowywania w jego pliku tożsamości; nie przenosi automatycznie danych.",
+          "Zachowaj .workstep/project.json podczas przenoszenia lub zmiany nazwy projektu, a następnie dodaj go ponownie, aby rozpoznać oryginalny projekt. Usunięcie tego pliku tożsamości nie powoduje usunięcia danych Home, ale zapobiega automatycznemu skojarzeniu.",
+          "Kopia o tym samym identyfikatorze projektu nie może współistnieć z zarejestrowanym oryginalnym katalogiem: system zgłasza konflikt identyfikatorów. W przypadku migracji między komputerami skopiuj także odpowiedni katalog danych Home.",
+          "Scentralizowane przechowywanie nadal automatycznie ignoruje .workstep/ w projekcie. Zwykła kompresja nie stosuje automatycznie reguł ignorowania Git, ale plik tożsamości nie zawiera danych zadania."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Opcja przechowywania danych i powiadomienie o pliku tożsamości podczas dodawania projektu",
+          "caption": "Prawdziwy interfejs Dodaj projekt: odznaczenie opcji domyślnej powoduje wyświetlenie ścieżki domowej i instrukcji dotyczących przenoszenia lub migracji między komputerami."
+        }
+      },
+      {
+        "title": "Przenieś dane istniejącego projektu",
+        "steps": [
+          "Otwórz Ogólne w konfiguracji projektu i sprawdź bieżącą ścieżkę danych.",
+          "Kliknij Katalog danych podążający za katalogiem projektu, przeczytaj i potwierdź migrację, a następnie poczekaj. Aktywna praca lub niepusty cel powoduje błąd."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Lokalizacja przechowywania danych w ustawieniach projektu demonstracyjnego",
+          "caption": "Sprawdź bieżącą ścieżkę. Zmiana pola wyboru nadal wymaga potwierdzenia migracji w oknie dialogowym."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Utwórz swój pierwszy dwuetapowy przepływ pracy",
+    "summary": "Użyj analizy wymagań → Wykonaj zadanie, aby zrozumieć kroki, wejścia, wyjścia i połączenia.",
+    "sections": [
+      {
+        "title": "Stwórz przykład poprzez wdrożenie",
+        "steps": [
+          "Upewnij się, że zapisałeś domyślny silnik wykonawczy i wybrałeś podłączony projekt lokalny. Jeśli wdrożenie jest zamknięte, otwórz ponownie Ustawienia → Ustawienia systemowe → Wdrożenie i kliknij Wdrożenie.",
+          "W obszarze Utwórz dwuetapowy przepływ pracy kliknij opcję Utwórz przykładowy przepływ pracy. Poczekaj na sukces i otwarcie płótna.",
+          "Przykład nosi nazwę Analiza i wykonanie (分析与执行). Jej pierwszy krok, Analiza wymagań (需求分析), generuje plan wykonania (执行计划), połączony z drugim krokiem, Wykonanie zadania (执行任务).",
+          "Otwórz oba kroki i sprawdź silnik, model, monit, wejścia i wyjścia, upewniając się, że korzystają ze zweryfikowanego SDK. Przykład nie rozpoczyna się od utworzenia ani nie uruchamia recenzji; po uruchomieniu jego dwa kroki są wykonywane w kolejności zależności."
+        ],
+        "tips": [
+          "Zwykły nowy przepływ pracy rozpoczyna się od pustego obszaru roboczego, bez przykładowych kroków. Wybierz szablon wyraźnie.",
+          "Nie oceniaj konfiguracji wyłącznie na podstawie wyglądu linii: sprawdź, czy port wyjściowy odpowiada wymaganiom wejściowym następnego kroku."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Dwuetapowe płótno do analizy wymagań i realizacji zadań",
+          "caption": "Analiza wymagań tworzy plan wykonania zadania Wykonaj. Kliknij każdy krok, aby sprawdzić jego konfigurację."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Utwórz i wykonaj swoje pierwsze zadanie",
+    "summary": "Użyj małego, jednoznacznego i łatwego do sprawdzenia zadania, aby sprawdzić, czy SDK, projekt i przepływ pracy współpracują ze sobą.",
+    "sections": [
+      {
+        "title": "Napisz weryfikowalną prośbę",
+        "steps": [
+          "Przygotuj README.md i example.txt w katalogu demonstracyjnym. README.md powinien wymienić pięć operacji do wyjaśnienia, z dodatkowymi uwagami w example.txt. Używaj treści demonstracyjnych, a nie materiałów prywatnych.",
+          "Otwórz stronę zadań projektu demonstracyjnego, wybierz opcję Analiza i wykonanie, a następnie kliknij Nowe zadanie. Otwiera go również wpis dotyczący tworzenia zadania wdrożeniowego.",
+          "Zacznij od analizy wymagań i wpisz tytuł Organizuj instrukcje projektowe (整理项目说明).",
+          "Przykładowy opis: Przeczytaj README.md i example.txt, utwórz plan wykonania, a następnie utwórz plik 使用说明.md w katalogu głównym projektu. Wymień pięć operacji w Markdown, po jednym zdaniu na operację. Czytaj tylko te dwa istniejące pliki; nie modyfikuj ich. Możesz utworzyć plik 使用说明.md, ale nie modyfikuj innych plików. Po zakończeniu zgłoś lokalizację wygenerowanego pliku.",
+          "Wybierz Uruchomienie ręczne i kliknij Utwórz zadanie. Sprawdź żądanie i krok początkowy, a następnie Rozpocznij zadanie. Alternatywnie wybierz opcję Rozpocznij natychmiast po utworzeniu."
+        ],
+        "tips": [
+          "Określ cel, dozwolone działania, format dostawy i kryteria akceptacji; dzięki temu łatwiej jest sprawdzić wyniki niż niejasne żądanie.",
+          "Rozpoczęcie od późniejszego kroku pomija wcześniejsze. Pierwsze ćwiczenie rozpocznij od analizy wymagań.",
+          "Otwarcie panelu tworzenia zadań z poziomu onboardingu samo w sobie nie powoduje wykonania zadania; opcja uruchamiania panelu steruje wykonaniem."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Tytuł zadania, opis, krok początkowy i tryb uruchamiania",
+          "caption": "Napisz konkretne żądanie, wybierz jego etap początkowy i wyraźnie określ, kiedy rozpoczyna się wykonanie."
+        }
+      },
+      {
+        "title": "Postępuj zgodnie z instrukcjami i sprawdź wyniki",
+        "steps": [
+          "Otwórz szczegóły zadania i obejrzyj bieżący krok, status i komunikaty. Poczekaj, aż silnik uruchomi się, i odpowiedz na wyraźne pytania lub prośby o zatwierdzenie w interfejsie.",
+          "Po zakończeniu analizy wymagań zadanie Wykonaj rozpoczyna się automatycznie zgodnie z połączeniem zależności. Nie jest potrzebne żadne dodatkowe kliknięcie Start. Przeczytaj plan pierwszego kroku i sprawdź, czy drugi go wykorzystał.",
+          "Po zakończeniu zadania Execute przeczytaj ostatnią wiadomość i otwórz plik 使用说明.md w katalogu głównym projektu. Sprawdź, czy jest to Markdown, zawiera pięć operacji i używa po jednym zdaniu dla każdej.",
+          "Jeśli pojawi się komunikat Edytowane… pliki, rozwiń go i kliknij nazwę pliku. Wyświetl nagraną poprawkę, jeśli jest dostępna; w przeciwnym razie wyświetl podgląd bieżącego pliku. Zmiany historyczne mogą różnić się od obecnych plików, dlatego nadal sprawdzaj rzeczywisty wynik.",
+          "Sprawdź, czy README.md i example.txt pozostały niezmienione i dodano tylko dozwolony plik 使用说明.md. Użyj wpisu pliku projektu lub systemowego menedżera plików. Sam stan ukończenia nie świadczy o poprawności."
+        ],
+        "tips": [
+          "Jeśli oczekiwanie trwa, rozróżnij oczekiwanie na rozpoczęcie, zatwierdzenie, przegląd i aktywne wykonanie: każde wymaga innej reakcji.",
+          "W przypadku awarii zapisz błąd i najpierw ponownie przetestuj połączenie SDK. Po naprawieniu konfiguracji użyj dostępnego wpisu odzyskiwania zadania lub spróbuj ponownie.",
+          "Jeśli API zgłosi, że zwrócił stronę internetową, potwierdź, że backend został zaktualizowany i uruchomiony ponownie, a następnie odśwież i spróbuj ponownie. Brak załadowania samych szczegółów wykonania nie oznacza, że ​​wykonanie się nie powiodło; nie twórz z tego powodu duplikatu zadania."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Po wykonaniu dwuetapowego zadania wyprowadź plik 使用说明.md",
+          "caption": "Po wykonaniu obu kroków sprawdź plik 使用说明.md i jego pięć opisów operacji."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Edytuj przepływy pracy",
+    "summary": "Podziel pracę na etapy i skonfiguruj silniki wykonawcze, dane wejściowe, wyjściowe i reguły przeglądu.",
+    "sections": [
+      {
+        "title": "Dodawaj i łącz kroki",
+        "steps": [
+          "Wybierz projekt i przepływ pracy po lewej stronie i wejdź na kanwę Workflow. Nowy przepływ pracy jest pusty; dodaj kroki lub jawnie zastosuj szablon.",
+          "Kliknij + Krok i wprowadź jego nazwę oraz identyfikator, np. Organizuj wymagania za pomocą wymagań. Identyfikatory muszą być unikalne w obrębie przepływu pracy, zaczynać się od angielskiej litery i zawierać wyłącznie litery, cyfry, podkreślenia lub łączniki.",
+          "Napisz zachętę z jasnym celem, ograniczeniami i rezultatami. Na przykład: Przeczytaj opis zadania, wypisz kryteria akceptacji i plan wdrożenia i zapisz dokument wymagań.",
+          "Skonfiguruj zainstalowany, zweryfikowany silnik i model SDK. Aby odziedziczyć wartości domyślne, wybierz domyślny aparat wykonawczy lub domyślny model silnika.",
+          "Po ustawieniu wejść i wyjść przeciągnij z portu wyjściowego upstream do odpowiedniego wejścia downstream, a następnie Zapisz."
+        ],
+        "tips": [
+          "Linie ciągłe przenoszą dane. Podłączenie z powrotem w górę tworzy przerywane połączenie powrotne w celu uzyskania informacji zwrotnej o przeróbce.",
+          "Powiadomienie o niezapisanych zmianach oznacza, że ​​zmiany w obszarze roboczym nie zostały jeszcze utrwalone."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Kanwa przepływu pracy z dwoma krokami i połączeniami wejścia/wyjścia",
+          "caption": "Znajdź przycisk Dodaj krok, porty połączeń i wpis Zapisz."
+        }
+      },
+      {
+        "title": "Skonfiguruj wejścia, wyjścia i połączenia powrotne",
+        "steps": [
+          "Otwórz edytor kroków, wyraźnie nazwij wyjścia i skonfiguruj wymagane wejścia.",
+          "Podłącz każde wymagane wyjście do odpowiedniego wejścia poniżej. Podczas wykonywania sprawdź dostępność w obszarze Wejścia i wyjścia kroków w szczegółach zadania.",
+          "W przypadku przeróbek utwórz połączenie powrotne i ustaw Maksymalne zyski dla tego kroku. Przed zapisaniem przeczytaj ostrzeżenia dotyczące potencjalnie niemożliwych do uruchomienia etapów i sprawdź, czy początkowe wykonanie zależy od artefaktów przeróbek, które nie zostały jeszcze wygenerowane."
+        ],
+        "tips": [
+          "Maksymalna liczba zwrotów kontroluje przerywane połączenia powrotne i jest oddzielona od ponownych prób po nieudanym sprawdzeniu.",
+          "Deklarowanie portu wyjściowego nie powoduje utworzenia pliku. Żądaj rzeczywistych wyników w monicie i sprawdzaj je później."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Artefakty wejściowe i odpowiadające im dane wyjściowe w edytorze węzłów",
+          "caption": "Dane wejściowe deklarują wymagania zadania, a plan wykonania jest odpowiadającym im wyjściem. Ustawienia liczby zwrotów nie są wyświetlane."
+        }
+      },
+      {
+        "title": "Ustaw przegląd i automatyczne uruchamianie",
+        "steps": [
+          "W sekcji Przegląd krokowy w edytorze wybierz opcję Przegląd ręczny, Przegląd automatyczny lub Pomiń przegląd. Na początku zaleca się sprawdzenie ręczne.",
+          "Ręczne sprawdzanie zostanie wstrzymane po wykonaniu decyzji. Aby dokonać automatycznej oceny, napisz weryfikowalne kryteria i opcjonalnie wybierz jego silnik i model.",
+          "Ustaw liczbę ponownych prób po odrzuceniu wyniku przez automatyczny przegląd. Błędy w samym agencie recenzującym przełączają się na obsługę ręczną.",
+          "W razie potrzeby ustaw opcję Uruchom automatycznie po utworzeniu, a następnie zapisz. Na początek wyłącz tę opcję, aby móc sprawdzić zadanie przed jego rozpoczęciem."
+        ],
+        "tips": [
+          "Zainstaluj i skonfiguruj silniki SDK przed użyciem ich do wykonania lub przeglądu."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Elementy sterujące trybu przeglądu krokowego w edytorze węzłów",
+          "caption": "Wybierz tryb przeglądu w edytorze węzłów. Sprawdź automatyczne uruchamianie osobno, jak opisano powyżej."
+        }
+      },
+      {
+        "title": "Wysyłaj między przepływami pracy i ponownie wykorzystuj elementy płótna",
+        "steps": [
+          "Aby przekazać wyniki do innego projektu lub przepływu pracy, dodaj krok przepływu pracy i wybierz projekt docelowy, przepływ pracy, krok początkowy i tryb uruchamiania.",
+          "Skonfiguruj artefakty wejściowe nadrzędne i zapisz. Ten krok jest wykonywany natychmiast po utworzeniu kolejnego zadania i nie można go połączyć z dalszymi krokami nadrzędnego przepływu pracy.",
+          "Aby ponownie wykorzystać krok, wybierz opcję Kopiuj węzły z przepływu pracy, wybierz projekt, przepływ pracy i węzły, wyświetl podgląd, skopiuj i zapisz.",
+          "Użyj Układu, aby rozmieścić węzły. Dodaj zakładki do notatek lub wyeksportuj przepływ pracy JSON jako kopię zapasową. Przed importem sprawdź, co zostanie zastąpione."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Miejsce docelowe zadania i ustawienia uruchamiania",
+          "caption": "Sprawdź docelowy projekt, przepływ pracy i krok początkowy."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Wyzwalacz przepływu pracy i haki powiadomień",
+    "summary": "Twórz zadania z żądań zewnętrznych lub wysyłaj statusy przepływu pracy na wybraną platformę.",
+    "sections": [
+      {
+        "title": "Twórz zadania za pomocą haka wyzwalającego",
+        "steps": [
+          "Wybierz projekt i przepływ pracy. Otwórz zaczepy przepływu pracy na pasku narzędzi listy zadań lub w menu mobilnym, a następnie wybierz opcję Wyzwalacze.",
+          "Dodaj hak, wprowadź jego nazwę, domyślny tytuł i twórcę, wybierz krok początkowy i czy ma się uruchamiać automatycznie, a następnie zapisz. Na przykład: Pobór wymagań z tytułem Żądanie zewnętrzne.",
+          "Wybierz skonfigurowany adres LAN, zewnętrzny lub bramy i skopiuj wywołanie URL. Jego token jest poświadczeniem: podawaj go tylko zaufanym systemom.",
+          "W obszarze Symuluj połączenie wprowadź tytuł, twórcę i treść, aby sprawdzić podgląd. Symulacja nie tworzy zadania.",
+          "Mieć zewnętrzny system POST do skopiowanego URL przy użyciu JSON, zwykłego tekstu lub Markdown, na przykład: Zorganizuj kryteria akceptacji dla tego żądania. Po otrzymaniu identyfikatora zadania sprawdź zawartość zadania i stan uruchomienia."
+        ],
+        "tips": [
+          "Wymagane jest pozwolenie na edycję projektu. Każde prawidłowe żądanie tworzy zadanie. Ta wersja nie rozpoznaje automatycznie zdarzeń GitHub/GitLab, nie deduplikuje żądań ani nie buforuje żądań, gdy urządzenie jest offline.",
+          "Najpierw napraw brakujące adresy lub odłączone urządzenia. Zresetowanie tokena unieważnia stary URL. Jeśli automatyczne uruchomienie nie powiedzie się, zadanie nadal istnieje: sprawdź run_error i szczegóły zadania przed ponowną próbą dostarczenia."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Niezapisana nazwa haka wyzwalającego, pola domyślne i konfiguracja na etapie początkowym",
+          "caption": "Ta wyłączona wersja robocza tworzy tylko zadania. Jego żeton jest ukryty; nie został on zapisany i nie wygenerowano żadnego wywołania URL."
+        }
+      },
+      {
+        "title": "Wysyłaj powiadomienia o przepływie pracy do platform zewnętrznych",
+        "steps": [
+          "W tym samym oknie zaczepów przepływu pracy przejdź do zaczepów powiadomień i dodaj miejsce docelowe.",
+          "Wprowadź nazwę, wybierz bota grupowego DingTalk, bota grupowego WeCom lub ogólnego webhooka JSON, a następnie wprowadź docelowy URL. W razie potrzeby podaj klucz podpisywania DingTalk.",
+          "Wybierz subskrybowane zdarzenia, domyślnie zakończenie zadania i niepowodzenie. Opcjonalnie ustaw prefiks tytułu i adres bramy, adres zewnętrzny lub LAN dla łączy zadań, a następnie zapisz.",
+          "Wygeneruj podgląd w obszarze Symuluj powiadomienie i sprawdź treść wiadomości oraz łącza. Podgląd nie wysyła żadnego żądania. Aby przeprowadzić prawdziwy test, potwierdź i kliknij Wyślij powiadomienie o teście; wysyła do zapisanego, włączonego miejsca docelowego.",
+          "Sprawdź status, próby i zredagowane błędy w dokumentach dostaw. Po naprawieniu konfiguracji spróbuj ponownie utworzyć nieudane rekordy. Po zakończeniu zadania sprawdź platformę odbiorczą i dostęp do łącza do zadania."
+        ],
+        "tips": [
+          "Urządzenie wysyła powiadomienia bezpośrednio; Gateway ich nie przekazuje. Nie zawierają treści czatu, zawartości artefaktów ani danych uwierzytelniających do tworzenia zadań. Łącza zadań nadal wymagają normalnych praw dostępu.",
+          "Błędy tymczasowe są automatycznie ponawiane. Przekroczenia limitu czasu i odzyskiwanie mogą powodować zduplikowane dostarczanie; ogólne odbiorniki mogą deduplikować za pomocą event_id. Wyłączenie lub usunięcie miejsca docelowego nie może wycofać wysłanych powiadomień.",
+          "Sam podgląd nie dowodzi, że integracja działa: sprawdź faktyczną dostawę na platformę."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "Platforma powiadomień DingTalk, subskrybowane zdarzenia i puste pola adresowe",
+          "caption": "Niezapisana, wyłączona wersja robocza w najnowszym interfejsie, z zaznaczonym zakończeniem zadania i niepowodzeniem. Pola webhooka i klucza podpisu są puste; nic nie zostało wysłane."
+        }
+      },
+      {
+        "title": "Dostosuj szablony powiadomień Markdown",
+        "steps": [
+          "Wybierz bota grupowego DingTalk lub WeCom w hakach powiadomień i przewiń do szablonu wiadomości Markdown. Ogólne webhooki JSON nie korzystają z tych szablonów Markdown.",
+          "Rozwiń Zmienne szablonu (kliknij, aby skopiować), a następnie wstaw elementy zastępcze, takie jak {task_title}. Nie używaj nieznanych zmiennych ani pustego szablonu. Zachowaj {task_link} lub {task_url}, gdy potrzebne jest łącze do zadania.",
+          "Zapisz i użyj powiadomienia Symuluj, aby sprawdzić podmianę i linki bez wysyłania. Przeczytaj potwierdzenie przed przywróceniem domyślnego szablonu."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Treść powiadomienia Markdown i wpis zmiennej szablonu",
+          "caption": "Wersja robocza wyświetla domyślną treść i zmienne modelu Markdown. Nie przesłano żadnego szablonu ani nie dostarczono powiadomienia zewnętrznie."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Szablony i asystent przepływu pracy AI",
+    "summary": "Zacznij od szablonu lub poproś sztuczną inteligencję o zaproponowanie kroków i potwierdzenie, co zastosować.",
+    "sections": [
+      {
+        "title": "Zastosuj i zapisz szablony",
+        "steps": [
+          "Otwórz szablony przepływu pracy na kanwie, wyszukaj nazwy lub opisy i przejrzyj cel każdego szablonu oraz liczbę kroków.",
+          "Wybierz odpowiedni szablon i potwierdź. Zastosowanie zastępuje każdy krok i połączenie na bieżącym obszarze roboczym.",
+          "Sprawdź silnik, model, monity i wymagania każdego kroku, dostosuj je i zapisz.",
+          "Aby ponownie wykorzystać swój projekt, wybierz opcję Zapisz bieżący jako szablon przepływu pracy i wprowadź nazwę oraz opis. Zarządzaj edytowalnymi szablonami niestandardowymi w Ustawieniach → Szablony przepływu pracy."
+        ],
+        "tips": [
+          "Nowe projekty nie tworzą automatycznie przepływów pracy, a nowe przepływy pracy nie stosują automatycznie szablonów.",
+          "Wbudowanych szablonów nie można usunąć. Po zastosowaniu jednego z nich nadal sprawdź, czy wymagane silniki są dostępne."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Wbudowane zarządzanie umowami umożliwia wyszukiwanie szablonów kanwy",
+          "caption": "Wyszukaj Zarządzanie kontraktami, aby zobaczyć jego cel i liczbę kroków. Przed dokonaniem wyboru sprawdź zakres wymiany."
+        }
+      },
+      {
+        "title": "Poproś sztuczną inteligencję o utworzenie lub zmodyfikowanie przepływu pracy",
+        "steps": [
+          "Otwórz asystenta przepływu pracy AI na płótnie i najpierw wybierz skonfigurowany silnik i model.",
+          "Wyjaśnij cel, podział etapów, format wyjściowy i potrzeby przeglądu, na przykład: Utwórz analizę wymagań → wdrożenie → testowanie, z ręcznym przeglądem na każdym etapie, przy użyciu zainstalowanego SDK.",
+          "Porównaj karty propozycji według tytułu, liczby kroków i podsumowania, a następnie zastosuj odpowiednią propozycję na płótnie.",
+          "W przypadku istniejących przepływów pracy sprawdź zmiany kroków. W obszarze Zastosuj zmiany wybierz żądane dodatki, aktualizacje lub usunięcia, a następnie zastosuj i zapisz."
+        ],
+        "tips": [
+          "Propozycje AI wymagają Twojego potwierdzenia. Sam sukces generacji nie jest powodem do ich uruchomienia: sprawdź połączenia, silniki i sprawdź kryteria."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Dwuetapowa karta propozycji z asystenta przepływu pracy AI",
+          "caption": "Karta pokazuje liczbę zmodyfikowanych kroków i opcję Zastosuj zmiany. Kliknij, aby potwierdzić zmiany w konkretnym kroku."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Twórz zadania i zarządzaj nimi",
+    "summary": "Przepływ pracy definiuje sposób pracy; zadanie określa, co należy zrobić tym razem.",
+    "sections": [
+      {
+        "title": "Przygotuj wiele zadań za pomocą asystenta zadań",
+        "steps": [
+          "Otwórz asystenta zadań na stronie zadań. Wyraźnie żądaj wielu zadań z indywidualnymi czasami, na przykład: Wygeneruj trzy niezależne zadania rozpoczynające się jutro o 09:00, 10:00 i 11:00.",
+          "Sprawdź tytuł każdej wersji roboczej, jej zawartość, przepływ pracy, krok początkowy i zaplanowany czas rozpoczęcia, a następnie potwierdź utworzenie za pomocą interfejsu.",
+          "Wróć do listy zadań i sprawdź każdy wynik. Jeśli niektóre zawiodą, sprawdź istniejące zadania przed ponownym przesłaniem całej partii."
+        ],
+        "tips": [
+          "Generowanie wersji roboczych nie powoduje tworzenia ani wykonywania zadań. Określ strefy czasowe dla przyszłych czasów; zaplanowane uruchomienie wymaga, aby backend pozostał uruchomiony."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Wsadowe wersje robocze zadań i ich indywidualne harmonogramy",
+          "caption": "Oczekiwanie na prawdziwy zrzut ekranu: wersje robocze wsadowe i czasy indywidualne. Nie może go zastępować stary, jednozadaniowy projekt."
+        }
+      },
+      {
+        "title": "Utwórz zadanie i pozwól sztucznej inteligencji uporządkować wymagania",
+        "steps": [
+          "Wybierz projekt i przepływ pracy, otwórz jego stronę zadań, a następnie kliknij Nowy lub Dodaj na odpowiednim etapie.",
+          "Wprowadź tytuł i opis z kontekstem, celami, dozwolonymi zmianami, ścieżkami wyjściowymi i kryteriami akceptacji. Obsługiwane są Markdown i wklejone obrazy referencyjne.",
+          "W razie potrzeby otwórz Asystenta zadań, sprawdź wygenerowany tytuł, zawartość i wybór przepływu pracy, a następnie potwierdź.",
+          "Sprawdź krok początkowy i przejrzyj ustawienia tego przebiegu, a następnie utwórz zadanie. Jeśli automatyczne uruchamianie jest wyłączone, kliknij opcję Uruchom zadanie."
+        ],
+        "tips": [
+          "Przykład: Odczytaj README i wygeneruj docs/getting-started.md bez zmiany kodu programu. Uwzględnij instalację, uruchomienie i trzy często zadawane pytania.",
+          "Tworzenie i uruchamianie to odrębne działania; tryb uruchamiania i ustawienia kroków określają, czy wykonanie rozpoczyna się natychmiast."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Formularz tworzenia zadania z rozwiniętym asystentem zadań",
+          "caption": "Wprowadź tytuł i opis i wybierz tryb uruchamiania. Asystent może organizować wymagania; ustawienia recenzji znajdują się na innej karcie."
+        }
+      },
+      {
+        "title": "Znajdź zadania na tablicy lub stole",
+        "steps": [
+          "Przełączaj się między ścieżkami i tabelą na stronie zadania, przeglądaj zadania według etapów i wyszukuj według tytułu.",
+          "Kliknij zadanie, aby otworzyć szczegóły, w tym jego bieżący etap, status, twórcę i czas aktualizacji.",
+          "W razie potrzeby archiwizuj ukończone zadania. Znajdź je w obszarze Wyświetl archiwum i przywróć je na tablicę. Sprawdź wybrane opcje przed operacjami zbiorczymi."
+        ],
+        "tips": [
+          "W kolejce zwykle oznacza, że ​​pojemność współbieżności jest pełna. Oczekiwanie na recenzję wymaga potwierdzenia; nie oznacza to, że aplikacja utknęła.",
+          "Usunięcie różni się od archiwizacji. Przeczytaj potwierdzenie przed trwałym usunięciem."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Tablica zadań pokazująca statusy i etapy",
+          "caption": "Zadanie demonstracyjne jest gotowe. Pozycje paska narzędzi obejmują widoki, haki przepływu pracy, archiwum i katalog otwarty. Czas utworzenia znajduje się poniżej karty; kopiowanie jest omówione dalej."
+        }
+      },
+      {
+        "title": "Modyfikuj tylko przepływ pracy bieżącego zadania",
+        "steps": [
+          "Otwórz szczegóły zadania i kliknij opcję Edytuj przepływ zadania pod wykresem postępu. Najpierw zatrzymaj wykonywanie lub przejrzyj; płótno jest tylko do odczytu, gdy jest aktywne.",
+          "Zmień podpowiedzi, silniki, modele i recenzje dotyczące kroków tego zadania. Dodaj kroki, dodaj artefakty na końcu i dostosuj połączenia. Istniejących kroków, portów wejściowych i oryginalnych artefaktów nie można usunąć ani zmienić ich nazwy.",
+          "Zapisz, aby zaktualizować wykres postępu. Kolejne uruchomienie łączy najnowszy główny przepływ pracy z różnicami specyficznymi dla zadania, bez zmiany głównego przepływu pracy lub innych zadań.",
+          "Aby wyczyścić wszystkie dostosowania, kliknij Synchronizuj główny przepływ pracy i potwierdź. Dodane kroki opuszczają bieżący przepływ pracy, ale komunikaty historyczne, artefakty i zapisy wykonania pozostają. Nie rozpoczyna to wykonywania."
+        ],
+        "tips": [
+          "Bez faktycznych zmian nie zostanie utworzona pełna kopia przepływu pracy. Niezastąpione pola dziedziczą aktualizacje głównego przepływu pracy; nadpisania zadań mają pierwszeństwo.",
+          "Wybranie kroku w kompozytorze i zmiana jego silnika zapisuje go do tego zadania. Krok resetowania resetuje tylko sesję następnego uruchomienia, a nie główny silnik przepływu pracy.",
+          "Usunięcie połączeń zmienia zależności i może umożliwić bezpośrednie wykonanie; nie stanowi instrukcji krokowej."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Wpisy dotyczące edycji i synchronizacji przepływu pracy specyficzne dla zadania",
+          "caption": "Oddzielne płótno zadania demonstracyjnego pokazuje tryb przekazywania, główny przepływ pracy Synchronizuj i Zapisz. Nie zmieniono żadnych ustawień ani nie rozpoczęto wykonywania."
+        }
+      },
+      {
+        "title": "Skopiuj zadanie",
+        "steps": [
+          "Kliknij ikonę Kopiuj zadanie obok zadania na karcie lub w tabeli.",
+          "Sprawdź nowe zadanie zatytułowane (skopiuj), sprawdź jego opis, dostosowanie przepływu pracy i krok początkowy, a następnie uruchom je. Skopiowane kroki zaczynają oczekiwać; oryginalny postęp i historia czatów nie są kopiowane."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Skopiuj ikonę zadania obok nazwy zadania w widoku tabeli",
+          "caption": "Mała ikona obok nazwy oznacza wpis kopiujący. Na tym obrazie nie zostało skopiowane ani uruchomione żadne zadanie."
+        }
+      },
+      {
+        "title": "Zarządzaj zadaniami na telefonie",
+        "steps": [
+          "Kliknij wiersz zadania, aby otworzyć szczegóły. Przytrzymaj przez około pół sekundy, aby otworzyć menu akcji; działa również kliknięcie prawym przyciskiem myszy.",
+          "Zależnie od uprawnień możesz uruchamiać, edytować lub przeglądać, kopiować, archiwizować, przywracać i usuwać. Zadań uruchomionych, w kolejce lub oczekujących z aktywnymi krokami nie można archiwizować ani usuwać. Najpierw obsłuż potwierdzenia lub zatrzymaj wykonanie; przeczytaj potwierdzenie usunięcia.",
+          "Po wykonaniu i pomyślnym zakończeniu wszystkich etapów przepływu pracy zadanie zostanie wyświetlone jako Ukończone, także po ponownym otwarciu szczegółów lub ponownym uruchomieniu. Ukończenie nie archiwizuje zadania; wybierz, czy chcesz go zarchiwizować."
+        ],
+        "tips": [
+          "Przewijanie lub poruszanie palcem anuluje długie naciśnięcie, aby uniknąć przypadkowych działań. Dostęp tylko do odczytu umożliwia nadal otwieranie wpisów do przeglądania bez otrzymania uprawnień do edycji."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Menu Archiwizuj i usuwaj wiersz zadania w rozmiarze 390 pikseli",
+          "caption": "Przechwycone z gotowego zadania w v1.0.13; nic nie zostało zarchiwizowane ani usunięte, a zakończenie nie jest wyświetlane. Nowo dodane wpisy dotyczące uruchamiania, edytowania i kopiowania nadal wymagają zaktualizowanego zrzutu ekranu."
+        }
+      },
+      {
+        "title": "Wróć do zadań lub sesji z ostatnich czatów",
+        "steps": [
+          "Znajdź odwiedzone zadanie lub sesję w obszarze Ostatnie czaty (最近聊天) na pasku bocznym i kliknij, aby powrócić do pierwotnych szczegółów projektu. Występują tu oba rodzaje.",
+          "Sprawdź wskaźniki działające, zakończone niepowodzeniem i zakończone-nieprzeczytane. Otwarcie odpowiednich szczegółów powoduje usunięcie nieprzeczytanego wskazania. Autoryzowane wpisy mają menu archiwizacji lub usuwania; czytaj potwierdzenia.",
+          "Na komputerze zwiń Projekty lub Ostatnie czaty, przeciągnij nagłówki, aby zamienić ich kolejność, i przeciągnij separator, aby zmienić ich rozmiar. Kliknij dwukrotnie dzielnik, aby przywrócić domyślny współczynnik."
+        ],
+        "tips": [
+          "Podczas ostatnich wizyt przechowywanych jest maksymalnie 20 elementów w ramach tożsamości urządzenia tej przeglądarki. Wyczyszczenie danych przeglądarki usuwa ten indeks, a nie treść zadania. Wpisy historyczne nie omijają autoryzacji projektu.",
+          "Archiwizacja, usuwanie i kasowanie stanu nieprzeczytanego ma różne skutki. Jeśli stare łącze nie powiedzie się, sprawdź, czy projekt i sesja nadal istnieją i czy połączenie działa."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Jedna wizyta w ramach zadania demonstracyjnego w sekcji Ostatnie czaty",
+          "caption": "Pasek boczny pokazuje jedną wizytę w ramach zadania demonstracyjnego, bez wpisów sesji i przykładów nieprzeczytanych stanów."
+        }
+      },
+      {
+        "title": "Otwórz nawigację w przeglądarce mobilnej",
+        "steps": [
+          "Otwórz WorkStep w przeglądarce telefonu i dotknij okrągłego dymka nawigacyjnego na krawędzi strony, aby rozwinąć tę samą nawigację na pasku bocznym, co na komputerze.",
+          "Wybierz projekt, przepływ pracy, zadanie lub rozmowę, aby kontynuować. Kliknij dymek ponownie, aby zwinąć nawigację.",
+          "Jeśli dymek zakrywa treść, przytrzymaj go i przeciągnij do pustej części rzutni. Przeciąganie nie powoduje przełączania nawigacji."
+        ],
+        "tips": [
+          "Bańka pojawia się tylko w zwykłych przeglądarkach mobilnych. Aplikacje komputerowe i na Androida korzystają z własnych wpisów nawigacyjnych."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Bańka nawigacyjna i rozbudowany pasek boczny w przeglądarce telefonu",
+          "caption": "Rozwinięty pasek boczny w rozdzielczości 390 pikseli, z okrągłą dymką po prawej stronie, aby go zwinąć. Pokazane są tylko pojedyncze projekty demonstracyjne."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Wykonanie, homologacje i recenzje",
+    "summary": "Zrozum stany środowiska wykonawczego, obsługuj prośby o uprawnienia i decyduj, czy wyniki mogą przejść do następnego etapu.",
+    "sections": [
+      {
+        "title": "Sprawdź żądania wykonania i pozwolenia",
+        "steps": [
+          "Otwórz szczegóły zadania i przejrzyj wykres postępu oraz zapisy czatu, aby zidentyfikować aktywny krok.",
+          "Rozbuduj zapisy procesów, aby sprawdzić wywołania narzędzi, wyniki i błędy. Rozwiń rekordy podagentów, gdy silnik je zgłosi.",
+          "Jeśli wiadomości zawierają zmiany w plikach, rozwiń listę i wyświetl zarejestrowane różnice. Opisują one zmiany w tej wiadomości; otwarcie pliku pokazuje jego aktualną zawartość, która mogła ulec zmianie w późniejszych edycjach. Bez zapisanej różnicy bieżąca zawartość nie może zrekonstruować pełnej historii.",
+          "Gdy pojawi się zatwierdzenie narzędzia, przeczytaj polecenie, ścieżki i wpływ przed zezwoleniem lub odmową. Odpowiadaj na pytania, korzystając z dostarczonych opcji lub żądanych danych wejściowych.",
+          "Jeśli zadanie się nie powiedzie, zamiast wielokrotnie ponawiać próbę, najpierw przeczytaj najnowszy błąd, a następnie sprawdź konfigurację silnika, uprawnienia modelu, sieć i katalog projektu."
+        ],
+        "tips": [
+          "Zatwierdzenie pojawia się tylko wtedy, gdy wyszukiwarka o to prosi. Informacje o procesie i opcje uprawnień różnią się w zależności od silnika; brakujące szczegóły nie oznaczają, że nie doszło do wykonania.",
+          "Obracająca się ikona oznacza pracę asynchroniczną. Czekając na użytkownika, obsłuż bieżące pytanie lub zatwierdzenie."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Zapisy postępu kroków i rzeczywistego wykonania w szczegółach zadania",
+          "caption": "Widoczne są zapisy postępu i wykonania. Nie jest wyświetlana żadna prośba o pozwolenie; Zatwierdzenia pojawiają się tylko wtedy, gdy silnik faktycznie ich zażąda."
+        }
+      },
+      {
+        "title": "Zatwierdź, odrzuć lub zakończ recenzję",
+        "steps": [
+          "W oczekiwaniu na ręczny przegląd sprawdź artefakty wyjściowe, przejrzyj wyniki, pliki i wyniki testów pod kątem kryteriów akceptacji.",
+          "Jeśli wszystko jest zadowalające, kliknij Zatwierdź i kontynuuj. W przeciwnym razie wprowadź konkretną opinię i wybierz opcję Odrzuć i wykonaj ponownie.",
+          "Podczas automatycznego przeglądu sprawdź jego zapisy. Odrzucenie wyzwala skonfigurowane powtórki; błędy w przeglądaniu lub prośby o ręczną obsługę wymagają Twojej decyzji.",
+          "Jeśli wykonanie nie jest już potrzebne, wybierz opcję Zakończ i sprawdź potwierdzenie. Wymuś zatwierdzenie pomija bieżącą recenzję, dlatego najpierw sprawdź, czy wyniki nadają się do użytku."
+        ],
+        "tips": [
+          "Zadanie może działać z oczekującymi potwierdzeniami. Na komputerze najedź na liczbę, aby zobaczyć kroki i powody, a następnie obsłuż przegląd, uprawnienie narzędzia lub pytanie w danym kroku. Bez innej wykonywalnej gałęzi zadanie czeka. Ręczne zatrzymanie, błąd i ukończenie są odrębne; koniec procesu nie oznacza akceptacji."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Przyciski ręcznego przeglądu opinii i zatwierdzenia/odrzucenia",
+          "caption": "Przejrzyj wyniki, artefakty i wpisy działań."
+        }
+      },
+      {
+        "title": "Koordynator ustalił zasady i aktualne komunikaty",
+        "steps": [
+          "Otwórz szczegóły zadania, wybierz Koordynator w kompozytorze, wybierz silnik Codex SDK i zadaj pytanie do zadania, takie jak: Który etap jest niedokończony?",
+          "Kontynuuj w tej samej sesji koordynatora. Status zadania i aktualizacja bieżącego nadawcy w kontekście specyficznym dla tury; ustalone zasady koordynatora pozostają w historii sesji.",
+          "Do debugowania użyj trybu programisty, aby sprawdzić wiadomości z rzeczywistymi rekordami wejściowymi. Niezmienione, stałe reguły potwierdzone jako zachowane w tej sesji nie są oddzielnie ponownie wprowadzane."
+        ],
+        "tips": [
+          "Starsze sesje mogą otrzymać jedno początkowe ponowne wstrzyknięcie po aktualizacji. Nowe zasady, nowe sesje, brakująca historia lub niepewne zachowanie po zagęszczeniu powodują ponowne wstrzyknięcie. Żądania mogą nadal korzystać z reguł zapisanych w historii; pominięcie nowego zastrzyku nie oznacza, że ​​nie ma żadnych zasad."
+        ]
+      },
+      {
+        "title": "Dodaj informacje podczas odpowiedzi koordynatora",
+        "steps": [
+          "Wybierz Koordynatora jako odbiorcę i wyślij dodatkowe instrukcje w trakcie odpowiadania. Przechodzą do kolejki oczekującej na wstawienie bieżącej odpowiedzi.",
+          "Sprawdź, edytuj, zmień kolejność lub usuń niewysłane wpisy lub natychmiast wyślij wybrane. Wiele wybranych wpisów jest łączonych w odpowiedniej kolejności. Pozostałe wpisy automatycznie przechodzą do następnej tury po zakończeniu bieżącej odpowiedzi; nie wysyłaj wielokrotnie.",
+          "Jeśli zostaniesz poinformowany, że wiadomość została już wysłana lub usunięta, odśwież i sprawdź kolejkę zamiast ponownie wysyłać partię."
+        ],
+        "tips": [
+          "Kolejki koordynatorów i kroków są oddzielne. Najpierw zweryfikuj odbiorcę. Zatrzymanie nie powoduje cofnięcia już wykonanych operacji narzędziowych."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Oczekujące wiadomości podczas odpowiedzi koordynatora",
+          "caption": "Oczekuje prawdziwy zrzut ekranu: odbiorca koordynatora, dodatkowe komunikaty podczas wykonywania i kolejka kontynuacji."
+        }
+      },
+      {
+        "title": "Uzupełnij, zatrzymaj i uruchom ponownie",
+        "steps": [
+          "Zanim napiszesz, sprawdź odbiorcę. Koordynator zajmuje się pytaniami i prośbami operacyjnymi; tylko określony krok otrzymuje dane wejściowe do kontekstu wykonania tego kroku.",
+          "Wiadomości do bieżącego kroku wejdź Wstaw wiadomości. Edytuj, zmień kolejność, wyślij natychmiast lub wyślij wszystko; niewysłane wiadomości mogą wywołać kolejną rundę po zakończeniu wykonywania.",
+          "Po zatrzymaniu kroku wyślij mu wyraźne instrukcje dodatkowe i postępuj zgodnie z instrukcjami, aby uruchomić go ponownie.",
+          "Aby zmienić to zadanie, edytuj i zapisz podpowiedzi dotyczące kroków, silniki lub przejrzyj ustawienia. Zastąpienia zaczynają obowiązywać przy następnym wykonaniu; niezastąpione pola łączą główny przepływ pracy przy następnym uruchomieniu. Aby wyczyścić wszystkie dostosowania, potwierdź główny przepływ pracy Synchronizuj."
+        ],
+        "tips": [
+          "Zmiana silnika kompozytora koordynatora wpływa tylko na kolejne komunikaty koordynatora, a nie na silniki kroków przepływu pracy.",
+          "Jeśli ponowne uruchomienie wpływa na inne aktywne kroki, sprawdź potwierdzenie wpływu i zakres ponownego uruchomienia. Jeśli rekordy sesji natywnej zostaną utracone, postępuj zgodnie z monitem, aby uruchomić ponownie nową sesję."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Odbiorca kroku i dodatkowa wersja robocza w ukończonym zadaniu",
+          "caption": "W kompozytorze wybiera się opcję Wykonaj zadanie. Wiadomość dodatkowa jest nadal niewysłana; nie jest wyświetlana żadna kolejka wstawiania."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artefakty, analiza wykonania i pamięć projektu",
+    "summary": "Sprawdź dostarczone pliki, zrozum zużycie i zachowaj lekcje do ponownego wykorzystania.",
+    "sections": [
+      {
+        "title": "Sprawdź dane wejściowe, wyjściowe i pliki artefaktów",
+        "steps": [
+          "Otwórz wejścia i wyjścia kroku w szczegółach zadania, aby sprawdzić dostępne dane wejściowe i ukończone wyniki.",
+          "Kliknij opcję Wyświetl plik lub otwórz przeglądarkę artefaktów i przełączaj się krok po kroku i rundzie wykonywania.",
+          "Podgląd plików. Na komputerze, Otwórz katalog zawierający, pozwala sprawdzić rzeczywiste pliki. Zdalne pliki projektu pozostają na hoście i należy je przeglądać za pośrednictwem interfejsu internetowego.",
+          "Porównaj odpowiednie rundy podczas powtarzania. Taki sam jak okrągły… oznacza identyczną treść, a nie to, że wykonanie nie nastąpiło."
+        ],
+        "tips": [
+          "Jeśli brakuje artefaktu, sprawdź, czy plik został wygenerowany, czy jego deklaracja wyjściowa jest zgodna i jakie są komunikaty wykonania."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Artefakty zadań pogrupowane według kroków",
+          "caption": "Analiza wymagań i zadanie wykonania zawierają po jednym artefakcie pierwszej rundy. Otwórz jego plik lub katalog."
+        }
+      },
+      {
+        "title": "Sprawdź lokalne zasoby wykonawcze",
+        "steps": [
+          "Wejdź do obszaru roboczego poprzez lokalny host lokalny lub adres pętli zwrotnej, a następnie Statystyka → Środowisko wykonawcze systemu (数据统计 → 系统运行). Zwykłe zdalne przeglądarki i obszary robocze Gateway nie wyświetlają tej karty.",
+          "Sprawdź CPU, pamięć, konfigurację przechowywania dysku, szybkości sieci i zasoby, wątki i deskryptory plików lub uchwyty dla backendu i dzieci WorkStep.",
+          "Wybierz metryki trendów i sprawdź czasy próbkowania. Wstrzymaj, wznów lub ręcznie odśwież wyświetlacz. Poczekaj na początkowe zbieranie i ponów próbę nieudanego odczytu."
+        ],
+        "tips": [
+          "Statystyki obejmują bieżące środowisko backendowe i dzieci, z wyłączeniem powłoki pulpitu. Pomiary kontenerów nie są kompletnymi zasobami maszyny hosta.",
+          "Wartością domyślną jest próbkowanie trwające około pięciu sekund i historia 30-minutowa; strona podaje rzeczywiste wartości. Wstrzymanie odświeżania wyświetlacza nie powoduje zatrzymania zadań. Niedostępne wskaźniki i luki nie są zerowe; stare próbki są zachowywane i oznaczane jako nieaktualne. Ostrzeżenia deskryptorów wskazują wykorzystanie zasobów, a nie automatyczną naprawę."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Statystyki zasobów systemowych próbkowane przez bieżącą wersję",
+          "caption": "Zasoby lokalne i stan próbkowania zaplecza. Żadne procesy potomne silnika nie były uruchomione, więc nie pokazuje to zużycia wykonania zadania."
+        }
+      },
+      {
+        "title": "Sprawdź czas trwania, tokeny i koszt",
+        "steps": [
+          "Otwórz analizę wykonania w szczegółach zadania, aby sprawdzić całkowity czas trwania, liczbę prób kroków, tokeny i koszty.",
+          "Wybierz rundę testową i kliknij segment osi czasu dotyczący silnika, modelu i zastosowania.",
+          "Aby uzyskać informacje dotyczące całego projektu, otwórz Statystyki. Aby oszacować koszty, zachowaj ceny modeli według dostawcy lub silnika w Ustawieniach → Ustawienia modelu."
+        ],
+        "tips": [
+          "Niezgłoszone użycie nie staje się automatycznie dokładną liczbą. Sprawdź zasięg i szacunkowe etykiety; wzór rachunku za usługi jest miarodajny."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Rundy i harmonogram analizy wykonania",
+          "caption": "Wskaźniki czasu trwania, zakresu i źródła kosztów."
+        }
+      },
+      {
+        "title": "Zachowaj pamięć i archiwizuj lekcje",
+        "steps": [
+          "Kliknij opcję Pamięć na stronie zadania. Edytuj MEMORY.md w katalogu danych projektu na krótkie, konkretne i długoterminowe reguły i zapisz.",
+          "Archiwizując jedno zadanie, wybierz archiwizację bezpośrednią lub zorganizuj lekcje porażek. Sprawdź wersję roboczą AI, a następnie potwierdź zapis w pamięci i archiwizację.",
+          "Skorzystaj z listy archiwalnej, aby ponownie przeglądać historię. Po przywróceniu zarchiwizowanego zadania sprawdź ponownie wymagane powiązania zewnętrzne."
+        ],
+        "tips": [
+          "Archiwizacja zbiorcza nie wyodrębnia lekcji indywidualnie. Archiwizacja lub usunięcie zadania usuwa jego powiązania z grupą kanałów; przywrócenie go nie przywraca starych powiązań."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Edytor pamięci projektu zawierający konwencje demonstracyjne",
+          "caption": "Edytuj i zapisz konwencje w .workstep/MEMORY.md.. Potwierdzenie lekcji archiwalnej nie jest wyświetlane."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Czat projektowy i umiejętności",
+    "summary": "Współpracuj bezpośrednio w kontekście projektu i wybieraj, które lokalne umiejętności mogą zostać wykorzystane w projekcie.",
+    "sections": [
+      {
+        "title": "Pracuj z wieloma rozmowami projektowymi",
+        "steps": [
+          "Na szerokości pulpitu otwórz zwykłą konwersację projektową i wybierz Okna konwersacji (对话窗口) → Dodaj okno konwersacji (增加对话窗口), po prawej stronie Nowa konwersacja.",
+          "Przeciągnij rozmowę z paska bocznego lub listy ostatnich rozmów do obszaru czatu. Możesz łączyć projekty, do których masz dostęp, w maksymalnie 4 panelach. Upuszczenie już otwartej rozmowy aktywuje jej istniejący panel. Wpisów zadań nie można przeciągać jako rozmów.",
+          "Kliknij okienko, którego chcesz użyć, zanim wybierzesz konwersację na pasku bocznym. Każdy panel przechowuje własne ustawienia projektu, sesji, wersji roboczej i silnika; przed wysłaniem zweryfikuj projekt i sesję.",
+          "Wybierz Okna konwersacji → Układ konwersacji (对话排列), a następnie poziomo lub pionowo. Przeciągnij separator, aby zmienić jego rozmiar; skoncentruj się na nim i użyj klawiszy strzałek, aby zmienić rozmiar klawiatury.",
+          "W przypadku wielu okienek × zamyka tylko to okienko, bez zatrzymywania lub usuwania konwersacji. Użyj przycisku Zatrzymaj konwersację, aby zatrzymać generowanie."
+        ],
+        "tips": [
+          "Na komputerze kliknij dwukrotnie rozmowę na pasku bocznym lub jej tytuł nagłówka, aby otworzyć udostępnione okno dialogowe zmiany nazwy, a następnie wprowadź i potwierdź nazwę.",
+          "Na telefonie widać tylko aktywny panel, pozostałe są zachowane. Powrót z innego ekranu w tej samej sesji strony przywraca panele, układ i rozmiary; odświeżenie przeglądarki nie gwarantuje przywrócenia. Układ jest oddzielny dla konta i urządzenia, bez kopiowania rozmów."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Panele rozmów na pulpicie w obrębie projektów i menu aranżacji",
+          "caption": "Oczekuje prawdziwy zrzut ekranu z poprawionego projektu demonstracyjnego: menu okna konwersacji, wiele okienek i przeciągane separatory."
+        }
+      },
+      {
+        "title": "Załaduj rolę lub zespół ekspertów do czatu",
+        "steps": [
+          "Przygotuj podpowiedzi dotyczące ról lub członków zespołu ekspertów i ich obowiązki w Ustawieniach → Centrum ról.",
+          "Otwórz zwykły czat w projekcie lokalnym. Użyj + → Rola / Zespół ekspertów, wyszukaj kategorie lub słowa kluczowe, wyświetl podgląd i Załaduj na czat. Na przykład wybierz opcję Recenzent kodu, a następnie wyślij konkretny zakres przeglądu.",
+          "Sprawdź załadowaną nazwę w kompozytorze. Wybranie nie powoduje wysłania wiadomości. Powiązanie jest zapisywane w sesji i przywracane po odświeżeniu; nowe sesje rozpoczynają się bez zobowiązań. Kliknij nazwę, aby ją sprawdzić, zastąpić lub usunąć."
+        ],
+        "tips": [
+          "Nie można przełączać podczas biegu. Odczytaj lub zapisz błędy, zachowaj bieżący wybór; spróbuj ponownie zgodnie z monitem. Wybierz ponownie brakujące role. Ładowanie zmienia tylko powiązanie sesji; wyślij konkretne pytanie, aby przywołać model.",
+          "Zespoły ekspertów przekazują podpowiedzi i obowiązki członków bieżącemu modelowi; nie uruchamiają niezależnych silników. Zadania, etapy przepływu pracy, kanały, projekty zdalne i zgłoszenia o zakresie projektu nie są zintegrowane. Obszar roboczy Gateway obsługujący pełne urządzenia może wykorzystać to w projekcie lokalnym."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Wyszukiwanie Code Reviewer i podgląd podpowiedzi na zwykłym czacie",
+          "caption": "W pustej konwersacji demonstracyjnej wybrano recenzenta kodu. Widoczne są jego monit i przycisk ładowania; nie załadowano żadnej roli ani nie wysłano wiadomości."
+        }
+      },
+      {
+        "title": "Otwórz pamięć projektu w telefonie",
+        "steps": [
+          "Otwórz listę zadań projektu, użyj opcji Więcej w prawym górnym rogu, a następnie opcji Pamięć.",
+          "W edytorze pamięci wprowadź krótkie konwencje, takie jak Uruchom testy projektu przed zatwierdzeniem. Sprawdź i zapisz; dotyczy to całego projektu."
+        ],
+        "tips": [
+          "Wybór pamięci załamuje więcej. Na komputerze kliknij opcję Pamięć bezpośrednio na stronie zadania."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Wpis pamięci w menu Więcej na stronie zadania o rozmiarze 390 pikseli",
+          "caption": "Rozszerzone menu Więcej na mobilnej liście zadań zawiera Pamięć. Kliknięcie otwiera jego edytor; żadna pamięć nie została tutaj zmieniona."
+        }
+      },
+      {
+        "title": "Twórz rozmowy i zmieniaj konfigurację",
+        "steps": [
+          "Utwórz zwykłą sesję w sekcji Rozmowy projektu po lewej stronie. Wybierz silnik, dostawcę, model i tryb uprawnień. Zacznij od zweryfikowanego SDK.",
+          "Wpisz konkretną prośbę. Wpisz wysyła; Shift+Enter wstawia nową linię. Dołącz lub wklej obrazy referencyjne dopiero po sprawdzeniu obsługi obrazów silnika.",
+          "W razie potrzeby zatrzymaj odpowiedź podczas generowania. Dodatkowa kolejka wstawianych wiadomości oraz możliwość zmiany ich kolejności.",
+          "Zmieniając silnik lub dostawcę w istniejącym kontekście, wybierz w oknie dialogowym Inteligentne przekazywanie, Pełna historia czatów lub Brak. Rozwiń rozmowę w celu niezależnej eksploracji i potwierdź jej tryb kontekstowy."
+        ],
+        "tips": [
+          "Czat projektowy jest przechowywany oddzielnie od rekordów zadań przepływu pracy. Utwórz zadanie, jeśli potrzebujesz śledzenia etapów i recenzji.",
+          "Natywne rozwidlanie jest dostępne tylko wtedy, gdy jest faktycznie obsługiwane przez silnik. W przeciwnym razie kontynuuj poprzez jawne przekazanie kontekstu."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Silnik czatu projektu, dostawca i menu modelu",
+          "caption": "Skonfiguruj silnik, dostawcę, model wnioskowania i powiązane opcje tylko dla tej konwersacji. Uprawnienia wybiera się osobno."
+        }
+      },
+      {
+        "title": "Włącz umiejętności i organizuj rozmowy",
+        "steps": [
+          "Otwórz konfigurację → Centrum umiejętności bieżącego projektu, przeskanuj ponownie i wyszukaj według nazwy, opisu lub ścieżki źródłowej.",
+          "Przeczytaj cele dotyczące umiejętności i włącz to, czego potrzebujesz. Sprawdź wybrany zakres przed zbiorczymi zmianami. Umiejętności są zapisywane dla każdego projektu i stosowane w następnym uruchomieniu lub nowej sesji.",
+          "Wpisz / w kompozytorze, aby wybrać umiejętności faktycznie oferowane przez bieżący silnik. Listy różnią się w zależności od silnika.",
+          "Użyj menu sesji, aby zmienić nazwę lub zarchiwizować. Przeszukaj listę archiwów i przywróć wymagane rozmowy."
+        ],
+        "tips": [
+          "Centrum umiejętności wybiera istniejące lokalne umiejętności. Jeśli żadna się nie pojawi, sprawdź najpierw lokalne źródła. Projekty zdalne nie mogą obecnie zarządzać lokalnymi umiejętnościami gospodarza."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Brak wyników po przeszukaniu wersji demonstracyjnej ręcznej w Centrum umiejętności",
+          "caption": "Centrum umiejętności oferuje wyszukiwanie nazw i filtrowanie źródeł. Nie wyświetla się żadna pasująca umiejętność ani przełącznik włączający."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Szybkie przyciski i akcje skryptowe",
+    "summary": "Zamień typowe podpowiedzi, wyświetlaną treść i skrypty projektu w przyciski wielokrotnego użytku.",
+    "sections": [
+      {
+        "title": "Utwórz przyciski podpowiedzi i wyświetlaczy",
+        "steps": [
+          "Otwórz Szybkie przyciski w konfiguracji projektu, dodaj przycisk i wybierz jego typ.",
+          "W polu Podpowiedź wprowadź etykietę i podpowiedź oraz wybierz, czy kliknięcie ma ją natychmiast wysłać, na przykład: Sprawdź bieżące zmiany i wyświetl listę nieobjętych kryteriów akceptacji.",
+          "W polu Wyświetl wprowadź treść i wyświetl podgląd jej bezpiecznego renderowania HTML. Ten typ nie wysyła żadnej wiadomości.",
+          "Zapisz i wróć do czatu lub zadania, aby sprawdzić przycisk. Przeciągnij listę konfiguracji, aby zmienić kolejność. Ustawienia przepływu pracy kontrolują odziedziczone przyciski projektu; przyciski sceniczne konfiguruje się oddzielnie."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Dziedziczenie przycisku projektu i dodawanie wpisu w szybkich przyciskach przepływu pracy",
+          "caption": "Wybierz przyciski projektu, które chcesz odziedziczyć, i dodaj przyciski przepływu pracy po lewej stronie. Nie wprowadzono żadnej zawartości przycisku."
+        }
+      },
+      {
+        "title": "Skonfiguruj i uruchom akcję",
+        "steps": [
+          "Dodaj typ akcji, wprowadź jego identyfikator akcji i wybierz skrypt z odpowiedniego katalogu akcji.",
+          "Wybierz katalog wykonania: projekt, katalog zadań przepływu pracy lub wybrany przez skrypt obszar roboczy Git. Wyświetl podgląd i sprawdź skrypt.",
+          "Włącz potwierdzenie przed akcjami modyfikującymi pliki lub stan zewnętrzny. W przypadku danych wejściowych, takich jak komunikaty o zatwierdzeniu, skonfiguruj monit o potwierdzenie; skrypt odbiera go poprzez WORKSTEP_ACTION_INPUT.",
+          "Zapisz i kliknij przycisk, potwierdź skrypt i katalog oraz sprawdź kod wyjściowy i wyjściowy. Uruchomione akcje można zatrzymać."
+        ],
+        "tips": [
+          "Szybkie akcje bezpośrednio uruchamiają skrypty projektu. Zapoznaj się ze skryptem i najpierw wybierz właściwy katalog. Pliki spoza bieżącego katalogu akcji nie mogą być dowolnie wybrane jako skrypt."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Konfiguracja akcji bez wybranego skryptu",
+          "caption": "Pola obejmują identyfikator akcji, skrypt, katalog wykonania i potwierdzenie. Żaden skrypt nie został uruchomiony."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Zaplanowane zadania",
+    "summary": "Twórz nowe zadania zgodnie z harmonogramem lub wysyłaj instrukcje koordynatora w określonym czasie do istniejących zadań, śledź wykonanie i powiadomienia.",
+    "sections": [
+      {
+        "title": "Generuj wiele zadań z jednego harmonogramu",
+        "steps": [
+          "Utwórz projekt tworzy harmonogram zadań, wybierz dynamikę AI i określ zakres oraz indywidualne czasy wielu zadań. Wybierz przepływy pracy kandydatów.",
+          "Najpierw użyj Generacji testu, aby sprawdzić każdą wersję roboczą, a następnie zapisz. Instrukcje koordynatora zadań nadal działają na jednym wybranym zadaniu i nie tworzą wsadów.",
+          "Po wyzwoleniu otwórz każde utworzone zadanie z rekordów uruchomienia. Nieudane rekordy zachowują także już utworzone zadania; sprawdź przyczynę przed utworzeniem zamienników."
+        ],
+        "tips": [
+          "Utworzenie zadania nie oznacza, że ​​wszystkie przepływy pracy zostały zakończone. Nie uruchamiaj ponownie całej partii po częściowym utworzeniu lub niepowodzeniu uruchamiania."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Zaplanowany podgląd generowania partii i zapisy uruchamiania wielu zadań",
+          "caption": "Oczekujący prawdziwy zrzut ekranu: wersje robocze wsadowe i już utworzone zadania po częściowej awarii."
+        }
+      },
+      {
+        "title": "Zarządzaj zaplanowanymi instrukcjami ze szczegółów zadania",
+        "steps": [
+          "Otwórz szczegóły zadania i kliknij zegar obok opcji Bind BOT; w telefonach znajduje się po prawej stronie głównych zakładek. Jego liczba obejmuje reguły zadań, z wyjątkiem ukończonych reguł jednorazowych, a nie tylko włączonych reguł. Sprawdź wstrzymane i inne stany na liście.",
+          "Sprawdź zasady tego zadania w oknie. Mając uprawnienia do edycji, możesz dodawać, edytować, wstrzymywać, wznawiać lub usuwać reguły i przeglądać zapisy uruchomień. Nowe reguły wiążą się automatycznie z bieżącym zadaniem.",
+          "Wprowadź tytuł, częstotliwość i instrukcję koordynatora, na przykład: Sprawdzaj postęp i podsumowuj co dziesięć minut. Sprawdź warunek zatrzymania i zapisz. Zamykając z niezapisanymi zmianami, wybierz kontynuację lub odrzuć.",
+          "Udziały tylko do odczytu używają tego samego zegara do sprawdzania reguł tego zadania. Dzięki uprawnieniom operacyjnym możesz używać wpisów zarządzania faktycznie oferowanych przez bieżący udział."
+        ],
+        "tips": [
+          "Lista jednorazowa zachowuje czasy wykonania zakończonych reguł; plakietka zadania je wyklucza, więc liczby mogą się różnić."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Okno harmonogramu o zakresie zadań otwierane z zegara szczegółów",
+          "caption": "Utworzenie reguły na podstawie zegara blokuje przepływ pracy i zadanie z zadaniem demonstracyjnym. Tytuł i instrukcje są puste; nic nie zostało zapisane ani wykonane."
+        }
+      },
+      {
+        "title": "Utwórz stały harmonogram",
+        "steps": [
+          "Otwórz Zaplanowane zadania z paska narzędzi na pasku bocznym, wybierz kartę projektu, a następnie utwórz harmonogram tworzenia zadań w ramach projektu. Wybierz przepływ pracy, krok początkowy, tytuł i zawartość.",
+          "Wybierz raz, codziennie, co tydzień, co miesiąc, co godzinę lub Cron. Sprawdź strefę czasową, daty wejścia w życie i podgląd następnego uruchomienia.",
+          "Wybierz opcję Śledź przepływ pracy, Wykonaj natychmiastowo lub Ręcznie i ustaw obsługę nakładania się na Pomiń, Równolegle lub Kolejka.",
+          "Sprawdź ustawienia recenzji i zapisz. Przed włączeniem długoterminowego planu cyklicznego zweryfikuj krótkoterminowy harmonogram jednorazowy."
+        ],
+        "tips": [
+          "Aby można było uruchomić harmonogramy, backend WorkStep musi być uruchomiony. Nie zakładaj, że uruchamiają się normalnie, gdy komputer śpi lub backend jest zatrzymany."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Naprawiono treść zadania, dzienną częstotliwość i podgląd następnego uruchomienia",
+          "caption": "Ustaw treść, częstotliwość, zasady uruchamiania i nakładania się, a następnie sprawdź nadchodzące czasy wykonania."
+        }
+      },
+      {
+        "title": "Wyślij zaplanowane instrukcje do istniejącego zadania",
+        "steps": [
+          "Otwórz Zaplanowane zadania na pasku bocznym, wybierz projekt i przełącz typ nowej reguły na Instrukcje koordynatora zadań. Działa na istniejącym zadaniu, zamiast tworzyć nowe za każdym razem.",
+          "Wpisz tytuł, przefiltruj według przepływu pracy i wyszukaj zadanie docelowe. Napisz konkretną instrukcję, np.: Sprawdź postęp i zgłoś, czy potrzebne jest działanie człowieka; nie potwierdzają automatycznie niebezpiecznych działań. Zapisanych reguł nie można przypisać do innego zadania.",
+          "Ustaw wykonanie jednorazowe lub cykliczne, w tym co kilka minut. Sprawdź czas następnego uruchomienia i wybierz Kontynuuj do ręcznego wyłączenia lub Zatrzymaj po zakończeniu zadania.",
+          "Znajdź zapisaną regułę na listach jednorazowych lub cyklicznych. Filtruj według typu celu i identyfikatora zadania. Otwórz zadanie z poziomu rekordu uruchomienia, aby zlokalizować odpowiedź koordynatora i sprawdzić status zaplanowanej wiadomości w jej historii."
+        ],
+        "tips": [
+          "Każdy wyzwalacz korzysta z oddzielnej sesji koordynatora i może znajdować się w kolejce, gdy zadanie jest zajęte. Propozycje wymagające potwierdzenia nadal wymagają Ciebie. Zatrzymanie jednej zaplanowanej odpowiedzi zatrzymuje tylko tę wiadomość; wstrzymaj lub wyłącz regułę, aby zapobiec późniejszym aktywacjom.",
+          "Archiwizacja lub usunięcie celu unieważnia regułę. Zatrzymanie po zakończeniu zadania powoduje zakończenie stanu terminala zakończonego, zakończonego niepowodzeniem lub zatrzymanego. Nie ma gwarancji, że przebiegi przerwane przez ponowne uruchomienie zaplecza zostaną odtworzone; sprawdź dokumentację przed ponownym wysłaniem."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Niezapisany formularz harmonogramu koordynatora zadań",
+          "caption": "Demonstracja jest powtarzana co dziesięć minut, aż do ręcznego wyłączenia. Jest niezapisany i nie ma wyników wykonania."
+        }
+      },
+      {
+        "title": "Skonfiguruj powiadomienia kanału dla zaplanowanych uruchomień",
+        "steps": [
+          "W harmonogramie projektu lub regule koordynatora zadań sprawdź Powiadom bota kanału po wykonaniu.",
+          "Wybierz bota i rozmowę z możliwością wysyłania. Domyślnie może być wybrana grupa powiązana z zadaniem, ale sprawdź to przed zapisaniem. Jeśli nie masz miejsca docelowego, skonfiguruj najpierw powiązanie bota i zadania lub wyłącz powiadomienia.",
+          "Sprawdź stan powiadomień i przyczyny niepowodzeń w rekordach przebiegu. Ponów próbę niepowodzenia powiadamiania bez ponownego uruchamiania zadania. W przypadku nieznanych wyników dostawy sprawdź najpierw kanał, aby uniknąć duplikatów."
+        ],
+        "tips": [
+          "Zaplanowane powiadomienia i webhooki przepływu pracy są konfigurowane osobno. Pomyślne uruchomienie nie oznacza dostarczenia, a niepowodzenie powiadomienia nie oznacza niepowodzenia zadania.",
+          "Powiadomienia koordynatora zadań następuje po zakończeniu tej odpowiedzi. Powiadomienie po utworzeniu zadania przez harmonogram projektu nie oznacza zakończenia całego przepływu pracy."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Powiadomienie o kanale bez wybranego celu w formie projektu-zadania",
+          "caption": "Powiadomienie jest zaznaczone, ale nie wybrano żadnego bota ani rozmowy, więc zapisywanie jest wyłączone. Nic nie zostało wykonane ani wysłane."
+        }
+      },
+      {
+        "title": "Dynamiczne generowanie i uruchamianie rekordów AI",
+        "steps": [
+          "Zmień generację na dynamiczną sztuczną inteligencję, opisz, co ma być generowane za każdym razem, opcjonalnie popraw tytuł referencyjny i wybierz proponowane przepływy pracy.",
+          "Skonfiguruj ponowne próby generowania i użyj generowania testu, aby sprawdzić, czy dane wyjściowe spełniają oczekiwania.",
+          "Zapisz, a następnie przefiltruj rekordy uruchomień po prawej stronie według stanu. Sprawdź czas wyzwalania, przyczyny awarii lub pominięcia i otwórz odpowiednie zadanie.",
+          "Wstrzymaj harmonogramy, które nie są już potrzebne, a następnie usuń po sprawdzeniu."
+        ],
+        "tips": [
+          "Ponowne próby generowania AI, ponowne próby przeglądu krokowego i limity połączeń zwrotnych to osobne ustawienia."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "Formularz dynamicznego tworzenia zaplanowanych zadań AI",
+          "caption": "Wprowadź instrukcje, przepływy pracy kandydatów i liczbę ponownych prób. Nie wygenerowano żadnego zadania ani nie wyświetlono żadnych rekordów uruchomienia."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Git i obszary robocze zadań",
+    "summary": "Sprawdzaj zmiany w kodzie, izoluj równoległe zadania w oddzielnych katalogach roboczych, a następnie łącz i przesyłaj ich pracę.",
+    "sections": [
+      {
+        "title": "Sprawdź pliki, różnice i historię",
+        "steps": [
+          "Kliknij Git na stronie zadań lokalnego lub podłączonego zdalnego projektu i wybierz katalog główny lub wykryte repozytorium podrzędne. Zdalne operacje Git są wykonywane na urządzeniu hosta.",
+          "Sprawdź zmienione pliki i różnice, aby zweryfikować zmiany AI pod kątem wymagań; użyj historii zatwierdzeń, aby sprawdzić zatwierdzoną pracę.",
+          "Obsługuj niezatwierdzone zmiany przed przełączeniem gałęzi. Odśwież stan zdalny, aby sprawdzić status „do przodu”, „do tyłu” lub „rozbieżny”.",
+          "Pociągnij szybko do przodu; Push wysyła tylko zatwierdzone treści. Wybierz pilota i oddział, potwierdź i wykonaj."
+        ],
+        "tips": [
+          "Zdalne rekordy w pamięci podręcznej nie mają statusu aktywnego. Synchronizacja może zostać zablokowana, gdy aktywne są zadania projektu lub czaty.",
+          "Najpierw ponownie połącz offline lub nieautoryzowane projekty zdalne. Przeglądarka nie kopiuje repozytoriów hostów na Twój komputer. Czytanie wymaga uprawnień do przeglądania Git; Akcje zatwierdzania, rozgałęziania, scalania i synchronizacji mają osobne uprawnienia. Sprawdź uprawnienia, jeśli brakuje przycisków."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Niezatwierdzone zmiany w repozytorium Git",
+          "caption": "Oczekujące pliki lokalnego repozytorium. Historia zatwierdzeń znajduje się na innej karcie; zdalne uprawnienia i rozszerzone różnice plików nie są wyświetlane."
+        }
+      },
+      {
+        "title": "Utwórz Worktree dla zadania",
+        "steps": [
+          "Otwórz obszar roboczy Git w szczegółach zadania i wybierz repozytoria, których faktycznie potrzebuje zadanie.",
+          "Wprowadź nazwę katalogu zadań, gałąź źródłową i nową gałąź, a następnie Utwórz Worktree. Jeśli katalog główny nie jest jeszcze repozytorium Git, zainicjuj go i wykonaj pierwsze zatwierdzenie.",
+          "Po wykonaniu sprawdź i zatwierdź zmiany w obszarze roboczym. W Git połącz się z bieżącą gałęzią lub połącz bieżącą gałąź z celem.",
+          "Sprawdź połączony wynik i w razie potrzeby wypchnij ręcznie. Przeczytaj dokładne skutki i ostrzeżenia o niezatwierdzonych zmianach przed oczyszczeniem lub przywróceniem historii."
+        ],
+        "tips": [
+          "Tworzenie obszaru roboczego nie powoduje automatycznego scalania ani wypychania. Tylko zatwierdzone zmiany biorą udział w fuzjach oddziałów.",
+          "Usunięcie obszaru roboczego zadań może spowodować usunięcie katalogów i gałęzi funkcji. Czyszczenie nie jest sposobem na zapisanie wyników."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Zadania obszaru roboczego Git z istniejącym Worktree",
+          "caption": "Demonstracyjny obszar roboczy istnieje bez różnic w plikach. Otwórz, dodaj repozytoria lub zarządzaj oddziałami; to nie jest forma jego powstania."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Dzielenie się zadaniami i projekty zdalne",
+    "summary": "Odróżnij link do jednego zadania od zdalnego dostępu do całego urządzenia.",
+    "sections": [
+      {
+        "title": "Podziel się jednym zadaniem",
+        "steps": [
+          "Kliknij Udostępnij w szczegółach zadania i wybierz Tylko do odczytu lub Interaktywny.",
+          "Formularz generuje losowe hasło, którego ważność domyślnie wynosi siedem dni. W razie potrzeby zmień lub wyczyść hasło; po ustawieniu musi mieć co najmniej cztery znaki. Dodaj opcjonalny tytuł, upewnij się, że wygaśnięcie przypada w ciągu najbliższych 90 dni, a następnie wygeneruj i skopiuj link.",
+          "Otwórz go w osobnym oknie przeglądarki, wprowadź hasło, jeśli zostało ustawione, i sprawdź postęp, komunikaty, artefakty i wybrane uprawnienia.",
+          "Aby zatrzymać udostępnianie, otwórz bieżący udział i unieważnij go. Już otwarte przeglądarki również tracą ciągły dostęp."
+        ],
+        "tips": [
+          "Tylko do odczytu służy do przeglądania. Interaktywni odwiedzający korzystają z oryginalnego kontrolera zadań: mogą wysyłać komunikaty koordynatora lub kroków, zatrzymywać wykonywanie, obsługiwać zatwierdzenia i pytania oraz korzystać z dostępnej konfiguracji zadań i akcji obszaru roboczego Git. Mają one wpływ na pierwotne zadanie w zakresie zadań tego udziału. Aby wyświetlić tylko, wybierz opcję Tylko do odczytu i sprawdź tryb w osobnej przeglądarce.",
+          "Odbiorcy muszą dotrzeć do adresu zaplecza podanego w łączu. Wygenerowanie łącza nie powoduje utworzenia tunelu sieci publicznej."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Interaktywny formularz podziału zadań przed wygenerowaniem linku",
+          "caption": "Wybrano tryb interaktywny, a hasło jest puste. Nie utworzono żadnego łącza do udostępniania."
+        }
+      },
+      {
+        "title": "Skonfiguruj dostęp hosta i zapraszaj urządzenia",
+        "steps": [
+          "Na hoście otwórz Ustawienia → Dostęp zdalny, włącz połączenia i sprawdź adres wewnętrzny. Dostęp publiczny wymaga osiągalnego adresu zewnętrznego HTTPS/WSS.",
+          "Ustaw i zapisz klucz dostępu, a następnie przetestuj dostępność z innego urządzenia.",
+          "Wygeneruj zaproszenie do projektu w obszarze Konfiguracja projektu → Udostępnianie. Zaimportuj go do innego wpisu Dostęp zdalny WorkStep i postępuj zgodnie z instrukcjami połączenia.",
+          "Sprawdź autoryzowane urządzenia i aktywne zaproszenia. Zmień okresy autoryzacji lub unieważnij je w razie potrzeby. W przypadku rozłączenia sprawdź dostępność hosta, adres, klucz i datę ważności."
+        ],
+        "tips": [
+          "WorkStep nie ma wbudowanego przekaźnika publicznego. Sam zapewnij osiągalny wpis sieciowy. Hasła zadań, klucze dostępu do hosta i zaproszenia na urządzenia są oddzielne.",
+          "Zdalne katalogi i silniki pozostają na hoście. Twój lokalny menedżer plików nie może bezpośrednio otworzyć swoich katalogów."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Przełącznik zdalnego dostępu i formularz adresowy przed wprowadzeniem wartości",
+          "caption": "Pola wewnętrzne i zewnętrzne pokazują przykładowe symbole zastępcze, a klucz jest pusty. Nie jest wyświetlana żadna lista autoryzacji urządzeń."
+        }
+      },
+      {
+        "title": "W razie potrzeby podłącz bramę korporacyjną",
+        "steps": [
+          "Jeśli Twoja organizacja udostępnia Gateway, wpisz jego adres w Dostęp zdalny → Platforma Gateway.",
+          "Jawnie włącz tryb bramy i zapisz, a następnie zaloguj się, aby autoryzować ten komputer. Samo zapisanie adresu tego nie umożliwia.",
+          "Jeśli oczekuje na zatwierdzenie przez administratora, zakończ zatwierdzenie i ponownie uwierzytelnij. Po połączeniu możesz korzystać z publikacji projektu i uprawnień dostępu w ramach swoich uprawnień.",
+          "Wyłącz tryb bramy i zapisz, aby powrócić do użytku lokalnego."
+        ],
+        "tips": [
+          "Samodzielne użycie lokalne nie wymaga bramy. Uprawnienia i zatwierdzenia organizacji zależą od rzeczywistej platformy."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Adres platformy przed włączeniem trybu bramy",
+          "caption": "Brama jest wyłączona, a adres jest symbolem zastępczym. Zapisanie adresu i włączenie bramy to różne działania."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Obszar roboczy bramy i udostępnianie lokalne",
+    "summary": "Rozróżniaj lokalne zaproszenia, dotacje na platformę i udziały w zadaniach i kontynuuj pracę na różnych urządzeniach.",
+    "sections": [
+      {
+        "title": "Skonfiguruj tożsamość korporacyjną Feishu lub Lark",
+        "steps": [
+          "Administrator otwiera Ustawienia platformy → Synchronizacja organizacji i logowanie QR, dodaje niestandardową aplikację korporacyjną Feishu lub Lark i wprowadza Tenant Key, App ID i App Secret.",
+          "Skopiuj całe wyświetlone wywołanie zwrotne logowania na odpowiednią platformę programisty. Ustaw oddzielnie przełączniki aplikacji, logowania QR i synchronizacji organizacji. Istniejących App ID nie można zmienić; użyj nowego źródła tożsamości dla innej aplikacji.",
+          "Autoryzuj odczyty katalogów, ograniczaj widoczność aplikacji i postępuj zgodnie z podglądem odczytu → Wybierz organizacje lub użytkowników → Sprawdź zmiany → Potwierdź synchronizację. Sprawdź wyniki i zapisy błędów."
+        ],
+        "tips": [
+          "Boty tożsamości korporacyjnej bramy i boty kanału lokalnego są oddzielne i nie udostępniają automatycznie poświadczeń. Prawdziwi najemcy, uprawnienia do logowania i katalogów QR nadal wymagają testowania integracji; symulowany sukces API nie dowodzi rzeczywistej łączności."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Ustawienia źródła tożsamości i synchronizacji katalogów Feishu lub Lark",
+          "caption": "Oczekuje zrzut ekranu konfiguracji bez poświadczeń z izolowanej bramy."
+        }
+      },
+      {
+        "title": "Zezwól innym witrynom internetowym na logowanie się za pośrednictwem usługi Gateway",
+        "steps": [
+          "Superadministrator otwiera ustawienia Platformy Gateway → Autoryzacja logowania przez stronę trzecią i klika Edytuj listę dozwolonych wywołań zwrotnych.",
+          "Wprowadź jedno pełne wywołanie zwrotne URL w każdym wierszu, np. https://business.example.com/login/callback, do 100 wpisów. Schemat, port, ścieżka i stałe parametry zapytania muszą dokładnie pasować. Dokończ weryfikację administratora i zapisz.",
+          "Rozpocznij logowanie ze strony integrującej. Jeśli nie jesteś zalogowany do Gateway, najpierw użyj istniejącego hasła lub korporacyjnego loginu QR, a następnie wróć. Backend witryny wymienia jednorazowy kod autoryzacyjny dla identyfikatora użytkownika, konta i wyświetlanej nazwy.",
+          "Aby przerwać integrację, usuń URL i zapisz. Pusta lista dozwolonych wyłącza autoryzację logowania przez strony trzecie; oczekujące kody dla usuniętych adresów natychmiast tracą ważność."
+        ],
+        "tips": [
+          "Wywołania zwrotne obsługują HTTP/HTTPS, a nie symbole wieloznaczne, fragmenty, osadzone poświadczenia lub wstępnie ustawiony kod, stan lub parametry request_id. Użyj HTTPS w produkcji.",
+          "Jeśli oddzwonienie jest nieautoryzowane, sprawdź jego pełne URL. Jeśli kod wygasł lub został użyty, uruchom ponownie logowanie ze strony integrującej. Protokół i możliwe do uruchomienia przykłady znajdują się w docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Lista dozwolonych wywołań zwrotnych innych firm w ustawieniach bramy",
+          "caption": "Oczekiwanie na zrzut ekranu z prawdziwej izolowanej bramy demonstracyjnej; nie używaj codziennych kont ani rzeczywistych ustawień wywołania zwrotnego."
+        }
+      },
+      {
+        "title": "Zarządzaj dwoma rodzajami udostępniania projektów",
+        "steps": [
+          "Otwórz Udostępnianie w ustawieniach projektu. Skonfigurowanie adresu Bramy umożliwia dostęp do Platformy. Lokalny interfejs oferuje także zaproszenia do zdalnych projektów; Zdalne przeglądarki bramy nie mogą konfigurować zaproszeń lokalnych.",
+          "W przypadku zaproszeń lokalnych wybierz LAN lub adres zewnętrzny i okres dostępu do urządzenia, a następnie wygeneruj i skopiuj. Niestandardowe wygaśnięcie musi nastąpić w przyszłości; wykorzystanie zaproszenia i wygaśnięcie autoryzacji urządzenia są wyświetlane osobno.",
+          "Po zaimportowaniu na urządzenie odbiorcze sprawdź jego nazwę, adres IP, połączenie i datę ważności w obszarze Autoryzowane urządzenia. Zmień okresy lub odwołaj w razie potrzeby. Zamiast tego dostęp do platformy wykorzystuje konta, publikacje projektów i granty.",
+          "W przypadku jednego zadania wybierz tryb, hasło i tytuł w oknie Udostępnij. Zarówno udziały lokalne, jak i bramkowe domyślnie mają siedem dni i pozwalają na maksymalnie 90. Przetestuj w osobnej przeglądarce, a następnie zarządzaj lub unieważnij w oryginalnym oknie."
+        ],
+        "tips": [
+          "Udostępnianie zadania lokalnego za pośrednictwem połączonej bramy wymaga prawidłowej tożsamości platformy. Samo podanie adresu lub komputera nie przyznaje uprawnień platformie.",
+          "Lokalne łącza do zadań korzystają z adresu hosta; Udziały bramy korzystają z adresu zwróconego przez platformę. Nigdy nie publikuj danych uwierzytelniających zaproszenia, nie udostępniaj linków ani haseł na zrzutach ekranu.",
+          "Obydwa typy obsługują wygaśnięcie. Bramka może wymagać logowania; Udziały interaktywnej bramy muszą tego wymagać i używać loginu zamiast klucza dostępu. Sprawdź pola w bieżącym oknie udostępniania."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Karta udostępniania dostępu zdalnego i okres autoryzacji urządzenia",
+          "caption": "Jeśli nie skonfigurowano żadnej bramy, wyświetlany jest dostęp zdalny. Żadne urządzenia nie są autoryzowane i nie wygenerowano żadnego zaproszenia."
+        }
+      },
+      {
+        "title": "Przełączaj urządzenia i sprawdzaj zbiorcze powiadomienia",
+        "steps": [
+          "Wejdź do obszaru roboczego autoryzowanego urządzenia na platformie, a następnie użyj górnych zakładek urządzenia, aby przełączyć się na inne urządzenie online.",
+          "Każde konto i urządzenie zapamiętuje ostatnią stronę projektu, zadania lub sesji w tej przeglądarce. Powrót nadal sprawdza autoryzację i nie omija niedostępnych celów.",
+          "Zdalne projekty ładują się tylko wtedy, gdy są wybrane. Po niepowodzeniu ładowania lub rozłączeniu kliknij ponownie bieżący projekt, aby odświeżyć ręcznie; urządzenia nie są stale odpytywane w tle.",
+          "Otwórz centrum powiadomień, aby uzyskać podsumowania ukończenia lub awarii z autoryzowanych urządzeń. Kliknij, aby otworzyć zadanie lub sesję. Wiadomości na żywo w Workspace nadal należą do bieżącego urządzenia.",
+          "Skorzystaj z platformy Return to Gateway, aby wybrać inne urządzenie. Wygasłe wywołanie zwrotne autoryzacji przeglądarki powoduje ponowne uruchomienie logowania; po anulowaniu autoryzacji pulpitu spróbuj ponownie ręcznie lub wróć do lokalnego obszaru roboczego."
+        ],
+        "tips": [
+          "Pamięć strony jest lokalna w przeglądarce i nie jest synchronizowana między przeglądarkami. Dostęp działa bez pamięci przeglądarki, ale lokalizacje nie są zachowywane.",
+          "Połącz się ponownie, gdy pojawi się monit dotyczący urządzeń offline, cofniętej autoryzacji lub awarii sieci. Zapisane lokalizacje nie zastępują uprawnień.",
+          "Zrzuty ekranu rzeczywistych kart urządzeń i powiadomień zbiorczych z ustalonego projektu demonstracyjnego pozostają w toku."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Karty urządzeń i zbiorcze centrum powiadomień",
+          "caption": "Oczekuje prawdziwy zrzut ekranu: przełączanie urządzeń, przywracanie lokalizacji i nawigacja w powiadomieniach; jeszcze nie schwytany."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Boty kanałowe i powiadomienia grupowe",
+    "summary": "Skonfiguruj WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack lub QQ, odróżniając czat od powiadomień Webhook.",
+    "sections": [
+      {
+        "title": "Wybierz kanał i podłącz nową platformę",
+        "steps": [
+          "Otwórz Ustawienia → Boty kanałowe, po lewej stronie wybierz platformę, a po prawej stronie wprowadź nazwę, dane uwierzytelniające i domyślny projekt lokalny. Włącz i zapisz. Puste sekrety zachowują istniejące wartości podczas edycji; sprawdź niezapisane zmiany przed przełączeniem. Zamykanie ustawień, naciśnięcie Escape lub przełączenie sekcji ustawień wymaga potwierdzenia, gdy zmiany nie zostaną zapisane; anulowanie powoduje zachowanie wersji roboczej.",
+          "W przypadku Feishu lub Lark utwórz niestandardową aplikację dla przedsiębiorstw z obsługą botów i wpisz App ID i App Secret. Po połączeniu włącz zdarzenia długiego połączenia, zasubskrybuj im.message.receive_v1 i card.action.trigger, skonfiguruj uprawnienia do wiadomości/karty i opublikuj. Wyślij wiadomość prywatną lub wspomnij o bocie w grupie.",
+          "W przypadku Telegram utwórz bota za pomocą BotFather i wprowadź jego Bot Token. Stosowane jest długie odpytywanie; żaden inny program nie może jednocześnie odpytywać tego bota. Administratorzy muszą najpierw usunąć istniejący webhook. Wyślij prywatną wiadomość tekstową lub wspomnij/odpowiedz na nią w grupach.",
+          "W przypadku Discord wprowadź Application ID i Bot Token, włącz Message Content Intent i przyznaj kanałowi uprawnienia do odczytu/wysyłania. Wspomnij o bocie na kanałach serwera; wiązać zadania przy użyciu identyfikatorów kanałów lub wątków.",
+          "Dla Slack włącz Socket Mode i wprowadź App ID, App-Level Token z connections:write i Bot Token. Skonfiguruj chat:write, app_mentions:read i im:history, subskrybuj app_mention i message.im, a następnie zainstaluj. Zaproś bota, zanim wspomnisz o nim na kanałach.",
+          "W przypadku QQ utwórz oficjalnego bota na platformie QQ Open, wybierz dostęp WebSocket i włącz zdarzenia wiadomości prywatnych/grupowych. Wprowadź App ID, App Secret i domyślny projekt lokalny, włącz i zapisz. Wyślij prywatną wiadomość lub wspomnij o bocie w grupie. Po otrzymaniu wiadomości powiąż zadania za pomocą group_openid i skonfiguruj listy dozwolonych za pomocą identyfikatorów OpenID członków, a nie numerów kont lub grup QQ. Tylko tekst; odpowiedzi pasywne mają limity czasu i liczby. Przeczytaj długie wyniki w WorkStep.",
+          "Wróć do WorkStep, aby sprawdzić połączenia i sesje kanałów, a następnie w razie potrzeby powiąż zadania. W przypadku błędów sprawdź region, poświadczenia, uprawnienia platformy i sieć zaplecza."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack i QQ obecnie obsługują tylko tekst. Wróć do WorkStep, aby zatrzymać, uzyskać odpowiedzi na pytania dotyczące pozwolenia, potwierdzić i przejrzeć propozycję; obrazy, pliki i karty interaktywne nie są gwarantowane.",
+          "Testy na nowej platformie wykorzystują symulowane ramki. Prawdziwa instalacja najemcy, uprawnienia i przesyłanie wiadomości nadal wymagają testów integracji. Trzymaj sekrety, pełne tokeny i prywatne identyfikatory grup poza zrzutami ekranu."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Selektor kanałów i oddzielny edytor botów",
+          "caption": "Oczekuje się na prawdziwy zrzut ekranu nowego układu wielokanałowego, niewymagający poświadczeń. Stara forma tego nie reprezentuje."
+        }
+      },
+      {
+        "title": "Wysyłaj powiadomienia tylko do grup Feishu lub Lark",
+        "steps": [
+          "W punktach Haki przepływu pracy → Haki powiadomień na stronie zadań dodaj cel bota grupowego Feishu lub Lark i wklej kompletny niestandardowy webhook URL bota dla tego regionu.",
+          "Jeśli podpisywanie jest włączone, wprowadź sekret podpisywania tego bota, a nie App ID lub App Secret. Skonfiguruj wymagane słowa kluczowe, zdarzenia i szablon Markdown, zapisz i sprawdź symulację.",
+          "Przed wysłaniem testu i sprawdzeniem historii dostaw potwierdź grupę odbiorców. Podgląd nic nie wysyła; po upływie limitu czasu sprawdź grupę przed ponowną próbą."
+        ],
+        "tips": [
+          "Elementy webhook wysyłają tylko zdarzenia przepływu pracy i nie odbierają czatu grupowego. Użyj bota aplikacji do rozmów dwustronnych."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Powiadomienie Feishu lub Lark URL, podpis i szablon",
+          "caption": "Oczekuje na konfigurację bez poświadczeń i zrzuty ekranu z podglądem karty; rzeczywista dostawa nie jest przedmiotem reklamacji."
+        }
+      },
+      {
+        "title": "Dodaj bota",
+        "steps": [
+          "Otwórz Ustawienia → Boty kanałowe, wybierz WeCom lub DingTalk po lewej stronie, dodaj bota i nadaj mu nazwę.",
+          "W przypadku WeCom wybierz długie połączenie w ustawieniach inteligentnego bota i skopiuj Bot ID i Secret. W przypadku DingTalk utwórz aplikację, włącz jej bota Stream i skopiuj Client ID i Client Secret.",
+          "Wybierz domyślny projekt, włącz długie połączenie, zapisz i poczekaj na Connected.",
+          "Dodaj bota do grupy, wspomnij o nim w wiadomości testowej, sprawdź rozmowę i odpowiedz w obszarze Czaty na kanale projektu."
+        ],
+        "tips": [
+          "Wprowadzaj sekrety tylko w ustawieniach, a nie w zrzutach ekranu lub wiadomościach. W przypadku błędów połączenia sprawdź tryb platformy, poświadczenia i sieć zaplecza.",
+          "Karty przycisków DingTalk wymagają uprawnień do tworzenia, dostarczania i aktualizacji. Szablony niestandardowe muszą odpowiadać polom opisanym w interfejsie."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Stary formularz Dodaj bota przed wprowadzeniem poświadczeń",
+          "caption": "Stary formularz ilustruje tylko pola nazwy, danych uwierzytelniających i domyślnego projektu. Nie został zapisany ani podłączony; nowa lista platform po lewej stronie nadal wymaga zrzutu ekranu."
+        }
+      },
+      {
+        "title": "Powiąż grupę zadań i obsługuj recenzje",
+        "steps": [
+          "Otwórz Bind BOT w szczegółach zadania i wybierz włączonego bota.",
+          "Wspomnij o tym raz w grupie, a następnie wybierz grupę w obszarze Ostatnio otrzymane grupy. Alternatywnie wklej znany identyfikator grupy, sprawdź bieżące zadanie i powiąż.",
+          "Pytania grupowe trafiają do koordynatora tego zadania. Sprawdź wyniki etapu i przesłane załączniki.",
+          "Kiedy pojawią się karty przeglądu lub pytań, przeczytaj je przed podjęciem działania i wróć do WorkStep, aby sprawdzić, czy to konieczne. Rozłącz, gdy nie jest już potrzebny."
+        ],
+        "tips": [
+          "Domyślny projekt obsługuje czat kanałowy niezwiązany z zadaniem. Powiązania grupowe określają, które zadanie odbiera komunikaty tej grupy.",
+          "Archiwizacja lub usunięcie zadania powoduje usunięcie powiązań; przywrócenie wymaga ponownego wiązania. Renderowanie przycisków zależy od klientów kanału. Jeśli nie, działaj w szczegółach zadania."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Okno dialogowe zadania BOT bez powiązanej grupy",
+          "caption": "Wybierz bota i ostatnią grupę, a następnie wprowadź i powiąż jego identyfikator. Żadna grupa zadań nie jest jeszcze powiązana."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Piaskownica na pulpicie",
+    "summary": "Uruchom backend i silniki w oddzielnym kontenerze z jawnie powiązanymi katalogami projektu.",
+    "sections": [
+      {
+        "title": "Ukończ pięcioetapowy przewodnik po piaskownicy",
+        "steps": [
+          "Na komputerze otwórz Sandbox, ostatni element Ustawień. Zakończ aktywne zadania i rozmowy oraz zweryfikuj obsługę wirtualizacji; Windows potrzebuje WSL2.",
+          "Najpierw wybierz osobne miejsce do przechowywania w piaskownicy i pobierz/przygotuj oprogramowanie pomocnicze.",
+          "Następnie sprawdź obraz i pobierz obraz zalecanej wersji lub przeskanuj działający lokalny Docker w poszukiwaniu kompatybilnego obrazu WorkStep.",
+          "Po trzecie wybierz istniejące lub nowe katalogi projektów; czwarty wybierz migrację dostawcy, silnika i preferencji; piąty sprawdź podsumowanie i zapisz lub potwierdź i uruchom ponownie."
+        ],
+        "tips": [
+          "Skojarzenie projektu nie powoduje skopiowania jego plików. Zmiany w piaskownicy nadal wpływają na oryginalny katalog. Nie uruchamiaj tego samego projektu w obu środowiskach jednocześnie.",
+          "Niepowiązane projekty są tymczasowo ukrywane, a nie usuwane. Katalogi piaskownicy i katalogi projektów nie mogą się wzajemnie zawierać."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Wybór i potwierdzenie projektu w pięcioetapowym przewodniku po piaskownicy",
+          "caption": "Sprawdź pamięć masową, powiązanie projektu i migrację konfiguracji."
+        }
+      },
+      {
+        "title": "Przełącz tryby i zachowuj konfigurację",
+        "steps": [
+          "Po ponownym uruchomieniu sprawdź plakietkę trybu piaskownicy na pasku bocznym, aby zweryfikować rzeczywiste środowisko.",
+          "Sprawdź ponownie adresy dostawców, instalację silnika i logowanie. Host localhost oznacza coś innego w kontenerze i ścieżki mogą wymagać dostosowania.",
+          "Przed zaimportowaniem lub zmianą katalogów wyłącz piaskownicę i uruchom ją ponownie, a następnie użyj zarządzania piaskownicą. Przed importem przeczytaj szczegóły dotyczące kopii zapasowych i wymiany.",
+          "Wyłącz piaskownicę i uruchom ponownie, aby powrócić do zwykłego trybu. W przypadku błędów otwórz katalog dziennika i sprawdź postęp i awarie."
+        ],
+        "tips": [
+          "Tryby zwykły i piaskownica mają oddzielną konfigurację. Przełączanie nie powoduje automatycznej synchronizacji zmian.",
+          "Rozważ uprawnienia dotyczące zgodności tylko wtedy, gdy nie można uruchomić wewnętrznej piaskownicy silnika; interfejs wyjaśnia zmniejszoną izolację. Usunięcie danych w piaskownicy jest nieodwracalne: najpierw sprawdź, co zostanie zachowane."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Typowe ustawienia i rozwiązywanie problemów",
+    "summary": "Zapoznaj się z zakresem konfiguracji, najpierw przeczytaj status i błędy, a następnie dokonaj ukierunkowanych napraw.",
+    "sections": [
+      {
+        "title": "Sprawdź wersję na komputery stacjonarne i pobierz aktualizacje",
+        "steps": [
+          "Na komputerze otwórz Ustawienia → Ustawienia systemu → Aktualizacje pulpitu, aby sprawdzić aktualną wersję.",
+          "Kliknij opcję Sprawdź aktualizacje, aby znaleźć najnowszą oficjalną wersję GitHub. Jeśli jest nowszy, kliknij Pobierz z GitHub.",
+          "Wybierz instalator swojego systemu na stronie wydania, zakończ aktywną pracę i zainstaluj go samodzielnie."
+        ],
+        "tips": [
+          "Pulpit sprawdza raz dziennie bez automatycznego pobierania, instalowania lub ponownego uruchamiania. Tylko nowsza oficjalna wersja powoduje aktualizację, a nie wypychanie kodu lub wersje robocze.",
+          "Ponów próbę, która zakończyła się niepowodzeniem później. Wersja internetowa nie zawiera wpisu dotyczącego aktualizacji na pulpicie."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Aktualna wersja na komputery stacjonarne i wpis dotyczący sprawdzania aktualizacji w ustawieniach systemu",
+          "caption": "Sprawdź ręcznie, a następnie pobierz z GitHub, gdy dostępna będzie aktualizacja."
+        }
+      },
+      {
+        "title": "Współbieżność, asystenci i wyświetlanie",
+        "steps": [
+          "W przypadku uruchamiania wielu zadań ustaw pojemność zadań i konwersacji w globalnych limitach współbieżności lub konfiguracji projektu i sprawdź efektywne wartości.",
+          "Jeśli zaplanowane zadania nie powinny zużywać pojemności, przed włączeniem tej opcji sprawdź, czy są wystarczające zasoby. Nadmierna kolejka zadań i czatów.",
+          "Skonfiguruj silnik i model każdego asystenta w sekcji Asystenci. Sprawdź oddzielnie ustawienia wykonywania kroków i koordynatora zadań.",
+          "Zmień nazwę użytkownika w ustawieniach systemu. Język, czcionki, rozmiar i skórki znajdują się w Ustawieniach → Wygląd; zakres skanowania repozytorium znajduje się w ustawieniach Git."
+        ],
+        "tips": [
+          "Zmiana domyślnego mechanizmu wykonywania wpływa na nowe zadania i kroki, a nie na istniejące ustawienia zadań lub kroków."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Globalne limity współbieżności zadań i konwersacji",
+          "caption": "Ustaw globalne możliwości i wyjątek dotyczący zaplanowanych zadań."
+        }
+      },
+      {
+        "title": "Rozwiązywanie problemów w kolejności",
+        "steps": [
+          "Jeśli zadanie nie zostanie uruchomione, rozróżnij stany gotowe, w kolejce i oczekujące na sprawdzenie. Sprawdź etap uruchamiania, automatyczne uruchamianie i dostępność silnika.",
+          "W przypadku niepowodzenia wykonania odczytaj najnowszy błąd. Sprawdź instalację SDK, uwierzytelnienie dostawcy, nazwę modelu, uprawnienia sieciowe i do plików, a następnie uruchom ponownie.",
+          "W przypadku błędów ładowania historii lub API użyj opcji Ponów próbę. Jeśli API zwrócił stronę internetową, potwierdź wersję zaplecza i uruchom ponownie, używając zwykłej metody.",
+          "Jeśli historia sesji natywnej została utracona, przeczytaj opcję Uruchom ponownie z nową sesją, podaj bieżące cele i wymagane odniesienia do artefaktów i nie traktuj tego jako pełnego odzyskiwania kontekstu natywnego.",
+          "W przypadku brakujących artefaktów lub niepowodzenia dostępu zdalnego sprawdź, odpowiednio, faktyczne wygenerowanie pliku lub dostępność hosta, adres, klucz i wygaśnięcie autoryzacji."
+        ],
+        "tips": [
+          "Zgłaszając problemy, podawaj wersję, system operacyjny, silnik, kroki odtwarzania i zredagowane zrzuty ekranu błędów, nigdy dane uwierzytelniające. Bez wyraźnego ustawienia, 20 kolejnych minut bez zdarzeń silnika powoduje przekroczenie limitu czasu bezczynności przy zachowaniu sesji. Istniejące niestandardowe limity czasu pozostają; 0 wyłącza to. Ciche myślenie lub narzędzia niekoniecznie muszą się zatrzymać: sprawdź dzienniki przed ponownym uruchomieniem."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Błąd demonstracyjny spowodowany nieistniejącym modelem",
+          "caption": "Błąd informuje, że wybrany model nie jest obsługiwany. Napraw konfigurację modelu kroku przed ponownym uruchomieniem; na tym obrazie nie jest on naprawiony."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Wygląd, skórki i języki",
+    "summary": "Wybierz osobiste preferencje wyświetlania lub utwórz podglądalne skórki i pakiety językowe za pośrednictwem zwykłego czatu projektowego.",
+    "sections": [
+      {
+        "title": "Wybierz wbudowany język",
+        "steps": [
+          "W Ustawieniach → Wygląd wybierz Chiński uproszczony, Chiński tradycyjny, Angielski, Japoński, Francuski, Niemiecki lub Arabski i sprawdź popularne wpisy oraz kontrole daty.",
+          "Wybierz język witryny i instrukcji obsługi z listy języków u góry, obejmującej japoński, chiński tradycyjny, koreański i inne dostępne języki. Przeglądarka zapisuje wybór, a jeśli nie ma zapisanej preferencji, używa języka przeglądarki."
+        ],
+        "tips": [
+          "Tłumaczenia aplikacji na język francuski, niemiecki i arabski obejmują obecnie główne hasła; inne ciągi mogą pozostać chińskie, a arabski układ aplikacji jest nadal pisany od lewej do prawej. Tekst witryny i podręcznika jest zgodny z górnym selektorem języka, z układem arabskim pisanym od prawej do lewej. Prawdziwe zrzuty ekranu pozostają chińskie. Zmiana języka nie tłumaczy wcześniejszych rozmów ani plików użytkownika."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Wbudowane selektory języków w aplikacji i na stronie internetowej",
+          "caption": "Oczekujemy prawdziwych zrzutów ekranu z dodanymi opcjami językowymi."
+        }
+      },
+      {
+        "title": "Użyj układów skórek w wersji 2 i rozszerzeń funkcji",
+        "steps": [
+          "W Ustawieniach → Wygląd zainstaluj i zatwierdź zaufaną skórkę v2, wyświetl podgląd i zastosuj ją. W przypadku funkcji takich jak notatki poproś autora na czacie dotyczącym tworzenia wyglądu o dołączenie komponentów.",
+          "Przeczytaj potwierdzenie włączenia pakietów z kodem. Aktualizacja pakietu lub zmiana tożsamości może powtórzyć się. Otwórz panele poprzez menu skórki lub wpisy funkcji, które zależą od pakietu. Notatki i kalendarze nie są fabrycznie zainstalowanymi funkcjami aplikacji.",
+          "Pakiet może ustawić kompozytora powyżej, poniżej, w lewo lub w prawo. Widoki kompaktowe zachowują układ pionowy. Po przełączeniu sprawdź wiadomości, kompozytor i ustawienia pozostaną użyteczne.",
+          "Dane rozszerzenia są oddzielone w zależności od tożsamości przeglądarki, urządzenia, skórki i funkcji. Przełączenie lub usunięcie skórki nie powoduje jej usunięcia. Użyj własnego eksportu rozszerzenia do tworzenia kopii zapasowych. Jeśli interfejs się zepsuje, dodaj skin=default do URL i odśwież."
+        ],
+        "tips": [
+          "Kod komponentu ma uprawnienia bieżącej strony. Włącz tylko zaufane źródła. Anulowanie podglądu przywraca wygląd, ale nie cofa już wykonanego kodu.",
+          "Dane rozszerzeń nie są uwzględniane w eksporcie skórki ZIP ani synchronizowane pomiędzy przeglądarkami/urządzeniami. Utwórz kopię zapasową przed wyczyszczeniem pamięci; Nieudane oszczędzanie nie może być traktowane jako sukces."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Potwierdzenie włączenia komponentu v2 i wpis w panelu funkcji",
+          "caption": "Oczekuje zrzut ekranu rzeczywistego wykonania zaufanego pakietu demonstracyjnego. Walidacja formatu nie jest akceptacją wizualną."
+        }
+      },
+      {
+        "title": "Wybierz i zapisz osobisty wygląd",
+        "steps": [
+          "Aby uzyskać pełny dostęp do urządzenia, otwórz Ustawienia → Wygląd. Użytkownicy autoryzowani do projektu wprowadzają Wygląd i skórki z paska bocznego.",
+          "Wybierz czcionkę, rozmiar i język. Wyszukaj lub filtruj zainstalowane skórki, wyświetl podgląd, a następnie zastosuj. Stały pasek podglądu umożliwia anulowanie lub potwierdzenie.",
+          "Wybory uwierzytelnionych użytkowników Gateway są zapisywane dla każdego konta i urządzenia i przywracane w innej przeglądarce na tym samym urządzeniu. Ponów nieudaną próbę zapisu. Lokalne opcje bez logowania do platformy pozostają w tej przeglądarce."
+        ],
+        "tips": [
+          "Pakiety i zapisy dotyczące tworzenia są udostępniane na urządzeniu; osobiste wybory są izolowane. Użytkownicy autoryzowani do projektu mogą wybierać tylko zainstalowane pakiety.",
+          "Brakujące lub uszkodzone pakiety wracają do domyślnego wyglądu. Dodaj ?skin=default lub ?language=default, aby przywrócić domyślną skórkę lub chiński uproszczony."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Czcionki, rozmiar, język i zainstalowane skórki w Wyglądzie",
+          "caption": "Prawdziwa strona ustawień pokazuje ustawienia domyślne i wbudowane przykłady po prawej stronie. Żadne osobiste preferencje nie uległy zmianie."
+        }
+      },
+      {
+        "title": "Twórz skórki i języki za pośrednictwem czatu",
+        "steps": [
+          "Mając uprawnienia do zarządzania hostami, kliknij Porozmawiajmy o wyglądzie, wybierz zainstalowany, zweryfikowany silnik i opisz cel, np.: Wykonaj ciemną skórkę, zachowaj układ i użyj strzałki wysyłania w górę.",
+          "Czat znajduje się po lewej stronie, edycja i podgląd po prawej; telefony przełączają karty. Dostosuj nazwę, kolory, czcionkę, rozmiar, ikonę wysyłania i układ, a następnie zapisz zmiany w tym samym pakiecie roboczym. Edycja jest wyłączona podczas działania czatu. Sprawdź podglądy na komputerze i telefonie.",
+          "O pakiet językowy zapytaj na tym samym czacie, na przykład: Dodaj hiszpański, zachowując wygląd. Przełącz prawą stronę na Język. Ładuje się po wygenerowaniu; użyj opcji Przeczytaj i zatwierdź, aby sprawdzić katalog, pokrycie, brakujące ciągi i przykłady.",
+          "W przypadku skórek kliknij Zapisz wygląd i podgląd; dla języków, zainstaluj i wyświetl podgląd. Potwierdź lub anuluj na pasku podglądu. Zapisanie do biblioteki nie stanowi potwierdzenia zgłoszenia osobistego. Eksportuj ZIP do ponownego wykorzystania i sprawdzaj monity o wymianę w przypadku importów lub aktualizacji o tym samym identyfikatorze."
+        ],
+        "tips": [
+          "Kreacja ponownie wykorzystuje ustalony projekt Runtime i zwykły czat, wywołując Twój model. Kontynuuj wcześniejszą pracę w Historii rozmów nad oknem. Same przykłady podglądu nie uruchamiają zadań.",
+          "Czcionki korzystają z zainstalowanych czcionek systemowych. Wiadomości i pliki historyczne nie są tłumaczone automatycznie. Wbudowane ikony wysyłania można wybrać w ustawieniach; niestandardowe ikony wektorowe muszą być dostarczone w formie zatwierdzonej wersji roboczej.",
+          "Pakiety językowe są niezależne od skórek i obecnie obsługują języki pisane od lewej do prawej. Brakujące ciągi i kontrolki daty korzystają z określonej wbudowanej wartości rezerwowej. Pokrycie nie potwierdza jakości tłumaczenia; użyj czatu, aby zaktualizować nieaktualne katalogi ciągów."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Obszary czatu i edycji/podglądu w tworzeniu wyglądu",
+          "caption": "Autoryzowany pusty czat tworzenia i formularz dostosowywania. Jego kompozytor jest wstępnie wypełniony; nie wysłano żadnej wiadomości, przebieg modelu lub skórka zostały zapisane."
+        }
+      },
+      {
+        "title": "Przeczytaj i wyświetl podgląd pakietu językowego",
+        "steps": [
+          "Przełącz prawą stronę studia wyglądu na Język i sprawdź katalog pakietu językowego. Generuj za pośrednictwem tego samego czatu lub importuj istniejący język ZIP.",
+          "Wygenerowane pakiety ładują się automatycznie. Przeczytaj i zweryfikuj zakres kontroli, brakujące ciągi znaków i przykłady. Powiadomienie o oczekiwaniu na wygenerowanie pustego katalogu oznacza, że ​​tworzenie nie zostało ukończone.",
+          "Po zatwierdzeniu zainstaluj i wyświetl podgląd, a następnie potwierdź lub anuluj aplikację osobistą. Zakres nie może zastąpić kontroli jakości tłumaczenia."
+        ],
+        "tips": [
+          "Obecnie obsługiwane są tylko języki pisane od lewej do prawej. Kontrole daty i brakujące ciągi korzystają z wbudowanej rezerwy określonej w pakiecie."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Katalog języków i wpis sprawdzający w pustym czacie tworzenia",
+          "caption": "Zakładka Język oferuje katalog, odczyt i weryfikację oraz import ZIP. Nie wygenerowano, nie zainstalowano ani nie zastosowano żadnego pakietu językowego."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Audyt zdalnej obsługi projektu",
+    "summary": "Sprawdź działania zdalnych gości i czy zakończyły się sukcesem, odmową lub niepowodzeniem.",
+    "sections": [
+      {
+        "title": "Filtruj i sprawdzaj operacje zdalne",
+        "steps": [
+          "Na urządzeniu hostującym projekt otwórz konfigurację projektu lokalnego → Audyt działania. Projekty zdalne, obszary robocze bramy i dostęp powiązany z projektem nie oferują tej karty.",
+          "Filtruj według akcji i wyniku, a następnie sprawdź aktora, czas, źródło i zadanie, przepływ pracy lub identyfikator pliku.",
+          "Przejdź do następnej lub pierwszej strony, odśwież, aby wyświetlić najnowsze rekordy i ponów próbę załadowania, które nie powiodło się."
+        ],
+        "tips": [
+          "Audyt ten obejmuje działania ze źródeł zdalnych oraz wyniki odmowy/nieudanego połączenia, a nie pełne czaty i nie przechowuje żadnych danych uwierzytelniających. API działa wyłącznie lokalnie na hoście. Domyślne przechowywanie wynosi 30 dni; śledź rzeczywisty czas trwania strony. Prawdziwe nazwiska odwiedzających udostępnianie publiczne są nieznane; Zdalna przeglądarka (tożsamość zgłoszona przez siebie) nie jest tożsamością uwierzytelnioną."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Kontroluj filtry i puste rekordy dla projektu lokalnego",
+          "caption": "Rzeczywisty wpis audytu lokalnego oraz filtry akcji/wyników. W projekcie demonstracyjnym nie istnieją żadne zdalne zapisy; żadne działania ani tożsamości nie zostały sfabrykowane."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Często zadawane pytania",
+    "summary": "Przed rozpoczęciem zapoznaj się z silnikami, usługami modelowymi, zmianami plików i granicami odzyskiwania.",
+    "sections": [
+      {
+        "title": "Czym różnią się SDK i CLI i od czego powinienem zacząć?",
+        "steps": [
+          "Obie są metodami integracji silników dla możliwości modelu. SDK integruje się poprzez interfejsy API programistów; CLI uruchamia programy wiersza poleceń. Nie jest to również nazwa modelu.",
+          "Zacznij od zainstalowania Codex SDK lub Claude Agent SDK, wykonaj uwierzytelnienie, wybierz i zweryfikuj model, a następnie ustaw go jako domyślny silnik wykonawczy. Obecni użytkownicy CLI mogą zamiast tego wybrać ten silnik.",
+          "Dostawca dostarcza adres usługi i uwierzytelnianie, model identyfikuje, co obsługuje żądanie, a silnik zapewnia sesje, narzędzia i wykonanie. Postępuj zgodnie z formularzem wybranego silnika; dane uwierzytelniające niekoniecznie są wymienne."
+        ],
+        "tips": [
+          "Instalacja SDK ustanawia jedynie zależności środowiska wykonawczego, a nie uwierzytelnianie, uprawnienia czy limity. Odróżnij wpisy Codexu i Claude Code SDK od tych oznaczonych jako CLI."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "Wybór SDK i CLI w ustawieniach silnika",
+          "caption": "Sprawdź zalecane silniki SDK oraz ich oddzielne stany instalacji i weryfikacji."
+        }
+      },
+      {
+        "title": "W jaki sposób naliczane są opłaty za połączenia związane z oprogramowaniem i modelami?",
+        "steps": [
+          "Sprawdź plan, uwierzytelnianie i limit wybranego modelu usługi przed wykonaniem małego zadania początkowego. Sam SDK nie jest kredytem modelowym.",
+          "Wykonywanie zadań, automatyczny przegląd, asystenci i ponowne próby mogą wywoływać modele. Sprawdzaj modele osobno w ustawieniach kroku, przeglądu i asystenta.",
+          "Użyj analizy wykonania, aby sprawdzić źródła wykorzystania i kosztów. Szacunki pomagają wyjaśnić konsumpcję; opłaty końcowe są zgodne z regulaminem i rachunkiem usługodawcy."
+        ],
+        "tips": [
+          "Nie zakładaj, że pobranie SDK lub zalogowanie się spowoduje, że rozmowy będą bezpłatne lub że jedna subskrypcja będzie dotyczyć każdego silnika."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Wykorzystanie tokena i źródła kosztów w analizie wykonania",
+          "caption": "Wyświetlane są koszty i zasięg zgłoszone przez dostawcę. Szacunkowy koszt jest oznaczony tylko wtedy, gdy faktycznie zastosowano szacunki cenowe."
+        }
+      },
+      {
+        "title": "Gdzie przechowywane są dane i czy sztuczna inteligencja może modyfikować moje pliki?",
+        "steps": [
+          "Lokalne zadania, przepływy pracy i wiadomości są domyślnie przechowywane w projekcie .workstep. Wyłączenie katalogu danych następuje po katalogu projektu wykorzystującym ~/.workstep/projects/<项目ID>/. .workstep/project.json projektu ponownie kojarzy oryginalne dane.",
+          "Żądania i kontekst odczytywane przez silnik mogą być wysyłane do skonfigurowanej usługi modelowej. Kanały, udostępnianie i zdalny dostęp również ujawniają informacje w ich autoryzowanym zakresie odpowiednim stronom.",
+          "AI z uprawnieniami do zapisu może modyfikować pliki projektu. Poćwicz w oddzielnym projekcie, sprawdź uprawnienia przed wykonaniem, a później sprawdź różnice w Git i rzeczywiste artefakty.",
+          "Powiązania piaskownicy nadal modyfikują oryginalnie zamontowane pliki. Zadanie Worktree udostępnia oddzielne katalogi, ale wyniki scalania nadal wymagają sprawdzenia."
+        ],
+        "tips": [
+          "Pamięć lokalna nie oznacza wywołań modeli offline. Trzymaj klucze, dane uwierzytelniające konta i nieistotne, poufne pliki poza opisami zadań, załącznikami i zrzutami ekranu."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Panel trybu zezwolenia na rozmowę na telefonie",
+          "caption": "Wyświetlone zostaną opcje domyślne, tylko do odczytu, zapis w obszarze roboczym i inne opcje. Rzeczywiste wsparcie i zachowanie zależą od silnika."
+        }
+      },
+      {
+        "title": "Czym różnią się zatrzymywanie, ponawianie prób, przeróbka i odzyskiwanie?",
+        "steps": [
+          "Zatrzymanie przerywa bieżące wykonanie lub odpowiedź, ale nie cofa już zapisanych plików. Przed kontynuowaniem sprawdź istniejące wyniki.",
+          "Ponowna próba lub ponowne uruchomienie powoduje ponowne wywołanie silnika, prawdopodobnie kontynuację kontekstu lub użycie nowej sesji zgodnie z monitem. Nie przywraca każdej zmiany do stanu sprzed uruchomienia.",
+          "Przeróbka koryguje wyniki zgodnie z informacją zwrotną z przeglądu lub połączeniami zwrotnymi, z zastrzeżeniem zależności i ograniczeń przepływu pracy. Przeczytaj potwierdzenia w przypadku zmiany zakresu ponownego uruchomienia.",
+          "Po ponownym otwarciu WorkStep sprawdź najpierw stan zadania i sesji. Silniki obsługujące odzyskiwanie mogą wznowić swoją natywną sesję; utracone rekordy natywne wymagają nowej sesji i ponownego uruchomienia."
+        ],
+        "tips": [
+          "Automatyczne odzyskiwanie zależy od silnika i dostępnej historii. Pełne przywrócenie działania nie jest gwarantowane dla każdego silnika lub przerwy."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Zresetuj krok wybrany w ukończonym zadaniu",
+          "caption": "Dla tego ukończonego zadania wybrano krok resetowania, co ma wpływ tylko na komunikat dotyczący następnego kroku. Nie jest to potwierdzenie usunięcia ani ostrzeżenie o braku sesji."
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Tải xuống, cài đặt và mở WorkStep",
+    "summary": "Cài đặt WorkStep trước, sau đó là công cụ SDK. Ứng dụng dành cho máy tính để bàn bao gồm thời gian chạy phụ trợ của nó; bạn không cần phải cài đặt Python trước.",
+    "sections": [
+      {
+        "title": "Chọn trình cài đặt",
+        "steps": [
+          "Sử dụng liên kết tải xuống trang web để chọn trình cài đặt máy tính để bàn cho hệ điều hành và chip của bạn. Trên máy Mac, hãy chọn arm64 DMG cho chip Apple M-series hoặc x64 DMG cho Intel.",
+          "Cài đặt và mở WorkStep bằng quy trình cài đặt thông thường trên hệ thống của bạn. Đợi phần phụ trợ cục bộ sẵn sàng và không gian làm việc mở.",
+          "Trong lần khởi chạy đầu tiên, hãy nhập tên hiển thị khi được nhắc. Để xem lại quá trình làm quen, hãy mở Cài đặt → Cài đặt hệ thống → Làm quen (设置 → 系统设置 → 新手引导), sau đó nhấp vào Làm quen."
+        ],
+        "tips": [
+          "Trình cài đặt máy tính để bàn không bao gồm các công cụ tùy chọn như Codex SDK hoặc Claude Agent SDK. Cài đặt chúng thông qua giao diện trong chương tiếp theo.",
+          "Các bản dựng macOS hoặc Windows chưa được ký sớm có thể kích hoạt các lời nhắc bảo mật hệ thống. Xác minh nguồn tải xuống trước khi làm theo hướng dẫn của hệ thống.",
+          "Việc sử dụng cục bộ độc lập không yêu cầu đăng nhập vào Cổng. Nếu bạn tự nguyện bật Cổng và quá trình xác thực không thể bắt đầu, mục nhập cục bộ sẽ cố gắng quay lại chế độ cục bộ và tắt Cổng, giữ lại địa chỉ của nó để kết nối lại sau. Cài đặt giới hạn Cổng hoặc khách truy cập từ xa không thể sử dụng điều này để vô hiệu hóa Cổng của máy chủ. Nếu việc quay lại chế độ cục bộ không thành công, hãy xác minh chương trình phụ trợ cục bộ và làm mới để thử lại."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Thiết lập danh tính và bắt đầu nhanh trong lần khởi chạy đầu tiên",
+          "caption": "Nhập tên hiển thị cục bộ để vào không gian làm việc hoặc bắt đầu thiết lập nhanh. Hình ảnh này sử dụng một danh tính minh họa."
+        }
+      },
+      {
+        "title": "Hiểu ba khái niệm",
+        "steps": [
+          "Một công cụ thực thi các nhiệm vụ và gọi các công cụ. Hướng dẫn sử dụng này khuyến nghị Codex SDK hoặc Claude Agent SDK trước tiên; không cần phải có động cơ CLI được lắp đặt riêng.",
+          "Nhà cung cấp cung cấp thông tin xác thực và địa chỉ API, API. Nó tách biệt với công cụ thực thi và giao thức của nó phải khớp với giao thức được công cụ đó hỗ trợ.",
+          "Một mô hình thực sự xử lý yêu cầu của bạn. Cài đặt một công cụ, xác thực nó, chọn và kiểm tra một mô hình, sau đó tạo một tác vụ."
+        ],
+        "tips": [
+          "SDK có thể bao gồm hoặc gọi một tệp thực thi cơ bản. Chọn SDK không có nghĩa là không có quy trình con.",
+          "WorkStep lưu trữ dữ liệu dự án cục bộ. Trong quá trình thực thi, công cụ được chọn và nhà cung cấp sẽ gửi ngữ cảnh tác vụ đến dịch vụ mô hình."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Bước 1: cài đặt công cụ SDK",
+    "summary": "Bắt đầu với SDK. Tải xuống và quản lý công cụ thông qua Cài đặt & phiên bản (安装与版本) mà không cần sao chép các lệnh cài đặt đầu cuối.",
+    "sections": [
+      {
+        "title": "Tải xuống và cài đặt thông qua giao diện",
+        "steps": [
+          "Mở Cài đặt → Công cụ thực thi (设置 → 执行引擎). Tìm thẻ Codex hoặc Claude Code có đánh dấu sdk, tương ứng với Codex SDK và Claude Agent SDK. Ban đầu chỉ cài đặt cái bạn định sử dụng.",
+          "Nhấp vào Cài đặt & phiên bản, đợi danh sách phiên bản, sau đó chọn phiên bản phù hợp trong Chọn phiên bản.",
+          "Nhấp vào Cài đặt phiên bản đã chọn và xác minh phiên bản. Nếu các điều khoản của bên thứ ba xuất hiện, hãy đọc và chấp nhận chúng trước khi nhấp vào Xác nhận cài đặt.",
+          "Đợi tải xuống gói chính, cài đặt công cụ và phụ thuộc cũng như xác minh phiên bản. Xác nhận rằng phiên bản mới được hiển thị.",
+          "Việc thay đổi phiên bản SDK yêu cầu khởi động lại phần phụ trợ. Người dùng máy tính để bàn có thể hoàn thành công việc hiện tại, thoát và mở lại WorkStep, sau đó tiếp tục cấu hình."
+        ],
+        "tips": [
+          "Tỷ lệ phần trăm chỉ bao gồm gói chính. Tải xuống và trích xuất phụ thuộc có thể không có phần trăm; sử dụng mô tả giai đoạn để đánh giá sự tiến bộ.",
+          "Quá trình cài đặt tiếp tục khi phần của nó bị thu gọn. Đừng gửi lại chỉ vì tiến trình đã tạm thời ngừng thay đổi.",
+          "Nếu không có phiên bản phù hợp xuất hiện, hãy làm mới danh sách và kiểm tra hỗ trợ mạng và nền tảng. Khi đường dẫn thực thi tùy chỉnh được định cấu hình, hãy xóa đường dẫn đó theo hướng dẫn trước khi quản lý phiên bản."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "Lựa chọn phiên bản và cài đặt động cơ SDK",
+          "caption": "Nhấp vào Cài đặt & phiên bản, Chọn phiên bản, sau đó Cài đặt phiên bản đã chọn."
+        }
+      },
+      {
+        "title": "Xác minh cài đặt và duy trì các phiên bản",
+        "steps": [
+          "Mở lại công cụ Thực thi và kiểm tra xem SDK có được phát hiện như đã cài đặt với phiên bản dự kiến hay không.",
+          "Sử dụng Cài đặt & phiên bản để nâng cấp sau này. Nếu có sẵn phiên bản khôi phục, hãy nhấp vào Quay lại… và xác nhận; rollback tải lại phiên bản cũ hơn.",
+          "Nếu cài đặt không thành công, hãy đọc lỗi trong phần đó, kiểm tra mạng, dung lượng ổ đĩa và đường dẫn cài đặt, sau đó thử lại. Cài đặt thành công không có nghĩa là xác thực mô hình thành công: tiếp theo hãy hoàn tất cấu hình và thử nghiệm."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Phiên bản và tiến trình sau khi cài đặt SDK",
+          "caption": "Kiểm tra phiên bản hiện tại sau khi cài đặt. Chỉ báo 100% còn lại có nghĩa là quá trình cài đặt đã hoàn tất chứ không phải việc tải xuống vẫn tiếp tục."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Cấu hình nhà cung cấp, xác thực và kiểm tra kết nối",
+    "summary": "Định cấu hình nhà cung cấp tương thích trong WorkStep và liên kết nó với SDK của bạn. Người dùng đã có thông tin đăng nhập gốc hiện có cũng có thể sử dụng lại xác thực của công cụ.",
+    "sections": [
+      {
+        "title": "Thêm nhà cung cấp",
+        "steps": [
+          "Mở Cài đặt → Nhà cung cấp → Thêm nhà cung cấp (设置 → 供应商 → 添加供应商). Nhập tên dễ nhận biết và chọn loại dịch vụ cũng như giao thức API.",
+          "Đối với Claude Agent SDK, hãy chọn điểm cuối Anthropic Messages tương thích; đối với Codex SDK, hãy chọn điểm cuối OpenAI Responses tương thích. Chỉ riêng tuyên bố 'Tương thích OpenAI' không đủ để thiết lập khả năng tương thích giao thức.",
+          "Nhập địa chỉ API và API Key do nhà cung cấp cung cấp. Giữ các đường dẫn phiên bản như /v1 hoặc /v2; không sử dụng điểm cuối trò chuyện đầy đủ làm địa chỉ cơ sở.",
+          "Lưu nhà cung cấp và nhấp vào Kiểm tra kết nối. Để lấy mô hình, hãy nhấp vào Nhận mô hình, chọn mô hình bạn cần, sau đó Lưu đã chọn.",
+          "Đảm bảo nhà cung cấp được kích hoạt. Sau khi vượt qua quá trình kiểm tra, hãy quay lại SDK để hoàn tất quá trình kiểm tra động cơ và dây buộc."
+        ],
+        "tips": [
+          "Đăng ký tài khoản, thông tin xác thực API và thanh toán được xác định bởi nhà cung cấp dịch vụ. Việc cài đặt SDK không cung cấp thông tin xác thực.",
+          "Khi chỉnh sửa nhà cung cấp, việc để trống khóa vẫn giữ nguyên giá trị cũ. Nhập khóa mới để thay thế và ẩn khóa trước ảnh chụp màn hình hoặc cấu hình chia sẻ.",
+          "Trong chế độ do doanh nghiệp quản lý, các nhà cung cấp có thể được nền tảng chỉ định. Sử dụng nhà cung cấp được ủy quyền thay vì thêm lại."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Cài đặt tên nhà cung cấp, giao thức và địa chỉ API",
+          "caption": "Định cấu hình giao thức tương thích, lưu, sau đó kiểm tra kết nối. Hình ảnh hiển thị địa chỉ API công khai có trường khóa trống."
+        }
+      },
+      {
+        "title": "Ràng buộc và xác minh SDK",
+        "steps": [
+          "Quay lại Cài đặt → Công cụ thực thi, mở rộng cấu hình của SDK đã cài đặt và chọn nhà cung cấp tương thích mà bạn đã lưu.",
+          "Claude Agent SDK yêu cầu chế độ Quyền. Đọc mô tả của nó, chọn và xác nhận; các trường nâng cao khác có thể giữ nguyên ở mặc định. Đối với Codex SDK, ban đầu giữ lại các cài đặt lý do, phê duyệt và hộp cát mặc định.",
+          "Nhấp vào Lưu cấu hình và kiểm tra mô hình mặc định. Đối với nhà cung cấp bị ràng buộc, các mô hình Làm mới chỉ đọc lại các lựa chọn đã lưu thay vì tìm nạp tất cả các mô hình. Danh sách trống nếu không có bộ đệm hoặc lựa chọn nào tồn tại. Để thêm mô hình, hãy quay lại Cài đặt → Nhà cung cấp, Chọn mô hình và Lưu, sau đó làm mới công cụ.",
+          "Nhấp vào Kiểm tra trên thẻ động cơ, đợi kết quả và xác nhận Đã xác minh (已验证). Đây là điểm kiểm tra của bạn trước khi chạy nhiệm vụ."
+        ],
+        "tips": [
+          "Thử nghiệm động cơ sẽ gọi động cơ đã chọn và có thể phải chịu phí dịch vụ mô hình.",
+          "Các tùy chọn suy luận, phê duyệt và hộp cát của Codex SDK đều có nhãn tiếng Trung Quốc. Danh sách nỗ lực hiển thị các cài đặt được công cụ hỗ trợ ngay cả khi danh mục mẫu trống; nó không có nghĩa là mọi mô hình đều hỗ trợ mọi cấp độ. Bắt đầu với mặc định. Nếu một mô hình từ chối một mức, hãy quay lại Tự động hoặc giá trị được hỗ trợ.",
+          "Không có ràng buộc nhà cung cấp, Codex SDK sẽ sử dụng lại xác thực Codex cục bộ, trong khi Claude Agent SDK sử dụng cấu hình xác thực gốc. Người dùng mới chưa đăng nhập hiện tại nên bắt đầu với cấu hình nhà cung cấp.",
+          "Để biết lỗi xác thực, hãy kiểm tra khóa, địa chỉ API, giao thức và quyền tài khoản. Để biết lỗi mô hình, hãy kiểm tra ID mô hình và hỗ trợ của nhà cung cấp. Nếu được đánh dấu Chưa cài đặt, hãy quay lại cài đặt."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Kiểm tra, xác minh và lưu cấu hình trên thẻ Codex SDK",
+          "caption": "Thẻ sdk Codex hiển thị Đã xác minh, cho biết công cụ này đã vượt qua bài kiểm tra."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Đặt mô hình và công cụ thực thi mặc định",
+    "summary": "Đặt SDK đã thử nghiệm làm công cụ thực thi mặc định cho các bước không chỉ định công cụ khác.",
+    "sections": [
+      {
+        "title": "Lưu mặc định",
+        "steps": [
+          "Trong Cài đặt → Công cụ thực thi → Công cụ thực thi mặc định, chọn SDK bạn vừa xác minh.",
+          "Nhấp vào Lưu mặc định và xác nhận thông báo thành công. Đừng rời đi sau khi chỉ chọn một giá trị thả xuống.",
+          "Chọn một mẫu trong bộ chọn mẫu mặc định của thẻ SDK đó. Các bước không có mô hình riêng biệt sẽ sử dụng mặc định này.",
+          "Sau khi tạo quy trình làm việc, hãy kiểm tra lại động cơ và mô hình của từng bước. Cài đặt bước rõ ràng không tự động thay đổi khi mặc định chung thay đổi."
+        ],
+        "tips": [
+          "Trợ lý có các mục cấu hình riêng biệt. Việc thay đổi công cụ thực thi mặc định không thay đổi mọi trợ lý.",
+          "Trước tiên, hãy hoàn thành quy trình làm việc với một SDK đã được xác minh và một mẫu, sau đó thử các mẫu khác nhau cho các bước khác nhau."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Bộ chọn công cụ thực thi mặc định và nút Lưu mặc định",
+          "caption": "Bộ chọn công cụ mặc định và mục Lưu mặc định. Pydantic AI chưa được định cấu hình trong hình ảnh này; không có mặc định nào được thay đổi hoặc xác minh."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Kết nối một dự án địa phương",
+    "summary": "Một dự án tương ứng với một thư mục mã cục bộ. Dữ liệu của nó theo dự án theo mặc định hoặc có thể được lưu trữ theo ID dự án trong Trang chủ của người dùng hiện tại.",
+    "sections": [
+      {
+        "title": "Hiểu không gian làm việc mặc định được chuẩn bị tự động",
+        "steps": [
+          "Ở mục nhập đầu tiên, thanh bên bao gồm Không gian làm việc mặc định (默认工作区). Không có dự án nào được chọn, WorkStep sẽ mở trang trò chuyện thông thường. Các lựa chọn dự án hiện tại và các ràng buộc từ xa được ưu tiên.",
+          "Sau khi định cấu hình SDK, hãy sử dụng không gian làm việc này để trò chuyện thông thường. Để làm việc với mã của bạn, hãy sử dụng Thêm dự án để kết nối thư mục thực của nó; không gian làm việc mặc định không phải là kho lưu trữ đã được kết nối.",
+          "Không gian làm việc mặc định cũng được chia sẻ bằng cách tạo kỹ năng, công cụ, giao diện và gói ngôn ngữ. Các mục này sử dụng lại cuộc trò chuyện thông thường và lưu trữ kết quả đầu ra của chúng trong không gian làm việc đó."
+        ],
+        "tips": [
+          "Bạn có thể đổi tên không gian làm việc mặc định nhưng không thể xóa nó khỏi danh sách dự án. Nó không tự động tạo ra một quy trình công việc.",
+          "Không gian làm việc mặc định là một dự án; SDK là một công cụ thực thi. Có một dự án không có nghĩa là một công cụ đã được cài đặt hoặc xác thực."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Không gian làm việc mặc định và mục trò chuyện thông thường ở thanh bên",
+          "caption": "Một cuộc trò chuyện thông thường trống trong không gian làm việc mặc định, chưa có cuộc trò chuyện hoặc quy trình công việc nào. Tạo một cuộc trò chuyện ở đây; các dự án mã vẫn cần được kết nối rõ ràng."
+        }
+      },
+      {
+        "title": "Bắt đầu với một thư mục trình diễn",
+        "steps": [
+          "Chuẩn bị một thư mục trình diễn riêng, chẳng hạn như Workstep-demo. Đối với mã hiện có, hãy chọn gốc dự án của nó.",
+          "Nhấp vào Thanh bên → Thêm dự án → Dự án cục bộ (侧边栏 → 添加项目 → 本地项目), chọn thư mục đó trong trình duyệt thư mục và xác nhận.",
+          "Kiểm tra xem dự án có xuất hiện trong thanh bên hay không và chuyển sang dự án đó. Các dự án mới không có quy trình làm việc theo mặc định; tạo một cái tiếp theo.",
+          "Khi kết nối lại cùng một thư mục sau đó, quy trình công việc, nhiệm vụ và thông báo sẽ được khôi phục từ dữ liệu dự án. Đừng xóa .workstep chỉ để mở lại dự án."
+        ],
+        "tips": [
+          "Công cụ có thể đọc hoặc sửa đổi các tệp dự án theo hướng dẫn nhiệm vụ. Thực hành trong một thư mục riêng và giữ lại lịch sử phiên bản trước khi chỉnh sửa mã thực.",
+          "Theo mặc định, dữ liệu dự án nằm trong các bản tải lên của .workstep/workstep.db, trong .workstep/uploads/, và các tạo phẩm trong .workstep/artifacts/.. Với bộ lưu trữ tập trung, hãy sao lưu thư mục dữ liệu dự án tương ứng trong Trang chủ và tệp nhận dạng dự án.",
+          "Tên dự án mới hoặc được đổi tên không được chứa dấu cách, tab hoặc khoảng trắng khác."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Thêm một dự án cục bộ và chọn thư mục gốc của nó",
+          "caption": "Chọn thư mục trình diễn, sau đó nhập dự án được kết nối từ thanh bên."
+        }
+      },
+      {
+        "title": "Mở thư mục dự án và kiểm tra các tập tin được tạo",
+        "steps": [
+          "Chọn dự án và nhấp vào Mở thư mục trên trang nhiệm vụ hoặc trò chuyện dự án. Sử dụng tính năng này để kiểm tra các tệp được tạo thực tế sau khi tác vụ kết thúc.",
+          "Trong ứng dụng dành cho máy tính để bàn, mũi tên bên phải liệt kê các trình quản lý tệp, trình chỉnh sửa và thiết bị đầu cuối cục bộ đã phát hiện. Việc chọn một cái sẽ ngay lập tức mở thư mục và ghi nhớ lựa chọn cục bộ. Chỉ được phát hiện, các ứng dụng có sẵn mới xuất hiện.",
+          "Các dự án từ xa và truy cập trình duyệt từ xa sử dụng trình duyệt thư mục web. Các bản dựng máy tính để bàn không có cầu mở thư mục cũng sử dụng nó; không cần phải cài đặt trình soạn thảo trên máy tính để bàn bên trong vùng chứa."
+        ],
+        "tips": [
+          "Đường dẫn dự án hộp cát trên máy tính để bàn được ánh xạ trở lại thư mục gắn trên máy chủ trước khi mở. Nếu không có giá đỡ nào khớp, hãy kiểm tra cấu hình gắn kết dự án.",
+          "Nếu Mở thư mục không thành công, hãy kiểm tra xem ứng dụng và thư mục đã chọn có còn tồn tại hay không hoặc kiểm tra dự án trực tiếp trong trình quản lý tệp hệ thống của bạn."
+        ]
+      },
+      {
+        "title": "Sắp xếp lại các dự án thanh bên",
+        "steps": [
+          "Trong thanh bên, hãy kéo Trình diễn thủ công (操作手册演示) trước hoặc sau dự án mong muốn.",
+          "Các dự án địa phương và từ xa có thể được xen kẽ. Việc phát hành sẽ lưu thứ tự vào cấu hình cục bộ và việc mở lại sẽ bảo tồn nó."
+        ],
+        "tips": [
+          "Thứ tự chỉ ảnh hưởng đến màn hình của thiết bị này chứ không ảnh hưởng đến thứ tự dự án trên máy chủ từ xa. Hãy làm theo thông báo lỗi và thử lại nếu lưu không thành công."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Hai dự án trình diễn cục bộ và quy trình làm việc ở thanh bên",
+          "caption": "Thanh bên mới nhất hiển thị hai dự án trình diễn cục bộ và không gian làm việc mặc định. Kéo các hàng dự án để sắp xếp lại; không có thiết bị từ xa nào được kết nối."
+        }
+      },
+      {
+        "title": "Chọn nơi lưu trữ dữ liệu dự án",
+        "steps": [
+          "Sau khi chọn thư mục trong Thanh bên → Thêm dự án → Dự án cục bộ, hãy kiểm tra Thư mục dữ liệu theo thư mục dự án (数据目录跟随项目目录), được bật theo mặc định cho các dự án mới.",
+          "Khi được chọn, các nhiệm vụ, quy trình làm việc, tệp đính kèm, nhật ký, tạo phẩm, kỹ năng và bộ nhớ sẽ được lưu trữ trong .workstep/. Bỏ chọn của dự án sử dụng ~/.workstep/projects/<项目ID>/, chỉ để lại .workstep/project.json làm tệp nhận dạng trong thư mục dự án.",
+          "Đối với một dự án hiện có, hãy kiểm tra đường dẫn dữ liệu thực tế của nó trong Cấu hình dự án → Chung. Thay đổi hộp kiểm và xác nhận di chuyển. Đầu tiên dừng nhiệm vụ, cuộc trò chuyện và hành động nhanh chóng; xóa không gian làm việc Git hiện có.",
+          "Đợi quá trình di chuyển, sau đó kiểm tra đường dẫn mới và các tác vụ ban đầu. Lỗi bảo tồn dữ liệu gốc. Một đích đến không trống sẽ không bị ghi đè; giải quyết vấn đề được báo cáo và thử lại."
+        ],
+        "tips": [
+          "Việc thêm lại dự án hiện có sẽ duy trì chế độ lưu trữ trong tệp nhận dạng của nó; nó không tự động di chuyển dữ liệu.",
+          "Giữ .workstep/project.json khi di chuyển hoặc đổi tên dự án, sau đó thêm lại để nhận dạng dự án ban đầu. Việc xóa tệp nhận dạng đó không xóa dữ liệu Nhà nhưng ngăn liên kết tự động.",
+          "Một bản sao có cùng ID dự án không thể cùng tồn tại với thư mục gốc đã đăng ký: hệ thống báo cáo xung đột ID. Để di chuyển giữa các máy tính, hãy sao chép thư mục Home data tương ứng.",
+          "Bộ nhớ tập trung vẫn tự động bỏ qua .workstep/ trong dự án. Nén thông thường không tự động áp dụng các quy tắc bỏ qua Git, nhưng tệp nhận dạng không chứa dữ liệu tác vụ."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Tùy chọn lưu trữ dữ liệu và thông báo tệp nhận dạng khi thêm dự án",
+          "caption": "Giao diện Add project thực: bỏ chọn mặc định hiển thị đường dẫn Home và hướng dẫn di chuyển hoặc di chuyển giữa các máy tính."
+        }
+      },
+      {
+        "title": "Di chuyển dữ liệu của dự án hiện có",
+        "steps": [
+          "Mở Chung trong cấu hình dự án và xác minh đường dẫn dữ liệu hiện tại.",
+          "Nhấp vào Thư mục dữ liệu theo thư mục dự án, đọc và xác nhận di chuyển, sau đó chờ đợi. Công việc đang hoạt động hoặc đích đến không trống sẽ tạo ra lỗi."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Vị trí lưu trữ dữ liệu trong cài đặt dự án trình diễn",
+          "caption": "Xác minh đường dẫn hiện tại. Việc thay đổi hộp kiểm vẫn yêu cầu xác nhận di chuyển trong hộp thoại."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Tạo quy trình làm việc hai bước đầu tiên của bạn",
+    "summary": "Sử dụng Phân tích yêu cầu → Thực hiện nhiệm vụ để hiểu các bước, đầu vào, đầu ra và kết nối.",
+    "sections": [
+      {
+        "title": "Tạo một ví dụ thông qua việc giới thiệu",
+        "steps": [
+          "Đảm bảo bạn đã lưu công cụ thực thi mặc định và chọn dự án cục bộ được kết nối. Nếu quá trình tích hợp bị đóng, hãy mở lại Cài đặt → Cài đặt hệ thống → Tích hợp và nhấp vào Tích hợp.",
+          "Bên dưới Tạo quy trình làm việc hai bước, hãy bấm Tạo quy trình làm việc mẫu. Chờ thành công và canvas sẽ mở ra.",
+          "Ví dụ này có tên là Phân tích và thực thi (分析与执行). Bước đầu tiên của nó, Phân tích yêu cầu (需求分析), đưa ra Kế hoạch thực thi (执行计划), được kết nối với bước thứ hai, Thực thi nhiệm vụ (执行任务).",
+          "Mở cả hai bước và kiểm tra động cơ, kiểu máy, lời nhắc, đầu vào và đầu ra, đảm bảo chúng sử dụng SDK đã được xác minh. Ví dụ này không bắt đầu tạo cũng như không chạy đánh giá; sau khi bắt đầu, hai bước của nó sẽ thực hiện theo thứ tự phụ thuộc."
+        ],
+        "tips": [
+          "Một quy trình làm việc mới thông thường bắt đầu bằng một khung vẽ trống, không có các bước ví dụ. Chọn một mẫu rõ ràng.",
+          "Không đánh giá thiết lập chỉ dựa vào hình thức của đường truyền: hãy xác minh rằng cổng đầu ra phù hợp với yêu cầu đầu vào của bước tiếp theo."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Canvas hai bước để phân tích yêu cầu và thực hiện nhiệm vụ",
+          "caption": "Phân tích yêu cầu tạo ra một kế hoạch thực hiện cho nhiệm vụ Thực thi. Nhấp vào từng bước để kiểm tra cấu hình của nó."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Tạo và hoàn thành nhiệm vụ đầu tiên của bạn",
+    "summary": "Sử dụng một tác vụ nhỏ, rõ ràng, dễ kiểm tra để xác minh rằng SDK, dự án và quy trình làm việc của bạn hoạt động cùng nhau.",
+    "sections": [
+      {
+        "title": "Viết một yêu cầu có thể kiểm chứng",
+        "steps": [
+          "Chuẩn bị README.md và example.txt trong thư mục trình diễn. README.md nên liệt kê năm thao tác để giải thích, kèm theo ghi chú bổ sung trong example.txt. Sử dụng nội dung trình diễn thay vì tài liệu riêng tư.",
+          "Mở trang nhiệm vụ của dự án trình diễn, chọn Phân tích và thực thi, sau đó nhấp vào Nhiệm vụ mới. Mục nhập nhiệm vụ Tạo trên tàu cũng mở nó.",
+          "Bắt đầu tại Phân tích yêu cầu và nhập tiêu đề Tổ chức hướng dẫn dự án (整理项目说明).",
+          "Mô tả ví dụ: Đọc README.md và example.txt, tạo kế hoạch thực hiện, sau đó tạo 使用说明.md ở gốc dự án. Liệt kê năm thao tác trong Markdown, một câu cho mỗi thao tác. Chỉ đọc hai tệp hiện có đó; không sửa đổi chúng. Bạn có thể tạo 使用说明.md nhưng không sửa đổi các tệp khác. Báo cáo vị trí của tệp được tạo khi hoàn tất.",
+          "Chọn Bắt đầu thủ công và nhấp vào Tạo tác vụ. Kiểm tra yêu cầu và bước bắt đầu, sau đó bắt đầu nhiệm vụ. Ngoài ra, hãy chọn Bắt đầu ngay sau khi tạo."
+        ],
+        "tips": [
+          "Chỉ định mục tiêu, hành động được phép, hình thức phân phối và tiêu chí chấp nhận; điều này làm cho kết quả dễ kiểm tra hơn là một yêu cầu mơ hồ.",
+          "Bắt đầu ở bước sau sẽ bỏ qua những bước trước đó. Đối với bài tập đầu tiên của bạn, hãy bắt đầu với phân tích Yêu cầu.",
+          "Việc mở bảng tạo tác vụ từ quá trình cài đặt tự nó không thực thi một tác vụ; tùy chọn khởi động của bảng điều khiển việc thực thi."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Tiêu đề nhiệm vụ, mô tả, bước bắt đầu và chế độ khởi động",
+          "caption": "Viết một yêu cầu cụ thể, chọn bước bắt đầu và chọn rõ ràng thời điểm bắt đầu thực hiện."
+        }
+      },
+      {
+        "title": "Thực hiện theo các bước và kiểm tra kết quả đầu ra",
+        "steps": [
+          "Mở chi tiết nhiệm vụ và xem bước hiện tại, trạng thái và tin nhắn. Đợi trong khi công cụ chạy và trả lời các câu hỏi hoặc yêu cầu phê duyệt rõ ràng trong giao diện.",
+          "Sau khi quá trình phân tích Yêu cầu kết thúc, tác vụ Thực thi sẽ tự động bắt đầu theo kết nối phụ thuộc. Không cần nhấp chuột Bắt đầu bổ sung. Đọc kế hoạch của bước đầu tiên và kiểm tra xem bước thứ hai đã sử dụng nó chưa.",
+          "Sau khi tác vụ Thực thi kết thúc, hãy đọc thông báo cuối cùng và mở 使用说明.md ở thư mục gốc của dự án. Kiểm tra xem đó có phải là Markdown không, bao gồm năm thao tác và sử dụng một câu cho mỗi thao tác.",
+          "Nếu thông báo hiển thị Đã chỉnh sửa… tệp, hãy mở rộng nó và nhấp vào tên tệp. Xem bản vá đã ghi khi có sẵn; nếu không thì xem trước tập tin hiện tại. Những thay đổi lịch sử có thể khác với tệp hiện tại, vì vậy, bạn vẫn nên kiểm tra kết quả thực tế.",
+          "Xác minh README.md và example.txt không thay đổi và chỉ thêm 使用说明.md được phép. Sử dụng mục nhập tệp của dự án hoặc trình quản lý tệp hệ thống của bạn. Chỉ trạng thái hoàn thành không chứng minh được tính đúng đắn."
+        ],
+        "tips": [
+          "Nếu tiếp tục chờ đợi, hãy phân biệt chờ để bắt đầu, phê duyệt, xem xét và thực thi tích cực: mỗi loại cần một phản hồi khác nhau.",
+          "Nếu không thành công, hãy giữ nguyên lỗi và kiểm tra lại kết nối SDK trước tiên. Sau khi sửa chữa cấu hình, hãy sử dụng mục khôi phục hoặc thử lại có sẵn của tác vụ.",
+          "Nếu API báo cáo rằng nó trả về một trang web, hãy xác nhận phần phụ trợ đã được cập nhật và khởi động lại, sau đó làm mới và thử lại. Việc không tải được chi tiết thực thi không có nghĩa là việc thực thi không thành công; không tạo một nhiệm vụ trùng lặp vì lý do đó."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Xuất 使用说明.md sau khi hoàn thành nhiệm vụ hai bước",
+          "caption": "Sau khi hoàn thành cả hai bước, hãy kiểm tra 使用说明.md và năm mô tả hoạt động của nó."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Chỉnh sửa quy trình công việc",
+    "summary": "Chia công việc thành các bước và định cấu hình các công cụ thực thi, đầu vào, đầu ra và các quy tắc đánh giá.",
+    "sections": [
+      {
+        "title": "Thêm và kết nối các bước",
+        "steps": [
+          "Chọn một dự án và quy trình làm việc ở bên trái rồi nhập khung Quy trình công việc. Luồng công việc mới trống; thêm các bước hoặc áp dụng một mẫu rõ ràng.",
+          "Nhấp vào + Bước rồi nhập tên và mã nhận dạng của nó, ví dụ Sắp xếp yêu cầu với yêu cầu. Giá trị nhận dạng phải là duy nhất trong quy trình làm việc, bắt đầu bằng chữ cái tiếng Anh và chỉ chứa các chữ cái, chữ số, dấu gạch dưới hoặc dấu gạch nối.",
+          "Viết lời nhắc với mục tiêu, ràng buộc và kết quả rõ ràng. Ví dụ: Đọc mô tả nhiệm vụ, liệt kê các tiêu chí chấp nhận và kế hoạch thực hiện và lưu tài liệu yêu cầu.",
+          "Định cấu hình mô hình và động cơ SDK đã được cài đặt, xác minh. Để kế thừa các giá trị mặc định, hãy chọn công cụ thực thi mặc định hoặc mô hình mặc định của công cụ.",
+          "Sau khi cài đặt đầu vào và đầu ra, hãy kéo từ cổng đầu ra ngược dòng sang đầu vào hạ lưu phù hợp, sau đó Lưu."
+        ],
+        "tips": [
+          "Đường liền nét mang dữ liệu. Việc kết nối ngược dòng tạo ra một kết nối quay lại nét đứt cho phản hồi làm lại.",
+          "Thông báo thay đổi chưa được lưu có nghĩa là các chỉnh sửa canvas chưa được duy trì."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Canvas quy trình làm việc với hai bước và kết nối đầu vào/đầu ra",
+          "caption": "Tìm nút Thêm bước, cổng kết nối và mục Lưu."
+        }
+      },
+      {
+        "title": "Cấu hình đầu vào, đầu ra và kết nối trở lại",
+        "steps": [
+          "Mở trình chỉnh sửa bước, đặt tên rõ ràng cho các đầu ra và định cấu hình các đầu vào cần thiết ở phía dưới.",
+          "Kết nối từng đầu ra được yêu cầu với đầu vào xuôi dòng tương ứng của nó. Trong quá trình thực thi, hãy kiểm tra tính khả dụng trong Bước đầu vào và đầu ra trong chi tiết nhiệm vụ.",
+          "Để làm lại, hãy tạo kết nối quay lại và đặt Lợi nhuận tối đa cho bước đó. Trước khi lưu, hãy đọc cảnh báo về các giai đoạn có khả năng không thể chạy được và kiểm tra xem liệu quá trình thực thi ban đầu có phụ thuộc vào các tạo phẩm làm lại chưa được tạo hay không."
+        ],
+        "tips": [
+          "Lợi nhuận tối đa kiểm soát các kết nối trả về đứt quãng và tách biệt với các lần thử lại sau khi xem xét không thành công.",
+          "Khai báo một cổng đầu ra không tạo ra một tập tin. Yêu cầu bàn giao thực tế ngay lập tức và kiểm tra chúng sau đó."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Các tạo phẩm đầu vào và đầu ra tương ứng trong trình chỉnh sửa nút",
+          "caption": "Đầu vào khai báo các yêu cầu nhiệm vụ với kế hoạch thực hiện là đầu ra tương ứng. Cài đặt đếm trả lại không được hiển thị."
+        }
+      },
+      {
+        "title": "Đặt xem lại và khởi động tự động",
+        "steps": [
+          "Trong phần Xem lại bước trong trình chỉnh sửa, hãy chọn Xem lại thủ công, Xem lại tự động hoặc Bỏ qua xem xét. Nên xem xét thủ công ban đầu.",
+          "Quá trình xem xét thủ công sẽ tạm dừng sau khi thực hiện quyết định của bạn. Để xem xét tự động, hãy viết các tiêu chí có thể kiểm chứng và tùy ý chọn động cơ và kiểu máy của nó.",
+          "Đặt số lần thử lại sau khi đánh giá tự động từ chối kết quả. Các lỗi trong bản thân tác nhân đánh giá sẽ chuyển sang xử lý thủ công.",
+          "Đặt Bắt đầu tự động sau khi tạo nếu cần, sau đó lưu. Đối với lần thực hành đầu tiên, hãy tắt nó để bạn có thể kiểm tra nhiệm vụ trước khi bắt đầu."
+        ],
+        "tips": [
+          "Cài đặt và định cấu hình công cụ SDK trước khi sử dụng chúng để thực thi hoặc đánh giá."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Điều khiển chế độ xem lại bước trong trình chỉnh sửa nút",
+          "caption": "Chọn chế độ xem lại trong trình chỉnh sửa nút. Kiểm tra khởi động tự động riêng biệt như mô tả ở trên."
+        }
+      },
+      {
+        "title": "Phân phối theo quy trình công việc và tái sử dụng các phần tử canvas",
+        "steps": [
+          "Để chuyển giao kết quả đầu ra cho một dự án hoặc quy trình làm việc khác, hãy thêm bước Quy trình làm việc và chọn dự án đích, quy trình làm việc, bước bắt đầu và chế độ khởi động.",
+          "Định cấu hình các tạo phẩm đầu vào ngược dòng và lưu. Bước này sẽ trôi qua ngay sau khi tạo tác vụ xuôi dòng và không thể kết nối với các bước tiếp theo của quy trình công việc gốc.",
+          "Để sử dụng lại một bước, hãy chọn Sao chép nút từ quy trình làm việc, chọn dự án, quy trình làm việc và nút, xem trước, sao chép và lưu.",
+          "Sử dụng Bố cục để sắp xếp các nút. Thêm dấu trang cho ghi chú hoặc xuất quy trình làm việc JSON làm bản sao lưu. Trước khi nhập, hãy kiểm tra những gì sẽ được thay thế."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Cài đặt khởi động và đích của nhiệm vụ xuôi dòng",
+          "caption": "Kiểm tra dự án mục tiêu, quy trình làm việc và bước bắt đầu."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Móc thông báo và kích hoạt quy trình làm việc",
+    "summary": "Tạo nhiệm vụ từ các yêu cầu bên ngoài hoặc gửi trạng thái quy trình làm việc đến nền tảng đã chọn.",
+    "sections": [
+      {
+        "title": "Tạo nhiệm vụ bằng trigger hook",
+        "steps": [
+          "Chọn một dự án và quy trình làm việc. Mở móc nối Quy trình làm việc trong thanh công cụ danh sách tác vụ hoặc menu trên thiết bị di động, sau đó là Móc kích hoạt.",
+          "Thêm hook, nhập tên, tiêu đề mặc định và người tạo, chọn bước bắt đầu và liệu nó có tự động bắt đầu hay không, sau đó lưu. Ví dụ: Yêu cầu tiếp nhận, với tiêu đề Yêu cầu bên ngoài.",
+          "Chọn một địa chỉ LAN, bên ngoài hoặc Cổng đã được định cấu hình và sao chép lệnh gọi URL. Mã thông báo của nó là thông tin xác thực: chỉ cung cấp nó cho các hệ thống đáng tin cậy.",
+          "Trong Mô phỏng cuộc gọi, hãy nhập tiêu đề, người sáng tạo và nội dung để kiểm tra bản xem trước. Mô phỏng không tạo ra một nhiệm vụ.",
+          "Có hệ thống bên ngoài POST cho URL được sao chép bằng JSON, văn bản thuần túy hoặc Markdown, ví dụ: Tổ chức các tiêu chí chấp nhận cho yêu cầu này. Sau khi nhận được ID nhiệm vụ, hãy kiểm tra nội dung nhiệm vụ và trạng thái khởi động."
+        ],
+        "tips": [
+          "Cần có sự cho phép chỉnh sửa dự án. Mỗi yêu cầu hợp lệ sẽ tạo ra một nhiệm vụ. Phiên bản này không tự động nhận dạng các sự kiện GitHub/GitLab, loại bỏ các yêu cầu trùng lặp hoặc yêu cầu đệm khi thiết bị ngoại tuyến.",
+          "Trước tiên hãy sửa chữa các địa chỉ bị thiếu hoặc các thiết bị bị ngắt kết nối. Việc đặt lại mã thông báo sẽ làm mất hiệu lực URL cũ. Nếu tự động khởi động không thành công thì tác vụ vẫn tồn tại: kiểm tra run_error và chi tiết tác vụ trước khi thử phân phối lại."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Tên trigger-hook, trường mặc định và cấu hình giai đoạn bắt đầu chưa được lưu",
+          "caption": "Bản nháp bị vô hiệu hóa này chỉ tạo nhiệm vụ. Mã thông báo của nó bị ẩn; nó chưa được lưu và không có lệnh gọi URL nào được tạo."
+        }
+      },
+      {
+        "title": "Gửi thông báo quy trình làm việc tới các nền tảng bên ngoài",
+        "steps": [
+          "Trong cùng một cửa sổ móc Workflow, hãy chuyển sang móc Thông báo và thêm đích.",
+          "Nhập tên, chọn bot nhóm DingTalk, bot nhóm WeCom hoặc Webhook JSON chung, sau đó nhập đích URL. Cung cấp bí mật ký DingTalk nếu cần.",
+          "Chọn các sự kiện đã đăng ký, mặc định là hoàn thành và thất bại nhiệm vụ. Tùy chọn đặt tiền tố tiêu đề và địa chỉ Cổng, bên ngoài hoặc LAN cho các liên kết tác vụ, sau đó lưu.",
+          "Tạo bản xem trước trong phần Mô phỏng thông báo và kiểm tra nội dung tin nhắn cũng như liên kết. Xem trước không gửi yêu cầu. Để kiểm tra thực tế, hãy xác nhận và nhấp vào Gửi thông báo kiểm tra; nó sẽ gửi đến một đích đã lưu và được kích hoạt.",
+          "Kiểm tra trạng thái, số lần thử và lỗi được xử lý lại trong hồ sơ giao hàng. Sau khi sửa chữa cấu hình, thử lại các bản ghi bị lỗi. Sau khi hoàn thành nhiệm vụ, hãy kiểm tra nền tảng nhận và quyền truy cập liên kết nhiệm vụ."
+        ],
+        "tips": [
+          "Thiết bị gửi thông báo trực tiếp; Gateway không chuyển tiếp chúng. Chúng không chứa nội dung trò chuyện, nội dung giả tạo cũng như thông tin xác thực tạo nhiệm vụ. Liên kết nhiệm vụ vẫn yêu cầu quyền truy cập bình thường.",
+          "Lỗi tạm thời được thử lại tự động. Hết thời gian chờ và khôi phục có thể gây ra tình trạng phân phối trùng lặp; máy thu chung có thể loại bỏ trùng lặp bằng event_id. Việc vô hiệu hóa hoặc xóa đích đến không thể rút lại thông báo đã gửi.",
+          "Chỉ bản xem trước không chứng minh được việc tích hợp có hiệu quả: hãy xác minh việc phân phối thực tế tới nền tảng."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "Nền tảng thông báo DingTalk, sự kiện đã đăng ký và trường địa chỉ trống",
+          "caption": "Một bản nháp chưa được lưu, bị vô hiệu hóa trong giao diện mới nhất, với lựa chọn hoàn thành và thất bại nhiệm vụ. Các trường Webhook và bí mật ký tên trống; không có gì được gửi đi"
+        }
+      },
+      {
+        "title": "Tùy chỉnh mẫu thông báo Markdown",
+        "steps": [
+          "Chọn bot nhóm DingTalk hoặc WeCom trong móc thông báo và cuộn đến mẫu tin nhắn Markdown. Webhooks JSON chung không sử dụng các mẫu Markdown này.",
+          "Mở rộng các biến Mẫu (bấm để sao chép), sau đó chèn các phần giữ chỗ như {task_title}. Không sử dụng các biến không xác định hoặc mẫu trống. Giữ {task_link} hoặc {task_url} khi cần liên kết nhiệm vụ.",
+          "Lưu và sử dụng thông báo Mô phỏng để kiểm tra sự thay thế và liên kết mà không cần gửi. Đọc xác nhận trước khi khôi phục mẫu mặc định."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Nội dung thông báo Markdown và mục nhập biến mẫu",
+          "caption": "Bản nháp hiển thị nội dung và các biến Markdown mặc định. Không có mẫu nào được gửi hoặc thông báo được gửi ra bên ngoài."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Mẫu và trợ lý quy trình làm việc AI",
+    "summary": "Bắt đầu từ một mẫu hoặc yêu cầu AI đề xuất các bước và xác nhận những gì cần áp dụng.",
+    "sections": [
+      {
+        "title": "Áp dụng và lưu mẫu",
+        "steps": [
+          "Mở các mẫu Quy trình công việc trên khung vẽ, tìm kiếm tên hoặc mô tả rồi xem lại mục đích cũng như số bước của từng mẫu.",
+          "Chọn một mẫu phù hợp và xác nhận. Việc áp dụng sẽ thay thế từng bước và kết nối trên khung vẽ hiện tại.",
+          "Kiểm tra các yêu cầu về động cơ, kiểu máy, lời nhắc và xem xét của từng bước, điều chỉnh chúng và lưu lại.",
+          "Để sử dụng lại thiết kế của bạn, hãy chọn Lưu hiện tại dưới dạng mẫu quy trình làm việc rồi nhập tên và mô tả. Quản lý các mẫu tùy chỉnh có thể chỉnh sửa trong Cài đặt → Mẫu quy trình công việc."
+        ],
+        "tips": [
+          "Các dự án mới không tự động tạo quy trình công việc và quy trình làm việc mới không tự động áp dụng mẫu.",
+          "Không thể xóa các mẫu dựng sẵn. Sau khi áp dụng một, vẫn xác minh các công cụ cần thiết của nó có sẵn."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Kết quả quản lý hợp đồng tích hợp trong tìm kiếm mẫu canvas",
+          "caption": "Tìm kiếm Quản lý hợp đồng để xem mục đích và số bước của nó. Kiểm tra phạm vi thay thế trước khi lựa chọn."
+        }
+      },
+      {
+        "title": "Yêu cầu AI tạo hoặc sửa đổi quy trình làm việc",
+        "steps": [
+          "Mở trợ lý quy trình làm việc AI trên khung vẽ và trước tiên hãy chọn mô hình và công cụ đã định cấu hình.",
+          "Giải thích mục tiêu, phân tích từng bước, định dạng đầu ra và nhu cầu đánh giá, ví dụ: Tạo phân tích yêu cầu → triển khai → thử nghiệm, với đánh giá thủ công ở từng giai đoạn, sử dụng SDK đã cài đặt.",
+          "So sánh thẻ đề xuất theo tiêu đề, số bước và tóm tắt, sau đó áp dụng đề xuất phù hợp vào canvas.",
+          "Đối với quy trình công việc hiện có, hãy kiểm tra các thay đổi của bước. Trong Áp dụng thay đổi, hãy chọn các bổ sung, cập nhật hoặc xóa mà bạn muốn, sau đó áp dụng và lưu."
+        ],
+        "tips": [
+          "Đề xuất AI cần có sự xác nhận của bạn. Chỉ riêng sự thành công của thế hệ không phải là lý do để chạy chúng: kiểm tra các kết nối, động cơ và xem xét các tiêu chí."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Thẻ đề xuất hai bước từ trợ lý quy trình làm việc AI",
+          "caption": "Thẻ hiển thị số bước sửa đổi và Áp dụng thay đổi. Nhấn vào đây để xác nhận những thay đổi ở bước cụ thể."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Tạo và quản lý nhiệm vụ",
+    "summary": "Một quy trình làm việc xác định cách làm việc; một nhiệm vụ xác định phải làm gì vào thời điểm này.",
+    "sections": [
+      {
+        "title": "Chuẩn bị nhiều nhiệm vụ với trợ lý nhiệm vụ",
+        "steps": [
+          "Mở trợ lý tác vụ trên trang nhiệm vụ. Yêu cầu rõ ràng nhiều nhiệm vụ với thời gian riêng lẻ, ví dụ: Tạo ba nhiệm vụ độc lập bắt đầu vào ngày mai lúc 09:00, 10:00 và 11:00.",
+          "Kiểm tra tiêu đề, nội dung, quy trình làm việc, bước bắt đầu và thời gian bắt đầu dự kiến ​​của từng bản nháp, sau đó xác nhận việc tạo thông qua giao diện.",
+          "Quay lại danh sách nhiệm vụ và xác minh từng kết quả. Nếu một số nhiệm vụ không thành công, hãy kiểm tra các nhiệm vụ hiện có trước khi gửi lại toàn bộ lô."
+        ],
+        "tips": [
+          "Việc tạo bản nháp không tạo hoặc thực thi các tác vụ. Chỉ định múi giờ cho thời gian trong tương lai; khởi động theo lịch trình yêu cầu chương trình phụ trợ vẫn chạy."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Bản thảo nhiệm vụ hàng loạt và thời gian dự kiến của từng cá nhân",
+          "caption": "Ảnh chụp màn hình thực đang chờ xử lý: bản nháp hàng loạt và thời gian riêng lẻ. Bản dự thảo một nhiệm vụ cũ không được thay thế cho nó."
+        }
+      },
+      {
+        "title": "Tạo một nhiệm vụ và để AI sắp xếp các yêu cầu",
+        "steps": [
+          "Chọn một dự án và quy trình làm việc, mở trang nhiệm vụ của nó, sau đó nhấp vào Mới hoặc Thêm trong giai đoạn thích hợp.",
+          "Nhập tiêu đề và mô tả kèm theo ngữ cảnh, mục tiêu, những thay đổi được phép, đường dẫn đầu ra và tiêu chí chấp nhận. Hỗ trợ Markdown và hình ảnh tham chiếu đã dán.",
+          "Nếu cần, hãy mở Trợ lý tác vụ, kiểm tra tiêu đề, nội dung và lựa chọn quy trình làm việc được tạo, sau đó xác nhận.",
+          "Kiểm tra bước bắt đầu và xem lại cài đặt cho lần chạy này, sau đó tạo tác vụ. Khi tính năng tự động khởi động bị tắt, hãy nhấp vào Bắt đầu tác vụ."
+        ],
+        "tips": [
+          "Ví dụ: Đọc README và tạo docs/getting-started.md mà không thay đổi mã chương trình. Bao gồm cài đặt, khởi động và ba câu hỏi phổ biến.",
+          "Sáng tạo và khởi động là những hành động riêng biệt; chế độ khởi động và cài đặt bước xác định xem việc thực thi có bắt đầu ngay lập tức hay không."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Biểu mẫu tạo nhiệm vụ với trợ lý nhiệm vụ được mở rộng",
+          "caption": "Nhập tiêu đề và mô tả rồi chọn chế độ khởi động. Người trợ lý có thể sắp xếp các yêu cầu; cài đặt đánh giá nằm trên một tab khác."
+        }
+      },
+      {
+        "title": "Tìm nhiệm vụ trên bảng hoặc trên bàn",
+        "steps": [
+          "Chuyển đổi giữa Làn đường và Bảng trên trang nhiệm vụ, kiểm tra nhiệm vụ theo giai đoạn và tìm kiếm theo tiêu đề.",
+          "Nhấp vào một nhiệm vụ để mở thông tin chi tiết, bao gồm bước hiện tại, trạng thái, người tạo và thời gian cập nhật.",
+          "Lưu trữ các nhiệm vụ đã hoàn thành nếu muốn. Tìm chúng trong Xem kho lưu trữ và khôi phục chúng vào bảng. Kiểm tra các lựa chọn trước khi thực hiện các thao tác hàng loạt."
+        ],
+        "tips": [
+          "Xếp hàng thường có nghĩa là dung lượng đồng thời đã đầy. Đang chờ xem xét yêu cầu xác nhận; điều đó không có nghĩa là ứng dụng bị kẹt.",
+          "Xóa khác với lưu trữ. Đọc xác nhận trước khi xóa vĩnh viễn."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Bảng nhiệm vụ hiển thị trạng thái và giai đoạn",
+          "caption": "Nhiệm vụ trình diễn đã sẵn sàng. Các mục trên thanh công cụ bao gồm dạng xem, móc nối quy trình làm việc, kho lưu trữ và thư mục Mở. Thời gian tạo ở bên dưới thẻ; việc sao chép sẽ được đề cập tiếp theo."
+        }
+      },
+      {
+        "title": "Chỉ sửa đổi quy trình làm việc của nhiệm vụ hiện tại",
+        "steps": [
+          "Mở chi tiết nhiệm vụ và nhấp vào Chỉnh sửa quy trình làm việc của nhiệm vụ bên dưới biểu đồ tiến trình. Dừng thực hiện hoặc xem xét trước; canvas ở chế độ chỉ đọc khi đang hoạt động.",
+          "Thay đổi lời nhắc bước, công cụ, mô hình và đánh giá của nhiệm vụ này. Thêm các bước, thêm các tạo phẩm vào cuối và điều chỉnh các kết nối. Không thể xóa hoặc đổi tên các bước hiện tại, cổng đầu vào và các tạo phẩm gốc.",
+          "Lưu để cập nhật biểu đồ tiến độ. Lần khởi động tiếp theo sẽ hợp nhất quy trình làm việc chính mới nhất với những khác biệt dành riêng cho nhiệm vụ mà không thay đổi quy trình công việc chính hoặc các nhiệm vụ khác.",
+          "Để xóa tất cả tùy chỉnh, hãy nhấp vào Đồng bộ hóa quy trình làm việc chính và xác nhận. Các bước đã thêm rời khỏi quy trình làm việc hiện tại nhưng vẫn giữ nguyên các thông báo lịch sử, thành phần lạ và bản ghi thực thi. Điều này không bắt đầu thực hiện."
+        ],
+        "tips": [
+          "Nếu không có những thay đổi thực tế thì sẽ không có bản sao quy trình công việc đầy đủ nào được tạo ra. Các trường không bị ghi đè kế thừa các bản cập nhật quy trình công việc chính; ghi đè nhiệm vụ được ưu tiên.",
+          "Việc chọn một bước trong trình soạn thảo và thay đổi công cụ của nó sẽ lưu bước đó vào tác vụ đó. Bước đặt lại chỉ đặt lại phiên của lần chạy tiếp theo chứ không phải công cụ của quy trình làm việc chính.",
+          "Việc xóa các kết nối sẽ thay đổi các phần phụ thuộc và có thể cho phép thực thi trực tiếp; nó không tạo ra một hướng dẫn từng bước."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Các mục nhập chỉnh sửa và đồng bộ hóa quy trình công việc dành riêng cho nhiệm vụ",
+          "caption": "Canvas riêng biệt của tác vụ trình diễn hiển thị chế độ chuyển giao, Đồng bộ hóa quy trình làm việc chính và Lưu. Không có cài đặt nào được thay đổi hoặc bắt đầu thực thi."
+        }
+      },
+      {
+        "title": "Sao chép một nhiệm vụ",
+        "steps": [
+          "Bấm vào biểu tượng Sao chép tác vụ bên cạnh tác vụ trong thẻ hoặc bảng.",
+          "Kiểm tra tác vụ mới có tiêu đề (sao chép), kiểm tra mô tả, tùy chỉnh quy trình làm việc và bước bắt đầu, sau đó chạy tác vụ đó. Các bước được sao chép bắt đầu chờ xử lý; tiến trình ban đầu và lịch sử trò chuyện không được sao chép."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Sao chép biểu tượng tác vụ bên cạnh tên tác vụ trong chế độ xem bảng",
+          "caption": "Biểu tượng nhỏ bên cạnh tên là mục sao chép. Không có tác vụ nào được sao chép hoặc bắt đầu trong hình ảnh này."
+        }
+      },
+      {
+        "title": "Quản lý tác vụ trên điện thoại",
+        "steps": [
+          "Nhấn vào một hàng nhiệm vụ để mở chi tiết. Giữ khoảng nửa giây để mở menu hành động của nó; nhấp chuột phải cũng hoạt động.",
+          "Theo quyền, chọn bắt đầu, sửa hoặc xem, sao chép, lưu trữ, khôi phục hoặc xóa. Không thể lưu trữ hay xóa tác vụ đang chạy, trong hàng đợi hoặc đang chờ nhưng còn bước hoạt động. Hãy xử lý xác nhận hoặc dừng thực thi trước; đọc xác nhận trước khi xóa.",
+          "Sau khi tất cả các bước quy trình làm việc được thực thi và vượt qua, tác vụ sẽ hiển thị Đã hoàn thành, bao gồm cả sau khi mở lại chi tiết hoặc khởi động lại. Việc hoàn thành không lưu trữ nhiệm vụ; chọn có lưu trữ nó hay không."
+        ],
+        "tips": [
+          "Cuộn hoặc di chuyển ngón tay của bạn sẽ hủy thao tác nhấn lâu để tránh các hành động vô tình. Quyền truy cập chỉ đọc vẫn có thể mở các mục xem mà không nhận được quyền chỉnh sửa."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Menu lưu trữ và xóa cho một hàng tác vụ ở 390px",
+          "caption": "Được chụp từ một tác vụ sẵn sàng trong v1.0.13; không có gì được lưu trữ hoặc bị xóa và phần hoàn thành không được hiển thị. Các mục bắt đầu, chỉnh sửa và sao chép mới được thêm vào vẫn cần có ảnh chụp màn hình được cập nhật."
+        }
+      },
+      {
+        "title": "Quay lại nhiệm vụ hoặc phiên từ Cuộc trò chuyện gần đây",
+        "steps": [
+          "Tìm nhiệm vụ hoặc phiên đã truy cập trong Cuộc trò chuyện gần đây (最近聊天) ở thanh bên và nhấp để quay lại chi tiết dự án ban đầu. Cả hai loại đều xuất hiện ở đây.",
+          "Kiểm tra các chỉ số đang chạy, thất bại và hoàn thành-chưa đọc. Việc mở các chi tiết liên quan sẽ xóa dấu hiệu chưa đọc đó. Các mục được ủy quyền có menu lưu trữ hoặc xóa; đọc xác nhận.",
+          "Trên máy tính để bàn, thu gọn Dự án hoặc Cuộc trò chuyện gần đây, kéo tiêu đề để hoán đổi thứ tự của chúng và kéo dải phân cách để thay đổi kích thước chúng. Bấm đúp vào dải phân cách để khôi phục tỷ lệ mặc định."
+        ],
+        "tips": [
+          "Các lượt truy cập gần đây giữ lại tối đa 20 mục dưới danh tính thiết bị của trình duyệt này. Xóa dữ liệu trình duyệt sẽ xóa chỉ mục này chứ không phải nội dung tác vụ. Các mục lịch sử không bỏ qua ủy quyền dự án.",
+          "Việc lưu trữ, xóa và xóa trạng thái chưa đọc có tác dụng khác nhau. Nếu liên kết cũ bị lỗi, hãy kiểm tra xem dự án và phiên vẫn tồn tại và kết nối có hoạt động không."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Một lần truy cập nhiệm vụ trình diễn trong Cuộc trò chuyện gần đây",
+          "caption": "Thanh bên hiển thị một lần truy cập tác vụ trình diễn, không có mục nhập phiên hoặc ví dụ về trạng thái chưa đọc."
+        }
+      },
+      {
+        "title": "Mở điều hướng trong trình duyệt di động",
+        "steps": [
+          "Mở WorkStep trong trình duyệt điện thoại và chạm vào bong bóng điều hướng tròn ở cạnh trang để mở rộng điều hướng thanh bên giống như trên máy tính để bàn.",
+          "Chọn một dự án, quy trình làm việc, nhiệm vụ hoặc cuộc trò chuyện để tiếp tục. Nhấn vào bong bóng một lần nữa để thu gọn điều hướng.",
+          "Nếu bong bóng che nội dung, hãy giữ và kéo nội dung đó đến phần trống của khung nhìn. Việc kéo không chuyển đổi điều hướng."
+        ],
+        "tips": [
+          "Bong bóng chỉ xuất hiện trong các trình duyệt di động thông thường. Ứng dụng dành cho máy tính để bàn và Android sử dụng các mục điều hướng của riêng chúng."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Bong bóng điều hướng và thanh bên mở rộng trong trình duyệt điện thoại",
+          "caption": "Thanh bên được mở rộng ở kích thước 390px, với bong bóng tròn ở bên phải để thu gọn nó. Chỉ các dự án trình diễn biệt lập được hiển thị."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Thực hiện, phê duyệt và đánh giá",
+    "summary": "Hiểu trạng thái thời gian chạy, xử lý các yêu cầu cấp phép và quyết định xem kết quả đầu ra có thể chuyển sang giai đoạn tiếp theo hay không.",
+    "sections": [
+      {
+        "title": "Kiểm tra các yêu cầu thực thi và cấp phép",
+        "steps": [
+          "Mở chi tiết nhiệm vụ và kiểm tra biểu đồ tiến trình cũng như bản ghi trò chuyện để xác định bước đang hoạt động.",
+          "Mở rộng các bản ghi quy trình để kiểm tra lệnh gọi công cụ, kết quả và lỗi. Mở rộng các bản ghi tác nhân phụ khi công cụ báo cáo chúng.",
+          "Khi thông báo bao gồm các thay đổi về tệp, hãy mở rộng danh sách và xem các khác biệt đã ghi. Chúng mô tả những thay đổi của thông báo đó; mở tệp sẽ hiển thị nội dung hiện tại của nó, nội dung này có thể đã thay đổi trong các lần chỉnh sửa sau này. Nếu không có sự khác biệt đã lưu, nội dung hiện tại không thể xây dựng lại toàn bộ lịch sử.",
+          "Khi phê duyệt công cụ xuất hiện, hãy đọc lệnh, đường dẫn và tác động trước khi cho phép hoặc từ chối. Trả lời các câu hỏi bằng cách sử dụng các tùy chọn được cung cấp hoặc thông tin đầu vào được yêu cầu.",
+          "Nếu một tác vụ không thành công, trước tiên hãy đọc lỗi mới nhất của nó, sau đó kiểm tra cấu hình công cụ, quyền của mô hình, mạng và thư mục dự án thay vì thử lại nhiều lần."
+        ],
+        "tips": [
+          "Sự phê duyệt chỉ xuất hiện khi một công cụ yêu cầu nó. Thông tin quy trình và lựa chọn quyền khác nhau tùy theo công cụ; thiếu chi tiết không có nghĩa là không có sự thực thi nào xảy ra.",
+          "Biểu tượng xoay biểu thị công việc không đồng bộ. Khi chờ người dùng, hãy xử lý câu hỏi hoặc phê duyệt hiện tại."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Tiến độ các bước và bản ghi thực hiện thực tế trong chi tiết nhiệm vụ",
+          "caption": "Hồ sơ tiến độ và thực hiện được hiển thị. Không có yêu cầu cấp phép nào được hiển thị; phê duyệt chỉ xuất hiện khi công cụ thực sự yêu cầu chúng."
+        }
+      },
+      {
+        "title": "Phê duyệt, từ chối hoặc chấm dứt đánh giá",
+        "steps": [
+          "Trong khi chờ xem xét thủ công, hãy kiểm tra các tạo phẩm đầu ra, xem xét kết quả, tệp và kết quả kiểm tra theo tiêu chí chấp nhận.",
+          "Nếu đạt yêu cầu thì nhấn Phê duyệt và tiếp tục. Nếu không, hãy nhập phản hồi cụ thể và chọn Từ chối và làm lại.",
+          "Trong quá trình xem xét tự động, hãy kiểm tra hồ sơ của nó. Trình kích hoạt từ chối chạy lại được định cấu hình; lỗi xem xét hoặc yêu cầu xử lý thủ công cần có quyết định của bạn.",
+          "Nếu không muốn thực thi nữa, hãy chọn Chấm dứt và xác minh xác nhận. Buộc phê duyệt sẽ bỏ qua quá trình xem xét hiện tại, vì vậy trước tiên hãy kiểm tra xem kết quả đầu ra có thể sử dụng được hay không."
+        ],
+        "tips": [
+          "Tác vụ vẫn có thể chạy khi còn xác nhận chờ xử lý. Trên máy tính, di chuột lên số lượng để xem bước và lý do, rồi xử lý đánh giá, quyền công cụ hoặc câu hỏi tại bước tương ứng. Không còn nhánh có thể chạy thì tác vụ chờ. Dừng thủ công, thất bại và hoàn tất là các trạng thái khác nhau; tiến trình kết thúc không có nghĩa đã được duyệt."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Các nút phản hồi và phê duyệt/từ chối xem xét thủ công",
+          "caption": "Xem xét kết quả, hiện vật và các mục hành động."
+        }
+      },
+      {
+        "title": "Điều phối viên đã cố định các quy tắc và tin nhắn hiện tại",
+        "steps": [
+          "Mở chi tiết nhiệm vụ, chọn Điều phối viên trong trình soạn thảo, chọn công cụ Codex SDK và đặt câu hỏi nhiệm vụ như: Giai đoạn nào chưa hoàn thành?",
+          "Tiếp tục trong cùng một phiên điều phối viên. Trạng thái nhiệm vụ và cập nhật người gửi hiện tại dưới dạng bối cảnh cụ thể theo lượt; quy tắc điều phối viên cố định vẫn còn trong lịch sử phiên.",
+          "Để gỡ lỗi, hãy sử dụng chế độ nhà phát triển để kiểm tra tin nhắn có bản ghi đầu vào thực tế. Các quy tắc cố định không thay đổi được xác nhận là được giữ lại trong phiên đó sẽ không được thêm lại một cách riêng biệt."
+        ],
+        "tips": [
+          "Các phiên cũ hơn có thể nhận được một lần tiêm lại ban đầu sau khi nâng cấp. Các quy tắc mới, phiên mới, lịch sử bị thiếu hoặc khả năng lưu giữ không chắc chắn sau khi nén sẽ gây ra tình trạng bị tiêm lại. Yêu cầu vẫn có thể sử dụng các quy tắc trong lịch sử; bỏ qua mũi tiêm mới không có nghĩa là không có quy tắc."
+        ]
+      },
+      {
+        "title": "Thêm thông tin trong khi trả lời điều phối viên",
+        "steps": [
+          "Chọn Điều phối viên làm người nhận và gửi hướng dẫn bổ sung trong khi trả lời. Họ vào hàng đợi chèn đang chờ xử lý của câu trả lời hiện tại.",
+          "Kiểm tra, chỉnh sửa, sắp xếp lại hoặc xóa các mục chưa gửi hoặc gửi các mục đã chọn ngay lập tức. Nhiều mục đã chọn sẽ được hợp nhất theo thứ tự. Các mục còn lại sẽ tự động tiếp tục sang lượt tiếp theo sau khi câu trả lời hiện tại kết thúc; không gửi đi gửi lại nhiều lần.",
+          "Nếu được thông báo rằng thư đã được gửi hoặc bị xóa, hãy làm mới và kiểm tra hàng đợi thay vì gửi lại lô."
+        ],
+        "tips": [
+          "Điều phối viên và hàng đợi bước là riêng biệt. Trước tiên hãy xác minh người nhận. Việc dừng không hoàn tác các thao tác dụng cụ đã được thực hiện."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Tin nhắn đang chờ xử lý trong khi trả lời điều phối viên",
+          "caption": "Ảnh chụp màn hình thực đang chờ xử lý: Người nhận điều phối, tin nhắn bổ sung trong quá trình thực hiện và hàng đợi tiếp tục."
+        }
+      },
+      {
+        "title": "Bổ sung, dừng và chạy lại",
+        "steps": [
+          "Kiểm tra người nhận trước khi gõ. Điều phối viên xử lý các thắc mắc và yêu cầu vận hành; chỉ một bước cụ thể mới nhận được đầu vào vào bối cảnh thực thi của bước đó.",
+          "Tin nhắn cho một bước đang chạy nhập Chèn tin nhắn. Chỉnh sửa, sắp xếp lại, gửi ngay hoặc gửi tất cả; tin nhắn chưa gửi có thể kích hoạt một vòng khác sau khi quá trình thực thi kết thúc.",
+          "Sau khi dừng một bước, hãy gửi hướng dẫn bổ sung rõ ràng cho bước đó và làm theo lời nhắc để chạy lại.",
+          "Để thay đổi tác vụ này, hãy chỉnh sửa và lưu lời nhắc bước, công cụ hoặc xem lại cài đặt. Ghi đè có hiệu lực trong lần thực hiện tiếp theo; các trường không được ghi đè sẽ hợp nhất quy trình làm việc chính vào lần khởi động tiếp theo. Để xóa tất cả tùy chỉnh, hãy xác nhận Đồng bộ hóa quy trình làm việc chính."
+        ],
+        "tips": [
+          "Việc thay đổi công cụ soạn thảo của điều phối viên chỉ ảnh hưởng đến các thông báo điều phối viên tiếp theo chứ không ảnh hưởng đến các công cụ bước của quy trình công việc.",
+          "Nếu việc chạy lại ảnh hưởng đến các bước hoạt động khác, hãy kiểm tra xác nhận tác động và phạm vi chạy lại. Nếu bản ghi phiên gốc bị mất, hãy làm theo lời nhắc để chạy lại phiên mới."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Bước người nhận và bản nháp bổ sung trong một nhiệm vụ đã hoàn thành",
+          "caption": "Nhiệm vụ thực thi được chọn trong trình soạn thảo. Tin nhắn bổ sung vẫn chưa được gửi; không có hàng đợi chèn nào được hiển thị."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Hiện vật, phân tích thực thi và bộ nhớ dự án",
+    "summary": "Kiểm tra các tệp đã phân phối, hiểu mức tiêu thụ và giữ lại các bài học có thể sử dụng lại.",
+    "sections": [
+      {
+        "title": "Kiểm tra đầu vào, đầu ra và các tập tin tạo tác",
+        "steps": [
+          "Mở đầu vào và đầu ra của Bước trong chi tiết nhiệm vụ để kiểm tra đầu vào có sẵn và đầu ra đã hoàn thành.",
+          "Nhấp vào Xem để xem tệp hoặc mở trình duyệt tạo tác và chuyển đổi theo từng bước và vòng thực hiện.",
+          "Xem trước các tập tin. Trên máy tính để bàn, thư mục chứa Open cho phép bạn kiểm tra các tệp thực tế. Các tệp dự án từ xa vẫn còn trên máy chủ và phải được xem qua giao diện web.",
+          "So sánh các vòng bên phải khi chạy lại. Giống như vòng… có nghĩa là nội dung giống hệt nhau, không phải việc thực thi không xảy ra."
+        ],
+        "tips": [
+          "Nếu thiếu thành phần lạ, hãy kiểm tra xem tệp có được tạo hay không, khai báo đầu ra của nó có khớp hay không và thông báo thực thi có khớp hay không."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Các tạo phẩm nhiệm vụ được nhóm theo bước",
+          "caption": "Phân tích yêu cầu và Thực hiện nhiệm vụ, mỗi nhiệm vụ liệt kê một tạo phẩm ở vòng đầu tiên. Mở tập tin hoặc thư mục của nó."
+        }
+      },
+      {
+        "title": "Kiểm tra tài nguyên thời gian chạy cục bộ",
+        "steps": [
+          "Nhập không gian làm việc thông qua localhost cục bộ hoặc địa chỉ vòng lặp, sau đó Thống kê → Thời gian chạy hệ thống (数据统计 → 系统运行). Các trình duyệt từ xa thông thường và không gian làm việc của Gateway không hiển thị tab này.",
+          "Kiểm tra CPU, bộ nhớ, cấu hình lưu trữ đĩa, tốc độ mạng và tài nguyên, luồng và bộ mô tả tệp hoặc bộ điều khiển cho phần phụ trợ WorkStep và phần phụ trợ.",
+          "Chọn số liệu xu hướng và kiểm tra thời gian lấy mẫu. Tạm dừng, tiếp tục hoặc làm mới màn hình theo cách thủ công. Đợi trong quá trình thu thập lần đầu và thử lại các lần đọc không thành công."
+        ],
+        "tips": [
+          "Số liệu thống kê bao gồm môi trường phụ trợ hiện tại và môi trường con, ngoại trừ vỏ máy tính để bàn. Các phép đo vùng chứa không phải là tài nguyên máy chủ hoàn chỉnh.",
+          "Mặc định là lấy mẫu khoảng 5 giây và lịch sử 30 phút; trang nêu giá trị thực tế. Tạm dừng làm mới màn hình không dừng tác vụ. Các số liệu và khoảng trống không có sẵn không phải là số không; các mẫu cũ được giữ lại và đánh dấu là cũ. Cảnh báo mô tả cho biết áp lực tài nguyên chứ không phải tự động sửa chữa."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Thống kê tài nguyên hệ thống được lấy mẫu theo phiên bản hiện tại",
+          "caption": "Tài nguyên cục bộ và trạng thái lấy mẫu phụ trợ. Không có tiến trình con công cụ nào đang chạy, vì vậy điều này không hiển thị mức tiêu thụ thực thi tác vụ."
+        }
+      },
+      {
+        "title": "Kiểm tra thời lượng, mã thông báo và chi phí",
+        "steps": [
+          "Mở phân tích Thực thi trong chi tiết nhiệm vụ để kiểm tra tổng thời lượng, số bước thực hiện, mã thông báo và chi phí.",
+          "Chọn một vòng chạy và nhấp vào phân đoạn dòng thời gian để biết động cơ, kiểu máy và cách sử dụng của nó.",
+          "Để biết thông tin trên toàn dự án, hãy mở Thống kê. Để ước tính chi phí, hãy duy trì giá mẫu xe theo nhà cung cấp hoặc động cơ trong Cài đặt → Cài đặt mẫu."
+        ],
+        "tips": [
+          "Việc sử dụng không được báo cáo sẽ không tự động trở thành một con số chính xác. Kiểm tra mức độ phù hợp và nhãn Ước tính; hóa đơn dịch vụ mẫu là có thẩm quyền."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Vòng phân tích thực hiện và dòng thời gian",
+          "caption": "Các chỉ số về thời lượng, mức độ phù hợp và nguồn chi phí."
+        }
+      },
+      {
+        "title": "Lưu bộ nhớ và lưu trữ bài học",
+        "steps": [
+          "Bấm vào Bộ nhớ trên trang nhiệm vụ. Chỉnh sửa MEMORY.md trong thư mục dữ liệu dự án thành các quy tắc ngắn hạn, cụ thể và lưu lại.",
+          "Khi lưu trữ một nhiệm vụ, hãy chọn lưu trữ trực tiếp hoặc tổ chức các bài học thất bại. Kiểm tra bản nháp AI, sau đó xác nhận bộ nhớ ghi và lưu trữ.",
+          "Sử dụng danh sách lưu trữ để xem lại lịch sử. Sau khi khôi phục tác vụ đã lưu trữ, hãy kiểm tra lại các ràng buộc bên ngoài cần thiết."
+        ],
+        "tips": [
+          "Lưu trữ hàng loạt không trích xuất các bài học riêng lẻ. Việc lưu trữ hoặc xóa một tác vụ sẽ loại bỏ các ràng buộc nhóm kênh của nó; khôi phục nó không khôi phục các ràng buộc cũ."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Trình soạn thảo bộ nhớ dự án chứa các quy ước trình diễn",
+          "caption": "Chỉnh sửa và lưu các quy ước trong .workstep/MEMORY.md. Không có xác nhận bài học lưu trữ nào được hiển thị."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Trò chuyện và kỹ năng dự án",
+    "summary": "Cộng tác trực tiếp trong bối cảnh dự án và chọn những kỹ năng địa phương mà dự án có thể sử dụng.",
+    "sections": [
+      {
+        "title": "Làm việc với nhiều cuộc hội thoại dự án",
+        "steps": [
+          "Ở chiều rộng màn hình, mở một cuộc hội thoại dự án thông thường và chọn Cửa sổ hội thoại (对话窗口) → Thêm cửa sổ hội thoại (增加对话窗口), ở bên phải Cuộc hội thoại mới.",
+          "Kéo cuộc trò chuyện từ thanh bên hoặc Cuộc trò chuyện gần đây vào khu vực trò chuyện. Các dự án được ủy quyền có thể được trộn lẫn, tối đa 4 tấm; việc thả một cuộc trò chuyện đã mở sẽ tập trung vào ngăn của nó. Không thể kéo bản ghi tác vụ vào dưới dạng cuộc trò chuyện.",
+          "Bấm vào khung bạn muốn sử dụng trước khi chọn cuộc hội thoại ở thanh bên. Mỗi khung giữ các cài đặt dự án, phiên, bản nháp và công cụ riêng; xác minh dự án và phiên trước khi gửi.",
+          "Chọn Cửa sổ hội thoại → Sắp xếp hội thoại (对话排列), sau đó chọn ngang hoặc dọc. Kéo dấu phân cách để thay đổi kích thước; tập trung vào nó và sử dụng các phím mũi tên để thay đổi kích thước bàn phím.",
+          "Với nhiều ngăn, × chỉ đóng ngăn đó mà không dừng hoặc xóa cuộc hội thoại. Sử dụng nút Dừng của cuộc trò chuyện để dừng tạo."
+        ],
+        "tips": [
+          "Trên máy tính để bàn, bấm hai lần vào cuộc hội thoại trên thanh bên hoặc tiêu đề tiêu đề của nó để mở hộp thoại đổi tên được chia sẻ, sau đó nhập và xác nhận tên.",
+          "Điện thoại chỉ hiện khung đang hoạt động và giữ các khung khác. Chuyển sang màn hình khác rồi quay lại trong cùng phiên trang sẽ khôi phục khung, bố cục và kích thước; không bảo đảm sau khi tải lại trình duyệt. Bố cục tách theo tài khoản và thiết bị, không sao chép nội dung hội thoại."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Ngăn hội thoại trên máy tính để bàn trên các dự án và menu sắp xếp",
+          "caption": "Ảnh chụp màn hình thực từ dự án demo cố định đang chờ xử lý: menu cửa sổ hội thoại, nhiều ngăn và dấu phân cách có thể kéo được."
+        }
+      },
+      {
+        "title": "Tải vai trò hoặc nhóm chuyên gia vào cuộc trò chuyện",
+        "steps": [
+          "Chuẩn bị lời nhắc về vai trò hoặc thành viên nhóm chuyên gia và trách nhiệm trong Cài đặt → Trung tâm vai trò.",
+          "Mở trò chuyện thông thường trong một dự án địa phương. Sử dụng + → Nhóm Vai trò / Chuyên gia, tìm kiếm danh mục hoặc từ khóa, xem trước và Tải vào cuộc trò chuyện. Ví dụ: chọn Người đánh giá mã, sau đó gửi phạm vi đánh giá cụ thể.",
+          "Kiểm tra tên đã tải trong tệp Composer. Việc chọn không gửi tin nhắn. Ràng buộc được lưu cùng với phiên và được khôi phục sau khi làm mới; phiên mới bắt đầu không bị ràng buộc. Bấm vào tên để kiểm tra, thay thế hoặc xóa nó."
+        ],
+        "tips": [
+          "Bạn không thể chuyển đổi trong khi đang chạy. Lỗi đọc hoặc lưu giữ nguyên lựa chọn hiện tại; thử lại như được nhắc. Chọn lại các vai trò còn thiếu. Đang tải chỉ thay đổi ràng buộc phiên; gửi một câu hỏi cụ thể để gọi mô hình.",
+          "Các nhóm chuyên gia chuyển lời nhắc và trách nhiệm của thành viên sang mô hình hiện tại; họ không khởi động động cơ độc lập. Nhiệm vụ, bước quy trình làm việc, kênh, dự án từ xa và phiếu theo phạm vi dự án không được tích hợp. Không gian làm việc của Gateway đầy đủ thiết bị có thể sử dụng điều này cho một dự án cục bộ."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Tìm kiếm người đánh giá mã và xem trước lời nhắc trong cuộc trò chuyện thông thường",
+          "caption": "Người đánh giá mã được chọn trong cuộc trò chuyện trình diễn trống. Nút nhắc và tải của nó có thể nhìn thấy được; không có vai trò nào được tải hoặc tin nhắn được gửi."
+        }
+      },
+      {
+        "title": "Mở bộ nhớ dự án trên điện thoại",
+        "steps": [
+          "Mở danh sách nhiệm vụ dự án, sử dụng Thêm ở phía trên bên phải, sau đó chọn Bộ nhớ.",
+          "Nhập các quy ước ngắn, chẳng hạn như Chạy thử nghiệm dự án trước khi cam kết, trong trình chỉnh sửa bộ nhớ. Kiểm tra và lưu; điều này áp dụng cho toàn bộ dự án."
+        ],
+        "tips": [
+          "Chọn bộ nhớ thu gọn Thêm. Trên máy tính để bàn, nhấp trực tiếp vào Bộ nhớ trên trang tác vụ."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Mục nhập bộ nhớ trong menu Khác của trang tác vụ 390px",
+          "caption": "Menu Thêm mở rộng của danh sách tác vụ di động bao gồm Bộ nhớ. Nhấp vào sẽ mở trình soạn thảo của nó; không có bộ nhớ nào được thay đổi ở đây."
+        }
+      },
+      {
+        "title": "Tạo cuộc hội thoại và thay đổi cấu hình",
+        "steps": [
+          "Tạo một phiên thông thường trong phần Cuộc trò chuyện của dự án ở bên trái. Chọn công cụ, nhà cung cấp, kiểu máy và chế độ cấp phép của nó. Bắt đầu với SDK đã được xác minh.",
+          "Nhập một yêu cầu cụ thể. Nhập gửi; Shift+Enter chèn một dòng mới. Chỉ đính kèm hoặc dán hình ảnh tham chiếu sau khi kiểm tra hỗ trợ hình ảnh công cụ.",
+          "Dừng trả lời trong khi tạo nếu cần. Hàng đợi tin nhắn được chèn bổ sung và thứ tự của chúng có thể được thay đổi.",
+          "Khi thay đổi công cụ hoặc nhà cung cấp với bối cảnh hiện có, hãy chọn Chuyển giao thông minh, Lịch sử trò chuyện đầy đủ hoặc Không có trong hộp thoại. Phân nhánh một cuộc trò chuyện để khám phá độc lập và xác nhận chế độ ngữ cảnh của nó."
+        ],
+        "tips": [
+          "Trò chuyện dự án được lưu trữ riêng biệt với các bản ghi tác vụ quy trình làm việc. Tạo một nhiệm vụ khi bạn cần theo dõi và đánh giá giai đoạn.",
+          "Tính năng phân nhánh gốc chỉ khả dụng khi được công cụ thực sự hỗ trợ. Nếu không thì tiếp tục chuyển giao ngữ cảnh rõ ràng."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Công cụ trò chuyện dự án, nhà cung cấp và menu mô hình",
+          "caption": "Định cấu hình công cụ, nhà cung cấp, mô hình lý luận và các tùy chọn liên quan chỉ cho cuộc trò chuyện này. Quyền được chọn riêng."
+        }
+      },
+      {
+        "title": "Kích hoạt kỹ năng và tổ chức các cuộc hội thoại",
+        "steps": [
+          "Mở Cấu hình → Trung tâm kỹ năng của dự án hiện tại, quét lại và tìm kiếm theo tên, mô tả hoặc đường dẫn nguồn.",
+          "Đọc mục đích kỹ năng và kích hoạt những gì bạn cần. Kiểm tra phạm vi đã chọn trước khi thay đổi hàng loạt. Các kỹ năng được lưu cho mỗi dự án và áp dụng cho lần chạy tiếp theo hoặc phiên mới.",
+          "Nhập / vào trình soạn thảo để chọn các kỹ năng thực sự được cung cấp bởi công cụ hiện tại. Danh sách khác nhau tùy theo động cơ.",
+          "Sử dụng menu phiên để đổi tên hoặc lưu trữ. Tìm kiếm danh sách lưu trữ và khôi phục các cuộc hội thoại cần thiết."
+        ],
+        "tips": [
+          "Trung tâm kỹ năng lựa chọn các kỹ năng địa phương hiện có. Nếu không có gì xuất hiện, trước tiên hãy kiểm tra các nguồn địa phương. Các dự án từ xa hiện không thể quản lý các kỹ năng cục bộ của máy chủ."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Không có kết quả sau khi tìm kiếm bản demo thủ công trong Trung tâm kỹ năng",
+          "caption": "Trung tâm kỹ năng cung cấp tính năng tìm kiếm tên và lọc nguồn. Không có kỹ năng phù hợp hoặc công tắc kích hoạt nào được hiển thị."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Các nút nhanh và hành động tập lệnh",
+    "summary": "Biến các lời nhắc thông thường, hiển thị nội dung và tập lệnh dự án thành các nút có thể sử dụng lại.",
+    "sections": [
+      {
+        "title": "Tạo các nút nhắc và hiển thị",
+        "steps": [
+          "Mở các nút Nhanh trong cấu hình dự án, thêm nút và chọn loại nút đó.",
+          "Đối với Lời nhắc, hãy nhập nhãn và lời nhắc của nó rồi chọn xem việc nhấp vào có gửi ngay hay không, ví dụ: Kiểm tra các thay đổi hiện tại và liệt kê các tiêu chí chấp nhận chưa được phát hiện.",
+          "Đối với Hiển thị, hãy nhập nội dung và xem trước kết xuất HTML an toàn của nó. Loại này không gửi tin nhắn.",
+          "Lưu và quay lại cuộc trò chuyện hoặc một nhiệm vụ để kiểm tra nút. Kéo danh sách cấu hình để sắp xếp lại. Cài đặt quy trình làm việc kiểm soát các nút dự án kế thừa; các nút sân khấu được cấu hình riêng."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Kế thừa nút dự án và thêm mục nhập vào các nút nhanh của quy trình làm việc",
+          "caption": "Chọn các nút dự án để kế thừa và thêm các nút quy trình công việc ở bên trái. Không có nội dung nút nào được nhập."
+        }
+      },
+      {
+        "title": "Định cấu hình và chạy một Hành động",
+        "steps": [
+          "Thêm loại Hành động, nhập ID hành động của nó và chọn tập lệnh từ thư mục Hành động tương ứng.",
+          "Chọn thư mục thực thi: dự án, thư mục tác vụ quy trình làm việc hoặc không gian làm việc Git do tập lệnh chọn. Xem trước và kiểm tra kịch bản.",
+          "Cho phép xác nhận trước các hành động sửa đổi tệp hoặc trạng thái bên ngoài. Đối với đầu vào như thông báo cam kết, hãy định cấu hình lời nhắc xác nhận; tập lệnh nhận được nó thông qua WORKSTEP_ACTION_INPUT.",
+          "Lưu và nhấp vào nút, xác nhận tập lệnh và thư mục, đồng thời kiểm tra mã đầu ra và mã thoát. Hành động đang chạy có thể được dừng lại."
+        ],
+        "tips": [
+          "Hành động nhanh trực tiếp chạy các tập lệnh dự án. Hiểu kịch bản và chọn đúng thư mục trước. Các tập tin bên ngoài thư mục Hành động hiện tại không thể được chọn tùy ý làm tập lệnh của nó."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Cấu hình hành động không có tập lệnh nào được chọn",
+          "caption": "Các trường bao gồm ID hành động, tập lệnh, thư mục thực thi và xác nhận. Không có tập lệnh nào được chạy."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Nhiệm vụ theo lịch trình",
+    "summary": "Tạo các nhiệm vụ mới theo lịch trình hoặc gửi hướng dẫn điều phối viên theo thời gian cho các nhiệm vụ hiện có, đồng thời theo dõi việc thực hiện và thông báo.",
+    "sections": [
+      {
+        "title": "Tạo nhiều nhiệm vụ từ một lịch trình",
+        "steps": [
+          "Tạo Dự án tạo lịch trình nhiệm vụ, chọn AI động và chỉ định phạm vi cũng như thời gian riêng lẻ của nhiều nhiệm vụ. Lựa chọn quy trình làm việc của ứng viên.",
+          "Đầu tiên hãy sử dụng tính năng Tạo thử nghiệm để kiểm tra từng bản nháp, sau đó lưu lại. Hướng dẫn điều phối viên nhiệm vụ vẫn hoạt động trên một nhiệm vụ đã chọn và không tạo các đợt.",
+          "Sau khi kích hoạt, hãy mở từng tác vụ đã tạo từ các bản ghi lần chạy. Các bản ghi bị lỗi cũng giữ lại các nhiệm vụ đã được tạo; kiểm tra lý do trước khi tạo thay thế."
+        ],
+        "tips": [
+          "Việc tạo tác vụ không có nghĩa là tất cả quy trình công việc đã hoàn thành. Không chạy lại toàn bộ lô sau khi tạo một phần hoặc khởi động không thành công."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Bản xem trước tạo hàng loạt theo lịch trình và bản ghi chạy đa tác vụ",
+          "caption": "Ảnh chụp màn hình thực đang chờ xử lý: bản nháp hàng loạt và các tác vụ đã được tạo sau khi bị lỗi một phần."
+        }
+      },
+      {
+        "title": "Quản lý hướng dẫn theo lịch trình từ chi tiết nhiệm vụ",
+        "steps": [
+          "Mở chi tiết nhiệm vụ và nhấp vào đồng hồ bên cạnh Bind BOT; trên điện thoại, nó ở bên phải các tab chính. Số lượng của nó bao gồm các quy tắc nhiệm vụ ngoại trừ các quy tắc đã hoàn thành một lần, không chỉ các quy tắc được bật. Kiểm tra các trạng thái bị tạm dừng và các trạng thái khác trong danh sách.",
+          "Kiểm tra các quy tắc của nhiệm vụ này trong cửa sổ. Với quyền chỉnh sửa, hãy thêm, chỉnh sửa, tạm dừng, tiếp tục hoặc xóa các quy tắc và xem các bản ghi lần chạy. Các quy tắc mới tự động liên kết với nhiệm vụ hiện tại.",
+          "Nhập tiêu đề, tần suất và hướng dẫn điều phối viên, ví dụ: Kiểm tra tiến độ và tóm tắt cứ sau mười phút. Kiểm tra điều kiện dừng và lưu lại. Khi đóng với các chỉnh sửa chưa được lưu, hãy chọn tiếp tục hoặc loại bỏ.",
+          "Các chia sẻ chỉ đọc sử dụng cùng một đồng hồ để kiểm tra các quy tắc của tác vụ này. Với quyền vận hành, sử dụng các mục quản lý thực sự được cung cấp bởi cổ phiếu hiện tại."
+        ],
+        "tips": [
+          "Danh sách một lần giữ lại thời gian thực hiện của các quy tắc đã hoàn thành; huy hiệu nhiệm vụ loại trừ chúng, vì vậy số lượng có thể khác nhau."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Cửa sổ lịch trình trong phạm vi nhiệm vụ được mở từ đồng hồ chi tiết",
+          "caption": "Việc tạo quy tắc từ đồng hồ sẽ khóa quy trình làm việc và nhiệm vụ đối với nhiệm vụ trình diễn. Tiêu đề và hướng dẫn trống; không có gì được lưu hoặc thực thi."
+        }
+      },
+      {
+        "title": "Tạo lịch trình cố định",
+        "steps": [
+          "Mở Nhiệm vụ đã lên lịch từ thanh công cụ thanh bên, chọn tab dự án, sau đó tạo lịch trình Nhiệm vụ tạo dự án. Chọn quy trình làm việc, bước bắt đầu, tiêu đề và nội dung.",
+          "Chọn một lần, hàng ngày, hàng tuần, hàng tháng, khoảng thời gian hàng giờ hoặc Cron. Kiểm tra múi giờ, ngày có hiệu lực và bản xem trước lần chạy tiếp theo.",
+          "Chọn Theo dõi quy trình làm việc, Thực thi ngay lập tức hoặc Thủ công và đặt xử lý chồng chéo thành Bỏ qua, Song song hoặc Xếp hàng.",
+          "Kiểm tra cài đặt đánh giá và lưu. Xác minh lịch trình một lần ngắn hạn trước khi bật kế hoạch định kỳ dài hạn."
+        ],
+        "tips": [
+          "Phần phụ trợ WorkStep phải đang chạy để kích hoạt lịch trình. Đừng cho rằng chúng kích hoạt bình thường trong khi máy tính ở chế độ ngủ hoặc chương trình phụ trợ đã dừng."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Đã sửa nội dung nhiệm vụ, tần suất hàng ngày và bản xem trước lần chạy tiếp theo",
+          "caption": "Đặt nội dung, tần suất, chính sách khởi động và chồng chéo, sau đó kiểm tra thời gian thực hiện sắp tới."
+        }
+      },
+      {
+        "title": "Gửi hướng dẫn theo lịch trình tới một nhiệm vụ hiện có",
+        "steps": [
+          "Mở Nhiệm vụ đã lên lịch trong thanh bên, chọn dự án và chuyển loại quy tắc mới sang hướng dẫn Điều phối viên nhiệm vụ. Nó hoạt động trên một nhiệm vụ hiện có thay vì tạo một nhiệm vụ mỗi lần.",
+          "Nhập Tiêu đề, lọc theo quy trình làm việc và tìm kiếm nhiệm vụ mục tiêu. Viết một hướng dẫn cụ thể, chẳng hạn như: Kiểm tra tiến độ và báo cáo xem có cần hành động của con người hay không; không tự động xác nhận các hành động nguy hiểm. Các quy tắc đã lưu không thể được phục hồi sang một tác vụ khác.",
+          "Đặt thực hiện một lần hoặc định kỳ, bao gồm Cứ sau vài phút. Xác minh thời gian chạy tiếp theo và chọn Tiếp tục cho đến khi bị tắt thủ công hoặc Dừng khi tác vụ kết thúc.",
+          "Tìm quy tắc đã lưu trong danh sách một lần hoặc định kỳ. Lọc theo loại mục tiêu và ID nhiệm vụ. Mở một tác vụ từ một bản ghi đang chạy để xác định câu trả lời của điều phối viên đó và kiểm tra trạng thái thông báo đã lên lịch trong lịch sử của tác vụ đó."
+        ],
+        "tips": [
+          "Mỗi trình kích hoạt sử dụng một phiên điều phối viên riêng biệt và có thể xếp hàng trong khi tác vụ đang bận. Những đề xuất cần xác nhận vẫn cần đến bạn. Việc dừng một câu trả lời theo lịch chỉ dừng tin nhắn đó; tạm dừng hoặc vô hiệu hóa quy tắc để ngăn chặn các kích hoạt sau này.",
+          "Việc lưu trữ hoặc xóa mục tiêu sẽ làm mất hiệu lực quy tắc. Với Dừng khi tác vụ kết thúc, các trạng thái đầu cuối đã hoàn thành, không thành công hoặc đã dừng sẽ kết thúc nó. Các lần chạy bị gián đoạn do khởi động lại chương trình phụ trợ không được đảm bảo sẽ phát lại; kiểm tra hồ sơ trước khi gửi lại."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Biểu mẫu lịch trình điều phối viên nhiệm vụ chưa được lưu",
+          "caption": "Cuộc trình diễn lặp lại cứ sau mười phút cho đến khi bị tắt thủ công. Nó chưa được lưu, không có kết quả thực hiện."
+        }
+      },
+      {
+        "title": "Định cấu hình thông báo kênh cho các lần chạy theo lịch trình",
+        "steps": [
+          "Trong lịch trình dự án hoặc quy tắc điều phối viên nhiệm vụ, hãy kiểm tra bot kênh Thông báo sau khi thực hiện.",
+          "Chọn một bot có khả năng gửi và trò chuyện. Nhóm ràng buộc của nhiệm vụ có thể được chọn theo mặc định nhưng hãy kiểm tra nó trước khi lưu. Nếu không có đích đến, trước tiên hãy định cấu hình liên kết bot và tác vụ hoặc tắt thông báo.",
+          "Kiểm tra trạng thái thông báo và lý do lỗi trong hồ sơ lần chạy. Thử lại các lỗi thông báo mà không chạy lại tác vụ. Đối với kết quả phân phối không xác định, hãy kiểm tra kênh trước để tránh trùng lặp."
+        ],
+        "tips": [
+          "Thông báo theo lịch trình và quy trình làm việc Webhooks được định cấu hình riêng. Việc chạy thành công không chứng minh được việc phân phối và thông báo không thành công không có nghĩa là nhiệm vụ không thành công.",
+          "Thông báo của người điều phối nhiệm vụ sẽ theo sau việc hoàn thành câu trả lời đó. Thông báo sau khi lịch trình dự án tạo ra một nhiệm vụ không có nghĩa là toàn bộ quy trình làm việc đã kết thúc."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Thông báo kênh không có mục tiêu đã chọn trong biểu mẫu nhiệm vụ dự án",
+          "caption": "Thông báo được chọn nhưng không có bot hoặc cuộc trò chuyện nào được chọn nên việc lưu bị vô hiệu hóa. Không có gì được thực hiện hoặc gửi đi."
+        }
+      },
+      {
+        "title": "Bản ghi hoạt động và tạo động AI",
+        "steps": [
+          "Thay đổi quá trình tạo thành AI động, mô tả nội dung cần tạo mỗi lần, tùy ý sửa tiêu đề tham chiếu và chọn quy trình làm việc của ứng viên.",
+          "Định cấu hình thử tạo lại và sử dụng Tạo thử nghiệm để kiểm tra xem đầu ra có đáp ứng mong đợi hay không.",
+          "Lưu, sau đó lọc các bản ghi lần chạy ở bên phải theo trạng thái. Kiểm tra thời gian kích hoạt, lỗi hoặc lý do bỏ qua và mở tác vụ tương ứng.",
+          "Tạm dừng lịch trình không còn cần thiết, sau đó xóa sau khi kiểm tra."
+        ],
+        "tips": [
+          "Số lần thử tạo AI, số lần thử xem xét từng bước và giới hạn kết nối trả về là các cài đặt riêng biệt."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "Biểu mẫu tạo tác vụ theo lịch trình động AI",
+          "caption": "Nhập hướng dẫn, quy trình làm việc của ứng viên và số lần thử lại. Không có tác vụ nào được tạo hoặc chạy bản ghi được hiển thị."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Không gian làm việc của Git và tác vụ",
+    "summary": "Kiểm tra các thay đổi mã, tách biệt các tác vụ song song trong các thư mục làm việc riêng biệt, sau đó hợp nhất và đẩy công việc của chúng.",
+    "sections": [
+      {
+        "title": "Kiểm tra tập tin, khác biệt và lịch sử",
+        "steps": [
+          "Nhấp vào Git trên trang tác vụ của dự án từ xa cục bộ hoặc được kết nối và chọn kho lưu trữ gốc hoặc kho lưu trữ con được phát hiện. Hoạt động Git từ xa thực thi trên thiết bị chủ.",
+          "Kiểm tra các tệp đã thay đổi và các khác biệt để xác minh các thay đổi của AI so với yêu cầu; sử dụng lịch sử cam kết để kiểm tra công việc đã cam kết.",
+          "Xử lý các thay đổi không được cam kết trước khi chuyển nhánh. Làm mới trạng thái từ xa để kiểm tra trạng thái tiến, lùi hoặc chuyển hướng.",
+          "Kéo nhanh về phía trước; Push chỉ gửi nội dung đã cam kết. Chọn một điều khiển từ xa và chi nhánh, xác nhận và thực hiện."
+        ],
+        "tips": [
+          "Các bản ghi từ xa được lưu trong bộ nhớ đệm không phải là trạng thái trực tiếp. Đồng bộ hóa có thể bị chặn trong khi các nhiệm vụ dự án hoặc cuộc trò chuyện đang hoạt động.",
+          "Trước tiên hãy kết nối lại các dự án ngoại tuyến hoặc từ xa trái phép. Trình duyệt không sao chép kho lưu trữ máy chủ vào máy tính của bạn. Việc đọc cần có quyền xem Git; các hành động cam kết, phân nhánh, hợp nhất và đồng bộ hóa có các khoản cấp riêng. Kiểm tra quyền nếu thiếu nút."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Những thay đổi không được cam kết trong kho Git",
+          "caption": "Các tập tin đang chờ xử lý của kho lưu trữ cục bộ. Lịch sử cam kết nằm trên một tab khác; quyền từ xa và khác biệt tệp mở rộng không được hiển thị."
+        }
+      },
+      {
+        "title": "Tạo Worktree cho một nhiệm vụ",
+        "steps": [
+          "Mở không gian làm việc Git trong chi tiết tác vụ và chọn kho lưu trữ mà tác vụ thực sự cần.",
+          "Nhập tên thư mục tác vụ, nhánh nguồn và nhánh mới, sau đó Tạo Worktree. Nếu thư mục gốc chưa phải là kho lưu trữ Git, hãy khởi tạo nó và thực hiện cam kết đầu tiên.",
+          "Sau khi thực hiện, kiểm tra và cam kết các thay đổi trong không gian làm việc. Trong Git, hợp nhất vào nhánh hiện tại hoặc hợp nhất nhánh hiện tại vào mục tiêu.",
+          "Kiểm tra kết quả đã hợp nhất và đẩy thủ công nếu cần. Đọc các tác động chính xác và cảnh báo thay đổi không được cam kết trước khi dọn dẹp hoặc khôi phục lịch sử."
+        ],
+        "tips": [
+          "Tạo không gian làm việc không tự động hợp nhất hoặc đẩy. Chỉ những thay đổi đã cam kết mới tham gia vào việc sáp nhập chi nhánh.",
+          "Việc xóa một không gian làm việc của tác vụ có thể xóa các thư mục và các nhánh tính năng. Dọn dẹp không phải là một cách để lưu kết quả."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Không gian làm việc của Task Git với Worktree hiện có",
+          "caption": "Không gian làm việc trình diễn tồn tại mà không có sự khác biệt về tập tin. Mở nó, thêm kho hoặc quản lý các chi nhánh; đây không phải là hình thức sáng tạo của nó."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Chia sẻ nhiệm vụ và các dự án từ xa",
+    "summary": "Phân biệt liên kết đến một tác vụ với quyền truy cập từ xa vào toàn bộ thiết bị.",
+    "sections": [
+      {
+        "title": "Chia sẻ một nhiệm vụ",
+        "steps": [
+          "Nhấp vào Chia sẻ trong chi tiết nhiệm vụ và chọn Chỉ đọc hoặc Tương tác.",
+          "Biểu mẫu tạo một mật khẩu ngẫu nhiên và mặc định có hiệu lực trong bảy ngày. Thay đổi hoặc xóa mật khẩu nếu cần; khi được đặt, nó phải có ít nhất bốn ký tự. Thêm tiêu đề tùy chọn, đảm bảo hết hạn trong vòng 90 ngày tới, sau đó tạo và sao chép liên kết.",
+          "Mở nó trong một cửa sổ trình duyệt riêng, nhập mật khẩu nếu được đặt và kiểm tra tiến trình, tin nhắn, tạo phẩm và các quyền đã chọn.",
+          "Để ngừng chia sẻ, hãy mở chia sẻ hiện tại và thu hồi nó. Người xem đã mở cũng mất quyền truy cập liên tục."
+        ],
+        "tips": [
+          "Chỉ đọc là để xem. Khách truy cập tương tác sử dụng bộ điều khiển tác vụ ban đầu: họ có thể gửi thông báo điều phối viên hoặc bước, dừng thực thi, xử lý các phê duyệt và câu hỏi, đồng thời sử dụng cấu hình tác vụ có sẵn và các hành động trong không gian làm việc Git. Những điều này ảnh hưởng đến nhiệm vụ ban đầu, trong phạm vi nhiệm vụ của chia sẻ đó. Để chỉ xem, hãy chọn Chỉ đọc và xác minh chế độ này trong một trình duyệt riêng.",
+          "Người nhận phải đến địa chỉ phụ trợ trong liên kết. Việc tạo liên kết không tạo ra đường hầm mạng công cộng."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Biểu mẫu chia sẻ nhiệm vụ tương tác trước khi tạo liên kết",
+          "caption": "Chế độ tương tác được chọn và mật khẩu trống. Không có liên kết chia sẻ nào được tạo."
+        }
+      },
+      {
+        "title": "Định cấu hình quyền truy cập của máy chủ và mời thiết bị",
+        "steps": [
+          "Trên máy chủ, mở Cài đặt → Truy cập từ xa, bật kết nối và kiểm tra địa chỉ nội bộ. Quyền truy cập công cộng yêu cầu địa chỉ bên ngoài HTTPS/WSS có thể truy cập được.",
+          "Đặt và lưu khóa truy cập, sau đó kiểm tra khả năng kết nối từ một thiết bị khác.",
+          "Tạo lời mời dự án trong Cấu hình dự án → Chia sẻ. Nhập nó vào mục Truy cập từ xa của WorkStep khác và làm theo lời nhắc kết nối.",
+          "Kiểm tra các thiết bị được ủy quyền và lời mời hoạt động. Thay đổi thời hạn ủy quyền hoặc thu hồi khi cần thiết. Nếu bị ngắt kết nối, hãy kiểm tra tính khả dụng của máy chủ, địa chỉ, khóa và thời hạn sử dụng."
+        ],
+        "tips": [
+          "WorkStep không có rơle công cộng tích hợp. Hãy tự mình cung cấp một mục nhập mạng có thể truy cập được. Mật khẩu tác vụ, khóa truy cập máy chủ và lời mời thiết bị là riêng biệt.",
+          "Các thư mục và công cụ từ xa vẫn ở trên máy chủ. Trình quản lý tệp cục bộ của bạn không thể mở trực tiếp các thư mục của nó."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Chuyển đổi truy cập từ xa và biểu mẫu địa chỉ trước khi nhập giá trị",
+          "caption": "Các trường bên trong và bên ngoài hiển thị các phần giữ chỗ mẫu và khóa trống. Không có danh sách ủy quyền thiết bị nào được hiển thị."
+        }
+      },
+      {
+        "title": "Kết nối Cổng doanh nghiệp khi cần",
+        "steps": [
+          "Nếu tổ chức của bạn cung cấp Cổng, hãy nhập địa chỉ của nó vào Truy cập từ xa → Nền tảng cổng.",
+          "Bật rõ ràng chế độ Cổng và lưu, sau đó đăng nhập để cấp quyền cho máy tính này. Chỉ lưu một địa chỉ không cho phép nó.",
+          "Nếu phê duyệt của quản trị viên đang chờ xử lý, hãy hoàn tất phê duyệt và xác thực lại. Sau khi kết nối, hãy sử dụng quyền xuất bản dự án và quyền truy cập trong phạm vi quyền của bạn.",
+          "Tắt chế độ Cổng và lưu để quay lại sử dụng cục bộ."
+        ],
+        "tips": [
+          "Sử dụng cục bộ độc lập không cần Cổng. Quyền và phê duyệt của tổ chức phụ thuộc vào nền tảng thực tế."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Địa chỉ nền tảng trước khi chế độ Cổng được bật",
+          "caption": "Cổng bị vô hiệu hóa và địa chỉ là phần giữ chỗ. Lưu địa chỉ và bật Cổng là những hành động riêng biệt."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Không gian làm việc của cổng và chia sẻ cục bộ",
+    "summary": "Phân biệt lời mời cục bộ, trợ cấp nền tảng và chia sẻ nhiệm vụ, đồng thời tiếp tục công việc trên các thiết bị.",
+    "sections": [
+      {
+        "title": "Định cấu hình nhận dạng doanh nghiệp Feishu hoặc Lark",
+        "steps": [
+          "Quản trị viên mở cài đặt Nền tảng → Đồng bộ hóa tổ chức và đăng nhập QR, thêm ứng dụng doanh nghiệp tùy chỉnh Feishu hoặc Lark và nhập Tenant Key, App ID và App Secret.",
+          "Sao chép lệnh gọi lại đăng nhập được hiển thị đầy đủ vào nền tảng nhà phát triển phù hợp. Đặt riêng các nút chuyển đổi ứng dụng, đăng nhập QR và đồng bộ hóa tổ chức. App ID hiện tại không thể thay đổi; sử dụng nguồn nhận dạng mới cho một ứng dụng khác.",
+          "Cho phép đọc thư mục, giới hạn khả năng hiển thị của ứng dụng và theo dõi Đọc bản xem trước → Chọn tổ chức hoặc người dùng → Kiểm tra các thay đổi → Xác nhận đồng bộ hóa. Xác minh kết quả và hồ sơ thất bại."
+        ],
+        "tips": [
+          "Nhận dạng doanh nghiệp cổng và bot kênh cục bộ là riêng biệt và không tự động chia sẻ thông tin đăng nhập. Quyền đăng nhập và thư mục QR của người thuê thực sự vẫn yêu cầu thử nghiệm tích hợp; Thành công mô phỏng API không chứng minh được khả năng kết nối thực sự."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Cài đặt đồng bộ hóa thư mục và nguồn nhận dạng Feishu hoặc Lark",
+          "caption": "Ảnh chụp màn hình cấu hình không có thông tin xác thực từ một Cổng bị cô lập đang chờ xử lý."
+        }
+      },
+      {
+        "title": "Cho phép các trang web khác đăng nhập qua Cổng",
+        "steps": [
+          "Quản trị viên cấp cao mở cài đặt Nền tảng cổng → Ủy quyền đăng nhập của bên thứ ba và nhấp vào Chỉnh sửa danh sách cho phép gọi lại.",
+          "Nhập một lệnh gọi lại URL hoàn chỉnh trên mỗi dòng, chẳng hạn như https://business.example.com/login/callback, tối đa 100 mục. Các tham số lược đồ, cổng, đường dẫn và truy vấn cố định phải khớp chính xác. Hoàn tất xác minh quản trị viên và lưu.",
+          "Bắt đầu đăng nhập từ trang web tích hợp. Nếu chưa đăng nhập vào Gateway, trước tiên hãy sử dụng mật khẩu hiện có hoặc thông tin đăng nhập QR doanh nghiệp, sau đó quay lại. Phần phụ trợ của trang web trao đổi mã ủy quyền một lần cho ID người dùng, tài khoản và tên hiển thị.",
+          "Để ngừng tích hợp, hãy xóa URL của nó và lưu lại. Danh sách cho phép trống sẽ vô hiệu hóa ủy quyền đăng nhập của bên thứ ba; mã đang chờ xử lý cho các địa chỉ đã xóa sẽ trở nên không hợp lệ ngay lập tức."
+        ],
+        "tips": [
+          "Lệnh gọi lại hỗ trợ HTTP/HTTPS, không phải ký tự đại diện, đoạn, thông tin xác thực được nhúng hoặc mã đặt trước, trạng thái hoặc thông số request_id. Sử dụng HTTPS trong sản xuất.",
+          "Nếu lệnh gọi lại không được phép, hãy kiểm tra URL đầy đủ của nó. Nếu mã đã hết hạn hoặc đã được sử dụng, hãy khởi động lại đăng nhập từ trang tích hợp. Các ví dụ về giao thức và khả năng chạy được có trong docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Danh sách cho phép gọi lại của bên thứ ba trong cài đặt Cổng",
+          "caption": "Ảnh chụp màn hình Cổng trình diễn bị cô lập thực sự đang chờ xử lý; không sử dụng tài khoản hàng ngày hoặc cài đặt gọi lại thực tế."
+        }
+      },
+      {
+        "title": "Quản lý hai loại chia sẻ dự án",
+        "steps": [
+          "Mở Chia sẻ trong cài đặt dự án. Định cấu hình địa chỉ Cổng cho phép truy cập Nền tảng. Giao diện cục bộ cũng cung cấp lời mời tham gia dự án từ xa; Trình duyệt từ xa của cổng không thể định cấu hình lời mời cục bộ.",
+          "Đối với lời mời cục bộ, hãy chọn LAN hoặc địa chỉ bên ngoài và thời gian truy cập thiết bị, sau đó tạo và sao chép. Thời hạn tùy chỉnh phải ở trong tương lai; thời hạn đổi quà và hết hạn ủy quyền thiết bị được hiển thị riêng.",
+          "Sau khi nhập vào thiết bị nhận, hãy kiểm tra tên, IP, kết nối và thời hạn sử dụng trong phần Thiết bị được ủy quyền. Thay đổi thời gian hoặc thu hồi khi cần thiết. Thay vào đó, quyền truy cập vào nền tảng sử dụng tài khoản, xuất bản dự án và tài trợ.",
+          "Đối với một tác vụ, hãy chọn chế độ, mật khẩu và tiêu đề trong cửa sổ Chia sẻ của nó. Cả hai chia sẻ Local và Gateway đều mặc định là bảy ngày và cho phép tối đa là 90. Kiểm tra trong một trình duyệt riêng, sau đó quản lý hoặc thu hồi từ cửa sổ ban đầu."
+        ],
+        "tips": [
+          "Việc chia sẻ tác vụ cục bộ thông qua Cổng được kết nối yêu cầu danh tính nền tảng hợp lệ. Chỉ một địa chỉ hoặc thông tin xác thực trên máy tính để bàn không mang lại quyền cho nền tảng.",
+          "Liên kết tác vụ cục bộ sử dụng địa chỉ máy chủ; Cổng chia sẻ sử dụng địa chỉ được nền tảng trả về. Không bao giờ xuất bản thông tin đăng nhập của lời mời, chia sẻ liên kết hoặc mật khẩu trong ảnh chụp màn hình.",
+          "Cả hai loại đều hỗ trợ hết hạn. Cổng có thể yêu cầu đăng nhập; Chia sẻ Cổng tương tác phải yêu cầu nó và sử dụng thông tin đăng nhập thay vì khóa truy cập. Kiểm tra các trường trong cửa sổ chia sẻ hiện tại."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Tab chia sẻ truy cập từ xa và thời gian ủy quyền thiết bị",
+          "caption": "Khi không có Cổng được cấu hình, Truy cập từ xa sẽ được hiển thị. Không có thiết bị nào được ủy quyền và không có lời mời nào được tạo."
+        }
+      },
+      {
+        "title": "Chuyển đổi thiết bị và kiểm tra thông báo tổng hợp",
+        "steps": [
+          "Nhập không gian làm việc của thiết bị được ủy quyền trên nền tảng, sau đó sử dụng các tab thiết bị trên cùng để chuyển sang thiết bị trực tuyến khác.",
+          "Mỗi tài khoản và thiết bị đều ghi nhớ trang dự án, nhiệm vụ hoặc phiên cuối cùng trong trình duyệt này. Việc quay lại vẫn kiểm tra ủy quyền và không bỏ qua các mục tiêu không thể truy cập.",
+          "Các dự án từ xa chỉ tải khi được chọn. Sau khi tải không thành công hoặc ngắt kết nối, hãy nhấp lại vào dự án hiện tại để làm mới theo cách thủ công; các thiết bị không được thăm dò liên tục ở chế độ nền.",
+          "Mở Trung tâm thông báo để xem bản tóm tắt hoàn thành hoặc lỗi từ các thiết bị được ủy quyền. Bấm để mở nhiệm vụ hoặc phiên. Tin nhắn trực tiếp trên Workspace vẫn thuộc về thiết bị hiện tại.",
+          "Sử dụng nền tảng Return to Gateway để chọn thiết bị khác. Lệnh gọi lại ủy quyền trình duyệt đã hết hạn khởi động lại đăng nhập; sau khi hủy ủy quyền máy tính để bàn, hãy thử lại theo cách thủ công hoặc quay lại không gian làm việc cục bộ."
+        ],
+        "tips": [
+          "Bộ nhớ trang là cục bộ của trình duyệt, không được đồng bộ hóa giữa các trình duyệt. Access hoạt động mà không cần bộ nhớ trình duyệt nhưng vị trí không được giữ lại.",
+          "Kết nối lại theo lời nhắc đối với các thiết bị ngoại tuyến, ủy quyền bị thu hồi hoặc lỗi mạng. Vị trí đã lưu không thay thế quyền.",
+          "Ảnh chụp màn hình tab thiết bị thực và thông báo tổng hợp từ dự án trình diễn cố định vẫn đang chờ xử lý."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Tab thiết bị và trung tâm thông báo tổng hợp",
+          "caption": "Ảnh chụp màn hình thực đang chờ xử lý: chuyển đổi thiết bị, khôi phục vị trí và điều hướng thông báo; vẫn chưa bị bắt."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Bot kênh và thông báo nhóm",
+    "summary": "Định cấu hình WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack hoặc QQ, phân biệt trò chuyện với thông báo Webhook.",
+    "sections": [
+      {
+        "title": "Chọn một kênh và kết nối một nền tảng mới",
+        "steps": [
+          "Mở Cài đặt → Kênh bot, chọn một nền tảng ở bên trái và nhập tên, thông tin xác thực và dự án cục bộ mặc định ở bên phải. Kích hoạt và lưu. Các bí mật trống sẽ giữ lại các giá trị hiện có khi chỉnh sửa; kiểm tra các thay đổi chưa được lưu trước khi chuyển đổi. Đóng cài đặt, nhấn Escape hoặc chuyển đổi phần cài đặt sẽ yêu cầu xác nhận khi các thay đổi chưa được lưu; việc hủy bỏ sẽ giữ nguyên bản nháp.",
+          "Đối với Feishu hoặc Lark, hãy tạo một ứng dụng doanh nghiệp tùy chỉnh có hỗ trợ bot và nhập App ID và App Secret. Sau khi kết nối, hãy bật các sự kiện kết nối dài, đăng ký im.message.receive_v1 và card.action.trigger, định cấu hình quyền đối với tin nhắn/thẻ và xuất bản. Gửi tin nhắn riêng tư hoặc đề cập đến bot trong một nhóm.",
+          "Đối với Telegram, hãy tạo bot bằng BotFather và nhập Bot Token của nó. Bỏ phiếu dài được sử dụng; không có chương trình nào khác có thể thăm dò bot đó cùng một lúc. Trước tiên, quản trị viên phải xóa mọi Webhook hiện có. Gửi văn bản riêng tư hoặc đề cập/trả lời nó theo nhóm.",
+          "Đối với Discord, hãy nhập Application ID và Bot Token, bật Message Content Intent và cấp quyền đọc/gửi kênh. Đề cập đến bot trong các kênh máy chủ; liên kết các tác vụ bằng cách sử dụng ID kênh hoặc luồng.",
+          "Đối với Slack, hãy bật Socket Mode và nhập App ID, App-Level Token có connections:write và Bot Token. Định cấu hình chat:write, app_mentions:read và im:history, đăng ký app_mention và message.im, sau đó cài đặt. Mời bot trước khi đề cập đến nó trong các kênh.",
+          "Đối với QQ, hãy tạo bot chính thức trên Nền tảng mở QQ, chọn quyền truy cập WebSocket và bật các sự kiện tin nhắn riêng tư/nhóm. Nhập App ID, App Secret và dự án cục bộ mặc định, bật và lưu. Gửi văn bản riêng tư hoặc đề cập đến bot trong một nhóm. Sau khi nhận được tin nhắn, hãy liên kết các tác vụ bằng group_openid và định cấu hình danh sách cho phép bằng OpenID của thành viên, không phải tài khoản QQ hoặc số nhóm. Chỉ văn bản; câu trả lời thụ động có giới hạn về thời gian và số lượng. Đọc kết quả dài trong WorkStep.",
+          "Quay lại WorkStep để kiểm tra các kết nối và phiên kênh, sau đó liên kết các tác vụ nếu cần. Đối với các lỗi, hãy kiểm tra khu vực, thông tin xác thực, quyền nền tảng và mạng phụ trợ."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack và QQ hiện chỉ hỗ trợ văn bản. Quay lại WorkStep để dừng, trả lời quyền, xác nhận và xem xét đề xuất; hình ảnh, tập tin và thẻ tương tác không được hứa hẹn.",
+          "Thử nghiệm nền tảng mới sử dụng khung mô phỏng. Việc cài đặt, quyền và nhắn tin thực sự của người thuê vẫn yêu cầu thử nghiệm tích hợp. Giữ bí mật, mã thông báo đầy đủ và ID nhóm riêng tư khỏi ảnh chụp màn hình."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Bộ chọn kênh và trình chỉnh sửa bot riêng biệt",
+          "caption": "Ảnh chụp màn hình thực tế không có thông tin xác thực của bố cục đa kênh mới đang chờ xử lý. Hình thức cũ không đại diện cho nó."
+        }
+      },
+      {
+        "title": "Chỉ gửi thông báo đến các nhóm Feishu hoặc Lark",
+        "steps": [
+          "Trong Móc luồng công việc → Móc thông báo của trang nhiệm vụ, thêm mục tiêu nhóm bot Feishu hoặc Lark và dán Webhook URL tùy chỉnh hoàn chỉnh cho khu vực đó.",
+          "Nếu tính năng ký được bật, hãy nhập bí mật ký của bot đó, không phải App ID hoặc App Secret. Định cấu hình các từ khóa, sự kiện và mẫu Markdown cần thiết, lưu và kiểm tra mô phỏng.",
+          "Xác nhận nhóm người nhận trước khi gửi bài kiểm tra và kiểm tra hồ sơ giao hàng. Bản xem trước không gửi gì cả; sau thời gian chờ, hãy kiểm tra nhóm trước khi thử lại."
+        ],
+        "tips": [
+          "Webhooks chỉ gửi các sự kiện trong quy trình làm việc và không nhận cuộc trò chuyện nhóm. Sử dụng bot ứng dụng để trò chuyện hai chiều."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Thông báo Feishu hoặc Lark URL, chữ ký và mẫu",
+          "caption": "Cấu hình không có thông tin xác thực và ảnh chụp màn hình xem trước thẻ đang chờ xử lý; giao hàng thực tế không được yêu cầu."
+        }
+      },
+      {
+        "title": "Thêm bot",
+        "steps": [
+          "Mở Cài đặt → Bot kênh, chọn WeCom hoặc DingTalk ở bên trái, thêm bot và đặt tên cho nó.",
+          "Đối với WeCom, hãy chọn kết nối dài trong cài đặt bot thông minh và sao chép Bot ID và Secret. Đối với DingTalk, hãy tạo một ứng dụng, bật bot Stream của nó và sao chép Client ID và Client Secret.",
+          "Chọn một dự án mặc định, kích hoạt kết nối dài, lưu và chờ Connected.",
+          "Thêm bot vào một nhóm, đề cập đến bot đó bằng tin nhắn thử nghiệm, đồng thời kiểm tra cuộc trò chuyện và trả lời trong Trò chuyện kênh của dự án."
+        ],
+        "tips": [
+          "Chỉ nhập bí mật trong cài đặt, không nhập ảnh chụp màn hình hoặc tin nhắn. Để biết lỗi kết nối, hãy kiểm tra chế độ nền tảng, thông tin xác thực và mạng phụ trợ.",
+          "Thẻ nút DingTalk yêu cầu quyền tạo, phân phối và cập nhật. Mẫu tùy chỉnh phải khớp với các trường được mô tả trong giao diện."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Cũ Thêm biểu mẫu bot trước khi nhập thông tin xác thực",
+          "caption": "Biểu mẫu cũ chỉ minh họa tên, thông tin xác thực và các trường dự án mặc định. Nó chưa được lưu hoặc kết nối; danh sách nền tảng mới bên trái vẫn cần ảnh chụp màn hình."
+        }
+      },
+      {
+        "title": "Liên kết một nhóm nhiệm vụ và xử lý các đánh giá",
+        "steps": [
+          "Mở Bind BOT trong chi tiết nhiệm vụ và chọn bot đã bật.",
+          "Đề cập đến nó một lần trong nhóm, sau đó chọn nhóm trong Nhóm đã nhận gần đây. Hoặc dán ID nhóm đã biết, xác minh tác vụ hiện tại và liên kết.",
+          "Nhóm câu hỏi nhập điều phối viên của nhiệm vụ đó. Kiểm tra kết quả giai đoạn và chuyển tiếp tệp đính kèm.",
+          "Khi thẻ đánh giá hoặc câu hỏi xuất hiện, hãy đọc trước khi hành động và quay lại WorkStep để xác minh nếu cần. Hủy liên kết khi không còn cần thiết."
+        ],
+        "tips": [
+          "Dự án mặc định xử lý trò chuyện kênh không bị ràng buộc với một tác vụ. Các ràng buộc nhóm xác định tác vụ nào nhận được tin nhắn của nhóm đó.",
+          "Việc lưu trữ hoặc xóa một tác vụ sẽ loại bỏ các ràng buộc; việc khôi phục yêu cầu phải chỉnh lại. Kết xuất nút phụ thuộc vào ứng dụng khách kênh. Nếu không có sẵn, hãy thực hiện chi tiết nhiệm vụ."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Hộp thoại tác vụ BOT không có nhóm ràng buộc",
+          "caption": "Chọn một bot và nhóm gần đây, sau đó nhập và liên kết mã nhận dạng của nó. Chưa có nhóm nhiệm vụ nào bị ràng buộc."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Hộp cát dành cho máy tính để bàn",
+    "summary": "Chạy phần phụ trợ và công cụ trong một vùng chứa riêng biệt, với các thư mục dự án được liên kết rõ ràng.",
+    "sections": [
+      {
+        "title": "Hoàn thành hướng dẫn hộp cát năm bước",
+        "steps": [
+          "Trên máy tính để bàn, mở Sandbox, mục Cài đặt cuối cùng. Hoàn thành các nhiệm vụ và cuộc hội thoại đang hoạt động cũng như xác minh hỗ trợ ảo hóa; Windows cần WSL2.",
+          "Trước tiên, hãy chọn bộ lưu trữ hộp cát riêng biệt và tải xuống/chuẩn bị phần mềm trợ giúp.",
+          "Thứ hai, hãy kiểm tra hình ảnh và tải xuống hình ảnh phát hành được đề xuất hoặc quét Docker cục bộ đang chạy để tìm hình ảnh WorkStep tương thích.",
+          "Thứ ba chọn thư mục dự án hiện có hoặc mới; thứ tư chọn nhà cung cấp, công cụ và di chuyển tùy chọn; thứ năm kiểm tra bản tóm tắt và lưu hoặc xác nhận và khởi động lại."
+        ],
+        "tips": [
+          "Liên kết một dự án không sao chép các tập tin của nó. Chỉnh sửa hộp cát vẫn ảnh hưởng đến thư mục gốc. Không chạy cùng một dự án trong cả hai môi trường cùng một lúc.",
+          "Các dự án chưa liên kết sẽ tạm thời bị ẩn chứ không bị xóa. Thư mục hộp cát và dự án không thể chứa nhau."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Lựa chọn và xác nhận dự án trong hướng dẫn sandbox năm bước",
+          "caption": "Kiểm tra lưu trữ, liên kết dự án và di chuyển cấu hình."
+        }
+      },
+      {
+        "title": "Chuyển đổi chế độ và duy trì cấu hình",
+        "steps": [
+          "Sau khi khởi động lại, hãy kiểm tra huy hiệu thanh bên chế độ Hộp cát để xác minh môi trường thực tế.",
+          "Kiểm tra lại địa chỉ nhà cung cấp, cài đặt động cơ và đăng nhập. Máy chủ localhost có ý nghĩa khác trong vùng chứa và đường dẫn có thể cần điều chỉnh.",
+          "Trước khi nhập hoặc thay đổi thư mục, hãy tắt hộp cát và khởi động lại, sau đó sử dụng tính năng quản lý hộp cát. Đọc chi tiết sao lưu và thay thế trước khi nhập.",
+          "Vô hiệu hóa hộp cát và khởi động lại để trở về chế độ bình thường. Đối với lỗi, hãy mở thư mục nhật ký và kiểm tra tiến trình cũng như lỗi."
+        ],
+        "tips": [
+          "Chế độ thông thường và hộp cát duy trì cấu hình riêng biệt. Việc chuyển đổi không tự động đồng bộ hóa các thay đổi.",
+          "Chỉ xem xét các quyền tương thích nếu hộp cát bên trong của công cụ không thể chạy; giao diện giải thích sự cô lập giảm. Việc xóa dữ liệu hộp cát là không thể đảo ngược: trước tiên hãy kiểm tra những gì sẽ được giữ lại."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Cài đặt chung và khắc phục sự cố",
+    "summary": "Hiểu phạm vi cấu hình, đọc trạng thái và lỗi trước, sau đó thực hiện các sửa chữa có mục tiêu.",
+    "sections": [
+      {
+        "title": "Kiểm tra phiên bản máy tính để bàn và tải xuống các bản cập nhật",
+        "steps": [
+          "Trên máy tính để bàn, mở Cài đặt → Cài đặt hệ thống → Cập nhật màn hình để kiểm tra phiên bản hiện tại.",
+          "Nhấp vào Kiểm tra bản cập nhật để tìm bản phát hành GitHub chính thức mới nhất. Nếu mới hơn, hãy nhấp vào Tải xuống từ GitHub.",
+          "Chọn trình cài đặt hệ thống của bạn trên trang phát hành, hoàn thành công việc đang hoạt động và tự cài đặt nó."
+        ],
+        "tips": [
+          "Máy tính để bàn sẽ kiểm tra mỗi ngày một lần mà không tự động tải xuống, cài đặt hoặc khởi động lại. Chỉ Bản phát hành chính thức mới hơn mới kích hoạt bản cập nhật, không phải bản đẩy mã hoặc bản nháp.",
+          "Hãy thử lại những lần kiểm tra không thành công sau. Phiên bản web không có mục cập nhật máy tính để bàn."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Phiên bản máy tính để bàn hiện tại và mục kiểm tra cập nhật trong cài đặt hệ thống",
+          "caption": "Kiểm tra thủ công, sau đó tải xuống từ GitHub khi có bản cập nhật."
+        }
+      },
+      {
+        "title": "Đồng thời, hỗ trợ và hiển thị",
+        "steps": [
+          "Khi chạy nhiều tác vụ, hãy đặt tác vụ và khả năng hội thoại trong giới hạn Đồng thời toàn cầu hoặc cấu hình dự án, đồng thời kiểm tra các giá trị hiệu quả.",
+          "Nếu các tác vụ đã lên lịch không tiêu tốn dung lượng, hãy xác minh đủ nguồn lực trước khi bật tùy chọn đó. Nhiệm vụ dư thừa và hàng đợi trò chuyện.",
+          "Định cấu hình động cơ và kiểu máy của từng trợ lý trong Trợ lý. Kiểm tra riêng cài đặt thực hiện bước và điều phối tác vụ.",
+          "Thay đổi tên người dùng trong cài đặt hệ thống. Ngôn ngữ, phông chữ, kích thước và giao diện nằm trong Cài đặt → Giao diện; phạm vi quét kho lưu trữ nằm trong cài đặt Git."
+        ],
+        "tips": [
+          "Việc thay đổi công cụ thực thi mặc định sẽ ảnh hưởng đến các bước và nhiệm vụ mới, chứ không ảnh hưởng đến cài đặt bước hoặc nhiệm vụ hiện có."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Giới hạn đồng thời của cuộc trò chuyện và nhiệm vụ chung",
+          "caption": "Đặt năng lực toàn cầu và ngoại lệ tác vụ theo lịch trình."
+        }
+      },
+      {
+        "title": "Khắc phục sự cố theo thứ tự",
+        "steps": [
+          "Nếu một tác vụ không bắt đầu, hãy phân biệt các trạng thái sẵn sàng, xếp hàng và chờ xem xét. Kiểm tra bước khởi động, khởi động tự động và tính khả dụng của động cơ.",
+          "Khi thực thi không thành công, hãy đọc lỗi mới nhất. Kiểm tra cài đặt SDK, xác thực nhà cung cấp, tên model, quyền truy cập mạng và tệp, sau đó chạy lại.",
+          "Đối với lỗi tải lịch sử hoặc API, hãy sử dụng Thử lại. Nếu API trả về một trang web, hãy xác nhận phiên bản phụ trợ và khởi động lại bằng phương pháp thông thường của bạn.",
+          "Nếu lịch sử phiên gốc bị mất, hãy đọc Chạy lại với phiên mới, cung cấp các mục tiêu hiện tại và các tham chiếu tạo tác bắt buộc, đồng thời không coi đó là khôi phục hoàn toàn theo ngữ cảnh gốc.",
+          "Đối với các thành phần bị thiếu hoặc lỗi truy cập từ xa, hãy kiểm tra việc tạo tệp thực tế hoặc tính khả dụng của máy chủ, địa chỉ, khóa và hết hạn ủy quyền tương ứng."
+        ],
+        "tips": [
+          "Khi báo cáo sự cố, hãy bao gồm phiên bản, hệ điều hành, công cụ, các bước sao chép và ảnh chụp màn hình lỗi đã được xử lý lại, không bao giờ bao gồm thông tin xác thực. Nếu không có cài đặt rõ ràng, 20 phút liên tục không có sự kiện động cơ sẽ kích hoạt thời gian chờ không hoạt động trong khi vẫn giữ phiên. Thời gian chờ tùy chỉnh hiện tại vẫn còn; 0 vô hiệu hóa nó. Suy nghĩ thầm lặng hoặc các công cụ không nhất thiết bị đình trệ: kiểm tra nhật ký trước khi chạy lại."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Lỗi trình diễn do mô hình không tồn tại",
+          "caption": "Lỗi cho biết mô hình đã chọn không được hỗ trợ. Sửa cấu hình mô hình của bước trước khi chạy lại; nó không được sửa chữa trong hình ảnh này."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Ngoại hình, giao diện và ngôn ngữ",
+    "summary": "Chọn tùy chọn hiển thị cá nhân hoặc tạo giao diện và gói ngôn ngữ có thể xem trước thông qua trò chuyện dự án thông thường.",
+    "sections": [
+      {
+        "title": "Chọn ngôn ngữ tích hợp",
+        "steps": [
+          "Trong Cài đặt → Giao diện, chọn Tiếng Trung giản thể, Tiếng Trung phồn thể, Tiếng Anh, Tiếng Nhật, Tiếng Pháp, Tiếng Đức hoặc Tiếng Ả Rập và kiểm tra các mục nhập phổ biến và điều khiển ngày.",
+          "Dùng bộ chọn ngôn ngữ ở đầu trang web và hướng dẫn sử dụng để chọn tiếng Nhật, tiếng Trung phồn thể, tiếng Hàn hoặc ngôn ngữ khác. Trình duyệt lưu lựa chọn; nếu chưa có tùy chọn đã lưu, ngôn ngữ của trình duyệt sẽ được sử dụng."
+        ],
+        "tips": [
+          "Bản dịch ứng dụng tiếng Pháp, tiếng Đức và tiếng Ả Rập hiện bao gồm các mục chính; các chuỗi khác có thể vẫn là tiếng Trung và bố cục tiếng Ả Rập của ứng dụng vẫn từ trái sang phải. Trang web và văn bản hướng dẫn sử dụng tuân theo bộ chọn ngôn ngữ hàng đầu, với bố cục tiếng Ả Rập từ phải sang trái. Ảnh chụp màn hình thực vẫn là tiếng Trung Quốc. Chuyển đổi ngôn ngữ không dịch các cuộc hội thoại trong quá khứ hoặc tệp người dùng."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Bộ chọn ngôn ngữ tích hợp trong ứng dụng và trang web",
+          "caption": "Ảnh chụp màn hình thực sự của các lựa chọn ngôn ngữ được thêm đang chờ xử lý."
+        }
+      },
+      {
+        "title": "Sử dụng bố cục giao diện v2 và tiện ích mở rộng tính năng",
+        "steps": [
+          "Trong Cài đặt → Giao diện, cài đặt và xác thực giao diện v2 đáng tin cậy, xem trước và áp dụng nó. Đối với các tính năng như ghi chú, hãy yêu cầu tác giả trong cuộc trò chuyện về tạo giao diện để đưa vào các thành phần.",
+          "Đọc xác nhận kích hoạt cho các gói có mã. Cập nhật gói hoặc thay đổi danh tính có thể yêu cầu lại. Mở các bảng thông qua menu hoặc mục tính năng của giao diện, tùy thuộc vào gói. Ghi chú hoặc lịch không phải là tính năng ứng dụng được cài đặt sẵn.",
+          "Gói có thể định vị nhà soạn nhạc ở trên, dưới, trái hoặc phải. Chế độ xem nhỏ gọn giữ lại sự sắp xếp theo chiều dọc. Sau khi chuyển đổi, hãy kiểm tra tin nhắn, trình soạn thảo và cài đặt vẫn có thể sử dụng được.",
+          "Dữ liệu tiện ích mở rộng được phân tách theo danh tính, thiết bị, giao diện và tính năng của trình duyệt. Việc chuyển đổi hoặc xóa một giao diện không xóa được giao diện đó. Sử dụng bản xuất riêng của tiện ích mở rộng để sao lưu. Nếu giao diện bị hỏng, hãy thêm skin=default vào URL và làm mới."
+        ],
+        "tips": [
+          "Mã thành phần có các đặc quyền của trang hiện tại. Chỉ kích hoạt các nguồn đáng tin cậy. Việc hủy xem trước sẽ khôi phục giao diện nhưng không hoàn tác mã đã được thực thi.",
+          "Dữ liệu mở rộng không được bao gồm trong xuất khẩu ZIP giao diện hoặc được đồng bộ hóa giữa các trình duyệt/thiết bị. Sao lưu trước khi xóa bộ nhớ; việc lưu không thành công không được coi là thành công."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Xác nhận kích hoạt thành phần v2 và mục nhập bảng tính năng",
+          "caption": "Ảnh chụp màn hình thực thi thực sự của gói trình diễn đáng tin cậy đang chờ xử lý. Xác thực định dạng không phải là sự chấp nhận trực quan."
+        }
+      },
+      {
+        "title": "Chọn và lưu diện mạo cá nhân",
+        "steps": [
+          "Để truy cập toàn bộ thiết bị, hãy mở Cài đặt → Giao diện. Người dùng được ủy quyền của dự án nhập Giao diện và giao diện từ thanh bên.",
+          "Chọn phông chữ, kích thước và ngôn ngữ. Tìm kiếm hoặc lọc giao diện đã cài đặt, xem trước rồi áp dụng. Thanh xem trước cố định cho phép bạn hủy hoặc xác nhận.",
+          "Các lựa chọn của người dùng Cổng xác thực được lưu trên mỗi tài khoản và thiết bị, khôi phục trong một trình duyệt khác trên cùng một thiết bị. Thử lại lần lưu không thành công. Các lựa chọn cục bộ không cần đăng nhập nền tảng vẫn còn trong trình duyệt này."
+        ],
+        "tips": [
+          "Các gói và bản ghi tạo được chia sẻ trên thiết bị; lựa chọn cá nhân bị cô lập. Người dùng được ủy quyền của dự án chỉ có thể chọn các gói đã cài đặt.",
+          "Các gói bị thiếu hoặc bị hỏng sẽ trở về giao diện mặc định. Thêm ?skin=default hoặc ?lingu=default để khôi phục giao diện mặc định hoặc tiếng Trung giản thể."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Phông chữ, kích thước, ngôn ngữ và giao diện được cài đặt trong Giao diện",
+          "caption": "Trang cài đặt thực hiển thị các giá trị mặc định và ví dụ tích hợp ở bên phải. Không có sở thích cá nhân nào được thay đổi."
+        }
+      },
+      {
+        "title": "Tạo giao diện và ngôn ngữ thông qua trò chuyện",
+        "steps": [
+          "Với quyền quản lý máy chủ, hãy nhấp vào Hãy thảo luận về giao diện, chọn công cụ đã cài đặt, đã xác minh và mô tả mục tiêu, chẳng hạn như: Tạo giao diện tối màu, giữ nguyên bố cục và sử dụng mũi tên gửi lên trên.",
+          "Trò chuyện ở bên trái, chỉnh sửa và xem trước ở bên phải; điện thoại chuyển tab. Điều chỉnh tên, màu sắc, phông chữ, kích thước, biểu tượng gửi và bố cục, sau đó Lưu các điều chỉnh vào cùng một gói dự thảo. Chỉnh sửa bị vô hiệu hóa trong khi trò chuyện đang chạy. Kiểm tra bản xem trước trên PC và điện thoại.",
+          "Đối với gói ngôn ngữ, hãy hỏi trong cùng một cuộc trò chuyện, ví dụ: Thêm tiếng Tây Ban Nha mà vẫn giữ nguyên hình thức. Chuyển bên phải sang Ngôn ngữ. Nó tải sau khi tạo; sử dụng Đọc và xác thực để kiểm tra thư mục, mức độ phù hợp, các chuỗi bị thiếu và ví dụ.",
+          "Đối với giao diện, hãy nhấp vào Lưu giao diện và xem trước; đối với ngôn ngữ, Cài đặt và xem trước. Xác nhận hoặc hủy trong thanh xem trước. Việc lưu vào thư viện không xác nhận đơn đăng ký cá nhân. Xuất ZIP để sử dụng lại và kiểm tra lời nhắc thay thế đối với các bản cập nhật hoặc nhập cùng ID."
+        ],
+        "tips": [
+          "Sáng tạo sử dụng lại dự án Runtime cố định và trò chuyện thông thường, gọi mô hình của bạn. Tiếp tục công việc trước đó thông qua Lịch sử hội thoại phía trên cửa sổ. Bản thân các ví dụ xem trước không chạy các tác vụ.",
+          "Phông chữ sử dụng phông chữ hệ thống được cài đặt. Các tin nhắn và tập tin lịch sử không được dịch tự động. Các biểu tượng gửi tích hợp có thể được chọn trong các điều chỉnh; các biểu tượng vectơ tùy chỉnh phải được cung cấp bởi một bản nháp đã được xác thực.",
+          "Gói ngôn ngữ độc lập với giao diện và hiện hỗ trợ các ngôn ngữ từ trái sang phải. Thiếu chuỗi và điều khiển ngày sử dụng dự phòng tích hợp được chỉ định. Nội dung không chứng minh được chất lượng bản dịch; sử dụng trò chuyện để cập nhật danh mục chuỗi lỗi thời."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Các khu vực trò chuyện và chỉnh sửa/xem trước trong quá trình tạo giao diện",
+          "caption": "Một cuộc trò chuyện tạo và điều chỉnh trống được ủy quyền. Trình soạn thảo của nó đã được điền sẵn; không có tin nhắn nào được gửi, mẫu chạy hoặc giao diện được lưu."
+        }
+      },
+      {
+        "title": "Đọc và xem trước gói ngôn ngữ",
+        "steps": [
+          "Chuyển phía bên phải của studio xuất hiện sang Ngôn ngữ và kiểm tra thư mục Gói ngôn ngữ. Tạo thông qua cùng một cuộc trò chuyện hoặc nhập ngôn ngữ hiện có ZIP.",
+          "Các gói được tạo sẽ tự động tải. Đọc và xác thực phạm vi kiểm tra, các chuỗi bị thiếu và ví dụ. Thông báo chờ tạo thư mục trống có nghĩa là quá trình tạo chưa hoàn tất.",
+          "Sau khi xác thực, Cài đặt và xem trước, sau đó xác nhận hoặc hủy ứng dụng cá nhân. Nội dung đưa tin không thể thay thế việc đánh giá chất lượng bản dịch."
+        ],
+        "tips": [
+          "Hiện chỉ hỗ trợ các ngôn ngữ từ trái sang phải. Điều khiển ngày và chuỗi bị thiếu sử dụng dự phòng tích hợp được chỉ định của gói."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Thư mục ngôn ngữ và mục xác thực trong cuộc trò chuyện tạo trống",
+          "caption": "Tab Ngôn ngữ cung cấp thư mục, Đọc và xác thực và nhập ZIP. Không có gói ngôn ngữ nào được tạo, cài đặt hoặc áp dụng."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Kiểm tra hoạt động từ xa của dự án",
+    "summary": "Kiểm tra hành động của khách truy cập từ xa và xem họ đã thành công, bị từ chối hay thất bại.",
+    "sections": [
+      {
+        "title": "Lọc và kiểm tra các hoạt động từ xa",
+        "steps": [
+          "Trên thiết bị lưu trữ dự án, hãy mở Cấu hình → Kiểm tra hoạt động của dự án cục bộ. Các dự án từ xa, không gian làm việc của Gateway và quyền truy cập theo dự án không cung cấp tab này.",
+          "Lọc theo hành động và kết quả, sau đó kiểm tra tác nhân, thời gian, nguồn và nhiệm vụ, quy trình làm việc hoặc mã định danh tệp.",
+          "Chuyển đến trang tiếp theo hoặc trang đầu tiên, làm mới các bản ghi mới nhất và thử tải lại không thành công."
+        ],
+        "tips": [
+          "Quá trình kiểm tra này bao gồm các hành động nguồn từ xa và các kết quả bị từ chối/không thành công, không phải các cuộc trò chuyện đầy đủ và không lưu trữ thông tin xác thực. API chỉ có cục bộ trên máy chủ. Thời gian lưu giữ mặc định là 30 ngày; theo dõi thời lượng thực tế của trang. Tên thật của khách truy cập chia sẻ công khai vẫn chưa được biết; Trình duyệt từ xa (tự khai báo danh tính) không xác thực được danh tính."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Bộ lọc kiểm tra và bản ghi trống cho một dự án cục bộ",
+          "caption": "Các bộ lọc mục nhập và hành động/kết quả kiểm tra cục bộ thực tế. Không có bản ghi từ xa nào tồn tại trong dự án trình diễn; không có hành động hoặc danh tính nào được tạo ra."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Câu hỏi thường gặp",
+    "summary": "Hiểu các công cụ, dịch vụ mô hình, thay đổi tệp và ranh giới khôi phục trước khi bắt đầu.",
+    "sections": [
+      {
+        "title": "SDK và CLI khác nhau như thế nào và tôi nên bắt đầu với cái nào?",
+        "steps": [
+          "Cả hai đều là phương pháp tích hợp động cơ cho khả năng của mô hình. SDK tích hợp thông qua API của nhà phát triển; CLI chạy các chương trình dòng lệnh. Không phải là tên mẫu.",
+          "Bắt đầu bằng cách cài đặt Codex SDK hoặc Claude Agent SDK, xác thực hoàn tất, chọn và xác minh một mô hình, sau đó đặt nó làm công cụ thực thi mặc định. Người dùng CLI hiện tại có thể chọn động cơ đó để thay thế.",
+          "Nhà cung cấp cung cấp địa chỉ dịch vụ và xác thực, mô hình xác định những gì xử lý yêu cầu và công cụ cung cấp phiên, công cụ và khả năng thực thi. Thực hiện theo hình thức của động cơ đã chọn; thông tin xác thực không nhất thiết có thể thay thế cho nhau."
+        ],
+        "tips": [
+          "Quá trình cài đặt SDK chỉ thiết lập các phần phụ thuộc thời gian chạy chứ không thiết lập xác thực, quyền hoặc hạn ngạch. Phân biệt các mục Codex và Claude Code SDK với các mục được đánh dấu CLI."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "Lựa chọn SDK và CLI trong cài đặt động cơ",
+          "caption": "Kiểm tra các động cơ SDK được đề xuất cũng như trạng thái xác minh và lắp đặt riêng biệt của chúng."
+        }
+      },
+      {
+        "title": "Các cuộc gọi phần mềm và mô hình được tính phí như thế nào?",
+        "steps": [
+          "Kiểm tra gói, xác thực và hạn ngạch của dịch vụ mô hình đã chọn trước khi thực hiện một nhiệm vụ nhỏ ban đầu. Bản thân SDK không phải là tín dụng mẫu.",
+          "Thực hiện nhiệm vụ, đánh giá tự động, hỗ trợ và thử lại đều có thể gọi mô hình. Kiểm tra các mô hình riêng biệt trong cài đặt từng bước, xem xét và trợ lý.",
+          "Sử dụng phân tích thực hiện để kiểm tra mức sử dụng và nguồn chi phí. Các ước tính giúp giải thích mức tiêu thụ; khoản phí cuối cùng tuân theo các quy tắc và hóa đơn của nhà cung cấp dịch vụ."
+        ],
+        "tips": [
+          "Đừng cho rằng việc tải xuống SDK hoặc đăng nhập sẽ giúp thực hiện cuộc gọi miễn phí hoặc một đăng ký sẽ áp dụng cho mọi công cụ."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Việc sử dụng mã thông báo và nguồn chi phí trong phân tích thực thi",
+          "caption": "Chi phí và phạm vi bảo hiểm do nhà cung cấp báo cáo được hiển thị. Chi phí ước tính chỉ được gắn nhãn khi ước tính giá được sử dụng thực sự."
+        }
+      },
+      {
+        "title": "Dữ liệu được lưu trữ ở đâu và AI có thể sửa đổi các tệp của tôi không?",
+        "steps": [
+          "Các tác vụ, quy trình công việc và thông báo cục bộ được lưu trữ trong dự án .workstep theo mặc định. Vô hiệu hóa thư mục Dữ liệu theo thư mục dự án sử dụng ~/.workstep/projects/<项目ID>/. .workstep/project.json của dự án liên kết lại dữ liệu gốc.",
+          "Các yêu cầu và ngữ cảnh được công cụ đọc có thể được gửi đến dịch vụ mô hình đã định cấu hình của bạn. Các kênh, chia sẻ và truy cập từ xa cũng tiết lộ thông tin trong phạm vi được ủy quyền cho các bên tương ứng.",
+          "AI có quyền ghi có thể sửa đổi các tệp dự án. Thực hành trong một dự án riêng biệt, kiểm tra quyền trước khi thực thi và kiểm tra các khác biệt của Git cũng như các tạo phẩm thực tế sau đó.",
+          "Các hiệp hội hộp cát vẫn sửa đổi các tệp được gắn ban đầu. Nhiệm vụ Worktree cung cấp các thư mục riêng biệt, nhưng kết quả hợp nhất vẫn cần được kiểm tra."
+        ],
+        "tips": [
+          "Bộ nhớ cục bộ không có nghĩa là cuộc gọi mô hình ngoại tuyến. Loại bỏ các khóa, thông tin xác thực tài khoản và các tệp nhạy cảm không liên quan khỏi phần mô tả nhiệm vụ, tệp đính kèm và ảnh chụp màn hình."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Bảng chế độ quyền hội thoại trên điện thoại",
+          "caption": "Mặc định, Chỉ đọc, Ghi trong không gian làm việc và các lựa chọn khác được liệt kê. Hỗ trợ và hành vi thực tế phụ thuộc vào động cơ."
+        }
+      },
+      {
+        "title": "Việc dừng, thử lại, làm lại và khôi phục khác nhau như thế nào?",
+        "steps": [
+          "Việc dừng làm gián đoạn quá trình thực thi hiện tại hoặc phản hồi nhưng không hoàn tác các tệp đã được ghi. Kiểm tra kết quả hiện có trước khi tiếp tục.",
+          "Việc thử lại hoặc chạy lại sẽ gọi lại công cụ, có thể tiếp tục ngữ cảnh hoặc sử dụng phiên mới như được nhắc. Nó không hoàn nguyên mọi thay đổi về trạng thái trước khi chạy.",
+          "Làm lại sửa các kết quả đầu ra theo phản hồi đánh giá hoặc trả lại kết nối, tùy thuộc vào các giới hạn và phụ thuộc của quy trình làm việc. Đọc xác nhận khi phạm vi chạy lại thay đổi.",
+          "Sau khi mở lại WorkStep, trước tiên hãy kiểm tra trạng thái nhiệm vụ và phiên. Các công cụ hỗ trợ phục hồi có thể tiếp tục phiên gốc của chúng; hồ sơ gốc bị mất yêu cầu một phiên mới và chạy lại."
+        ],
+        "tips": [
+          "Phục hồi tự động phụ thuộc vào động cơ và lịch sử có sẵn. Việc phục hồi hoàn toàn không được đảm bảo cho mọi động cơ hoặc sự gián đoạn."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Đặt lại bước đã chọn trong một tác vụ đã hoàn thành",
+          "caption": "Tác vụ đã hoàn thành này đã chọn Bước đặt lại, chỉ ảnh hưởng đến thông báo bước tiếp theo. Đây không phải là xác nhận xóa hoặc cảnh báo thiếu phiên."
+        }
+      }
+    ]
+  }
+]

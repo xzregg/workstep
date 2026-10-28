@@ -96,13 +96,14 @@ def persist_orphan_stop(task_id, step_key, now, instance_id):
             & (ReviewRun.step_key == step_key)
             & (ReviewRun.status == "running")
         ).execute()
-        workflow_run.status = "failed"
+        workflow_run.status = "stopped"
         workflow_run.ended_at = now
         workflow_run.owner_id = None
         workflow_run.heartbeat_at = None
         workflow_run.save()
 
-    task.status = "paused"
+    task.status = "stopped"
+    task.status_reason = 'user_stop'
     task.state_version += 1
     task.updated_at = now
     task.save()

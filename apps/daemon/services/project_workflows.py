@@ -259,7 +259,7 @@ class ProjectWorkflowService:
     def workflow_has_running_tasks(self, workflow_id: str) -> bool:
         """True when any task of the workflow is currently executing."""
         return Task.select().where(
-            (Task.workflow_id == workflow_id) & (Task.status == "running")
+            (Task.workflow_id == workflow_id) & Task.status.in_(['running', 'waiting'])
         ).exists()
 
     def workflow_has_failed_tasks(self, workflow_id: str) -> bool:

@@ -1,6 +1,7 @@
+import GitActionPanel from './GitActionPanel'
 import Select from '../Select'
 import { useGitApi, useGitActionAllowed } from './GitApiContext'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { type GitRemotes, type GitStatus } from '../../api/git'
 import { useGitStore } from '../../stores/gitStore'
 import { useI18n } from '../../i18n'
@@ -24,14 +25,6 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
   const [error, setError] = useState('')
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; title: string; detail: string } | null>(null)
   const blocked = readOnly ? t('git.remoteReadOnly') : status.operation ? t('git.blocked') : status.active ? t('git.remoteRunning') : !status.branch || !status.head ? t('git.remoteNoCommit') : ''
-
-  useEffect(() => {
-    if (!mode) return
-    const close = (event: MouseEvent) => { if (!root.current?.contains(event.target as Node)) setMode(null) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMode(null) }
-    document.addEventListener('mousedown', close); document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
-  }, [mode])
 
   function applyInventory(value: GitRemotes, action: 'pull' | 'push', preferredRemote?: string) {
     setInventory(value)
@@ -95,7 +88,7 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
   return <span className="git-remote-actions" ref={root}>
     {can('pull') && <Button size="sm" title={blocked || t('git.pullHint')} disabled={!!blocked || !!busy || writes.busy} loading={busy === 'pull'} aria-expanded={mode === 'pull'} onClick={() => void open('pull')}>{busy === 'pull' ? t('git.pulling') : t('git.pullButton')}<Icon name="chevron-down" size={12} /></Button>}
     {can('push') && <Button size="sm" title={blocked || t('git.pushButton')} disabled={!!blocked || !!busy || writes.busy} loading={busy === 'push'} aria-expanded={mode === 'push'} onClick={() => void open('push')}>{busy === 'push' ? t('git.pushing') : t('git.pushButton')}<Icon name="chevron-down" size={12} /></Button>}
-    {mode && <span className="git-remote-panel" role="dialog" aria-label={mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}>
+    {mode && <GitActionPanel anchor={root} label={mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')} onClose={() => setMode(null)}>
       <span className="git-remote-panel__heading"><span><strong>{mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}</strong><small>{mode === 'push' ? t('git.pushDescription') : t('git.pullDescription')}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setMode(null)}><Icon name="x" size={14} /></Button></span>
       {loading && !inventory ? <span className="git-remote-loading"><Icon name="loader-circle" className="git-spin" size={14} />{t('git.remoteLoading')}</span> : <>
         <label>{t('git.remoteSource')}<Select value={remote} onChange={event => selectRemote(event.target.value)}><option value="">{t('git.selectRemote')}</option>{inventory?.remotes.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</Select></label>
@@ -109,7 +102,7 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
         {error && <span className="git-remote-error" role="alert">{error}</span>}
         <span className="git-remote-panel__actions">{can('fetchRemote') && <Button size="sm" loading={loading} disabled={!remote || !!busy || writes.busy} onClick={() => void refreshRemote()}><Icon name="refresh" size={13} />{t('git.fetchRemote')}</Button>}<Button size="sm" variant="primary" loading={!!busy} disabled={!remote || !targetBranch.trim() || !!loading || writes.busy} onClick={() => void run(mode)}>{mode === 'push' ? t('git.pushConfirm') : t('git.pullConfirm')}</Button></span>
       </>}
-    </span>}
+    </GitActionPanel>}
     {notice && <span className={`git-remote-toast git-remote-toast--${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}><span className="git-remote-toast__icon"><Icon name={notice.kind === 'success' ? 'check' : 'x'} size={14} /></span><span><strong>{notice.title}</strong><small>{notice.detail}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setNotice(null)}><Icon name="x" size={13} /></Button></span>}
   </span>
 }

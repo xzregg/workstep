@@ -8,6 +8,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useTaskRecord } from '../hooks/useTaskRecord'
 import { randomUuid } from '../utils/uuid'
+import { hasActiveTaskExecution } from '../utils/taskDisplayStatus'
 import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
 import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
 import Button from '../components/Button'
@@ -77,6 +78,8 @@ type StepVisualState =
   | 'current'
   | 'reviewing'
   | 'awaiting_review'
+  | 'tool_approval'
+  | 'user_input'
   | 'retrying'
   | 'rework'
   | 'rework_waiting'
@@ -402,8 +405,8 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
   }, [historyLoading, historyMessages])
 
   useEffect(() => {
-    if (taskStatus) setRunning(taskStatus === 'running')
-  }, [taskStatus])
+    if (taskStatus) setRunning(hasActiveTaskExecution(task))
+  }, [taskStatus, task?.steps])
 
   // Get steps from project steps
   const steps = useMemo<StepData[]>(() => {
@@ -503,6 +506,8 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
       const status = rawStatuses[index]
       let visualState: StepVisualState = 'pending'
       if (status === 'passed') visualState = 'completed'
+      else if (taskStep?.waiting_reason === 'tool_approval') visualState = 'tool_approval'
+      else if (taskStep?.waiting_reason === 'user_input') visualState = 'user_input'
       else if (status === 'reviewing') visualState = 'reviewing'
       else if (status === 'awaiting_review') visualState = 'awaiting_review'
       else if (status === 'retrying') visualState = 'retrying'

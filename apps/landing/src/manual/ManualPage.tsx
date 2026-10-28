@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, languageDirection } from '../i18n'
 import { getManualChapters, manualGroups, getManualGroups, screenshotUrl } from './content'
 import './manual.css'
 
@@ -35,9 +35,9 @@ export function ManualPage({ chapterId }: { chapterId: string }) {
   const chapters = getManualChapters(lang)
   const chapter = chapters.find(c => c.id === chapterId) ?? chapters[0]
   const index = chapters.indexOf(chapter)
-  const previousArrow = lang === 'ar' ? '→' : '←'
-  const nextArrow = lang === 'ar' ? '←' : '→'
-  return <main className="manual-layout" id="manual" lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+  const previousArrow = languageDirection(lang) === 'rtl' ? '→' : '←'
+  const nextArrow = languageDirection(lang) === 'rtl' ? '←' : '→'
+  return <main className="manual-layout" id="manual" lang={lang} dir={languageDirection(lang)}>
     <aside className="manual-sidebar">
       <a className="manual-home" href="#top">{previousArrow} {t('manual.home')}</a>
       <h1>{t('manual.title')}</h1>

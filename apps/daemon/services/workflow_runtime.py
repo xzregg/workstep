@@ -73,6 +73,7 @@ class WorkflowRuntime:
         self._project_manager = project_manager
         self._runners: dict[str, TaskRunner] = {}
         self._active_tasks: set[asyncio.Task[str]] = set()
+        self._review_resumes: dict[str, WorkflowRunHandle] = {}
         self._operation_locks: dict[str, asyncio.Lock] = {}
         self._step_config = StepExecutionConfigService(
             self._run_db, self._current_workflow_steps, self._operation_locks
@@ -205,6 +206,7 @@ class WorkflowRuntime:
             if task is None:
                 return
             task.status = status
+            task.status_reason = 'concurrency_limit' if status == 'queued' else None
             if status == "queued":
                 from services.messages import current_actor_message_fields
 
@@ -492,7 +494,7 @@ class WorkflowRuntime:
                             project_id=project_id, task_id=task_id,
                             action="step.cancel", result="succeeded",
                             mode="managed" if actor is not None and actor.source == "managed" else "local",
-                            metadata={"step_key": step_key, "status": "paused"},
+                            metadata={"step_key": step_key, "status": "stopped"},
                         )
                     return result
 
@@ -890,19 +892,75 @@ class WorkflowRuntime:
         if decision_data is None:
             return None
         task, workflow_run, steps_config = decision_data
-        for _ in range(100):
-            if task.id not in self._runners:
-                break
+        lock = self._operation_locks.setdefault(task.id, asyncio.Lock())
+        async with lock:
+            pending = self._review_resumes.get(task.id)
+            if pending is not None and not pending._completion.done():
+                return pending
+            runner = self._runners.get(task.id)
+            if runner is None:
+                project = await self._run_db(project_id, lambda project: project)
+                return await self._resume_in_project(
+                    project, task, workflow_run, steps_config,
+                )
+            # Reviewing one stage while its sibling is executing is normal.
+            # Keep the existing batch scheduler and resume once it has retired.
+            completion = asyncio.create_task(
+                self._resume_review_after_batch(project_id, task.id, workflow_run.id, runner),
+                name=f"workflow-run:{workflow_run.id}:review-wait",
+            )
+            handle = WorkflowRunHandle(workflow_run.id, completion)
+            self._review_resumes[task.id] = handle
+            self._active_tasks.add(completion)
+            completion.add_done_callback(
+                functools.partial(self._consume_review_resume, task_id=task.id),
+            )
+            return handle
+
+    def _consume_review_resume(self, completion: asyncio.Task[str], *, task_id: str) -> None:
+        self._active_tasks.discard(completion)
+        pending = self._review_resumes.get(task_id)
+        if pending is not None and pending._completion is completion:
+            self._review_resumes.pop(task_id, None)
+        if not completion.cancelled() and completion.exception() is not None:
+            logger.error("Failed to resume task %s after review", task_id,
+                         exc_info=completion.exception())
+
+    async def _resume_review_after_batch(
+        self, project_id: str, task_id: str, run_id: str, previous_runner: TaskRunner,
+    ) -> str:
+        while self._runners.get(task_id) is previous_runner:
             await asyncio.sleep(0.01)
-        if task.id in self._runners:
-            raise RuntimeError("Task is still finishing the current step")
-        project = await self._run_db(project_id, lambda project: project)
-        return await self._resume_in_project(
-            project,
-            task,
-            workflow_run,
-            steps_config,
-        )
+        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            if (self._graceful_shutdown or task_id in self._runners
+                    or getattr(previous_runner, "_cancel_audit", None)):
+                return run_id
+
+            def load_latest(project):
+                task = Task.get_or_none(Task.id == task_id)
+                run = WorkflowRun.get_or_none(WorkflowRun.id == run_id)
+                if (task is None or run is None or task.active_workflow_run_id != run_id
+                        or task.status in {"stopped", "completed"} or run.status == "stopped"):
+                    return None
+                run.status = "running"
+                run.ended_at = None
+                run.owner_id = self._leases.instance_id
+                run.heartbeat_at = utc_now()
+                run.save(only=[WorkflowRun.status, WorkflowRun.ended_at,
+                               WorkflowRun.owner_id, WorkflowRun.heartbeat_at])
+                return project, task, run, self._current_workflow_steps(project, task)
+
+            latest = await self._run_db(project_id, load_latest)
+            if latest is None:
+                return run_id
+            project, task, run, definition = latest
+            from services.workflow_definition import WorkflowDefinition
+
+            steps_config = WorkflowDefinition.load(definition).compile().to_steps_config()
+            self._review_resumes.pop(task_id, None)
+            handle = await self._resume_in_project(project, task, run, steps_config)
+        return await self.wait(handle)
 
     async def _resume_in_project(
         self,
@@ -1427,14 +1485,10 @@ class WorkflowRuntime:
                     workflow_run.status = 'stopped'
                 elif latest_task.status == "completed":
                     workflow_run.status = "succeeded"
-                elif latest_task.status == "paused" and TaskStep.select().where(
-                    (TaskStep.task == latest_task)
-                    & (TaskStep.step_key.in_([item["key"] for item in steps_config.get("steps", [])]))
-                    & (TaskStep.status.in_(
-                        ["awaiting_review", "rejected", "retrying"]
-                    ))
-                ).exists():
+                elif latest_task.status == "waiting":
                     workflow_run.status = "paused"
+                elif latest_task.status == 'stopped':
+                    workflow_run.status = 'stopped'
                 else:
                     workflow_run.status = "failed"
 
@@ -1446,13 +1500,16 @@ class WorkflowRuntime:
                 # 释放租约：把 owner/heartbeat 写回 NULL，让后续实例可正常接管或收尾。
                 workflow_run.owner_id = None
                 workflow_run.heartbeat_at = None
-                workflow_run.save()
+                workflow_run.save(only=[
+                    WorkflowRun.status, WorkflowRun.ended_at,
+                    WorkflowRun.owner_id, WorkflowRun.heartbeat_at,
+                ])
 
             await runner._run_db(finalize_run)
             if not (interrupted and self._graceful_shutdown):
                 action = getattr(runner, '_cancel_audit', None)
-                kind = ('paused' if action and action[0] == 'task.pause' else 'stopped') if action else {
-                    'succeeded': 'completed', 'paused': 'paused', 'failed': 'failed', 'stopped': 'stopped',
+                kind = 'stopped' if action else {
+                    'succeeded': 'completed', 'paused': 'waiting', 'failed': 'failed', 'stopped': 'stopped',
                 }.get(workflow_run.status, 'failed')
                 await self._publish_task_lifecycle(project_id, task.id, workflow_run.id, kind, workflow_run.ended_at.isoformat() if workflow_run.ended_at else '')
             self._leases.release(workflow_run.id)
@@ -1477,7 +1534,7 @@ class WorkflowRuntime:
 
     async def _publish_task_lifecycle(self, project_id, task_id, run_id, kind, occurrence=''):
         payload = {'project_id': project_id, 'task_id': task_id, 'type': 'task_lifecycle',
-                   'data': {'event': kind, 'event_id': f'{run_id}:{kind}' + (f':{occurrence}' if kind == 'paused' else ''), 'run_id': run_id}}
+                   'data': {'event': kind, 'event_id': f'{run_id}:{kind}' + (f':{occurrence}' if kind in {'paused', 'waiting'} else ''), 'run_id': run_id}}
         for event in to_agui_events(payload, AGUIContext.from_event(payload)):
             await self._event_bus.publish(event)
 

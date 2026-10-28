@@ -588,7 +588,7 @@
         "title": "Manage tasks on a phone",
         "steps": [
           "Tap a task row to open details. Hold for about half a second to open its action menu; mouse right-click also works.",
-          "Depending on permissions, start, edit or view, copy, archive, restore or delete. Running or queued tasks cannot be started; running tasks cannot be archived or deleted. Read the deletion confirmation.",
+          "Use the actions allowed by your permissions: start, edit or view, copy, archive, restore and delete. Running, queued or waiting tasks with active steps cannot be archived or deleted; handle pending confirmations or stop execution first. Read the confirmation before deleting.",
           "After all workflow steps execute and pass, the task shows Completed, including after reopening details or restarting. Completion does not archive the task; choose whether to archive it."
         ],
         "tips": [
@@ -668,7 +668,7 @@
           "If execution is no longer wanted, choose Terminate and verify the confirmation. Force approval skips the current review, so first check that outputs are usable."
         ],
         "tips": [
-          "A process ending does not prove quality. Manual review is your checkpoint before the next step. When a task is paused with a step awaiting review, it displays Awaiting review; a completed task still displays its completed state."
+          "A task can remain running with pending confirmations. On desktop, hover over the count to see steps and reasons, then handle reviews, tool approvals or questions in the relevant step. With no other executable branch it waits; a manual stop is stopped, distinct from failed or completed. Process exit is not review approval."
         ],
         "screenshot": {
           "id": "task-review",
@@ -812,7 +812,7 @@
         ],
         "tips": [
           "On desktop, double-click a sidebar conversation or its header title to open the shared rename dialog, then enter and confirm the name.",
-          "On phones, only the active pane is shown and resize separators are hidden; other open pane states remain. Arrangement is page-local and all panes are not guaranteed to return after refresh."
+          "Mobile shows only the active pane and preserves the others. Navigating away and back within the same page session restores panes, layout and sizes; a browser refresh is not guaranteed to restore them. Layouts are scoped to the current account and device without copying chat content."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -1405,7 +1405,7 @@
         "title": "Choose a built-in language",
         "steps": [
           "In Settings → Appearance, choose Simplified Chinese, Traditional Chinese, English, Japanese, French, German or Arabic and inspect common entries and date controls.",
-          "On the website, use the top language dropdown for Chinese, English, French, German or Arabic. Your browser saves the choice; without a saved preference, browser language is detected."
+          "Choose the website and manual display language from the top selector, including Japanese, Traditional Chinese, Korean and other available languages. The browser remembers your choice, or detects its language when no preference is saved."
         ],
         "tips": [
           "French, German and Arabic app translations currently cover major entries; other strings may remain Chinese, and the app's Arabic layout is still left-to-right. Website and manual text follow the top language selector, with right-to-left Arabic layout. Real screenshots remain Chinese. Language switching does not translate past conversations or user files."

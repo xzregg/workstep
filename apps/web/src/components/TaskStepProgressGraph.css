@@ -89,7 +89,7 @@
   display: inline-grid;
   place-items: center;
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--surface);
   color: var(--fg-2);
   font-size: calc(10px * var(--font-scale));
@@ -124,7 +124,7 @@
   min-height: 188px;
   overflow: auto hidden;
   border: 1px solid var(--border-soft);
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   background: var(--bg);
   cursor: grab;
   overscroll-behavior: contain;
@@ -233,7 +233,7 @@
   justify-content: flex-start;
   gap: 5px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   background: var(--surface);
   color: var(--fg);
   cursor: grab;
@@ -265,7 +265,7 @@
   position: absolute;
   inset: 4px auto 4px 0;
   width: 2px;
-  border-radius: 0 2px 2px 0;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
   background: var(--step-status-color, var(--border));
   content: '';
 }
@@ -305,6 +305,8 @@
 }
 
 .task-step-progress-card.is-awaiting_review,
+.task-step-progress-card.is-tool_approval,
+.task-step-progress-card.is-user_input,
 .task-step-progress-card.is-retrying,
 .task-step-progress-card.is-rework,
 .task-step-progress-card.is-rework_waiting {
@@ -442,6 +444,8 @@
 }
 
 .task-step-progress-card.is-awaiting_review .task-step-progress-status-icon,
+.task-step-progress-card.is-tool_approval .task-step-progress-status-icon,
+.task-step-progress-card.is-user_input .task-step-progress-status-icon,
 .task-step-progress-card.is-retrying .task-step-progress-status-icon,
 .task-step-progress-card.is-rework .task-step-progress-status-icon,
 .task-step-progress-card.is-rework_waiting .task-step-progress-status-icon {

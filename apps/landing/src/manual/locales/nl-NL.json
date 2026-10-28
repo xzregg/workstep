@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Download, installeer en open WorkStep",
+    "summary": "Installeer eerst WorkStep en daarna een SDK-engine. De desktop-app bevat de backend-runtime; u hoeft Python niet eerst te installeren.",
+    "sections": [
+      {
+        "title": "Kies een installateur",
+        "steps": [
+          "Gebruik de downloadlink van de website om het desktopinstallatieprogramma voor uw besturingssysteem en chip te kiezen. Op Mac kies je de arm64 DMG voor Apple M-serie chips of de x64 DMG voor Intel.",
+          "Installeer en open WorkStep met behulp van het normale installatieproces van uw systeem. Wacht tot de lokale backend gereed is en de werkruimte is geopend.",
+          "Voer bij de eerste keer opstarten een weergavenaam in wanneer daarom wordt gevraagd. Om de onboarding opnieuw te bekijken, opent u Instellingen → Systeeminstellingen → Onboarding (设置 → 系统设置 → 新手引导) en klikt u vervolgens op Onboarding."
+        ],
+        "tips": [
+          "Desktopinstallatieprogramma's bevatten geen optionele engine zoals Codex SDK of Claude Agent SDK. Installeer ze via de interface in het volgende hoofdstuk.",
+          "Vroege, niet-ondertekende macOS- of Windows-builds kunnen systeembeveiligingsprompts activeren. Controleer de downloadbron voordat u de instructies van uw systeem volgt.",
+          "Voor zelfstandig lokaal gebruik is geen gateway-aanmelding vereist. Als u Gateway vrijwillig inschakelt en de authenticatie kan niet starten, probeert de lokale ingang terug te keren naar de lokale modus en Gateway uit te schakelen, waarbij het adres wordt bewaard voor later opnieuw verbinden. Een Gateway-gebonden installatie of externe bezoeker kan dit niet gebruiken om de Gateway van de host uit te schakelen. Als het terugkeren naar de lokale modus mislukt, verifieer dan de lokale backend en vernieuw de pagina om het opnieuw te proberen."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Identiteitsconfiguratie en snelstartinvoer bij eerste lancering",
+          "caption": "Voer een lokale weergavenaam in om de werkruimte te betreden of begin met de snelle installatie. Deze afbeelding maakt gebruik van een demonstratie-identiteit."
+        }
+      },
+      {
+        "title": "Begrijp drie concepten",
+        "steps": [
+          "Een engine voert taken uit en roept tools aan. Deze handleiding beveelt eerst Codex SDK of Claude Agent SDK aan; een afzonderlijk geïnstalleerde CLI-motor is niet vereist.",
+          "Een provider levert het model API, API adres en inloggegevens. Het staat los van de uitvoeringsengine en het protocol moet overeenkomen met het protocol dat door die engine wordt ondersteund.",
+          "Een model verwerkt uw aanvraag daadwerkelijk. Installeer een engine, authenticeer deze, selecteer en test een model en maak vervolgens een taak."
+        ],
+        "tips": [
+          "Een SDK kan een onderliggend uitvoerbaar bestand bevatten of aanroepen. Kiezen voor een SDK betekent niet dat er geen deelprocessen zijn.",
+          "WorkStep slaat projectgegevens lokaal op. Tijdens de uitvoering sturen de gekozen engine en provider taakcontext naar de modelservice."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Stap 1: installeer een SDK-motor",
+    "summary": "Begin met een SDK. Download en beheer zoekmachines via Installeren en versies (安装与版本), zonder terminalinstallatieopdrachten te kopiëren.",
+    "sections": [
+      {
+        "title": "Download en installeer via de interface",
+        "steps": [
+          "Open Instellingen → Uitvoeringsengines (设置 → 执行引擎). Zoek de Codex- of Claude Code-kaart gemarkeerd met sdk, overeenkomend met Codex SDK en Claude Agent SDK. Installeer in eerste instantie alleen degene die u wilt gebruiken.",
+          "Klik op Installeren en versies, wacht op de versielijst en kies vervolgens een geschikte versie onder Versie selecteren.",
+          "Klik op Geselecteerde versie installeren en verifieer de versie. Als er voorwaarden van derden verschijnen, lees en accepteer deze voordat u op Installatie bevestigen klikt.",
+          "Wacht op het downloaden van het hoofdpakket, de installatie van de engine en de afhankelijkheid en de versieverificatie. Bevestig dat de nieuwe versie wordt weergegeven.",
+          "Voor het wijzigen van een SDK-versie moet de backend opnieuw worden opgestart. Desktopgebruikers kunnen het huidige werk voltooien, WorkStep afsluiten en opnieuw openen, en vervolgens doorgaan met de configuratie."
+        ],
+        "tips": [
+          "Het percentage heeft alleen betrekking op het hoofdpakket. Afhankelijkheidsdownloads en -extractie hebben mogelijk geen percentage; gebruik de fasebeschrijving om de voortgang te beoordelen.",
+          "De installatie gaat door wanneer het gedeelte is ingeklapt. Onderwerp u niet opnieuw, alleen maar omdat de vooruitgang tijdelijk niet meer verandert.",
+          "Als er geen geschikte versie verschijnt, vernieuw dan de lijst en controleer de netwerk- en platformondersteuning. Wanneer een aangepast uitvoerbaar pad is geconfigureerd, wist u dit volgens de instructies voordat u versies beheert."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "SDK-motorinstallatie en versieselectie",
+          "caption": "Klik op Installeren en versies, Versie selecteren en vervolgens Geselecteerde versie installeren."
+        }
+      },
+      {
+        "title": "Installatie controleren en versies onderhouden",
+        "steps": [
+          "Open de Execution-engines opnieuw en controleer of de SDK wordt gedetecteerd als geïnstalleerd met de verwachte versie.",
+          "Gebruik Installeren en versies voor latere upgrades. Als er een terugdraaiversie beschikbaar is, klikt u op Terugdraaien naar... en bevestigt u; rollback downloadt de oudere versie opnieuw.",
+          "Als de installatie mislukt, lees dan de fout in dat gedeelte, controleer het netwerk, de schijfruimte en het installatiepad en probeer het opnieuw. Het succes van de installatie betekent niet dat de modelauthenticatie is geslaagd: voltooi vervolgens de configuratie en het testen."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Versie en voortgang na installatie van SDK",
+          "caption": "Controleer na de installatie de huidige versie. De resterende 100%-indicator betekent dat de installatie is voltooid, niet dat het downloaden doorgaat."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Configureer providers, authenticatie en verbindingstesten",
+    "summary": "Configureer een compatibele provider in WorkStep en koppel deze aan uw SDK. Gebruikers met een bestaande native login kunnen ook de authenticatie van de engine hergebruiken.",
+    "sections": [
+      {
+        "title": "Voeg een aanbieder toe",
+        "steps": [
+          "Open Instellingen → Providers → Provider toevoegen (设置 → 供应商 → 添加供应商). Voer een herkenbare naam in en kies het type service en het API-protocol.",
+          "Voor Claude Agent SDK selecteert u een compatibel Anthropic Messages-eindpunt; voor Codex SDK selecteert u een compatibel OpenAI Responses-eindpunt. Een 'OpenAI-compatibele' claim alleen garandeert geen protocolcompatibiliteit.",
+          "Voer het API-adres en de API-sleutel in die door de provider zijn verstrekt. Bewaar versiepaden zoals /v1 of /v2; gebruik niet het volledige chat-eindpunt als basisadres.",
+          "Sla de provider op en klik op Verbinding testen. Om modellen te verkrijgen, klikt u op Modellen ophalen, selecteert u de modellen die u nodig hebt en vervolgens selecteert u Opslaan.",
+          "Zorg ervoor dat de provider is ingeschakeld. Nadat de test is geslaagd, keert u terug naar de SDK om de binding en motortesten te voltooien."
+        ],
+        "tips": [
+          "Accountabonnementen, API-inloggegevens en facturering worden bepaald door de serviceprovider. Het installeren van een SDK levert geen inloggegevens op.",
+          "Als u bij het bewerken van een provider de sleutel leeg laat, blijft de oude waarde behouden. Voer een nieuwe sleutel in om deze te vervangen en verberg sleutels voordat u schermafbeeldingen maakt of de configuratie deelt.",
+          "In de door de onderneming beheerde modus kunnen providers door het platform worden toegewezen. Gebruik een geautoriseerde provider in plaats van deze opnieuw toe te voegen."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Providernaam, protocol en API-adresinstellingen",
+          "caption": "Configureer een compatibel protocol, sla het op en test vervolgens de verbinding. De afbeelding toont een openbaar API-adres met een leeg sleutelveld."
+        }
+      },
+      {
+        "title": "Bind en verifieer de SDK",
+        "steps": [
+          "Keer terug naar Instellingen → Uitvoeringsengines, breid de geïnstalleerde SDK-configuratie uit en selecteer de compatibele provider die u hebt opgeslagen.",
+          "Claude Agent SDK vereist een toestemmingsmodus. Lees de beschrijving, kies en bevestig; andere geavanceerde velden kunnen op hun standaardwaarden blijven staan. Voor Codex SDK: behoud in eerste instantie de standaard redenerings-, goedkeurings- en sandbox-instellingen.",
+          "Klik op Configuratie opslaan en controleer het standaardmodel. Voor een gebonden provider herleest Modellen vernieuwen alleen opgeslagen selecties, in plaats van alle modellen op te halen. De lijst is leeg als er geen cache of selecties bestaan. Om modellen toe te voegen, gaat u terug naar Instellingen → Providers, Modellen ophalen en Opslaan geselecteerd en vernieuwt u vervolgens de engine.",
+          "Klik op Test op de motorkaart, wacht op het resultaat en bevestig Geverifieerd (已验证). Dit is uw controlepunt voordat u taken uitvoert."
+        ],
+        "tips": [
+          "Bij het testen van de motor wordt gebruik gemaakt van de geselecteerde motor en er kunnen modelservicekosten in rekening worden gebracht.",
+          "Codex SDK redeneerinspanning, goedkeuring en sandbox-opties hebben Chinese labels. De inspanningslijst toont door de motor ondersteunde instellingen, zelfs als de modellencatalogus leeg is; het betekent niet dat elk model elk niveau ondersteunt. Begin met standaardinstellingen. Als een model een niveau afwijst, keer dan terug naar Automatisch of een ondersteunde waarde.",
+          "Zonder een providerbinding hergebruikt Codex SDK lokale Codex-authenticatie, terwijl Claude Agent SDK zijn eigen authenticatieconfiguratie gebruikt. Nieuwe gebruikers zonder bestaande login moeten beginnen met de providerconfiguratie.",
+          "Controleer op authenticatiefouten de sleutel, het API-adres, het protocol en de accountrechten. Controleer voor modelfouten de model-ID en providerondersteuning. Indien gemarkeerd als Niet geïnstalleerd, ga terug naar de installatie."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Test, controleer en bewaar de configuratie op een Codex SDK-kaart",
+          "caption": "Op de Codex SDK-kaart wordt Geverifieerd weergegeven, wat aangeeft dat deze engine de test heeft doorstaan."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Stel de standaarduitvoeringsengine en het standaardmodel in",
+    "summary": "Maak van de geteste SDK de standaarduitvoeringsengine voor stappen die geen andere engine specificeren.",
+    "sections": [
+      {
+        "title": "Sla de standaardinstellingen op",
+        "steps": [
+          "Selecteer onder Instellingen → Uitvoeringsengines → Standaarduitvoeringsengine de SDK die u zojuist hebt geverifieerd.",
+          "Klik op Standaardwaarden opslaan en bevestig het succesbericht. Ga niet weg nadat u alleen maar een vervolgkeuzelijst hebt geselecteerd.",
+          "Kies een model in de standaardmodelkiezer van die SDK-kaart. Stappen zonder een afzonderlijk model gebruiken deze standaard.",
+          "Nadat u een workflow hebt gemaakt, controleert u de engine en het model van elke stap opnieuw. Expliciete stapinstellingen veranderen niet automatisch wanneer de globale standaardwaarden veranderen."
+        ],
+        "tips": [
+          "Assistenten hebben afzonderlijke configuratie-items. Het wijzigen van de standaarduitvoeringsengine verandert niet elke assistent.",
+          "Voltooi eerst een workflow met één geverifieerde SDK en één model, en probeer vervolgens verschillende modellen voor verschillende stappen."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Selectie van de standaarduitvoeringsengine en knop Standaardinstellingen opslaan",
+          "caption": "De standaard engine-selector en standaardinstellingen voor opslaan. Pydantic AI is in deze afbeelding niet geconfigureerd; er is geen standaard gewijzigd of geverifieerd."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Sluit een lokaal project aan",
+    "summary": "Een project komt overeen met een lokale codedirectory. De gegevens volgen standaard het project, of kunnen op project-ID worden opgeslagen onder de Home van de huidige gebruiker.",
+    "sections": [
+      {
+        "title": "Begrijp de automatisch voorbereide standaardwerkruimte",
+        "steps": [
+          "Bij de eerste toegang bevat de zijbalk de standaardwerkruimte (默认工作区). Zonder geselecteerd project opent WorkStep zijn gewone chatpagina. Bestaande projectselecties en externe bindingen hebben voorrang.",
+          "Na het configureren van een SDK kunt u deze werkruimte gebruiken voor gewone chat. Om aan uw code te werken, gebruikt u Project toevoegen om de daadwerkelijke map te verbinden; de standaardwerkruimte is geen reeds verbonden repository.",
+          "De standaardwerkruimte wordt ook gedeeld door het maken van vaardigheden, motoren, skins en taalpakketten. Deze vermeldingen hergebruiken de gewone chat en slaan hun uitvoer op in die werkruimte."
+        ],
+        "tips": [
+          "U kunt de standaardwerkruimte hernoemen, maar deze niet uit de projectenlijst verwijderen. Er wordt niet automatisch een workflow gecreëerd.",
+          "De standaardwerkruimte is een project; een SDK is een uitvoeringsengine. Het hebben van een project betekent niet dat er een engine is geïnstalleerd of geverifieerd."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Standaardwerkruimte en gewoon chatitem in de zijbalk",
+          "caption": "Een lege gewone chat in de standaardwerkruimte, zonder gesprekken of workflows. Maak hier een gesprek aan; codeprojecten moeten nog steeds expliciet met elkaar worden verbonden."
+        }
+      },
+      {
+        "title": "Begin met een demonstratiemap",
+        "steps": [
+          "Maak een aparte demonstratiemap aan, zoals workstep-demo. Voor bestaande code selecteert u de hoofdmap van het project.",
+          "Klik op Zijbalk → Project toevoegen → Lokaal project (侧边栏 → 添加项目 → 本地项目), selecteer die map in de directorybrowser en bevestig.",
+          "Controleer of het project in de zijbalk verschijnt en schakel ernaartoe. Nieuwe projecten hebben standaard geen workflow; maak er een volgende.",
+          "Wanneer u later opnieuw verbinding maakt met dezelfde directory, worden workflows, taken en berichten hersteld vanuit projectgegevens. Verwijder .workstep niet alleen maar om een ​​project opnieuw te openen."
+        ],
+        "tips": [
+          "Engines kunnen projectbestanden lezen of wijzigen volgens taakinstructies. Oefen in een aparte map en bewaar de versiegeschiedenis voordat u echte code bewerkt.",
+          "Standaard staan ​​projectgegevens in .workstep/workstep.db,, uploads in .workstep/uploads/, en artefacten in .workstep/artifacts/. Met gecentraliseerde opslag kunt u een back-up maken van de overeenkomstige projectgegevensmap onder Home en het projectidentiteitsbestand.",
+          "Nieuwe of hernoemde projectnamen mogen geen spaties, tabs of andere witruimte bevatten."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Voeg een lokaal project toe en selecteer de hoofdmap ervan",
+          "caption": "Selecteer de demonstratiemap en voer vervolgens het verbonden project in via de zijbalk."
+        }
+      },
+      {
+        "title": "Open de projectmap en inspecteer de gegenereerde bestanden",
+        "steps": [
+          "Selecteer het project en klik op Map openen op de taak- of project-chatpagina. Gebruik dit om feitelijk gegenereerde bestanden te inspecteren nadat een taak is voltooid.",
+          "In de desktop-app geeft de pijl naar rechts de gedetecteerde lokale bestandsbeheerders, editors en terminals weer. Als u er een selecteert, wordt de map onmiddellijk geopend en wordt de lokale keuze onthouden. Alleen gedetecteerde, beschikbare applicaties verschijnen.",
+          "Externe projecten en externe browsertoegang gebruiken de webdirectorybrowser. Desktop-builds zonder de brug voor het openen van mappen gebruiken deze ook; er hoeft geen desktop-editor in de container te worden geïnstalleerd."
+        ],
+        "tips": [
+          "De projectpaden van de desktop-sandbox worden vóór het openen terugverwezen naar de mount-directory's van de host. Als er geen mount overeenkomt, controleer dan de projectmount-configuratie.",
+          "Als Open directory mislukt, controleer dan of de geselecteerde applicatie en directory nog steeds bestaan, of inspecteer het project rechtstreeks in uw systeembestandsbeheerder."
+        ]
+      },
+      {
+        "title": "Herschik zijbalkprojecten",
+        "steps": [
+          "Sleep in de zijbalk Handmatige demonstratie (操作手册演示) voor of na het gewenste project.",
+          "Lokale en afgelegen projecten kunnen met elkaar worden verweven. Bij het vrijgeven wordt de bestelling opgeslagen in de lokale configuratie, bij het opnieuw openen blijft deze behouden."
+        ],
+        "tips": [
+          "Bestelling heeft alleen invloed op de weergave van dit apparaat, niet op de projectvolgorde op een externe host. Volg de foutmelding en probeer het opnieuw als het opslaan mislukt."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Twee lokale demonstratieprojecten en workflows in de zijbalk",
+          "caption": "De nieuwste zijbalk toont twee lokale demonstratieprojecten en de standaardwerkruimte. Versleep projectrijen om de volgorde te wijzigen; er is geen extern apparaat aangesloten."
+        }
+      },
+      {
+        "title": "Kies waar projectgegevens worden opgeslagen",
+        "steps": [
+          "Nadat u een map hebt geselecteerd onder Zijbalk → Project toevoegen → Lokaal project, vinkt u Gegevensmap volgt projectmap (数据目录跟随项目目录) aan, standaard ingeschakeld voor nieuwe projecten.",
+          "Indien aangevinkt, worden taken, workflows, bijlagen, logs, artefacten, vaardigheden en geheugen opgeslagen in de .workstep/. van het project. Bij het uitvinken wordt ~/.workstep/projects/<项目ID>/ gebruikt, waardoor alleen .workstep/project.json overblijft als identiteitsbestand in de projectdirectory.",
+          "Voor een bestaand project controleert u het daadwerkelijke gegevenspad onder Projectconfiguratie → Algemeen. Wijzig het selectievakje en bevestig de migratie. Stop eerst taken, gesprekken en snelle acties; verwijder bestaande Git-werkruimten.",
+          "Wacht op de migratie en controleer vervolgens het nieuwe pad en de oorspronkelijke taken. Bij een fout blijven de originele gegevens behouden. Een niet-lege bestemming wordt niet overschreven; los het gemelde probleem op en probeer het opnieuw."
+        ],
+        "tips": [
+          "Door een bestaand project opnieuw toe te voegen, blijft de opslagmodus in het identiteitsbestand behouden; het verplaatst niet automatisch gegevens.",
+          "Behoud .workstep/project.json wanneer u een project verplaatst of hernoemt, en voeg het vervolgens opnieuw toe om het oorspronkelijke project te herkennen. Als u dat identiteitsbestand verwijdert, worden de Home-gegevens niet verwijderd, maar wordt automatische koppeling voorkomen.",
+          "Een kopie met hetzelfde project-ID kan niet naast de geregistreerde originele map bestaan: het systeem rapporteert een ID-conflict. Voor migratie tussen computers kopieert u ook de bijbehorende Home-gegevensmap.",
+          "Gecentraliseerde opslag negeert nog steeds automatisch .workstep/ in het project. Bij gewone compressie worden Git-negeerregels niet automatisch toegepast, maar het identiteitsbestand bevat geen taakgegevens."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Mogelijkheid voor gegevensopslag en kennisgeving van identiteitsbestand bij het toevoegen van een project",
+          "caption": "De echte interface voor het toevoegen van een project: als u de standaardinstelling uitschakelt, worden het startpad en instructies voor het verplaatsen of migreren tussen computers weergegeven."
+        }
+      },
+      {
+        "title": "Verplaats de gegevens van een bestaand project",
+        "steps": [
+          "Open Algemeen in de projectconfiguratie en verifieer het huidige gegevenspad.",
+          "Klik op Gegevensmap volgt projectmap, lees en bevestig de migratie en wacht vervolgens. Actief werk of een niet-lege bestemming levert een fout op."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Gegevensopslaglocatie in demonstratieprojectinstellingen",
+          "caption": "Controleer het huidige pad. Als u het selectievakje wijzigt, moet u nog steeds de migratie in het dialoogvenster bevestigen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Creëer uw eerste tweestapsworkflow",
+    "summary": "Gebruik Vereistenanalyse → Taak uitvoeren om stappen, invoer, uitvoer en verbindingen te begrijpen.",
+    "sections": [
+      {
+        "title": "Creëer een voorbeeld via onboarding",
+        "steps": [
+          "Zorg ervoor dat u een standaard uitvoeringsengine hebt opgeslagen en het verbonden lokale project hebt geselecteerd. Als de onboarding is gesloten, opent u Instellingen → Systeeminstellingen → Onboarding opnieuw en klikt u op Onboarding.",
+          "Klik onder Een tweestapsworkflow maken op Voorbeeldworkflow maken. Wacht op succes en het canvas wordt geopend.",
+          "Het voorbeeld heet Analyse en uitvoering (分析与执行). De eerste stap, Analyse van vereisten (需求分析), levert een uitvoeringsplan op (执行计划), verbonden met de tweede stap, Taak uitvoeren (执行任务).",
+          "Open beide stappen en controleer de engine, het model, de prompt, de in- en uitgangen, en zorg ervoor dat ze een geverifieerde SDK gebruiken. Het voorbeeld begint niet bij het maken en voert ook geen beoordelingen uit; eenmaal gestart, worden de twee stappen uitgevoerd in afhankelijkheidsvolgorde."
+        ],
+        "tips": [
+          "Een gewone nieuwe workflow begint met een leeg canvas, zonder voorbeeldstappen. Kies expliciet een sjabloon.",
+          "Beoordeel de installatie niet alleen op basis van het uiterlijk van de lijn: controleer of de uitvoerpoort overeenkomt met de invoervereisten van de volgende stap."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Canvas in twee stappen voor analyse van vereisten en taakuitvoering",
+          "caption": "Analyse van vereisten levert een uitvoeringsplan op voor de taak Uitvoeren. Klik op elke stap om de configuratie ervan te inspecteren."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Maak en voltooi uw eerste taak",
+    "summary": "Gebruik een kleine, expliciete, eenvoudig te controleren taak om te verifiëren dat uw SDK, project en workflow samenwerken.",
+    "sections": [
+      {
+        "title": "Schrijf een verifieerbaar verzoek",
+        "steps": [
+          "Bereid README.md en example.txt voor in de demonstratiemap. README.md zou vijf bewerkingen moeten vermelden om uit te leggen, met aanvullende opmerkingen in example.txt. Gebruik demonstratie-inhoud in plaats van privémateriaal.",
+          "Open de taakpagina van het demonstratieproject, selecteer Analyse en uitvoering en klik vervolgens op Nieuwe taak. De onboarding-taak Maken opent deze ook.",
+          "Begin bij Eisanalyse en voer de titel Organiseren projectinstructies (整理项目说明) in.",
+          "Voorbeeldbeschrijving: Lees README.md en example.txt, maak een uitvoeringsplan en maak vervolgens 使用说明.md aan in de hoofdmap van het project. Noem vijf bewerkingen in Markdown, één zin per bewerking. Lees alleen die twee bestaande bestanden; wijzig ze niet. U kunt 使用说明.md aanmaken, maar andere bestanden niet wijzigen. Rapporteer de locatie van het gegenereerde bestand als u klaar bent.",
+          "Selecteer Handmatig starten en klik op Taak maken. Controleer het verzoek en de startstap en vervolgens Start taak. U kunt ook direct na het maken Starten kiezen."
+        ],
+        "tips": [
+          "Specificeer het doel, de toegestane handelingen, het aanleverformaat en de acceptatiecriteria; dit maakt de resultaten gemakkelijker te controleren dan een vaag verzoek.",
+          "Als u bij een latere stap begint, worden eerdere stappen overgeslagen. Begin voor uw eerste oefening met de analyse van de vereisten.",
+          "Het openen van het taakaanmaakpaneel tijdens de onboarding voert zelf geen taak uit; de opstartoptie van het paneel regelt de uitvoering."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Taaktitel, beschrijving, startstap en opstartmodus",
+          "caption": "Schrijf een concreet verzoek, selecteer de startstap ervan en kies expliciet wanneer de uitvoering begint."
+        }
+      },
+      {
+        "title": "Volg de stappen en controleer de uitgangen",
+        "steps": [
+          "Open taakdetails en bekijk de huidige stap, status en berichten. Wacht terwijl de motor draait en reageer op expliciete vragen of goedkeuringsverzoeken in de interface.",
+          "Nadat de analyse van de vereisten is voltooid, wordt de taak Execute automatisch gestart op basis van de afhankelijkheidsverbinding. Er is geen extra Start-klik nodig. Lees het plan van de eerste stap en controleer of de tweede het heeft gebruikt.",
+          "Nadat de taak Execute is voltooid, leest u het laatste bericht en opent u 使用说明.md in de hoofdmap van het project. Controleer of het Markdown is, vijf bewerkingen bevat en voor elke bewerking één zin gebruikt.",
+          "Als er in het bericht Bewerkte... bestanden wordt weergegeven, vouwt u het uit en klikt u op een bestandsnaam. Bekijk de opgenomen patch indien beschikbaar; anders kunt u een voorbeeld van het huidige bestand bekijken. Historische wijzigingen kunnen nu afwijken van het bestand, dus controleer nog steeds de daadwerkelijke uitvoer.",
+          "Controleer of README.md en example.txt ongewijzigd zijn gebleven en dat alleen de toegestane 使用说明.md is toegevoegd. Gebruik de bestandsinvoer van het project of uw systeembestandsbeheerder. De voltooiingsstatus alleen bewijst niet de juistheid."
+        ],
+        "tips": [
+          "Als het wachten aanhoudt, maak dan onderscheid tussen wachten om te beginnen, goedkeuring, beoordeling en actieve uitvoering: elk heeft een ander antwoord nodig.",
+          "Bij een storing bewaart u de fout en test u eerst de SDK-verbinding opnieuw. Nadat u de configuratie hebt hersteld, gebruikt u de beschikbare herstelgegevens van de taak of probeert u het opnieuw.",
+          "Als een API meldt dat deze een webpagina heeft geretourneerd, bevestig dan dat de backend is bijgewerkt en opnieuw is opgestart, vernieuw vervolgens en probeer het opnieuw. Het niet laden van uitvoeringsdetails alleen betekent niet dat de uitvoering is mislukt; maak om die reden geen dubbele taak aan."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Voer 使用说明.md uit na voltooiing van de tweestapstaak",
+          "caption": "Nadat beide stappen zijn voltooid, inspecteert u 使用说明.md en de vijf bedieningsbeschrijvingen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Werkstromen bewerken",
+    "summary": "Verdeel het werk in stappen en configureer uitvoeringsengines, invoer, uitvoer en beoordelingsregels.",
+    "sections": [
+      {
+        "title": "Stappen toevoegen en verbinden",
+        "steps": [
+          "Selecteer een project en workflow aan de linkerkant en ga naar Workflow canvas. Een nieuwe workflow is leeg; voeg stappen toe of pas expliciet een sjabloon toe.",
+          "Klik op + Stap en voer de naam en identificatie in, bijvoorbeeld Organiseer vereisten met vereisten. Identifiers moeten uniek zijn binnen de workflow, beginnen met een Engelse letter en alleen letters, cijfers, onderstrepingstekens of koppeltekens bevatten.",
+          "Schrijf een prompt met een duidelijk doel, beperkingen en resultaten. Bijvoorbeeld: Lees de taakomschrijving, noteer acceptatiecriteria en een implementatieplan en sla een eisendocument op.",
+          "Configureer een geïnstalleerde, geverifieerde SDK-motor en -model. Om standaardwaarden over te nemen, selecteert u de standaarduitvoeringsengine of het standaardmodel van de engine.",
+          "Nadat u de in- en uitgangen hebt ingesteld, sleept u van een stroomopwaartse uitgangspoort naar de overeenkomende stroomafwaartse ingang en vervolgens op Opslaan."
+        ],
+        "tips": [
+          "Doorgetrokken lijnen dragen gegevens. Door een back-upstream verbinding te maken, ontstaat een onderbroken retourverbinding voor feedback over nabewerking.",
+          "De melding Niet-opgeslagen wijzigingen betekent dat canvasbewerkingen nog niet zijn doorgevoerd."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Workflowcanvas met twee stappen en invoer-/uitvoerverbindingen",
+          "caption": "Zoek de knop Stap toevoegen, verbindingspoorten en opslaan."
+        }
+      },
+      {
+        "title": "Configureer in-, uitgangen en retouraansluitingen",
+        "steps": [
+          "Open de stappeneditor, geef de uitgangen een duidelijke naam en configureer de benodigde ingangen stroomafwaarts.",
+          "Verbind elke vereiste uitgang met de overeenkomstige stroomafwaartse ingang. Controleer tijdens de uitvoering de beschikbaarheid onder Stapinvoer en -uitvoer in taakdetails.",
+          "Voor nabewerking maakt u een retourverbinding en stelt u Maximaal rendement voor die stap in. Lees vóór het opslaan de waarschuwingen over mogelijk niet-uitvoerbare fasen en controleer of de initiële uitvoering afhankelijk is van nog niet gegenereerde herbewerkingsartefacten."
+        ],
+        "tips": [
+          "Maximaal retourneert regelt gestippelde retourverbindingen en staat los van nieuwe pogingen na een mislukte beoordeling.",
+          "Als u een uitvoerpoort declareert, wordt er geen bestand gemaakt. Eis daadwerkelijke resultaten in de prompt en inspecteer ze daarna."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Invoerartefacten en bijbehorende uitvoer in de knooppunteditor",
+          "caption": "De invoer declareert taakvereisten met het uitvoeringsplan als de bijbehorende uitvoer. Instellingen voor het aantal retourzendingen worden niet weergegeven."
+        }
+      },
+      {
+        "title": "Stel beoordeling en automatisch opstarten in",
+        "steps": [
+          "Kies onder Stapsgewijze beoordeling in de editor de optie Handmatige beoordeling, Automatische beoordeling of Beoordeling overslaan. Handmatige beoordeling wordt in eerste instantie aanbevolen.",
+          "De handmatige beoordeling van uw beslissing wordt na uitvoering onderbroken. Voor automatische beoordeling schrijft u verifieerbare criteria en kiest u optioneel de motor en het model.",
+          "Stel nieuwe pogingen in nadat een automatische beoordeling het resultaat heeft afgewezen. Fouten in de reviewagent zelf schakelen over op handmatige afhandeling.",
+          "Stel Start indien nodig automatisch in na het maken en sla vervolgens op. Schakel het voor de eerste oefening uit, zodat u een taak kunt inspecteren voordat u begint."
+        ],
+        "tips": [
+          "Installeer en configureer SDK-engines voordat u ze gebruikt voor uitvoering of beoordeling."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Bedieningselementen voor de stapcontrolemodus in de knooppunteditor",
+          "caption": "Selecteer de beoordelingsmodus in de knooppunteditor. Controleer het automatisch opstarten afzonderlijk, zoals hierboven beschreven."
+        }
+      },
+      {
+        "title": "Verdeel over workflows en hergebruik canvaselementen",
+        "steps": [
+          "Om uitvoer aan een ander project of workflow over te dragen, voegt u een Workflow-stap toe en kiest u het doelproject, de workflow, de startstap en de opstartmodus.",
+          "Configureer upstream invoerartefacten en sla deze op. Deze stap wordt onmiddellijk uitgevoerd na het maken van de downstream-taak en kan geen verbinding maken met verdere stappen van de bovenliggende werkstroom.",
+          "Om een ​​stap opnieuw te gebruiken, kiest u Knooppunten kopiëren uit workflow, selecteert u een project, workflow en knooppunten, bekijkt u een voorbeeld, kopieert u en slaat u deze op.",
+          "Gebruik Layout om knooppunten te rangschikken. Voeg bladwijzers toe voor notities of exporteer workflow JSON als back-up. Controleer vóór het importeren wat er wordt vervangen."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Downstream taakbestemming en opstartinstellingen",
+          "caption": "Inspecteer het doelproject, de workflow en de startstap."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Workflowtrigger en notificatiehaken",
+    "summary": "Creëer taken op basis van externe verzoeken of stuur de workflowstatus naar een gekozen platform.",
+    "sections": [
+      {
+        "title": "Creëer taken met een trigger hook",
+        "steps": [
+          "Selecteer een project en workflow. Open Workflow hooks in de takenlijstwerkbalk of het mobiele menu en vervolgens Trigger hooks.",
+          "Voeg een hook toe, voer de naam, standaardtitel en maker in, kies een startstap en of deze automatisch start, en sla vervolgens op. Bijvoorbeeld: Behoeftenintake, met titel Externe aanvraag.",
+          "Kies een geconfigureerd LAN-, extern- of Gateway-adres en kopieer de aanroep URL. Het token is een referentie: geef het alleen aan vertrouwde systemen.",
+          "Voer onder Oproep simuleren een titel, maker en hoofdtekst in om het voorbeeld te bekijken. Simulatie creëert geen taak.",
+          "Laat een extern systeem POST de gekopieerde URL gebruiken met behulp van JSON, platte tekst of Markdown, bijvoorbeeld: Organiseer acceptatiecriteria voor dit verzoek. Nadat u een taak-ID heeft ontvangen, controleert u de taakinhoud en de opstartstatus."
+        ],
+        "tips": [
+          "Toestemming voor het bewerken van projecten is vereist. Elke geldige aanvraag creëert een taak. Deze versie herkent GitHub/GitLab-gebeurtenissen niet automatisch, dedupliceert verzoeken of buffert verzoeken terwijl het apparaat offline is.",
+          "Repareer eerst ontbrekende adressen of losgekoppelde apparaten. Als u het token opnieuw instelt, wordt de oude URL ongeldig. Als het automatisch opstarten mislukt, bestaat de taak nog steeds: controleer run_error en de taakdetails voordat u opnieuw probeert de taak uit te voeren."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Niet-opgeslagen trigger-hooknaam, standaardvelden en startfaseconfiguratie",
+          "caption": "Met dit uitgeschakelde concept worden alleen taken gemaakt. Het teken ervan is verborgen; het is niet opgeslagen en er is geen aanroep URL gegenereerd."
+        }
+      },
+      {
+        "title": "Stuur workflowmeldingen naar externe platforms",
+        "steps": [
+          "In hetzelfde Workflow hooks-venster schakelt u over naar Notification hooks en voegt u een bestemming toe.",
+          "Voer een naam in, kies DingTalk groepsbot, WeCom groepsbot of generieke JSON Webhook en voer vervolgens de bestemming URL in. Geef indien nodig een DingTalk-ondertekeningsgeheim op.",
+          "Selecteer geabonneerde gebeurtenissen, standaard ingesteld op voltooiing en mislukking van taken. Stel optioneel een titelvoorvoegsel en het Gateway-, externe of LAN-adres in voor taakkoppelingen en sla vervolgens op.",
+          "Genereer een voorbeeld onder Melding simuleren en controleer berichtinhoud en links. Preview verzendt geen verzoek. Voor een echte test bevestigt u en klikt u op Testmelding verzenden; het verzendt naar een opgeslagen, ingeschakelde bestemming.",
+          "Inspecteer de status, pogingen en geredigeerde fouten in leveringsgegevens. Probeer na het herstellen van de configuratie de mislukte records opnieuw. Controleer na voltooiing van de taak het ontvangende platform en de toegang tot de taaklink."
+        ],
+        "tips": [
+          "Het apparaat verzendt direct meldingen; Gateway geeft ze niet door. Ze bevatten geen chatteksten, artefactinhoud of referenties voor het maken van taken. Taakkoppelingen vereisen nog steeds normale toegangsrechten.",
+          "Tijdelijke fouten worden automatisch opnieuw geprobeerd. Time-outs en herstel kunnen dubbele bezorging veroorzaken; generieke ontvangers kunnen ontdubbelen met event_id. Als u een bestemming uitschakelt of verwijdert, kunnen verzonden meldingen niet worden ingetrokken.",
+          "Een preview alleen bewijst niet dat de integratie werkt: verifieer de daadwerkelijke levering aan het platform."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "DingTalk notificatieplatform, geabonneerde evenementen en lege adresvelden",
+          "caption": "Een niet-opgeslagen, uitgeschakeld concept in de nieuwste interface, waarbij taakvoltooiing en -mislukking zijn geselecteerd. De velden Webhook en ondertekeningsgeheim zijn leeg; er is niets verzonden."
+        }
+      },
+      {
+        "title": "Pas Markdown-meldingssjablonen aan",
+        "steps": [
+          "Kies een DingTalk- of WeCom-groepsbot in notificatiehooks en scroll naar Markdown-berichtsjabloon. Generieke JSON-webhooks maken geen gebruik van deze Markdown-sjablonen.",
+          "Vouw de sjabloonvariabelen uit (klik om te kopiëren) en voeg tijdelijke aanduidingen in, zoals {task_title}. Gebruik geen onbekende variabelen of een leeg sjabloon. Behoud {task_link} of {task_url} wanneer een taakkoppeling nodig is.",
+          "Bewaar en gebruik Melding simuleren om vervanging en links te controleren zonder te verzenden. Lees de bevestiging voordat u de standaardsjabloon herstelt."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Markdown notificatietekst en invoer van sjabloonvariabelen",
+          "caption": "Een concept toont de standaard Markdown-tekst en variabelen. Er is geen sjabloon ingediend en er is geen melding extern afgeleverd."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Sjablonen en de AI-workflowassistent",
+    "summary": "Begin met een sjabloon of vraag AI om stappen voor te stellen en te bevestigen wat u wilt toepassen.",
+    "sections": [
+      {
+        "title": "Sjablonen toepassen en opslaan",
+        "steps": [
+          "Open Workflow-sjablonen op het canvas, zoek naar namen of beschrijvingen en bekijk het doel en het aantal stappen van elke sjabloon.",
+          "Selecteer een geschikt sjabloon en bevestig. Toepassen vervangt elke stap en verbinding op het huidige canvas.",
+          "Controleer de motor-, model-, prompt- en beoordelingsvereisten van elke stap, pas ze aan en sla ze op.",
+          "Om uw ontwerp opnieuw te gebruiken, kiest u Huidig ​​opslaan als workflowsjabloon en voert u een naam en beschrijving in. Beheer bewerkbare aangepaste sjablonen onder Instellingen → Workflow-sjablonen."
+        ],
+        "tips": [
+          "Nieuwe projecten creëren niet automatisch workflows, en nieuwe workflows passen niet automatisch sjablonen toe.",
+          "Ingebouwde sjablonen kunnen niet worden verwijderd. Nadat u er een heeft toegepast, controleert u nog steeds of de vereiste motoren beschikbaar zijn."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Ingebouwd contractbeheerresultaat bij het zoeken naar canvassjablonen",
+          "caption": "Zoek naar Contractbeheer om het doel en het aantal stappen te zien. Controleer de vervangende scope voordat u deze selecteert."
+        }
+      },
+      {
+        "title": "Vraag AI om een workflow te creëren of aan te passen",
+        "steps": [
+          "Open de AI-workflowassistent op het canvas en kies eerst een geconfigureerde engine en model.",
+          "Leg het doel, de uitsplitsing van de stappen, het uitvoerformaat en de beoordelingsbehoeften uit, bijvoorbeeld: maak een analyse van de vereisten → implementatie → testen, met handmatige beoordeling in elke fase, met behulp van een geïnstalleerde SDK.",
+          "Vergelijk voorstelkaarten op titel, aantal stappen en samenvatting, en pas vervolgens een passend voorstel op het canvas toe.",
+          "Inspecteer stapwijzigingen voor bestaande workflows. Selecteer onder Wijzigingen toepassen de gewenste toevoegingen, updates of verwijderingen, pas deze vervolgens toe en sla deze op."
+        ],
+        "tips": [
+          "AI-voorstellen vereisen uw bevestiging. Generatiesucces alleen is geen reden om ze uit te voeren: inspecteer verbindingen, motoren en beoordelingscriteria."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Voorstelkaart in twee stappen van de AI-workflowassistent",
+          "caption": "De kaart toont het aantal gewijzigde stappen en Wijzigingen toepassen. Klik om de specifieke stapwijzigingen te bevestigen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Taken maken en beheren",
+    "summary": "Een workflow definieert hoe er gewerkt moet worden; een taak specificeert wat deze keer moet worden gedaan.",
+    "sections": [
+      {
+        "title": "Bereid meerdere taken voor met de taakassistent",
+        "steps": [
+          "Open de taakassistent op de taakpagina. Vraag expliciet meerdere taken met individuele tijden aan, bijvoorbeeld: Genereer drie onafhankelijke taken vanaf morgen om 09:00, 10:00 en 11:00 uur.",
+          "Controleer de titel, inhoud, workflow, startstap en geplande starttijd van elk concept en bevestig vervolgens de creatie via de interface.",
+          "Keer terug naar de takenlijst en verifieer elk resultaat. Als sommige ervan mislukken, inspecteer dan de bestaande taken voordat u de hele batch opnieuw indient."
+        ],
+        "tips": [
+          "Het genereren van concepten creëert of voert geen taken uit. Geef tijdzones op voor toekomstige tijden; Bij gepland opstarten moet de backend actief blijven."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Batchtaakconcepten en hun individuele geplande tijden",
+          "caption": "Echte screenshot in behandeling: batchconcepten en individuele tijden. Een oud concept met één taak mag dit niet vervangen."
+        }
+      },
+      {
+        "title": "Creëer een taak en laat AI de vereisten organiseren",
+        "steps": [
+          "Kies een project en workflow, open de taakpagina ervan en klik vervolgens op Nieuw of Toevoegen in de juiste fase.",
+          "Voer een titel en beschrijving in met context, doelen, toegestane wijzigingen, outputpaden en acceptatiecriteria. Markdown en geplakte referentiebeelden worden ondersteund.",
+          "Open indien nodig de Taakassistent, inspecteer de gegenereerde titel, inhoud en workflowselectie en bevestig vervolgens.",
+          "Controleer de startstap en bekijk de instellingen voor deze run en maak vervolgens de taak. Als automatisch opstarten is uitgeschakeld, klikt u op Taak starten."
+        ],
+        "tips": [
+          "Voorbeeld: README lezen en docs/getting-started.md genereren zonder de programmacode te wijzigen. Omvat installatie, opstarten en drie veelgestelde vragen.",
+          "Creatie en opstarten zijn afzonderlijke acties; de opstartmodus en stapinstellingen bepalen of de uitvoering onmiddellijk begint."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Formulier voor het maken van taken met de taakassistent uitgevouwen",
+          "caption": "Voer de titel en beschrijving in en kies de opstartmodus. De assistent kan vereisten organiseren; beoordelingsinstellingen bevinden zich op een ander tabblad."
+        }
+      },
+      {
+        "title": "Zoek taken op het bord of de tafel",
+        "steps": [
+          "Schakel tussen rijstroken en tabel op de taakpagina, bekijk taken per fase en zoek op titel.",
+          "Klik op een taak om details te openen, inclusief de huidige stap, status, maker en updatetijd.",
+          "Archiveer voltooide taken indien gewenst. Vind ze onder Archief bekijken en herstel ze naar het bord. Controleer de selecties vóór bulkbewerkingen."
+        ],
+        "tips": [
+          "In de wachtrij staat meestal dat de gelijktijdigheidscapaciteit vol is. Wachten op beoordeling vereist bevestiging; het betekent niet dat de app vastloopt.",
+          "Verwijderen verschilt van archiveren. Lees de bevestiging voordat u definitief verwijdert."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Taakbord met statussen en fasen",
+          "caption": "De demonstratietaak is klaar. Werkbalkitems omvatten weergaven, workflow-hooks, archief en Open directory. De aanmaaktijd ligt onder de kaart; kopiëren wordt hierna behandeld."
+        }
+      },
+      {
+        "title": "Wijzig alleen de workflow van de huidige taak",
+        "steps": [
+          "Open de taakdetails en klik op Taakworkflow bewerken onder de voortgangsgrafiek. Stop de uitvoering of controleer eerst; het canvas is alleen-lezen als het actief is.",
+          "Wijzig de stapprompts, motoren, modellen en recensies van deze taak. Voeg stappen toe, voeg artefacten toe aan het einde en pas verbindingen aan. Bestaande stappen, invoerpoorten en originele artefacten kunnen niet worden verwijderd of hernoemd.",
+          "Sla op om de voortgangsgrafiek bij te werken. Bij de volgende start wordt de nieuwste hoofdworkflow met taakspecifieke verschillen samengevoegd, zonder de hoofdworkflow of andere taken te wijzigen.",
+          "Om alle aanpassingen te wissen, klikt u op Hoofdworkflow synchroniseren en bevestigt u. Toegevoegde stappen verlaten de huidige workflow, maar historische berichten, artefacten en uitvoeringsrecords blijven bestaan. Hiermee wordt de uitvoering niet gestart."
+        ],
+        "tips": [
+          "Zonder daadwerkelijke wijzigingen wordt er geen volledige workflowkopie gemaakt. Niet-overschreven velden nemen updates van de hoofdwerkstroom over; taakoverschrijvingen hebben voorrang.",
+          "Door een stap in de componist te selecteren en de engine ervan te wijzigen, wordt deze in die taak opgeslagen. Met de resetstap wordt alleen de sessie van de volgende run gereset, niet de engine van de hoofdworkflow.",
+          "Het verwijderen van verbindingen verandert afhankelijkheden en kan directe uitvoering mogelijk maken; het is geen stappenhandleiding."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Taakspecifieke workflowbewerking en synchronisatie-items",
+          "caption": "Het afzonderlijke canvas van de demonstratietaak toont de overdrachtsmodus, de hoofdworkflow Synchroniseren en Opslaan. Er zijn geen instellingen gewijzigd of de uitvoering gestart."
+        }
+      },
+      {
+        "title": "Kopieer een taak",
+        "steps": [
+          "Klik op het pictogram Taak kopiëren naast een taak in een kaart of tabel.",
+          "Inspecteer de nieuwe taak met de titel (kopiëren), controleer de beschrijving, de aanpassing van de workflow en de startstap, en voer deze vervolgens uit. Gekopieerde stappen worden in behandeling genomen; oorspronkelijke voortgang en chatgeschiedenis worden niet gekopieerd."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Kopieer het taakpictogram naast een taaknaam in tabelweergave",
+          "caption": "Het kleine pictogram naast de naam is de kopie-invoer. In deze afbeelding is geen taak gekopieerd of gestart."
+        }
+      },
+      {
+        "title": "Beheer taken op een telefoon",
+        "steps": [
+          "Tik op een taakrij om details te openen. Houd ongeveer een halve seconde ingedrukt om het actiemenu te openen; rechtermuisknop werkt ook.",
+          "Afhankelijk van je rechten: starten, bewerken of bekijken, kopiëren, archiveren, herstellen en verwijderen. Actieve taken, taken in de wachtrij of wachtende taken met actieve stappen kunnen niet worden gearchiveerd of verwijderd. Behandel eerst bevestigingen of stop de uitvoering; lees de verwijderbevestiging.",
+          "Nadat alle werkstroomstappen zijn uitgevoerd en geslaagd, wordt bij de taak Voltooid weergegeven, ook na het opnieuw openen van de gegevens of het opnieuw opstarten. Bij voltooiing wordt de taak niet gearchiveerd; kies of u het wilt archiveren."
+        ],
+        "tips": [
+          "Als u met uw vinger scrollt of beweegt, wordt een lange druk geannuleerd om onbedoelde handelingen te voorkomen. Alleen-lezen-toegang kan nog steeds weergave-items openen zonder bewerkingsrechten te ontvangen."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Archief- en verwijdermenu voor een takenrij op 390px",
+          "caption": "Vastgelegd van een gereedstaande taak in v1.0.13; er is niets gearchiveerd of verwijderd en de voltooiing wordt niet weergegeven. De nieuw toegevoegde start-, bewerkings- en kopieeritems hebben nog steeds een bijgewerkte schermafbeelding nodig."
+        }
+      },
+      {
+        "title": "Keer terug naar taken of sessies vanuit Recente chats",
+        "steps": [
+          "Zoek een bezochte taak of sessie in Recente chats (最近聊天) in de zijbalk en klik om terug te keren naar de oorspronkelijke projectdetails. Beide soorten komen hier voor.",
+          "Inspecteer lopende, mislukte en voltooide-ongelezen indicatoren. Als u de relevante details opent, wordt de ongelezen indicatie gewist. Geautoriseerde vermeldingen hebben menu's voor archiveren of verwijderen; lees bevestigingen.",
+          "Op het bureaublad kunt u Projecten of Recente chats samenvouwen, de kopjes slepen om de volgorde te wijzigen en de scheidingslijn verslepen om de grootte ervan te wijzigen. Dubbelklik op de scheidingslijn om de standaardverhouding te herstellen."
+        ],
+        "tips": [
+          "Bij recente bezoeken worden maximaal twintig items bewaard onder de apparaatidentiteit van deze browser. Als u browsergegevens wist, wordt deze index verwijderd, niet de taakinhoud. Historische gegevens omzeilen de projectautorisatie niet.",
+          "Het archiveren, verwijderen en wissen van de ongelezen status heeft verschillende effecten. Als een oude link mislukt, controleer dan of het project en de sessie nog steeds bestaan ​​en of de verbinding werkt."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Eén demonstratietaakbezoek in recente chats",
+          "caption": "De zijbalk toont één demonstratietaakbezoek, zonder sessie-items of voorbeelden van ongelezen statussen."
+        }
+      },
+      {
+        "title": "Open navigatie in een mobiele browser",
+        "steps": [
+          "Open WorkStep in een telefoonbrowser en tik op de ronde navigatieballon aan de paginarand om dezelfde zijbalknavigatie uit te vouwen als op het bureaublad.",
+          "Selecteer een project, workflow, taak of gesprek om door te gaan. Tik nogmaals op de bel om de navigatie samen te vouwen.",
+          "Als de bel inhoud bedekt, houd deze dan vast en sleep deze naar een leeg gedeelte van de viewport. Door te slepen wordt de navigatie niet gewijzigd."
+        ],
+        "tips": [
+          "De bel verschijnt alleen in gewone mobiele browsers. Desktop- en Android-apps gebruiken hun eigen navigatie-items."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Navigatieballon en uitgebreide zijbalk in een telefoonbrowser",
+          "caption": "Uitgevouwen zijbalk op 390px, met de ronde bel aan de rechterkant om deze samen te vouwen. Er worden alleen geïsoleerde demonstratieprojecten getoond."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Uitvoering, goedkeuringen en beoordelingen",
+    "summary": "Begrijp runtime-statussen, handel toestemmingsverzoeken af en beslis of uitvoer naar de volgende fase kan gaan.",
+    "sections": [
+      {
+        "title": "Inspecteer de uitvoering en toestemmingsverzoeken",
+        "steps": [
+          "Open taakdetails en inspecteer de voortgangsgrafiek en chatrecords om de actieve stap te identificeren.",
+          "Breid procesrecords uit om tooloproepen, resultaten en fouten te inspecteren. Vouw subagentrecords uit wanneer de engine deze rapporteert.",
+          "Wanneer berichten bestandswijzigingen bevatten, vouwt u de lijst uit en bekijkt u de vastgelegde verschillen. Deze beschrijven de veranderingen in dat bericht; Als u het bestand opent, wordt de huidige inhoud weergegeven, die bij latere bewerkingen mogelijk is gewijzigd. Zonder een opgeslagen diff kan de huidige inhoud de volledige geschiedenis niet reconstrueren.",
+          "Wanneer gereedschapsgoedkeuring verschijnt, lees dan de opdracht, paden en impact voordat u deze toestaat of weigert. Beantwoord vragen met behulp van de aangeboden opties of gevraagde input.",
+          "Als een taak mislukt, lees dan eerst de laatste foutmelding en controleer vervolgens de engineconfiguratie, modelrechten, netwerk- en projectdirectory, in plaats van herhaaldelijk opnieuw te proberen."
+        ],
+        "tips": [
+          "Goedkeuring verschijnt alleen als een engine daarom vraagt. Procesinformatie en toestemmingskeuzes variëren per engine; ontbrekende details betekenen niet dat er geen executie heeft plaatsgevonden.",
+          "Een roterend pictogram geeft asynchroon werk aan. Wanneer u op de gebruiker wacht, behandelt u de huidige vraag of goedkeuring."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Stapvoortgang en feitelijke uitvoeringsregistratie in taakdetails",
+          "caption": "Voortgangs- en uitvoeringsgegevens zijn zichtbaar. Er wordt geen toestemmingsverzoek getoond; goedkeuringen verschijnen alleen wanneer de motor er daadwerkelijk om vraagt."
+        }
+      },
+      {
+        "title": "Een review goedkeuren, afwijzen of beëindigen",
+        "steps": [
+          "Terwijl u wacht op handmatige beoordeling, inspecteert u uitvoerartefacten, beoordeelt u resultaten, bestanden en test u de resultaten aan de hand van acceptatiecriteria.",
+          "Als u tevreden bent, klikt u op Goedkeuren en gaat u verder. Voer anders specifieke feedback in en kies Afwijzen en opnieuw uitvoeren.",
+          "Inspecteer tijdens de automatische beoordeling de administratie ervan. Afwijzing activeert geconfigureerde herhalingen; beoordelingsfouten of verzoeken om handmatige afhandeling vereisen uw beslissing.",
+          "Als uitvoering niet langer gewenst is, kiest u Beëindigen en verifieert u de bevestiging. Als u goedkeuring afdwingt, wordt de huidige beoordeling overgeslagen, dus controleer eerst of de uitvoer bruikbaar is."
+        ],
+        "tips": [
+          "Een taak kan doorlopen met openstaande bevestigingen. Beweeg op desktop over het aantal voor stappen en redenen en behandel reviews, toestemmingen of vragen bij de betreffende stap. Zonder andere uitvoerbare tak wacht de taak. Handmatig stoppen, mislukken en voltooien zijn verschillend; proceseinde is geen goedkeuring."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Handmatige beoordelingsfeedback en knoppen voor goedkeuring/afwijzing",
+          "caption": "Bekijk resultaten, artefacten en actie-inzendingen."
+        }
+      },
+      {
+        "title": "Coördinator vaste regels en actuele berichten",
+        "steps": [
+          "Open taakdetails, selecteer Coördinator in de componist, kies de Codex SDK-engine en stel een taakvraag zoals: Welke fase is nog niet voltooid?",
+          "Ga verder in dezelfde coördinatorsessie. Taakstatus en huidige afzenderupdate als beurtspecifieke context; vaste coördinatorregels blijven in de sessiegeschiedenis staan.",
+          "Gebruik voor het opsporen van fouten de ontwikkelaarsmodus om berichten met daadwerkelijke invoerrecords te inspecteren. Ongewijzigde vaste regels waarvan is bevestigd dat ze in die sessie zijn behouden, worden niet afzonderlijk opnieuw geïnjecteerd."
+        ],
+        "tips": [
+          "Oudere sessies kunnen na het upgraden één keer opnieuw worden geïnjecteerd. Nieuwe regels, nieuwe sessies, ontbrekende geschiedenis of onzekere retentie na verdichting veroorzaken herinjectie. Verzoeken kunnen nog steeds regels in de geschiedenis gebruiken; het overslaan van een nieuwe injectie betekent niet dat er geen regels zijn."
+        ]
+      },
+      {
+        "title": "Voeg informatie toe tijdens het antwoord van een coördinator",
+        "steps": [
+          "Selecteer Coördinator als ontvanger en stuur aanvullende instructies terwijl deze antwoordt. Ze komen in de wachtrij voor invoeging van het huidige antwoord terecht.",
+          "Inspecteer, bewerk, herschik of verwijder niet-verzonden berichten, of verzend geselecteerde berichten onmiddellijk. Meerdere geselecteerde vermeldingen worden op volgorde samengevoegd. De resterende inzendingen gaan automatisch door naar de volgende beurt nadat het huidige antwoord is geëindigd; niet herhaaldelijk verzenden.",
+          "Als u wordt verteld dat een bericht al is verzonden of verwijderd, vernieuw en inspecteer dan de wachtrij in plaats van de batch opnieuw te verzenden."
+        ],
+        "tips": [
+          "De coördinator- en stapwachtrijen zijn gescheiden. Controleer eerst de ontvanger. Door te stoppen worden reeds uitgevoerde gereedschapsbewerkingen niet ongedaan gemaakt."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Berichten die in behandeling zijn tijdens een antwoord van een coördinator",
+          "caption": "Echte screenshot in behandeling: ontvanger van de coördinator, aanvullende berichten tijdens de uitvoering en de vervolgwachtrij."
+        }
+      },
+      {
+        "title": "Aanvullen, stoppen en opnieuw uitvoeren",
+        "steps": [
+          "Controleer de ontvanger voordat u typt. Coördinator behandelt vragen en operatieverzoeken; alleen een specifieke stap krijgt input in de uitvoeringscontext van die stap.",
+          "Berichten voor een lopende stap worden ingevoerd Berichten invoegen. Bewerken, opnieuw ordenen, direct versturen of alles versturen; Niet-verzonden berichten kunnen een nieuwe ronde activeren nadat de uitvoering is beëindigd.",
+          "Nadat u een stap hebt gestopt, stuurt u deze expliciete aanvullende instructies en volgt u de aanwijzingen om deze opnieuw uit te voeren.",
+          "Om deze taak te wijzigen, bewerkt en bewaart u stapprompts, zoekmachines of bekijkt u de instellingen. Overschrijvingen worden van kracht bij de volgende uitvoering; niet-overschreven velden voegen de hoofdworkflow samen bij de volgende keer opstarten. Om alle aanpassingen te wissen, bevestigt u Hoofdworkflow synchroniseren."
+        ],
+        "tips": [
+          "Het wijzigen van de engine van de coördinatorcomponist heeft alleen invloed op daaropvolgende coördinatorberichten, niet op de workflowstap-engines.",
+          "Als het opnieuw uitvoeren van invloed is op andere actieve stappen, controleer dan de impactbevestiging en het bereik van de herhaling. Als native sessierecords verloren gaan, volgt u de prompt om opnieuw uit te voeren met een nieuwe sessie."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Stap ontvanger en aanvullend concept in een voltooide taak",
+          "caption": "Taak uitvoeren is geselecteerd in de samensteller. Het aanvullende bericht is nog steeds niet verzonden; er wordt geen invoegwachtrij weergegeven."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artefacten, uitvoeringsanalyse en projectgeheugen",
+    "summary": "Inspecteer geleverde bestanden, begrijp het verbruik en bewaar herbruikbare lessen.",
+    "sections": [
+      {
+        "title": "Invoer, uitvoer en artefactbestanden inspecteren",
+        "steps": [
+          "Open Stap-invoer en -uitvoer in taakdetails om beschikbare invoer en voltooide uitvoer te controleren.",
+          "Klik op Weergeven voor een bestand, of open de artefactbrowser en schakel per stap en uitvoeringsronde.",
+          "Bekijk voorbeelden van bestanden. Op het bureaublad kunt u met de Open-bevattende map daadwerkelijke bestanden inspecteren. Externe projectbestanden blijven op de host staan ​​en moeten via de webinterface worden bekeken.",
+          "Vergelijk de juiste rondes bij het herhalen. Hetzelfde als rond… betekent identieke inhoud, niet dat de uitvoering niet heeft plaatsgevonden."
+        ],
+        "tips": [
+          "Als een artefact ontbreekt, controleer dan of er een bestand is gegenereerd, of de uitvoerdeclaratie overeenkomt en of er uitvoeringsberichten zijn."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Taakartefacten gegroepeerd op stap",
+          "caption": "Vereistenanalyse en Execute-taak vermelden elk één artefact uit de eerste ronde. Open het bestand of de map ervan."
+        }
+      },
+      {
+        "title": "Inspecteer lokale runtimebronnen",
+        "steps": [
+          "Ga de werkruimte binnen via de lokale localhost of een loopback-adres en vervolgens Statistieken → Systeemruntime (数据统计 → 系统运行). Gewone externe browsers en Gateway-werkruimten tonen dit tabblad niet.",
+          "Inspecteer CPU, het geheugen, de configuratie van de schijfopslag, netwerksnelheden en bronnen, threads en bestandsdescriptors of -handles voor de WorkStep-backend en kinderen.",
+          "Kies trendstatistieken en inspecteer de bemonsteringstijden. Pauzeer, hervat of ververs de weergave handmatig. Wacht tijdens de eerste verzameling en probeer de mislukte leesbewerkingen opnieuw."
+        ],
+        "tips": [
+          "Statistieken hebben betrekking op de huidige backend-omgeving en onderliggende omgevingen, met uitzondering van de desktopshell. Containermetingen zijn geen volledige hostmachinebronnen.",
+          "De standaardwaarden zijn bemonstering van ongeveer vijf seconden en een geschiedenis van 30 minuten; op de pagina staan ​​werkelijke waarden. Het onderbreken van de weergavevernieuwing stopt de taken niet. Niet-beschikbare statistieken en hiaten zijn niet nul; oude monsters worden bewaard en als oud gemarkeerd. Descriptorwaarschuwingen duiden op druk op hulpbronnen, niet op automatisch herstel."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Statistieken van systeembronnen verzameld door de huidige versie",
+          "caption": "Lokale bronnen en backend-bemonsteringsstatus. Er waren geen onderliggende engine-processen actief, dus dit toont geen taakuitvoeringsverbruik aan."
+        }
+      },
+      {
+        "title": "Inspecteer de duur, tokens en kosten",
+        "steps": [
+          "Open uitvoeringsanalyse in taakdetails om de totale duur, stappogingen, tokens en kosten te inspecteren.",
+          "Selecteer een runround en klik op een tijdlijnsegment voor de engine, het model en het gebruik ervan.",
+          "Voor projectbrede informatie opent u Statistieken. Om de kosten te schatten, onderhoudt u de modelprijzen per aanbieder of motor onder Instellingen → Modelinstellingen."
+        ],
+        "tips": [
+          "Niet-gerapporteerd gebruik wordt niet automatisch een nauwkeurig getal. Controleer de dekking en geschatte labels; de modeldienstwet is gezaghebbend."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Uitvoeringsanalyserondes en tijdlijn",
+          "caption": "Indicatoren voor duur, dekking en kostenbron."
+        }
+      },
+      {
+        "title": "Bespaar geheugen en archiveer lessen",
+        "steps": [
+          "Klik op Geheugen op de taakpagina. Bewerk MEMORY.md in de projectgegevensdirectory in korte, concrete langetermijnregels en sla deze op.",
+          "Kies bij het archiveren van één taak voor direct archiveren of organiseer faallessen. Inspecteer het AI-concept en bevestig vervolgens het schrijven van het geheugen en het archiveren.",
+          "Gebruik de archieflijst om de geschiedenis opnieuw te bekijken. Controleer na het herstellen van een gearchiveerde taak de vereiste externe bindingen opnieuw."
+        ],
+        "tips": [
+          "Bij bulkarchivering worden de lessen niet afzonderlijk uitgepakt. Door een taak te archiveren of te verwijderen, worden de kanaalgroepbindingen verwijderd; het herstellen ervan herstelt niet de oude bindingen."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Projectgeheugeneditor met demonstratieconventies",
+          "caption": "Conventies bewerken en opslaan in .workstep/MEMORY.md. Er wordt geen bevestiging van de archiefles getoond."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Projectchat en vaardigheden",
+    "summary": "Werk direct samen in projectcontext en kies welke lokale vaardigheden een project mag gebruiken.",
+    "sections": [
+      {
+        "title": "Werk met meerdere projectgesprekken",
+        "steps": [
+          "Open op bureaubladbreedte een gewoon projectgesprek en kies Gespreksvensters (对话窗口) → Gespreksvenster toevoegen (增加对话窗口), rechts van Nieuw gesprek.",
+          "Sleep een gesprek vanuit de zijbalk of Recente chats naar het chatgebied. Je kunt toegestane projecten combineren in maximaal 4 panelen. Laat je een al geopend gesprek los, dan krijgt het bestaande paneel de focus. Taakvermeldingen kunnen niet als gesprekken worden binnengesleept.",
+          "Klik op het deelvenster dat u wilt gebruiken voordat u een zijbalkgesprek selecteert. Elk paneel behoudt zijn eigen project-, sessie-, concept- en engine-instellingen; verifieer het project en de sessie voordat u het verzendt.",
+          "Kies Gespreksvensters → Gespreksarrangement (对话排列) en vervolgens horizontaal of verticaal. Sleep het scheidingsteken om het formaat te wijzigen; focus erop en gebruik de pijltjestoetsen om het formaat van het toetsenbord aan te passen.",
+          "Bij meerdere vensters sluit × alleen dat venster, zonder het gesprek te stoppen of te verwijderen. Gebruik de stopknop van het gesprek om het genereren te stoppen."
+        ],
+        "tips": [
+          "Dubbelklik op het bureaublad op een zijbalkgesprek of de koptitel ervan om het gedeelde dialoogvenster voor het wijzigen van de naam te openen. Voer vervolgens de naam in en bevestig deze.",
+          "Mobiel toont alleen het actieve paneel en bewaart de andere. Weggaan en terugkeren binnen dezelfde paginasessie herstelt panelen, indeling en afmetingen; na browserverversing is herstel niet gegarandeerd. Indelingen zijn per account en apparaat gescheiden, zonder gesprekken te kopiëren."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Bureaubladgespreksvensters voor projecten en arrangementmenu's",
+          "caption": "Een echt screenshot van het vaste demoproject is in behandeling: gespreksvenstermenu, meerdere deelvensters en versleepbare scheidingstekens."
+        }
+      },
+      {
+        "title": "Laad een rol of expertteam in de chat",
+        "steps": [
+          "Bereid rolaanwijzingen of expertteamleden en verantwoordelijkheden voor onder Instellingen → Rolcentrum.",
+          "Open de gewone chat in een lokaal project. Gebruik + → Rol-/expertteam, zoekcategorieën of trefwoorden, voorbeeld en laden in chat. Selecteer bijvoorbeeld Code Reviewer en verzend vervolgens een specifiek beoordelingsbereik.",
+          "Controleer de geladen naam in de componist. Als u selecteert, wordt er geen bericht verzonden. De binding wordt bij de sessie opgeslagen en na vernieuwing hersteld; nieuwe sessies beginnen ongebonden. Klik op de naam om deze te bekijken, te vervangen of te verwijderen."
+        ],
+        "tips": [
+          "Tijdens het hardlopen kun je niet wisselen. Bij lees- of opslagfouten blijft de huidige selectie behouden; probeer het opnieuw zoals gevraagd. Selecteer ontbrekende rollen opnieuw. Alleen laden verandert de sessiebinding; stuur een concrete vraag om het model aan te roepen.",
+          "Deskundige teams geven de aanwijzingen en verantwoordelijkheden van de leden door aan het huidige model; ze starten geen onafhankelijke motoren. Taken, workflowstappen, kanalen, projecten op afstand en projectgerichte tickets zijn niet geïntegreerd. Een Gateway-werkruimte met volledig apparaat kan hiervan gebruik maken voor een lokaal project."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Code Reviewer zoeken en promptvoorbeeld in gewone chat",
+          "caption": "Code Reviewer is geselecteerd in een leeg demonstratiegesprek. De prompt en de laadknop zijn zichtbaar; er is geen rol geladen of bericht verzonden."
+        }
+      },
+      {
+        "title": "Open projectgeheugen op een telefoon",
+        "steps": [
+          "Open de projecttakenlijst, gebruik Meer rechtsboven en vervolgens Geheugen.",
+          "Voer korte conventies in, zoals Voer projecttests uit voordat u deze vastlegt, in de geheugeneditor. Controleer en bewaar; dit geldt voor het hele project."
+        ],
+        "tips": [
+          "Kiezen voor Geheugen stort in. Meer. Op het bureaublad klikt u rechtstreeks op Geheugen op de taakpagina."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Geheugeninvoer in het menu Meer van een 390px-taakpagina",
+          "caption": "Het uitgebreide menu Meer van de mobiele takenlijst bevat Geheugen. Als u klikt, wordt de editor geopend; er is hier geen geheugen gewijzigd."
+        }
+      },
+      {
+        "title": "Creëer gesprekken en wijzig de configuratie",
+        "steps": [
+          "Maak een gewone sessie aan in de sectie Gesprekken van het project aan de linkerkant. Selecteer de engine, provider, model en toestemmingsmodus. Begin met een geverifieerde SDK.",
+          "Vul een concreet verzoek in. Voer verzendt in; Shift+Enter voegt een nieuwe regel in. Voeg referentieafbeeldingen alleen toe of plak deze nadat u de ondersteuning voor engine-afbeeldingen hebt gecontroleerd.",
+          "Stop indien nodig een antwoord tijdens het genereren. Extra ingevoegde berichtenwachtrij en hun volgorde kunnen worden gewijzigd.",
+          "Wanneer u van engine of provider met bestaande context verandert, kiest u Slimme overdracht, Volledige chatgeschiedenis of Geen in het dialoogvenster. Ga een gesprek aan voor onafhankelijk onderzoek en bevestig de contextmodus ervan."
+        ],
+        "tips": [
+          "Projectchat wordt afzonderlijk van workflowtaakrecords opgeslagen. Maak een taak als u faseregistratie en beoordelingen nodig heeft.",
+          "Native forking is alleen beschikbaar als deze daadwerkelijk door de engine wordt ondersteund. Ga anders verder via expliciete contextoverdracht."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Project-chat-engine, provider en modelmenu",
+          "caption": "Configureer de engine, provider, redeneermodel en gerelateerde opties alleen voor dit gesprek. Machtigingen worden afzonderlijk geselecteerd."
+        }
+      },
+      {
+        "title": "Schakel vaardigheden in en organiseer gesprekken",
+        "steps": [
+          "Open Configuratie → Vaardigheidscentrum van het huidige project, scan opnieuw en zoek op naam, beschrijving of bronpad.",
+          "Lees vaardigheidsdoeleinden en schakel in wat u nodig hebt. Controleer het geselecteerde bereik voordat bulkwijzigingen plaatsvinden. Vaardigheden worden per project opgeslagen en zijn van toepassing bij de volgende run of nieuwe sessie.",
+          "Typ / in de componist om vaardigheden te selecteren die daadwerkelijk door de huidige engine worden aangeboden. Lijsten variëren per motor.",
+          "Gebruik het sessiemenu om de naam te wijzigen of te archiveren. Doorzoek de archieflijst en herstel de vereiste gesprekken."
+        ],
+        "tips": [
+          "Skill center selecteert bestaande lokale vaardigheden. Als er geen verschijnt, controleer dan eerst de lokale bronnen. Externe projecten kunnen momenteel de lokale vaardigheden van de host niet beheren."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Geen resultaten na zoeken naar handmatige demo in Vaardigheidscentrum",
+          "caption": "Skill center biedt zoeken op naam en bronfiltering. Er wordt geen overeenkomende vaardigheid of activeringsschakelaar weergegeven."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Snelle knoppen en scriptacties",
+    "summary": "Verander veelvoorkomende aanwijzingen, geef inhoud weer en projectscripts in herbruikbare knoppen.",
+    "sections": [
+      {
+        "title": "Maak prompt- en weergaveknoppen",
+        "steps": [
+          "Open Snelknoppen in de projectconfiguratie, voeg een knop toe en selecteer het type ervan.",
+          "Voor Prompt voert u het label en de prompt in en kiest u of klikken onmiddellijk wordt verzonden, bijvoorbeeld: Inspecteer de huidige wijzigingen en vermeld niet-gedekte acceptatiecriteria.",
+          "Voor Weergave voert u inhoud in en bekijkt u een voorbeeld van de veilige HTML-weergave. Dit type verzendt geen bericht.",
+          "Bewaar en keer terug naar de chat of een taak om de knop te inspecteren. Versleep de configuratielijst om de volgorde te wijzigen. Workflowinstellingen beheren overgenomen projectknoppen; podiumknoppen worden afzonderlijk geconfigureerd."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Overname van projectknoppen en toevoeging van snelknoppen in de workflow",
+          "caption": "Selecteer projectknoppen om aan de linkerkant workflowknoppen over te nemen en toe te voegen. Er is geen knopinhoud ingevoerd."
+        }
+      },
+      {
+        "title": "Configureer en voer een actie uit",
+        "steps": [
+          "Voeg het actietype toe, voer de actie-ID in en selecteer een script uit de bijbehorende actiemap.",
+          "Kies de uitvoeringsmap: project, workflowtaakmap of Git-werkruimte geselecteerd door het script. Bekijk een voorbeeld en controleer het script.",
+          "Schakel bevestiging in vóór acties die bestanden of de externe status wijzigen. Voor invoer zoals commit-berichten configureert u een bevestigingsprompt; het script ontvangt het via WORKSTEP_ACTION_INPUT.",
+          "Bewaar en klik op de knop, bevestig het script en de directory en inspecteer de uitvoer- en afsluitcode. Lopende acties kunnen worden gestopt."
+        ],
+        "tips": [
+          "Snelle acties voeren rechtstreeks projectscripts uit. Begrijp het script en kies eerst de juiste map. Bestanden buiten de huidige Action-map kunnen niet willekeurig als script worden geselecteerd."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Actieconfiguratie zonder geselecteerd script",
+          "caption": "Velden omvatten actie-ID, script, uitvoeringsdirectory en bevestiging. Er is geen script uitgevoerd."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Geplande taken",
+    "summary": "Maak nieuwe taken volgens een schema, of stuur getimede coördinatorinstructies naar bestaande taken, en volg de uitvoering en meldingen.",
+    "sections": [
+      {
+        "title": "Genereer meerdere taken vanuit één schema",
+        "steps": [
+          "Creëer een project maakt een takenschema, selecteer AI dynamisch en specificeer de omvang en individuele tijden van meerdere taken. Selecteer kandidaatworkflows.",
+          "Gebruik eerst Testgeneratie om elk concept te controleren en sla het vervolgens op. Instructies voor taakcoördinatoren werken nog steeds op één geselecteerde taak en creëren geen batches.",
+          "Na het activeren opent u elke gemaakte taak vanuit runrecords. Mislukte records behouden ook reeds gemaakte taken; inspecteer de reden voordat u vervangingen maakt."
+        ],
+        "tips": [
+          "Het maken van taken betekent niet dat alle workflows zijn voltooid. Voer geen hele batch opnieuw uit na een gedeeltelijke creatie of een opstartfout."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Geplande preview van batchgeneratie en uitvoeringsrecords voor meerdere taken",
+          "caption": "Echte screenshot in behandeling: batchconcepten en reeds gemaakte taken na gedeeltelijke mislukking."
+        }
+      },
+      {
+        "title": "Beheer geplande instructies vanuit taakdetails",
+        "steps": [
+          "Open de taakdetails en klik op de klok naast Bind BOT; op telefoons bevindt dit zich rechts van de hoofdtabbladen. De telling omvat taakregels, met uitzondering van voltooide eenmalige regels, en niet alleen ingeschakelde regels. Controleer onderbroken en andere statussen in de lijst.",
+          "Bekijk de regels van deze taak in het venster. Met bewerkingsrechten kunt u regels toevoegen, bewerken, pauzeren, hervatten of verwijderen en runrecords bekijken. Nieuwe regels binden automatisch aan de huidige taak.",
+          "Voer een titel, frequentie en coördinatorinstructie in, bijvoorbeeld: Controleer de voortgang en vat elke tien minuten samen. Controleer de stopvoorwaarde en sla op. Wanneer u sluit met niet-opgeslagen bewerkingen, kunt u ervoor kiezen om door te gaan of deze te verwijderen.",
+          "Alleen-lezen shares gebruiken dezelfde klok om de regels van deze taak te inspecteren. Met gebruiksrechten kunt u beheervermeldingen gebruiken die daadwerkelijk door het huidige aandeel worden aangeboden."
+        ],
+        "tips": [
+          "De eenmalige lijst behoudt de uitvoeringstijden van voltooide regels; de taakbadge sluit ze uit, dus aantallen kunnen verschillen."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Taakgericht planningsvenster geopend vanuit de detailklok",
+          "caption": "Door een regel op basis van de klok te maken, wordt de werkstroom en taak gekoppeld aan de demonstratietaak. Titel en instructies zijn leeg; niets werd opgeslagen of geëxecuteerd."
+        }
+      },
+      {
+        "title": "Maak een vast schema",
+        "steps": [
+          "Open Geplande taken vanuit de zijbalktoolrail, kies een projecttabblad en maak vervolgens een Project maakt takenplanning. Selecteer workflow, startstap, titel en inhoud.",
+          "Kies eenmalig, dagelijks, wekelijks, maandelijks, uurlijks interval of Cron. Controleer de tijdzone, ingangsdatums en het voorbeeld van de volgende run.",
+          "Kies Workflow volgen, Directe of Handmatige uitvoering en stel de afhandeling van overlap in op Overslaan, Parallel of Wachtrij.",
+          "Controleer de beoordelingsinstellingen en sla op. Controleer een eenmalig schema voor de korte termijn voordat u een langdurig terugkerend plan inschakelt."
+        ],
+        "tips": [
+          "De WorkStep-backend moet actief zijn om schema's te activeren. Ga er niet vanuit dat ze normaal worden geactiveerd terwijl de computer slaapt of de backend is gestopt."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Vaste taakinhoud, dagelijkse frequentie en preview van de volgende run",
+          "caption": "Stel inhoud, frequentie, opstart- en overlapbeleid in en inspecteer vervolgens de aankomende uitvoeringstijden."
+        }
+      },
+      {
+        "title": "Verzend geplande instructies naar een bestaande taak",
+        "steps": [
+          "Open Geplande taken in de zijbalk, selecteer een project en schakel het nieuwe regeltype naar Taakcoördinatorinstructies. Het werkt op een bestaande taak in plaats van er elke keer een te creëren.",
+          "Voer Titel in, filter op workflow en zoek naar de doeltaak. Schrijf een concrete instructie, zoals: Controleer de voortgang en rapporteer of menselijk handelen nodig is; bevestig gevaarlijke acties niet automatisch. Opgeslagen regels kunnen niet worden teruggekoppeld naar een andere taak.",
+          "Stel een eenmalige of terugkerende uitvoering in, inclusief elke paar minuten. Controleer de volgende uitvoeringstijden en kies Doorgaan tot handmatig uitgeschakeld of Stop wanneer de taak eindigt.",
+          "Zoek de opgeslagen regel in eenmalige of terugkerende lijsten. Filter op doeltype en taak-ID. Open een taak vanuit een uitvoeringsrecord om het antwoord van de coördinator te lokaliseren en de status van geplande berichten in de geschiedenis ervan te bekijken."
+        ],
+        "tips": [
+          "Elke trigger gebruikt een afzonderlijke coördinatorsessie en kan in de wachtrij staan ​​terwijl de taak bezig is. Voor voorstellen die bevestiging nodig hebben, bent u nog steeds verplicht. Als u één gepland antwoord stopt, stopt alleen dat bericht; pauzeer of schakel de regel uit om latere triggers te voorkomen.",
+          "Als u een doel archiveert of verwijdert, wordt de regel ongeldig. Met Stop wanneer de taak eindigt, wordt de taak voltooid, mislukt of gestopt en wordt de taak beëindigd. Het is niet gegarandeerd dat runs die worden onderbroken door een herstart van de backend opnieuw worden afgespeeld; documenten inspecteren voordat u deze opnieuw verzendt."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Niet-opgeslagen planningsformulier voor taakcoördinator",
+          "caption": "De demonstratie wordt elke tien minuten herhaald totdat deze handmatig wordt uitgeschakeld. Het is niet opgeslagen en heeft geen uitvoeringsresultaten."
+        }
+      },
+      {
+        "title": "Configureer kanaalmeldingen voor geplande uitvoeringen",
+        "steps": [
+          "In een projectplanning of taakcoördinatorregel inspecteert u de Notify-kanaalbot na uitvoering.",
+          "Kies een bot en gesprek dat geschikt is voor verzenden. De gebonden groep van een taak kan standaard geselecteerd zijn, maar controleer deze voordat u deze opslaat. Zonder een bestemming configureert u eerst de bot- en taakbinding of schakelt u de melding uit.",
+          "Inspecteer de meldingsstatus en de redenen voor fouten in runrecords. Meldingsfouten opnieuw proberen zonder de taak opnieuw uit te voeren. Controleer bij onbekende leveringsresultaten eerst het kanaal om duplicaten te voorkomen."
+        ],
+        "tips": [
+          "Geplande meldingen en workflow-webhooks worden afzonderlijk geconfigureerd. Een succesvolle uitvoering is geen bewijs van de uitvoering, en een mislukte melding betekent niet dat de taak is mislukt.",
+          "Meldingen van de taakcoördinator volgen op de voltooiing van dat antwoord. Een melding nadat een projectplanning een taak heeft aangemaakt, betekent niet dat de hele workflow is voltooid."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Kanaalmelding zonder geselecteerd doel in een projecttaakformulier",
+          "caption": "Melding is aangevinkt, maar er is geen bot of gesprek geselecteerd, dus opslaan is uitgeschakeld. Er werd niets uitgevoerd of verzonden."
+        }
+      },
+      {
+        "title": "AI-dynamische generatie en uitvoeringsrecords",
+        "steps": [
+          "Wijzig de generatie in AI-dynamisch, beschrijf wat u elke keer moet genereren, corrigeer optioneel een referentietitel en kies kandidaat-workflows.",
+          "Configureer nieuwe generatiepogingen en gebruik Testgeneratie om te controleren of de uitvoer aan de verwachtingen voldoet.",
+          "Sla op en filter vervolgens runrecords aan de rechterkant op status. Inspecteer de triggertijd, faal- of overslagredenen en open de bijbehorende taak.",
+          "Pauzeer schema's die niet langer nodig zijn en verwijder deze na controle."
+        ],
+        "tips": [
+          "Nieuwe pogingen voor het genereren van AI, nieuwe pogingen voor stapsgewijze beoordeling en limieten voor het retourneren van verbindingen zijn afzonderlijke instellingen."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "AI-formulier voor het maken van dynamische geplande taken",
+          "caption": "Voer instructies, kandidaatworkflows en het aantal nieuwe pogingen in. Er is geen taak gegenereerd of uitvoeringsrecords weergegeven."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Git- en taakwerkruimten",
+    "summary": "Inspecteer codewijzigingen, isoleer parallelle taken in afzonderlijke werkmappen, voeg vervolgens hun werk samen en push het.",
+    "sections": [
+      {
+        "title": "Inspecteer bestanden, diffs en geschiedenis",
+        "steps": [
+          "Klik op Git op de taakpagina van een lokaal of verbonden extern project en selecteer de root of een ontdekte onderliggende repository. Externe Git-bewerkingen worden uitgevoerd op het hostapparaat.",
+          "Inspecteer gewijzigde bestanden en diffs om AI-wijzigingen te verifiëren aan de hand van de vereisten; gebruik de commitgeschiedenis om vastgelegd werk te controleren.",
+          "Behandel niet-vastgelegde wijzigingen voordat u van filiaal wisselt. Ververs de status op afstand om de status vooruit, achter of afwijkend te controleren.",
+          "Trek snel vooruit; Push verzendt alleen toegewijde inhoud. Kies een afstandsbediening en vertakking, bevestig en voer uit."
+        ],
+        "tips": [
+          "In de cache opgeslagen externe records hebben geen livestatus. Synchronisatie kan worden geblokkeerd terwijl projecttaken of chats actief zijn.",
+          "Maak eerst opnieuw verbinding met offline of ongeautoriseerde externe projecten. De browser kopieert geen hostopslagplaatsen naar uw computer. Voor lezen is toestemming voor Git-view vereist; commit-, branch-, merge- en synchronisatieacties hebben afzonderlijke subsidies. Controleer de rechten als er knoppen ontbreken."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Niet-vastgelegde wijzigingen in een Git-repository",
+          "caption": "De openstaande bestanden van een lokale repository. De commitgeschiedenis staat op een ander tabblad; externe machtigingen en uitgebreide bestandsverschillen worden niet weergegeven."
+        }
+      },
+      {
+        "title": "Maak een Worktree voor een taak",
+        "steps": [
+          "Open Git-werkruimte in taakdetails en selecteer opslagplaatsen die de taak daadwerkelijk nodig heeft.",
+          "Voer een taakmapnaam, bronvertakking en nieuwe vertakking in en maak vervolgens Worktree aan. Als de root nog geen Git-repository is, initialiseer deze dan en voer de eerste commit uit.",
+          "Na uitvoering de wijzigingen in de werkruimte inspecteren en vastleggen. Voeg in Git de huidige branch samen of voeg de huidige branch samen tot een doel.",
+          "Controleer het samengevoegde resultaat en push indien nodig handmatig. Lees de exacte effecten en waarschuwingen over niet-vastgelegde wijzigingen vóór het opschonen of herstellen van de geschiedenis."
+        ],
+        "tips": [
+          "Het maken van een werkruimte wordt niet automatisch samengevoegd of gepusht. Alleen vastgelegde wijzigingen nemen deel aan vertakkingssamenvoegingen.",
+          "Als u een taakwerkruimte verwijdert, worden mogelijk mappen en functievertakkingen verwijderd. Opschonen is geen manier om resultaten op te slaan."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Taak Git-werkruimte met een bestaande Worktree",
+          "caption": "De demonstratiewerkruimte bestaat zonder bestandsverschillen. Open het, voeg repositories toe of beheer branches; dit is niet de scheppingsvorm."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Taken delen en projecten op afstand",
+    "summary": "Onderscheid een link naar één taak van externe toegang tot een heel apparaat.",
+    "sections": [
+      {
+        "title": "Deel één taak",
+        "steps": [
+          "Klik op Delen in taakdetails en kies Alleen-lezen of Interactief.",
+          "Het formulier genereert een willekeurig wachtwoord en is standaard zeven dagen geldig. Wijzig of wis het wachtwoord indien nodig; indien ingesteld, moet het minimaal vier tekens bevatten. Voeg een optionele titel toe, zorg ervoor dat de vervaldatum binnen de komende 90 dagen valt en genereer en kopieer vervolgens de link.",
+          "Open het in een apart browservenster, voer een wachtwoord in (indien ingesteld) en controleer de voortgang, berichten, artefacten en geselecteerde machtigingen.",
+          "Als u het delen wilt stoppen, opent u de huidige share en trekt u deze in. Reeds geopende kijkers verliezen ook de voortdurende toegang."
+        ],
+        "tips": [
+          "Alleen-lezen is om te bekijken. Interactieve bezoekers gebruiken de originele taakcontroller: ze kunnen coördinator- of stapberichten verzenden, de uitvoering stoppen, goedkeuringen en vragen afhandelen en de beschikbare taakconfiguratie en Git-werkruimteacties gebruiken. Deze zijn van invloed op de oorspronkelijke taak, binnen het taakbereik van dat aandeel. Voor alleen bekijken kiest u Alleen-lezen en verifieert u de modus in een aparte browser.",
+          "Ontvangers moeten het backend-adres in de link bereiken. Het genereren van een link creëert geen openbare netwerktunnel."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Interactief formulier voor het delen van taken vóór het genereren van links",
+          "caption": "De interactieve modus is geselecteerd en het wachtwoord is leeg. Er is geen deellink gemaakt."
+        }
+      },
+      {
+        "title": "Configureer hosttoegang en nodig apparaten uit",
+        "steps": [
+          "Open op de host Instellingen → Externe toegang, schakel verbindingen in en controleer het interne adres. Voor openbare toegang is een bereikbaar extern adres HTTPS/WSS vereist.",
+          "Stel een toegangssleutel in en sla deze op, en test vervolgens de bereikbaarheid vanaf een ander apparaat.",
+          "Genereer een projectuitnodiging onder Projectconfiguratie → Delen. Importeer het in het item Externe toegang van een andere WorkStep en volg de verbindingsaanwijzingen.",
+          "Inspecteer geautoriseerde apparaten en actieve uitnodigingen. Wijzig de autorisatieperioden of trek deze indien nodig in. Indien de verbinding verbroken is, controleer dan de beschikbaarheid, het adres, de sleutel en de vervaldatum van de host."
+        ],
+        "tips": [
+          "WorkStep heeft geen ingebouwd openbaar relais. Zorg zelf voor een bereikbare netwerkvermelding. Taakwachtwoorden, hosttoegangssleutels en apparaatuitnodigingen zijn gescheiden.",
+          "Externe mappen en zoekmachines blijven op de host. Uw lokale bestandsbeheerder kan de mappen niet rechtstreeks openen."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Schakelaar voor externe toegang en adresformulier voordat waarden worden ingevoerd",
+          "caption": "Interne en externe velden tonen voorbeeldplaatsaanduidingen en de sleutel is leeg. Er wordt geen apparaatautorisatielijst weergegeven."
+        }
+      },
+      {
+        "title": "Sluit indien nodig een enterprise-gateway aan",
+        "steps": [
+          "Als uw organisatie Gateway levert, voert u het adres ervan in Externe toegang → Gateway-platform in.",
+          "Schakel de Gateway-modus expliciet in, sla deze op en meld u vervolgens aan om deze computer te autoriseren. Door alleen een adres op te slaan, wordt dit niet ingeschakeld.",
+          "Als goedkeuring door de beheerder in behandeling is, voltooit u de goedkeuring en authenticeert u opnieuw. Eenmaal verbonden, kunt u projectpublicatie en toegangsrechten gebruiken binnen uw machtigingen.",
+          "Schakel de Gateway-modus uit en sla deze op om terug te keren naar lokaal gebruik."
+        ],
+        "tips": [
+          "Voor zelfstandig lokaal gebruik is geen gateway nodig. Organisatorische machtigingen en goedkeuring zijn afhankelijk van het daadwerkelijke platform."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Platformadres voordat Gateway-modus is ingeschakeld",
+          "caption": "Gateway is uitgeschakeld en het adres is een tijdelijke aanduiding. Het opslaan van een adres en het inschakelen van Gateway zijn verschillende acties."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Gateway-werkruimte en lokaal delen",
+    "summary": "Onderscheid lokale uitnodigingen, platformtoekenningen en taakverdelingen, en ga door met werken op verschillende apparaten.",
+    "sections": [
+      {
+        "title": "Configureer de Feishu- of Lark-ondernemingsidentiteit",
+        "steps": [
+          "Een beheerder opent Platforminstellingen → Organisatiesynchronisatie en QR-login, voegt een aangepaste bedrijfstoepassing Feishu of Lark toe en voert Tenant Key, App ID en App Secret in.",
+          "Kopieer de volledige weergegeven login-callback naar het overeenkomende ontwikkelaarsplatform. Stel de schakelaars voor applicaties, QR-login en organisatiesynchronisatie afzonderlijk in. Bestaande App ID's kunnen niet veranderen; gebruik een nieuwe identiteitsbron voor een andere toepassing.",
+          "Autoriseer het lezen van directory's, beperk de zichtbaarheid van applicaties en volg Leesvoorbeeld → Selecteer organisaties of gebruikers → Wijzigingen inspecteren → Synchronisatie bevestigen. Controleer resultaten en foutregistraties."
+        ],
+        "tips": [
+          "Gateway-ondernemingsidentiteit en lokale kanaalbots zijn gescheiden en delen niet automatisch inloggegevens. Voor QR-aanmelding en mapmachtigingen voor echte huurders zijn nog steeds integratietests vereist; gesimuleerd API-succes bewijst geen echte connectiviteit."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Feishu- of Lark-identiteitsbron en instellingen voor directorysynchronisatie",
+          "caption": "Er is een screenshot van de configuratie zonder referenties van een geïsoleerde gateway in behandeling."
+        }
+      },
+      {
+        "title": "Laat andere websites inloggen via Gateway",
+        "steps": [
+          "Een superbeheerder opent Gateway Platform-instellingen → Inlogautorisatie van derden en klikt op Terugbellijst bewerken.",
+          "Voer één volledige terugbelopdracht URL per lijn in, bijvoorbeeld https://business.example.com/login/callback,, met maximaal 100 vermeldingen. Schema-, poort-, pad- en vaste queryparameters moeten exact overeenkomen. Voltooi de beheerdersverificatie en sla op.",
+          "Begin met inloggen vanaf de integrerende website. Als u niet bent aangemeld bij Gateway, gebruikt u eerst het bestaande wachtwoord of de zakelijke QR-login en keert u vervolgens terug. De backend van de site wisselt een eenmalige autorisatiecode uit voor gebruikers-ID, account en weergavenaam.",
+          "Om een ​​integratie te beëindigen, verwijdert u de URL en slaat u deze op. Een lege toelatingslijst schakelt de inlogautorisatie van derden uit; openstaande codes voor verwijderde adressen worden onmiddellijk ongeldig."
+        ],
+        "tips": [
+          "Callbacks ondersteunen HTTP/HTTPS, geen wildcards, fragmenten, ingebedde inloggegevens of vooraf ingestelde code, status of request_id-parameters. Gebruik HTTPS in productie.",
+          "Als terugbellen niet geautoriseerd is, controleer dan de volledige URL. Als een code is verlopen of is gebruikt, start u het inloggen opnieuw vanaf de integrerende site. Protocol en uitvoerbare voorbeelden bevinden zich in docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Toelatingslijst voor terugbellen van derden in Gateway-instellingen",
+          "caption": "Echte geïsoleerde demonstratie Gateway-screenshot in behandeling; gebruik geen alledaagse accounts of daadwerkelijke terugbelinstellingen."
+        }
+      },
+      {
+        "title": "Beheer twee soorten projectdeling",
+        "steps": [
+          "Open Delen in projectinstellingen. Door een Gateway-adres te configureren, wordt Platformtoegang ingeschakeld. De lokale interface biedt ook uitnodigingen voor projecten op afstand; Externe gatewaybrowsers kunnen geen lokale uitnodigingen configureren.",
+          "Voor lokale uitnodigingen kiest u LAN of een extern adres en toegangsperiode voor het apparaat, waarna u deze genereert en kopieert. Een aangepaste vervaldatum moet in de toekomst liggen; Het inwisselen van uitnodigingen en het verlopen van de apparaatautorisatie worden afzonderlijk weergegeven.",
+          "Na het importeren op het ontvangende apparaat controleert u de naam, het IP-adres, de verbinding en de vervaldatum onder Geautoriseerde apparaten. Wijzig perioden of trek deze indien nodig in. Platformtoegang maakt in plaats daarvan gebruik van accounts, projectpublicatie en subsidies.",
+          "Voor één taak kiest u de modus, het wachtwoord en de titel in het bijbehorende venster Delen. Lokale en gateway-shares zijn beide standaard ingesteld op zeven dagen en staan ​​maximaal 90 dagen toe. Test in een aparte browser en beheer vervolgens of trek deze in vanuit het oorspronkelijke venster."
+        ],
+        "tips": [
+          "Voor het delen van een lokale taak via een verbonden gateway is een geldige platformidentiteit vereist. Alleen een adres of desktopreferentie verleent geen platformtoestemming.",
+          "Lokale taakkoppelingen gebruiken het hostadres; Gateway-shares gebruiken het door het platform geretourneerde adres. Publiceer nooit inloggegevens voor uitnodigingen en deel nooit links of wachtwoorden in schermafbeeldingen.",
+          "Beide typen ondersteunen vervaldatum. Gateway kan inloggen vereisen; interactieve Gateway-shares moeten dit vereisen en login gebruiken in plaats van een toegangssleutel. Controleer de velden in het huidige deelvenster."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Tabblad voor delen op afstand en autorisatieperiode voor apparaat",
+          "caption": "Als er geen gateway is geconfigureerd, wordt Externe toegang weergegeven. Er zijn geen apparaten geautoriseerd en er is geen uitnodiging gegenereerd."
+        }
+      },
+      {
+        "title": "Schakel tussen apparaten en bekijk de verzamelde meldingen",
+        "steps": [
+          "Voer een geautoriseerde apparaatwerkruimte op het platform in en gebruik vervolgens de bovenste apparaattabbladen om naar een ander online apparaat te schakelen.",
+          "Elk account en apparaat onthoudt de laatste project-, taak- of sessiepagina in deze browser. Bij het retourneren wordt nog steeds de autorisatie gecontroleerd en worden ontoegankelijke doelen niet omzeild.",
+          "Externe projecten worden alleen geladen als ze zijn geselecteerd. Nadat het laden is mislukt of de verbinding is verbroken, klikt u opnieuw op het huidige project om handmatig te vernieuwen; apparaten worden niet continu op de achtergrond ondervraagd.",
+          "Open het meldingscentrum voor voltooiings- of foutoverzichten van geautoriseerde apparaten. Klik om de taak of sessie te openen. Live-berichten in de Workspace horen nog steeds bij het huidige apparaat.",
+          "Gebruik Return to Gateway-platform om een ​​ander apparaat te kiezen. Een verlopen browserautorisatie-callback start het inloggen opnieuw; Nadat u de bureaubladautorisatie hebt geannuleerd, probeert u het handmatig opnieuw of keert u terug naar de lokale werkruimte."
+        ],
+        "tips": [
+          "Paginageheugen is browserlokaal en niet gesynchroniseerd tussen browsers. Toegang werkt zonder browseropslag, maar locaties worden niet behouden.",
+          "Maak opnieuw verbinding als daarom wordt gevraagd voor offline apparaten, ingetrokken autorisatie of netwerkfouten. Opgeslagen locaties vervangen de machtigingen niet.",
+          "Schermafbeeldingen van echte apparaattabbladen en geaggregeerde meldingen van het vaste demonstratieproject blijven in behandeling."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Apparaattabbladen en geaggregeerd meldingscentrum",
+          "caption": "Echte screenshot in behandeling: apparaat wisselen, locatieherstel en meldingsnavigatie; nog niet gevangen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Kanaalbots en groepsmeldingen",
+    "summary": "Configureer WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack of QQ, waarbij u onderscheid maakt tussen chat- en Webhook-meldingen.",
+    "sections": [
+      {
+        "title": "Kies een kanaal en sluit een nieuw platform aan",
+        "steps": [
+          "Open Instellingen → Kanaalbots, selecteer een platform aan de linkerkant en voer aan de rechterkant een naam, inloggegevens en standaard lokaal project in. Inschakelen en opslaan. Lege geheimen behouden bestaande waarden tijdens het bewerken; controleer niet-opgeslagen wijzigingen voordat u overschakelt. Bij het sluiten van instellingen, het indrukken van Escape of het wisselen van instellingensecties wordt om bevestiging gevraagd wanneer de wijzigingen niet zijn opgeslagen; Als u annuleert, blijft het concept behouden.",
+          "Voor Feishu of Lark maakt u een aangepaste bedrijfsapp met botondersteuning en voert u App ID en App Secret in. Schakel na de verbinding gebeurtenissen met een lange verbinding in, abonneer u op im.message.receive_v1 en card.action.trigger, configureer bericht-/kaartrechten en publiceer. Stuur een privébericht of vermeld de bot in een groep.",
+          "Voor Telegram maakt u een bot met BotFather en voert u de Bot Token in. Er wordt gebruik gemaakt van lange peilingen; geen enkel ander programma kan die bot tegelijkertijd ondervragen. Beheerders moeten eerst een bestaande webhook verwijderen. Stuur een privé-sms, of vermeld/beantwoord het in groepen.",
+          "Voor Discord voert u Application ID en Bot Token in, schakelt u Message Content Intent in en verleent u lees-/verzendrechten voor het kanaal. Noem de bot in serverkanalen; bind taken met behulp van kanaal- of thread-ID's.",
+          "Voor Slack schakelt u Socket Mode in en voert u App ID in, een App-Level Token met connections:write en Bot Token. Configureer chat:write, app_mentions:read en im:history, abonneer u op app_mention en message.im en installeer vervolgens. Nodig de bot uit voordat je hem in kanalen vermeldt.",
+          "Voor QQ maakt u een officiële bot op het QQ Open Platform, selecteert u WebSocket-toegang en schakelt u privé-/groepsberichtgebeurtenissen in. Voer App ID, App Secret en een standaard lokaal project in, schakel in en sla op. Stuur een privé-sms of vermeld de bot in een groep. Nadat u een bericht hebt ontvangen, bindt u taken met behulp van group_openid en configureert u toelatingslijsten met OpenID's van leden, niet met QQ-account- of groepsnummers. Alleen tekst; passieve antwoorden hebben tijd- en tellimieten. Lees lange resultaten in WorkStep.",
+          "Keer terug naar WorkStep om verbindingen en kanaalsessies te inspecteren en vervolgens indien nodig taken te binden. Controleer op fouten de regio, inloggegevens, platformmachtigingen en backend-netwerken."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack en QQ ondersteunen momenteel alleen tekst. Keer terug naar WorkStep voor stoppen, toestemmingsantwoorden, voorstelbevestiging en beoordeling; afbeeldingen, bestanden en interactieve kaarten worden niet beloofd.",
+          "Tests op nieuwe platforms maken gebruik van gesimuleerde frames. Voor de installatie, machtigingen en berichtenuitwisseling van echte tenants zijn nog steeds integratietests vereist. Houd geheimen, volledige tokens en privégroep-ID's buiten schermafbeeldingen."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Kanaalkiezer en aparte bot-editor",
+          "caption": "Een echte screenshot zonder referenties van de nieuwe meerkanaalsindeling is in behandeling. De oude vorm vertegenwoordigt het niet."
+        }
+      },
+      {
+        "title": "Stuur alleen meldingen naar Feishu- of Lark-groepen",
+        "steps": [
+          "Voeg in Workflow hooks → Notificatie hooks op de taakpagina een Feishu- of Lark-groepsbotdoel toe en plak de volledige aangepaste bot-webhook URL voor die regio.",
+          "Als ondertekening is ingeschakeld, voert u het ondertekeningsgeheim van die bot in, niet App ID of App Secret. Configureer de vereiste trefwoorden, gebeurtenissen en Markdown-sjabloon, sla de simulatie op en inspecteer deze.",
+          "Bevestig de ontvangersgroep voordat u een test verzendt en de leveringsgegevens inspecteert. Preview verzendt niets; Controleer na een time-out de groep voordat u het opnieuw probeert."
+        ],
+        "tips": [
+          "Webhooks verzenden alleen workflowgebeurtenissen en ontvangen geen groepschat. Gebruik een applicatiebot voor tweerichtingsgesprekken."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Feishu- of Lark-melding URL, handtekening en sjabloon",
+          "caption": "Configuratie zonder referenties en screenshots van kaartvoorbeelden zijn in behandeling; daadwerkelijke levering wordt niet geclaimd."
+        }
+      },
+      {
+        "title": "Voeg een bot toe",
+        "steps": [
+          "Open Instellingen → Bots kanaal, selecteer WeCom of DingTalk aan de linkerkant, voeg een bot toe en geef deze een naam.",
+          "Voor WeCom selecteert u een lange verbinding in de intelligent-bot-instellingen en kopieert u Bot ID en Secret. Maak voor DingTalk een app, schakel de Stream-bot in en kopieer Client ID en Client Secret.",
+          "Kies een standaardproject, schakel de lange verbinding in, sla op en wacht op Connected.",
+          "Voeg de bot toe aan een groep, vermeld deze met een testbericht, inspecteer het gesprek en antwoord onder projectkanaalchats."
+        ],
+        "tips": [
+          "Voer geheimen alleen in de instellingen in, niet in schermafbeeldingen of berichten. Controleer op verbindingsfouten de platformmodus, inloggegevens en backend-netwerken.",
+          "DingTalk-knopkaarten vereisen machtigingen voor maken, leveren en bijwerken. Aangepaste sjablonen moeten overeenkomen met de velden die in de interface worden beschreven."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Oud Voeg een botformulier toe voordat de inloggegevens worden ingevoerd",
+          "caption": "Het oude formulier illustreert alleen naam, inloggegevens en standaardprojectvelden. Het is niet opgeslagen of verbonden; de nieuwe platformlijst aan de linkerkant heeft nog steeds een screenshot nodig."
+        }
+      },
+      {
+        "title": "Bind een taakgroep en handel beoordelingen af",
+        "steps": [
+          "Open Bind BOT in taakdetails en selecteer een ingeschakelde bot.",
+          "Noem het één keer in de groep en kies vervolgens de groep onder Recent ontvangen groepen. U kunt ook een bekende groeps-ID plakken, de huidige taak verifiëren en binden.",
+          "Bij groepsvragen wordt de coördinator van die taak ingevoerd. Inspecteer etapperesultaten en doorgestuurde bijlagen.",
+          "Als er beoordelings- of vraagkaarten verschijnen, lees deze dan voordat u handelt en ga indien nodig terug naar WorkStep om te verifiëren. Maak de verbinding los wanneer deze niet langer nodig is."
+        ],
+        "tips": [
+          "Het standaardproject verwerkt kanaalchat die niet aan een taak is gebonden. Groepsbindingen bepalen welke taak de berichten van die groep ontvangt.",
+          "Door een taak te archiveren of te verwijderen worden de bindingen opgeheven; herstellen vereist opnieuw verbinden. De weergave van knoppen is afhankelijk van kanaalclients. Indien niet beschikbaar, handel dan in de taakdetails."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Dialoogvenster Taak BOT zonder gebonden groep",
+          "caption": "Kies een bot en recente groep, voer vervolgens de ID ervan in en koppel deze. Er is nog geen taakgroep gebonden."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Desktop-sandbox",
+    "summary": "Voer de backend en motoren uit in een aparte container, met expliciet bijbehorende projectmappen.",
+    "sections": [
+      {
+        "title": "Voltooi de sandboxgids in vijf stappen",
+        "steps": [
+          "Open op het bureaublad Sandbox, het laatste item Instellingen. Beëindig actieve taken en gesprekken en verifieer virtualisatie-ondersteuning; Windows heeft WSL2 nodig.",
+          "Kies eerst aparte sandbox-opslag en download/bereid hulpsoftware.",
+          "Controleer vervolgens de image en download de aanbevolen release-image, of scan de lokale Docker voor een compatibele WorkStep-image.",
+          "Selecteer ten derde bestaande of nieuwe projectmappen; ten vierde kiest u de migratie van provider, engine en voorkeur; vijfde inspecteer de samenvatting en sla deze op of bevestig en start opnieuw."
+        ],
+        "tips": [
+          "Als u een project koppelt, worden de bestanden ervan niet gekopieerd. Sandbox-bewerkingen hebben nog steeds invloed op de oorspronkelijke map. Voer hetzelfde project niet tegelijkertijd in beide omgevingen uit.",
+          "Niet-gekoppelde projecten worden tijdelijk verborgen en niet gewist. Sandbox- en projectmappen kunnen elkaar niet bevatten."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Projectselectie en bevestiging in de sandboxgids in vijf stappen",
+          "caption": "Inspecteer opslag, projectkoppeling en configuratiemigratie."
+        }
+      },
+      {
+        "title": "Schakel tussen modi en onderhoud de configuratie",
+        "steps": [
+          "Controleer na het opnieuw opstarten de zijbalkbadge van de Sandbox-modus om de daadwerkelijke omgeving te verifiëren.",
+          "Controleer de adressen van de providers, de installatie van de motor en login opnieuw. Host localhost betekent iets anders in de container en paden moeten mogelijk worden aangepast.",
+          "Voordat u mappen importeert of wijzigt, schakelt u de sandbox uit, start u deze opnieuw op en gebruikt u vervolgens sandboxbeheer. Lees back-up- en vervangingsgegevens voordat u importeert.",
+          "Schakel de sandbox uit en start opnieuw op om terug te keren naar de normale modus. Voor fouten opent u de logboekdirectory en inspecteert u de voortgang en fouten."
+        ],
+        "tips": [
+          "De gewone modus en de sandbox-modus behouden een afzonderlijke configuratie. Als u overschakelt, worden wijzigingen niet automatisch terug gesynchroniseerd.",
+          "Overweeg compatibiliteitsrechten alleen als de interne sandbox van een engine niet kan draaien; de interface verklaart de verminderde isolatie. Het verwijderen van sandboxgegevens is onomkeerbaar: controleer eerst wat er wordt bewaard."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Algemene instellingen en probleemoplossing",
+    "summary": "Begrijp de reikwijdte van de configuratie, lees eerst de status en fouten en voer vervolgens gerichte reparaties uit.",
+    "sections": [
+      {
+        "title": "Controleer de desktopversie en download updates",
+        "steps": [
+          "Open op het bureaublad Instellingen → Systeeminstellingen → Bureaubladupdates om de huidige versie te inspecteren.",
+          "Klik op Controleren op updates om de nieuwste officiële GitHub-release te vinden. Indien nieuwer, klik op Downloaden van GitHub.",
+          "Kies het installatieprogramma voor uw systeem op de releasepagina, voltooi het actieve werk en installeer het zelf."
+        ],
+        "tips": [
+          "Desktopcontroles één keer per dag zonder automatisch te downloaden, installeren of opnieuw opstarten. Alleen een nieuwere officiële release activeert een update, geen code-pushs of concepten.",
+          "Probeer mislukte controles later opnieuw. De webversie heeft geen vermelding voor desktopupdates."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Huidige desktopversie en updatecontrole in systeeminstellingen",
+          "caption": "Controleer dit handmatig en download vervolgens van GitHub wanneer er een update beschikbaar is."
+        }
+      },
+      {
+        "title": "Gelijktijdigheid, assistenten en weergave",
+        "steps": [
+          "Wanneer u veel taken uitvoert, stelt u de taak- en gesprekscapaciteit in de algemene gelijktijdigheidslimieten of projectconfiguratie in en inspecteert u de effectieve waarden.",
+          "Als geplande taken geen capaciteit mogen verbruiken, controleer dan of er voldoende bronnen zijn voordat u die optie inschakelt. Overtollige taken en wachtrijen voor chats.",
+          "Configureer de engine en het model van elke assistent onder Assistenten. Controleer de instellingen voor stapuitvoering en taakcoördinator afzonderlijk.",
+          "Wijzig de gebruikersnaam in de systeeminstellingen. Taal, lettertypen, grootte en skins staan ​​onder Instellingen → Uiterlijk; Het scanbereik van de repository bevindt zich onder Git-instellingen."
+        ],
+        "tips": [
+          "Het wijzigen van de standaarduitvoeringsengine heeft invloed op nieuwe taken en stappen, niet op bestaande taak- of stapinstellingen."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Globale gelijktijdigheidslimieten voor taken en gesprekken",
+          "caption": "Stel de globale capaciteiten en de uitzondering voor geplande taken in."
+        }
+      },
+      {
+        "title": "Los problemen op volgorde op",
+        "steps": [
+          "Als een taak niet start, maak dan onderscheid tussen de statussen gereed, in de wachtrij en wachtend op beoordeling. Controleer de startstap, het automatisch opstarten en de beschikbaarheid van de motor.",
+          "Als de uitvoering mislukt, lees dan de laatste fout. Controleer de SDK-installatie, providerauthenticatie, modelnaam, netwerk- en bestandsrechten en voer het programma vervolgens opnieuw uit.",
+          "Gebruik Opnieuw proberen voor geschiedenis- of API-laadfouten. Als de API een webpagina retourneert, bevestig dan de backend-versie en start opnieuw op via uw gebruikelijke methode.",
+          "Als de native sessiegeschiedenis verloren is gegaan, lees dan Opnieuw uitvoeren met een nieuwe sessie, geef de huidige doelen en vereiste artefactreferenties op en behandel dit niet als volledig herstel van de native context.",
+          "Voor ontbrekende artefacten of fouten bij toegang op afstand controleert u respectievelijk de daadwerkelijke bestandsgeneratie of de beschikbaarheid van de host, het adres, de sleutel en het verlopen van de autorisatie."
+        ],
+        "tips": [
+          "Wanneer u problemen rapporteert, vermeld dan de versie, het besturingssysteem, de engine, reproductiestappen en geredigeerde foutscreenshots, nooit inloggegevens. Zonder een expliciete instelling activeert 20 aaneengesloten minuten zonder motorgebeurtenissen de time-out voor inactiviteit, terwijl de sessie behouden blijft. Bestaande aangepaste time-outs blijven bestaan; 0 schakelt het uit. Rustig denken of tools lopen niet noodzakelijkerwijs vast: inspecteer logs voordat u ze opnieuw uitvoert."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Demonstratie mislukt veroorzaakt door een niet-bestaand model",
+          "caption": "De foutmelding geeft aan dat het gekozen model niet wordt ondersteund. Herstel de modelconfiguratie van de stap voordat u deze opnieuw uitvoert; op deze afbeelding is het niet gerepareerd."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Uiterlijk, huiden en talen",
+    "summary": "Kies persoonlijke weergavevoorkeuren of maak previews van skins en taalpakketten via de gewone projectchat.",
+    "sections": [
+      {
+        "title": "Kies een ingebouwde taal",
+        "steps": [
+          "In Instellingen → Vormgeving kiest u Vereenvoudigd Chinees, Traditioneel Chinees, Engels, Japans, Frans, Duits of Arabisch en inspecteert u algemene invoer- en datumcontroles.",
+          "Kies de weergavetaal voor de website en de handleiding via de taalkeuzelijst bovenaan, waaronder Japans, Traditioneel Chinees, Koreaans en andere beschikbare talen. De browser onthoudt uw keuze; zonder opgeslagen voorkeur wordt de browsertaal gebruikt."
+        ],
+        "tips": [
+          "Franse, Duitse en Arabische app-vertalingen omvatten momenteel belangrijke inzendingen; andere tekenreeksen kunnen Chinees blijven en de Arabische lay-out van de app is nog steeds van links naar rechts. Website- en handleidingteksten volgen de bovenste taalkiezer, met van rechts naar links Arabische lay-out. Echte screenshots blijven Chinees. Bij het wisselen van taal worden eerdere gesprekken of gebruikersbestanden niet vertaald."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Ingebouwde taalkiezers in de app en website",
+          "caption": "Echte screenshots van de toegevoegde taalkeuzes zijn in behandeling."
+        }
+      },
+      {
+        "title": "Gebruik v2-skinlay-outs en functie-extensies",
+        "steps": [
+          "Installeer en valideer onder Instellingen → Vormgeving een vertrouwde v2-skin, bekijk een voorbeeld en pas deze toe. Voor functies zoals notities vraagt ​​u de auteur in de chat voor het maken van het uiterlijk om componenten op te nemen.",
+          "Lees de inschakelbevestiging voor pakketten met code. Het updaten van een pakket of het wijzigen van de identiteit kan opnieuw vragen. Open panelen via de skinmenu's of functie-items, die afhankelijk zijn van het pakket. Notities of agenda's zijn geen vooraf geïnstalleerde app-functies.",
+          "Het pakket kan de componist boven, onder, links of rechts positioneren. Compacte weergaven behouden de verticale opstelling. Na het overschakelen blijven controleberichten, componist en instellingen bruikbaar.",
+          "Extensiegegevens zijn gescheiden op basis van browseridentiteit, apparaat, skin en functie. Als u een skin wijzigt of verwijdert, wordt deze niet gewist. Gebruik de eigen export van de extensie voor back-up. Als de interface kapot gaat, voeg dan skin=default toe aan de URL en vernieuw."
+        ],
+        "tips": [
+          "Componentcode heeft de rechten van de huidige pagina. Schakel alleen vertrouwde bronnen in. Als u het voorbeeld annuleert, wordt de weergave hersteld, maar wordt de reeds uitgevoerde code niet ongedaan gemaakt.",
+          "Extensiegegevens worden niet opgenomen in skin ZIP-exports of gesynchroniseerd tussen browsers/apparaten. Maak een back-up voordat u de opslag opruimt; Een mislukte besparing mag niet als succes worden beschouwd."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Bevestiging van v2-componentinschakeling en toegang tot het functiepaneel",
+          "caption": "Een echte uitvoeringsscreenshot van een vertrouwd demonstratiepakket is in behandeling. Formaatvalidatie is geen visuele acceptatie."
+        }
+      },
+      {
+        "title": "Persoonlijke verschijning kiezen en opslaan",
+        "steps": [
+          "Voor volledige toegang tot het apparaat opent u Instellingen → Weergave. Project-geautoriseerde gebruikers voeren Vormgeving en skins in via de zijbalk.",
+          "Kies lettertype, grootte en taal. Zoek of filter geïnstalleerde skins, bekijk een voorbeeld en pas ze toe. Via de vaste voorbeeldbalk kunt u annuleren of bevestigen.",
+          "De keuzes van geverifieerde Gateway-gebruikers worden per account en apparaat opgeslagen en hersteld in een andere browser op hetzelfde apparaat. Opnieuw mislukte poging tot opslaan. Lokale keuzes zonder platformaanmelding blijven in deze browser staan."
+        ],
+        "tips": [
+          "Pakketten en aanmaakrecords worden gedeeld op het apparaat; persoonlijke selecties zijn geïsoleerd. Project-geautoriseerde gebruikers kunnen alleen geïnstalleerde pakketten kiezen.",
+          "Ontbrekende of kapotte pakketten vallen terug naar het standaarduiterlijk. Voeg ?skin=default of ?lingual=default toe om de standaard skin of Vereenvoudigd Chinees te herstellen."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Lettertypen, grootte, taal en geïnstalleerde skins in Uiterlijk",
+          "caption": "De echte instellingenpagina toont standaardinstellingen en ingebouwde voorbeelden aan de rechterkant. Er zijn geen persoonlijke voorkeuren gewijzigd."
+        }
+      },
+      {
+        "title": "Creëer skins en talen via chat",
+        "steps": [
+          "Met hostbeheerrechten klikt u op Laten we het uiterlijk bespreken, kies een geïnstalleerde, geverifieerde engine en beschrijf een doel, zoals: Maak een donkere huid, behoud de lay-out en gebruik een pijl naar boven.",
+          "Chat is aan de linkerkant, bewerken en bekijken aan de rechterkant; telefoons wisselen van tabblad. Pas de naam, kleuren, lettertype, grootte, verzendpictogram en lay-out aan en sla vervolgens de aanpassingen op in hetzelfde conceptpakket. Bewerken is uitgeschakeld terwijl de chat actief is. Bekijk pc- en telefoonvoorbeelden.",
+          "Voor een taalpakket vraag je in dezelfde chat bijvoorbeeld: Voeg Spaans toe met behoud van uiterlijk. Schakel de rechterkant naar Taal. Het laadt na generatie; gebruik Lezen en valideren om de map, dekking, ontbrekende tekenreeksen en voorbeelden te controleren.",
+          "Voor skins klikt u op Vormgeving en voorbeeld opslaan; voor talen: Installeren en previewen. Bevestig of annuleer in de voorbeeldbalk. Opslaan in de bibliotheek bevestigt geen persoonlijke toepassing. Exporteer ZIP voor hergebruik en inspecteer vervangingsprompts voor importen of updates met dezelfde ID."
+        ],
+        "tips": [
+          "Creation hergebruikt het vaste Runtime-project en de gewone chat, waarbij uw model wordt aangeroepen. Ga verder met eerder werk via de gespreksgeschiedenis boven het venster. Preview-voorbeelden zelf voeren geen taken uit.",
+          "Lettertypen gebruiken geïnstalleerde systeemlettertypen. Historische berichten en bestanden worden niet automatisch vertaald. Ingebouwde verzendpictogrammen kunnen bij aanpassingen worden geselecteerd; aangepaste vectorpictogrammen moeten worden geleverd via een gevalideerd concept.",
+          "Taalpakketten zijn onafhankelijk van skins en ondersteunen momenteel talen van links naar rechts. Ontbrekende tekenreeksen en datumbesturingselementen gebruiken de opgegeven ingebouwde fallback. De berichtgeving bewijst niet de kwaliteit van de vertaling; gebruik chat om verouderde stringcatalogi bij te werken."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat- en bewerkings-/voorbeeldgebieden bij het maken van verschijningen",
+          "caption": "Een geautoriseerd leeg creatie-chat- en aanpassingsformulier. De componist is vooraf ingevuld; er is geen bericht verzonden, modelrun of skin opgeslagen."
+        }
+      },
+      {
+        "title": "Lees en bekijk een taalpakket",
+        "steps": [
+          "Schakel de rechterzijde van de weergavestudio naar Taal en vink de map met taalpakketten aan. Genereer via dezelfde chat of importeer een bestaande taal ZIP.",
+          "Gegenereerde pakketten worden automatisch geladen. Lees en valideer de dekking van cheques, ontbrekende strings en voorbeelden. Een waarschuwing dat er op generatie wordt gewacht voor een lege map betekent dat het maken nog niet is voltooid.",
+          "Na validatie, installeer en bekijk een voorbeeld en bevestig of annuleer vervolgens de persoonlijke toepassing. Dekking kan een beoordeling van de vertaalkwaliteit niet vervangen."
+        ],
+        "tips": [
+          "Momenteel worden alleen talen van links naar rechts ondersteund. Datumcontroles en ontbrekende strings maken gebruik van de gespecificeerde ingebouwde fallback van het pakket."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Taalmap en validatie-invoer in een lege creatiechat",
+          "caption": "Het tabblad Taal biedt directory, Lezen en valideren en ZIP-import. Er is geen taalpakket gegenereerd, geïnstalleerd of toegepast."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Audit van projectbediening op afstand",
+    "summary": "Inspecteer de acties van externe bezoekers en kijk of ze zijn geslaagd, geweigerd of mislukt.",
+    "sections": [
+      {
+        "title": "Filter en inspecteer operaties op afstand",
+        "steps": [
+          "Open op het apparaat dat het project host de Configuratie → Operatie-audit van het lokale project. Externe projecten, Gateway-werkruimten en projectgebonden toegang bieden dit tabblad niet.",
+          "Filter op actie en resultaat en inspecteer vervolgens actor, tijd, bron en taak, workflow of bestandsidentificatie.",
+          "Ga naar de volgende pagina of eerste pagina, vernieuw voor de nieuwste records en probeer opnieuw, mislukt laden."
+        ],
+        "tips": [
+          "Deze audit heeft betrekking op externe bronacties en geweigerde/mislukte resultaten, niet op volledige chats, en slaat geen inloggegevens op. De API is alleen lokaal op de host. Standaard retentie is 30 dagen; volg de werkelijke duur van de pagina. De echte namen van bezoekers van openbare aandelen zijn onbekend; Externe browser (zelfgerapporteerde identiteit) is geen geverifieerde identiteit."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Auditfilters en lege records voor een lokaal project",
+          "caption": "De daadwerkelijke lokale auditinvoer en actie-/resultaatfilters. Er zijn geen externe records aanwezig in het demonstratieproject; er werden geen acties of identiteiten verzonnen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Veelgestelde vragen",
+    "summary": "Begrijp de engine, modelservices, bestandswijzigingen en herstelgrenzen voordat u begint.",
+    "sections": [
+      {
+        "title": "Hoe verschillen SDK en CLI, en waarmee moet ik beginnen?",
+        "steps": [
+          "Beide zijn engine-integratiemethoden voor modelmogelijkheden. SDK integreert via ontwikkelaars-API's; CLI voert opdrachtregelprogramma's uit. Het is ook geen modelnaam.",
+          "Begin met het installeren van Codex SDK of Claude Agent SDK, voltooi de authenticatie, kies en verifieer een model en maak dit vervolgens tot de standaard uitvoeringsengine. Bestaande CLI-gebruikers kunnen in plaats daarvan voor die engine kiezen.",
+          "De provider levert het serviceadres en de authenticatie, het model identificeert wat het verzoek afhandelt en de engine biedt sessies, tools en uitvoering. Volg het formulier van de geselecteerde engine; inloggegevens zijn niet noodzakelijkerwijs uitwisselbaar."
+        ],
+        "tips": [
+          "De SDK-installatie stelt alleen runtime-afhankelijkheden vast, geen authenticatie, machtigingen of quota. Onderscheid Codex- en Claude Code SDK-vermeldingen van de vermeldingen gemarkeerd met CLI."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "SDK- en CLI-keuzes in motorinstellingen",
+          "caption": "Inspecteer de aanbevolen SDK-motoren en hun afzonderlijke installatie- en verificatiestatussen."
+        }
+      },
+      {
+        "title": "Hoe worden software- en modeloproepen in rekening gebracht?",
+        "steps": [
+          "Controleer het plan, de authenticatie en de quota van de geselecteerde modelservice voordat u een kleine eerste taak uitvoert. Een SDK zelf is geen modelcredit.",
+          "Taakuitvoering, automatische beoordeling, assistenten en nieuwe pogingen kunnen allemaal een beroep doen op modellen. Inspecteer modellen afzonderlijk in stap-, beoordelings- en assistent-instellingen.",
+          "Gebruik uitvoeringsanalyse om gebruiks- en kostenbronnen te inspecteren. Schattingen helpen het verbruik te verklaren; De uiteindelijke kosten volgen de regels en de factuur van de dienstverlener."
+        ],
+        "tips": [
+          "Ga er niet vanuit dat het downloaden van een SDK of het inloggen ervoor zorgt dat bellen gratis is, of dat er voor elke engine één abonnement geldt."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Tokengebruik en kostenbronnen in uitvoeringsanalyse",
+          "caption": "Door de provider gerapporteerde kosten en dekking worden weergegeven. Geschatte kosten worden alleen gelabeld als prijsschattingen daadwerkelijk worden gebruikt."
+        }
+      },
+      {
+        "title": "Waar worden gegevens opgeslagen en kan AI mijn bestanden wijzigen?",
+        "steps": [
+          "Lokale taken, workflows en berichten worden standaard opgeslagen in project .workstep. Uitschakelen Gegevensmap volgt projectmap maakt gebruik van ~/.workstep/projects/<项目ID>/. De .workstep/project.json van het project koppelt de originele gegevens opnieuw.",
+          "Verzoeken en context die door de engine worden gelezen, kunnen naar uw geconfigureerde modelservice worden verzonden. Kanalen, delen en toegang op afstand maken ook informatie binnen hun geautoriseerde reikwijdte bekend aan de overeenkomstige partijen.",
+          "AI met schrijfrechten kan projectbestanden wijzigen. Oefen in een apart project, controleer de rechten vóór uitvoering en inspecteer achteraf Git-diffs en daadwerkelijke artefacten.",
+          "Sandbox-associaties wijzigen nog steeds de origineel gekoppelde bestanden. Taak Worktree's bieden aparte mappen, maar de samenvoegingsresultaten moeten nog steeds worden geïnspecteerd."
+        ],
+        "tips": [
+          "Lokale opslag betekent niet dat er offline modelaanroepen zijn. Houd sleutels, accountgegevens en irrelevante gevoelige bestanden uit taakbeschrijvingen, bijlagen en schermafbeeldingen."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Paneel voor gesprekstoestemming op een telefoon",
+          "caption": "Standaard, Alleen-lezen, Werkruimte schrijven en andere keuzes worden vermeld. Daadwerkelijke ondersteuning en gedrag zijn afhankelijk van de motor."
+        }
+      },
+      {
+        "title": "Hoe verschillen stoppen, opnieuw proberen, herwerken en herstellen?",
+        "steps": [
+          "Stoppen onderbreekt de huidige uitvoering of een antwoord, maar maakt reeds geschreven bestanden niet ongedaan. Inspecteer de bestaande resultaten voordat u doorgaat.",
+          "Als u het opnieuw probeert of opnieuw uitvoert, wordt de engine opnieuw aangeroepen, waarbij mogelijk de context wordt voortgezet of een nieuwe sessie wordt gebruikt wanneer daarom wordt gevraagd. Niet elke wijziging wordt teruggezet naar de status van vóór de uitvoering.",
+          "Rework corrigeert resultaten op basis van beoordelingsfeedback of retourverbindingen, afhankelijk van de werkstroomafhankelijkheden en -limieten. Bevestigingen lezen wanneer het bereik van de herhaling wordt gewijzigd.",
+          "Nadat u WorkStep opnieuw hebt geopend, inspecteert u eerst de taak- en sessiestatus. Engines die herstel ondersteunen, kunnen hun oorspronkelijke sessie hervatten; verloren inheemse records vereisen een nieuwe sessie en opnieuw uitvoeren."
+        ],
+        "tips": [
+          "Automatisch herstel is afhankelijk van de motor en de beschikbare geschiedenis. Volledig herstel is niet voor elke motor of onderbreking gegarandeerd."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Geselecteerde stap in een voltooide taak opnieuw instellen",
+          "caption": "Voor deze voltooide taak is de stap Reset geselecteerd, wat alleen van invloed is op het bericht over de volgende stap. Het is geen bevestiging van verwijdering of waarschuwing voor ontbrekende sessies."
+        }
+      }
+    ]
+  }
+]

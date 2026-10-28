@@ -13,6 +13,8 @@ export interface Task {
   description: string | null
   cwd: string
   status: string
+  status_reason?: string | null
+  pending_confirmations?: Array<{ step_key: string; reason: string; interaction_id?: string }>
   queue_position?: number | null
   archived?: boolean
   engine: string
@@ -49,6 +51,7 @@ export interface Task {
 }
 
 export interface TaskStepState {
+  waiting_reason?: string | null
   in_workflow?: boolean
   step_key: string
   status: 'pending' | 'running' | 'reviewing' | 'awaiting_review' | 'retrying' | 'rework' | 'rework_waiting' | 'passed' | 'rejected' | 'failed' | 'cancelled' | 'skipped'

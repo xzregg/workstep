@@ -465,7 +465,9 @@ export default function ProcessTrace({
               {t('trace.thoughtCharacters', { count: eventSummary?.thought_characters ?? 0 })}
             </div>
           )}
-          {!detailsLoading && detailsLoaded && processItems.length === 0 && null}
+          {!detailsLoading && !detailsError && (detailsLoaded || !detailsAvailable) && processItems.length === 0 && (
+            <div className="process-trace-empty">{t('trace.noDetails')}</div>
+          )}
           {hiddenItemCount > 0 && (
             <div className="process-trace-empty">
               {t('trace.itemsHidden', { count: hiddenItemCount })}

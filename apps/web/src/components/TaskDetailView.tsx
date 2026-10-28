@@ -27,6 +27,7 @@ import {
   type EngineInputItem,
   type ProviderInfo,
   type ReviewRun,
+  type Task,
   type TaskArtifact,
   type TaskArtifactInputSnapshot,
   type TaskExecutionReport,
@@ -83,6 +84,8 @@ export type StepVisualState =
   | 'current'
   | 'reviewing'
   | 'awaiting_review'
+  | 'tool_approval'
+  | 'user_input'
   | 'retrying'
   | 'rework'
   | 'rework_waiting'
@@ -147,6 +150,8 @@ export interface TaskDetailViewProps {
     title: string
     description?: string | null
     status: string
+    status_reason?: string | null
+    pending_confirmations?: Task['pending_confirmations']
     steps: TaskStepState[]
     creator_id?: string | null
     creator_name?: string | null

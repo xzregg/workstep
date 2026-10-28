@@ -247,7 +247,7 @@ async def test_validation_scope_test_and_manual_retry(notification_app):
 @pytest.mark.parametrize('scenario,expected', [
     ('completed', ['completed', 'started', 'step_completed']),
     ('failed', ['failed', 'started', 'step_failed']),
-    ('paused', ['paused', 'started']),
+    ('paused', ['started', 'stopped']),
     ('stopped', ['started', 'stopped']),
     ('manual', ['paused', 'started', 'waiting']),
     ('complete_task', ['completed', 'paused', 'started', 'step_completed', 'waiting']),

@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "WorkStep'yu indirin, yükleyin ve açın",
+    "summary": "Önce WorkStep'yu, ardından bir SDK motorunu takın. Masaüstü uygulaması arka uç çalışma süresini içerir; önce Python'yu kurmanıza gerek yok.",
+    "sections": [
+      {
+        "title": "Bir yükleyici seçin",
+        "steps": [
+          "İşletim sisteminiz ve çipiniz için masaüstü yükleyiciyi seçmek üzere web sitesi indirme bağlantısını kullanın. Mac'te, Apple M serisi yongalar için arm64 DMG'yu veya Intel için x64 DMG'yu seçin.",
+          "Sisteminizin normal kurulum sürecini kullanarak WorkStep'yu kurun ve açın. Yerel arka ucun hazır olmasını ve çalışma alanının açılmasını bekleyin.",
+          "İlk başlatmada istendiğinde görünen adı girin. Katılımı tekrar ziyaret etmek için Ayarlar → Sistem ayarları → Katılım (设置 → 系统设置 → 新手引导) öğesini açın ve ardından Katılım'a tıklayın."
+        ],
+        "tips": [
+          "Masaüstü yükleyiciler Codex SDK veya Claude Agent SDK gibi isteğe bağlı motorları içermez. Bunları bir sonraki bölümdeki arayüz aracılığıyla yükleyin.",
+          "Erken imzalanmamış macOS veya Windows yapıları, sistem güvenliği istemlerini tetikleyebilir. Sisteminizin talimatlarını izlemeden önce indirme kaynağını doğrulayın.",
+          "Bağımsız yerel kullanım, Ağ Geçidinde oturum açmayı gerektirmez. Ağ Geçidini gönüllü olarak etkinleştirirseniz ve kimlik doğrulama başlatılamazsa, yerel giriş, yerel moda dönmeyi ve Ağ Geçidini devre dışı bırakmayı dener ve daha sonra yeniden bağlanmak üzere adresini korur. Ağ Geçidine bağlı bir kurulum veya uzak ziyaretçi, ana bilgisayarın Ağ Geçidini devre dışı bırakmak için bunu kullanamaz. Yerel moda dönüş başarısız olursa yerel arka ucu doğrulayın ve yeniden denemek için yenileyin."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "İlk başlatmada kimlik kurulumu ve hızlı başlangıç girişi",
+          "caption": "Çalışma alanına girmek veya hızlı kuruluma başlamak için yerel bir görünen ad girin. Bu görüntü bir tanıtım kimliği kullanıyor."
+        }
+      },
+      {
+        "title": "Üç kavramı anlayın",
+        "steps": [
+          "Bir motor görevleri yürütür ve araçları çağırır. Bu kılavuz öncelikle Codex SDK veya Claude Agent SDK'yu önerir; ayrı olarak monte edilmiş bir CLI motoru gerekli değildir.",
+          "Bir sağlayıcı API, API modelinin adresini ve kimlik bilgilerini sağlar. Yürütme motorundan ayrıdır ve protokolü, söz konusu motor tarafından desteklenen protokolle eşleşmelidir.",
+          "Bir model aslında isteğinizi işler. Bir motor yükleyin, kimliğini doğrulayın, bir model seçip test edin ve ardından bir görev oluşturun."
+        ],
+        "tips": [
+          "Bir SDK, temeldeki bir yürütülebilir dosyayı içerebilir veya çağırabilir. SDK'yu seçmek hiçbir alt sürecin olmadığı anlamına gelmez.",
+          "WorkStep proje verilerini yerel olarak saklar. Yürütme sırasında seçilen motor ve sağlayıcı, görev içeriğini model hizmetine gönderir."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Adım 1: SDK motorunu kurun",
+    "summary": "SDK ile başlayın. Terminal kurulum komutlarını kopyalamadan, Kurulum ve sürümler (安装与版本) aracılığıyla motorları indirin ve yönetin.",
+    "sections": [
+      {
+        "title": "Arayüz aracılığıyla indirin ve yükleyin",
+        "steps": [
+          "Ayarlar → Yürütme motorları (设置 → 执行引擎) öğesini açın. Codex SDK ve Claude Agent SDK'ya karşılık gelen SDK işaretli Codex veya Claude Code kartını bulun. Başlangıçta yalnızca kullanmayı düşündüğünüzü yükleyin.",
+          "Yükle ve sürümler'e tıklayın, sürüm listesini bekleyin ve ardından Sürüm seç altında uygun bir sürüm seçin.",
+          "Seçilen sürümü yükle'ye tıklayın ve sürümü doğrulayın. Üçüncü taraf şartları görünürse Kurulumu onayla'ya tıklamadan önce bunları okuyup kabul edin.",
+          "Ana paketin indirilmesini, motor ve bağımlılık kurulumunu ve sürüm doğrulamasını bekleyin. Yeni sürümün görüntülendiğini onaylayın.",
+          "Bir SDK sürümünü değiştirmek, arka ucun yeniden başlatılmasını gerektirir. Masaüstü kullanıcıları mevcut işi bitirebilir, WorkStep'dan çıkıp yeniden açabilir ve ardından yapılandırmaya devam edebilir."
+        ],
+        "tips": [
+          "Yüzde yalnızca ana paketi kapsamaktadır. Bağımlılık indirme ve çıkarma işlemlerinin yüzdesi olmayabilir; İlerlemeyi değerlendirmek için aşama tanımını kullanın.",
+          "Bölümü çöktüğünde kurulum devam eder. İlerleme geçici olarak değişmeyi bıraktığı için tekrar göndermeyin.",
+          "Uygun bir sürüm görünmüyorsa listeyi yenileyin ve ağ ve platform desteğini kontrol edin. Özel bir yürütülebilir yol yapılandırıldığında, sürümleri yönetmeden önce talimatlara uygun şekilde temizleyin."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "SDK motor kurulumu ve versiyon seçimi",
+          "caption": "Yükle ve sürümler'e, Sürüm seç'e ve ardından Seçilen sürümü yükle'ye tıklayın."
+        }
+      },
+      {
+        "title": "Kurulumu doğrulayın ve sürümleri koruyun",
+        "steps": [
+          "Yürütme motorlarını yeniden açın ve SDK'nun beklenen sürümle kurulduğunun algılandığını kontrol edin.",
+          "Daha sonraki yükseltmeler için Yükleme ve sürümler seçeneğini kullanın. Geri alma sürümü mevcutsa Geri al… öğesine tıklayın ve onaylayın; geri alma eski sürümü tekrar indirir.",
+          "Kurulum başarısız olursa o bölümdeki hatayı okuyun, ağı, disk alanını ve kurulum yolunu kontrol edip yeniden deneyin. Kurulumun başarısı, model kimlik doğrulamasının başarılı olduğu anlamına gelmez: daha sonra konfigürasyonu ve testi tamamlayın."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "SDK kurulumundan sonraki sürüm ve ilerleme",
+          "caption": "Kurulumdan sonra mevcut sürümü kontrol edin. Kalan %100 göstergesi, indirme işleminin devam ettiğini değil kurulumun tamamlandığını gösterir."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Sağlayıcıları, kimlik doğrulamayı ve bağlantı testlerini yapılandırma",
+    "summary": "WorkStep'da uyumlu bir sağlayıcı yapılandırın ve bunu SDK'nuza bağlayın. Mevcut yerel oturum açma bilgilerine sahip kullanıcılar, motorun kimlik doğrulamasını da yeniden kullanabilir.",
+    "sections": [
+      {
+        "title": "Sağlayıcı ekle",
+        "steps": [
+          "Ayarlar → Sağlayıcılar → Sağlayıcı ekle (设置 → 供应商 → 添加供应商) öğesini açın. Tanınabilir bir ad girin ve hizmetin türünü ve API protokolünü seçin.",
+          "Claude Agent SDK için uyumlu bir Anthropic Mesajları uç noktası seçin; Codex SDK için uyumlu bir OpenAI Yanıtları uç noktası seçin. 'OpenAI uyumlu' iddiası tek başına protokol uyumluluğunu sağlamaz.",
+          "Sağlayıcı tarafından sağlanan API adresini ve API Anahtarını girin. /v1 veya /v2 gibi sürüm yollarını koruyun; Tam sohbet uç noktasını temel adres olarak kullanmayın.",
+          "Sağlayıcıyı kaydedin ve Bağlantıyı test et'e tıklayın. Modelleri elde etmek için Modelleri al'a tıklayın, ihtiyacınız olan modelleri seçin ve ardından Seçileni kaydet'e tıklayın.",
+          "Sağlayıcının etkinleştirildiğinden emin olun. Testi geçtikten sonra bağlama ve motor testini tamamlamak için SDK'ya dönün."
+        ],
+        "tips": [
+          "Hesap abonelikleri, API kimlik bilgileri ve faturalandırma, servis sağlayıcı tarafından belirlenir. SDK'nun kurulması kimlik bilgilerini sağlamaz.",
+          "Bir sağlayıcıyı düzenlerken anahtarı boş bırakmak eski değeri korur. Değiştirmek için yeni bir anahtar girin ve ekran görüntülerinden veya yapılandırmayı paylaşmadan önce anahtarları gizleyin.",
+          "Kurumsal olarak yönetilen modda, sağlayıcılar platform tarafından atanabilir. Tekrar eklemek yerine yetkili bir sağlayıcı kullanın."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Sağlayıcı adı, protokol ve API adres ayarları",
+          "caption": "Uyumlu bir protokol yapılandırın, kaydedin ve ardından bağlantıyı test edin. Resimde boş anahtar alanına sahip genel bir API adresi gösterilmektedir."
+        }
+      },
+      {
+        "title": "SDK'yu bağlayın ve doğrulayın",
+        "steps": [
+          "Ayarlar → Yürütme motorları'na dönün, yüklü SDK'nun yapılandırmasını genişletin ve kaydettiğiniz uyumlu sağlayıcıyı seçin.",
+          "Claude Agent SDK bir İzin modu gerektirir. Açıklamasını okuyun, seçin ve onaylayın; diğer gelişmiş alanlar varsayılan değerlerinde kalabilir. Codex SDK için başlangıçta varsayılan akıl yürütme, onay ve korumalı alan ayarlarını koruyun.",
+          "Yapılandırmayı kaydet'e tıklayın ve varsayılan modeli kontrol edin. Bağlı bir sağlayıcı için Modelleri Yenile, tüm modelleri getirmek yerine yalnızca kaydedilen seçimleri yeniden okur. Önbellek veya seçim yoksa liste boştur. Model eklemek için Ayarlar → Sağlayıcılar, Modelleri al ve Seçilenleri Kaydet'e dönün, ardından motoru yenileyin.",
+          "Motor kartında Test'e tıklayın, sonucu bekleyin ve Doğrulandı (已验证) seçeneğini onaylayın. Bu, görevleri çalıştırmadan önceki kontrol noktanızdır."
+        ],
+        "tips": [
+          "Motor testi, seçilen motoru çalıştırır ve model servis ücretleri gerektirebilir.",
+          "Codex SDK akıl yürütme çabası, onay ve korumalı alan seçenekleri Çince etiketlere sahiptir. Efor listesi, model kataloğu boş olsa bile motor tarafından desteklenen ayarları gösterir; her modelin her düzeyi desteklediği anlamına gelmez. Varsayılanlarla başlayın. Bir model bir düzeyi reddederse Otomatik'e veya desteklenen bir değere dönün.",
+          "Sağlayıcı bağlaması olmadan, Codex SDK yerel Codex kimlik doğrulamasını yeniden kullanırken, Claude Agent SDK yerel kimlik doğrulama yapılandırmasını kullanır. Mevcut bir oturum açma bilgileri olmayan yeni kullanıcılar, sağlayıcı yapılandırmasıyla başlamalıdır.",
+          "Kimlik doğrulama hataları için anahtarı, API adresini, protokolü ve hesap izinlerini kontrol edin. Model hataları için model kimliğini ve sağlayıcı desteğini kontrol edin. Kurulu değil olarak işaretlenmişse kuruluma geri dönün."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Codex SDK kartında yapılandırmayı test edin, doğrulayın ve kaydedin",
+          "caption": "Codex SDK kartında Doğrulandı mesajı görüntülenerek bu motorun testi geçtiğini belirtir."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Varsayılan yürütme motorunu ve modelini ayarlayın",
+    "summary": "Başka bir motor belirtmeyen adımlar için test edilen SDK'yu varsayılan yürütme motoru yapın.",
+    "sections": [
+      {
+        "title": "Varsayılanları kaydet",
+        "steps": [
+          "Ayarlar → Yürütme motorları → Varsayılan yürütme motoru altında, az önce doğruladığınız SDK'yu seçin.",
+          "Varsayılanları kaydet'e tıklayın ve başarı mesajını onaylayın. Yalnızca bir açılır değer seçtikten sonra ayrılmayın.",
+          "Söz konusu SDK kartının varsayılan model seçicisinden bir model seçin. Ayrı bir modeli olmayan adımlar bu varsayılanı kullanır.",
+          "Bir iş akışı oluşturduktan sonra her adımın motorunu ve modelini yeniden kontrol edin. Açık adım ayarları genel varsayılanlar değiştiğinde otomatik olarak değişmez."
+        ],
+        "tips": [
+          "Asistanların ayrı konfigürasyon girişleri vardır. Varsayılan yürütme motorunu değiştirmek her asistanı değiştirmez.",
+          "Öncelikle doğrulanmış bir SDK ve bir modelle iş akışını tamamlayın, ardından farklı adımlar için farklı modelleri deneyin."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Varsayılan yürütme motoru seçici ve Varsayılanları kaydet düğmesi",
+          "caption": "Varsayılan motor seçici ve Varsayılanları kaydet girişi. Pydantic AI bu görüntüde yapılandırılmamıştır; hiçbir varsayılan değiştirilmedi veya doğrulanmadı."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Yerel bir projeye bağlanın",
+    "summary": "Bir proje yerel kod dizinine karşılık gelir. Verileri varsayılan olarak projeyi takip eder veya mevcut kullanıcının Ana Sayfası altında proje kimliğine göre saklanabilir.",
+    "sections": [
+      {
+        "title": "Otomatik olarak hazırlanan varsayılan çalışma alanını anlama",
+        "steps": [
+          "İlk girişte kenar çubuğunda Varsayılan çalışma alanı (默认工作区) bulunur. Hiçbir proje seçilmediğinde WorkStep normal sohbet sayfasını açar. Mevcut proje seçimleri ve uzaktan bağlamalar önceliklidir.",
+          "SDK'yu yapılandırdıktan sonra bu çalışma alanını sıradan sohbet için kullanın. Kodunuz üzerinde çalışmak için, gerçek dizinine bağlanmak üzere Proje ekle'yi kullanın; varsayılan çalışma alanı zaten bağlı bir depo değil.",
+          "Varsayılan çalışma alanı aynı zamanda beceri, motor, dış görünüm ve dil paketi oluşturma yoluyla da paylaşılır. Bu girişler sıradan sohbeti yeniden kullanır ve çıktılarını bu çalışma alanında saklar."
+        ],
+        "tips": [
+          "Varsayılan çalışma alanını yeniden adlandırabilirsiniz ancak proje listesinden kaldıramazsınız. Otomatik olarak bir iş akışı oluşturmaz.",
+          "Varsayılan çalışma alanı bir projedir; SDK bir yürütme motorudur. Bir projeye sahip olmak, bir motorun kurulu olduğu veya kimliğinin doğrulandığı anlamına gelmez."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Kenar çubuğundaki varsayılan çalışma alanı ve sıradan sohbet girişi",
+          "caption": "Henüz herhangi bir konuşma veya iş akışının olmadığı, varsayılan çalışma alanındaki boş, sıradan bir sohbet. Burada bir konuşma oluşturun; kod projelerinin hala açıkça bağlanması gerekiyor."
+        }
+      },
+      {
+        "title": "Bir gösteri dizini ile başlayın",
+        "steps": [
+          "Workstep-demo gibi ayrı bir tanıtım klasörü hazırlayın. Mevcut kod için proje kökünü seçin.",
+          "Kenar Çubuğu → Proje ekle → Yerel proje (侧边栏 → 添加项目 → 本地项目) öğesine tıklayın, dizin tarayıcısında söz konusu klasörü seçin ve onaylayın.",
+          "Projenin kenar çubuğunda görünüp görünmediğini kontrol edin ve projeye geçin. Yeni projelerin varsayılan olarak iş akışı yoktur; bir tane daha oluşturun.",
+          "Aynı dizine daha sonra yeniden bağlanıldığında iş akışları, görevler ve mesajlar proje verilerinden geri yüklenir. Bir projeyi yeniden açmak için .workstep dosyasını silmeyin."
+        ],
+        "tips": [
+          "Motorlar proje dosyalarını görev talimatlarına göre okuyabilir veya değiştirebilir. Gerçek kodu düzenlemeden önce ayrı bir dizinde pratik yapın ve sürüm geçmişini saklayın.",
+          "Varsayılan olarak, proje verileri .workstep/workstep.db,'dadır, yüklemeler .workstep/uploads/,'dadır ve yapılar .workstep/artifacts/.'dadır. Merkezi depolama ile, Ana Sayfa altındaki ilgili proje veri dizinini ve proje kimlik dosyasını yedekleyin.",
+          "Yeni veya yeniden adlandırılan proje adları boşluk, sekme veya başka boşluklar içeremez."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Yerel bir proje ekleyin ve kök dizinini seçin",
+          "caption": "Gösterim dizinini seçin ve ardından kenar çubuğundan bağlı projeye girin."
+        }
+      },
+      {
+        "title": "Proje dizinini açın ve oluşturulan dosyaları inceleyin",
+        "steps": [
+          "Projeyi seçin ve görev veya proje sohbet sayfasında Dizini aç'a tıklayın. Bir görev tamamlandıktan sonra oluşturulan gerçek dosyaları incelemek için bunu kullanın.",
+          "Masaüstü uygulamasında sağ ok, algılanan yerel dosya yöneticilerini, düzenleyicileri ve terminalleri listeler. Birini seçtiğinizde dizin hemen açılır ve yerel seçim hatırlanır. Yalnızca algılanan, kullanılabilir uygulamalar görüntülenir.",
+          "Uzak projeler ve uzaktan tarayıcı erişimi, web dizini tarayıcısını kullanır. Dizin açma köprüsü olmayan masaüstü yapıları da bunu kullanır; kapsayıcının içine bir masaüstü düzenleyicinin kurulmasına gerek yoktur."
+        ],
+        "tips": [
+          "Masaüstü sanal alan proje yolları, açılmadan önce ana bilgisayar bağlama dizinlerine yeniden eşlenir. Montaj eşleşmesi yoksa proje montaj konfigürasyonunu kontrol edin.",
+          "Dizini açma işlemi başarısız olursa, seçilen uygulamanın ve dizinin hala mevcut olup olmadığını kontrol edin veya projeyi doğrudan sistem dosya yöneticinizden inceleyin."
+        ]
+      },
+      {
+        "title": "Kenar çubuğu projelerini yeniden sıralayın",
+        "steps": [
+          "Kenar çubuğunda, Manuel gösterim (操作手册演示) öğesini istediğiniz projenin önüne veya arkasına sürükleyin.",
+          "Yerel ve uzak projeler serpiştirilebilir. Serbest bırakmak siparişi yerel konfigürasyona kaydeder, yeniden açmak ise onu korur."
+        ],
+        "tips": [
+          "Sıralama, uzak ana makinedeki proje sırasını değil, yalnızca bu cihazın ekranını etkiler. Hata mesajını izleyin ve kaydetme başarısız olursa yeniden deneyin."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Kenar çubuğunda iki yerel tanıtım projesi ve iş akışı",
+          "caption": "En son kenar çubuğu iki yerel tanıtım projesini ve varsayılan çalışma alanını gösterir. Yeniden sıralamak için proje satırlarını sürükleyin; hiçbir uzak cihaz bağlı değil."
+        }
+      },
+      {
+        "title": "Proje verilerinin nerede saklanacağını seçin",
+        "steps": [
+          "Kenar Çubuğu → Proje ekle → Yerel proje altında bir dizin seçtikten sonra, yeni projeler için varsayılan olarak etkin olan Veri dizini proje dizinini takip eder (数据目录跟随项目目录) seçeneğini işaretleyin.",
+          "İşaretlendiğinde, görevler, iş akışları, ekler, günlükler, yapılar, beceriler ve bellek projenin .workstep/. dosyasında depolanır. İşaretin kaldırılması ~/.workstep/projects/<项目ID>/'yi kullanır ve proje dizininde kimlik dosyası olarak yalnızca .workstep/project.json'yu bırakır.",
+          "Mevcut bir proje için, Proje yapılandırması → Genel altında gerçek veri yolunu inceleyin. Onay kutusunu değiştirin ve taşımayı onaylayın. İlk durak görevleri, konuşmaları ve hızlı eylemleri; mevcut Git çalışma alanlarını kaldırın.",
+          "Geçişi bekleyin, ardından yeni yolu ve orijinal görevleri kontrol edin. Başarısızlık orijinal verileri korur. Boş olmayan bir hedefin üzerine yazılmaz; Bildirilen sorunu çözün ve yeniden deneyin."
+        ],
+        "tips": [
+          "Mevcut bir projeyi yeniden eklemek, depolama modunu kimlik dosyasında korur; verileri otomatik olarak taşımaz.",
+          "Bir projeyi taşırken veya yeniden adlandırırken .workstep/project.json'yu koruyun, ardından orijinal projeyi tanımak için onu yeniden ekleyin. Bu kimlik dosyasının silinmesi Ev verilerini silmez ancak otomatik ilişkilendirmeyi engeller.",
+          "Aynı proje kimliğine sahip bir kopya, kayıtlı orijinal dizinle bir arada bulunamaz: sistem bir kimlik çakışması bildiriyor. Bilgisayarlar arasında geçiş yapmak için ilgili Ana veri dizinini de kopyalayın.",
+          "Merkezi depolama, projedeki .workstep/ dosyasını hâlâ otomatik olarak yok sayıyor. Sıradan sıkıştırma, Git yoksayma kurallarını otomatik olarak uygulamaz, ancak kimlik dosyası hiçbir görev verisi içermez."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Proje eklerken veri depolama seçeneği ve kimlik dosyası bildirimi",
+          "caption": "Gerçek Proje Ekle arayüzü: varsayılanın işaretinin kaldırılması, Ana yolu ve bilgisayarlar arasında taşıma veya geçiş talimatlarını gösterir."
+        }
+      },
+      {
+        "title": "Mevcut bir projenin verilerini taşıma",
+        "steps": [
+          "Proje yapılandırmasında Genel'i açın ve mevcut veri yolunu doğrulayın.",
+          "Veri dizini proje dizinini takip eder seçeneğine tıklayın, geçişi okuyup onaylayın ve ardından bekleyin. Aktif çalışma veya boş olmayan bir hedef hata üretir."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Gösterim projesi ayarlarında veri depolama konumu",
+          "caption": "Geçerli yolu doğrulayın. Onay kutusunun değiştirilmesi yine de iletişim kutusunda geçişin onaylanmasını gerektirir."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "İlk iki adımlı iş akışınızı oluşturun",
+    "summary": "Adımları, girişleri, çıkışları ve bağlantıları anlamak için Gereksinim analizi → Görevi yürüt seçeneğini kullanın.",
+    "sections": [
+      {
+        "title": "Katılım yoluyla bir örnek oluşturun",
+        "steps": [
+          "Varsayılan yürütme motorunu kaydettiğinizden ve bağlı yerel projeyi seçtiğinizden emin olun. Katılım kapalıysa Ayarlar → Sistem ayarları → Katılım'ı yeniden açın ve Katılım'a tıklayın.",
+          "İki adımlı iş akışı oluştur altında Örnek iş akışı oluştur'a tıklayın. Başarıyı ve tuvalin açılmasını bekleyin.",
+          "Örneğin adı Analiz ve yürütmedir (分析与执行). İlk adımı olan Gereksinim analizi (需求分析), ikinci adım olan Görevi Yürüt (执行任务) ile bağlantılı bir Yürütme planı (执行计划) çıkarır.",
+          "Her iki adımı da açın ve motoru, modeli, istemi, girişleri ve çıkışları kontrol ederek doğrulanmış bir SDK kullandıklarından emin olun. Örnek ne oluşturma sırasında başlar ne de incelemeleri çalıştırır; Bir kez başlatıldığında, iki adımı bağımlılık sırasına göre yürütülür."
+        ],
+        "tips": [
+          "Sıradan yeni bir iş akışı, örnek adımlar olmadan boş bir tuvalle başlar. Açıkça bir şablon seçin.",
+          "Kurulumu yalnızca hattın görünümüne göre yargılamayın: çıkış portunun bir sonraki adımın giriş gereksinimlerine uyduğunu doğrulayın."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Gereksinim analizi ve görev yürütme için iki adımlı tuval",
+          "caption": "Gereksinim analizi, Yürütme görevi için bir yürütme planı üretir. Yapılandırmasını incelemek için her adımı tıklayın."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "İlk görevinizi oluşturun ve tamamlayın",
+    "summary": "SDK'nuzun, projenizin ve iş akışınızın birlikte çalıştığını doğrulamak için küçük, açık ve kontrolü kolay bir görev kullanın.",
+    "sections": [
+      {
+        "title": "Doğrulanabilir bir istek yazın",
+        "steps": [
+          "Gösterim dizininde README.md ve example.txt'yu hazırlayın. README.md, example.txt'daki ek notlarla birlikte açıklanacak beş işlemi listelemelidir. Özel materyal yerine tanıtım içeriğini kullanın.",
+          "Gösterim projesinin görev sayfasını açın, Analiz ve yürütme'yi seçin ve ardından Yeni görev'e tıklayın. İlk katılım Görev oluştur girişi de onu açar.",
+          "Gereksinim analizi ile başlayın ve Proje talimatlarını organize etme (整理项目说明) başlığını girin.",
+          "Örnek açıklama: README.md ve example.txt'yu okuyun, bir yürütme planı oluşturun, ardından proje kökünde 使用说明.md oluşturun. Markdown'da beş işlemi, işlem başına bir cümle olacak şekilde listeleyin. Yalnızca mevcut iki dosyayı okuyun; bunları değiştirmeyin. 使用说明.md oluşturabilirsiniz ancak diğer dosyaları değiştirmeyin. İşiniz bittiğinde oluşturulan dosyanın konumunu bildirin.",
+          "Manuel başlatmayı seçin ve Görev oluştur'a tıklayın. İsteği ve başlangıç ​​adımını kontrol edin, ardından Görevi başlatın. Alternatif olarak, oluşturulduktan hemen sonra Başlat'ı seçin."
+        ],
+        "tips": [
+          "Hedefi, izin verilen eylemleri, teslimat formatını ve kabul kriterlerini belirtin; bu, sonuçların kontrol edilmesini belirsiz bir istekten daha kolay hale getirir.",
+          "Daha sonraki bir adımdan başlamak daha öncekileri atlar. İlk alıştırmanıza Gereksinim analiziyle başlayın.",
+          "Görev oluşturma panelinin katılım sırasında açılması tek başına bir görevin yürütülmesi anlamına gelmez; panelin başlatma seçeneği yürütmeyi kontrol eder."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Görev başlığı, açıklama, başlangıç adımı ve başlangıç modu",
+          "caption": "Somut bir istek yazın, başlangıç adımını seçin ve yürütmenin ne zaman başlayacağını açıkça seçin."
+        }
+      },
+      {
+        "title": "Adımları izleyin ve çıktıları kontrol edin",
+        "steps": [
+          "Görev ayrıntılarını açın ve mevcut adımı, durumu ve mesajları izleyin. Motor çalışırken bekleyin ve arayüzdeki açık sorulara veya onay isteklerine yanıt verin.",
+          "Gereksinim analizi tamamlandıktan sonra bağımlılık bağlantısına göre Görevi Yürüt otomatik olarak başlar. Ek Başlat tıklamasına gerek yoktur. İlk adımın planını okuyun ve ikinci adımın bunu kullanıp kullanmadığını kontrol edin.",
+          "Görevi Yürütme tamamlandıktan sonra son mesajı okuyun ve proje kökünde 使用说明.md'yu açın. Bunun Markdown olup olmadığını, beş işlem içerdiğini ve her biri için bir cümle kullandığını kontrol edin.",
+          "Bir mesajda Düzenlendi… dosyalar gösteriliyorsa, mesajı genişletin ve bir dosya adına tıklayın. Mevcut olduğunda kaydedilen yamayı görüntüleyin; aksi halde geçerli dosyayı önizleyin. Geçmiş değişiklikler şu andaki dosyadan farklı olabilir; bu nedenle yine de gerçek çıktıyı inceleyin.",
+          "README.md ve example.txt'nun değişmediğini ve yalnızca izin verilen 使用说明.md'nun eklendiğini doğrulayın. Projenin dosya girişini veya sistem dosya yöneticinizi kullanın. Tamamlanma durumu tek başına doğruluğu kanıtlamaz."
+        ],
+        "tips": [
+          "Bekleme devam ederse, başlamayı beklemeyi, onaylamayı, incelemeyi ve aktif yürütmeyi ayırın: her birinin farklı bir yanıta ihtiyacı vardır.",
+          "Arıza durumunda hatayı koruyun ve ilk önce SDK bağlantısını tekrar test edin. Yapılandırmayı onardıktan sonra görevin mevcut kurtarma veya yeniden deneme girişini kullanın.",
+          "API bir web sayfası döndürdüğünü bildirirse arka ucun güncellendiğini ve yeniden başlatıldığını doğrulayın, ardından yenileyip yeniden deneyin. Yürütme ayrıntılarının yüklenmemesi tek başına yürütmenin başarısız olduğu anlamına gelmez; bu nedenle yinelenen bir görev oluşturmayın."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "İki adımlı görevi tamamladıktan sonra 使用说明.md çıktısını alın",
+          "caption": "Her iki adım da tamamlandıktan sonra 使用说明.md'yu ve beş işlem açıklamasını inceleyin."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "İş akışlarını düzenleyin",
+    "summary": "Çalışmayı adımlara ayırın ve yürütme motorlarını, girişleri, çıkışları ve inceleme kurallarını yapılandırın.",
+    "sections": [
+      {
+        "title": "Adımları ekleyin ve bağlayın",
+        "steps": [
+          "Soldan bir proje ve iş akışı seçin ve İş Akışı tuvaline girin. Yeni iş akışı boş; adımlar ekleyin veya açıkça bir şablon uygulayın.",
+          "+ Adım'a tıklayın ve adını ve tanımlayıcısını girin (örneğin, Gereksinimleri gereksinimlerle düzenleyin). Tanımlayıcılar iş akışı içinde benzersiz olmalı, İngilizce bir harfle başlamalı ve yalnızca harf, rakam, alt çizgi veya kısa çizgi içermelidir.",
+          "Net bir hedef, kısıtlamalar ve teslimatlar içeren bir bilgi istemi yazın. Örneğin: Görev tanımını okuyun, kabul kriterlerini ve uygulama planını listeleyin ve bir gereksinimler belgesini kaydedin.",
+          "Kurulu, doğrulanmış bir SDK motorunu ve modelini yapılandırın. Varsayılanları devralmak için varsayılan yürütme motorunu veya motor varsayılan modelini seçin.",
+          "Girişleri ve çıkışları ayarladıktan sonra, yukarı akış çıkış bağlantı noktasından eşleşen aşağı akış girişine sürükleyin ve ardından Kaydet'i seçin."
+        ],
+        "tips": [
+          "Kesintisiz çizgiler veri taşır. Yukarı akışa geri bağlanmak, yeniden çalışma geri bildirimi için kesikli bir dönüş bağlantısı oluşturur.",
+          "Kaydedilmemiş değişiklikler bildirimi, tuval düzenlemelerinin henüz kalıcı olmadığı anlamına gelir."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "İki adımlı ve giriş/çıkış bağlantılarına sahip iş akışı tuvali",
+          "caption": "Adım ekle düğmesini, bağlantı bağlantı noktalarını ve Kaydet girişini bulun."
+        }
+      },
+      {
+        "title": "Girişleri, çıkışları ve dönüş bağlantılarını yapılandırma",
+        "steps": [
+          "Adım düzenleyiciyi açın, çıktıları net bir şekilde adlandırın ve aşağı yönde gereken girişleri yapılandırın.",
+          "Gerekli her çıkışı karşılık gelen aşağı akış girişine bağlayın. Yürütme sırasında, görev ayrıntılarındaki Adım girişleri ve çıkışları altında kullanılabilirliği kontrol edin.",
+          "Yeniden işleme için bir dönüş bağlantısı oluşturun ve o adım için Maksimum getiriyi ayarlayın. Kaydetmeden önce, potansiyel olarak çalıştırılamayan aşamalar hakkındaki uyarıları okuyun ve ilk yürütmenin henüz oluşturulmamış yeniden işleme yapıtlarına bağlı olup olmadığını kontrol edin."
+        ],
+        "tips": [
+          "Maksimum dönüş, kesikli dönüş bağlantılarını kontrol eder ve başarısız inceleme sonrasındaki yeniden denemelerden ayrıdır.",
+          "Çıkış bağlantı noktasını bildirmek bir dosya oluşturmaz. İstemde gerçek teslimatları isteyin ve daha sonra bunları inceleyin."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Düğüm düzenleyicide girdi yapıları ve karşılık gelen çıktılar",
+          "caption": "Giriş, karşılık gelen çıktı olarak yürütme planıyla birlikte görev gereksinimlerini bildirir. Dönüş sayısı ayarları gösterilmez."
+        }
+      },
+      {
+        "title": "İncelemeyi ve otomatik başlatmayı ayarlayın",
+        "steps": [
+          "Düzenleyicideki Adım incelemesi altında Manuel inceleme, Otomatik inceleme veya İncelemeyi atla'yı seçin. Başlangıçta manuel inceleme önerilir.",
+          "Kararınız yürütüldükten sonra manuel inceleme duraklatılır. Otomatik inceleme için doğrulanabilir kriterleri yazın ve isteğe bağlı olarak motorunu ve modelini seçin.",
+          "Otomatik inceleme sonucu reddettikten sonra yeniden denemeleri ayarlayın. İnceleme aracısındaki hatalar manuel işlemeye geçer.",
+          "Oluşturma sonrasında otomatik olarak başlat seçeneğini gerektiği gibi ayarlayın ve ardından kaydedin. İlk alıştırmada, görevi devre dışı bırakın, böylece başlamadan önce bir görevi inceleyebilirsiniz."
+        ],
+        "tips": [
+          "SDK motorlarını yürütme veya inceleme için kullanmadan önce kurun ve yapılandırın."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Düğüm düzenleyicideki adımlı inceleme modu kontrolleri",
+          "caption": "Düğüm düzenleyicisinde inceleme modunu seçin. Yukarıda açıklandığı gibi otomatik başlatmayı ayrıca kontrol edin."
+        }
+      },
+      {
+        "title": "İş akışlarına dağıtın ve tuval öğelerini yeniden kullanın",
+        "steps": [
+          "Çıktıları başka bir projeye veya iş akışına aktarmak için bir İş Akışı adımı ekleyin ve hedef projeyi, iş akışını, başlangıç adımını ve başlangıç modunu seçin.",
+          "Yukarı akış giriş yapılarını yapılandırın ve kaydedin. Bu adım, aşağı akış görevi oluşturulduktan hemen sonra geçer ve üst iş akışının sonraki adımlarına bağlanamaz.",
+          "Bir adımı yeniden kullanmak için İş akışından düğümleri kopyala'yı seçin, bir proje, iş akışı ve düğümler seçin, önizleyin, kopyalayın ve kaydedin.",
+          "Düğümleri düzenlemek için Düzen'i kullanın. Notlar için yer imleri ekleyin veya JSON iş akışını yedek olarak dışa aktarın. İçe aktarmadan önce neyin değiştirileceğini kontrol edin."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Aşağı akış görevi hedefi ve başlangıç ayarları",
+          "caption": "Hedef projeyi, iş akışını ve başlangıç adımını inceleyin."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "İş akışı tetikleyicisi ve bildirim kancaları",
+    "summary": "Harici isteklerden görevler oluşturun veya iş akışı durumunu seçilen bir platforma gönderin.",
+    "sections": [
+      {
+        "title": "Tetik kancasıyla görevler oluşturma",
+        "steps": [
+          "Bir proje ve iş akışı seçin. Görev listesi araç çubuğunda veya mobil menüde İş Akışı kancalarını açın, ardından Kancaları tetikleyin.",
+          "Bir kanca ekleyin, adını, varsayılan başlığını ve oluşturucusunu girin, bir başlangıç ​​adımı seçin ve otomatik olarak başlayıp başlamayacağını seçin, ardından kaydedin. Örneğin: Gereksinim alımı, Harici istek başlıklı.",
+          "Yapılandırılmış bir LAN, harici veya Ağ Geçidi adresi seçin ve URL çağrısını kopyalayın. Belirteci bir kimlik bilgisidir: onu yalnızca güvenilir sistemlere verin.",
+          "Aramayı simüle altında, önizlemeyi incelemek için bir başlık, oluşturucu ve gövde metni girin. Simülasyon bir görev yaratmaz.",
+          "JSON, düz metin veya Markdown kullanarak kopyalanan URL'ya harici bir POST sistemi kurun, örneğin: Bu istek için kabul kriterlerini düzenleyin. Görev kimliğini aldıktan sonra görev içeriğini ve başlangıç ​​durumunu kontrol edin."
+        ],
+        "tips": [
+          "Proje düzenleme izni gereklidir. Her geçerli istek bir görev oluşturur. Bu sürüm, cihaz çevrimdışıyken GitHub/GitLab olaylarını otomatik olarak tanımaz, istekleri tekilleştirmez veya istekleri arabelleğe almaz.",
+          "Önce eksik adresleri veya bağlantısı kesilmiş cihazları onarın. Belirtecin sıfırlanması eski URL'yu geçersiz kılar. Otomatik başlatma başarısız olursa görev hâlâ mevcuttur: teslimi yeniden denemeden önce run_error'ı ve görev ayrıntılarını inceleyin."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Kaydedilmemiş tetik kancası adı, varsayılan alanlar ve başlangıç aşaması yapılandırması",
+          "caption": "Bu devre dışı bırakılan taslak yalnızca görevler oluşturur. Simgesi gizlidir; kaydedilmedi ve herhangi bir URL çağrısı oluşturulmadı."
+        }
+      },
+      {
+        "title": "Harici platformlara iş akışı bildirimleri gönderin",
+        "steps": [
+          "Aynı İş Akışı kancaları penceresinde Bildirim kancalarına geçin ve bir hedef ekleyin.",
+          "Bir ad girin, DingTalk grup botu, WeCom grup botu veya genel JSON Web kancasını seçin, ardından hedef URL'yu girin. Gerekirse bir DingTalk imzalama sırrı sağlayın.",
+          "Abone olunan etkinlikleri seçin, varsayılan olarak görev tamamlama ve başarısızlık ayarını yapın. İsteğe bağlı olarak görev bağlantıları için bir başlık öneki ve Ağ Geçidi, harici veya LAN adresi ayarlayın ve ardından kaydedin.",
+          "Bildirimi simüle et altında bir önizleme oluşturun ve mesaj içeriğini ve bağlantıları kontrol edin. Önizleme hiçbir istek göndermez. Gerçek bir test için onaylayın ve Test bildirimi gönder'e tıklayın; kayıtlı, etkin bir hedefe gönderir.",
+          "Teslimat kayıtlarındaki durumu, girişimleri ve düzeltilen hataları inceleyin. Yapılandırmayı onardıktan sonra başarısız olan kayıtları yeniden deneyin. Görev tamamlandıktan sonra alıcı platformu ve görev bağlantısı erişimini kontrol edin."
+        ],
+        "tips": [
+          "Cihaz doğrudan bildirim gönderir; Ağ geçidi bunları aktarmaz. Bunlar ne sohbet gövdelerini, yapı içeriklerini ne de görev oluşturma kimlik bilgilerini içerir. Görev bağlantıları hâlâ normal erişim hakları gerektiriyor.",
+          "Geçici hatalar otomatik olarak yeniden denenir. Zaman aşımları ve kurtarma, yinelenen dağıtıma neden olabilir; genel alıcılar event_id ile tekilleştirme yapabilir. Bir hedefi devre dışı bırakmak veya silmek, gönderilen bildirimleri geri çekemez.",
+          "Önizleme tek başına entegrasyonun işe yaradığını kanıtlamaz: platforma gerçek teslimatı doğrulayın."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "DingTalk bildirim platformu, abone olunan etkinlikler ve boş adres alanları",
+          "caption": "En son arayüzde, görev tamamlama ve başarısızlık seçili olarak kaydedilmemiş, devre dışı bırakılmış bir taslak. Web kancası ve imzalama sırrı alanları boş; hiçbir şey gönderilmedi."
+        }
+      },
+      {
+        "title": "Markdown bildirim şablonlarını özelleştirin",
+        "steps": [
+          "Bildirim kancalarında bir DingTalk veya WeCom grup botu seçin ve Markdown mesaj şablonuna ilerleyin. Genel JSON Web Kancaları bu Markdown şablonlarını kullanmaz.",
+          "Şablon değişkenlerini genişletin (kopyalamak için tıklayın), ardından {task_title} gibi yer tutucular ekleyin. Bilinmeyen değişkenler veya boş bir şablon kullanmayın. Bir görev bağlantısı gerektiğinde {task_link} veya {task_url}'yu saklayın.",
+          "Değiştirmeyi ve bağlantıları göndermeden kontrol etmek için Simulate bildirimini kaydedin ve kullanın. Varsayılan şablonu geri yüklemeden önce onayı okuyun."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Markdown bildirim gövdesi ve şablon değişkeni girişi",
+          "caption": "Bir taslak, varsayılan Markdown gövdesini ve değişkenlerini görüntüler. Dışarıdan herhangi bir şablon gönderilmedi veya bildirim gönderilmedi."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Şablonlar ve yapay zeka iş akışı asistanı",
+    "summary": "Bir şablonla başlayın veya yapay zekadan adımlar önermesini ve neyin uygulanacağını onaylamasını isteyin.",
+    "sections": [
+      {
+        "title": "Şablonları uygulama ve kaydetme",
+        "steps": [
+          "Tuvalde İş Akışı şablonlarını açın, adları veya açıklamaları arayın ve her şablonun amacını ve adım sayısını inceleyin.",
+          "Uygun bir şablon seçin ve onaylayın. Uygulama, geçerli tuvaldeki her adımı ve bağlantıyı değiştirir.",
+          "Her adımın motorunu, modelini, istemini kontrol edin ve gereksinimleri gözden geçirin, uyarlayın ve kaydedin.",
+          "Tasarımınızı yeniden kullanmak için Geçerli olanı iş akışı şablonu olarak kaydet'i seçin ve bir ad ve açıklama girin. Düzenlenebilir özel şablonları Ayarlar → İş Akışı şablonları altında yönetin."
+        ],
+        "tips": [
+          "Yeni projeler otomatik olarak iş akışları oluşturmaz ve yeni iş akışları şablonları otomatik olarak uygulamaz.",
+          "Yerleşik şablonlar silinemez. Birini uyguladıktan sonra yine de gerekli motorların mevcut olduğunu doğrulayın."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Yerleşik Sözleşme yönetimi, tuval şablonu aramasıyla sonuçlanır",
+          "caption": "Amacını ve adım sayısını görmek için Sözleşme yönetimini arayın. Seçmeden önce değiştirme kapsamını kontrol edin."
+        }
+      },
+      {
+        "title": "Yapay zekadan bir iş akışı oluşturmasını veya değiştirmesini isteyin",
+        "steps": [
+          "Tuvalde AI iş akışı asistanını açın ve önce yapılandırılmış bir motor ve model seçin.",
+          "Hedefi, adım dökümünü, çıktı formatını ve inceleme ihtiyaçlarını açıklayın, örneğin: Kurulu bir SDK kullanarak her aşamada manuel inceleme ile gereksinim analizi → uygulama → test oluşturun.",
+          "Teklif kartlarını başlığa, adım sayısına ve özete göre karşılaştırın, ardından uygun bir teklifi tuvale uygulayın.",
+          "Mevcut iş akışları için adım değişikliklerini inceleyin. Değişiklikleri uygula altında istediğiniz eklemeleri, güncellemeleri veya silmeleri seçin, ardından uygulayın ve kaydedin."
+        ],
+        "tips": [
+          "Yapay zeka teklifleri onayınızı gerektirir. Üretim başarısı tek başına bunları çalıştırmak için bir neden değildir: bağlantıları, motorları inceleyin ve kriterleri gözden geçirin."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Yapay zeka iş akışı asistanından iki adımlı teklif kartı",
+          "caption": "Kart, değiştirilen adımların sayısını ve Değişiklikleri uygula'yı gösterir. Belirli adım değişikliklerini onaylamak için tıklayın."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Görevleri oluşturun ve yönetin",
+    "summary": "İş akışı nasıl çalışılacağını tanımlar; bir görev bu sefer ne yapılacağını belirtir.",
+    "sections": [
+      {
+        "title": "Görev asistanıyla birden fazla görevi hazırlayın",
+        "steps": [
+          "Görev sayfasında görev yardımcısını açın. Açıkça bireysel zamanlara sahip birden fazla görev talep edin, örneğin: Yarın 09:00, 10:00 ve 11:00'den başlayarak üç bağımsız görev oluşturun.",
+          "Her taslağın başlığını, içeriğini, iş akışını, başlangıç ​​adımını ve planlanan başlangıç ​​zamanını kontrol edin ve ardından arayüz aracılığıyla oluşturmayı onaylayın.",
+          "Görev listesine dönün ve her sonucu doğrulayın. Bazıları başarısız olursa, tüm partiyi yeniden göndermeden önce mevcut görevleri inceleyin."
+        ],
+        "tips": [
+          "Taslakların oluşturulması görevleri oluşturmaz veya yürütmez. Gelecek zamanlar için zaman dilimlerini belirtin; zamanlanmış başlatma, arka ucun çalışmaya devam etmesini gerektirir."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Toplu görev taslakları ve bunların bireysel zamanlanmış saatleri",
+          "caption": "Gerçek ekran görüntüsü beklemede: toplu taslaklar ve bireysel zamanlar. Eski bir tek görev taslağı onun yerine geçmemelidir."
+        }
+      },
+      {
+        "title": "Bir görev oluşturun ve yapay zekanın gereksinimleri organize etmesine izin verin",
+        "steps": [
+          "Bir proje ve iş akışı seçin, görev sayfasını açın ve ardından uygun aşamada Yeni veya Ekle'ye tıklayın.",
+          "Bağlam, hedefler, izin verilen değişiklikler, çıktı yolları ve kabul kriterlerini içeren bir başlık ve açıklama girin. Markdown ve yapıştırılan referans görselleri desteklenir.",
+          "Gerekirse Görev asistanını açın, oluşturulan başlığını, içeriğini ve iş akışı seçimini inceleyin ve ardından onaylayın.",
+          "Bu çalıştırmanın başlangıç ​​adımını kontrol edin ve ayarları gözden geçirin, ardından görevi oluşturun. Otomatik başlatma devre dışıyken Görevi başlat'a tıklayın."
+        ],
+        "tips": [
+          "Örnek: README'yu okuyun ve program kodunu değiştirmeden docs/getting-started.md'yu oluşturun. Kurulum, başlatma ve üç genel soruyu ekleyin.",
+          "Yaratma ve başlatma ayrı eylemlerdir; başlatma modu ve adım ayarları yürütmenin hemen başlayıp başlamayacağını belirler."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Görev asistanı genişletilmiş olarak görev oluşturma formu",
+          "caption": "Başlığı ve açıklamayı girin ve başlangıç modunu seçin. Asistan gereksinimleri organize edebilir; inceleme ayarları başka bir sekmededir."
+        }
+      },
+      {
+        "title": "Tahtada veya masada görevleri bulun",
+        "steps": [
+          "Görev sayfasında Şeritler ve Tablo arasında geçiş yapın, görevleri aşamaya göre inceleyin ve başlığa göre arayın.",
+          "Geçerli adımı, durumu, oluşturucusu ve güncelleme zamanı dahil olmak üzere ayrıntılarını açmak için bir göreve tıklayın.",
+          "İsterseniz tamamlanan görevleri arşivleyin. Bunları Arşivi görüntüle altında bulun ve panoya geri yükleyin. Toplu işlemlerden önce seçimleri kontrol edin."
+        ],
+        "tips": [
+          "Sıraya alınmış olması genellikle eşzamanlılık kapasitesinin dolu olduğu anlamına gelir. İncelemeyi beklemek onay gerektirir; bu, uygulamanın takılı kaldığı anlamına gelmez.",
+          "Silme işlemi arşivleme işleminden farklıdır. Kalıcı silme işleminden önce onayı okuyun."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Durumları ve aşamaları gösteren görev panosu",
+          "caption": "Gösteri görevi hazır. Araç çubuğu girişleri görünümleri, iş akışı kancalarını, arşivi ve Açık dizini içerir. Oluşturma süresi kartın altındadır; kopyalama bundan sonra ele alınacaktır."
+        }
+      },
+      {
+        "title": "Yalnızca geçerli görevin iş akışını değiştirin",
+        "steps": [
+          "Görev ayrıntılarını açın ve ilerleme grafiğinin altındaki Görev iş akışını düzenle'ye tıklayın. Önce yürütmeyi durdurun veya inceleyin; tuval etkinken salt okunurdur.",
+          "Bu görevin adım istemlerini, motorlarını, modellerini ve incelemelerini değiştirin. Adımları ekleyin, yapıları sonuna ekleyin ve bağlantıları ayarlayın. Mevcut adımlar, giriş bağlantı noktaları ve orijinal yapılar silinemez veya yeniden adlandırılamaz.",
+          "İlerleme grafiğini güncellemek için kaydedin. Bir sonraki başlangıç, ana iş akışını veya diğer görevleri değiştirmeden, en son ana iş akışını göreve özgü farklılıklarla birleştirir.",
+          "Tüm özelleştirmeyi temizlemek için Ana iş akışını senkronize et'e tıklayın ve onaylayın. Eklenen adımlar mevcut iş akışından çıkar ancak geçmiş mesajlar, yapılar ve yürütme kayıtları kalır. Bu yürütmeyi başlatmaz."
+        ],
+        "tips": [
+          "Fiili değişiklikler olmadan tam iş akışı kopyası yapılmaz. Geçersiz kılınmayan alanlar ana iş akışı güncellemelerini devralır; görev geçersiz kılmaları önceliklidir.",
+          "Bestecide bir adım seçmek ve motorunu değiştirmek onu o göreve kaydeder. Sıfırlama adımı, ana iş akışının motorunu değil, yalnızca bir sonraki çalıştırmanın oturumunu sıfırlar.",
+          "Bağlantıların kaldırılması bağımlılıkları değiştirir ve doğrudan yürütmeye izin verebilir; bir adım kılavuzu oluşturmaz."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Göreve özel iş akışı düzenleme ve senkronizasyon girişleri",
+          "caption": "Gösterim görevinin ayrı tuvali geçiş modunu, Senkronizasyon ana iş akışını ve Kaydet'i gösterir. Hiçbir ayar değiştirilmedi veya yürütme başlatılmadı."
+        }
+      },
+      {
+        "title": "Görevi kopyalama",
+        "steps": [
+          "Kart veya tablodaki bir görevin yanındaki Görevi kopyala simgesini tıklayın.",
+          "(Kopyala) başlıklı yeni görevi inceleyin, açıklamasını, iş akışı özelleştirmesini ve başlangıç ​​adımını kontrol edin ve ardından çalıştırın. Kopyalanan adımlar beklemeye başlar; orijinal ilerleme ve sohbet geçmişi kopyalanmaz."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Tablo görünümünde görev adının yanındaki görev simgesini kopyala",
+          "caption": "Adın yanındaki küçük simge kopyalama girişidir. Bu görüntüde hiçbir görev kopyalanmadı veya başlatılmadı."
+        }
+      },
+      {
+        "title": "Telefondaki görevleri yönetme",
+        "steps": [
+          "Ayrıntıları açmak için bir görev satırına dokunun. Eylem menüsünü açmak için yaklaşık yarım saniye basılı tutun; farenin sağ tıklaması da işe yarar.",
+          "Yetkinize göre başlatın, düzenleyin veya görüntüleyin, kopyalayın, arşivleyin, geri yükleyin ya da silin. Çalışan, kuyruktaki veya etkin adımlarla bekleyen görevler arşivlenemez ve silinemez. Önce bekleyen onayları işleyin veya yürütmeyi durdurun; silme onayını okuyun.",
+          "Tüm iş akışı adımları yürütülüp geçtikten sonra, ayrıntıların yeniden açılması veya yeniden başlatılması da dahil olmak üzere görev Tamamlandı ifadesini gösterir. Tamamlama görevi arşivlemez; arşivlenip arşivlenmeyeceğini seçin."
+        ],
+        "tips": [
+          "Parmağınızı kaydırmak veya hareket ettirmek, kazara yapılan işlemleri önlemek için uzun basmayı iptal eder. Salt okuma erişimi, düzenleme haklarını almadan görüntüleme girişlerini açmaya devam edebilir."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "390 piksel boyutunda bir görev satırına ilişkin arşivleme ve silme menüsü",
+          "caption": "v1.0.13'teki hazır bir görevden alınmıştır; hiçbir şey arşivlenmedi veya silinmedi ve tamamlama gösterilmiyor. Yeni eklenen başlatma, düzenleme ve kopyalama girişlerinin hâlâ güncellenmiş bir ekran görüntüsüne ihtiyacı var."
+        }
+      },
+      {
+        "title": "Son sohbetlerden görevlere veya oturumlara dönme",
+        "steps": [
+          "Kenar çubuğundaki Son sohbetler (最近聊天) bölümünde ziyaret edilen bir görevi veya oturumu bulun ve orijinal proje ayrıntılarına dönmek için tıklayın. Her iki tür de burada görünüyor.",
+          "Çalışıyor, başarısız oldu ve tamamlandı-okunmadı göstergelerini inceleyin. İlgili ayrıntıların açılması, okunmamış göstergeyi temizler. Yetkili girişlerin arşivleme veya silme menüleri vardır; onayları okuyun.",
+          "Masaüstünde Projeleri veya Son sohbetleri daraltın, sıralarını değiştirmek için başlıkları sürükleyin ve yeniden boyutlandırmak için ayırıcıyı sürükleyin. Varsayılan oranı geri yüklemek için bölücüye çift tıklayın."
+        ],
+        "tips": [
+          "Son ziyaretlerde bu tarayıcının cihaz kimliği altında en fazla 20 öğe tutulur. Tarayıcı verilerinin temizlenmesi, görev içeriğini değil, bu dizini kaldırır. Geçmiş girişler proje yetkilendirmesini atlamaz.",
+          "Arşivleme, silme ve okunmamış durumu temizlemenin farklı etkileri vardır. Eski bir bağlantı başarısız olursa projenin ve oturumun hâlâ var olup olmadığını ve bağlantının çalışıp çalışmadığını kontrol edin."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Son sohbetlerde bir tanıtım görevi ziyareti",
+          "caption": "Kenar çubuğu, oturum girişleri veya okunmamış durum örnekleri olmadan, bir tanıtım görevi ziyaretini gösterir."
+        }
+      },
+      {
+        "title": "Gezinmeyi mobil tarayıcıda açın",
+        "steps": [
+          "WorkStep'yu bir telefon tarayıcısında açın ve masaüstündekiyle aynı kenar çubuğu gezinmesini genişletmek için sayfa kenarındaki yuvarlak gezinme balonuna dokunun.",
+          "Devam etmek için bir proje, iş akışı, görev veya görüşme seçin. Gezinmeyi daraltmak için baloncuğa tekrar dokunun.",
+          "Balon içeriği kapsıyorsa, onu basılı tutun ve görünümün boş bir bölümüne sürükleyin. Sürüklemek gezinmeyi değiştirmez."
+        ],
+        "tips": [
+          "Balon yalnızca sıradan mobil tarayıcılarda görünür. Masaüstü ve Android uygulamaları kendi gezinme girişlerini kullanır."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Telefon tarayıcısında gezinme balonu ve genişletilmiş kenar çubuğu",
+          "caption": "390 piksel boyutunda genişletilmiş kenar çubuğu, daraltmak için sağdaki yuvarlak balonla birlikte. Yalnızca yalıtılmış tanıtım projeleri gösterilmektedir."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Uygulama, onaylar ve incelemeler",
+    "summary": "Çalışma zamanı durumlarını anlayın, izin isteklerini yönetin ve çıktıların bir sonraki aşamaya geçip geçmeyeceğine karar verin.",
+    "sections": [
+      {
+        "title": "Yürütme ve izin isteklerini inceleyin",
+        "steps": [
+          "Etkin adımı belirlemek için görev ayrıntılarını açın ve ilerleme grafiğini ve sohbet kayıtlarını inceleyin.",
+          "Araç çağrılarını, sonuçları ve hataları incelemek için süreç kayıtlarını genişletin. Motor bunları raporladığında alt aracı kayıtlarını genişletin.",
+          "Mesajlar dosya değişiklikleri içerdiğinde listeyi genişletin ve kaydedilen farklılıkları görüntüleyin. Bunlar o mesajın değişikliklerini açıklar; Dosyanın açılması, daha sonraki düzenlemelerde değişmiş olabilecek mevcut içeriğini gösterir. Kaydedilmiş bir fark olmadan mevcut içerikler tüm geçmişi yeniden oluşturamaz.",
+          "Araç onayı göründüğünde, izin vermeden veya reddetmeden önce komutu, yolları ve etkiyi okuyun. Sağlanan seçenekleri veya istenen girişi kullanarak soruları yanıtlayın.",
+          "Bir görev başarısız olursa, önce en son hatayı okuyun, ardından tekrar tekrar denemek yerine motor yapılandırmasını, model izinlerini, ağı ve proje dizinini kontrol edin."
+        ],
+        "tips": [
+          "Onay yalnızca bir motor bunu talep ettiğinde görünür. İşlem bilgileri ve izin seçenekleri motora göre değişir; Eksik ayrıntılar, yürütmenin gerçekleşmediği anlamına gelmez.",
+          "Dönen bir simge eşzamansız çalışmayı gösterir. Kullanıcıyı beklerken mevcut soruyu veya onayı ele alın."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Görev ayrıntılarındaki adım ilerlemesi ve fiili yürütme kayıtları",
+          "caption": "İlerleme ve yürütme kayıtları görülebilir. Hiçbir izin isteği gösterilmiyor; onaylar yalnızca motor gerçekten bunları talep ettiğinde görünür."
+        }
+      },
+      {
+        "title": "İncelemeyi onaylama, reddetme veya sonlandırma",
+        "steps": [
+          "Manuel incelemeyi beklerken çıktı yapıtlarını inceleyin, sonuçları, dosyaları ve test sonuçlarını kabul kriterlerine göre inceleyin.",
+          "Yeterliyse Onayla'ya tıklayın ve devam edin. Aksi halde belirli bir geri bildirim girin ve Reddet ve yinele'yi seçin.",
+          "Otomatik inceleme sırasında kayıtlarını inceleyin. Reddetme, yapılandırılmış yeniden çalıştırmaları tetikler; gözden geçirme hataları veya manuel işleme talepleri sizin kararınızı gerektirir.",
+          "Yürütme artık istenmiyorsa Sonlandır'ı seçin ve onayı doğrulayın. Onaylamayı zorunlu kıl mevcut incelemeyi atlar; bu nedenle öncelikle çıktıların kullanılabilir olup olmadığını kontrol edin."
+        ],
+        "tips": [
+          "Bekleyen onaylar varken görev çalışmaya devam edebilir. Masaüstünde adımları ve nedenleri görmek için sayının üzerine gelin; inceleme, araç izni veya soruyu ilgili adımda yanıtlayın. Başka çalışabilir dal yoksa görev bekler. Elle durdurma, başarısızlık ve tamamlanma ayrıdır; sürecin bitmesi inceleme onayı değildir."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Manuel inceleme geri bildirimi ve onay/red düğmeleri",
+          "caption": "Sonuçları, yapıları ve eylem girişlerini inceleyin."
+        }
+      },
+      {
+        "title": "Koordinatör tarafından belirlenen kurallar ve güncel mesajlar",
+        "steps": [
+          "Görev ayrıntılarını açın, düzenleyicide Koordinatör'ü seçin, Codex SDK motorunu seçin ve şu gibi bir görev sorusu sorun: Hangi aşama tamamlanmadı?",
+          "Aynı koordinatör oturumuna devam edin. Sıraya özel bağlam olarak görev durumu ve mevcut gönderen güncellemesi; oturum geçmişinde sabit koordinatör kuralları kalır.",
+          "Hata ayıklamak için, mesajları gerçek giriş kayıtlarıyla incelemek üzere geliştirici modunu kullanın. O oturumda muhafaza edildiği onaylanan, değiştirilmemiş sabit kurallar ayrı olarak yeniden enjekte edilmez."
+        ],
+        "tips": [
+          "Daha eski oturumlar, yükseltme sonrasında bir başlangıç ​​yeniden enjeksiyonu alabilir. Yeni kurallar, yeni oturumlar, eksik geçmiş veya sıkıştırma sonrasında belirsiz tutma, yeniden enjeksiyona neden olur. İstekler hâlâ geçmişteki kuralları kullanabilir; Yeni bir enjeksiyonun atlanması hiçbir kuralın olmadığı anlamına gelmez."
+        ]
+      },
+      {
+        "title": "Koordinatör yanıtı sırasında bilgi ekleme",
+        "steps": [
+          "Koordinatörü alıcı olarak seçin ve yanıt verirken ek talimatlar gönderin. Geçerli yanıtın bekleyen ekleme kuyruğuna girerler.",
+          "Gönderilmemiş girişleri inceleyin, düzenleyin, yeniden sıralayın veya silin ya da seçilenleri hemen gönderin. Seçilen birden fazla giriş sırayla birleştirilir. Mevcut yanıt sona erdikten sonra kalan girişler otomatik olarak bir sonraki sıraya devam eder; tekrar tekrar göndermeyin.",
+          "Bir mesajın zaten gönderildiği veya silindiği söylenirse, toplu işi yeniden göndermek yerine kuyruğu yenileyin ve inceleyin."
+        ],
+        "tips": [
+          "Koordinatör ve adım kuyrukları ayrıdır. Önce alıcıyı doğrulayın. Durdurma, halihazırda gerçekleştirilmiş olan takım işlemlerini geri almaz."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Koordinatör yanıtı sırasında bekleyen mesajlar",
+          "caption": "Gerçek ekran görüntüsü beklemede: Koordinatör alıcısı, yürütme sırasındaki ek mesajlar ve devam kuyruğu."
+        }
+      },
+      {
+        "title": "Tamamla, durdur ve tekrar çalıştır",
+        "steps": [
+          "Yazmadan önce alıcıyı kontrol edin. Koordinatör soruları ve operasyon taleplerini ele alır; yalnızca belirli bir adım, o adımın yürütme bağlamına girdi alır.",
+          "Çalışan bir adıma ilişkin mesajlar Mesaj ekle'ye girer. Düzenleyin, yeniden sıralayın, hemen gönderin veya tümünü gönderin; gönderilmemiş mesajlar, yürütme bittikten sonra başka bir turu tetikleyebilir.",
+          "Bir adımı durdurduktan sonra ona açık ek talimatlar gönderin ve yeniden çalıştırmak için talimatları izleyin.",
+          "Bu görevi değiştirmek için adım istemlerini, motorları veya inceleme ayarlarını düzenleyin ve kaydedin. Geçersiz kılmalar bir sonraki yürütmede etkili olur; geçersiz kılınmayan alanlar bir sonraki başlangıçta ana iş akışını birleştirir. Tüm özelleştirmeyi temizlemek için Ana iş akışını senkronize et seçeneğini onaylayın."
+        ],
+        "tips": [
+          "Koordinatör oluşturucusunun motorunun değiştirilmesi, iş akışı adım motorlarını değil, yalnızca sonraki koordinatör mesajlarını etkiler.",
+          "Yeniden çalıştırma diğer etkin adımları etkiliyorsa etki onayını ve yeniden çalıştırma kapsamını inceleyin. Yerel oturum kayıtları kaybolursa yeni bir oturumla yeniden çalıştırmak için istemi izleyin."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Tamamlanmış bir görevde adım alıcısı ve ek taslak",
+          "caption": "Bestecide görevi yürüt seçilir. Ek mesaj hâlâ gönderilmedi; ekleme kuyruğu gösterilmiyor."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Eserler, yürütme analizi ve proje belleği",
+    "summary": "Teslim edilen dosyaları inceleyin, tüketimi anlayın ve yeniden kullanılabilir dersleri saklayın.",
+    "sections": [
+      {
+        "title": "Girişleri, çıkışları ve yapıt dosyalarını inceleyin",
+        "steps": [
+          "Mevcut girişleri ve tamamlanan çıkışları kontrol etmek için görev ayrıntılarında Adım girişleri ve çıkışlarını açın.",
+          "Bir dosya için Görüntüle'ye tıklayın veya yapıt tarayıcısını açın ve adım adım geçiş yapın ve yürütme turu yapın.",
+          "Dosyaları önizleyin. Masaüstünde, İçeren dizini aç, gerçek dosyaları incelemenizi sağlar. Uzak proje dosyaları ana bilgisayarda kalır ve web arayüzü aracılığıyla görüntülenmelidir.",
+          "Tekrar çalıştırırken doğru turları karşılaştırın. Yuvarlak ile aynı… aynı içerik anlamına gelir, yürütmenin gerçekleşmediği anlamına gelmez."
+        ],
+        "tips": [
+          "Bir yapı eksikse, bir dosyanın oluşturulup oluşturulmadığını, çıktı bildiriminin eşleşip eşleşmediğini ve yürütme mesajlarını kontrol edin."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Adıma göre gruplandırılmış görev yapıları",
+          "caption": "Gereksinim analizi ve Yürütme görevinin her biri bir ilk tur yapıtı listeler. Dosyasını veya dizinini açın."
+        }
+      },
+      {
+        "title": "Yerel çalışma zamanı kaynaklarını inceleyin",
+        "steps": [
+          "Çalışma alanına yerel yerel ana bilgisayar veya geridöngü adresi aracılığıyla girin, ardından İstatistikler → Sistem çalışma zamanı (数据统计 → 系统运行). Sıradan uzak tarayıcılar ve Ağ Geçidi çalışma alanları bu sekmeyi göstermez.",
+          "CPU'yu, belleği, disk tutma yapılandırmasını, ağ hızlarını ve kaynakları, iş parçacıklarını ve dosya tanımlayıcılarını veya WorkStep arka ucu ve alt öğeleri için tanıtıcıları inceleyin.",
+          "Trend metriklerini seçin ve örnekleme zamanlarını inceleyin. Ekranı duraklatın, devam ettirin veya manuel olarak yenileyin. İlk toplama sırasında bekleyin ve başarısız olan okumaları yeniden deneyin."
+        ],
+        "tips": [
+          "İstatistikler, masaüstü kabuğu hariç olmak üzere mevcut arka uç ortamını ve çocukları kapsar. Konteyner ölçümleri tam ana makine-makine kaynakları değildir.",
+          "Varsayılanlar kabaca beş saniyelik örnekleme ve 30 dakikalık geçmiştir; sayfa gerçek değerleri belirtir. Ekran yenilemeyi duraklatmak görevleri durdurmaz. Kullanılamayan ölçümler ve boşluklar sıfır değildir; eski numuneler saklanır ve bayat olarak işaretlenir. Tanımlayıcı uyarıları otomatik onarımı değil, kaynak baskısını gösterir."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Geçerli sürüm tarafından örneklenen sistem kaynağı istatistikleri",
+          "caption": "Yerel kaynaklar ve arka uç örnekleme durumu. Hiçbir motor alt işlemi çalışmıyordu, dolayısıyla bu, görev yürütme tüketimini göstermiyor."
+        }
+      },
+      {
+        "title": "Süreyi, jetonları ve maliyeti inceleyin",
+        "steps": [
+          "Toplam süreyi, adım girişimlerini, belirteçleri ve maliyetleri incelemek için görev ayrıntılarında Yürütme analizini açın.",
+          "Bir çalışma turu seçin ve motoru, modeli ve kullanımına göre bir zaman çizelgesi segmentine tıklayın.",
+          "Proje çapında bilgi için İstatistikler'i açın. Maliyetleri tahmin etmek için, Ayarlar → Model ayarları altında sağlayıcıya veya motora göre model fiyatlarını koruyun."
+        ],
+        "tips": [
+          "Bildirilmeyen kullanım otomatik olarak doğru bir sayıya dönüşmez. Kapsamı ve Tahmini etiketleri kontrol edin; model servis faturası geçerli."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Uygulama analizi turları ve zaman çizelgesi",
+          "caption": "Süre, kapsam ve maliyet-kaynak göstergeleri."
+        }
+      },
+      {
+        "title": "Hafızadan tasarruf edin ve dersleri arşivleyin",
+        "steps": [
+          "Görev sayfasında Bellek'e tıklayın. Proje veri dizinindeki MEMORY.md'yu kısa, somut uzun vadeli kurallar halinde düzenleyin ve kaydedin.",
+          "Bir görevi arşivlerken doğrudan arşivlemeyi seçin veya başarısızlık derslerini düzenleyin. AI taslağını inceleyin, ardından hafızaya yazmayı ve arşivlemeyi onaylayın.",
+          "Geçmişi tekrar ziyaret etmek için arşiv listesini kullanın. Arşivlenmiş bir görevi geri yükledikten sonra gerekli harici bağlamaları yeniden kontrol edin."
+        ],
+        "tips": [
+          "Toplu arşivleme dersleri tek tek çıkarmaz. Bir görevin arşivlenmesi veya silinmesi, onun kanal grubu bağlantılarını kaldırır; geri yüklemek eski bağlamaları geri yüklemez."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Gösterim kurallarını içeren proje belleği düzenleyicisi",
+          "caption": ".workstep/MEMORY.md.'da kuralları düzenleyin ve kaydedin. Arşiv dersi onayı gösterilmez."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Proje sohbeti ve beceriler",
+    "summary": "Doğrudan proje bağlamında işbirliği yapın ve bir projenin hangi yerel becerileri kullanabileceğini seçin.",
+    "sections": [
+      {
+        "title": "Birden fazla proje görüşmesiyle çalışın",
+        "steps": [
+          "Masaüstü genişliğinde sıradan bir proje görüşmesini açın ve Yeni konuşma'nın sağındaki Konuşma pencereleri (对话窗口) → Konuşma penceresi ekle (增加对话窗口) öğesini seçin.",
+          "Kenar çubuğundan veya Son sohbetlerden bir sohbeti sohbet alanına sürükleyin. Yetkili projeler en fazla 4 bölmeyle karıştırılabilir; Zaten açık olan bir görüşmeyi bırakmak, bölmesini odaklar. Görev kayıtları sohbet olarak sürüklenemez.",
+          "Kenar çubuğu görüşmesini seçmeden önce kullanmak istediğiniz bölmeyi tıklayın. Her bölme kendi projesini, oturumunu, taslağını ve motor ayarlarını tutar; Göndermeden önce projeyi ve oturumu doğrulayın.",
+          "Konuşma pencereleri → Konuşma düzenlemesi (对话排列) öğesini seçin, ardından yatay veya dikey'i seçin. Yeniden boyutlandırmak için ayırıcıyı sürükleyin; odaklanın ve klavyeyi yeniden boyutlandırmak için ok tuşlarını kullanın.",
+          "Çoklu bölmelerde ×, konuşmayı durdurmadan veya silmeden yalnızca o bölmeyi kapatır. Oluşturmayı durdurmak için görüşmenin Durdur düğmesini kullanın."
+        ],
+        "tips": [
+          "Masaüstünde, paylaşılan yeniden adlandırma iletişim kutusunu açmak için bir kenar çubuğu konuşmasını veya başlık başlığını çift tıklayın, ardından adı girin ve onaylayın.",
+          "Mobilde yalnızca etkin bölme görünür, diğerleri korunur. Aynı sayfa oturumunda başka ekrana gidip dönmek bölmeleri, düzeni ve boyutları geri getirir; tarayıcı yenilenince geri yükleme garanti edilmez. Düzenler hesap ve cihaza göre ayrılır, sohbet içeriği kopyalanmaz."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Projeler ve düzenleme menüsündeki masaüstü konuşma bölmeleri",
+          "caption": "Sabit demo projesinin gerçek ekran görüntüsü beklemede: konuşma penceresi menüsü, çoklu bölmeler ve sürüklenebilir ayırıcılar."
+        }
+      },
+      {
+        "title": "Sohbete bir rol veya uzman ekibi yükleme",
+        "steps": [
+          "Ayarlar → Rol merkezi altında rol istemlerini veya uzman ekip üyelerini ve sorumluluklarını hazırlayın.",
+          "Yerel bir projede sıradan sohbeti açın. + → Rol / Uzman ekibini kullanın, kategorileri veya anahtar kelimeleri arayın, önizleme yapın ve sohbete yükleyin. Örneğin, Kod İnceleyici'yi seçin ve ardından belirli bir inceleme kapsamı gönderin.",
+          "Bestecide yüklenen adı kontrol edin. Seçmek bir mesaj göndermez. Bağlama oturumla birlikte kaydedilir ve yenileme sonrasında geri yüklenir; yeni oturumlar sınırsız olarak başlar. İncelemek, değiştirmek ya da kaldırmak için adı tıklayın."
+        ],
+        "tips": [
+          "Çalışırken geçiş yapamazsınız. Okuma veya kaydetme hataları mevcut seçimi korur; İstendiği gibi yeniden deneyin. Eksik rolleri yeniden seçin. Yalnızca yükleme oturum bağlamayı değiştirir; modeli çağırmak için somut bir soru gönderin.",
+          "Uzman ekipler üyelerin istemlerini ve sorumluluklarını mevcut modele aktarıyor; bağımsız motorları çalıştırmazlar. Görevler, iş akışı adımları, kanallar, uzak projeler ve proje kapsamındaki bildirimler entegre değildir. Tam cihazlı bir Ağ Geçidi çalışma alanı bunu yerel bir proje için kullanabilir."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Sıradan sohbette Kod İnceleyici araması ve istem önizlemesi",
+          "caption": "Kod İnceleyici boş bir gösteri görüşmesinde seçilir. İstemi ve yükleme düğmesi görülebilir; hiçbir rol yüklenmedi veya mesaj gönderilmedi."
+        }
+      },
+      {
+        "title": "Telefonda proje belleğini açın",
+        "steps": [
+          "Proje görev listesini açın, sağ üstteki Daha Fazla'yı ve ardından Bellek'i kullanın.",
+          "Bellek düzenleyicisine, taahhüt etmeden önce proje testlerini çalıştır gibi kısa kuralları girin. Kontrol edin ve kaydedin; bu tüm proje için geçerlidir."
+        ],
+        "tips": [
+          "Bellek seçimi Daha Fazlasını çökertir. Masaüstünde doğrudan görev sayfasında Bellek'e tıklayın."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "390 piksellik bir görev sayfasının Diğer menüsünde bellek girişi",
+          "caption": "Mobil görev listesinin genişletilmiş Diğer menüsünde Bellek bulunur. Tıklandığında düzenleyicisi açılır; burada hiçbir bellek değiştirilmedi."
+        }
+      },
+      {
+        "title": "Konuşmalar oluşturun ve yapılandırmayı değiştirin",
+        "steps": [
+          "Soldaki projenin Konuşmalar bölümünde sıradan bir oturum oluşturun. Motorunu, sağlayıcısını, modelini ve izin modunu seçin. Doğrulanmış bir SDK ile başlayın.",
+          "Somut bir istek girin. Gönderimleri girin; Shift+Enter yeni satır ekler. Referans görsellerini yalnızca motor görseli desteğini kontrol ettikten sonra ekleyin veya yapıştırın.",
+          "Gerekirse oluştururken yanıtı durdurun. İlave eklenen mesajlar kuyruğuna eklenir ve bunların sırası değiştirilebilir.",
+          "Motoru veya sağlayıcıyı mevcut bağlamla değiştirirken, iletişim kutusunda Akıllı aktarım, Tam sohbet geçmişi veya Yok'u seçin. Bağımsız keşif için bir görüşme yapın ve bağlam modunu onaylayın."
+        ],
+        "tips": [
+          "Proje sohbeti, iş akışı görev kayıtlarından ayrı olarak depolanır. Aşama takibi ve incelemelere ihtiyaç duyduğunuzda bir görev oluşturun.",
+          "Yerel çatallama yalnızca motor tarafından gerçekten desteklendiğinde kullanılabilir. Aksi takdirde açık bağlam aktarımıyla devam edin."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Proje sohbet motoru, sağlayıcı ve model menüsü",
+          "caption": "Yalnızca bu görüşme için motoru, sağlayıcıyı, akıl yürütme modelini ve ilgili seçenekleri yapılandırın. İzinler ayrı ayrı seçilir."
+        }
+      },
+      {
+        "title": "Becerileri etkinleştirin ve konuşmaları düzenleyin",
+        "steps": [
+          "Mevcut projenin Yapılandırma → Beceri merkezini açın, yeniden tarayın ve ada, açıklamaya veya kaynak yoluna göre arayın.",
+          "Beceri amaçlarını okuyun ve ihtiyacınız olanı etkinleştirin. Toplu değişikliklerden önce seçilen aralığı kontrol edin. Beceriler proje başına kaydedilir ve bir sonraki çalıştırmaya veya yeni oturuma uygulanır.",
+          "Mevcut motor tarafından sunulan becerileri seçmek için besteciye / yazın. Listeler motora göre değişir.",
+          "Yeniden adlandırmak veya arşivlemek için oturum menüsünü kullanın. Arşiv listesinde arama yapın ve gerekli konuşmaları geri yükleyin."
+        ],
+        "tips": [
+          "Beceri merkezi mevcut yerel becerileri seçer. Hiçbiri görünmüyorsa önce yerel kaynakları kontrol edin. Uzak projeler şu anda ana bilgisayarın yerel becerilerini yönetemez."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Beceri merkezinde manuel demo arandıktan sonra sonuç yok",
+          "caption": "Beceri merkezi, ad arama ve kaynak filtreleme olanağı sunar. Eşleşen beceri veya etkinleştirme anahtarı görüntülenmiyor."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Hızlı düğmeler ve komut dosyası eylemleri",
+    "summary": "Yaygın istemleri, görüntüleme içeriğini ve proje komut dosyalarını yeniden kullanılabilir düğmelere dönüştürün.",
+    "sections": [
+      {
+        "title": "Bilgi istemi ve görüntüleme düğmeleri oluşturma",
+        "steps": [
+          "Proje yapılandırmasında Hızlı düğmeleri açın, bir düğme ekleyin ve türünü seçin.",
+          "Bilgi İstemi için etiketini ve bilgi istemini girin ve tıklatıldığında hemen gönderilip gönderilmeyeceğini seçin, örneğin: Mevcut değişiklikleri inceleyin ve açıklanmayan kabul kriterlerini listeleyin.",
+          "Görüntülü Reklamcılık için içeriği girin ve güvenli HTML işlemesini önizleyin. Bu tür mesaj göndermez.",
+          "Kaydedip sohbete veya bir göreve geri dönüp inceleme düğmesini tıklayın. Yeniden sıralamak için yapılandırma listesini sürükleyin. İş akışı ayarları, devralınan proje düğmelerini kontrol eder; aşama düğmeleri ayrı ayrı yapılandırılır."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Proje düğmesi devralma ve iş akışı hızlı düğmelerine giriş ekleme",
+          "caption": "Soldaki iş akışı düğmelerini devralmak ve eklemek için proje düğmelerini seçin. Hiçbir düğme içeriği girilmedi."
+        }
+      },
+      {
+        "title": "Bir Eylemi yapılandırın ve çalıştırın",
+        "steps": [
+          "Eylem türünü ekleyin, Eylem Kimliğini girin ve karşılık gelen Eylem dizininden bir komut dosyası seçin.",
+          "Yürütme dizinini seçin: proje, iş akışı görev dizini veya komut dosyası tarafından seçilen Git çalışma alanı. Komut dosyasını önizleyin ve kontrol edin.",
+          "Dosyaları veya harici durumu değiştiren eylemlerden önce onayı etkinleştirin. Onaylama mesajları gibi girişler için bir onay istemi yapılandırın; komut dosyası bunu WORKSTEP_ACTION_INPUT aracılığıyla alır.",
+          "Kaydedin ve düğmeye tıklayın, komut dosyasını ve dizini onaylayın ve çıktıyı ve çıkış kodunu inceleyin. Çalışan eylemler durdurulabilir."
+        ],
+        "tips": [
+          "Hızlı eylemler doğrudan proje komut dosyalarını çalıştırır. Komut dosyasını anlayın ve önce doğru dizini seçin. Geçerli Eylem dizininin dışındaki dosyalar, komut dosyası olarak rastgele seçilemez."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Hiçbir komut dosyası seçilmeden eylem yapılandırması",
+          "caption": "Alanlar arasında Eylem Kimliği, komut dosyası, yürütme dizini ve onay bulunur. Hiçbir komut dosyası çalıştırılmadı."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Zamanlanmış görevler",
+    "summary": "Bir zamanlamaya göre yeni görevler oluşturun veya mevcut görevlere zamanlı koordinatör talimatları gönderin ve yürütmeyi ve bildirimleri izleyin.",
+    "sections": [
+      {
+        "title": "Tek bir programdan birden fazla görev oluşturun",
+        "steps": [
+          "Bir Proje Oluşturun, görev takvimi oluşturur, AI dinamiğini seçin ve birden fazla görevin kapsamını ve bireysel zamanlarını belirtin. Aday iş akışlarını seçin.",
+          "Her taslağı kontrol etmek için önce Test oluşturmayı kullanın, ardından kaydedin. Görev koordinatörü talimatları seçili bir görev üzerinde çalışmaya devam eder ve gruplar oluşturmaz.",
+          "Tetiklemeden sonra, oluşturulan her görevi çalıştırma kayıtlarından açın. Başarısız olan kayıtlar ayrıca önceden oluşturulmuş görevleri de korur; Değiştirme oluşturmadan önce nedenini inceleyin."
+        ],
+        "tips": [
+          "Görev oluşturma, tüm iş akışlarının bittiği anlamına gelmez. Kısmi oluşturma veya başlatma hatasından sonra toplu işlemin tamamını yeniden çalıştırmayın."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Zamanlanmış toplu oluşturma önizlemesi ve çok görevli çalıştırma kayıtları",
+          "caption": "Gerçek ekran görüntüsü beklemede: kısmi başarısızlıktan sonra toplu taslaklar ve önceden oluşturulmuş görevler."
+        }
+      },
+      {
+        "title": "Görev ayrıntılarından zamanlanmış talimatları yönetin",
+        "steps": [
+          "Görev ayrıntılarını açın ve Bind BOT'nun yanındaki saate tıklayın; telefonlarda ana sekmelerin sağındadır. Sayımı, yalnızca etkinleştirilmiş kuralları değil, tamamlanmış tek seferlik kurallar dışındaki görev kurallarını içerir. Listedeki duraklatılmış durumları ve diğer durumları kontrol edin.",
+          "Bu görevin kurallarını pencerede inceleyin. Düzenleme izniyle kuralları ekleyin, düzenleyin, duraklatın, devam ettirin veya silin ve çalıştırma kayıtlarını görüntüleyin. Yeni kurallar otomatik olarak geçerli göreve bağlanır.",
+          "Bir başlık, sıklık ve koordinatör talimatı girin, örneğin: İlerlemeyi kontrol edin ve her on dakikada bir özetleyin. Durdurma durumunu kontrol edin ve kaydedin. Kaydedilmemiş düzenlemelerle kapatırken devam etmeyi veya silmeyi seçin.",
+          "Salt okunur paylaşımlar, bu görevin kurallarını denetlemek için aynı saati kullanır. İşletme haklarıyla, mevcut paylaşımın sunduğu yönetim girişlerini kullanın."
+        ],
+        "tips": [
+          "Tek seferlik liste, tamamlanan kuralların yürütme sürelerini korur; görev rozeti bunları hariç tutar, dolayısıyla sayılar farklılık gösterebilir."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Ayrıntı saatinden açılan görev kapsamlı zamanlama penceresi",
+          "caption": "Saatten bir kural oluşturmak, iş akışını ve görevi gösteri görevine kilitler. Başlık ve talimatlar boş; hiçbir şey kaydedilmedi veya yürütülmedi."
+        }
+      },
+      {
+        "title": "Sabit bir program oluşturun",
+        "steps": [
+          "Kenar çubuğu araç çubuğundan Zamanlanmış görevler'i açın, bir proje sekmesi seçin ve ardından bir Proje oluşturma görevleri zamanlaması oluşturun. İş akışını, başlangıç ​​adımını, başlığı ve içeriği seçin.",
+          "Bir kez, günlük, haftalık, aylık, saatlik aralık veya Cron'u seçin. Saat dilimini, geçerlilik tarihlerini ve sonraki çalıştırma önizlemesini kontrol edin.",
+          "İş akışını takip et, Hemen veya El ile yürütme seçeneğini seçin ve çakışma işlemeyi Atla, Paralel veya Kuyruk olarak ayarlayın.",
+          "İnceleme ayarlarını kontrol edin ve kaydedin. Uzun vadeli, yinelenen bir planı etkinleştirmeden önce, kısa vadeli tek seferlik bir programı doğrulayın."
+        ],
+        "tips": [
+          "Programları tetiklemek için WorkStep arka ucunun çalışıyor olması gerekir. Bilgisayar uyurken veya arka uç durdurulduğunda normal şekilde tetiklendiklerini varsaymayın."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Sabit görev içerikleri, günlük sıklık ve sonraki çalıştırma önizlemesi",
+          "caption": "İçeriği, sıklığı, başlatma ve çakışma politikasını ayarlayın, ardından yaklaşan yürütme zamanlarını inceleyin."
+        }
+      },
+      {
+        "title": "Zamanlanmış talimatları mevcut bir göreve gönderme",
+        "steps": [
+          "Kenar çubuğunda Zamanlanmış görevleri açın, bir proje seçin ve yeni kural türünü Görev koordinatörü talimatlarına değiştirin. Her seferinde bir görev oluşturmak yerine mevcut bir görev üzerinde çalışır.",
+          "Başlığı girin, iş akışına göre filtreleyin ve hedef görevi arayın. Aşağıdaki gibi somut bir talimat yazın: İlerlemeyi kontrol edin ve insan eyleminin gerekli olup olmadığını rapor edin; Tehlikeli eylemleri otomatik olarak onaylamayın. Kaydedilen kurallar başka bir göreve geri döndürülemez.",
+          "Birkaç dakikada bir dahil olmak üzere tek seferlik veya yinelenen yürütmeyi ayarlayın. Sonraki çalıştırma sürelerini doğrulayın ve manuel olarak devre dışı bırakılana kadar devam et veya Görev sona erdiğinde durdur'u seçin.",
+          "Kaydedilen kuralı tek seferlik veya yinelenen listelerde bulun. Hedef türüne ve görev kimliğine göre filtreleyin. Koordinatörün yanıtını bulmak ve geçmişindeki planlanmış mesaj durumunu incelemek için çalıştırma kaydından bir görev açın."
+        ],
+        "tips": [
+          "Her tetikleyici ayrı bir koordinatör oturumu kullanır ve görev meşgulken sıraya girebilir. Onaylanması gereken teklifler yine de size ihtiyaç duyar. Planlanmış bir yanıtı durdurmak yalnızca o mesajı durdurur; daha sonra tetiklenmesini önlemek için kuralı duraklatın veya devre dışı bırakın.",
+          "Bir hedefin arşivlenmesi veya silinmesi kuralı geçersiz kılar. Stop ile Görev sona erdiğinde, tamamlandığında, başarısız olduğunda veya durdurulduğunda terminal durumları görevi sonlandırır. Arka uç yeniden başlatma nedeniyle kesintiye uğrayan çalıştırmaların yeniden oynatılması garanti edilmez; Yeniden göndermeden önce kayıtları inceleyin."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Kaydedilmemiş görev koordinatörü zamanlama formu",
+          "caption": "Gösterim manuel olarak devre dışı bırakılana kadar her on dakikada bir tekrarlanır. Kaydedilmemiştir ve yürütme sonucu yoktur."
+        }
+      },
+      {
+        "title": "Planlanan çalıştırmalar için kanal bildirimlerini yapılandırma",
+        "steps": [
+          "Bir proje zamanlamasında veya görev koordinatörü kuralında, yürütme sonrasında Kanal botuna bildir seçeneğini inceleyin.",
+          "Gönderme özelliğine sahip bir bot ve konuşma seçin. Bir görevin bağlı grubu varsayılan olarak seçilebilir ancak kaydetmeden önce kontrol edin. Hedef olmadan önce botu ve görev bağlamayı yapılandırın veya bildirimi devre dışı bırakın.",
+          "Çalıştırma kayıtlarındaki bildirim durumunu ve hata nedenlerini inceleyin. Görevi yeniden çalıştırmadan bildirim hatalarını yeniden deneyin. Bilinmeyen dağıtım sonuçları için, yinelemeleri önlemek amacıyla önce kanalı kontrol edin."
+        ],
+        "tips": [
+          "Zamanlanmış bildirimler ve iş akışı Web kancaları ayrı olarak yapılandırılır. Başarılı bir çalıştırma, teslimatı kanıtlamaz ve başarısız bir bildirim, görevin başarısız olduğu anlamına gelmez.",
+          "Bu yanıtın tamamlanmasının ardından görev koordinatörü bildirimleri gelir. Bir proje zaman çizelgesinin bir görev oluşturmasından sonra bildirim alınması, tüm iş akışının bittiği anlamına gelmez."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Proje görevi formunda seçili hedef olmadan kanal bildirimi",
+          "caption": "Bildirim kontrol edilir ancak herhangi bir bot veya konuşma seçilmediğinden kaydetme devre dışı bırakılır. Hiçbir şey yürütülmedi veya gönderilmedi."
+        }
+      },
+      {
+        "title": "AI dinamik oluşturma ve çalıştırma kayıtları",
+        "steps": [
+          "Oluşturmayı AI dinamiği olarak değiştirin, her seferinde ne üretileceğini açıklayın, isteğe bağlı olarak bir referans başlığını düzeltin ve aday iş akışlarını seçin.",
+          "Oluşturma yeniden denemelerini yapılandırın ve çıktının beklentileri karşılayıp karşılamadığını denetlemek için Test oluşturmayı kullanın.",
+          "Kaydedin ve ardından sağ taraftaki çalıştırma kayıtlarını duruma göre filtreleyin. Tetikleme süresini, arıza veya atlama nedenlerini inceleyin ve ilgili görevi açın.",
+          "Artık programları duraklatmanıza gerek yok, kontrol ettikten sonra silin."
+        ],
+        "tips": [
+          "Yapay zeka oluşturma yeniden denemeleri, adım inceleme yeniden denemeleri ve geri dönüş bağlantı sınırları ayrı ayarlardır."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "AI dinamik zamanlanmış görev oluşturma formu",
+          "caption": "Talimatları, aday iş akışlarını ve yeniden deneme sayısını girin. Hiçbir görev oluşturulmadı veya çalıştırma kayıtları gösterilmedi."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Git ve görev çalışma alanları",
+    "summary": "Kod değişikliklerini inceleyin, paralel görevleri ayrı çalışma dizinlerinde izole edin, ardından birleştirin ve çalışmalarını aktarın.",
+    "sections": [
+      {
+        "title": "Dosyaları, farkları ve geçmişi inceleyin",
+        "steps": [
+          "Yerel veya bağlı uzak bir projenin görev sayfasında Git'e tıklayın ve kökü veya keşfedilen alt depoyu seçin. Uzak Git işlemleri ana cihazda yürütülür.",
+          "Yapay zeka değişikliklerini gereksinimlere göre doğrulamak için değiştirilen dosyaları ve farklılıkları inceleyin; taahhüt edilen işi kontrol etmek için taahhüt geçmişini kullanın.",
+          "Şube değiştirmeden önce kaydedilmemiş değişiklikleri ele alın. İleri, geri veya farklı durumu kontrol etmek için uzak durumu yenileyin.",
+          "Hızlı ileri çekin; Push yalnızca taahhüt edilen içeriği gönderir. Bir uzaktan kumanda ve şube seçin, onaylayın ve çalıştırın."
+        ],
+        "tips": [
+          "Önbelleğe alınmış uzak kayıtlar canlı durum değildir. Proje görevleri veya sohbetler etkinken senkronizasyon engellenebilir.",
+          "Önce çevrimdışı veya yetkisiz uzak projeleri yeniden bağlayın. Tarayıcı, ana bilgisayar depolarını bilgisayarınıza kopyalamaz. Okumak için Git görüntüleme izni gerekir; taahhüt etme, dallandırma, birleştirme ve senkronizasyon eylemlerinin ayrı yetkileri vardır. Düğmeler eksikse izinleri kontrol edin."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Git deposunda kaydedilmemiş değişiklikler",
+          "caption": "Yerel bir havuzun bekleyen dosyaları. Taahhüt geçmişi başka bir sekmededir; uzaktan izinler ve genişletilmiş dosya farkları gösterilmez."
+        }
+      },
+      {
+        "title": "Bir görev için Worktree oluşturun",
+        "steps": [
+          "Git çalışma alanını görev ayrıntılarında açın ve görevin gerçekten ihtiyaç duyduğu depoları seçin.",
+          "Bir görev dizini adı, kaynak dalı ve yeni dal girin, ardından Worktree Oluşturun. Kök henüz bir Git deposu değilse, onu başlatın ve ilk işlemi gerçekleştirin.",
+          "Yürütmeden sonra çalışma alanındaki değişiklikleri inceleyin ve kaydedin. Git'te geçerli dalla birleştirin veya geçerli dalı bir hedefle birleştirin.",
+          "Birleştirilen sonucu kontrol edin ve gerektiği şekilde manuel olarak basın. Temizlemeden veya geçmişi kurtarmadan önce tam efektleri ve kaydedilmemiş değişiklik uyarılarını okuyun."
+        ],
+        "tips": [
+          "Çalışma alanı oluşturmak otomatik olarak birleşmez veya iletilmez. Yalnızca taahhüt edilen değişiklikler şube birleştirmelerine katılır.",
+          "Bir görev çalışma alanının silinmesi, dizinlerin ve özellik dallarının kaldırılmasına neden olabilir. Temizleme, sonuçları kaydetmenin bir yolu değildir."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Mevcut bir Worktree ile Görev Git çalışma alanı",
+          "caption": "Gösterim çalışma alanı dosya farklılıkları olmadan mevcuttur. Açın, depolar ekleyin veya şubeleri yönetin; bu onun yaratılış formu değil."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Görev paylaşımı ve uzak projeler",
+    "summary": "Tek bir göreve olan bağlantıyı, tüm cihaza uzaktan erişimden ayırt edin.",
+    "sections": [
+      {
+        "title": "Bir görevi paylaşın",
+        "steps": [
+          "Görev ayrıntılarında Paylaş'a tıklayın ve Salt Okunur veya Etkileşimli'yi seçin.",
+          "Form rastgele bir şifre oluşturur ve varsayılan olarak yedi günlük geçerliliğe sahiptir. Gerektiğinde şifreyi değiştirin veya silin; ayarlandığında en az dört karakterden oluşmalıdır. İsteğe bağlı bir başlık ekleyin, geçerlilik süresinin önümüzdeki 90 gün içinde olduğundan emin olun, ardından bağlantıyı oluşturup kopyalayın.",
+          "Ayrı bir tarayıcı penceresinde açın, ayarlanmışsa bir şifre girin ve ilerlemeyi, mesajları, yapıları ve seçilen izinleri kontrol edin.",
+          "Paylaşımı durdurmak için mevcut paylaşımı açın ve iptal edin. Zaten açık olan izleyiciler de sürekli erişimi kaybeder."
+        ],
+        "tips": [
+          "Salt okunur görüntüleme içindir. Etkileşimli ziyaretçiler orijinal görev denetleyicisini kullanır: koordinatör veya adım mesajları gönderebilir, yürütmeyi durdurabilir, onayları ve soruları yönetebilir ve mevcut görev yapılandırmasını ve Git çalışma alanı eylemlerini kullanabilirler. Bunlar, söz konusu paylaşımın görev kapsamı dahilindeki orijinal görevi etkiler. Yalnızca görüntüleme için Salt okunur'u seçin ve modu ayrı bir tarayıcıda doğrulayın.",
+          "Alıcıların bağlantıdaki arka uç adresine ulaşması gerekir. Bağlantı oluşturmak genel ağ tüneli oluşturmaz."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Bağlantı oluşturulmadan önce etkileşimli görev paylaşım formu",
+          "caption": "İnteraktif mod seçilmiştir ve şifre boştur. Hiçbir paylaşım bağlantısı oluşturulmadı."
+        }
+      },
+      {
+        "title": "Toplantı sahibi erişimini yapılandırma ve cihazları davet etme",
+        "steps": [
+          "Ana bilgisayarda Ayarlar → Uzaktan erişim'i açın, bağlantıları etkinleştirin ve dahili adresi kontrol edin. Genel erişim, ulaşılabilir bir HTTPS/WSS harici adresi gerektirir.",
+          "Bir erişim anahtarı ayarlayıp kaydedin, ardından başka bir cihazdan erişilebilirliği test edin.",
+          "Proje yapılandırması → Paylaşım altında bir proje daveti oluşturun. Bunu başka bir WorkStep'nun Uzaktan erişim girişine aktarın ve bağlantı istemlerini izleyin.",
+          "Yetkili cihazları ve etkin davetleri inceleyin. Yetkilendirme dönemlerini değiştirin veya gerektiği şekilde iptal edin. Bağlantı kesilirse ana bilgisayar kullanılabilirliğini, adresini, anahtarını ve son kullanma tarihini kontrol edin."
+        ],
+        "tips": [
+          "WorkStep'nun yerleşik genel rölesi yoktur. Ulaşılabilir bir ağ girişini kendiniz sağlayın. Görev şifreleri, ana bilgisayar erişim anahtarları ve cihaz davetleri ayrıdır.",
+          "Uzak dizinler ve motorlar ana bilgisayarda kalır. Yerel dosya yöneticiniz dizinlerini doğrudan açamaz."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Değerler girilmeden önce uzaktan erişim anahtarı ve adres formu",
+          "caption": "Dahili ve harici alanlar örnek yer tutucuları gösterir ve anahtar boştur. Cihaz yetkilendirme listesi gösterilmiyor."
+        }
+      },
+      {
+        "title": "Gerektiğinde kurumsal bir Ağ Geçidine bağlanın",
+        "steps": [
+          "Kuruluşunuz Ağ Geçidi sağlıyorsa, adresini Uzaktan erişim → Ağ Geçidi platformu alanına girin.",
+          "Ağ Geçidi modunu açıkça etkinleştirin ve kaydedin, ardından bu bilgisayarı yetkilendirmek için oturum açın. Bir adresi tek başına kaydetmek onu etkinleştirmez.",
+          "Yönetici onayı bekleniyorsa onayı tamamlayın ve yeniden kimlik doğrulayın. Bağlandıktan sonra proje yayınını kullanın ve izinleriniz dahilindeki izinlere erişin.",
+          "Ağ Geçidi modunu devre dışı bırakın ve yerel kullanıma dönmek için kaydedin."
+        ],
+        "tips": [
+          "Bağımsız yerel kullanımın Ağ Geçidine ihtiyacı yoktur. Organizasyonel izinler ve onaylar gerçek platforma bağlıdır."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Ağ Geçidi modu etkinleştirilmeden önceki platform adresi",
+          "caption": "Ağ geçidi devre dışıdır ve adres bir yer tutucudur. Bir adresi kaydetmek ve Ağ Geçidini etkinleştirmek farklı eylemlerdir."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Ağ geçidi çalışma alanı ve yerel paylaşım",
+    "summary": "Yerel davetleri, platform hibelerini ve görev paylaşımlarını ayırt edin ve cihazlar arasında çalışmaya devam edin.",
+    "sections": [
+      {
+        "title": "Feishu veya Lark kurumsal kimliğini yapılandırma",
+        "steps": [
+          "Yönetici Platform ayarları → Organizasyon senkronizasyonu ve QR oturum açma işlemlerini açar, Feishu veya Lark özel kurumsal uygulamasını ekler ve Tenant Key değerini, App ID değerini ve App Secret değerini girer.",
+          "Görüntülenen oturum açma geri aramasının tamamını eşleşen geliştirici platformuna kopyalayın. Uygulama, QR oturum açma ve organizasyon senkronizasyonu anahtarlarını ayrı ayrı ayarlayın. Mevcut App ID değerleri değiştirilemez; başka bir uygulama için yeni bir kimlik kaynağı kullanın.",
+          "Dizin okumalarını yetkilendirin, uygulama görünürlüğünü sınırlayın ve şu adımları izleyin: Okuma önizlemesi → Kuruluşları veya kullanıcıları seçin → Değişiklikleri denetle → Senkronizasyonu onayla. Sonuçları ve arıza kayıtlarını doğrulayın."
+        ],
+        "tips": [
+          "Ağ geçidi kurumsal kimliği ve yerel kanal botları ayrıdır ve kimlik bilgilerini otomatik olarak paylaşmaz. Gerçek kiracı QR oturum açma ve dizin izinleri hâlâ entegrasyon testi gerektiriyor; simüle edilmiş API başarısı gerçek bağlantıyı kanıtlamaz."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Feishu veya Lark kimlik kaynağı ve dizin senkronizasyonu ayarları",
+          "caption": "Yalıtılmış bir Ağ Geçidinden kimlik bilgisi gerektirmeyen yapılandırma ekran görüntüsü beklemede."
+        }
+      },
+      {
+        "title": "Diğer web sitelerinin Ağ Geçidi üzerinden oturum açmasına izin ver",
+        "steps": [
+          "Bir süper yönetici, Ağ Geçidi Platformu ayarları → Üçüncü taraf oturum açma yetkilendirmesini açar ve Geri arama izin verilenler listesini düzenle'yi tıklar.",
+          "Her satıra tam bir geri arama URL girin (örneğin, 100 girişe kadar https://business.example.com/login/callback,). Şema, port, yol ve sabit sorgu parametreleri tam olarak eşleşmelidir. Yönetici doğrulamasını tamamlayın ve kaydedin.",
+          "Entegre web sitesinden oturum açmaya başlayın. Gateway'de oturum açmadıysanız önce mevcut şifreyi veya kurumsal QR girişini kullanın, ardından geri dönün. Sitenin arka ucu, kullanıcı kimliği, hesap ve görünen ad için tek seferlik bir yetkilendirme kodu alışverişinde bulunur.",
+          "Entegrasyonu durdurmak için URL'yu kaldırın ve kaydedin. Boş bir izin verilenler listesi, üçüncü taraf oturum açma yetkilendirmesini devre dışı bırakır; Kaldırılan adresler için bekleyen kodlar anında geçersiz hale gelir."
+        ],
+        "tips": [
+          "Geri aramalar joker karakterleri, parçaları, yerleşik kimlik bilgilerini veya önceden ayarlanmış kodu, durumu veya request_id parametrelerini değil, HTTP/HTTPS'yu destekler. Üretimde HTTPS kullanın.",
+          "Bir geri arama yetkisizse, URL'nun tamamını kontrol edin. Kodun süresi dolmuşsa veya kullanılmışsa entegre siteden oturum açmayı yeniden başlatın. Protokol ve çalıştırılabilir örnekler docs/gateway-third-party-login-integration.md'dadır."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Ağ Geçidi ayarlarında üçüncü taraf geri arama izin verilenler listesi",
+          "caption": "Gerçek izole gösteri Ağ Geçidi ekran görüntüsü beklemede; günlük hesapları veya gerçek geri arama ayarlarını kullanmayın."
+        }
+      },
+      {
+        "title": "İki tür proje paylaşımını yönetin",
+        "steps": [
+          "Proje ayarlarında Paylaşım'ı açın. Ağ Geçidi adresini yapılandırmak Platform erişimini etkinleştirir. Yerel arayüz ayrıca uzak proje davetleri de sunar; Ağ geçidi uzak tarayıcıları yerel davetleri yapılandıramaz.",
+          "Yerel davetiyeler için LAN veya harici adres ve cihaz erişim süresini seçin, ardından oluşturup kopyalayın. Özel bir son kullanma tarihi gelecekte olmalıdır; davetiye kullanımı ve cihaz yetkilendirmesinin sona ermesi ayrı ayrı gösterilir.",
+          "Alıcı cihaza içe aktardıktan sonra Yetkili cihazlar altında adını, IP'sini, bağlantısını ve geçerlilik süresini inceleyin. Gerektiğinde dönemleri değiştirin veya iptal edin. Platform erişimi bunun yerine hesapları, proje yayınlarını ve hibeleri kullanır.",
+          "Bir görev için Paylaş penceresinde modu, şifreyi ve başlığı seçin. Yerel ve Ağ Geçidi paylaşımlarının her ikisi de varsayılan olarak yedi gündür ve en fazla 90 güne izin verir. Ayrı bir tarayıcıda test edin, ardından orijinal pencereden yönetin veya iptal edin."
+        ],
+        "tips": [
+          "Yerel bir görevi bağlı bir Ağ Geçidi aracılığıyla paylaşmak, geçerli bir platform kimliği gerektirir. Bir adres veya masaüstü kimlik bilgisi tek başına platform izni vermez.",
+          "Yerel görev bağlantıları ana bilgisayar adresini kullanır; Ağ geçidi paylaşımları platformun döndürdüğü adresi kullanır. Ekran görüntülerinde asla davet kimlik bilgilerini yayınlamayın, bağlantıları veya şifreleri paylaşmayın.",
+          "Her iki tür de vadeyi destekler. Ağ geçidi oturum açmayı gerektirebilir; etkileşimli Ağ Geçidi paylaşımları bunu gerektirmeli ve erişim anahtarı yerine oturum açmayı kullanmalıdır. Geçerli paylaşım penceresindeki alanları kontrol edin."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Uzaktan erişim paylaşımı sekmesi ve cihaz yetkilendirme süresi",
+          "caption": "Ağ Geçidi yapılandırılmadığında Uzaktan erişim gösterilir. Hiçbir cihaza yetki verilmedi ve davet oluşturulmadı."
+        }
+      },
+      {
+        "title": "Cihazları değiştirin ve toplu bildirimleri inceleyin",
+        "steps": [
+          "Platformda yetkili bir cihaz çalışma alanına girin, ardından başka bir çevrimiçi cihaza geçmek için üstteki cihaz sekmelerini kullanın.",
+          "Her hesap ve cihaz, bu tarayıcıdaki son projeyi, görevi veya oturum sayfasını hatırlar. Geri dönmek yine de yetkilendirmeyi kontrol eder ve erişilemeyen hedefleri atlamaz.",
+          "Uzak projeler yalnızca seçildiğinde yüklenir. Yükleme hatası veya bağlantı kesilmesinden sonra, manuel olarak yenilemek için mevcut projeye tekrar tıklayın; cihazlar arka planda sürekli olarak yoklanmaz.",
+          "Yetkili cihazlardan tamamlanma veya arıza özetleri için Bildirim merkezini açın. Görevi veya oturumu açmak için tıklayın. Çalışma alanı canlı mesajları hâlâ geçerli cihaza ait.",
+          "Başka bir cihaz seçmek için Ağ Geçidi platformuna dön'ü kullanın. Süresi dolmuş bir tarayıcı yetkilendirme geri araması oturum açmayı yeniden başlatır; masaüstü yetkilendirmesini iptal ettikten sonra manuel olarak yeniden deneyin veya yerel çalışma alanına dönün."
+        ],
+        "tips": [
+          "Sayfa belleği tarayıcıda yereldir, tarayıcılar arasında senkronize edilmez. Erişim, tarayıcı depolama alanı olmadan çalışır ancak konumlar korunmaz.",
+          "Çevrimdışı cihazlar, iptal edilen yetkilendirme veya ağ arızaları için istendiğinde yeniden bağlanın. Kaydedilen konumlar izinlerin yerine geçmez.",
+          "Sabit tanıtım projesinin gerçek cihaz sekmesi ve toplu bildirim ekran görüntüleri beklemededir."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Cihaz sekmeleri ve toplu bildirim merkezi",
+          "caption": "Gerçek ekran görüntüsü beklemede: cihaz değiştirme, konumu geri yükleme ve bildirimde gezinme; henüz yakalanmadı."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Kanal botları ve grup bildirimleri",
+    "summary": "Sohbeti Webhook bildirimlerinden ayırarak WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack veya QQ'yu yapılandırın.",
+    "sections": [
+      {
+        "title": "Bir kanal seçin ve yeni bir platforma bağlanın",
+        "steps": [
+          "Ayarlar → Kanal botları'nı açın, soldan bir platform seçin ve sağ tarafa bir ad, kimlik bilgileri ve varsayılan yerel proje girin. Etkinleştirin ve kaydedin. Boş gizli diziler, düzenleme sırasında mevcut değerleri korur; geçiş yapmadan önce kaydedilmemiş değişiklikleri kontrol edin. Ayarları kapatmak, Escape tuşuna basmak veya ayarlar bölümlerini değiştirmek, değişiklikler kaydedilmediğinde onay ister; iptal etme taslağı korur.",
+          "Feishu veya Lark için bot desteğine sahip özel bir kurumsal uygulama oluşturun ve App ID ile App Secret değerini girin. Bağlantıdan sonra uzun bağlantı olaylarını etkinleştirin, im.message.receive_v1 vecard.action.trigger'a abone olun, mesaj/kart izinlerini yapılandırın ve yayınlayın. Özel bir mesaj gönderin veya bir grupta bottan bahsedin.",
+          "Telegram için BotFather ile bir bot oluşturun ve Bot Token'ını girin. Uzun yoklama kullanılır; başka hiçbir program bu botu aynı anda yoklayamaz. Yöneticilerin öncelikle mevcut herhangi bir Web Kancasını kaldırması gerekir. Özel metin gönderin veya gruplar halinde bundan bahsedin/yanıtlayın.",
+          "Discord için Application ID değerini ve Bot Token değerini girin, Mesaj İçeriği Amacını etkinleştirin ve kanala okuma/gönderme izinleri verin. Sunucu kanallarında bottan bahsedin; Kanal veya iş parçacığı kimliklerini kullanarak görevleri bağlayın.",
+          "Slack için Socket Mode'u etkinleştirin. App ID, connections:write yetkili App-Level Token ve Bot Token girin. chat:write, app_mentions:read ve im:history izinlerini yapılandırın; app_mention ve message.im olaylarına abone olup uygulamayı yükleyin. Kanalda etiketlemeden önce botu davet edin.",
+          "QQ için, QQ Açık Platformunda resmi bir bot oluşturun, WebSocket erişimini seçin ve özel/grup mesaj etkinliklerini etkinleştirin. App ID değerini, App Secret değerini ve varsayılan yerel projeyi girin, etkinleştirin ve kaydedin. Özel mesaj gönderin veya bir grupta bottan bahsedin. Bir mesaj aldıktan sonra, group_openid kullanarak görevleri bağlayın ve izin verilenler listelerini QQ hesabı veya grup numaralarıyla değil, üye OpenID'lerle yapılandırın. Yalnızca metin; Pasif yanıtların zaman ve sayı sınırları vardır. WorkStep'da uzun sonuçları okuyun.",
+          "Bağlantıları ve kanal oturumlarını incelemek için WorkStep'ya dönün, ardından görevleri gerektiği gibi bağlayın. Arızalar için bölgeyi, kimlik bilgilerini, platform izinlerini ve arka uç ağını kontrol edin."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack ve QQ şu anda yalnızca metni desteklemektedir. Durdurma, izin yanıtları, teklif onayı ve inceleme için WorkStep'ya dönün; resimler, dosyalar ve etkileşimli kartlar vaat edilmemektedir.",
+          "Yeni platform testleri simüle edilmiş çerçeveler kullanır. Gerçek kiracı kurulumu, izinler ve mesajlaşma hâlâ entegrasyon testi gerektiriyor. Sırları, tam belirteçleri ve özel grup kimliklerini ekran görüntülerinden uzak tutun."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Kanal seçici ve ayrı bot düzenleyici",
+          "caption": "Yeni çok kanallı düzenin kimlik bilgisi içermeyen gerçek ekran görüntüsü beklemede. Eski form onu ​​temsil etmiyor."
+        }
+      },
+      {
+        "title": "Bildirimleri yalnızca Feishu veya Lark gruplarına gönder",
+        "steps": [
+          "Görev sayfasının İş Akışı kancaları → Bildirim kancalarına, bir Feishu veya Lark grup bot hedefi ekleyin ve o bölge için özel bot Webhook URL'nun tamamını yapıştırın.",
+          "İmzalama etkinse App ID değerini veya App Secret değerini değil, söz konusu botun imzalama sırrını girin. Gerekli anahtar kelimeleri, etkinlikleri ve Markdown şablonunu yapılandırın, simülasyonu kaydedin ve inceleyin.",
+          "Testi göndermeden ve teslimat kayıtlarını incelemeden önce alıcı grubunu onaylayın. Önizleme hiçbir şey göndermez; zaman aşımından sonra yeniden denemeden önce grubu kontrol edin."
+        ],
+        "tips": [
+          "Web kancaları yalnızca iş akışı olaylarını gönderir ve grup sohbeti almaz. İki yönlü konuşmalar için bir uygulama botu kullanın."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Feishu veya Lark bildirimi URL, imza ve şablon",
+          "caption": "Kimlik bilgisi içermeyen yapılandırma ve kart önizleme ekran görüntüleri beklemede; fiili teslimat talep edilmez."
+        }
+      },
+      {
+        "title": "Bot ekle",
+        "steps": [
+          "Ayarlar → Kanal botları'nı açın, soldan WeCom veya DingTalk'yu seçin, bir bot ekleyin ve ona bir ad verin.",
+          "WeCom için akıllı bot ayarlarında uzun bağlantıyı seçin ve Bot ID değerini ve Gizliliğini kopyalayın. DingTalk için bir uygulama oluşturun, Akış botunu etkinleştirin ve Client ID değerini ve Client Secret değerini kopyalayın.",
+          "Varsayılan bir proje seçin, uzun bağlantıyı etkinleştirin, kaydedin ve Connected'ı bekleyin.",
+          "Botu bir gruba ekleyin, bir test mesajıyla bundan bahsedin ve konuşmayı inceleyin ve proje Kanal sohbetleri altında yanıtlayın."
+        ],
+        "tips": [
+          "Sırları yalnızca ayarlara girin, ekran görüntülerini veya mesajları değil. Bağlantı hataları için platform modunu, kimlik bilgilerini ve arka uç ağını kontrol edin.",
+          "DingTalk düğme kartları oluşturma, teslim etme ve güncelleme izinlerini gerektirir. Özel şablonlar arayüzde açıklanan alanlarla eşleşmelidir."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Eski Kimlik bilgileri girilmeden önce bot ekle formu",
+          "caption": "Eski form yalnızca adı, kimlik bilgilerini ve varsayılan proje alanlarını gösterir. Kaydedilmedi veya bağlanmadı; sol taraftaki yeni platform listesinin hala bir ekran görüntüsüne ihtiyacı var."
+        }
+      },
+      {
+        "title": "Bir görev grubunu bağlayın ve incelemeleri yönetin",
+        "steps": [
+          "Görev ayrıntılarında Bind BOT'yu açın ve etkinleştirilmiş bir bot seçin.",
+          "Grupta bundan bir kez bahsedin ve ardından Son alınan gruplar altında grubu seçin. Alternatif olarak bilinen bir grup kimliğini yapıştırın, mevcut görevi doğrulayın ve bağlayın.",
+          "Grup soruları o görevin koordinatörüne girer. Aşama sonuçlarını ve iletilen ekleri inceleyin.",
+          "İnceleme veya soru kartları göründüğünde harekete geçmeden önce okuyun ve gerekirse doğrulamak için WorkStep'ya dönün. Artık gerekmediğinde bağlantıyı kaldırın."
+        ],
+        "tips": [
+          "Varsayılan proje, bir göreve bağlı olmayan kanal sohbetini yönetir. Grup bağlamaları, o grubun iletilerini hangi görevin alacağını belirler.",
+          "Bir görevin arşivlenmesi veya silinmesi bağlamaları kaldırır; geri yükleme yeniden bağlamayı gerektirir. Düğme oluşturma kanal istemcilerine bağlıdır. Mevcut değilse görev ayrıntılarına göre hareket edin."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Bağlı grup içermeyen Görev BOT iletişim kutusu",
+          "caption": "Bir bot ve son grup seçin, ardından tanımlayıcısını girin ve bağlayın. Henüz hiçbir görev grubu bağlı değil."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Masaüstü sanal alanı",
+    "summary": "Arka ucu ve motorları, açıkça ilişkilendirilmiş proje dizinleriyle ayrı bir kapta çalıştırın.",
+    "sections": [
+      {
+        "title": "Beş adımlı korumalı alan kılavuzunu tamamlayın",
+        "steps": [
+          "Masaüstünde son Ayarlar öğesi olan Sandbox'ı açın. Etkin görevleri ve konuşmaları sonlandırın ve sanallaştırma desteğini doğrulayın; Windows'nun WSL2'ya ihtiyacı var.",
+          "Öncelikle ayrı bir sanal alan depolama alanı seçin ve yardımcı yazılımı indirin/hazırlayın.",
+          "İkinci olarak görüntüyü kontrol edin ve önerilen sürüm görüntüsünü indirin veya uyumlu bir WorkStep görüntüsü için çalışan yerel Docker'ı tarayın.",
+          "Üçüncü olarak mevcut veya yeni proje dizinlerini seçin; dördüncü sağlayıcıyı, motoru ve tercih geçişini seçin; beşinci olarak özeti inceleyin ve kaydedin veya onaylayın ve yeniden başlatın."
+        ],
+        "tips": [
+          "Bir projeyi ilişkilendirmek onun dosyalarını kopyalamaz. Korumalı alan düzenlemeleri hâlâ orijinal dizini etkiliyor. Aynı projeyi her iki ortamda aynı anda çalıştırmayın.",
+          "İlişkilendirilmemiş projeler silinmez, geçici olarak gizlenir. Korumalı alan ve proje dizinleri birbirini içeremez."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Beş adımlı korumalı alan kılavuzunda proje seçimi ve onayı",
+          "caption": "Depolamayı, proje ilişkilendirmesini ve yapılandırma geçişini inceleyin."
+        }
+      },
+      {
+        "title": "Modları değiştirin ve yapılandırmayı koruyun",
+        "steps": [
+          "Yeniden başlattıktan sonra, gerçek ortamı doğrulamak için Sandbox modu kenar çubuğu işaretini kontrol edin.",
+          "Sağlayıcı adreslerini, motor kurulumunu ve oturum açma işlemlerini yeniden kontrol edin. Host localhost, kapsayıcıda farklı bir şey anlamına gelir ve yolların ayarlanması gerekebilir.",
+          "Dizinleri içe aktarmadan veya değiştirmeden önce korumalı alanı devre dışı bırakın ve yeniden başlatın, ardından korumalı alan yönetimini kullanın. İçe aktarmadan önce yedekleme ve değiştirme ayrıntılarını okuyun.",
+          "Korumalı alanı devre dışı bırakın ve normal moda dönmek için yeniden başlatın. Hatalar için günlük dizinini açın ve ilerlemeyi ve hataları inceleyin."
+        ],
+        "tips": [
+          "Sıradan ve korumalı alan modları ayrı yapılandırmayı korur. Geçiş, değişiklikleri otomatik olarak geri senkronize etmez.",
+          "Uyumluluk izinlerini yalnızca motorun iç sanal alanının çalışamaması durumunda değerlendirin; arayüz azaltılmış izolasyonu açıklıyor. Korumalı alan verilerinin silinmesi geri alınamaz: önce neyin tutulacağını inceleyin."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Ortak ayarlar ve sorun giderme",
+    "summary": "Önce yapılandırma kapsamını anlayın, durumu ve hataları okuyun, ardından hedefe yönelik onarımlar yapın.",
+    "sections": [
+      {
+        "title": "Masaüstü sürümünü kontrol edin ve güncellemeleri indirin",
+        "steps": [
+          "Geçerli sürümü incelemek için masaüstünde Ayarlar → Sistem ayarları → Masaüstü güncellemeleri öğesini açın.",
+          "En son resmi GitHub sürümünü bulmak için Güncellemeleri kontrol et seçeneğine tıklayın. Daha yeniyse GitHub'dan İndir'e tıklayın.",
+          "Sürüm sayfasında sisteminizin yükleyicisini seçin, aktif çalışmayı tamamlayın ve kendiniz kurun."
+        ],
+        "tips": [
+          "Masaüstü, otomatik olarak indirmeye, yüklemeye veya yeniden başlatmaya gerek kalmadan günde bir kez kontrol eder. Yalnızca daha yeni bir resmi Sürüm bir güncellemeyi tetikler; kod aktarmaları veya taslakları tetiklemez.",
+          "Başarısız olan kontrolleri daha sonra yeniden deneyin. Web sürümünde masaüstü güncelleme girişi yoktur."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Güncel masaüstü sürümü ve sistem ayarlarında güncelleme-kontrol girişi",
+          "caption": "Manuel olarak kontrol edin, ardından bir güncelleme mevcut olduğunda GitHub'dan indirin."
+        }
+      },
+      {
+        "title": "Eşzamanlılık, asistanlar ve ekran",
+        "steps": [
+          "Birçok görevi çalıştırırken, genel Eşzamanlılık sınırlarında veya proje yapılandırmasında görev ve konuşma kapasitesini ayarlayın ve etkin değerleri inceleyin.",
+          "Zamanlanmış görevlerin kapasiteyi tüketmemesi gerekiyorsa bu seçeneği etkinleştirmeden önce yeterli kaynakları doğrulayın. Görevlerin ve sohbet kuyruğunun aşılması.",
+          "Her asistanın motorunu ve modelini Yardımcılar altında yapılandırın. Adım yürütme ve görev koordinatörü ayarlarını ayrı ayrı kontrol edin.",
+          "Sistem ayarlarında kullanıcı adını değiştirin. Dil, yazı tipleri, boyut ve dış görünümler Ayarlar → Görünüm altındadır; depo tarama kapsamı Git ayarları altındadır."
+        ],
+        "tips": [
+          "Varsayılan yürütme motorunun değiştirilmesi, mevcut görev veya adım ayarlarını değil, yeni görevleri ve adımları etkiler."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Küresel görev ve konuşma eşzamanlılığı sınırları",
+          "caption": "Genel kapasiteleri ve zamanlanmış görev istisnasını ayarlayın."
+        }
+      },
+      {
+        "title": "Sırayla sorun giderme",
+        "steps": [
+          "Bir görev başlamazsa hazır, sıraya alınmış ve incelenmeyi bekliyor durumlarını ayırt edin. Başlatma adımını, otomatik başlatmayı ve motorun kullanılabilirliğini kontrol edin.",
+          "Yürütme hatası durumunda en son hatayı okuyun. SDK kurulumunu, sağlayıcı kimlik doğrulamasını, model adını, ağ ve dosya izinlerini kontrol edin ve ardından yeniden çalıştırın.",
+          "Geçmiş veya API yükleme hataları için Yeniden Dene seçeneğini kullanın. API bir web sayfası döndürdüyse arka uç sürümünü onaylayın ve her zamanki yönteminizi kullanarak yeniden başlatın.",
+          "Yerel oturum geçmişi kaybolursa, Yeni bir oturumla yeniden çalıştır konusunu okuyun, mevcut hedefleri ve gerekli yapıt referanslarını sağlayın ve bunu tam yerel bağlam kurtarma olarak değerlendirmeyin.",
+          "Eksik yapıtlar veya uzaktan erişim hatası için sırasıyla gerçek dosya oluşturmayı veya ana bilgisayar kullanılabilirliğini, adresi, anahtarı ve yetkilendirme süresinin sona ermesini kontrol edin."
+        ],
+        "tips": [
+          "Sorunları bildirirken sürümü, işletim sistemini, motoru, çoğaltma adımlarını ve düzeltilmiş hata ekran görüntülerini ekleyin; kimlik bilgilerini asla ekleyin. Açık bir ayar olmadan, motor olayları olmadan kesintisiz 20 dakika, oturum korunurken boşta kalma zaman aşımını tetikler. Mevcut özel zaman aşımları devam ediyor; 0 bunu devre dışı bırakır. Sessiz düşünme veya araçların mutlaka durması gerekmez: yeniden çalıştırmadan önce günlükleri inceleyin."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Var olmayan bir modelin neden olduğu gösteri başarısızlığı",
+          "caption": "Hata, seçilen modelin desteklenmediğini söylüyor. Tekrar çalıştırmadan önce adımın model yapılandırmasını onarın; bu görüntüde onarılmamıştır."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Görünüm, görünümler ve diller",
+    "summary": "Sıradan proje sohbeti aracılığıyla kişisel görüntüleme tercihlerini seçin veya önizlenebilir görünümler ve dil paketleri oluşturun.",
+    "sections": [
+      {
+        "title": "Yerleşik bir dil seçin",
+        "steps": [
+          "Ayarlar → Görünüm'de Basitleştirilmiş Çince, Geleneksel Çince, İngilizce, Japonca, Fransızca, Almanca veya Arapça'yı seçin ve ortak girişleri ve tarih kontrollerini inceleyin.",
+          "Web sitesi ve kullanım kılavuzunun üstündeki dil menüsünden Japonca, Geleneksel Çince, Korece ve diğer dilleri seçin. Seçim tarayıcıda saklanır; kayıtlı tercih yoksa tarayıcının dili kullanılır."
+        ],
+        "tips": [
+          "Fransızca, Almanca ve Arapça uygulama çevirileri şu anda önemli girişleri kapsamaktadır; diğer dizeler Çince kalabilir ve uygulamanın Arapça düzeni hâlâ soldan sağadır. Web sitesi ve kılavuz metni, sağdan sola Arapça düzeniyle üstteki dil seçiciyi takip eder. Gerçek ekran görüntüleri Çince olarak kalıyor. Dil değiştirme, geçmiş konuşmaları veya kullanıcı dosyalarını çevirmez."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Uygulamada ve web sitesinde yerleşik dil seçiciler",
+          "caption": "Eklenen dil seçeneklerinin gerçek ekran görüntüleri beklemede."
+        }
+      },
+      {
+        "title": "v2 dış görünüm düzenlerini ve özellik uzantılarını kullanın",
+        "steps": [
+          "Ayarlar → Görünüm altında, güvenilir bir v2 dış görünümünü yükleyin ve doğrulayın, önizleyin ve uygulayın. Notlar gibi özellikler için, görünüm oluşturma sohbetindeki yazardan bileşenleri eklemesini isteyin.",
+          "Kodlu paketler için etkinleştirme onayını okuyun. Bir paketi güncellemek veya kimliği değiştirmek tekrar sorabilir. Pakete bağlı olarak dış görünüm menüleri veya özellik girişleri aracılığıyla panelleri açın. Notlar veya takvimler önceden yüklenmiş uygulama özellikleri değildir.",
+          "Paket, besteciyi yukarıya, aşağıya, sola veya sağa konumlandırabilir. Kompakt görünümler dikey düzenlemeyi korur. Geçişten sonra mesajların, bestecinin ve ayarların kullanılabilir durumda kaldığını kontrol edin.",
+          "Uzantı verileri tarayıcı kimliğine, cihaza, dış görünüme ve özelliğe göre ayrılır. Bir görünümü değiştirmek veya silmek onu silmez. Yedekleme için uzantının kendi dışa aktarımını kullanın. Arayüz bozulursa URL'ya skin=default ekleyin ve yenileyin."
+        ],
+        "tips": [
+          "Bileşen kodu geçerli sayfanın ayrıcalıklarına sahiptir. Yalnızca güvenilir kaynakları etkinleştirin. Önizlemeyi iptal etmek görünümü geri yükler ancak halihazırda yürütülmüş olan kodu geri almaz.",
+          "Uzantı verileri, ZIP dış görünüm aktarımlarına dahil edilmez veya tarayıcılar/cihazlar arasında senkronize edilmez. Depolamayı temizlemeden önce yedekleyin; Başarısız olan tasarruf, başarı olarak değerlendirilmemelidir."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "v2 bileşeni etkinleştirme onayı ve özellik paneli girişi",
+          "caption": "Güvenilir bir tanıtım paketinin gerçek yürütme ekran görüntüsü beklemede. Format doğrulama görsel kabul değildir."
+        }
+      },
+      {
+        "title": "Kişisel görünümü seçin ve kaydedin",
+        "steps": [
+          "Tam cihaz erişimi için Ayarlar → Görünüm'ü açın. Proje yetkilisi kullanıcılar kenar çubuğundan Görünüm ve görünümlere girer.",
+          "Yazı tipini, boyutunu ve dilini seçin. Yüklü dış görünümleri arayın veya filtreleyin, önizleyin ve uygulayın. Sabit önizleme çubuğu iptal etmenize veya onaylamanıza olanak tanır.",
+          "Kimliği doğrulanmış Ağ Geçidi kullanıcılarının seçimleri, hesap ve cihaz başına kaydedilir ve aynı cihazdaki başka bir tarayıcıya geri yüklenir. Başarısız kaydetmeleri yeniden deneyin. Platforma giriş yapılmayan yerel seçenekler bu tarayıcıda kalır."
+        ],
+        "tips": [
+          "Paketler ve oluşturma kayıtları cihazda paylaşılır; kişisel seçimler izole edilmiştir. Proje yetkilisi kullanıcılar yalnızca kurulu paketleri seçebilir.",
+          "Eksik veya bozuk paketler varsayılan görünüme geri döner. Varsayılan dış görünümü veya Basitleştirilmiş Çinceyi geri yüklemek için ?skin=default veya ?language=default ekleyin."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Görünüm'deki yazı tipleri, boyut, dil ve yüklü kaplamalar",
+          "caption": "Gerçek ayarlar sayfası sağ tarafta varsayılanları ve yerleşik örnekleri gösterir. Hiçbir kişisel tercih değiştirilmedi."
+        }
+      },
+      {
+        "title": "Sohbet aracılığıyla görünümler ve diller oluşturun",
+        "steps": [
+          "Ana bilgisayar yönetimi haklarıyla, Görünümü tartışalım'a tıklayın, yüklü, doğrulanmış bir motor seçin ve şu gibi bir hedef tanımlayın: Koyu bir dış görünüm yapın, düzeni koruyun ve yukarı gönderme oku kullanın.",
+          "Sohbet solda, düzenleme ve önizleme ise sağda; telefonlar sekmeleri değiştirir. Adı, renkleri, yazı tipini, boyutu, gönderme simgesini ve düzeni ayarlayın, ardından ayarlamaları aynı taslak paketine kaydedin. Sohbet çalışırken düzenleme devre dışı bırakılır. PC ve telefon önizlemelerini kontrol edin.",
+          "Bir dil paketi için aynı sohbette şunu sorun: Görünümü korurken İspanyolca ekleyin. Sağ tarafı Dil olarak değiştirin. Nesilden sonra yüklenir; Dizinini, kapsamını, eksik dizeleri ve örnekleri kontrol etmek için Okuma ve doğrulamayı kullanın.",
+          "Dış görünümler için Görünümü ve önizlemeyi kaydet'i tıklayın; diller için Kurulum ve önizleme. Önizleme çubuğunda onaylayın veya iptal edin. Kütüphaneye kaydedilmesi kişisel başvuruyu onaylamaz. Yeniden kullanmak için ZIP'yu dışa aktarın ve aynı kimlikli içe aktarmalar veya güncellemeler için değiştirme istemlerini inceleyin."
+        ],
+        "tips": [
+          "Creation, sabit Runtime projesini ve sıradan sohbeti yeniden kullanarak modelinizi çağırır. Pencerenin üzerindeki Konuşma geçmişi aracılığıyla önceki çalışmalara devam edin. Önizleme örneklerinin kendisi görevleri çalıştırmaz.",
+          "Yazı tipleri yüklü sistem yazı tiplerini kullanır. Geçmiş mesajlar ve dosyalar otomatik olarak çevrilmez. Yerleşik gönderme simgeleri ayarlamalarda seçilebilir; özel vektör simgelerinin doğrulanmış bir taslakla sağlanması gerekir.",
+          "Dil paketleri dış görünümlerden bağımsızdır ve şu anda soldan sağa yazılan dilleri desteklemektedir. Eksik dizeler ve tarih kontrolleri, belirtilen yerleşik geri dönüşü kullanır. Kapsam, çeviri kalitesini kanıtlamaz; Güncelliğini yitirmiş dize kataloglarını güncellemek için sohbeti kullanın."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Görünüm oluşturmada sohbet ve düzenleme/önizleme alanları",
+          "caption": "Yetkili, boş bir sohbet oluşturma ve ayarlama formu. Bestecisi önceden doldurulmuştur; hiçbir mesaj gönderilmedi, model çalıştırıldı veya dış görünüm kaydedildi."
+        }
+      },
+      {
+        "title": "Dil paketini okuyun ve önizleyin",
+        "steps": [
+          "Görünüm stüdyosunun sağ tarafını Dil olarak değiştirin ve Dil paketi dizinini kontrol edin. Aynı sohbet aracılığıyla oluşturun veya mevcut bir ZIP dilini içe aktarın.",
+          "Oluşturulan paketler otomatik olarak yüklenir. Kontrol kapsamını, eksik dizeleri ve örnekleri okuyun ve doğrulayın. Boş bir dizin için oluşturmayı bekleme bildirimi, oluşturma işleminin tamamlanmadığı anlamına gelir.",
+          "Doğrulamadan sonra yükleyin ve önizleyin, ardından kişisel başvuruyu onaylayın veya iptal edin. Kapsam, çeviri kalitesi incelemesinin yerini alamaz."
+        ],
+        "tips": [
+          "Şu anda yalnızca soldan sağa yazılan diller desteklenmektedir. Tarih kontrolleri ve eksik dizeler, paketin belirtilen yerleşik geri dönüşünü kullanır."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Boş bir oluşturma sohbetinde dil dizini ve doğrulama girişi",
+          "caption": "Dil sekmesi dizin, Okuma ve doğrulama ve ZIP içe aktarma özelliklerini sunar. Hiçbir dil paketi oluşturulmadı, kurulmadı veya uygulanmadı."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Proje uzaktan operasyon denetimi",
+    "summary": "Uzaktaki ziyaretçilerin eylemlerini ve başarılı olup olmadıklarını, reddedilip reddedilmediklerini veya başarısız olup olmadıklarını inceleyin.",
+    "sections": [
+      {
+        "title": "Uzaktan işlemleri filtreleyin ve inceleyin",
+        "steps": [
+          "Projeyi barındıran cihazda yerel projenin Yapılandırma → Operasyon denetimini açın. Uzak projeler, Ağ Geçidi çalışma alanları ve projeye bağlı erişim bu sekmeyi sunmaz.",
+          "Eylem ve sonuca göre filtreleyin, ardından aktörü, zamanı, kaynağı ve görevi, iş akışını veya dosya tanımlayıcısını inceleyin.",
+          "Sonraki sayfaya veya ilk sayfaya gidin, en son kayıtlar için yenileyin ve başarısız olan yüklemeyi yeniden deneyin."
+        ],
+        "tips": [
+          "Bu denetim, tam sohbetleri değil, uzak kaynaklı eylemleri ve reddedilen/başarısız sonuçları kapsar ve hiçbir kimlik bilgisini saklamaz. API, ana bilgisayarda yalnızca yereldir. Varsayılan saklama süresi 30 gündür; sayfanın gerçek süresini takip edin. Herkese açık paylaşım ziyaretçilerinin gerçek isimleri bilinmiyor; Uzak tarayıcı (kendisinin bildirdiği kimlik) kimliği doğrulanmış bir kimlik değildir."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Yerel bir proje için filtreleri ve boş kayıtları denetleme",
+          "caption": "Gerçek yerel denetim girişi ve eylem/sonuç filtreleri. Gösterim projesinde hiçbir uzak kayıt mevcut değildir; hiçbir eylem veya kimlik üretilmedi."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Sık sorulan sorular",
+    "summary": "Başlamadan önce motorları, model hizmetlerini, dosya değişikliklerini ve kurtarma sınırlarını anlayın.",
+    "sections": [
+      {
+        "title": "SDK ve CLI'nun farkı nedir ve hangisiyle başlamalıyım?",
+        "steps": [
+          "Her ikisi de model yetenekleri için motor entegrasyon yöntemleridir. SDK, geliştirici API'leri aracılığıyla entegre olur; CLI komut satırı programlarını çalıştırır. İkisi de model adı değil.",
+          "Codex SDK veya Claude Agent SDK'yu yükleyerek başlayın, kimlik doğrulamayı tamamlayın, bir model seçin ve doğrulayın, ardından onu varsayılan yürütme motoru yapın. Mevcut CLI kullanıcıları bunun yerine bu motoru seçebilir.",
+          "Sağlayıcı, hizmet adresini ve kimlik doğrulamasını sağlar, model, isteği neyin ele aldığını tanımlar ve motor, oturumları, araçları ve yürütmeyi sağlar. Seçilen motorun formunu takip edin; kimlik bilgileri mutlaka birbirinin yerine kullanılamaz."
+        ],
+        "tips": [
+          "SDK kurulumu kimlik doğrulamayı, izinleri veya kotayı değil, yalnızca çalışma zamanı bağımlılıklarını oluşturur. Codex ve Claude Code SDK girişlerini CLI olarak işaretlenenlerden ayırın."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "Motor ayarlarında SDK ve CLI seçenekleri",
+          "caption": "Önerilen SDK motorlarını ve bunların ayrı kurulum ve doğrulama durumlarını inceleyin."
+        }
+      },
+      {
+        "title": "Yazılım ve model çağrıları nasıl ücretlendirilir?",
+        "steps": [
+          "Küçük bir başlangıç ​​görevinden önce seçilen model hizmetinin planını, kimlik doğrulamasını ve kotasını kontrol edin. Bir SDK'nun kendisi model kredisi değildir.",
+          "Görev yürütme, otomatik inceleme, asistanlar ve yeniden denemelerin tümü modelleri çağırabilir. Modelleri adım, inceleme ve asistan ayarlarında ayrı ayrı inceleyin.",
+          "Kullanımı ve maliyet kaynaklarını incelemek için yürütme analizini kullanın. Tahminler tüketimi açıklamaya yardımcı olur; Nihai ücretlendirmeler servis sağlayıcının kurallarına ve faturasına göre yapılır."
+        ],
+        "tips": [
+          "SDK indirmenin veya oturum açmanın çağrıları ücretsiz hale getirdiğini veya her motor için tek bir aboneliğin geçerli olduğunu varsaymayın."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Yürütme analizinde token kullanımı ve maliyet kaynakları",
+          "caption": "Sağlayıcı tarafından bildirilen maliyet ve kapsam gösterilir. Tahmini maliyet yalnızca fiyatlandırma tahminleri gerçekten kullanıldığında etiketlenir."
+        }
+      },
+      {
+        "title": "Veriler nerede saklanıyor ve AI dosyalarımı değiştirebilir mi?",
+        "steps": [
+          "Yerel görevler, iş akışları ve mesajlar varsayılan olarak proje .workstep'te saklanır. Veri dizini devre dışı bırakıldığında proje dizini ~/.workstep/projects/<项目ID>/ kullanır. Projenin .workstep/project.json'su orijinal verileri yeniden ilişkilendirir.",
+          "Motor tarafından okunan istekler ve içerik, yapılandırılmış model hizmetinize gönderilebilir. Kanallar, paylaşımlar ve uzaktan erişim de kendi yetki alanları dahilindeki bilgileri ilgili taraflara açıklamaktadır.",
+          "Yazma iznine sahip yapay zeka, proje dosyalarını değiştirebilir. Ayrı bir projede pratik yapın, yürütmeden önce izinleri kontrol edin ve daha sonra Git farklarını ve gerçek yapıtları inceleyin.",
+          "Korumalı alan ilişkilendirmeleri orijinal olarak eklenen dosyaları değiştirmeye devam eder. Görev Worktree'lar ayrı dizinler sağlar ancak birleştirme sonuçlarının yine de incelenmesi gerekir."
+        ],
+        "tips": [
+          "Yerel depolama, çevrimdışı model çağrıları anlamına gelmez. Anahtarları, hesap kimlik bilgilerini ve alakasız hassas dosyaları görev açıklamalarından, eklerden ve ekran görüntülerinden uzak tutun."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Telefondaki konuşma izin modu paneli",
+          "caption": "Varsayılan, Salt Okunur, Çalışma Alanına Yazma ve diğer seçenekler listelenir. Gerçek destek ve davranış motora bağlıdır."
+        }
+      },
+      {
+        "title": "Durdurma, yeniden deneme, yeniden çalışma ve kurtarma nasıl farklılık gösterir?",
+        "steps": [
+          "Durdurma, geçerli yürütmeyi veya yanıtı kesintiye uğratır ancak önceden yazılmış dosyaları geri almaz. Devam etmeden önce mevcut sonuçları inceleyin.",
+          "Yeniden denemek veya yeniden çalıştırmak, muhtemelen bağlamın devam ettirilmesi veya istendiği gibi yeni bir oturumun kullanılmasıyla motoru yeniden çağırır. Her değişikliği çalıştırma öncesi durumuna döndürmez.",
+          "Yeniden çalışma, iş akışı bağımlılıklarına ve sınırlarına bağlı olarak, geri bildirim veya geri dönüş bağlantılarına göre çıktıları düzeltir. Yeniden çalıştırma kapsamı değiştiğinde onayları okuyun.",
+          "WorkStep'yu yeniden açtıktan sonra öncelikle görevi ve oturum durumunu inceleyin. Kurtarmayı destekleyen motorlar yerel oturumlarına devam edebilir; kaybolan yerel kayıtlar yeni bir oturum ve yeniden çalıştırma gerektirir."
+        ],
+        "tips": [
+          "Otomatik kurtarma, motora ve mevcut geçmişe bağlıdır. Her motor veya kesintide tam iyileşme garanti edilmez."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Tamamlanmış bir görevde seçilen adımı sıfırla",
+          "caption": "Tamamlanan bu görevde Adımı sıfırla seçili olup yalnızca sonraki adım mesajını etkiler. Bu bir silme onayı veya eksik oturum uyarısı değildir."
+        }
+      }
+    ]
+  }
+]

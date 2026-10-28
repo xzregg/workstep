@@ -41,7 +41,7 @@ async def _task_exists(project_id: str, task_id: str, *, editable: bool = False)
     task = await project_manager.run_db(project_id, lambda _project: task_workspace_state(task_id))
     if task is None:
         raise HTTPException(404, '任务不存在。')
-    if editable and task['status'] in {'running', 'queued'}:
+    if editable and (task['has_active_execution'] or task['status'] == 'queued'):
         raise HTTPException(409, '任务运行或排队时不能移除工作目录。')
     return task
 

@@ -1,3 +1,4 @@
+import GitActionPanel from './GitActionPanel'
 import Select from '../Select'
 import { useEffect, useRef, useState } from 'react'
 import { type GitBranch, type GitStatus, type GitTrackedRemoteBranch } from '../../api/git'
@@ -31,14 +32,6 @@ export default function GitMergeActions({ status, readOnly, otherBusy = false, r
   const blockedReason = otherBusy || writes.busy ? t('git.networkBusy') : readOnly ? t('git.remoteReadOnly')
     : status.active ? t('git.remoteRunning') : status.operation ? t('git.blocked')
     : !status.branch || !status.head ? t('git.remoteNoCommit') : ''
-
-  useEffect(() => {
-    if (!open) return
-    const close = (event: MouseEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', close); document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
-  }, [open])
 
   useEffect(() => {
     if (request) void show(request)
@@ -113,7 +106,7 @@ export default function GitMergeActions({ status, readOnly, otherBusy = false, r
 
   return <span className="git-remote-actions" ref={root}>
     <Button size="sm" disabled={busy || otherBusy || writes.busy} title={blockedReason || t('git.mergeTitle')} loading={busy} aria-expanded={open} onClick={() => void show()}>{t('git.mergeButton')}<Icon name="chevron-down" size={12} /></Button>
-    {open && <span className="git-remote-panel" role="dialog" aria-label={t('git.mergeTitle')}>
+    {open && <GitActionPanel anchor={root} label={t('git.mergeTitle')} onClose={() => setOpen(false)}>
       <span className="git-remote-panel__heading"><span><strong>{t('git.mergeTitle')}</strong><small>{direction === 'intoCurrent' ? t('git.mergeHint', { branch: status.branch || '' }) : t('git.mergeIntoHint', { branch: status.branch || '' })}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setOpen(false)}><Icon name="x" size={14} /></Button></span>
       <label>{t('git.mergeDirection')}<Select value={direction} onChange={event => setDirection(event.target.value as 'intoCurrent' | 'intoTarget')} disabled={busy}>
         <option value="intoCurrent">{t('git.mergeIntoCurrent')}</option><option value="intoTarget">{t('git.mergeIntoTarget')}</option>
@@ -130,7 +123,7 @@ export default function GitMergeActions({ status, readOnly, otherBusy = false, r
       {blockedReason && <span className="git-remote-error" role="status">{blockedReason}</span>}
       {error && <span className="git-remote-error" role="alert">{error}</span>}
       <span className="git-remote-panel__actions">{can('fetch') && <Button size="sm" loading={loading} disabled={loading || busy || writes.busy} onClick={() => void fetchBranches()}><Icon name="refresh" size={13} />{t('git.fetchBranches')}</Button>}<Button size="sm" variant="primary" loading={busy} disabled={!(direction === 'intoCurrent' ? source : target) || loading || busy || !!blockedReason} onClick={() => void run()}>{t('git.mergeConfirm')}</Button></span>
-    </span>}
+    </GitActionPanel>}
     {notice && <span className={`git-remote-toast git-remote-toast--${noticeError ? 'error' : 'success'}`} role={noticeError ? 'alert' : 'status'}><span><strong>{notice}</strong></span>{can('pushBranch') && pushTarget && <Button size="sm" loading={busy} disabled={busy || writes.busy} onClick={() => void pushMergedTarget()}>{t('git.mergePushTarget', { branch: pushTarget.branch })}</Button>}<Button variant="icon" aria-label={t('git.close')} onClick={() => { setNotice(''); setPushTarget(null) }}><Icon name="x" size={13} /></Button></span>}
   </span>
 }

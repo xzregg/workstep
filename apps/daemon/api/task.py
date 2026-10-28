@@ -746,7 +746,7 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
     task = await _run_db(pid, lambda: task_workspace_state(req.task_id))
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task["status"] == "running":
+    if task["has_active_execution"]:
         raise HTTPException(status_code=409, detail="Running tasks cannot be deleted")
     workflow_id = task["workflow_id"]
     workspace_roots = [project.workstep_dir / "worktrees" / req.task_id]

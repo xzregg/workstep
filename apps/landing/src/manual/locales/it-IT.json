@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Scarica, installa e apri WorkStep",
+    "summary": "Installa prima WorkStep, poi un motore SDK. L'app desktop include il runtime di backend; non è necessario installare prima Python.",
+    "sections": [
+      {
+        "title": "Scegli un installatore",
+        "steps": [
+          "Utilizza il collegamento per il download del sito Web per scegliere il programma di installazione desktop per il tuo sistema operativo e chip. Su Mac, scegli arm64 DMG per i chip Apple serie M o x64 DMG per Intel.",
+          "Installa e apri WorkStep utilizzando il normale processo di installazione del tuo sistema. Attendi che il backend locale sia pronto e che l'area di lavoro si apra.",
+          "Al primo avvio, inserisci un nome visualizzato quando richiesto. Per rivisitare l'onboarding, apri Impostazioni → Impostazioni di sistema → Onboarding (设置 → 系统设置 → 新手引导), quindi fai clic su Onboarding."
+        ],
+        "tips": [
+          "I programmi di installazione desktop non includono motori opzionali come Codex SDK o Claude Agent SDK. Installarli tramite l'interfaccia nel capitolo successivo.",
+          "Le prime build macOS o Windows non firmate potrebbero attivare richieste di sicurezza del sistema. Verifica l'origine del download prima di seguire le istruzioni del tuo sistema.",
+          "L'uso locale autonomo non richiede l'accesso al gateway. Se si abilita volontariamente il Gateway e l'autenticazione non può iniziare, la voce locale tenta di tornare alla modalità locale e disabilitare il Gateway, conservando il proprio indirizzo per una successiva riconnessione. Un'installazione legata al gateway o un visitatore remoto non possono utilizzarlo per disabilitare il gateway dell'host. Se il ritorno alla modalità locale non riesce, verifica il backend locale e aggiorna per riprovare."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Configurazione dell'identità e accesso rapido al primo avvio",
+          "caption": "Inserisci un nome visualizzato locale per accedere all'area di lavoro o iniziare la configurazione rapida. Questa immagine utilizza un'identità dimostrativa."
+        }
+      },
+      {
+        "title": "Comprendere tre concetti",
+        "steps": [
+          "Un motore esegue attività e chiama strumenti. Questo manuale consiglia innanzitutto Codex SDK o Claude Agent SDK; non è richiesto un motore CLI installato separatamente.",
+          "Un fornitore fornisce l'indirizzo e le credenziali del modello API, API. È separato dal motore di esecuzione e il suo protocollo deve corrispondere a quello supportato da quel motore.",
+          "Un modello effettivamente elabora la tua richiesta. Installa un motore, autenticalo, seleziona e testa un modello, quindi crea un'attività."
+        ],
+        "tips": [
+          "Un SDK può includere o richiamare un eseguibile sottostante. Scegliere un SDK non significa che non ci siano sottoprocessi.",
+          "WorkStep memorizza i dati del progetto localmente. Durante l'esecuzione, il motore e il provider scelti inviano il contesto dell'attività al servizio modello."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Passaggio 1: installare un motore SDK",
+    "summary": "Inizia con un SDK. Scarica e gestisci i motori tramite Installa e versioni (安装与版本), senza copiare i comandi di installazione del terminale.",
+    "sections": [
+      {
+        "title": "Scaricare e installare tramite l'interfaccia",
+        "steps": [
+          "Apri Impostazioni → Motori di esecuzione (设置 → 执行引擎). Trova la scheda Codex o Claude Code contrassegnata con sdk, corrispondente a Codex SDK e Claude Agent SDK. Installa inizialmente solo quello che intendi utilizzare.",
+          "Fai clic su Installa e versioni, attendi l'elenco delle versioni, quindi scegli una versione appropriata in Seleziona versione.",
+          "Fare clic su Installa la versione selezionata e verificare la versione. Se vengono visualizzati termini di terze parti, leggili e accettali prima di fare clic su Conferma installazione.",
+          "Attendi il download del pacchetto principale, l'installazione del motore e delle dipendenze e la verifica della versione. Confermare che venga visualizzata la nuova versione.",
+          "La modifica di una versione SDK richiede il riavvio del backend. Gli utenti desktop possono terminare il lavoro corrente, uscire e riaprire WorkStep, quindi continuare la configurazione."
+        ],
+        "tips": [
+          "La percentuale copre solo il pacchetto principale. I download e l'estrazione delle dipendenze potrebbero non avere alcuna percentuale; utilizzare la descrizione della fase per giudicare i progressi.",
+          "L'installazione continua quando la sua sezione è compressa. Non inviare nuovamente semplicemente perché i progressi hanno temporaneamente smesso di cambiare.",
+          "Se non viene visualizzata alcuna versione adatta, aggiorna l'elenco e controlla il supporto della rete e della piattaforma. Quando viene configurato un percorso eseguibile personalizzato, cancellarlo come indicato prima di gestire le versioni."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "Installazione del motore SDK e selezione della versione",
+          "caption": "Fare clic su Installa e versioni, Seleziona versione, quindi Installa versione selezionata."
+        }
+      },
+      {
+        "title": "Verificare l'installazione e mantenere le versioni",
+        "steps": [
+          "Riaprire i motori di esecuzione e verificare che SDK venga rilevato come installato con la versione prevista.",
+          "Utilizza Installa e versioni per gli aggiornamenti successivi. Se è disponibile una versione di rollback, fare clic su Rollback to… e confermare; rollback scarica nuovamente la versione precedente.",
+          "Se l'installazione fallisce, leggere l'errore in quella sezione, controllare la rete, lo spazio su disco e il percorso di installazione, quindi riprovare. Il successo dell'installazione non significa che l'autenticazione del modello sia riuscita: completare la configurazione e il test successivo."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Versione e avanzamento dopo l'installazione di SDK",
+          "caption": "Controllare la versione corrente dopo l'installazione. Il restante indicatore del 100% indica che l'installazione è stata completata, non che il download continua."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Configura provider, autenticazione e test di connessione",
+    "summary": "Configura un provider compatibile in WorkStep e associalo al tuo SDK. Gli utenti con un accesso nativo esistente possono anche riutilizzare l'autenticazione del motore.",
+    "sections": [
+      {
+        "title": "Aggiungi un fornitore",
+        "steps": [
+          "Apri Impostazioni → Provider → Aggiungi provider (设置 → 供应商 → 添加供应商). Inserisci un nome riconoscibile e scegli il tipo di servizio e il protocollo API.",
+          "Per Claude Agent SDK, selezionare un endpoint Anthropic Messages compatibile; per Codex SDK, selezionare un endpoint OpenAI Responses compatibile. L'affermazione \"compatibile con OpenAI\" da sola non stabilisce la compatibilità del protocollo.",
+          "Inserisci l'indirizzo API e la chiave API forniti dal provider. Conserva i percorsi delle versioni come /v1 o /v2; non utilizzare l'endpoint completo della chat come indirizzo di base.",
+          "Salvare il provider e fare clic su Prova connessione. Per ottenere modelli, fare clic su Ottieni modelli, selezionare i modelli necessari, quindi Salva selezionati.",
+          "Assicurati che il provider sia abilitato. Una volta superato il test, tornare al SDK per completare il collegamento e il test del motore."
+        ],
+        "tips": [
+          "Gli abbonamenti agli account, le credenziali API e la fatturazione sono determinati dal fornitore di servizi. L'installazione di un SDK non fornisce credenziali.",
+          "Quando si modifica un provider, lasciando la chiave vuota si mantiene il vecchio valore. Inserisci una nuova chiave per sostituirla e nascondi le chiavi prima degli screenshot o della condivisione della configurazione.",
+          "Nella modalità gestita dall'azienda, i fornitori possono essere assegnati dalla piattaforma. Utilizza un fornitore autorizzato anziché aggiungerlo nuovamente."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Impostazioni del nome del provider, del protocollo e dell'indirizzo API",
+          "caption": "Configura un protocollo compatibile, salva, quindi verifica la connessione. L'immagine mostra un indirizzo API pubblico con un campo chiave vuoto."
+        }
+      },
+      {
+        "title": "Associa e verifica il SDK",
+        "steps": [
+          "Torna a Impostazioni → Motori di esecuzione, espandi la configurazione del SDK installato e seleziona il provider compatibile che hai salvato.",
+          "Claude Agent SDK richiede una modalità di autorizzazione. Leggi la sua descrizione, scegli e conferma; gli altri campi avanzati possono rimanere con i valori predefiniti. Per Codex SDK, mantenere inizialmente le impostazioni predefinite di ragionamento, approvazione e sandbox.",
+          "Fare clic su Salva configurazione e verificare il modello predefinito. Per un provider associato, Aggiorna modelli rilegge solo le selezioni salvate, anziché recuperare tutti i modelli. L'elenco è vuoto se non esistono cache o selezioni. Per aggiungere modelli, torna a Impostazioni → Fornitori, Ottieni modelli e Salva selezionati, quindi aggiorna il motore.",
+          "Fare clic su Test sulla scheda motore, attendere il risultato e confermare Verificato (已验证). Questo è il tuo punto di controllo prima di eseguire le attività."
+        ],
+        "tips": [
+          "Il test del motore richiama il motore selezionato e potrebbe comportare costi di servizio del modello.",
+          "Lo sforzo di ragionamento, l'approvazione e le opzioni sandbox di Codex SDK hanno etichette cinesi. L'elenco degli sforzi mostra le impostazioni supportate dal motore anche se il catalogo dei modelli è vuoto; ciò non implica che ogni modello supporti ogni livello. Inizia con le impostazioni predefinite. Se un modello rifiuta un livello, torna a Automatico o a un valore supportato.",
+          "Senza un collegamento al provider, Codex SDK riutilizza l'autenticazione Codex locale, mentre Claude Agent SDK utilizza la sua configurazione di autenticazione nativa. I nuovi utenti senza un accesso esistente dovrebbero iniziare con la configurazione del provider.",
+          "Per errori di autenticazione, controllare la chiave, l'indirizzo API, il protocollo e le autorizzazioni dell'account. Per errori di modello, controlla l'ID del modello e il supporto del provider. Se contrassegnato come Non installato, torna all'installazione."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Testa, verifica e salva la configurazione su una scheda Codex SDK",
+          "caption": "La scheda SDK del Codex visualizza Verificato, a indicare che questo motore ha superato il test."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Imposta il motore e il modello di esecuzione predefiniti",
+    "summary": "Rendere SDK testato il motore di esecuzione predefinito per i passaggi che non specificano un altro motore.",
+    "sections": [
+      {
+        "title": "Salva le impostazioni predefinite",
+        "steps": [
+          "In Impostazioni → Motori di esecuzione → Motore di esecuzione predefinito, seleziona il SDK che hai appena verificato.",
+          "Fare clic su Salva impostazioni predefinite e confermare il messaggio di successo. Non uscire dopo aver semplicemente selezionato un valore dal menu a discesa.",
+          "Scegli un modello nel selettore del modello predefinito della scheda SDK. I passaggi senza un modello separato utilizzano questo valore predefinito.",
+          "Dopo aver creato un flusso di lavoro, ricontrolla il motore e il modello di ogni passaggio. Le impostazioni dei passaggi espliciti non cambiano automaticamente quando cambiano le impostazioni predefinite globali."
+        ],
+        "tips": [
+          "Gli assistenti hanno voci di configurazione separate. La modifica del motore di esecuzione predefinito non modifica ogni assistente.",
+          "Completa innanzitutto un flusso di lavoro con un SDK verificato e un modello, quindi prova diversi modelli per passaggi diversi."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Selettore del motore di esecuzione predefinito e pulsante Salva impostazioni predefinite",
+          "caption": "Il selettore del motore predefinito e la voce Salva impostazioni predefinite. Pydantic AI non è configurato in questa immagine; nessuna impostazione predefinita è stata modificata o verificata."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Connetti un progetto locale",
+    "summary": "Un progetto corrisponde a una directory di codici locali. I suoi dati seguono il progetto per impostazione predefinita o possono essere archiviati tramite ID progetto nella Home dell'utente corrente.",
+    "sections": [
+      {
+        "title": "Comprendere l'area di lavoro predefinita preparata automaticamente",
+        "steps": [
+          "Alla prima voce, la barra laterale include l'area di lavoro predefinita (默认工作区). Senza alcun progetto selezionato, WorkStep apre la sua normale pagina di chat. Le selezioni di progetti esistenti e i collegamenti remoti hanno la precedenza.",
+          "Dopo aver configurato un SDK, utilizzare questo spazio di lavoro per la chat ordinaria. Per lavorare sul tuo codice, usa Aggiungi progetto per connettere la sua directory effettiva; lo spazio di lavoro predefinito non è un repository già connesso.",
+          "L'area di lavoro predefinita è condivisa anche dalla creazione di competenze, motore, skin e pacchetto lingua. Queste voci riutilizzano la chat ordinaria e memorizzano i relativi risultati in quell'area di lavoro."
+        ],
+        "tips": [
+          "È possibile rinominare l'area di lavoro predefinita ma non è possibile rimuoverla dall'elenco dei progetti. Non crea automaticamente un flusso di lavoro.",
+          "L'area di lavoro predefinita è un progetto; un SDK è un motore di esecuzione. Avere un progetto non significa che un motore sia installato o autenticato."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Area di lavoro predefinita e voce di chat ordinaria nella barra laterale",
+          "caption": "Una chat ordinaria vuota nell'area di lavoro predefinita, senza ancora conversazioni o flussi di lavoro. Crea una conversazione qui; i progetti di codice devono ancora essere collegati esplicitamente."
+        }
+      },
+      {
+        "title": "Inizia con una directory dimostrativa",
+        "steps": [
+          "Preparare una cartella dimostrativa separata, ad esempio workstep-demo. Per il codice esistente, seleziona la radice del progetto.",
+          "Fai clic su Barra laterale → Aggiungi progetto → Progetto locale (侧边栏 → 添加项目 → 本地项目), seleziona la cartella nel browser delle directory e conferma.",
+          "Verifica che il progetto appaia nella barra laterale e passa ad essa. I nuovi progetti non hanno flusso di lavoro per impostazione predefinita; crearne uno successivo.",
+          "Quando si riconnette successivamente la stessa directory, i flussi di lavoro, le attività e i messaggi vengono ripristinati dai dati del progetto. Non eliminare .workstep solo per riaprire un progetto."
+        ],
+        "tips": [
+          "I motori possono leggere o modificare i file di progetto in base alle istruzioni dell'attività. Esercitati in una directory separata e conserva la cronologia delle versioni prima di modificare il codice reale.",
+          "Per impostazione predefinita, i dati del progetto si trovano nei caricamenti .workstep/workstep.db, in .workstep/uploads/, e gli artefatti in .workstep/artifacts/. Con l'archiviazione centralizzata, eseguire il backup della directory dei dati del progetto corrispondente in Home e del file di identità del progetto.",
+          "I nomi dei progetti nuovi o rinominati non possono contenere spazi, tabulazioni o altri spazi bianchi."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Aggiungi un progetto locale e seleziona la sua directory principale",
+          "caption": "Seleziona la directory dimostrativa, quindi accedi al progetto connesso dalla barra laterale."
+        }
+      },
+      {
+        "title": "Apri la directory del progetto e controlla i file generati",
+        "steps": [
+          "Seleziona il progetto e fai clic su Apri directory nella relativa pagina delle attività o della chat del progetto. Utilizzalo per controllare i file effettivamente generati al termine di un'attività.",
+          "Nell'app desktop, la freccia a destra elenca i file manager, gli editor e i terminali locali rilevati. Selezionandone uno si apre immediatamente la directory e si ricorda la scelta locale. Vengono visualizzate solo le applicazioni rilevate e disponibili.",
+          "I progetti remoti e l'accesso remoto al browser utilizzano il browser della directory web. Anche le build desktop senza il bridge di apertura delle directory lo utilizzano; non è necessario installare un editor desktop all'interno del contenitore."
+        ],
+        "tips": [
+          "I percorsi dei progetti sandbox desktop vengono mappati alle directory di montaggio dell'host prima dell'apertura. Se nessun montaggio corrisponde, controlla la configurazione di montaggio del progetto.",
+          "Se l'apertura della directory fallisce, controlla che l'applicazione e la directory selezionate esistano ancora oppure controlla il progetto direttamente nel file manager del tuo sistema."
+        ]
+      },
+      {
+        "title": "Riordina i progetti della barra laterale",
+        "steps": [
+          "Nella barra laterale, trascina Dimostrazione manuale (操作手册演示) prima o dopo il progetto desiderato.",
+          "I progetti locali e remoti possono essere interlacciati. Il rilascio salva l'ordine nella configurazione locale e la riapertura lo preserva."
+        ],
+        "tips": [
+          "L'ordine influisce solo sulla visualizzazione di questo dispositivo, non sull'ordine del progetto su un host remoto. Segui il messaggio di errore e riprova se il salvataggio fallisce."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Due progetti dimostrativi locali e flussi di lavoro nella barra laterale",
+          "caption": "L'ultima barra laterale mostra due progetti dimostrativi locali e l'area di lavoro predefinita. Trascina le righe del progetto per riordinarle; nessun dispositivo remoto è collegato."
+        }
+      },
+      {
+        "title": "Scegli dove vengono archiviati i dati del progetto",
+        "steps": [
+          "Dopo aver selezionato una directory in Barra laterale → Aggiungi progetto → Progetto locale, seleziona La directory dei dati segue la directory del progetto (数据目录跟随项目目录), abilitata per impostazione predefinita per i nuovi progetti.",
+          "Se selezionati, attività, flussi di lavoro, allegati, registri, artefatti, competenze e memoria vengono archiviati nel .workstep/. del progetto. La deselezione utilizza ~/.workstep/projects/<项目ID>/, lasciando solo .workstep/project.json come file di identità nella directory del progetto.",
+          "Per un progetto esistente, controlla il suo percorso dati effettivo in Configurazione progetto → Generale. Modifica la casella di controllo e conferma la migrazione. Innanzitutto fermati attività, conversazioni e azioni rapide; rimuovere gli spazi di lavoro Git esistenti.",
+          "Attendi la migrazione, quindi controlla il nuovo percorso e le attività originali. Il fallimento preserva i dati originali. Una destinazione non vuota non viene sovrascritta; risolvere il problema segnalato e riprovare."
+        ],
+        "tips": [
+          "La riaggiunta di un progetto esistente preserva la modalità di archiviazione nel suo file di identità; non sposta automaticamente i dati.",
+          "Mantieni .workstep/project.json quando sposti o rinomini un progetto, quindi aggiungilo nuovamente per riconoscere il progetto originale. L'eliminazione del file di identità non elimina i dati Home, ma impedisce l'associazione automatica.",
+          "Una copia con lo stesso ID progetto non può coesistere con la directory originale registrata: il sistema segnala un conflitto di ID. Per la migrazione tra computer, copiare anche la directory dei dati Home corrispondente.",
+          "L'archiviazione centralizzata ignora ancora automaticamente .workstep/ nel progetto. La compressione ordinaria non applica automaticamente le regole di ignoranza di Git, ma il file di identità non contiene dati sull'attività."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Opzione di archiviazione dei dati e avviso del file di identità quando si aggiunge un progetto",
+          "caption": "La vera interfaccia Aggiungi progetto: deselezionando l'impostazione predefinita viene visualizzato il percorso Home e le istruzioni per lo spostamento o la migrazione tra computer."
+        }
+      },
+      {
+        "title": "Sposta i dati di un progetto esistente",
+        "steps": [
+          "Apri Generale nella configurazione del progetto e verifica il percorso dati corrente.",
+          "Fare clic su La directory dei dati segue la directory del progetto, leggere e confermare la migrazione, quindi attendere. Il lavoro attivo o una destinazione non vuota produce un errore."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Posizione di archiviazione dei dati nelle impostazioni del progetto dimostrativo",
+          "caption": "Verificare il percorso corrente. La modifica della casella di controllo richiede comunque la conferma della migrazione nella finestra di dialogo."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Crea il tuo primo flusso di lavoro in due fasi",
+    "summary": "Utilizzare Analisi dei requisiti → Esegui attività per comprendere passaggi, input, output e connessioni.",
+    "sections": [
+      {
+        "title": "Crea un esempio tramite l'onboarding",
+        "steps": [
+          "Assicurati di aver salvato un motore di esecuzione predefinito e di aver selezionato il progetto locale connesso. Se l'onboarding è chiuso, riapri Impostazioni → Impostazioni di sistema → Onboarding e fai clic su Onboarding.",
+          "In Crea un flusso di lavoro in due passaggi, fai clic su Crea flusso di lavoro di esempio. Attendi il successo e l'apertura della tela.",
+          "L'esempio è denominato Analisi ed esecuzione (分析与执行). Il suo primo passaggio, Analisi dei requisiti (需求分析), genera un piano di esecuzione (执行计划), collegato al secondo passaggio, Esegui attività (执行任务).",
+          "Apri entrambi i passaggi e controlla il motore, il modello, il prompt, gli input e gli output, assicurandoti che utilizzino un SDK verificato. L'esempio non inizia al momento della creazione né esegue le revisioni; una volta avviato, i suoi due passaggi vengono eseguiti in ordine di dipendenza."
+        ],
+        "tips": [
+          "Un nuovo flusso di lavoro ordinario inizia con un'area di disegno vuota, senza passaggi di esempio. Scegli un modello in modo esplicito.",
+          "Non giudicare la configurazione esclusivamente dall'aspetto della linea: verifica che la porta di uscita corrisponda ai requisiti di ingresso del passaggio successivo."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Canvas in due fasi per l'analisi dei requisiti e l'esecuzione delle attività",
+          "caption": "L'analisi dei requisiti produce un piano di esecuzione per l'attività Esegui. Fare clic su ogni passaggio per controllarne la configurazione."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Crea e completa la tua prima attività",
+    "summary": "Utilizza un'attività piccola, esplicita e facile da controllare per verificare che il tuo SDK, il progetto e il flusso di lavoro funzionino insieme.",
+    "sections": [
+      {
+        "title": "Scrivi una richiesta verificabile",
+        "steps": [
+          "Preparare README.md e example.txt nella directory dimostrativa. README.md dovrebbe elencare cinque operazioni da spiegare, con note supplementari in example.txt. Utilizza contenuti dimostrativi anziché materiale privato.",
+          "Apri la pagina delle attività del progetto dimostrativo, seleziona Analisi ed esecuzione, quindi fai clic su Nuova attività. Viene aperta anche la voce Crea attività di onboarding.",
+          "Inizia da Analisi dei requisiti e inserisci il titolo Organizza istruzioni di progetto (整理项目说明).",
+          "Descrizione di esempio: leggere README.md e example.txt, produrre un piano di esecuzione, quindi creare 使用说明.md nella radice del progetto. Elenca cinque operazioni in Markdown, una frase per operazione. Leggi solo quei due file esistenti; non modificarli. È possibile creare 使用说明.md, ma non modificare altri file. Segnala la posizione del file generato al termine.",
+          "Selezionare Avvio manuale e fare clic su Crea attività. Controllare la richiesta e il passaggio iniziale, quindi Avvia attività. In alternativa, scegli Avvia subito dopo la creazione."
+        ],
+        "tips": [
+          "Specificare l'obiettivo, le azioni consentite, il formato di consegna e i criteri di accettazione; questo rende i risultati più facili da controllare rispetto ad una richiesta vaga.",
+          "Iniziando da un passaggio successivo si saltano quelli precedenti. Per il tuo primo esercizio, inizia con l'analisi dei requisiti.",
+          "L'apertura del pannello di creazione delle attività dall'onboarding non esegue di per sé un'attività; l'opzione di avvio del pannello controlla l'esecuzione."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Titolo dell'attività, descrizione, fase iniziale e modalità di avvio",
+          "caption": "Scrivi una richiesta concreta, seleziona la sua fase iniziale e scegli esplicitamente quando inizia l'esecuzione."
+        }
+      },
+      {
+        "title": "Segui i passaggi e controlla gli output",
+        "steps": [
+          "Apri i dettagli dell'attività e osserva il passaggio corrente, lo stato e i messaggi. Attendi l'esecuzione del motore e rispondi a domande esplicite o richieste di approvazione nell'interfaccia.",
+          "Al termine dell'analisi dei requisiti, l'attività Esegui viene avviata automaticamente in base alla connessione di dipendenza. Non è necessario alcun ulteriore clic di avvio. Leggi il piano del primo passo e verifica che il secondo lo abbia utilizzato.",
+          "Al termine dell'attività Esegui, leggi il messaggio finale e apri 使用说明.md nella radice del progetto. Controlla che sia Markdown, includa cinque operazioni e utilizzi una frase per ciascuna.",
+          "Se un messaggio mostra File modificati..., espanderlo e fare clic sul nome di un file. Visualizza la patch registrata quando disponibile; altrimenti visualizza l'anteprima del file corrente. Le modifiche cronologiche potrebbero differire dal file attuale, quindi controlla comunque l'output effettivo.",
+          "Verificare che README.md e example.txt siano rimasti invariati e che sia stato aggiunto solo il 使用说明.md consentito. Utilizza la voce file del progetto o il file manager di sistema. Il solo stato di completamento non dimostra la correttezza."
+        ],
+        "tips": [
+          "Se l'attesa continua, distinguere tra attesa di inizio, approvazione, revisione ed esecuzione attiva: ciascuna necessita di una risposta diversa.",
+          "In caso di errore, conservare l'errore e testare nuovamente la connessione SDK. Dopo aver riparato la configurazione, utilizzare la voce di ripristino disponibile per l'attività o riprovare.",
+          "Se un API segnala di aver restituito una pagina Web, conferma che il backend è stato aggiornato e riavviato, quindi aggiorna e riprova. Il solo mancato caricamento dei dettagli di esecuzione non significa che l'esecuzione non è riuscita; non creare un'attività duplicata per questo motivo."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Emetti 使用说明.md dopo aver completato l'attività in due passaggi",
+          "caption": "Una volta completati entrambi i passaggi, ispeziona 使用说明.md e le sue cinque descrizioni operative."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Modifica flussi di lavoro",
+    "summary": "Suddividi il lavoro in passaggi e configura motori di esecuzione, input, output e regole di revisione.",
+    "sections": [
+      {
+        "title": "Aggiungi e collega i passaggi",
+        "steps": [
+          "Seleziona un progetto e un flusso di lavoro sulla sinistra e accedi al Canvas del flusso di lavoro. Un nuovo flusso di lavoro è vuoto; aggiungere passaggi o applicare esplicitamente un modello.",
+          "Fai clic su + Passaggio e inserisci il nome e l'identificatore, ad esempio Organizza i requisiti con i requisiti. Gli identificatori devono essere univoci all'interno del flusso di lavoro, iniziare con una lettera inglese e contenere solo lettere, cifre, trattini bassi o trattini.",
+          "Scrivi un messaggio con un obiettivo chiaro, vincoli e risultati finali. Ad esempio: leggere la descrizione dell'attività, elencare i criteri di accettazione e un piano di implementazione e salvare un documento sui requisiti.",
+          "Configura un motore e un modello SDK installati e verificati. Per ereditare le impostazioni predefinite, selezionare il motore di esecuzione predefinito o il modello predefinito del motore.",
+          "Dopo aver impostato ingressi e uscite, trascina da una porta di uscita upstream all'ingresso downstream corrispondente, quindi Salva."
+        ],
+        "tips": [
+          "Le linee continue trasportano dati. Il collegamento a monte crea una connessione di ritorno tratteggiata per il feedback sulla rilavorazione.",
+          "Un avviso di modifiche non salvate indica che le modifiche alla tela non sono state ancora mantenute."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Canvas del flusso di lavoro con due passaggi e connessioni di input/output",
+          "caption": "Trova il pulsante Aggiungi passaggio, le porte di connessione e la voce Salva."
+        }
+      },
+      {
+        "title": "Configura ingressi, uscite e connessioni di ritorno",
+        "steps": [
+          "Apri l'editor dei passaggi, dai un nome chiaro alle uscite e configura gli ingressi richiesti a valle.",
+          "Collegare ciascuna uscita richiesta al corrispondente ingresso a valle. Durante l'esecuzione, verifica la disponibilità in Input e output del passaggio nei dettagli dell'attività.",
+          "Per la rilavorazione, creare una connessione di ritorno e impostare i resi massimi per quella fase. Prima di salvare, leggere gli avvisi sulle fasi potenzialmente non eseguibili e verificare se l'esecuzione iniziale dipende da artefatti di rielaborazione non ancora generati."
+        ],
+        "tips": [
+          "Il numero massimo di ritorni controlla le connessioni di ritorno tratteggiate ed è separato dai tentativi dopo una revisione non riuscita.",
+          "La dichiarazione di una porta di output non crea un file. Richiedi i risultati finali effettivi nel prompt e ispezionali in seguito."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Artefatti di input e output corrispondenti nell'editor del nodo",
+          "caption": "L'input dichiara i requisiti dell'attività con il piano di esecuzione come output corrispondente. Le impostazioni del conteggio dei resi non vengono visualizzate."
+        }
+      },
+      {
+        "title": "Imposta la revisione e l'avvio automatico",
+        "steps": [
+          "In Revisione passaggio nell'editor, scegli Revisione manuale, Revisione automatica o Ignora revisione. Inizialmente si consiglia la revisione manuale.",
+          "La revisione manuale viene sospesa dopo l'esecuzione per la tua decisione. Per la revisione automatica, scrivi criteri verificabili e facoltativamente scegli il motore e il modello.",
+          "Imposta nuovi tentativi dopo che una revisione automatica ha rifiutato il risultato. Gli errori nell'agente di revisione stesso passano alla gestione manuale.",
+          "Imposta Avvia automaticamente dopo la creazione secondo necessità, quindi salva. Per esercitazione iniziale, disabilitalo in modo da poter controllare un'attività prima di iniziare."
+        ],
+        "tips": [
+          "Installa e configura i motori SDK prima di utilizzarli per l'esecuzione o la revisione."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Controlli della modalità di revisione dei passaggi nell'editor del nodo",
+          "caption": "Seleziona la modalità di revisione nell'editor del nodo. Controllare separatamente l'avvio automatico come descritto sopra."
+        }
+      },
+      {
+        "title": "Distribuisci tra flussi di lavoro e riutilizza gli elementi Canvas",
+        "steps": [
+          "Per trasferire gli output a un altro progetto o flusso di lavoro, aggiungi una fase del flusso di lavoro e scegli il progetto di destinazione, il flusso di lavoro, la fase iniziale e la modalità di avvio.",
+          "Configura gli artefatti di input upstream e salva. Questo passaggio passa immediatamente dopo la creazione dell'attività downstream e non può connettersi a passaggi successivi del flusso di lavoro principale.",
+          "Per riutilizzare un passaggio, scegli Copia nodi dal flusso di lavoro, seleziona un progetto, flusso di lavoro e nodi, visualizza l'anteprima, copia e salva.",
+          "Utilizza Layout per disporre i nodi. Aggiungi segnalibri per le note o esporta il flusso di lavoro JSON come backup. Prima dell'importazione, controlla cosa verrà sostituito."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Destinazione dell'attività downstream e impostazioni di avvio",
+          "caption": "Ispeziona il progetto di destinazione, il flusso di lavoro e la fase iniziale."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Trigger del flusso di lavoro e hook di notifica",
+    "summary": "Crea attività da richieste esterne o invia lo stato del flusso di lavoro a una piattaforma scelta.",
+    "sections": [
+      {
+        "title": "Crea attività con un trigger hook",
+        "steps": [
+          "Seleziona un progetto e un flusso di lavoro. Apri gli hook del flusso di lavoro nella barra degli strumenti dell'elenco delle attività o nel menu mobile, quindi attiva gli hook.",
+          "Aggiungi un hook, inserisci il suo nome, titolo predefinito e creatore, scegli un passaggio iniziale e se si avvia automaticamente, quindi salva. Ad esempio: Assunzione di requisiti, con titolo Richiesta esterna.",
+          "Scegliere un indirizzo LAN, esterno o gateway configurato e copiare l'invocazione URL. Il suo token è una credenziale: assegnala solo ai sistemi fidati.",
+          "In Simula chiamata, inserisci un titolo, un creatore e un corpo per esaminare l'anteprima. La simulazione non crea un'attività.",
+          "Avere un sistema esterno POST al URL copiato utilizzando JSON, testo semplice o Markdown, ad esempio: organizzare i criteri di accettazione per questa richiesta. Dopo aver ricevuto un ID attività, controlla il contenuto dell'attività e lo stato di avvio."
+        ],
+        "tips": [
+          "È richiesta l'autorizzazione alla modifica del progetto. Ogni richiesta valida crea un'attività. Questa versione non riconosce automaticamente gli eventi GitHub/GitLab, né le richieste di deduplicazione o di bufferizzazione mentre il dispositivo è offline.",
+          "Ripara prima gli indirizzi mancanti o i dispositivi disconnessi. Il ripristino del token invalida il vecchio URL. Se l'avvio automatico fallisce, l'attività esiste ancora: controlla run_error e i dettagli dell'attività prima di ritentare la consegna."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Nome del trigger-hook non salvato, campi predefiniti e configurazione della fase iniziale",
+          "caption": "Questa bozza disabilitata crea solo attività. Il suo gettone è nascosto; non è stato salvato e non è stata generata alcuna invocazione URL."
+        }
+      },
+      {
+        "title": "Invia notifiche sul flusso di lavoro a piattaforme esterne",
+        "steps": [
+          "Nella stessa finestra Hook del flusso di lavoro, passa a Hook di notifica e aggiungi una destinazione.",
+          "Inserisci un nome, scegli il bot di gruppo DingTalk, il bot di gruppo WeCom o il webhook JSON generico, quindi inserisci la destinazione URL. Se necessario, fornire un segreto di firma DingTalk.",
+          "Seleziona gli eventi sottoscritti, impostando per impostazione predefinita il completamento e l'errore dell'attività. Facoltativamente, impostare un prefisso del titolo e l'indirizzo Gateway, esterno o LAN per i collegamenti alle attività, quindi salvare.",
+          "Genera un'anteprima in Simula notifica e controlla il contenuto e i collegamenti del messaggio. L'anteprima non invia alcuna richiesta. Per un test vero e proprio, conferma e clicca su Invia notifica di test; invia a una destinazione salvata e abilitata.",
+          "Ispeziona lo stato, i tentativi e gli errori cancellati nei record di consegna. Dopo aver riparato la configurazione, riprovare i record non riusciti. Dopo il completamento dell'attività, controlla la piattaforma ricevente e l'accesso al collegamento dell'attività."
+        ],
+        "tips": [
+          "Il dispositivo invia direttamente le notifiche; Il gateway non li inoltra. Non contengono né corpi di chat, contenuti di artefatti né credenziali per la creazione di attività. I collegamenti alle attività richiedono ancora i normali diritti di accesso.",
+          "Gli errori temporanei vengono ritentati automaticamente. Timeout e ripristino possono causare consegne duplicate; i ricevitori generici possono effettuare la deduplicazione tramite event_id. La disabilitazione o l'eliminazione di una destinazione non può ritirare le notifiche inviate.",
+          "Un'anteprima da sola non dimostra che l'integrazione funziona: verifica l'effettiva consegna alla piattaforma."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "Piattaforma di notifica DingTalk, eventi sottoscritti e campi indirizzo vuoti",
+          "caption": "Una bozza non salvata e disabilitata nell'interfaccia più recente, con il completamento dell'attività e l'errore selezionati. I campi webhook e firma segreta sono vuoti; non è stato inviato nulla."
+        }
+      },
+      {
+        "title": "Personalizza i modelli di notifica Markdown",
+        "steps": [
+          "Scegli un bot di gruppo DingTalk o WeCom negli hook di notifica e scorri fino al modello di messaggio Markdown. I webhook JSON generici non utilizzano questi modelli Markdown.",
+          "Espandi Variabili modello (fai clic per copiare), quindi inserisci segnaposto come {task_title}. Non utilizzare variabili sconosciute o un modello vuoto. Mantieni {task_link} o {task_url} quando è necessario un collegamento all'attività.",
+          "Salva e utilizza la notifica Simula per verificare la sostituzione e i collegamenti senza inviare. Leggere la conferma prima di ripristinare il modello predefinito."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Corpo della notifica Markdown e voce della variabile del modello",
+          "caption": "Una bozza visualizza il corpo e le variabili Markdown predefiniti. Nessun modello è stato inviato o notifica consegnata esternamente."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Modelli e assistente del flusso di lavoro AI",
+    "summary": "Inizia da un modello o chiedi all'IA di proporre passaggi e confermare cosa applicare.",
+    "sections": [
+      {
+        "title": "Applica e salva i modelli",
+        "steps": [
+          "Apri i modelli di flusso di lavoro nell'area di lavoro, cerca nomi o descrizioni e rivedi lo scopo e il conteggio dei passaggi di ciascun modello.",
+          "Seleziona un modello adatto e conferma. L'applicazione sostituisce ogni passaggio e connessione nell'area di disegno corrente.",
+          "Controlla il motore, il modello, i prompt e i requisiti di revisione di ogni passaggio, adattali e salva.",
+          "Per riutilizzare il tuo progetto, scegli Salva corrente come modello di flusso di lavoro e inserisci un nome e una descrizione. Gestisci modelli personalizzati modificabili in Impostazioni → Modelli di flusso di lavoro."
+        ],
+        "tips": [
+          "I nuovi progetti non creano automaticamente flussi di lavoro e i nuovi flussi di lavoro non applicano automaticamente i modelli.",
+          "I modelli incorporati non possono essere eliminati. Dopo averne applicato uno, verificare comunque che i motori richiesti siano disponibili."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Risultato integrato della gestione dei contratti nella ricerca dei modelli Canvas",
+          "caption": "Cerca Gestione contratti per visualizzarne lo scopo e il conteggio dei passi. Controllare l'ambito sostitutivo prima di selezionarlo."
+        }
+      },
+      {
+        "title": "Chiedi all'intelligenza artificiale di creare o modificare un flusso di lavoro",
+        "steps": [
+          "Apri l'assistente del flusso di lavoro AI sull'area di disegno e scegli prima un motore e un modello configurati.",
+          "Spiegare l'obiettivo, la suddivisione delle fasi, il formato di output e le esigenze di revisione, ad esempio: creare analisi dei requisiti → implementazione → test, con revisione manuale in ogni fase, utilizzando un SDK installato.",
+          "Confronta le schede delle proposte per titolo, conteggio dei passaggi e riepilogo, quindi applica una proposta adatta all'area di disegno.",
+          "Per i flussi di lavoro esistenti, ispeziona le modifiche ai passaggi. In Applica modifiche, seleziona le aggiunte, gli aggiornamenti o le eliminazioni desiderate, quindi applica e salva."
+        ],
+        "tips": [
+          "Le proposte AI richiedono la tua conferma. Il solo successo generazionale non è un motivo per gestirli: ispezionare connessioni, motori e criteri di revisione."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Scheda proposta in due passaggi dall'assistente del flusso di lavoro AI",
+          "caption": "La scheda mostra il numero di passaggi modificati e Applica modifiche. Fare clic per confermare le modifiche del passaggio specifico."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Creare e gestire attività",
+    "summary": "Un flusso di lavoro definisce come lavorare; un'attività specifica cosa fare questa volta.",
+    "sections": [
+      {
+        "title": "Prepara più attività con l'assistente attività",
+        "steps": [
+          "Aprire l'assistente attività nella pagina delle attività. Richiedi esplicitamente più attività con orari individuali, ad esempio: genera tre attività indipendenti a partire da domani alle 09:00, 10:00 e 11:00.",
+          "Controlla il titolo, i contenuti, il flusso di lavoro, il passaggio di inizio e l'ora di inizio programmata di ciascuna bozza, quindi conferma la creazione tramite l'interfaccia.",
+          "Torna all'elenco delle attività e verifica ciascun risultato. Se alcuni falliscono, ispeziona le attività esistenti prima di inviare nuovamente l'intero batch."
+        ],
+        "tips": [
+          "La generazione di bozze non crea né esegue attività. Specificare i fusi orari per i tempi futuri; l'avvio pianificato richiede che il backend rimanga in esecuzione."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Bozze di attività batch e relativi orari pianificati individuali",
+          "caption": "Screenshot reali in attesa: bozze batch e tempi individuali. Una vecchia bozza a compito singolo non deve sostituirla."
+        }
+      },
+      {
+        "title": "Crea un'attività e lascia che l'IA organizzi i requisiti",
+        "steps": [
+          "Scegli un progetto e un flusso di lavoro, apri la relativa pagina delle attività, quindi fai clic su Nuovo o Aggiungi nella fase appropriata.",
+          "Inserisci un titolo e una descrizione con contesto, obiettivi, modifiche consentite, percorsi di output e criteri di accettazione. Sono supportati Markdown e immagini di riferimento incollate.",
+          "Se necessario, apri Assistente attività, controlla il titolo generato, i contenuti e la selezione del flusso di lavoro, quindi conferma.",
+          "Controlla il passaggio iniziale e rivedi le impostazioni per questa esecuzione, quindi crea l'attività. Con l'avvio automatico disabilitato, fare clic su Avvia attività."
+        ],
+        "tips": [
+          "Esempio: leggere README e generare docs/getting-started.md senza modificare il codice del programma. Include installazione, avvio e tre domande comuni.",
+          "Creazione e avvio sono azioni separate; la modalità di avvio e le impostazioni dei passaggi determinano se l'esecuzione inizia immediatamente."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Modulo di creazione attività con l'assistente attività espanso",
+          "caption": "Inserisci titolo e descrizione e scegli la modalità di avvio. L'assistente può organizzare i requisiti; le impostazioni di revisione si trovano in un'altra scheda."
+        }
+      },
+      {
+        "title": "Trova le attività sulla lavagna o sul tavolo",
+        "steps": [
+          "Passa tra le corsie e la tabella nella pagina delle attività, esamina le attività per fase e cerca per titolo.",
+          "Fai clic su un'attività per aprire i dettagli, inclusi il passaggio corrente, lo stato, l'autore e l'ora di aggiornamento.",
+          "Archivia le attività completate, se lo desideri. Trovali in Visualizza archivio e ripristinali nella bacheca. Controlla le selezioni prima delle operazioni collettive."
+        ],
+        "tips": [
+          "In coda in genere significa che la capacità di concorrenza è piena. L'attesa della revisione richiede conferma; ciò non significa che l'app sia bloccata.",
+          "La cancellazione è diversa dall'archiviazione. Leggere la conferma prima della cancellazione permanente."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Scheda attività che mostra stati e fasi",
+          "caption": "L'attività dimostrativa è pronta. Le voci della barra degli strumenti includono visualizzazioni, hook del flusso di lavoro, archivio e directory Apri. Il tempo di creazione è sotto la carta; la copia è trattata di seguito."
+        }
+      },
+      {
+        "title": "Modifica solo il flusso di lavoro dell'attività corrente",
+        "steps": [
+          "Apri i dettagli dell'attività e fai clic su Modifica flusso di lavoro dell'attività sotto il grafico di avanzamento. Interrompere prima l'esecuzione o la revisione; l'area di disegno è di sola lettura mentre è attiva.",
+          "Modificare i passaggi, i motori, i modelli e le revisioni di questa attività. Aggiungi passaggi, aggiungi artefatti alla fine e regola le connessioni. I passaggi esistenti, le porte di input e gli artefatti originali non possono essere eliminati o rinominati.",
+          "Salva per aggiornare il grafico di avanzamento. L'avvio successivo unisce il flusso di lavoro principale più recente con differenze specifiche dell'attività, senza modificare il flusso di lavoro principale o altre attività.",
+          "Per cancellare tutte le personalizzazioni, fai clic su Sincronizza flusso di lavoro principale e conferma. I passaggi aggiunti abbandonano il flusso di lavoro corrente, ma rimangono i messaggi storici, gli artefatti e i record di esecuzione. Questo non avvia l'esecuzione."
+        ],
+        "tips": [
+          "Senza modifiche effettive, non viene eseguita alcuna copia completa del flusso di lavoro. I campi non sostituiti ereditano gli aggiornamenti del flusso di lavoro principale; le sostituzioni delle attività hanno la precedenza.",
+          "Selezionando un passaggio nel compositore e modificandone il motore, lo si salva in quell'attività. Il passaggio Reimposta reimposta solo la sessione dell'esecuzione successiva, non il motore del flusso di lavoro principale.",
+          "La rimozione delle connessioni modifica le dipendenze e può consentire l'esecuzione diretta; non fa un passo manuale."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Voci di modifica e sincronizzazione del flusso di lavoro specifiche per attività",
+          "caption": "L'area di disegno separata dell'attività dimostrativa mostra la modalità di trasferimento, il flusso di lavoro principale di sincronizzazione e il salvataggio. Nessuna impostazione è stata modificata o l'esecuzione è stata avviata."
+        }
+      },
+      {
+        "title": "Copia un'attività",
+        "steps": [
+          "Fai clic sull'icona Copia attività accanto a un'attività in una scheda o tabella.",
+          "Ispeziona la nuova attività denominata con (copia), controlla la sua descrizione, la personalizzazione del flusso di lavoro e il passaggio iniziale, quindi eseguila. I passaggi copiati iniziano in sospeso; i progressi originali e la cronologia della chat non vengono copiati."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Copia l'icona dell'attività accanto al nome di un'attività nella visualizzazione tabella",
+          "caption": "La piccola icona accanto al nome è la voce della copia. Nessuna attività è stata copiata o avviata in questa immagine."
+        }
+      },
+      {
+        "title": "Gestisci le attività su un telefono",
+        "steps": [
+          "Tocca una riga di attività per aprire i dettagli. Tieni premuto per circa mezzo secondo per aprire il menu delle azioni; funziona anche il tasto destro del mouse.",
+          "Secondo i permessi, avvia, modifica o visualizza, copia, archivia, ripristina o elimina. Le attività in esecuzione, in coda o in attesa con passaggi attivi non possono essere archiviate o eliminate. Gestisci prima le conferme o arresta l’esecuzione; leggi la conferma prima di eliminare.",
+          "Dopo che tutti i passaggi del flusso di lavoro sono stati eseguiti e superati, l'attività viene visualizzata come Completata, anche dopo la riapertura dei dettagli o il riavvio. Il completamento non archivia l'attività; scegli se archiviarlo."
+        ],
+        "tips": [
+          "Scorrendo o spostando il dito si annulla una pressione prolungata per evitare azioni accidentali. L'accesso in sola lettura può comunque aprire le voci di visualizzazione senza ricevere i diritti di modifica."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Menu Archivia ed elimina per una riga di attività a 390 px",
+          "caption": "Catturato da un'attività pronta in v1.0.13; nulla è stato archiviato o eliminato e il completamento non viene mostrato. Le voci di avvio, modifica e copia appena aggiunte necessitano ancora di uno screenshot aggiornato."
+        }
+      },
+      {
+        "title": "Torna alle attività o alle sessioni dalle chat recenti",
+        "steps": [
+          "Trova un'attività o una sessione visitata nelle Chat recenti (最近聊天) nella barra laterale e fai clic per tornare ai dettagli del progetto originale. Entrambi i tipi appaiono qui.",
+          "Ispezionare gli indicatori di esecuzione, errore e completamento non letto. L'apertura dei dettagli rilevanti cancella l'indicazione non letta. Le voci autorizzate dispongono di menu di archiviazione o eliminazione; leggere conferme.",
+          "Sul desktop, comprimi progetti o chat recenti, trascina i titoli per invertire il loro ordine e trascina il divisore per ridimensionarli. Fare doppio clic sul divisore per ripristinare il rapporto predefinito."
+        ],
+        "tips": [
+          "Le visite recenti conservano al massimo 20 elementi sotto l'identità del dispositivo di questo browser. La cancellazione dei dati del browser rimuove questo indice, non il contenuto dell'attività. Le voci storiche non ignorano l'autorizzazione del progetto.",
+          "L'archiviazione, l'eliminazione e la cancellazione dello stato non letto hanno effetti diversi. Se un vecchio collegamento fallisce, controlla che il progetto e la sessione esistano ancora e che la connessione funzioni."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Una visita di attività dimostrativa nelle chat recenti",
+          "caption": "La barra laterale mostra una visita dell'attività dimostrativa, senza voci di sessione o esempi di stato non letto."
+        }
+      },
+      {
+        "title": "Apri la navigazione in un browser mobile",
+        "steps": [
+          "Apri WorkStep nel browser del telefono e tocca il fumetto rotondo di navigazione sul bordo della pagina per espandere la stessa barra di navigazione laterale del desktop.",
+          "Seleziona un progetto, flusso di lavoro, attività o conversazione per continuare. Tocca nuovamente il fumetto per comprimere la navigazione.",
+          "Se la bolla copre il contenuto, tienilo premuto e trascinalo in una parte vuota della finestra. Il trascinamento non attiva/disattiva la navigazione."
+        ],
+        "tips": [
+          "La bolla appare solo nei normali browser mobili. Le app desktop e Android utilizzano le proprie voci di navigazione."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Fumetto di navigazione e barra laterale espansa nel browser del telefono",
+          "caption": "Barra laterale espansa a 390px, con la bolla rotonda a destra per comprimerla. Vengono mostrati solo progetti dimostrativi isolati."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Esecuzione, approvazioni e revisioni",
+    "summary": "Comprendi gli stati di runtime, gestisci le richieste di autorizzazione e decidi se gli output possono passare alla fase successiva.",
+    "sections": [
+      {
+        "title": "Ispezionare l'esecuzione e le richieste di autorizzazione",
+        "steps": [
+          "Apri i dettagli dell'attività e controlla il grafico di avanzamento e i record della chat per identificare il passaggio attivo.",
+          "Espandi i record dei processi per ispezionare le chiamate degli strumenti, i risultati e gli errori. Espandi i record del subagente quando il motore li segnala.",
+          "Quando i messaggi includono modifiche ai file, espandere l'elenco e visualizzare le differenze registrate. Questi descrivono le modifiche di quel messaggio; l'apertura del file mostra il suo contenuto corrente, che le modifiche successive potrebbero aver modificato. Senza un differenziale salvato, i contenuti attuali non possono ricostruire la cronologia completa.",
+          "Quando viene visualizzata l'approvazione dello strumento, leggere il comando, i percorsi e l'impatto prima di consentire o negare. Rispondi alle domande utilizzando le opzioni fornite o l'input richiesto.",
+          "Se un'attività fallisce, leggi prima l'errore più recente, quindi controlla la configurazione del motore, le autorizzazioni del modello, la rete e la directory del progetto invece di riprovare ripetutamente."
+        ],
+        "tips": [
+          "L'approvazione appare solo quando un motore lo richiede. Le informazioni sul processo e le scelte di autorizzazione variano in base al motore; i dettagli mancanti non significano che non sia avvenuta alcuna esecuzione.",
+          "Un'icona rotante indica il lavoro asincrono. Durante l'attesa dell'utente, gestisci la domanda o l'approvazione corrente."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Avanzamento del passaggio e record di esecuzione effettiva nei dettagli dell'attività",
+          "caption": "I record di avanzamento e di esecuzione sono visibili. Non viene mostrata alcuna richiesta di autorizzazione; le approvazioni compaiono solo quando il motore le richiede effettivamente."
+        }
+      },
+      {
+        "title": "Approvare, rifiutare o terminare una recensione",
+        "steps": [
+          "In attesa della revisione manuale, ispezionare gli artefatti di output, rivedere i risultati, i file e testare i risultati rispetto ai criteri di accettazione.",
+          "Se sei soddisfatto, fai clic su Approva e continua. Altrimenti inserisci un feedback specifico e scegli Rifiuta e ripeti.",
+          "Durante la revisione automatica, ispeziona i relativi record. Il rifiuto attiva le repliche configurate; errori di revisione o richieste di gestione manuale richiedono la tua decisione.",
+          "Se l'esecuzione non è più desiderata, scegli Termina e verifica la conferma. L'approvazione forzata salta la revisione corrente, quindi verifica innanzitutto che i risultati siano utilizzabili."
+        ],
+        "tips": [
+          "Un’attività può continuare con conferme in sospeso. Sul desktop, passa sul numero per vedere passaggi e motivi, poi gestisci revisioni, autorizzazioni o domande nel passaggio pertinente. Senza altri rami eseguibili resta in attesa. Arresto manuale, errore e completamento sono distinti; la fine del processo non equivale all’approvazione."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Pulsanti di feedback e approvazione/rifiuto della revisione manuale",
+          "caption": "Esamina risultati, artefatti e voci di azioni."
+        }
+      },
+      {
+        "title": "Regole fisse del coordinatore e messaggi attuali",
+        "steps": [
+          "Apri i dettagli dell'attività, seleziona Coordinatore nel compositore, scegli il motore Codex SDK e fai una domanda sull'attività come: Quale fase è incompiuta?",
+          "Continuare nella stessa sessione del coordinatore. Stato dell'attività e aggiornamento corrente del mittente come contesto specifico del turno; le regole fisse del coordinatore rimangono nella cronologia della sessione.",
+          "Per il debug, utilizza la modalità sviluppatore per controllare i messaggi con i record di input effettivi. Le regole fisse invariate confermate come mantenute in quella sessione non vengono reinserite separatamente."
+        ],
+        "tips": [
+          "Le sessioni più vecchie potrebbero ricevere una reiniezione iniziale dopo l'aggiornamento. Nuove regole, nuove sessioni, cronologia mancante o conservazione incerta dopo la compattazione causano la reiniezione. Le richieste possono comunque utilizzare le regole nella cronologia; saltare una nuova iniezione non significa che non ci siano regole."
+        ]
+      },
+      {
+        "title": "Aggiungere informazioni durante la risposta del coordinatore",
+        "steps": [
+          "Seleziona Coordinatore come destinatario e invia istruzioni supplementari mentre risponde. Entrano nella coda di inserimento in attesa della risposta corrente.",
+          "Ispeziona, modifica, riordina o elimina le voci non inviate oppure invia immediatamente quelle selezionate. Più voci selezionate vengono unite in ordine. Le voci rimanenti continuano automaticamente al turno successivo al termine della risposta corrente; non inviare ripetutamente.",
+          "Se ti viene detto che un messaggio è già stato inviato o eliminato, aggiorna e controlla la coda invece di inviare nuovamente il batch."
+        ],
+        "tips": [
+          "Le code del coordinatore e dei passaggi sono separate. Verificare prima il destinatario. L'arresto non annulla le operazioni dello strumento già eseguite."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Messaggi in sospeso durante la risposta del coordinatore",
+          "caption": "Screenshot reale in attesa: destinatario del coordinatore, messaggi supplementari durante l'esecuzione e coda di continuazione."
+        }
+      },
+      {
+        "title": "Supplemento, stop e ripetizione",
+        "steps": [
+          "Controlla il destinatario prima di digitare. Il coordinatore gestisce le domande e le richieste operative; solo un passaggio specifico riceve input nel contesto di esecuzione di quel passaggio.",
+          "I messaggi per un passaggio in esecuzione entrano in Inserisci messaggi. Modifica, riordina, invia immediatamente o invia tutto; i messaggi non inviati possono attivare un altro round al termine dell'esecuzione.",
+          "Dopo aver interrotto un passaggio, inviagli istruzioni supplementari esplicite e segui le istruzioni per eseguirlo nuovamente.",
+          "Per cambiare questa attività, modifica e salva le istruzioni dei passaggi, i motori o rivedi le impostazioni. Le sostituzioni diventano effettive alla successiva esecuzione; i campi non sovrascritti si uniscono al flusso di lavoro principale al successivo avvio. Per cancellare tutte le personalizzazioni, conferma il flusso di lavoro principale di sincronizzazione."
+        ],
+        "tips": [
+          "La modifica del motore del compositore del coordinatore influisce solo sui messaggi del coordinatore successivi, non sui motori delle fasi del flusso di lavoro.",
+          "Se la riesecuzione influisce su altri passaggi attivi, controllare la conferma dell'impatto e l'ambito della riesecuzione. Se i record della sessione nativa vengono persi, seguire la richiesta per eseguire nuovamente con una nuova sessione."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Destinatario del passaggio e bozza supplementare in un'attività completata",
+          "caption": "L'attività Esegui è selezionata nel compositore. Il messaggio supplementare non è ancora stato inviato; non viene mostrata alcuna coda di inserimento."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artefatti, analisi esecutiva e memoria di progetto",
+    "summary": "Ispeziona i file consegnati, comprendi il consumo e conserva lezioni riutilizzabili.",
+    "sections": [
+      {
+        "title": "Ispeziona input, output e file di artefatti",
+        "steps": [
+          "Aprire Ingressi e output del passaggio nei dettagli dell'attività per verificare gli input disponibili e gli output completati.",
+          "Fare clic su Visualizza per un file oppure aprire il browser degli artefatti e passare al passaggio e al ciclo di esecuzione.",
+          "Anteprima dei file. Sul desktop, la directory contenente Apri ti consente di controllare i file effettivi. I file di progetto remoti rimangono sull'host e devono essere visualizzati tramite l'interfaccia web.",
+          "Confronta i round giusti durante la ripetizione. Uguale a round... significa contenuto identico, non che l'esecuzione non sia avvenuta."
+        ],
+        "tips": [
+          "Se manca un artefatto, controlla se è stato generato un file, se la sua dichiarazione di output corrisponde e i messaggi di esecuzione."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Artefatti delle attività raggruppati per passaggio",
+          "caption": "L'analisi dei requisiti e l'attività Esegui elencano ciascuna un artefatto del primo round. Apri il suo file o directory."
+        }
+      },
+      {
+        "title": "Ispezionare le risorse runtime locali",
+        "steps": [
+          "Accedere all'area di lavoro tramite localhost locale o un indirizzo di loopback, quindi Statistiche → Runtime di sistema (数据统计 → 系统运行). I normali browser remoti e le aree di lavoro del gateway non mostrano questa scheda.",
+          "Ispeziona CPU, memoria, configurazione del disco, velocità di rete e risorse, thread e descrittori di file o handle per il backend WorkStep e i figli.",
+          "Scegli le metriche di tendenza e controlla i tempi di campionamento. Metti in pausa, riprendi o aggiorna manualmente la visualizzazione. Attendere durante la raccolta iniziale e riprovare le letture non riuscite."
+        ],
+        "tips": [
+          "Le statistiche coprono l'attuale ambiente backend e i figli, esclusa la shell del desktop. Le misurazioni dei contenitori non sono risorse complete della macchina host.",
+          "Le impostazioni predefinite prevedono un campionamento di circa cinque secondi e una cronologia di 30 minuti; la pagina riporta i valori effettivi. La sospensione dell'aggiornamento dello schermo non interrompe le attività. Le metriche e le lacune non disponibili non sono pari a zero; i vecchi campioni vengono conservati e contrassegnati come stantii. Gli avvisi descrittivi indicano una pressione sulle risorse, non una riparazione automatica."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Statistiche sulle risorse di sistema campionate dalla versione corrente",
+          "caption": "Risorse locali e stato del campionamento del backend. Nessun processo figlio del motore era in esecuzione, quindi questo non mostra il consumo di esecuzione delle attività."
+        }
+      },
+      {
+        "title": "Controlla durata, gettoni e costi",
+        "steps": [
+          "Apri l'analisi dell'esecuzione nei dettagli dell'attività per controllare la durata totale, i tentativi di passaggio, i token e i costi.",
+          "Seleziona un round di corsa e fai clic su un segmento della sequenza temporale per il suo motore, modello e utilizzo.",
+          "Per informazioni a livello di progetto, aprire Statistiche. Per stimare i costi, gestisci i prezzi del modello per fornitore o motore in Impostazioni → Impostazioni modello."
+        ],
+        "tips": [
+          "L'utilizzo non segnalato non diventa automaticamente un numero accurato. Verifica copertura ed etichette stimate; fa fede la fattura modello del servizio."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Ciclo di analisi dell'esecuzione e sequenza temporale",
+          "caption": "Indicatori di durata, copertura e fonte di costo."
+        }
+      },
+      {
+        "title": "Risparmia memoria e archivia le lezioni",
+        "steps": [
+          "Fare clic su Memoria nella pagina delle attività. Modifica MEMORY.md nella directory dei dati del progetto in regole brevi, concrete a lungo termine e salva.",
+          "Quando archivi un'attività, scegli l'archiviazione diretta o organizza lezioni sui fallimenti. Ispeziona la bozza AI, quindi conferma la scrittura in memoria e l'archiviazione.",
+          "Utilizza l'elenco degli archivi per rivisitare la cronologia. Dopo aver ripristinato un'attività archiviata, ricontrolla i collegamenti esterni richiesti."
+        ],
+        "tips": [
+          "L'archiviazione collettiva non estrae le lezioni individualmente. L'archiviazione o l'eliminazione di un'attività rimuove i relativi collegamenti al gruppo di canali; il ripristino non ripristina i vecchi collegamenti."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Editor della memoria di progetto contenente convenzioni dimostrative",
+          "caption": "Modifica e salva le convenzioni in .workstep/MEMORY.md. Non viene mostrata la conferma dell'archivio delle lezioni."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Chat e competenze del progetto",
+    "summary": "Collabora direttamente nel contesto del progetto e scegli quali competenze locali può utilizzare un progetto.",
+    "sections": [
+      {
+        "title": "Lavora con più conversazioni di progetto",
+        "steps": [
+          "Alla larghezza del desktop, apri una normale conversazione di progetto e scegli Finestre di conversazione (对话窗口) → Aggiungi finestra di conversazione (增加对话窗口), a destra di Nuova conversazione.",
+          "Trascina una conversazione dalla barra laterale o dalle chat recenti nell'area chat. Puoi combinare progetti autorizzati in un massimo di 4 pannelli. Se rilasci una conversazione già aperta, viene attivato il pannello esistente. Le voci delle attività non possono essere trascinate come conversazioni.",
+          "Fai clic sul riquadro che desideri utilizzare prima di selezionare una conversazione nella barra laterale. Ogni riquadro mantiene le proprie impostazioni di progetto, sessione, bozza e motore; verificare il progetto e la sessione prima dell'invio.",
+          "Scegli Finestre di conversazione → Disposizione della conversazione (对话排列), quindi orizzontale o verticale. Trascina il separatore per ridimensionarlo; focalizzalo e usa i tasti freccia per ridimensionare la tastiera.",
+          "Con più riquadri, × chiude solo quel riquadro, senza interrompere o eliminare la conversazione. Utilizza il pulsante Interrompi della conversazione per interrompere la generazione."
+        ],
+        "tips": [
+          "Sul desktop, fai doppio clic su una conversazione nella barra laterale o sul titolo dell'intestazione per aprire la finestra di dialogo di ridenominazione condivisa, quindi inserisci e conferma il nome.",
+          "Su mobile appare solo il riquadro attivo; gli altri sono conservati. Uscire e tornare nella stessa sessione della pagina ripristina riquadri, disposizione e dimensioni; il ripristino dopo un aggiornamento del browser non è garantito. I layout sono separati per account e dispositivo, senza copiare le conversazioni."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Riquadri di conversazione sul desktop tra progetti e menu di disposizione",
+          "caption": "È in sospeso lo screenshot reale del progetto demo corretto: menu della finestra di conversazione, riquadri multipli e separatori trascinabili."
+        }
+      },
+      {
+        "title": "Carica un ruolo o un team di esperti nella chat",
+        "steps": [
+          "Preparare richieste di ruolo o membri e responsabilità del team di esperti in Impostazioni → Centro ruolo.",
+          "Apri la chat ordinaria in un progetto locale. Usa + → Ruolo / Team di esperti, cerca categorie o parole chiave, visualizza l'anteprima e carica nella chat. Ad esempio, seleziona Revisore codice, quindi invia un ambito di revisione specifico.",
+          "Controlla il nome caricato nel compositore. La selezione non invia un messaggio. L'associazione viene salvata con la sessione e ripristinata dopo l'aggiornamento; le nuove sessioni iniziano senza vincoli. Fare clic sul nome per esaminarlo, sostituirlo o rimuoverlo."
+        ],
+        "tips": [
+          "Non puoi cambiare mentre corri. Gli errori di lettura o salvataggio preservano la selezione corrente; riprovare come richiesto. Riseleziona i ruoli mancanti. Il caricamento modifica solo l'associazione della sessione; inviare una domanda concreta per invocare il modello.",
+          "I team di esperti trasferiscono i suggerimenti e le responsabilità dei membri al modello attuale; non avviano motori indipendenti. Attività, passaggi del flusso di lavoro, canali, progetti remoti e ticket con ambito di progetto non sono integrati. Un'area di lavoro Gateway completa del dispositivo può utilizzarla per un progetto locale."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Ricerca di Code Reviewer e anteprima dei prompt nella chat ordinaria",
+          "caption": "Code Reviewer è selezionato in una conversazione dimostrativa vuota. Il prompt e il pulsante di caricamento sono visibili; nessun ruolo è stato caricato o messaggio inviato."
+        }
+      },
+      {
+        "title": "Apri la memoria del progetto su un telefono",
+        "steps": [
+          "Apri l'elenco delle attività del progetto, utilizza Altro in alto a destra, quindi Memoria.",
+          "Inserisci brevi convenzioni, come Esegui test di progetto prima del commit, nell'editor di memoria. Controlla e salva; questo vale per l'intero progetto."
+        ],
+        "tips": [
+          "Scegliendo Memoria si comprime Altro. Sul desktop, fare clic su Memoria direttamente nella pagina delle attività."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Voce di memoria nel menu Altro di una pagina di attività da 390 px",
+          "caption": "Il menu Altro espanso dell'elenco delle attività mobili include Memoria. Facendo clic si apre il suo editor; nessun ricordo è stato cambiato qui."
+        }
+      },
+      {
+        "title": "Crea conversazioni e modifica la configurazione",
+        "steps": [
+          "Crea una sessione ordinaria nella sezione Conversazioni del progetto a sinistra. Seleziona il motore, il fornitore, il modello e la modalità di autorizzazione. Inizia con un SDK verificato.",
+          "Inserisci una richiesta concreta. Inserisci invii; Shift+Enter inserisce un ritorno a capo. Allega o incolla le immagini di riferimento solo dopo aver verificato il supporto delle immagini del motore.",
+          "Interrompi una risposta durante la generazione, se necessario. Ulteriori messaggi inseriti vengono messi in coda e il loro ordine può essere modificato.",
+          "Quando cambi motore o provider con il contesto esistente, scegli Handoff intelligente, Cronologia chat completa o Nessuno nella finestra di dialogo. Dividi una conversazione per l'esplorazione indipendente e conferma la sua modalità di contesto."
+        ],
+        "tips": [
+          "La chat del progetto viene archiviata separatamente dai record delle attività del flusso di lavoro. Crea un'attività quando hai bisogno di monitoraggio e revisioni delle fasi.",
+          "Il fork nativo è disponibile solo se effettivamente supportato dal motore. Altrimenti continua attraverso il trasferimento del contesto esplicito."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Motore di chat del progetto, provider e menu del modello",
+          "caption": "Configura il motore, il fornitore, il modello di ragionamento e le opzioni correlate solo per questa conversazione. Le autorizzazioni vengono selezionate separatamente."
+        }
+      },
+      {
+        "title": "Abilita le competenze e organizza le conversazioni",
+        "steps": [
+          "Apri Configurazione → Centro competenze del progetto corrente, esegui nuovamente la scansione e cerca per nome, descrizione o percorso di origine.",
+          "Leggi gli scopi delle competenze e abilita ciò di cui hai bisogno. Controlla l'intervallo selezionato prima delle modifiche collettive. Le competenze vengono salvate per progetto e applicate all'esecuzione successiva o alla nuova sessione.",
+          "Digita / nel compositore per selezionare le competenze effettivamente offerte dal motore attuale. Gli elenchi variano in base al motore.",
+          "Utilizza il menu della sessione per rinominare o archiviare. Cerca nell'elenco degli archivi e ripristina le conversazioni richieste."
+        ],
+        "tips": [
+          "Il centro competenze seleziona le competenze locali esistenti. Se non ne viene visualizzato nessuno, controlla prima le fonti locali. I progetti remoti attualmente non possono gestire le competenze locali dell'host."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Nessun risultato dopo la ricerca della demo manuale nello Skill Center",
+          "caption": "Il centro competenze offre la ricerca dei nomi e il filtraggio delle fonti. Non viene visualizzata alcuna abilità corrispondente o interruttore di abilitazione."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Pulsanti rapidi e azioni di script",
+    "summary": "Trasforma istruzioni comuni, visualizza contenuti e script di progetto in pulsanti riutilizzabili.",
+    "sections": [
+      {
+        "title": "Creare pulsanti di richiesta e visualizzazione",
+        "steps": [
+          "Apri Pulsanti rapidi nella configurazione del progetto, aggiungi un pulsante e selezionane il tipo.",
+          "Per Prompt, immettere l'etichetta e il prompt e scegliere se fare clic per inviarlo immediatamente, ad esempio: Ispeziona le modifiche correnti ed elenca i criteri di accettazione non coperti.",
+          "Per Display, inserisci il contenuto e visualizza l'anteprima del suo rendering HTML sicuro. Questo tipo non invia alcun messaggio.",
+          "Salva e torna alla chat o a un'attività per ispezionare il pulsante. Trascina l'elenco di configurazione per riordinare. Le impostazioni del flusso di lavoro controllano i pulsanti del progetto ereditato; i pulsanti dello stage sono configurati separatamente."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Ereditarietà dei pulsanti di progetto e aggiunta di voci ai pulsanti rapidi del flusso di lavoro",
+          "caption": "Seleziona i pulsanti del progetto da ereditare e aggiungi i pulsanti del flusso di lavoro sulla sinistra. Non è stato inserito alcun contenuto del pulsante."
+        }
+      },
+      {
+        "title": "Configura ed esegui un'azione",
+        "steps": [
+          "Aggiungi il tipo di azione, inserisci il suo ID azione e seleziona uno script dalla directory delle azioni corrispondente.",
+          "Scegli la directory di esecuzione: progetto, directory delle attività del flusso di lavoro o area di lavoro Git selezionata dallo script. Visualizza l'anteprima e controlla lo script.",
+          "Abilita la conferma prima delle azioni che modificano i file o lo stato esterno. Per input come messaggi di commit, configurare una richiesta di conferma; lo script lo riceve tramite WORKSTEP_ACTION_INPUT.",
+          "Salva e fai clic sul pulsante, conferma lo script e la directory e controlla l'output e il codice di uscita. Le azioni in esecuzione possono essere interrotte."
+        ],
+        "tips": [
+          "Le azioni rapide eseguono direttamente gli script di progetto. Comprendi lo script e scegli prima la directory giusta. I file esterni alla directory dell'azione corrente non possono essere selezionati arbitrariamente come script."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Configurazione dell'azione senza script selezionato",
+          "caption": "I campi includono ID azione, script, directory di esecuzione e conferma. Non è stato eseguito alcuno script."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Attività pianificate",
+    "summary": "Crea nuove attività in base a una pianificazione o invia istruzioni del coordinatore temporizzato alle attività esistenti e monitora l'esecuzione e le notifiche.",
+    "sections": [
+      {
+        "title": "Genera più attività da una pianificazione",
+        "steps": [
+          "Crea un progetto crea la pianificazione delle attività, seleziona AI dinamico e specifica l'ambito e i tempi individuali di più attività. Seleziona i flussi di lavoro candidati.",
+          "Per prima cosa utilizza la generazione di test per controllare ogni bozza, quindi salva. Le istruzioni del coordinatore delle attività continuano a operare su un'attività selezionata e non creano batch.",
+          "Dopo l'attivazione, apri ciascuna attività creata dai record di esecuzione. I record non riusciti conservano anche le attività già create; controllare il motivo prima di creare sostituzioni."
+        ],
+        "tips": [
+          "La creazione dell'attività non significa che tutti i flussi di lavoro siano terminati. Non eseguire nuovamente un intero batch dopo la creazione parziale o un errore di avvio."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Anteprima della generazione batch pianificata e record di esecuzione di più attività",
+          "caption": "Screenshot reali in attesa: bozze batch e attività già create dopo un fallimento parziale."
+        }
+      },
+      {
+        "title": "Gestisci le istruzioni pianificate dai dettagli dell'attività",
+        "steps": [
+          "Apri i dettagli dell'attività e fai clic sull'orologio accanto a Bind BOT; sui telefoni si trova a destra delle schede principali. Il conteggio include le regole delle attività, ad eccezione delle regole una tantum completate, non solo delle regole abilitate. Controlla in pausa e altri stati nell'elenco.",
+          "Controlla le regole di questa attività nella finestra. Con l'autorizzazione alla modifica, aggiungi, modifica, metti in pausa, riprendi o elimina le regole e visualizza i record delle esecuzioni. Le nuove regole si legano automaticamente all'attività corrente.",
+          "Inserisci un titolo, una frequenza e un'istruzione per il coordinatore, ad esempio: controlla i progressi e riepiloga ogni dieci minuti. Controlla la condizione di arresto e salva. Quando chiudi con modifiche non salvate, scegli di continuare o ignorare.",
+          "Le condivisioni di sola lettura utilizzano lo stesso orologio per controllare le regole di questa attività. Con i diritti di operazione si utilizzano le voci di gestione effettivamente offerte dal titolo attuale."
+        ],
+        "tips": [
+          "L'elenco una tantum conserva i tempi di esecuzione delle regole completate; il badge dell'attività li esclude, quindi i conteggi possono differire."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Finestra di pianificazione con ambito attività aperta dall'orologio dettagliato",
+          "caption": "La creazione di una regola dall'orologio blocca il flusso di lavoro e l'attività all'attività dimostrativa. Titolo e istruzioni sono vuoti; nulla è stato salvato o eseguito."
+        }
+      },
+      {
+        "title": "Crea un programma fisso",
+        "steps": [
+          "Apri Attività pianificate dalla barra degli strumenti della barra laterale, scegli una scheda di progetto, quindi crea una pianificazione delle attività di creazione del progetto. Seleziona flusso di lavoro, passaggio iniziale, titolo e contenuti.",
+          "Scegli una volta, giornalmente, settimanalmente, mensilmente, intervallo orario o Cron. Controlla il fuso orario, le date di validità e l'anteprima della prossima esecuzione.",
+          "Scegli Segui flusso di lavoro, Esecuzione immediata o Manuale e imposta la gestione della sovrapposizione su Salta, Parallelo o Coda.",
+          "Controlla le impostazioni di revisione e salva. Verificare una pianificazione una tantum a breve termine prima di abilitare un piano ricorrente a lungo termine."
+        ],
+        "tips": [
+          "Il backend WorkStep deve essere in esecuzione per attivare le pianificazioni. Non dare per scontato che si attivino normalmente mentre il computer è in modalità di sospensione o il backend è arrestato."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Risolti i contenuti delle attività, la frequenza giornaliera e l'anteprima della prossima esecuzione",
+          "caption": "Imposta contenuti, frequenza, policy di avvio e sovrapposizione, quindi controlla i tempi di esecuzione futuri."
+        }
+      },
+      {
+        "title": "Invia istruzioni pianificate a un'attività esistente",
+        "steps": [
+          "Apri Attività pianificate nella barra laterale, seleziona un progetto e cambia il tipo di nuova regola in Istruzioni del coordinatore attività. Funziona su un'attività esistente anziché crearne una ogni volta.",
+          "Inserisci il titolo, filtra per flusso di lavoro e cerca l'attività di destinazione. Scrivere un'istruzione concreta, ad esempio: verificare i progressi e segnalare se è necessaria l'azione umana; non confermano automaticamente le azioni pericolose. Le regole salvate non possono essere ricollegate a un'altra attività.",
+          "Imposta l'esecuzione una tantum o ricorrente, inclusa Ogni pochi minuti. Verifica gli orari di esecuzione successiva e scegli Continua fino alla disattivazione manuale o Interrompi al termine dell'attività.",
+          "Trova la regola salvata negli elenchi una tantum o ricorrenti. Filtra per tipo di destinazione e ID attività. Apri un'attività da un record di esecuzione per individuare la risposta del coordinatore e controllare lo stato del messaggio pianificato nella sua cronologia."
+        ],
+        "tips": [
+          "Ogni trigger utilizza una sessione del coordinatore separata e può essere messo in coda mentre l'attività è occupata. Le proposte che necessitano di conferma richiedono ancora te. L'interruzione di una risposta pianificata interrompe solo quel messaggio; sospendere o disabilitare la regola per evitare attivazioni successive.",
+          "L'archiviazione o l'eliminazione di una destinazione invalida la regola. Con Interrompi al termine dell'attività, gli stati del terminale completato, non riuscito o interrotto la terminano. Non è garantita la riproduzione delle esecuzioni interrotte dal riavvio del backend; controllare i record prima di inviarli nuovamente."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Modulo di pianificazione del coordinatore delle attività non salvato",
+          "caption": "La dimostrazione si ripete ogni dieci minuti fino alla disattivazione manuale. Non è salvato, senza risultati di esecuzione."
+        }
+      },
+      {
+        "title": "Configura le notifiche del canale per le corse pianificate",
+        "steps": [
+          "In una pianificazione del progetto o in una regola del coordinatore attività, controlla Notifica bot del canale dopo l'esecuzione.",
+          "Scegli un bot e una conversazione con capacità di invio. Il gruppo associato di un'attività può essere selezionato per impostazione predefinita, ma controllalo prima di salvare. Senza una destinazione, configura prima il bot e l'associazione delle attività o disabilita la notifica.",
+          "Esaminare lo stato delle notifiche e i motivi degli errori nei record di esecuzione. Riprovare gli errori di notifica senza eseguire nuovamente l'attività. Per risultati di consegna sconosciuti, controlla prima il canale per evitare duplicati."
+        ],
+        "tips": [
+          "Notifiche pianificate e flusso di lavoro I webhook sono configurati separatamente. Un'esecuzione riuscita non dimostra la consegna e una notifica non riuscita non significa fallimento dell'attività.",
+          "Le notifiche del coordinatore dei compiti seguono il completamento di tale risposta. La notifica dopo che la pianificazione di un progetto ha creato un'attività non significa che l'intero flusso di lavoro è terminato."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Notifica del canale senza destinazione selezionata in un modulo di attività di progetto",
+          "caption": "La notifica è selezionata ma non è selezionato alcun bot o conversazione, quindi il salvataggio è disabilitato. Niente è stato eseguito o inviato."
+        }
+      },
+      {
+        "title": "Generazione dinamica dell'intelligenza artificiale e record di esecuzione",
+        "steps": [
+          "Cambia la generazione in AI dinamica, descrivi cosa generare ogni volta, facoltativamente fissa un titolo di riferimento e scegli i flussi di lavoro dei candidati.",
+          "Configura i tentativi di generazione e utilizza la generazione di test per verificare se l'output soddisfa le aspettative.",
+          "Salva, quindi filtra i record di esecuzione sulla destra in base allo stato. Controlla l'ora di attivazione, i motivi dell'errore o del salto e apri l'attività corrispondente.",
+          "Metti in pausa le pianificazioni non più necessarie, quindi elimina dopo aver controllato."
+        ],
+        "tips": [
+          "I tentativi di generazione dell'intelligenza artificiale, i tentativi di revisione dei passaggi e i limiti di connessione di ritorno sono impostazioni separate."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "Modulo di creazione di attività pianificate dinamiche AI",
+          "caption": "Inserisci le istruzioni, i flussi di lavoro dei candidati e il numero di tentativi. Nessuna attività è stata generata o è stato mostrato alcun record di esecuzione."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Git e spazi di lavoro delle attività",
+    "summary": "Ispeziona le modifiche al codice, isola le attività parallele in directory di lavoro separate, quindi unisci e distribuisci il loro lavoro.",
+    "sections": [
+      {
+        "title": "Esamina file, differenze e cronologia",
+        "steps": [
+          "Fai clic su Git nella pagina delle attività di un progetto remoto locale o connesso e seleziona il repository root o un repository figlio scoperto. Le operazioni Git remote vengono eseguite sul dispositivo host.",
+          "Ispezionare file e differenze modificati per verificare le modifiche dell'IA rispetto ai requisiti; utilizzare la cronologia dei commit per verificare il lavoro impegnato.",
+          "Gestire le modifiche non confermate prima di cambiare ramo. Aggiorna lo stato remoto per controllare lo stato avanti, indietro o divergente.",
+          "Tirare avanti velocemente; Push invia solo contenuti impegnati. Scegli un telecomando e un ramo, conferma ed esegui."
+        ],
+        "tips": [
+          "I record remoti memorizzati nella cache non sono in stato attivo. La sincronizzazione potrebbe essere bloccata mentre le attività del progetto o le chat sono attive.",
+          "Riconnettersi prima ai progetti remoti offline o non autorizzati. Il browser non copia i repository host sul tuo computer. La lettura richiede l'autorizzazione Git-view; le azioni di commit, diramazione, unione e sincronizzazione hanno sovvenzioni separate. Controlla le autorizzazioni se mancano i pulsanti."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Modifiche non confermate in un repository Git",
+          "caption": "I file in sospeso di un repository locale. La cronologia dei commit si trova in un'altra scheda; i permessi remoti e le differenze dei file espansi non vengono visualizzati."
+        }
+      },
+      {
+        "title": "Crea un Worktree per un'attività",
+        "steps": [
+          "Apri l'area di lavoro Git nei dettagli dell'attività e seleziona i repository di cui l'attività ha effettivamente bisogno.",
+          "Immettere il nome della directory delle attività, il ramo di origine e il nuovo ramo, quindi Crea Worktree. Se la radice non è ancora un repository Git, inizializzala ed effettua il primo commit.",
+          "Dopo l'esecuzione, ispeziona e conferma le modifiche nell'area di lavoro. In Git, unisciti al ramo corrente o unisci il ramo corrente a una destinazione.",
+          "Controlla il risultato unito e spingi manualmente secondo necessità. Leggi gli effetti esatti e gli avvisi di modifica non confermata prima della pulizia o del ripristino della cronologia."
+        ],
+        "tips": [
+          "La creazione di un'area di lavoro non si unisce o non viene inviata automaticamente. Solo le modifiche confermate partecipano alle fusioni dei rami.",
+          "L'eliminazione di un'area di lavoro di un'attività può comportare la rimozione di directory e rami di funzionalità. La pulizia non è un modo per salvare i risultati."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Attività Area di lavoro Git con un Worktree esistente",
+          "caption": "L'area di lavoro dimostrativa esiste senza differenze di file. Aprilo, aggiungi repository o gestisci rami; questa non è la sua forma di creazione."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Condivisione delle attività e progetti remoti",
+    "summary": "Distinguere un collegamento a un'attività dall'accesso remoto a un intero dispositivo.",
+    "sections": [
+      {
+        "title": "Condividi un'attività",
+        "steps": [
+          "Fai clic su Condividi nei dettagli dell'attività e scegli Sola lettura o Interattivo.",
+          "Il modulo genera una password casuale e per impostazione predefinita ha una validità di sette giorni. Modificare o cancellare la password secondo necessità; quando impostato, deve contenere almeno quattro caratteri. Aggiungi un titolo facoltativo, assicurati che la scadenza sia entro i prossimi 90 giorni, quindi genera e copia il collegamento.",
+          "Aprilo in una finestra separata del browser, inserisci una password se impostata e controlla l'avanzamento, i messaggi, gli artefatti e le autorizzazioni selezionate.",
+          "Per interrompere la condivisione, apri la condivisione corrente e revocala. Anche i visualizzatori già aperti perdono l'accesso continuo."
+        ],
+        "tips": [
+          "La sola lettura è per la visualizzazione. I visitatori interattivi utilizzano il controller delle attività originale: possono inviare messaggi al coordinatore o ai passaggi, interrompere l'esecuzione, gestire approvazioni e domande e utilizzare la configurazione delle attività disponibili e le azioni dell'area di lavoro Git. Questi influiscono sull'attività originale, nell'ambito dell'attività di quella condivisione. Per la sola visualizzazione, scegli Sola lettura e verifica la modalità in un browser separato.",
+          "I destinatari devono raggiungere l'indirizzo back-end nel collegamento. La generazione di un collegamento non crea un tunnel di rete pubblica."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Modulo interattivo di condivisione delle attività prima della generazione del collegamento",
+          "caption": "È selezionata la modalità interattiva e la password è vuota. Non è stato creato alcun collegamento di condivisione."
+        }
+      },
+      {
+        "title": "Configura l'accesso dell'host e invita i dispositivi",
+        "steps": [
+          "Sull'host, apri Impostazioni → Accesso remoto, abilita le connessioni e controlla l'indirizzo interno. L'accesso pubblico richiede un indirizzo esterno HTTPS/WSS raggiungibile.",
+          "Imposta e salva una chiave di accesso, quindi verifica la raggiungibilità da un altro dispositivo.",
+          "Genera un invito al progetto in Configurazione progetto → Condivisione. Importalo nella voce di accesso remoto di un altro WorkStep e segui le istruzioni di connessione.",
+          "Ispeziona i dispositivi autorizzati e gli inviti attivi. Modificare i periodi di autorizzazione o revocarli secondo necessità. Se disconnesso, controlla disponibilità, indirizzo, chiave e scadenza dell'host."
+        ],
+        "tips": [
+          "WorkStep non dispone di relè pubblico integrato. Fornisci tu stesso una voce di rete raggiungibile. Le password delle attività, le chiavi di accesso dell'host e gli inviti ai dispositivi sono separati.",
+          "Le directory e i motori remoti rimangono sull'host. Il tuo file manager locale non può aprire direttamente le sue directory."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Switch di accesso remoto e modulo di indirizzo prima dell'immissione dei valori",
+          "caption": "I campi interni ed esterni mostrano segnaposto di esempio e la chiave è vuota. Non viene visualizzato alcun elenco di autorizzazioni del dispositivo."
+        }
+      },
+      {
+        "title": "Connetti un gateway aziendale quando necessario",
+        "steps": [
+          "Se la tua organizzazione fornisce Gateway, inserisci il suo indirizzo in Accesso remoto → Piattaforma Gateway.",
+          "Abilita esplicitamente la modalità Gateway e salva, quindi accedi per autorizzare questo computer. Il solo salvataggio di un indirizzo non lo abilita.",
+          "Se l'approvazione dell'amministratore è in sospeso, completa l'approvazione ed esegui nuovamente l'autenticazione. Una volta connesso, utilizza la pubblicazione del progetto e le sovvenzioni di accesso entro i limiti delle tue autorizzazioni.",
+          "Disabilita la modalità Gateway e salva per tornare all'uso locale."
+        ],
+        "tips": [
+          "L'uso locale autonomo non richiede gateway. Le autorizzazioni e l'approvazione organizzativa dipendono dalla piattaforma effettiva."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Indirizzo della piattaforma prima che la modalità gateway sia abilitata",
+          "caption": "Il gateway è disabilitato e l'indirizzo è un segnaposto. Il salvataggio di un indirizzo e l'abilitazione del Gateway sono azioni distinte."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Area di lavoro gateway e condivisione locale",
+    "summary": "Distingue gli inviti locali, le concessioni di piattaforma e le condivisioni di attività e continua a lavorare su tutti i dispositivi.",
+    "sections": [
+      {
+        "title": "Configura l'identità aziendale Feishu o Lark",
+        "steps": [
+          "Un amministratore apre Impostazioni piattaforma → Sincronizzazione organizzazione e accesso QR, aggiunge un'applicazione aziendale personalizzata Feishu o Lark e inserisce Tenant Key, App ID e App Secret.",
+          "Copia la richiamata di accesso completa visualizzata nella piattaforma dello sviluppatore corrispondente. Imposta separatamente gli interruttori dell'applicazione, dell'accesso QR e della sincronizzazione dell'organizzazione. I App ID esistenti non possono cambiare; utilizzare una nuova origine identità per un'altra applicazione.",
+          "Autorizza la lettura della directory, limita la visibilità dell'applicazione e segui Anteprima di lettura → Seleziona organizzazioni o utenti → Ispeziona modifiche → Conferma sincronizzazione. Verificare i risultati e le registrazioni dei guasti."
+        ],
+        "tips": [
+          "L'identità aziendale del gateway e i bot del canale locale sono separati e non condividono automaticamente le credenziali. Le autorizzazioni per l'accesso QR e la directory del tenant reale richiedono ancora test di integrazione; Il successo simulato del API non dimostra la reale connettività."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Origine identità Feishu o Lark e impostazioni di sincronizzazione della directory",
+          "caption": "È in sospeso lo screenshot della configurazione senza credenziali di un gateway isolato."
+        }
+      },
+      {
+        "title": "Consenti ad altri siti Web di accedere tramite Gateway",
+        "steps": [
+          "Un superamministratore apre le impostazioni della piattaforma gateway → Autorizzazione di accesso di terze parti e fa clic su Modifica lista consentita di richiamata.",
+          "Immettere una richiamata completa URL per riga, ad esempio https://business.example.com/login/callback, fino a 100 voci. Schema, porta, percorso e parametri di query fissi devono corrispondere esattamente. Completa la verifica dell'amministratore e salva.",
+          "Avviare l'accesso dal sito Web di integrazione. Se non hai effettuato l'accesso a Gateway, utilizza prima la password esistente o l'accesso QR aziendale, quindi ritorna. Il backend del sito scambia un codice di autorizzazione monouso per ID utente, account e nome visualizzato.",
+          "Per interrompere un'integrazione, rimuovi il relativo URL e salva. Una lista consentita vuota disabilita l'autorizzazione all'accesso di terze parti; i codici in sospeso per gli indirizzi rimossi diventano immediatamente non validi."
+        ],
+        "tips": [
+          "Le richiamate supportano HTTP/HTTPS, non caratteri jolly, frammenti, credenziali incorporate o codici preimpostati, parametri di stato o request_id. Utilizzare HTTPS in produzione.",
+          "Se una richiamata non è autorizzata, controlla il suo URL completo. Se un codice è scaduto o è stato utilizzato, riavviare l'accesso dal sito di integrazione. Il protocollo e gli esempi eseguibili si trovano in docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Elenco consentito di richiamate di terze parti nelle impostazioni del gateway",
+          "caption": "Dimostrazione reale isolata Screenshot del gateway in attesa; non utilizzare account giornalieri o impostazioni di richiamata effettive."
+        }
+      },
+      {
+        "title": "Gestisci due tipi di condivisione del progetto",
+        "steps": [
+          "Apri Condivisione nelle impostazioni del progetto. La configurazione di un indirizzo gateway abilita l'accesso alla piattaforma. L'interfaccia locale offre anche inviti a progetti remoti; I browser remoti del gateway non possono configurare gli inviti locali.",
+          "Per gli inviti locali, scegli LAN o indirizzo esterno e periodo di accesso al dispositivo, quindi genera e copia. Una scadenza personalizzata deve essere futura; il riscatto dell'invito e le scadenze dell'autorizzazione del dispositivo vengono visualizzate separatamente.",
+          "Dopo l'importazione sul dispositivo ricevente, controllane il nome, l'IP, la connessione e la scadenza in Dispositivi autorizzati. Modificare i periodi o revocarli secondo necessità. L'accesso alla piattaforma utilizza invece account, pubblicazione di progetti e sovvenzioni.",
+          "Per un'attività, scegli modalità, password e titolo nella finestra Condividi. Le condivisioni locale e gateway sono impostate per impostazione predefinita su sette giorni e ne consentono un massimo di 90. Testare in un browser separato, quindi gestire o revocare dalla finestra originale."
+        ],
+        "tips": [
+          "La condivisione di un'attività locale tramite un gateway connesso richiede un'identità di piattaforma valida. Un indirizzo o una credenziale desktop da sola non conferisce l'autorizzazione alla piattaforma.",
+          "I collegamenti alle attività locali utilizzano l'indirizzo host; Le condivisioni del gateway utilizzano l'indirizzo restituito dalla piattaforma. Non pubblicare mai credenziali di invito, condividere link o password negli screenshot.",
+          "Entrambi i tipi supportano la scadenza. Il gateway può richiedere l'accesso; Le condivisioni del gateway interattivo devono richiederlo e utilizzare l'accesso anziché una chiave di accesso. Controlla i campi nella finestra di condivisione corrente."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Scheda di condivisione dell'accesso remoto e periodo di autorizzazione del dispositivo",
+          "caption": "Senza gateway configurato, viene visualizzato Accesso remoto. Nessun dispositivo è autorizzato e nessun invito viene generato."
+        }
+      },
+      {
+        "title": "Cambia dispositivo e controlla le notifiche aggregate",
+        "steps": [
+          "Accedi a un'area di lavoro del dispositivo autorizzata sulla piattaforma, quindi utilizza le schede del dispositivo superiore per passare a un altro dispositivo online.",
+          "Ogni account e dispositivo ricorda l'ultima pagina di progetto, attività o sessione in questo browser. Il ritorno controlla comunque l'autorizzazione e non aggira gli obiettivi inaccessibili.",
+          "I progetti remoti vengono caricati solo quando selezionati. Dopo un errore di caricamento o una disconnessione, fare nuovamente clic sul progetto corrente per aggiornarlo manualmente; i dispositivi non vengono interrogati continuamente in background.",
+          "Centro notifiche aperto per riepiloghi di completamento o errori da dispositivi autorizzati. Fare clic per aprire l'attività o la sessione. I messaggi live di Workspace appartengono ancora al dispositivo corrente.",
+          "Utilizza la piattaforma Return to Gateway per scegliere un altro dispositivo. Una richiamata di autorizzazione del browser scaduta riavvia l'accesso; dopo aver annullato l'autorizzazione del desktop, riprovare manualmente o tornare all'area di lavoro locale."
+        ],
+        "tips": [
+          "La memoria della pagina è locale del browser e non è sincronizzata tra i browser. L'accesso funziona senza la memorizzazione nel browser, ma le posizioni non vengono conservate.",
+          "Riconnettiti come richiesto per dispositivi offline, autorizzazione revocata o errori di rete. Le posizioni salvate non sostituiscono le autorizzazioni.",
+          "Gli screenshot reali della scheda del dispositivo e delle notifiche aggregate del progetto dimostrativo corretto rimangono in sospeso."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Schede del dispositivo e centro notifiche aggregato",
+          "caption": "Screenshot reale in attesa: cambio dispositivo, ripristino della posizione e navigazione delle notifiche; non ancora catturato."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Bot del canale e notifiche di gruppo",
+    "summary": "Configura WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack o QQ, distinguendo la chat dalle notifiche Webhook.",
+    "sections": [
+      {
+        "title": "Scegli un canale e collega una nuova piattaforma",
+        "steps": [
+          "Apri Impostazioni → Bot dei canali, seleziona una piattaforma a sinistra e inserisci un nome, credenziali e un progetto locale predefinito a destra. Abilita e salva. I segreti vuoti mantengono i valori esistenti durante la modifica; controllare le modifiche non salvate prima di cambiare. Chiudendo le impostazioni, premendo Esci o cambiando sezione delle impostazioni viene richiesta conferma quando le modifiche non vengono salvate; l'annullamento conserva la bozza.",
+          "Per Feishu o Lark, crea un'app aziendale personalizzata con supporto bot e inserisci App ID e App Secret. Dopo la connessione, abilita gli eventi di connessione lunga, iscriviti a im.message.receive_v1 e card.action.trigger, configura le autorizzazioni per messaggi/carte e pubblica. Invia un messaggio privato o menziona il bot in un gruppo.",
+          "Per Telegram, crea un bot con BotFather e inserisci il suo Bot Token. Viene utilizzato il polling lungo; nessun altro programma può interrogare quel bot contemporaneamente. Gli amministratori devono prima rimuovere eventuali webhook esistenti. Invia un messaggio privato o menzionalo/rispondi in gruppi.",
+          "Per Discord, immettere Application ID e Bot Token, abilitare Message Content Intent e concedere le autorizzazioni di lettura/invio del canale. Menzionare il bot nei canali del server; associare attività utilizzando gli ID di canale o thread.",
+          "Per Slack, abilita Socket Mode e inserisci App ID, un App-Level Token con connections:write e Bot Token. Configura chat:write, app_mentions:read e im:history, iscriviti a app_mention e message.im, quindi installa. Invita il bot prima di menzionarlo nei canali.",
+          "Per QQ, crea un bot ufficiale sulla piattaforma aperta QQ, seleziona l'accesso WebSocket e abilita gli eventi di messaggi privati/di gruppo. Inserisci App ID, App Secret e un progetto locale predefinito, abilitalo e salva. Invia un messaggio privato o menziona il bot in un gruppo. Dopo aver ricevuto un messaggio, associa le attività utilizzando group_openid e configura le liste consentite con gli OpenID dei membri, non con i numeri di account o gruppi QQ. Solo testo; le risposte passive hanno limiti di tempo e di conteggio. Leggi i risultati lunghi in WorkStep.",
+          "Torna a WorkStep per ispezionare le connessioni e le sessioni dei canali, quindi associa le attività secondo necessità. In caso di errori, controlla la regione, le credenziali, le autorizzazioni della piattaforma e la rete backend."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack e QQ attualmente supportano solo testo. Ritorno a WorkStep per l'interruzione, le risposte sulle autorizzazioni, la conferma e la revisione della proposta; non vengono promesse immagini, file e schede interattive.",
+          "I test della nuova piattaforma utilizzano frame simulati. L'installazione, le autorizzazioni e la messaggistica del tenant reale richiedono ancora test di integrazione. Mantieni segreti, token completi e ID di gruppo privati ​​fuori dagli screenshot."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Selettore di canali ed editor bot separato",
+          "caption": "Si attende lo screenshot reale senza credenziali del nuovo layout multicanale. La vecchia forma non lo rappresenta."
+        }
+      },
+      {
+        "title": "Invia notifiche solo ai gruppi Feishu o Lark",
+        "steps": [
+          "Negli hook del flusso di lavoro → Hook di notifica della pagina dell'attività, aggiungi una destinazione bot di gruppo Feishu o Lark e incolla il webhook URL del bot personalizzato completo per quella regione.",
+          "Se la firma è abilitata, inserisci il segreto della firma del bot, non App ID o App Secret. Configura le parole chiave, gli eventi e il modello Markdown richiesti, salva e controlla la simulazione.",
+          "Conferma il gruppo destinatario prima di inviare un test e controllare i record di consegna. L'anteprima non invia nulla; dopo un timeout, controlla il gruppo prima di riprovare."
+        ],
+        "tips": [
+          "I webhook inviano solo eventi del flusso di lavoro e non ricevono chat di gruppo. Utilizza un bot dell'applicazione per conversazioni bidirezionali."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Notifica Feishu o Lark URL, firma e modello",
+          "caption": "La configurazione senza credenziali e gli screenshot di anteprima della carta sono in sospeso; la consegna effettiva non viene rivendicata."
+        }
+      },
+      {
+        "title": "Aggiungi un bot",
+        "steps": [
+          "Apri Impostazioni → Bot canale, seleziona WeCom o DingTalk a sinistra, aggiungi un bot e assegnagli un nome.",
+          "Per WeCom, seleziona Connessione lunga nelle impostazioni del bot intelligente e copia Bot ID e Segreto. Per DingTalk, crea un'app, abilita il relativo bot Stream e copia Client ID e Client Secret.",
+          "Scegli un progetto predefinito, abilita la connessione lunga, salva e attendi Connesso.",
+          "Aggiungi il bot a un gruppo, menzionalo con un messaggio di prova, esamina la conversazione e rispondi nelle chat del canale del progetto."
+        ],
+        "tips": [
+          "Inserisci i segreti solo nelle impostazioni, non negli screenshot o nei messaggi. In caso di errori di connessione, controlla la modalità della piattaforma, le credenziali e la rete backend.",
+          "Le schede dei pulsanti DingTalk richiedono autorizzazioni di creazione, consegna e aggiornamento. I modelli personalizzati devono corrispondere ai campi descritti nell'interfaccia."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Vecchio modulo Aggiungi bot prima dell'immissione delle credenziali",
+          "caption": "Il vecchio modulo illustra solo nome, credenziali e campi del progetto predefinito. Non è stato salvato o connesso; il nuovo elenco delle piattaforme sul lato sinistro necessita ancora di uno screenshot."
+        }
+      },
+      {
+        "title": "Associa un gruppo di attività e gestisci le revisioni",
+        "steps": [
+          "Apri Bind BOT nei dettagli dell'attività e seleziona un bot abilitato.",
+          "Menzionalo una volta nel gruppo, quindi scegli il gruppo in Gruppi ricevuti di recente. In alternativa, incolla un ID di gruppo noto, verifica l'attività corrente e associala.",
+          "Le domande di gruppo entrano nel coordinatore di quell'attività. Esamina i risultati della fase e gli allegati inoltrati.",
+          "Quando vengono visualizzate le schede di revisione o domanda, leggere prima di agire e tornare a WorkStep per verificare, se necessario. Scollega quando non è più necessario."
+        ],
+        "tips": [
+          "Il progetto predefinito gestisce la chat del canale non associata a un'attività. I collegamenti di gruppo determinano quale attività riceve i messaggi di quel gruppo.",
+          "L'archiviazione o l'eliminazione di un'attività rimuove i vincoli; il ripristino richiede la riassociazione. Il rendering dei pulsanti dipende dai client del canale. Se non disponibile, agire nei dettagli dell'attività."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Finestra di dialogo dell'attività BOT senza gruppo associato",
+          "caption": "Scegli un bot e un gruppo recente, quindi inserisci e associa il suo identificatore. Nessun gruppo di attività è ancora associato."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Sandbox da tavolo",
+    "summary": "Esegui il backend e i motori in un contenitore separato, con directory di progetto esplicitamente associate.",
+    "sections": [
+      {
+        "title": "Completa la guida sandbox in cinque passaggi",
+        "steps": [
+          "Sul desktop, apri Sandbox, l'ultimo elemento Impostazioni. Completa le attività e le conversazioni attive e verifica il supporto della virtualizzazione; Windows ha bisogno di WSL2.",
+          "Per prima cosa scegli un archivio sandbox separato e scarica/prepara il software di supporto.",
+          "Successivamente controlla l'immagine e scarica l'immagine della versione consigliata oppure esegui la scansione dell'esecuzione di Docker locale per un'immagine WorkStep compatibile.",
+          "Terzo selezionare le directory di progetto esistenti o nuove; quarto scegliere provider, motore e migrazione delle preferenze; quinto ispezionare il riepilogo e salvare o confermare e riavviare."
+        ],
+        "tips": [
+          "L'associazione di un progetto non ne copia i file. Le modifiche sandbox influiscono comunque sulla directory originale. Non eseguire lo stesso progetto in entrambi gli ambienti contemporaneamente.",
+          "I progetti non associati vengono temporaneamente nascosti, non cancellati. Sandbox e directory di progetto non possono contenersi a vicenda."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Selezione e conferma del progetto nella guida sandbox in cinque passaggi",
+          "caption": "Esamina l'archiviazione, l'associazione del progetto e la migrazione della configurazione."
+        }
+      },
+      {
+        "title": "Cambia modalità e mantieni la configurazione",
+        "steps": [
+          "Dopo il riavvio, controlla il badge della barra laterale della modalità Sandbox per verificare l'ambiente reale.",
+          "Ricontrolla gli indirizzi dei provider, l'installazione del motore e l'accesso. Host localhost significa qualcosa di diverso nel contenitore e i percorsi potrebbero richiedere modifiche.",
+          "Prima di importare o modificare directory, disabilitare il sandbox e riavviare, quindi utilizzare la gestione del sandbox. Leggere i dettagli del backup e della sostituzione prima dell'importazione.",
+          "Disabilita la sandbox e riavvia per tornare alla modalità ordinaria. In caso di errori, aprire la directory del registro e controllare l'avanzamento e gli errori."
+        ],
+        "tips": [
+          "Le modalità ordinaria e sandbox mantengono una configurazione separata. Il passaggio non sincronizza automaticamente le modifiche.",
+          "Considera le autorizzazioni di compatibilità solo se la sandbox interna di un motore non può essere eseguita; l'interfaccia spiega l'isolamento ridotto. L'eliminazione dei dati sandbox è irreversibile: controlla prima cosa verrà conservato."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Impostazioni comuni e risoluzione dei problemi",
+    "summary": "Comprendere l'ambito della configurazione, leggere prima lo stato e gli errori, quindi effettuare riparazioni mirate.",
+    "sections": [
+      {
+        "title": "Controlla la versione desktop e scarica gli aggiornamenti",
+        "steps": [
+          "Sul desktop, apri Impostazioni → Impostazioni di sistema → Aggiornamenti desktop per controllare la versione corrente.",
+          "Fare clic su Controlla aggiornamenti per trovare l'ultima versione ufficiale di GitHub. Se più recente, fare clic su Scarica da GitHub.",
+          "Scegli il programma di installazione del tuo sistema nella pagina di rilascio, completa il lavoro attivo e installalo tu stesso."
+        ],
+        "tips": [
+          "Il desktop viene controllato una volta al giorno senza download, installazione o riavvio automatico. Solo una versione ufficiale più recente attiva un aggiornamento, non push di codice o bozze.",
+          "Riprovare i controlli non riusciti più tardi. La versione web non ha voce di aggiornamento desktop."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Versione desktop corrente e voce di controllo degli aggiornamenti nelle impostazioni di sistema",
+          "caption": "Controlla manualmente, quindi scarica da GitHub quando è disponibile un aggiornamento."
+        }
+      },
+      {
+        "title": "Concorrenza, assistenti e visualizzazione",
+        "steps": [
+          "Quando si eseguono molte attività, impostare la capacità delle attività e delle conversazioni nei limiti di concorrenza globali o nella configurazione del progetto e controllare i valori effettivi.",
+          "Se le attività pianificate non dovrebbero consumare capacità, verificare che le risorse siano adeguate prima di abilitare tale opzione. Attività in eccesso e coda di chat.",
+          "Configura il motore e il modello di ciascun assistente in Assistenti. Controllare separatamente le impostazioni di esecuzione dei passaggi e del coordinatore delle attività.",
+          "Modificare il nome utente nelle impostazioni di sistema. Lingua, caratteri, dimensioni e skin si trovano in Impostazioni → Aspetto; l'ambito della scansione del repository si trova nelle impostazioni Git."
+        ],
+        "tips": [
+          "La modifica del motore di esecuzione predefinito influisce sulle nuove attività e passaggi, non sulle attività esistenti o sulle impostazioni dei passaggi."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Limiti globali di concorrenza per attività e conversazioni",
+          "caption": "Imposta le capacità globali e l'eccezione per le attività pianificate."
+        }
+      },
+      {
+        "title": "Risolvere i problemi in ordine",
+        "steps": [
+          "Se un'attività non si avvia, distinguere gli stati pronto, in coda e in attesa di revisione. Controlla la fase di avvio, l'avvio automatico e la disponibilità del motore.",
+          "In caso di errore di esecuzione, leggi l'errore più recente. Controllare l'installazione di SDK, l'autenticazione del provider, il nome del modello, le autorizzazioni di rete e di file, quindi eseguire nuovamente.",
+          "Per errori di caricamento della cronologia o API, utilizzare Riprova. Se il API ha restituito una pagina Web, conferma la versione del backend e riavvia utilizzando il metodo abituale.",
+          "Se la cronologia della sessione nativa è andata persa, leggi Riesegui con una nuova sessione, fornisci gli obiettivi correnti e i riferimenti agli artefatti richiesti e non trattarlo come un ripristino completo del contesto nativo.",
+          "Per elementi mancanti o errori di accesso remoto, verificare rispettivamente la generazione effettiva del file o la disponibilità dell'host, l'indirizzo, la chiave e la scadenza dell'autorizzazione."
+        ],
+        "tips": [
+          "Quando segnali problemi, includi versione, sistema operativo, motore, passaggi di riproduzione e screenshot di errore oscurati, mai le credenziali. Senza un'impostazione esplicita, 20 minuti continui senza eventi del motore attivano il timeout di inattività mantenendo la sessione. I timeout personalizzati esistenti rimangono; 0 lo disabilita. Il pensiero silenzioso o gli strumenti non sono necessariamente bloccati: ispeziona i log prima di rieseguirli."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Errore nella dimostrazione causato da un modello inesistente",
+          "caption": "L'errore dice che il modello scelto non è supportato. Riparare la configurazione del modello del passaggio prima di eseguirlo nuovamente; non è riparato in questa immagine."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Aspetto, skin e lingue",
+    "summary": "Scegli le preferenze di visualizzazione personali o crea skin e pacchetti linguistici visualizzabili in anteprima tramite la normale chat del progetto.",
+    "sections": [
+      {
+        "title": "Scegli una lingua integrata",
+        "steps": [
+          "In Impostazioni → Aspetto, scegli cinese semplificato, cinese tradizionale, inglese, giapponese, francese, tedesco o arabo e controlla le voci comuni e i controlli della data.",
+          "Scegli la lingua di visualizzazione del sito web e del manuale dal menu delle lingue in alto, che include giapponese, cinese tradizionale, coreano e altre lingue disponibili. Il browser salva la scelta; in assenza di una preferenza salvata, viene usata la lingua del browser."
+        ],
+        "tips": [
+          "Le traduzioni delle app in francese, tedesco e arabo attualmente coprono le voci principali; altre stringhe potrebbero rimanere cinesi e il layout arabo dell'app è ancora da sinistra a destra. Il sito web e il testo del manuale seguono il selettore della lingua in alto, con layout arabo da destra a sinistra. Gli screenshot reali rimangono cinesi. Il cambio di lingua non traduce le conversazioni passate o i file utente."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Selettori della lingua integrati nell'app e nel sito web",
+          "caption": "Sono in sospeso gli screenshot reali delle scelte linguistiche aggiunte."
+        }
+      },
+      {
+        "title": "Utilizza layout skin v2 ed estensioni delle funzionalità",
+        "steps": [
+          "In Impostazioni → Aspetto, installa e convalida una skin v2 attendibile, visualizzala in anteprima e applicala. Per funzionalità come le note, chiedi all'autore nella chat per la creazione dell'aspetto di includere componenti.",
+          "Leggi la conferma di abilitazione per i pacchetti con codice. L'aggiornamento di un pacchetto o la modifica dell'identità potrebbero richiedere nuovamente. Apri i pannelli tramite i menu della skin o le voci delle funzionalità, che dipendono dal pacchetto. Le note o i calendari non sono funzionalità dell'app preinstallate.",
+          "Il pacchetto può posizionare il compositore sopra, sotto, a sinistra o a destra. Le viste compatte mantengono la disposizione verticale. Dopo il passaggio, i messaggi di controllo, il compositore e le impostazioni rimangono utilizzabili.",
+          "I dati dell'estensione sono separati per identità del browser, dispositivo, skin e funzionalità. Cambiare o eliminare una skin non la cancella. Utilizza l'esportazione dell'estensione per il backup. Se l'interfaccia si rompe, aggiungi skin=default a URL e aggiorna."
+        ],
+        "tips": [
+          "Il codice componente ha i privilegi della pagina corrente. Abilita solo fonti attendibili. L'annullamento dell'anteprima ripristina l'aspetto ma non annulla il codice già eseguito.",
+          "I dati dell'estensione non sono inclusi nelle esportazioni della skin ZIP o sincronizzati tra browser/dispositivi. Eseguire il backup prima di svuotare la memoria; il salvataggio fallito non deve essere considerato un successo."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Conferma dell'abilitazione del componente v2 e immissione nel pannello delle funzionalità",
+          "caption": "È in sospeso lo screenshot dell'esecuzione reale di un pacchetto dimostrativo attendibile. La convalida del formato non è un'accettazione visiva."
+        }
+      },
+      {
+        "title": "Scegli e salva l'aspetto personale",
+        "steps": [
+          "Per l'accesso completo al dispositivo, apri Impostazioni → Aspetto. Gli utenti autorizzati al progetto accedono ad Aspetto e skin dalla barra laterale.",
+          "Scegli carattere, dimensione e lingua. Cerca o filtra le skin installate, visualizza l'anteprima e poi applica. La barra di anteprima fissa consente di annullare o confermare.",
+          "Le scelte degli utenti del Gateway autenticato vengono salvate per account e dispositivo, ripristinandole in un altro browser sullo stesso dispositivo. Riprova i salvataggi non riusciti. Le scelte locali senza accesso alla piattaforma rimangono in questo browser."
+        ],
+        "tips": [
+          "I pacchetti e i record di creazione sono condivisi sul dispositivo; le selezioni personali sono isolate. Gli utenti autorizzati al progetto possono scegliere solo i pacchetti installati.",
+          "I pacchetti mancanti o rotti tornano all'aspetto predefinito. Aggiungi ?skin=default o ?lingual=default per ripristinare la skin predefinita o il cinese semplificato."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Caratteri, dimensioni, lingua e skin installate in Aspetto",
+          "caption": "La pagina delle impostazioni reali mostra le impostazioni predefinite e gli esempi integrati sulla destra. Nessuna preferenza personale è stata modificata."
+        }
+      },
+      {
+        "title": "Crea skin e lingue tramite la chat",
+        "steps": [
+          "Con i diritti di gestione dell'host, fai clic su Parliamo dell'aspetto, scegli un motore installato e verificato e descrivi un obiettivo, ad esempio: crea una skin scura, preserva il layout e utilizza una freccia di invio verso l'alto.",
+          "La chat è a sinistra, la modifica e l'anteprima a destra; i telefoni cambiano scheda. Modifica nome, colori, carattere, dimensione, icona di invio e layout, quindi salva le modifiche nello stesso pacchetto di bozze. La modifica è disabilitata durante l'esecuzione della chat. Controlla le anteprime su PC e telefono.",
+          "Per un pacchetto di lingue, chiedi nella stessa chat, ad esempio: aggiungi lo spagnolo preservando l'aspetto. Cambia il lato destro in Lingua. Si carica dopo la generazione; utilizzare Leggi e convalida per verificarne la directory, la copertura, le stringhe mancanti e gli esempi.",
+          "Per le skin, fai clic su Salva aspetto e anteprima; per le lingue, Installa e visualizza in anteprima. Conferma o annulla nella barra di anteprima. Il salvataggio nella libreria non conferma l'applicazione personale. Esporta ZIP per riutilizzarlo e controlla le richieste di sostituzione per importazioni o aggiornamenti con lo stesso ID."
+        ],
+        "tips": [
+          "La creazione riutilizza il progetto Runtime fisso e la chat ordinaria, invocando il tuo modello. Continua il lavoro precedente attraverso la Cronologia conversazioni sopra la finestra. Gli stessi esempi di anteprima non eseguono attività.",
+          "I caratteri utilizzano i caratteri di sistema installati. I messaggi e i file storici non vengono tradotti automaticamente. Le icone di invio integrate possono essere selezionate nelle regolazioni; le icone vettoriali personalizzate devono essere fornite da una bozza validata.",
+          "I Language Pack sono indipendenti dagli skin e attualmente supportano le lingue da sinistra a destra. Le stringhe mancanti e i controlli della data utilizzano il fallback integrato specificato. La copertura non dimostra la qualità della traduzione; utilizzare la chat per aggiornare cataloghi di stringhe obsoleti."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Aree di chat e modifica/anteprima nella creazione dell'aspetto",
+          "caption": "Una chat di creazione vuota autorizzata e un modulo di regolazione. Il suo compositore è precompilato; nessun messaggio è stato inviato, nessun modello eseguito o skin salvato."
+        }
+      },
+      {
+        "title": "Leggere e visualizzare in anteprima un pacchetto di lingue",
+        "steps": [
+          "Cambia il lato destro dello studio di aspetto su Lingua e controlla la directory del pacchetto lingua. Genera attraverso la stessa chat o importa una lingua esistente ZIP.",
+          "I pacchetti generati vengono caricati automaticamente. Leggere e convalidare la copertura degli assegni, le stringhe mancanti e gli esempi. Un avviso di attesa di generazione per una directory vuota significa che la creazione non è terminata.",
+          "Dopo la convalida, installa e visualizza l'anteprima, quindi conferma o annulla l'applicazione personale. La copertura non può sostituire una revisione della qualità della traduzione."
+        ],
+        "tips": [
+          "Attualmente sono supportate solo le lingue da sinistra a destra. I controlli della data e le stringhe mancanti utilizzano il fallback integrato specificato nel pacchetto."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Directory della lingua e voce di convalida in una chat di creazione vuota",
+          "caption": "La scheda Lingua offre directory, Lettura e convalida e Importazione ZIP. Nessun pacchetto linguistico è stato generato, installato o applicato."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Audit di funzionamento remoto del progetto",
+    "summary": "Ispeziona le azioni dei visitatori remoti e se sono riuscite, sono state negate o non sono riuscite.",
+    "sections": [
+      {
+        "title": "Filtra e controlla le operazioni remote",
+        "steps": [
+          "Sul dispositivo che ospita il progetto, aprire Configurazione → Controllo operazione del progetto locale. I progetti remoti, le aree di lavoro del gateway e l'accesso legato al progetto non offrono questa scheda.",
+          "Filtra per azione e risultato, quindi controlla attore, ora, origine e attività, flusso di lavoro o identificatore di file.",
+          "Vai alla pagina successiva o alla prima pagina, aggiorna i record più recenti e riprova il caricamento non riuscito."
+        ],
+        "tips": [
+          "Questo controllo copre le azioni di origine remota e i risultati negati/non riusciti, non le chat complete e non memorizza credenziali. Il API è solo locale sull'host. La conservazione predefinita è di 30 giorni; seguire la durata effettiva della pagina. I veri nomi dei visitatori delle condivisioni pubbliche sono sconosciuti; Il browser remoto (identità auto-riferita) non è un'identità autenticata."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Filtri di controllo e record vuoti per un progetto locale",
+          "caption": "La voce di audit locale effettiva e i filtri di azione/risultato. Nel progetto dimostrativo non esistono record remoti; nessuna azione o identità è stata fabbricata."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Domande frequenti",
+    "summary": "Comprendere i motori, i servizi modello, le modifiche ai file e i limiti del ripristino prima di iniziare.",
+    "sections": [
+      {
+        "title": "In cosa differiscono SDK e CLI e con quale dovrei iniziare?",
+        "steps": [
+          "Entrambi sono metodi di integrazione del motore per le funzionalità del modello. SDK si integra tramite API per sviluppatori; CLI esegue programmi da riga di comando. Nessuno dei due è il nome di un modello.",
+          "Inizia installando Codex SDK o Claude Agent SDK, completa l'autenticazione, scegli e verifica un modello, quindi impostalo come motore di esecuzione predefinito. Gli utenti CLI esistenti possono invece scegliere quel motore.",
+          "Il provider fornisce l'indirizzo del servizio e l'autenticazione, il modello identifica ciò che gestisce la richiesta e il motore fornisce sessioni, strumenti ed esecuzione. Segui il modulo del motore selezionato; le credenziali non sono necessariamente intercambiabili."
+        ],
+        "tips": [
+          "L'installazione di SDK stabilisce solo le dipendenze di runtime, non l'autenticazione, le autorizzazioni o la quota. Distinguere le voci del Codex e Claude Code SDK da quelle contrassegnate come CLI."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "Scelte SDK e CLI nelle impostazioni del motore",
+          "caption": "Ispezionare i motori SDK consigliati e i loro stati di installazione e verifica separati."
+        }
+      },
+      {
+        "title": "Come vengono addebitate le chiamate per software e modelli?",
+        "steps": [
+          "Controlla il piano, l'autenticazione e la quota del servizio modello selezionato prima di una piccola attività iniziale. Un SDK in sé non è un credito modello.",
+          "L'esecuzione delle attività, la revisione automatica, gli assistenti e i nuovi tentativi possono tutti richiamare modelli. Ispeziona i modelli separatamente nelle impostazioni di passaggio, revisione e assistente.",
+          "Utilizza l'analisi dell'esecuzione per verificare l'utilizzo e le fonti di costo. Le stime aiutano a spiegare i consumi; le spese finali seguono le regole e la fattura del fornitore di servizi."
+        ],
+        "tips": [
+          "Non dare per scontato che il download di un SDK o l'accesso renda le chiamate gratuite o che un abbonamento si applichi a ogni motore."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Utilizzo dei token e fonti di costo nell'analisi dell'esecuzione",
+          "caption": "Vengono visualizzati il costo e la copertura segnalati dal fornitore. Il costo stimato viene etichettato solo quando vengono effettivamente utilizzate le stime dei prezzi."
+        }
+      },
+      {
+        "title": "Dove vengono archiviati i dati e l'intelligenza artificiale può modificare i miei file?",
+        "steps": [
+          "Le attività locali, i flussi di lavoro e i messaggi vengono archiviati nel file .workstep del progetto per impostazione predefinita. La disabilitazione della directory dei dati segue la directory del progetto che utilizza ~/.workstep/projects/<项目ID>/. Il .workstep/project.json del progetto riassocia i dati originali.",
+          "Le richieste e il contesto letti dal motore possono essere inviati al servizio modello configurato. I canali, la condivisione e l'accesso remoto divulgano anche le informazioni nell'ambito loro autorizzato alle parti corrispondenti.",
+          "L'intelligenza artificiale con autorizzazione di scrittura può modificare i file di progetto. Esercitati in un progetto separato, controlla le autorizzazioni prima dell'esecuzione e successivamente ispeziona le differenze Git e gli artefatti effettivi.",
+          "Le associazioni sandbox continuano a modificare i file montati originali. Le attività Worktree forniscono directory separate, ma i risultati dell'unione necessitano comunque di ispezione."
+        ],
+        "tips": [
+          "L'archiviazione locale non significa chiamate a modelli offline. Tieni chiavi, credenziali dell'account e file sensibili irrilevanti fuori dalle descrizioni delle attività, dagli allegati e dagli screenshot."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Pannello della modalità di autorizzazione della conversazione su un telefono",
+          "caption": "Vengono elencate Predefinito, Sola lettura, Scrittura area di lavoro e altre scelte. Il supporto e il comportamento effettivi dipendono dal motore."
+        }
+      },
+      {
+        "title": "In cosa differiscono l'arresto, il nuovo tentativo, la rielaborazione e il ripristino?",
+        "steps": [
+          "L'arresto interrompe l'esecuzione corrente o una risposta ma non annulla i file già scritti. Ispezionare i risultati esistenti prima di continuare.",
+          "Un nuovo tentativo o una nuova esecuzione richiama nuovamente il motore, possibilmente continuando il contesto o utilizzando una nuova sessione come richiesto. Non ripristina ogni modifica allo stato pre-esecuzione.",
+          "La rilavorazione corregge gli output in base al feedback di revisione o alle connessioni di ritorno, in base alle dipendenze e ai limiti del flusso di lavoro. Leggere le conferme quando l'ambito della riesecuzione cambia.",
+          "Dopo aver riaperto WorkStep, ispeziona prima l'attività e lo stato della sessione. I motori che supportano il ripristino possono riprendere la sessione nativa; i record nativi persi richiedono una nuova sessione e una nuova esecuzione."
+        ],
+        "tips": [
+          "Il ripristino automatico dipende dal motore e dalla cronologia disponibile. Il recupero completo non è garantito per ogni motore o interruzione."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Reimposta il passaggio selezionato in un'attività completata",
+          "caption": "Per questa attività completata è selezionato Reimposta passaggio, che influisce solo sul messaggio del passaggio successivo. Non si tratta di una conferma di eliminazione o di un avviso di sessione mancante."
+        }
+      }
+    ]
+  }
+]

@@ -5,6 +5,7 @@ import Input from '../components/Input'
 import Spinner from '../components/Spinner'
 import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
 import { createGitApi } from '../api/git'
+import { hasActiveTaskExecution } from '../utils/taskDisplayStatus'
 import type {
   StepData,
   StepProgress,
@@ -155,6 +156,8 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
       const status = rawStatuses[index]
       let visualState: StepVisualState = 'pending'
       if (status === 'passed') visualState = 'completed'
+      else if (step?.waiting_reason === 'tool_approval') visualState = 'tool_approval'
+      else if (step?.waiting_reason === 'user_input') visualState = 'user_input'
       else if (status === 'reviewing') visualState = 'reviewing'
       else if (status === 'awaiting_review') visualState = 'awaiting_review'
       else if (status === 'retrying') visualState = 'retrying'
@@ -486,7 +489,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
         onViewingPromptChange={setViewingPrompt}
         viewingPrompt={viewingPrompt}
         onCloseViewingPrompt={() => setViewingPrompt(null)}
-        running={task.status === 'running'}
+        running={hasActiveTaskExecution(task)}
         previewArtifact={previewArtifact}
         onCloseArtifactPreview={() => setPreviewArtifact(null)}
         artifactNotice={artifactNotice || undefined}

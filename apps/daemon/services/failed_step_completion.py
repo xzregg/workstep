@@ -59,7 +59,7 @@ def _persist_failed_step_completion_transaction(
         or source.run.task_id != task_id or source.status != "failed"
         or workflow_run is None or workflow_run.task_id != task_id
         or workflow_run.status not in {"failed", "paused", "stopped"}
-        or task.status not in {"paused", "stopped"}
+        or task.status not in {"paused", "waiting", "failed", "stopped"}
         or task_step is None or task_step.status not in {"failed", "pending", "cancelled"}
         or active_runner
     ):

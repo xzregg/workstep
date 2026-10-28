@@ -573,7 +573,8 @@ main > .gateway-portal-header {
 .gateway-admin-page .gateway-tree-tools button { border: 1px solid var(--gateway-admin-separator); background: var(--gateway-admin-canvas); color: var(--gateway-admin-secondary); }
 .gateway-user-group-tree ul[role=group] { padding-left: 12px; border-left: 1px solid var(--gateway-admin-separator); margin-left: 6px; }
 .gateway-user-group-tree summary { display: flex; align-items: center; cursor: pointer; }
-.gateway-user-group-tree summary::before { content: '▾'; font-size: 11px; color: var(--gateway-admin-muted); }
+.gateway-user-group-tree summary::-webkit-details-marker { display: none; }
+.gateway-user-group-tree summary::before { content: '▾'; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; height: 32px; font-size: 20px; line-height: 1; color: var(--gateway-admin-secondary); }
 .gateway-user-group-tree details:not([open]) > summary::before { content: '▸'; }
 .gateway-admin-page .gateway-user-group-tree button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 36px; padding: 6px 10px; margin-bottom: 4px; background: transparent; color: var(--gateway-admin-secondary); text-align: left; white-space: normal; }
 .gateway-admin-page .gateway-user-group-tree button:hover { background: var(--gateway-admin-surface); }

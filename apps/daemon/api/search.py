@@ -24,7 +24,7 @@ async def search_tasks(
     Parameters:
     - projectId: Filter by project ID
     - query: Search in title and description
-    - status: Filter by task status (ready/running/paused/stopped)
+    - status: Filter by task status (ready/queued/running/waiting/failed/stopped/completed)
     - engine: Filter by engine
     - startDate: Filter tasks created after this date (ISO format)
     - endDate: Filter tasks created before this date (ISO format)

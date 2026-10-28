@@ -116,6 +116,47 @@ async def test_system_api_local_boundary(peer, forwarded, source, project, expec
     assert response.status_code == expected
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('runtime,token,scope,expected', [
+    ('1', 'desktop-secret', 'local', 200),
+    ('1', None, 'local', 403),
+    ('1', 'invalid', 'local', 403),
+    ('0', 'desktop-secret', 'local', 403),
+    ('1', 'desktop-secret', 'remote', 403),
+    ('1', 'desktop-secret', 'project', 403),
+    ('1', 'desktop-secret', 'remote_browser', 403),
+    ('1', 'desktop-secret', 'gateway', 403),
+    ('1', 'desktop-secret', 'dispatch', 403),
+])
+async def test_system_api_sandbox_desktop_authentication(monkeypatch, runtime, token, scope, expected):
+    import api.statistics as api
+    import services.remote_access as remote_access
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', runtime)
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'desktop-secret')
+    actor = ActorSnapshot(
+        'a', 'user', 'd', 'device', 'remote' if scope == 'remote' else 'managed',
+        project_id='project-a' if scope == 'project' else None,
+        access_source='remote_browser' if scope == 'remote_browser' else None,
+    )
+    app = FastAPI()
+    app.include_router(api.router)
+    if scope == 'gateway':
+        @app.middleware('http')
+        async def gateway_actor(request, call_next):
+            request.scope['gateway_remote_actor'] = actor
+            return await call_next(request)
+    if scope == 'dispatch':
+        monkeypatch.setattr(remote_access, 'authenticated_remote_dispatch', lambda: object())
+    headers = {'x-workstep-desktop-token': token} if token else {}
+    # Podman forwarding presents a bridge peer even when Electron uses localhost.
+    async with AsyncClient(transport=ASGITransport(app=app, client=('10.0.2.2', 123)), base_url='http://localhost') as client:
+        with actor_context(actor):
+            response = await client.get('/api/statistics/system', headers=headers)
+    assert response.status_code == expected
+    if expected == 200:
+        assert 'history' in response.json()
+
+
 class FakeProcess:
     def __init__(self, pid, created=1, cpu=0, denied=False):
         self.pid, self.created, self.cpu, self.denied = pid, created, cpu, denied

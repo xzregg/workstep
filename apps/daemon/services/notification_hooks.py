@@ -38,6 +38,10 @@ def event_kind(event):
     if event.get('channel') not in (None,'execution','review'): return None
     if event.get('type') == 'CUSTOM' and event.get('name') == 'workstep.task_lifecycle':
         kind = event.get('value',{}).get('event')
+        # Keep existing webhook subscriptions/payloads compatible while the
+        # task lifecycle itself distinguishes waiting from an explicit stop.
+        if kind == 'waiting':
+            return 'paused'
         return kind if kind in {'started','completed','failed','paused','stopped'} else None
     if not event.get('step_key'): return None
     if event.get('type') == 'CUSTOM' and event.get('name') == 'workstep.interaction_request' and event.get('value',{}).get('interaction_id'):

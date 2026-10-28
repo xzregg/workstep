@@ -227,10 +227,12 @@ class TaskRunner:
                 )
 
             task.status = "running"
+            task.status_reason = 'execution'
             task.updated_at = utc_now()
             # 只写状态列：整行 save() 会用可能已过期的实例字段覆盖并发写入。
             Task.update(
                 status="running",
+                status_reason='execution',
                 updated_at=task.updated_at,
             ).where(Task.id == task.id).execute()
 
@@ -325,14 +327,26 @@ class TaskRunner:
             )
         except Exception as e:
             logger.exception("Pipeline failed for task %s", task.id)
-            task.status = "stopped"
+            task.status = "failed"
+            task.status_reason = "engine_error"
         else:
             # Check if all steps completed
             all_keys = set(scheduler.steps.keys())
             if completed == all_keys:
                 task.status = "completed"
+                task.status_reason = None
             else:
-                task.status = "paused"  # some failed
+                from services.task_state import summarize_task_state
+                def final_state():
+                    scope_keys = self._artifact_routes.scope
+                    state_keys = all_keys if scope_keys is None else all_keys & scope_keys
+                    rows = list(TaskStep.select().where(
+                        (TaskStep.task == task) & TaskStep.step_key.in_(state_keys)
+                    ))
+                    return summarize_task_state('running', rows, settled=True,
+                        reason='user_stop' if self._cancel_audit else None)
+                state = await self._run_db(final_state)
+                task.status, task.status_reason = state['status'], state['status_reason']
         finally:
             final_status = task.status
             finished_at = utc_now()
@@ -341,12 +355,13 @@ class TaskRunner:
                 with db_proxy.atomic("IMMEDIATE"):
                     Task.update(
                         status=final_status,
+                        status_reason=task.status_reason,
                         updated_at=finished_at,
                     ).where(Task.id == task.id).execute()
                     if (
                         self._cancel_audit is not None
                         and self._source_project_id is not None
-                        and final_status in {"paused", "stopped"}
+                        and final_status in {"waiting", "failed", "stopped"}
                     ):
                         from services.project_audit import record_project_audit
                         from services.remote_access import replayed_actor_context
@@ -364,11 +379,12 @@ class TaskRunner:
 
             task.updated_at = finished_at
             await self._run_db(persist_pipeline_status)
-            if final_status == "completed":
-                await self._publish(task.id, "", {
-                    "type": "status",
-                    "data": {"task_id": task.id, "status": final_status},
-                })
+            await self._publish(task.id, "", {
+                "type": "status",
+                "data": {"task_id": task.id, "status": final_status,
+                         "status_reason": task.status_reason,
+                         "pending_confirmations": state['pending_confirmations'] if final_status == 'waiting' else []},
+            })
 
     async def _execute_dag(
         self,
@@ -1445,6 +1461,29 @@ class TaskRunner:
         """发布出口：内部事件 → AG-UI 标准事件后推送。"""
         from services.remote_project import current_actor_event_fields
 
+        aggregate = None
+        if step_key and event.get('type') in {'status', 'interaction_request', 'interaction_response'}:
+            def update_state():
+                from services.task_state import reconcile_task_state, waiting_interactions
+                current = Task.get_or_none(Task.id == task_id)
+                if current is None:
+                    return None
+                row = TaskStep.get_or_none((TaskStep.task == current) & (TaskStep.step_key == step_key))
+                if row is not None:
+                    pending = waiting_interactions(row)
+                    data = event.get('data') or {}
+                    identity = str(data.get('interaction_id') or '')
+                    if event['type'] == 'interaction_request' and identity:
+                        pending[identity] = 'tool_approval' if data.get('method') in {'request_permission', 'session/request_permission'} else 'user_input'
+                    elif event['type'] == 'interaction_response':
+                        pending.pop(identity, None)
+                    elif event['type'] == 'status' and row.status not in {'running', 'reviewing'}:
+                        pending.clear()
+                    row.waiting_interactions_json = json.dumps(pending) if pending else None
+                    row.save(only=[TaskStep.waiting_interactions_json])
+                return reconcile_task_state(current)
+            aggregate = await self._run_db(update_state)
+
         payload = {
             "task_id": task_id,
             "step_key": step_key,
@@ -1457,3 +1496,5 @@ class TaskRunner:
         ctx = AGUIContext.from_event(payload)
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)
+        if aggregate is not None:
+            await self._publish(task_id, '', {'type': 'status', 'data': {'task_id': task_id, **aggregate}})

@@ -12,6 +12,25 @@ import { useChatListStore, useChatSessionStore } from '../src/stores/chatSession
 import { writeChatSessionDrag } from '../src/utils/chatSessionDrag'
 import type { Project } from '../src/api/client'
 
+test('chat pane lets the loading state fill the conversation height and center its content', () => {
+  const { window } = installDomEnvironment()
+  const stylesheet = document.createElement('style')
+  stylesheet.textContent = ['../src/index.css', '../src/pages/ChatWorkspace.css']
+    .map(path => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^@import[^;]+;/gm, '')).join('\n')
+  document.head.appendChild(stylesheet)
+  const pane = document.createElement('div')
+  pane.className = 'chat-workspace-pane-content'
+  pane.innerHTML = '<div class="chat-session-empty" role="status">加载中</div>'
+  document.body.appendChild(pane)
+  const containerStyle = window.getComputedStyle(pane)
+  const loadingStyle = window.getComputedStyle(pane.firstElementChild!)
+  assert.equal(containerStyle.display, 'flex')
+  assert.equal(containerStyle.flexDirection, 'column')
+  assert.equal(loadingStyle.flexGrow, '1')
+  assert.equal(loadingStyle.alignItems, 'center')
+  assert.equal(loadingStyle.justifyContent, 'center')
+})
+
 test('desktop chat opens at most four independent panes, preserves drafts across layout changes and follows navigation', async () => {
   const { window } = installDomEnvironment()
   window.happyDOM.setWindowSize({ width: 1600, height: 1000 })

@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Stáhněte, nainstalujte a otevřete WorkStep",
+    "summary": "Nejprve nainstalujte WorkStep a poté motor SDK. Desktopová aplikace obsahuje své backendové běhové prostředí; nemusíte nejprve instalovat Python.",
+    "sections": [
+      {
+        "title": "Vyberte instalačního programu",
+        "steps": [
+          "Pomocí odkazu ke stažení z webu vyberte instalační program pro váš operační systém a čip. Na Macu vyberte arm64 DMG pro čipy Apple řady M nebo x64 DMG pro Intel.",
+          "Nainstalujte a otevřete WorkStep pomocí běžného instalačního procesu vašeho systému. Počkejte, až bude připraven místní backend a neotevře se pracovní prostor.",
+          "Při prvním spuštění zadejte na výzvu zobrazovaný název. Chcete-li znovu navštívit registraci, otevřete Nastavení → Nastavení systému → Přihlášení (设置 → 系统设置 → 新手引导) a poté klikněte na Přihlášení."
+        ],
+        "tips": [
+          "Instalační programy pro stolní počítače nezahrnují volitelné motory, jako je Codex SDK nebo Claude Agent SDK. Nainstalujte je prostřednictvím rozhraní v další kapitole.",
+          "Dřívější nepodepsané sestavení macOS nebo Windows mohou vyvolat výzvy k zabezpečení systému. Než budete postupovat podle pokynů systému, ověřte zdroj stahování.",
+          "Samostatné místní použití nevyžaduje přihlášení k bráně. Pokud dobrovolně povolíte bránu a nelze spustit ověřování, místní položka se pokusí vrátit do místního režimu a deaktivovat bránu, přičemž si ponechá svou adresu pro pozdější opětovné připojení. Instalace vázaná na bránu nebo vzdálený návštěvník toto nemohou použít k deaktivaci brány hostitele. Pokud se návrat do místního režimu nezdaří, ověřte místní backend a obnovte jej a zkuste to znovu."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Nastavení identity a rychlý start při prvním spuštění",
+          "caption": "Zadejte místní zobrazovaný název pro vstup do pracovního prostoru nebo zahajte rychlé nastavení. Tento obrázek používá demonstrační identitu."
+        }
+      },
+      {
+        "title": "Pochopte tři pojmy",
+        "steps": [
+          "Motor provádí úkoly a volá nástroje. Tato příručka nejprve doporučuje Codex SDK nebo Claude Agent SDK; samostatně instalovaný motor CLI není vyžadován.",
+          "Poskytovatel dodává model API, adresu API a přihlašovací údaje. Je oddělený od prováděcího jádra a jeho protokol se musí shodovat s protokolem podporovaným tímto jádrem.",
+          "Model skutečně zpracovává váš požadavek. Nainstalujte motor, ověřte jej, vyberte a otestujte model a poté vytvořte úlohu."
+        ],
+        "tips": [
+          "SDK může zahrnovat nebo vyvolat základní spustitelný soubor. Výběr SDK neznamená, že neexistují žádné podprocesy.",
+          "WorkStep ukládá data projektu lokálně. Během provádění odešle vybraný stroj a poskytovatel kontext úlohy do modelové služby."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Krok 1: Nainstalujte motor SDK",
+    "summary": "Začněte s SDK. Stahujte a spravujte motory prostřednictvím Install & version (安装与版本), bez kopírování příkazů pro instalaci terminálu.",
+    "sections": [
+      {
+        "title": "Stáhněte a nainstalujte přes rozhraní",
+        "steps": [
+          "Otevřete Nastavení → Spouštěcí moduly (设置 → 执行引擎). Najděte kartu Codex nebo Claude Code označenou sdk, která odpovídá Codex SDK a Claude Agent SDK. Zpočátku nainstalujte pouze ten, který chcete použít.",
+          "Klikněte na Instalovat a verze, počkejte na seznam verzí a poté vyberte vhodnou verzi v části Vybrat verzi.",
+          "Klikněte na Instalovat vybranou verzi a ověřte verzi. Pokud se objeví podmínky třetích stran, přečtěte si je a přijměte je před kliknutím na Potvrdit instalaci.",
+          "Počkejte na stažení hlavního balíčku, instalaci motoru a závislostí a ověření verze. Potvrďte, že je zobrazena nová verze.",
+          "Změna verze SDK vyžaduje restartování backendu. Uživatelé stolních počítačů mohou dokončit aktuální práci, ukončit a znovu otevřít WorkStep a poté pokračovat v konfiguraci."
+        ],
+        "tips": [
+          "Procento pokrývá pouze hlavní balení. Stahování a extrakce závislostí nemusí mít žádné procento; použijte popis fáze k posouzení pokroku.",
+          "Instalace pokračuje, když je její sekce sbalená. Neposílejte znovu pouze proto, že se pokrok dočasně přestal měnit.",
+          "Pokud se nezobrazí žádná vhodná verze, obnovte seznam a zkontrolujte podporu sítě a platformy. Když je nakonfigurována vlastní cesta ke spustitelnému souboru, před správou verzí ji vymažte podle pokynů."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "Instalace motoru SDK a výběr verze",
+          "caption": "Klikněte na Instalovat a verze, Vybrat verzi a poté Nainstalovat vybranou verzi."
+        }
+      },
+      {
+        "title": "Ověřte instalační a udržujte verze",
+        "steps": [
+          "Znovu otevřete Execution Engines a zkontrolujte, zda je SDK detekován jako nainstalovaný s očekávanou verzí.",
+          "Pro pozdější upgrady použijte Install & version. Pokud je k dispozici verze pro vrácení zpět, klepněte na tlačítko Vrátit zpět na… a potvrďte; rollback znovu stáhne starší verzi.",
+          "Pokud se instalace nezdaří, přečtěte si chybu v této části, zkontrolujte síť, místo na disku a instalační cestu a zkuste to znovu. Úspěšná instalace neznamená úspěšnou autentizaci modelu: dokončete konfiguraci a testování."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Verze a postup po instalaci SDK",
+          "caption": "Po instalaci zkontrolujte aktuální verzi. Zbývající indikátor 100 % znamená, že instalace byla dokončena, nikoli že stahování pokračuje."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Konfigurace poskytovatelů, ověřování a testy připojení",
+    "summary": "Nakonfigurujte kompatibilního poskytovatele v WorkStep a připojte jej k vašemu SDK. Uživatelé s existujícím nativním přihlášením mohou také znovu použít ověření motoru.",
+    "sections": [
+      {
+        "title": "Přidejte poskytovatele",
+        "steps": [
+          "Otevřete Nastavení → Poskytovatelé → Přidat poskytovatele (设置 → 供应商 → 添加供应商). Zadejte rozpoznatelný název a vyberte typ služby a protokol API.",
+          "Pro Claude Agent SDK vyberte kompatibilní koncový bod Anthropic Messages; pro Codex SDK vyberte kompatibilní koncový bod OpenAI Responses. Samotné tvrzení „kompatibilní s OpenAI“ nezakládá kompatibilitu protokolu.",
+          "Zadejte adresu API a klíč API dodané poskytovatelem. Ponechat cesty k verzím, jako je /v1 nebo /v2; nepoužívejte úplný koncový bod chatu jako základní adresu.",
+          "Uložte poskytovatele a klikněte na Test připojení. Chcete-li získat modely, klikněte na Získat modely, vyberte modely, které potřebujete, a poté Uložit vybrané.",
+          "Ujistěte se, že je poskytovatel povolen. Po dokončení testu se vraťte k SDK a dokončete vazbu a testování motoru."
+        ],
+        "tips": [
+          "Předplatné účtu, přihlašovací údaje API a fakturaci určuje poskytovatel služeb. Instalace SDK neposkytuje přihlašovací údaje.",
+          "Při úpravě poskytovatele ponecháte-li klíč prázdný, zachová se stará hodnota. Zadejte nový klíč, který jej nahradí, a skryjte klíče před snímky obrazovky nebo před konfigurací sdílení.",
+          "V podnikově spravovaném režimu mohou být poskytovatelé přiřazeni platformou. Místo opětovného přidávání použijte autorizovaného poskytovatele."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Nastavení názvu poskytovatele, protokolu a adresy API",
+          "caption": "Nakonfigurujte kompatibilní protokol, uložte jej a otestujte připojení. Obrázek ukazuje veřejnou adresu API s prázdným polem klíče."
+        }
+      },
+      {
+        "title": "Svažte a ověřte SDK",
+        "steps": [
+          "Vraťte se do Nastavení → Prováděcí stroje, rozbalte konfiguraci nainstalovaného SDK a vyberte kompatibilního poskytovatele, kterého jste uložili.",
+          "Claude Agent SDK vyžaduje režim oprávnění. Přečtěte si jeho popis, vyberte a potvrďte; ostatní pokročilá pole mohou zůstat ve výchozím nastavení. U Codex SDK nejprve ponechte výchozí nastavení zdůvodnění, schválení a karantény.",
+          "Klikněte na Uložit konfiguraci a zkontrolujte výchozí model. U vázaného poskytovatele obnoví modely znovu načte pouze uložené výběry, nikoli načte všechny modely. Pokud neexistuje žádná mezipaměť nebo výběry, je seznam prázdný. Chcete-li přidat modely, vraťte se do Nastavení → Poskytovatelé, Získat modely a Uložit vybrané, poté obnovte modul.",
+          "Klikněte na Test na kartě motoru, počkejte na výsledek a potvrďte Ověřeno (已验证). Toto je váš kontrolní bod před spuštěním úloh."
+        ],
+        "tips": [
+          "Testování motoru vyvolá vybraný motor a může způsobit servisní poplatky modelu.",
+          "Uvažování, schvalování a možnosti sandboxu Codex SDK mají čínské štítky. Seznam úsilí zobrazuje nastavení podporovaná motorem, i když je katalog modelů prázdný; neznamená to, že každý model podporuje všechny úrovně. Začněte s výchozími nastaveními. Pokud model odmítne úroveň, vraťte se na Automaticky nebo na podporovanou hodnotu.",
+          "Bez vazby poskytovatele používá Codex SDK znovu místní ověřování Codex, zatímco Claude Agent SDK používá svou nativní konfiguraci ověřování. Noví uživatelé bez existujícího přihlášení by měli začít s konfigurací poskytovatele.",
+          "V případě chyb ověřování zkontrolujte klíč, adresu API, protokol a oprávnění účtu. V případě chyb modelu zkontrolujte ID modelu a podporu poskytovatele. Pokud je označeno Není nainstalováno, vraťte se k instalaci."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Otestujte, ověřte a uložte konfiguraci na kartě Codex SDK",
+          "caption": "Na kartě Codex sdk se zobrazí Verified, což znamená, že tento motor prošel testem."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Nastavte výchozí prováděcí modul a model",
+    "summary": "Udělejte z testovaného SDK výchozí prováděcí modul pro kroky, které neurčují jiný modul.",
+    "sections": [
+      {
+        "title": "Uložte výchozí nastavení",
+        "steps": [
+          "V části Nastavení → Spouštěcí moduly → Výchozí spouštěcí modul vyberte SDK, které jste právě ověřili.",
+          "Klikněte na Uložit výchozí a potvrďte zprávu o úspěchu. Po pouhém výběru hodnoty v rozevíracím seznamu neodcházejte.",
+          "Vyberte model ve voliči výchozího modelu karty SDK. Kroky bez samostatného modelu používají toto výchozí nastavení.",
+          "Po vytvoření pracovního postupu znovu zkontrolujte motor a model každého kroku. Explicitní nastavení kroku se automaticky nezmění, když se změní globální výchozí hodnoty."
+        ],
+        "tips": [
+          "Asistenti mají samostatné položky konfigurace. Změna výchozího prováděcího modulu nezmění každého asistenta.",
+          "Nejprve dokončete pracovní postup s jedním ověřeným SDK a jedním modelem a poté vyzkoušejte různé modely pro různé kroky."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Selektor výchozího spouštěcího modulu a tlačítko Uložit výchozí nastavení",
+          "caption": "Výchozí selektor motoru a položka Uložit výchozí. Pydantic AI není na tomto obrázku nakonfigurován; žádné výchozí nastavení nebylo změněno ani ověřeno."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Připojte místní projekt",
+    "summary": "Projekt odpovídá místnímu adresáři kódu. Jeho data standardně následují projekt nebo mohou být uložena podle ID projektu pod domovskou stránkou aktuálního uživatele.",
+    "sections": [
+      {
+        "title": "Pochopte automaticky připravený výchozí pracovní prostor",
+        "steps": [
+          "Při první položce obsahuje boční panel Výchozí pracovní prostor (默认工作区). Bez vybraného projektu otevře WorkStep svou běžnou chatovací stránku. Existující výběry projektů a vzdálené vazby mají přednost.",
+          "Po konfiguraci SDK použijte tento pracovní prostor pro běžný chat. Chcete-li pracovat na svém kódu, použijte Přidat projekt k připojení jeho skutečného adresáře; výchozí pracovní prostor není již připojené úložiště.",
+          "Výchozí pracovní prostor je sdílen také tvorbou dovedností, enginu, vzhledu a jazykového balíčku. Tyto položky znovu používají běžný chat a ukládají své výstupy v tomto pracovním prostoru."
+        ],
+        "tips": [
+          "Výchozí pracovní prostor můžete přejmenovat, ale nemůžete jej odstranit ze seznamu projektů. Nevytváří automaticky pracovní postup.",
+          "Výchozí pracovní prostor je projekt; SDK je prováděcí stroj. Mít projekt neznamená, že je stroj nainstalován nebo ověřen."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Výchozí pracovní prostor a běžný záznam chatu na postranním panelu",
+          "caption": "Prázdný obyčejný chat ve výchozím pracovním prostoru, zatím bez konverzací nebo pracovních postupů. Vytvořte konverzaci zde; kódové projekty stále musí být explicitně připojeny."
+        }
+      },
+      {
+        "title": "Začněte s ukázkovým adresářem",
+        "steps": [
+          "Připravte si samostatnou ukázkovou složku, například workstep-demo. Pro existující kód vyberte jeho kořen projektu.",
+          "Klikněte na Postranní panel → Přidat projekt → Místní projekt (侧边栏 → 添加项目 → 本地项目), vyberte tuto složku v prohlížeči adresářů a potvrďte.",
+          "Zkontrolujte, zda se projekt zobrazuje na postranním panelu, a přepněte na něj. Nové projekty nemají ve výchozím nastavení žádný pracovní postup; vytvořit další.",
+          "Při pozdějším opětovném připojení stejného adresáře se pracovní postupy, úkoly a zprávy obnoví z dat projektu. Neodstraňujte .workstep pouze za účelem opětovného otevření projektu."
+        ],
+        "tips": [
+          "Motory mohou číst nebo upravovat soubory projektu podle pokynů k úkolu. Před úpravou skutečného kódu si procvičte v samostatném adresáři a uchovejte historii verzí.",
+          "Ve výchozím nastavení jsou data projektu v .workstep/workstep.db, nahrána v .workstep/uploads/, a artefakty v .workstep/artifacts/. Díky centralizovanému úložišti zálohujte odpovídající adresář projektových dat pod Home a soubor identity projektu.",
+          "Nové nebo přejmenované názvy projektů nesmí obsahovat mezery, tabulátory ani jiné mezery."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Přidejte místní projekt a vyberte jeho kořenový adresář",
+          "caption": "Vyberte ukázkový adresář a poté z postranního panelu zadejte připojený projekt."
+        }
+      },
+      {
+        "title": "Otevřete adresář projektu a prohlédněte si vygenerované soubory",
+        "steps": [
+          "Vyberte projekt a klikněte na Otevřít adresář na jeho stránce úkolu nebo projektu. Použijte toto ke kontrole skutečně vygenerovaných souborů po dokončení úlohy.",
+          "V aplikaci pro stolní počítače zobrazuje šipka vpravo seznam zjištěných místních správců souborů, editorů a terminálů. Výběrem se okamžitě otevře adresář a zapamatuje si místní volbu. Zobrazí se pouze zjištěné dostupné aplikace.",
+          "Vzdálené projekty a vzdálený přístup pomocí prohlížeče používají prohlížeč webového adresáře. Sestavení desktopu bez mostu pro otevírání adresářů jej také používají; desktopový editor nemusí být instalován uvnitř kontejneru."
+        ],
+        "tips": [
+          "Cesty projektu karantény desktopu jsou před otevřením mapovány zpět do adresářů pro připojení hostitele. Pokud žádné připojení neodpovídá, zkontrolujte konfiguraci připojení projektu.",
+          "Pokud selže Otevřít adresář, zkontrolujte, zda vybraná aplikace a adresář stále existují, nebo zkontrolujte projekt přímo ve správci systémových souborů."
+        ]
+      },
+      {
+        "title": "Změnit pořadí projektů postranního panelu",
+        "steps": [
+          "Na postranním panelu přetáhněte Ruční ukázka (操作手册演示) před nebo za požadovaný projekt.",
+          "Lokální a vzdálené projekty lze prokládat. Uvolnění uloží objednávku do místní konfigurace a opětovné otevření ji zachová."
+        ],
+        "tips": [
+          "Řazení ovlivňuje pouze zobrazení tohoto zařízení, nikoli pořadí projektů na vzdáleném hostiteli. Postupujte podle chybové zprávy a opakujte akci, pokud se uložení nezdaří."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Dva místní demonstrační projekty a pracovní postupy v postranním panelu",
+          "caption": "Nejnovější postranní panel zobrazuje dva místní demonstrační projekty a výchozí pracovní prostor. Přetažením řádků projektu změníte pořadí; není připojeno žádné vzdálené zařízení."
+        }
+      },
+      {
+        "title": "Vyberte, kde budou data projektu uložena",
+        "steps": [
+          "Po výběru adresáře v části Postranní panel → Přidat projekt → Místní projekt zaškrtněte políčko Datový adresář následuje adresář projektu (数据目录跟随项目目录), ve výchozím nastavení povoleno pro nové projekty.",
+          "Po zaškrtnutí jsou úkoly, pracovní postupy, přílohy, protokoly, artefakty, dovednosti a paměť uloženy v projektu .workstep/.. Zrušení zaškrtnutí používá ~/.workstep/projects/<项目ID>/, takže v adresáři projektu zůstane pouze .workstep/project.json jako soubor identity.",
+          "U existujícího projektu zkontrolujte jeho skutečnou datovou cestu v části Konfigurace projektu → Obecné. Změňte zaškrtávací políčko a potvrďte migraci. První zastavení úkolů, konverzací a rychlých akcí; odstranit existující pracovní prostory Git.",
+          "Počkejte na migraci a poté zkontrolujte novou cestu a původní úlohy. Selhání zachová původní data. Neprázdný cíl se nepřepíše; vyřešte nahlášený problém a zkuste to znovu."
+        ],
+        "tips": [
+          "Opětovné přidání existujícího projektu zachová režim úložiště v jeho souboru identity; nepřesouvá data automaticky.",
+          "Při přesouvání nebo přejmenování projektu si ponechte .workstep/project.json a poté jej znovu přidejte, abyste poznali původní projekt. Odstraněním tohoto souboru identity neodstraníte domovská data, ale zabráníte automatickému přidružení.",
+          "Kopie se stejným ID projektu nemůže koexistovat s registrovaným původním adresářem: systém hlásí konflikt ID. Pro migraci mezi počítači zkopírujte také odpovídající domovský datový adresář.",
+          "Centralizované úložiště stále automaticky ignoruje .workstep/ v projektu. Běžná komprese automaticky neuplatňuje pravidla ignorování Git, ale soubor identity neobsahuje žádná data úlohy."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Možnost ukládání dat a upozornění na soubor identity při přidávání projektu",
+          "caption": "Skutečné rozhraní Přidat projekt: zrušením zaškrtnutí výchozího nastavení se zobrazí domovská cesta a pokyny pro přesun nebo migraci mezi počítači."
+        }
+      },
+      {
+        "title": "Přesunout data existujícího projektu",
+        "steps": [
+          "Otevřete Obecné v konfiguraci projektu a ověřte aktuální datovou cestu.",
+          "Klikněte na Adresář dat následuje adresář projektu, přečtěte si a potvrďte migraci a počkejte. Aktivní práce nebo neprázdný cíl způsobí chybu."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Umístění úložiště dat v nastavení demonstračního projektu",
+          "caption": "Ověřte aktuální cestu. Změna zaškrtávacího políčka stále vyžaduje potvrzení migrace v dialogovém okně."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Vytvořte svůj první pracovní postup ve dvou krocích",
+    "summary": "K pochopení kroků, vstupů, výstupů a spojení použijte Analýza požadavků → Provést úlohu.",
+    "sections": [
+      {
+        "title": "Vytvořte příklad prostřednictvím onboardingu",
+        "steps": [
+          "Ujistěte se, že jste uložili výchozí prováděcí stroj a vybrali připojený lokální projekt. Pokud je registrace uzavřena, znovu otevřete Nastavení → Nastavení systému → Přihlášení a klikněte na Přihlášení.",
+          "V části Vytvořit dvoufázový pracovní postup klikněte na Vytvořit příklad pracovního postupu. Počkejte na úspěch a na otevření plátna.",
+          "Příklad se jmenuje Analýza a provádění (分析与执行). Jeho první krok, analýza požadavků (需求分析), vytváří plán provádění (执行计划), spojený s druhým krokem, prováděním úlohy (执行任务).",
+          "Otevřete oba kroky a zkontrolujte motor, model, výzvu, vstupy a výstupy a ujistěte se, že používají ověřený SDK. Příklad nezačíná při vytváření ani nespouští recenze; po spuštění se jeho dva kroky provedou v pořadí závislostí."
+        ],
+        "tips": [
+          "Běžný nový pracovní postup začíná prázdným plátnem bez vzorových kroků. Explicitně vyberte šablonu.",
+          "Neposuzujte nastavení pouze podle vzhledu linky: ověřte, zda výstupní port odpovídá vstupním požadavkům v dalším kroku."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Dvoufázové plátno pro analýzu požadavků a provádění úloh",
+          "caption": "Analýza požadavků vytváří plán provádění úlohy Execute. Kliknutím na každý krok zkontrolujte jeho konfiguraci."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Vytvořte a dokončete svůj první úkol",
+    "summary": "Pomocí malého, explicitního a snadno zkontrolovatelného úkolu ověřte, zda váš SDK, projekt a pracovní postup spolupracují.",
+    "sections": [
+      {
+        "title": "Napište ověřitelnou žádost",
+        "steps": [
+          "Připravte si README.md a example.txt v adresáři ukázky. README.md by měl uvést pět operací k vysvětlení, s doplňujícími poznámkami v example.txt. Používejte raději demonstrační obsah než soukromý materiál.",
+          "Otevřete stránku úlohy demonstračního projektu, vyberte položku Analýza a provedení a poté klikněte na možnost Nová úloha. Otevře ji také záznam vytvoření úlohy.",
+          "Začněte v části Analýza požadavků a zadejte název Uspořádat pokyny k projektu (整理项目说明).",
+          "Popis příkladu: Přečtěte si README.md a example.txt, vytvořte plán provádění a poté vytvořte soubor 使用说明.md v kořenovém adresáři projektu. Uveďte pět operací v Markdown, jednu větu na operaci. Čtěte pouze tyto dva existující soubory; neupravujte je. Můžete vytvořit 使用说明.md, ale neupravujte jiné soubory. Po dokončení nahlaste umístění vygenerovaného souboru.",
+          "Vyberte Ruční spuštění a klikněte na Vytvořit úlohu. Zkontrolujte požadavek a počáteční krok a poté Spustit úlohu. Případně zvolte Spustit ihned po vytvoření."
+        ],
+        "tips": [
+          "Specifikujte cíl, povolené akce, formát dodání a kritéria přijetí; to usnadňuje kontrolu výsledků než vágní požadavek.",
+          "Začít v pozdějším kroku přeskočí dřívější. U prvního cvičení začněte s analýzou požadavků.",
+          "Otevření panelu vytváření úloh z onboardingu samo o sobě nespustí úlohu; možnost spuštění panelu řídí provádění."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Název úlohy, popis, počáteční krok a režim spuštění",
+          "caption": "Napište konkrétní požadavek, vyberte jeho počáteční krok a explicitně zvolte, kdy začne realizace."
+        }
+      },
+      {
+        "title": "Postupujte podle kroků a zkontrolujte výstupy",
+        "steps": [
+          "Otevřete podrobnosti úkolu a sledujte aktuální krok, stav a zprávy. Počkejte, až motor běží, a odpovězte na explicitní otázky nebo žádosti o schválení v rozhraní.",
+          "Po dokončení analýzy požadavků se úloha Execute spustí automaticky podle připojení závislosti. Není potřeba žádné další kliknutí na tlačítko Start. Přečtěte si plán prvního kroku a zkontrolujte, zda jej druhý použil.",
+          "Po dokončení úlohy Execute si přečtěte závěrečnou zprávu a otevřete 使用说明.md v kořenovém adresáři projektu. Zkontrolujte, zda se jedná o Markdown, obsahuje pět operací a pro každou používá jednu větu.",
+          "Pokud se ve zprávě zobrazují soubory Upraveno…, rozbalte je a klikněte na název souboru. Prohlédněte si nahraný patch, pokud je k dispozici; jinak náhled aktuálního souboru. Historické změny se mohou nyní lišit od souboru, takže stále zkontrolujte skutečný výstup.",
+          "Ověřte, že se README.md a example.txt nezměnily a byl přidán pouze povolený soubor 使用说明.md. Použijte položku souboru projektu nebo správce systémových souborů. Samotný stav dokončení neprokazuje správnost."
+        ],
+        "tips": [
+          "Pokud čekání pokračuje, rozlišujte čekání na spuštění, schválení, kontrolu a aktivní provádění: každý z nich potřebuje jinou reakci.",
+          "Při selhání zachovejte chybu a nejprve znovu otestujte připojení SDK. Po opravě konfigurace použijte dostupné obnovení úlohy nebo to zkuste znovu.",
+          "Pokud API hlásí, že vrátil webovou stránku, potvrďte, že byl backend aktualizován a restartován, poté obnovte stránku a zkuste to znovu. Samotné selhání načtení podrobností o provedení neznamená selhání provedení; z tohoto důvodu nevytvářejte duplicitní úlohu."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Výstup 使用说明.md po dokončení úlohy ve dvou krocích",
+          "caption": "Po dokončení obou kroků si prohlédněte 使用说明.md a jeho pět popisů operací."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Upravit pracovní postupy",
+    "summary": "Rozdělte práci na kroky a nakonfigurujte spouštěcí motory, vstupy, výstupy a pravidla kontroly.",
+    "sections": [
+      {
+        "title": "Přidejte a připojte kroky",
+        "steps": [
+          "Vyberte projekt a pracovní postup vlevo a zadejte Workflow canvas. Nový pracovní postup je prázdný; přidat kroky nebo explicitně použít šablonu.",
+          "Klikněte na + Krok a zadejte jeho název a identifikátor, například Uspořádat požadavky s požadavky. Identifikátory musí být v rámci pracovního postupu jedinečné, začínat anglickým písmenem a obsahovat pouze písmena, číslice, podtržítka nebo spojovníky.",
+          "Napište výzvu s jasným cílem, omezeními a výstupy. Například: Přečtěte si popis úlohy, uveďte kritéria přijetí a plán implementace a uložte dokument požadavků.",
+          "Nakonfigurujte nainstalovaný, ověřený motor a model SDK. Chcete-li zdědit výchozí hodnoty, vyberte výchozí spouštěcí modul nebo výchozí model modulu.",
+          "Po nastavení vstupů a výstupů přetáhněte z výstupního výstupního portu do odpovídajícího výstupního vstupu a poté Uložit."
+        ],
+        "tips": [
+          "Plné čáry nesou data. Zpětné připojení proti proudu vytvoří čárkované zpětné spojení pro zpětnou vazbu při přepracování.",
+          "Oznámení o neuložených změnách znamená, že úpravy na plátně ještě nebyly zachovány."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Workflow canvas se dvěma kroky a vstupními/výstupními připojeními",
+          "caption": "Najděte tlačítko Přidat krok, porty připojení a položku Uložit."
+        }
+      },
+      {
+        "title": "Konfigurace vstupů, výstupů a zpětných připojení",
+        "steps": [
+          "Otevřete editor kroků, jasně pojmenujte výstupy a nakonfigurujte požadované vstupy.",
+          "Připojte každý požadovaný výstup k jeho odpovídajícímu výstupnímu vstupu. Během provádění zkontrolujte dostupnost v části Vstupy a výstupy kroku v podrobnostech úlohy.",
+          "Pro přepracování vytvořte návratové připojení a nastavte maximální návratnost pro tento krok. Před uložením si přečtěte varování o potenciálně nespustitelných fázích a zkontrolujte, zda počáteční spuštění nezávisí na dosud nevygenerovaných artefaktech přepracování."
+        ],
+        "tips": [
+          "Maximální návratnost řídí přerušovaná návratová spojení a je oddělena od opakování po neúspěšné kontrole.",
+          "Deklarace výstupního portu nevytvoří soubor. Vyžadujte skutečné dodávky ve výzvě a poté je zkontrolujte."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Vstupní artefakty a odpovídající výstupy v editoru uzlů",
+          "caption": "Vstup deklaruje požadavky úlohy s plánem provádění jako odpovídajícím výstupem. Nastavení počtu vrácených položek se nezobrazují."
+        }
+      },
+      {
+        "title": "Nastavte kontrolu a automatické spuštění",
+        "steps": [
+          "V části Step review v editoru vyberte Ruční recenzi, Automatickou kontrolu nebo Přeskočit recenzi. Zpočátku se doporučuje ruční kontrola.",
+          "Ruční kontrola se po provedení pozastaví pro vaše rozhodnutí. Pro automatickou kontrolu napište ověřitelná kritéria a volitelně vyberte motor a model.",
+          "Nastavení opakování poté, co automatická kontrola odmítne výsledek. Chyby v samotném revizním agentovi přejdou na ruční manipulaci.",
+          "Podle potřeby nastavte Spustit automaticky po vytvoření a poté uložte. Pro počáteční procvičení jej deaktivujte, abyste si mohli úkol před zahájením prohlédnout."
+        ],
+        "tips": [
+          "Nainstalujte a nakonfigurujte motory SDK před jejich použitím pro spuštění nebo kontrolu."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Ovládací prvky režimu krokového prohlížení v editoru uzlů",
+          "caption": "Vyberte režim revize v editoru uzlů. Samostatně zkontrolujte automatické spuštění, jak je popsáno výše."
+        }
+      },
+      {
+        "title": "Odešlete napříč pracovními postupy a znovu použijte prvky plátna",
+        "steps": [
+          "Chcete-li předat výstupy jinému projektu nebo pracovnímu postupu, přidejte krok pracovního postupu a vyberte cílový projekt, pracovní postup, počáteční krok a režim spuštění.",
+          "Nakonfigurujte upstream vstupní artefakty a uložte je. Tento krok projde okamžitě po vytvoření následné úlohy a nelze se připojit k dalším krokům nadřazeného pracovního postupu.",
+          "Chcete-li znovu použít krok, zvolte Kopírovat uzly z pracovního postupu, vyberte projekt, pracovní postup a uzly, zobrazte náhled, zkopírujte a uložte.",
+          "Použijte rozložení k uspořádání uzlů. Přidejte záložky pro poznámky nebo exportujte pracovní postup JSON jako zálohu. Před importem zkontrolujte, co bude nahrazeno."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Cíl následné úlohy a nastavení spuštění",
+          "caption": "Zkontrolujte cílový projekt, pracovní postup a počáteční krok."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Spouštěcí a oznamovací háčky pracovního postupu",
+    "summary": "Vytvářejte úkoly z externích požadavků nebo odešlete stav pracovního postupu na vybranou platformu.",
+    "sections": [
+      {
+        "title": "Vytvářejte úkoly pomocí spouštěcího háku",
+        "steps": [
+          "Vyberte projekt a pracovní postup. Otevřete háky pracovního postupu na panelu nástrojů seznamu úkolů nebo mobilní nabídce a poté aktivujte háky.",
+          "Přidejte háček, zadejte jeho název, výchozí název a tvůrce, vyberte počáteční krok a zda se spustí automaticky, poté uložte. Například: Příjem požadavků s názvem Externí požadavek.",
+          "Vyberte nakonfigurovanou LAN, externí adresu nebo adresu brány a zkopírujte vyvolání URL. Jeho token je pověření: dejte ho pouze důvěryhodným systémům.",
+          "V části Simulovat volání zadejte název, tvůrce a text pro kontrolu náhledu. Simulace nevytváří úkol.",
+          "Mějte externí systém POST do zkopírovaného URL pomocí JSON, prostého textu nebo Markdown, například: Uspořádejte kritéria přijetí pro tento požadavek. Po obdržení ID úlohy zkontrolujte obsah úlohy a stav spouštění."
+        ],
+        "tips": [
+          "Je vyžadováno oprávnění k úpravám projektu. Každý platný požadavek vytváří úkol. Tato verze nerozpoznává události GitHub/GitLab automaticky, deduplikované požadavky nebo požadavky na vyrovnávací paměť, když je zařízení offline.",
+          "Nejprve opravte chybějící adresy nebo odpojená zařízení. Resetování tokenu zruší platnost starého URL. Pokud se automatické spuštění nezdaří, úloha stále existuje: před opakovaným pokusem o doručení zkontrolujte run_error a podrobnosti úlohy."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Neuložený název spouštěcího háku, výchozí pole a konfigurace počáteční fáze",
+          "caption": "Tento zakázaný koncept vytváří pouze úkoly. Its token is hidden; nebyl uložen a nebylo vygenerováno žádné vyvolání URL."
+        }
+      },
+      {
+        "title": "Odesílejte oznámení o pracovních postupech na externí platformy",
+        "steps": [
+          "Ve stejném okně Workflow hooks přepněte na Notification hooks a přidejte cíl.",
+          "Zadejte název, vyberte skupinového bota DingTalk, skupinového bota WeCom nebo generického webhooku JSON a poté zadejte jeho cíl URL. V případě potřeby dodejte podpisové tajemství DingTalk.",
+          "Vyberte odebírané události, výchozí nastavení je dokončení a selhání úlohy. Volitelně nastavte předponu názvu a bránu, externí adresu nebo adresu LAN pro odkazy na úkoly a poté uložte.",
+          "Vygenerujte náhled v části Simulovat oznámení a zkontrolujte obsah zprávy a odkazy. Náhled neodesílá žádný požadavek. Pro skutečný test potvrďte a klikněte na Odeslat oznámení o testu; odešle do uloženého povoleného cíle.",
+          "Zkontrolujte stav, pokusy a opravené chyby v záznamech o doručení. Po opravě konfigurace opakujte neúspěšné záznamy. Po dokončení úkolu zkontrolujte přijímající platformu a přístup k úkolu."
+        ],
+        "tips": [
+          "Zařízení odesílá upozornění přímo; Brána je nepřenáší. Neobsahují těla chatu, obsah artefaktů ani pověření k vytváření úkolů. Odkazy na úkoly stále vyžadují normální přístupová práva.",
+          "Dočasné chyby se opakují automaticky. Časové limity a obnovení mohou způsobit duplicitní doručení; generické přijímače mohou deduplikovat pomocí event_id. Zakázáním nebo odstraněním cíle nelze odvolat odeslaná oznámení.",
+          "Samotný náhled neprokazuje, že integrace funguje: ověřte skutečné doručení na platformu."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "Oznamovací platforma DingTalk, přihlášené události a prázdná pole adresy",
+          "caption": "Neuložený, zakázaný koncept v nejnovějším rozhraní s vybraným dokončením úkolu a selháním. Pole webhook a podepisovací tajemství jsou prázdná; nic nebylo odesláno."
+        }
+      },
+      {
+        "title": "Přizpůsobte si šablony oznámení Markdown",
+        "steps": [
+          "V oznamovacích hácích vyberte skupinového robota DingTalk nebo WeCom a přejděte na šablonu zprávy Markdown. Obecné webhooky JSON tyto šablony Markdown nepoužívají.",
+          "Rozbalte proměnné šablony (kliknutím zkopírujte) a poté vložte zástupné symboly, například {task_title}. Nepoužívejte neznámé proměnné nebo prázdnou šablonu. Ponechejte {task_link} nebo {task_url}, když je potřeba odkaz na úkol.",
+          "Uložte a použijte Simulovat oznámení ke kontrole náhrad a odkazů bez odeslání. Před obnovením výchozí šablony si přečtěte potvrzení."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Tělo oznámení Markdown a záznam proměnné šablony",
+          "caption": "Koncept zobrazuje výchozí tělo a proměnné Markdown. Nebyla předložena žádná šablona ani oznámení doručeno externě."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Šablony a asistent pracovního postupu AI",
+    "summary": "Začněte ze šablony nebo požádejte AI, aby navrhla kroky a potvrdila, co použít.",
+    "sections": [
+      {
+        "title": "Použít a uložit šablony",
+        "steps": [
+          "Otevřete šablony pracovního postupu na plátně, vyhledejte názvy nebo popisy a zkontrolujte účel a počet kroků každé šablony.",
+          "Vyberte vhodnou šablonu a potvrďte. Použití nahradí každý krok a spojení na aktuálním plátně.",
+          "Zkontrolujte motor, model, výzvu a požadavky na každý krok, přizpůsobte je a uložte.",
+          "Chcete-li svůj návrh znovu použít, zvolte Uložit aktuální jako šablonu pracovního postupu a zadejte název a popis. Spravujte upravitelné vlastní šablony v části Nastavení → Šablony pracovního postupu."
+        ],
+        "tips": [
+          "Nové projekty automaticky nevytvářejí pracovní postupy a nové pracovní postupy automaticky nepoužívají šablony.",
+          "Vestavěné šablony nelze smazat. Po použití jednoho stále ověřte, zda jsou jeho požadované motory k dispozici."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Vestavěná správa smluv vede k vyhledávání šablony plátna",
+          "caption": "Prohledejte správu smluv a zjistěte její účel a počet kroků. Před výběrem zkontrolujte rozsah výměny."
+        }
+      },
+      {
+        "title": "Požádejte AI o vytvoření nebo úpravu pracovního postupu",
+        "steps": [
+          "Otevřete asistenta pracovního postupu AI na plátně a nejprve vyberte nakonfigurovaný engine a model.",
+          "Vysvětlete cíl, rozdělení kroků, výstupní formát a potřeby kontroly, například: Vytvořte analýzu požadavků → implementace → testování s ruční kontrolou v každé fázi pomocí nainstalovaného SDK.",
+          "Porovnejte karty návrhů podle názvu, počtu kroků a shrnutí a poté na plátno použijte vhodný návrh.",
+          "U existujících pracovních postupů zkontrolujte změny kroků. V části Použít změny vyberte požadovaná přidání, aktualizace nebo odstranění, poté použijte a uložte."
+        ],
+        "tips": [
+          "Návrhy AI vyžadují vaše potvrzení. Úspěch generace sám o sobě není důvodem k jejich spuštění: zkontrolujte připojení, motory a zkontrolujte kritéria."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Karta návrhu ve dvou krocích od asistenta pracovního postupu AI",
+          "caption": "Karta zobrazuje počet upravených kroků a Použít změny. Kliknutím potvrďte změny konkrétního kroku."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Vytvářejte a spravujte úkoly",
+    "summary": "Pracovní postup definuje, jak pracovat; úkol určuje, co dělat tentokrát.",
+    "sections": [
+      {
+        "title": "Připravte si více úkolů s asistentem úkolů",
+        "steps": [
+          "Otevřete pomocníka úkolu na stránce úkolu. Explicitně požádejte o více úkolů s jednotlivými časy, například: Vygenerujte tři nezávislé úkoly počínaje zítra v 09:00, 10:00 a 11:00.",
+          "Zkontrolujte název, obsah, pracovní postup, počáteční krok a plánovaný čas zahájení každého konceptu a poté potvrďte vytvoření prostřednictvím rozhraní.",
+          "Vraťte se do seznamu úkolů a ověřte každý výsledek. Pokud některé selžou, zkontrolujte existující úlohy, než znovu odešlete celou dávku."
+        ],
+        "tips": [
+          "Generování konceptů nevytváří ani nespouští úlohy. Zadejte časová pásma pro budoucí časy; plánované spuštění vyžaduje, aby backend zůstal spuštěný."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Dávkové koncepty úkolů a jejich jednotlivé naplánované časy",
+          "caption": "Čeká se na skutečný snímek obrazovky: dávkové návrhy a jednotlivé časy. Nesmí jej nahradit starý jednoúkolový návrh."
+        }
+      },
+      {
+        "title": "Vytvořte úkol a nechte AI uspořádat požadavky",
+        "steps": [
+          "Vyberte projekt a pracovní postup, otevřete jeho stránku úkolu a v příslušné fázi klikněte na Nový nebo Přidat.",
+          "Zadejte název a popis s kontextem, cíli, povolenými změnami, výstupními cestami a kritérii přijetí. Podporovány jsou Markdown a vložené referenční obrázky.",
+          "V případě potřeby otevřete Task Assistant, zkontrolujte vygenerovaný název, obsah a výběr pracovního postupu a potvrďte.",
+          "Zkontrolujte počáteční krok a zkontrolujte nastavení pro toto spuštění a poté vytvořte úlohu. Při vypnutém automatickém spouštění klikněte na Spustit úlohu."
+        ],
+        "tips": [
+          "Příklad: Přečtěte si README a vygenerujte docs/getting-started.md bez změny programového kódu. Zahrňte instalaci, spuštění a tři běžné otázky.",
+          "Vytvoření a spuštění jsou samostatné akce; režim spouštění a nastavení kroku určují, zda se provádění spustí okamžitě."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Formulář pro vytvoření úkolu s rozbaleným pomocníkem",
+          "caption": "Zadejte název a popis a vyberte režim spuštění. Asistent může organizovat požadavky; nastavení recenze jsou na jiné kartě."
+        }
+      },
+      {
+        "title": "Najděte úkoly na tabuli nebo stole",
+        "steps": [
+          "Přepínejte mezi pruhy a stolem na stránce úkolu, prohlížejte úkoly podle fáze a hledejte podle názvu.",
+          "Kliknutím na úkol otevřete podrobnosti, včetně jeho aktuálního kroku, stavu, tvůrce a času aktualizace.",
+          "V případě potřeby archivujte hotové úkoly. Najděte je v části Zobrazit archiv a obnovte je na nástěnce. Před hromadnými operacemi zkontrolujte výběr."
+        ],
+        "tips": [
+          "Ve frontě obvykle znamená, že kapacita souběžného provozu je plná. Čekání na kontrolu vyžaduje potvrzení; neznamená to, že se aplikace zasekla.",
+          "Mazání se liší od archivace. Před trvalým smazáním si přečtěte potvrzení."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Panel úkolů zobrazující stavy a fáze",
+          "caption": "Demonstrační úloha je připravena. Položky panelu nástrojů zahrnují pohledy, háčky pracovního postupu, archiv a otevřený adresář. Čas vytvoření je pod kartou; kopírování je uvedeno dále."
+        }
+      },
+      {
+        "title": "Upravte pouze pracovní postup aktuální úlohy",
+        "steps": [
+          "Otevřete podrobnosti úkolu a klikněte na Upravit pracovní postup úkolu pod grafem průběhu. Nejprve zastavte provádění nebo kontrolu; když je plátno aktivní, je pouze pro čtení.",
+          "Změňte výzvy, motory, modely a recenze této úlohy. Přidejte kroky, přidejte artefakty na konec a upravte připojení. Stávající kroky, vstupní porty a originální artefakty nelze odstranit ani přejmenovat.",
+          "Uložit pro aktualizaci grafu průběhu. Příští spuštění spojí nejnovější hlavní pracovní postup s rozdíly mezi jednotlivými úkoly, aniž by se změnil hlavní pracovní postup nebo jiné úkoly.",
+          "Chcete-li vymazat všechna přizpůsobení, klikněte na Synchronizovat hlavní pracovní postup a potvrďte. Přidané kroky opustí aktuální pracovní postup, ale historické zprávy, artefakty a záznamy o provedení zůstanou. Tím se nespustí provádění."
+        ],
+        "tips": [
+          "Bez skutečných změn se nevytvoří úplná kopie pracovního postupu. Nepopsaná pole dědí aktualizace hlavního pracovního postupu; přepsání úkolů mají přednost.",
+          "Výběr kroku ve skladateli a změna jeho enginu jej uloží do této úlohy. Krok Obnovit resetuje pouze relaci dalšího spuštění, nikoli jádro hlavního pracovního postupu.",
+          "Odebrání připojení změní závislosti a může umožnit přímé spuštění; nedělá krokový manuál."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Úpravy a synchronizace záznamů pracovních postupů specifických pro úkoly",
+          "caption": "Samostatné plátno ukázkové úlohy zobrazuje režim předání, hlavní pracovní postup synchronizace a Uložit. Nebyla změněna žádná nastavení nebo spuštěno provádění."
+        }
+      },
+      {
+        "title": "Zkopírujte úkol",
+        "steps": [
+          "Klikněte na ikonu Kopírovat úkol vedle úkolu na kartě nebo stole.",
+          "Prohlédněte si novou úlohu s názvem (kopírovat), zkontrolujte její popis, přizpůsobení pracovního postupu a počáteční krok a poté ji spusťte. Kopírované kroky začnou čekat; původní průběh a historie chatu se nezkopírují."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Zkopírujte ikonu úkolu vedle názvu úkolu v zobrazení tabulky",
+          "caption": "Malá ikona vedle názvu je záznam kopírování. V tomto obrázku nebyla zkopírována ani spuštěna žádná úloha."
+        }
+      },
+      {
+        "title": "Spravujte úkoly na telefonu",
+        "steps": [
+          "Klepnutím na řádek úkolu otevřete podrobnosti. Podržením asi půl sekundy otevřete nabídku akcí; funguje také kliknutí pravým tlačítkem myši.",
+          "Podle oprávnění můžete spustit, upravit či zobrazit, kopírovat, archivovat, obnovit nebo smazat. Běžící úkoly, úkoly ve frontě nebo čekající úkoly s aktivními kroky nelze archivovat ani smazat. Nejprve vyřešte potvrzení nebo zastavte běh; před smazáním přečtěte potvrzení.",
+          "Po provedení a schválení všech kroků pracovního postupu se úloha zobrazí Dokončeno, a to i po opětovném otevření podrobností nebo restartování. Dokončení nearchivuje úkol; zvolte, zda jej chcete archivovat."
+        ],
+        "tips": [
+          "Posouváním nebo pohybem prstu zrušíte dlouhé stisknutí, abyste se vyhnuli náhodným akcím. Přístup pouze pro čtení může stále otevírat prohlížení záznamů bez získání práv k úpravám."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Nabídka archivace a smazání pro řádek úkolu o velikosti 390 pixelů",
+          "caption": "Zachyceno z připravené úlohy v v1.0.13; nic nebylo archivováno ani smazáno a dokončení se nezobrazuje. Nově přidané položky pro spuštění, úpravy a kopírování stále potřebují aktualizovaný snímek obrazovky."
+        }
+      },
+      {
+        "title": "Návrat k úkolům nebo relacím z Nedávných chatů",
+        "steps": [
+          "Najděte navštívený úkol nebo relaci v Nedávných chatech (最近聊天) na postranním panelu a kliknutím se vraťte k původním detailům projektu. Objevují se zde oba druhy.",
+          "Zkontrolujte běžící, neúspěšné a dokončené-nepřečtené indikátory. Otevřením příslušných podrobností vymažete tento nepřečtený údaj. Autorizované záznamy mají nabídky archivace nebo mazání; číst potvrzení.",
+          "Na ploše sbalte projekty nebo nedávné chaty, přetažením nadpisů zaměňte jejich pořadí a přetažením oddělovače změňte jejich velikost. Poklepáním na oddělovač obnovíte výchozí poměr."
+        ],
+        "tips": [
+          "Nedávné návštěvy uchovávají maximálně 20 položek pod identitou zařízení tohoto prohlížeče. Vymazáním dat prohlížeče odstraníte tento index, nikoli obsah úlohy. Historické záznamy neobcházejí autorizaci projektu.",
+          "Archivace, mazání a vymazání nepřečteného stavu mají různé účinky. Pokud starý odkaz selže, zkontrolujte, zda projekt a relace stále existují a připojení funguje."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Jedna ukázková návštěva úkolu v Nedávných chatech",
+          "caption": "Postranní panel zobrazuje jednu návštěvu demonstračního úkolu bez položek relace nebo příkladů nepřečteného stavu."
+        }
+      },
+      {
+        "title": "Otevřete navigaci v mobilním prohlížeči",
+        "steps": [
+          "Otevřete WorkStep v prohlížeči telefonu a klepnutím na kulatou navigační bublinu na okraji stránky rozbalte stejnou navigaci na postranním panelu jako na ploše.",
+          "Chcete-li pokračovat, vyberte projekt, pracovní postup, úkol nebo konverzaci. Dalším klepnutím na bublinu sbalíte navigaci.",
+          "Pokud bublina zakrývá obsah, podržte ji a přetáhněte ji do prázdné části výřezu. Přetažením se navigace nepřepne."
+        ],
+        "tips": [
+          "Bublina se zobrazuje pouze v běžných mobilních prohlížečích. Aplikace pro stolní počítače a Android používají své vlastní položky navigace."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Navigační bublina a rozšířený postranní panel v prohlížeči telefonu",
+          "caption": "Rozbalený postranní panel na 390 pixelů, s kulatou bublinou napravo, aby se sbalil. Jsou zobrazeny pouze izolované demonstrační projekty."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Realizace, schvalování a revize",
+    "summary": "Porozumět stavům běhového prostředí, zpracovat požadavky na oprávnění a rozhodnout, zda se výstupy mohou přesunout do další fáze.",
+    "sections": [
+      {
+        "title": "Zkontrolujte provádění a žádosti o povolení",
+        "steps": [
+          "Otevřete podrobnosti úkolu a prohlédněte si graf průběhu a záznamy chatu, abyste identifikovali aktivní krok.",
+          "Rozšiřte záznamy procesů a kontrolujte volání nástrojů, výsledky a chyby. Rozbalte záznamy subagenta, když je motor nahlásí.",
+          "Pokud zprávy obsahují změny souborů, rozbalte seznam a zobrazte zaznamenané rozdíly. Ty popisují změny této zprávy; otevřením souboru se zobrazí jeho aktuální obsah, který se pozdějšími úpravami mohl změnit. Bez uloženého rozdílu nemůže aktuální obsah rekonstruovat celou historii.",
+          "Když se objeví schválení nástroje, přečtěte si příkaz, cesty a dopad před povolením nebo zamítnutím. Odpovězte na otázky pomocí dodaných možností nebo požadovaného vstupu.",
+          "Pokud úloha selže, nejprve si přečtěte její poslední chybu, poté zkontrolujte konfiguraci motoru, oprávnění modelu, síťový a projektový adresář, nikoli opakování."
+        ],
+        "tips": [
+          "Schválení se objeví pouze tehdy, když o to motor požádá. Informace o procesu a volby povolení se liší podle motoru; chybějící podrobnosti neznamenají, že nedošlo k žádnému provedení.",
+          "Rotující ikona označuje asynchronní práci. Při čekání na uživatele vyřiďte aktuální dotaz nebo schválení."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Postup kroků a záznamy o skutečném provedení v detailech úkolu",
+          "caption": "Jsou viditelné záznamy o průběhu a provádění. Není zobrazen žádný požadavek na povolení; schválení se objeví pouze tehdy, když je motor skutečně požaduje."
+        }
+      },
+      {
+        "title": "Schválit, odmítnout nebo ukončit recenzi",
+        "steps": [
+          "Během čekání na ruční kontrolu zkontrolujte výstupní artefakty, zkontrolujte výsledky, soubory a výsledky testů podle kritérií přijatelnosti.",
+          "Pokud jste spokojeni, klikněte na Schválit a pokračujte. V opačném případě zadejte konkrétní zpětnou vazbu a zvolte Odmítnout a opakovat.",
+          "Během automatické kontroly zkontrolujte její záznamy. Odmítnutí spouští nakonfigurovaná opakování; zkontrolovat chyby nebo požadavky na ruční manipulaci vyžadují vaše rozhodnutí.",
+          "Pokud již provedení nechcete, zvolte Ukončit a ověřte potvrzení. Vynutit schválení přeskočí aktuální recenzi, takže nejprve zkontrolujte, zda jsou výstupy použitelné."
+        ],
+        "tips": [
+          "Úkol může pokračovat s čekajícími potvrzeními. Na počítači najeďte na jejich počet a zobrazte kroky a důvody; kontrolu, oprávnění nástroje nebo otázku vyřešte v příslušném kroku. Bez jiné spustitelné větve úkol čeká. Ruční zastavení, selhání a dokončení jsou odlišné; konec procesu není schválení."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Ruční kontrola zpětné vazby a tlačítka schválení/zamítnutí",
+          "caption": "Prohlédněte si výsledky, artefakty a záznamy akcí."
+        }
+      },
+      {
+        "title": "Koordinátor pevně stanovil pravidla a aktuální zprávy",
+        "steps": [
+          "Otevřete podrobnosti úkolu, vyberte Koordinátor ve skladateli, vyberte motor Codex SDK a položte otázku úkolu jako: Která fáze je nedokončená?",
+          "Pokračujte ve stejné relaci koordinátora. Stav úlohy a aktuální aktualizace odesílatele jako kontext specifický pro tah; pevná pravidla koordinátora zůstávají v historii relace.",
+          "Pro ladění použijte vývojářský režim ke kontrole zpráv se skutečnými vstupními záznamy. Nezměněná pevná pravidla potvrzená jako zachována v dané relaci nejsou samostatně znovu vkládána."
+        ],
+        "tips": [
+          "Starší relace mohou po upgradu obdržet jednu počáteční reinjekci. Nová pravidla, nové relace, chybějící historie nebo nejisté uchování po zhutnění způsobují opětovné vstřikování. Požadavky mohou stále používat pravidla v historii; vynechání nové injekce neznamená, že neexistují žádná pravidla."
+        ]
+      },
+      {
+        "title": "Přidejte informace během odpovědi koordinátora",
+        "steps": [
+          "Vyberte koordinátora jako příjemce a odešlete doplňující pokyny, zatímco odpovídá. Vstupují do fronty čekajících na vložení aktuální odpovědi.",
+          "Zkontrolujte, upravte, změňte pořadí nebo odstraňte neodeslané záznamy nebo okamžitě odešlete vybrané. Více vybraných položek je sloučeno v pořadí. Zbývající záznamy automaticky pokračují do dalšího kola po skončení aktuální odpovědi; neposílejte opakovaně.",
+          "Pokud vám bylo sděleno, že zpráva již byla odeslána nebo odstraněna, obnovte a zkontrolujte frontu místo opětovného odeslání dávky."
+        ],
+        "tips": [
+          "Fronty koordinátora a kroku jsou oddělené. Nejprve ověřte příjemce. Zastavení nezruší již provedené operace nástroje."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Nevyřízené zprávy během odpovědi koordinátora",
+          "caption": "Čeká se na skutečný snímek obrazovky: Příjemce koordinátora, doplňkové zprávy během provádění a fronta pokračování."
+        }
+      },
+      {
+        "title": "Doplňte, zastavte a opakujte",
+        "steps": [
+          "Před psaním zkontrolujte příjemce. Koordinátor zpracovává dotazy a požadavky na provoz; pouze konkrétní krok přijímá vstup do kontextu provádění tohoto kroku.",
+          "Zprávy do probíhajícího kroku vstupují do Vložit zprávy. Upravit, přeobjednat, odeslat okamžitě nebo odeslat vše; neodeslané zprávy mohou po ukončení provádění spustit další kolo.",
+          "Po zastavení kroku odešlete explicitní doplňující pokyny a postupujte podle pokynů pro opětovné spuštění.",
+          "Chcete-li tuto úlohu změnit, upravte a uložte kroky, nástroje nebo nastavení kontroly. Přepisy se projeví při příštím spuštění; nepřepsaná pole sloučí hlavní pracovní postup při příštím spuštění. Chcete-li vymazat všechna přizpůsobení, potvrďte hlavní pracovní postup synchronizace."
+        ],
+        "tips": [
+          "Změna modulu skladatele koordinátora ovlivní pouze následné zprávy koordinátora, nikoli moduly kroků pracovního postupu.",
+          "Pokud opětovné spuštění ovlivní další aktivní kroky, zkontrolujte potvrzení dopadu a znovu spusťte rozsah. Pokud dojde ke ztrátě záznamů nativních relací, postupujte podle pokynů pro opětovné spuštění s novou relací."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Krok příjemce a doplňkový koncept v dokončeném úkolu",
+          "caption": "Ve skladateli je vybrána úloha Provést. Doplňková zpráva stále není odeslána; není zobrazena žádná fronta vložení."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artefakty, analýza provádění a paměť projektu",
+    "summary": "Zkontrolujte dodané soubory, pochopte spotřebu a uchovejte znovu použitelné lekce.",
+    "sections": [
+      {
+        "title": "Zkontrolujte vstupy, výstupy a soubory artefaktů",
+        "steps": [
+          "Otevřete vstupy a výstupy Step v podrobnostech úlohy a zkontrolujte dostupné vstupy a dokončené výstupy.",
+          "Klikněte na Zobrazit pro soubor nebo otevřete prohlížeč artefaktů a přepínejte po krocích a spouštění.",
+          "Náhled souborů. Na ploše umožňuje Otevřít obsahující adresář prohlížet skutečné soubory. Soubory vzdáleného projektu zůstávají na hostiteli a měly by být prohlíženy přes webové rozhraní.",
+          "Porovnejte správná kola při opakování. Stejné jako kolo… znamená identický obsah, ne že k provedení nedošlo."
+        ],
+        "tips": [
+          "Pokud artefakt chybí, zkontrolujte, zda byl soubor vygenerován, zda odpovídá jeho výstupní deklarace a zprávy o provedení."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Artefakty úkolů seskupené po krocích",
+          "caption": "Analýza požadavků a úkol Provést každý uvádí jeden artefakt prvního kola. Otevřete jeho soubor nebo adresář."
+        }
+      },
+      {
+        "title": "Zkontrolujte místní běhové prostředky",
+        "steps": [
+          "Vstupte do pracovního prostoru prostřednictvím místního místního hostitele nebo adresy zpětné smyčky, poté Statistiky → Runtime systému (数据统计 → 系统运行). Běžné vzdálené prohlížeče a pracovní prostory brány tuto kartu nezobrazují.",
+          "Zkontrolujte CPU, paměť, konfiguraci uchovávání disku, rychlosti sítě a prostředky, vlákna a deskriptory souborů nebo úchyty pro backend a potomky WorkStep.",
+          "Vyberte metriky trendů a zkontrolujte časy vzorkování. Pozastavení, obnovení nebo ruční obnovení zobrazení. Počkejte během počátečního shromažďování a opakujte neúspěšné čtení."
+        ],
+        "tips": [
+          "Statistiky pokrývají aktuální backendové prostředí a potomky, s výjimkou prostředí desktopu. Měření kontejnerů nejsou kompletní prostředky hostitelského počítače.",
+          "Výchozí nastavení je zhruba pětisekundové vzorkování a 30minutová historie; stránka uvádí skutečné hodnoty. Pozastavení aktualizace zobrazení nezastaví úlohy. Nedostupné metriky a mezery nejsou nulové; staré vzorky jsou zachovány a označeny jako zastaralé. Varování deskriptorů indikují tlak zdrojů, nikoli automatickou opravu."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Statistiky systémových prostředků vzorkované aktuální verzí",
+          "caption": "Místní zdroje a stav vzorkování backendu. Nebyly spuštěny žádné podřízené procesy motoru, takže to neukazuje spotřebu při provádění úlohy."
+        }
+      },
+      {
+        "title": "Zkontrolujte dobu trvání, tokeny a cenu",
+        "steps": [
+          "Otevřete Analýzu provedení v podrobnostech úkolu a zkontrolujte celkovou dobu trvání, počet pokusů o krok, tokeny a náklady.",
+          "Vyberte kolo běhu a klikněte na segment časové osy pro jeho motor, model a použití.",
+          "Chcete-li získat informace o celém projektu, otevřete Statistiky. Chcete-li odhadnout náklady, udržujte ceny modelu podle poskytovatele nebo motoru v části Nastavení → Nastavení modelu."
+        ],
+        "tips": [
+          "Nehlášené použití se automaticky nestává přesným číslem. Zkontrolujte pokrytí a odhadované štítky; směrodatný je vzorový účet za služby."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Kola provádění-analýzy a časová osa",
+          "caption": "Ukazatele trvání, pokrytí a zdroje nákladů."
+        }
+      },
+      {
+        "title": "Uložte si paměť a archivujte lekce",
+        "steps": [
+          "Na stránce úlohy klikněte na Paměť. Upravte MEMORY.md v adresáři dat projektu na krátká, konkrétní dlouhodobá pravidla a uložte.",
+          "Při archivaci jednoho úkolu zvolte přímou archivaci nebo uspořádejte lekce selhání. Zkontrolujte návrh AI a potvrďte zápis do paměti a archivaci.",
+          "Chcete-li znovu navštívit historii, použijte seznam archivů. Po obnovení archivované úlohy znovu zkontrolujte požadované externí vazby."
+        ],
+        "tips": [
+          "Hromadná archivace nevyjímá jednotlivé lekce. Archivace nebo odstranění úlohy odstraní její vazby na skupinu kanálů; jeho obnovením se neobnoví staré vazby."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Editor paměti projektu obsahující demonstrační konvence",
+          "caption": "Upravit a uložit konvence v .workstep/MEMORY.md. Nezobrazuje se žádné potvrzení archivní lekce."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Projektový chat a dovednosti",
+    "summary": "Spolupracujte přímo v kontextu projektu a vyberte si, které místní dovednosti může projekt využít.",
+    "sections": [
+      {
+        "title": "Práce s více projektovými konverzacemi",
+        "steps": [
+          "Na šířku pracovní plochy otevřete běžnou projektovou konverzaci a zvolte Okna konverzace (对话窗口) → Přidat okno konverzace (增加对话窗口), vpravo od položky Nová konverzace.",
+          "Přetáhněte konverzaci z postranního panelu nebo Nedávné chaty do oblasti chatu. Autorizované projekty mohou být smíšené, s nejvýše 4 panely; vypuštěním již otevřené konverzace zaostří její panel. Záznamy úkolů nelze přetáhnout jako chaty.",
+          "Před výběrem konverzace na postranním panelu klikněte na panel, který chcete použít. Každý panel uchovává svůj vlastní projekt, relaci, koncept a nastavení motoru; ověřte projekt a relaci před odesláním.",
+          "Vyberte Okna konverzace → Uspořádání konverzace (对话排列), poté horizontální nebo vertikální. Přetažením oddělovače změňte velikost; zaměřte jej a použijte klávesy se šipkami pro změnu velikosti klávesnice.",
+          "U více podoken × zavře pouze toto podokno bez zastavení nebo odstranění konverzace. Generování zastavíte pomocí tlačítka Zastavit konverzace."
+        ],
+        "tips": [
+          "Na ploše poklepejte na konverzaci na postranním panelu nebo na její záhlaví, abyste otevřeli dialogové okno sdíleného přejmenování, poté zadejte a potvrďte název.",
+          "Mobil zobrazuje jen aktivní panel a ostatní zachová. Odchod a návrat ve stejné relaci stránky obnoví panely, rozložení a velikosti; po obnovení prohlížeče to není zaručeno. Rozložení je oddělené podle účtu a zařízení, bez kopírování obsahu konverzace."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Panely konverzací na ploše napříč projekty a nabídka uspořádání",
+          "caption": "Čeká se na skutečný snímek obrazovky z opraveného demo projektu: nabídka okna konverzace, více panelů a přetahovatelné oddělovače."
+        }
+      },
+      {
+        "title": "Nahrajte roli nebo tým odborníků do chatu",
+        "steps": [
+          "Připravte výzvy k roli nebo členy týmu odborníků a odpovědnosti v části Nastavení → Centrum rolí.",
+          "Otevřete běžný chat v místním projektu. Použijte + → Role / Tým expertů, hledejte kategorie nebo klíčová slova, náhled a načtení do chatu. Vyberte například Code Reviewer a poté odešlete konkrétní rozsah revize.",
+          "Zkontrolujte načtený název ve skladateli. Výběr neodešle zprávu. Vazba je uložena s relací a obnovena po obnovení; nové relace začínají bez závazků. Kliknutím na název jej můžete zkontrolovat, nahradit nebo odstranit."
+        ],
+        "tips": [
+          "Při běhu nelze přepínat. Selhání čtení nebo ukládání zachová aktuální výběr; opakujte podle výzvy. Znovu vyberte chybějící role. Načítání pouze změní vazbu relace; poslat konkrétní otázku pro vyvolání modelu.",
+          "Expertní týmy předávají výzvy a odpovědnosti členů aktuálnímu modelu; nespouštějí nezávislé motory. Úkoly, kroky pracovního postupu, kanály, vzdálené projekty a lístky v rozsahu projektu nejsou integrovány. Pracovní prostor brány pro celé zařízení to může použít pro místní projekt."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Hledání a zobrazení náhledu v programu Code Reviewer v běžném chatu",
+          "caption": "Code Reviewer je vybrán v prázdné ukázkové konverzaci. Jeho výzva a tlačítko načítání jsou viditelné; nebyla načtena žádná role ani odeslána zpráva."
+        }
+      },
+      {
+        "title": "Otevřete paměť projektu v telefonu",
+        "steps": [
+          "Otevřete seznam úkolů projektu, vpravo nahoře použijte Více a poté Paměť.",
+          "V editoru paměti zadejte krátké konvence, jako je Spustit testy projektu před potvrzením. Zkontrolujte a uložte; to platí pro celý projekt."
+        ],
+        "tips": [
+          "Výběr Paměť zhroutí Více. Na ploše klikněte na Paměť přímo na stránce úlohy."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Záznam paměti v nabídce Více na 390px stránce úkolu",
+          "caption": "Rozšířená nabídka Více v mobilním seznamu úkolů obsahuje Paměť. Kliknutím otevřete jeho editor; žádná paměť zde nebyla změněna."
+        }
+      },
+      {
+        "title": "Vytvářejte konverzace a změňte konfiguraci",
+        "steps": [
+          "Vytvořte běžnou relaci v sekci Konverzace projektu vlevo. Vyberte jeho engine, poskytovatele, model a režim oprávnění. Začněte s ověřeným SDK.",
+          "Zadejte konkrétní požadavek. Enter odešle; Shift+Enter vloží nový řádek. Referenční obrázky připojte nebo vložte až poté, co zkontrolujete podporu obrázku motoru.",
+          "V případě potřeby zastavte odpověď během generování. Další vložená fronta zpráv a jejich pořadí lze změnit.",
+          "Při změně modulu nebo poskytovatele s existujícím kontextem vyberte v dialogovém okně Inteligentní předání, Úplná historie chatu nebo Žádný. Rozdělte konverzaci pro nezávislé prozkoumání a potvrďte její kontextový režim."
+        ],
+        "tips": [
+          "Projektový chat je uložen odděleně od záznamů úkolů pracovního postupu. Vytvořte úkol, když potřebujete sledování fáze a recenze.",
+          "Nativní vidlice je k dispozici pouze tehdy, když je motor skutečně podporován. Jinak pokračujte přes explicitní kontextové předání."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Project-chat engine, poskytovatel a nabídka modelu",
+          "caption": "Nakonfigurujte motor, poskytovatele, model uvažování a související možnosti pouze pro tuto konverzaci. Oprávnění se vybírají samostatně."
+        }
+      },
+      {
+        "title": "Umožněte dovednosti a organizujte konverzace",
+        "steps": [
+          "Otevřete aktuální projekt Konfigurace → Centrum dovedností, znovu naskenujte a vyhledejte podle názvu, popisu nebo zdrojové cesty.",
+          "Přečtěte si účely dovedností a aktivujte to, co potřebujete. Před hromadnými změnami zkontrolujte vybraný rozsah. Dovednosti se ukládají pro každý projekt a použijí se při příštím spuštění nebo nové relaci.",
+          "Zadejte / do skladatele a vyberte dovednosti, které aktuálně nabízí aktuální engine. Seznamy se liší podle motoru.",
+          "K přejmenování nebo archivaci použijte nabídku relace. Prohledejte seznam archivů a obnovte požadované konverzace."
+        ],
+        "tips": [
+          "Centrum dovedností vybírá stávající místní dovednosti. Pokud se žádná nezobrazí, zkontrolujte nejprve místní zdroje. Vzdálené projekty aktuálně nemohou spravovat místní dovednosti hostitele."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Žádné výsledky po vyhledání ruční ukázky v centru dovedností",
+          "caption": "Centrum dovedností nabízí vyhledávání jmen a filtrování zdrojů. Není zobrazen žádný odpovídající přepínač dovedností nebo povolení."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Rychlá tlačítka a akce skriptů",
+    "summary": "Proměňte běžné výzvy, zobrazovaný obsah a projektové skripty na opakovaně použitelná tlačítka.",
+    "sections": [
+      {
+        "title": "Vytvořte tlačítka výzvy a zobrazení",
+        "steps": [
+          "Otevřete Rychlá tlačítka v konfiguraci projektu, přidejte tlačítko a vyberte jeho typ.",
+          "Do pole Výzva zadejte její štítek a výzvu a zvolte, zda se kliknutím okamžitě odešle, například: Zkontrolovat aktuální změny a uvést nekrytá kritéria přijetí.",
+          "Pro zobrazení zadejte obsah a zobrazte náhled jeho bezpečného vykreslení HTML. Tento typ neodesílá žádnou zprávu.",
+          "Uložte a vraťte se do chatu nebo úkolu a prohlédněte si tlačítko. Přetažením seznamu konfigurace změňte pořadí. Nastavení pracovního postupu řídí zděděná tlačítka projektu; tlačítka fáze se konfigurují samostatně."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Rychlá tlačítka pro dědění tlačítek projektu a přidání položky do pracovního postupu",
+          "caption": "Vyberte tlačítka projektu, která chcete zdědit, a přidejte tlačítka pracovního postupu vlevo. Nebyl zadán žádný obsah tlačítka."
+        }
+      },
+      {
+        "title": "Nakonfigurujte a spusťte akci",
+        "steps": [
+          "Přidejte typ akce, zadejte její ID akce a vyberte skript z příslušného adresáře akcí.",
+          "Vyberte spouštěcí adresář: projekt, adresář úloh pracovního postupu nebo pracovní prostor Git vybraný skriptem. Prohlédněte si a zkontrolujte skript.",
+          "Povolit potvrzení před akcemi, které upravují soubory nebo externí stav. Pro vstup, jako jsou zprávy potvrzení, nakonfigurujte výzvu k potvrzení; skript jej obdrží prostřednictvím WORKSTEP_ACTION_INPUT.",
+          "Uložte a klikněte na tlačítko, potvrďte skript a adresář a zkontrolujte výstupní a výstupní kód. Probíhající akce lze zastavit."
+        ],
+        "tips": [
+          "Rychlé akce přímo spouštějí projektové skripty. Pochopte skript a nejprve vyberte správný adresář. Soubory mimo aktuální adresář Action nelze libovolně vybrat jako jeho skript."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Konfigurace akce bez vybraného skriptu",
+          "caption": "Pole zahrnují ID akce, skript, spouštěcí adresář a potvrzení. Nebyl spuštěn žádný skript."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Naplánované úkoly",
+    "summary": "Vytvářejte nové úkoly podle plánu nebo posílejte načasované pokyny koordinátorovi ke stávajícím úkolům a sledujte provádění a upozornění.",
+    "sections": [
+      {
+        "title": "Generujte více úkolů z jednoho plánu",
+        "steps": [
+          "Vytvoření projektu vytvoří plán úkolů, vyberte AI dynamic a určete rozsah a jednotlivé časy více úkolů. Vyberte pracovní postupy kandidátů.",
+          "Nejprve pomocí Generování testu zkontrolujte každý koncept a poté uložte. Pokyny koordinátora úkolu stále fungují na jednom vybraném úkolu a nevytvářejí dávky.",
+          "Po spuštění otevřete každou vytvořenou úlohu ze záznamů běhu. Neúspěšné záznamy také uchovávají již vytvořené úkoly; před vytvořením náhrad zkontrolujte důvod."
+        ],
+        "tips": [
+          "Vytvoření úkolu neznamená, že všechny pracovní postupy skončily. Po částečném vytvoření nebo selhání spuštění znovu nespouštějte celou dávku."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Náhled plánovaného dávkového generování a záznamy spouštění více úkolů",
+          "caption": "Čeká se na skutečný snímek obrazovky: dávkové návrhy a již vytvořené úlohy po částečném selhání."
+        }
+      },
+      {
+        "title": "Spravujte naplánované pokyny z podrobností úkolu",
+        "steps": [
+          "Otevřete podrobnosti úlohy a klikněte na hodiny vedle Bind BOT; na telefonech je napravo od hlavních karet. Jeho počet zahrnuje pravidla úloh kromě dokončených jednorázových pravidel, nikoli pouze povolená pravidla. Zkontrolujte pozastaveno a další stavy v seznamu.",
+          "V okně zkontrolujte pravidla této úlohy. S oprávněním k úpravám můžete přidávat, upravovat, pozastavovat, obnovovat nebo odstraňovat pravidla a zobrazovat záznamy běhu. Nová pravidla se automaticky vážou k aktuální úloze.",
+          "Zadejte název, frekvenci a pokyn koordinátora, například: Zkontrolujte průběh a shrňte každých deset minut. Zkontrolujte stav zastavení a uložte. Při zavírání s neuloženými úpravami zvolte pokračovat nebo zahodit.",
+          "Sdílené složky pouze pro čtení používají ke kontrole pravidel této úlohy stejné hodiny. S provozními právy používejte položky správy, které aktuálně nabízí aktuální sdílená složka."
+        ],
+        "tips": [
+          "Jednorázový seznam uchovává časy provedení dokončených pravidel; odznak úkolu je vylučuje, takže počty se mohou lišit."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Okno plánu v rozsahu úlohy se otevřelo z podrobných hodin",
+          "caption": "Vytvoření pravidla z hodin uzamkne pracovní postup a úlohu na ukázkovou úlohu. Název a pokyny jsou prázdné; nic nebylo zachráněno ani vykonáno."
+        }
+      },
+      {
+        "title": "Vytvořte si pevný rozvrh",
+        "steps": [
+          "Otevřete Naplánované úlohy z lišty nástrojů na postranním panelu, vyberte kartu projektu a poté vytvořte plán úloh Projekt vytváří. Vyberte pracovní postup, počáteční krok, název a obsah.",
+          "Vyberte si jednou, denně, týdně, měsíčně, hodinový interval nebo Cron. Zkontrolujte časové pásmo, data účinnosti a náhled dalšího spuštění.",
+          "Zvolte Sledovat pracovní postup, Okamžité nebo Ruční provedení a nastavte zpracování překrytí na Přeskočit, Paralelně nebo Fronta.",
+          "Zkontrolujte nastavení recenze a uložte. Před povolením dlouhodobého opakovaného plánu ověřte krátkodobý jednorázový plán."
+        ],
+        "tips": [
+          "Aby bylo možné spouštět plány, musí být spuštěn backend WorkStep. Nepředpokládejte, že se spouštějí normálně, když počítač spí nebo je backend zastaven."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Opraven obsah úkolu, denní frekvence a náhled dalšího spuštění",
+          "caption": "Nastavte obsah, frekvenci, zásady spouštění a překrývání a poté zkontrolujte nadcházející časy provádění."
+        }
+      },
+      {
+        "title": "Odeslat naplánované pokyny k existující úloze",
+        "steps": [
+          "Otevřete Naplánované úlohy na postranním panelu, vyberte projekt a přepněte typ nového pravidla na pokyny koordinátora úloh. Pracuje s existující úlohou, spíše než pokaždé, když ji vytváří.",
+          "Zadejte Název, filtrujte podle pracovního postupu a vyhledejte cílový úkol. Napište konkrétní pokyn, např.: Zkontrolujte pokrok a nahlaste, zda je potřeba lidská činnost; automaticky nepotvrzují nebezpečné akce. Uložená pravidla nelze vrátit k jiné úloze.",
+          "Nastavte jednorázové nebo opakované spuštění, včetně každých pár minut. Ověřte časy dalšího spuštění a zvolte Pokračovat, dokud nebude ručně zakázáno, nebo Zastavit, když úloha skončí.",
+          "Najděte uložené pravidlo v jednorázových nebo opakujících se seznamech. Filtrujte podle typu cíle a ID úkolu. Otevřete úlohu ze záznamu běhu a vyhledejte odpověď koordinátora a zkontrolujte stav naplánované zprávy v její historii."
+        ],
+        "tips": [
+          "Každý spouštěč používá samostatnou relaci koordinátora a může se zařadit do fronty, když je úkol zaneprázdněn. Nabídky vyžadující potvrzení vás stále vyžadují. Zastavení jedné naplánované odpovědi zastaví pouze tuto zprávu; pozastavit nebo deaktivovat pravidlo, aby se zabránilo pozdějšímu spuštění.",
+          "Archivace nebo odstranění cíle zruší platnost pravidla. Pomocí příkazu Zastavit při ukončení úlohy ji ukončí stavy terminálu dokončeno, selhání nebo zastavení. U běhů přerušených restartem backendu není zaručeno, že se přehrají; zkontrolovat záznamy před opětovným odesláním."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Neuložený formulář plánu koordinátora úkolů",
+          "caption": "Ukázka se opakuje každých deset minut, dokud není ručně deaktivována. Není uložen, bez výsledků provedení."
+        }
+      },
+      {
+        "title": "Nakonfigurujte oznámení kanálu pro plánovaná spuštění",
+        "steps": [
+          "V plánu projektu nebo pravidle koordinátora úkolů zkontrolujte po spuštění robota Upozornit kanál.",
+          "Vyberte robota a konverzaci s možností odesílání. Skupina vázaných úkolů může být vybrána ve výchozím nastavení, ale před uložením ji zkontrolujte. Bez cíle nejprve nakonfigurujte robota a vazbu úlohy nebo zakažte upozornění.",
+          "Zkontrolujte stav oznámení a důvody selhání v záznamech běhu. Opakujte selhání oznámení bez opětovného spuštění úlohy. U neznámých výsledků doručení nejprve zkontrolujte kanál, abyste předešli duplicitám."
+        ],
+        "tips": [
+          "Naplánovaná oznámení a webhooky pracovního postupu se konfigurují samostatně. Úspěšné spuštění neprokazuje doručení a neúspěšné oznámení neznamená selhání úlohy.",
+          "Po dokončení této odpovědi následují oznámení koordinátora úkolů. Oznámení poté, co plán projektu vytvoří úkol, neznamená, že celý pracovní postup skončil."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Oznámení kanálu bez vybraného cíle ve formuláři projektového úkolu",
+          "caption": "Oznámení je zaškrtnuto, ale není vybrán žádný robot ani konverzace, takže ukládání je zakázáno. Nic nebylo vykonáno ani odesláno."
+        }
+      },
+      {
+        "title": "Dynamické generování a běh záznamů AI",
+        "steps": [
+          "Změňte generování na dynamickou AI, popište, co se má pokaždé generovat, případně opravte referenční název a vyberte kandidátské pracovní postupy.",
+          "Nakonfigurujte opakování generování a použijte generování testu ke kontrole, zda výstup splňuje očekávání.",
+          "Uložit a poté filtrovat záznamy běhu vpravo podle stavu. Zkontrolujte dobu spouštění, příčiny selhání nebo přeskočení a otevřete odpovídající úlohu.",
+          "Pozastavení plánů již není potřeba a po kontrole je smažte."
+        ],
+        "tips": [
+          "Opakované pokusy o generování umělé inteligence, opakované pokusy o postupnou kontrolu a limity návratu připojení jsou samostatná nastavení."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "AI dynamický formulář pro vytváření naplánovaných úloh",
+          "caption": "Zadejte pokyny, pracovní postupy kandidátů a počet opakování. Nebyla vygenerována žádná úloha ani zobrazeny záznamy o spuštění."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Pracovní prostory Git a úloh",
+    "summary": "Kontrolujte změny kódu, izolujte paralelní úlohy v samostatných pracovních adresářích, poté slučujte a posouvejte jejich práci.",
+    "sections": [
+      {
+        "title": "Zkontrolujte soubory, rozdíly a historii",
+        "steps": [
+          "Klikněte na Git na stránce úloh místního nebo připojeného vzdáleného projektu a vyberte kořenové nebo nalezené podřízené úložiště. Vzdálené operace Git se provádějí na hostitelském zařízení.",
+          "Kontrolujte změněné soubory a diffy, abyste ověřili změny AI podle požadavků; použijte historii odevzdání ke kontrole odevzdané práce.",
+          "Před přepnutím větví zpracujte nepotvrzené změny. Obnovte vzdálený stav, abyste mohli zkontrolovat stav dopředu, dozadu nebo odchylky.",
+          "Táhněte rychle vpřed; Push odesílá pouze potvrzený obsah. Vyberte vzdálený a větev, potvrďte a spusťte."
+        ],
+        "tips": [
+          "Vzdálené záznamy uložené v mezipaměti nejsou aktuální. Synchronizace může být zablokována, když jsou aktivní projektové úkoly nebo chaty.",
+          "Nejprve znovu připojte offline nebo neautorizované vzdálené projekty. Prohlížeč nekopíruje hostitelská úložiště do vašeho počítače. Čtení vyžaduje oprávnění Git-view; akce potvrzení, větvení, sloučení a synchronizace mají samostatná oprávnění. Pokud tlačítka chybí, zkontrolujte oprávnění."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Nepotvrzené změny v úložišti Git",
+          "caption": "Nevyřízené soubory místního úložiště. Historie závazků je na jiné kartě; vzdálená oprávnění a rozšířené rozdíly souborů nejsou zobrazeny."
+        }
+      },
+      {
+        "title": "Vytvořte Worktree pro úkol",
+        "steps": [
+          "Otevřete pracovní prostor Git v podrobnostech úlohy a vyberte úložiště, která úloha skutečně potřebuje.",
+          "Zadejte název adresáře úloh, zdrojovou větev a novou větev a poté Vytvořit Worktree. Pokud kořen ještě není úložiště Git, inicializujte jej a proveďte první potvrzení.",
+          "Po spuštění zkontrolujte a potvrďte změny v pracovním prostoru. V Gitu sloučit do aktuální větve nebo sloučit aktuální větev do cíle.",
+          "Zkontrolujte sloučený výsledek a podle potřeby stiskněte ručně. Před vyčištěním nebo obnovením historie si přečtěte přesné účinky a upozornění na nezávazné změny."
+        ],
+        "tips": [
+          "Vytváření pracovního prostoru se neslučuje ani netlačí automaticky. Pouze potvrzené změny se účastní sloučení větví.",
+          "Odstranění pracovního prostoru úloh může odstranit adresáře a větve funkcí. Čištění není způsob, jak uložit výsledky."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Úkolový pracovní prostor Git s existujícím Worktree",
+          "caption": "Demonstrační pracovní prostor existuje bez rozdílů v souborech. Otevřete jej, přidejte úložiště nebo spravujte pobočky; toto není jeho forma stvoření."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Sdílení úkolů a vzdálené projekty",
+    "summary": "Rozlišujte odkaz na jeden úkol od vzdáleného přístupu k celému zařízení.",
+    "sections": [
+      {
+        "title": "Sdílejte jeden úkol",
+        "steps": [
+          "Klikněte na Sdílet v podrobnostech úkolu a zvolte Pouze pro čtení nebo Interaktivní.",
+          "Formulář vygeneruje náhodné heslo a jeho výchozí hodnota je sedm dní. Změňte nebo vymažte heslo podle potřeby; když je nastaven, musí mít alespoň čtyři znaky. Přidejte volitelný název, ujistěte se, že platnost vyprší během následujících 90 dnů, poté vygenerujte a zkopírujte odkaz.",
+          "Otevřete jej v samostatném okně prohlížeče, zadejte heslo, pokud je nastaveno, a zkontrolujte průběh, zprávy, artefakty a vybraná oprávnění.",
+          "Chcete-li sdílení ukončit, otevřete aktuální sdílení a zrušte jej. Již otevření diváci také ztratí pokračující přístup."
+        ],
+        "tips": [
+          "Pouze pro čtení je k prohlížení. Interaktivní návštěvníci používají původní ovladač úloh: mohou posílat zprávy koordinátorovi nebo kroku, zastavovat provádění, zpracovávat schvalování a dotazy a využívat dostupnou konfiguraci úloh a akce pracovního prostoru Git. Ty ovlivňují původní úkol v rámci rozsahu úkolu této sdílené položky. Chcete-li pouze prohlížet, zvolte Pouze pro čtení a ověřte režim v samostatném prohlížeči.",
+          "Příjemci se musí dostat na backendovou adresu v odkazu. Generování odkazu nevytváří veřejný síťový tunel."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Interaktivní formulář sdílení úkolů před generováním odkazu",
+          "caption": "Je vybrán interaktivní režim a heslo je prázdné. Nebyl vytvořen žádný odkaz na sdílení."
+        }
+      },
+      {
+        "title": "Nakonfigurujte přístup k hostiteli a pozvěte zařízení",
+        "steps": [
+          "Na hostiteli otevřete Nastavení → Vzdálený přístup, povolte připojení a zkontrolujte interní adresu. Veřejný přístup vyžaduje dostupnou externí adresu HTTPS/WSS.",
+          "Nastavte a uložte přístupový klíč a poté otestujte dostupnost z jiného zařízení.",
+          "Vygenerujte pozvánku k projektu v části Konfigurace projektu → Sdílení. Importujte jej do položky vzdáleného přístupu jiného WorkStep a postupujte podle pokynů k připojení.",
+          "Zkontrolujte autorizovaná zařízení a aktivní pozvánky. Podle potřeby změňte období autorizace nebo je zrušte. V případě odpojení zkontrolujte dostupnost hostitele, adresu, klíč a expiraci."
+        ],
+        "tips": [
+          "WorkStep nemá vestavěné veřejné relé. Sami si poskytněte dosažitelnou síťovou položku. Úkolová hesla, hostitelské přístupové klíče a pozvánky k zařízení jsou samostatné.",
+          "Vzdálené adresáře a motory zůstávají na hostiteli. Váš místní správce souborů nemůže přímo otevřít své adresáře."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Spínač vzdáleného přístupu a formulář adresy před zadáním hodnot",
+          "caption": "Vnitřní a vnější pole zobrazují zástupné symboly a klíč je prázdný. Není zobrazen žádný seznam autorizace zařízení."
+        }
+      },
+      {
+        "title": "V případě potřeby připojte podnikovou bránu",
+        "steps": [
+          "Pokud vaše organizace poskytuje bránu, zadejte její adresu v části Vzdálený přístup → Platforma brány.",
+          "Explicitně povolte režim brány a uložte, poté se přihlaste a autorizujte tento počítač. Samotné uložení adresy to neumožní.",
+          "Pokud čeká na schválení správcem, dokončete schválení a znovu se ověřte. Jakmile se připojíte, použijte publikaci projektu a udělení přístupu v rámci svých oprávnění.",
+          "Chcete-li se vrátit k místnímu použití, deaktivujte režim brány a uložte."
+        ],
+        "tips": [
+          "Samostatné místní použití nepotřebuje žádnou bránu. Organizační oprávnění a schválení závisí na skutečné platformě."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Adresa platformy před aktivací režimu brány",
+          "caption": "Brána je deaktivována a adresa je zástupný symbol. Uložení adresy a povolení brány jsou odlišné akce."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Pracovní prostor brány a místní sdílení",
+    "summary": "Rozlišujte místní pozvánky, udělení platforem a sdílení úkolů a pokračujte v práci napříč zařízeními.",
+    "sections": [
+      {
+        "title": "Nakonfigurujte podnikovou identitu Feishu nebo Lark",
+        "steps": [
+          "Správce otevře Nastavení platformy → Synchronizace organizace a přihlášení QR, přidá vlastní podnikovou aplikaci Feishu nebo Lark a zadá Tenant Key, App ID a App Secret.",
+          "Zkopírujte kompletní zobrazené zpětné volání přihlášení do odpovídající vývojářské platformy. Nastavte přepínače aplikace, QR-login a organizace-synchronizace samostatně. Stávající App ID nelze změnit; použít nový zdroj identity pro jinou aplikaci.",
+          "Autorizujte čtení adresářů, omezte viditelnost aplikací a postupujte podle Náhledu čtení → Vyberte organizace nebo uživatele → Zkontrolovat změny → Potvrdit synchronizaci. Ověřte výsledky a záznamy o selhání."
+        ],
+        "tips": [
+          "Firemní identita brány a roboti místního kanálu jsou samostatné a automaticky nesdílejí přihlašovací údaje. Oprávnění QR přihlášení skutečného nájemce a oprávnění k adresáři stále vyžadují testování integrace; simulovaný úspěch API nedokazuje skutečnou konektivitu."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Nastavení zdroje identity a synchronizace adresářů Feishu nebo Lark",
+          "caption": "Snímek obrazovky konfigurace bez přihlašovacích údajů z izolované brány čeká na vyřízení."
+        }
+      },
+      {
+        "title": "Umožněte ostatním webům přihlásit se prostřednictvím brány",
+        "steps": [
+          "Superadministrátor otevře Nastavení platformy brány → Autorizace přihlášení třetí strany a klepne na Upravit seznam povolených zpětných volání.",
+          "Zadejte jedno kompletní zpětné volání URL na řádek, například https://business.example.com/login/callback, až 100 záznamů. Parametry schématu, portu, cesty a pevných dotazů se musí přesně shodovat. Dokončete ověření správce a uložte.",
+          "Začněte se přihlašovat z integračního webu. Pokud nejste přihlášeni k bráně, použijte nejprve její stávající heslo nebo podnikové QR přihlášení a poté se vraťte. Backend webu vymění jednorázový autorizační kód za ID uživatele, účet a zobrazované jméno.",
+          "Chcete-li ukončit integraci, odstraňte její URL a uložte. Prázdný seznam povolených zakáže autorizaci přihlášení třetí strany; čekající kódy pro odstraněné adresy okamžitě pozbývají platnosti."
+        ],
+        "tips": [
+          "Zpětná volání podporují HTTP/HTTPS, nikoli zástupné znaky, fragmenty, vložené přihlašovací údaje nebo přednastavený kód, stav nebo parametry request_id. Použijte HTTPS ve výrobě.",
+          "Pokud je zpětné volání neautorizované, zkontrolujte jeho kompletní URL. Pokud platnost kódu vypršela nebo byl použit, restartujte přihlášení z integračního webu. Příklady protokolu a spustitelnosti jsou v docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Seznam povolených zpětných volání třetích stran v nastavení brány",
+          "caption": "Čeká se na skutečný izolovaný snímek obrazovky brány; nepoužívejte každodenní účty ani skutečná nastavení zpětného volání."
+        }
+      },
+      {
+        "title": "Spravujte dva druhy sdílení projektů",
+        "steps": [
+          "Otevřete Sdílení v nastavení projektu. Konfigurace adresy brány umožňuje přístup k platformě. Místní rozhraní také nabízí pozvánky na vzdálené projekty; Vzdálené prohlížeče brány nemohou konfigurovat místní pozvánky.",
+          "Pro místní pozvánky vyberte LAN nebo externí adresu a dobu přístupu k zařízení, poté vygenerujte a zkopírujte. Vlastní vypršení platnosti musí být v budoucnosti; uplatnění pozvánek a vypršení platnosti autorizace zařízení jsou zobrazeny samostatně.",
+          "Po importu do přijímajícího zařízení zkontrolujte jeho název, IP, připojení a expiraci v části Autorizovaná zařízení. Změňte období nebo zrušte podle potřeby. Přístup k platformě místo toho využívá účty, publikaci projektů a granty.",
+          "Pro jeden úkol vyberte režim, heslo a název v jeho okně Sdílení. Sdílení Local a Gateway, výchozí nastavení je sedm dní a maximálně 90. Otestujte v samostatném prohlížeči a poté spravujte nebo zrušte z původního okna."
+        ],
+        "tips": [
+          "Sdílení místní úlohy prostřednictvím připojené brány vyžaduje platnou identitu platformy. Samotná adresa nebo pověření plochy neuděluje oprávnění platformy.",
+          "Odkazy na místní úlohy používají adresu hostitele; Sdílené položky brány používají adresu vrácenou platformou. Nikdy nezveřejňujte přihlašovací údaje pozvánky, nesdílejte odkazy nebo hesla na snímcích obrazovky.",
+          "Oba typy podporují expiraci. Brána může vyžadovat přihlášení; interaktivní sdílené položky brány to musí vyžadovat a místo přístupového klíče používat přihlášení. Zkontrolujte pole v aktuálním okně sdílení."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Karta sdílení vzdáleného přístupu a doba autorizace zařízení",
+          "caption": "Pokud není nakonfigurována žádná brána, zobrazí se vzdálený přístup. Žádná zařízení nejsou autorizována a není vygenerována žádná pozvánka."
+        }
+      },
+      {
+        "title": "Přepínejte zařízení a kontrolujte souhrnná oznámení",
+        "steps": [
+          "Zadejte autorizovaný pracovní prostor zařízení na platformě a poté pomocí horních karet zařízení přepněte na jiné online zařízení.",
+          "Každý účet a zařízení si pamatuje poslední stránku projektu, úkolu nebo relace v tomto prohlížeči. Návrat stále kontroluje autorizaci a neobchází nepřístupné cíle.",
+          "Vzdálené projekty se načítají, pouze když jsou vybrány. Po selhání nebo odpojení načítání klikněte znovu na aktuální projekt a obnovte jej ručně; zařízení nejsou nepřetržitě dotazována na pozadí.",
+          "Otevřete Notifikační centrum pro shrnutí dokončení nebo selhání z autorizovaných zařízení. Klepnutím otevřete úlohu nebo relaci. Živé zprávy pracovního prostoru stále patří aktuálnímu zařízení.",
+          "Pomocí platformy Return to Gateway vyberte jiné zařízení. Zpětné autorizační volání prohlížeče, jehož platnost vypršela, restartuje přihlášení; po zrušení autorizace plochy to zkuste znovu ručně nebo se vraťte do místního pracovního prostoru."
+        ],
+        "tips": [
+          "Paměť stránek je lokální v prohlížeči, není synchronizována mezi prohlížeči. Přístup funguje bez úložiště prohlížeče, ale umístění se neuchová.",
+          "Znovu se připojte podle výzvy v případě offline zařízení, zrušené autorizace nebo selhání sítě. Uložená umístění nenahrazují oprávnění.",
+          "Skutečné snímky karet zařízení a souhrnných oznámení z pevného demonstračního projektu zůstávají nevyřízené."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Karty zařízení a centrum souhrnných oznámení",
+          "caption": "Čeká se na skutečný snímek obrazovky: přepínání zařízení, obnovení polohy a navigace oznámení; dosud nezachyceno."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Roboti kanálu a skupinová oznámení",
+    "summary": "Nakonfigurujte WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack nebo QQ, čímž odlišíte chat od oznámení Webhooku.",
+    "sections": [
+      {
+        "title": "Vyberte kanál a připojte novou platformu",
+        "steps": [
+          "Otevřete Nastavení → Roboti kanálu, vlevo vyberte platformu a vpravo zadejte název, přihlašovací údaje a výchozí místní projekt. Povolit a uložit. Prázdná tajemství si při úpravách zachovávají stávající hodnoty; před přepnutím zkontrolujte neuložené změny. Zavření nastavení, stisknutí klávesy Escape nebo přepnutí částí nastavení vyžaduje potvrzení, když změny nejsou uloženy; zrušení zachová koncept.",
+          "Pro Feishu nebo Lark vytvořte vlastní podnikovou aplikaci s podporou botů a zadejte App ID a App Secret. Po připojení povolte události dlouhého připojení, přihlaste se k odběru im.message.receive_v1 a card.action.trigger, nakonfigurujte oprávnění ke zprávám/kartám a publikujte. Pošlete soukromou zprávu nebo zmiňte robota ve skupině.",
+          "Pro Telegram vytvořte robota s BotFather a zadejte jeho Bot Token. Používá se dlouhé dotazování; žádný jiný program nemůže dotazovat tohoto robota současně. Správci musí nejprve odstranit jakýkoli existující webhook. Odešlete soukromý text nebo se na něj zmiňte/odpovídejte ve skupinách.",
+          "Pro Discord zadejte Application ID a Bot Token, povolte Message Content Intent a udělte kanálu oprávnění ke čtení/odesílání. Uveďte robota v kanálech serveru; svázat úlohy pomocí ID kanálu nebo vlákna.",
+          "Pro Slack povolte Socket Mode a zadejte App ID, App-Level Token s connections:write a Bot Token. Nakonfigurujte chat:write, app_mentions:read a im:history, přihlaste se k odběru app_mention a message.im a poté nainstalujte. Než robota zmíníte v kanálech, pozvěte jej.",
+          "Pro QQ vytvořte oficiálního bota na otevřené platformě QQ, vyberte přístup WebSocket a povolte události soukromých/skupinových zpráv. Zadejte App ID, App Secret a výchozí místní projekt, povolte a uložte. Pošlete soukromý text nebo zmiňte robota ve skupině. Po obdržení zprávy svažte úlohy pomocí group_openid a nakonfigurujte seznamy povolených pomocí členských OpenID, nikoli čísel účtů nebo skupin QQ. Pouze text; pasivní odpovědi mají časový a početní limit. Přečtěte si dlouhé výsledky v WorkStep.",
+          "Vraťte se na WorkStep a zkontrolujte připojení a relace kanálů a poté podle potřeby svažte úlohy. V případě selhání zkontrolujte oblast, přihlašovací údaje, oprávnění platformy a backendové sítě."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack a QQ aktuálně podporují pouze text. Vraťte se na WorkStep pro zastavení, odpovědi na povolení, potvrzení návrhu a kontrolu; obrázky, soubory a interaktivní karty nejsou slíbeny.",
+          "Testy na nové platformě používají simulované snímky. Skutečná instalace tenanta, oprávnění a zasílání zpráv stále vyžadují testování integrace. Udržujte tajemství, úplné tokeny a ID soukromých skupin mimo snímky obrazovky."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Volič kanálů a samostatný editor botů",
+          "caption": "Čeká se na skutečný snímek obrazovky nového vícekanálového rozvržení bez přihlašovacích údajů. Stará forma to nepředstavuje."
+        }
+      },
+      {
+        "title": "Odesílejte oznámení pouze do skupin Feishu nebo Lark",
+        "steps": [
+          "Na stránce úkolu v části Workflow hooks → Notification hook přidejte cíl skupinového robota Feishu nebo Lark a vložte kompletní webhook vlastního robota URL pro danou oblast.",
+          "Pokud je podepisování povoleno, zadejte podepisovací tajemství tohoto robota, nikoli App ID nebo App Secret. Nakonfigurujte požadovaná klíčová slova, události a šablonu Markdown, uložte a zkontrolujte simulaci.",
+          "Před odesláním testu a kontrolou záznamů o doručení potvrďte skupinu příjemců. Náhled nic neodesílá; po uplynutí časového limitu zkontrolujte skupinu, než to zkusíte znovu."
+        ],
+        "tips": [
+          "Webhooky odesílají pouze události pracovního postupu a nepřijímají skupinový chat. Pro obousměrné konverzace použijte aplikačního robota."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Oznámení Feishu nebo Lark URL, podpis a šablona",
+          "caption": "Konfigurace bez přihlašovacích údajů a snímky obrazovky s náhledem karty čekají na vyřízení; skutečné dodání není reklamováno."
+        }
+      },
+      {
+        "title": "Přidejte robota",
+        "steps": [
+          "Otevřete Nastavení → Roboti kanálu, vlevo vyberte WeCom nebo DingTalk, přidejte robota a pojmenujte ho.",
+          "Pro WeCom vyberte dlouhé připojení v nastavení inteligentního robota a zkopírujte Bot ID a Secret. Pro DingTalk vytvořte aplikaci, povolte jeho streamovacího bota a zkopírujte Client ID a Client Secret.",
+          "Vyberte výchozí projekt, povolte dlouhé připojení, uložte a počkejte na Připojeno.",
+          "Přidejte robota do skupiny, zmiňte se o něm v testovací zprávě a prohlédněte si konverzaci a odpovězte v rámci chatů na kanálu projektu."
+        ],
+        "tips": [
+          "Tajná tajemství zadávejte pouze v nastavení, nikoli snímky obrazovky nebo zprávy. V případě selhání připojení zkontrolujte režim platformy, přihlašovací údaje a backendovou síť.",
+          "Tlačítkové karty DingTalk vyžadují oprávnění k vytváření, doručování a aktualizaci. Vlastní šablony musí odpovídat polím popsaným v rozhraní."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Starý formulář Přidat bota před zadáním přihlašovacích údajů",
+          "caption": "Starý formulář ilustruje pouze pole jména, pověření a výchozího projektu. Nebylo uloženo ani připojeno; nový seznam platforem na levé straně stále potřebuje snímek obrazovky."
+        }
+      },
+      {
+        "title": "Svažte skupinu úkolů a zpracujte recenze",
+        "steps": [
+          "Otevřete Bind BOT v podrobnostech úkolu a vyberte povoleného robota.",
+          "Zmiňte to jednou ve skupině a poté vyberte skupinu v části Naposledy přijaté skupiny. Případně vložte známé ID skupiny, ověřte aktuální úlohu a vytvořte vazbu.",
+          "Skupinové otázky vstupují do koordinátora daného úkolu. Zkontrolujte výsledky etapy a přeposlané přílohy.",
+          "Když se objeví karty s recenzemi nebo otázkami, přečtěte si je, než budete jednat, a vraťte se do WorkStep a v případě potřeby ověřte. Odpojte, když již není potřeba."
+        ],
+        "tips": [
+          "Výchozí projekt zpracovává chat kanálu, který není vázán na úkol. Vazby skupin určují, která úloha přijímá zprávy této skupiny.",
+          "Archivace nebo odstranění úlohy odstraní vazby; obnovení vyžaduje opětovné svázání. Vykreslování tlačítek závisí na klientech kanálu. Pokud není k dispozici, postupujte podle podrobností úkolu."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Dialog úlohy BOT bez vázané skupiny",
+          "caption": "Vyberte robota a nedávnou skupinu, poté zadejte a svažte jeho identifikátor. Zatím není svázána žádná skupina úkolů."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Stolní pískoviště",
+    "summary": "Spusťte backend a motory v samostatném kontejneru s explicitně přidruženými adresáři projektu.",
+    "sections": [
+      {
+        "title": "Dokončete průvodce sandboxem v pěti krocích",
+        "steps": [
+          "Na ploše otevřete Sandbox, poslední položku Nastavení. Dokončete aktivní úkoly a konverzace a ověřte podporu virtualizace; Windows potřebuje WSL2.",
+          "Nejprve vyberte samostatné úložiště sandbox a stáhněte/připravte si pomocný software.",
+          "Poté zkontrolujte obrázek a stáhněte si doporučený obrázek vydání nebo naskenujte pomocí místního Dockeru kompatibilní obrázek WorkStep.",
+          "Za třetí vyberte existující nebo nové adresáře projektů; za čtvrté vyberte migraci poskytovatele, motoru a preferencí; za páté prohlédněte souhrn a uložte nebo potvrďte a restartujte."
+        ],
+        "tips": [
+          "Přidružením projektu se nezkopírují jeho soubory. Úpravy v sandboxu stále ovlivňují původní adresář. Nespouštějte stejný projekt v obou prostředích současně.",
+          "Nepřidružené projekty jsou dočasně skryté, nejsou vymazány. Sandbox a adresáře projektu se nemohou navzájem obsahovat."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Výběr a potvrzení projektu v průvodci sandboxem v pěti krocích",
+          "caption": "Zkontrolujte úložiště, přidružení projektu a migraci konfigurace."
+        }
+      },
+      {
+        "title": "Přepínejte režimy a udržujte konfiguraci",
+        "steps": [
+          "Po restartu zkontrolujte odznak postranního panelu režimu Sandbox a ověřte skutečné prostředí.",
+          "Znovu zkontrolujte adresy poskytovatelů, instalaci motoru a přihlášení. Host localhost znamená v kontejneru něco jiného a cesty mohou vyžadovat úpravu.",
+          "Před importem nebo změnou adresářů deaktivujte karanténu a restartujte ji, poté použijte správu karantény. Před importem si přečtěte podrobnosti o záloze a výměně.",
+          "Vypněte sandbox a restartujte, abyste se vrátili do běžného režimu. V případě chyb otevřete adresář protokolu a zkontrolujte průběh a selhání."
+        ],
+        "tips": [
+          "Běžný režim a režim sandbox si zachovávají samostatnou konfiguraci. Přepínání nesynchronizuje změny zpět automaticky.",
+          "Oprávnění ke kompatibilitě zvažte pouze v případě, že nelze spustit vnitřní karanténu motoru; rozhraní vysvětluje sníženou izolaci. Odstranění dat v izolovaném prostoru je nevratné: nejprve zkontrolujte, co bude zachováno."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Běžná nastavení a odstraňování problémů",
+    "summary": "Pochopte rozsah konfigurace, přečtěte si nejprve stav a chyby a poté provádějte cílené opravy.",
+    "sections": [
+      {
+        "title": "Zkontrolujte verzi pro počítače a stáhněte si aktualizace",
+        "steps": [
+          "Na ploše otevřete Nastavení → Nastavení systému → Aktualizace plochy a zkontrolujte aktuální verzi.",
+          "Kliknutím na Vyhledat aktualizace najdete nejnovější oficiální vydání GitHub. Pokud je novější, klikněte na Stáhnout z GitHub.",
+          "Vyberte instalační program vašeho systému na stránce vydání, dokončete aktivní práci a nainstalujte jej sami."
+        ],
+        "tips": [
+          "Desktop kontroluje jednou denně bez automatického stahování, instalace nebo restartování. Aktualizaci spouští pouze novější oficiální vydání, nikoli vkládání kódu nebo koncepty.",
+          "Opakujte neúspěšné kontroly později. Webová verze neobsahuje žádnou položku aktualizace na ploše."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Aktuální verze pro stolní počítače a záznam kontroly aktualizací v nastavení systému",
+          "caption": "Zkontrolujte ručně a poté stáhněte z GitHub, jakmile bude k dispozici aktualizace."
+        }
+      },
+      {
+        "title": "Souběh, asistenti a zobrazení",
+        "steps": [
+          "Při spouštění mnoha úloh nastavte kapacitu úlohy a konverzace v globálních limitech souběžnosti nebo konfiguraci projektu a zkontrolujte efektivní hodnoty.",
+          "Pokud by plánované úlohy neměly spotřebovávat kapacitu, před povolením této možnosti ověřte dostatečné zdroje. Fronta nadbytečných úkolů a chatů.",
+          "Nakonfigurujte motor a model každého asistenta v části Asistenti. Samostatně zkontrolujte spouštění kroků a nastavení koordinátora úloh.",
+          "Změňte uživatelské jméno v nastavení systému. Jazyk, písma, velikost a vzhledy jsou v Nastavení → Vzhled; Rozsah skenování úložiště je v nastavení Git."
+        ],
+        "tips": [
+          "Změna výchozího spouštěcího jádra ovlivní nové úlohy a kroky, nikoli stávající nastavení úlohy nebo kroku."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Globální limity souběžnosti úkolů a konverzací",
+          "caption": "Nastavte globální kapacity a výjimku naplánované úlohy."
+        }
+      },
+      {
+        "title": "Odstraňte problémy v pořádku",
+        "steps": [
+          "Pokud se úloha nespustí, rozlišujte stavy připraveno, ve frontě a čekající na kontrolu. Zkontrolujte startovací krok, automatické spouštění a dostupnost motoru.",
+          "Při selhání spuštění si přečtěte nejnovější chybu. Zkontrolujte instalaci SDK, ověření poskytovatele, název modelu, síťová a souborová oprávnění a poté znovu spusťte.",
+          "Pro historii nebo chyby načítání API použijte Opakovat. Pokud API vrátil webovou stránku, potvrďte verzi backendu a restartujte pomocí obvyklé metody.",
+          "Pokud byla ztracena historie nativní relace, přečtěte si Spustit znovu s novou relací, uveďte aktuální cíle a požadované reference na artefakty a nepovažujte to za úplné obnovení nativního kontextu.",
+          "V případě chybějících artefaktů nebo selhání vzdáleného přístupu zkontrolujte skutečné generování souboru nebo dostupnost hostitele, adresu, klíč a vypršení platnosti autorizace."
+        ],
+        "tips": [
+          "Při hlášení problémů zahrňte verzi, operační systém, engine, kroky reprodukce a redigované snímky obrazovky chyb, nikdy ne přihlašovací údaje. Bez explicitního nastavení spustí 20 nepřetržitých minut bez událostí motoru časový limit nečinnosti při zachování relace. Stávající vlastní časové limity zůstávají; 0 jej zakáže. Tiché myšlení nebo nástroje nemusí být nutně zastaveny: před dalším spuštěním zkontrolujte protokoly."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Selhání demonstrace způsobené neexistujícím modelem",
+          "caption": "Chyba říká, že vybraný model není podporován. Před opětovným spuštěním opravte konfiguraci modelu kroku; na tomto obrázku to není opraveno."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Vzhled, vzhledy a jazyky",
+    "summary": "Vyberte si osobní předvolby zobrazení nebo vytvořte náhled vzhledů a jazykových balíčků prostřednictvím běžného projektového chatu.",
+    "sections": [
+      {
+        "title": "Vyberte vestavěný jazyk",
+        "steps": [
+          "V Nastavení → Vzhled vyberte Zjednodušená čínština, Tradiční čínština, Angličtina, Japonština, Francouzština, Němčina nebo Arabština a prohlédněte si běžné položky a ovládací prvky data.",
+          "V nabídce jazyků v horní části webu a uživatelské příručky zvolte japonštinu, tradiční čínštinu, korejštinu nebo jiný dostupný jazyk. Prohlížeč si výběr uloží; pokud není uložená předvolba, použije svůj jazyk."
+        ],
+        "tips": [
+          "Francouzské, německé a arabské překlady aplikací v současné době pokrývají hlavní položky; ostatní řetězce mohou zůstat čínské a arabské rozložení aplikace je stále zleva doprava. Webové stránky a text příručky následují horní výběr jazyka s arabským rozložením zprava doleva. Skutečné snímky obrazovky zůstávají čínské. Přepínání jazyků nepřekládá minulé konverzace ani uživatelské soubory."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Vestavěné voliče jazyků v aplikaci a na webu",
+          "caption": "Skutečné snímky obrazovky s přidanými jazyky čekají na vyřízení."
+        }
+      },
+      {
+        "title": "Použijte rozvržení vzhledu v2 a rozšíření funkcí",
+        "steps": [
+          "V části Nastavení → Vzhled nainstalujte a ověřte důvěryhodný vzhled v2, zobrazte náhled a použijte jej. V případě funkcí, jako jsou poznámky, požádejte autora v chatu o vytváření vzhledu, aby zahrnul komponenty.",
+          "Přečtěte si potvrzení aktivace pro balíčky s kódem. Aktualizace balíčku nebo změna identity může vyžadovat znovu. Otevřete panely prostřednictvím nabídek vzhledu nebo položek funkcí, které závisí na balíčku. Poznámky nebo kalendáře nejsou předinstalované funkce aplikace.",
+          "Balíček může umístit skladatele nad, pod, doleva nebo doprava. Kompaktní pohledy si zachovávají vertikální uspořádání. Po přepnutí zkontrolujte zprávy, skladatel a nastavení zůstávají použitelné.",
+          "Data rozšíření jsou oddělena podle identity prohlížeče, zařízení, vzhledu a funkce. Přepnutím nebo odstraněním vzhledu nedojde k jeho vymazání. Pro zálohování použijte vlastní export rozšíření. Pokud se rozhraní rozbije, přidejte skin=default do URL a aktualizujte."
+        ],
+        "tips": [
+          "Kód součásti má oprávnění aktuální stránky. Povolit pouze důvěryhodné zdroje. Zrušení náhledu obnoví vzhled, ale nezruší již spuštěný kód.",
+          "Data rozšíření nejsou zahrnuta do exportů vzhledu ZIP ani nejsou synchronizována mezi prohlížeči/zařízeními. Před vymazáním úložiště zálohujte; neúspěšné ukládání nesmí být považováno za úspěch."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "potvrzení aktivace komponenty v2 a zadání na panelu funkcí",
+          "caption": "Čeká se na snímek obrazovky skutečného provedení důvěryhodného demonstračního balíčku. Ověření formátu není vizuální přijetí."
+        }
+      },
+      {
+        "title": "Vyberte a uložte osobní vzhled",
+        "steps": [
+          "Chcete-li získat přístup k celému zařízení, otevřete Nastavení → Vzhled. Uživatelé s oprávněním k projektu zadávají vzhled a vzhledy z postranního panelu.",
+          "Vyberte písmo, velikost a jazyk. Vyhledejte nebo filtrujte nainstalované vzhledy, zobrazte náhled a poté použijte. Pevný pruh náhledu umožňuje zrušit nebo potvrdit.",
+          "Volby uživatelů Authenticated Gateway se ukládají pro každý účet a zařízení a obnovují se v jiném prohlížeči na stejném zařízení. Opakovat neúspěšné uložení. Místní volby bez přihlášení k platformě zůstávají v tomto prohlížeči."
+        ],
+        "tips": [
+          "Balíčky a záznamy o vytvoření jsou sdíleny na zařízení; osobní výběry jsou izolované. Uživatelé s oprávněním k projektu si mohou vybrat pouze nainstalované balíčky.",
+          "Chybějící nebo poškozené balíčky se vrátí do výchozího vzhledu. Chcete-li obnovit výchozí vzhled nebo zjednodušenou čínštinu, přidejte ?skin=default nebo ?language=default."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Písma, velikost, jazyk a nainstalované vzhledy ve vzhledu",
+          "caption": "Stránka skutečných nastavení zobrazuje výchozí hodnoty a vestavěné příklady vpravo. Žádné osobní preference nebyly změněny."
+        }
+      },
+      {
+        "title": "Vytvářejte vzhledy a jazyky prostřednictvím chatu",
+        "steps": [
+          "S právy na správu hostitele klikněte na Promluvme si o vzhledu, vyberte nainstalovaný, ověřený engine a popište cíl, například: Vytvořte tmavý vzhled, zachovejte rozložení a použijte šipku pro odeslání nahoru.",
+          "Chat je vlevo, editace a náhled vpravo; telefony přepínají karty. Upravte název, barvy, písmo, velikost, ikonu odeslání a rozvržení a poté úpravy uložte do stejného konceptu balíčku. Během běhu chatu jsou úpravy zakázány. Zkontrolujte náhledy na PC a telefonu.",
+          "Pro jazykový balíček se zeptejte ve stejném chatu, například: Přidejte španělštinu při zachování vzhledu. Přepněte pravou stranu na Jazyk. Načte se po generaci; pomocí Číst a ověřovat zkontrolujte jeho adresář, pokrytí, chybějící řetězce a příklady.",
+          "Pro vzhledy klepněte na Uložit vzhled a náhled; pro jazyky, Instalace a náhled. Potvrďte nebo zrušte na panelu náhledu. Uložení do knihovny nepotvrzuje osobní přihlášku. Exportujte ZIP, abyste je mohli znovu použít, a zkontrolujte výzvy k výměně, zda neobsahují importy nebo aktualizace stejného ID."
+        ],
+        "tips": [
+          "Creation znovu používá pevný projekt Runtime a běžný chat a vyvolává váš model. Pokračujte v dřívější práci prostřednictvím Historie konverzace nad oknem. Samotné ukázky náhledu nespouštějí úlohy.",
+          "Písma používají nainstalovaná systémová písma. Historické zprávy a soubory nejsou automaticky překládány. Vestavěné ikony odesílání lze vybrat v úpravách; vlastní vektorové ikony musí být dodány ověřeným návrhem.",
+          "Jazykové balíčky jsou nezávislé na vzhledech a aktuálně podporují jazyky se zápisem zleva doprava. Chybějící řetězce a ovládací prvky data používají zadanou vestavěnou záložní možnost. Pokrytí neprokazuje kvalitu překladu; pomocí chatu aktualizujte zastaralé katalogy řetězců."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat a oblasti úprav/náhledu při vytváření vzhledu",
+          "caption": "Autorizovaný prázdný chat pro vytvoření a formulář úprav. Jeho skladatel je předvyplněn; nebyla odeslána žádná zpráva, běh modelu ani uložen vzhled."
+        }
+      },
+      {
+        "title": "Přečtěte si a zobrazte náhled jazykového balíčku",
+        "steps": [
+          "Přepněte pravou stranu studia vzhledu na Jazyk a zkontrolujte adresář Language-pack. Generujte prostřednictvím stejného chatu nebo importujte existující jazyk ZIP.",
+          "Vygenerované balíčky se načítají automaticky. Přečtěte si a ověřte pokrytí kontrol, chybějící řetězce a příklady. Upozornění na čekání na generování pro prázdný adresář znamená, že vytváření není dokončeno.",
+          "Po ověření nainstalujte a zobrazte náhled, poté potvrďte nebo zrušte osobní aplikaci. Pokrytí nemůže nahradit kontrolu kvality překladu."
+        ],
+        "tips": [
+          "V současnosti jsou podporovány pouze jazyky psané zleva doprava. Ovládací prvky data a chybějící řetězce používají v sadě specifikované záložní řešení."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Jazykový adresář a záznam ověření v prázdném chatu pro vytvoření",
+          "caption": "Záložka Jazyk nabízí adresář, čtení a ověření a import ZIP. Nebyl vygenerován, nainstalován ani aplikován žádný jazykový balíček."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Audit projektu na dálku",
+    "summary": "Kontrolujte akce vzdálených návštěvníků a zda uspěly, byly zamítnuty nebo neúspěšné.",
+    "sections": [
+      {
+        "title": "Filtrujte a kontrolujte vzdálené operace",
+        "steps": [
+          "Na hostitelském zařízení projektu otevřete Konfigurace → Audit provozu místního projektu. Vzdálené projekty, pracovní prostory brány a přístup vázaný na projekt tuto kartu nenabízejí.",
+          "Filtrujte podle akce a výsledku a poté zkontrolujte aktéra, čas, zdroj a úkol, pracovní postup nebo identifikátor souboru.",
+          "Přejděte na další stránku nebo první stránku, obnovte nejnovější záznamy a opakujte pokus o neúspěšné načítání."
+        ],
+        "tips": [
+          "Tento audit zahrnuje akce vzdáleného zdroje a zamítnuté/neúspěšné výsledky, nikoli úplné chaty a neukládá žádné přihlašovací údaje. API je na hostiteli pouze místní. Výchozí uchovávání je 30 dní; sledovat skutečnou dobu trvání stránky. Skutečná jména návštěvníků veřejného sdílení nejsou známa; Vzdálený prohlížeč (identita nahlášená sama sebou) není ověřená identita."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Auditní filtry a prázdné záznamy pro místní projekt",
+          "caption": "Skutečný záznam místního auditu a filtry akcí/výsledků. V demonstračním projektu neexistují žádné vzdálené záznamy; žádné činy ani identity nebyly vymyšleny."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Často kladené otázky",
+    "summary": "Než začnete, pochopte motory, modelové služby, změny souborů a hranice obnovy.",
+    "sections": [
+      {
+        "title": "Jak se SDK a CLI liší a čím bych měl začít?",
+        "steps": [
+          "Oba jsou způsoby integrace motoru pro schopnosti modelu. SDK se integruje prostřednictvím vývojářských API; CLI spouští programy příkazového řádku. Ani název modelu.",
+          "Začněte instalací Codex SDK nebo Claude Agent SDK, dokončete ověření, vyberte a ověřte model a poté jej nastavte jako výchozí prováděcí modul. Stávající uživatelé CLI si mohou vybrat tento motor.",
+          "Poskytovatel poskytuje adresu služby a autentizaci, model identifikuje, co zpracovává požadavek, a engine poskytuje relace, nástroje a provádění. Postupujte podle formuláře vybraného motoru; přihlašovací údaje nejsou nutně zaměnitelné."
+        ],
+        "tips": [
+          "Instalace SDK vytváří pouze závislosti běhu, nikoli ověřování, oprávnění nebo kvóty. Rozlišujte položky Codex a Claude Code SDK od položek označených CLI."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "Možnosti SDK a CLI v nastavení motoru",
+          "caption": "Zkontrolujte doporučené motory SDK a jejich samostatné stavy instalace a ověření."
+        }
+      },
+      {
+        "title": "Jak se účtují softwarové a modelové hovory?",
+        "steps": [
+          "Před malou úvodní úlohou zkontrolujte plán, ověřování a kvótu vybrané modelové služby. Samotný SDK není modelový kredit.",
+          "Provádění úloh, automatická kontrola, asistenti a opakování – to vše může vyvolat modely. Zkontrolujte modely samostatně v nastavení kroku, kontroly a asistenta.",
+          "Použijte analýzu provedení ke kontrole využití a zdrojů nákladů. Odhady pomáhají vysvětlit spotřebu; konečné poplatky se řídí pravidly a vyúčtováním poskytovatele služeb."
+        ],
+        "tips": [
+          "Nepředpokládejte, že stažením SDK nebo přihlášením jsou hovory zdarma nebo že jedno předplatné platí pro každý engine."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Využití tokenů a zdroje nákladů v analýze provádění",
+          "caption": "Jsou zobrazeny náklady a pokrytí hlášené poskytovatelem. Odhadované náklady jsou označeny pouze v případě, že jsou skutečně použity odhady cen."
+        }
+      },
+      {
+        "title": "Kde jsou data uložena a může AI upravovat moje soubory?",
+        "steps": [
+          "Místní úlohy, pracovní postupy a zprávy jsou standardně uloženy v project .workstep. Zakázání datového adresáře následuje adresář projektu používá ~/.workstep/projects/<项目ID>/. .workstep/project.json projektu znovu asociuje původní data.",
+          "Požadavky a kontext načtený modulem mohou být odeslány do vaší nakonfigurované modelové služby. Kanály, sdílení a vzdálený přístup také poskytují informace v rámci jejich oprávněného rozsahu odpovídajícím stranám.",
+          "AI s oprávněním k zápisu může upravovat soubory projektu. Cvičte v samostatném projektu, před spuštěním zkontrolujte oprávnění a poté zkontrolujte rozdíly Git a skutečné artefakty.",
+          "Přidružení karantény stále upravují původní připojené soubory. Úkolové Worktree poskytují samostatné adresáře, ale výsledky sloučení stále vyžadují kontrolu."
+        ],
+        "tips": [
+          "Místní úložiště neznamená volání offline modelu. Udržujte klíče, přihlašovací údaje k účtu a irelevantní citlivé soubory mimo popisy úkolů, přílohy a snímky obrazovky."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Panel režimu povolení konverzace na telefonu",
+          "caption": "Jsou uvedeny možnosti Výchozí, Pouze pro čtení, Zápis do pracovního prostoru a další. Skutečná podpora a chování závisí na motoru."
+        }
+      },
+      {
+        "title": "Jak se liší zastavení, opakování, přepracování a obnova?",
+        "steps": [
+          "Zastavení přeruší aktuální provádění nebo odpověď, ale nezruší již zapsané soubory. Než budete pokračovat, zkontrolujte stávající výsledky.",
+          "Opakování nebo opětovné spuštění vyvolá stroj znovu, případně bude pokračovat v kontextu nebo podle výzvy použije novou relaci. Nevrací každou změnu do stavu před spuštěním.",
+          "Rework opravuje výstupy podle zpětné vazby nebo zpětných spojení, s výhradou závislostí a omezení pracovního postupu. Potvrzení čtení při změně rozsahu znovu.",
+          "Po opětovném otevření WorkStep nejprve zkontrolujte stav úlohy a relace. Motory podporující obnovu mohou obnovit svou nativní relaci; ztracené nativní záznamy vyžadují novou relaci a opakování."
+        ],
+        "tips": [
+          "Automatické obnovení závisí na motoru a dostupné historii. Úplná obnova není zaručena pro každý motor nebo přerušení."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Krok resetu vybraný v dokončené úloze",
+          "caption": "Tento dokončený úkol má vybraný krok Resetovat, což má vliv pouze na zprávu o dalším kroku. Nejedná se o potvrzení smazání nebo varování o chybějící relaci."
+        }
+      }
+    ]
+  }
+]

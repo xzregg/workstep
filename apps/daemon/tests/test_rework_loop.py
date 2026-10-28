@@ -304,7 +304,8 @@ async def test_rework_exhausts_max_retries_and_pauses(tmp_path):
             workflow_run=workflow_run,
         )
 
-        assert Task.get_by_id(task.id).status == "paused"
+        assert Task.get_by_id(task.id).status == "waiting"
+        assert Task.get_by_id(task.id).status_reason == "manual_review"
         assert TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "check")
         ).status == "awaiting_review"

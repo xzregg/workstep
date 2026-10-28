@@ -100,6 +100,7 @@ def start_step_state(
     if manual_review_feedback:
         ts.review_feedback = None
     ts.status = "running"
+    ts.waiting_interactions_json = None
     if not is_review_retry:
         ts.started_at = utc_now()
     ts.ended_at = None
@@ -173,11 +174,13 @@ def start_step_state(
     # 显示「暂停」。条件 UPDATE 只修过期行，也不覆盖其它并发字段。
     Task.update(
         status="running",
+        status_reason='execution',
         updated_at=utc_now(),
     ).where(
         (Task.id == task.id) & (Task.status != "running")
     ).execute()
     task.status = "running"
+    task.status_reason = 'execution'
     if workflow_run is not None:
         WorkflowRun.update(
             status="running",

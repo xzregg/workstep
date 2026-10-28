@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Download, installer og åbn WorkStep",
+    "summary": "Installer først WorkStep, derefter en SDK-motor. Desktop-appen inkluderer dens backend-runtime; du behøver ikke installere Python først.",
+    "sections": [
+      {
+        "title": "Vælg en installatør",
+        "steps": [
+          "Brug webstedets downloadlink til at vælge desktopinstallationsprogrammet til dit operativsystem og chip. På Mac skal du vælge arm64 DMG til Apple M-series chips eller x64 DMG til Intel.",
+          "Installer og åbn WorkStep ved hjælp af dit systems normale installationsproces. Vent på, at den lokale backend bliver klar, og arbejdsområdet åbner.",
+          "Ved første lancering skal du indtaste et visningsnavn, når du bliver bedt om det. For at gense onboarding skal du åbne Indstillinger → Systemindstillinger → Onboarding (设置 → 系统设置 → 新手引导), og derefter klikke på Onboarding."
+        ],
+        "tips": [
+          "Desktop-installatører inkluderer ikke valgfri motorer såsom Codex SDK eller Claude Agent SDK. Installer dem via grænsefladen i næste kapitel.",
+          "Tidlige usignerede macOS- eller Windows-builds kan udløse systemsikkerhedsprompter. Bekræft downloadkilden, før du følger dit systems instruktioner.",
+          "Standalone lokal brug kræver ikke Gateway-login. Hvis du frivilligt aktiverer Gateway, og godkendelsen ikke kan starte, forsøger den lokale post at vende tilbage til lokal tilstand og deaktivere Gateway, idet den beholder sin adresse til senere genforbindelse. En gateway-bundet installation eller ekstern besøgende kan ikke bruge dette til at deaktivere værtens gateway. Hvis det mislykkes at vende tilbage til lokal tilstand, skal du kontrollere den lokale backend og opdatere for at prøve igen."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Identitetsopsætning og hurtig start ved første lancering",
+          "caption": "Indtast et lokalt visningsnavn for at komme ind i arbejdsområdet eller begynde hurtig opsætning. Dette billede bruger en demonstrationsidentitet."
+        }
+      },
+      {
+        "title": "Forstå tre begreber",
+        "steps": [
+          "En motor udfører opgaver og kalder værktøjer. Denne manual anbefaler Codex SDK eller Claude Agent SDK først; en separat installeret CLI-motor er ikke påkrævet.",
+          "En udbyder leverer modellen API, API adresse og legitimationsoplysninger. Den er adskilt fra udførelsesmotoren, og dens protokol skal matche en, der understøttes af den pågældende motor.",
+          "En model behandler faktisk din anmodning. Installer en motor, godkend den, vælg og test en model, og opret derefter en opgave."
+        ],
+        "tips": [
+          "En SDK kan inkludere eller påkalde en underliggende eksekverbar. At vælge en SDK betyder ikke, at der ikke er nogen underprocesser.",
+          "WorkStep gemmer projektdata lokalt. Under udførelsen sender den valgte motor og udbyder opgavekontekst til modeltjenesten."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Trin 1: Installer en SDK-motor",
+    "summary": "Start med en SDK. Download og administrer motorer gennem Installer & versioner (安装与版本), uden at kopiere terminalinstallationskommandoer.",
+    "sections": [
+      {
+        "title": "Download og installer via grænsefladen",
+        "steps": [
+          "Åbn Indstillinger → Udførelsesmotorer (设置 → 执行引擎). Find Codex- eller Claude Code-kortet mærket sdk, svarende til Codex SDK og Claude Agent SDK. Installer i første omgang kun den, du har tænkt dig at bruge.",
+          "Klik på Installer og versioner, vent på versionslisten, og vælg derefter en passende version under Vælg version.",
+          "Klik på Installer valgt version, og bekræft versionen. Hvis tredjepartsvilkår vises, skal du læse og acceptere dem, før du klikker på Bekræft installation.",
+          "Vent på download af hovedpakken, installation af motor og afhængighed og versionsbekræftelse. Bekræft, at den nye version vises.",
+          "Ændring af en SDK-version kræver genstart af backend. Desktopbrugere kan afslutte det nuværende arbejde, afslutte og genåbne WorkStep og derefter fortsætte konfigurationen."
+        ],
+        "tips": [
+          "Procenten dækker kun hovedpakken. Afhængighedsdownloads og -ekstraktion har muligvis ingen procentdel; brug fasebeskrivelsen til at bedømme fremskridt.",
+          "Installationen fortsætter, når dens sektion er klappet sammen. Indsend ikke igen, blot fordi fremskridtet midlertidigt er holdt op med at ændre sig.",
+          "Hvis der ikke vises en passende version, skal du opdatere listen og kontrollere netværks- og platformssupport. Når en brugerdefineret eksekverbar sti er konfigureret, skal du rydde den som anvist, før du administrerer versioner."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "SDK motorinstallation og versionsvalg",
+          "caption": "Klik på Installer og versioner, Vælg version og derefter Installer den valgte version."
+        }
+      },
+      {
+        "title": "Bekræft installation og vedligehold versioner",
+        "steps": [
+          "Genåbn Execution Engines og kontroller, at SDK er registreret som installeret med den forventede version.",
+          "Brug Installer og versioner til senere opgraderinger. Hvis en rollback-version er tilgængelig, skal du klikke på Rul tilbage til... og bekræfte; rollback downloader den ældre version igen.",
+          "Hvis installationen mislykkes, skal du læse fejlen i det pågældende afsnit, kontrollere netværket, diskpladsen og installationsstien og derefter prøve igen. Installationssucces betyder ikke, at modelgodkendelse er lykkedes: Fuldfør konfiguration og test derefter."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Version og fremskridt efter SDK installation",
+          "caption": "Kontroller den aktuelle version efter installationen. Den resterende 100 %-indikator betyder, at installationen er fuldført, ikke at download fortsætter."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Konfigurer udbydere, autentificering og forbindelsestest",
+    "summary": "Konfigurer en kompatibel udbyder i WorkStep og bind den til din SDK. Brugere med et eksisterende indbygget login kan også genbruge motorens godkendelse.",
+    "sections": [
+      {
+        "title": "Tilføj en udbyder",
+        "steps": [
+          "Åbn Indstillinger → Udbydere → Tilføj udbyder (设置 → 供应商 → 添加供应商). Indtast et genkendeligt navn, og vælg tjenestens type og API-protokol.",
+          "For Claude Agent SDK skal du vælge et kompatibelt Anthropic Messages-slutpunkt; for Codex SDK skal du vælge et kompatibelt OpenAI Responses-slutpunkt. Et \"OpenAI-kompatibelt\" krav alene etablerer ikke protokolkompatibilitet.",
+          "Indtast API-adressen og API-nøglen fra udbyderen. Behold versionsstier såsom /v1 eller /v2; Brug ikke hele chatslutpunktet som basisadresse.",
+          "Gem udbyderen, og klik på Test forbindelse. For at få modeller skal du klikke på Hent modeller, vælge de modeller, du har brug for, og derefter Gem valgte.",
+          "Sørg for, at udbyderen er aktiveret. Når testen er bestået, skal du vende tilbage til SDK for at fuldføre binding og motortest."
+        ],
+        "tips": [
+          "Kontoabonnementer, API-legitimationsoplysninger og fakturering bestemmes af tjenesteudbyderen. Installation af en SDK giver ikke legitimationsoplysninger.",
+          "Når du redigerer en udbyder, bevares den gamle værdi ved at lade nøglen være tom. Indtast en ny nøgle for at erstatte den, og skjul nøgler før skærmbilleder eller delingskonfiguration.",
+          "I virksomhedsadministreret tilstand kan udbydere tildeles af platformen. Brug en autoriseret udbyder i stedet for at tilføje den igen."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Indstillinger for udbydernavn, protokol og API-adresse",
+          "caption": "Konfigurer en kompatibel protokol, gem, og test derefter forbindelsen. Billedet viser en offentlig API-adresse med et tomt nøglefelt."
+        }
+      },
+      {
+        "title": "Bind og bekræft SDK",
+        "steps": [
+          "Vend tilbage til Indstillinger → Udførelsesmotorer, udvid den installerede SDKs konfiguration, og vælg den kompatible udbyder, du har gemt.",
+          "Claude Agent SDK kræver en Tilladelsestilstand. Læs dens beskrivelse, vælg og bekræft; andre avancerede felter kan forblive på deres standardindstillinger. For Codex SDK skal du i første omgang beholde standardindstillingerne for begrundelse, godkendelse og sandkasse.",
+          "Klik på Gem konfiguration, og kontroller standardmodellen. For en bundet udbyder genlæser Opdater modeller kun gemte markeringer i stedet for at hente alle modeller. Listen er tom, hvis der ikke findes nogen cache eller valg. For at tilføje modeller skal du gå tilbage til Indstillinger → Udbydere, Hent modeller og Gem valgte, og derefter opdatere motoren.",
+          "Klik på Test på motorkortet, vent på resultatet, og bekræft Verified (已验证). Dette er dit kontrolpunkt, før du kører opgaver."
+        ],
+        "tips": [
+          "Motortest påberåber sig den valgte motor og kan pådrage sig modelservicegebyrer.",
+          "Codex SDK ræsonnement indsats, godkendelse og sandkasse muligheder har kinesiske etiketter. Indsatslisten viser motorunderstøttede indstillinger, selvom modelkataloget er tomt; det betyder ikke, at hver model understøtter alle niveauer. Start med standardindstillinger. Hvis en model afviser et niveau, skal du vende tilbage til Automatisk eller en understøttet værdi.",
+          "Uden en udbyderbinding genbruger Codex SDK lokal Codex-godkendelse, mens Claude Agent SDK bruger sin oprindelige godkendelseskonfiguration. Nye brugere uden et eksisterende login bør starte med udbyderkonfiguration.",
+          "For godkendelsesfejl skal du kontrollere nøglen, API-adressen, protokol og kontotilladelser. For modelfejl skal du kontrollere model-id'et og udbyderens support. Hvis markeret Ikke installeret, skal du vende tilbage til installationen."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Test, verificeret og gem konfiguration på et Codex SDK-kort",
+          "caption": "Codex sdk-kortet viser Verified, hvilket indikerer, at denne motor bestod sin test."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Indstil standardudførelsesmotoren og -modellen",
+    "summary": "Gør den testede SDK til standardudførelsesmotoren for trin, der ikke specificerer en anden motor.",
+    "sections": [
+      {
+        "title": "Gem standardindstillingerne",
+        "steps": [
+          "Under Indstillinger → Udførelsesmotorer → Standardudførelsesmotor skal du vælge den SDK, du lige har verificeret.",
+          "Klik på Gem standarder og bekræft succesmeddelelsen. Gå ikke efter blot at have valgt en dropdown-værdi.",
+          "Vælg en model i det SDK-korts standardmodelvælger. Trin uden en separat model bruger denne standard.",
+          "Når du har oprettet en arbejdsgang, skal du kontrollere hvert trins motor og model igen. Eksplicitte trinindstillinger ændres ikke automatisk, når globale standardindstillinger ændres."
+        ],
+        "tips": [
+          "Assistenter har separate konfigurationsposter. Ændring af standardudførelsesmotoren ændrer ikke alle assistenter.",
+          "Fuldfør først en arbejdsgang med én verificeret SDK og én model, og prøv derefter forskellige modeller til forskellige trin."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Standardudførelsesmotorvælger og knappen Gem standardindstillinger",
+          "caption": "Standardmotorvælgeren og Gem standardindtastningen. Pydantic AI er ukonfigureret i dette billede; ingen standard er blevet ændret eller bekræftet."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Tilslut et lokalt projekt",
+    "summary": "Et projekt svarer til en lokal kodemappe. Dens data følger projektet som standard eller kan gemmes af projekt-id under den aktuelle brugers Hjem.",
+    "sections": [
+      {
+        "title": "Forstå det automatisk forberedte standardarbejdsområde",
+        "steps": [
+          "Ved første indtastning inkluderer sidebjælken Standardarbejdsområde (默认工作区). Uden et udvalgt projekt åbner WorkStep sin almindelige chatside. Eksisterende projektudvalg og fjernbindinger har forrang.",
+          "Efter at have konfigureret en SDK, skal du bruge dette arbejdsområde til almindelig chat. For at arbejde med din kode, brug Tilføj projekt til at forbinde dens faktiske mappe; standardarbejdsområdet er ikke et allerede tilsluttet lager.",
+          "Standardarbejdsområdet deles også af færdigheder, motor, skin og sprogpakker. Disse poster genbruger almindelig chat og gemmer deres output i det pågældende arbejdsområde."
+        ],
+        "tips": [
+          "Du kan omdøbe standardarbejdsområdet, men kan ikke fjerne det fra projektlisten. Det opretter ikke automatisk en arbejdsgang.",
+          "Standardarbejdsområdet er et projekt; en SDK er en udførelsesmotor. At have et projekt betyder ikke, at en motor er installeret eller godkendt."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Standard arbejdsområde og almindelig chatindtastning i sidebjælken",
+          "caption": "En tom almindelig chat i standardarbejdsområdet uden samtaler eller arbejdsgange endnu. Opret en samtale her; kodeprojekter skal stadig forbindes eksplicit."
+        }
+      },
+      {
+        "title": "Start med en demonstrationsmappe",
+        "steps": [
+          "Forbered en separat demonstrationsmappe, såsom workstep-demo. For eksisterende kode skal du vælge dens projektrod.",
+          "Klik på Sidepanel → Tilføj projekt → Lokalt projekt (侧边栏 → 添加项目 → 本地项目), vælg den mappe i mappebrowseren og bekræft.",
+          "Tjek, at projektet vises i sidebjælken, og skift til det. Nye projekter har som standard ingen arbejdsgange; oprette en næste.",
+          "Når du senere tilslutter den samme mappe igen, gendannes arbejdsgange, opgaver og beskeder fra projektdata. Slet ikke .workstep bare for at genåbne et projekt."
+        ],
+        "tips": [
+          "Motorer kan læse eller ændre projektfiler i henhold til opgaveinstruktioner. Øv dig i en separat mappe, og behold versionshistorikken, før du redigerer den rigtige kode.",
+          "Som standard er projektdata i .workstep/workstep.db,-uploads i .workstep/uploads/, og artefakter i .workstep/artifacts/. Med centraliseret lagring skal du sikkerhedskopiere den tilsvarende projektdatamappe under Home og projektets identitetsfil.",
+          "Nye eller omdøbte projektnavne må ikke indeholde mellemrum, tabulatorer eller andre mellemrum."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Tilføj et lokalt projekt og vælg dets rodmappe",
+          "caption": "Vælg demonstrationsmappen, og indtast derefter det tilsluttede projekt fra sidebjælken."
+        }
+      },
+      {
+        "title": "Åbn projektmappen og inspicer de genererede filer",
+        "steps": [
+          "Vælg projektet, og klik på Åbn mappe på dets opgave- eller projektchatside. Brug dette til at inspicere faktisk genererede filer, efter at en opgave er afsluttet.",
+          "I desktop-appen viser den højre pil detekterede lokale filadministratorer, redaktører og terminaler. Hvis du vælger en, åbnes mappen med det samme og husker det lokale valg. Kun registrerede, tilgængelige applikationer vises.",
+          "Fjernprojekter og ekstern browseradgang bruger webbiblioteksbrowseren. Desktop builds uden mappe-åbningsbroen bruger det også; en desktop-editor behøver ikke være installeret inde i containeren."
+        ],
+        "tips": [
+          "Desktop-sandbox-projektstier kortlægges tilbage til værtsmonterede mapper før åbning. Hvis ingen montering passer, skal du kontrollere projektmonteringskonfigurationen.",
+          "Hvis Open directory mislykkes, skal du kontrollere, at det valgte program og bibliotek stadig eksisterer, eller inspicere projektet direkte i din systemfilhåndtering."
+        ]
+      },
+      {
+        "title": "Omarranger sidebjælkeprojekter",
+        "steps": [
+          "I sidebjælken skal du trække Manuel demonstration (操作手册演示) før eller efter det ønskede projekt.",
+          "Lokale og fjerntliggende projekter kan sammenflettes. Frigivelse gemmer ordren til lokal konfiguration, og genåbning bevarer den."
+        ],
+        "tips": [
+          "Bestilling påvirker kun denne enheds skærm, ikke projektrækkefølge på en fjernvært. Følg fejlmeddelelsen, og prøv igen, hvis lagringen mislykkes."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "To lokale demonstrationsprojekter og arbejdsgange i sidebjælken",
+          "caption": "Den seneste sidebjælke viser to lokale demonstrationsprojekter og standardarbejdsområdet. Træk projektrækker for at omarrangere; ingen ekstern enhed er tilsluttet."
+        }
+      },
+      {
+        "title": "Vælg, hvor projektdata skal gemmes",
+        "steps": [
+          "Efter at have valgt en mappe under Sidepanel → Tilføj projekt → Lokalt projekt, skal du markere Datamappe følger projektmappe (数据目录跟随项目目录), aktiveret som standard for nye projekter.",
+          "Når det er markeret, gemmes opgaver, arbejdsgange, vedhæftede filer, logfiler, artefakter, færdigheder og hukommelse i projektets .workstep/. Unchecking bruger ~/.workstep/projects/<项目ID>/, hvilket efterlader kun .workstep/project.json som identitetsfilen i projektmappen.",
+          "For et eksisterende projekt skal du inspicere dets faktiske datasti under Projektkonfiguration → Generelt. Skift afkrydsningsfeltet og bekræft migreringen. Stop først opgaver, samtaler og hurtige handlinger; fjern eksisterende Git-arbejdsområder.",
+          "Vent på migrering, og tjek derefter den nye sti og de originale opgaver. Fejl bevarer originale data. En ikke-tom destination overskrives ikke; løs det rapporterede problem og prøv igen."
+        ],
+        "tips": [
+          "Gentilføjelse af et eksisterende projekt bevarer lagertilstanden i dets identitetsfil; den flytter ikke automatisk data.",
+          "Behold .workstep/project.json, når du flytter eller omdøber et projekt, og tilføj det derefter igen for at genkende det originale projekt. Sletning af denne identitetsfil sletter ikke hjemmedata, men forhindrer automatisk tilknytning.",
+          "En kopi med det samme projekt-id kan ikke eksistere side om side med den registrerede originale mappe: Systemet rapporterer en ID-konflikt. For migrering mellem computere skal du også kopiere den tilsvarende hjemmedatamappe.",
+          "Centraliseret lagring ignorerer stadig automatisk .workstep/ i projektet. Almindelig komprimering anvender ikke automatisk Git ignore-regler, men identitetsfilen indeholder ingen opgavedata."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Datalagringsmulighed og identitetsfilmeddelelse ved tilføjelse af et projekt",
+          "caption": "Den rigtige Tilføj projektgrænseflade: Fjernelse af markeringen af standarden viser hjemmestien og instruktioner til flytning eller migrering mellem computere."
+        }
+      },
+      {
+        "title": "Flyt et eksisterende projekts data",
+        "steps": [
+          "Åbn Generelt i projektkonfiguration og bekræft den aktuelle datasti.",
+          "Klik på Databibliotek følger projektbibliotek, læs og bekræft migreringen, vent derefter. Aktivt arbejde eller en ikke-tom destination giver en fejl."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Datalagringssted i demonstrationsprojektindstillinger",
+          "caption": "Bekræft den aktuelle sti. Ændring af afkrydsningsfeltet kræver stadig bekræftelse af migrering i dialogboksen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Opret din første to-trins arbejdsgang",
+    "summary": "Brug kravanalyse → Udfør opgave for at forstå trin, input, output og forbindelser.",
+    "sections": [
+      {
+        "title": "Skab et eksempel gennem onboarding",
+        "steps": [
+          "Sørg for, at du har gemt en standardudførelsesmotor og valgt det tilsluttede lokale projekt. Hvis onboarding er lukket, skal du genåbne Indstillinger → Systemindstillinger → Onboarding og klikke på Onboarding.",
+          "Under Opret en to-trins arbejdsgang skal du klikke på Opret eksempelarbejdsgang. Vent på succes, og lærredet åbner sig.",
+          "Eksemplet hedder Analyse og udførelse (分析与执行). Dets første trin, kravanalyse (需求分析), udsender en eksekveringsplan (执行计划), forbundet med det andet trin, Udfør opgave (执行任务).",
+          "Åbn begge trin og kontroller motor, model, prompt, input og output, og sørg for, at de bruger en verificeret SDK. Eksemplet starter hverken ved oprettelse eller kører anmeldelser; når den er startet, udføres de to trin i afhængig rækkefølge."
+        ],
+        "tips": [
+          "En almindelig ny arbejdsgang starter med et tomt lærred uden eksempeltrin. Vælg en skabelon eksplicit.",
+          "Bedøm ikke opsætningen udelukkende ud fra linjens udseende: Kontroller, at outputporten matcher det næste trins inputkrav."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "To-trins lærred til kravanalyse og opgaveudførelse",
+          "caption": "Kravanalyse producerer en eksekveringsplan for Udfør opgave. Klik på hvert trin for at inspicere dets konfiguration."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Opret og fuldfør din første opgave",
+    "summary": "Brug en lille, eksplicit opgave, der er nem at tjekke, til at bekræfte, at dit SDK, projekt og arbejdsgang fungerer sammen.",
+    "sections": [
+      {
+        "title": "Skriv en verificerbar anmodning",
+        "steps": [
+          "Forbered README.md og example.txt i demonstrationsbiblioteket. README.md bør angive fem operationer for at forklare, med supplerende bemærkninger i example.txt. Brug demonstrationsindhold frem for privat materiale.",
+          "Åbn demonstrationsprojektets opgaveside, vælg Analyse og udførelse, og klik derefter på Ny opgave. Indgangen til oprettelse af en opgave åbner den også.",
+          "Start ved Kravanalyse og indtast titlen Organiser projektinstruktioner (整理项目说明).",
+          "Eksempelbeskrivelse: Læs README.md og example.txt, lav en udførelsesplan, og opret derefter 使用说明.md ved projektroden. Angiv fem operationer i Markdown, en sætning pr. operation. Læs kun de to eksisterende filer; ikke ændre dem. Du kan oprette 使用说明.md, men du må ikke ændre andre filer. Rapporter den genererede fils placering, når du er færdig.",
+          "Vælg Manuel start, og klik på Opret opgave. Tjek anmodningen og starttrinnet, og derefter Start opgave. Alternativt kan du vælge Start umiddelbart efter oprettelsen."
+        ],
+        "tips": [
+          "Angiv mål, tilladte handlinger, leveringsformat og acceptkriterier; dette gør resultaterne nemmere at kontrollere end en vag anmodning.",
+          "Hvis du starter på et senere trin, springes de tidligere over. Til din første øvelse, start med kravanalyse.",
+          "Åbning af opgaveoprettelsespanelet fra onboarding udfører ikke i sig selv en opgave; panelets opstartsmulighed styrer udførelsen."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Opgavetitel, beskrivelse, starttrin og starttilstand",
+          "caption": "Skriv en konkret anmodning, vælg dets starttrin og vælg eksplicit, hvornår eksekveringen begynder."
+        }
+      },
+      {
+        "title": "Følg trinene og kontroller output",
+        "steps": [
+          "Åbn opgavedetaljer og se det aktuelle trin, status og beskeder. Vent, mens motoren kører, og svar på eksplicitte spørgsmål eller godkendelsesanmodninger i grænsefladen.",
+          "Når kravanalysen er afsluttet, starter Udfør opgave automatisk i henhold til afhængighedsforbindelsen. Der er ikke behov for yderligere startklik. Læs planen for det første trin og tjek, at det andet brugte det.",
+          "Når udfør opgaven er færdig, skal du læse den endelige meddelelse og åbne 使用说明.md ved projektets rod. Tjek, at det er Markdown, indeholder fem operationer og bruger en sætning til hver.",
+          "Hvis en meddelelse viser Edited … files, skal du udvide den og klikke på et filnavn. Se den optagede patch, når den er tilgængelig; ellers forhåndsvise den aktuelle fil. Historiske ændringer kan afvige fra filen nu, så inspicér stadig det faktiske output.",
+          "Bekræft, at README.md og example.txt var uændrede, og kun den tilladte 使用说明.md blev tilføjet. Brug projektets filindgang eller din systemfilhåndtering. Fuldførelsesstatus alene beviser ikke rigtigheden."
+        ],
+        "tips": [
+          "Hvis ventetiden fortsætter, skal du skelne mellem at vente på start, godkendelse, gennemgang og aktiv udførelse: hver har brug for et forskelligt svar.",
+          "Ved fejl, bevar fejlen og test først SDK-forbindelsen igen. Efter reparation af konfigurationen skal du bruge opgavens tilgængelige gendannelses- eller genindtastning.",
+          "Hvis en API rapporterer, at den returnerede en webside, skal du bekræfte, at backend blev opdateret og genstartet, og derefter opdatere og prøve igen. Manglende indlæsning af udførelsesdetaljer alene betyder ikke, at udførelse mislykkedes; opret ikke en dubletopgave af den grund."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Udskriv 使用说明.md efter fuldførelse af to-trinsopgaven",
+          "caption": "Efter at begge trin er fuldført, skal du inspicere 使用说明.md og dens fem operationsbeskrivelser."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Rediger arbejdsgange",
+    "summary": "Del arbejdet op i trin, og konfigurer udførelsesmotorer, input, output og gennemgangsregler.",
+    "sections": [
+      {
+        "title": "Tilføj og tilslut trin",
+        "steps": [
+          "Vælg et projekt og en arbejdsgang til venstre, og gå ind i Workflow-lærred. En ny arbejdsgang er tom; tilføje trin eller eksplicit anvende en skabelon.",
+          "Klik på + Trin og indtast dets navn og identifikator, for eksempel Organiser krav med krav. Identifikatorer skal være unikke i arbejdsgangen, starte med et engelsk bogstav og kun indeholde bogstaver, cifre, understregninger eller bindestreger.",
+          "Skriv en prompt med et klart mål, begrænsninger og leverancer. For eksempel: Læs opgavebeskrivelsen, angiv acceptkriterier og en implementeringsplan, og gem et kravdokument.",
+          "Konfigurer en installeret, verificeret SDK-motor og model. For at nedarve standarder skal du vælge standardudførelsesmotoren eller motorens standardmodel.",
+          "Efter indstilling af input og output, træk fra en upstream output port til den matchende downstream input og derefter Gem."
+        ],
+        "tips": [
+          "Faste linjer bærer data. Tilslutning tilbage opstrøms skaber en stiplet returforbindelse til omarbejdningsfeedback.",
+          "En meddelelse om ikke-gemte ændringer betyder, at lærredsredigeringer endnu ikke er blevet fastholdt."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Workflow canvas med to trin og input/output forbindelser",
+          "caption": "Find knappen Tilføj trin, tilslutningsporte og Gem post."
+        }
+      },
+      {
+        "title": "Konfigurer indgange, udgange og returforbindelser",
+        "steps": [
+          "Åbn trineditoren, navngiv output tydeligt og konfigurer de nødvendige inputs nedstrøms.",
+          "Tilslut hver påkrævet udgang til dens tilsvarende downstream-indgang. Under udførelsen skal du kontrollere tilgængeligheden under Trin-input og -output i opgavedetaljer.",
+          "For omarbejdning skal du oprette en returforbindelse og angive Maksimalt afkast for dette trin. Før du gemmer, skal du læse advarsler om potentielt ikke-kørbare stadier og kontrollere, om den første udførelse afhænger af omarbejdningsartefakter, der endnu ikke er genereret."
+        ],
+        "tips": [
+          "Maksimalt afkast kontrollerer stiplede returforbindelser og er adskilt fra genforsøg efter mislykket gennemgang.",
+          "Erklæring af en outputport opretter ikke en fil. Kræv faktiske leverancer i prompten og inspicér dem bagefter."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Input artefakter og tilsvarende output i node-editoren",
+          "caption": "Inputtet erklærer opgavekrav med udførelsesplan som dets tilsvarende output. Indstillinger for returtæller vises ikke."
+        }
+      },
+      {
+        "title": "Indstil gennemgang og automatisk opstart",
+        "steps": [
+          "Under Tringennemgang i editoren skal du vælge Manuel gennemgang, Automatisk gennemgang eller Spring gennemgang over. Manuel gennemgang anbefales i første omgang.",
+          "Manuel gennemgang pauser efter udførelse for din beslutning. For automatisk gennemgang skal du skrive verificerbare kriterier og eventuelt vælge dens motor og model.",
+          "Sæt genforsøg efter en automatisk gennemgang afviser resultatet. Fejl i selve anmeldelsesagenten skifter til manuel håndtering.",
+          "Indstil Start automatisk efter oprettelse efter behov, og gem derefter. For indledende øvelse skal du deaktivere den, så du kan inspicere en opgave, før du starter."
+        ],
+        "tips": [
+          "Installer og konfigurer SDK-motorer, før du bruger dem til enten udførelse eller gennemgang."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Tringennemgang tilstand kontroller i node editor",
+          "caption": "Vælg gennemgangstilstand i nodeeditoren. Kontroller automatisk opstart separat som beskrevet ovenfor."
+        }
+      },
+      {
+        "title": "Send på tværs af arbejdsgange og genbrug lærredselementer",
+        "steps": [
+          "For at sende output til et andet projekt eller workflow skal du tilføje et Workflow-trin og vælge målprojekt, workflow, starttrin og starttilstand.",
+          "Konfigurer upstream input artefakter og gem. Dette trin passerer umiddelbart efter oprettelse af downstream-opgaven og kan ikke oprette forbindelse til yderligere trin i dens overordnede arbejdsgang.",
+          "For at genbruge et trin skal du vælge Kopier noder fra workflow, vælg et projekt, workflow og noder, se forhåndsvisning, kopier og gem.",
+          "Brug Layout til at arrangere noder. Tilføj bogmærker til noter, eller eksporter workflow JSON som backup. Før du importerer, skal du kontrollere, hvad der skal erstattes."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Downstream opgavedestination og opstartsindstillinger",
+          "caption": "Inspicer målprojektet, arbejdsgangen og starttrinnet."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Workflow trigger og notifikation kroge",
+    "summary": "Opret opgaver fra eksterne anmodninger eller send workflowstatus til en valgt platform.",
+    "sections": [
+      {
+        "title": "Opret opgaver med en trigger hook",
+        "steps": [
+          "Vælg et projekt og arbejdsgang. Åbn Workflow hooks i opgavelistens værktøjslinje eller mobilmenu, og derefter Trigger hooks.",
+          "Tilføj en krog, indtast dens navn, standardtitel og skaber, vælg et starttrin og om det starter automatisk, og gem derefter. For eksempel: Kravindtag, med titel Ekstern anmodning.",
+          "Vælg en konfigureret LAN, ekstern adresse eller Gateway-adresse, og kopier påkaldelsen URL. Dens token er en legitimation: Giv den kun til betroede systemer.",
+          "Under Simuler opkald skal du indtaste en titel, skaber og krop for at inspicere forhåndsvisningen. Simulering skaber ikke en opgave.",
+          "Få et eksternt system POST til den kopierede URL ved hjælp af JSON, almindelig tekst eller Markdown, for eksempel: Organiser acceptkriterier for denne anmodning. Efter at have modtaget et opgave-id, skal du kontrollere opgavens indhold og opstartstilstand."
+        ],
+        "tips": [
+          "Projektredigeringstilladelse er påkrævet. Hver gyldig anmodning opretter en opgave. Denne version genkender ikke automatisk GitHub/GitLab hændelser, deduplikerede anmodninger eller bufferanmodninger, mens enheden er offline.",
+          "Reparer først manglende adresser eller afbrudte enheder. Nulstilling af tokenet ugyldiggør den gamle URL. Hvis den automatiske opstart mislykkes, eksisterer opgaven stadig: undersøg run_error og opgavedetaljerne, før du prøver at levere igen."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Ikke-gemt trigger-hook-navn, standardfelter og startfasekonfiguration",
+          "caption": "Denne deaktiverede kladde opretter kun opgaver. Dens token er skjult; den er ikke blevet gemt, og der er ikke genereret nogen invokation URL."
+        }
+      },
+      {
+        "title": "Send workflow-meddelelser til eksterne platforme",
+        "steps": [
+          "I det samme Workflow hooks-vindue skal du skifte til Notification hooks og tilføje en destination.",
+          "Indtast et navn, vælg DingTalk gruppebot, WeCom gruppebot eller generisk JSON Webhook, og indtast derefter dens destination URL. Angiv en DingTalk-signeringshemmelighed, hvis det er nødvendigt.",
+          "Vælg tilmeldte begivenheder, der som standard er færdiggørelse af opgave og fejl. Indstil eventuelt et titelpræfiks og Gateway, ekstern eller LAN-adresse for opgavelinks, og gem derefter.",
+          "Generer en forhåndsvisning under Simuler meddelelse, og tjek beskedindhold og links. Forhåndsvisning sender ingen anmodning. For en rigtig test skal du bekræfte og klikke på Send testmeddelelse; den sender til en gemt, aktiveret destination.",
+          "Efterse status, forsøg og redigerede fejl i leveringsjournaler. Efter at have repareret konfigurationen, prøv igen mislykkede poster. Når opgaven er fuldført, skal du kontrollere den modtagende platform og adgang til opgavelinket."
+        ],
+        "tips": [
+          "Enheden sender meddelelser direkte; Gateway videresender dem ikke. De indeholder hverken chattekster, artefaktindhold eller legitimationsoplysninger til opgaveoprettelse. Opgavelinks kræver stadig normale adgangsrettigheder.",
+          "Midlertidige fejl forsøges automatisk igen. Timeouts og gendannelse kan forårsage duplikatlevering; Generiske modtagere kan deduplikeres af event_id. Deaktivering eller sletning af en destination kan ikke trække sendte meddelelser tilbage.",
+          "En forhåndsvisning alene beviser ikke, at integrationen virker: bekræft den faktiske levering til platformen."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "DingTalk notifikationsplatform, tilmeldte begivenheder og tomme adressefelter",
+          "caption": "En ikke-gemt, deaktiveret kladde i den seneste grænseflade, med opgavefuldførelse og fejl valgt. Webhook og signeringshemmelige felter er tomme; intet blev sendt."
+        }
+      },
+      {
+        "title": "Tilpas Markdown-meddelelsesskabeloner",
+        "steps": [
+          "Vælg en DingTalk- eller WeCom-gruppebot i notifikationshook og rul til Markdown-meddelelsesskabelon. Generiske JSON Webhooks bruger ikke disse Markdown-skabeloner.",
+          "Udvid skabelonvariabler (klik for at kopiere), og indsæt derefter pladsholdere såsom {task_title}. Brug ikke ukendte variabler eller en tom skabelon. Behold {task_link} eller {task_url}, når et opgavelink er nødvendigt.",
+          "Gem og brug Simuler notifikation til at kontrollere substitution og links uden at sende. Læs bekræftelsen, før du gendanner standardskabelonen."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Markdown meddelelsestekst og skabelonvariabel indtastning",
+          "caption": "Et udkast viser standard Markdown krop og variabler. Der er ikke indsendt skabelon eller meddelelse leveret eksternt."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Skabeloner og AI-arbejdsgangsassistenten",
+    "summary": "Start fra en skabelon, eller bed AI om at foreslå trin og bekræfte, hvad der skal anvendes.",
+    "sections": [
+      {
+        "title": "Anvend og gem skabeloner",
+        "steps": [
+          "Åbn Workflow-skabeloner på lærredet, søg i navne eller beskrivelser, og gennemgå hver skabelons formål og antal skridt.",
+          "Vælg en passende skabelon og bekræft. Anvendelse erstatter hvert trin og forbindelse på det aktuelle lærred.",
+          "Tjek hvert trins motor, model, forespørgsel og gennemgang krav, tilpas dem og gem.",
+          "For at genbruge dit design skal du vælge Gem aktuel som workflow-skabelon og indtaste et navn og en beskrivelse. Administrer redigerbare brugerdefinerede skabeloner under Indstillinger → Arbejdsgangsskabeloner."
+        ],
+        "tips": [
+          "Nye projekter opretter ikke automatisk arbejdsgange, og nye arbejdsgange anvender ikke automatisk skabeloner.",
+          "Indbyggede skabeloner kan ikke slettes. Efter at have anvendt en, skal du stadig bekræfte, at dens nødvendige motorer er tilgængelige."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Indbygget kontraktstyring resulterer i lærredsskabelonsøgning",
+          "caption": "Søg i kontraktstyring for at se dens formål og antal skridt. Tjek udskiftningsomfanget, før du vælger."
+        }
+      },
+      {
+        "title": "Bed AI om at oprette eller ændre en arbejdsgang",
+        "steps": [
+          "Åbn AI-arbejdsgangsassistenten på lærredet, og vælg først en konfigureret motor og model.",
+          "Forklar målet, trinnedbrydning, outputformat og gennemgang behov, for eksempel: Opret kravanalyse → implementering → test, med manuel gennemgang på hvert trin, ved hjælp af en installeret SDK.",
+          "Sammenlign forslagskort efter titel, antal skridt og resumé, og anvend derefter et passende forslag på lærredet.",
+          "For eksisterende arbejdsgange skal du inspicere trinændringer. Under Anvend ændringer skal du vælge de tilføjelser, opdateringer eller sletninger, du ønsker, og derefter anvende og gemme."
+        ],
+        "tips": [
+          "AI-forslag kræver din bekræftelse. Generationssucces alene er ikke en grund til at køre dem: undersøg forbindelser, motorer og gennemgå kriterier."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "To-trins forslagskort fra AI-arbejdsgangsassistenten",
+          "caption": "Kortet viser antallet af ændrede trin og Anvend ændringer. Klik for at bekræfte de specifikke trinændringer."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Opret og administrer opgaver",
+    "summary": "En arbejdsgang definerer, hvordan man arbejder; en opgave angiver, hvad der skal gøres denne gang.",
+    "sections": [
+      {
+        "title": "Forbered flere opgaver med opgaveassistenten",
+        "steps": [
+          "Åbn opgaveassistenten på opgavesiden. Anmod eksplicit om flere opgaver med individuelle tider, for eksempel: Generer tre uafhængige opgaver fra i morgen kl. 09:00, 10:00 og 11:00.",
+          "Tjek hvert udkasts titel, indhold, arbejdsgang, starttrin og planlagt starttidspunkt, og bekræft derefter oprettelsen via grænsefladen.",
+          "Vend tilbage til opgavelisten og bekræft hvert resultat. Hvis nogle fejler, skal du inspicere eksisterende opgaver, før du genindsender hele batchen."
+        ],
+        "tips": [
+          "Generering af kladder opretter eller udfører ikke opgaver. Angiv tidszoner for fremtidige tider; planlagt opstart kræver, at backend forbliver kørende."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Batch-opgavekladder og deres individuelle planlagte tidspunkter",
+          "caption": "Ægte skærmbillede afventer: batch-udkast og individuelle tidspunkter. Et gammelt enkeltopgaveudkast må ikke erstatte det."
+        }
+      },
+      {
+        "title": "Opret en opgave, og lad AI organisere kravene",
+        "steps": [
+          "Vælg et projekt og en arbejdsgang, åbn dets opgaveside, og klik derefter på Ny eller Tilføj i den relevante fase.",
+          "Indtast en titel og beskrivelse med kontekst, mål, tilladte ændringer, outputstier og acceptkriterier. Markdown og indsatte referencebilleder understøttes.",
+          "Hvis det er nødvendigt, skal du åbne Opgaveassistent, inspicere dens genererede titel, indhold og valg af workflow og derefter bekræfte.",
+          "Tjek starttrinnet og gennemse indstillingerne for denne kørsel, og opret derefter opgaven. Med automatisk opstart deaktiveret skal du klikke på Start opgave."
+        ],
+        "tips": [
+          "Eksempel: Læs README og generer docs/getting-started.md uden at ændre programkoden. Inkluder installation, opstart og tre almindelige spørgsmål.",
+          "Oprettelse og opstart er separate handlinger; opstartstilstand og trinindstillinger bestemmer, om udførelsen begynder med det samme."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Opgaveoprettelsesskema med opgaveassistenten udvidet",
+          "caption": "Indtast titel og beskrivelse, og vælg starttilstand. Assistenten kan organisere krav; gennemgangsindstillinger er på en anden fane."
+        }
+      },
+      {
+        "title": "Find opgaver på tavlen eller bordet",
+        "steps": [
+          "Skift mellem baner og tabel på opgavesiden, inspicer opgaver efter trin og søg efter titel.",
+          "Klik på en opgave for at åbne detaljer, herunder dens nuværende trin, status, skaber og opdateringstidspunkt.",
+          "Arkivér færdige opgaver, hvis det ønskes. Find dem under Se arkiv og gendan dem på tavlen. Tjek valg før bulkoperationer."
+        ],
+        "tips": [
+          "I kø betyder normalt samtidighedskapaciteten er fuld. At vente på gennemgang kræver bekræftelse; det betyder ikke, at appen sidder fast.",
+          "Sletning adskiller sig fra arkivering. Læs bekræftelsen før permanent sletning."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Taskboard, der viser status og stadier",
+          "caption": "Demonstrationsopgaven er klar. Værktøjslinjeposter inkluderer visninger, arbejdsgange, arkiv og Åbn mappe. Oprettelsestiden er under kortet; kopiering er dækket herefter."
+        }
+      },
+      {
+        "title": "Rediger kun den aktuelle opgaves arbejdsgang",
+        "steps": [
+          "Åbn opgavedetaljer, og klik på Rediger opgavearbejdsgang under statusgrafen. Stop udførelse eller gennemgang først; lærredet er skrivebeskyttet, mens det er aktivt.",
+          "Skift denne opgaves trin-prompter, motorer, modeller og anmeldelser. Tilføj trin, tilføj artefakter i slutningen og juster forbindelser. Eksisterende trin, inputporte og originale artefakter kan ikke slettes eller omdøbes.",
+          "Gem for at opdatere statusgrafen. Den næste opstart fusionerer den seneste hovedarbejdsgang med opgavespecifikke forskelle uden at ændre hovedarbejdsgangen eller andre opgaver.",
+          "For at rydde al tilpasning skal du klikke på Synkroniser hovedarbejdsgang og bekræfte. Tilføjede trin forlader den aktuelle arbejdsgang, men historiske meddelelser, artefakter og udførelsesposter forbliver. Dette starter ikke udførelse."
+        ],
+        "tips": [
+          "Uden faktiske ændringer laves der ingen fuld workflow-kopi. Ikke-overstyrede felter arver opdateringer til hovedarbejdsgange; opgavetilsidesættelser har forrang.",
+          "Hvis du vælger et trin i komponisten og ændrer dets motor, gemmes det til den opgave. Nulstil trin nulstiller kun den næste kørsels session, ikke hovedarbejdsgangens motor.",
+          "Fjernelse af forbindelser ændrer afhængigheder og kan tillade direkte udførelse; det laver ikke en trinmanual."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Opgavespecifikke workflow-redigering og synkroniseringsposter",
+          "caption": "Demonstrationsopgavens separate lærred viser overdragelsestilstand, Synkroniser hovedarbejdsgang og Gem. Ingen indstillinger blev ændret, eller udførelse startede."
+        }
+      },
+      {
+        "title": "Kopier en opgave",
+        "steps": [
+          "Klik på ikonet Kopier opgave ved siden af en opgave på et kort eller en tabel.",
+          "Undersøg den nye opgave med titlen (kopi), tjek dens beskrivelse, workflowtilpasning og starttrin, og kør den derefter. Kopierede trin begynder at afvente; oprindelige fremskridt og chathistorik kopieres ikke."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Kopier opgaveikonet ved siden af et opgavenavn i tabelvisning",
+          "caption": "Det lille ikon ved siden af navnet er kopiposten. Ingen opgave blev kopieret eller startet i dette billede."
+        }
+      },
+      {
+        "title": "Håndter opgaver på en telefon",
+        "steps": [
+          "Tryk på en opgaverække for at åbne detaljer. Hold i cirka et halvt sekund for at åbne dens handlingsmenu; højreklik med musen virker også.",
+          "Efter rettigheder: start, redigér eller vis, kopiér, arkivér, gendan og slet. Kørende, køsatte eller ventende opgaver med aktive trin kan ikke arkiveres eller slettes. Håndtér bekræftelser eller stop kørslen først; læs bekræftelsen før sletning.",
+          "Når alle workflow-trin er udført og bestået, viser opgaven Udført, inklusive efter genåbning af detaljer eller genstart. Afslutning arkiverer ikke opgaven; vælge, om den skal arkiveres."
+        ],
+        "tips": [
+          "Rulning eller bevægelse af fingeren annullerer et langt tryk for at undgå utilsigtede handlinger. Skrivebeskyttet adgang kan stadig åbne visningsposter uden at modtage redigeringsrettigheder."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Arkiver og slet menu for en opgaverække ved 390px",
+          "caption": "Fanget fra en klar opgave i v1.0.13; intet blev arkiveret eller slettet, og færdiggørelsen vises ikke. De nyligt tilføjede start-, redigerings- og kopiposter skal stadig have et opdateret skærmbillede."
+        }
+      },
+      {
+        "title": "Vend tilbage til opgaver eller sessioner fra Seneste chats",
+        "steps": [
+          "Find en besøgt opgave eller session i Seneste chats (最近聊天) i sidebjælken, og klik for at vende tilbage til dens oprindelige projektdetaljer. Begge slags optræder her.",
+          "Undersøg kørende, mislykkede og afsluttede-ulæste indikatorer. Åbning af de relevante detaljer sletter den ulæste indikation. Autoriserede poster har arkiv- eller slettemenuer; læse bekræftelser.",
+          "På skrivebordet skal du skjule Projekter eller Seneste chats, trække overskrifter for at skifte rækkefølge, og trække i skillelinjen for at ændre størrelsen på dem. Dobbeltklik på skillelinjen for at gendanne standardforholdet."
+        ],
+        "tips": [
+          "Seneste besøg beholder højst 20 elementer under denne browsers enhedsidentitet. Rydning af browserdata fjerner dette indeks, ikke opgaveindhold. Historiske poster omgår ikke projektautorisation.",
+          "Arkivering, sletning og sletning af ulæst tilstand har forskellige effekter. Hvis et gammelt link mislykkes, skal du kontrollere, at projektet og sessionen stadig eksisterer, og at forbindelsen fungerer."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Et demonstrationsopgavebesøg i Seneste chats",
+          "caption": "Sidebjælken viser ét demonstrationsopgavebesøg uden sessionsposter eller eksempler på ulæst tilstand."
+        }
+      },
+      {
+        "title": "Åbn navigation i en mobilbrowser",
+        "steps": [
+          "Åbn WorkStep i en telefonbrowser, og tryk på den runde navigationsboble ved sidekanten for at udvide den samme sidebar-navigation som på skrivebordet.",
+          "Vælg et projekt, arbejdsgang, opgave eller samtale for at fortsætte. Tryk på boblen igen for at skjule navigationen.",
+          "Hvis boblen dækker indhold, skal du holde og trække den til en tom del af visningsporten. At trække skifter ikke navigation."
+        ],
+        "tips": [
+          "Boblen vises kun i almindelige mobilbrowsere. Desktop- og Android-apps bruger deres egne navigationsindgange."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Navigationsboble og udvidet sidebjælke i en telefonbrowser",
+          "caption": "Udvidet sidebjælke ved 390px, med den runde boble til højre for at skjule den. Kun isolerede demonstrationsprojekter vises."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Udførelse, godkendelser og anmeldelser",
+    "summary": "Forstå runtime-tilstande, håndtere tilladelsesanmodninger og beslutte, om output kan flyttes til næste trin.",
+    "sections": [
+      {
+        "title": "Undersøg udførelse og tilladelsesanmodninger",
+        "steps": [
+          "Åbn opgavedetaljerne og inspicer fremskridtsgrafen og chatposterne for at identificere det aktive trin.",
+          "Udvid procesregistreringer for at inspicere værktøjsopkald, resultater og fejl. Udvid subagent-poster, når motoren rapporterer dem.",
+          "Når meddelelser indeholder filændringer, skal du udvide listen og se registrerede forskelle. Disse beskriver meddelelsens ændringer; åbning af filen viser dens nuværende indhold, som senere redigeringer kan have ændret sig. Uden en gemt diff kan det aktuelle indhold ikke rekonstruere den fulde historie.",
+          "Når værktøjsgodkendelse vises, skal du læse kommandoen, stierne og virkningen, før du tillader eller afviser. Besvar spørgsmål ved hjælp af de medfølgende muligheder eller efterspurgt input.",
+          "Hvis en opgave mislykkes, skal du først læse dens seneste fejl, og derefter kontrollere motorkonfiguration, modeltilladelser, netværk og projektmappe i stedet for at prøve igen gentagne gange."
+        ],
+        "tips": [
+          "Godkendelse vises kun, når en motor anmoder om det. Procesoplysninger og valg af tilladelser varierer efter motor; manglende detaljer betyder ikke, at der ikke er sket nogen henrettelse.",
+          "Et roterende ikon angiver asynkront arbejde. Når du venter på brugeren, skal du håndtere det aktuelle spørgsmål eller godkendelse."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Trinfremskridt og faktiske udførelsesregistreringer i opgavedetaljer",
+          "caption": "Status- og eksekveringsregistreringer er synlige. Der vises ingen anmodning om tilladelse; godkendelser vises kun, når motoren faktisk anmoder om dem."
+        }
+      },
+      {
+        "title": "Godkend, afvis eller afslut en anmeldelse",
+        "steps": [
+          "Mens du afventer manuel gennemgang, skal du inspicere outputartefakter, gennemgå resultater, filer og testresultater i forhold til acceptkriterier.",
+          "Hvis det er tilfredsstillende, skal du klikke på Godkend og fortsæt. Ellers indtast specifik feedback og vælg Afvis og fortryd.",
+          "Under den automatiske gennemgang skal du kontrollere dens optegnelser. Afvisning udløser konfigurerede genudsendelser; gennemgangsfejl eller anmodninger om manuel håndtering kræver din beslutning.",
+          "Hvis udførelse ikke længere ønskes, skal du vælge Afslut og bekræfte bekræftelsen. Tvangsgodkendelse springer den aktuelle gennemgang over, så tjek først, at output er brugbare."
+        ],
+        "tips": [
+          "En opgave kan fortsætte med afventende bekræftelser. Hold på computeren markøren over antallet for trin og årsager, og håndtér gennemgang, værktøjstilladelser eller spørgsmål i det relevante trin. Uden andre kørbare grene venter opgaven. Manuelt stop, fejl og fuldførelse er forskellige; procesafslutning er ikke godkendelse."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Manuel gennemgang feedback og godkendelse/afvisning knapper",
+          "caption": "Gennemgå resultater, artefakter og handlingsposter."
+        }
+      },
+      {
+        "title": "Koordinator faste regler og aktuelle beskeder",
+        "steps": [
+          "Åbn opgavedetaljerne, vælg Koordinator i komponisten, vælg Codex SDK-motoren og stil et opgavespørgsmål såsom: Hvilken fase er ufærdig?",
+          "Fortsæt i samme koordinatorsession. Opgavestatus og aktuel afsenderopdatering som turspecifik kontekst; faste koordinatorregler forbliver i sessionshistorien.",
+          "Til fejlretning skal du bruge udviklertilstand til at inspicere meddelelser med faktiske inputposter. Uændrede faste regler, der bekræftes som bibeholdt i den session, genindjiceres ikke separat."
+        ],
+        "tips": [
+          "Ældre sessioner kan modtage én indledende reinjektion efter opgradering. Nye regler, nye sessioner, manglende historik eller usikker tilbageholdelse efter komprimering forårsager reinjektion. Forespørgsler kan stadig bruge regler i historien; at springe en ny injektion over betyder ikke, at der ikke er nogen regler."
+        ]
+      },
+      {
+        "title": "Tilføj oplysninger under et koordinatorsvar",
+        "steps": [
+          "Vælg Koordinator som modtager, og send supplerende instruktioner, mens den svarer. De kommer ind i det aktuelle svars afventende indsættelseskø.",
+          "Undersøg, rediger, omarranger eller slet ikke-sendte poster, eller send valgte med det samme. Flere valgte poster flettes i rækkefølge. Resterende poster fortsætter automatisk ind i næste sving, efter det aktuelle svar slutter; ikke send gentagne gange.",
+          "Hvis du får at vide, at en besked allerede er sendt eller slettet, skal du opdatere og inspicere køen i stedet for at sende batchen igen."
+        ],
+        "tips": [
+          "Koordinator- og trinkøer er adskilte. Bekræft først modtageren. Stop fortryder ikke allerede udførte værktøjshandlinger."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Afventende beskeder under et koordinatorsvar",
+          "caption": "Ægte skærmbillede afventer: Koordinatormodtager, supplerende beskeder under udførelse og fortsættelseskøen."
+        }
+      },
+      {
+        "title": "Suppler, stop og genkør",
+        "steps": [
+          "Tjek modtageren før du skriver. Koordinator håndterer spørgsmål og operationsanmodninger; kun et specifikt trin modtager input til det trins udførelseskontekst.",
+          "Beskeder til et kørende trin indtast Indsæt meddelelser. Rediger, omarranger, send med det samme eller send alle; ikke-sendte beskeder kan udløse endnu en runde, efter at eksekveringen er afsluttet.",
+          "Når du har stoppet et trin, skal du sende det eksplicitte supplerende instruktioner og følge vejledningen for at køre igen.",
+          "For at ændre denne opgave skal du redigere og gemme trinprompter, motorer eller gennemgå indstillinger. Tilsidesættelser træder i kraft næste udførelse; ikke-overstyrede felter fletter hovedarbejdsgangen ved næste opstart. For at rydde al tilpasning skal du bekræfte Synkroniserings hovedarbejdsgang."
+        ],
+        "tips": [
+          "Ændring af koordinatorkomponistens motor påvirker kun efterfølgende koordinatormeddelelser, ikke workflow-trinmotorer.",
+          "Hvis genkørsel påvirker andre aktive trin, skal du inspicere påvirkningsbekræftelsen og genkør omfanget. Hvis oprindelige sessionsposter går tabt, skal du følge prompten for at køre igen med en ny session."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Trinmodtager og supplerende kladde i en gennemført opgave",
+          "caption": "Udfør opgave er valgt i komponisten. Den supplerende meddelelse er stadig ikke sendt; der vises ingen indsættelseskø."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artefakter, udførelsesanalyse og projekthukommelse",
+    "summary": "Undersøg leverede filer, forstå forbrug og behold genbrugelige lektioner.",
+    "sections": [
+      {
+        "title": "Undersøg input, output og artefaktfiler",
+        "steps": [
+          "Åbn Step-input og -output i opgavedetaljer for at kontrollere tilgængelige input og afsluttede output.",
+          "Klik på Vis for en fil, eller åbn artefaktbrowseren og skift for trin og udførelsesrunde.",
+          "Forhåndsvisning af filer. På skrivebordet lader Open indeholdende mappe dig inspicere faktiske filer. Fjernprojektfiler forbliver på værten og bør ses via webgrænsefladen.",
+          "Sammenlign de rigtige runder, når du kører igen. Samme som rund... betyder identisk indhold, ikke at udførelse ikke fandt sted."
+        ],
+        "tips": [
+          "Hvis en artefakt mangler, skal du kontrollere, om en fil blev genereret, om dens outputerklæring matcher, og udførelsesmeddelelserne."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Opgaveartefakter grupperet efter trin",
+          "caption": "Kravanalyse og udfør opgave hver viser én artefakt i første runde. Åbn dens fil eller mappe."
+        }
+      },
+      {
+        "title": "Undersøg lokale runtime-ressourcer",
+        "steps": [
+          "Indtast arbejdsområdet via lokal lokal vært eller en loopback-adresse, derefter Statistik → Systemkørsel (数据统计 → 系统运行). Almindelige fjernbrowsere og Gateway-arbejdsområder viser ikke denne fane.",
+          "Undersøg CPU, hukommelsen, diskholderens konfiguration, netværkshastigheder og ressourcer, tråde og filbeskrivelser eller håndtag for WorkStep-backend og børn.",
+          "Vælg trendmålinger, og inspicér prøveudtagningstider. Sæt pause, genoptag eller opdater displayet manuelt. Vent under den første indsamling, og prøv igen mislykket læsning."
+        ],
+        "tips": [
+          "Statistikker dækker det nuværende backend-miljø og børn, undtagen desktop-skallen. Containermålinger er ikke komplette værtsmaskine-ressourcer.",
+          "Standarder er cirka fem sekunders prøveudtagning og 30 minutters historie; siden angiver faktiske værdier. Sætte skærmopdatering på pause stopper ikke opgaver. Utilgængelige metrics og huller er ikke nul; gamle prøver bevares og mærkes uaktuelle. Deskriptoradvarsler angiver ressourcepres, ikke automatisk reparation."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "System-ressource-statistik samplet af den aktuelle version",
+          "caption": "Lokale ressourcer og backend-samplingstatus. Ingen underordnede motorprocesser kørte, så dette viser ikke forbrug af opgaveudførelse."
+        }
+      },
+      {
+        "title": "Undersøg varighed, tokens og omkostninger",
+        "steps": [
+          "Åbn udførelsesanalyse i opgavedetaljer for at inspicere samlet varighed, trinforsøg, tokens og omkostninger.",
+          "Vælg en runde, og klik på et tidslinjesegment for dens motor, model og brug.",
+          "For projektomfattende information skal du åbne Statistik. For at estimere omkostninger skal du vedligeholde modelpriser efter udbyder eller motor under Indstillinger → Modelindstillinger."
+        ],
+        "tips": [
+          "Urapporteret brug bliver ikke automatisk et nøjagtigt tal. Tjek dækning og estimerede etiketter; modelserviceregningen er autoritativ."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Udførelsesanalyserunder og tidslinje",
+          "caption": "Varighed, dækning og omkostningskildeindikatorer."
+        }
+      },
+      {
+        "title": "Gem hukommelse og arkiver lektioner",
+        "steps": [
+          "Klik på Hukommelse på opgavesiden. Rediger MEMORY.md i projektdatabiblioteket til korte, konkrete langsigtede regler og gem.",
+          "Når du arkiverer en opgave, skal du vælge direkte arkivering eller organisere fiaskolektioner. Undersøg AI-udkastet, og bekræft derefter skrivehukommelse og arkivering.",
+          "Brug arkivlisten til at gense historien. Efter gendannelse af en arkiveret opgave skal du kontrollere de nødvendige eksterne bindinger igen."
+        ],
+        "tips": [
+          "Massearkivering uddrager ikke lektioner individuelt. Arkivering eller sletning af en opgave fjerner dens kanalgruppebindinger; restaurering genopretter ikke gamle bindinger."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Project-memory editor, der indeholder demonstrationskonventioner",
+          "caption": "Rediger og gem konventioner i .workstep/MEMORY.md. Der vises ingen bekræftelse af arkivlektioner."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Projektchat og færdigheder",
+    "summary": "Samarbejd direkte i projektsammenhæng og vælg, hvilke lokale kompetencer et projekt kan bruge.",
+    "sections": [
+      {
+        "title": "Arbejd med flere projektsamtaler",
+        "steps": [
+          "På skrivebordsbredde skal du åbne en almindelig projektsamtale og vælge Samtalevinduer (对话窗口) → Tilføj samtalevindue (增加对话窗口), til højre for Ny samtale.",
+          "Træk en samtale fra sidebjælken eller Seneste chats til chatområdet. Du kan kombinere projekter, du har adgang til, i højst 4 paneler. Hvis du slipper en allerede åben samtale, får dens eksisterende panel fokus. Opgaveposter kan ikke trækkes ind som samtaler.",
+          "Klik på den rude, du vil bruge, før du vælger en sidebjælkesamtale. Hver rude beholder sit eget projekt, session, kladde og motorindstillinger; verificere projektet og sessionen før afsendelse.",
+          "Vælg Samtalevinduer → Samtalearrangement (对话排列), derefter vandret eller lodret. Træk separatoren for at ændre størrelsen; fokuser det og brug piletasterne til at ændre størrelsen på tastaturet.",
+          "Med flere ruder lukker × kun denne rude uden at stoppe eller slette samtalen. Brug samtalens Stop-knap til at stoppe genereringen."
+        ],
+        "tips": [
+          "På skrivebordet skal du dobbeltklikke på en sidebjælkesamtale eller dens overskriftstitel for at åbne den delte omdøbningsdialog, og indtast derefter og bekræft navnet.",
+          "Mobil viser kun det aktive panel og bevarer de andre. At gå væk og tilbage i samme sidesession gendanner paneler, layout og størrelser; det garanteres ikke efter genindlæsning af browseren. Layout adskilles efter konto og enhed uden at kopiere samtaler."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Skrivebordssamtaleruder på tværs af projekter og arrangementsmenu",
+          "caption": "Et ægte skærmbillede fra det faste demoprojekt afventer: samtalevinduesmenu, flere ruder og trækbare separatorer."
+        }
+      },
+      {
+        "title": "Indlæs en rolle eller et ekspertteam i chatten",
+        "steps": [
+          "Forbered rolleprompter eller ekspertteammedlemmer og ansvar under Indstillinger → Rollecenter.",
+          "Åbn almindelig chat i et lokalt projekt. Brug + → Rolle / Ekspert-team, søg kategorier eller nøgleord, forhåndsvisning og indlæs i chat. Vælg f.eks. Code Reviewer, og send derefter et specifikt gennemgangsomfang.",
+          "Tjek det indlæste navn i komponisten. Valg sender ikke en besked. Indbinding gemmes med sessionen og gendannes efter opdatering; nye sessioner starter ubundet. Klik på navnet for at inspicere eller erstatte det, eller fjerne det."
+        ],
+        "tips": [
+          "Du kan ikke skifte, mens du løber. Læs eller gem fejl bevarer det aktuelle valg; prøv igen som bedt om. Genvælg manglende roller. Kun indlæsning ændrer sessionsbinding; send et konkret spørgsmål for at påberåbe modellen.",
+          "Ekspertteams videregiver medlemsanmodninger og ansvar til den nuværende model; de starter ikke uafhængige motorer. Opgaver, workflow-trin, kanaler, fjernprojekter og projektbaserede billetter er ikke integreret. Et Gateway-arbejdsområde med fuld enhed kan bruge dette til et lokalt projekt."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Code Reviewer søgning og prompt forhåndsvisning i almindelig chat",
+          "caption": "Kodeanmelder er valgt i en tom demonstrationssamtale. Dens prompt og indlæsningsknap er synlige; ingen rolle blev indlæst eller besked sendt."
+        }
+      },
+      {
+        "title": "Åbn projekthukommelsen på en telefon",
+        "steps": [
+          "Åbn projektopgavelisten, brug Mere øverst til højre og derefter Hukommelse.",
+          "Indtast korte konventioner, såsom Kør projekttests, før du forpligter dig, i hukommelseseditoren. Tjek og gem; dette gælder for hele projektet."
+        ],
+        "tips": [
+          "Hvis du vælger Hukommelse, skjules Mere. På skrivebordet skal du klikke på Hukommelse direkte på opgavesiden."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Hukommelsesindtastning i menuen Mere på en 390px opgaveside",
+          "caption": "Den mobile opgavelistes udvidede menu Mere indeholder Hukommelse. Ved at klikke åbnes dens editor; ingen hukommelse blev ændret her."
+        }
+      },
+      {
+        "title": "Opret samtaler og skift konfiguration",
+        "steps": [
+          "Opret en almindelig session i projektets Samtaler sektion til venstre. Vælg dens motor, udbyder, model og tilladelsestilstand. Start med en verificeret SDK.",
+          "Indtast en konkret anmodning. Indtast sender; Shift+Enter indsætter en ny linje. Vedhæft eller indsæt kun referencebilleder efter at have kontrolleret understøttelse af motorbilleder.",
+          "Stop et svar, mens du genererer, hvis det er nødvendigt. Yderligere indsatte beskeder står i kø, og deres rækkefølge kan ændres.",
+          "Når du skifter motor eller udbyder med eksisterende kontekst, skal du vælge Smart overdragelse, Fuld chathistorik eller Ingen i dialogboksen. Fordel en samtale til uafhængig udforskning og bekræft dens konteksttilstand."
+        ],
+        "tips": [
+          "Projektchat gemmes separat fra workflow-opgaveposter. Opret en opgave, når du har brug for fasesporing og anmeldelser.",
+          "Native forking er kun tilgængelig, når den faktisk understøttes af motoren. Ellers fortsæt gennem eksplicit kontekstoverdragelse."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Projekt-chat-motor, udbyder og modelmenu",
+          "caption": "Konfigurer motoren, udbyderen, begrundelsesmodellen og relaterede muligheder kun for denne samtale. Tilladelser vælges separat."
+        }
+      },
+      {
+        "title": "Aktiver færdigheder og organiser samtaler",
+        "steps": [
+          "Åbn det aktuelle projekts Konfiguration → Færdighedscenter, genscan og søg efter navn, beskrivelse eller kildesti.",
+          "Læs færdighedsformål og aktivér det, du har brug for. Tjek det valgte område før masseændringer. Færdigheder gemmes pr. projekt og anvender næste kørsel eller ny session.",
+          "Indtast / i komponisten for at vælge færdigheder, der faktisk tilbydes af den aktuelle motor. Listerne varierer efter motor.",
+          "Brug sessionsmenuen til at omdøbe eller arkivere. Søg i arkivlisten og gendan nødvendige samtaler."
+        ],
+        "tips": [
+          "Færdighedscenter udvælger eksisterende lokale kompetencer. Hvis ingen vises, skal du først kontrollere lokale kilder. Fjernprojekter kan i øjeblikket ikke administrere værtens lokale færdigheder."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Ingen resultater efter søgning efter manuel demo i Skill Center",
+          "caption": "Færdighedscenter tilbyder navnesøgning og kildefiltrering. Ingen matchende færdigheder eller aktiveringskontakt vises."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Hurtige knapper og scripthandlinger",
+    "summary": "Gør almindelige prompter, vis indhold og projektscripts til genanvendelige knapper.",
+    "sections": [
+      {
+        "title": "Opret prompt- og displayknapper",
+        "steps": [
+          "Åbn hurtigknapper i projektkonfiguration, tilføj en knap og vælg dens type.",
+          "For Spørg skal du indtaste dens etiket og prompt og vælge, om det skal sendes med det samme ved at klikke, for eksempel: Undersøg aktuelle ændringer, og angiv afdækkede acceptkriterier.",
+          "For Display skal du indtaste indhold og forhåndsvise dets sikre HTML-gengivelse. Denne type sender ingen besked.",
+          "Gem og vend tilbage til chat eller en opgave for at inspicere knappen. Træk konfigurationslisten for at omarrangere. Workflow-indstillinger styrer nedarvede projektknapper; sceneknapper konfigureres separat."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Nedarvning af projektknap og tilføj indgang i hurtigknapper til arbejdsgange",
+          "caption": "Vælg projektknapper, der skal arves, og tilføj workflowknapper til venstre. Der er ikke indtastet noget knapindhold."
+        }
+      },
+      {
+        "title": "Konfigurer og kør en handling",
+        "steps": [
+          "Tilføj handlingstypen, indtast dens handlings-id og vælg et script fra dets tilsvarende handlingsmappe.",
+          "Vælg udførelsesmappen: projekt, arbejdsgangopgavebibliotek eller Git-arbejdsområde valgt af scriptet. Se forhåndsvisning og tjek scriptet.",
+          "Aktiver bekræftelse før handlinger, der ændrer filer eller ekstern tilstand. Konfigurer en bekræftelsesprompt for input såsom commit-meddelelser; scriptet modtager det gennem WORKSTEP_ACTION_INPUT.",
+          "Gem og klik på knappen, bekræft script og mappe, og inspicér output- og exit-koden. Kørende handlinger kan stoppes."
+        ],
+        "tips": [
+          "Hurtige handlinger kører projektscripts direkte. Forstå scriptet og vælg den rigtige mappe først. Filer uden for den aktuelle handlingsmappe kan ikke vilkårligt vælges som dens script."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Handlingskonfiguration uden valgt script",
+          "caption": "Felter inkluderer handlings-id, script, udførelsesbibliotek og bekræftelse. Intet script blev kørt."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Planlagte opgaver",
+    "summary": "Opret nye opgaver efter en tidsplan, eller send tidsbestemte koordinatorinstruktioner til eksisterende opgaver, og spor udførelse og meddelelser.",
+    "sections": [
+      {
+        "title": "Generer flere opgaver fra én tidsplan",
+        "steps": [
+          "Opret et projekt opretter opgaveplan, vælg AI-dynamisk og angiv omfanget og individuelle tidspunkter for flere opgaver. Vælg kandidatarbejdsgange.",
+          "Brug først Testgenerering til at kontrollere hvert udkast, og gem derefter. Opgavekoordinatorinstruktioner fungerer stadig på én valgt opgave og opretter ikke batches.",
+          "Efter udløsning skal du åbne hver oprettede opgave fra kørselsposter. Mislykkede poster bevarer også allerede oprettede opgaver; undersøg årsagen, før du opretter erstatninger."
+        ],
+        "tips": [
+          "Oprettelse af opgaver betyder ikke, at alle arbejdsgange er afsluttet. Kør ikke en hel batch igen efter delvis oprettelse eller opstartsfejl."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Planlagt batchgenerering af forhåndsvisning og registrering af flere opgaver",
+          "caption": "Ægte skærmbillede afventer: batch-udkast og allerede oprettede opgaver efter delvis fejl."
+        }
+      },
+      {
+        "title": "Administrer planlagte instruktioner fra opgavedetaljer",
+        "steps": [
+          "Åbn opgavedetaljer og klik på uret ved siden af Bind BOT; på telefoner er det til højre for hovedfanerne. Dens optælling inkluderer opgaveregler undtagen gennemførte engangsregler, ikke kun aktiverede regler. Tjek midlertidigt og andre tilstande på listen.",
+          "Undersøg denne opgaves regler i vinduet. Med redigeringstilladelse kan du tilføje, redigere, sætte på pause, genoptage eller slette regler og se kørselsposter. Nye regler binder sig automatisk til den aktuelle opgave.",
+          "Indtast en titel, frekvens og koordinatorinstruktion, for eksempel: Tjek fremskridt og opsummer hvert tiende minut. Tjek stoptilstanden og gem. Når du lukker med ikke-gemte redigeringer, skal du vælge at fortsætte eller kassere.",
+          "Skrivebeskyttede delinger bruger det samme ur til at inspicere denne opgaves regler. Med driftsrettigheder skal du bruge administrationsposter, der faktisk tilbydes af den aktuelle aktie."
+        ],
+        "tips": [
+          "Engangslisten beholder eksekveringstider for gennemførte regler; opgavemærket udelukker dem, så antallet kan variere."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Opgavebaseret tidsplanvindue åbnet fra detaljeuret",
+          "caption": "Oprettelse af en regel fra uret låser workflow og opgave til demonstrationsopgaven. Titel og instruktioner er tomme; intet blev gemt eller henrettet."
+        }
+      },
+      {
+        "title": "Lav en fast tidsplan",
+        "steps": [
+          "Åbn Planlagte opgaver fra sidebjælkens værktøjsskinne, vælg en projektfane, og opret derefter en Projekt opretter opgaver tidsplan. Vælg arbejdsgang, starttrin, titel og indhold.",
+          "Vælg en gang, dagligt, ugentligt, månedligt, timeinterval eller Cron. Tjek tidszone, effektive datoer og forhåndsvisningen af ​​næste kørsel.",
+          "Vælg Følg arbejdsgang, Øjeblikkelig eller Manuel udførelse, og indstil overlapningshåndtering til Spring over, Parallel eller Kø.",
+          "Tjek gennemse indstillinger og gem. Bekræft en kortsigtet engangsplan, før du aktiverer en langvarig tilbagevendende plan."
+        ],
+        "tips": [
+          "WorkStep-backend'en skal køre for at udløse tidsplaner. Gå ikke ud fra, at de udløses normalt, mens computeren går i dvale, eller backend er stoppet."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Fast opgaveindhold, daglig frekvens og næste kørsel",
+          "caption": "Indstil indhold, frekvens, opstart og overlapningspolitik, og inspicér derefter kommende udførelsestider."
+        }
+      },
+      {
+        "title": "Send planlagte instruktioner til en eksisterende opgave",
+        "steps": [
+          "Åbn Planlagte opgaver i sidebjælken, vælg et projekt og skift ny regeltype til opgavekoordinatorinstruktioner. Det fungerer på en eksisterende opgave i stedet for at oprette en hver gang.",
+          "Indtast titel, filtrer efter arbejdsgang og søg efter målopgaven. Skriv en konkret instruktion, såsom: Tjek fremskridt og rapporter om menneskelig handling er nødvendig; bekræfter ikke automatisk farlige handlinger. Gemte regler kan ikke vende tilbage til en anden opgave.",
+          "Indstil engangs- eller tilbagevendende udførelse, inklusive Hvert par minutter. Bekræft næste kørselstidspunkter, og vælg Fortsæt indtil manuelt deaktiveret eller Stop når opgaven slutter.",
+          "Find den gemte regel i engangs- eller tilbagevendende lister. Filtrer efter måltype og opgave-id. Åbn en opgave fra en kørselspost for at finde det pågældende koordinatorsvar og inspicere status for planlagt meddelelse i dens historik."
+        ],
+        "tips": [
+          "Hver trigger bruger en separat koordinatorsession og kan stå i kø, mens opgaven er optaget. Forslag, der kræver bekræftelse, kræver stadig dig. Stopping af et planlagt svar stopper kun den besked; pause eller deaktiver reglen for at forhindre senere udløsere.",
+          "Arkivering eller sletning af et mål ugyldiggør reglen. Med Stop, når opgaven slutter, afsluttes, mislykkedes eller stoppede terminaltilstande afslutter den. Kørsler afbrudt af genstart af backend er ikke garanteret, at de afspilles igen; inspicere optegnelser, før de sendes igen."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Ugemt opgavekoordinator tidsplanformular",
+          "caption": "Demonstrationen gentages hvert tiende minut, indtil den deaktiveres manuelt. Den er ikke gemt, uden udførelsesresultater."
+        }
+      },
+      {
+        "title": "Konfigurer kanalmeddelelser for planlagte kørsler",
+        "steps": [
+          "I en projektplan eller opgavekoordinatorregel skal du inspicere Underret kanalbot efter udførelse.",
+          "Vælg en bot og samtale, der kan sende. En opgaves bundne gruppe kan vælges som standard, men tjek den, før du gemmer. Uden en destination skal du først konfigurere botten og opgavebindingen eller deaktivere notifikation.",
+          "Undersøg meddelelsesstatus og fejlårsager i kørselsposter. Prøv igen fejlmeddelelser uden at køre opgaven igen. For ukendte leveringsresultater, tjek kanalen først for at undgå dubletter."
+        ],
+        "tips": [
+          "Planlagte meddelelser og workflow Webhooks konfigureres separat. En vellykket kørsel beviser ikke levering, og en mislykket meddelelse betyder ikke, at opgaven fejler.",
+          "Opgavekoordinatormeddelelser følger efter udfyldelsen af ​​dette svar. Meddelelse, efter at en projektplan opretter en opgave, betyder ikke, at hele arbejdsgangen er afsluttet."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Kanalmeddelelse uden et valgt mål i en projektopgaveform",
+          "caption": "Notifikation er markeret, men ingen bot eller samtale er valgt, så lagring er deaktiveret. Intet blev henrettet eller sendt."
+        }
+      },
+      {
+        "title": "AI dynamisk generering og kørselsposter",
+        "steps": [
+          "Skift generation til AI dynamisk, beskriv, hvad der skal genereres hver gang, fiks eventuelt en referencetitel, og vælg kandidatarbejdsgange.",
+          "Konfigurer genforsøg med generering, og brug Testgenerering til at inspicere, om output lever op til forventningerne.",
+          "Gem, og filtrer derefter kørselsposter til højre efter status. Undersøg årsager til udløsningstid, fejl eller spring over, og åbn den tilsvarende opgave.",
+          "Pause tidsplaner er ikke længere nødvendig, og slet derefter efter kontrol."
+        ],
+        "tips": [
+          "Genforsøg med AI-generering, genforsøg med trin-gennemgang og grænser for returforbindelse er separate indstillinger."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "AI dynamisk formular til oprettelse af planlagte opgaver",
+          "caption": "Indtast instruktioner, kandidatarbejdsgange og tæl igen. Ingen opgave er blevet genereret eller kørte poster vist."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Git- og opgavearbejdsområder",
+    "summary": "Undersøg kodeændringer, isoler parallelle opgaver i separate arbejdsmapper, flet derefter deres arbejde.",
+    "sections": [
+      {
+        "title": "Undersøg filer, diff og historie",
+        "steps": [
+          "Klik på Git på et lokalt eller tilsluttet fjernprojekts opgaveside, og vælg roden eller et opdaget underordnet lager. Remote Git-operationer udføres på værtsenheden.",
+          "Inspicer ændrede filer og diffs for at verificere AI-ændringer i forhold til kravene; brug forpligtelseshistorik til at kontrollere forpligtet arbejde.",
+          "Håndter uforpligtende ændringer, før du skifter filial. Opdater fjerntilstand for at kontrollere status foran, bagud eller divergeret.",
+          "Træk hurtigt fremad; Push sender kun engageret indhold. Vælg en fjernbetjening og gren, bekræft og udfør."
+        ],
+        "tips": [
+          "Cachelagrede fjernregistreringer er ikke livestatus. Synkronisering kan være blokeret, mens projektopgaver eller chats er aktive.",
+          "Tilslut først offline eller uautoriserede fjernprojekter igen. Browseren kopierer ikke værtslagre til din computer. Læsning kræver Git-view-tilladelse; commit, branch, merge og synkroniseringshandlinger har separate bevillinger. Tjek tilladelser, hvis der mangler knapper."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Uforpligtede ændringer i et Git-lager",
+          "caption": "Et lokalt lagers afventende filer. Forpligtelseshistorik er på en anden fane; fjerntilladelser og udvidede filforskelle vises ikke."
+        }
+      },
+      {
+        "title": "Opret en Worktree til en opgave",
+        "steps": [
+          "Åbn Git-arbejdsområdet i opgavedetaljer, og vælg arkiver, som opgaven faktisk har brug for.",
+          "Indtast et opgavebiblioteksnavn, kildegren og ny gren, og derefter Opret Worktree. Hvis roden endnu ikke er et Git-lager, skal du initialisere det og foretage den første commit.",
+          "Efter udførelse skal du inspicere og foretage ændringer i arbejdsområdet. I Git, flet ind i den aktuelle gren eller flet den aktuelle gren til et mål.",
+          "Tjek det flettede resultat, og tryk manuelt efter behov. Læs de nøjagtige effekter og advarsler om uforpligtende ændringer før oprydning eller genoprettelse af historik."
+        ],
+        "tips": [
+          "Oprettelse af et arbejdsområde flettes eller skubbes ikke automatisk. Kun forpligtede ændringer deltager i filialsammenlægninger.",
+          "Sletning af et opgavearbejdsområde kan fjerne mapper og funktionsgrene. Oprydning er ikke en måde at gemme resultater på."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Opgave Git arbejdsområde med en eksisterende Worktree",
+          "caption": "Demonstrationsarbejdsområdet eksisterer uden filforskelle. Åbn det, tilføj arkiver eller administrer filialer; dette er ikke dens skabelsesform."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Opgavedeling og fjernprojekter",
+    "summary": "Skelne et link til én opgave fra fjernadgang til en hel enhed.",
+    "sections": [
+      {
+        "title": "Del én opgave",
+        "steps": [
+          "Klik på Del i opgavedetaljer, og vælg Skrivebeskyttet eller Interaktiv.",
+          "Formularen genererer en tilfældig adgangskode og har som standard syv dages gyldighed. Skift eller ryd adgangskoden efter behov; når den er indstillet, skal den have mindst fire tegn. Tilføj en valgfri titel, sørg for, at udløbet er inden for de næste 90 dage, og generer og kopier derefter linket.",
+          "Åbn den i et separat browservindue, indtast en adgangskode, hvis den er angivet, og kontroller status, meddelelser, artefakter og valgte tilladelser.",
+          "For at stoppe deling skal du åbne den aktuelle deling og tilbagekalde den. Allerede åbne seere mister også fortsat adgang."
+        ],
+        "tips": [
+          "Skrivebeskyttet er til visning. Interaktive besøgende bruger den originale opgavecontroller: de kan sende koordinator- eller trinbeskeder, stoppe udførelse, håndtere godkendelser og spørgsmål og bruge tilgængelig opgavekonfiguration og Git-arbejdsområdehandlinger. Disse påvirker den oprindelige opgave inden for denne shares opgaveomfang. For kun visning skal du vælge Skrivebeskyttet og kontrollere tilstanden i en separat browser.",
+          "Modtagere skal nå backend-adressen i linket. Generering af et link skaber ikke en offentlig netværkstunnel."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Interaktiv opgavedelingsformular før linkgenerering",
+          "caption": "Interaktiv tilstand er valgt, og adgangskoden er tom. Der er ikke oprettet noget delingslink."
+        }
+      },
+      {
+        "title": "Konfigurer værtsadgang og inviter enheder",
+        "steps": [
+          "På værten skal du åbne Indstillinger → Fjernadgang, aktivere forbindelser og kontrollere den interne adresse. Offentlig adgang kræver en tilgængelig HTTPS/WSS ekstern adresse.",
+          "Indstil og gem en adgangsnøgle, og test derefter tilgængeligheden fra en anden enhed.",
+          "Generer en projektinvitation under Projektkonfiguration → Deling. Importer det i en anden WorkStep's fjernadgangsindgang, og følg forbindelsesanvisningerne.",
+          "Undersøg autoriserede enheder og aktive invitationer. Skift autorisationsperioder eller tilbagekald efter behov. Hvis forbindelsen er afbrudt, skal du kontrollere værtens tilgængelighed, adresse, nøgle og udløb."
+        ],
+        "tips": [
+          "WorkStep har intet indbygget offentligt relæ. Angiv selv en tilgængelig netværksadgang. Opgavekodeord, værtsadgangsnøgler og enhedsinvitationer er adskilte.",
+          "Fjernkataloger og motorer forbliver på værten. Din lokale filhåndtering kan ikke åbne sine mapper direkte."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Fjernadgangskontakt og adresseformular før værdier indtastes",
+          "caption": "Interne og eksterne felter viser eksempler på pladsholdere, og nøglen er tom. Der vises ingen enhedsgodkendelsesliste."
+        }
+      },
+      {
+        "title": "Tilslut en Enterprise Gateway, når det er nødvendigt",
+        "steps": [
+          "Hvis din organisation leverer Gateway, skal du indtaste dens adresse i Fjernadgang → Gateway-platform.",
+          "Aktiver eksplicit gateway-tilstand og gem, og log derefter ind for at godkende denne computer. At gemme en adresse alene gør det ikke muligt.",
+          "Hvis administratorens godkendelse afventer, skal du fuldføre godkendelsen og godkende igen. Når du er tilsluttet, skal du bruge projektpublikation og adgangsbevillinger inden for dine tilladelser.",
+          "Deaktiver Gateway-tilstand og gem for at vende tilbage til lokal brug."
+        ],
+        "tips": [
+          "Standalone lokal brug behøver ingen gateway. Organisatoriske tilladelser og godkendelse afhænger af den faktiske platform."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Platformadresse før gateway-tilstand er aktiveret",
+          "caption": "Gateway er deaktiveret, og adressen er en pladsholder. At gemme en adresse og aktivere Gateway er forskellige handlinger."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Gateway arbejdsområde og lokal deling",
+    "summary": "Skelne lokale invitationer, platformsbevillinger og opgavedelinger, og fortsæt arbejdet på tværs af enheder.",
+    "sections": [
+      {
+        "title": "Konfigurer Feishu eller Lark virksomhedsidentitet",
+        "steps": [
+          "En administrator åbner Platformindstillinger → Organisationssynkronisering og QR-login, tilføjer en Feishu eller Lark tilpasset virksomhedsapplikation og indtaster Tenant Key, App ID og App Secret.",
+          "Kopier hele det viste login-tilbagekald til den matchende udviklerplatform. Indstil applikations-, QR-login- og organisationssynkroniseringskontakter separat. Eksisterende App ID'er kan ikke ændres; bruge en ny identitetskilde til en anden applikation.",
+          "Godkend bibliotekslæsning, begræns applikationens synlighed, og følg Læs forhåndsvisning → Vælg organisationer eller brugere → Undersøg ændringer → Bekræft synkronisering. Bekræft resultater og fejlregistreringer."
+        ],
+        "tips": [
+          "Gateway-virksomhedsidentitet og lokale kanalbots er adskilte og deler ikke automatisk legitimationsoplysninger. Ægte lejers QR-login- og bibliotekstilladelser kræver stadig integrationstest; simuleret API succes beviser ikke reel forbindelse."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Feishu eller Lark identitetskilde og bibliotekssynkroniseringsindstillinger",
+          "caption": "Skærmbillede til konfiguration uden legitimationsoplysninger fra en isoleret gateway afventer."
+        }
+      },
+      {
+        "title": "Lad andre websteder logge ind via Gateway",
+        "steps": [
+          "En superadministrator åbner Gateway Platform-indstillinger → Tredjeparts logingodkendelse og klikker på Rediger tilbagekaldstilladelsesliste.",
+          "Indtast et komplet tilbagekald URL pr. linje, såsom https://business.example.com/login/callback, op til 100 poster. Skema, port, sti og faste forespørgselsparametre skal matche nøjagtigt. Gennemfør administratorbekræftelse og gem.",
+          "Start login fra den integrerende hjemmeside. Hvis du ikke er logget ind på Gateway, skal du først bruge dens eksisterende adgangskode eller virksomhedens QR-login og derefter vende tilbage. Webstedets backend udveksler en engangsgodkendelseskode for bruger-id, konto og visningsnavn.",
+          "For at afbryde en integration skal du fjerne dens URL og gemme. En tom tilladelsesliste deaktiverer tredjeparts login-autorisation; afventende koder for fjernede adresser bliver straks ugyldige."
+        ],
+        "tips": [
+          "Tilbagekald understøtter HTTP/HTTPS, ikke jokertegn, fragmenter, indlejrede legitimationsoplysninger eller forudindstillede kode-, tilstands- eller request_id-parametre. Brug HTTPS i produktionen.",
+          "Hvis et tilbagekald er uautoriseret, skal du kontrollere dens fulde URL. Hvis en kode udløb eller blev brugt, genstart login fra det integrerende websted. Protokol- og kørselseksempler er i docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Tilladelsesliste for tredjeparts tilbagekald i Gateway-indstillinger",
+          "caption": "Ægte isoleret demonstration Gateway screenshot afventer; Brug ikke daglige konti eller faktiske tilbagekaldsindstillinger."
+        }
+      },
+      {
+        "title": "Administrer to slags projektdeling",
+        "steps": [
+          "Åbn Deling i projektindstillinger. Konfiguration af en gateway-adresse muliggør platformadgang. Den lokale grænseflade tilbyder også fjernprojektinvitationer; Gateway-fjernbrowsere kan ikke konfigurere lokale invitationer.",
+          "For lokale invitationer skal du vælge LAN eller ekstern adresse og enhedsadgangsperiode og derefter generere og kopiere. Et tilpasset udløb skal være i fremtiden; Udløb af invitationsindløsning og enhedsgodkendelse vises separat.",
+          "Efter import på den modtagende enhed, inspicer dens navn, IP, forbindelse og udløb under Autoriserede enheder. Skift perioder eller tilbagekald efter behov. Platformadgang bruger i stedet regnskaber, projektpublikation og bevillinger.",
+          "For én opgave skal du vælge tilstand, adgangskode og titel i dets Share-vindue. Lokal- og Gateway-dele er begge standard til syv dage og tillader højst 90. Test i en separat browser, og administrer eller tilbagekald derefter fra det oprindelige vindue."
+        ],
+        "tips": [
+          "Deling af en lokal opgave gennem en tilsluttet gateway kræver en gyldig platformsidentitet. En adresse eller desktop-legitimationsoplysninger alene giver ikke platformstilladelse.",
+          "Lokale opgavelinks bruger værtsadressen; Gateway-shares bruger den platform-returerede adresse. Udgiv aldrig invitationsoplysninger, del links eller adgangskoder i skærmbilleder.",
+          "Begge typer understøtter udløb. Gateway kan kræve login; interaktive Gateway-shares skal kræve det og bruge login i stedet for en adgangsnøgle. Marker felter i det aktuelle delevindue."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Fanen for deling med fjernadgang og enhedens godkendelsesperiode",
+          "caption": "Uden konfigureret gateway vises fjernadgang. Ingen enheder er godkendt og ingen invitation genereret."
+        }
+      },
+      {
+        "title": "Skift enheder, og undersøg samlede meddelelser",
+        "steps": [
+          "Gå ind i et autoriseret enhedsarbejdsområde på platformen, og brug derefter de øverste enhedsfaner til at skifte til en anden onlineenhed.",
+          "Hver konto og enhed husker det sidste projekt, opgave eller sessionsside i denne browser. At returnere kontrollerer stadig autorisation og omgår ikke utilgængelige mål.",
+          "Fjernprojekter indlæses kun, når de er valgt. Efter indlæsningsfejl eller afbrydelse skal du klikke på det aktuelle projekt igen for at opdatere manuelt; enheder polles ikke kontinuerligt i baggrunden.",
+          "Åbn meddelelsescenter for færdiggørelses- eller fejloversigter fra autoriserede enheder. Klik for at åbne opgaven eller sessionen. Livebeskeder på arbejdsområdet tilhører stadig den aktuelle enhed.",
+          "Brug Return to Gateway platform til at vælge en anden enhed. Et udløbet browsergodkendelsestilbagekald genstarter login; efter annullering af desktop-autorisation, prøv igen manuelt eller vend tilbage til det lokale arbejdsområde."
+        ],
+        "tips": [
+          "Sidehukommelsen er browserlokal, ikke synkroniseret på tværs af browsere. Adgang fungerer uden browserlagring, men placeringer bevares ikke.",
+          "Genopret forbindelse som bedt om offline-enheder, tilbagekaldt godkendelse eller netværksfejl. Gemte placeringer erstatter ikke tilladelser.",
+          "Skærmbilleder af rigtige enhedsfaner og samlede notifikationer fra det faste demonstrationsprojekt forbliver afventende."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Enhedsfaner og samlet notifikationscenter",
+          "caption": "Ægte skærmbillede afventer: enhedsskift, placeringsgendannelse og meddelelsesnavigation; endnu ikke fanget."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Kanalbots og gruppemeddelelser",
+    "summary": "Konfigurer WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack eller QQ, og adskille chat fra Webhook-meddelelser.",
+    "sections": [
+      {
+        "title": "Vælg en kanal og tilslut en ny platform",
+        "steps": [
+          "Åbn Indstillinger → Kanalbots, vælg en platform til venstre, og indtast et navn, legitimationsoplysninger og standard lokalt projekt til højre. Aktiver og gem. Tomme hemmeligheder bevarer eksisterende værdier ved redigering; kontroller ikke-gemte ændringer, før du skifter. Lukning af indstillinger, tryk på Escape eller skift af indstillingssektioner beder om bekræftelse, når ændringer ikke er gemt; annullering bevarer kladden.",
+          "For Feishu eller Lark skal du oprette en brugerdefineret virksomhedsapp med bot-understøttelse og indtaste App ID og App Secret. Efter tilslutning skal du aktivere hændelser med lang forbindelse, abonnere på im.message.receive_v1 og card.action.trigger, konfigurere besked-/korttilladelser og udgive. Send en privat besked eller nævn botten i en gruppe.",
+          "For Telegram skal du oprette en bot med BotFather og indtaste dens Bot Token. Lang afstemning bruges; intet andet program kan polle den bot samtidigt. Administratorer skal fjerne enhver eksisterende Webhook først. Send privat tekst, eller nævn/svar på det i grupper.",
+          "For Discord skal du indtaste Application ID og Bot Token, aktivere Message Content Intent og give kanal læse-/sendetilladelser. Nævn botten i serverkanaler; binde opgaver ved hjælp af kanal- eller tråd-id'er.",
+          "For Slack skal du aktivere Socket Mode og indtaste App ID, en App-Level Token med connections:write og Bot Token. Konfigurer chat:write, app_mentions:read og im:history, abonner på app_mention og message.im, og installer derefter. Inviter botten, før du nævner det i kanaler.",
+          "For QQ skal du oprette en officiel bot på QQ Open Platform, vælge WebSocket-adgang og aktivere private/gruppebeskedbegivenheder. Indtast App ID, App Secret og et standard lokalt projekt, aktiver og gem. Send privat tekst eller nævn botten i en gruppe. Når du har modtaget en besked, skal du binde opgaver ved hjælp af group_openid og konfigurere tilladelseslister med medlem OpenID'er, ikke QQ-konto- eller gruppenumre. Kun tekst; passive svar har tids- og tællegrænser. Læs lange resultater i WorkStep.",
+          "Vend tilbage til WorkStep for at inspicere forbindelser og kanalsessioner, og bind derefter opgaver efter behov. For fejl, tjek region, legitimationsoplysninger, platformstilladelser og backend-netværk."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack og QQ understøtter i øjeblikket kun tekst. Vend tilbage til WorkStep for stop, tilladelsessvar, forslagsbekræftelse og gennemgang; billeder, filer og interaktive kort er ikke lovet.",
+          "Nye platformstests bruger simulerede rammer. Reel lejerinstallation, tilladelser og meddelelser kræver stadig integrationstest. Hold hemmeligheder, fulde tokens og private gruppe-id'er væk fra skærmbilleder."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Kanalvælger og separat bot-editor",
+          "caption": "Reelt skærmbillede uden legitimationsoplysninger af det nye multikanallayout afventer. Den gamle form repræsenterer det ikke."
+        }
+      },
+      {
+        "title": "Send kun meddelelser til Feishu- eller Lark-grupper",
+        "steps": [
+          "Tilføj et Feishu- eller Lark-gruppebot-mål i opgavesidens Workflow-hooks → Notification-hooks, og indsæt den komplette custom-bot Webhook URL for det pågældende område.",
+          "Hvis signering er aktiveret, skal du indtaste den pågældende bots signeringshemmelighed, ikke App ID eller App Secret. Konfigurer nødvendige nøgleord, begivenheder og Markdown skabelon, gem og inspicér simulering.",
+          "Bekræft modtagergruppen, før du sender en test og inspicerer leveringsoptegnelser. Forhåndsvisning sender intet; efter en timeout, tjek gruppen, før du prøver igen."
+        ],
+        "tips": [
+          "Webhooks sender kun workflow-begivenheder og modtager ikke gruppechat. Brug en applikationsbot til tovejssamtaler."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Feishu eller Lark notifikation URL, signatur og skabelon",
+          "caption": "Credential-fri konfiguration og kort-preview screenshots afventer; faktisk levering er ikke påberåbt."
+        }
+      },
+      {
+        "title": "Tilføj en bot",
+        "steps": [
+          "Åbn Indstillinger → Kanalbots, vælg WeCom eller DingTalk til venstre, tilføj en bot og navngiv den.",
+          "For WeCom skal du vælge lang forbindelse i intelligent-bot-indstillinger og kopiere Bot ID og Secret. For DingTalk skal du oprette en app, aktivere dens Stream-bot og kopiere Client ID og Client Secret.",
+          "Vælg et standardprojekt, aktiver den lange forbindelse, gem og vent på Connected.",
+          "Føj botten til en gruppe, nævn det med en testbesked, og inspicér samtalen og svar under projektkanalchat."
+        ],
+        "tips": [
+          "Indtast kun hemmeligheder i indstillinger, ikke skærmbilleder eller beskeder. For forbindelsesfejl, tjek platformstilstand, legitimationsoplysninger og backend-netværk.",
+          "DingTalk knapkort kræver oprettelse, levering og opdateringstilladelse. Brugerdefinerede skabeloner skal matche felterne beskrevet i grænsefladen."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Gammel Tilføj bot-formular, før legitimationsoplysninger indtastes",
+          "caption": "Den gamle formular illustrerer kun navn, legitimationsoplysninger og standardprojektfelter. Det blev ikke gemt eller forbundet; den nye platformsliste i venstre side mangler stadig et skærmbillede."
+        }
+      },
+      {
+        "title": "Bind en opgavegruppe og håndtere anmeldelser",
+        "steps": [
+          "Åbn Bind BOT i opgavedetaljer og vælg en aktiveret bot.",
+          "Nævn det én gang i gruppen, og vælg derefter gruppen under Senest modtagne grupper. Alternativt indsæt et kendt gruppe-id, bekræft den aktuelle opgave og bind.",
+          "Gruppespørgsmål indtaster opgavens koordinator. Inspicer faseresultater og fremsendte vedhæftede filer.",
+          "Når anmeldelse eller spørgsmålskort vises, skal du læse før du handler og vende tilbage til WorkStep for at bekræfte, hvis det er nødvendigt. Ophæv bindingen, når det ikke længere er nødvendigt."
+        ],
+        "tips": [
+          "Standardprojektet håndterer kanalchat, der ikke er bundet til en opgave. Gruppebindinger bestemmer, hvilken opgave der modtager gruppens beskeder.",
+          "Arkivering eller sletning af en opgave fjerner bindinger; gendannelse kræver genbinding. Knapgengivelse afhænger af kanalklienter. Hvis den ikke er tilgængelig, skal du handle i opgavedetaljerne."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Opgave BOT dialog uden bundet gruppe",
+          "caption": "Vælg en bot og en nylig gruppe, indtast og bind derefter dens identifikator. Ingen opgavegruppe er bundet endnu."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Desktop sandkasse",
+    "summary": "Kør backend og motorer i en separat container med eksplicit tilknyttede projektmapper.",
+    "sections": [
+      {
+        "title": "Gennemfør fem-trins sandkassevejledningen",
+        "steps": [
+          "På skrivebordet skal du åbne Sandbox, det sidste Indstillinger-element. Afslut aktive opgaver og samtaler og bekræft virtualiseringsunderstøttelse; Windows har brug for WSL2.",
+          "Vælg først separat sandkasseopbevaring og download/forbered hjælpesoftware.",
+          "For det andet, tjek billedet og download det anbefalede udgivelsesbillede, eller scan kørende lokal Docker for et kompatibelt WorkStep-billede.",
+          "For det tredje skal du vælge eksisterende eller nye projektmapper; fjerde vælg udbyder, motor og præferencemigrering; for det femte inspicer oversigten og gem eller bekræft og genstart."
+        ],
+        "tips": [
+          "Tilknytning af et projekt kopierer ikke dets filer. Sandbox-redigeringer påvirker stadig den originale mappe. Kør ikke det samme projekt i begge miljøer samtidigt.",
+          "Ikke-tilknyttede projekter er midlertidigt skjult, ikke slettet. Sandbox og projektmapper kan ikke indeholde hinanden."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Projektvalg og bekræftelse i fem-trins sandkasseguide",
+          "caption": "Inspicer lager, projekttilknytning og konfigurationsmigrering."
+        }
+      },
+      {
+        "title": "Skift tilstande og bevar konfigurationen",
+        "steps": [
+          "Efter genstart skal du kontrollere Sandbox-tilstands sidebar-badge for at bekræfte det faktiske miljø.",
+          "Tjek udbyderadresser, motorinstallation og login igen. Host localhost betyder noget andet i containeren, og stier skal muligvis justeres.",
+          "Før du importerer eller ændrer mapper, skal du deaktivere sandbox og genstarte, og derefter bruge sandbox management. Læs sikkerhedskopierings- og erstatningsdetaljer før import.",
+          "Deaktiver sandkassen og genstart for at vende tilbage til almindelig tilstand. For fejl skal du åbne logbiblioteket og inspicere fremskridt og fejl."
+        ],
+        "tips": [
+          "Almindelig tilstand og sandkassetilstand opretholder separat konfiguration. Skift synkroniserer ikke ændringer automatisk tilbage.",
+          "Overvej kun kompatibilitetstilladelser, hvis en motors indre sandkasse ikke kan køre; grænsefladen forklarer reduceret isolation. Sandbox-datasletning er irreversibel: undersøg først, hvad der vil blive opbevaret."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Fælles indstillinger og fejlfinding",
+    "summary": "Forstå konfigurationsomfanget, læs status og fejl først, og lav derefter målrettede reparationer.",
+    "sections": [
+      {
+        "title": "Tjek desktopversionen og download opdateringer",
+        "steps": [
+          "På skrivebordet skal du åbne Indstillinger → Systemindstillinger → Skrivebordsopdateringer for at inspicere den aktuelle version.",
+          "Klik på Søg efter opdateringer for at finde den seneste officielle GitHub-udgivelse. Hvis nyere, klik på Download fra GitHub.",
+          "Vælg dit systems installationsprogram på udgivelsessiden, afslut aktivt arbejde og installer det selv."
+        ],
+        "tips": [
+          "Desktop tjekker én gang dagligt uden automatisk at downloade, installere eller genstarte. Kun en nyere officiel udgivelse udløser en opdatering, ikke kode-push eller udkast.",
+          "Prøv mislykkede kontroller igen senere. Webversionen har ingen desktop-opdateringspost."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Aktuel desktopversion og opdaterings-tjek indtastning i systemindstillinger",
+          "caption": "Tjek manuelt, og download derefter fra GitHub, når en opdatering er tilgængelig."
+        }
+      },
+      {
+        "title": "Samtidighed, assistenter og fremvisning",
+        "steps": [
+          "Når du kører mange opgaver, skal du indstille opgave- og samtalekapacitet i globale samtidighedsgrænser eller projektkonfiguration og inspicere effektive værdier.",
+          "Hvis planlagte opgaver ikke skulle optage kapacitet, skal du kontrollere passende ressourcer, før du aktiverer denne mulighed. Overskydende opgaver og chatkø.",
+          "Konfigurer hver assistents motor og model under Assistenter. Kontroller indstillingerne for trinudførelse og opgavekoordinator separat.",
+          "Skift brugernavn i systemindstillinger. Sprog, skrifttyper, størrelse og skins er under Indstillinger → Udseende; repository scanning omfang er under Git-indstillinger."
+        ],
+        "tips": [
+          "Ændring af standardudførelsesmotoren påvirker nye opgaver og trin, ikke eksisterende opgave- eller trinindstillinger."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Globale grænser for samtidighed af opgaver og samtaler",
+          "caption": "Indstil globale kapaciteter og undtagelsen for planlagte opgaver."
+        }
+      },
+      {
+        "title": "Fejlfinding i rækkefølge",
+        "steps": [
+          "Hvis en opgave ikke starter, skal du skelne mellem klar, kø og venter-på-gennemgang. Tjek starttrin, automatisk start og motortilgængelighed.",
+          "Ved udførelsesfejl skal du læse den seneste fejl. Tjek SDK-installation, udbydergodkendelse, modelnavn, netværks- og filtilladelser, og kør derefter igen.",
+          "For historik eller API indlæsningsfejl, brug Prøv igen. Hvis API returnerede en webside, skal du bekræfte backend-versionen og genstarte med din sædvanlige metode.",
+          "Hvis den oprindelige sessionshistorik gik tabt, skal du læse Genkør med en ny session, angive aktuelle mål og nødvendige artefaktreferencer og ikke behandle det som fuld gendannelse af indbygget kontekst.",
+          "For manglende artefakter eller fjernadgangsfejl skal du kontrollere den faktiske filgenerering eller værtens tilgængelighed, adresse, nøgle og autorisationsudløb."
+        ],
+        "tips": [
+          "Når du rapporterer problemer, skal du inkludere version, OS, motor, reproduktionstrin og redigerede fejlskærmbilleder, aldrig legitimationsoplysninger. Uden en eksplicit indstilling udløser 20 sammenhængende minutter uden motorhændelser tomgangstimeout, mens sessionen bibeholdes. Eksisterende brugerdefinerede timeouts forbliver; 0 deaktiverer det. Stille tænkning eller værktøjer er ikke nødvendigvis gået i stå: undersøg logfiler, før de køres igen."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Demonstrationsfejl forårsaget af en ikke-eksisterende model",
+          "caption": "Fejlen siger, at den valgte model ikke understøttes. Reparer trinets modelkonfiguration, før du kører igen; det er ikke repareret på dette billede."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Udseende, skind og sprog",
+    "summary": "Vælg personlige visningspræferencer, eller opret skins og sprogpakker, der kan forhåndsvises, gennem almindelig projektchat.",
+    "sections": [
+      {
+        "title": "Vælg et indbygget sprog",
+        "steps": [
+          "I Indstillinger → Udseende skal du vælge forenklet kinesisk, traditionelt kinesisk, engelsk, japansk, fransk, tysk eller arabisk og inspicere almindelige indtastninger og datokontroller.",
+          "Vælg visningssprog for webstedet og brugervejledningen i sprogmenuen øverst, herunder japansk, traditionelt kinesisk, koreansk og andre tilgængelige sprog. Browseren gemmer dit valg; uden et gemt valg bruges browserens sprog."
+        ],
+        "tips": [
+          "Fransk, tysk og arabisk app-oversættelser dækker i øjeblikket større poster; andre strenge kan forblive kinesiske, og appens arabiske layout er stadig fra venstre mod højre. Hjemmeside og manuel tekst følger den øverste sprogvælger med arabisk layout fra højre mod venstre. Ægte skærmbilleder forbliver kinesiske. Sprogskifte oversætter ikke tidligere samtaler eller brugerfiler."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Indbyggede sprogvælgere i app og hjemmeside",
+          "caption": "Ægte skærmbilleder af de tilføjede sprogvalg afventer."
+        }
+      },
+      {
+        "title": "Brug v2 skin-layouts og funktionsudvidelser",
+        "steps": [
+          "Under Indstillinger → Udseende skal du installere og validere et betroet v2-skin, forhåndsvise og anvende det. For funktioner som f.eks. noter, bede forfatteren i chat om at skabe udseende om at inkludere komponenter.",
+          "Læs aktiveringsbekræftelsen for pakker med kode. Opdatering af en pakke eller ændring af identitet kan spørge igen. Åbn paneler gennem hudens menuer eller funktionsindgange, som afhænger af pakken. Noter eller kalendere er ikke forudinstallerede appfunktioner.",
+          "Pakken kan placere komponisten over, under, til venstre eller højre. Kompakte visninger bevarer lodret arrangement. Efter skift skal du kontrollere beskeder, komponist og indstillinger forbliver brugbare.",
+          "Udvidelsesdata er adskilt efter browseridentitet, enhed, skin og funktion. Skift eller sletning af et skin sletter det ikke. Brug udvidelsens egen eksport til backup. Hvis grænsefladen går i stykker, skal du tilføje skin=default til URL og opdatere."
+        ],
+        "tips": [
+          "Komponentkode har den aktuelle sides privilegier. Aktiver kun pålidelige kilder. Annullering af forhåndsvisningen genopretter udseendet, men fortryder ikke allerede udført kode.",
+          "Udvidelsesdata er ikke inkluderet i skin ZIP-eksporter eller synkroniseret mellem browsere/enheder. Sikkerhedskopier før du rydder lageret; mislykket besparelse må ikke behandles som succes."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "v2-komponentaktiveringsbekræftelse og funktionspanelindgang",
+          "caption": "Et rigtigt skærmbillede af en betroet demonstrationspakke afventer. Formatvalidering er ikke visuel accept."
+        }
+      },
+      {
+        "title": "Vælg og gem personligt udseende",
+        "steps": [
+          "For fuld enhedsadgang skal du åbne Indstillinger → Udseende. Projektautoriserede brugere indtaster Udseende og skins fra sidebjælken.",
+          "Vælg skrifttype, størrelse og sprog. Søg eller filtrer installerede skins, se forhåndsvisning og anvend. Den faste forhåndsvisningslinje lader dig annullere eller bekræfte.",
+          "Godkendte gateway-brugeres valg gemmes pr. konto og enhed, og gendannes i en anden browser på den samme enhed. Prøv igen mislykkede lagringer. Lokale valg uden platformslogin forbliver i denne browser."
+        ],
+        "tips": [
+          "Pakker og oprettelsesposter deles på enheden; personlige valg er isolerede. Projektautoriserede brugere kan kun vælge installerede pakker.",
+          "Manglende eller ødelagte pakker falder tilbage til standardudseendet. Tilføj ?skin=default eller ?language=default for at gendanne standard skin eller forenklet kinesisk."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Skrifttyper, størrelse, sprog og installerede skins i Udseende",
+          "caption": "Siden med rigtige indstillinger viser standardindstillinger og indbyggede eksempler til højre. Ingen personlige præferencer blev ændret."
+        }
+      },
+      {
+        "title": "Opret skins og sprog gennem chat",
+        "steps": [
+          "Med værtsadministrationsrettigheder skal du klikke på Lad os diskutere udseende, vælge en installeret, verificeret motor og beskrive et mål, såsom: Lav en mørk hud, bevar layout og brug en opadgående pil.",
+          "Chat er til venstre, redigering og forhåndsvisning til højre; telefoner skifter fane. Juster navn, farver, skrifttype, størrelse, sendeikon og layout, og gem derefter justeringer i den samme kladdepakke. Redigering er deaktiveret, mens chatten kører. Tjek pc- og telefoneksempler.",
+          "For en sprogpakke, spørg i den samme chat, for eksempel: Tilføj spansk, mens du bevarer udseendet. Skift højre side til sprog. Det indlæses efter generation; brug Læs og valider for at kontrollere dens mappe, dækning, manglende strenge og eksempler.",
+          "For skins skal du klikke på Gem udseende og forhåndsvisning; for sprog, Installer og forhåndsvisning. Bekræft eller annuller i forhåndsvisningslinjen. At gemme på biblioteket bekræfter ikke personlig ansøgning. Eksporter ZIP for at genbruge, og inspicér udskiftningsmeddelelser for import eller opdateringer med samme ID."
+        ],
+        "tips": [
+          "Creation genbruger det faste Runtime-projekt og almindelig chat og påberåber sig din model. Fortsæt tidligere arbejde gennem Samtalehistorik over vinduet. Eksempeleksempler kører ikke selv opgaver.",
+          "Skrifttyper bruger installerede systemskrifttyper. Historiske meddelelser og filer oversættes ikke automatisk. Indbyggede sendeikoner kan vælges i justeringer; brugerdefinerede vektorikoner skal leveres af et valideret udkast.",
+          "Sprogpakker er uafhængige af skins og understøtter i øjeblikket venstre-til-højre sprog. Manglende strenge og datokontroller bruger den angivne indbyggede fallback. Dækning beviser ikke oversættelseskvalitet; brug chat til at opdatere forældede strengkataloger."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat og redigering/forhåndsvisning af områder i oprettelse af udseende",
+          "caption": "En autoriseret tom oprettelseschat- og justeringsformular. Dens komponist er på forhånd udfyldt; ingen besked blev sendt, modelkørsel eller skin gemt."
+        }
+      },
+      {
+        "title": "Læs og se et eksempel på en sprogpakke",
+        "steps": [
+          "Skift udseendestudiets højre side til sprog og tjek sprogpakkebiblioteket. Generer gennem den samme chat eller importer et eksisterende sprog ZIP.",
+          "Genererede pakker indlæses automatisk. Læs og valider kontroldækning, manglende strenge og eksempler. En meddelelse om at vente-på-generation for en tom mappe betyder, at oprettelsen er ufærdig.",
+          "Efter validering, Installer og forhåndsvis, bekræft eller annuller derefter personlig applikation. Dækning kan ikke erstatte en gennemgang af oversættelseskvalitet."
+        ],
+        "tips": [
+          "Kun venstre mod højre sprog understøttes i øjeblikket. Datokontroller og manglende strenge bruger pakkens specificerede indbyggede fallback."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Sprogmappe og valideringsindtastning i en tom oprettelseschat",
+          "caption": "Fanen Sprog tilbyder mappe, Læs og valider og ZIP-import. Ingen sprogpakke er blevet genereret, installeret eller anvendt."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Projekt fjernbetjeningsrevision",
+    "summary": "Undersøg eksterne besøgendes handlinger, og om de lykkedes, blev nægtet eller mislykkedes.",
+    "sections": [
+      {
+        "title": "Filtrer og inspicér fjernbetjening",
+        "steps": [
+          "På den enhed, der er vært for projektet, skal du åbne det lokale projekts Konfiguration → Driftsrevision. Fjernprojekter, gateway-arbejdsområder og projektbundet adgang tilbyder ikke denne fane.",
+          "Filtrer efter handling og resultat, og inspicér derefter aktør, tidspunkt, kilde og opgave, arbejdsgang eller fil-id.",
+          "Gå til næste side eller første side, opdater for at se de seneste optegnelser, og prøv igen mislykket indlæsning."
+        ],
+        "tips": [
+          "Denne revision dækker fjernkildehandlinger og afviste/mislykkede resultater, ikke fulde chats, og gemmer ingen legitimationsoplysninger. API er kun lokalt på værten. Standardopbevaring er 30 dage; følg sidens faktiske varighed. Public share besøgendes rigtige navne er ukendte; Fjernbrowser (selvrapporteret identitet) er ikke autentificeret identitet."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Revisionsfiltre og tomme poster for et lokalt projekt",
+          "caption": "Den faktiske lokale revisionsindtastning og handling/resultatfiltre. Der findes ingen fjernregistreringer i demonstrationsprojektet; ingen handlinger eller identiteter blev opdigtet."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Ofte stillede spørgsmål",
+    "summary": "Forstå motorer, modeltjenester, filændringer og gendannelsesgrænser før start.",
+    "sections": [
+      {
+        "title": "Hvordan adskiller SDK og CLI sig, og hvad skal jeg starte med?",
+        "steps": [
+          "Begge er motorintegrationsmetoder til modelkapaciteter. SDK integreres gennem udvikler-API'er; CLI kører kommandolinjeprogrammer. Det er heller ikke et modelnavn.",
+          "Start med at installere Codex SDK eller Claude Agent SDK, fuldfør godkendelsen, vælg og bekræft en model, og gør den derefter til standardudførelsesmotoren. Eksisterende CLI-brugere kan vælge denne motor i stedet for.",
+          "Udbyderen leverer serviceadresse og godkendelse, modellen identificerer, hvad der håndterer anmodningen, og motoren leverer sessioner, værktøjer og udførelse. Følg den valgte motors formular; legitimationsoplysninger er ikke nødvendigvis udskiftelige."
+        ],
+        "tips": [
+          "SDK-installationen etablerer kun runtime-afhængigheder, ikke godkendelse, tilladelser eller kvoter. Skeln Codex og Claude Code SDK indgange fra dem, der er mærket CLI."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "SDK og CLI valg i motorindstillinger",
+          "caption": "Efterse anbefalede SDK-motorer og deres separate installations- og verifikationstilstande."
+        }
+      },
+      {
+        "title": "Hvordan debiteres software- og modelopkald?",
+        "steps": [
+          "Tjek den valgte modelservices plan, autentificering og kvote før en lille indledende opgave. En SDK i sig selv er ikke modelkredit.",
+          "Opgaveudførelse, automatisk gennemgang, assistenter og genforsøg kan alle kalde modeller. Inspicer modeller separat i trin, gennemgang og assistentindstillinger.",
+          "Brug udførelsesanalyse til at inspicere brugs- og omkostningskilder. Skøn hjælper med at forklare forbruget; endelige gebyrer følger tjenesteudbyderens regler og regning."
+        ],
+        "tips": [
+          "Gå ikke ud fra, at download af en SDK eller login gør opkald gratis, eller at ét abonnement gælder for hver motor."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Tokenbrug og omkostningskilder i udførelsesanalyse",
+          "caption": "Udbyder-rapporterede omkostninger og dækning er vist. Estimerede omkostninger er kun mærket, når prisoverslag faktisk bruges."
+        }
+      },
+      {
+        "title": "Hvor er data gemt, og kan AI ændre mine filer?",
+        "steps": [
+          "Lokale opgaver, arbejdsgange og beskeder gemmes som standard i Project .workstep. Deaktivering af databibliotek følger projektbibliotek bruger ~/.workstep/projects/<项目ID>/. Projektets .workstep/project.json genassocierer originale data.",
+          "Anmodninger og kontekst, der læses af motoren, kan sendes til din konfigurerede modelservice. Kanaler, deling og fjernadgang videregiver også information inden for deres autoriserede omfang til de tilsvarende parter.",
+          "AI med skrivetilladelse kan ændre projektfiler. Øv i et separat projekt, tjek tilladelser før udførelse og inspicér Git-diffs og faktiske artefakter bagefter.",
+          "Sandkasseforeninger ændrer stadig originale monterede filer. Opgave Worktree'er giver separate mapper, men fletteresultater kræver stadig inspektion."
+        ],
+        "tips": [
+          "Lokal lagring betyder ikke offline-opkald. Hold nøgler, kontolegitimationsoplysninger og irrelevante følsomme filer væk fra opgavebeskrivelser, vedhæftede filer og skærmbilleder."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Panel for samtaletilladelsestilstand på en telefon",
+          "caption": "Standard, Skrivebeskyttet, Workspace-skrivning og andre valg er angivet. Den faktiske støtte og adfærd afhænger af motoren."
+        }
+      },
+      {
+        "title": "Hvordan adskiller stop, genforsøg, omarbejde og gendannelse sig?",
+        "steps": [
+          "Stop afbryder den aktuelle udførelse eller et svar, men fortryder ikke filer, der allerede er skrevet. Undersøg eksisterende resultater, før du fortsætter.",
+          "Genforsøg eller genkørsel aktiverer motoren igen, muligvis fortsætter kontekst eller bruger en ny session som bedt om. Den vender ikke hver ændring tilbage til dens præ-run-tilstand.",
+          "Rework korrigerer output i henhold til anmeldelsesfeedback eller returforbindelser, underlagt workflowafhængigheder og grænser. Læs bekræftelser, når gentagelsesomfanget ændres.",
+          "Efter genåbning af WorkStep, inspicer opgave- og sessionstilstand først. Motorer, der understøtter genopretning, kan genoptage deres oprindelige session; mistede oprindelige optegnelser kræver en ny session og genkørsel."
+        ],
+        "tips": [
+          "Automatisk gendannelse afhænger af motor og tilgængelig historik. Fuld genopretning er ikke garanteret for hver motor eller afbrydelse."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Nulstil trin valgt i en fuldført opgave",
+          "caption": "Denne afsluttede opgave har valgt Nulstil trin, hvilket kun påvirker meddelelsen om næste trin. Det er ikke en sletningsbekræftelse eller en advarsel om manglende session."
+        }
+      }
+    ]
+  }
+]

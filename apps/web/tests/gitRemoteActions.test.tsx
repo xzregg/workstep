@@ -20,31 +20,31 @@ test('remote actions choose a remote target and render a compact result notice',
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   const render = (s: GitStatus, readOnly = false) => <I18nProvider><GitRemoteActions status={s} readOnly={readOnly} onRefresh={async () => { refreshes++ }} onBusy={() => {}} /></I18nProvider>
-  const push = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '推送')!
+  const push = () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '推送')!
   try {
     await act(async () => root.render(render({ ...status, files: [{ path: 'new.txt', untracked: true } as GitStatus['files'][number]] })))
     assert.equal(push().disabled, false)
-    assert.equal([...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.startsWith('拉取'))!.disabled, false)
+    assert.equal([...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.startsWith('拉取'))!.disabled, false)
     await act(async () => root.render(render(status, true)))
     assert.equal(push().disabled, true)
     await act(async () => root.render(render({ ...status, files: [{ path: 'new.txt', untracked: true } as GitStatus['files'][number]] })))
     assert.equal(push().disabled, false)
-    assert.ok([...container.querySelectorAll('button')].some(b => b.textContent === '拉取'))
+    assert.ok([...document.querySelectorAll('button')].some(b => b.textContent === '拉取'))
     await act(async () => push().click())
-    const selects = container.querySelectorAll('select')
+    const selects = document.querySelectorAll('select')
     assert.equal(selects.length, 1)
-    assert.equal(container.querySelector<HTMLInputElement>('input[name="targetBranch"]')!.value, status.branch)
+    assert.equal(document.querySelector<HTMLInputElement>('input[name="targetBranch"]')!.value, status.branch)
     await act(async () => { selects[0].value = 'backup'; selects[0].dispatchEvent(new Event('change', { bubbles: true })) })
-    const target = container.querySelector<HTMLInputElement>('input[name="targetBranch"]')!
+    const target = document.querySelector<HTMLInputElement>('input[name="targetBranch"]')!
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(target, 'release')
       target.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    const confirm = [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '推送到远程')!
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '推送到远程')!
     await act(async () => confirm.click())
     assert.deepEqual(args, ['repo', status.branch, 'review', { remote: 'backup', targetBranch: 'release', setUpstream: false }])
     assert.equal(refreshes, 1)
-    assert.match(container.textContent!, /推送完成/)
-    assert.ok(container.querySelector('.git-remote-toast--success'))
+    assert.match(document.body.textContent!, /推送完成/)
+    assert.ok(document.querySelector('.git-remote-toast--success'))
   } finally { await act(async () => root.unmount()); gitApi.push = original.push; gitApi.remotes = original.remotes; container.remove(); await window.happyDOM.close() }
 })

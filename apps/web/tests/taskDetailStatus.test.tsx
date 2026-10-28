@@ -14,7 +14,7 @@ test('detail header explains review waits instead of showing the pipeline pause'
   const cases = [
     { steps: [{ status: 'awaiting_review' }], completed: false, expected: '等待审核' },
     { steps: [{ status: 'reviewing' }], completed: false, expected: '审核中' },
-    { steps: [], completed: false, expected: '暂停' },
+    { steps: [], completed: false, expected: '失败' },
     { steps: [{ status: 'passed' }], completed: true, expected: '已完成' },
   ]
   try {

@@ -135,6 +135,8 @@ def assemble_context(
         .limit(10)
     ]
     current_message = Message.get_by_id(turn.user_message_id)
+    from services.task_state import summarize_task_state, current_task_steps
+    task_state = summarize_task_state(task.status, current_task_steps(task), reason=task.status_reason)
     messages = [
         {"role": item.role, "content": item.content}
         for item in Message.select()
@@ -188,7 +190,7 @@ def assemble_context(
                 (task.description or "")[:4000]
                 if engine_manages_context else task.description
             ),
-            "status": task.status,
+            **task_state,
             "state_version": task.state_version,
             "active_workflow_run_id": task.active_workflow_run_id,
             "workflow_id": task.workflow_id,

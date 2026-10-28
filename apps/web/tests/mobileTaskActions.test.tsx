@@ -51,6 +51,11 @@ test('mobile board confirms start, uses the selected project, and exposes failur
     assert.equal(document.querySelector('.mobile-task-menu'), null)
     assert.equal(calls[2][0], 'task')
     assert.equal(calls[2][2], 'demo')
+    await act(async () => useTaskStore.setState({ tasks: [{ ...task, status: 'waiting', status_reason: 'tool_approval',
+      steps: [{ ...task.steps[0], status: 'running', waiting_reason: 'tool_approval' }] }] }))
+    await openMenu()
+    const menu = document.querySelector('.mobile-task-menu')!
+    assert.doesNotMatch(menu.textContent || '', /Archive task|Delete|归档|删除/)
   } finally {
     await act(async () => root.unmount())
     useProjectStore.setState(projectState, true); useTaskStore.setState(taskState, true); useManagedModeStore.setState(managedState, true)

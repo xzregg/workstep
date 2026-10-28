@@ -295,13 +295,14 @@ async def test_manual_review_of_feedback_artifact_reworks_customized_stage(scena
 
     await s.save(customize)
     s.script.feedback_rounds = 1
-    assert await s.start() == "paused"
+    assert await s.start() == "waiting"
     for ordinal in (1, 2):
         review_id = await s.db(lambda _p: ReviewRun.get((ReviewRun.task == s.task_id) & (ReviewRun.status == "pending")).id)
         response = await s.client.post(f"/api/task/{s.task_id}/steps/test/review/approve?project_id={s.pid}",
             json={"review_run_id": review_id})
         assert response.status_code == 200, response.text
-        assert await s.idle() == ("paused" if ordinal == 1 else "completed")
+        assert await s.idle() == ("waiting" if ordinal == 1 else "completed"), await s.db(
+            lambda _p: [(row.step_key, row.status) for row in TaskStep.select().where(TaskStep.task == s.task_id)])
     assert len(s.script.select("develop")) == 2
     assert all(call["engine"] == "codex_sdk" for call in s.script.select("develop"))
     assert "BugList.md" in s.script.select("develop")[1]["prompt"]
@@ -324,7 +325,8 @@ async def test_task_specific_rework_limits_are_enforced(scenario, limit):
     await s.save(customize)
     s.script.feedback_rounds = 2 if limit == "return" else 0
     s.script.reject_reviews = 5 if limit == "review" else 0
-    assert await s.start() == "paused"
+    assert await s.start() == ("failed" if limit == "return" else "waiting")
+    assert await s.db(lambda _p: Task.get_by_id(s.task_id).status_reason) == ("step_failed" if limit == "return" else "manual_review")
     assert len(s.script.select("develop")) == 2
     assert all(call["engine"] == "codex_sdk" for call in s.script.select("develop"))
     assert not s.script.select("publish")
@@ -352,7 +354,8 @@ async def test_stop_stage_and_review_then_edit_task_and_rerun(scenario, channel)
     await asyncio.wait_for(s.script.entered.wait(), 3)
     assert await s.runtime.cancel_step(s.pid, s.task_id, "develop")
     await asyncio.wait_for(s.runtime.wait(handle), 8)
-    assert await s.idle() == "paused"
+    assert await s.idle() == "stopped"
+    assert await s.db(lambda _p: Task.get_by_id(s.task_id).status_reason) == "user_stop"
     assert await s.db(lambda _p: ReviewRun.select().where((ReviewRun.task == s.task_id)
         & ReviewRun.status.in_(["running", "pending"])).count()) == 0
 
@@ -452,7 +455,7 @@ async def test_task_review_override_reject_resume_and_engine_stays_local(scenari
 
     await s.save(customize)
     s.script.reject_reviews = 1 if mode == "auto" else 0
-    assert await s.start() == ("completed" if mode == "auto" else "paused")
+    assert await s.start() == ("completed" if mode == "auto" else "waiting")
     if mode == "manual":
         def pending(_p):
             return ReviewRun.get((ReviewRun.task == s.task_id) & (ReviewRun.status == "pending")).id
@@ -461,7 +464,7 @@ async def test_task_review_override_reject_resume_and_engine_stays_local(scenari
         response = await s.client.post(f"/api/task/{s.task_id}/steps/develop/review/reject?project_id={s.pid}",
             json={"review_run_id": await s.db(pending), "comment": "MANUAL_BUG"})
         assert response.status_code == 200, response.text
-        assert await s.idle() == "paused"
+        assert await s.idle() == "waiting"
         assert "MANUAL_BUG" in s.script.select("develop")[-1]["prompt"]
         response = await s.client.post(f"/api/task/{s.task_id}/steps/develop/review/approve?project_id={s.pid}",
             json={"review_run_id": await s.db(pending)})
@@ -573,7 +576,8 @@ async def test_network_failure_retry_uses_task_engine_without_duplicate_message(
     s = scenario
     await s.save(lambda f: f["nodes"][1].update(engine="codex_sdk", prompt="TASK_NETWORK"))
     s.script.failures = 2  # Exhaust the engine's automatic retry, then use the failed-message button.
-    assert await s.start() == "paused"
+    assert await s.start() == "failed"
+    assert await s.db(lambda _p: Task.get_by_id(s.task_id).status_reason) == "step_failed"
     failed_id = await s.db(lambda _p: Message.select().where((Message.task == s.task_id)
         & (Message.step_key == "develop") & (Message.channel == "execution") & (Message.run_status == "failed")).get().id)
     assert len(s.script.select("develop")) == 2

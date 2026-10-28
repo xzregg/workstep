@@ -5194,9 +5194,9 @@ async def test_review_flow_end_to_end_via_api(api_context, monkeypatch):
         # 1) plan 跳过审核直接通过；build 自动审核第一次不通过后自动重跑并再次审核通过；
         #    verify 人工审核停在 awaiting_review。
         task = await _wait_for_task_status(
-            client, project_id, task_id, {"ready", "paused"}
+            client, project_id, task_id, {"completed", "waiting"}
         )
-        assert task["status"] == "paused"
+        assert task["status"] == "waiting"
         steps = {step["step_key"]: step["status"] for step in task["steps"]}
         assert steps == {
             "plan": "passed", "build": "passed", "verify": "awaiting_review",
@@ -5227,9 +5227,9 @@ async def test_review_flow_end_to_end_via_api(api_context, monkeypatch):
         assert reject.status_code == 200, reject.text
         assert reject.json()["resumed"] is True
         task = await _wait_for_task_status(
-            client, project_id, task_id, {"ready", "paused"}
+            client, project_id, task_id, {"completed", "waiting"}
         )
-        assert task["status"] == "paused"
+        assert task["status"] == "waiting"
         assert len(step_prompts) == 5
         assert "缺少验收记录" in step_prompts[4]
         assert "## Previous review feedback" in step_prompts[4]
@@ -5246,7 +5246,7 @@ async def test_review_flow_end_to_end_via_api(api_context, monkeypatch):
         )
         assert approve.status_code == 200, approve.text
         task = await _wait_for_task_status(
-            client, project_id, task_id, {"completed", "paused"}
+            client, project_id, task_id, {"completed", "waiting"}
         )
         assert task["status"] == "completed"
         steps = {step["step_key"]: step["status"] for step in task["steps"]}
@@ -5503,7 +5503,7 @@ async def test_review_completion_api_keeps_health_responsive_during_slow_db(
             "skipped" if decision == "complete-task" else "pending"
         )
         assert Task.get_by_id(task_id).status == (
-            "completed" if decision == "complete-task" else "paused"
+            "completed" if decision == "complete-task" else "waiting"
         )
         assert WorkflowRun.get_by_id(run.id).status == (
             "succeeded" if decision == "complete-task" else "paused"
@@ -5949,7 +5949,7 @@ async def test_cancel_orphaned_step_slow_sql_does_not_block_health(
     assert cancelled.status_code == 200
     assert cancelled.json() == {"cancelled": True}
     task = await client.get(f"/api/task/{task_id}?project_id={project_id}")
-    assert task.json()["status"] == "paused"
+    assert task.json()["status"] == "stopped"
     assert task.json()["steps"][0]["status"] == "cancelled"
 
 

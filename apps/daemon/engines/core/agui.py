@@ -16,7 +16,7 @@ from typing import Any, Mapping
 # status 事件中代表"运行生命周期"的状态集合，映射为 RUN_*；其余状态
 # （reviewing / awaiting_review / retrying / rework …）走 CUSTOM workstep.status。
 _RUN_STARTED_STATUSES = {"initializing", "running", "pending"}
-_RUN_FINISHED_STATUSES = {"done", "passed", "ready", "succeeded", "completed"}
+_RUN_FINISHED_STATUSES = {"done", "passed", "ready", "succeeded", "completed", "stopped"}
 _RUN_ERROR_STATUSES = {"failed", "cancelled", "error"}
 
 _CUSTOM_NAMES: dict[str, str] = {
@@ -205,6 +205,10 @@ def _run_event(
     }
     if status:
         payload["status"] = status  # passthrough 原始状态，前端据此更新步骤状态
+    data = event.get('data') or {}
+    for key in ('status_reason', 'pending_confirmations'):
+        if key in data:
+            payload[key] = data[key]
     if error is not None:
         payload["error"] = _text(error)
     if ctx.message_id:

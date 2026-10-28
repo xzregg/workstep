@@ -1,12 +1,12 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { I18nProvider, translate, type Lang } from '../src/i18n'
+import { I18nProvider, supportedLanguages, translate } from '../src/i18n'
 import { PrivacyPage } from '../src/components/PrivacyPage'
 
 afterEach(() => vi.unstubAllGlobals())
 
 describe('localized privacy notice', () => {
-  for (const lang of ['zh-CN', 'en-US', 'fr-FR', 'de-DE', 'ar'] as Lang[]) {
+  for (const lang of supportedLanguages.map(item => item.locale)) {
     it(`renders the ${lang} notice with the shared site preference`, () => {
       vi.stubGlobal('window', {
         localStorage: { getItem: () => lang }, navigator: { language: 'en-US' },

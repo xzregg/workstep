@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Descargue, instale y abra WorkStep",
+    "summary": "Instale primero WorkStep, luego un motor SDK. La aplicación de escritorio incluye su tiempo de ejecución backend; No es necesario instalar Python primero.",
+    "sections": [
+      {
+        "title": "Elige un instalador",
+        "steps": [
+          "Utilice el enlace de descarga del sitio web para elegir el instalador de escritorio para su sistema operativo y chip. En Mac, elija el arm64 DMG para chips Apple de la serie M o el x64 DMG para Intel.",
+          "Instale y abra WorkStep utilizando el proceso de instalación normal de su sistema. Espere a que el backend local esté listo y se abra el espacio de trabajo.",
+          "En el primer inicio, ingrese un nombre para mostrar cuando se le solicite. Para volver a visitar la incorporación, abra Configuración → Configuración del sistema → Incorporación (设置 → 系统设置 → 新手引导), luego haga clic en Incorporación."
+        ],
+        "tips": [
+          "Los instaladores de escritorio no incluyen motores opcionales como Codex SDK o Claude Agent SDK. Instálelos a través de la interfaz en el siguiente capítulo.",
+          "Las primeras compilaciones macOS o Windows sin firmar pueden activar mensajes de seguridad del sistema. Verifique la fuente de descarga antes de seguir las instrucciones de su sistema.",
+          "El uso local independiente no requiere iniciar sesión en Gateway. Si habilita voluntariamente Gateway y la autenticación no puede iniciarse, la entrada local intenta regresar al modo local y deshabilita Gateway, conservando su dirección para una reconexión posterior. Una instalación vinculada a la puerta de enlace o un visitante remoto no puede usar esto para deshabilitar la puerta de enlace del host. Si falla el regreso al modo local, verifique el backend local y actualice para volver a intentarlo."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Configuración de identidad y entrada de inicio rápido en el primer lanzamiento",
+          "caption": "Ingrese un nombre para mostrar local para ingresar al espacio de trabajo o comenzar la configuración rápida. Esta imagen utiliza una identidad de demostración."
+        }
+      },
+      {
+        "title": "Entender tres conceptos",
+        "steps": [
+          "Un motor ejecuta tareas y llama a herramientas. Este manual recomienda primero Codex SDK o Claude Agent SDK; No se requiere un motor CLI instalado por separado.",
+          "Un proveedor proporciona la dirección y las credenciales del modelo API, API. Está separado del motor de ejecución y su protocolo debe coincidir con uno admitido por ese motor.",
+          "Un modelo realmente procesa su solicitud. Instale un motor, autentíquelo, seleccione y pruebe un modelo y luego cree una tarea."
+        ],
+        "tips": [
+          "Un SDK puede incluir o invocar un ejecutable subyacente. Elegir un SDK no significa que no haya subprocesos.",
+          "WorkStep almacena datos del proyecto localmente. Durante la ejecución, el motor y el proveedor elegidos envían el contexto de la tarea al servicio modelo."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Paso 1: instale un motor SDK",
+    "summary": "Comience con un SDK. Descargue y administre motores a través de Instalación y versiones (安装与版本), sin copiar los comandos de instalación del terminal.",
+    "sections": [
+      {
+        "title": "Descargar e instalar a través de la interfaz.",
+        "steps": [
+          "Abra Configuración → Motores de ejecución (设置 → 执行引擎). Busque la tarjeta Codex o Claude Code marcada como sdk, correspondiente a Codex SDK y Claude Agent SDK. Inicialmente instale sólo el que desea utilizar.",
+          "Haga clic en Instalar y versiones, espere la lista de versiones y luego elija una versión adecuada en Seleccionar versión.",
+          "Haga clic en Instalar la versión seleccionada y verifique la versión. Si aparecen términos de terceros, léalos y acéptelos antes de hacer clic en Confirmar instalación.",
+          "Espere a que se descargue el paquete principal, se instale el motor y las dependencias y se verifique la versión. Confirme que se muestra la nueva versión.",
+          "Cambiar una versión de SDK requiere reiniciar el backend. Los usuarios de escritorio pueden finalizar el trabajo actual, salir y volver a abrir WorkStep, luego continuar con la configuración."
+        ],
+        "tips": [
+          "El porcentaje cubre sólo el paquete principal. Las descargas y extracción de dependencias podrán no tener porcentaje; Utilice la descripción de la fase para juzgar el progreso.",
+          "La instalación continúa cuando su sección está colapsada. No vuelva a enviar simplemente porque el progreso ha dejado de cambiar temporalmente.",
+          "Si no aparece una versión adecuada, actualice la lista y verifique la compatibilidad con la red y la plataforma. Cuando se configura una ruta ejecutable personalizada, bórrela como se indica antes de administrar las versiones."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "Instalación del motor SDK y selección de versión.",
+          "caption": "Haga clic en Instalar y versiones, Seleccionar versión y luego Instalar la versión seleccionada."
+        }
+      },
+      {
+        "title": "Verificar la instalación y mantener las versiones.",
+        "steps": [
+          "Vuelva a abrir los motores de ejecución y verifique que SDK se detecte como instalado con la versión esperada.",
+          "Utilice Instalar y versiones para actualizaciones posteriores. Si hay una versión de reversión disponible, haga clic en Revertir a... y confirme; la reversión descarga la versión anterior nuevamente.",
+          "Si la instalación falla, lea el error en esa sección, verifique la red, el espacio en disco y la ruta de instalación, luego vuelva a intentarlo. El éxito de la instalación no significa que la autenticación del modelo haya sido exitosa: a continuación, complete la configuración y las pruebas."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Versión y progreso después de la instalación de SDK",
+          "caption": "Verifique la versión actual después de la instalación. El indicador restante del 100 % significa que la instalación se ha completado, no que la descarga continúa."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Configurar proveedores, pruebas de autenticación y conexión.",
+    "summary": "Configure un proveedor compatible en WorkStep y vincúlelo a su SDK. Los usuarios con un inicio de sesión nativo existente también pueden reutilizar la autenticación del motor.",
+    "sections": [
+      {
+        "title": "Agregar un proveedor",
+        "steps": [
+          "Abra Configuración → Proveedores → Agregar proveedor (设置 → 供应商 → 添加供应商). Ingrese un nombre reconocible y elija el tipo de servicio y el protocolo API.",
+          "Para Claude Agent SDK, seleccione un terminal Anthropic Messages compatible; para Codex SDK, seleccione un punto final OpenAI Responses compatible. Una afirmación de \"compatible con OpenAI\" por sí sola no establece la compatibilidad del protocolo.",
+          "Ingrese la dirección API y la clave API proporcionadas por el proveedor. Mantenga las rutas de versión como /v1 o /v2; no utilice el punto final de chat completo como dirección base.",
+          "Guarde el proveedor y haga clic en Probar conexión. Para obtener modelos, haga clic en Obtener modelos, seleccione los modelos que necesita y luego Guardar seleccionados.",
+          "Asegúrese de que el proveedor esté habilitado. Una vez superada la prueba, regrese al SDK para completar las pruebas de unión y del motor."
+        ],
+        "tips": [
+          "Las suscripciones de cuentas, las credenciales API y la facturación las determina el proveedor de servicios. La instalación de un SDK no proporciona credenciales.",
+          "Al editar un proveedor, dejar la clave en blanco conserva el valor anterior. Ingrese una nueva clave para reemplazarla y oculte las claves antes de realizar capturas de pantalla o compartir la configuración.",
+          "En el modo administrado por empresa, la plataforma puede asignar proveedores. Utilice un proveedor autorizado en lugar de agregarlo nuevamente."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Configuración de nombre de proveedor, protocolo y dirección API",
+          "caption": "Configure un protocolo compatible, guárdelo y luego pruebe la conexión. La imagen muestra una dirección pública API con un campo clave vacío."
+        }
+      },
+      {
+        "title": "Vincular y verificar el SDK",
+        "steps": [
+          "Regrese a Configuración → Motores de ejecución, expanda la configuración del SDK instalado y seleccione el proveedor compatible que guardó.",
+          "Claude Agent SDK requiere un modo de permiso. Lea su descripción, elija y confirme; Otros campos avanzados pueden permanecer en sus valores predeterminados. Para Codex SDK, conserve inicialmente la configuración predeterminada de razonamiento, aprobación y zona de pruebas.",
+          "Haga clic en Guardar configuración y verifique el modelo predeterminado. Para un proveedor vinculado, Actualizar modelos vuelve a leer solo las selecciones guardadas, en lugar de recuperar todos los modelos. La lista está vacía si no existe caché ni selecciones. Para agregar modelos, regrese a Configuración → Proveedores, Obtener modelos y Guardar seleccionados, luego actualice el motor.",
+          "Haga clic en Probar en la tarjeta del motor, espere el resultado y confirme Verificado (已验证). Este es su punto de control antes de ejecutar tareas."
+        ],
+        "tips": [
+          "Las pruebas del motor invocan el motor seleccionado y pueden incurrir en cargos por servicio del modelo.",
+          "Las opciones de esfuerzo de razonamiento, aprobación y zona de pruebas de Codex SDK tienen etiquetas chinas. La lista de esfuerzos muestra las configuraciones compatibles con el motor incluso si el catálogo de modelos está vacío; no implica que todos los modelos admitan todos los niveles. Comience con los valores predeterminados. Si un modelo rechaza un nivel, regrese a Automático o a un valor admitido.",
+          "Sin un vínculo de proveedor, Codex SDK reutiliza la autenticación Codex local, mientras que Claude Agent SDK usa su configuración de autenticación nativa. Los nuevos usuarios sin un inicio de sesión existente deben comenzar con la configuración del proveedor.",
+          "Para errores de autenticación, verifique la clave, la dirección API, el protocolo y los permisos de la cuenta. Para errores de modelo, verifique la identificación del modelo y el soporte del proveedor. Si está marcado como No instalado, regrese a la instalación."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Probar, Verificar y Guardar configuración en una tarjeta Codex SDK",
+          "caption": "La tarjeta SDK del Codex muestra Verificado, lo que indica que este motor pasó la prueba."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Establecer el motor y modelo de ejecución predeterminados",
+    "summary": "Haga que el SDK probado sea el motor de ejecución predeterminado para los pasos que no especifican otro motor.",
+    "sections": [
+      {
+        "title": "Guardar los valores predeterminados",
+        "steps": [
+          "En Configuración → Motores de ejecución → Motor de ejecución predeterminado, seleccione el SDK que acaba de verificar.",
+          "Haga clic en Guardar valores predeterminados y confirme el mensaje de éxito. No lo abandone después de simplemente seleccionar un valor desplegable.",
+          "Elija un modelo en el selector de modelo predeterminado de esa tarjeta SDK. Los pasos sin un modelo independiente utilizan este valor predeterminado.",
+          "Después de crear un flujo de trabajo, vuelva a verificar el motor y el modelo de cada paso. La configuración de pasos explícita no cambia automáticamente cuando cambian los valores predeterminados globales."
+        ],
+        "tips": [
+          "Los asistentes tienen entradas de configuración independientes. Cambiar el motor de ejecución predeterminado no cambia a todos los asistentes.",
+          "Primero complete un flujo de trabajo con un SDK verificado y un modelo, luego pruebe diferentes modelos para diferentes pasos."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Selector de motor de ejecución predeterminado y botón Guardar valores predeterminados",
+          "caption": "El selector de motor predeterminado y la entrada Guardar valores predeterminados. Pydantic AI no está configurado en esta imagen; no se ha modificado ni verificado ningún valor predeterminado."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Conectar un proyecto local",
+    "summary": "Un proyecto corresponde a un directorio de códigos local. Sus datos siguen al proyecto de forma predeterminada o se pueden almacenar por ID del proyecto en la página de inicio del usuario actual.",
+    "sections": [
+      {
+        "title": "Comprender el espacio de trabajo predeterminado preparado automáticamente",
+        "steps": [
+          "En la primera entrada, la barra lateral incluye el espacio de trabajo predeterminado (默认工作区). Sin ningún proyecto seleccionado, WorkStep abre su página de chat normal. Las selecciones de proyectos existentes y las vinculaciones remotas tienen prioridad.",
+          "Después de configurar un SDK, utilice este espacio de trabajo para el chat normal. Para trabajar en su código, use Agregar proyecto para conectar su directorio real; el espacio de trabajo predeterminado no es un repositorio ya conectado.",
+          "El espacio de trabajo predeterminado también lo comparten la creación de habilidades, motores, aspectos y paquetes de idiomas. Estas entradas reutilizan el chat normal y almacenan sus resultados en ese espacio de trabajo."
+        ],
+        "tips": [
+          "Puede cambiar el nombre del espacio de trabajo predeterminado, pero no puede eliminarlo de la lista de proyectos. No crea automáticamente un flujo de trabajo.",
+          "El espacio de trabajo predeterminado es un proyecto; un SDK es un motor de ejecución. Tener un proyecto no significa que un motor esté instalado o autenticado."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Espacio de trabajo predeterminado y entrada de chat normal en la barra lateral",
+          "caption": "Un chat normal y vacío en el espacio de trabajo predeterminado, sin conversaciones ni flujos de trabajo todavía. Crea una conversación aquí; Los proyectos de código aún deben conectarse explícitamente."
+        }
+      },
+      {
+        "title": "Comience con un directorio de demostración",
+        "steps": [
+          "Prepare una carpeta de demostración separada, como workstep-demo. Para el código existente, seleccione la raíz del proyecto.",
+          "Haga clic en Barra lateral → Agregar proyecto → Proyecto local (侧边栏 → 添加项目 → 本地项目), seleccione esa carpeta en el navegador de directorio y confirme.",
+          "Comprueba que el proyecto aparece en la barra lateral y cambia a él. Los proyectos nuevos no tienen flujo de trabajo por defecto; crea uno a continuación.",
+          "Al volver a conectar el mismo directorio más adelante, los flujos de trabajo, las tareas y los mensajes se restauran a partir de los datos del proyecto. No elimine .workstep solo para reabrir un proyecto."
+        ],
+        "tips": [
+          "Los motores pueden leer o modificar archivos de proyecto según las instrucciones de la tarea. Practique en un directorio separado y conserve el historial de versiones antes de editar código real.",
+          "De forma predeterminada, los datos del proyecto se cargan en .workstep/workstep.db, en .workstep/uploads/, y los artefactos en .workstep/artifacts/.. Con almacenamiento centralizado, haga una copia de seguridad del directorio de datos del proyecto correspondiente en Inicio y del archivo de identidad del proyecto.",
+          "Los nombres de proyectos nuevos o renombrados no pueden contener espacios, tabulaciones u otros espacios en blanco."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Agregue un proyecto local y seleccione su directorio raíz",
+          "caption": "Seleccione el directorio de demostración, luego ingrese el proyecto conectado desde la barra lateral."
+        }
+      },
+      {
+        "title": "Abra el directorio del proyecto e inspeccione los archivos generados.",
+        "steps": [
+          "Seleccione el proyecto y haga clic en Abrir directorio en su tarea o página de chat del proyecto. Úselo para inspeccionar los archivos generados reales después de que finalice una tarea.",
+          "En la aplicación de escritorio, la flecha de la derecha enumera los administradores de archivos, editores y terminales locales detectados. Al seleccionar uno, se abre inmediatamente el directorio y recuerda la elección local. Sólo aparecen las aplicaciones detectadas y disponibles.",
+          "Los proyectos remotos y el acceso remoto al navegador utilizan el navegador de directorio web. Las compilaciones de escritorio sin el puente de apertura de directorios también lo utilizan; No es necesario instalar un editor de escritorio dentro del contenedor."
+        ],
+        "tips": [
+          "Las rutas de los proyectos de la zona de pruebas del escritorio se asignan nuevamente a los directorios de montaje del host antes de abrirse. Si ningún montaje coincide, verifique la configuración de montaje del proyecto.",
+          "Si Abrir directorio falla, verifique que la aplicación y el directorio seleccionados aún existan, o inspeccione el proyecto directamente en el administrador de archivos de su sistema."
+        ]
+      },
+      {
+        "title": "Reordenar proyectos de la barra lateral",
+        "steps": [
+          "En la barra lateral, arrastre Demostración manual (操作手册演示) antes o después del proyecto deseado.",
+          "Se pueden intercalar proyectos locales y remotos. Al liberar se guarda el orden en la configuración local y al volver a abrirlo se conserva."
+        ],
+        "tips": [
+          "El orden afecta sólo a la visualización de este dispositivo, no al orden del proyecto en un host remoto. Siga el mensaje de error y vuelva a intentarlo si falla el guardado."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Dos proyectos de demostración locales y flujos de trabajo en la barra lateral",
+          "caption": "La última barra lateral muestra dos proyectos de demostración locales y el espacio de trabajo predeterminado. Arrastre las filas del proyecto para reordenarlas; no hay ningún dispositivo remoto conectado."
+        }
+      },
+      {
+        "title": "Elija dónde se almacenan los datos del proyecto",
+        "steps": [
+          "Después de seleccionar un directorio en Barra lateral → Agregar proyecto → Proyecto local, marque El directorio de datos sigue al directorio del proyecto (数据目录跟随项目目录), habilitado de forma predeterminada para nuevos proyectos.",
+          "Cuando está marcada, las tareas, flujos de trabajo, archivos adjuntos, registros, artefactos, habilidades y memoria se almacenan en el .workstep/. del proyecto. Al desmarcar se usa ~/.workstep/projects/<项目ID>/, dejando solo .workstep/project.json como archivo de identidad en el directorio del proyecto.",
+          "Para un proyecto existente, inspeccione su ruta de datos real en Configuración del proyecto → General. Cambie la casilla de verificación y confirme la migración. Primera parada de tareas, conversaciones y acciones rápidas; eliminar espacios de trabajo de Git existentes.",
+          "Espere la migración, luego verifique la nueva ruta y las tareas originales. El error conserva los datos originales. Un destino que no esté vacío no se sobrescribe; resuelva el problema informado y vuelva a intentarlo."
+        ],
+        "tips": [
+          "Volver a agregar un proyecto existente conserva el modo de almacenamiento en su archivo de identidad; no mueve datos automáticamente.",
+          "Mantenga .workstep/project.json al mover o cambiar el nombre de un proyecto, luego vuelva a agregarlo para reconocer el proyecto original. Eliminar ese archivo de identidad no elimina los datos de Inicio, pero evita la asociación automática.",
+          "Una copia con el mismo ID de proyecto no puede coexistir con el directorio original registrado: el sistema informa un conflicto de ID. Para la migración entre computadoras, copie también el directorio de datos de Inicio correspondiente.",
+          "El almacenamiento centralizado todavía ignora automáticamente .workstep/ en el proyecto. La compresión ordinaria no aplica automáticamente las reglas de ignorar de Git, pero el archivo de identidad no contiene datos de la tarea."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Opción de almacenamiento de datos y aviso de archivo de identidad al agregar un proyecto",
+          "caption": "La verdadera interfaz Agregar proyecto: al desmarcar el valor predeterminado se muestra la ruta de inicio y las instrucciones para moverse o migrar entre computadoras."
+        }
+      },
+      {
+        "title": "Mover los datos de un proyecto existente",
+        "steps": [
+          "Abra General en la configuración del proyecto y verifique la ruta de datos actual.",
+          "Haga clic en El directorio de datos sigue al directorio del proyecto, lea y confirme la migración, luego espere. El trabajo activo o un destino no vacío produce un error."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Ubicación de almacenamiento de datos en entornos de proyectos de demostración",
+          "caption": "Verifique la ruta actual. Cambiar la casilla de verificación aún requiere confirmar la migración en el cuadro de diálogo."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Cree su primer flujo de trabajo de dos pasos",
+    "summary": "Utilice Análisis de requisitos → Ejecutar tarea para comprender los pasos, entradas, salidas y conexiones.",
+    "sections": [
+      {
+        "title": "Crear un ejemplo a través de la incorporación",
+        "steps": [
+          "Asegúrese de guardar un motor de ejecución predeterminado y seleccionar el proyecto local conectado. Si la incorporación está cerrada, vuelva a abrir Configuración → Configuración del sistema → Incorporación y haga clic en Incorporación.",
+          "En Crear un flujo de trabajo de dos pasos, haga clic en Crear flujo de trabajo de ejemplo. Espere a que tenga éxito y se abra el lienzo.",
+          "El ejemplo se denomina Análisis y ejecución (分析与执行). Su primer paso, Análisis de requisitos (需求分析), genera un plan de ejecución (执行计划), conectado al segundo paso, Ejecutar tarea (执行任务).",
+          "Abra ambos pasos y verifique el motor, el modelo, el mensaje, las entradas y salidas, asegurándose de que utilicen un SDK verificado. El ejemplo no comienza con la creación ni ejecuta revisiones; una vez iniciado, sus dos pasos se ejecutan en orden de dependencia."
+        ],
+        "tips": [
+          "Un nuevo flujo de trabajo normal comienza con un lienzo vacío, sin pasos de ejemplo. Elija una plantilla explícitamente.",
+          "No juzgue la configuración únicamente por la apariencia de la línea: verifique que el puerto de salida coincida con los requisitos de entrada del siguiente paso."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Lienzo de dos pasos para análisis de requisitos y ejecución de tareas.",
+          "caption": "El análisis de requisitos produce un plan de ejecución para la tarea Ejecutar. Haga clic en cada paso para inspeccionar su configuración."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Crea y completa tu primera tarea.",
+    "summary": "Utilice una tarea pequeña, explícita y fácil de verificar para verificar que su SDK, su proyecto y su flujo de trabajo funcionen juntos.",
+    "sections": [
+      {
+        "title": "Escribe una solicitud verificable",
+        "steps": [
+          "Prepare README.md y example.txt en el directorio de demostración. README.md debería enumerar cinco operaciones para explicar, con notas complementarias en example.txt. Utilice contenido de demostración en lugar de material privado.",
+          "Abra la página de tareas del proyecto de demostración, seleccione Análisis y ejecución y luego haga clic en Nueva tarea. También se abre la entrada de incorporación Crear tarea.",
+          "Comience en Análisis de requisitos e ingrese el título Organizar instrucciones del proyecto (整理项目说明).",
+          "Descripción de ejemplo: lea README.md y example.txt, genere un plan de ejecución y luego cree 使用说明.md en la raíz del proyecto. Enumere cinco operaciones en Markdown, una oración por operación. Lea sólo esos dos archivos existentes; no los modifique. Puede crear 使用说明.md, pero no modificar otros archivos. Informe la ubicación del archivo generado cuando haya terminado.",
+          "Seleccione Inicio manual y haga clic en Crear tarea. Verifique la solicitud y el paso inicial, luego Iniciar tarea. Alternativamente, elija Iniciar inmediatamente después de la creación."
+        ],
+        "tips": [
+          "Especificar el objetivo, acciones permitidas, formato de entrega y criterios de aceptación; esto hace que los resultados sean más fáciles de verificar que una solicitud vaga.",
+          "Comenzar en un paso posterior omite los anteriores. Para su primer ejercicio, comience con el análisis de requisitos.",
+          "Abrir el panel de creación de tareas desde la incorporación no ejecuta en sí una tarea; La opción de inicio del panel controla la ejecución."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Título de la tarea, descripción, paso inicial y modo de inicio.",
+          "caption": "Escriba una solicitud concreta, seleccione su paso inicial y elija explícitamente cuándo comienza la ejecución."
+        }
+      },
+      {
+        "title": "Sigue los pasos y comprueba las salidas.",
+        "steps": [
+          "Abra los detalles de la tarea y observe el paso actual, el estado y los mensajes. Espere mientras el motor se ejecuta y responda preguntas explícitas o solicitudes de aprobación en la interfaz.",
+          "Una vez finalizado el análisis de requisitos, la tarea Ejecutar comienza automáticamente según la conexión de dependencia. No se necesita ningún clic adicional en Iniciar. Lea el plan del primer paso y compruebe que el segundo lo utilizó.",
+          "Una vez finalizada la tarea Ejecutar, lea el mensaje final y abra 使用说明.md en la raíz del proyecto. Compruebe que sea Markdown, incluya cinco operaciones y utilice una frase para cada una.",
+          "Si un mensaje muestra archivos editados..., expándalo y haga clic en un nombre de archivo. Ver el parche grabado cuando esté disponible; de lo contrario, obtenga una vista previa del archivo actual. Los cambios históricos pueden diferir del archivo actual, así que aún así inspeccione el resultado real.",
+          "Verifique que README.md y example.txt no hayan cambiado y que solo se haya agregado el 使用说明.md permitido. Utilice la entrada de archivos del proyecto o el administrador de archivos de su sistema. El estado de finalización por sí solo no demuestra que sea correcto."
+        ],
+        "tips": [
+          "Si la espera continúa, distinga espera para comenzar, aprobación, revisión y ejecución activa: cada una necesita una respuesta diferente.",
+          "En caso de falla, conserve el error y primero pruebe nuevamente la conexión SDK. Después de reparar la configuración, utilice la recuperación disponible de la tarea o reintente la entrada.",
+          "Si un API informa que devolvió una página web, confirme que el backend se actualizó y reinició, luego actualice y vuelva a intentarlo. No cargar los detalles de ejecución por sí solo no significa que la ejecución haya fallado; no cree una tarea duplicada por ese motivo."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Salida 使用说明.md después de completar la tarea de dos pasos",
+          "caption": "Después de completar ambos pasos, inspeccione 使用说明.md y sus cinco descripciones de operaciones."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Editar flujos de trabajo",
+    "summary": "Divida el trabajo en pasos y configure motores de ejecución, entradas, salidas y reglas de revisión.",
+    "sections": [
+      {
+        "title": "Agregar y conectar pasos",
+        "steps": [
+          "Seleccione un proyecto y un flujo de trabajo a la izquierda e ingrese al lienzo de flujo de trabajo. Un nuevo flujo de trabajo está vacío; agregue pasos o aplique explícitamente una plantilla.",
+          "Haga clic en + Paso e ingrese su nombre e identificador, por ejemplo Organizar requisitos con requisitos. Los identificadores deben ser únicos dentro del flujo de trabajo, comenzar con una letra en inglés y contener solo letras, dígitos, guiones bajos o guiones.",
+          "Escriba un mensaje con un objetivo, limitaciones y resultados claros. Por ejemplo: lea la descripción de la tarea, enumere los criterios de aceptación y un plan de implementación, y guarde un documento de requisitos.",
+          "Configure un motor y modelo SDK instalado y verificado. Para heredar los valores predeterminados, seleccione el motor de ejecución predeterminado o el modelo predeterminado del motor.",
+          "Después de configurar las entradas y salidas, arrastre desde un puerto de salida ascendente a la entrada descendente correspondiente y luego guarde."
+        ],
+        "tips": [
+          "Las líneas continuas transportan datos. La conexión de nuevo en sentido ascendente crea una conexión de retorno discontinua para recibir comentarios sobre el retrabajo.",
+          "Un aviso de cambios no guardados significa que las ediciones del lienzo aún no se han conservado."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Lienzo de flujo de trabajo con dos pasos y conexiones de entrada/salida",
+          "caption": "Busque el botón Agregar paso, los puertos de conexión y Guardar entrada."
+        }
+      },
+      {
+        "title": "Configurar entradas, salidas y conexiones de retorno.",
+        "steps": [
+          "Abra el editor de pasos, nombre claramente las salidas y configure las entradas necesarias en sentido descendente.",
+          "Conecte cada salida requerida a su entrada descendente correspondiente. Durante la ejecución, verifique la disponibilidad en Entradas y salidas de pasos en los detalles de la tarea.",
+          "Para volver a trabajar, cree una conexión de retorno y establezca retornos máximos para ese paso. Antes de guardar, lea las advertencias sobre etapas potencialmente no ejecutables y verifique si la ejecución inicial depende de artefactos de reelaboración que aún no se han generado."
+        ],
+        "tips": [
+          "Las devoluciones máximas controlan las conexiones de devolución con guiones y son independientes de los reintentos después de una revisión fallida.",
+          "Declarar un puerto de salida no crea un archivo. Exija entregables reales en el aviso e inspecciónelos después."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Artefactos de entrada y salidas correspondientes en el editor de nodos",
+          "caption": "La entrada declara los requisitos de la tarea con el plan de ejecución como salida correspondiente. La configuración del recuento de retornos no se muestra."
+        }
+      },
+      {
+        "title": "Establecer revisión y inicio automático.",
+        "steps": [
+          "En Revisión de pasos en el editor, elija Revisión manual, Revisión automática u Omitir revisión. Inicialmente se recomienda la revisión manual.",
+          "La revisión manual se detiene después de la ejecución para tomar su decisión. Para revisión automática, escriba criterios verificables y opcionalmente elija su motor y modelo.",
+          "Establecer reintentos después de que una revisión automática rechace el resultado. Los errores en el propio agente de revisión pasan al manejo manual.",
+          "Configure Iniciar automáticamente después de la creación según sea necesario y luego guarde. Para la práctica inicial, desactívelo para poder inspeccionar una tarea antes de comenzar."
+        ],
+        "tips": [
+          "Instale y configure los motores SDK antes de usarlos para ejecución o revisión."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Controles del modo de revisión de pasos en el editor de nodos",
+          "caption": "Seleccione el modo de revisión en el editor de nodos. Verifique el inicio automático por separado como se describe arriba."
+        }
+      },
+      {
+        "title": "Distribución entre flujos de trabajo y reutilización de elementos del lienzo.",
+        "steps": [
+          "Para entregar resultados a otro proyecto o flujo de trabajo, agregue un paso de flujo de trabajo y elija el proyecto de destino, el flujo de trabajo, el paso inicial y el modo de inicio.",
+          "Configure los artefactos de entrada ascendentes y guárdelos. Este paso se realiza inmediatamente después de crear la tarea posterior y no puede conectarse a pasos adicionales de su flujo de trabajo principal.",
+          "Para reutilizar un paso, elija Copiar nodos del flujo de trabajo, seleccione un proyecto, flujo de trabajo y nodos, obtenga una vista previa, copie y guarde.",
+          "Utilice Diseño para organizar los nodos. Agregue marcadores para notas o exporte el flujo de trabajo JSON como copia de seguridad. Antes de importar, verifique qué se reemplazará."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Destino de la tarea posterior y configuración de inicio",
+          "caption": "Inspeccione el proyecto de destino, el flujo de trabajo y el paso inicial."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Activador de flujo de trabajo y ganchos de notificación",
+    "summary": "Cree tareas a partir de solicitudes externas o envíe el estado del flujo de trabajo a una plataforma elegida.",
+    "sections": [
+      {
+        "title": "Crear tareas con un gancho de gatillo",
+        "steps": [
+          "Seleccione un proyecto y un flujo de trabajo. Abra ganchos de flujo de trabajo en la barra de herramientas de la lista de tareas o en el menú móvil y luego active ganchos.",
+          "Agregue un enlace, ingrese su nombre, título predeterminado y creador, elija un paso inicial y si se inicia automáticamente, luego guarde. Por ejemplo: Admisión de requisitos, con título Solicitud externa.",
+          "Elija una dirección LAN, externa o Gateway configurada y copie la invocación URL. Su token es una credencial: entrégueselo sólo a sistemas confiables.",
+          "En Simular llamada, ingresa un título, creador y cuerpo para inspeccionar la vista previa. La simulación no crea una tarea.",
+          "Tener un sistema externo POST al URL copiado usando JSON, texto plano o Markdown, por ejemplo: Organizar criterios de aceptación para esta solicitud. Después de recibir una ID de tarea, verifique el contenido de la tarea y el estado de inicio."
+        ],
+        "tips": [
+          "Se requiere permiso de edición del proyecto. Cada solicitud válida crea una tarea. Esta versión no reconoce automáticamente los eventos GitHub/GitLab, ni deduplica solicitudes ni almacena en búfer las solicitudes mientras el dispositivo está fuera de línea.",
+          "Primero repare las direcciones faltantes o los dispositivos desconectados. Restablecer el token invalida el antiguo URL. Si el inicio automático falla, la tarea aún existe: inspeccione run_error y los detalles de la tarea antes de volver a intentar la entrega."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Nombre del gancho de activación no guardado, campos predeterminados y configuración de la etapa inicial",
+          "caption": "Este borrador deshabilitado solo crea tareas. Su ficha está oculta; no se ha guardado y no se ha generado ninguna invocación URL."
+        }
+      },
+      {
+        "title": "Enviar notificaciones de flujo de trabajo a plataformas externas",
+        "steps": [
+          "En la misma ventana de Ganchos de flujo de trabajo, cambie a Ganchos de notificación y agregue un destino.",
+          "Ingrese un nombre, elija el bot de grupo DingTalk, el bot de grupo WeCom o el webhook genérico JSON y luego ingrese su destino URL. Proporcione un secreto de firma DingTalk si es necesario.",
+          "Seleccione eventos suscritos, de forma predeterminada, finalización y falla de la tarea. Opcionalmente, establezca un prefijo de título y la dirección de puerta de enlace, externa o LAN para los enlaces de tareas y luego guarde.",
+          "Genere una vista previa en Simular notificación y verifique el contenido y los enlaces del mensaje. La vista previa no envía ninguna solicitud. Para una prueba real, confirme y haga clic en Enviar notificación de prueba; envía a un destino guardado y habilitado.",
+          "Inspeccionar el estado, los intentos y los errores redactados en los registros de entrega. Después de reparar la configuración, vuelva a intentar los registros fallidos. Después de completar la tarea, verifique la plataforma de recepción y el acceso al enlace de tareas."
+        ],
+        "tips": [
+          "El dispositivo envía notificaciones directamente; Gateway no los transmite. No contienen cuerpos de chat, contenidos de artefactos ni credenciales de creación de tareas. Los enlaces de tareas aún requieren derechos de acceso normales.",
+          "Los errores temporales se reintentan automáticamente. Los tiempos de espera y la recuperación pueden provocar entregas duplicadas; Los receptores genéricos pueden deduplicar mediante event_id. Deshabilitar o eliminar un destino no puede retractar las notificaciones enviadas.",
+          "Una vista previa por sí sola no prueba que la integración funcione: verifique la entrega real a la plataforma."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "Plataforma de notificación DingTalk, eventos suscritos y campos de dirección vacíos",
+          "caption": "Un borrador deshabilitado y no guardado en la interfaz más reciente, con la finalización de la tarea y el error seleccionados. Los campos de webhook y secreto de firma están vacíos; no se envió nada."
+        }
+      },
+      {
+        "title": "Personaliza las plantillas de notificación Markdown",
+        "steps": [
+          "Elija un bot de grupo DingTalk o WeCom en los ganchos de notificación y desplácese hasta la plantilla de mensaje Markdown. Los webhooks genéricos JSON no utilizan estas plantillas Markdown.",
+          "Expanda Variables de plantilla (haga clic para copiar) y luego inserte marcadores de posición como {task_title}. No utilice variables desconocidas ni una plantilla vacía. Mantenga {task_link} o {task_url} cuando sea necesario un enlace de tarea.",
+          "Guarde y use Simular notificación para verificar la sustitución y los enlaces sin enviar. Lea la confirmación antes de restaurar la plantilla predeterminada."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Cuerpo de notificación Markdown y entrada de variable de plantilla",
+          "caption": "Un borrador muestra el cuerpo y las variables predeterminados del Markdown. No se ha enviado ninguna plantilla ni se ha entregado ninguna notificación externamente."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Plantillas y asistente de flujo de trabajo de IA",
+    "summary": "Comience a partir de una plantilla o pídale a AI que proponga pasos y confirme qué aplicar.",
+    "sections": [
+      {
+        "title": "Aplicar y guardar plantillas",
+        "steps": [
+          "Abra plantillas de flujo de trabajo en el lienzo, busque nombres o descripciones y revise el propósito y el recuento de pasos de cada plantilla.",
+          "Seleccione una plantilla adecuada y confirme. La aplicación reemplaza cada paso y conexión en el lienzo actual.",
+          "Verifique los requisitos del motor, modelo, solicitud y revisión de cada paso, adáptelos y guárdelos.",
+          "Para reutilizar su diseño, elija Guardar actual como plantilla de flujo de trabajo e ingrese un nombre y una descripción. Administre plantillas personalizadas editables en Configuración → Plantillas de flujo de trabajo."
+        ],
+        "tips": [
+          "Los proyectos nuevos no crean flujos de trabajo automáticamente y los flujos de trabajo nuevos no aplican plantillas automáticamente.",
+          "Las plantillas integradas no se pueden eliminar. Después de aplicar uno, aún verifique que los motores requeridos estén disponibles."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Resultado de gestión de contratos integrado en la búsqueda de plantillas de lienzo",
+          "caption": "Busque Gestión de contratos para ver su propósito y recuento de pasos. Verifique el alcance de reemplazo antes de seleccionar."
+        }
+      },
+      {
+        "title": "Pídale a AI que cree o modifique un flujo de trabajo",
+        "steps": [
+          "Abra el asistente de flujo de trabajo de IA en el lienzo y primero elija un motor y modelo configurados.",
+          "Explique el objetivo, el desglose de los pasos, el formato de salida y las necesidades de revisión, por ejemplo: Crear análisis de requisitos → implementación → pruebas, con revisión manual en cada etapa, utilizando un SDK instalado.",
+          "Compare las tarjetas de propuesta por título, número de pasos y resumen, luego aplique una propuesta adecuada al lienzo.",
+          "Para flujos de trabajo existentes, inspeccione los cambios de pasos. En Aplicar cambios, seleccione las adiciones, actualizaciones o eliminaciones que desee, luego aplique y guarde."
+        ],
+        "tips": [
+          "Las propuestas de IA requieren su confirmación. El éxito de generación por sí solo no es motivo para ejecutarlos: inspeccionar conexiones, motores y revisar criterios."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Tarjeta de propuesta de dos pasos del asistente de flujo de trabajo de IA",
+          "caption": "La tarjeta muestra el número de pasos modificados y Aplicar cambios. Haga clic para confirmar los cambios de pasos específicos."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Crear y gestionar tareas",
+    "summary": "Un flujo de trabajo define cómo trabajar; una tarea especifica qué hacer esta vez.",
+    "sections": [
+      {
+        "title": "Prepare múltiples tareas con el asistente de tareas",
+        "steps": [
+          "Abra el asistente de tareas en la página de tareas. Solicite explícitamente múltiples tareas con tiempos individuales, por ejemplo: Genere tres tareas independientes a partir de mañana a las 09:00, 10:00 y 11:00.",
+          "Verifique el título, el contenido, el flujo de trabajo, el paso inicial y la hora de inicio programada de cada borrador, luego confirme la creación a través de la interfaz.",
+          "Regrese a la lista de tareas y verifique cada resultado. Si algunas fallan, inspeccione las tareas existentes antes de volver a enviar todo el lote."
+        ],
+        "tips": [
+          "La generación de borradores no crea ni ejecuta tareas. Especifique zonas horarias para horas futuras; El inicio programado requiere que el backend siga ejecutándose."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Borradores de tareas por lotes y sus tiempos programados individuales",
+          "caption": "Captura de pantalla real pendiente: borradores por lotes y tiempos individuales. Un antiguo proyecto de tarea única no debe sustituirlo."
+        }
+      },
+      {
+        "title": "Cree una tarea y deje que la IA organice los requisitos",
+        "steps": [
+          "Elija un proyecto y flujo de trabajo, abra su página de tareas y luego haga clic en Nuevo o Agregar en la etapa correspondiente.",
+          "Ingrese un título y una descripción con contexto, objetivos, cambios permitidos, rutas de salida y criterios de aceptación. Se admiten Markdown e imágenes de referencia pegadas.",
+          "Si es necesario, abra el Asistente de tareas, inspeccione el título generado, el contenido y la selección del flujo de trabajo, luego confirme.",
+          "Verifique el paso inicial y revise la configuración para esta ejecución, luego cree la tarea. Con el inicio automático deshabilitado, haga clic en Iniciar tarea."
+        ],
+        "tips": [
+          "Ejemplo: leer README y generar docs/getting-started.md sin cambiar el código del programa. Incluya instalación, inicio y tres preguntas comunes.",
+          "La creación y la puesta en marcha son acciones separadas; el modo de inicio y la configuración de los pasos determinan si la ejecución comienza inmediatamente."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Formulario de creación de tareas con el asistente de tareas ampliado",
+          "caption": "Ingrese el título y la descripción y elija el modo de inicio. El asistente puede organizar requerimientos; La configuración de revisión está en otra pestaña."
+        }
+      },
+      {
+        "title": "Encuentra tareas en el tablero o mesa.",
+        "steps": [
+          "Cambie entre carriles y tabla en la página de tareas, inspeccione las tareas por etapa y busque por título.",
+          "Haga clic en una tarea para abrir detalles, incluido su paso actual, estado, creador y hora de actualización.",
+          "Archive las tareas terminadas si lo desea. Encuéntrelos en Ver archivo y restáurelos en el tablero. Verifique las selecciones antes de las operaciones masivas."
+        ],
+        "tips": [
+          "En cola normalmente significa que la capacidad de concurrencia está llena. La espera de revisión requiere confirmación; no significa que la aplicación esté bloqueada.",
+          "La eliminación difiere del archivado. Lea la confirmación antes de la eliminación permanente."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Tablero de tareas que muestra estados y etapas.",
+          "caption": "La tarea de demostración está lista. Las entradas de la barra de herramientas incluyen vistas, enlaces de flujo de trabajo, archivo y directorio abierto. El tiempo de creación está debajo de la tarjeta; La copia se trata a continuación."
+        }
+      },
+      {
+        "title": "Modificar solo el flujo de trabajo de la tarea actual",
+        "steps": [
+          "Abra los detalles de la tarea y haga clic en Editar flujo de trabajo de la tarea debajo del gráfico de progreso. Detenga la ejecución o revise primero; el lienzo es de solo lectura mientras está activo.",
+          "Cambie las indicaciones de pasos, los motores, los modelos y las revisiones de esta tarea. Agregue pasos, agregue artefactos al final y ajuste las conexiones. Los pasos, puertos de entrada y artefactos originales existentes no se pueden eliminar ni cambiar de nombre.",
+          "Guarde para actualizar el gráfico de progreso. El siguiente inicio fusiona el flujo de trabajo principal más reciente con diferencias específicas de tareas, sin cambiar el flujo de trabajo principal ni otras tareas.",
+          "Para borrar toda la personalización, haga clic en Sincronizar flujo de trabajo principal y confirme. Los pasos agregados abandonan el flujo de trabajo actual, pero los mensajes históricos, los artefactos y los registros de ejecución permanecen. Esto no inicia la ejecución."
+        ],
+        "tips": [
+          "Sin cambios reales, no se realiza ninguna copia completa del flujo de trabajo. Los campos no anulados heredan las actualizaciones del flujo de trabajo principal; las anulaciones de tareas tienen prioridad.",
+          "Seleccionar un paso en el compositor y cambiar su motor lo guarda en esa tarea. El paso Restablecer restablece solo la sesión de la siguiente ejecución, no el motor del flujo de trabajo principal.",
+          "La eliminación de conexiones cambia las dependencias y puede permitir la ejecución directa; No hace un manual de pasos."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Entradas de sincronización y edición de flujo de trabajo específicas de tareas",
+          "caption": "El lienzo separado de la tarea de demostración muestra el modo de transferencia, el flujo de trabajo principal de sincronización y Guardar. No se cambió ninguna configuración ni se inició la ejecución."
+        }
+      },
+      {
+        "title": "Copiar una tarea",
+        "steps": [
+          "Haga clic en el ícono Copiar tarea al lado de una tarea en una tarjeta o tabla.",
+          "Inspeccione la nueva tarea titulada con (copiar), verifique su descripción, personalización del flujo de trabajo y paso inicial, luego ejecútela. Los pasos copiados comienzan a estar pendientes; El progreso original y el historial de chat no se copian."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Copiar el icono de tarea al lado del nombre de una tarea en la vista de tabla",
+          "caption": "El pequeño icono al lado del nombre es la entrada de copia. No se copió ni inició ninguna tarea en esta imagen."
+        }
+      },
+      {
+        "title": "Administrar tareas en un teléfono",
+        "steps": [
+          "Toque una fila de tareas para abrir los detalles. Manténgalo presionado durante aproximadamente medio segundo para abrir su menú de acciones; El clic derecho del mouse también funciona.",
+          "Según tus permisos, inicia, edita o consulta, copia, archiva, restaura o elimina. No se pueden archivar ni eliminar tareas en ejecución, en cola o en espera con pasos activos. Resuelve las confirmaciones o detén la ejecución primero; lee la confirmación antes de eliminar.",
+          "Después de ejecutar y aprobar todos los pasos del flujo de trabajo, la tarea muestra Completado, incluso después de reabrir los detalles o reiniciar. La finalización no archiva la tarea; elija si desea archivarlo."
+        ],
+        "tips": [
+          "Desplazar o mover el dedo cancela una pulsación larga para evitar acciones accidentales. El acceso de solo lectura aún puede abrir entradas de visualización sin recibir derechos de edición."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Archivar y eliminar menú para una fila de tareas a 390 px",
+          "caption": "Capturado de una tarea lista en v1.0.13; no se archivó ni eliminó nada y no se muestra la finalización. Las entradas de inicio, edición y copia recién agregadas aún necesitan una captura de pantalla actualizada."
+        }
+      },
+      {
+        "title": "Volver a tareas o sesiones desde chats recientes",
+        "steps": [
+          "Busque una tarea o sesión visitada en Chats recientes (最近聊天) en la barra lateral y haga clic para volver a los detalles originales del proyecto. Ambos tipos aparecen aquí.",
+          "Inspeccione los indicadores en ejecución, fallidos y completados sin leer. Al abrir los detalles relevantes se borra esa indicación de no leído. Las entradas autorizadas tienen menús para archivar o eliminar; leer confirmaciones.",
+          "En el escritorio, contraiga Proyectos o Chats recientes, arrastre los encabezados para cambiar su orden y arrastre el divisor para cambiar su tamaño. Haga doble clic en el divisor para restaurar la proporción predeterminada."
+        ],
+        "tips": [
+          "Las visitas recientes conservan como máximo 20 elementos bajo la identidad del dispositivo de este navegador. Al borrar los datos del navegador se elimina este índice, no el contenido de la tarea. Las entradas históricas no pasan por alto la autorización del proyecto.",
+          "Archivar, eliminar y borrar el estado no leído tienen diferentes efectos. Si falla un enlace antiguo, verifique que el proyecto y la sesión aún existan y que la conexión esté funcionando."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Visita de una tarea de demostración en chats recientes",
+          "caption": "La barra lateral muestra una visita de tarea de demostración, sin entradas de sesión ni ejemplos de estado no leído."
+        }
+      },
+      {
+        "title": "Abrir navegación en un navegador móvil",
+        "steps": [
+          "Abra WorkStep en el navegador de un teléfono y toque la burbuja de navegación redonda en el borde de la página para expandir la misma barra de navegación lateral que en el escritorio.",
+          "Seleccione un proyecto, flujo de trabajo, tarea o conversación para continuar. Toca la burbuja nuevamente para colapsar la navegación.",
+          "Si la burbuja cubre contenido, manténgala presionada y arrástrela a una parte vacía de la ventana gráfica. Arrastrar no alterna la navegación."
+        ],
+        "tips": [
+          "La burbuja aparece sólo en navegadores móviles normales. Las aplicaciones de escritorio y de Android utilizan sus propias entradas de navegación."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Burbuja de navegación y barra lateral expandida en el navegador de un teléfono",
+          "caption": "Barra lateral expandida a 390 px, con la burbuja redonda a la derecha para contraerla. Sólo se muestran proyectos de demostración aislados."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Ejecución, aprobaciones y revisiones",
+    "summary": "Comprenda los estados del tiempo de ejecución, maneje las solicitudes de permiso y decida si los resultados pueden pasar a la siguiente etapa.",
+    "sections": [
+      {
+        "title": "Inspeccionar solicitudes de ejecución y permisos.",
+        "steps": [
+          "Abra los detalles de la tarea e inspeccione el gráfico de progreso y los registros del chat para identificar el paso activo.",
+          "Amplíe los registros de procesos para inspeccionar llamadas de herramientas, resultados y errores. Expanda los registros de subagente cuando el motor los informe.",
+          "Cuando los mensajes incluyan cambios de archivos, expanda la lista y vea las diferencias registradas. Estos describen los cambios de ese mensaje; Al abrir el archivo se muestra su contenido actual, que las ediciones posteriores pueden haber cambiado. Sin una diferencia guardada, el contenido actual no puede reconstruir el historial completo.",
+          "Cuando aparezca la aprobación de la herramienta, lea el comando, las rutas y el impacto antes de permitir o negar. Responda preguntas utilizando las opciones proporcionadas o los comentarios solicitados.",
+          "Si una tarea falla, primero lea su último error y luego verifique la configuración del motor, los permisos del modelo, la red y el directorio del proyecto en lugar de volver a intentarlo repetidamente."
+        ],
+        "tips": [
+          "La aprobación aparece sólo cuando un motor la solicita. La información del proceso y las opciones de permisos varían según el motor; Los detalles faltantes no significan que no se haya ejecutado.",
+          "Un icono giratorio indica trabajo asincrónico. Mientras espera al usuario, maneje la pregunta o aprobación actual."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Registros de progreso de pasos y ejecución real en los detalles de la tarea",
+          "caption": "Los registros de progreso y ejecución son visibles. No se muestra ninguna solicitud de permiso; Las aprobaciones aparecen sólo cuando el motor realmente las solicita."
+        }
+      },
+      {
+        "title": "Aprobar, rechazar o finalizar una revisión",
+        "steps": [
+          "Mientras espera la revisión manual, inspeccione los artefactos de salida, revise los resultados, los archivos y pruebe los resultados según los criterios de aceptación.",
+          "Si es satisfactorio, haga clic en Aprobar y continuar. De lo contrario, ingrese comentarios específicos y elija Rechazar y rehacer.",
+          "Durante la revisión automática, inspeccione sus registros. El rechazo desencadena reposiciones configuradas; los errores de revisión o las solicitudes de manejo manual requieren su decisión.",
+          "Si ya no desea la ejecución, elija Terminar y verifique la confirmación. Forzar aprobación omite la revisión actual, así que primero verifique que los resultados sean utilizables."
+        ],
+        "tips": [
+          "Una tarea puede seguir ejecutándose con confirmaciones pendientes. En escritorio, pasa el puntero por el número para ver pasos y motivos y resuelve revisiones, permisos o preguntas en el paso correspondiente. Sin otra rama ejecutable, espera. La parada manual, el fallo y la finalización son distintos; terminar el proceso no implica aprobar la revisión."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Comentarios de revisión manual y botones de aprobación/rechazo",
+          "caption": "Revise resultados, artefactos y entradas de acciones."
+        }
+      },
+      {
+        "title": "Coordinador de reglas fijas y mensajes actuales.",
+        "steps": [
+          "Abra los detalles de la tarea, seleccione Coordinador en el compositor, elija el motor Codex SDK y haga una pregunta de la tarea como: ¿Qué etapa está sin terminar?",
+          "Continuar en la misma sesión del coordinador. El estado de la tarea y la actualización del remitente actual como contexto específico del turno; Las reglas fijas del coordinador permanecen en el historial de la sesión.",
+          "Para la depuración, utilice el modo de desarrollador para inspeccionar mensajes con registros de entrada reales. Las reglas fijas sin cambios confirmadas como retenidas en esa sesión no se reinyectan por separado."
+        ],
+        "tips": [
+          "Las sesiones más antiguas pueden recibir una reinyección inicial después de la actualización. Nuevas reglas, nuevas sesiones, historial faltante o retención incierta después de la compactación provocan la reinyección. Las solicitudes aún pueden usar reglas en el historial; Saltarse una nueva inyección no significa que no haya reglas."
+        ]
+      },
+      {
+        "title": "Agregar información durante una respuesta del coordinador",
+        "steps": [
+          "Seleccione Coordinador como destinatario y envíe instrucciones complementarias mientras responde. Entran en la cola de inserción pendiente de la respuesta actual.",
+          "Inspeccione, edite, reordene o elimine las entradas no enviadas, o envíe las seleccionadas inmediatamente. Varias entradas seleccionadas se combinan en orden. Las entradas restantes continúan automáticamente en el siguiente turno después de que finaliza la respuesta actual; no enviar repetidamente.",
+          "Si le dicen que un mensaje ya fue enviado o eliminado, actualice e inspeccione la cola en lugar de reenviar el lote."
+        ],
+        "tips": [
+          "Las colas de coordinadores y de pasos están separadas. Primero verifique el destinatario. La parada no deshace las operaciones de la herramienta ya realizadas."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Mensajes pendientes durante una respuesta del coordinador",
+          "caption": "Captura de pantalla real pendiente: destinatario del coordinador, mensajes suplementarios durante la ejecución y cola de continuación."
+        }
+      },
+      {
+        "title": "Complementar, detener y volver a ejecutar",
+        "steps": [
+          "Verifique el destinatario antes de escribir. El coordinador maneja preguntas y solicitudes de operación; sólo un paso específico recibe información en el contexto de ejecución de ese paso.",
+          "Los mensajes a un paso en ejecución ingresan a Insertar mensajes. Editar, reordenar, enviar inmediatamente o enviar todo; Los mensajes no enviados pueden desencadenar otra ronda una vez finalizada la ejecución.",
+          "Después de detener un paso, envíele instrucciones complementarias explícitas y siga las indicaciones para volver a ejecutarlo.",
+          "Para cambiar esta tarea, edite y guarde las indicaciones de pasos, los motores o revise la configuración. Las anulaciones entran en vigor en la siguiente ejecución; Los campos no anulados fusionan el flujo de trabajo principal en el siguiente inicio. Para borrar toda la personalización, confirme el flujo de trabajo principal de sincronización."
+        ],
+        "tips": [
+          "Cambiar el motor del compositor del coordinador afecta solo a los mensajes del coordinador posteriores, no a los motores de pasos del flujo de trabajo.",
+          "Si la repetición afecta otros pasos activos, inspeccione la confirmación del impacto y el alcance de la repetición. Si se pierden los registros de la sesión nativa, siga las instrucciones para volver a ejecutarla con una nueva sesión."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Destinatario del paso y borrador complementario en una tarea completada",
+          "caption": "La tarea de ejecución está seleccionada en el compositor. El mensaje complementario aún no se ha enviado; no se muestra ninguna cola de inserción."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artefactos, análisis de ejecución y memoria de proyecto.",
+    "summary": "Inspeccione los archivos entregados, comprenda el consumo y conserve lecciones reutilizables.",
+    "sections": [
+      {
+        "title": "Inspeccionar entradas, salidas y archivos de artefactos",
+        "steps": [
+          "Abra Entradas y salidas de pasos en los detalles de la tarea para verificar las entradas disponibles y las salidas completadas.",
+          "Haga clic en Ver para ver un archivo o abra el explorador de artefactos y cambie por paso y ronda de ejecución.",
+          "Vista previa de archivos. En el escritorio, Abrir directorio contenedor le permite inspeccionar archivos reales. Los archivos de proyectos remotos permanecen en el host y deben verse a través de la interfaz web.",
+          "Compare las rondas correctas cuando vuelva a ejecutar. Igual que redondo... significa contenido idéntico, no que la ejecución no haya ocurrido."
+        ],
+        "tips": [
+          "Si falta un artefacto, verifique si se generó un archivo, si su declaración de salida coincide y los mensajes de ejecución."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Artefactos de tarea agrupados por paso",
+          "caption": "El análisis de requisitos y la tarea Ejecutar enumeran cada uno un artefacto de primera ronda. Abra su archivo o directorio."
+        }
+      },
+      {
+        "title": "Inspeccionar los recursos de tiempo de ejecución local",
+        "steps": [
+          "Ingrese al espacio de trabajo a través del host local o una dirección de bucle invertido, luego Estadísticas → Tiempo de ejecución del sistema (数据统计 → 系统运行). Los navegadores remotos comunes y los espacios de trabajo de Gateway no muestran esta pestaña.",
+          "Inspeccione CPU, la memoria, la configuración del disco, las velocidades y recursos de la red, los subprocesos y los descriptores de archivos o identificadores para el backend y los secundarios del WorkStep.",
+          "Elija métricas de tendencias e inspeccione los tiempos de muestreo. Pausa, reanuda o actualiza manualmente la pantalla. Espere durante la recopilación inicial y vuelva a intentar las lecturas fallidas."
+        ],
+        "tips": [
+          "Las estadísticas cubren el entorno backend actual y los niños, excluyendo el shell del escritorio. Las mediciones de contenedores no son recursos completos de la máquina host.",
+          "Los valores predeterminados son un muestreo de aproximadamente cinco segundos y un historial de 30 minutos; La página indica los valores reales. Pausar la actualización de la pantalla no detiene las tareas. Las métricas no disponibles y las brechas no son cero; Las muestras antiguas se conservan y se marcan como obsoletas. Las advertencias de los descriptores indican presión de recursos, no reparación automática."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Estadísticas de recursos del sistema muestreadas por la versión actual",
+          "caption": "Recursos locales y estado de muestreo de backend. No se estaba ejecutando ningún proceso secundario del motor, por lo que esto no muestra el consumo de ejecución de tareas."
+        }
+      },
+      {
+        "title": "Inspeccionar la duración, los tokens y el costo.",
+        "steps": [
+          "Abra el análisis de ejecución en los detalles de la tarea para inspeccionar la duración total, los intentos de los pasos, los tokens y los costos.",
+          "Seleccione una ronda de ejecución y haga clic en un segmento de la línea de tiempo para conocer su motor, modelo y uso.",
+          "Para obtener información sobre todo el proyecto, abra Estadísticas. Para estimar los costos, mantenga los precios de los modelos por proveedor o motor en Configuración → Configuración del modelo."
+        ],
+        "tips": [
+          "El uso no reportado no se convierte automáticamente en un número exacto. Consultar cobertura y etiquetas estimadas; el modelo de factura de servicio tiene autoridad."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Rondas de análisis de ejecución y cronograma",
+          "caption": "Indicadores de duración, cobertura y fuente de costos."
+        }
+      },
+      {
+        "title": "Guardar memoria y archivar lecciones",
+        "steps": [
+          "Haga clic en Memoria en la página de tareas. Edite MEMORY.md en el directorio de datos del proyecto en reglas breves y concretas a largo plazo y guárdelo.",
+          "Al archivar una tarea, elija el archivo directo u organice lecciones de fracaso. Inspeccione el borrador de IA, luego confirme la escritura en la memoria y el archivo.",
+          "Utilice la lista de archivos para revisar el historial. Después de restaurar una tarea archivada, vuelva a verificar los enlaces externos requeridos."
+        ],
+        "tips": [
+          "El archivado masivo no extrae las lecciones individualmente. Archivar o eliminar una tarea elimina sus enlaces de grupo de canales; restaurarlo no restaura enlaces antiguos."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Editor de memoria de proyecto que contiene convenciones de demostración.",
+          "caption": "Editar y guardar convenciones en .workstep/MEMORY.md. No se muestra ninguna confirmación de lección archivada."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Chat de proyecto y habilidades.",
+    "summary": "Colabore directamente en el contexto del proyecto y elija qué habilidades locales puede utilizar un proyecto.",
+    "sections": [
+      {
+        "title": "Trabajar con múltiples conversaciones de proyectos",
+        "steps": [
+          "En el ancho del escritorio, abra una conversación de proyecto normal y elija Ventanas de conversación (对话窗口) → Agregar ventana de conversación (增加对话窗口), a la derecha de Nueva conversación.",
+          "Arrastre una conversación desde la barra lateral o Chats recientes al área de chat. Los proyectos autorizados podrán ser mixtos, con un máximo de 4 paneles; soltar una conversación ya abierta enfoca su panel. Los registros de tareas no se pueden arrastrar como chats.",
+          "Haga clic en el panel que desea usar antes de seleccionar una conversación de la barra lateral. Cada panel mantiene su propia configuración de proyecto, sesión, borrador y motor; Verifique el proyecto y la sesión antes de enviar.",
+          "Elija Ventanas de conversación → Disposición de la conversación (对话排列), luego horizontal o vertical. Arrastre el separador para cambiar el tamaño; enfóquelo y use las teclas de flecha para cambiar el tamaño del teclado.",
+          "Con varios paneles, × cierra solo ese panel, sin detener ni eliminar la conversación. Utilice el botón Detener de la conversación para detener la generación."
+        ],
+        "tips": [
+          "En el escritorio, haga doble clic en una conversación de la barra lateral o en el título de su encabezado para abrir el cuadro de diálogo de cambio de nombre compartido, luego ingrese y confirme el nombre.",
+          "En móvil solo aparece el panel activo y se conservan los demás. Salir y volver dentro de la misma sesión de página restaura paneles, distribución y tamaños; no se garantiza tras recargar el navegador. La distribución se separa por cuenta y dispositivo, sin copiar conversaciones."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Paneles de conversación de escritorio en todos los proyectos y menú de arreglos",
+          "caption": "Está pendiente una captura de pantalla real del proyecto de demostración arreglado: menú de la ventana de conversación, múltiples paneles y separadores arrastrables."
+        }
+      },
+      {
+        "title": "Cargar un rol o equipo de expertos en el chat",
+        "steps": [
+          "Prepare indicaciones de roles o miembros del equipo de expertos y responsabilidades en Configuración → Centro de roles.",
+          "Abra el chat normal en un proyecto local. Utilice + → Rol / Equipo de expertos, busque categorías o palabras clave, obtenga una vista previa y cargue en el chat. Por ejemplo, seleccione Code Reviewer y luego envíe un alcance de revisión específico.",
+          "Verifique el nombre cargado en el compositor. Seleccionar no envía ningún mensaje. El enlace se guarda con la sesión y se restaura después de la actualización; Las nuevas sesiones comienzan sin consolidar. Haga clic en el nombre para inspeccionarlo, reemplazarlo o eliminarlo."
+        ],
+        "tips": [
+          "No puedes cambiar mientras corres. Los errores de lectura o guardado conservan la selección actual; Vuelva a intentarlo según se le solicite. Vuelva a seleccionar los roles que faltan. Cargar solo cambia el enlace de sesión; envíe una pregunta concreta para invocar el modelo.",
+          "Los equipos de expertos transmiten las indicaciones y responsabilidades de los miembros al modelo actual; no arrancan motores independientes. Las tareas, los pasos del flujo de trabajo, los canales, los proyectos remotos y los tickets con alcance de proyecto no están integrados. Un espacio de trabajo de Gateway de dispositivo completo puede usar esto para un proyecto local."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Búsqueda de Code Reviewer y vista previa rápida en el chat normal",
+          "caption": "Se selecciona Code Reviewer en una conversación de demostración vacía. Su aviso y botón de carga son visibles; no se cargó ningún rol ni se envió ningún mensaje."
+        }
+      },
+      {
+        "title": "Abrir la memoria del proyecto en un teléfono",
+        "steps": [
+          "Abra la lista de tareas del proyecto, use Más en la esquina superior derecha, luego Memoria.",
+          "Ingrese convenciones breves, como Ejecutar pruebas del proyecto antes de confirmar, en el editor de memoria. Verificar y guardar; Esto se aplica a todo el proyecto."
+        ],
+        "tips": [
+          "Al elegir Memoria se colapsa Más. En el escritorio, haga clic en Memoria directamente en la página de tareas."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Entrada de memoria en el menú Más de una página de tareas de 390 px",
+          "caption": "El menú Más ampliado de la lista de tareas móviles incluye Memoria. Al hacer clic se abre su editor; aquí no se cambió ningún recuerdo."
+        }
+      },
+      {
+        "title": "Crear conversaciones y cambiar la configuración.",
+        "steps": [
+          "Crea una sesión ordinaria en la sección Conversaciones del proyecto a la izquierda. Seleccione su motor, proveedor, modelo y modo de permiso. Comience con un SDK verificado.",
+          "Ingrese una solicitud concreta. Ingrese envíos; Shift+Enter inserta una nueva línea. Adjunte o pegue imágenes de referencia solo después de verificar la compatibilidad con imágenes del motor.",
+          "Detenga una respuesta mientras se genera si es necesario. Los mensajes insertados adicionales se ponen en cola y se puede cambiar su orden.",
+          "Al cambiar de motor o proveedor con el contexto existente, elija Transferencia inteligente, Historial de chat completo o Ninguno en el cuadro de diálogo. Bifurca una conversación para una exploración independiente y confirma su modo contextual."
+        ],
+        "tips": [
+          "El chat del proyecto se almacena por separado de los registros de tareas del flujo de trabajo. Cree una tarea cuando necesite seguimiento y revisiones de etapas.",
+          "La bifurcación nativa solo está disponible cuando el motor realmente la admite. De lo contrario, continúe mediante la transferencia de contexto explícito."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Motor de chat de proyectos, proveedor y menú de modelos.",
+          "caption": "Configure el motor, el proveedor, el modelo de razonamiento y las opciones relacionadas únicamente para esta conversación. Los permisos se seleccionan por separado."
+        }
+      },
+      {
+        "title": "Habilitar habilidades y organizar conversaciones.",
+        "steps": [
+          "Abra Configuración → Centro de habilidades del proyecto actual, vuelva a escanear y busque por nombre, descripción o ruta de origen.",
+          "Lea los propósitos de habilidades y habilite lo que necesita. Verifique el rango seleccionado antes de realizar cambios masivos. Las habilidades se guardan por proyecto y se aplican en la próxima ejecución o nueva sesión.",
+          "Escriba / en el compositor para seleccionar las habilidades que realmente ofrece el motor actual. Las listas varían según el motor.",
+          "Utilice el menú de sesión para cambiar el nombre o archivar. Busque en la lista de archivos y restaure las conversaciones necesarias."
+        ],
+        "tips": [
+          "El centro de habilidades selecciona las habilidades locales existentes. Si no aparece ninguno, consulte primero las fuentes locales. Actualmente, los proyectos remotos no pueden gestionar las habilidades locales del anfitrión."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "No hay resultados después de buscar manual-demo en el centro de habilidades",
+          "caption": "El centro de habilidades ofrece búsqueda de nombres y filtrado de fuentes. No se muestra ninguna habilidad coincidente o interruptor de habilitación."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Botones rápidos y acciones de script",
+    "summary": "Convierta mensajes comunes, contenido de visualización y guiones de proyectos en botones reutilizables.",
+    "sections": [
+      {
+        "title": "Crear botones de aviso y visualización",
+        "steps": [
+          "Abra Botones rápidos en la configuración del proyecto, agregue un botón y seleccione su tipo.",
+          "Para Mensaje, ingrese su etiqueta y mensaje y elija si al hacer clic se envía inmediatamente, por ejemplo: Inspeccionar los cambios actuales y enumerar los criterios de aceptación descubiertos.",
+          "Para Pantalla, ingrese el contenido y obtenga una vista previa de su representación HTML segura. Este tipo no envía ningún mensaje.",
+          "Guarde y regrese al chat o a una tarea para inspeccionar el botón. Arrastre la lista de configuración para reordenar. La configuración del flujo de trabajo controla los botones heredados del proyecto; Los botones de escenario se configuran por separado."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Herencia de botones de proyecto y agregar entrada en botones rápidos de flujo de trabajo",
+          "caption": "Seleccione los botones del proyecto para heredar y agregue botones de flujo de trabajo a la izquierda. No se ha ingresado ningún contenido del botón."
+        }
+      },
+      {
+        "title": "Configurar y ejecutar una acción",
+        "steps": [
+          "Agregue el tipo de acción, ingrese su ID de acción y seleccione un script de su directorio de acción correspondiente.",
+          "Elija el directorio de ejecución: proyecto, directorio de tareas de flujo de trabajo o espacio de trabajo de Git seleccionado por el script. Obtenga una vista previa y verifique el guión.",
+          "Habilite la confirmación antes de acciones que modifiquen archivos o estados externos. Para entradas como mensajes de confirmación, configure un mensaje de confirmación; el script lo recibe a través de WORKSTEP_ACTION_INPUT.",
+          "Guarde y haga clic en el botón, confirme el script y el directorio, e inspeccione la salida y el código de salida. Las acciones en ejecución se pueden detener."
+        ],
+        "tips": [
+          "Las acciones rápidas ejecutan directamente los scripts del proyecto. Comprenda el script y elija primero el directorio correcto. Los archivos fuera del directorio de acciones actual no se pueden seleccionar arbitrariamente como su script."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Configuración de acción sin script seleccionado",
+          "caption": "Los campos incluyen ID de acción, script, directorio de ejecución y confirmación. No se ejecutó ningún script."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Tareas programadas",
+    "summary": "Cree nuevas tareas según una programación o envíe instrucciones del coordinador cronometradas a tareas existentes y realice un seguimiento de la ejecución y las notificaciones.",
+    "sections": [
+      {
+        "title": "Genere múltiples tareas a partir de un cronograma",
+        "steps": [
+          "Crear un proyecto crea un cronograma de tareas, selecciona la dinámica de IA y especifica el alcance y los tiempos individuales de múltiples tareas. Seleccione flujos de trabajo candidatos.",
+          "Primero use Generación de prueba para verificar cada borrador y luego guárdelo. Las instrucciones del coordinador de tareas aún operan en una tarea seleccionada y no crean lotes.",
+          "Después de la activación, abra cada tarea creada desde los registros de ejecución. Los registros fallidos también conservan las tareas ya creadas; inspeccione el motivo antes de crear reemplazos."
+        ],
+        "tips": [
+          "La creación de tareas no significa que todos los flujos de trabajo hayan finalizado. No vuelva a ejecutar un lote completo después de una creación parcial o un error de inicio."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Vista previa programada de generación por lotes y registros de ejecución de múltiples tareas",
+          "caption": "Captura de pantalla real pendiente: borradores por lotes y tareas ya creadas tras un fallo parcial."
+        }
+      },
+      {
+        "title": "Administrar instrucciones programadas desde los detalles de la tarea",
+        "steps": [
+          "Abra los detalles de la tarea y haga clic en el reloj al lado de Bind BOT; en los teléfonos está a la derecha de las pestañas principales. Su recuento incluye reglas de tareas, excepto reglas completadas una sola vez, no solo reglas habilitadas. Marque los estados en pausa y otros en la lista.",
+          "Inspeccione las reglas de esta tarea en la ventana. Con permiso de edición, agregue, edite, pausa, reanude o elimine reglas y vea registros de ejecución. Las nuevas reglas se vinculan automáticamente a la tarea actual.",
+          "Ingrese un título, frecuencia e instrucción del coordinador, por ejemplo: Verifique el progreso y resuma cada diez minutos. Verifique la condición de parada y guarde. Al cerrar con ediciones no guardadas, elija continuar o descartar.",
+          "Los recursos compartidos de solo lectura utilizan el mismo reloj para inspeccionar las reglas de esta tarea. Con derechos de explotación, utilizar los asientos de gestión realmente ofrecidos por la acción actual."
+        ],
+        "tips": [
+          "La lista única conserva los tiempos de ejecución de las reglas completadas; la insignia de tarea los excluye, por lo que los recuentos pueden diferir."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Ventana de programación con ámbito de tarea abierta desde el reloj detallado",
+          "caption": "La creación de una regla desde el reloj bloquea el flujo de trabajo y la tarea en la tarea de demostración. El título y las instrucciones están vacíos; No se guardó ni se ejecutó nada."
+        }
+      },
+      {
+        "title": "Crea un horario fijo",
+        "steps": [
+          "Abra Tareas programadas desde la barra de herramientas de la barra lateral, elija una pestaña de proyecto y luego cree una programación de tareas de creación de proyectos. Seleccione el flujo de trabajo, el paso inicial, el título y el contenido.",
+          "Elija una vez, diario, semanal, mensual, intervalo horario o Cron. Verifique la zona horaria, las fechas de vigencia y la vista previa de la próxima ejecución.",
+          "Elija Seguir flujo de trabajo, Ejecución inmediata o manual y establezca el manejo de superposición en Omitir, Paralelo o Cola.",
+          "Verifique la configuración de revisión y guarde. Verifique un cronograma único a corto plazo antes de habilitar un plan recurrente a largo plazo."
+        ],
+        "tips": [
+          "El backend WorkStep debe estar ejecutándose para activar las programaciones. No asuma que se activan normalmente mientras la computadora está inactiva o el backend está detenido."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Contenidos fijos de las tareas, frecuencia diaria y vista previa de la próxima ejecución.",
+          "caption": "Establezca contenidos, frecuencia, inicio y política de superposición, luego inspeccione los próximos tiempos de ejecución."
+        }
+      },
+      {
+        "title": "Enviar instrucciones programadas a una tarea existente",
+        "steps": [
+          "Abra Tareas programadas en la barra lateral, seleccione un proyecto y cambie el tipo de nueva regla a Instrucciones del coordinador de tareas. Opera en una tarea existente en lugar de crear una cada vez.",
+          "Ingrese Título, filtre por flujo de trabajo y busque la tarea de destino. Escriba una instrucción concreta, como por ejemplo: verificar el progreso e informar si se necesita acción humana; no confirme automáticamente acciones peligrosas. Las reglas guardadas no se pueden revertir a otra tarea.",
+          "Establezca una ejecución única o recurrente, incluida cada pocos minutos. Verifique los tiempos de la próxima ejecución y elija Continuar hasta que se deshabilite manualmente o Detener cuando finalice la tarea.",
+          "Encuentre la regla guardada en listas únicas o recurrentes. Filtre por tipo de objetivo e ID de tarea. Abra una tarea desde un registro de ejecución para localizar la respuesta del coordinador e inspeccionar el estado del mensaje programado en su historial."
+        ],
+        "tips": [
+          "Cada activador utiliza una sesión de coordinador independiente y puede ponerse en cola mientras la tarea está ocupada. Las propuestas que necesitan confirmación aún lo requieren. Detener una respuesta programada detiene sólo ese mensaje; pausar o deshabilitar la regla para evitar activaciones posteriores.",
+          "Archivar o eliminar un destino invalida la regla. Con Detener cuando finaliza la tarea, los estados del terminal completado, fallido o detenido la finalizan. No se garantiza que las ejecuciones interrumpidas por el reinicio del backend se repitan; Inspeccione los registros antes de reenviarlos."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Formulario de programación del coordinador de tareas no guardado",
+          "caption": "La demostración se repite cada diez minutos hasta que se desactiva manualmente. No está guardado y no hay resultados de ejecución."
+        }
+      },
+      {
+        "title": "Configurar notificaciones de canal para ejecuciones programadas",
+        "steps": [
+          "En una regla de programación de proyecto o coordinador de tareas, inspeccione el bot del canal de notificación después de la ejecución.",
+          "Elija un bot y una conversación con capacidad de envío. El grupo vinculado de una tarea puede estar seleccionado de forma predeterminada, pero verifíquelo antes de guardar. Sin un destino, configure primero el enlace del bot y la tarea o desactive la notificación.",
+          "Inspeccione el estado de las notificaciones y los motivos del error en los registros de ejecución. Reintente los errores de notificación sin volver a ejecutar la tarea. Para obtener resultados de entrega desconocidos, consulte primero el canal para evitar duplicados."
+        ],
+        "tips": [
+          "Las notificaciones programadas y los webhooks de flujo de trabajo se configuran por separado. Una ejecución exitosa no prueba la entrega y una notificación fallida no significa que la tarea falle.",
+          "Las notificaciones del coordinador de tareas siguen a la finalización de esa respuesta. La notificación después de que la programación de un proyecto crea una tarea no significa que todo el flujo de trabajo haya finalizado."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Notificación de canal sin un objetivo seleccionado en forma de tarea de proyecto",
+          "caption": "La notificación está marcada pero no se selecciona ningún bot o conversación, por lo que el guardado está deshabilitado. No se ejecutó ni envió nada."
+        }
+      },
+      {
+        "title": "Registros de ejecución y generación dinámica de IA",
+        "steps": [
+          "Cambie la generación a IA dinámica, describa qué generar cada vez, opcionalmente corrija un título de referencia y elija flujos de trabajo candidatos.",
+          "Configure los reintentos de generación y utilice la generación de pruebas para inspeccionar si la salida cumple con las expectativas.",
+          "Guarde y luego filtre los registros de ejecución a la derecha por estado. Inspeccione el tiempo de activación, los motivos de falla u omisión y abra la tarea correspondiente.",
+          "Pausar los horarios que ya no son necesarios, luego eliminarlos después de verificarlos."
+        ],
+        "tips": [
+          "Los reintentos de generación de IA, los reintentos de revisión de pasos y los límites de conexión de retorno son configuraciones independientes."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "Formulario de creación dinámica de tareas programadas con IA",
+          "caption": "Ingrese instrucciones, flujos de trabajo candidatos y recuento de reintentos. No se ha generado ninguna tarea ni se han mostrado registros de ejecución."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Git y espacios de trabajo de tareas",
+    "summary": "Inspeccione los cambios de código, aísle tareas paralelas en directorios de trabajo separados y luego fusione e impulse su trabajo.",
+    "sections": [
+      {
+        "title": "Inspeccionar archivos, diferencias e historial.",
+        "steps": [
+          "Haga clic en Git en la página de tareas de un proyecto remoto local o conectado y seleccione la raíz o un repositorio secundario descubierto. Las operaciones remotas de Git se ejecutan en el dispositivo host.",
+          "Inspeccionar archivos modificados y diferencias para verificar los cambios de IA con respecto a los requisitos; utilice el historial de confirmaciones para comprobar el trabajo comprometido.",
+          "Maneje los cambios no confirmados antes de cambiar de rama. Actualice el estado remoto para verificar el estado adelantado, retrasado o divergido.",
+          "Avance rápido; Push envía solo contenido comprometido. Elija un control remoto y una sucursal, confirme y ejecute."
+        ],
+        "tips": [
+          "Los registros remotos almacenados en caché no están en estado activo. La sincronización puede bloquearse mientras las tareas del proyecto o los chats están activos.",
+          "Vuelva a conectar primero los proyectos remotos sin conexión o no autorizados. El navegador no copia los repositorios del host a su computadora. La lectura requiere permiso de Git-view; Las acciones de confirmación, bifurcación, fusión y sincronización tienen concesiones separadas. Verifique los permisos si faltan botones."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Cambios no confirmados en un repositorio Git",
+          "caption": "Archivos pendientes de un repositorio local. El historial de confirmaciones está en otra pestaña; Los permisos remotos y las diferencias de archivos ampliadas no se muestran."
+        }
+      },
+      {
+        "title": "Crear un Worktree para una tarea",
+        "steps": [
+          "Abra el espacio de trabajo de Git en los detalles de la tarea y seleccione los repositorios que la tarea realmente necesita.",
+          "Ingrese un nombre de directorio de tareas, una rama de origen y una nueva rama, luego cree Worktree. Si la raíz aún no es un repositorio Git, inicialícelo y realice la primera confirmación.",
+          "Después de la ejecución, inspeccione y confirme los cambios en el espacio de trabajo. En Git, fusione con la rama actual o combine la rama actual con un objetivo.",
+          "Verifique el resultado combinado y presione manualmente según sea necesario. Lea los efectos exactos y las advertencias de cambios no confirmados antes de la limpieza o recuperación del historial."
+        ],
+        "tips": [
+          "La creación de un espacio de trabajo no se fusiona ni se inserta automáticamente. Sólo los cambios confirmados participan en las fusiones de sucursales.",
+          "Eliminar un espacio de trabajo de tareas puede eliminar directorios y ramas de funciones. La limpieza no es una forma de guardar resultados."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Espacio de trabajo de Task Git con un Worktree existente",
+          "caption": "El espacio de trabajo de demostración existe sin diferencias de archivos. Ábralo, agregue repositorios o administre sucursales; esta no es su forma de creación."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Compartir tareas y proyectos remotos",
+    "summary": "Distinga un enlace a una tarea del acceso remoto a un dispositivo completo.",
+    "sections": [
+      {
+        "title": "Comparte una tarea",
+        "steps": [
+          "Haga clic en Compartir en los detalles de la tarea y elija Solo lectura o Interactivo.",
+          "El formulario genera una contraseña aleatoria y tiene una validez predeterminada de siete días. Cambie o borre la contraseña según sea necesario; cuando se establece, debe tener al menos cuatro caracteres. Agregue un título opcional, asegúrese de que el vencimiento sea dentro de los próximos 90 días, luego genere y copie el enlace.",
+          "Ábralo en una ventana separada del navegador, ingrese una contraseña si está configurada y verifique el progreso, los mensajes, los artefactos y los permisos seleccionados.",
+          "Para dejar de compartir, abra el recurso compartido actual y revocarlo. Los espectadores que ya están abiertos también pierden el acceso continuo."
+        ],
+        "tips": [
+          "El modo de solo lectura es para visualización. Los visitantes interactivos utilizan el controlador de tareas original: pueden enviar mensajes de coordinador o de paso, detener la ejecución, gestionar aprobaciones y preguntas, y utilizar la configuración de tareas disponible y las acciones del espacio de trabajo de Git. Estos afectan la tarea original, dentro del alcance de la tarea de ese recurso compartido. Para ver solo, elija Solo lectura y verifique el modo en un navegador separado.",
+          "Los destinatarios deben comunicarse con la dirección de backend en el enlace. Generar un enlace no crea un túnel de red pública."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Formulario interactivo para compartir tareas antes de la generación del enlace",
+          "caption": "El modo interactivo está seleccionado y la contraseña está vacía. No se ha creado ningún enlace para compartir."
+        }
+      },
+      {
+        "title": "Configurar el acceso del host e invitar a los dispositivos",
+        "steps": [
+          "En el host, abra Configuración → Acceso remoto, habilite las conexiones y verifique la dirección interna. El acceso público requiere una dirección externa HTTPS/WSS accesible.",
+          "Configure y guarde una clave de acceso, luego pruebe la accesibilidad desde otro dispositivo.",
+          "Genere una invitación de proyecto en Configuración del proyecto → Compartir. Importarlo en la entrada de acceso remoto de otro WorkStep y seguir las instrucciones de conexión.",
+          "Inspeccionar dispositivos autorizados e invitaciones activas. Cambie los períodos de autorización o revoque según sea necesario. Si está desconectado, verifique la disponibilidad del host, la dirección, la clave y el vencimiento."
+        ],
+        "tips": [
+          "WorkStep no tiene un relé público incorporado. Proporcione usted mismo una entrada de red accesible. Las contraseñas de tareas, las claves de acceso al host y las invitaciones a dispositivos están separadas.",
+          "Los directorios y motores remotos permanecen en el host. Su administrador de archivos local no puede abrir directamente sus directorios."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Interruptor de acceso remoto y formulario de dirección antes de ingresar los valores",
+          "caption": "Los campos internos y externos muestran marcadores de posición de ejemplo y la clave está vacía. No se muestra ninguna lista de autorización de dispositivos."
+        }
+      },
+      {
+        "title": "Conecte una puerta de enlace empresarial cuando sea necesario",
+        "steps": [
+          "Si su organización proporciona Gateway, ingrese su dirección en Acceso remoto → Plataforma Gateway.",
+          "Habilite explícitamente el modo Puerta de enlace y guarde, luego inicie sesión para autorizar esta computadora. Guardar una dirección por sí solo no lo habilita.",
+          "Si la aprobación del administrador está pendiente, complete la aprobación y autentíquese nuevamente. Una vez conectado, utilice la publicación de proyectos y acceda a las subvenciones dentro de sus permisos.",
+          "Desactive el modo Puerta de enlace y guárdelo para volver al uso local."
+        ],
+        "tips": [
+          "El uso local independiente no necesita puerta de enlace. Los permisos y la aprobación organizacionales dependen de la plataforma real."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Dirección de plataforma antes de habilitar el modo Gateway",
+          "caption": "La puerta de enlace está deshabilitada y la dirección es un marcador de posición. Guardar una dirección y habilitar Gateway son acciones distintas."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Espacio de trabajo de puerta de enlace y uso compartido local",
+    "summary": "Distinga invitaciones locales, subvenciones de plataforma y tareas compartidas, y continúe trabajando en todos los dispositivos.",
+    "sections": [
+      {
+        "title": "Configurar la identidad empresarial Feishu o Lark",
+        "steps": [
+          "Un administrador abre Configuración de plataforma → Sincronización de organización e inicio de sesión QR, agrega una aplicación empresarial personalizada Feishu o Lark e ingresa Tenant Key, App ID y App Secret.",
+          "Copie la devolución de llamada de inicio de sesión completa que se muestra en la plataforma de desarrollador correspondiente. Configure los interruptores de aplicación, inicio de sesión QR y sincronización de organización por separado. Los App ID existentes no pueden cambiar; utilizar una nueva fuente de identidad para otra aplicación.",
+          "Autorice lecturas de directorio, limite la visibilidad de la aplicación y siga Leer vista previa → Seleccionar organizaciones o usuarios → Inspeccionar cambios → Confirmar sincronización. Verificar resultados y registros de fallas."
+        ],
+        "tips": [
+          "Los robots de identidad empresarial y de canal local de puerta de enlace están separados y no comparten credenciales automáticamente. Los permisos de inicio de sesión y directorio QR de inquilinos reales aún requieren pruebas de integración; El éxito simulado del API no demuestra una conectividad real."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Configuración de sincronización de directorio y fuente de identidad Feishu o Lark",
+          "caption": "Está pendiente la captura de pantalla de configuración sin credenciales de una puerta de enlace aislada."
+        }
+      },
+      {
+        "title": "Permitir que otros sitios web inicien sesión a través de Gateway",
+        "steps": [
+          "Un superadministrador abre la configuración de la plataforma Gateway → Autorización de inicio de sesión de terceros y hace clic en Editar lista de devolución de llamadas permitidas.",
+          "Ingrese una devolución de llamada completa URL por línea, como https://business.example.com/login/callback, hasta 100 entradas. El esquema, el puerto, la ruta y los parámetros de consulta fijos deben coincidir exactamente. Complete la verificación del administrador y guarde.",
+          "Inicie sesión desde el sitio web de integración. Si no ha iniciado sesión en Gateway, primero use su contraseña existente o el inicio de sesión QR empresarial y luego regrese. El backend del sitio intercambia un código de autorización único para la identificación de usuario, la cuenta y el nombre para mostrar.",
+          "Para interrumpir una integración, elimine su URL y guárdelo. Una lista de permitidos vacía deshabilita la autorización de inicio de sesión de terceros; Los códigos pendientes para direcciones eliminadas dejan de ser válidos inmediatamente."
+        ],
+        "tips": [
+          "Las devoluciones de llamada admiten HTTP/HTTPS, no comodines, fragmentos, credenciales integradas o códigos preestablecidos, estados o parámetros request_id. Utilice HTTPS en producción.",
+          "Si una devolución de llamada no está autorizada, verifique su URL completo. Si un código expiró o se utilizó, reinicie el inicio de sesión desde el sitio de integración. El protocolo y los ejemplos ejecutables se encuentran en docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Lista permitida de devolución de llamadas de terceros en la configuración de Gateway",
+          "caption": "Demostración aislada real. Captura de pantalla de Gateway pendiente; no utilice cuentas cotidianas ni configuraciones de devolución de llamadas reales."
+        }
+      },
+      {
+        "title": "Gestione dos tipos de proyectos compartidos",
+        "steps": [
+          "Abra Compartir en la configuración del proyecto. La configuración de una dirección de puerta de enlace permite el acceso a la plataforma. La interfaz local también ofrece invitaciones a proyectos remotos; Los navegadores remotos de la puerta de enlace no pueden configurar invitaciones locales.",
+          "Para invitaciones locales, elija LAN o dirección externa y período de acceso al dispositivo, luego genere y copie. La caducidad de la aduana debe ser en el futuro; Los vencimientos del canje de invitaciones y de la autorización del dispositivo se muestran por separado.",
+          "Después de la importación en el dispositivo receptor, inspeccione su nombre, IP, conexión y vencimiento en Dispositivos autorizados. Cambie los períodos o revoque según sea necesario. En cambio, el acceso a la plataforma utiliza cuentas, publicaciones de proyectos y subvenciones.",
+          "Para una tarea, elija el modo, la contraseña y el título en su ventana Compartir. Los recursos compartidos locales y de puerta de enlace tienen un valor predeterminado de siete días y permiten un máximo de 90. Pruebe en un navegador independiente y luego administre o revoque desde la ventana original."
+        ],
+        "tips": [
+          "Compartir una tarea local a través de una puerta de enlace conectada requiere una identidad de plataforma válida. Una dirección o credencial de escritorio por sí sola no confiere permiso a la plataforma.",
+          "Los enlaces de tareas locales utilizan la dirección del host; Los recursos compartidos de Gateway utilizan la dirección devuelta por la plataforma. Nunca publique credenciales de invitación, ni comparta enlaces o contraseñas en capturas de pantalla.",
+          "Ambos tipos admiten la caducidad. La puerta de enlace puede requerir iniciar sesión; Los recursos compartidos interactivos de Gateway deben exigirlo y utilizar el inicio de sesión en lugar de una clave de acceso. Verifique los campos en la ventana para compartir actual."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Pestaña para compartir acceso remoto y período de autorización del dispositivo",
+          "caption": "Sin ninguna puerta de enlace configurada, se muestra el acceso remoto. No se autoriza ningún dispositivo ni se genera ninguna invitación."
+        }
+      },
+      {
+        "title": "Cambie de dispositivo e inspeccione notificaciones agregadas",
+        "steps": [
+          "Ingrese a un espacio de trabajo de dispositivo autorizado en la plataforma, luego use las pestañas superiores del dispositivo para cambiar a otro dispositivo en línea.",
+          "Cada cuenta y dispositivo recuerda el último proyecto, tarea o página de sesión en este navegador. Al regresar aún se verifica la autorización y no se evitan objetivos inaccesibles.",
+          "Los proyectos remotos se cargan solo cuando se seleccionan. Después de un error de carga o desconexión, haga clic nuevamente en el proyecto actual para actualizarlo manualmente; los dispositivos no se sondean continuamente en segundo plano.",
+          "Abra el centro de notificaciones para obtener resúmenes de finalización o fallas de dispositivos autorizados. Haga clic para abrir la tarea o sesión. Los mensajes en vivo de Workspace aún pertenecen al dispositivo actual.",
+          "Utilice la plataforma Return to Gateway para elegir otro dispositivo. Una devolución de llamada de autorización del navegador vencida reinicia el inicio de sesión; Después de cancelar la autorización del escritorio, vuelva a intentarlo manualmente o regrese al espacio de trabajo local."
+        ],
+        "tips": [
+          "La memoria de la página es local del navegador, no está sincronizada entre navegadores. El acceso funciona sin almacenamiento en el navegador, pero las ubicaciones no se conservan.",
+          "Vuelva a conectarse cuando se le solicite para dispositivos fuera de línea, autorización revocada o fallas de red. Las ubicaciones guardadas no reemplazan los permisos.",
+          "Las capturas de pantalla reales de la pestaña del dispositivo y de las notificaciones agregadas del proyecto de demostración solucionado siguen pendientes."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Pestañas de dispositivos y centro de notificaciones agregadas",
+          "caption": "Captura de pantalla real pendiente: cambio de dispositivo, restauración de ubicación y navegación con notificaciones; aún no capturado."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Bots de canal y notificaciones grupales",
+    "summary": "Configura WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack o QQ, distinguiendo el chat de las notificaciones de Webhook.",
+    "sections": [
+      {
+        "title": "Elige un canal y conecta una nueva plataforma",
+        "steps": [
+          "Abra Configuración → Bots de canal, seleccione una plataforma a la izquierda e ingrese un nombre, credenciales y un proyecto local predeterminado a la derecha. Habilitar y guardar. Los secretos vacíos conservan los valores existentes al editarlos; verifique los cambios no guardados antes de cambiar. Al cerrar la configuración, presionar Escape o cambiar las secciones de configuración se solicita confirmación cuando los cambios no se guardan; cancelar conserva el borrador.",
+          "Para Feishu o Lark, cree una aplicación empresarial personalizada con soporte para bots e ingrese App ID y App Secret. Después de la conexión, habilite los eventos de conexión larga, suscríbase a im.message.receive_v1 y card.action.trigger, configure los permisos de mensajes/tarjetas y publique. Envía un mensaje privado o menciona el bot en un grupo.",
+          "Para Telegram, cree un bot con BotFather e ingrese su Bot Token. Se utilizan sondeos largos; ningún otro programa puede sondear ese bot simultáneamente. Los administradores deben eliminar primero cualquier webhook existente. Envíe un mensaje de texto privado o menciónelo o responda en grupos.",
+          "Para Discord, ingrese Application ID y Bot Token, habilite Message Content Intent y otorgue permisos de lectura/envío al canal. Mencionar el bot en los canales del servidor; vincular tareas utilizando ID de canal o hilo.",
+          "Para Slack, habilite Socket Mode e ingrese App ID, un App-Level Token con connections:write y Bot Token. Configure chat:write, app_mentions:read y im:history, suscríbase a app_mention y message.im, luego instale. Invita al bot antes de mencionarlo en los canales.",
+          "Para QQ, cree un bot oficial en QQ Open Platform, seleccione el acceso WebSocket y habilite eventos de mensajes privados/grupales. Ingrese App ID, App Secret y un proyecto local predeterminado, habilítelo y guárdelo. Envía un mensaje de texto privado o menciona el bot en un grupo. Después de recibir un mensaje, vincule tareas usando group_openid y configure listas permitidas con miembros OpenID, no con números de cuenta o grupo de QQ. Sólo texto; Las respuestas pasivas tienen límites de tiempo y conteo. Lea resultados largos en WorkStep.",
+          "Regrese a WorkStep para inspeccionar las conexiones y las sesiones del canal, luego vincule las tareas según sea necesario. En caso de fallas, verifique la región, las credenciales, los permisos de la plataforma y las redes de backend."
+        ],
+        "tips": [
+          "Actualmente, Telegram, Discord, Slack y QQ solo admiten texto. Regrese a WorkStep para detenerse, obtener respuestas sobre permisos, confirmar y revisar propuestas; No se prometen imágenes, archivos ni tarjetas interactivas.",
+          "Las pruebas de nueva plataforma utilizan marcos simulados. La instalación, los permisos y los mensajes de los inquilinos reales aún requieren pruebas de integración. Mantenga secretos, tokens completos e ID de grupos privados fuera de las capturas de pantalla."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Selector de canales y editor de bot independiente",
+          "caption": "Está pendiente una captura de pantalla real sin credenciales del nuevo diseño multicanal. La forma antigua no lo representa."
+        }
+      },
+      {
+        "title": "Enviar notificaciones solo a grupos Feishu o Lark",
+        "steps": [
+          "En los enlaces de flujo de trabajo → Enlaces de notificación de la página de tareas, agregue un objetivo de robot de grupo Feishu o Lark y pegue el webhook de robot personalizado completo URL para esa región.",
+          "Si la firma está habilitada, ingrese el secreto de firma de ese bot, no App ID o App Secret. Configure las palabras clave requeridas, los eventos y la plantilla Markdown, guarde e inspeccione la simulación.",
+          "Confirme el grupo de destinatarios antes de enviar una prueba e inspeccionar los registros de entrega. La vista previa no envía nada; después de un tiempo de espera, verifique el grupo antes de volver a intentarlo."
+        ],
+        "tips": [
+          "Los webhooks envían eventos de flujo de trabajo únicamente y no reciben chat grupal. Utilice un bot de aplicación para conversaciones bidireccionales."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Notificación Feishu o Lark URL, firma y plantilla",
+          "caption": "Las capturas de pantalla de configuración sin credenciales y vista previa de la tarjeta están pendientes; La entrega real no se reclama."
+        }
+      },
+      {
+        "title": "Agregar un bot",
+        "steps": [
+          "Abra Configuración → Bots de canal, seleccione WeCom o DingTalk a la izquierda, agregue un bot y asígnele un nombre.",
+          "Para WeCom, seleccione una conexión larga en la configuración del robot inteligente y copie Bot ID y Secret. Para DingTalk, cree una aplicación, habilite su Stream bot y copie Client ID y Client Secret.",
+          "Elija un proyecto predeterminado, habilite la conexión larga, guarde y espere a Conectado.",
+          "Agregue el bot a un grupo, menciónelo con un mensaje de prueba, inspeccione la conversación y responda en los chats del canal del proyecto."
+        ],
+        "tips": [
+          "Ingrese secretos solo en la configuración, no capturas de pantalla ni mensajes. Para fallas de conexión, verifique el modo de plataforma, las credenciales y las redes de backend.",
+          "Las tarjetas de botones DingTalk requieren permisos de creación, entrega y actualización. Las plantillas personalizadas deben coincidir con los campos descritos en la interfaz."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Antiguo formulario Agregar bot antes de ingresar las credenciales",
+          "caption": "El formulario antiguo ilustra únicamente el nombre, las credenciales y los campos del proyecto predeterminado. No fue guardado ni conectado; La nueva lista de plataformas del lado izquierdo aún necesita una captura de pantalla."
+        }
+      },
+      {
+        "title": "Vincular un grupo de tareas y gestionar revisiones",
+        "steps": [
+          "Abra Bind BOT en los detalles de la tarea y seleccione un bot habilitado.",
+          "Menciónalo una vez en el grupo y luego elige el grupo en Grupos recibidos recientemente. Alternativamente, pegue una ID de grupo conocida, verifique la tarea actual y vincúlela.",
+          "Las preguntas del grupo ingresan al coordinador de esa tarea. Inspeccionar los resultados de la etapa y los archivos adjuntos reenviados.",
+          "Cuando aparezcan tarjetas de revisión o preguntas, lea antes de actuar y regrese a WorkStep para verificar si es necesario. Desvincular cuando ya no sea necesario."
+        ],
+        "tips": [
+          "El proyecto predeterminado maneja el chat del canal que no está vinculado a una tarea. Los enlaces de grupo determinan qué tarea recibe los mensajes de ese grupo.",
+          "Archivar o eliminar una tarea elimina los enlaces; la restauración requiere volver a vincularse. La representación de los botones depende de los clientes del canal. Si no está disponible, actúe en los detalles de la tarea."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Cuadro de diálogo de tarea BOT sin grupo vinculado",
+          "caption": "Elija un bot y un grupo reciente, luego ingrese y vincule su identificador. Ningún grupo de trabajo está vinculado todavía."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Zona de pruebas de escritorio",
+    "summary": "Ejecute el backend y los motores en un contenedor separado, con directorios de proyectos asociados explícitamente.",
+    "sections": [
+      {
+        "title": "Completa la guía sandbox de cinco pasos",
+        "steps": [
+          "En el escritorio, abra Sandbox, el último elemento de Configuración. Finalizar tareas y conversaciones activas y verificar el soporte de virtualización; Windows necesita WSL2.",
+          "Primero, elija un almacenamiento sandbox independiente y descargue/prepare el software auxiliar.",
+          "En segundo lugar, verifique la imagen y descargue la imagen de versión recomendada, o escanee ejecutando Docker local para obtener una imagen WorkStep compatible.",
+          "En tercer lugar, seleccione directorios de proyectos nuevos o existentes; cuarto, elegir proveedor, motor y migración de preferencias; quinto, inspeccione el resumen y guárdelo o confirme y reinicie."
+        ],
+        "tips": [
+          "Asociar un proyecto no copia sus archivos. Las ediciones de Sandbox aún afectan el directorio original. No ejecute el mismo proyecto en ambos entornos simultáneamente.",
+          "Los proyectos no asociados se ocultan temporalmente, no se borran. Los directorios de Sandbox y de proyectos no pueden contenerse entre sí."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Selección y confirmación de proyectos en la guía sandbox de cinco pasos",
+          "caption": "Inspeccionar el almacenamiento, la asociación de proyectos y la migración de configuración."
+        }
+      },
+      {
+        "title": "Cambiar de modo y mantener la configuración",
+        "steps": [
+          "Después de reiniciar, verifique la insignia de la barra lateral del modo Sandbox para verificar el entorno real.",
+          "Vuelva a verificar las direcciones de los proveedores, la instalación del motor y el inicio de sesión. Host localhost significa algo diferente en el contenedor y es posible que sea necesario ajustar las rutas.",
+          "Antes de importar o cambiar directorios, deshabilite el sandbox y reinicie, luego use la administración del sandbox. Lea los detalles de copia de seguridad y reemplazo antes de importar.",
+          "Deshabilite la zona de pruebas y reinicie para volver al modo normal. En caso de errores, abra el directorio de registro e inspeccione el progreso y las fallas."
+        ],
+        "tips": [
+          "Los modos ordinario y sandbox mantienen una configuración separada. El cambio no sincroniza los cambios automáticamente.",
+          "Considere los permisos de compatibilidad sólo si el entorno limitado interno de un motor no puede ejecutarse; la interfaz explica el aislamiento reducido. La eliminación de datos de Sandbox es irreversible: primero inspeccione qué se conservará."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Configuraciones comunes y solución de problemas",
+    "summary": "Comprenda el alcance de la configuración, lea primero el estado y los errores y luego realice reparaciones específicas.",
+    "sections": [
+      {
+        "title": "Verifique la versión de escritorio y descargue actualizaciones",
+        "steps": [
+          "En el escritorio, abra Configuración → Configuración del sistema → Actualizaciones de escritorio para inspeccionar la versión actual.",
+          "Haga clic en Buscar actualizaciones para encontrar la última versión oficial de GitHub. Si es más reciente, haga clic en Descargar desde GitHub.",
+          "Elija el instalador de su sistema en la página de lanzamiento, finalice el trabajo activo e instálelo usted mismo."
+        ],
+        "tips": [
+          "El escritorio realiza comprobaciones una vez al día sin descargar, instalar ni reiniciar automáticamente. Sólo una versión oficial más reciente activa una actualización, no envíos de código ni borradores.",
+          "Vuelva a intentar las comprobaciones fallidas más tarde. La versión web no tiene entrada de actualización de escritorio."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Versión de escritorio actual y entrada de verificación de actualización en la configuración del sistema",
+          "caption": "Verifique manualmente y luego descárguelo desde GitHub cuando haya una actualización disponible."
+        }
+      },
+      {
+        "title": "Concurrencia, asistentes y visualización",
+        "steps": [
+          "Cuando ejecute muchas tareas, establezca la capacidad de tareas y conversaciones en los límites de simultaneidad globales o en la configuración del proyecto, e inspeccione los valores efectivos.",
+          "Si las tareas programadas no deben consumir capacidad, verifique los recursos adecuados antes de habilitar esa opción. Exceso de tareas y cola de chats.",
+          "Configure el motor y modelo de cada asistente en Asistentes. Verifique la configuración de ejecución de pasos y del coordinador de tareas por separado.",
+          "Cambie el nombre de usuario en la configuración del sistema. El idioma, las fuentes, el tamaño y las máscaras se encuentran en Configuración → Apariencia; El alcance del escaneo del repositorio se encuentra en la configuración de Git."
+        ],
+        "tips": [
+          "Cambiar el motor de ejecución predeterminado afecta las nuevas tareas y pasos, no la configuración de tareas o pasos existentes."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Límites de simultaneidad global de tareas y conversaciones",
+          "caption": "Establezca capacidades globales y la excepción de tareas programadas."
+        }
+      },
+      {
+        "title": "Solucionar problemas en orden",
+        "steps": [
+          "Si una tarea no comienza, distinga los estados listo, en cola y en espera de revisión. Verificar paso de arranque, arranque automático y disponibilidad del motor.",
+          "Si falla la ejecución, lea el último error. Verifique la instalación de SDK, la autenticación del proveedor, el nombre del modelo, los permisos de red y de archivos, luego vuelva a ejecutar.",
+          "Para errores de carga del historial o de API, utilice Reintentar. Si el API devolvió una página web, confirme la versión del backend y reinicie usando su método habitual.",
+          "Si se perdió el historial de sesiones nativas, lea Volver a ejecutar con una nueva sesión, proporcione los objetivos actuales y las referencias de artefactos requeridas y no lo trate como una recuperación completa del contexto nativo.",
+          "En caso de artefactos faltantes o fallas en el acceso remoto, verifique la generación real del archivo o la disponibilidad del host, la dirección, la clave y el vencimiento de la autorización, respectivamente."
+        ],
+        "tips": [
+          "Cuando informe problemas, incluya la versión, el sistema operativo, el motor, los pasos de reproducción y las capturas de pantalla de errores redactadas, nunca las credenciales. Sin una configuración explícita, 20 minutos continuos sin eventos del motor activan el tiempo de espera de inactividad mientras se retiene la sesión. Los tiempos de espera personalizados existentes permanecen; 0 lo desactiva. El pensamiento silencioso o las herramientas no necesariamente están estancados: inspeccione los registros antes de volver a ejecutarlos."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Fallo de demostración causado por un modelo inexistente.",
+          "caption": "El error dice que el modelo elegido no es compatible. Repare la configuración del modelo del paso antes de volver a ejecutarlo; no está reparado en esta imagen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Apariencia, máscaras e idiomas.",
+    "summary": "Elija preferencias de visualización personales o cree máscaras y paquetes de idiomas con vista previa a través del chat de proyecto normal.",
+    "sections": [
+      {
+        "title": "Elija un idioma incorporado",
+        "steps": [
+          "En Configuración → Apariencia, elija chino simplificado, chino tradicional, inglés, japonés, francés, alemán o árabe e inspeccione las entradas comunes y los controles de fecha.",
+          "Elija el idioma de visualización del sitio web y del manual en el selector de idiomas superior, que incluye japonés, chino tradicional, coreano y otros idiomas disponibles. El navegador guarda su elección; si no hay ninguna preferencia guardada, se utiliza el idioma del navegador."
+        ],
+        "tips": [
+          "Las traducciones de aplicaciones en francés, alemán y árabe cubren actualmente las principales entradas; otras cadenas pueden seguir siendo chinas y el diseño árabe de la aplicación sigue siendo de izquierda a derecha. El sitio web y el texto del manual siguen el selector de idioma superior, con un diseño árabe de derecha a izquierda. Las capturas de pantalla reales siguen siendo chinas. El cambio de idioma no traduce conversaciones pasadas ni archivos de usuario."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Selectores de idioma integrados en la aplicación y el sitio web",
+          "caption": "Están pendientes capturas de pantalla reales de las opciones de idioma agregadas."
+        }
+      },
+      {
+        "title": "Utilice diseños de máscara v2 y extensiones de funciones",
+        "steps": [
+          "En Configuración → Apariencia, instale y valide una máscara v2 confiable, obtenga una vista previa y aplíquela. Para funciones como notas, solicite al autor en el chat de creación de apariencia que incluya componentes.",
+          "Lea la confirmación de habilitación para paquetes con código. Es posible que se vuelva a solicitar la actualización de un paquete o el cambio de identidad. Abra paneles a través de los menús de la máscara o entradas de funciones, que dependen del paquete. Las notas o los calendarios no son funciones preinstaladas de la aplicación.",
+          "El paquete puede colocar al compositor arriba, abajo, izquierda o derecha. Las vistas compactas conservan la disposición vertical. Después de cambiar, los mensajes de verificación, el compositor y la configuración siguen siendo utilizables.",
+          "Los datos de extensión están separados por identidad del navegador, dispositivo, máscara y función. Cambiar o eliminar una máscara no la borra. Utilice la propia exportación de la extensión como copia de seguridad. Si la interfaz se rompe, agregue skin=default al URL y actualice."
+        ],
+        "tips": [
+          "El código del componente tiene los privilegios de la página actual. Habilite solo fuentes confiables. Cancelar la vista previa restaura la apariencia pero no deshace el código ya ejecutado.",
+          "Los datos de extensión no se incluyen en las exportaciones de skin ZIP ni se sincronizan entre navegadores/dispositivos. Haga una copia de seguridad antes de borrar el almacenamiento; El ahorro fallido no debe tratarse como un éxito."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Confirmación de habilitación de componentes v2 y entrada al panel de funciones",
+          "caption": "Está pendiente una captura de pantalla de ejecución real de un paquete de demostración confiable. Format validation is not visual acceptance."
+        }
+      },
+      {
+        "title": "Elige y guarda la apariencia personal.",
+        "steps": [
+          "Para acceder a todo el dispositivo, abra Configuración → Apariencia. Los usuarios autorizados por el proyecto ingresan Apariencia y máscaras desde la barra lateral.",
+          "Choose font, size and language. Busque o filtre máscaras instaladas, obtenga una vista previa y luego aplíquelas. La barra de vista previa fija le permite cancelar o confirmar.",
+          "Las elecciones de los usuarios autenticados de Gateway se guardan por cuenta y dispositivo y se restauran en otro navegador en el mismo dispositivo. Reintentar los guardados fallidos. Las opciones locales sin iniciar sesión en la plataforma permanecen en este navegador."
+        ],
+        "tips": [
+          "Los paquetes y registros de creación se comparten en el dispositivo; personal selections are isolated. Los usuarios autorizados por el proyecto solo pueden elegir paquetes instalados.",
+          "Los paquetes faltantes o rotos vuelven a su apariencia predeterminada. Agregue ?skin=default o ?language=default para restaurar el aspecto predeterminado o el chino simplificado."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Fuentes, tamaño, idioma y máscaras instaladas en Apariencia",
+          "caption": "La página de configuración real muestra valores predeterminados y ejemplos integrados a la derecha. No se cambiaron preferencias personales."
+        }
+      },
+      {
+        "title": "Crea máscaras e idiomas a través del chat.",
+        "steps": [
+          "Con derechos de administración de host, haga clic en Discutamos la apariencia, elija un motor instalado y verificado y describa un objetivo, como por ejemplo: crear una piel oscura, preservar el diseño y usar una flecha de envío hacia arriba.",
+          "El chat está a la izquierda, la edición y la vista previa a la derecha; los teléfonos cambian de pestaña. Ajuste el nombre, los colores, la fuente, el tamaño, el ícono de envío y el diseño, luego guarde los ajustes en el mismo borrador del paquete. Editing is disabled while chat runs. Check PC and phone previews.",
+          "Para un paquete de idiomas, pregunta en el mismo chat, por ejemplo: Agrega español conservando la apariencia. Switch the right side to Language. It loads after generation; use Leer y validar para verificar su directorio, cobertura, cadenas faltantes y ejemplos.",
+          "For skins, click Save appearance and preview; for languages, Install and preview. Confirm or cancel in the preview bar. Guardar en la biblioteca no confirma la solicitud personal. Exporte ZIP para reutilizarlo e inspeccione los mensajes de reemplazo para importaciones o actualizaciones del mismo ID."
+        ],
+        "tips": [
+          "La creación reutiliza el proyecto Runtime fijo y el chat ordinario, invocando su modelo. Continúe con el trabajo anterior a través del Historial de conversaciones encima de la ventana. Preview examples themselves do not run tasks.",
+          "Fonts use installed system fonts. Historical messages and files are not automatically translated. Los íconos de envío incorporados se pueden seleccionar en los ajustes; Los iconos vectoriales personalizados deben ser proporcionados mediante un borrador validado.",
+          "Los paquetes de idiomas son independientes de las máscaras y actualmente admiten idiomas de izquierda a derecha. Las cadenas y los controles de fecha que faltan utilizan el respaldo integrado especificado. Coverage does not prove translation quality; use chat to update outdated string catalogs."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Áreas de chat y edición/vista previa en la creación de apariencias",
+          "caption": "Un formulario de ajuste y chat de creación vacío autorizado. Its composer is prefilled; no message was sent, model run or skin saved."
+        }
+      },
+      {
+        "title": "Leer y obtener una vista previa de un paquete de idioma",
+        "steps": [
+          "Cambie el lado derecho del estudio de apariencia a Idioma y verifique el directorio del paquete de idiomas. Generar a través del mismo chat o importar un idioma existente ZIP.",
+          "Generated packs load automatically. Lea y valide la cobertura de cheques, cadenas faltantes y ejemplos. Un aviso de espera de generación para un directorio vacío significa que la creación no ha finalizado.",
+          "Después de la validación, instale y obtenga una vista previa, luego confirme o cancele la aplicación personal. La cobertura no puede reemplazar una revisión de la calidad de la traducción."
+        ],
+        "tips": [
+          "Actualmente solo se admiten idiomas de izquierda a derecha. Los controles de fecha y las cadenas faltantes utilizan el respaldo integrado especificado en el paquete."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Directorio de idiomas y entrada de validación en un chat de creación vacío",
+          "caption": "La pestaña Idioma ofrece directorio, lectura y validación e importación ZIP. No se ha generado, instalado o aplicado ningún paquete de idioma."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Auditoría de operación remota del proyecto",
+    "summary": "Inspeccione las acciones de los visitantes remotos y si tuvieron éxito, fueron rechazadas o fallaron.",
+    "sections": [
+      {
+        "title": "Filtrar e inspeccionar operaciones remotas",
+        "steps": [
+          "En el dispositivo que aloja el proyecto, abra Configuración → Auditoría de operación del proyecto local. Los proyectos remotos, los espacios de trabajo de Gateway y el acceso vinculado a proyectos no ofrecen esta pestaña.",
+          "Filtre por acción y resultado, luego inspeccione actor, tiempo, fuente y tarea, flujo de trabajo o identificador de archivo.",
+          "Vaya a la página siguiente o a la primera, actualice para ver los registros más recientes y vuelva a intentar la carga fallida."
+        ],
+        "tips": [
+          "Esta auditoría cubre acciones de fuente remota y resultados denegados/fallidos, no chats completos y no almacena credenciales. The API is local-only on the host. Default retention is 30 days; follow the page's actual duration. Public share visitors' real names are unknown; El navegador remoto (identidad autoinformada) no es una identidad autenticada."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Filtros de auditoría y registros vacíos para un proyecto local",
+          "caption": "La entrada de auditoría local real y los filtros de acción/resultado. No existen registros remotos en el proyecto de demostración; no actions or identities were fabricated."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Preguntas frecuentes",
+    "summary": "Comprenda los motores, los servicios modelo, los cambios de archivos y los límites de recuperación antes de comenzar.",
+    "sections": [
+      {
+        "title": "¿En qué se diferencian SDK y CLI y con cuál debería empezar?",
+        "steps": [
+          "Ambos son métodos de integración de motores para las capacidades del modelo. SDK integrates through developer APIs; CLI runs command-line programs. Tampoco lo es el nombre de un modelo.",
+          "Comience instalando Codex SDK o Claude Agent SDK, complete la autenticación, elija y verifique un modelo, luego conviértalo en el motor de ejecución predeterminado. Los usuarios existentes de CLI pueden elegir ese motor en su lugar.",
+          "El proveedor proporciona la dirección del servicio y la autenticación, el modelo identifica qué maneja la solicitud y el motor proporciona sesiones, herramientas y ejecución. Follow the selected engine's form; credentials are not necessarily interchangeable."
+        ],
+        "tips": [
+          "La instalación de SDK solo establece dependencias de tiempo de ejecución, no autenticación, permisos o cuotas. Distinga las entradas del Codex y Claude Code SDK de las marcadas como CLI."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "Opciones de SDK y CLI en la configuración del motor",
+          "caption": "Inspeccione los motores SDK recomendados y sus estados de instalación y verificación por separado."
+        }
+      },
+      {
+        "title": "¿Cómo se cobran las llamadas de software y modelos?",
+        "steps": [
+          "Verifique el plan, la autenticación y la cuota del servicio del modelo seleccionado antes de una pequeña tarea inicial. Un SDK en sí no es crédito de modelo.",
+          "La ejecución de tareas, la revisión automática, los asistentes y los reintentos pueden invocar modelos. Inspeccione los modelos por separado en la configuración de pasos, revisión y asistente.",
+          "Utilice el análisis de ejecución para inspeccionar el uso y las fuentes de costos. Las estimaciones ayudan a explicar el consumo; Los cargos finales siguen las reglas y la factura del proveedor de servicios."
+        ],
+        "tips": [
+          "No asuma que descargar un SDK o iniciar sesión hace que las llamadas sean gratuitas, o que se aplica una suscripción a cada motor."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Uso de tokens y fuentes de costos en el análisis de ejecución",
+          "caption": "Se muestran el costo y la cobertura informados por el proveedor. El costo estimado se etiqueta solo cuando realmente se utilizan estimaciones de precios."
+        }
+      },
+      {
+        "title": "¿Dónde se almacenan los datos? ¿Puede la IA modificar mis archivos?",
+        "steps": [
+          "Las tareas locales, los flujos de trabajo y los mensajes se almacenan en el proyecto .workstep de forma predeterminada. Al deshabilitar el directorio de datos, el directorio del proyecto usa ~/.workstep/projects/<项目ID>/. El .workstep/project.json del proyecto reasocia los datos originales.",
+          "Las solicitudes y el contexto leído por el motor pueden enviarse a su servicio modelo configurado. Los canales, el intercambio y el acceso remoto también divulgan información dentro de su alcance autorizado a las partes correspondientes.",
+          "La IA con permiso de escritura puede modificar los archivos del proyecto. Practique en un proyecto separado, verifique los permisos antes de la ejecución e inspeccione las diferencias de Git y los artefactos reales después.",
+          "Las asociaciones de sandbox aún modifican los archivos montados originales. Las tareas Worktree proporcionan directorios separados, pero los resultados de la combinación aún necesitan inspección."
+        ],
+        "tips": [
+          "El almacenamiento local no significa llamadas de modelos fuera de línea. Mantenga las claves, las credenciales de la cuenta y los archivos confidenciales irrelevantes fuera de las descripciones de tareas, los archivos adjuntos y las capturas de pantalla."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Panel de modo de permiso de conversación en un teléfono",
+          "caption": "Se enumeran las opciones Predeterminada, Sólo lectura, Escritura en el espacio de trabajo y otras. El soporte y el comportamiento reales dependen del motor."
+        }
+      },
+      {
+        "title": "¿En qué se diferencian la detención, el reintento, la reelaboración y la recuperación?",
+        "steps": [
+          "La detención interrumpe la ejecución actual o una respuesta, pero no deshace los archivos ya escritos. Inspeccione los resultados existentes antes de continuar.",
+          "Al volver a intentarlo o ejecutarlo, se invoca nuevamente el motor, posiblemente continuando el contexto o usando una nueva sesión según se le solicite. No revierte todos los cambios a su estado previo a la ejecución.",
+          "El retrabajo corrige las salidas de acuerdo con los comentarios de revisión o las conexiones de retorno, sujeto a las dependencias y límites del flujo de trabajo. Lea las confirmaciones cuando vuelva a ejecutar cambios en el alcance.",
+          "Después de reabrir WorkStep, primero inspeccione el estado de la tarea y la sesión. Los motores que admiten la recuperación pueden reanudar su sesión nativa; Los registros nativos perdidos requieren una nueva sesión y volver a ejecutarlos."
+        ],
+        "tips": [
+          "La recuperación automática depende del motor y del historial disponible. No se garantiza la recuperación total para cada motor o interrupción."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Restablecer el paso seleccionado en una tarea completada",
+          "caption": "Esta tarea completada tiene seleccionado el paso Restablecer, lo que afecta solo el mensaje del siguiente paso. No es una confirmación de eliminación ni una advertencia de sesión perdida."
+        }
+      }
+    ]
+  }
+]

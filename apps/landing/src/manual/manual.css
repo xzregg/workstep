@@ -37,6 +37,10 @@
 .nav-docs { font-size: 12px; color: var(--fg-2); padding: 0 8px; }
 @media (max-width: 760px) { .nav .nav-row { gap: 8px; } .nav .nav-actions { gap: 4px; } }
 @media (max-width: 400px) { .nav-row.container { padding: 0 12px; } .nav-row .brand-mark { display: none; } .nav-row .nav-download, .nav-row .nav-lang { padding: 0 8px; } }
+@media (max-width: 400px) {
+  .nav .nav-actions { width: 100%; flex-wrap: nowrap; }
+  .nav .nav-actions .nav-lang { flex: 1; min-width: 0; flex-shrink: 1; }
+}
 
 .manual-directory-toggle { display: none; cursor: pointer; padding: 12px 0; background: transparent; color: inherit; border: 0; font: inherit; font-weight: 600; font-size: 15px; text-align: start; }
 .manual-directory-toggle::before { content: '›'; display: inline-block; margin-inline-end: 8px; }

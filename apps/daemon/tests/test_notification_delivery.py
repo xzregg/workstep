@@ -68,7 +68,7 @@ def test_robot_time_uses_device_timezone_and_keeps_json_timestamp(monkeypatch, p
 @pytest.mark.parametrize('platform', ['dingtalk', 'wecom'])
 @pytest.mark.parametrize('event,label', [
     ('test','测试通知'), ('started','任务开始'), ('completed','任务完成'),
-    ('failed','任务失败'), ('paused','任务暂停'), ('stopped','任务停止'),
+    ('failed','任务失败'), ('paused','任务等待确认'), ('stopped','任务停止'),
     ('step_completed','步骤完成'), ('step_failed','步骤失败'), ('waiting','步骤等待确认'),
 ])
 def test_robot_body_explicitly_names_the_event(platform, event, label):

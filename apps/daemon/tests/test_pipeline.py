@@ -2525,7 +2525,8 @@ async def test_task_runner_error_event_fails_step_and_blocks_downstream(tmp_path
             events.append(await q.get())
 
         assert created_engines == 1
-        assert task.status == "paused"
+        assert task.status == "failed"
+        assert task.status_reason == "step_failed"
         assert steps["a"].status == "failed"
         assert steps["a"].error == "engine unavailable"
         assert steps["b"].status == "failed"
@@ -2603,13 +2604,15 @@ async def test_task_runner_cancel_step_finalizes_pipeline_records(tmp_path):
         while not q.empty():
             events.append(await q.get())
 
-        assert task.status == "paused"
+        assert task.status == "stopped"
+        assert task.status_reason == "user_stop"
         assert step.status == "cancelled"
         assert step.error == "手动停止"
         assert message.run_status == "cancelled"
         assert not runner._live.has_running_engine(f"{task.id}:a")
-        assert events[-1]["type"] == "RUN_ERROR"
-        assert events[-1]["status"] == "cancelled"
+        assert any(event.get('type') == 'RUN_ERROR' and event.get('status') == 'cancelled' for event in events)
+        assert events[-1]["type"] == "RUN_FINISHED"
+        assert events[-1]["status"] == "stopped"
 
     finally:
         ENGINE_REGISTRY.clear()
@@ -2654,7 +2657,7 @@ async def test_task_runner_unavailable_engine_finalizes_message(tmp_path):
             (Message.task == task) & (Message.step_key == "a")
         )
 
-        assert task.status == "paused"
+        assert task.status == "failed"
         assert step.status == "failed"
         assert "not available" in step.error
         assert message.run_status == "failed"

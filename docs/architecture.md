@@ -88,7 +88,7 @@ Task
 正常主链路为：
 
 ```text
-Task: ready → queued? → running → ready | paused | stopped
+Task: ready → queued? → running → completed | waiting | failed | stopped
 WorkflowRun: running → succeeded | paused | failed | stopped | superseded
 TaskStep: pending → running → reviewing? → passed
                          ↘ awaiting_review → passed | retrying | cancelled
@@ -97,6 +97,8 @@ TaskStep: pending → running → reviewing? → passed
 ```
 
 `TaskStep` 是可变投影，`StepRun` / `ReviewRun` 是追加式历史；局部重跑必须新建子 `WorkflowRun`，不能改写父运行的历史结果。动态路由中的 `skipped` 只表示范围裁剪或有其它输出端口已选中时的未选分支；若来源步骤没有任何正向非空产物，下游必需输入会以 `required_input_missing` 失败，不会被当成成功跳过。人工同意只改变审核结果；若产物仍为空，恢复调度后由下游步骤明确失败。
+
+任务总状态由 `services/task_state.py` 汇总当前流程及本轮执行范围内的步骤，`status_reason` 说明运行、等待或失败原因，`pending_confirmations` 保留具体步骤和待确认原因。有分支仍执行时总状态保持 `running`；只剩审核、工具审批或补充信息时为 `waiting`；用户主动停止为 `stopped/user_stop`；异常和受阻为 `failed`。工具审批期间执行器仍存活，禁止删除、归档和迁移其工作数据。`WorkflowRun.paused` 继续表示这一轮在人工检查点交出执行权，不再直接用作任务总状态文案。
 
 恢复分为两类：
 

@@ -80,7 +80,7 @@ def persist_review_decision(
         if (
             not (stopped_manual_review or stopped_auto_review or pending_manual_review)
             or workflow_run is None or workflow_run.task_id != task_id
-            or task.status not in {"stopped", "paused"}
+            or task.status not in {"stopped", "paused", "waiting", "failed"}
             or workflow_run.status not in {"stopped", "failed", "paused"}
             or current_step is None
             or current_step.status not in {"cancelled", "failed", "pending", "awaiting_review"}
@@ -250,6 +250,7 @@ def persist_review_decision(
             & (Message.step_run_id.in_(current_step_run_ids))
         ).execute()
         task.status = "completed"
+        task.status_reason = None
         task.state_version += 1
         task.updated_at = now
         task.save()
@@ -263,6 +264,7 @@ def persist_review_decision(
         return None
     if terminated:
         task.status = "stopped"
+        task.status_reason = 'user_stop'
         task.state_version += 1
         task.updated_at = now
         task.save()
@@ -285,6 +287,8 @@ def persist_review_decision(
                 status="passed",
                 eligible_for_downstream=True,
             )
+        if task.status != 'stopped':
+            task.status, task.status_reason = 'waiting', 'manual_continue'
         task.state_version += 1
         task.updated_at = now
         task.save()
@@ -375,26 +379,28 @@ def persist_review_decision(
                 result.state, ensure_ascii=False, sort_keys=True
             )
     if halt_after_routing:
-        task.status = "paused"
+        task.status = "failed"
+        task.status_reason = 'workflow_blocked'
         task.state_version += 1
         task.updated_at = now
         task.save()
-        workflow_run.status = "paused"
+        workflow_run.status = "failed"
         workflow_run.ended_at = now
         workflow_run.owner_id = None
         workflow_run.heartbeat_at = now
         workflow_run.save()
         if notifications is not None:
             notifications.extend([
-                {'type':'task_lifecycle','data':{'event':'paused','event_id':f'{workflow_run.id}:paused:{now.isoformat()}','run_id':workflow_run.id}},
+                {'type':'task_lifecycle','data':{'event':'failed','event_id':f'{workflow_run.id}:failed:{now.isoformat()}','run_id':workflow_run.id}},
                 {"type": "status", "step_key": step_key,
                  "data": {"task_id": task.id, "step_key": step_key,
                           "status": "failed", "error": task_step.error}},
                 {"type": "status", "step_key": "",
-                 "data": {"task_id": task.id, "status": "paused"}},
+                 "data": {"task_id": task.id, "status": "failed", "status_reason": 'workflow_blocked'}},
             ])
         return None
     task.status = "running"
+    task.status_reason = 'execution'
     task.state_version += 1
     task.updated_at = now
     task.save()

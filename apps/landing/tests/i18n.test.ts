@@ -8,9 +8,8 @@ import { zhCN } from '../src/i18n/zh-CN'
 import { frFR } from '../src/i18n/fr-FR'
 import { deDE } from '../src/i18n/de-DE'
 import { ar } from '../src/i18n/ar'
-import { initialLang, translate } from '../src/i18n'
+import { initialLang, translate, supportedLanguages, languageDictionaries as dictionaries } from '../src/i18n'
 
-const dictionaries = { 'zh-CN': zhCN, 'en-US': enUS, 'fr-FR': frFR, 'de-DE': deDE, ar }
 
 function walkFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -31,9 +30,32 @@ function staticTKeys(): string[] {
 }
 
 describe('i18n dictionaries', () => {
+  it('covers three mainstream Southeast Asian languages and browser detection', () => {
+    expect(supportedLanguages.map(item => item.locale)).toEqual(expect.arrayContaining(['vi-VN', 'id-ID', 'th-TH']))
+    for (const [browser, expected] of [['th', 'th-TH'], ['th-TH', 'th-TH'], ['vi', 'vi-VN'], ['id', 'id-ID'], ['in-ID', 'id-ID']]) expect(initialLang(null, browser)).toBe(expected)
+  })
+  it('includes the languages shown in the application selector', () => {
+    expect(supportedLanguages.map(item => item.locale)).toEqual(expect.arrayContaining(['zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'ko-KR', 'fr-FR', 'de-DE', 'ar', 'it-IT', 'nl-NL', 'ru-RU', 'pl-PL', 'tr-TR', 'hi-IN', 'id-ID', 'vi-VN', 'es-ES', 'pt-BR', 'sv-SE', 'da-DK', 'nb-NO', 'fi-FI', 'cs-CZ', 'el-GR', 'he-IL']))
+    for (const { locale } of supportedLanguages) expect(initialLang(locale)).toBe(locale)
+  })
   it('all builtins expose identical key sets', () => {
     const zhKeys = flattenKeys(zhCN).sort()
     for (const dict of Object.values(dictionaries)) expect(flattenKeys(dict).sort()).toEqual(zhKeys)
+  })
+
+  it('preserves technical file paths in every localized website demo', () => {
+    const keys = flattenKeys(enUS).filter(key => /^(?:[\w.-]+\/)+[\w.-]+\.(?:md|tsx?|zip)$/.test(resolvePath(enUS, key)))
+    for (const dict of Object.values(dictionaries)) {
+      for (const key of keys) expect(resolvePath(dict, key)).toBe(resolvePath(enUS, key))
+    }
+  })
+
+  it('translates marketing headings and paragraphs rather than keeping English fallbacks', () => {
+    const keys = flattenKeys(enUS).filter(key => key.endsWith('.eyebrow') || resolvePath(enUS, key).length > 50)
+    for (const [locale, dict] of Object.entries(dictionaries)) {
+      if (locale === 'en-US') continue
+      for (const key of keys) expect(resolvePath(dict, key), `${locale}: ${key}`).not.toBe(resolvePath(enUS, key))
+    }
   })
 
   it('every leaf value is a non-empty string', () => {
@@ -60,7 +82,7 @@ describe('i18n dictionaries', () => {
 
   it('restores each saved language and detects browser languages', () => {
     for (const lang of Object.keys(dictionaries)) expect(initialLang(lang, 'en-US')).toBe(lang)
-    for (const [browser, expected] of [['fr-CA', 'fr-FR'], ['de-AT', 'de-DE'], ['ar-SA', 'ar'], ['en-GB', 'en-US'], ['zh-HK', 'zh-CN'], ['es-ES', 'zh-CN']]) {
+    for (const [browser, expected] of [['fr-CA', 'fr-FR'], ['de-AT', 'de-DE'], ['ar-SA', 'ar'], ['en-GB', 'en-US'], ['zh-HK', 'zh-TW'], ['es-MX', 'es-ES'], ['ja', 'ja-JP'], ['ko', 'ko-KR'], ['no-NO', 'nb-NO'], ['he', 'he-IL'], ['zh-Hant', 'zh-TW'], ['xx', 'zh-CN']]) {
       expect(initialLang(null, browser)).toBe(expected)
       expect(initialLang('invalid', browser)).toBe(expected)
     }

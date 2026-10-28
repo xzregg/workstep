@@ -588,7 +588,7 @@
         "title": "Organiser les tâches sur téléphone",
         "steps": [
           "Touchez une ligne pour les détails. Maintenez environ une demi-seconde pour le menu ; le clic droit convient aussi.",
-          "Selon les droits, démarrez, modifiez ou consultez, copiez, archivez, restaurez ou supprimez. Pas de démarrage si en cours ou en file, ni archivage/suppression si en cours. Lisez la confirmation.",
+          "Selon vos droits : démarrer, modifier ou consulter, copier, archiver, restaurer et supprimer. Les tâches actives, en file ou en attente avec des étapes actives ne peuvent être archivées ni supprimées. Traitez les confirmations ou arrêtez l’exécution avant de poursuivre ; lisez la confirmation de suppression.",
           "Quand toutes les étapes sont exécutées et validées, l’état Terminé persiste à la réouverture et au redémarrage. Cela n’archive pas : décidez séparément."
         ],
         "tips": [
@@ -668,7 +668,7 @@
           "Pour abandonner, choisissez Terminer et vérifiez la confirmation. Forcer la validation saute la revue : vérifiez d’abord les résultats."
         ],
         "tips": [
-          "La fin du processus ne prouve pas la qualité. La revue manuelle est votre point de contrôle avant la suite. Une tâche en pause dont une étape attend une revue affiche En attente de revue ; une tâche terminée conserve son état terminé."
+          "Une tâche peut continuer avec des confirmations en attente. Sur ordinateur, survolez leur nombre pour voir les étapes et motifs, puis traitez la revue, les autorisations ou questions dans chaque étape. Sans autre branche exécutable, elle attend. Arrêt manuel, échec et fin sont distincts ; la fin du processus ne vaut pas approbation."
         ],
         "screenshot": {
           "id": "task-review",
@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Sur ordinateur, double-cliquez une conversation latérale ou son titre pour ouvrir le dialogue commun de renommage, puis confirmez le nouveau nom.",
-          "Sur téléphone, seul le panneau actif apparaît, sans séparateurs ; les autres panneaux ouverts conservent leur état. La disposition appartient à la page et le retour de tous les panneaux après actualisation n’est pas garanti."
+          "Sur mobile, seul le volet actif est visible ; les autres sont conservés. Un aller-retour dans la même session de page restaure les volets, leur disposition et dimensions, sans garantie après actualisation du navigateur. La disposition est isolée par compte et appareil, sans copier les conversations."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -1405,7 +1405,7 @@
         "title": "Choisir une langue intégrée",
         "steps": [
           "Dans Paramètres → Apparence, choisissez chinois simplifié/traditionnel, anglais, japonais, français, allemand ou arabe et contrôlez entrées et dates.",
-          "Sur le site, la liste supérieure propose chinois, anglais, français, allemand et arabe. Le navigateur mémorise le choix ou détecte sa langue sans préférence existante."
+          "Choisissez la langue du site et du manuel dans le menu supérieur, notamment le japonais, le chinois traditionnel, le coréen et les autres langues proposées. Le navigateur mémorise le choix ou utilise sa langue si aucune préférence n’est enregistrée."
         ],
         "tips": [
           "Les traductions françaises, allemandes et arabes de l’application couvrent surtout les entrées principales ; d’autres textes peuvent rester chinois et l’arabe de l’application reste de gauche à droite. Le site et le manuel suivent le sélecteur supérieur, avec arabe de droite à gauche. Les captures réelles restent chinoises. Aucun changement de langue ne traduit conversations passées ou fichiers."

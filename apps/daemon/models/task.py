@@ -21,7 +21,8 @@ class Task(BaseModel):
     description = pw.TextField(null=True)
     cwd = pw.TextField()
     workflow_id = pw.TextField(null=True)  # FK-like: which workflow this task belongs to
-    status = pw.TextField(default="ready")  # ready / queued / running / paused / stopped / completed
+    status = pw.TextField(default="ready")  # ready / queued / running / waiting / stopped / failed / completed
+    status_reason = pw.TextField(null=True)
     archived = pw.IntegerField(default=0)  # 1 = hidden from the active board
     engine = pw.TextField(null=True)  # claude / codex / hermes
     model = pw.TextField(null=True)
@@ -68,6 +69,7 @@ class TaskStep(BaseModel):
     review_session_id = pw.TextField(null=True)  # 该任务该步骤专属的审核会话（与执行会话隔离）
     execution_config_json = pw.TextField(null=True)  # 当前任务对流程步骤执行配置的覆盖
     pending_handoff_json = pw.TextField(null=True)  # 跨引擎重跑待消费的交接元数据
+    waiting_interactions_json = pw.TextField(null=True)  # unresolved interaction IDs → tool_approval / user_input
     rework_feedback = pw.TextField(null=True)  # 下游验证步骤下发的返工反馈（重跑时注入 prompt）
     review_feedback = pw.TextField(null=True)  # 人工审核驳回原因（重跑该步骤时注入 prompt）
     started_at = UTCDateTimeField(null=True)

@@ -588,7 +588,7 @@
         "title": "Aufgaben auf dem Telefon ordnen",
         "steps": [
           "Tippen öffnet Details, etwa eine halbe Sekunde langes Drücken das Aktionsmenü. Ein Rechtsklick funktioniert ebenfalls.",
-          "Je nach Recht können Sie starten, bearbeiten oder ansehen, kopieren, archivieren, wiederherstellen oder löschen. Laufende oder wartende Aufgaben bieten keinen Start; laufende Aufgaben kein Archivieren oder Löschen. Lesen Sie die Löschbestätigung.",
+          "Je nach Berechtigung: starten, bearbeiten oder ansehen, kopieren, archivieren, wiederherstellen und löschen. Laufende, eingereihte oder wartende Aufgaben mit aktiven Schritten können nicht archiviert oder gelöscht werden. Erst offene Bestätigungen bearbeiten oder stoppen; vor dem Löschen die Bestätigung lesen.",
           "Sind alle Schritte ausgeführt und bestanden, bleibt die Aufgabe auch nach Wiederöffnen oder Neustart abgeschlossen. Abschluss ist keine Archivierung; darüber entscheiden Sie."
         ],
         "tips": [
@@ -668,7 +668,7 @@
           "Beenden Sie nur, wenn wirklich keine Ausführung mehr gewünscht ist, und prüfen Sie die Bestätigung. Erzwungenes Bestehen überspringt das Review; prüfen Sie vorher das Ergebnis."
         ],
         "tips": [
-          "Ein beendeter Prozess beweist keine Qualität. Das manuelle Review ist Ihre Freigabe zum nächsten Schritt. Bei pausierter Aufgabe mit prüfungsbereitem Schritt erscheint Wartet auf Review; abgeschlossene Aufgaben behalten den Abschlussstatus."
+          "Eine Aufgabe kann mit offenen Bestätigungen weiterlaufen. Am Desktop zeigt ein Überfahren der Anzahl Schritte und Gründe; bearbeiten Sie Prüfungen, Werkzeugfreigaben oder Fragen im jeweiligen Schritt. Ohne weiteren ausführbaren Zweig wartet die Aufgabe. Manuelles Stoppen, Fehler und Abschluss bleiben getrennt; Prozessende ist keine Freigabe."
         ],
         "screenshot": {
           "id": "task-review",
@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Doppelklicken Sie am Desktop ein Gespräch in der Seitenleiste oder dessen Kopftitel, um den gemeinsamen Umbenennungsdialog zu öffnen und den Namen zu bestätigen.",
-          "Auf Mobilgeräten ist nur der aktive Bereich sichtbar; Trennlinien sind ausgeblendet, andere geöffnete Bereiche behalten ihren Zustand. Die Anordnung gilt für die aktuelle Seite; nach Neuladen wird die Wiederherstellung aller Bereiche nicht zugesichert."
+          "Mobil ist nur der aktive Bereich sichtbar; andere bleiben erhalten. Weg- und Zurücknavigieren innerhalb derselben Seitensitzung stellt Bereiche, Anordnung und Größen wieder her, nicht garantiert nach Browser-Neuladen. Layouts sind nach Konto und Gerät getrennt und kopieren keine Gesprächsinhalte."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -1405,7 +1405,7 @@
         "title": "Integrierte Sprache wählen",
         "steps": [
           "Wählen Sie unter Einstellungen → Erscheinungsbild vereinfachtes/traditionelles Chinesisch, Englisch, Japanisch, Französisch, Deutsch oder Arabisch und prüfen Sie Navigation und Datumsfelder.",
-          "Die Website bietet oben Chinesisch, Englisch, Französisch, Deutsch und Arabisch. Der Browser speichert die Wahl; ohne gespeicherte Präferenz gilt die Browsersprache."
+          "Wählen Sie die Sprache der Website und des Handbuchs im oberen Menü, darunter Japanisch, traditionelles Chinesisch, Koreanisch und weitere angebotene Sprachen. Der Browser merkt sich die Auswahl oder erkennt seine Sprache, wenn keine Einstellung gespeichert ist."
         ],
         "tips": [
           "Französisch, Deutsch und Arabisch decken in der App derzeit Haupteinstiege ab; weitere Texte können chinesisch bleiben. Arabisch bleibt in der App links nach rechts. Website und Handbuch wechseln vollständig mit der oberen Sprachwahl; Arabisch liest sich dort rechts nach links. Echte Screenshots bleiben chinesisch. Historische Chats und Benutzerdateien werden nicht übersetzt."

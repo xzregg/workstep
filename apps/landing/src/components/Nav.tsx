@@ -1,6 +1,6 @@
 import { Moon, Sun } from 'lucide-react'
 import { useState } from 'react'
-import { useI18n, type Lang } from '../i18n'
+import { useI18n, supportedLanguages, type Lang } from '../i18n'
 import { applyTheme, initialTheme, nextTheme } from '../theme'
 import { RELEASES_URL } from '../config/downloads'
 
@@ -35,11 +35,7 @@ export function Nav() {
             {t('common.download')}
           </a>
           <select className="nav-control nav-lang" aria-label={t('nav.language')} value={lang} onChange={event => setLang(event.target.value as Lang)}>
-            <option value="zh-CN">简体中文</option>
-            <option value="en-US">English</option>
-            <option value="fr-FR">Français</option>
-            <option value="de-DE">Deutsch</option>
-            <option value="ar">العربية</option>
+            {supportedLanguages.map(({ locale, label }) => <option key={locale} value={locale}>{label}</option>)}
           </select>
           <button
             type="button"

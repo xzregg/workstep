@@ -129,6 +129,7 @@ _ADDITIVE_COLUMNS = {
     },
     "tasks": {
         "status": "TEXT NOT NULL DEFAULT 'ready'",
+        "status_reason": "TEXT",
         "active_workflow_run_id": "TEXT",
         "workflow_overrides_json": "TEXT",
         "queued_run_json": "TEXT",
@@ -148,6 +149,7 @@ _ADDITIVE_COLUMNS = {
         "dispatch_lineage_json": "TEXT",
     },
     "taskstep": {
+        "waiting_interactions_json": "TEXT",
         "execution_config_json": "TEXT",
         "pending_handoff_json": "TEXT",
         "session_provider": "TEXT",
@@ -210,6 +212,13 @@ def migrate_database(db: pw.SqliteDatabase) -> int:
                     f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}'
                 )
     db.create_tables(ALL_MODELS, safe=True)
+    # Legacy paused conflated review waits, failures and explicit user stops.
+    # Only migrate ambiguous terminal snapshots; live runners own recovery.
+    from models import Task
+    from services.task_state import reconcile_task_state
+    candidates = list(Task.select(Task.id).where(Task.status.in_(['paused', 'stopped']) & Task.status_reason.is_null()))
+    for candidate in candidates:
+        reconcile_task_state(Task.get_by_id(candidate.id), settled=True)
     # Old runners used ready for both unstarted and successfully finished tasks.
     # Only the task's current run is authoritative; an older success may have
     # been followed by a failed or interrupted rerun. Preserve timestamps.

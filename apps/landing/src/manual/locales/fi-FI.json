@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Lataa, asenna ja avaa WorkStep",
+    "summary": "Asenna ensin WorkStep ja sitten SDK-moottori. Työpöytäsovellus sisältää sen taustaohjelman suoritusajan; sinun ei tarvitse asentaa Python:ta ensin.",
+    "sections": [
+      {
+        "title": "Valitse asentaja",
+        "steps": [
+          "Käytä verkkosivuston latauslinkkiä valitaksesi työpöydän asennusohjelma käyttöjärjestelmällesi ja sirullesi. Macissa valitse arm64 DMG Apple M-sarjan siruille tai x64 DMG Intelille.",
+          "Asenna ja avaa WorkStep järjestelmän normaalilla asennusprosessilla. Odota, että paikallinen taustaohjelma on valmis ja työtila avautuu.",
+          "Anna näyttönimi ensimmäisen käynnistyksen yhteydessä pyydettäessä. Voit palata käyttöönottoon avaamalla Asetukset → Järjestelmäasetukset → Aloitus (设置 → 系统设置 → 新手引导) ja napsauta sitten Aloitus."
+        ],
+        "tips": [
+          "Työpöytäasentajat eivät sisällä valinnaisia ​​moottoreita, kuten Codex SDK tai Claude Agent SDK. Asenna ne seuraavan luvun käyttöliittymän kautta.",
+          "Varhaiset allekirjoittamattomat macOS- tai Windows-koontiversiot voivat laukaista järjestelmän suojauskehotteita. Tarkista latauslähde ennen kuin noudatat järjestelmäsi ohjeita.",
+          "Itsenäinen paikallinen käyttö ei vaadi Gateway-kirjautumista. Jos otat yhdyskäytävän vapaaehtoisesti käyttöön ja todennus ei voi käynnistyä, paikallinen merkintä yrittää palata paikalliseen tilaan ja poistaa yhdyskäytävän käytöstä säilyttäen osoitteensa myöhempää yhteyttä varten. Yhdyskäytävään sidottu asennus tai etävierailija ei voi käyttää tätä isännän yhdyskäytävän poistamiseen käytöstä. Jos paluu paikalliseen tilaan epäonnistuu, tarkista paikallinen tausta ja yritä uudelleen päivittämällä."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Identiteetin määritys ja pikakäynnistys ensimmäisen käynnistyksen yhteydessä",
+          "caption": "Kirjoita paikallinen näyttönimi päästäksesi työtilaan tai aloita nopea asennus. Tämä kuva käyttää esittelyidentiteettiä."
+        }
+      },
+      {
+        "title": "Ymmärrä kolme käsitettä",
+        "steps": [
+          "Moottori suorittaa tehtäviä ja kutsuu työkaluja. Tässä oppaassa suositellaan ensin Codex SDK:ta tai Claude Agent SDK:ta; erikseen asennettua CLI-moottoria ei tarvita.",
+          "Palveluntarjoaja toimittaa mallin API, API osoitteen ja valtuustiedot. Se on erillinen suoritusmoottorista, ja sen protokollan on vastattava kyseisen moottorin tukemaa protokollaa.",
+          "Malli todella käsittelee pyyntösi. Asenna moottori, todenna se, valitse ja testaa malli ja luo sitten tehtävä."
+        ],
+        "tips": [
+          "SDK voi sisältää tai kutsua taustalla olevan suoritettavan tiedoston. SDK:n valitseminen ei tarkoita, etteikö osaprosesseja olisi.",
+          "WorkStep tallentaa projektitiedot paikallisesti. Suorituksen aikana valittu moottori ja toimittaja lähettävät tehtäväkontekstin mallipalveluun."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Vaihe 1: asenna SDK-moottori",
+    "summary": "Aloita SDK:lla. Lataa ja hallitse koneita Asenna ja versiot (安装与版本) kautta kopioimatta päätteen asennuskomentoja.",
+    "sections": [
+      {
+        "title": "Lataa ja asenna käyttöliittymän kautta",
+        "steps": [
+          "Avaa Asetukset → Suoritusmoottorit (设置 → 执行引擎). Etsi Codex- tai Claude Code-kortti, jossa on merkintä sdk, joka vastaa Codex SDK:ta ja Claude Agent SDK:ta. Asenna aluksi vain se, jota aiot käyttää.",
+          "Napsauta Asenna ja versiot, odota versioluetteloa ja valitse sitten sopiva versio Valitse versio -kohdasta.",
+          "Napsauta Asenna valittu versio ja tarkista versio. Jos näyttöön tulee kolmannen osapuolen ehtoja, lue ja hyväksy ne ennen kuin napsautat Vahvista asennus.",
+          "Odota pääpaketin latausta, moottorin ja riippuvuuden asennusta ja version vahvistusta. Varmista, että uusi versio näkyy.",
+          "SDK-version muuttaminen vaatii taustaohjelman uudelleenkäynnistyksen. Työpöytäkäyttäjät voivat lopettaa nykyisen työn, lopettaa WorkStep:n ja avata sen uudelleen ja jatkaa sitten määritystä."
+        ],
+        "tips": [
+          "Prosenttiosuus kattaa vain pääpaketin. Riippuvuuslatauksilla ja -poiminnalla ei ehkä ole prosenttiosuutta; käytä vaihekuvausta arvioidaksesi edistymistä.",
+          "Asennus jatkuu, kun sen osa on taitettu. Älä lähetä uudelleen vain siksi, että edistyminen on tilapäisesti pysähtynyt.",
+          "Jos sopivaa versiota ei näy, päivitä luettelo ja tarkista verkon ja alustan tuki. Kun mukautettu suoritettava polku on määritetty, tyhjennä se ohjeiden mukaisesti ennen versioiden hallintaa."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "SDK moottorin asennus ja version valinta",
+          "caption": "Napsauta Asenna ja versiot, Valitse versio ja sitten Asenna valittu versio."
+        }
+      },
+      {
+        "title": "Tarkista asennus ja ylläpidä versioita",
+        "steps": [
+          "Avaa Execution engines uudelleen ja tarkista, että SDK havaitaan asennettuna odotetun version kanssa.",
+          "Käytä asennusta ja versioita myöhempiä päivityksiä varten. Jos palautusversio on saatavilla, napsauta Palauta… ja vahvista; rollback lataa vanhemman version uudelleen.",
+          "Jos asennus epäonnistuu, lue kyseisen osan virhe, tarkista verkko, levytila ​​ja asennuspolku ja yritä sitten uudelleen. Asennuksen onnistuminen ei tarkoita, että mallin todennus onnistui: suorita konfigurointi ja testaus seuraavaksi."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Versio ja edistyminen SDK-asennuksen jälkeen",
+          "caption": "Tarkista nykyinen versio asennuksen jälkeen. Jäljellä oleva 100 %:n ilmaisin tarkoittaa, että asennus on valmis, ei sitä, että lataus jatkuu."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Määritä palveluntarjoajat, todennus ja yhteystestit",
+    "summary": "Määritä yhteensopiva palveluntarjoaja WorkStep:ssa ja liitä se SDK:hen. Käyttäjät, joilla on olemassa oleva alkuperäinen kirjautuminen, voivat myös käyttää uudelleen moottorin todennusta.",
+    "sections": [
+      {
+        "title": "Lisää palveluntarjoaja",
+        "steps": [
+          "Avaa Asetukset → Palveluntarjoajat → Lisää tarjoaja (设置 → 供应商 → 添加供应商). Anna tunnistettava nimi ja valitse palvelun tyyppi ja API-protokolla.",
+          "Valitse Claude Agent SDK:lle yhteensopiva Anthropic Messages-päätepiste; Codex SDK:lle, valitse yhteensopiva OpenAI Responses-päätepiste. \"OpenAI-yhteensopiva\" väite ei yksin takaa protokollan yhteensopivuutta.",
+          "Anna palveluntarjoajan toimittama API-osoite ja API-avain. Säilytä versiopolut, kuten /v1 tai /v2; älä käytä koko chat-päätepistettä perusosoitteena.",
+          "Tallenna palveluntarjoaja ja napsauta Testaa yhteys. Saat mallit napsauttamalla Hanki mallit, valitsemalla tarvitsemasi mallit ja sitten Tallenna valitut.",
+          "Varmista, että palveluntarjoaja on käytössä. Kun testi on läpäissyt, palaa SDK:hen viimeistelemään sitomis- ja moottoritestaus."
+        ],
+        "tips": [
+          "Palveluntarjoaja määrittää tilitilaukset, API-tunnukset ja laskutuksen. SDK:n asentaminen ei anna valtuustietoja.",
+          "Kun toimittajaa muokataan, avaimen jättäminen tyhjäksi säilyttää vanhan arvon. Kirjoita uusi avain korvataksesi sen ja piilota avaimet ennen kuvakaappauksia tai jakamista.",
+          "Yrityksen hallinnoimassa tilassa alusta voi määrittää palveluntarjoajat. Käytä valtuutettua palveluntarjoajaa sen sijaan, että lisäät sen uudelleen."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Palveluntarjoajan nimi, protokolla ja API-osoiteasetukset",
+          "caption": "Määritä yhteensopiva protokolla, tallenna ja testaa sitten yhteys. Kuvassa on julkinen API-osoite, jossa on tyhjä avainkenttä."
+        }
+      },
+      {
+        "title": "Sido ja tarkista SDK",
+        "steps": [
+          "Palaa kohtaan Asetukset → Suoritusmoottorit, laajenna asennetun SDK:n kokoonpanoa ja valitse tallentamasi yhteensopiva palveluntarjoaja.",
+          "Claude Agent SDK vaatii lupatilan. Lue sen kuvaus, valitse ja vahvista; muut lisäkentät voivat jäädä oletusarvoihinsa. Säilytä Codex SDK:n oletusperustelu-, hyväksymis- ja hiekkalaatikkoasetukset.",
+          "Napsauta Tallenna kokoonpano ja tarkista oletusmalli. Sidotun palveluntarjoajan osalta Päivitä mallit lukee uudelleen vain tallennetut valinnat sen sijaan, että se noutaisi kaikki mallit. Luettelo on tyhjä, jos välimuistia tai valintoja ei ole. Voit lisätä malleja palaamalla kohtaan Asetukset → Palveluntarjoajat, Hae mallit ja Tallenna valitut. Päivitä sitten moottori.",
+          "Napsauta Testaa moottorikortissa, odota tulosta ja vahvista Verified (已验证). Tämä on tarkistuspisteesi ennen tehtävien suorittamista."
+        ],
+        "tips": [
+          "Moottorin testaus käynnistää valitun moottorin ja saattaa veloittaa mallin huoltomaksuja.",
+          "Codex SDK:n perusteluissa, hyväksynnässä ja hiekkalaatikkovaihtoehdoissa on kiinalaiset etiketit. Tehtäväluettelo näyttää moottorin tukemat asetukset, vaikka malliluettelo olisi tyhjä; se ei tarkoita, että jokainen malli tukee kaikkia tasoja. Aloita oletusasetuksista. Jos malli hylkää tason, palaa kohtaan Automaattinen tai tuettu arvo.",
+          "Ilman palveluntarjoajan sidontaa Codex SDK käyttää uudelleen paikallista Codex-todennusta, kun taas Claude Agent SDK käyttää alkuperäistä todennuskokoonpanoaan. Uusien käyttäjien, joilla ei ole jo kirjautumista, tulee aloittaa palveluntarjoajan määrityksistä.",
+          "Tarkista todennusvirheiden varalta avain, API-osoite, protokolla ja tilin käyttöoikeudet. Tarkista mallivirheiden varalta mallin tunnus ja toimittajan tuki. Jos on merkitty Ei asennettu, palaa asennukseen."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Testaa, tarkista ja tallenna konfiguraatio Codex SDK-kortilla",
+          "caption": "Codex sdk -kortissa näkyy Vahvistettu, mikä osoittaa, että tämä moottori läpäisi testin."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Aseta oletussuoritusmoottori ja -malli",
+    "summary": "Tee testatusta SDK:sta oletussuoritusmoottori vaiheille, jotka eivät määritä toista moottoria.",
+    "sections": [
+      {
+        "title": "Tallenna oletusasetukset",
+        "steps": [
+          "Valitse kohdasta Asetukset → Suoritusmoottorit → Oletussuoritusmoottori juuri vahvistamasi SDK.",
+          "Napsauta Tallenna oletukset ja vahvista onnistumisviesti. Älä poistu, kun olet valinnut pudotusvalikosta arvon.",
+          "Valitse malli kyseisen SDK-kortin oletusmallin valitsimesta. Vaiheet ilman erillistä mallia käyttävät tätä oletusta.",
+          "Kun olet luonut työnkulun, tarkista jokaisen vaiheen moottori ja malli uudelleen. Eksplisiittiset vaiheasetukset eivät muutu automaattisesti, kun yleiset oletusasetukset muuttuvat."
+        ],
+        "tips": [
+          "Assistenteilla on erilliset määritystiedot. Oletussuoritusmoottorin muuttaminen ei muuta jokaista avustajaa.",
+          "Suorita ensin työnkulku yhdellä vahvistetulla SDK:lla ja yhdellä mallilla ja kokeile sitten eri malleja eri vaiheissa."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Oletussuoritusmoottorin valitsin ja Tallenna oletukset -painike",
+          "caption": "Oletusmoottorin valitsin ja Tallenna oletukset -merkintä. Pydantic AI on määrittämätön tässä kuvassa; oletusarvoa ei ole muutettu tai vahvistettu."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Yhdistä paikallinen projekti",
+    "summary": "Projekti vastaa paikallista koodihakemistoa. Sen tiedot seuraavat projektia oletusarvoisesti tai ne voidaan tallentaa projektitunnuksella nykyisen käyttäjän kotisivulle.",
+    "sections": [
+      {
+        "title": "Ymmärrä automaattisesti valmisteltu oletustyötila",
+        "steps": [
+          "Ensimmäisellä kerralla sivupalkki sisältää oletustyötilan (默认工作区). Kun projektia ei ole valittu, WorkStep avaa tavallisen chat-sivunsa. Olemassa olevat projektivalinnat ja etäsidokset ovat etusijalla.",
+          "Kun olet määrittänyt SDK:n, käytä tätä työtilaa tavalliseen keskusteluun. Jos haluat käsitellä koodiasi, yhdistä sen todellinen hakemisto valitsemalla Lisää projekti. oletustyötila ei ole jo yhdistetty arkisto.",
+          "Oletustyötila jaetaan myös taitojen, moottorin, ilmeen ja kielipaketin luomiseen. Nämä merkinnät käyttävät uudelleen tavallista keskustelua ja tallentavat tulostensa kyseiseen työtilaan."
+        ],
+        "tips": [
+          "Voit nimetä oletustyötilan uudelleen, mutta et voi poistaa sitä projektiluettelosta. Se ei luo automaattisesti työnkulkua.",
+          "Oletustyötila on projekti; SDK on suoritusmoottori. Projekti ei tarkoita, että moottori on asennettu tai todennettu."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Oletustyötila ja tavallinen chat-merkintä sivupalkissa",
+          "caption": "Tyhjä tavallinen chat oletustyötilassa ilman keskusteluja tai työnkulkuja. Luo keskustelu tästä; koodiprojektit on silti yhdistettävä eksplisiittisesti."
+        }
+      },
+      {
+        "title": "Aloita esittelyhakemistosta",
+        "steps": [
+          "Valmistele erillinen esittelykansio, kuten workstep-demo. Valitse olemassa olevalle koodille sen projektin juuri.",
+          "Napsauta Sivupalkki → Lisää projekti → Paikallinen projekti (侧边栏 → 添加项目 → 本地项目), valitse kyseinen kansio hakemistoselaimesta ja vahvista.",
+          "Tarkista, että projekti näkyy sivupalkissa ja vaihda siihen. Uusissa projekteissa ei ole oletuksena työnkulkua; luo seuraavaksi.",
+          "Kun yhdistät samaan hakemistoon myöhemmin uudelleen, työnkulut, tehtävät ja viestit palautetaan projektitiedoista. Älä poista .workstep-tiedostoa vain avataksesi projektin uudelleen."
+        ],
+        "tips": [
+          "Moottorit voivat lukea tai muokata projektitiedostoja tehtäväohjeiden mukaisesti. Harjoittele erillisessä hakemistossa ja säilytä versiohistoria ennen oikean koodin muokkaamista.",
+          "Oletusarvoisesti projektitiedot ovat .workstep/workstep.db,-lähetyksissä .workstep/uploads/,:ssa ja artefaktit .workstep/artifacts/.:ssa Keskitetyn tallennustilan avulla varmuuskopioi vastaava projektin tietohakemisto Koti-kohdassa ja projektin tunnistetiedosto.",
+          "Uusien tai uudelleen nimettyjen projektien nimet eivät saa sisältää välilyöntejä, sarkaimia tai muita välilyöntejä."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Lisää paikallinen projekti ja valitse sen juurihakemisto",
+          "caption": "Valitse esittelyhakemisto ja kirjoita sitten yhdistetty projekti sivupalkista."
+        }
+      },
+      {
+        "title": "Avaa projektihakemisto ja tarkista luodut tiedostot",
+        "steps": [
+          "Valitse projekti ja napsauta Avaa hakemisto sen tehtävän tai projektin keskustelusivulla. Käytä tätä tarkistaaksesi todelliset luodut tiedostot tehtävän päätyttyä.",
+          "Työpöytäsovelluksessa oikeanpuoleinen nuoli näyttää havaitut paikalliset tiedostonhallintaohjelmat, editorit ja päätteet. Yhden valitseminen avaa välittömästi hakemiston ja muistaa paikallisen valinnan. Vain havaitut, käytettävissä olevat sovellukset tulevat näkyviin.",
+          "Etäprojektit ja etäselainkäyttö käyttävät verkkohakemistoselainta. Myös työpöytäversiot ilman hakemiston avaavaa siltaa käyttävät sitä; työpöytäeditoria ei tarvitse asentaa säilön sisään."
+        ],
+        "tips": [
+          "Työpöydän hiekkalaatikkoprojektien polut kartoitetaan takaisin isäntäliitoshakemistoihin ennen avaamista. Jos mikään kiinnitys ei vastaa, tarkista projektin kiinnityskokoonpano.",
+          "Jos Avaa hakemisto epäonnistuu, tarkista, että valittu sovellus ja hakemisto ovat edelleen olemassa, tai tarkasta projekti suoraan järjestelmätiedostonhallinnasta."
+        ]
+      },
+      {
+        "title": "Järjestä sivupalkkiprojektit uudelleen",
+        "steps": [
+          "Vedä sivupalkissa Manuaalinen esittely (操作手册演示) ennen tai jälkeen halutun projektin.",
+          "Paikalliset ja etäprojektit voidaan limittää. Vapauttaminen tallentaa tilauksen paikallisiin määrityksiin ja uudelleen avaaminen säilyttää sen."
+        ],
+        "tips": [
+          "Tilaus vaikuttaa vain tämän laitteen näyttöön, ei etäisäntäprojektin järjestykseen. Seuraa virheilmoitusta ja yritä uudelleen, jos tallennus epäonnistuu."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Kaksi paikallista esittelyprojektia ja työnkulkua sivupalkissa",
+          "caption": "Uusimmassa sivupalkissa näkyy kaksi paikallista esittelyprojektia ja oletustyötila. Järjestä uudelleen vetämällä projektirivejä; mitään etälaitetta ei ole kytketty."
+        }
+      },
+      {
+        "title": "Valitse, mihin projektitiedot tallennetaan",
+        "steps": [
+          "Kun olet valinnut hakemiston kohdasta Sivupalkki → Lisää projekti → Paikallinen projekti, valitse Datahakemisto seuraa projektihakemistoa (数据目录跟随项目目录), joka on oletuksena käytössä uusille projekteille.",
+          "Kun tämä on valittuna, tehtävät, työnkulut, liitteet, lokit, artefaktit, taidot ja muisti tallennetaan projektin .workstep/.-valinnan poistamiseen ~/.workstep/projects/<项目ID>/, jolloin projektihakemistoon jää vain .workstep/project.json identiteettitiedostoksi.",
+          "Jos kyseessä on olemassa oleva projekti, tarkista sen todellinen tietopolku kohdasta Projektin määritys → Yleiset. Muuta valintaruutua ja vahvista siirto. First stop -tehtävät, keskustelut ja nopeat toimet; poistaa olemassa olevat Git-työtilat.",
+          "Odota siirtoa ja tarkista sitten uusi polku ja alkuperäiset tehtävät. Epäonnistuminen säilyttää alkuperäiset tiedot. Ei-tyhjää kohdetta ei kirjoiteta päälle; ratkaise ilmoitettu ongelma ja yritä uudelleen."
+        ],
+        "tips": [
+          "Olemassa olevan projektin lisääminen uudelleen säilyttää tallennustilan sen identiteettitiedostossa; se ei siirrä tietoja automaattisesti.",
+          "Säilytä .workstep/project.json, kun siirrät tai nimeät uudelleen projektia, ja lisää se sitten uudelleen tunnistaaksesi alkuperäisen projektin. Henkilötietotiedoston poistaminen ei poista kotitietoja, mutta estää automaattisen yhdistämisen.",
+          "Kopio, jolla on sama projektitunnus, ei voi olla rinnakkain rekisteröidyn alkuperäisen hakemiston kanssa: järjestelmä raportoi ID-ristiriidan. Siirtoa varten tietokoneiden välillä kopioi myös vastaava kotitietohakemisto.",
+          "Keskitetty tallennus jättää edelleen automaattisesti huomioimatta .workstep/-tiedoston projektissa. Tavallinen pakkaus ei automaattisesti käytä Gitin ohitussääntöjä, mutta identiteettitiedosto ei sisällä tehtävätietoja."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Tietojen tallennusvaihtoehto ja identiteettitiedostoilmoitus projektia lisättäessä",
+          "caption": "Todellinen Add-projektin käyttöliittymä: oletusasetuksen valinnan poistaminen näyttää kotipolun ja ohjeet tietokoneiden välillä liikkumiseen tai siirtymiseen."
+        }
+      },
+      {
+        "title": "Siirrä olemassa olevan projektin tiedot",
+        "steps": [
+          "Avaa Yleiset projektin asetuksissa ja tarkista nykyinen tietopolku.",
+          "Napsauta Tietohakemisto seuraa projektihakemistoa, lue ja vahvista siirto ja odota sitten. Aktiivinen työ tai ei-tyhjä kohde tuottaa virheen."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Tietojen tallennuspaikka demonstraatioprojektin asetuksissa",
+          "caption": "Tarkista nykyinen polku. Valintaruudun muuttaminen edellyttää edelleen siirron vahvistamista valintaikkunassa."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Luo ensimmäinen kaksivaiheinen työnkulkusi",
+    "summary": "Käytä Vaatimusanalyysi → Suorita tehtävä ymmärtääksesi vaiheet, tulot, lähdöt ja kytkennät.",
+    "sections": [
+      {
+        "title": "Luo esimerkki perehdyttämisen kautta",
+        "steps": [
+          "Varmista, että olet tallentanut oletussuoritusmoottorin ja valinnut yhdistetyn paikallisen projektin. Jos perehdytys on suljettu, avaa Asetukset → Järjestelmäasetukset → Aloitus ja napsauta Aloitus.",
+          "Valitse Luo kaksivaiheinen työnkulku -kohdassa Luo esimerkkityönkulku. Odota menestystä ja kankaan avautumista.",
+          "Esimerkki on nimeltään Analysis and execution (分析与执行). Sen ensimmäinen vaihe, Requirements analysis (需求分析), tulostaa suoritussuunnitelman (执行计划), joka on yhdistetty toiseen vaiheeseen, Execute task (执行任务).",
+          "Avaa molemmat vaiheet ja tarkista moottori, malli, kehote, tulot ja lähdöt ja varmista, että niissä on vahvistettu SDK. Esimerkki ei aloita luomisen yhteydessä eikä suorita tarkistuksia; kun se on käynnistetty, sen kaksi vaihetta suoritetaan riippuvuusjärjestyksessä."
+        ],
+        "tips": [
+          "Tavallinen uusi työnkulku alkaa tyhjästä kankaasta ilman esimerkkivaiheita. Valitse malli selkeästi.",
+          "Älä arvioi asennusta pelkästään linjan ulkonäön perusteella: varmista, että lähtöportti vastaa seuraavan vaiheen tulovaatimuksia."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Kaksivaiheinen kanvas vaatimusten analysointiin ja tehtävien suorittamiseen",
+          "caption": "Vaatimusanalyysi tuottaa suoritussuunnitelman Execute-tehtävälle. Napsauta jokaista vaihetta tarkistaaksesi sen kokoonpanon."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Luo ja suorita ensimmäinen tehtäväsi",
+    "summary": "Käytä pientä, selkeää, helposti tarkistettavaa tehtävää varmistaaksesi, että SDK, projekti ja työnkulku toimivat yhdessä.",
+    "sections": [
+      {
+        "title": "Kirjoita todennettavissa oleva pyyntö",
+        "steps": [
+          "Valmistele README.md ja example.txt esittelyhakemistossa. README.md:n tulee luetella viisi selitettävää toimintoa lisähuomautuksineen example.txt:ssa. Käytä esittelysisältöä yksityisen materiaalin sijaan.",
+          "Avaa esittelyprojektin tehtäväsivu, valitse Analyysi ja suoritus ja napsauta sitten Uusi tehtävä. Aloitus Luo tehtävä -merkintä avaa myös sen.",
+          "Aloita Vaatimusanalyysista ja kirjoita otsikko Järjestä projektiohjeet (整理项目说明).",
+          "Esimerkkikuvaus: Lue README.md ja example.txt, luo toteutussuunnitelma ja luo sitten 使用说明.md projektin juureen. Listaa viisi operaatiota Markdown:ssa, yksi lause operaatiota kohden. Lue vain nämä kaksi olemassa olevaa tiedostoa; älä muokkaa niitä. Voit luoda 使用说明.md:n, mutta älä muokkaa muita tiedostoja. Ilmoita luodun tiedoston sijainti, kun olet valmis.",
+          "Valitse Manuaalinen aloitus ja napsauta Luo tehtävä. Tarkista pyyntö ja aloitusvaihe ja sitten Aloita tehtävä. Vaihtoehtoisesti voit valita Aloita heti luomisen jälkeen."
+        ],
+        "tips": [
+          "Määritä tavoite, sallitut toimet, toimitusmuoto ja hyväksymiskriteerit; tämä tekee tuloksista helpompi tarkistaa kuin epämääräinen pyyntö.",
+          "Myöhemmästä vaiheesta aloittaminen ohittaa aikaisemmat. Aloita ensimmäinen harjoitus vaatimusanalyysillä.",
+          "Tehtävien luontipaneelin avaaminen aloitusvaiheessa ei itse suorita tehtävää; paneelin käynnistysvaihtoehto ohjaa suoritusta."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Tehtävän otsikko, kuvaus, aloitusvaihe ja käynnistystila",
+          "caption": "Kirjoita konkreettinen pyyntö, valitse sen aloitusvaihe ja valitse erikseen, milloin suoritus alkaa."
+        }
+      },
+      {
+        "title": "Noudata ohjeita ja tarkista lähdöt",
+        "steps": [
+          "Avaa tehtävän tiedot ja katso nykyinen vaihe, tila ja viestit. Odota, kun moottori käy, ja vastaa käyttöliittymän nimenomaisiin kysymyksiin tai hyväksymispyyntöihin.",
+          "Kun Vaatimusanalyysi on valmis, Suorita tehtävä käynnistyy automaattisesti riippuvuusyhteyden mukaan. Mitään ylimääräistä aloitusnapsautusta ei tarvita. Lue ensimmäisen vaiheen suunnitelma ja tarkista, että toinen käytti sitä.",
+          "Kun Suorita tehtävä on valmis, lue viimeinen viesti ja avaa 使用说明.md projektin juurella. Tarkista, että se on Markdown, sisältää viisi operaatiota ja käyttää yhtä lausetta kullekin.",
+          "Jos viestissä näkyy Muokatut… tiedostot, laajenna se ja napsauta tiedoston nimeä. Näytä tallennettu korjaustiedosto, kun se on saatavilla; muuten esikatsele nykyistä tiedostoa. Historialliset muutokset voivat poiketa tiedostosta nyt, joten tarkista silti todellinen tulos.",
+          "Varmista, että README.md ja example.txt eivät muuttuneet ja vain sallittu 使用说明.md lisättiin. Käytä projektin tiedostomerkintää tai järjestelmän tiedostonhallintaa. Pelkästään valmistumisen tila ei todista oikeellisuutta."
+        ],
+        "tips": [
+          "Jos odottaminen jatkuu, erota aloituksen odottaminen, hyväksyntä, tarkistus ja aktiivinen suoritus: jokainen tarvitsee erilaisen vastauksen.",
+          "Jos vika ilmenee, säilytä virhe ja testaa ensin SDK-yhteys uudelleen. Kun olet korjannut kokoonpanon, käytä tehtävän käytettävissä olevaa palautusta tai yritä uudelleen.",
+          "Jos API ilmoittaa palauttaneensa verkkosivun, varmista, että taustaohjelma on päivitetty ja käynnistetty uudelleen. Päivitä sitten ja yritä uudelleen. Pelkästään suoritustietojen lataamisen epäonnistuminen ei tarkoita, että suoritus epäonnistui. Älä luo päällekkäistä tehtävää tästä syystä."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Tulosta 使用说明.md kaksivaiheisen tehtävän suorittamisen jälkeen",
+          "caption": "Kun molemmat vaiheet on suoritettu, tarkista 使用说明.md ja sen viisi toimintakuvausta."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Muokkaa työnkulkuja",
+    "summary": "Jaa työ vaiheisiin ja määritä suorituskoneet, tulot, lähdöt ja tarkistussäännöt.",
+    "sections": [
+      {
+        "title": "Lisää ja yhdistä vaiheet",
+        "steps": [
+          "Valitse projekti ja työnkulku vasemmalta ja kirjoita Workflow canvas. Uusi työnkulku on tyhjä; lisää vaiheita tai käytä mallia erikseen.",
+          "Napsauta + Askel ja anna sen nimi ja tunniste, esimerkiksi Järjestä vaatimukset vaatimuksilla. Tunnisteiden on oltava yksilöllisiä työnkulussa, alkavat englanninkielisellä kirjaimella ja sisältävät vain kirjaimia, numeroita, alaviivoja tai yhdysmerkkejä.",
+          "Kirjoita kehote, jossa on selkeä tavoite, rajoitukset ja suoritukset. Esimerkiksi: Lue tehtävän kuvaus, luettele hyväksymiskriteerit ja toteutussuunnitelma ja tallenna vaatimusasiakirja.",
+          "Määritä asennettu, vahvistettu SDK-moottori ja malli. Jos haluat periä oletusasetukset, valitse oletussuoritusmoottori tai moottorin oletusmalli.",
+          "Kun tulot ja lähdöt on asetettu, vedä ylävirran lähtöportista vastaavaan alavirran tuloporttiin ja valitse sitten Tallenna."
+        ],
+        "tips": [
+          "Kiinteät viivat kuljettavat tietoja. Yhdistäminen takaisin ylävirtaan luo katkoviivan paluuyhteyden uudelleentyöstöpalautetta varten.",
+          "Tallentamattomien muutosten ilmoitus tarkoittaa, että kanvas-muokkauksia ei ole vielä säilytetty."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Työnkulkukangas, jossa on kaksi vaihetta ja tulo/lähtöliitännät",
+          "caption": "Etsi Lisää vaihe -painike, yhteysportit ja Tallenna merkintä."
+        }
+      },
+      {
+        "title": "Konfiguroi tulot, lähdöt ja paluuliitännät",
+        "steps": [
+          "Avaa askeleditori, nimeä lähdöt selkeästi ja määritä tarvittavat tulot alavirtaan.",
+          "Liitä jokainen tarvittava lähtö vastaavaan alavirran tuloon. Tarkista käytettävyys suorituksen aikana tehtävän tiedoissa Vaiheen tulot ja lähdöt -kohdasta.",
+          "Muokkausta varten luo paluuyhteys ja aseta kyseiselle vaiheelle Maksimi tuotto. Ennen kuin tallennat, lue varoitukset mahdollisesti kestämättömistä vaiheista ja tarkista, riippuuko alkuperäinen suoritus vielä luomattomista uudelleenkäsittelyartefakteista."
+        ],
+        "tips": [
+          "Maksimipalautus ohjaa katkoviivaisia ​​palautusyhteyksiä ja on erillään epäonnistuneen tarkistuksen jälkeisistä uudelleenyrityksistä.",
+          "Lähtöportin ilmoittaminen ei luo tiedostoa. Vaadi todelliset toimitukset kehotteessa ja tarkista ne jälkikäteen."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Syötä artefaktit ja vastaavat lähdöt solmueditoriin",
+          "caption": "Syöte ilmoittaa tehtävän vaatimukset ja suoritussuunnitelman vastaava tulos. Palautuslaskuriasetuksia ei näytetä."
+        }
+      },
+      {
+        "title": "Aseta tarkistus ja automaattinen käynnistys",
+        "steps": [
+          "Valitse editorin Vaihetarkistus-kohdasta Manuaalinen tarkistus, Automaattinen tarkistus tai Ohita tarkistus. Aluksi suositellaan manuaalista tarkistusta.",
+          "Manuaalinen tarkistus pysähtyy päätöksen suorittamisen jälkeen. Kirjoita automaattista tarkistusta varten todennettavat kriteerit ja valitse vaihtoehtoisesti sen moottori ja malli.",
+          "Aseta uudelleenyritykset sen jälkeen, kun automaattinen tarkistus hylkää tuloksen. Itse tarkistusagentin virheet siirtyvät manuaaliseen käsittelyyn.",
+          "Aseta Käynnistä automaattisesti luomisen jälkeen tarpeen mukaan ja tallenna sitten. Alkuharjoittelua varten poista se käytöstä, jotta voit tarkistaa tehtävän ennen aloittamista."
+        ],
+        "tips": [
+          "Asenna ja määritä SDK-moottorit ennen kuin käytät niitä joko suoritukseen tai tarkasteluun."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Vaihetarkistustilan säätimet solmueditorissa",
+          "caption": "Valitse tarkistustila solmueditorissa. Tarkista automaattinen käynnistys erikseen yllä kuvatulla tavalla."
+        }
+      },
+      {
+        "title": "Toimita työnkulkujen välillä ja käytä kanvas-elementtejä uudelleen",
+        "steps": [
+          "Jos haluat siirtää tuotoksia toiseen projektiin tai työnkulkuun, lisää työnkulkuvaihe ja valitse kohdeprojekti, työnkulku, aloitusvaihe ja käynnistystila.",
+          "Määritä ylävirran syöttöartefaktit ja tallenna. Tämä vaihe ohitetaan välittömästi loppuvaiheen tehtävän luomisen jälkeen, eikä se voi muodostaa yhteyttä päätyönkulun muihin vaiheisiin.",
+          "Jos haluat käyttää vaihetta uudelleen, valitse Kopioi solmut työnkulusta, valitse projekti, työnkulku ja solmut, esikatsele, kopioi ja tallenna.",
+          "Käytä Asettelua solmujen järjestämiseen. Lisää muistiinpanoihin kirjanmerkkejä tai vie työnkulku JSON varmuuskopioksi. Tarkista ennen tuontia, mitä korvataan."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Myöhemmin tehtävän kohde ja käynnistysasetukset",
+          "caption": "Tarkista kohdeprojekti, työnkulku ja aloitusvaihe."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Työnkulun laukaisin ja ilmoituskoukut",
+    "summary": "Luo tehtäviä ulkoisista pyynnöistä tai lähetä työnkulun tila valitulle alustalle.",
+    "sections": [
+      {
+        "title": "Luo tehtäviä liipaisinkoukun avulla",
+        "steps": [
+          "Valitse projekti ja työnkulku. Avaa Työnkulun koukut tehtäväluettelon työkalupalkissa tai mobiilivalikosta ja sitten Trigger hooks.",
+          "Lisää koukku, kirjoita sen nimi, oletusotsikko ja luoja, valitse aloitusvaihe ja käynnistyykö se automaattisesti, ja tallenna sitten. Esimerkiksi: Vaatimusten saanti, otsikolla Ulkoinen pyyntö.",
+          "Valitse määritetty LAN, ulkoinen tai yhdyskäytäväosoite ja kopioi kutsu URL. Sen tunnus on valtuustieto: anna se vain luotetuille järjestelmille.",
+          "Kirjoita Simuloi puhelu -kohtaan otsikko, luoja ja teksti tarkastaaksesi esikatselun. Simulaatio ei luo tehtävää.",
+          "Kopioituun URL:hen on oltava ulkoinen järjestelmä POST käyttämällä JSON:ta, pelkkää tekstiä tai Markdown:ta, esimerkiksi: Järjestä tämän pyynnön hyväksymiskriteerit. Kun olet saanut tehtävätunnuksen, tarkista tehtävän sisältö ja käynnistystila."
+        ],
+        "tips": [
+          "Projektin muokkauslupa vaaditaan. Jokainen kelvollinen pyyntö luo tehtävän. Tämä versio ei tunnista GitHub/GitLab-tapahtumia automaattisesti, poista pyyntöjen kaksoiskappaleita tai puskuripyyntöjä laitteen ollessa offline-tilassa.",
+          "Korjaa ensin puuttuvat osoitteet tai irrotetut laitteet. Tokenin nollaaminen mitätöi vanhan URL:n. Jos automaattinen käynnistys epäonnistuu, tehtävä on edelleen olemassa: tarkista run_error ja tehtävän tiedot ennen toimitusta uudelleen."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Tallentamaton trigger-koukun nimi, oletuskentät ja aloitusvaiheen konfiguraatio",
+          "caption": "Tämä käytöstä poistettu luonnos luo vain tehtäviä. Sen tunnus on piilotettu; sitä ei ole tallennettu eikä kutsua URL ole luotu."
+        }
+      },
+      {
+        "title": "Lähetä työnkulkuilmoituksia ulkoisille alustoille",
+        "steps": [
+          "Vaihda samassa Työnkulun koukut -ikkunassa Ilmoituskoukut ja lisää kohde.",
+          "Kirjoita nimi, valitse DingTalk ryhmäbotti, WeCom ryhmäbotti tai yleinen JSON Webhook ja anna sen kohde URL. Anna DingTalk-allekirjoitussalaisuus tarvittaessa.",
+          "Valitse tilatut tapahtumat, joiden oletusarvo on tehtävien suorittaminen ja epäonnistuminen. Aseta valinnaisesti otsikon etuliite ja yhdyskäytävän osoite, ulkoinen osoite tai LAN-osoite tehtävälinkeille ja tallenna sitten.",
+          "Luo esikatselu kohdassa Simuloi ilmoitus ja tarkista viestin sisältö ja linkit. Esikatselu ei lähetä pyyntöä. Jos haluat tehdä oikean testin, vahvista ja napsauta Lähetä testiilmoitus. se lähettää tallennettuun, käytössä olevaan kohteeseen.",
+          "Tarkista toimitustietueiden tila, yritykset ja muokatut virheet. Kun olet korjannut kokoonpanon, yritä tallentaa epäonnistuneita tietueita uudelleen. Kun tehtävä on suoritettu, tarkista vastaanottoalusta ja tehtävälinkin käyttöoikeus."
+        ],
+        "tips": [
+          "Laite lähettää ilmoitukset suoraan; Gateway ei välitä niitä. Ne eivät sisällä chat-tekstejä, artefaktisisältöä tai tehtävänluontitietoja. Tehtävälinkit vaativat edelleen normaalit käyttöoikeudet.",
+          "Väliaikaisia ​​virheitä yritetään automaattisesti uudelleen. Aikakatkaisut ja palautuminen voivat aiheuttaa päällekkäisiä toimituksia; yleiset vastaanottimet voivat poistaa kopioinnin event_id:lla. Kohteen poistaminen käytöstä tai poistaminen ei voi peruuttaa lähetettyjä ilmoituksia.",
+          "Pelkkä esikatselu ei todista integroinnin toimivuutta: tarkista todellinen toimitus alustalle."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "DingTalk-ilmoitusalusta, tilatut tapahtumat ja tyhjät osoitekentät",
+          "caption": "Tallentamaton, käytöstä poistettu luonnos uusimmassa käyttöliittymässä, jossa tehtävän valmistuminen ja epäonnistuminen on valittu. Webhook- ja allekirjoitussalaisuuskentät ovat tyhjiä; mitään ei lähetetty."
+        }
+      },
+      {
+        "title": "Mukauta Markdown-ilmoitusmalleja",
+        "steps": [
+          "Valitse DingTalk- tai WeCom-ryhmäbotti ilmoituskoukuista ja vieritä Markdown-viestimalliin. Yleiset JSON Webhookit eivät käytä näitä Markdown-malleja.",
+          "Laajenna mallimuuttujat (kopioi napsauttamalla) ja lisää sitten paikkamerkit, kuten {task_title}. Älä käytä tuntemattomia muuttujia tai tyhjää mallia. Säilytä {task_link} tai {task_url}, kun tehtävälinkkiä tarvitaan.",
+          "Tallenna ja käytä Simuloi-ilmoitusta tarkistaaksesi korvaukset ja linkit lähettämättä. Lue vahvistus ennen oletusmallin palauttamista."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Markdown-ilmoitusteksti ja mallimuuttujan merkintä",
+          "caption": "Luonnos näyttää oletusarvoisen Markdown-rungon ja muuttujat. Mallia ei ole lähetetty tai ilmoitusta toimitettu ulkoisesti."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Mallit ja tekoälyn työnkulkuavustaja",
+    "summary": "Aloita mallista tai pyydä tekoälyä ehdottamaan vaiheita ja vahvistamaan, mitä sovelletaan.",
+    "sections": [
+      {
+        "title": "Käytä ja tallenna malleja",
+        "steps": [
+          "Avaa työnkulkumalleja kankaalle, hae nimiä tai kuvauksia ja tarkista kunkin mallin tarkoitus ja askelmäärä.",
+          "Valitse sopiva malli ja vahvista. Käyttöönotto korvaa jokaisen vaiheen ja yhteyden nykyisellä kankaalla.",
+          "Tarkista jokaisen vaiheen moottori, malli, kysy ja tarkista vaatimukset, mukauta niitä ja tallenna.",
+          "Jos haluat käyttää malliasi uudelleen, valitse Tallenna nykyinen työnkulkumallina ja anna nimi ja kuvaus. Hallitse muokattavia mukautettuja malleja kohdassa Asetukset → Työnkulkumallit."
+        ],
+        "tips": [
+          "Uudet projektit eivät luo automaattisesti työnkulkuja, eivätkä uudet työnkulut automaattisesti käytä malleja.",
+          "Sisäisiä malleja ei voi poistaa. Kun olet asentanut sellaisen, varmista silti, että sen vaaditut moottorit ovat saatavilla."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Sisäänrakennettu sopimushallinnan tulos kanvasmallihakuun",
+          "caption": "Hae sopimushallintaa nähdäksesi sen tarkoituksen ja askelmäärän. Tarkista korvaava laajuus ennen valintaa."
+        }
+      },
+      {
+        "title": "Pyydä tekoälyä luomaan tai muokkaamaan työnkulkua",
+        "steps": [
+          "Avaa tekoälyn työnkulkuavustaja kankaalle ja valitse ensin määritetty moottori ja malli.",
+          "Selitä tavoite, vaiheiden erittely, tulosmuoto ja tarkistustarpeet, esimerkiksi: Luo vaatimusanalyysi → toteutus → testaus, manuaalinen tarkistus jokaisessa vaiheessa, käyttämällä asennettua SDK:ta.",
+          "Vertaa ehdotuskortteja otsikon, askelmäärän ja yhteenvedon perusteella ja lisää sitten sopiva ehdotus kankaalle.",
+          "Tarkista nykyisten työnkulkujen vaihemuutokset. Valitse Käytä muutokset -kohdassa haluamasi lisäykset, päivitykset tai poistot, ota sitten käyttöön ja tallenna."
+        ],
+        "tips": [
+          "Tekoälyehdotukset vaativat vahvistuksesi. Pelkästään sukupolven menestys ei ole syy niiden käyttöön: tarkasta liitännät, moottorit ja tarkista kriteerit."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Kaksivaiheinen ehdotuskortti tekoälytyönkulun avustajalta",
+          "caption": "Kortti näyttää muokattujen vaiheiden lukumäärän ja Ota muutokset käyttöön. Napsauta vahvistaaksesi tietyt vaiheen muutokset."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Luo ja hallitse tehtäviä",
+    "summary": "Työnkulku määrittelee kuinka työskennellä; tehtävä määrittää, mitä tällä kertaa tehdään.",
+    "sections": [
+      {
+        "title": "Valmistele useita tehtäviä tehtäväavustajan kanssa",
+        "steps": [
+          "Avaa tehtäväavustaja tehtäväsivulla. Pyydä nimenomaisesti useita tehtäviä yksittäisillä ajoilla, esimerkiksi: Luo kolme itsenäistä tehtävää alkaen huomenna klo 09:00, 10:00 ja 11:00.",
+          "Tarkista jokaisen luonnoksen otsikko, sisältö, työnkulku, aloitusvaihe ja ajoitettu aloitusaika ja vahvista sitten luominen käyttöliittymän kautta.",
+          "Palaa tehtäväluetteloon ja tarkista jokainen tulos. Jos jotkut epäonnistuvat, tarkista olemassa olevat tehtävät ennen kuin lähetät koko erän uudelleen."
+        ],
+        "tips": [
+          "Luonnosten luominen ei luo tai suorita tehtäviä. Määritä aikavyöhykkeet tulevia aikoja varten; ajoitettu käynnistys edellyttää, että taustajärjestelmä pysyy käynnissä."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Erätehtäväluonnokset ja niiden yksittäiset ajoitetut ajat",
+          "caption": "Todellinen kuvakaappaus odottaa: eräluonnokset ja yksittäiset ajat. Vanha yhden tehtävän luonnos ei saa korvata sitä."
+        }
+      },
+      {
+        "title": "Luo tehtävä ja anna tekoälyn järjestää vaatimukset",
+        "steps": [
+          "Valitse projekti ja työnkulku, avaa sen tehtäväsivu ja napsauta sitten Uusi tai Lisää sopivassa vaiheessa.",
+          "Anna otsikko ja kuvaus konteksti, tavoitteet, sallitut muutokset, tulostuspolut ja hyväksymisehdot. Markdown ja liitetyt viitekuvat ovat tuettuja.",
+          "Avaa tarvittaessa Tehtäväavustaja, tarkista sen luoma otsikko, sisältö ja työnkulkuvalinta ja vahvista sitten.",
+          "Tarkista aloitusvaihe ja tarkista tämän ajon asetukset ja luo sitten tehtävä. Kun automaattinen käynnistys on poistettu käytöstä, napsauta Aloita tehtävä."
+        ],
+        "tips": [
+          "Esimerkki: Lue README ja luo docs/getting-started.md muuttamatta ohjelmakoodia. Sisällytä asennus, käynnistys ja kolme yleistä kysymystä.",
+          "Luominen ja käynnistys ovat erillisiä toimintoja; käynnistystila ja vaiheasetukset määräävät, alkaako suoritus välittömästi."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Tehtävien luontilomake, jossa tehtäväavustaja on laajennettu",
+          "caption": "Kirjoita otsikko ja kuvaus ja valitse käynnistystila. Assistentti voi järjestää vaatimukset; tarkistusasetukset ovat toisella välilehdellä."
+        }
+      },
+      {
+        "title": "Etsi tehtäviä taululta tai pöydältä",
+        "steps": [
+          "Vaihda kaistan ja taulukon välillä tehtäväsivulla, tarkasta tehtävät vaiheittain ja hae otsikon mukaan.",
+          "Napsauta tehtävää avataksesi tiedot, mukaan lukien sen nykyinen vaihe, tila, luoja ja päivitysaika.",
+          "Arkistoi valmiit tehtävät halutessasi. Etsi ne Näytä arkisto -kohdasta ja palauta ne taululle. Tarkista valinnat ennen joukkotoimintoja."
+        ],
+        "tips": [
+          "Jono tarkoittaa yleensä sitä, että samanaikaisuuskapasiteetti on täynnä. Tarkistuksen odottaminen vaatii vahvistuksen; se ei tarkoita, että sovellus olisi jumissa.",
+          "Poistaminen on eri asia kuin arkistointi. Lue vahvistus ennen pysyvää poistamista."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Tehtävätaulu näyttää tilat ja vaiheet",
+          "caption": "Esittelytehtävä on valmis. Työkalupalkin merkinnät sisältävät näkymät, työnkulun koukut, arkisto ja Avaa hakemisto. Luontiaika on kortin alla; kopiointi käsitellään seuraavaksi."
+        }
+      },
+      {
+        "title": "Muokkaa vain nykyisen tehtävän työnkulkua",
+        "steps": [
+          "Avaa tehtävän tiedot ja napsauta Muokkaa tehtävän työnkulkua edistymiskaavion alla. Lopeta suoritus tai tarkista ensin; kangas on vain luku -tilassa aktiivisena.",
+          "Muuta tämän tehtävän vaihekehotteita, moottoreita, malleja ja arvosteluja. Lisää vaiheita, liitä artefakteja loppuun ja säädä yhteyksiä. Olemassa olevia vaiheita, tuloportteja ja alkuperäisiä artefakteja ei voi poistaa tai nimetä uudelleen.",
+          "Tallenna päivittääksesi edistymiskaavion. Seuraava käynnistys yhdistää uusimman päätyönkulun tehtäväkohtaisiin eroihin muuttamatta päätyönkulkua tai muita tehtäviä.",
+          "Tyhjennä kaikki mukautukset valitsemalla Synkronoi päätyönkulku ja vahvistamalla. Lisätyt vaiheet poistuvat nykyisestä työnkulusta, mutta historialliset viestit, artefaktit ja suoritustietueet säilyvät. Tämä ei aloita suoritusta."
+        ],
+        "tips": [
+          "Täydellistä työnkulun kopiota ei tehdä ilman varsinaisia ​​muutoksia. Ohitamattomat kentät perivät päätyönkulun päivitykset; tehtävien ohitukset ovat etusijalla.",
+          "Vaiheen valitseminen säveltäjästä ja sen moottorin vaihtaminen tallentaa sen kyseiseen tehtävään. Nollausvaihe nollaa vain seuraavan ajon istunnon, ei päätyönkulun moottoria.",
+          "Yhteyksien poistaminen muuttaa riippuvuuksia ja voi mahdollistaa suoran suorituksen; se ei tee askelmanuaalia."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Tehtäväkohtaiset työnkulun muokkaus- ja synkronointimerkinnät",
+          "caption": "Esittelytehtävän erillinen kangas näyttää kanavanvaihtotilan, Synkronoi päätyönkulun ja Tallenna. Asetuksia ei muutettu tai suoritusta ei aloitettu."
+        }
+      },
+      {
+        "title": "Kopioi tehtävä",
+        "steps": [
+          "Napsauta tehtävän vieressä olevaa Kopioi tehtävä -kuvaketta kortissa tai taulukossa.",
+          "Tarkista uusi tehtävä nimeltä (kopioi), tarkista sen kuvaus, työnkulun mukauttaminen ja aloitusvaihe ja suorita se. Kopioidut vaiheet alkavat odottaa; alkuperäistä edistymistä ja keskusteluhistoriaa ei kopioida."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Kopioi tehtäväkuvake tehtävän nimen viereen taulukkonäkymässä",
+          "caption": "Pieni kuvake nimen vieressä on kopiomerkintä. Tässä kuvassa ei kopioitu tai aloitettu tehtävää."
+        }
+      },
+      {
+        "title": "Hallitse tehtäviä puhelimella",
+        "steps": [
+          "Avaa tiedot napauttamalla tehtäväriviä. Pidä noin puoli sekuntia avataksesi sen toimintavalikon. hiiren oikea napsautus toimii myös.",
+          "Oikeuksien mukaan voit aloittaa, muokata tai katsella, kopioida, arkistoida, palauttaa ja poistaa. Käynnissä olevia, jonossa olevia tai aktiivisia vaiheita sisältäviä odottavia tehtäviä ei voi arkistoida tai poistaa. Käsittele vahvistukset tai pysäytä suoritus ensin; lue poistovahvistus.",
+          "Kun kaikki työnkulun vaiheet on suoritettu ja läpäissyt, tehtävässä näkyy Valmis, myös tietojen uudelleenavaamisen tai uudelleenkäynnistyksen jälkeen. Suorittaminen ei arkistoi tehtävää; valita, arkistoidaanko se."
+        ],
+        "tips": [
+          "Sormen vierittäminen tai liikuttaminen peruuttaa pitkän painalluksen tahattomien toimien välttämiseksi. Vain luku -oikeus voi silti avata katselumerkintöjä ilman muokkausoikeuksia."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Arkistoi ja poista -valikko tehtäväriville, jonka koko on 390 kuvapistettä",
+          "caption": "Kaapattu valmiista tehtävästä v1.0.13:ssa; mitään ei arkistoitu tai poistettu, eikä valmistumista näytetä. Äskettäin lisätyt aloitus-, muokkaus- ja kopiointimerkinnät tarvitsevat edelleen päivitetyn kuvakaappauksen."
+        }
+      },
+      {
+        "title": "Palaa tehtäviin tai istuntoihin viimeaikaisista keskusteluista",
+        "steps": [
+          "Etsi vierailemasi tehtävä tai istunto sivupalkista Viimeaikaisista keskusteluista (最近聊天) ja palaa alkuperäisiin projektin tietoihin napsauttamalla. Molemmat lajikkeet näkyvät täällä.",
+          "Tarkista käynnissä, epäonnistuneet ja valmiit-lukemattomat ilmaisimet. Asiaankuuluvien yksityiskohtien avaaminen poistaa tämän lukemattoman merkinnän. Valtuutetuilla tiedoilla on arkisto- tai poistovalikot; lue vahvistukset.",
+          "Kutista projektit tai viimeisimmät keskustelut työpöydällä, vaihda niiden järjestystä vetämällä otsikoita ja muuta niiden kokoa vetämällä jakajaa. Palauta oletussuhde kaksoisnapsauttamalla jakajaa."
+        ],
+        "tips": [
+          "Viimeaikaiset käynnit säilyttävät enintään 20 kohdetta tämän selaimen laitetunnuksen alla. Selaimen tietojen tyhjentäminen poistaa tämän indeksin, ei tehtävän sisältöä. Historialliset merkinnät eivät ohita projektin valtuutusta.",
+          "Arkistointi, poistaminen ja lukemattoman tilan tyhjentäminen vaikuttavat eri tavalla. Jos vanha linkki epäonnistuu, tarkista, että projekti ja istunto ovat edelleen olemassa ja että yhteys toimii."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Yksi esittelytehtävävierailu Viimeaikaisissa keskusteluissa",
+          "caption": "Sivupalkissa näkyy yksi esittelytehtäväkäynti ilman istuntomerkintöjä tai lukemattomia esimerkkejä."
+        }
+      },
+      {
+        "title": "Avaa navigointi mobiiliselaimessa",
+        "steps": [
+          "Avaa WorkStep puhelimen selaimessa ja napauta pyöreää navigointikuplaa sivun reunassa laajentaaksesi saman sivupalkin navigoinnin kuin työpöydällä.",
+          "Valitse projekti, työnkulku, tehtävä tai keskustelu jatkaaksesi. Napauta kuplaa uudelleen tiivistääksesi navigoinnin.",
+          "Jos kupla peittää sisällön, pidä se painettuna ja vedä se näkymän tyhjään kohtaan. Vetäminen ei vaihda navigointia."
+        ],
+        "tips": [
+          "Kupla näkyy vain tavallisissa mobiiliselaimissa. Työpöytä- ja Android-sovellukset käyttävät omia navigointimerkintöitään."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Navigointikupla ja laajennettu sivupalkki puhelimen selaimessa",
+          "caption": "Laajennettu sivupalkki 390 pikseliä, pyöreä kupla oikealla tiivistääksesi sen. Vain yksittäiset esittelyprojektit näytetään."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Toteutus, hyväksynnät ja arvioinnit",
+    "summary": "Ymmärrä ajonaikaiset tilat, käsittele lupapyyntöjä ja päätä, voivatko lähdöt siirtyä seuraavaan vaiheeseen.",
+    "sections": [
+      {
+        "title": "Tarkista toteutus- ja lupapyynnöt",
+        "steps": [
+          "Avaa tehtävän tiedot ja tarkasta edistymiskaavio ja chat-tietueet tunnistaaksesi aktiivisen vaiheen.",
+          "Laajenna prosessitietueita tarkastaaksesi työkalukutsut, tulokset ja virheet. Laajenna aliagenttitietueet, kun moottori raportoi niistä.",
+          "Kun viestit sisältävät tiedostomuutoksia, laajenna luettelo ja tarkastele tallennettuja eroja. Nämä kuvaavat viestin muutoksia; tiedoston avaaminen näyttää sen nykyisen sisällön, joka myöhemmissä muokkauksissa on saattanut muuttua. Ilman tallennettua eroa nykyinen sisältö ei voi rekonstruoida koko historiaa.",
+          "Kun työkalun hyväksyntä tulee näkyviin, lue komento, polut ja vaikutus ennen sallimista tai kieltämistä. Vastaa kysymyksiin käyttämällä toimitettuja vaihtoehtoja tai pyydettyä syötettä.",
+          "Jos tehtävä epäonnistuu, lue ensin sen uusin virhe ja tarkista sitten moottorin kokoonpano, mallin käyttöoikeudet, verkko ja projektihakemisto toistuvien uudelleenyritysten sijaan."
+        ],
+        "tips": [
+          "Hyväksyntä näkyy vain, kun moottori pyytää sitä. Prosessitiedot ja lupavalinnat vaihtelevat moottorin mukaan; puuttuvat tiedot eivät tarkoita, että suoritusta ei olisi tapahtunut.",
+          "Pyörivä kuvake osoittaa asynkronisen työn. Kun odotat käyttäjää, käsittele nykyinen kysymys tai hyväksyntä."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Vaiheen edistyminen ja toteutustiedot tehtävän tiedoissa",
+          "caption": "Edistymistä ja toteutusta koskevat tiedot ovat näkyvissä. Lupapyyntöä ei näytetä; hyväksynnät näkyvät vain, kun moottori todella pyytää niitä."
+        }
+      },
+      {
+        "title": "Hyväksy, hylkää tai lopeta arvostelu",
+        "steps": [
+          "Kun odotat manuaalista tarkistusta, tarkasta tulosteen artefaktit, tarkista tulokset, tiedostot ja testitulokset hyväksymiskriteerien perusteella.",
+          "Jos olet tyytyväinen, napsauta Hyväksy ja jatka. Muussa tapauksessa anna tietty palaute ja valitse Hylkää ja tee uudelleen.",
+          "Tarkista sen tiedot automaattisen tarkistuksen aikana. Hylkääminen laukaisee määritetyt uudelleenajot; tarkistusvirheet tai manuaalista käsittelyä koskevat pyynnöt edellyttävät päätöstäsi.",
+          "Jos suoritusta ei enää haluta, valitse Lopeta ja vahvista vahvistus. Pakota hyväksyntä ohittaa nykyisen tarkistuksen, joten tarkista ensin, että tulosteet ovat käyttökelpoisia."
+        ],
+        "tips": [
+          "Tehtävä voi jatkua odottavista vahvistuksista huolimatta. Vie työpöydällä osoitin lukumäärän päälle nähdäksesi vaiheet ja syyt, ja käsittele tarkistus, työkalulupa tai kysymys kyseisessä vaiheessa. Ilman muuta suoritettavaa haaraa tehtävä odottaa. Manuaalinen pysäytys, epäonnistuminen ja valmistuminen erotetaan; prosessin loppu ei tarkoita hyväksyntää."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Manuaalinen tarkistuspalaute ja hyväksyntä-/hylkäyspainikkeet",
+          "caption": "Tarkista tulokset, esineet ja toimintamerkinnät."
+        }
+      },
+      {
+        "title": "Koordinaattorin kiinteät säännöt ja ajankohtaiset viestit",
+        "steps": [
+          "Avaa tehtävän tiedot, valitse säveltäjästä Koordinaattori, valitse Codex SDK-moottori ja kysy tehtävään liittyvä kysymys, kuten: Mikä vaihe on kesken?",
+          "Jatka samassa koordinaattoriistunnossa. Tehtävän tila ja nykyinen lähettäjän päivitys vuorokohtaisena kontekstina; kiinteät koordinaattorisäännöt säilyvät istuntohistoriassa.",
+          "Käytä kehittäjätilaa virheenkorjaukseen todellisten syöttötietueiden sisältävien viestien tarkastamiseen. Muuttumattomia kiinteitä sääntöjä, jotka on vahvistettu säilytetyiksi kyseisessä istunnossa, ei syötetä erikseen uudelleen."
+        ],
+        "tips": [
+          "Vanhemmat istunnot voivat saada yhden ensimmäisen uudelleeninjektion päivityksen jälkeen. Uudet säännöt, uudet istunnot, puuttuva historia tai epävarma säilytys tiivistyksen jälkeen aiheuttavat uudelleeninjektion. Pyynnöt voivat edelleen käyttää historian sääntöjä; uuden injektion väliin jättäminen ei tarkoita, etteikö sääntöjä olisi."
+        ]
+      },
+      {
+        "title": "Lisää tiedot koordinaattorin vastauksen aikana",
+        "steps": [
+          "Valitse vastaanottajaksi Koordinaattori ja lähetä lisäohjeet, kun se vastaa. He siirtyvät nykyisen vastauksen odottavaan lisäysjonoon.",
+          "Tarkista, muokkaa, järjestä uudelleen tai poista lähettämättömät merkinnät tai lähetä valitut välittömästi. Useat valitut merkinnät yhdistetään järjestyksessä. Jäljellä olevat merkinnät jatkuvat automaattisesti seuraavaan vuoroon nykyisen vastauksen päätyttyä; älä lähetä toistuvasti.",
+          "Jos sinulle kerrotaan, että viesti on jo lähetetty tai poistettu, päivitä ja tarkista jono sen sijaan, että lähetät erän uudelleen."
+        ],
+        "tips": [
+          "Koordinaattori- ja askeljonot ovat erillisiä. Tarkista ensin vastaanottaja. Pysäytys ei peruuta jo suoritettuja työkalutoimintoja."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Odottavat viestit koordinaattorin vastauksen aikana",
+          "caption": "Todellinen kuvakaappaus odottaa: Koordinaattorin vastaanottaja, lisäviestit suorituksen aikana ja jatkojono."
+        }
+      },
+      {
+        "title": "Täydennä, lopeta ja toista",
+        "steps": [
+          "Tarkista vastaanottaja ennen kirjoittamista. Koordinaattori käsittelee kysymyksiä ja toimintapyyntöjä; vain tietty vaihe saa syötteen kyseisen vaiheen suorituskontekstiin.",
+          "Viestit käynnissä olevaan vaiheeseen kirjoita Lisää viestit. Muokkaa, tilaa uudelleen, lähetä heti tai lähetä kaikki; lähettämättömät viestit voivat laukaista toisen kierroksen suorituksen päätyttyä.",
+          "Kun olet lopettanut vaiheen, lähetä sille selkeät lisäohjeet ja suorita uudelleen noudattamalla ohjeita.",
+          "Voit muuttaa tätä tehtävää muokkaamalla ja tallentamalla vaihekehotteita, moottoreita tai tarkista asetuksia. Ohitukset tulevat voimaan seuraavan suorituksen jälkeen; Ohitamattomat kentät yhdistävät päätyönkulun seuraavan käynnistyksen yhteydessä. Tyhjennä kaikki mukautukset vahvistamalla Synkronoinnin päätyönkulku."
+        ],
+        "tips": [
+          "Koordinaattorin kirjoittajan moottorin muuttaminen vaikuttaa vain seuraaviin koordinaattoriviesteihin, ei työnkulun vaihemoottoreihin.",
+          "Jos uudelleenajo vaikuttaa muihin aktiivisiin vaiheisiin, tarkista vaikutuksen vahvistus ja uudelleenkäynnistyksen laajuus. Jos alkuperäiset istuntotietueet katoavat, suorita uusi istunto uudelleen noudattamalla kehotteita."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Askelvastaanottaja ja lisäluonnos valmiissa tehtävässä",
+          "caption": "Suorita tehtävä on valittu säveltäjästä. Lisäviestiä ei ole vielä lähetetty; lisäysjonoa ei näytetä."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artefaktit, suoritusanalyysi ja projektimuisti",
+    "summary": "Tarkista toimitetut tiedostot, ymmärrä kulutusta ja säilytä uudelleenkäytettäviä oppitunteja.",
+    "sections": [
+      {
+        "title": "Tarkista tulot, lähdöt ja artefaktitiedostot",
+        "steps": [
+          "Avaa vaiheen tulot ja lähdöt tehtävän tiedoissa tarkistaaksesi käytettävissä olevat tulot ja valmiit lähdöt.",
+          "Napsauta Näytä tiedostoa varten tai avaa artefaktiselain ja vaihda vaiheittain ja suorituskierroksittain.",
+          "Esikatsele tiedostoja. Työpöydällä Avaa sisältävän hakemiston avulla voit tarkastella todellisia tiedostoja. Etäprojektitiedostot pysyvät isännässä, ja niitä tulee tarkastella verkkokäyttöliittymän kautta.",
+          "Vertaa oikeita kierroksia, kun suoritat uudelleen. Sama kuin pyöreä… tarkoittaa identtistä sisältöä, ei sitä, että toteutusta ei tapahtunut."
+        ],
+        "tips": [
+          "Jos artefakti puuttuu, tarkista, onko tiedosto luotu, vastaako sen tulosilmoitus ja suoritusviestit."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Tehtävän artefaktit ryhmitelty vaiheittain",
+          "caption": "Vaatimusanalyysi ja Suorita tehtävä listaavat kukin yhden ensimmäisen kierroksen artefaktin. Avaa sen tiedosto tai hakemisto."
+        }
+      },
+      {
+        "title": "Tarkista paikalliset ajonaikaiset resurssit",
+        "steps": [
+          "Syötä työtila paikallisen localhost-palvelimen tai takaisinkytkentäosoitteen kautta ja sitten Tilastot → Järjestelmän ajonaika (数据统计 → 系统运行). Tavalliset etäselaimet ja Gateway-työtilat eivät näytä tätä välilehteä.",
+          "Tarkista CPU, muisti, levytilakokoonpano, verkkonopeudet ja resurssit, säikeet ja tiedostokuvaajat tai -kahvat WorkStep-taustajärjestelmälle ja lapsille.",
+          "Valitse trendimittarit ja tarkista näytteenottoajat. Keskeytä, jatka tai päivitä näyttö manuaalisesti. Odota ensimmäisen keräämisen aikana ja yritä uudelleen epäonnistuneita lukuja."
+        ],
+        "tips": [
+          "Tilastot kattavat nykyisen taustaympäristön ja lapset, lukuun ottamatta työpöydän kuorta. Säilön mittaukset eivät ole täydellisiä isäntäkoneen resursseja.",
+          "Oletusarvot ovat noin viiden sekunnin näytteenotto ja 30 minuutin historia; sivulla on todelliset arvot. Näytön päivityksen keskeyttäminen ei pysäytä tehtäviä. Ei saatavilla olevat mittarit ja aukot eivät ole nollia; vanhat näytteet säilytetään ja merkitään vanhentuneiksi. Kuvausvaroitukset osoittavat resurssipainetta, eivät automaattista korjausta."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Järjestelmäresurssitilastot otettu nykyisen version mukaan",
+          "caption": "Paikalliset resurssit ja taustajärjestelmän näytteenoton tila. Mikään moottorin aliprosesseja ei ollut käynnissä, joten tämä ei näytä tehtävän suorittamisen kulutusta."
+        }
+      },
+      {
+        "title": "Tarkista kesto, merkit ja hinta",
+        "steps": [
+          "Avaa suoritusanalyysi tehtävän tiedoista tarkastaaksesi kokonaiskeston, askelyritykset, tunnukset ja kustannukset.",
+          "Valitse juoksukierros ja napsauta sen moottorin, mallin ja käytön aikajanan segmenttiä.",
+          "Koko projektin tiedot saat avaamalla Tilastot. Arvioi kustannukset pitämällä mallihintoja toimittajan tai moottorin mukaan kohdassa Asetukset → Malliasetukset."
+        ],
+        "tips": [
+          "Ilmoittamattomasta käytöstä ei tule automaattisesti tarkkaa lukua. Tarkista peitto ja arvioidut tarrat; mallipalvelulasku on pätevä."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Toteutus-analyysikierrokset ja aikajana",
+          "caption": "Kesto, kattavuus ja kustannuslähdeindikaattorit."
+        }
+      },
+      {
+        "title": "Säästä muistia ja arkistoi oppitunteja",
+        "steps": [
+          "Napsauta tehtäväsivulla Muisti. Muokkaa MEMORY.md projektitietohakemistossa lyhyiksi, konkreettisiksi pitkän aikavälin säännöiksi ja tallenna.",
+          "Kun arkistoit yhtä tehtävää, valitse suora arkistointi tai järjestä virhetunteja. Tarkista tekoälyluonnos ja vahvista kirjoitusmuisti ja arkistointi.",
+          "Käytä arkistoluetteloa käydäksesi uudelleen historiassa. Kun olet palauttanut arkistoidun tehtävän, tarkista vaaditut ulkoiset sidokset uudelleen."
+        ],
+        "tips": [
+          "Joukkoarkistointi ei poimi oppitunteja yksittäin. Tehtävän arkistointi tai poistaminen poistaa sen kanavaryhmäsidokset. sen palauttaminen ei palauta vanhoja sidoksia."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Projektimuistieditori, joka sisältää esittelykonventioita",
+          "caption": "Muokkaa ja tallenna käytäntöjä .workstep/MEMORY.md.:ssa Arkiston oppitunnin vahvistusta ei näytetä."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Projektikeskustelu ja taidot",
+    "summary": "Tee yhteistyötä suoraan projektin yhteydessä ja valitse, mitä paikallisia taitoja projekti voi käyttää.",
+    "sections": [
+      {
+        "title": "Työskentele useiden projektikeskustelujen kanssa",
+        "steps": [
+          "Avaa työpöydän leveydellä tavallinen projektikeskustelu ja valitse Uusi keskustelu -kohdan oikealta puolelta Keskusteluikkunat (对话窗口) → Lisää keskusteluikkuna (增加对话窗口).",
+          "Vedä keskustelu sivupalkista tai Viimeisimmät keskustelut keskustelualueelle. Valtuutetut projektit voivat olla sekoitettuja, enintään 4 ruutua; jo avoimen keskustelun pudottaminen keskittää sen ruudun. Tehtävätietueita ei voi vetää sisään keskusteluina.",
+          "Napsauta paneelia, jota haluat käyttää, ennen kuin valitset sivupalkin keskustelun. Jokainen ruutu säilyttää omat projektinsa, istunnon, luonnoksen ja moottorin asetukset; tarkista projekti ja istunto ennen lähettämistä.",
+          "Valitse Keskusteluikkunat → Keskustelujärjestely (对话排列) ja sitten vaaka- tai pystysuora. Muuta kokoa vetämällä erotinta. tarkenna se ja käytä nuolinäppäimiä näppäimistön koon muuttamiseen.",
+          "Kun on useita ruutuja, × sulkee vain kyseisen ruudun keskeyttämättä tai poistamatta keskustelua. Käytä keskustelun Pysäytä-painiketta lopettaaksesi luomisen."
+        ],
+        "tips": [
+          "Kaksoisnapsauta työpöydällä sivupalkin keskustelua tai sen otsikon otsikkoa avataksesi jaetun uudelleennimeämisikkunan, kirjoita ja vahvista nimi.",
+          "Mobiilissa näkyy vain aktiivinen paneeli, muut säilyvät. Siirtyminen muualle ja takaisin saman sivuistunnon aikana palauttaa paneelit, asettelun ja koot; selaimen päivityksen jälkeen palautusta ei taata. Asettelu erotetaan tilin ja laitteen mukaan eikä keskustelusisältöä kopioida."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Työpöydän keskusteluruudut projektien ja järjestelyvalikon välillä",
+          "caption": "Todellinen kuvakaappaus kiinteästä esittelyprojektista odottaa: keskusteluikkunan valikko, useita ruutuja ja vedettävä erottimet."
+        }
+      },
+      {
+        "title": "Lataa rooli tai asiantuntijatiimi chattiin",
+        "steps": [
+          "Valmistele roolikehotteet tai asiantuntijatiimin jäsenet ja vastuut kohdassa Asetukset → Roolikeskus.",
+          "Avaa tavallinen chat paikallisessa projektissa. Käytä + → Rooli / Asiantuntijatiimi, etsi luokkia tai avainsanoja, esikatsele ja lataa keskusteluun. Valitse esimerkiksi Code Reviewer ja lähetä sitten tietty tarkistuksen laajuus.",
+          "Tarkista ladattu nimi säveltäjästä. Valinta ei lähetä viestiä. Sidonta tallennetaan istunnon mukana ja palautetaan päivityksen jälkeen; uudet istunnot alkavat sitomattomina. Napsauta nimeä tarkistaaksesi tai vaihtaaksesi sen tai poistaaksesi sen."
+        ],
+        "tips": [
+          "Et voi vaihtaa juoksemisen aikana. Luku- tai tallennusvirheet säilyttävät nykyisen valinnan; yritä uudelleen pyydettäessä. Valitse puuttuvat roolit uudelleen. Vain lataaminen muuttaa istunnon sitomista; Lähetä konkreettinen kysymys mallin käyttämiseksi.",
+          "Asiantuntijaryhmät siirtävät jäsenten kehotteet ja vastuut nykyiselle mallille; ne eivät käynnistä itsenäisiä moottoreita. Tehtäviä, työnkulun vaiheita, kanavia, etäprojekteja ja projektikohtaisia ​​lippuja ei ole integroitu. Täyden laitteen Gateway-työtila voi käyttää tätä paikalliseen projektiin."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Code Reviewer -haku ja esikatselu tavallisessa chatissa",
+          "caption": "Code Reviewer valitaan tyhjästä esittelykeskustelusta. Sen kehote ja latauspainike ovat näkyvissä; roolia ei ladattu tai viestiä lähetetty."
+        }
+      },
+      {
+        "title": "Avaa projektimuisti puhelimessa",
+        "steps": [
+          "Avaa projektitehtäväluettelo, valitse oikeassa yläkulmassa Lisää ja sitten Muisti.",
+          "Kirjoita muistieditoriin lyhyet käytännöt, kuten Suorita projektitestejä ennen sitoutumista. Tarkista ja tallenna; tämä koskee koko hanketta."
+        ],
+        "tips": [
+          "Valitsemalla Muisti romahtaa Lisää. Napsauta työpöydällä Muisti suoraan tehtäväsivulta."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Muistimerkintä 390 kuvapisteen tehtäväsivun Lisää-valikossa",
+          "caption": "Mobiilitehtäväluettelon laajennettu Lisää-valikko sisältää Muisti. Napsauttaminen avaa sen editorin; mitään muistia ei ole muutettu tässä."
+        }
+      },
+      {
+        "title": "Luo keskusteluja ja muuta asetuksia",
+        "steps": [
+          "Luo tavallinen istunto projektin Keskustelut-osioon vasemmalla. Valitse sen moottori, toimittaja, malli ja lupatila. Aloita vahvistetulla SDK:lla.",
+          "Kirjoita konkreettinen pyyntö. Syötä lähettää; Shift+Enter lisää rivinvaihdon. Liitä tai liitä viitekuvia vasta, kun olet tarkistanut moottorin kuvien tuen.",
+          "Pysäytä vastaus tarvittaessa luomisen aikana. Lisää lisättyjä viestejä jono, ja niiden järjestystä voidaan muuttaa.",
+          "Kun vaihdat moottoria tai tarjoajaa olemassa olevan kontekstin kanssa, valitse valintaikkunassa Älykäs kanavanvaihto, Täysi keskusteluhistoria tai Ei mitään. Aloita keskustelu itsenäistä tutkimista varten ja vahvista sen kontekstitila."
+        ],
+        "tips": [
+          "Projektikeskustelu tallennetaan erillään työnkulun tehtävätietueista. Luo tehtävä, kun tarvitset vaiheen seurantaa ja arvosteluja.",
+          "Alkuperäinen haarukka on käytettävissä vain, kun moottori todella tukee sitä. Muussa tapauksessa jatka eksplisiittisen kontekstin vaihdon kautta."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Projekti-chat-moottori, toimittaja ja mallivalikko",
+          "caption": "Määritä moottori, toimittaja, päättelymalli ja niihin liittyvät asetukset vain tälle keskustelulle. Käyttöoikeudet valitaan erikseen."
+        }
+      },
+      {
+        "title": "Ota taidot käyttöön ja järjestä keskusteluja",
+        "steps": [
+          "Avaa nykyisen projektin Asetukset → Osaamiskeskus, skannaa uudelleen ja hae nimen, kuvauksen tai lähdepolun perusteella.",
+          "Lue taitotarkoituksia ja ota käyttöön mitä tarvitset. Tarkista valittu alue ennen joukkomuutoksia. Taidot tallennetaan projektikohtaisesti ja niitä sovelletaan seuraavaan suoritukseen tai uuteen istuntoon.",
+          "Kirjoita / sisään säveltäjä valitaksesi nykyisen moottorin tarjoamat taidot. Listat vaihtelevat moottorin mukaan.",
+          "Käytä istuntovalikkoa nimeäksesi uudelleen tai arkistoidaksesi. Hae arkistoluettelosta ja palauta tarvittavat keskustelut."
+        ],
+        "tips": [
+          "Taitokeskus valitsee olemassa olevat paikalliset taidot. Jos niitä ei näy, tarkista ensin paikalliset lähteet. Etäprojektit eivät tällä hetkellä pysty hallitsemaan isännän paikallisia taitoja."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Ei tuloksia manuaalisen esittelyn haun jälkeen taitokeskuksessa",
+          "caption": "Taitokeskus tarjoaa nimihaun ja lähdesuodatuksen. Vastaavaa taitoa tai käyttöönottokytkintä ei näytetä."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Pikapainikkeet ja komentosarjatoiminnot",
+    "summary": "Muuta yleiset kehotteet, näytä sisältö ja projektiskriptit uudelleenkäytettäviksi painikkeiksi.",
+    "sections": [
+      {
+        "title": "Luo kehote- ja näyttöpainikkeita",
+        "steps": [
+          "Avaa Pikapainikkeet projektin määrityksissä, lisää painike ja valitse sen tyyppi.",
+          "Kirjoita kehotteeseen sen otsikko ja kehote ja valitse, lähetetäänkö se heti napsauttamalla, esimerkiksi: Tarkista nykyiset muutokset ja luettele peittämättömät hyväksymisehdot.",
+          "Syötä näyttöä varten sisältö ja esikatsele sen turvallista HTML-renderöintiä. Tämä tyyppi ei lähetä viestejä.",
+          "Tallenna ja palaa keskusteluun tai tehtävään tarkistaaksesi painikkeen. Järjestä uudelleen vetämällä asetusluetteloa. Työnkulun asetukset ohjaavat perittyjä projektipainikkeita; vaihepainikkeet konfiguroidaan erikseen."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Projektipainikkeen periytyminen ja merkinnän lisääminen työnkulun pikapainikkeisiin",
+          "caption": "Valitse perittävät projektipainikkeet ja lisää työnkulkupainikkeet vasemmalle. Painikkeen sisältöä ei ole syötetty."
+        }
+      },
+      {
+        "title": "Määritä ja suorita toiminto",
+        "steps": [
+          "Lisää toimintotyyppi, kirjoita sen toimintotunnus ja valitse komentosarja sitä vastaavasta toimintohakemistosta.",
+          "Valitse suoritushakemisto: projekti, työnkulun tehtävähakemisto tai komentosarjan valitsema Git-työtila. Esikatsele ja tarkista käsikirjoitus.",
+          "Ota vahvistus käyttöön ennen toimintoja, jotka muokkaavat tiedostoja tai ulkoista tilaa. Määritä vahvistuskehote syötettä varten, kuten vahvistusviestit; komentosarja vastaanottaa sen WORKSTEP_ACTION_INPUT:n kautta.",
+          "Tallenna ja napsauta painiketta, vahvista komentosarja ja hakemisto ja tarkista lähtö- ja poistumiskoodi. Käynnissä olevat toiminnot voidaan pysäyttää."
+        ],
+        "tips": [
+          "Pikatoiminnot suorittavat suoraan projektikomentosarjat. Ymmärrä komentosarja ja valitse ensin oikea hakemisto. Nykyisen toimintohakemiston ulkopuolella olevia tiedostoja ei voi valita mielivaltaisesti sen komentosarjaksi."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Toimintomääritys ilman komentosarjaa valittuna",
+          "caption": "Kentät sisältävät toimintotunnuksen, komentosarjan, suoritushakemiston ja vahvistuksen. Skriptiä ei suoritettu."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Aikataulutetut tehtävät",
+    "summary": "Luo uusia tehtäviä aikataulun mukaan tai lähetä ajoitettuja koordinaattorin ohjeita olemassa oleviin tehtäviin ja seuraa suoritusta ja ilmoituksia.",
+    "sections": [
+      {
+        "title": "Luo useita tehtäviä yhdestä aikataulusta",
+        "steps": [
+          "Luo projekti luo tehtäväaikataulun, valitse dynaaminen tekoäly ja määritä useiden tehtävien laajuus ja yksittäiset ajat. Valitse ehdokkaiden työnkulkuja.",
+          "Tarkista ensin jokainen luonnos Test Generation -toiminnolla ja tallenna sitten. Tehtäväkoordinaattorin ohjeet toimivat edelleen yhdessä valitussa tehtävässä eivätkä luo eriä.",
+          "Avaa käynnistämisen jälkeen jokainen luotu tehtävä suoritustietueista. Epäonnistuneet tietueet säilyttävät myös jo luodut tehtävät; tarkista syy ennen kuin luot korvaavia osia."
+        ],
+        "tips": [
+          "Tehtävän luominen ei tarkoita, että kaikki työnkulut ovat päättyneet. Älä suorita koko erää uudelleen osittaisen luomisen tai käynnistyksen epäonnistumisen jälkeen."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Ajoitettu erän sukupolven esikatselu ja useiden tehtävien ajotietueet",
+          "caption": "Todellinen kuvakaappaus odottaa: eräluonnokset ja jo luodut tehtävät osittaisen epäonnistumisen jälkeen."
+        }
+      },
+      {
+        "title": "Hallitse ajoitettuja ohjeita tehtävän tiedoista",
+        "steps": [
+          "Avaa tehtävän tiedot ja napsauta Bind BOT -kohdan vieressä olevaa kelloa; puhelimissa se on päävälilehtien oikealla puolella. Sen määrä sisältää tehtäväsäännöt paitsi valmiit kertaluonteiset säännöt, ei vain käytössä olevia sääntöjä. Tarkista keskeytetyt ja muut tilat luettelosta.",
+          "Tarkista tämän tehtävän säännöt ikkunassa. Muokkausluvalla voit lisätä, muokata, keskeyttää, jatkaa tai poistaa sääntöjä ja tarkastella ajotietueita. Uudet säännöt sitoutuvat automaattisesti nykyiseen tehtävään.",
+          "Syötä otsikko, taajuus ja koordinaattorin ohje, esimerkiksi: Tarkista edistyminen ja tee yhteenveto kymmenen minuutin välein. Tarkista pysäytystila ja tallenna. Kun suljet tallentamattomilla muokkauksilla, valitse jatkaa tai hylätä.",
+          "Vain luku -osuudet käyttävät samaa kelloa tämän tehtävän sääntöjen tarkistamiseen. Käyttöoikeuksilla voit käyttää nykyisen osakkeen tarjoamia hallintamerkintöjä."
+        ],
+        "tips": [
+          "Kertaluonteinen luettelo säilyttää valmiiden sääntöjen suoritusajat; tehtävämerkki sulkee ne pois, joten määrät voivat vaihdella."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Tehtävälaajuinen aikatauluikkuna avattiin tietokellosta",
+          "caption": "Säännön luominen kellosta lukitsee työnkulun ja tehtävän esittelytehtävään. Otsikko ja ohjeet ovat tyhjiä; mitään ei pelastettu tai toteutettu."
+        }
+      },
+      {
+        "title": "Luo kiinteä aikataulu",
+        "steps": [
+          "Avaa Ajoitetut tehtävät sivupalkin työkalukiskosta, valitse projekti-välilehti ja luo sitten Projekti luo tehtävien aikataulu. Valitse työnkulku, aloitusvaihe, otsikko ja sisältö.",
+          "Valitse kerran, päivittäin, viikoittain, kuukausittain, tunnin välein tai Cron. Tarkista aikavyöhyke, voimaantulopäivät ja seuraavan kerran esikatselu.",
+          "Valitse Seuraa työnkulkua, Välitön tai Manuaalinen suoritus ja aseta päällekkäisyyden käsittelyksi Ohita, Rinnakkais tai Jono.",
+          "Tarkista tarkistusasetukset ja tallenna. Tarkista lyhyen aikavälin kertaluonteinen aikataulu ennen kuin otat käyttöön pitkäaikaisen toistuvan suunnitelman."
+        ],
+        "tips": [
+          "WorkStep-taustajärjestelmän on oltava käynnissä aikataulujen käynnistämiseksi. Älä oleta, että ne laukeavat normaalisti, kun tietokone on lepotilassa tai taustaohjelma on pysäytetty."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Korjattu tehtävän sisältö, päivittäinen tiheys ja seuraavan suorituksen esikatselu",
+          "caption": "Aseta sisältö, tiheys, käynnistys- ja päällekkäisyyskäytäntö ja tarkista sitten tulevat suoritusajat."
+        }
+      },
+      {
+        "title": "Lähetä ajoitetut ohjeet olemassa olevaan tehtävään",
+        "steps": [
+          "Avaa Ajoitetut tehtävät sivupalkissa, valitse projekti ja vaihda uuden säännön tyypiksi Tehtäväkoordinaattorin ohjeet. Se toimii olemassa olevan tehtävän kanssa sen sijaan, että luo yksi joka kerta.",
+          "Kirjoita otsikko, suodata työnkulun mukaan ja etsi kohdetehtävä. Kirjoita konkreettinen ohje, kuten: Tarkista edistyminen ja raportoi, tarvitaanko ihmisen toimintaa; älä vahvista automaattisesti vaarallisia toimia. Tallennettuja sääntöjä ei voi palauttaa toiseen tehtävään.",
+          "Aseta kertaluonteinen tai toistuva suoritus, mukaan lukien muutaman minuutin välein. Tarkista seuraavan suoritusajan ajat ja valitse Jatka, kunnes se poistetaan manuaalisesti tai Pysäytä, kun tehtävä päättyy.",
+          "Etsi tallennettu sääntö kertaluonteisista tai toistuvista luetteloista. Suodata kohdetyypin ja tehtävätunnuksen mukaan. Avaa tehtävä ajotietueesta löytääksesi koordinaattorin vastauksen ja tarkistaaksesi ajoitetun viestin tilan sen historiassa."
+        ],
+        "tips": [
+          "Jokainen triggeri käyttää erillistä koordinaattoriistuntoa ja voi olla jonossa, kun tehtävä on varattu. Vahvistusta vaativat ehdotukset vaativat edelleen sinua. Yhden ajoitetun vastauksen pysäyttäminen pysäyttää vain kyseisen viestin; keskeytä tai poista sääntö käytöstä myöhempien liipaisujen estämiseksi.",
+          "Kohteen arkistointi tai poistaminen mitätöi säännön. Lopeta kun tehtävä päättyy, suoritettu, epäonnistunut tai pysäytetty päätetilat lopettavat sen. Taustajärjestelmän uudelleenkäynnistyksen keskeyttämiä suorituksia ei voida taata uudelleen. tarkasta tietueet ennen uudelleenlähetystä."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Tallentamaton tehtäväkoordinaattorin aikataululomake",
+          "caption": "Esittely toistuu kymmenen minuutin välein, kunnes se poistetaan manuaalisesti. Se on tallentamaton, ilman suoritustuloksia."
+        }
+      },
+      {
+        "title": "Määritä kanavan ilmoitukset ajoitettuja ajoja varten",
+        "steps": [
+          "Tarkista projektin aikataulussa tai tehtäväkoordinaattorisäännössä Notify-kanavabotti suorituksen jälkeen.",
+          "Valitse lähetyskykyinen botti ja keskustelu. Tehtävän sidottu ryhmä voidaan valita oletuksena, mutta tarkista se ennen tallentamista. Ilman kohdetta määritä ensin botti ja tehtäväsidonta tai poista ilmoitus käytöstä.",
+          "Tarkista ajotietueiden ilmoitusten tila ja epäonnistumisen syyt. Yritä ilmoitusvirheistä uudelleen suorittamatta tehtävää uudelleen. Jos toimitustuloksia ei tunneta, tarkista kanava ensin päällekkäisyyksien välttämiseksi."
+        ],
+        "tips": [
+          "Ajoitetut ilmoitukset ja työnkulku Webhookit määritetään erikseen. Onnistunut ajo ei todista toimitusta, eikä epäonnistunut ilmoitus tarkoita tehtävän epäonnistumista.",
+          "Tehtäväkoordinaattorin ilmoitukset tulevat tämän vastauksen jälkeen. Ilmoitus sen jälkeen, kun projektiaikataulu on luonut tehtävän, ei tarkoita, että koko työnkulku on valmis."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Kanavailmoitus ilman valittua kohdetta projekti-tehtävälomakkeessa",
+          "caption": "Ilmoitus on valittu, mutta bottia tai keskustelua ei ole valittu, joten tallennus ei ole käytössä. Mitään ei teloitettu tai lähetetty."
+        }
+      },
+      {
+        "title": "Tekoälyn dynaaminen generointi- ja suoritusennätyksiä",
+        "steps": [
+          "Muuta sukupolvi dynaamiseksi tekoälyksi, kuvaile, mitä luodaan joka kerta, korjaa valinnaisesti viiteotsikko ja valitse työnkulkuehdokkaat.",
+          "Määritä sukupolven uudelleenyritykset ja käytä Test Generation -toimintoa tarkistaaksesi, vastaako tulos odotuksia.",
+          "Tallenna ja suodata ajotietueet oikealla tilan mukaan. Tarkista laukaisuaika, epäonnistumisen tai ohituksen syyt ja avaa vastaava tehtävä.",
+          "Keskeytä aikatauluja, joita ei enää tarvita, ja poista sitten tarkistuksen jälkeen."
+        ],
+        "tips": [
+          "Tekoälyn sukupolven uudelleenyritykset, askeltarkistusuudelleenyritykset ja paluuyhteyden rajat ovat erillisiä asetuksia."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "Tekoälyn dynaaminen ajoitettujen tehtävien luontilomake",
+          "caption": "Syötä ohjeet, ehdokastyönkulut ja uudelleenyritysten määrä. Tehtävää ei ole luotu tai suoritettuja tietueita ei näy."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Git- ja tehtävätyötilat",
+    "summary": "Tarkista koodimuutokset, eristä rinnakkaiset tehtävät erillisiin työhakemistoihin, yhdistä ja työnnä työt sitten yhteen.",
+    "sections": [
+      {
+        "title": "Tarkista tiedostot, erot ja historia",
+        "steps": [
+          "Napsauta Git paikallisen tai yhdistetyn etäprojektin tehtäväsivulla ja valitse juuri tai löydetty alitietovarasto. Git-etätoiminnot suoritetaan isäntälaitteella.",
+          "Tarkista muuttuneet tiedostot ja erot varmistaaksesi, että tekoälyn muutokset vastaavat vaatimuksia; käytä sitoumushistoriaa sitoutuneen työn tarkistamiseen.",
+          "Käsittele sitomattomat muutokset ennen haaran vaihtamista. Päivitä etätila tarkistaaksesi eteenpäin, takana tai eri tilan.",
+          "Vedä nopeasti eteenpäin; Push lähettää vain sitoutunutta sisältöä. Valitse kaukosäädin ja haara, vahvista ja suorita."
+        ],
+        "tips": [
+          "Välimuistissa olevat etätietueet eivät ole live-tilassa. Synkronointi voidaan estää, kun projektitehtävät tai keskustelut ovat aktiivisia.",
+          "Yhdistä ensin offline- tai luvattomat etäprojektit uudelleen. Selain ei kopioi isäntätietovarastoja tietokoneellesi. Lukeminen vaatii Git-näkymän luvan; commit-, haara-, yhdistämis- ja synkronointitoiminnoilla on erilliset avustukset. Tarkista käyttöoikeudet, jos painikkeita puuttuu."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Sitoutumattomat muutokset Git-tietovarastossa",
+          "caption": "Paikallisen arkiston odottavat tiedostot. Toimitushistoria on toisella välilehdellä; etäkäyttöoikeuksia ja laajennettujen tiedostojen eroja ei näytetä."
+        }
+      },
+      {
+        "title": "Luo Worktree tehtävää varten",
+        "steps": [
+          "Avaa Git-työtila tehtävän tiedoissa ja valitse arkistot, joita tehtävä todella tarvitsee.",
+          "Anna tehtävähakemiston nimi, lähdehaara ja uusi haara ja sitten Luo Worktree. Jos juuri ei ole vielä Git-arkisto, alusta se ja tee ensimmäinen toimitus.",
+          "Suorituksen jälkeen tarkasta ja tee muutokset työtilassa. Yhdistä Gitissä nykyiseen haaraan tai yhdistä nykyinen haara kohteeseen.",
+          "Tarkista yhdistetty tulos ja paina tarvittaessa manuaalisesti. Lue tarkat vaikutukset ja sitoutumattomien muutosten varoitukset ennen puhdistamista tai historian palauttamista."
+        ],
+        "tips": [
+          "Työtilan luominen ei sulaudu tai työnnä automaattisesti. Vain sitoutuneet muutokset osallistuvat sivukonttoreiden yhdistämiseen.",
+          "Tehtävätyötilan poistaminen voi poistaa hakemistoja ja ominaisuushaaroja. Siivoaminen ei ole tapa säästää tuloksia."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Task Git -työtila olemassa olevan Worktree:n kanssa",
+          "caption": "Esittelytyötila on olemassa ilman tiedostoeroja. Avaa se, lisää tietovarastoja tai hallitse haaroja; tämä ei ole sen luomismuoto."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Tehtävien jakaminen ja etäprojektit",
+    "summary": "Erota linkki yhteen tehtävään koko laitteen etäkäytöstä.",
+    "sections": [
+      {
+        "title": "Jaa yksi tehtävä",
+        "steps": [
+          "Napsauta Jaa tehtävän tiedoissa ja valitse Vain luku tai Interaktiivinen.",
+          "Lomake luo satunnaisen salasanan ja oletuksena on voimassa seitsemän päivää. Vaihda tai tyhjennä salasana tarpeen mukaan; kun se on asetettu, siinä on oltava vähintään neljä merkkiä. Lisää valinnainen otsikko, varmista, että voimassaolo päättyy seuraavan 90 päivän sisällä, ja luo ja kopioi linkki.",
+          "Avaa se erillisessä selainikkunassa, kirjoita salasana, jos se on asetettu, ja tarkista edistyminen, viestit, artefaktit ja valitut käyttöoikeudet.",
+          "Lopeta jakaminen avaamalla nykyinen jako ja peruuttamalla se. Myös jo avoimet katsojat menettävät jatkuvan pääsyn."
+        ],
+        "tips": [
+          "Vain luku on katselua varten. Interaktiiviset vierailijat käyttävät alkuperäistä tehtäväohjainta: he voivat lähettää koordinaattori- tai vaiheviestejä, pysäyttää suorituksen, käsitellä hyväksyntöjä ja kysymyksiä sekä käyttää käytettävissä olevia tehtävämäärityksiä ja Git-työtilan toimintoja. Nämä vaikuttavat alkuperäiseen tehtävään kyseisen jaon tehtäväalueen sisällä. Vain katselua varten valitse Vain luku ja tarkista tila erillisessä selaimessa.",
+          "Vastaanottajien on saavutettava linkissä oleva taustaosoite. Linkin luominen ei luo julkista verkkotunnelia."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Interaktiivinen tehtävänjakolomake ennen linkin luomista",
+          "caption": "Interaktiivinen tila on valittuna ja salasana tyhjä. Jakolinkkiä ei ole luotu."
+        }
+      },
+      {
+        "title": "Määritä isäntäkäyttö ja kutsu laitteet",
+        "steps": [
+          "Avaa isännässä Asetukset → Etäkäyttö, ota yhteydet käyttöön ja tarkista sisäinen osoite. Julkinen käyttö edellyttää tavoitettavissa olevaa ulkoista HTTPS/WSS-osoitetta.",
+          "Aseta ja tallenna pääsyavain ja testaa sitten tavoitettavuus toisesta laitteesta.",
+          "Luo projektikutsu kohdassa Projektin määritykset → Jakaminen. Tuo se toisen WorkStep:n Etäkäyttö-kohtaan ja seuraa yhteyskehotteita.",
+          "Tarkista valtuutetut laitteet ja aktiiviset kutsut. Muuta valtuutusaikoja tai peruuta tarvittaessa. Jos yhteys katkeaa, tarkista isännän saatavuus, osoite, avain ja voimassaoloaika."
+        ],
+        "tips": [
+          "WorkStep:ssa ei ole sisäänrakennettua julkista relettä. Anna tavoitettavissa oleva verkkotunnus itse. Tehtävän salasanat, isäntäpääsyavaimet ja laitekutsut ovat erillisiä.",
+          "Etähakemistot ja moottorit pysyvät isännässä. Paikallinen tiedostonhallinta ei voi avata suoraan hakemistojaan."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Etäkäyttökytkin ja osoitelomake ennen arvojen syöttämistä",
+          "caption": "Sisäiset ja ulkoiset kentät näyttävät esimerkkipaikkamerkkejä ja avain on tyhjä. Laitteiden valtuutusluetteloa ei näytetä."
+        }
+      },
+      {
+        "title": "Yhdistä yritysyhdyskäytävä tarvittaessa",
+        "steps": [
+          "Jos organisaatiosi tarjoaa Gatewayn, kirjoita sen osoite kohtaan Etäkäyttö → Yhdyskäytäväalusta.",
+          "Ota yhdyskäytävätila käyttöön ja tallenna ja kirjaudu sitten sisään valtuuttaaksesi tämän tietokoneen. Pelkästään osoitteen tallentaminen ei mahdollista sitä.",
+          "Jos järjestelmänvalvojan hyväksyntä odottaa, viimeistele hyväksyntä ja todennus uudelleen. Kun olet muodostanut yhteyden, käytä projektin julkaisu- ja käyttöoikeuksia lupien puitteissa.",
+          "Poista yhdyskäytävätila käytöstä ja tallenna palataksesi paikalliseen käyttöön."
+        ],
+        "tips": [
+          "Itsenäinen paikallinen käyttö ei vaadi yhdyskäytävää. Organisaation luvat ja hyväksynnät riippuvat todellisesta alustasta."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Alustan osoite ennen kuin yhdyskäytävätila otetaan käyttöön",
+          "caption": "Yhdyskäytävä on poistettu käytöstä ja osoite on paikkamerkki. Osoitteen tallentaminen ja Gatewayn käyttöönotto ovat erillisiä toimintoja."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Gateway-työtila ja paikallinen jakaminen",
+    "summary": "Erota paikalliset kutsut, alustan apurahat ja tehtävien jaot ja jatka työtä eri laitteilla.",
+    "sections": [
+      {
+        "title": "Määritä Feishu- tai Lark-yritysidentiteetti",
+        "steps": [
+          "Järjestelmänvalvoja avaa Alustan asetukset → Organisaation synkronointi ja QR-kirjautuminen, lisää mukautetun yrityssovelluksen Feishu tai Lark ja syöttää Tenant Key, App ID ja App Secret.",
+          "Kopioi koko näytetty sisäänkirjautumiskutsu vastaavalle kehittäjäalustalle. Aseta sovellus-, QR-kirjautumis- ja organisaatiosynkronointikytkimet erikseen. Nykyiset App ID:t eivät voi muuttua; käytä uutta identiteettilähdettä toiselle sovellukselle.",
+          "Valtuuta hakemistojen lukeminen, rajoita sovellusten näkyvyyttä ja seuraa Lue esikatselu → Valitse organisaatiot tai käyttäjät → Tarkista muutokset → Vahvista synkronointi. Tarkista tulokset ja virhetiedot."
+        ],
+        "tips": [
+          "Yhdyskäytävän yritysidentiteetti ja paikalliskanavabotit ovat erillisiä eivätkä jaa automaattisesti valtuustietoja. Oikean vuokralaisen QR-kirjautumis- ja hakemistooikeudet vaativat edelleen integraatiotestauksen; simuloitu API-menestys ei todista todellista liitettävyyttä."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Feishu- tai Lark-identiteettilähde- ja hakemistosynkronointiasetukset",
+          "caption": "Tunnukseton määrityskuvakaappaus eristetystä yhdyskäytävästä odottaa."
+        }
+      },
+      {
+        "title": "Anna muiden verkkosivustojen kirjautua sisään Gatewayn kautta",
+        "steps": [
+          "Pääkäyttäjä avaa Gateway Platform -asetukset → Kolmannen osapuolen kirjautumisen valtuutus ja napsauttaa Muokkaa takaisinsoittolistaa.",
+          "Kirjoita yksi täydellinen takaisinsoitto URL riviä kohden, esimerkiksi https://business.example.com/login/callback, enintään 100 merkintää. Kaavan, portin, polun ja kiinteän kyselyn parametrien on vastattava tarkasti. Suorita järjestelmänvalvojan vahvistus ja tallenna.",
+          "Aloita kirjautuminen integroivalta verkkosivustolta. Jos et ole kirjautunut Gatewayn sisään, käytä ensin sen nykyistä salasanaa tai yrityksen QR-tunnusta ja palaa sitten. Sivuston taustajärjestelmä vaihtaa kertaluonteisen valtuutuskoodin käyttäjätunnukselle, tilille ja näyttönimelle.",
+          "Jos haluat keskeyttää integroinnin, poista sen URL ja tallenna. Tyhjä sallittujen luettelo poistaa käytöstä kolmannen osapuolen kirjautumisen valtuutuksen. poistettujen osoitteiden odottavat koodit mitätöityvät välittömästi."
+        ],
+        "tips": [
+          "Takaisinkutsut tukevat HTTP/HTTPS:ta, eivät jokerimerkkejä, fragmentteja, upotettuja valtuustietoja tai esiasetettuja koodi-, tila- tai request_id-parametreja. Käytä HTTPS:ta tuotannossa.",
+          "Jos takaisinsoitto on luvaton, tarkista sen koko URL. Jos koodi on vanhentunut tai sitä käytettiin, aloita kirjautuminen uudelleen integroivasta sivustosta. Protokolla ja ajettavat esimerkit ovat docs/gateway-third-party-login-integration.md:ssa."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Kolmannen osapuolen takaisinsoittojen sallittu luettelo yhdyskäytävän asetuksissa",
+          "caption": "Todellinen eristetty esittely Gateway-kuvakaappaus odottaa; älä käytä jokapäiväisiä tilejä tai todellisia takaisinsoittoasetuksia."
+        }
+      },
+      {
+        "title": "Hallitse kahdenlaista projektinjakoa",
+        "steps": [
+          "Avaa Jakaminen projektiasetuksissa. Yhdyskäytävän osoitteen määrittäminen mahdollistaa käyttöympäristön käytön. Paikallinen käyttöliittymä tarjoaa myös etäprojektikutsuja; Yhdyskäytävän etäselaimet eivät voi määrittää paikallisia kutsuja.",
+          "Valitse paikallisille kutsuille LAN tai ulkoisen osoitteen ja laitteen käyttöaika ja luo ja kopioi sitten. Mukautetun voimassaolon on oltava tulevaisuudessa; kutsujen lunastus ja laitteen valtuutuksen vanheneminen näytetään erikseen.",
+          "Kun olet tuonut vastaanottavassa laitteessa, tarkista sen nimi, IP, yhteys ja vanheneminen kohdassa Valtuutetut laitteet. Muuta ajanjaksoja tai peruuta tarvittaessa. Alustan käyttöoikeus käyttää sen sijaan tilejä, projektijulkaisua ja apurahoja.",
+          "Valitse yhtä tehtävää varten tila, salasana ja otsikko sen Jaa-ikkunassa. Paikalliset ja Gateway-osuudet ovat molemmat oletuksena seitsemän päivää ja sallivat enintään 90. Testaa erillisessä selaimessa ja hallitse sitten tai poista alkuperäisestä ikkunasta."
+        ],
+        "tips": [
+          "Paikallisen tehtävän jakaminen yhdistetyn yhdyskäytävän kautta edellyttää kelvollista alustan identiteettiä. Osoite tai työpöydän tunnistetiedot eivät yksinään anna käyttöympäristön käyttöoikeuksia.",
+          "Paikalliset tehtävälinkit käyttävät isäntäosoitetta; Gateway-osuudet käyttävät alustan palauttamaa osoitetta. Älä koskaan julkaise kutsun tunnistetietoja, jaa linkkejä tai salasanoja kuvakaappauksissa.",
+          "Molemmat tyypit tukevat vanhenemista. Yhdyskäytävä voi vaatia kirjautumisen; interaktiivisten Gateway-osuuksien on vaadittava sitä ja käytettävä kirjautumista pääsyavaimen sijasta. Tarkista kentät nykyisessä jakoikkunassa."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Etäkäytön jakamisvälilehti ja laitteen valtuutusjakso",
+          "caption": "Etäkäyttö näkyy, kun yhdyskäytävää ei ole määritetty. Mitään laitteita ei ole valtuutettu, eikä kutsua luoda."
+        }
+      },
+      {
+        "title": "Vaihda laitetta ja tarkista koosteilmoitukset",
+        "steps": [
+          "Syötä valtuutettu laitetyötila alustalle ja käytä sitten laitteen ylimpiä välilehtiä vaihtaaksesi toiseen online-laitteeseen.",
+          "Jokainen tili ja laite muistaa viimeisimmän projektin, tehtävän tai istuntosivun tässä selaimessa. Palautus tarkistaa edelleen valtuutuksen eikä ohita saavuttamattomia kohteita.",
+          "Etäprojektit latautuvat vain, kun ne on valittu. Kun lataus epäonnistui tai yhteys katkeaa, napsauta nykyistä projektia uudelleen päivittääksesi manuaalisesti. laitteille ei pollata jatkuvasti taustalla.",
+          "Avaa ilmoituskeskus saadaksesi yhteenvetoja valtuutettujen laitteiden valmistumisesta tai epäonnistumisesta. Napsauta avataksesi tehtävän tai istunnon. Workspacen live-viestit kuuluvat edelleen nykyiselle laitteelle.",
+          "Käytä Return to Gateway -alustaa valitaksesi toinen laite. Vanhentunut selaimen valtuutus käynnistää kirjautumisen uudelleen; Kun olet peruuttanut työpöydän valtuutuksen, yritä uudelleen manuaalisesti tai palaa paikalliseen työtilaan."
+        ],
+        "tips": [
+          "Sivumuisti on selaimen paikallinen, eikä sitä synkronoida eri selainten välillä. Pääsy toimii ilman selaimen tallennustilaa, mutta sijainteja ei säilytetä.",
+          "Muodosta yhteys uudelleen pyydettäessä offline-laitteiden, peruutetun valtuutuksen tai verkkovirheiden vuoksi. Tallennetut sijainnit eivät korvaa käyttöoikeuksia.",
+          "Todelliset laitevälilehden ja koosteilmoitusten kuvakaappaukset kiinteästä demonstraatioprojektista jäävät odottamaan."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Laitevälilehdet ja yhdistetty ilmoituskeskus",
+          "caption": "Todellinen kuvakaappaus odottaa: laitteen vaihto, sijainnin palautus ja ilmoitusnavigointi; ei ole vielä vangittu."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Kanavabotit ja ryhmäilmoitukset",
+    "summary": "Määritä WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack tai QQ erottamalla chat Webhook-ilmoituksista.",
+    "sections": [
+      {
+        "title": "Valitse kanava ja yhdistä uusi alusta",
+        "steps": [
+          "Avaa Asetukset → Kanavabotit, valitse alusta vasemmalta ja anna oikealle nimi, tunnistetiedot ja oletusarvoinen paikallinen projekti. Ota käyttöön ja tallenna. Tyhjät salaisuudet säilyttävät olemassa olevat arvot muokattaessa; tarkista tallentamattomat muutokset ennen vaihtamista. Asetusten sulkeminen, Esc-näppäimen painaminen tai asetusosien vaihtaminen pyytää vahvistusta, kun muutoksia ei ole tallennettu. peruuttaminen säilyttää luonnoksen.",
+          "Luo mallille Feishu tai Lark mukautettu yrityssovellus bottituella ja kirjoita App ID ja App Secret. Ota yhteyden jälkeen käyttöön pitkän yhteyden tapahtumat, tilaa im.message.receive_v1 ja card.action.trigger, määritä viestin/kortin käyttöoikeudet ja julkaise. Lähetä yksityisviesti tai mainitse botti ryhmässä.",
+          "Luo Telegram:lle botti BotFather:lla ja syötä sen Bot Token. Pitkää kyselyä käytetään; mikään muu ohjelma ei voi pollata kyseistä bottia samanaikaisesti. Järjestelmänvalvojien on ensin poistettava olemassa oleva Webhook. Lähetä yksityisteksti tai mainitse/vastaa se ryhmissä.",
+          "Kirjoita Discord:lle Application ID ja Bot Token, ota Message Content Intent käyttöön ja myönnä kanavalle luku-/lähetysoikeudet. Mainitse botti palvelinkanavissa; sitoa tehtäviä kanava- tai säikeentunnuksilla.",
+          "Slack:ssa ota käyttöön Socket Mode ja kirjoita App ID, App-Level Token ja connections:write ja Bot Token. Määritä chat:write, app_mentions:read ja im:history, tilaa app_mention ja message.im ja asenna sitten. Kutsu botti ennen kuin mainitset sen kanavilla.",
+          "Luo QQ:ta varten virallinen botti QQ Open Platformiin, valitse WebSocket-käyttöoikeus ja ota käyttöön yksityiset/ryhmäviestitapahtumat. Anna App ID, App Secret ja oletusarvoinen paikallinen projekti, ota käyttöön ja tallenna. Lähetä yksityisteksti tai mainitse botti ryhmässä. Kun olet vastaanottanut viestin, sido tehtävät group_openid:lla ja määritä sallittujen luettelot jäsenten OpenID-tunnuksilla, ei QQ-tili- tai ryhmänumeroilla. vain teksti; passiivisilla vastauksilla on aika- ja määrärajat. Lue pitkät tulokset WorkStep:ssa.",
+          "Palaa WorkStep:hen tarkastaaksesi yhteydet ja kanavaistunnot ja sitoa sitten tehtäviä tarpeen mukaan. Tarkista virheiden varalta alue, käyttöoikeustiedot, alustan käyttöoikeudet ja taustaverkko."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack ja QQ tukevat tällä hetkellä vain tekstiä. Palaa WorkStep:hen pysähtymistä, lupavastauksia, ehdotuksen vahvistusta ja tarkistusta varten; kuvia, tiedostoja ja interaktiivisia kortteja ei luvata.",
+          "Uuden alustan testeissä käytetään simuloituja kehyksiä. Oikean vuokralaisen asennus, käyttöoikeudet ja viestit vaativat edelleen integraatiotestauksen. Pidä salaisuudet, täydet tunnukset ja yksityiset ryhmätunnukset poissa kuvakaappauksista."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Kanavan valitsin ja erillinen bot-editori",
+          "caption": "Tunnukseton todellinen kuvakaappaus uudesta monikanavaasettelusta odottaa. Vanha muoto ei edusta sitä."
+        }
+      },
+      {
+        "title": "Lähetä ilmoituksia vain Feishu- tai Lark-ryhmille",
+        "steps": [
+          "Lisää tehtäväsivun Työnkulun koukut → Ilmoituskoukut Feishu- tai Lark-ryhmäbottikohde ja liitä koko mukautettu webhook URL kyseiselle alueelle.",
+          "Jos allekirjoitus on käytössä, anna kyseisen botin allekirjoitussalaisuus, älä App ID tai App Secret. Määritä tarvittavat avainsanat, tapahtumat ja Markdown-malli, tallenna ja tarkasta simulaatio.",
+          "Vahvista vastaanottajaryhmä ennen testin lähettämistä ja toimitustietojen tarkistamista. Esikatselu ei lähetä mitään; aikakatkaisun jälkeen tarkista ryhmä ennen kuin yrität uudelleen."
+        ],
+        "tips": [
+          "Webhookit lähettävät vain työnkulun tapahtumia eivätkä vastaanota ryhmäkeskusteluja. Käytä sovellusbottia kaksisuuntaisiin keskusteluihin."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Feishu tai Lark ilmoitus URL, allekirjoitus ja malli",
+          "caption": "Tunnukseton määritys ja korttien esikatselukuvakaappaukset odottavat; todellista toimitusta ei vaadita."
+        }
+      },
+      {
+        "title": "Lisää botti",
+        "steps": [
+          "Avaa Asetukset → Kanavabotit, valitse WeCom tai DingTalk vasemmalta, lisää botti ja nimeä se.",
+          "Valitse WeCom:lle pitkä yhteys älybotin asetuksista ja kopioi Bot ID ja Secret. Luo DingTalk:lle sovellus, ota käyttöön sen Stream-botti ja kopioi Client ID ja Client Secret.",
+          "Valitse oletusprojekti, ota pitkä yhteys käyttöön, tallenna ja odota Yhdistetty.",
+          "Lisää botti ryhmään, mainitse se testiviestillä ja tarkasta keskustelu ja vastaa projektikanavan chatit-kohdassa."
+        ],
+        "tips": [
+          "Anna salaisuudet vain asetuksissa, älä kuvakaappauksia tai viestejä. Tarkista yhteyshäiriöiden varalta alustatila, kirjautumistiedot ja taustaverkko.",
+          "DingTalk-painikekortit vaativat luonti-, toimitus- ja päivitysoikeudet. Mukautettujen mallien on vastattava käyttöliittymässä kuvattuja kenttiä."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Vanha Lisää botti -lomake ennen valtuustietojen syöttämistä",
+          "caption": "Vanha lomake näyttää vain nimen, tunnistetiedot ja oletusprojektikentät. Sitä ei tallennettu tai yhdistetty; uusi vasemmanpuoleinen alustaluettelo tarvitsee vielä kuvakaappauksen."
+        }
+      },
+      {
+        "title": "Sido tehtäväryhmä ja käsittele arvosteluja",
+        "steps": [
+          "Avaa Bind BOT tehtävän tiedoissa ja valitse käytössä oleva botti.",
+          "Mainitse se kerran ryhmässä ja valitse sitten ryhmä Äskettäin saadut ryhmät. Vaihtoehtoisesti liitä tunnettu ryhmätunnus, tarkista nykyinen tehtävä ja sitoudu.",
+          "Ryhmäkysymykset tulevat kyseisen tehtävän koordinaattoriin. Tarkista vaiheen tulokset ja lähetetyt liitteet.",
+          "Kun arvostelu- tai kysymyskortit tulevat näkyviin, lue ennen toimimista ja palaa WorkStep:hen varmistaaksesi tarvittaessa. Pura sidonta, kun sitä ei enää tarvita."
+        ],
+        "tips": [
+          "Oletusprojekti käsittelee kanavan keskustelua, joka ei ole sidottu tehtävään. Ryhmäsidokset määrittävät, mikä tehtävä vastaanottaa kyseisen ryhmän viestit.",
+          "Tehtävän arkistointi tai poistaminen poistaa sidoksia; palauttaminen vaatii uudelleensidontaa. Painikkeiden renderöinti riippuu kanavan asiakkaista. Jos et ole käytettävissä, toimi tehtävän tiedoissa."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Tehtävä BOT -valintaikkuna ilman sidottua ryhmää",
+          "caption": "Valitse robotti ja viimeisin ryhmä, kirjoita ja sido sen tunniste. Työryhmää ei ole vielä sidottu."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Työpöydän hiekkalaatikko",
+    "summary": "Suorita taustaa ja moottorit erillisessä säilössä, jossa on nimenomaisesti liittyvät projektihakemistot.",
+    "sections": [
+      {
+        "title": "Täytä viisivaiheinen hiekkalaatikkoopas",
+        "steps": [
+          "Avaa työpöydällä Sandbox, viimeinen Asetukset-kohde. Suorita aktiiviset tehtävät ja keskustelut loppuun ja varmista virtualisoinnin tuki; Windows tarvitsee WSL2:n.",
+          "Valitse ensin erillinen hiekkalaatikkotallennus ja lataa/valmistele apuohjelmisto.",
+          "Tarkista toiseksi kuva ja lataa suositeltu julkaisukuva tai etsi yhteensopiva WorkStep-kuva paikallisessa Dockerissa.",
+          "Kolmanneksi valitse olemassa olevat tai uudet projektihakemistot; neljäs valita palveluntarjoajan, moottorin ja mieltymysten siirto; Viidenneksi tarkasta yhteenveto ja tallenna tai vahvista ja käynnistä uudelleen."
+        ],
+        "tips": [
+          "Projektin yhdistäminen ei kopioi sen tiedostoja. Sandbox-muokkaukset vaikuttavat edelleen alkuperäiseen hakemistoon. Älä aja samaa projektia molemmissa ympäristöissä samanaikaisesti.",
+          "Liittämättömät projektit piilotetaan tilapäisesti, eikä niitä poisteta. Hiekkalaatikko- ja projektihakemistot eivät voi sisältää toisiaan."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Projektin valinta ja vahvistus viisivaiheisessa hiekkalaatikkooppaassa",
+          "caption": "Tarkista tallennustila, projektiliitos ja kokoonpanon siirto."
+        }
+      },
+      {
+        "title": "Vaihda tilaa ja ylläpidä kokoonpanoa",
+        "steps": [
+          "Tarkista uudelleenkäynnistyksen jälkeen Sandbox-tilan sivupalkin merkki varmistaaksesi todellisen ympäristön.",
+          "Tarkista palveluntarjoajan osoitteet, moottorin asennus ja kirjautuminen. Host localhost tarkoittaa jotain muuta säilössä, ja polut saattavat vaatia säätöä.",
+          "Ennen kuin tuot tai muutat hakemistoja, poista hiekkalaatikko käytöstä ja käynnistä uudelleen. Käytä sitten hiekkalaatikon hallintaa. Lue varmuuskopiointi- ja vaihtotiedot ennen tuontia.",
+          "Poista hiekkalaatikko käytöstä ja käynnistä se uudelleen palataksesi normaalitilaan. Virheiden varalta avaa lokihakemisto ja tarkista edistyminen ja epäonnistumiset."
+        ],
+        "tips": [
+          "Tavallinen ja hiekkalaatikkotila säilyttävät erilliset asetukset. Vaihtaminen ei synkronoi muutoksia takaisin automaattisesti.",
+          "Harkitse yhteensopivuuslupia vain, jos moottorin sisäinen hiekkalaatikko ei voi toimia. käyttöliittymä selittää pienentyneen eristyksen. Sandbox-tietojen poistaminen on peruuttamaton: tarkista ensin, mitä säilytetään."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Yleiset asetukset ja vianetsintä",
+    "summary": "Ymmärrä asetusten laajuus, lue ensin tila ja virheet ja tee sitten kohdennettuja korjauksia.",
+    "sections": [
+      {
+        "title": "Tarkista työpöytäversio ja lataa päivitykset",
+        "steps": [
+          "Tarkista nykyinen versio avaamalla työpöydällä Asetukset → Järjestelmäasetukset → Työpöytäpäivitykset.",
+          "Napsauta Tarkista päivitykset löytääksesi uusimman virallisen GitHub-julkaisun. Jos uudempi, napsauta Lataa GitHub:sta.",
+          "Valitse julkaisusivulta järjestelmäsi asennusohjelma, suorita aktiivinen työ ja asenna se itse."
+        ],
+        "tips": [
+          "Työpöytä tarkistaa kerran päivässä ilman automaattista latausta, asennusta tai uudelleenkäynnistystä. Vain uudempi virallinen julkaisu käynnistää päivityksen, ei koodityöntöjä tai luonnoksia.",
+          "Yritä myöhemmin uudelleen epäonnistuneita tarkistuksia. Verkkoversiossa ei ole työpöytäpäivitysmerkintää."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Nykyinen työpöytäversio ja päivitystarkistusmerkintä järjestelmäasetuksissa",
+          "caption": "Tarkista manuaalisesti ja lataa sitten GitHub:sta, kun päivitys on saatavilla."
+        }
+      },
+      {
+        "title": "Samanaikaisuus, avustajat ja näyttö",
+        "steps": [
+          "Kun suoritat monia tehtäviä, aseta tehtävä- ja keskustelukapasiteetti globaaleihin samanaikaisuusrajoihin tai projektimäärityksiin ja tarkista tehokkaat arvot.",
+          "Jos ajoitetut tehtävät eivät kuluta kapasiteettia, tarkista riittävät resurssit ennen tämän vaihtoehdon käyttöönottoa. Ylimääräisiä tehtäviä ja chat-jonoa.",
+          "Määritä kunkin avustajan moottori ja malli Assistentit-kohdassa. Tarkista vaiheen suoritus ja tehtäväkoordinaattorin asetukset erikseen.",
+          "Vaihda käyttäjänimi järjestelmäasetuksissa. Kieli, fontit, koko ja ulkoasut ovat kohdassa Asetukset → Ulkoasu; arkiston tarkistuksen laajuus on Git-asetuksissa."
+        ],
+        "tips": [
+          "Oletussuoritusmoottorin muuttaminen vaikuttaa uusiin tehtäviin ja vaiheisiin, ei olemassa oleviin tehtävä- tai vaiheasetuksiin."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Globaalit tehtävien ja keskustelujen samanaikaisuuden rajat",
+          "caption": "Aseta globaalit kapasiteetit ja ajoitetun tehtävän poikkeus."
+        }
+      },
+      {
+        "title": "Vianetsintä järjestyksessä",
+        "steps": [
+          "Jos tehtävä ei käynnisty, erota valmiit, jonossa olevat ja tarkistusta odottavat tilat. Tarkista käynnistysvaihe, automaattinen käynnistys ja moottorin saatavuus.",
+          "Jos suoritus epäonnistuu, lue viimeisin virhe. Tarkista SDK-asennus, toimittajan todennus, mallin nimi, verkko- ja tiedostooikeudet ja suorita sitten uudelleen.",
+          "Jos haluat nähdä historian tai API-latausvirheet, käytä Yritä uudelleen. Jos API palautti verkkosivun, vahvista taustaversio ja käynnistä uudelleen tavallisella menetelmälläsi.",
+          "Jos natiivi istuntohistoria katosi, lue Suorita uudelleen uudella istunnolla, anna nykyiset tavoitteet ja tarvittavat artefaktiviittaukset äläkä käsittele sitä täydellisenä alkuperäisen kontekstin palautuksena.",
+          "Tarkista puuttuvien artefaktien tai etäkäyttövirheen varalta, että tiedostojen luonti tai isännän saatavuus, osoite, avain ja valtuutuksen vanheneminen tapahtuu vastaavasti."
+        ],
+        "tips": [
+          "Kun raportoit ongelmista, sisällytä versio, käyttöjärjestelmä, moottori, kopiointivaiheet ja muokatut virhekuvakaappaukset, älä koskaan kirjautumistietoja. Ilman nimenomaista asetusta 20 yhtäjaksoista minuuttia ilman moottoritapahtumia laukaisee joutokäynnin aikakatkaisun ja säilyttää istunnon. Olemassa olevat mukautetut aikakatkaisut säilyvät; 0 poistaa sen käytöstä. Hiljainen ajattelu tai työkalut eivät välttämättä jumiudu: tarkista lokit ennen uudelleenajoa."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Demonstraatiovirhe, joka johtuu olemattomasta mallista",
+          "caption": "Virhe kertoo, että valittua mallia ei tueta. Korjaa vaiheen mallikokoonpano ennen kuin suoritat sen uudelleen; sitä ei ole korjattu tässä kuvassa."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Ulkonäkö, skinit ja kielet",
+    "summary": "Valitse henkilökohtaiset näyttöasetukset tai luo esikatseltavia skinejä ja kielipaketteja tavallisen projektikeskustelun kautta.",
+    "sections": [
+      {
+        "title": "Valitse sisäänrakennettu kieli",
+        "steps": [
+          "Valitse kohdassa Asetukset → Ulkoasu yksinkertaistettu kiina, perinteinen kiina, englanti, japani, ranska, saksa tai arabia ja tarkista yleiset merkinnät ja päivämääräohjaimet.",
+          "Valitse verkkosivuston ja käyttöohjeen kieli sivun yläreunan valikosta. Valittavana ovat esimerkiksi japani, perinteinen kiina ja korea. Selain tallentaa valinnan; jos aiempaa valintaa ei ole, käytetään selaimen kieltä."
+        ],
+        "tips": [
+          "Ranskan, saksan ja arabian sovelluskäännökset kattavat tällä hetkellä tärkeimmät merkinnät; muut merkkijonot voivat jäädä kiinaksi, ja sovelluksen arabiankielinen asettelu on edelleen vasemmalta oikealle. Verkkosivusto ja manuaalinen teksti noudattavat ylintä kielenvalitsinta, ja arabialainen asettelu on oikealta vasemmalle. Todelliset kuvakaappaukset ovat edelleen kiinalaisia. Kielen vaihto ei käännä aiempia keskusteluja tai käyttäjätiedostoja."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Sisäänrakennetut kielenvalitsimet sovelluksessa ja verkkosivustossa",
+          "caption": "Todelliset kuvakaappaukset lisätyistä kielivaihtoehdoista odottavat."
+        }
+      },
+      {
+        "title": "Käytä v2:n ulkoasuja ja ominaisuuslaajennuksia",
+        "steps": [
+          "Asenna ja vahvista luotettu v2-ulkoasu kohdassa Asetukset → Ulkoasu, esikatsele ja ota se käyttöön. Pyydä kirjoittajaa ulkoasun luontikeskustelussa sisällyttämään osia ominaisuuksiin, kuten muistiinpanoihin.",
+          "Lue koodilla varustettujen pakettien käyttöönottovahvistus. Paketin päivittäminen tai identiteetin muuttaminen voi pyytää uudelleen. Avaa paneelit skinin valikkojen tai ominaisuusmerkintöjen kautta, jotka riippuvat paketista. Muistiinpanot tai kalenterit eivät ole esiasennettuja sovellusominaisuuksia.",
+          "Paketti voi sijoittaa säveltäjän ylä-, ala-, vasemmalle tai oikealle. Kompaktit näkymät säilyttävät pystysuoran järjestelyn. Vaihdon jälkeen tarkista viestit, säveltäjä ja asetukset ovat käytettävissä.",
+          "Laajennustiedot erotetaan selaimen identiteetin, laitteen, ulkoasun ja ominaisuuden mukaan. Skin vaihtaminen tai poistaminen ei poista sitä. Käytä laajennuksen omaa vientiä varmuuskopiointiin. Jos käyttöliittymä katkeaa, lisää URL:hen skin=default ja päivitä."
+        ],
+        "tips": [
+          "Komponenttikoodilla on nykyisen sivun oikeudet. Ota käyttöön vain luotettavat lähteet. Esikatselun peruuttaminen palauttaa ulkoasun, mutta ei kumoa jo suoritettua koodia.",
+          "Laajennustietoja ei sisällytetä skin ZIP -vientiin tai synkronoitu selaimien/laitteiden välillä. Varmuuskopioi ennen tallennustilan tyhjentämistä; epäonnistunutta säästämistä ei saa pitää onnistumisena."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "v2-komponentin käyttöönoton vahvistus ja ominaisuuspaneelin merkintä",
+          "caption": "Todellinen suoritus kuvakaappaus luotettavasta esittelypaketista odottaa. Muodin vahvistaminen ei ole visuaalista hyväksymistä."
+        }
+      },
+      {
+        "title": "Valitse ja tallenna henkilökohtainen ulkonäkö",
+        "steps": [
+          "Jos haluat käyttää koko laitetta, avaa Asetukset → Ulkoasu. Projektin valtuutetut käyttäjät syöttävät ulkoasun ja skinit sivupalkista.",
+          "Valitse fontti, koko ja kieli. Hae tai suodata asennetut skinit, esikatsele ja käytä. Kiinteän esikatselupalkin avulla voit peruuttaa tai vahvistaa.",
+          "Authenticated Gateway -käyttäjien valinnat tallennetaan tili- ja laitekohtaisesti, ja ne palautetaan toisessa saman laitteen selaimessa. Yritä uudelleen epäonnistuneita tallennuksia. Paikalliset valinnat ilman alustan kirjautumista säilyvät tässä selaimessa."
+        ],
+        "tips": [
+          "Paketit ja luontitietueet jaetaan laitteessa; henkilökohtaiset valinnat ovat erillisiä. Projektin valtuutetut käyttäjät voivat valita vain asennetut paketit.",
+          "Puuttuvat tai rikkinäiset paketit palautuvat oletusarvoiseen ulkoasuun. Lisää ?skin=default tai ?language=default palauttaaksesi oletusulkokuvan tai yksinkertaistetun kiinan."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Fontit, koko, kieli ja asennetut skinit Ulkoasussa",
+          "caption": "Oikealla asetussivulla on oletusasetukset ja sisäänrakennetut esimerkit oikealla. Henkilökohtaisia ​​mieltymyksiä ei muutettu."
+        }
+      },
+      {
+        "title": "Luo skinejä ja kieliä chatin kautta",
+        "steps": [
+          "Kun käytössäsi on isäntähallintaoikeudet, napsauta Keskustellaan ulkonäöstä, valitse asennettu, vahvistettu moottori ja kuvaile tavoite, kuten: Tee tumma pinta, säilytä asettelu ja käytä ylöspäin osoittavaa lähetysnuolta.",
+          "Chat on vasemmalla, muokkaus ja esikatselu oikealla; puhelimet vaihtavat välilehteä. Säädä nimeä, värejä, fonttia, kokoa, lähetyskuvaketta ja asettelua ja sitten Tallenna säädöt samaan luonnospakettiin. Muokkaus on poissa käytöstä chatin aikana. Tarkista tietokoneen ja puhelimen esikatselu.",
+          "Kielipakettia varten kysy samassa chatissa, esimerkiksi: Lisää espanjaa ulkonäköä säilyttäen. Vaihda oikea puoli kohtaan Kieli. Se latautuu sukupolven jälkeen; Käytä Lue ja vahvista tarkistaaksesi sen hakemiston, kattavuuden, puuttuvat merkkijonot ja esimerkit.",
+          "Valitse skineille Tallenna ulkoasu ja esikatselu. kielille, Asenna ja esikatsele. Vahvista tai peruuta esikatselupalkissa. Kirjastoon tallentaminen ei vahvista henkilökohtaista hakemusta. Vie ZIP uudelleenkäyttöä varten ja tarkista saman tunnuksen tuonnin tai päivityksen korvaavat kehotteet."
+        ],
+        "tips": [
+          "Luominen käyttää uudelleen kiinteää Runtime-projektia ja tavallista chattia kutsuen malliasi. Jatka työskentelyä ikkunan yläpuolella olevan keskusteluhistorian kautta. Esikatseluesimerkit eivät itse suorita tehtäviä.",
+          "Fontit käyttävät asennettuja järjestelmän fontteja. Historiallisia viestejä ja tiedostoja ei käännetä automaattisesti. Sisäänrakennetut lähetyskuvakkeet voidaan valita säädöissä; mukautetut vektorikuvakkeet on toimitettava vahvistetussa luonnoksessa.",
+          "Kielipaketit ovat skinistä riippumattomia ja tukevat tällä hetkellä vasemmalta oikealle kirjoitettuja kieliä. Puuttuvat merkkijonot ja päivämääräsäätimet käyttävät määritettyä sisäänrakennettua varavaihtoehtoa. Kattavuus ei todista käännösten laatua; käytä chatia päivittääksesi vanhentuneet merkkijonoluettelot."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Keskustelu- ja muokkaus-/esikatselualueet ulkoasun luomisessa",
+          "caption": "Valtuutettu tyhjä luontikeskustelu ja säätölomake. Sen säveltäjä on esitäytetty; viestiä ei lähetetty, malliajoa tai skiniä ei tallennettu."
+        }
+      },
+      {
+        "title": "Lue ja esikatsele kielipaketti",
+        "steps": [
+          "Vaihda ulkonäköstudion oikea puoli kohtaan Language ja tarkista Language-pack-hakemisto. Luo saman keskustelun kautta tai tuo olemassa oleva kieli ZIP.",
+          "Luodut paketit latautuvat automaattisesti. Lue ja vahvista tarkistusten kattavuus, puuttuvat merkkijonot ja esimerkit. Sukupolven odotusilmoitus tyhjästä hakemistosta tarkoittaa, että luonti on kesken.",
+          "Vahvistamisen jälkeen asenna ja esikatsele ja vahvista tai peruuta henkilökohtainen sovellus. Kattavuus ei voi korvata käännöslaadun tarkistusta."
+        ],
+        "tips": [
+          "Tällä hetkellä tuetaan vain vasemmalta oikealle kirjoitettuja kieliä. Päivämääräsäätimet ja puuttuvat merkkijonot käyttävät pakkauksen määritettyä sisäänrakennettua varatoimintoa."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Kielihakemisto ja vahvistusmerkintä tyhjässä luontikeskustelussa",
+          "caption": "Kieli-välilehti tarjoaa hakemiston, Lue ja vahvista sekä ZIP-tuonnin. Kielipakettia ei ole luotu, asennettu tai otettu käyttöön."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Projektin etäkäyttötarkastus",
+    "summary": "Tarkista etävierailijoiden toimet ja onnistuiko ne, evättiinkö vai epäonnistuivatko ne.",
+    "sections": [
+      {
+        "title": "Suodata ja tarkasta etätoiminnot",
+        "steps": [
+          "Avaa projektia isännöivässä laitteessa paikallisen projektin Asetukset → Toimintatarkastus. Etäprojektit, yhdyskäytävätyötilat ja projektiin sidottu käyttöoikeus eivät tarjoa tätä välilehteä.",
+          "Suodata toiminnan ja tuloksen mukaan ja tarkasta sitten toimija, aika, lähde ja tehtävä, työnkulku tai tiedostotunniste.",
+          "Siirry seuraavalle tai ensimmäiselle sivulle, päivitä uusimmat tietueet ja yritä uudelleen epäonnistunutta latausta."
+        ],
+        "tips": [
+          "Tämä tarkastus kattaa etälähteen toiminnot ja hylätyt/epäonnistuneet tulokset, ei täysiä keskusteluja, eikä se tallenna valtuustietoja. API on vain paikallinen isännässä. Oletussäilytysaika on 30 päivää; seurata sivun todellista kestoa. Julkisen jaon vierailijoiden oikeat nimet eivät ole tiedossa; Etäselain (itseraportoitu henkilöllisyys) ei ole todennettu henkilöllisyys."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Tarkastussuodattimet ja tyhjät tietueet paikalliselle projektille",
+          "caption": "Varsinainen paikallinen tarkastusmerkintä ja toiminto/tulossuodattimet. Demonstraatioprojektissa ei ole etätietoja; tekoja tai identiteettejä ei keksitty."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Usein kysytyt kysymykset",
+    "summary": "Ymmärrä moottorit, mallipalvelut, tiedostojen muutokset ja palautusrajat ennen aloittamista.",
+    "sections": [
+      {
+        "title": "Miten SDK ja CLI eroavat toisistaan, ja mistä minun pitäisi aloittaa?",
+        "steps": [
+          "Molemmat ovat moottorin integrointimenetelmiä mallien ominaisuuksille. SDK integroituu kehittäjien sovellusliittymien kautta; CLI suorittaa komentoriviohjelmia. Sekään ei ole mallinimi.",
+          "Aloita asentamalla Codex SDK tai Claude Agent SDK, suorita todennus, valitse ja vahvista malli ja tee siitä sitten oletussuoritusmoottori. Nykyiset CLI-käyttäjät voivat valita sen sijaan kyseisen moottorin.",
+          "Palveluntarjoaja toimittaa palveluosoitteen ja todennuksen, malli tunnistaa, mikä pyynnön käsittelee, ja moottori tarjoaa istunnot, työkalut ja suorituksen. Seuraa valitun moottorin muotoa; valtuustiedot eivät välttämättä ole keskenään vaihdettavissa."
+        ],
+        "tips": [
+          "SDK-asennus määrittää vain ajonaikaiset riippuvuudet, ei todennusta, käyttöoikeuksia tai kiintiötä. Erota Codex- ja Claude Code SDK -merkinnät CLI-merkinnöistä."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "SDK ja CLI valinnat moottorin asetuksissa",
+          "caption": "Tarkasta suositellut SDK-moottorit ja niiden erilliset asennus- ja tarkistustilat."
+        }
+      },
+      {
+        "title": "Miten ohjelmisto- ja mallipuhelut veloitetaan?",
+        "steps": [
+          "Tarkista valitun mallipalvelun suunnitelma, todennus ja kiintiö ennen pientä aloitustyötä. SDK itsessään ei ole mallihyvitys.",
+          "Tehtävän suoritus, automaattinen tarkistus, avustajat ja uudelleenyritykset voivat kaikki kutsua malleja. Tarkista mallit erikseen vaihe-, tarkastelu- ja avustajan asetuksissa.",
+          "Käytä toteutusanalyysiä käyttö- ja kustannuslähteiden tarkastamiseen. Arviot auttavat selittämään kulutusta; loppukulut noudattavat palveluntarjoajan sääntöjä ja laskua."
+        ],
+        "tips": [
+          "Älä oleta, että SDK:n lataaminen tai sisäänkirjautuminen tekee puheluista ilmaisia ​​tai että yksi tilaus koskee jokaista moottoria."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Tokenin käyttö ja kustannuslähteet toteutusanalyysissä",
+          "caption": "Palveluntarjoajan ilmoittamat kustannukset ja kattavuus näytetään. Arvioidut kustannukset merkitään vain, kun hinnoitteluarvioita todella käytetään."
+        }
+      },
+      {
+        "title": "Mihin tiedot tallennetaan, ja voiko tekoäly muokata tiedostojani?",
+        "steps": [
+          "Paikalliset tehtävät, työnkulut ja viestit tallennetaan oletusarvoisesti projektiin .workstep. Datahakemiston poistaminen käytöstä projektihakemistoa käyttää ~/.workstep/projects/<项目ID>/. Projektin .workstep/project.json yhdistää alkuperäiset tiedot uudelleen.",
+          "Moottorin lukemat pyynnöt ja konteksti voidaan lähettää määritettyyn mallipalveluun. Kanavat, jakaminen ja etäkäyttö luovuttavat myös valtuutetuissa puitteissa tietoja vastaaville osapuolille.",
+          "Tekoäly, jolla on kirjoitusoikeus, voi muokata projektitiedostoja. Harjoittele erillisessä projektissa, tarkista käyttöoikeudet ennen suoritusta ja tarkista Git-diffit ja todelliset artefaktit jälkeenpäin.",
+          "Sandbox-yhdistykset muokkaavat edelleen alkuperäisiä asennettuja tiedostoja. Task Worktree:t tarjoavat erilliset hakemistot, mutta yhdistämistulokset vaativat silti tarkistuksen."
+        ],
+        "tips": [
+          "Paikallinen tallennus ei tarkoita offline-mallipuheluita. Pidä avaimet, tilitunnistetiedot ja merkityksettömät arkaluontoiset tiedostot poissa tehtäväkuvauksista, liitteistä ja kuvakaappauksista."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Puhelimen keskustelulupatilan paneeli",
+          "caption": "Oletus-, Vain luku-, Workspace-kirjoitus- ja muut vaihtoehdot on lueteltu. Todellinen tuki ja käyttäytyminen riippuvat moottorista."
+        }
+      },
+      {
+        "title": "Miten pysäyttäminen, uudelleen yrittäminen, uudelleenkäsittely ja palautuminen eroavat toisistaan?",
+        "steps": [
+          "Pysäytys keskeyttää nykyisen suorituksen tai vastauksen, mutta ei peruuta jo kirjoitettuja tiedostoja. Tarkista olemassa olevat tulokset ennen kuin jatkat.",
+          "Uudelleen yrittäminen tai uudelleen suorittaminen käynnistää moottorin uudelleen, mahdollisesti jatkaen kontekstia tai käyttämällä uutta istuntoa kehotteen mukaisesti. Se ei palauta jokaista muutosta suoritusta edeltävään tilaan.",
+          "Rework korjaa lähdöt tarkistuspalautteen tai paluuliitäntöjen mukaan, työnkulun riippuvuuksien ja rajoitusten mukaisesti. Lue vahvistukset, kun uudelleenajon laajuus muuttuu.",
+          "Kun olet avannut WorkStep:n uudelleen, tarkista ensin tehtävän ja istunnon tila. Toipumista tukevat moottorit voivat palata alkuperäiseen istuntoonsa; kadonneet alkuperäiset tietueet vaativat uuden istunnon ja uudelleenkäynnistyksen."
+        ],
+        "tips": [
+          "Automaattinen palautus riippuu moottorista ja käytettävissä olevasta historiasta. Täydellistä palautumista ei taata jokaisen moottorin tai keskeytyksen yhteydessä."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Nollaa valmiissa tehtävässä valittu vaihe",
+          "caption": "Tässä valmiissa tehtävässä Reset-vaihe on valittuna, mikä vaikuttaa vain seuraavan vaiheen viestiin. Se ei ole poiston vahvistus tai puuttuvan istunnon varoitus."
+        }
+      }
+    ]
+  }
+]

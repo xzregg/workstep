@@ -1020,7 +1020,7 @@ async def test_manual_review_waits_for_user(tmp_path):
             tmp_path / "artifacts",
             workflow_run=workflow_run,
         )
-        assert Task.get_by_id(task.id).status == "paused"
+        assert Task.get_by_id(task.id).status == "waiting"
         review = ReviewRun.get(ReviewRun.workflow_run == workflow_run)
         assert review.mode == "manual"
         assert review.status == "pending"
@@ -1184,7 +1184,7 @@ async def test_task_review_override_disables_auto_review(tmp_path):
         )
         # Only the stage execution spawns; the review agent must not run.
         assert len(calls) == 1
-        assert Task.get_by_id(task.id).status == "paused"
+        assert Task.get_by_id(task.id).status == "waiting"
         review = ReviewRun.get(ReviewRun.workflow_run == workflow_run)
         assert review.mode == "manual"
         assert review.status == "pending"
@@ -1357,7 +1357,7 @@ async def test_auto_review_exhaustion_falls_back_to_manual(tmp_path):
         )
         # 阶段执行 + 一次自动审核；重试次数为 0，不重跑阶段、不再启动审核 Agent
         assert len(calls) == 2
-        assert Task.get_by_id(task.id).status == "paused"
+        assert Task.get_by_id(task.id).status == "waiting"
         reviews = list(
             ReviewRun.select()
             .where(ReviewRun.workflow_run == workflow_run)
@@ -1735,8 +1735,8 @@ async def test_stopped_automatic_review_can_set_step_complete(
             "auto", "failed", "手动停止",
         )
         assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "cancelled"
-        assert Task.get_by_id(task.id).status == "paused"
-        assert WorkflowRun.get_by_id(first.id).status == "failed"
+        assert Task.get_by_id(task.id).status == "stopped"
+        assert WorkflowRun.get_by_id(first.id).status == "stopped"
         with pytest.raises(RuntimeError, match="产物"):
             await runtime.decide_review(
                 project.id, task.id, "build", review.id, "set_complete",
@@ -1966,7 +1966,7 @@ async def test_pending_manual_review_set_complete_preserves_downstream(tmp_path,
             "succeeded" if schedule_downstream else "paused"
         )
         assert Task.get_by_id(task.id).status == (
-            "completed" if schedule_downstream else "paused"
+            "completed" if schedule_downstream else "waiting"
         )
         assert len(calls) == (2 if schedule_downstream else 1)
     finally:

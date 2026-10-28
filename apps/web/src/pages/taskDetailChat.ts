@@ -337,7 +337,7 @@ export function canRestartStoppedExecutionMessage(
     && message.role === 'assistant'
     && message.channel === 'execution'
     && ['cancelled', 'stopped'].includes(message.run_status || '')
-    && ['paused', 'stopped'].includes(taskStatus || '')
+    && ['paused', 'stopped', 'waiting', 'failed'].includes(taskStatus || '')
     && ['failed', 'pending', 'cancelled'].includes(stepStatus || '')
 }
 
@@ -375,7 +375,7 @@ export function failedExecutionCompletionRound(
   if (message.id !== latestMessageId
     || message.role !== 'assistant' || message.channel !== 'execution'
     || !['failed', 'cancelled', 'stopped'].includes(message.run_status || '')
-    || !['paused', 'stopped'].includes(taskStatus || '')
+    || !['paused', 'stopped', 'waiting', 'failed'].includes(taskStatus || '')
     || !['failed', 'pending', 'cancelled'].includes(stepStatus || '')) return null
   const rounds = artifacts.filter((artifact) => artifact.step_key === message.step_key)
     .map((artifact) => artifact.round)

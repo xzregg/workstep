@@ -2462,15 +2462,15 @@ async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action,
             assert await runtime.cancel(task.id, action=action) is True
         await asyncio.wait_for(active_run, timeout=1)
 
-        assert Task.get_by_id(task.id).status == "paused"
-        assert WorkflowRun.get(WorkflowRun.task == task).status == "failed"
+        assert Task.get_by_id(task.id).status == "stopped"
+        assert WorkflowRun.get(WorkflowRun.task == task).status == "stopped"
         events = list(ProjectAuditEvent.select().where(
             ProjectAuditEvent.action == action,
         ))
         assert len(events) == 1
         assert events[0].actor_username == "operator"
         metadata = json.loads(events[0].metadata_json)
-        expected = {"status": "cancelled", "step_key": "req"} if action == "step.cancel" else {"status": "paused"}
+        expected = {"status": "cancelled", "step_key": "req"} if action == "step.cancel" else {"status": "stopped"}
         if remote:
             expected.update(access_source="gateway", object_name="Cancel runtime")
         assert metadata == expected
@@ -2921,17 +2921,17 @@ async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_pa
         assert message.ended_at is not None
 
         task = Task.get_by_id(task.id)
-        assert task.status == "paused"
+        assert task.status == "stopped"
         stop_event = ProjectAuditEvent.get(
             (ProjectAuditEvent.task_id == task.id)
             & (ProjectAuditEvent.action == "step.cancel")
         )
         assert stop_event.actor_username == "operator2"
         assert stop_event.metadata_json == (
-            '{"status": "paused", "step_key": "do"}'
+            '{"status": "stopped", "step_key": "do"}'
         )
         run = WorkflowRun.get_by_id(run.id)
-        assert run.status == "failed"
+        assert run.status == "stopped"
         assert run.owner_id is None
         assert run.heartbeat_at is None
         assert run.id not in runtime._leases._leased_runs

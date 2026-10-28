@@ -679,6 +679,10 @@ export const jaJP: Messages = {
     wrongPassword: 'アクセスキーが正しくありません',
   },
   status: {
+    waiting: '等待确认',
+    tool_approval: '等待工具审批',
+    user_input: '等待补充信息',
+    pending_confirmations: '待确认 {count} 项',
     ready: '準備中',
     running: '実行中',
     paused: '一時停止',

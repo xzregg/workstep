@@ -444,10 +444,11 @@ async def test_project_websocket_subscription_cannot_escape_project_or_send_comm
 async def test_task_runner_events_carry_executor_project_into_agui_feed():
     from services.task_runner import TaskRunner
     from types import SimpleNamespace
+    from unittest.mock import AsyncMock
 
     runner = object.__new__(TaskRunner)
     runner._event_bus = event_bus
-    runner._database_executor = SimpleNamespace(project_id="project-1")
+    runner._database_executor = SimpleNamespace(project_id="project-1", run=AsyncMock(return_value=None))
     q = event_bus.subscribe(lambda event: event.get("project_id") == "project-1")
     try:
         await runner._publish("task-1", "do", {

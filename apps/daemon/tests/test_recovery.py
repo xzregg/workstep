@@ -452,6 +452,7 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
         )
         TaskStep.create(
             task=task, step_key="a", status=step_status, engine="claude",
+            waiting_interactions_json='{"old-approval":"tool_approval"}',
         )
         project.steps = {
             "nodes": [{
@@ -498,9 +499,11 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
         assert await runtime.recover_running_workflows() == 1
         with pm.activate_project(project.path):
             await _wait_until(lambda: Task.get_by_id(task.id).status == "completed")
-            assert TaskStep.get(
+            recovered_step = TaskStep.get(
                 (TaskStep.task == task) & (TaskStep.step_key == "a")
-            ).status == "passed"
+            )
+            assert recovered_step.status == "passed"
+            assert recovered_step.waiting_interactions_json is None
             assert list(
                 StepRun.select().where(
                     (StepRun.run == run) & (StepRun.step_key == "a")

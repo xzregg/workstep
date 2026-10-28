@@ -1,0 +1,1587 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Unduh, pasang, dan buka WorkStep",
+    "summary": "Pasang WorkStep terlebih dahulu, lalu mesin SDK. Aplikasi desktop menyertakan runtime backend, sehingga Anda tidak perlu memasang Python terlebih dahulu.",
+    "sections": [
+      {
+        "title": "Pilih pemasang",
+        "steps": [
+          "Dari tautan unduhan situs, pilih pemasang desktop yang sesuai sistem operasi dan arsitektur cip. Pada Mac, pilih DMG arm64 untuk cip seri M atau DMG x64 untuk Intel.",
+          "Pasang dan buka WorkStep mengikuti proses instalasi sistem. Tunggu backend lokal siap dan ruang kerja terbuka.",
+          "Saat pertama dibuka, isi nama tampilan sesuai petunjuk. Untuk membuka panduan lagi, masuk Pengaturan → Pengaturan sistem → Panduan awal, lalu klik Panduan awal."
+        ],
+        "tips": [
+          "Pemasang desktop tidak menyertakan mesin opsional seperti Codex SDK dan Claude Agent SDK. Pasang melalui antarmuka pada bab berikutnya.",
+          "Versi awal macOS atau Windows yang belum ditandatangani dapat memicu peringatan keamanan sistem. Periksa asal unduhan sebelum mengikuti petunjuk sistem.",
+          "Penggunaan lokal mandiri tidak memerlukan login Gateway. Jika Gateway diaktifkan sendiri tetapi autentikasi gagal dimulai, pintu masuk lokal mencoba kembali ke mode lokal dan menonaktifkan Gateway sambil menyimpan alamatnya untuk koneksi ulang. Instalasi yang terikat Gateway atau pengunjung jarak jauh tidak dapat menonaktifkan Gateway host dengan cara ini. Jika kembali lokal gagal, periksa backend lokal lalu muat ulang."
+        ],
+        "screenshot": {
+          "id": "welcome-workspace",
+          "alt": "Pengaturan identitas dan pintu masuk panduan cepat saat pertama dibuka",
+          "caption": "Masukkan nama tampilan lokal untuk masuk ruang kerja atau mulai penyiapan cepat. Gambar memakai identitas demonstrasi."
+        }
+      },
+      {
+        "title": "Pahami tiga konsep",
+        "steps": [
+          "Mesin mengeksekusi tugas dan memanggil alat. Panduan ini menyarankan Codex SDK atau Claude Agent SDK terlebih dahulu; mesin CLI yang dipasang terpisah tidak diperlukan.",
+          "Penyedia menyediakan API model, alamat API, dan kredensial. Penyedia berbeda dari mesin eksekusi, dan protokolnya harus didukung mesin.",
+          "Model adalah yang memproses permintaan. Pasang mesin, lakukan autentikasi, pilih dan uji model, lalu buat tugas."
+        ],
+        "tips": [
+          "SDK dapat menyertakan atau memanggil program eksekusi di bawahnya. Memilih SDK tidak berarti tanpa subproses.",
+          "WorkStep menyimpan data proyek secara lokal. Saat berjalan, mesin dan penyedia pilihan mengirim konteks tugas ke layanan model."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sdk-installation",
+    "title": "Langkah 1: pasang mesin SDK",
+    "summary": "Mulai dengan SDK. Unduh dan kelola mesin melalui Instalasi dan versi tanpa menyalin perintah terminal.",
+    "sections": [
+      {
+        "title": "Unduh dan pasang melalui antarmuka",
+        "steps": [
+          "Buka Pengaturan → Mesin eksekusi. Cari kartu Codex atau Claude Code bertanda sdk, masing-masing untuk Codex SDK dan Claude Agent SDK. Pada awalnya cukup pasang satu yang ingin digunakan.",
+          "Klik Instalasi dan versi, tunggu daftar versi, lalu pilih versi yang sesuai pada Pilih versi.",
+          "Klik Pasang versi terpilih dan periksa versinya. Jika syarat layanan pihak ketiga muncul, baca dan setujui sebelum mengklik Konfirmasi pemasangan.",
+          "Tunggu pengunduhan paket utama, pemasangan mesin serta dependensi, dan pemeriksaan versi. Pastikan versi baru ditampilkan.",
+          "Pergantian versi SDK memerlukan mulai ulang backend. Setelah pekerjaan aktif selesai, pengguna desktop dapat keluar dan membuka kembali WorkStep untuk melanjutkan pengaturan."
+        ],
+        "tips": [
+          "Persentase hanya menghitung paket utama. Pengunduhan dependensi dan ekstraksi mungkin tidak memiliki persentase; perhatikan keterangan tahap.",
+          "Pemasangan tetap berjalan ketika bagiannya dilipat. Jangan mengirim ulang hanya karena kemajuan sementara tidak berubah.",
+          "Jika versi yang sesuai tidak muncul, segarkan daftar dan periksa jaringan serta dukungan platform. Jika jalur program khusus diatur, hapus sesuai petunjuk sebelum mengelola versi."
+        ],
+        "screenshot": {
+          "id": "sdk-install-version",
+          "alt": "Pemasangan mesin SDK dan pemilihan versi",
+          "caption": "Klik Instalasi dan versi, Pilih versi, lalu Pasang versi terpilih."
+        }
+      },
+      {
+        "title": "Periksa pemasangan dan kelola versi",
+        "steps": [
+          "Buka kembali Mesin eksekusi dan pastikan SDK terdeteksi terpasang dengan versi yang diharapkan.",
+          "Gunakan Instalasi dan versi untuk peningkatan berikutnya. Jika versi pemulihan tersedia, klik Kembali ke… dan konfirmasi; versi lama akan diunduh ulang.",
+          "Jika pemasangan gagal, baca pesan kesalahan, periksa jaringan, ruang disk, dan jalur pemasangan, lalu coba lagi. Pemasangan berhasil belum berarti autentikasi model berhasil; lanjutkan pengaturan dan pengujian."
+        ],
+        "screenshot": {
+          "id": "sdk-install-progress",
+          "alt": "Versi dan kemajuan setelah pemasangan SDK",
+          "caption": "Periksa versi setelah pemasangan. Indikator 100% yang tersisa berarti selesai, bukan masih mengunduh."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sdk-credentials",
+    "title": "Atur penyedia, autentikasi, dan uji koneksi",
+    "summary": "Atur penyedia yang kompatibel di WorkStep dan ikat ke SDK. Pengguna dengan login asli yang sudah tersedia juga dapat memakai autentikasi mesin tersebut.",
+    "sections": [
+      {
+        "title": "Tambah penyedia",
+        "steps": [
+          "Buka Pengaturan → Penyedia → Tambah penyedia. Beri nama yang mudah dikenali dan pilih jenis layanan serta protokol API.",
+          "Untuk Claude Agent SDK pilih endpoint Anthropic Messages yang kompatibel; untuk Codex SDK pilih OpenAI Responses yang kompatibel. Klaim kompatibel OpenAI saja belum memastikan kesesuaian protokol.",
+          "Isi alamat API dan API Key dari penyedia. Pertahankan jalur versi seperti /v1 atau /v2; jangan memakai jalur lengkap endpoint percakapan sebagai alamat dasar.",
+          "Simpan penyedia dan klik Uji koneksi. Jika membutuhkan daftar model, klik Ambil model, pilih model yang diperlukan, lalu Simpan pilihan.",
+          "Pastikan penyedia diaktifkan. Setelah pengujiannya lulus, kembali ke SDK untuk pengikatan dan pengujian mesin."
+        ],
+        "tips": [
+          "Langganan akun, kredensial API, dan penagihan ditentukan penyedia layanan. Memasang SDK tidak menyediakan kredensial.",
+          "Saat mengedit penyedia, membiarkan kunci kosong mempertahankan nilai lama. Masukkan kunci baru untuk menggantinya dan sembunyikan kunci sebelum mengambil gambar atau membagikan konfigurasi.",
+          "Dalam mode terkelola perusahaan, penyedia dapat ditetapkan platform. Pakai penyedia yang diizinkan tanpa menambahkannya lagi."
+        ],
+        "screenshot": {
+          "id": "provider-create-test",
+          "alt": "Nama, protokol, dan alamat API penyedia",
+          "caption": "Atur protokol kompatibel, simpan, lalu uji koneksi. Gambar menampilkan alamat API publik dengan kolom kunci kosong."
+        }
+      },
+      {
+        "title": "Ikat dan verifikasi SDK",
+        "steps": [
+          "Kembali ke Pengaturan → Mesin eksekusi, buka konfigurasi SDK yang terpasang dan pilih penyedia kompatibel yang sudah disimpan.",
+          "Claude Agent SDK mewajibkan Mode izin. Baca keterangannya, pilih lalu konfirmasi; opsi lanjutan lain dapat memakai nilai bawaan. Untuk Codex SDK, awalnya pertahankan pengaturan penalaran, persetujuan, dan sandbox bawaan.",
+          "Klik Simpan konfigurasi dan periksa model bawaan. Setelah penyedia diikat, Segarkan model hanya membaca pilihan yang disimpan, bukan mengambil seluruh model. Tanpa cache atau pilihan, daftar kosong. Untuk menambah model, kembali ke Pengaturan → Penyedia, Ambil model dan Simpan pilihan, lalu segarkan mesin.",
+          "Klik Uji pada kartu mesin, tunggu hasil, dan pastikan status Terverifikasi. Ini adalah pemeriksaan sebelum menjalankan tugas."
+        ],
+        "tips": [
+          "Pengujian mesin benar-benar memanggil mesin pilihan dan dapat menimbulkan biaya layanan model.",
+          "Opsi intensitas penalaran, persetujuan, dan sandbox Codex SDK berlabel Mandarin. Daftar intensitas menunjukkan pengaturan yang didukung mesin meski katalog model kosong; tidak berarti setiap model mendukung semua tingkat. Mulai dengan nilai bawaan. Jika model menolak tingkat tertentu, pilih Otomatis atau nilai yang didukung.",
+          "Tanpa pengikatan penyedia, Codex SDK memakai autentikasi Codex lokal, sedangkan Claude Agent SDK memakai konfigurasi autentikasi aslinya. Pengguna baru tanpa login sebaiknya mulai dari pengaturan penyedia.",
+          "Jika autentikasi gagal, periksa kunci, alamat API, protokol, dan izin akun. Jika model gagal, periksa ID model serta dukungan penyedia. Jika Belum terpasang, kembali ke pemasangan."
+        ],
+        "screenshot": {
+          "id": "sdk-config-verified",
+          "alt": "Tombol Uji, Terverifikasi, dan Simpan konfigurasi pada kartu Codex SDK",
+          "caption": "Kartu Codex sdk berstatus Terverifikasi menandakan mesin ini lulus pengujian."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution-defaults",
+    "title": "Tentukan mesin eksekusi dan model bawaan",
+    "summary": "Jadikan SDK yang lulus pengujian sebagai mesin bawaan untuk langkah yang tidak menentukan mesin lain.",
+    "sections": [
+      {
+        "title": "Simpan nilai bawaan",
+        "steps": [
+          "Di Pengaturan → Mesin eksekusi → Mesin eksekusi bawaan, pilih SDK yang baru diverifikasi.",
+          "Klik Simpan nilai bawaan dan pastikan pesan berhasil muncul. Jangan pergi hanya setelah memilih nilai di daftar.",
+          "Pilih model pada pemilih model bawaan di kartu SDK. Langkah tanpa model tersendiri menggunakan nilai ini.",
+          "Setelah membuat alur, periksa lagi mesin dan model setiap langkah. Konfigurasi eksplisit langkah tidak otomatis berubah saat nilai global diganti."
+        ],
+        "tips": [
+          "Asisten memiliki pengaturan tersendiri. Mengganti mesin eksekusi bawaan tidak mengganti semua asisten.",
+          "Selesaikan dahulu satu alur dengan satu SDK terverifikasi dan satu model, baru coba model berbeda antar langkah."
+        ],
+        "screenshot": {
+          "id": "execution-default-engine",
+          "alt": "Pemilih mesin eksekusi bawaan dan tombol simpan",
+          "caption": "Pemilih mesin dan tombol Simpan nilai bawaan. Pada gambar, Pydantic AI belum dikonfigurasi; belum ada nilai bawaan yang diubah atau diverifikasi."
+        }
+      }
+    ]
+  },
+  {
+    "id": "local-projects",
+    "title": "Hubungkan proyek lokal",
+    "summary": "Proyek mewakili direktori kode lokal. Data secara bawaan mengikuti proyek, atau dapat disimpan berdasarkan ID proyek di Home pengguna saat ini.",
+    "sections": [
+      {
+        "title": "Kenali ruang kerja bawaan yang disiapkan otomatis",
+        "steps": [
+          "Saat pertama masuk, Ruang kerja bawaan muncul di bilah samping. Jika belum ada proyek terpilih, WorkStep membuka percakapan biasanya. Pilihan proyek sebelumnya dan pengikatan jarak jauh tetap diprioritaskan.",
+          "Setelah mengatur SDK, gunakan ruang kerja ini untuk percakapan biasa. Untuk mengerjakan kode Anda, hubungkan direktori aslinya lewat Tambah proyek; ruang kerja bawaan bukan repositori kode yang sudah dihubungkan.",
+          "Ruang kerja bawaan juga dipakai bersama untuk pembuatan keterampilan, mesin, tema, dan paket bahasa. Pintu masuk tersebut memakai percakapan biasa dan menyimpan hasil di ruang kerja itu."
+        ],
+        "tips": [
+          "Ruang kerja bawaan dapat diganti namanya tetapi tidak dihapus dari daftar proyek. Ruang kerja ini tidak otomatis membuat alur.",
+          "Ruang kerja bawaan adalah proyek, sedangkan SDK adalah mesin eksekusi. Adanya proyek tidak berarti mesin sudah terpasang atau terautentikasi."
+        ],
+        "screenshot": {
+          "id": "default-workspace",
+          "alt": "Ruang kerja bawaan dan pintu masuk percakapan pada bilah samping",
+          "caption": "Percakapan kosong dalam ruang kerja bawaan, tanpa percakapan atau alur. Anda dapat membuat percakapan; proyek kode tetap harus dihubungkan sendiri."
+        }
+      },
+      {
+        "title": "Mulai dari direktori demonstrasi",
+        "steps": [
+          "Siapkan folder demonstrasi terpisah, misalnya workstep-demo. Untuk kode yang ada, pilih akar proyeknya.",
+          "Klik Bilah samping → Tambah proyek → Proyek lokal, pilih folder itu melalui penjelajah direktori dan konfirmasi.",
+          "Pastikan proyek muncul di bilah samping dan beralih ke sana. Proyek baru belum memiliki alur; buat pada langkah berikutnya.",
+          "Saat menghubungkan kembali direktori yang sama, alur, tugas, dan pesan dipulihkan dari data proyek. Jangan menghapus .workstep hanya untuk membuka kembali proyek."
+        ],
+        "tips": [
+          "Mesin dapat membaca atau mengubah berkas proyek sesuai instruksi tugas. Berlatihlah dalam direktori terpisah dan simpan riwayat versi sebelum mengubah kode asli.",
+          "Secara bawaan data proyek ada di .workstep/workstep.db, unggahan di .workstep/uploads/, dan hasil di .workstep/artifacts/. Untuk penyimpanan terpusat, cadangkan direktori data proyek terkait di Home serta berkas identitas proyek.",
+          "Nama proyek baru atau yang diganti tidak boleh memuat spasi, tab, atau karakter kosong lainnya."
+        ],
+        "screenshot": {
+          "id": "project-connect-local",
+          "alt": "Tambah proyek lokal dan pilih direktori akar",
+          "caption": "Pilih direktori demonstrasi lalu buka proyek yang terhubung melalui bilah samping."
+        }
+      },
+      {
+        "title": "Buka direktori proyek dan periksa berkas hasil",
+        "steps": [
+          "Pilih proyek dan klik Buka direktori di halaman tugas atau percakapan proyek. Gunakan ini untuk memeriksa berkas yang benar-benar dihasilkan setelah tugas selesai.",
+          "Di desktop, panah kanan menampilkan pengelola berkas, editor, dan terminal lokal yang terdeteksi. Memilihnya langsung membuka direktori dan mengingat pilihan perangkat ini. Hanya aplikasi tersedia yang terdeteksi yang muncul.",
+          "Proyek jarak jauh dan akses peramban jarak jauh memakai penjelajah direktori web. Versi desktop tanpa jembatan pembuka direktori juga memakainya; editor desktop tidak perlu dipasang di dalam kontainer."
+        ],
+        "tips": [
+          "Jalur proyek sandbox desktop dipetakan kembali ke direktori mount host sebelum dibuka. Jika tidak ada mount cocok, periksa konfigurasi mount proyek.",
+          "Jika Buka direktori gagal, periksa aplikasi dan direktori pilihan masih ada, atau periksa langsung melalui pengelola berkas sistem."
+        ]
+      },
+      {
+        "title": "Atur urutan proyek pada bilah samping",
+        "steps": [
+          "Seret proyek Demonstrasi panduan (操作手册演示) pada bilah samping ke sebelum atau sesudah proyek tujuan.",
+          "Proyek lokal dan jarak jauh dapat diurutkan bercampur. Saat dilepas urutan disimpan dalam konfigurasi lokal dan dipertahankan setelah dibuka ulang."
+        ],
+        "tips": [
+          "Urutan hanya mengubah tampilan perangkat ini, bukan urutan pada host jarak jauh. Jika penyimpanan gagal, ikuti pesan kesalahan lalu coba lagi."
+        ],
+        "screenshot": {
+          "id": "project-order",
+          "alt": "Dua proyek demonstrasi lokal dan daftar alur di bilah samping",
+          "caption": "Bilah samping terbaru menampilkan dua proyek demonstrasi lokal dan ruang kerja bawaan. Seret baris proyek untuk mengurutkan; tidak ada perangkat jarak jauh terhubung."
+        }
+      },
+      {
+        "title": "Pilih lokasi penyimpanan data proyek",
+        "steps": [
+          "Setelah memilih direktori di Bilah samping → Tambah proyek → Proyek lokal, periksa Direktori data mengikuti direktori proyek, yang secara bawaan dicentang untuk proyek baru.",
+          "Jika dicentang, tugas, alur, lampiran, log, hasil, keterampilan, dan memori disimpan pada .workstep/ proyek. Jika tidak, data memakai ~/.workstep/projects/<项目ID>/ dan proyek hanya menyimpan berkas identitas .workstep/project.json.",
+          "Untuk proyek lama, periksa jalur data sebenarnya di Konfigurasi proyek → Umum. Ubah kotak centang dan konfirmasi migrasi. Hentikan dahulu tugas, percakapan, dan tindakan cepat; hapus ruang kerja Git yang masih ada.",
+          "Tunggu migrasi lalu periksa jalur baru dan tugas lama. Kegagalan mempertahankan data asli. Direktori tujuan yang tidak kosong tidak ditimpa; selesaikan masalah yang dilaporkan lalu coba lagi."
+        ],
+        "tips": [
+          "Menambahkan kembali proyek yang ada mempertahankan mode penyimpanan dalam berkas identitas dan tidak otomatis memindahkan data.",
+          "Pertahankan .workstep/project.json ketika memindahkan atau mengganti nama proyek, lalu tambahkan ulang agar proyek lama dikenali. Menghapus identitas tidak menghapus data Home tetapi mencegah pengaitan otomatis.",
+          "Salinan dengan ID sama tidak dapat dipakai bersama direktori asli yang terdaftar: sistem melaporkan konflik ID. Saat pindah komputer, salin juga direktori data Home terkait.",
+          "Penyimpanan terpusat tetap mengabaikan .workstep/ proyek secara otomatis. Pemampatan biasa tidak otomatis memakai aturan abaikan Git, tetapi berkas identitas tidak berisi data tugas."
+        ],
+        "screenshot": {
+          "id": "project-storage-add",
+          "alt": "Pilihan penyimpanan dan informasi berkas identitas saat menambah proyek",
+          "caption": "Antarmuka Tambah proyek sebenarnya: menghapus centang bawaan menampilkan jalur Home serta petunjuk pemindahan dan migrasi antar komputer."
+        }
+      },
+      {
+        "title": "Pindahkan data proyek yang sudah ada",
+        "steps": [
+          "Buka bagian Umum pada konfigurasi proyek dan periksa jalur data saat ini.",
+          "Klik Direktori data mengikuti direktori proyek, baca dan konfirmasi migrasi, lalu tunggu. Pekerjaan aktif atau tujuan yang tidak kosong menghasilkan kesalahan."
+        ],
+        "screenshot": {
+          "id": "project-storage-settings",
+          "alt": "Lokasi data pada pengaturan proyek demonstrasi",
+          "caption": "Periksa jalur saat ini. Perubahan kotak centang tetap memerlukan konfirmasi migrasi pada dialog."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-workflow",
+    "title": "Buat alur dua langkah pertama",
+    "summary": "Gunakan Analisis persyaratan → Jalankan tugas untuk mengenali langkah, masukan, keluaran, dan koneksi.",
+    "sections": [
+      {
+        "title": "Buat contoh melalui panduan awal",
+        "steps": [
+          "Pastikan mesin bawaan disimpan dan proyek lokal terhubung sudah dipilih. Jika panduan ditutup, buka kembali Pengaturan → Pengaturan sistem → Panduan awal dan klik Panduan awal.",
+          "Pada Buat alur dua langkah, klik Buat alur contoh. Tunggu berhasil dan kanvas terbuka.",
+          "Contoh bernama Analisis dan eksekusi (分析与执行). Langkah pertama Analisis persyaratan (需求分析) menghasilkan Rencana eksekusi (执行计划), yang disambungkan ke Jalankan tugas (执行任务).",
+          "Buka kedua langkah dan periksa mesin, model, prompt, masukan, serta keluarannya agar menggunakan SDK terverifikasi. Contoh tidak mulai otomatis saat dibuat dan tanpa tinjauan; setelah dimulai, kedua langkah berjalan sesuai dependensi."
+        ],
+        "tips": [
+          "Alur baru biasa dimulai dengan kanvas kosong tanpa langkah contoh. Pilih templat secara eksplisit.",
+          "Jangan menilai konfigurasi hanya dari tampilan garis: periksa kesesuaian porta keluaran dengan kebutuhan masukan berikutnya."
+        ],
+        "screenshot": {
+          "id": "starter-workflow-canvas",
+          "alt": "Kanvas dua langkah analisis persyaratan dan eksekusi tugas",
+          "caption": "Analisis menghasilkan rencana untuk eksekusi tugas. Klik tiap langkah untuk memeriksa konfigurasi."
+        }
+      }
+    ]
+  },
+  {
+    "id": "first-task",
+    "title": "Buat dan selesaikan tugas pertama",
+    "summary": "Gunakan tugas kecil, jelas, dan mudah diperiksa untuk memastikan SDK, proyek, dan alur bekerja bersama.",
+    "sections": [
+      {
+        "title": "Tulis permintaan yang dapat diverifikasi",
+        "steps": [
+          "Siapkan README.md dan example.txt di direktori demonstrasi. README.md memuat lima operasi yang perlu dijelaskan, dengan catatan tambahan di example.txt. Gunakan bahan demonstrasi, bukan data pribadi.",
+          "Buka halaman tugas proyek demonstrasi, pilih Analisis dan eksekusi, lalu klik Tugas baru. Pintu masuk Buat tugas pada panduan awal juga membukanya.",
+          "Mulai dari Analisis persyaratan dan isi judul Susun petunjuk proyek (整理项目说明).",
+          "Contoh deskripsi: Baca README.md dan example.txt, buat rencana eksekusi, lalu buat 使用说明.md di akar proyek. Tulis lima operasi dalam Markdown, masing-masing satu kalimat. Hanya baca kedua berkas yang ada; jangan ubah. Boleh membuat 使用说明.md, tetapi jangan mengubah berkas lain. Laporkan lokasi berkas hasil saat selesai.",
+          "Pilih Mulai manual dan klik Buat tugas. Periksa permintaan dan langkah awal, lalu Mulai tugas. Alternatifnya pilih Langsung mulai setelah dibuat."
+        ],
+        "tips": [
+          "Tentukan tujuan, tindakan yang diizinkan, format hasil, dan kriteria penerimaan; hasil lebih mudah diperiksa dibanding permintaan samar.",
+          "Memulai dari langkah berikutnya melewati langkah sebelumnya. Untuk latihan pertama, mulai dari Analisis persyaratan.",
+          "Membuka panel tugas dari panduan awal tidak mengeksekusi tugas; opsi mulai pada panel menentukan eksekusi."
+        ],
+        "screenshot": {
+          "id": "first-task-create",
+          "alt": "Judul, deskripsi, langkah awal, dan mode mulai tugas",
+          "caption": "Tulis permintaan konkret, pilih langkah awal, dan tentukan kapan eksekusi dimulai."
+        }
+      },
+      {
+        "title": "Pantau langkah dan periksa keluaran",
+        "steps": [
+          "Buka detail tugas dan amati langkah saat ini, status, serta pesan. Tunggu saat mesin berjalan dan tanggapi pertanyaan atau permintaan persetujuan yang muncul.",
+          "Setelah Analisis persyaratan selesai, Jalankan tugas dimulai otomatis sesuai koneksi dependensi tanpa klik Mulai lagi. Baca rencana langkah pertama dan pastikan langkah kedua memakainya.",
+          "Setelah eksekusi selesai, baca pesan akhir dan buka 使用说明.md di akar proyek. Periksa format Markdown, lima operasi, dan satu kalimat per operasi.",
+          "Jika pesan menampilkan Edited … files, perluas dan klik nama berkas. Lihat patch tercatat bila tersedia; jika tidak, pratinjau berkas saat ini. Perubahan historis dapat berbeda dari berkas sekarang, jadi tetap periksa hasil nyata.",
+          "Pastikan README.md dan example.txt tidak berubah dan hanya 使用说明.md yang diizinkan ditambahkan. Gunakan pintu masuk berkas proyek atau pengelola berkas sistem. Status selesai saja belum membuktikan hasil benar."
+        ],
+        "tips": [
+          "Jika terus menunggu, bedakan menunggu mulai, persetujuan, tinjauan, dan eksekusi aktif; tindakannya berbeda.",
+          "Jika gagal, simpan kesalahan lalu uji kembali koneksi SDK. Setelah konfigurasi diperbaiki, gunakan pintu pemulihan atau percobaan ulang yang tersedia.",
+          "Jika API mengembalikan halaman web, pastikan backend diperbarui dan dimulai ulang, lalu segarkan dan coba lagi. Detail eksekusi gagal dimuat belum berarti eksekusi gagal; jangan membuat tugas duplikat hanya karena itu."
+        ],
+        "screenshot": {
+          "id": "first-task-result",
+          "alt": "Hasil 使用说明.md setelah tugas dua langkah selesai",
+          "caption": "Setelah kedua langkah selesai, periksa 使用说明.md beserta lima penjelasan operasinya."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Edit alur kerja",
+    "summary": "Uraikan pekerjaan menjadi langkah serta atur mesin, masukan, keluaran, dan aturan tinjauan.",
+    "sections": [
+      {
+        "title": "Tambah dan hubungkan langkah",
+        "steps": [
+          "Pilih proyek dan alur di kiri lalu masuk Kanvas alur. Alur baru kosong; tambahkan langkah atau terapkan templat secara eksplisit.",
+          "Klik + Langkah dan isi nama serta pengenal, misalnya Susun persyaratan dengan requirements. Pengenal harus unik dalam alur, diawali huruf Latin, dan hanya memuat huruf, angka, garis bawah, atau tanda hubung.",
+          "Tulis prompt dengan tujuan, batasan, dan hasil jelas. Contoh: Baca deskripsi tugas, daftar kriteria penerimaan dan rencana implementasi, lalu simpan dokumen persyaratan.",
+          "Atur SDK terpasang dan terverifikasi beserta model. Untuk mewarisi nilai bawaan, pilih mesin eksekusi bawaan atau model bawaan mesin.",
+          "Setelah mengatur masukan dan keluaran, seret porta keluaran sebelumnya ke masukan berikutnya yang sesuai, lalu Simpan."
+        ],
+        "tips": [
+          "Garis penuh membawa data. Koneksi ke langkah sebelumnya membuat garis balik putus-putus untuk masukan pengerjaan ulang.",
+          "Pemberitahuan Perubahan belum disimpan berarti perubahan kanvas belum tersimpan."
+        ],
+        "screenshot": {
+          "id": "workflow-canvas",
+          "alt": "Kanvas dua langkah dengan koneksi masukan dan keluaran",
+          "caption": "Temukan Tambah langkah, porta koneksi, dan Simpan."
+        }
+      },
+      {
+        "title": "Atur masukan, keluaran, dan koneksi balik",
+        "steps": [
+          "Buka editor langkah, beri nama keluaran yang jelas, dan atur masukan yang diperlukan langkah berikutnya.",
+          "Hubungkan setiap keluaran ke masukan yang sesuai. Saat berjalan, periksa ketersediaan pada Masukan dan keluaran langkah di detail tugas.",
+          "Untuk pengerjaan ulang, buat koneksi balik dan atur Maksimum pengembalian pada langkah itu. Sebelum menyimpan, baca peringatan tahap yang mungkin tidak dapat berjalan dan periksa apakah eksekusi awal bergantung pada hasil pengerjaan ulang yang belum ada."
+        ],
+        "tips": [
+          "Maksimum pengembalian mengendalikan garis balik putus-putus, terpisah dari percobaan ulang setelah tinjauan gagal.",
+          "Mendeklarasikan porta keluaran tidak membuat berkas. Minta hasil nyata dalam prompt dan periksa setelahnya."
+        ],
+        "screenshot": {
+          "id": "workflow-io",
+          "alt": "Hasil masukan dan keluaran terkait dalam editor simpul",
+          "caption": "Masukan menyatakan persyaratan tugas dengan rencana eksekusi sebagai keluaran terkait. Pengaturan jumlah pengembalian tidak ditampilkan."
+        }
+      },
+      {
+        "title": "Atur tinjauan dan mulai otomatis",
+        "steps": [
+          "Di Tinjauan langkah pada editor, pilih Tinjauan manual, Tinjauan otomatis, atau Lewati tinjauan. Untuk awal disarankan manual.",
+          "Tinjauan manual berhenti setelah eksekusi untuk keputusan Anda. Untuk otomatis, tulis kriteria yang bisa diuji dan pilih mesin serta model bila perlu.",
+          "Atur jumlah percobaan ulang setelah tinjauan otomatis menolak hasil. Kesalahan pada agen peninjau sendiri dialihkan ke penanganan manual.",
+          "Atur Mulai otomatis setelah dibuat sesuai kebutuhan lalu simpan. Untuk latihan awal, nonaktifkan agar tugas bisa diperiksa sebelum berjalan."
+        ],
+        "tips": [
+          "Pasang dan atur mesin SDK sebelum dipakai baik untuk eksekusi maupun tinjauan."
+        ],
+        "screenshot": {
+          "id": "workflow-review-config",
+          "alt": "Kontrol mode tinjauan langkah dalam editor simpul",
+          "caption": "Pilih mode tinjauan di editor. Periksa mulai otomatis secara terpisah sesuai uraian di atas."
+        }
+      },
+      {
+        "title": "Teruskan ke alur lain dan gunakan ulang elemen kanvas",
+        "steps": [
+          "Untuk menyerahkan keluaran ke proyek atau alur lain, tambah Langkah alur kerja lalu pilih proyek, alur, langkah awal, dan mode mulai tujuan.",
+          "Atur hasil masukan dari langkah sebelumnya dan simpan. Langkah ini langsung lulus setelah membuat tugas lanjutan dan tidak dapat terhubung ke langkah berikutnya dalam alur induknya.",
+          "Untuk memakai ulang langkah, pilih Salin simpul dari alur, tentukan proyek, alur, dan simpul, pratinjau, salin, lalu simpan.",
+          "Gunakan Tata letak untuk menyusun simpul. Tambahkan penanda untuk catatan, atau ekspor JSON alur sebagai cadangan. Periksa cakupan penggantian sebelum impor."
+        ],
+        "screenshot": {
+          "id": "workflow-dispatch",
+          "alt": "Tujuan tugas lanjutan dan pengaturan mulai",
+          "caption": "Periksa proyek, alur, dan langkah awal tujuan."
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow-hooks",
+    "title": "Hook pemicu dan notifikasi alur",
+    "summary": "Buat tugas dari permintaan eksternal atau kirim status alur ke platform pilihan.",
+    "sections": [
+      {
+        "title": "Buat tugas melalui hook pemicu",
+        "steps": [
+          "Pilih proyek dan alur. Buka Hook alur dari toolbar daftar tugas atau menu ponsel, lalu Hook pemicu.",
+          "Tambah hook, isi nama, judul bawaan, dan pembuat, pilih langkah awal serta mulai otomatis, lalu simpan. Contoh: Penerimaan persyaratan dengan judul Permintaan eksternal.",
+          "Pilih alamat LAN, eksternal, atau Gateway yang dikonfigurasi dan salin URL pemanggilan. Tokennya adalah kredensial; hanya berikan kepada sistem tepercaya.",
+          "Di Simulasikan panggilan, isi judul, pembuat, dan isi untuk melihat pratinjau. Simulasi tidak membuat tugas.",
+          "Minta sistem eksternal melakukan POST ke URL salinan dengan JSON, teks biasa, atau Markdown, misalnya: Susun kriteria penerimaan permintaan ini. Setelah mendapat ID tugas, periksa isi dan status mulainya."
+        ],
+        "tips": [
+          "Diperlukan izin mengedit proyek. Setiap permintaan valid membuat tugas. Versi ini tidak otomatis mengenali peristiwa GitHub/GitLab, menghapus duplikat, atau menampung permintaan saat perangkat luring.",
+          "Perbaiki alamat yang belum ada atau perangkat terputus terlebih dahulu. Reset token membatalkan URL lama. Jika mulai otomatis gagal, tugas tetap ada: periksa run_error dan detail sebelum mengirim ulang."
+        ],
+        "screenshot": {
+          "id": "workflow-trigger-hooks",
+          "alt": "Nama, nilai bawaan, dan langkah awal hook pemicu yang belum disimpan",
+          "caption": "Draf nonaktif ini hanya membuat tugas. Token disembunyikan; belum disimpan dan URL pemanggilan belum dibuat."
+        }
+      },
+      {
+        "title": "Kirim notifikasi alur ke platform eksternal",
+        "steps": [
+          "Dalam jendela Hook alur yang sama, pindah ke Hook notifikasi dan tambah tujuan.",
+          "Isi nama, pilih bot grup DingTalk, bot grup WeCom, atau JSON Webhook umum, lalu isi URL tujuan. Masukkan rahasia tanda tangan DingTalk bila diperlukan.",
+          "Pilih peristiwa langganan, bawaan penyelesaian dan kegagalan tugas. Atur awalan judul serta alamat Gateway, eksternal, atau LAN untuk tautan tugas bila perlu, lalu simpan.",
+          "Buat pratinjau melalui Simulasikan notifikasi dan periksa isi serta tautan. Pratinjau tidak mengirim permintaan. Untuk uji nyata, konfirmasi lalu klik Kirim notifikasi uji; pesan dikirim ke tujuan tersimpan yang aktif.",
+          "Periksa status, percobaan, dan kesalahan tersamarkan pada catatan pengiriman. Setelah memperbaiki konfigurasi, coba ulang catatan gagal. Setelah tugas selesai, periksa platform penerima dan akses tautan tugas."
+        ],
+        "tips": [
+          "Perangkat mengirim langsung; Gateway tidak meneruskan notifikasi. Pesan tidak memuat isi percakapan, isi hasil kerja, atau kredensial pembuatan tugas. Tautan tugas tetap membutuhkan hak akses biasa.",
+          "Kesalahan sementara dicoba ulang otomatis. Timeout dan pemulihan dapat menggandakan pengiriman; penerima umum dapat memakai event_id untuk deduplikasi. Menonaktifkan atau menghapus tujuan tidak menarik pesan yang sudah terkirim.",
+          "Pratinjau saja tidak membuktikan integrasi berhasil: pastikan platform benar-benar menerima pesan."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-hooks",
+          "alt": "Platform DingTalk, peristiwa langganan, dan kolom alamat kosong",
+          "caption": "Draf belum disimpan dan nonaktif pada antarmuka terbaru, dengan penyelesaian serta kegagalan terpilih. Kolom Webhook dan rahasia tanda tangan kosong; tidak ada yang dikirim."
+        }
+      },
+      {
+        "title": "Sesuaikan templat notifikasi Markdown",
+        "steps": [
+          "Pilih bot grup DingTalk atau WeCom pada hook notifikasi dan gulir ke Templat pesan Markdown. JSON Webhook umum tidak memakai templat ini.",
+          "Perluas Variabel templat (klik untuk menyalin), lalu masukkan placeholder seperti {task_title}. Jangan gunakan variabel tak dikenal atau templat kosong. Pertahankan {task_link} atau {task_url} bila tautan tugas diperlukan.",
+          "Simpan dan gunakan Simulasikan notifikasi untuk memeriksa penggantian serta tautan tanpa mengirim. Baca konfirmasi sebelum memulihkan templat bawaan."
+        ],
+        "screenshot": {
+          "id": "workflow-notification-template",
+          "alt": "Isi notifikasi Markdown dan pintu variabel templat",
+          "caption": "Draf menampilkan isi Markdown bawaan dan variabel. Templat belum dikirim dan notifikasi belum dikirim ke luar."
+        }
+      }
+    ]
+  },
+  {
+    "id": "templates-ai-flow",
+    "title": "Templat dan asisten alur AI",
+    "summary": "Mulai dari templat atau minta AI mengusulkan langkah lalu konfirmasi yang akan diterapkan.",
+    "sections": [
+      {
+        "title": "Terapkan dan simpan templat",
+        "steps": [
+          "Buka Templat alur pada kanvas, cari nama atau deskripsi, dan tinjau tujuan serta jumlah langkah setiap templat.",
+          "Pilih templat yang sesuai dan konfirmasi. Penerapan mengganti seluruh langkah dan koneksi kanvas saat ini.",
+          "Periksa mesin, model, prompt, dan kebutuhan tinjauan tiap langkah, sesuaikan lalu simpan.",
+          "Untuk menggunakan ulang desain, pilih Simpan alur saat ini sebagai templat lalu isi nama dan deskripsi. Kelola templat khusus yang dapat diedit di Pengaturan → Templat alur."
+        ],
+        "tips": [
+          "Proyek baru tidak otomatis membuat alur, dan alur baru tidak otomatis menerapkan templat.",
+          "Templat bawaan tidak dapat dihapus. Setelah menerapkan, tetap pastikan mesin yang dibutuhkan tersedia."
+        ],
+        "screenshot": {
+          "id": "workflow-templates",
+          "alt": "Hasil templat bawaan Manajemen kontrak dalam pencarian kanvas",
+          "caption": "Cari Manajemen kontrak untuk melihat tujuan dan jumlah langkah. Periksa cakupan penggantian sebelum memilih."
+        }
+      },
+      {
+        "title": "Minta AI membuat atau mengubah alur",
+        "steps": [
+          "Buka asisten alur AI di kanvas dan pilih mesin serta model yang sudah dikonfigurasi.",
+          "Jelaskan tujuan, pembagian langkah, format hasil, dan tinjauan. Contoh: Buat analisis persyaratan → implementasi → pengujian, dengan tinjauan manual di setiap tahap, menggunakan SDK terpasang.",
+          "Bandingkan kartu usulan berdasarkan judul, jumlah langkah, dan ringkasan, lalu terapkan usulan sesuai ke kanvas.",
+          "Untuk alur lama, periksa perubahan langkah. Pada Terapkan perubahan, pilih penambahan, pembaruan, atau penghapusan yang diinginkan, lalu terapkan dan simpan."
+        ],
+        "tips": [
+          "Usulan AI memerlukan konfirmasi. Keberhasilan pembuatan saja bukan alasan menjalankan: periksa koneksi, mesin, dan kriteria tinjauan."
+        ],
+        "screenshot": {
+          "id": "ai-flow-proposal",
+          "alt": "Kartu usulan dua langkah dari asisten alur AI",
+          "caption": "Kartu menunjukkan jumlah langkah berubah dan Terapkan perubahan. Klik untuk mengonfirmasi perubahan langkah tertentu."
+        }
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Membuat dan mengelola tugas",
+    "summary": "Alur kerja menentukan cara bekerja; sebuah tugas menentukan apa yang harus dilakukan saat ini.",
+    "sections": [
+      {
+        "title": "Siapkan banyak tugas dengan asisten tugas",
+        "steps": [
+          "Buka asisten tugas di halaman tugas. Minta beberapa tugas secara eksplisit dengan waktu individual, misalnya: Buat tiga tugas independen mulai besok pukul 09:00, 10:00, dan 11:00.",
+          "Periksa setiap judul draf, konten, alur kerja, langkah awal, dan waktu mulai yang dijadwalkan, lalu konfirmasikan pembuatan melalui antarmuka.",
+          "Kembali ke daftar tugas dan verifikasi setiap hasil. Jika ada yang gagal, periksa tugas yang ada sebelum mengirimkan ulang seluruh batch."
+        ],
+        "tips": [
+          "Menghasilkan draf tidak membuat atau melaksanakan tugas. Tentukan zona waktu untuk waktu mendatang; startup terjadwal memerlukan backend untuk tetap berjalan."
+        ],
+        "screenshot": {
+          "id": "task-ai-batch",
+          "alt": "Draf tugas batch dan waktu yang dijadwalkan masing-masing",
+          "caption": "Tangkapan layar sebenarnya tertunda: draf batch dan waktu individual. Draf tugas tunggal yang lama tidak boleh menggantikannya."
+        }
+      },
+      {
+        "title": "Buat tugas dan biarkan AI mengatur persyaratan",
+        "steps": [
+          "Pilih proyek dan alur kerja, buka halaman tugasnya, lalu klik Baru atau Tambah di tahap yang sesuai.",
+          "Masukkan judul dan deskripsi dengan konteks, tujuan, perubahan yang diizinkan, jalur keluaran, dan kriteria penerimaan. Markdown dan gambar referensi yang ditempel didukung.",
+          "Jika diperlukan, buka Asisten tugas, periksa judul, konten, dan pilihan alur kerja yang dihasilkan, lalu konfirmasi.",
+          "Periksa langkah awal dan tinjau pengaturan untuk proses ini, lalu buat tugas. Dengan startup otomatis dinonaktifkan, klik Mulai tugas."
+        ],
+        "tips": [
+          "Contoh: Membaca README dan menghasilkan docs/getting-started.md tanpa mengubah kode program. Sertakan instalasi, startup dan tiga pertanyaan umum.",
+          "Pembuatan dan permulaan adalah tindakan yang terpisah; mode startup dan pengaturan langkah menentukan apakah eksekusi segera dimulai."
+        ],
+        "screenshot": {
+          "id": "task-create",
+          "alt": "Formulir pembuatan tugas dengan asisten tugas diperluas",
+          "caption": "Masukkan judul dan deskripsi dan pilih mode startup. Asisten dapat mengatur persyaratan; pengaturan tinjauan ada di tab lain."
+        }
+      },
+      {
+        "title": "Temukan tugas di papan atau meja",
+        "steps": [
+          "Beralih antara Jalur dan Tabel di halaman tugas, periksa tugas berdasarkan tahap dan cari berdasarkan judul.",
+          "Klik tugas untuk membuka detailnya, termasuk langkah saat ini, status, pembuat, dan waktu pembaruan.",
+          "Arsipkan tugas yang sudah selesai jika diinginkan. Temukan di bawah Lihat arsip dan kembalikan ke papan. Periksa pilihan sebelum operasi massal."
+        ],
+        "tips": [
+          "Mengantri biasanya berarti kapasitas konkurensi sudah penuh. Menunggu peninjauan memerlukan konfirmasi; itu tidak berarti aplikasinya macet.",
+          "Penghapusan berbeda dengan pengarsipan. Baca konfirmasi sebelum penghapusan permanen."
+        ],
+        "screenshot": {
+          "id": "task-board",
+          "alt": "Papan tugas menunjukkan status dan tahapan",
+          "caption": "Tugas demonstrasi sudah siap. Entri Toolbar mencakup tampilan, hook alur kerja, arsip, dan direktori Terbuka. Waktu pembuatan berada di bawah kartu; penyalinan dibahas selanjutnya."
+        }
+      },
+      {
+        "title": "Ubah hanya alur kerja tugas saat ini",
+        "steps": [
+          "Buka detail tugas dan klik Edit alur kerja tugas di bawah grafik kemajuan. Hentikan eksekusi atau peninjauan terlebih dahulu; kanvas bersifat hanya-baca saat aktif.",
+          "Ubah petunjuk langkah, mesin, model, dan tinjauan tugas ini. Tambahkan langkah, tambahkan artefak di akhir, dan sesuaikan koneksi. Langkah-langkah yang ada, port input, dan artefak asli tidak dapat dihapus atau diganti namanya.",
+          "Simpan untuk memperbarui grafik kemajuan. Startup berikutnya menggabungkan alur kerja utama terbaru dengan perbedaan spesifik tugas, tanpa mengubah alur kerja utama atau tugas lainnya.",
+          "Untuk menghapus semua penyesuaian, klik Sinkronkan alur kerja utama dan konfirmasi. Langkah-langkah yang ditambahkan meninggalkan alur kerja saat ini, namun pesan historis, artefak, dan catatan eksekusi tetap ada. Ini tidak memulai eksekusi."
+        ],
+        "tips": [
+          "Tanpa perubahan aktual, salinan alur kerja lengkap tidak akan dibuat. Bidang yang tidak diganti mewarisi pembaruan alur kerja utama; penggantian tugas diutamakan.",
+          "Memilih langkah di kolom pesan dan mengubah mesinnya akan menyimpannya ke tugas itu. Langkah reset hanya menyetel ulang sesi eksekusi berikutnya, bukan mesin alur kerja utama.",
+          "Menghapus koneksi akan mengubah ketergantungan dan memungkinkan eksekusi langsung; itu tidak membuat manual langkah."
+        ],
+        "screenshot": {
+          "id": "task-workflow-overrides",
+          "alt": "Entri pengeditan dan sinkronisasi alur kerja khusus tugas",
+          "caption": "Kanvas terpisah tugas demonstrasi memperlihatkan mode handoff, Sinkronkan alur kerja utama, dan Simpan. Tidak ada pengaturan yang diubah atau eksekusi dimulai."
+        }
+      },
+      {
+        "title": "Salin tugas",
+        "steps": [
+          "Klik ikon Salin tugas di samping tugas di kartu atau tabel.",
+          "Periksa tugas baru berjudul (salin), periksa deskripsinya, penyesuaian alur kerja, dan langkah awal, lalu jalankan. Langkah-langkah yang disalin mulai tertunda; kemajuan asli dan riwayat percakapan tidak disalin."
+        ],
+        "screenshot": {
+          "id": "task-copy",
+          "alt": "Salin ikon tugas di samping nama tugas dalam tampilan tabel",
+          "caption": "Ikon kecil di sebelah nama adalah entri salinan. Tidak ada tugas yang disalin atau dimulai pada gambar ini."
+        }
+      },
+      {
+        "title": "Kelola tugas di telepon",
+        "steps": [
+          "Ketuk baris tugas untuk membuka detailnya. Tahan sekitar setengah detik untuk membuka menu tindakannya; klik kanan mouse juga berfungsi.",
+          "Sesuai izin, mulai, edit atau lihat, salin, arsipkan, pulihkan atau hapus. Tugas berjalan, antre atau menunggu dengan langkah aktif tidak dapat diarsipkan atau dihapus. Tangani konfirmasi atau hentikan eksekusi terlebih dahulu; baca konfirmasi sebelum menghapus.",
+          "Setelah semua langkah alur kerja dijalankan dan dilewati, tugas memperlihatkan Selesai, termasuk setelah membuka kembali detail atau memulai ulang. Penyelesaian tidak mengarsipkan tugas; pilih apakah akan mengarsipkannya."
+        ],
+        "tips": [
+          "Menggulir atau menggerakkan jari Anda akan membatalkan penekanan lama untuk menghindari tindakan yang tidak disengaja. Akses hanya baca masih dapat membuka entri tampilan tanpa menerima hak edit."
+        ],
+        "screenshot": {
+          "id": "task-mobile-controls",
+          "alt": "Menu Arsipkan dan Hapus untuk baris tugas pada 390 piksel",
+          "caption": "Diambil dari tugas yang sudah siap di v1.0.13; tidak ada yang diarsipkan atau dihapus dan penyelesaiannya tidak ditampilkan. Entri mulai, edit, dan salin yang baru ditambahkan masih memerlukan tangkapan layar yang diperbarui."
+        }
+      },
+      {
+        "title": "Kembali ke tugas atau sesi dari Obrolan terkini",
+        "steps": [
+          "Temukan tugas atau sesi yang dikunjungi di Obrolan terkini (最近聊天) di bar samping dan klik untuk kembali ke detail proyek aslinya. Kedua jenis tersebut muncul di sini.",
+          "Periksa indikator yang berjalan, gagal, dan belum dibaca. Membuka detail yang relevan akan menghapus indikasi yang belum dibaca tersebut. Entri resmi memiliki menu arsip atau hapus; membaca konfirmasi.",
+          "Di desktop, ciutkan Proyek atau Obrolan terkini, seret judul untuk menukar urutannya, dan seret pembagi untuk mengubah ukurannya. Klik dua kali pembagi untuk mengembalikan rasio bawaan."
+        ],
+        "tips": [
+          "Kunjungan terkini mempertahankan maksimal 20 item pada identitas perangkat browser ini. Menghapus data browser akan menghapus indeks ini, bukan konten tugas. Entri sejarah tidak melewati otorisasi proyek.",
+          "Mengarsipkan, menghapus, dan menghapus status belum dibaca memiliki efek berbeda. Jika tautan lama gagal, periksa apakah proyek dan sesi masih ada dan koneksi berfungsi."
+        ],
+        "screenshot": {
+          "id": "recent-activity",
+          "alt": "Satu kunjungan tugas demonstrasi di Obrolan terkini",
+          "caption": "Bilah samping memperlihatkan satu kunjungan tugas demonstrasi, tanpa entri sesi atau contoh status belum dibaca."
+        }
+      },
+      {
+        "title": "Buka navigasi di browser seluler",
+        "steps": [
+          "Buka WorkStep di browser ponsel dan ketuk gelembung navigasi bulat di tepi halaman untuk memperluas navigasi bilah samping yang sama seperti di desktop.",
+          "Pilih proyek, alur kerja, tugas, atau percakapan untuk melanjutkan. Ketuk lagi gelembung untuk menutup navigasi.",
+          "Jika gelembung menutupi konten, tahan dan seret ke bagian kosong pada area pandang. Menyeret tidak mengubah navigasi."
+        ],
+        "tips": [
+          "Gelembung tersebut hanya muncul di browser seluler biasa. Aplikasi desktop dan Android menggunakan entri navigasinya sendiri."
+        ],
+        "screenshot": {
+          "id": "mobile-navigation-float",
+          "alt": "Gelembung navigasi dan bilah samping diperluas di browser ponsel",
+          "caption": "Bilah sisi diperluas pada 390 piksel, dengan gelembung bundar di sebelah kanan untuk menciutkannya. Hanya proyek percontohan terisolasi yang ditampilkan."
+        }
+      }
+    ]
+  },
+  {
+    "id": "execution",
+    "title": "Eksekusi, persetujuan dan peninjauan",
+    "summary": "Pahami status waktu proses, tangani permintaan izin, dan putuskan apakah keluaran dapat dipindahkan ke tahap berikutnya.",
+    "sections": [
+      {
+        "title": "Periksa permintaan eksekusi dan izin",
+        "steps": [
+          "Buka detail tugas dan periksa grafik kemajuan dan catatan percakapan untuk mengidentifikasi langkah aktif.",
+          "Perluas catatan proses untuk memeriksa panggilan alat, hasil, dan kesalahan. Perluas catatan subagen saat mesin melaporkannya.",
+          "Jika pesan menyertakan perubahan berkas, perluas daftar dan lihat perbedaan yang tercatat. Ini menggambarkan perubahan pesan itu; membuka berkas menunjukkan kontennya saat ini, yang mungkin telah diubah setelah diedit nanti. Tanpa perbedaan yang disimpan, konten saat ini tidak dapat merekonstruksi riwayat lengkap.",
+          "Saat persetujuan alat muncul, bacalah perintah, jalur, dan dampaknya sebelum mengizinkan atau menolak. Jawab pertanyaan menggunakan opsi yang disediakan atau masukan yang diminta.",
+          "Jika tugas gagal, baca dulu kesalahan terbarunya, lalu periksa konfigurasi mesin, izin model, jaringan, dan direktori proyek daripada mencoba lagi berulang kali."
+        ],
+        "tips": [
+          "Persetujuan hanya muncul ketika mesin memintanya. Informasi proses dan pilihan izin berbeda-beda menurut mesin; detail yang hilang tidak berarti tidak ada eksekusi yang terjadi.",
+          "Ikon berputar menunjukkan pekerjaan asinkron. Saat menunggu pengguna, tangani pertanyaan atau persetujuan saat ini."
+        ],
+        "screenshot": {
+          "id": "task-permission",
+          "alt": "Kemajuan langkah dan catatan eksekusi aktual dalam detail tugas",
+          "caption": "Catatan kemajuan dan eksekusi terlihat. Tidak ada permintaan izin yang ditampilkan; persetujuan hanya muncul ketika mesin benar-benar memintanya."
+        }
+      },
+      {
+        "title": "Menyetujui, menolak, atau menghentikan tinjauan",
+        "steps": [
+          "Sambil menunggu peninjauan manual, periksa artefak keluaran, hasil peninjauan, berkas, dan hasil pengujian terhadap kriteria penerimaan.",
+          "Jika memuaskan, klik Setujui dan lanjutkan. Jika tidak, masukkan umpan balik spesifik dan pilih Tolak dan ulangi.",
+          "Selama peninjauan otomatis, periksa catatannya. Penolakan memicu tayangan ulang yang dikonfigurasi; kesalahan peninjauan atau permintaan penanganan manual memerlukan keputusan Anda.",
+          "Jika eksekusi tidak lagi diinginkan, pilih Hentikan dan verifikasi konfirmasinya. Persetujuan paksa melewatkan tinjauan saat ini, jadi periksa dulu apakah keluarannya dapat digunakan."
+        ],
+        "tips": [
+          "Tugas dapat tetap berjalan dengan konfirmasi tertunda. Di desktop, arahkan penunjuk ke jumlahnya untuk melihat langkah dan alasan, lalu tangani peninjauan, izin alat atau pertanyaan pada langkah terkait. Tanpa cabang lain yang dapat dijalankan, tugas menunggu. Penghentian manual, kegagalan dan selesai dibedakan; proses berakhir bukan persetujuan peninjauan."
+        ],
+        "screenshot": {
+          "id": "task-review",
+          "alt": "Umpan balik tinjauan manual dan tombol persetujuan/penolakan",
+          "caption": "Tinjau hasil, artefak, dan entri tindakan."
+        }
+      },
+      {
+        "title": "Aturan tetap koordinator dan pesan saat ini",
+        "steps": [
+          "Buka detail tugas, pilih Koordinator di kolom pesan, pilih mesin Codex SDK dan ajukan pertanyaan tugas seperti: Tahap mana yang belum selesai?",
+          "Lanjutkan dalam sesi koordinator yang sama. Status tugas dan pembaruan pengirim saat ini sebagai konteks spesifik giliran; aturan koordinator tetap tetap ada dalam riwayat sesi.",
+          "Untuk proses debug, gunakan mode pengembang untuk memeriksa pesan dengan catatan masukan aktual. Aturan tetap yang tidak diubah dan dikonfirmasi sebagai dipertahankan dalam sesi tersebut tidak dimasukkan kembali secara terpisah."
+        ],
+        "tips": [
+          "Sesi yang lebih lama mungkin menerima satu injeksi ulang awal setelah peningkatan. Aturan baru, sesi baru, riwayat yang hilang, atau retensi yang tidak pasti setelah pemadatan menyebabkan injeksi ulang. Permintaan masih bisa menggunakan aturan dalam riwayat; melewatkan suntikan baru bukan berarti tidak ada aturannya."
+        ]
+      },
+      {
+        "title": "Tambahkan informasi selama balasan koordinator",
+        "steps": [
+          "Pilih Koordinator sebagai penerima dan kirimkan instruksi tambahan saat ia membalas. Mereka memasuki antrean penyisipan balasan yang tertunda.",
+          "Periksa, edit, susun ulang, atau hapus entri yang belum terkirim, atau segera kirim entri yang dipilih. Beberapa entri yang dipilih digabungkan secara berurutan. Entri yang tersisa secara otomatis melanjutkan ke giliran berikutnya setelah balasan saat ini berakhir; jangan berulang kali mengirim.",
+          "Jika diberi tahu bahwa pesan telah terkirim atau dihapus, segarkan dan periksa antrean alih-alih mengirim ulang batch tersebut."
+        ],
+        "tips": [
+          "Antrian koordinator dan langkah terpisah. Verifikasi penerima terlebih dahulu. Menghentikan tidak membatalkan pengoperasian alat yang telah dilakukan."
+        ],
+        "screenshot": {
+          "id": "task-coordinator-queue",
+          "alt": "Pesan tertunda selama balasan koordinator",
+          "caption": "Tangkapan layar sebenarnya tertunda: Koordinator penerima, pesan tambahan selama eksekusi, dan antrean lanjutan."
+        }
+      },
+      {
+        "title": "Tambahan, hentikan, dan jalankan kembali",
+        "steps": [
+          "Periksa penerima sebelum mengetik. Koordinator menangani pertanyaan dan permintaan operasi; hanya langkah tertentu yang menerima masukan ke dalam konteks eksekusi langkah tersebut.",
+          "Pesan ke langkah berjalan masukkan Sisipkan pesan. Edit, susun ulang, kirim segera atau kirim semuanya; pesan yang belum terkirim dapat memicu putaran lain setelah eksekusi berakhir.",
+          "Setelah menghentikan suatu langkah, kirimkan instruksi tambahan yang eksplisit dan ikuti petunjuk untuk menjalankannya kembali.",
+          "Untuk mengubah tugas ini, edit dan simpan petunjuk langkah, mesin, atau pengaturan tinjauan. Penggantian akan berlaku pada eksekusi berikutnya; bidang yang tidak diganti menggabungkan alur kerja utama pada permulaan berikutnya. Untuk menghapus semua penyesuaian, konfirmasikan alur kerja utama Sinkronisasi."
+        ],
+        "tips": [
+          "Mengubah mesin pembuat koordinator hanya memengaruhi pesan koordinator berikutnya, bukan mesin langkah alur kerja.",
+          "Jika menjalankan ulang memengaruhi langkah aktif lainnya, periksa konfirmasi dampak dan jalankan kembali cakupannya. Jika rekaman sesi asli hilang, ikuti perintah untuk menjalankan kembali sesi baru."
+        ],
+        "screenshot": {
+          "id": "task-insert-message",
+          "alt": "Langkah penerima dan draf tambahan dalam tugas yang telah diselesaikan",
+          "caption": "Jalankan tugas yang dipilih di kolom pesan. Pesan tambahan masih belum terkirim; tidak ada antrian penyisipan yang ditampilkan."
+        }
+      }
+    ]
+  },
+  {
+    "id": "results",
+    "title": "Artefak, analisis eksekusi, dan memori proyek",
+    "summary": "Periksa berkas yang dikirimkan, pahami konsumsinya, dan simpan pelajaran yang dapat digunakan kembali.",
+    "sections": [
+      {
+        "title": "Periksa input, output, dan berkas artefak",
+        "steps": [
+          "Buka masukan dan keluaran Langkah dalam detail tugas untuk memeriksa masukan yang tersedia dan keluaran yang diselesaikan.",
+          "Klik Lihat berkas, atau buka browser artefak dan beralih berdasarkan langkah dan putaran eksekusi.",
+          "Pratinjau berkas. Di desktop, direktori terbuka yang berisi memungkinkan Anda memeriksa berkas sebenarnya. File proyek jarak jauh tetap berada di host dan harus dilihat melalui antarmuka web.",
+          "Bandingkan putaran yang tepat saat berlari ulang. Sama dengan bulat… berarti isinya identik, bukan berarti eksekusi tidak terjadi."
+        ],
+        "tips": [
+          "Jika artefak hilang, periksa apakah berkas telah dibuat, apakah deklarasi outputnya cocok, dan pesan eksekusinya."
+        ],
+        "screenshot": {
+          "id": "task-artifacts",
+          "alt": "Artefak tugas dikelompokkan berdasarkan langkah",
+          "caption": "Analisis persyaratan dan Jalankan tugas masing-masing mencantumkan satu artefak putaran pertama. Buka berkas atau direktorinya."
+        }
+      },
+      {
+        "title": "Periksa sumber daya runtime lokal",
+        "steps": [
+          "Masuk ke ruang kerja melalui localhost lokal atau alamat loopback, lalu Statistik → Waktu proses sistem (数据统计 → 系统运行). Browser jarak jauh biasa dan ruang kerja Gateway tidak menampilkan tab ini.",
+          "Periksa CPU, memori, konfigurasi penyimpanan disk, kecepatan jaringan, dan sumber daya, thread dan deskriptor berkas atau pegangan untuk backend dan turunan WorkStep.",
+          "Pilih metrik tren dan periksa waktu pengambilan sampel. Jeda, lanjutkan, atau segarkan tampilan secara manual. Tunggu selama pengumpulan awal, dan coba lagi pembacaan yang gagal."
+        ],
+        "tips": [
+          "Statistik mencakup lingkungan backend saat ini dan turunannya, tidak termasuk shell desktop. Pengukuran kontainer bukanlah sumber daya mesin host yang lengkap.",
+          "Standarnya kira-kira pengambilan sampel lima detik dan riwayat 30 menit; halaman menyatakan nilai sebenarnya. Menjeda penyegaran tampilan tidak menghentikan tugas. Metrik dan kesenjangan yang tidak tersedia bukanlah nol; sampel lama dipertahankan dan ditandai basi. Peringatan deskriptor menunjukkan tekanan sumber daya, bukan perbaikan otomatis."
+        ],
+        "screenshot": {
+          "id": "system-statistics",
+          "alt": "Statistik sumber daya sistem diambil sampelnya berdasarkan versi saat ini",
+          "caption": "Sumber daya lokal dan status pengambilan sampel backend. Tidak ada proses turunan mesin yang berjalan, jadi ini tidak menunjukkan konsumsi eksekusi tugas."
+        }
+      },
+      {
+        "title": "Periksa durasi, token, dan biaya",
+        "steps": [
+          "Buka analisis Eksekusi dalam detail tugas untuk memeriksa total durasi, upaya langkah, token, dan biaya.",
+          "Pilih putaran lari dan klik segmen garis waktu untuk mesin, model, dan penggunaannya.",
+          "Untuk informasi keseluruhan proyek, buka Statistik. Untuk memperkirakan biaya, pertahankan harga model berdasarkan penyedia atau mesin di bawah Pengaturan → Pengaturan model."
+        ],
+        "tips": [
+          "Penggunaan yang tidak dilaporkan tidak otomatis menjadi angka akurat. Periksa cakupan dan perkiraan label; tagihan layanan model bersifat otoritatif."
+        ],
+        "screenshot": {
+          "id": "task-analysis",
+          "alt": "Putaran dan garis waktu analisis eksekusi",
+          "caption": "Indikator durasi, cakupan dan sumber biaya."
+        }
+      },
+      {
+        "title": "Menghemat memori dan mengarsipkan pelajaran",
+        "steps": [
+          "Klik Memori di halaman tugas. Edit MEMORY.md di direktori data proyek menjadi aturan jangka pendek dan konkret dan simpan.",
+          "Saat mengarsipkan satu tugas, pilih arsip langsung atau atur pelajaran kegagalan. Periksa draf AI, lalu konfirmasi memori penulisan dan pengarsipan.",
+          "Gunakan daftar arsip untuk meninjau kembali sejarah. Setelah memulihkan tugas yang diarsipkan, periksa kembali pengikatan eksternal yang diperlukan."
+        ],
+        "tips": [
+          "Pengarsipan massal tidak mengekstrak pelajaran satu per satu. Mengarsipkan atau menghapus tugas akan menghilangkan ikatan grup salurannya; memulihkannya tidak mengembalikan ikatan lama."
+        ],
+        "screenshot": {
+          "id": "project-memory",
+          "alt": "Editor memori proyek yang berisi konvensi demonstrasi",
+          "caption": "Edit dan simpan konvensi di .workstep/MEMORY.md. Tidak ada konfirmasi arsip-pelajaran yang ditampilkan."
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-skills",
+    "title": "Obrolan dan keterampilan proyek",
+    "summary": "Berkolaborasi secara langsung dalam konteks proyek dan pilih keterampilan lokal mana yang dapat digunakan oleh proyek.",
+    "sections": [
+      {
+        "title": "Bekerja dengan beberapa percakapan proyek",
+        "steps": [
+          "Pada lebar desktop, buka percakapan proyek biasa dan pilih Jendela percakapan (对话窗口) → Tambahkan jendela percakapan (增加对话窗口), di sebelah kanan Percakapan baru.",
+          "Tarik percakapan dari bilah samping atau Obrolan terkini ke dalam area percakapan. Proyek resmi dapat digabungkan, dengan paling banyak 4 panel; menghapus percakapan yang sudah terbuka akan memfokuskan panelnya. Catatan tugas tidak dapat diseret sebagai percakapan.",
+          "Klik panel yang ingin Anda gunakan sebelum memilih percakapan bilah samping. Setiap panel menyimpan proyek, sesi, draf, dan pengaturan mesinnya sendiri; verifikasi proyek dan sesi sebelum mengirim.",
+          "Pilih Jendela percakapan → Pengaturan percakapan (对话排列), lalu horizontal atau vertikal. Seret pemisah untuk mengubah ukuran; fokuskan dan gunakan tombol panah untuk mengubah ukuran keyboard.",
+          "Dengan beberapa panel, × hanya menutup panel itu, tanpa menghentikan atau menghapus percakapan. Gunakan tombol Berhenti percakapan untuk menghentikan pembuatan."
+        ],
+        "tips": [
+          "Di desktop, klik dua kali percakapan bilah samping atau judul headernya untuk membuka dialog ganti nama bersama, lalu masukkan dan konfirmasikan namanya.",
+          "Ponsel hanya menampilkan panel aktif dan mempertahankan lainnya. Berpindah tampilan lalu kembali dalam sesi halaman yang sama memulihkan panel, tata letak dan ukuran; pemulihan setelah menyegarkan browser tidak dijamin. Tata letak dipisahkan menurut akun dan perangkat, tanpa menyalin isi percakapan."
+        ],
+        "screenshot": {
+          "id": "chat-workspace",
+          "alt": "Panel percakapan desktop di seluruh proyek dan menu pengaturan",
+          "caption": "Tangkapan layar sebenarnya dari proyek demo tetap tertunda: menu jendela percakapan, beberapa panel, dan pemisah yang dapat diseret."
+        }
+      },
+      {
+        "title": "Muat peran atau tim ahli ke dalam percakapan",
+        "steps": [
+          "Siapkan petunjuk peran atau anggota tim ahli dan tanggung jawab di Pengaturan → Pusat peran.",
+          "Buka percakapan biasa di proyek lokal. Gunakan + → Peran / Tim Pakar, cari kategori atau kata kunci, pratinjau dan Muat ke dalam percakapan. Misalnya, pilih Peninjau Kode, lalu kirimkan cakupan tinjauan tertentu.",
+          "Periksa nama yang dimuat di kolom pesan. Memilih tidak mengirim pesan. Pengikatan disimpan dengan sesi dan dipulihkan setelah penyegaran; sesi baru mulai tidak terikat. Klik namanya untuk memeriksa atau menggantinya, atau menghapusnya."
+        ],
+        "tips": [
+          "Anda tidak dapat beralih saat berlari. Kegagalan membaca atau menyimpan mempertahankan pilihan saat ini; coba lagi seperti yang diminta. Pilih kembali peran yang hilang. Memuat hanya mengubah pengikatan sesi; kirimkan pertanyaan konkret untuk memanggil model.",
+          "Tim ahli meneruskan perintah dan tanggung jawab anggota ke model saat ini; mereka tidak menyalakan mesin independen. Tugas, langkah alur kerja, saluran, proyek jarak jauh, dan tiket cakupan proyek tidak terintegrasi. Ruang kerja Gateway perangkat lengkap dapat menggunakan ini untuk proyek lokal."
+        ],
+        "screenshot": {
+          "id": "chat-role-binding",
+          "alt": "Pencarian Peninjau Kode dan pratinjau cepat dalam percakapan biasa",
+          "caption": "Peninjau Kode dipilih dalam percakapan demonstrasi kosong. Tombol prompt dan pemuatannya terlihat; tidak ada peran yang dimuat atau pesan terkirim."
+        }
+      },
+      {
+        "title": "Buka memori proyek di telepon",
+        "steps": [
+          "Buka daftar tugas proyek, gunakan Lainnya di kanan atas, lalu Memori.",
+          "Masukkan konvensi singkat, seperti Jalankan pengujian proyek sebelum melakukan, di editor memori. Periksa dan simpan; ini berlaku untuk keseluruhan proyek."
+        ],
+        "tips": [
+          "Memilih Memori runtuh Lebih Banyak. Di desktop, klik Memori langsung di halaman tugas."
+        ],
+        "screenshot": {
+          "id": "mobile-project-memory",
+          "alt": "Entri memori di menu Lainnya pada halaman tugas 390 piksel",
+          "caption": "Menu Lainnya yang diperluas dalam daftar tugas seluler mencakup Memori. Mengklik akan membuka editornya; tidak ada memori yang diubah di sini."
+        }
+      },
+      {
+        "title": "Buat percakapan dan ubah konfigurasi",
+        "steps": [
+          "Buat sesi biasa di bagian Percakapan proyek di sebelah kiri. Pilih mesin, penyedia, model, dan mode izinnya. Mulailah dengan SDK yang terverifikasi.",
+          "Masukkan permintaan konkret. Masukkan pengiriman; Shift+Enter menyisipkan baris baru. Lampirkan atau tempel gambar referensi hanya setelah memeriksa dukungan gambar mesin.",
+          "Hentikan balasan saat membuat jika diperlukan. Antrean pesan tambahan disisipkan, dan urutannya dapat diubah.",
+          "Saat mengganti mesin atau penyedia dengan konteks yang ada, pilih Handoff cerdas, Riwayat percakapan lengkap, atau Tidak ada dalam dialog. Buatlah percakapan untuk eksplorasi independen dan konfirmasikan mode konteksnya."
+        ],
+        "tips": [
+          "Obrolan proyek disimpan secara terpisah dari catatan tugas alur kerja. Buat tugas saat Anda memerlukan pelacakan dan peninjauan tahapan.",
+          "Forking asli hanya tersedia bila benar-benar didukung oleh mesin. Jika tidak, lanjutkan melalui penyerahan konteks eksplisit."
+        ],
+        "screenshot": {
+          "id": "project-chat",
+          "alt": "Mesin percakapan proyek, penyedia dan menu model",
+          "caption": "Konfigurasikan mesin, penyedia, model penalaran, dan opsi terkait hanya untuk percakapan ini. Izin dipilih secara terpisah."
+        }
+      },
+      {
+        "title": "Aktifkan keterampilan dan atur percakapan",
+        "steps": [
+          "Buka Konfigurasi proyek saat ini → Pusat keterampilan, pindai ulang dan cari berdasarkan nama, deskripsi, atau jalur sumber.",
+          "Baca tujuan keterampilan dan aktifkan apa yang Anda butuhkan. Periksa rentang yang dipilih sebelum melakukan perubahan massal. Keterampilan disimpan per proyek dan diterapkan pada proses berikutnya atau sesi baru.",
+          "Ketik / pada kolom pesan untuk memilih keterampilan yang sebenarnya ditawarkan oleh mesin saat ini. Daftar bervariasi berdasarkan mesin.",
+          "Gunakan menu sesi untuk mengganti nama atau mengarsipkan. Cari daftar arsip dan pulihkan percakapan yang diperlukan."
+        ],
+        "tips": [
+          "Skill center menyeleksi keterampilan lokal yang ada. Jika tidak ada yang muncul, periksa sumber lokal terlebih dahulu. Proyek jarak jauh saat ini tidak dapat mengelola keterampilan lokal tuan rumah."
+        ],
+        "screenshot": {
+          "id": "project-skills",
+          "alt": "Tidak ada hasil setelah mencari demo manual di pusat Keterampilan",
+          "caption": "Pusat keterampilan menawarkan pencarian nama dan pemfilteran sumber. Tidak ada keterampilan yang cocok atau tombol pengaktifan yang ditampilkan."
+        }
+      }
+    ]
+  },
+  {
+    "id": "quick-actions",
+    "title": "Tombol cepat dan tindakan skrip",
+    "summary": "Ubah perintah umum, tampilkan konten, dan skrip proyek menjadi tombol yang dapat digunakan kembali.",
+    "sections": [
+      {
+        "title": "Buat tombol prompt dan tampilan",
+        "steps": [
+          "Buka Tombol cepat dalam konfigurasi proyek, tambahkan tombol dan pilih jenisnya.",
+          "Untuk Prompt, masukkan label dan promptnya dan pilih apakah mengklik segera mengirimkannya, misalnya: Periksa perubahan saat ini dan buat daftar kriteria penerimaan yang ditemukan.",
+          "Untuk Tampilan, masukkan konten dan pratinjau rendering HTML yang aman. Tipe ini tidak mengirimkan pesan.",
+          "Simpan dan kembali ke percakapan atau tugas untuk memeriksa tombol. Seret daftar konfigurasi untuk menyusun ulang. Pengaturan alur kerja mengontrol tombol proyek yang diwarisi; tombol panggung dikonfigurasi secara terpisah."
+        ],
+        "screenshot": {
+          "id": "quick-buttons",
+          "alt": "Warisan tombol proyek dan tambahkan entri di tombol cepat alur kerja",
+          "caption": "Pilih tombol proyek untuk diwarisi dan tambahkan tombol alur kerja di sebelah kiri. Tidak ada konten tombol yang dimasukkan."
+        }
+      },
+      {
+        "title": "Konfigurasikan dan jalankan Tindakan",
+        "steps": [
+          "Tambahkan tipe Tindakan, masukkan ID Tindakannya dan pilih skrip dari direktori Tindakan yang sesuai.",
+          "Pilih direktori eksekusi: proyek, direktori tugas alur kerja, atau ruang kerja Git yang dipilih oleh skrip. Pratinjau dan periksa skripnya.",
+          "Aktifkan konfirmasi sebelum tindakan yang mengubah berkas atau keadaan eksternal. Untuk input seperti pesan penerapan, konfigurasikan prompt konfirmasi; skrip menerimanya melalui WORKSTEP_ACTION_INPUT.",
+          "Simpan dan klik tombol, konfirmasi skrip dan direktori, dan periksa keluaran dan kode keluar. Tindakan yang sedang berjalan dapat dihentikan."
+        ],
+        "tips": [
+          "Tindakan cepat langsung menjalankan skrip proyek. Pahami skripnya dan pilih direktori yang tepat terlebih dahulu. File di luar direktori Action saat ini tidak dapat dipilih secara sembarangan sebagai skripnya."
+        ],
+        "screenshot": {
+          "id": "quick-action-script",
+          "alt": "Konfigurasi tindakan tanpa skrip yang dipilih",
+          "caption": "Bidang mencakup ID Tindakan, skrip, direktori eksekusi, dan konfirmasi. Tidak ada skrip yang dijalankan."
+        }
+      }
+    ]
+  },
+  {
+    "id": "schedules",
+    "title": "Tugas terjadwal",
+    "summary": "Buat tugas baru sesuai jadwal, atau kirimkan instruksi koordinator berjangka waktu ke tugas yang ada, dan lacak eksekusi dan pemberitahuan.",
+    "sections": [
+      {
+        "title": "Hasilkan banyak tugas dari satu jadwal",
+        "steps": [
+          "Buat Proyek, buat jadwal tugas, pilih AI dinamis dan tentukan cakupan dan waktu individual dari beberapa tugas. Pilih alur kerja kandidat.",
+          "Pertama-tama gunakan Pembuatan tes untuk memeriksa setiap draf, lalu simpan. Instruksi koordinator tugas masih beroperasi pada satu tugas yang dipilih dan tidak membuat batch.",
+          "Setelah dipicu, buka setiap tugas yang dibuat dari catatan eksekusi. Catatan yang gagal juga menyimpan tugas yang sudah dibuat; periksa alasannya sebelum membuat pengganti."
+        ],
+        "tips": [
+          "Pembuatan tugas tidak berarti semua alur kerja telah selesai. Jangan jalankan kembali seluruh batch setelah pembuatan sebagian atau kegagalan startup."
+        ],
+        "screenshot": {
+          "id": "schedule-batch",
+          "alt": "Pratinjau pembuatan batch terjadwal dan catatan pelaksanaan beberapa tugas",
+          "caption": "Tangkapan layar sebenarnya tertunda: draf batch dan tugas yang sudah dibuat setelah kegagalan sebagian."
+        }
+      },
+      {
+        "title": "Kelola instruksi terjadwal dari detail tugas",
+        "steps": [
+          "Buka detail tugas dan klik jam di samping Bind BOT; pada ponsel, letaknya di sebelah kanan tab utama. Hitungannya mencakup aturan tugas kecuali aturan satu kali yang diselesaikan, bukan hanya aturan yang diaktifkan. Periksa status yang dijeda dan status lainnya dalam daftar.",
+          "Periksa aturan tugas ini di jendela. Dengan izin pengeditan, tambahkan, edit, jeda, lanjutkan atau hapus aturan dan lihat catatan yang dijalankan. Aturan baru mengikat secara otomatis ke tugas saat ini.",
+          "Masukkan judul, frekuensi dan instruksi koordinator, misalnya: Periksa kemajuan dan rangkum setiap sepuluh menit. Periksa kondisi berhenti dan simpan. Saat menutup dengan suntingan yang belum disimpan, pilih untuk melanjutkan atau membuang.",
+          "Berbagi hanya-baca menggunakan jam yang sama untuk memeriksa aturan tugas ini. Dengan hak operasi, gunakan entri manajemen yang sebenarnya ditawarkan oleh saham saat ini."
+        ],
+        "tips": [
+          "Daftar satu kali menyimpan waktu pelaksanaan aturan yang telah diselesaikan; lencana tugas mengecualikannya, jadi jumlahnya bisa berbeda."
+        ],
+        "screenshot": {
+          "id": "task-schedule-entry",
+          "alt": "Jendela jadwal cakupan tugas dibuka dari jam detail",
+          "caption": "Membuat aturan dari jam mengunci alur kerja dan tugas ke tugas demonstrasi. Judul dan instruksi kosong; tidak ada yang disimpan atau dieksekusi."
+        }
+      },
+      {
+        "title": "Buat jadwal tetap",
+        "steps": [
+          "Buka Tugas terjadwal dari rel alat bilah samping, pilih tab proyek, lalu buat jadwal pembuatan tugas Proyek. Pilih alur kerja, langkah awal, judul dan konten.",
+          "Pilih sekali, harian, mingguan, bulanan, interval per jam atau Cron. Periksa zona waktu, tanggal efektif, dan pratinjau yang dijalankan berikutnya.",
+          "Pilih Ikuti alur kerja, Eksekusi Segera atau Manual, dan atur penanganan tumpang tindih ke Lewati, Paralel, atau Antrean.",
+          "Periksa pengaturan tinjauan dan simpan. Verifikasi jadwal satu kali jangka pendek sebelum mengaktifkan rencana berulang jangka panjang."
+        ],
+        "tips": [
+          "Backend WorkStep harus berjalan untuk memicu jadwal. Jangan berasumsi mereka terpicu secara normal saat komputer dalam mode tidur atau backend dihentikan."
+        ],
+        "screenshot": {
+          "id": "schedule-fixed",
+          "alt": "Memperbaiki konten tugas, frekuensi harian, dan pratinjau yang dijalankan berikutnya",
+          "caption": "Tetapkan kebijakan konten, frekuensi, permulaan dan tumpang tindih, lalu periksa waktu eksekusi yang akan datang."
+        }
+      },
+      {
+        "title": "Kirim instruksi terjadwal ke tugas yang ada",
+        "steps": [
+          "Buka Tugas terjadwal di bar samping, pilih proyek dan alihkan jenis aturan baru ke Instruksi koordinator tugas. Ini beroperasi pada tugas yang sudah ada daripada membuatnya setiap saat.",
+          "Masukkan Judul, filter berdasarkan alur kerja dan cari tugas target. Tuliskan instruksi konkrit, seperti: Periksa kemajuan dan laporkan apakah diperlukan tindakan manusia; jangan secara otomatis mengkonfirmasi tindakan berbahaya. Aturan yang disimpan tidak dapat dikembalikan ke tugas lain.",
+          "Atur eksekusi satu kali atau berulang, termasuk Setiap beberapa menit. Verifikasi waktu pengoperasian berikutnya dan pilih Lanjutkan hingga dinonaktifkan secara manual atau Berhenti ketika tugas berakhir.",
+          "Temukan aturan yang disimpan dalam daftar satu kali atau berulang. Filter menurut jenis target dan ID tugas. Buka tugas dari rekaman yang dijalankan untuk menemukan balasan koordinator tersebut dan memeriksa status pesan terjadwal dalam riwayatnya."
+        ],
+        "tips": [
+          "Setiap pemicu menggunakan sesi koordinator terpisah dan dapat mengantri saat tugas sedang sibuk. Proposal yang memerlukan konfirmasi masih memerlukan Anda. Menghentikan satu balasan terjadwal hanya akan menghentikan pesan itu; jeda atau nonaktifkan aturan untuk mencegah pemicu di kemudian hari.",
+          "Mengarsipkan atau menghapus target akan membatalkan aturan. Dengan Berhenti ketika tugas berakhir, status terminal selesai, gagal, atau dihentikan mengakhirinya. Proses yang terhenti karena restart backend tidak dijamin akan diputar ulang; periksa catatan sebelum mengirim ulang."
+        ],
+        "screenshot": {
+          "id": "task-schedule",
+          "alt": "Formulir jadwal koordinator tugas belum disimpan",
+          "caption": "Demonstrasi berulang setiap sepuluh menit hingga dinonaktifkan secara manual. Itu belum disimpan, tanpa hasil eksekusi."
+        }
+      },
+      {
+        "title": "Konfigurasikan notifikasi saluran untuk penayangan terjadwal",
+        "steps": [
+          "Dalam jadwal proyek atau aturan koordinator tugas, periksa Beritahu bot saluran setelah eksekusi.",
+          "Pilih bot dan percakapan yang mampu mengirim. Grup terikat tugas mungkin dipilih secara bawaan, namun periksa sebelum menyimpannya. Tanpa tujuan, konfigurasikan bot dan pengikatan tugas terlebih dahulu atau nonaktifkan notifikasi.",
+          "Periksa status pemberitahuan dan alasan kegagalan dalam catatan yang dijalankan. Coba lagi kegagalan pemberitahuan tanpa menjalankan kembali tugas. Untuk hasil pengiriman yang tidak diketahui, periksa salurannya terlebih dahulu untuk menghindari duplikat."
+        ],
+        "tips": [
+          "Pemberitahuan terjadwal dan alur kerja Webhook dikonfigurasikan secara terpisah. Pengoperasian yang berhasil tidak membuktikan pengiriman, dan pemberitahuan yang gagal tidak berarti kegagalan tugas.",
+          "Pemberitahuan koordinator tugas mengikuti penyelesaian balasan itu. Pemberitahuan setelah jadwal proyek membuat tugas tidak berarti seluruh alur kerja telah selesai."
+        ],
+        "screenshot": {
+          "id": "schedule-notifications",
+          "alt": "Pemberitahuan saluran tanpa target yang dipilih dalam bentuk tugas proyek",
+          "caption": "Pemberitahuan dicentang tetapi tidak ada bot atau percakapan yang dipilih, sehingga penyimpanan dinonaktifkan. Tidak ada yang dieksekusi atau dikirim."
+        }
+      },
+      {
+        "title": "Pembuatan dinamis AI dan pencatatan yang dijalankan",
+        "steps": [
+          "Ubah pembuatan menjadi AI dinamis, jelaskan apa yang harus dihasilkan setiap kali, perbaiki judul referensi secara opsional, dan pilih kandidat alur kerja.",
+          "Konfigurasikan percobaan ulang pembuatan dan gunakan Pembuatan pengujian untuk memeriksa apakah keluaran memenuhi harapan.",
+          "Simpan, lalu filter jalankan catatan di sebelah kanan berdasarkan status. Periksa waktu pemicu, alasan kegagalan atau lewati dan buka tugas yang sesuai.",
+          "Jeda jadwal tidak diperlukan lagi, lalu hapus setelah pengecekan."
+        ],
+        "tips": [
+          "Percobaan ulang pembuatan AI, percobaan ulang tinjauan langkah, dan batas koneksi kembali merupakan pengaturan terpisah."
+        ],
+        "screenshot": {
+          "id": "schedule-ai",
+          "alt": "Formulir pembuatan tugas terjadwal dinamis AI",
+          "caption": "Masukkan instruksi, alur kerja kandidat, dan jumlah percobaan ulang. Tidak ada tugas yang dibuat atau rekaman yang dijalankan ditampilkan."
+        }
+      }
+    ]
+  },
+  {
+    "id": "git",
+    "title": "Ruang kerja Git dan tugas",
+    "summary": "Periksa perubahan kode, isolasi tugas paralel di direktori kerja terpisah, lalu gabungkan dan dorong pekerjaannya.",
+    "sections": [
+      {
+        "title": "Periksa berkas, perbedaan dan riwayat",
+        "steps": [
+          "Klik Git pada halaman tugas proyek jarak jauh lokal atau yang terhubung dan pilih root atau repositori anak yang ditemukan. Operasi Git jarak jauh dijalankan pada perangkat host.",
+          "Periksa berkas dan perbedaan yang diubah untuk memverifikasi perubahan AI terhadap persyaratan; gunakan riwayat komit untuk memeriksa pekerjaan yang dilakukan.",
+          "Tangani perubahan yang tidak dikomit sebelum berpindah cabang. Segarkan status jarak jauh untuk memeriksa status depan, belakang, atau menyimpang.",
+          "Tarik cepat ke depan; Push hanya mengirimkan konten yang berkomitmen. Pilih remote dan cabang, konfirmasi dan jalankan."
+        ],
+        "tips": [
+          "Catatan jarak jauh yang di-cache bukan status aktif. Sinkronisasi mungkin diblokir saat tugas proyek atau percakapan aktif.",
+          "Hubungkan kembali proyek jarak jauh yang offline atau tidak sah terlebih dahulu. Browser tidak menyalin repositori host ke komputer Anda. Membaca memerlukan izin Git-view; tindakan komit, cabang, penggabungan, dan sinkronisasi memiliki izin terpisah. Periksa izin jika tombol tidak ada."
+        ],
+        "screenshot": {
+          "id": "git-changes",
+          "alt": "Perubahan yang tidak dikomit pada repositori Git",
+          "caption": "File tertunda di repositori lokal. Riwayat penerapan ada di tab lain; izin jarak jauh dan perbedaan berkas yang diperluas tidak ditampilkan."
+        }
+      },
+      {
+        "title": "Buat Worktree untuk suatu tugas",
+        "steps": [
+          "Buka ruang kerja Git di detail tugas dan pilih repositori yang benar-benar dibutuhkan tugas tersebut.",
+          "Masukkan nama direktori tugas, cabang sumber dan cabang baru, lalu Buat Worktree. Jika root belum menjadi repositori Git, inisialisasi dan lakukan komit pertama.",
+          "Setelah eksekusi, periksa dan lakukan perubahan di ruang kerja. Di Git, gabungkan ke dalam cabang saat ini atau gabungkan cabang saat ini menjadi target.",
+          "Periksa hasil penggabungan dan dorong secara manual sesuai kebutuhan. Baca efek pastinya dan peringatan perubahan yang belum dikomit sebelum pembersihan atau pemulihan riwayat."
+        ],
+        "tips": [
+          "Membuat ruang kerja tidak menggabungkan atau mendorong secara otomatis. Hanya perubahan yang dilakukan yang berpartisipasi dalam penggabungan cabang.",
+          "Menghapus ruang kerja tugas dapat menghapus direktori dan cabang fitur. Pembersihan bukanlah cara untuk menyimpan hasil."
+        ],
+        "screenshot": {
+          "id": "git-task-worktree",
+          "alt": "Ruang kerja Task Git dengan Worktree yang ada",
+          "caption": "Ruang kerja demonstrasi ada tanpa perbedaan berkas. Buka, tambahkan repositori atau kelola cabang; ini bukan bentuk penciptaannya."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sharing-remote",
+    "title": "Berbagi tugas dan proyek jarak jauh",
+    "summary": "Bedakan tautan ke satu tugas dari akses jarak jauh ke seluruh perangkat.",
+    "sections": [
+      {
+        "title": "Bagikan satu tugas",
+        "steps": [
+          "Klik Bagikan di detail tugas dan pilih Hanya Baca atau Interaktif.",
+          "Formulir tersebut menghasilkan kata sandi acak dan defaultnya adalah validitas tujuh hari. Ubah atau hapus kata sandi sesuai kebutuhan; bila disetel, setidaknya harus memiliki empat karakter. Tambahkan judul opsional, pastikan masa berlakunya dalam 90 hari ke depan, lalu buat dan salin tautannya.",
+          "Buka di jendela browser terpisah, masukkan kata sandi jika disetel, dan periksa kemajuan, pesan, artefak, dan izin yang dipilih.",
+          "Untuk berhenti berbagi, buka pembagian saat ini dan cabut. Pemirsa yang sudah membuka juga kehilangan akses lanjutan."
+        ],
+        "tips": [
+          "Read-only adalah untuk melihat. Pengunjung interaktif menggunakan pengontrol tugas asli: mereka dapat mengirim pesan koordinator atau langkah, menghentikan eksekusi, menangani persetujuan dan pertanyaan, dan menggunakan konfigurasi tugas yang tersedia dan tindakan ruang kerja Git. Hal ini memengaruhi tugas awal, dalam lingkup tugas bagian tersebut. Untuk melihat saja, pilih Baca-saja dan verifikasi mode di browser terpisah.",
+          "Penerima harus mencapai alamat backend di tautan. Menghasilkan tautan tidak membuat terowongan jaringan publik."
+        ],
+        "screenshot": {
+          "id": "task-share",
+          "alt": "Formulir pembagian tugas interaktif sebelum pembuatan tautan",
+          "caption": "Mode interaktif dipilih dan kata sandi dikosongkan. Tidak ada tautan berbagi yang dibuat."
+        }
+      },
+      {
+        "title": "Konfigurasikan akses host dan perangkat undangan",
+        "steps": [
+          "Di host, buka Pengaturan → Akses jarak jauh, aktifkan koneksi dan periksa alamat internal. Akses publik memerlukan alamat eksternal HTTPS/WSS yang dapat dijangkau.",
+          "Atur dan simpan kunci akses, lalu uji keterjangkauan dari perangkat lain.",
+          "Hasilkan undangan proyek di bawah Konfigurasi proyek → Berbagi. Impor ke entri akses jarak jauh WorkStep lain dan ikuti petunjuk koneksi.",
+          "Periksa perangkat resmi dan undangan aktif. Ubah periode otorisasi atau cabut sesuai kebutuhan. Jika terputus, periksa ketersediaan host, alamat, kunci, dan masa berlakunya."
+        ],
+        "tips": [
+          "WorkStep tidak memiliki relai publik bawaan. Berikan sendiri entri jaringan yang dapat dijangkau. Kata sandi tugas, kunci akses host, dan undangan perangkat terpisah.",
+          "Direktori dan mesin jarak jauh tetap berada di host. Manajer berkas lokal Anda tidak dapat membuka direktorinya secara langsung."
+        ],
+        "screenshot": {
+          "id": "remote-access",
+          "alt": "Sakelar akses jarak jauh dan formulir alamat sebelum nilai dimasukkan",
+          "caption": "Bidang internal dan eksternal memperlihatkan contoh placeholder dan kuncinya kosong. Tidak ada daftar otorisasi perangkat yang ditampilkan."
+        }
+      },
+      {
+        "title": "Hubungkan Gateway perusahaan bila diperlukan",
+        "steps": [
+          "Jika organisasi Anda menyediakan Gateway, masukkan alamatnya di Akses jarak jauh → Platform gateway.",
+          "Aktifkan mode Gateway secara eksplisit dan simpan, lalu masuk untuk mengotorisasi komputer ini. Menyimpan alamat saja tidak mengaktifkannya.",
+          "Jika persetujuan administrator tertunda, selesaikan persetujuan dan autentikasi lagi. Setelah terhubung, gunakan publikasi proyek dan izin akses sesuai izin Anda.",
+          "Nonaktifkan mode Gateway dan simpan untuk kembali ke penggunaan lokal."
+        ],
+        "tips": [
+          "Penggunaan lokal mandiri tidak memerlukan Gateway. Izin dan persetujuan organisasi bergantung pada platform sebenarnya."
+        ],
+        "screenshot": {
+          "id": "gateway-settings",
+          "alt": "Alamat platform sebelum mode Gateway diaktifkan",
+          "caption": "Gateway dinonaktifkan dan alamatnya adalah pengganti. Menyimpan alamat dan mengaktifkan Gateway adalah tindakan yang berbeda."
+        }
+      }
+    ]
+  },
+  {
+    "id": "gateway-workspace",
+    "title": "Ruang kerja gateway dan berbagi lokal",
+    "summary": "Bedakan undangan lokal, hibah platform, dan pembagian tugas, serta lanjutkan pekerjaan di seluruh perangkat.",
+    "sections": [
+      {
+        "title": "Konfigurasikan identitas perusahaan Feishu atau Lark",
+        "steps": [
+          "Administrator membuka Pengaturan platform → Sinkronisasi organisasi dan login QR, menambahkan aplikasi perusahaan khusus Feishu atau Lark, dan memasukkan Tenant Key, App ID dan App Secret.",
+          "Salin panggilan balik masuk lengkap yang ditampilkan ke platform pengembang yang cocok. Atur sakelar aplikasi, login QR, dan sinkronisasi organisasi secara terpisah. App ID yang ada tidak dapat diubah; gunakan sumber identitas baru untuk aplikasi lain.",
+          "Otorisasi pembacaan direktori, batasi visibilitas aplikasi dan ikuti Pratinjau Baca → Pilih organisasi atau pengguna → Periksa perubahan → Konfirmasikan sinkronisasi. Verifikasi hasil dan catatan kegagalan."
+        ],
+        "tips": [
+          "Identitas perusahaan gateway dan bot saluran lokal terpisah dan tidak secara otomatis berbagi kredensial. Login QR penyewa asli dan izin direktori masih memerlukan pengujian integrasi; keberhasilan simulasi API tidak membuktikan konektivitas nyata."
+        ],
+        "screenshot": {
+          "id": "gateway-enterprise-feishu",
+          "alt": "Sumber identitas Feishu atau Lark dan pengaturan sinkronisasi direktori",
+          "caption": "Tangkapan layar konfigurasi bebas kredensial dari Gateway yang terisolasi masih tertunda."
+        }
+      },
+      {
+        "title": "Izinkan situs web lain masuk melalui Gateway",
+        "steps": [
+          "Administrator super membuka pengaturan Platform Gateway → Otorisasi login pihak ketiga dan mengklik Edit daftar panggilan balik yang diizinkan.",
+          "Masukkan satu panggilan balik lengkap URL per baris, seperti https://business.example.com/login/callback, hingga 100 entri. Skema, port, jalur, dan parameter kueri tetap harus sama persis. Selesaikan verifikasi administrator dan simpan.",
+          "Mulai login dari situs web yang mengintegrasikan. Jika tidak masuk ke Gateway, pertama-tama gunakan kata sandi yang ada atau login QR perusahaan, lalu kembali. Backend situs menukarkan kode otorisasi satu kali untuk ID pengguna, akun, dan nama tampilan.",
+          "Untuk menghentikan integrasi, hapus URL-nya dan simpan. Daftar yang diizinkan kosong akan menonaktifkan otorisasi login pihak ketiga; kode tertunda untuk alamat yang dihapus menjadi tidak valid dengan segera."
+        ],
+        "tips": [
+          "Callback mendukung HTTP/HTTPS, bukan wildcard, fragmen, kredensial tertanam atau kode preset, status atau parameter request_id. Gunakan HTTPS dalam produksi.",
+          "Jika panggilan balik tidak sah, periksa URL lengkapnya. Jika kode kedaluwarsa atau digunakan, mulai ulang login dari situs integrasi. Protokol dan contoh yang dapat dijalankan ada di docs/gateway-third-party-login-integration.md."
+        ],
+        "screenshot": {
+          "id": "gateway-third-party-auth",
+          "alt": "Daftar panggilan balik pihak ketiga yang diizinkan di pengaturan Gateway",
+          "caption": "Tangkapan layar Gateway demonstrasi nyata yang terisolasi tertunda; jangan gunakan akun sehari-hari atau pengaturan panggilan balik yang sebenarnya."
+        }
+      },
+      {
+        "title": "Kelola dua jenis berbagi proyek",
+        "steps": [
+          "Buka Berbagi di pengaturan proyek. Mengonfigurasi alamat Gateway memungkinkan akses Platform. Antarmuka lokal juga menawarkan undangan proyek jarak jauh; Browser jarak jauh Gateway tidak dapat mengonfigurasi undangan lokal.",
+          "Untuk undangan lokal, pilih LAN atau alamat eksternal dan periode akses perangkat, lalu buat dan salin. Kedaluwarsa khusus harus di masa depan; penukaran undangan dan masa berlaku otorisasi perangkat ditampilkan secara terpisah.",
+          "Setelah mengimpor perangkat penerima, periksa nama, IP, koneksi, dan masa berlakunya di bawah Perangkat resmi. Ubah periode atau cabut sesuai kebutuhan. Akses platform malah menggunakan akun, publikasi proyek, dan hibah.",
+          "Untuk satu tugas, pilih mode, kata sandi, dan judul di jendela Bagikannya. Lokal dan Gateway berbagi secara bawaan hingga tujuh hari dan mengizinkan paling banyak 90 hari. Uji di browser terpisah, lalu kelola atau cabut dari jendela asli."
+        ],
+        "tips": [
+          "Berbagi tugas lokal melalui Gateway yang terhubung memerlukan identitas platform yang valid. Alamat atau kredensial desktop saja tidak memberikan izin platform.",
+          "Tautan tugas lokal menggunakan alamat host; Pembagian Gateway menggunakan alamat yang dikembalikan platform. Jangan pernah mempublikasikan kredensial undangan, membagikan tautan atau kata sandi di tangkapan layar.",
+          "Kedua jenis mendukung kadaluwarsa. Gateway mungkin memerlukan login; pembagian Gateway interaktif harus memerlukannya dan menggunakan login, bukan kunci akses. Periksa bidang di jendela berbagi saat ini."
+        ],
+        "screenshot": {
+          "id": "project-sharing-tabs",
+          "alt": "Tab berbagi akses jarak jauh dan periode otorisasi perangkat",
+          "caption": "Tanpa Gateway yang dikonfigurasi, Akses jarak jauh ditampilkan. Tidak ada perangkat yang diotorisasi dan tidak ada undangan yang dibuat."
+        }
+      },
+      {
+        "title": "Ganti perangkat dan periksa notifikasi agregat",
+        "steps": [
+          "Masuk ke ruang kerja perangkat resmi di platform, lalu gunakan tab perangkat atas untuk beralih ke perangkat online lainnya.",
+          "Setiap akun dan perangkat mengingat halaman proyek, tugas, atau sesi terakhir di browser ini. Pengembalian tetap memeriksa otorisasi dan tidak melewati target yang tidak dapat diakses.",
+          "Proyek jarak jauh hanya dimuat jika dipilih. Setelah pemuatan gagal atau terputus, klik lagi proyek saat ini untuk menyegarkan secara manual; perangkat tidak terus-menerus disurvei di latar belakang.",
+          "Buka Pusat pemberitahuan untuk ringkasan penyelesaian atau kegagalan dari perangkat resmi. Klik untuk membuka tugas atau sesi. Pesan langsung ruang kerja masih menjadi milik perangkat saat ini.",
+          "Gunakan platform Return to Gateway untuk memilih perangkat lain. Panggilan balik otorisasi browser yang kedaluwarsa akan memulai ulang login; setelah membatalkan otorisasi desktop, coba lagi secara manual atau kembali ke ruang kerja lokal."
+        ],
+        "tips": [
+          "Memori halaman bersifat lokal browser, tidak disinkronkan antar browser. Akses berfungsi tanpa penyimpanan browser namun lokasi tidak dipertahankan.",
+          "Sambungkan kembali seperti yang diminta untuk perangkat offline, otorisasi dicabut, atau kegagalan jaringan. Lokasi yang disimpan tidak menggantikan izin.",
+          "Tangkapan layar tab perangkat dan pemberitahuan agregat yang sebenarnya dari proyek demonstrasi tetap masih menunggu keputusan."
+        ],
+        "screenshot": {
+          "id": "gateway-workspace-notifications",
+          "alt": "Tab perangkat dan pusat notifikasi agregat",
+          "caption": "Tangkapan layar sebenarnya tertunda: peralihan perangkat, pemulihan lokasi, dan navigasi notifikasi; belum tertangkap."
+        }
+      }
+    ]
+  },
+  {
+    "id": "bots",
+    "title": "Bot saluran dan notifikasi grup",
+    "summary": "Konfigurasikan WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack atau QQ, yang membedakan percakapan dari notifikasi Webhook.",
+    "sections": [
+      {
+        "title": "Pilih saluran dan sambungkan platform baru",
+        "steps": [
+          "Buka Pengaturan → Bot saluran, pilih platform di sebelah kiri, dan masukkan nama, kredensial, dan proyek lokal bawaan di sebelah kanan. Aktifkan dan simpan. Rahasia kosong mempertahankan nilai yang ada saat diedit; periksa perubahan yang belum disimpan sebelum beralih. Menutup pengaturan, menekan Escape atau berpindah bagian pengaturan meminta konfirmasi ketika perubahan belum disimpan; pembatalan akan mempertahankan draf tersebut.",
+          "Untuk Feishu atau Lark, buat aplikasi perusahaan khusus dengan dukungan bot dan masukkan App ID dan App Secret. Setelah koneksi, aktifkan acara koneksi panjang, berlangganan im.message.receive_v1 dan card.action.trigger, konfigurasikan izin pesan/kartu dan publikasikan. Kirim pesan pribadi atau sebutkan bot di grup.",
+          "Untuk Telegram, buat bot dengan BotFather dan masukkan Bot Token-nya. Jajak pendapat panjang digunakan; tidak ada program lain yang dapat melakukan polling pada bot itu secara bersamaan. Administrator harus menghapus Webhook yang ada terlebih dahulu. Kirim SMS pribadi, atau sebutkan/balas secara berkelompok.",
+          "Untuk Discord, masukkan ID Aplikasi dan Bot Token, aktifkan Message Content Intent dan berikan izin baca/kirim saluran. Sebutkan bot di saluran server; ikat tugas menggunakan ID saluran atau utas.",
+          "Untuk Slack, aktifkan Socket Mode dan masukkan App ID, App-Level Token dengan connections:write, dan Bot Token. Konfigurasikan chat:write, app_mentions:read dan im:history, berlangganan app_mention dan message.im, lalu instal. Undang bot sebelum menyebutkannya di saluran.",
+          "Untuk QQ, buat bot resmi di Platform Terbuka QQ, pilih akses WebSocket dan aktifkan acara pesan pribadi/grup. Masukkan App ID, App Secret dan proyek lokal bawaan, aktifkan dan simpan. Kirim SMS pribadi atau sebutkan bot dalam grup. Setelah menerima pesan, ikat tugas menggunakan group_openid dan konfigurasikan daftar yang diizinkan dengan OpenID anggota, bukan nomor akun atau grup QQ. Hanya teks; balasan pasif memiliki batasan waktu dan hitungan. Baca hasil panjang di WorkStep.",
+          "Kembali ke WorkStep untuk memeriksa koneksi dan sesi saluran, lalu ikat tugas sesuai kebutuhan. Jika terjadi kegagalan, periksa wilayah, kredensial, izin platform, dan jaringan backend."
+        ],
+        "tips": [
+          "Telegram, Discord, Slack dan QQ saat ini hanya mendukung teks. Kembali ke WorkStep untuk pemberhentian, jawaban izin, konfirmasi dan peninjauan proposal; gambar, berkas, dan kartu interaktif tidak dijanjikan.",
+          "Pengujian platform baru menggunakan bingkai simulasi. Instalasi penyewa sebenarnya, izin dan pengiriman pesan masih memerlukan pengujian integrasi. Jauhkan rahasia, token lengkap, dan ID grup pribadi dari tangkapan layar."
+        ],
+        "screenshot": {
+          "id": "bot-channels",
+          "alt": "Pemilih saluran dan editor bot terpisah",
+          "caption": "Tangkapan layar nyata tanpa kredensial dari tata letak multisaluran baru sedang menunggu keputusan. Bentuk lama tidak mewakilinya."
+        }
+      },
+      {
+        "title": "Kirim notifikasi hanya ke grup Feishu atau Lark",
+        "steps": [
+          "Di Hook alur kerja halaman tugas → Hook pemberitahuan, tambahkan target bot grup Feishu atau Lark dan tempelkan Webhook URL bot kustom lengkap untuk wilayah tersebut.",
+          "Jika penandatanganan diaktifkan, masukkan rahasia penandatanganan bot tersebut, bukan App ID atau App Secret. Konfigurasikan kata kunci, acara, dan templat Markdown yang diperlukan, simpan dan periksa simulasi.",
+          "Konfirmasikan kelompok penerima sebelum mengirim tes dan memeriksa catatan pengiriman. Pratinjau tidak mengirimkan apa pun; setelah waktu habis, periksa grup sebelum mencoba lagi."
+        ],
+        "tips": [
+          "Webhook hanya mengirim peristiwa alur kerja dan tidak menerima percakapan grup. Gunakan bot aplikasi untuk percakapan dua arah."
+        ],
+        "screenshot": {
+          "id": "notification-feishu-lark",
+          "alt": "Notifikasi Feishu atau Lark URL, tanda tangan dan template",
+          "caption": "Konfigurasi bebas kredensial dan tangkapan layar pratinjau kartu masih tertunda; pengiriman sebenarnya tidak diklaim."
+        }
+      },
+      {
+        "title": "Tambahkan bot",
+        "steps": [
+          "Buka Pengaturan → Bot saluran, pilih WeCom atau DingTalk di sebelah kiri, tambahkan bot dan beri nama.",
+          "Untuk WeCom, pilih koneksi panjang di pengaturan bot cerdas dan salin Bot ID dan Rahasia. Untuk DingTalk, buat aplikasi, aktifkan bot Stream dan salin Client ID dan Client Secret.",
+          "Pilih proyek bawaan, aktifkan koneksi panjang, simpan dan tunggu Terhubung.",
+          "Tambahkan bot ke grup, sebutkan dengan pesan percobaan, dan periksa percakapan dan balas di bawah percakapan Saluran proyek."
+        ],
+        "tips": [
+          "Masukkan rahasia hanya di pengaturan, bukan tangkapan layar atau pesan. Untuk kegagalan koneksi, periksa mode platform, kredensial, dan jaringan backend.",
+          "Kartu tombol DingTalk memerlukan izin pembuatan, pengiriman, dan pembaruan. Templat khusus harus cocok dengan bidang yang dijelaskan di antarmuka."
+        ],
+        "screenshot": {
+          "id": "bot-settings",
+          "alt": "Formulir Tambahkan bot lama sebelum kredensial dimasukkan",
+          "caption": "Formulir lama hanya menggambarkan bidang nama, kredensial, dan proyek bawaan. Itu tidak disimpan atau dihubungkan; daftar platform sisi kiri yang baru masih memerlukan tangkapan layar."
+        }
+      },
+      {
+        "title": "Ikat grup tugas dan tangani tinjauan",
+        "steps": [
+          "Buka Bind BOT di detail tugas dan pilih bot yang diaktifkan.",
+          "Sebutkan satu kali di grup, lalu pilih grup di bawah Grup yang baru diterima. Alternatifnya, tempelkan ID grup yang dikenal, verifikasi tugas saat ini dan ikat.",
+          "Pertanyaan kelompok masuk ke koordinator tugas itu. Periksa hasil tahap dan lampiran yang diteruskan.",
+          "Saat kartu tinjauan atau pertanyaan muncul, bacalah sebelum bertindak dan kembali ke WorkStep untuk memverifikasi jika diperlukan. Lepaskan ikatan saat tidak diperlukan lagi."
+        ],
+        "tips": [
+          "Proyek bawaan menangani percakapan saluran yang tidak terikat pada suatu tugas. Pengikatan grup menentukan tugas mana yang menerima pesan grup tersebut.",
+          "Mengarsipkan atau menghapus tugas akan menghilangkan ikatan; memulihkan memerlukan pengikatan ulang. Rendering tombol bergantung pada klien saluran. Jika tidak tersedia, bertindaklah dalam detail tugas."
+        ],
+        "screenshot": {
+          "id": "bot-task-binding",
+          "alt": "Dialog Tugas BOT tanpa grup terikat",
+          "caption": "Pilih bot dan grup terbaru, lalu masukkan dan ikat pengenalnya. Belum ada kelompok tugas yang terikat."
+        }
+      }
+    ]
+  },
+  {
+    "id": "sandbox",
+    "title": "Kotak pasir desktop",
+    "summary": "Jalankan backend dan mesin dalam wadah terpisah, dengan direktori proyek yang terkait secara eksplisit.",
+    "sections": [
+      {
+        "title": "Selesaikan panduan kotak pasir lima langkah",
+        "steps": [
+          "Di desktop, buka Sandbox, item Pengaturan terakhir. Selesaikan tugas dan percakapan aktif dan verifikasi dukungan virtualisasi; Windows membutuhkan WSL2.",
+          "Pertama pilih penyimpanan sandbox terpisah dan unduh/siapkan perangkat lunak pembantu.",
+          "Kedua, periksa image dan unduh image rilis yang disarankan, atau pindai menjalankan Docker lokal untuk image WorkStep yang kompatibel.",
+          "Ketiga pilih direktori proyek yang ada atau baru; keempat memilih penyedia, mesin dan migrasi preferensi; kelima periksa ringkasan dan simpan atau konfirmasi dan mulai ulang."
+        ],
+        "tips": [
+          "Mengaitkan suatu proyek tidak menyalin berkas-filenya. Pengeditan sandbox masih mempengaruhi direktori asli. Jangan menjalankan proyek yang sama di kedua lingkungan secara bersamaan.",
+          "Proyek yang tidak terkait untuk sementara disembunyikan, bukan dihapus. Direktori sandbox dan proyek tidak boleh berisi satu sama lain."
+        ],
+        "screenshot": {
+          "id": "sandbox-wizard",
+          "alt": "Pemilihan dan konfirmasi proyek dalam panduan sandbox lima langkah",
+          "caption": "Periksa penyimpanan, asosiasi proyek, dan migrasi konfigurasi."
+        }
+      },
+      {
+        "title": "Beralih mode dan pertahankan konfigurasi",
+        "steps": [
+          "Setelah memulai ulang, periksa lencana bilah samping mode Sandbox untuk memverifikasi lingkungan sebenarnya.",
+          "Periksa kembali alamat penyedia, instalasi mesin, dan login. Host localhost memiliki arti yang berbeda dalam penampung, dan jalur mungkin memerlukan penyesuaian.",
+          "Sebelum mengimpor atau mengubah direktori, nonaktifkan kotak pasir dan mulai ulang, lalu gunakan manajemen kotak pasir. Baca detail pencadangan dan penggantian sebelum mengimpor.",
+          "Nonaktifkan kotak pasir dan mulai ulang untuk kembali ke mode biasa. Untuk kesalahan, buka direktori log dan periksa kemajuan dan kegagalan."
+        ],
+        "tips": [
+          "Mode biasa dan mode sandbox mempertahankan konfigurasi terpisah. Peralihan tidak menyinkronkan perubahan kembali secara otomatis.",
+          "Pertimbangkan izin kompatibilitas hanya jika kotak pasir bagian dalam mesin tidak dapat berjalan; antarmuka menjelaskan pengurangan isolasi. Penghapusan data Sandbox tidak dapat diubah: periksa apa yang akan disimpan terlebih dahulu."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings-troubleshooting",
+    "title": "Pengaturan umum dan pemecahan masalah",
+    "summary": "Pahami cakupan konfigurasi, baca status dan kesalahan terlebih dahulu, lalu lakukan perbaikan yang ditargetkan.",
+    "sections": [
+      {
+        "title": "Periksa versi desktop dan unduh pembaruan",
+        "steps": [
+          "Di desktop, buka Pengaturan → Pengaturan sistem → Pembaruan desktop untuk memeriksa versi saat ini.",
+          "Klik Periksa pembaruan untuk menemukan rilis resmi GitHub terbaru. Jika lebih baru, klik Unduh dari GitHub.",
+          "Pilih penginstal sistem Anda di halaman rilis, selesaikan pekerjaan aktif dan instal sendiri."
+        ],
+        "tips": [
+          "Desktop memeriksa sekali sehari tanpa mengunduh, menginstal, atau memulai ulang secara otomatis. Hanya Rilis resmi yang lebih baru yang memicu pembaruan, bukan dorongan atau draf kode.",
+          "Coba lagi pemeriksaan yang gagal nanti. Versi web tidak memiliki entri pembaruan desktop."
+        ],
+        "screenshot": {
+          "id": "desktop-update",
+          "alt": "Versi desktop saat ini dan entri pemeriksaan pembaruan di pengaturan sistem",
+          "caption": "Periksa secara manual, lalu unduh dari GitHub ketika pembaruan tersedia."
+        }
+      },
+      {
+        "title": "Konkurensi, asisten, dan tampilan",
+        "steps": [
+          "Saat menjalankan banyak tugas, tetapkan kapasitas tugas dan percakapan dalam batas Konkurensi global atau konfigurasi proyek, dan periksa nilai efektif.",
+          "Jika tugas terjadwal tidak menghabiskan kapasitas, verifikasi sumber daya yang memadai sebelum mengaktifkan opsi tersebut. Kelebihan tugas dan antrian percakapan.",
+          "Konfigurasikan mesin dan model masing-masing asisten di bawah Asisten. Periksa pengaturan langkah-eksekusi dan koordinator tugas secara terpisah.",
+          "Ubah nama pengguna di pengaturan sistem. Bahasa, font, ukuran dan tema ada di Pengaturan → Penampilan; cakupan pemindaian repositori berada di bawah pengaturan Git."
+        ],
+        "tips": [
+          "Mengubah mesin eksekusi bawaan akan memengaruhi tugas dan langkah baru, bukan pengaturan tugas atau langkah yang sudah ada."
+        ],
+        "screenshot": {
+          "id": "concurrency-settings",
+          "alt": "Batasan konkurensi tugas dan percakapan global",
+          "caption": "Tetapkan kapasitas global dan pengecualian tugas terjadwal."
+        }
+      },
+      {
+        "title": "Pecahkan masalah secara berurutan",
+        "steps": [
+          "Jika tugas tidak dimulai, bedakan status siap, antri, dan menunggu peninjauan. Periksa langkah awal, pengaktifan otomatis, dan ketersediaan mesin.",
+          "Jika eksekusi gagal, baca kesalahan terbaru. Periksa instalasi SDK, otentikasi penyedia, nama model, izin jaringan dan berkas, lalu jalankan kembali.",
+          "Untuk kesalahan pemuatan riwayat atau API, gunakan Coba Lagi. Jika API mengembalikan halaman web, konfirmasikan versi backend dan mulai ulang menggunakan metode biasa.",
+          "Jika riwayat sesi asli hilang, baca Jalankan kembali dengan sesi baru, berikan sasaran saat ini dan referensi artefak yang diperlukan, dan jangan perlakukan ini sebagai pemulihan konteks asli sepenuhnya.",
+          "Untuk artefak yang hilang atau kegagalan akses jarak jauh, periksa masing-masing pembuatan berkas aktual atau ketersediaan host, alamat, kunci, dan berakhirnya otorisasi."
+        ],
+        "tips": [
+          "Saat melaporkan masalah, sertakan versi, OS, mesin, langkah reproduksi, dan tangkapan layar kesalahan yang disunting, bukan kredensial. Tanpa pengaturan eksplisit, 20 menit terus menerus tanpa kejadian mesin akan memicu batas waktu idle sambil mempertahankan sesi. Batas waktu khusus yang ada tetap ada; 0 menonaktifkannya. Pemikiran atau alat yang tenang belum tentu terhenti: periksa log sebelum menjalankannya kembali."
+        ],
+        "screenshot": {
+          "id": "task-error",
+          "alt": "Kegagalan demonstrasi disebabkan oleh tidak adanya model",
+          "caption": "Kesalahannya mengatakan model yang dipilih tidak didukung. Perbaiki konfigurasi model langkah sebelum dijalankan kembali; itu tidak diperbaiki pada gambar ini."
+        }
+      }
+    ]
+  },
+  {
+    "id": "appearance",
+    "title": "Penampilan, tema dan bahasa",
+    "summary": "Pilih preferensi tampilan pribadi atau buat tema dan paket bahasa yang dapat dipratinjau melalui percakapan proyek biasa.",
+    "sections": [
+      {
+        "title": "Pilih bahasa bawaan",
+        "steps": [
+          "Di Pengaturan → Tampilan, pilih Mandarin Sederhana, Mandarin Tradisional, Inggris, Jepang, Prancis, Jerman, atau Arab dan periksa entri umum dan kontrol tanggal.",
+          "Pilih bahasa tampilan situs web dan manual dari pemilih teratas, termasuk bahasa Jepang, Cina Tradisional, Korea, dan bahasa lain yang tersedia. Browser mengingat pilihan Anda, atau mendeteksi bahasanya ketika tidak ada preferensi yang disimpan."
+        ],
+        "tips": [
+          "Terjemahan aplikasi Perancis, Jerman dan Arab saat ini mencakup entri-entri utama; string lainnya mungkin tetap berbahasa China, dan tata letak aplikasi dalam bahasa Arab masih dari kiri ke kanan. Situs web dan teks manual mengikuti pemilih bahasa teratas, dengan tata letak Arab dari kanan ke kiri. Tangkapan layar asli tetap buatan China. Peralihan bahasa tidak menerjemahkan percakapan atau berkas pengguna sebelumnya."
+        ],
+        "screenshot": {
+          "id": "builtin-languages",
+          "alt": "Pemilih bahasa bawaan di aplikasi dan situs web",
+          "caption": "Tangkapan layar sebenarnya dari pilihan bahasa yang ditambahkan masih menunggu keputusan."
+        }
+      },
+      {
+        "title": "Gunakan tata letak tema v2 dan ekstensi fitur",
+        "steps": [
+          "Di bawah Pengaturan → Penampilan, instal dan validasi tema v2 tepercaya, pratinjau dan terapkan. Untuk fitur seperti catatan, minta penulis di chat pembuatan tampilan untuk menyertakan komponen.",
+          "Baca konfirmasi pengaktifan untuk paket dengan kode. Memperbarui paket atau mengubah identitas mungkin bertanya lagi. Buka panel melalui menu tema atau entri fitur, yang bergantung pada paketnya. Catatan atau kalender bukanlah fitur aplikasi yang sudah diinstal sebelumnya.",
+          "Paket ini dapat memposisikan kolom pesan di atas, bawah, kiri atau kanan. Tampilan kompak mempertahankan susunan vertikal. Setelah beralih, periksa pesan, kolom pesan dan pengaturan tetap dapat digunakan.",
+          "Data ekstensi dipisahkan berdasarkan identitas browser, perangkat, tema, dan fitur. Mengganti atau menghapus tema tidak menghapusnya. Gunakan ekspor ekstensi itu sendiri untuk cadangan. Jika antarmuka rusak, tambahkan tema=bawaan ke URL dan segarkan."
+        ],
+        "tips": [
+          "Kode komponen memiliki hak istimewa halaman saat ini. Aktifkan sumber tepercaya saja. Membatalkan pratinjau akan memulihkan tampilan tetapi tidak membatalkan kode yang sudah dijalankan.",
+          "Data ekstensi tidak disertakan dalam ekspor tema ZIP atau disinkronkan antar browser/perangkat. Cadangkan sebelum mengosongkan penyimpanan; tabungan yang gagal tidak boleh dianggap sebagai keberhasilan."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Konfirmasi pengaktifan komponen v2 dan entri panel fitur",
+          "caption": "Tangkapan layar eksekusi nyata dari paket demonstrasi tepercaya sedang menunggu keputusan. Validasi format bukanlah penerimaan visual."
+        }
+      },
+      {
+        "title": "Pilih dan simpan penampilan pribadi",
+        "steps": [
+          "Untuk akses penuh perangkat, buka Pengaturan → Tampilan. Pengguna yang diberi izin proyek memasuki Penampilan dan tema dari bilah samping.",
+          "Pilih font, ukuran dan bahasa. Cari atau filter tema yang terpasang, pratinjau lalu terapkan. Bilah pratinjau tetap memungkinkan Anda membatalkan atau mengonfirmasi.",
+          "Pilihan pengguna Gateway yang diautentikasi disimpan per akun dan perangkat, dipulihkan di browser lain pada perangkat yang sama. Coba lagi penyimpanan yang gagal. Pilihan lokal tanpa login platform tetap ada di browser ini."
+        ],
+        "tips": [
+          "Paket dan catatan pembuatan dibagikan di perangkat; pilihan pribadi terisolasi. Pengguna yang diberi izin proyek hanya dapat memilih paket yang diinstal.",
+          "Paket yang hilang atau rusak kembali ke tampilan bawaan. Tambahkan ?tema=bawaan atau ?lingual=bawaan untuk mengembalikan tema bawaan atau bahasa Mandarin Sederhana."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Font, ukuran, bahasa, dan tema yang dipasang di Appearance",
+          "caption": "Halaman pengaturan sebenarnya menunjukkan bawaan dan contoh bawaan di sebelah kanan. Tidak ada preferensi pribadi yang diubah."
+        }
+      },
+      {
+        "title": "Buat tema dan bahasa melalui percakapan",
+        "steps": [
+          "Dengan hak pengelolaan host, klik Mari kita bahas tampilannya, pilih mesin yang terinstal dan terverifikasi, lalu jelaskan tujuannya, seperti: Membuat tema menjadi gelap, mempertahankan tata letak, dan menggunakan panah kirim ke atas.",
+          "Obrolan ada di sebelah kiri, pengeditan dan pratinjau di sebelah kanan; telepon berpindah tab. Sesuaikan nama, warna, font, ukuran, ikon kirim dan tata letak, lalu Simpan penyesuaian ke dalam paket draf yang sama. Pengeditan dinonaktifkan saat percakapan berjalan. Periksa pratinjau PC dan telepon.",
+          "Untuk paket bahasa, tanyakan di chat yang sama, misalnya: Tambahkan bahasa Spanyol dengan tetap menjaga tampilan. Alihkan sisi kanan ke Bahasa. Itu dimuat setelah generasi; gunakan Baca dan validasi untuk memeriksa direktori, cakupan, string yang hilang, dan contohnya.",
+          "Untuk tema, klik Simpan tampilan dan pratinjau; untuk bahasa, Instal dan pratinjau. Konfirmasikan atau batalkan di bilah pratinjau. Menyimpan ke perpustakaan tidak mengkonfirmasi aplikasi pribadi. Ekspor ZIP untuk digunakan kembali, dan periksa perintah penggantian untuk impor atau pembaruan dengan ID yang sama."
+        ],
+        "tips": [
+          "Penciptaan menggunakan kembali proyek Runtime tetap dan percakapan biasa, memanggil model Anda. Lanjutkan pekerjaan sebelumnya melalui Riwayat percakapan di atas jendela. Contoh pratinjau sendiri tidak menjalankan tugas.",
+          "Font menggunakan font sistem yang diinstal. Pesan dan berkas historis tidak diterjemahkan secara otomatis. Ikon kirim bawaan dapat dipilih dalam penyesuaian; ikon vektor khusus harus disediakan oleh draf yang divalidasi.",
+          "Paket bahasa tidak bergantung pada tema dan saat ini mendukung bahasa kiri ke kanan. Kontrol string dan tanggal yang hilang menggunakan fallback bawaan yang ditentukan. Cakupan tidak membuktikan kualitas terjemahan; gunakan percakapan untuk memperbarui katalog string yang sudah ketinggalan zaman."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Area percakapan dan pengeditan/pratinjau dalam pembuatan tampilan",
+          "caption": "Obrolan pembuatan kosong dan formulir penyesuaian yang diotorisasi. Komposernya sudah diisi sebelumnya; tidak ada pesan yang terkirim, model dijalankan atau tema disimpan."
+        }
+      },
+      {
+        "title": "Membaca dan melihat pratinjau paket bahasa",
+        "steps": [
+          "Alihkan sisi kanan studio penampilan ke Bahasa dan periksa direktori paket Bahasa. Hasilkan melalui percakapan yang sama atau impor bahasa ZIP yang ada.",
+          "Paket yang dihasilkan dimuat secara otomatis. Membaca dan memvalidasi cakupan pemeriksaan, string dan contoh yang hilang. Pemberitahuan menunggu pembuatan direktori kosong berarti pembuatan belum selesai.",
+          "Setelah validasi, Instal dan pratinjau, lalu konfirmasi atau batalkan aplikasi pribadi. Liputan tidak dapat menggantikan tinjauan kualitas terjemahan."
+        ],
+        "tips": [
+          "Saat ini hanya bahasa dari kiri ke kanan yang didukung. Kontrol tanggal dan string yang hilang menggunakan fallback bawaan paket yang ditentukan."
+        ],
+        "screenshot": {
+          "id": "appearance-language",
+          "alt": "Direktori bahasa dan entri validasi dalam percakapan pembuatan kosong",
+          "caption": "Tab Bahasa menawarkan direktori, Baca dan validasi dan impor ZIP. Tidak ada paket bahasa yang dibuat, diinstal atau diterapkan."
+        }
+      }
+    ]
+  },
+  {
+    "id": "project-audit",
+    "title": "Audit operasi jarak jauh proyek",
+    "summary": "Periksa tindakan pengunjung jarak jauh dan apakah tindakan tersebut berhasil, ditolak, atau gagal.",
+    "sections": [
+      {
+        "title": "Filter dan periksa operasi jarak jauh",
+        "steps": [
+          "Pada perangkat yang menghosting proyek, buka Konfigurasi → Audit operasi proyek lokal. Proyek jarak jauh, ruang kerja Gateway, dan akses terikat proyek tidak menawarkan tab ini.",
+          "Filter berdasarkan tindakan dan hasil, lalu periksa aktor, waktu, sumber dan tugas, alur kerja, atau pengidentifikasi berkas.",
+          "Buka halaman berikutnya atau halaman pertama, segarkan catatan terbaru dan coba lagi pemuatan yang gagal."
+        ],
+        "tips": [
+          "Audit ini mencakup tindakan sumber jarak jauh dan hasil yang ditolak/gagal, bukan chat penuh, dan tidak menyimpan kredensial. API hanya bersifat lokal di host. Retensi bawaan adalah 30 hari; ikuti durasi sebenarnya halaman tersebut. Nama asli pengunjung yang dibagikan secara publik tidak diketahui; Browser jarak jauh (identitas yang dilaporkan sendiri) bukan identitas yang diautentikasi."
+        ],
+        "screenshot": {
+          "id": "project-remote-audit",
+          "alt": "Filter audit dan catatan kosong untuk proyek lokal",
+          "caption": "Entri audit lokal aktual dan filter tindakan/hasil. Tidak ada catatan jarak jauh dalam proyek percontohan; tidak ada tindakan atau identitas yang dibuat-buat."
+        }
+      }
+    ]
+  },
+  {
+    "id": "faq",
+    "title": "Pertanyaan yang sering diajukan",
+    "summary": "Pahami mesin, layanan model, perubahan berkas, dan batasan pemulihan sebelum memulai.",
+    "sections": [
+      {
+        "title": "Apa perbedaan SDK dan CLI, dan mana yang harus saya mulai?",
+        "steps": [
+          "Keduanya merupakan metode integrasi mesin untuk kemampuan model. SDK terintegrasi melalui API pengembang; CLI menjalankan program baris perintah. Nama modelnya juga tidak ada.",
+          "Mulailah dengan menginstal Codex SDK atau Claude Agent SDK, selesaikan autentikasi, pilih dan verifikasi model, lalu jadikan mesin eksekusi bawaan. Pengguna CLI yang sudah ada dapat memilih mesin itu.",
+          "Penyedia menyediakan alamat layanan dan otentikasi, model mengidentifikasi apa yang menangani permintaan, dan mesin menyediakan sesi, alat, dan eksekusi. Ikuti formulir mesin yang dipilih; kredensial belum tentu dapat dipertukarkan."
+        ],
+        "tips": [
+          "Instalasi SDK hanya menetapkan dependensi waktu proses, bukan autentikasi, izin, atau kuota. Bedakan entri Codex dan Claude Code SDK dari yang bertanda CLI."
+        ],
+        "screenshot": {
+          "id": "faq-sdk-cli",
+          "alt": "Pilihan SDK dan CLI dalam pengaturan mesin",
+          "caption": "Periksa mesin SDK yang direkomendasikan serta status pemasangan dan verifikasinya yang terpisah."
+        }
+      },
+      {
+        "title": "Bagaimana biaya perangkat lunak dan panggilan model?",
+        "steps": [
+          "Periksa paket layanan model yang dipilih, autentikasi, dan kuota sebelum melakukan tugas awal yang kecil. SDK sendiri bukanlah model kredit.",
+          "Eksekusi tugas, peninjauan otomatis, asisten, dan percobaan ulang semuanya dapat memanggil model. Periksa model secara terpisah dalam pengaturan langkah, tinjauan, dan asisten.",
+          "Gunakan analisis eksekusi untuk memeriksa penggunaan dan sumber biaya. Perkiraan membantu menjelaskan konsumsi; tagihan akhir mengikuti aturan dan tagihan penyedia layanan."
+        ],
+        "tips": [
+          "Jangan berasumsi bahwa mengunduh SDK atau masuk membuat panggilan menjadi gratis, atau bahwa satu langganan berlaku untuk setiap mesin."
+        ],
+        "screenshot": {
+          "id": "faq-usage",
+          "alt": "Penggunaan token dan sumber biaya dalam analisis eksekusi",
+          "caption": "Biaya dan cakupan yang dilaporkan penyedia ditampilkan. Perkiraan biaya diberi label hanya ketika perkiraan harga benar-benar digunakan."
+        }
+      },
+      {
+        "title": "Di mana data disimpan, dan dapatkah AI mengubah berkas saya?",
+        "steps": [
+          "Tugas lokal, alur kerja, dan pesan disimpan di proyek .workstep secara bawaan. Menonaktifkan direktori Data mengikuti direktori proyek menggunakan ~/.workstep/projects/<项目ID>/. .workstep/project.json proyek mengaitkan kembali data asli.",
+          "Permintaan dan konteks yang dibaca oleh mesin dapat dikirim ke layanan model yang Anda konfigurasi. Saluran, berbagi, dan akses jarak jauh juga mengungkapkan informasi dalam lingkup resminya kepada pihak terkait.",
+          "AI dengan izin menulis dapat mengubah berkas proyek. Berlatihlah dalam proyek terpisah, periksa izin sebelum eksekusi dan periksa perbedaan Git dan artefak sebenarnya sesudahnya.",
+          "Asosiasi Sandbox masih mengubah berkas asli yang dipasang. Tugas Worktree menyediakan direktori terpisah, tetapi hasil penggabungan masih memerlukan pemeriksaan."
+        ],
+        "tips": [
+          "Penyimpanan lokal tidak berarti panggilan model offline. Jauhkan kunci, kredensial akun, dan berkas sensitif yang tidak relevan dari deskripsi tugas, lampiran, dan tangkapan layar."
+        ],
+        "screenshot": {
+          "id": "faq-permissions",
+          "alt": "Panel mode izin percakapan di telepon",
+          "caption": "Default, Read-only, Workspace write dan pilihan lainnya dicantumkan. Dukungan dan perilaku sebenarnya bergantung pada mesin."
+        }
+      },
+      {
+        "title": "Apa perbedaan antara menghentikan, mencoba ulang, mengerjakan ulang, dan memulihkan?",
+        "steps": [
+          "Menghentikan akan mengganggu eksekusi atau balasan saat ini, namun tidak membatalkan berkas yang sudah ditulis. Periksa hasil yang ada sebelum melanjutkan.",
+          "Mencoba ulang atau menjalankan kembali akan memanggil mesin lagi, kemungkinan melanjutkan konteks atau menggunakan sesi baru seperti yang diminta. Itu tidak mengembalikan setiap perubahan ke keadaan sebelum dijalankan.",
+          "Pengerjaan ulang mengoreksi keluaran berdasarkan umpan balik tinjauan atau koneksi balik, tergantung pada ketergantungan dan batasan alur kerja. Baca konfirmasi ketika menjalankan kembali perubahan cakupan.",
+          "Setelah membuka kembali WorkStep, periksa status tugas dan sesi terlebih dahulu. Mesin yang mendukung pemulihan dapat melanjutkan sesi aslinya; catatan asli yang hilang memerlukan sesi baru dan dijalankan kembali."
+        ],
+        "tips": [
+          "Pemulihan otomatis bergantung pada mesin dan riwayat yang tersedia. Pemulihan penuh tidak dijamin untuk setiap mesin atau gangguan."
+        ],
+        "screenshot": {
+          "id": "faq-restart",
+          "alt": "Setel ulang langkah yang dipilih dalam tugas yang telah selesai",
+          "caption": "Tugas yang telah selesai ini telah memilih langkah Reset, yang hanya memengaruhi pesan langkah berikutnya. Ini bukan konfirmasi penghapusan atau peringatan sesi yang hilang."
+        }
+      }
+    ]
+  }
+]

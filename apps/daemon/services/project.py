@@ -478,7 +478,7 @@ class ProjectManager:
             from models.action_run import ActionRun
             from models.chat_session import ChatMessage
             from models.coordinator import CoordinatorTurn
-            if (Task.select().where(Task.status == "running").exists()
+            if (Task.select().where(Task.status.in_(['running', 'waiting'])).exists()
                     or ChatMessage.select().where(ChatMessage.status == "running").exists()
                     or CoordinatorTurn.select().where(CoordinatorTurn.status.in_(["queued", "running"])).exists()
                     or ActionRun.select().where(ActionRun.status.in_(["preparing", "running"])).exists()):

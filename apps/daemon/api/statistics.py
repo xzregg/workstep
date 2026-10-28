@@ -17,9 +17,13 @@ router = APIRouter(prefix="/api/statistics")
 @router.get("/system")
 async def system_report(request: Request):
     """Host metrics are local-only and never collected on the request path."""
+    from api.desktop_security import desktop_runtime_authenticated
     from services.remote_access import _client_host, _is_loopback, authenticated_remote_dispatch
     actor = get_current_actor()
-    if (not _is_loopback(_client_host(request.headers, request.client))
+    # Container port forwarding replaces Electron's loopback peer with a bridge
+    # address. Its per-launch desktop credential still identifies local access.
+    if ((not desktop_runtime_authenticated(request)
+         and not _is_loopback(_client_host(request.headers, request.client)))
             or authenticated_remote_dispatch() is not None
             or request.scope.get('gateway_remote_actor') is not None
             or (actor is not None and (actor.project_id is not None

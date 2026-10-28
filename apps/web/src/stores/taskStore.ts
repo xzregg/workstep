@@ -55,6 +55,8 @@ export interface TaskEvent {
   prompt?: string
   artifact_round?: number
   status?: string
+  status_reason?: string | null
+  pending_confirmations?: Task['pending_confirmations']
   error?: string
   ended_at?: string
   started_at?: string
@@ -271,7 +273,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     await taskApi.pause(taskId, projectId)
     set((s) => ({
       tasks: s.tasks.map((t) =>
-        t.id === taskId ? { ...t, status: 'paused' } : t,
+        t.id === taskId ? { ...t, status: 'stopped', status_reason: 'user_stop', pending_confirmations: [] } : t,
       ),
     }))
   },
@@ -392,17 +394,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             ? 'retrying'
             : event.status ?? value.status
         ) as string || ''
-        const isRunning = ['running', 'reviewing', 'retrying', 'rework', 'rework_waiting'].includes(status)
+        const isRunning = ['running', 'reviewing', 'retrying', 'rework'].includes(status)
         if (isRunning) {
           useProjectStore.getState().setProjectRunning(eventId, true)
-        } else if (['passed', 'completed', 'failed', 'cancelled', 'ready', 'stopped', 'paused', 'skipped'].includes(status)) {
+        } else if (['passed', 'completed', 'failed', 'cancelled', 'ready', 'stopped', 'paused', 'waiting', 'skipped'].includes(status)) {
           // For the active project we have the full tasks array; check if
           // any task is still running before clearing the flag.
           const { activeProject } = useProjectStore.getState()
           if (activeProject?.id === eventId) {
-            const taskCompleted = status === 'completed' && !(event.step_key || value.step_key)
+            const taskStatusChange = !(event.step_key || value.step_key)
             const stillRunning = useTaskStore.getState().tasks.some((t) =>
-              t.status === 'running' && !(taskCompleted && t.id === taskId))
+              t.id === taskId && taskStatusChange ? status === 'running' : t.status === 'running')
             useProjectStore.getState().setProjectRunning(eventId, stillRunning)
           }
           // Non-active projects: leave as true (conservative; corrected on reload).
@@ -581,24 +583,33 @@ export const useTaskStore = create<TaskState>((set, get) => ({
               )
             : task.steps,
         })
-        if (status === 'passed') {
-          newTasks = s.tasks.map((t) =>
-            t.id === taskId ? updateTaskStep(t) : t,
-          )
-        } else if (status === 'completed' && !stepKey) {
-          newTasks = s.tasks.map((t) => t.id === taskId ? { ...t, status: 'completed' } : t)
-        } else if (['running', 'reviewing', 'retrying', 'rework', 'rework_waiting'].includes(status)) {
-          newTasks = s.tasks.map((t) =>
-            t.id === taskId ? { ...updateTaskStep(t), status: 'running' } : t,
-          )
-        } else if (['awaiting_review', 'rejected'].includes(status)) {
-          newTasks = s.tasks.map((t) =>
-            t.id === taskId ? { ...updateTaskStep(t), status: 'paused' } : t,
-          )
-        } else if (status === 'failed' || status === 'cancelled') {
-          newTasks = s.tasks.map((t) =>
-            t.id === taskId ? { ...updateTaskStep(t), status: 'stopped' } : t,
-          )
+        if (!stepKey && ['ready', 'queued', 'running', 'waiting', 'failed', 'stopped', 'completed', 'paused'].includes(status)) {
+          const pending = (event.pending_confirmations ?? value.pending_confirmations ?? []) as NonNullable<Task['pending_confirmations']>
+          newTasks = s.tasks.map((task) => task.id === taskId ? {
+            ...task, status,
+            status_reason: (event.status_reason ?? value.status_reason ?? null) as string | null,
+            pending_confirmations: pending,
+            steps: (task.steps || []).map((step) => ({ ...step,
+              waiting_reason: pending.find((item) => item.step_key === step.step_key && item.reason !== 'manual_review')?.reason || null,
+            })),
+          } : task)
+        } else if (stepKey && isStepStatus) {
+          // Compatibility with older remote daemons: one waiting/failed step
+          // must not override another branch that is still doing work.
+          newTasks = s.tasks.map((task) => {
+            if (task.id !== taskId) return task
+            const updated = updateTaskStep(task)
+            const steps = (updated.steps || []).filter((step) => step.in_workflow !== false)
+            const active = steps.find((step) => ['running', 'reviewing', 'retrying', 'rework'].includes(step.status) && !step.waiting_reason)
+            const pending = steps.filter((step) => step.status === 'awaiting_review' || step.waiting_reason)
+              .map((step) => ({ step_key: step.step_key, reason: step.waiting_reason || 'manual_review' }))
+            const state = active ? 'running' : pending.length ? 'waiting'
+              : steps.some((step) => ['failed', 'rejected'].includes(step.status)) ? 'failed'
+              : status === 'cancelled' ? 'stopped' : task.status
+            const reason = active ? (active.status === 'reviewing' ? 'auto_review' : 'execution')
+              : pending[0]?.reason || (state === 'failed' ? 'step_failed' : state === 'stopped' ? 'user_stop' : null)
+            return { ...updated, status: state, status_reason: reason, pending_confirmations: pending }
+          })
         }
       }
 

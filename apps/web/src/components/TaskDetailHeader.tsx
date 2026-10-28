@@ -4,6 +4,7 @@ import Icon from './Icon'
 import MarqueeText from './MarqueeText'
 import TaskRecoveredBadge from './TaskRecoveredBadge'
 import TaskDetailTitle from './TaskDetailTitle'
+import TaskPendingConfirmations from './TaskPendingConfirmations'
 import { useI18n, type TKey } from '../i18n'
 import { taskDisplayStatus } from '../utils/taskDisplayStatus'
 import type { TaskDetailViewProps, StepData } from './TaskDetailView'
@@ -13,6 +14,7 @@ const STATUS_LABEL_KEYS: Record<string, TKey> = {
   stopped: 'status.stopped', done: 'status.done', completed: 'status.done',
   reviewing: 'status.reviewing', awaiting_review: 'status.awaiting_review',
   retrying: 'status.retrying', rejected: 'status.rejected', queued: 'status.queued',
+  waiting: 'status.waiting', failed: 'status.failed', tool_approval: 'status.tool_approval', user_input: 'status.user_input',
 }
 
 interface TaskDetailHeaderProps {
@@ -36,7 +38,7 @@ export default function TaskDetailHeader({ task, locale, activeStep, activeStepC
   onHeaderKeyDown, onHeaderDoubleClick, projectId, titleEditable }: TaskDetailHeaderProps) {
   const { t } = useI18n()
   const draggable = Boolean(onHeaderPointerDown)
-  const { displayStatus: status } = taskDisplayStatus(task.status, task.steps || [], taskCompleted)
+  const { displayStatus: status } = taskDisplayStatus(task.status, task.steps || [], taskCompleted, task.status_reason)
   const createdAt = new Date(task.created_at).toLocaleString(locale)
   const meta = task.creator_name ? `${t('taskDetail.creator')}：${task.creator_name} · ${createdAt}` : createdAt
   return (
@@ -59,7 +61,9 @@ export default function TaskDetailHeader({ task, locale, activeStep, activeStepC
             <TaskRecoveredBadge status={task.status} recoveredCount={task.recovered_count}
               className="task-detail-recovered-badge" />
             <span className="task-detail-header-badge" data-status={status}>
+              {['running', 'reviewing', 'retrying', 'rework'].includes(status) && <span className="task-status-spinner" aria-hidden="true" />}
               {t(STATUS_LABEL_KEYS[status] ?? (status as TKey))}
+              <TaskPendingConfirmations task={task} />
             </span>
           </div>
           <div className="task-detail-header-secondary">

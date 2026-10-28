@@ -6,6 +6,7 @@ from pathlib import Path
 from peewee import fn
 
 from models import CoordinatorSession, Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun, Workflow
+from services.task_state import summarize_task_state, waiting_interactions, current_task_steps
 
 
 def project_relative_task_cwd(cwd: str, project_root: Path) -> str:
@@ -226,12 +227,14 @@ def task_to_dict(task: Task) -> dict:
             if isinstance(output_tokens, (int, float)) and not isinstance(output_tokens, bool):
                 total_tokens += max(0, int(output_tokens))
 
+    state_steps = current_task_steps(task)
+    state = summarize_task_state(task.status, state_steps, reason=task.status_reason)
     return {
         "id": task.id,
         "title": task.title,
         "description": task.description,
         "cwd": task.cwd,
-        "status": task.status,
+        **state,
         "archived": bool(task.archived),
         "engine": task.engine,
         "model": task.model,
@@ -281,6 +284,7 @@ def task_to_dict(task: Task) -> dict:
                 "started_at": step.started_at,
                 "ended_at": step.ended_at,
                 "error": step.error,
+                "waiting_reason": next(iter(waiting_interactions(step).values()), None),
                 "artifact_round": latest_artifact_round_by_step.get(
                     step.step_key
                 ),

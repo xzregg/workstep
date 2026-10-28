@@ -711,7 +711,7 @@ async def test_run_task_failure(subscriber):
 
         # Task should be stopped
         updated = service.get_task(task["id"])
-        assert updated["status"] == "stopped"
+        assert updated["status"] == "failed"
 
     finally:
         registry.ENGINE_REGISTRY.clear()
@@ -749,7 +749,7 @@ async def test_run_task_error_event_is_a_failed_run(subscriber):
         while not q.empty():
             events.append(await q.get())
 
-        assert updated["status"] == "stopped"
+        assert updated["status"] == "failed"
         assert step.status == "failed"
         assert step.error == "binary not found"
         assert message.run_status == "failed"
@@ -828,7 +828,7 @@ async def test_cancel_task_finalizes_running_records(subscriber):
         while not q.empty():
             events.append(await q.get())
 
-        assert updated["status"] == "paused"
+        assert updated["status"] == "stopped"
         assert step.status == "cancelled"
         assert step.error == "手动停止"
         assert message.run_status == "cancelled"

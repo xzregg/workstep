@@ -183,6 +183,7 @@ def prepare_start_in_project(
     artifacts_dir = Path(project.workstep_dir) / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     task.status = "running"
+    task.status_reason = 'execution'
     task.active_workflow_run_id = workflow_run.id
     task.queued_run_json = None
     task.scheduled_start_at = None
@@ -316,6 +317,7 @@ def prepare_start_from_step_without_parent(
             & (TaskStep.status != "passed")
         ).execute()
         task.status = "ready"
+        task.status_reason = None
         task.updated_at = utc_now()
         task.save()
 

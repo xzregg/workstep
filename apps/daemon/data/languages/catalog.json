@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "69b74c743a6b7ce34eae78b3a72424cfe639d541855486e52538c73847b93828",
+  "revision": "68074cceee1d221104347bf8b1e90d2617af78cd0f9e39cc192be10b606e4102",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -304,7 +304,7 @@
     "notificationHooks.events.started": "任务开始",
     "notificationHooks.events.completed": "任务完成",
     "notificationHooks.events.failed": "任务失败",
-    "notificationHooks.events.paused": "任务暂停",
+    "notificationHooks.events.paused": "任务等待确认",
     "notificationHooks.events.stopped": "任务停止",
     "notificationHooks.events.step_completed": "步骤完成",
     "notificationHooks.events.step_failed": "步骤失败",
@@ -1189,6 +1189,10 @@
     "remoteAccess.passwordPlaceholder": "输入访问密钥",
     "remoteAccess.unlock": "进入",
     "remoteAccess.wrongPassword": "访问密钥不正确",
+    "status.waiting": "等待确认",
+    "status.tool_approval": "等待工具审批",
+    "status.user_input": "等待补充信息",
+    "status.pending_confirmations": "待确认 {count} 项",
     "status.ready": "预备中",
     "status.running": "进行中",
     "status.paused": "暂停",

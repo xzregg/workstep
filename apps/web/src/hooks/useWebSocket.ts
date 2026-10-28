@@ -333,16 +333,17 @@ export function useWebSocket() {
       if (document.visibilityState === 'hidden' || resumeTimer) return
       resumeTimer = setTimeout(() => {
         resumeTimer = null
-        restart()
+        checkConnection()
       }, 0)
     }
     const checkConnection = () => {
       const ws = wsRef.current
-      if (!ws) { restart(); return }
+      if (!ws || ws.readyState > WebSocket.OPEN) { restart(); return }
       if (ws.readyState !== WebSocket.OPEN) return
       // A long-idle mobile socket can still report OPEN after its network died.
-      // Check at send time instead of waiting for the next periodic heartbeat.
-      if (heartbeatTimeout) clearTimeout(heartbeatTimeout)
+      // Probe on focus/resume and send; a healthy connection needs no refresh.
+      // Keep an outstanding probe's deadline even if focus fires repeatedly.
+      if (heartbeatTimeout) return
       send({ type: 'ping', nonce: ++heartbeatNonce })
       heartbeatTimeout = setTimeout(restart, 3000)
     }

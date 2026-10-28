@@ -37,6 +37,7 @@ import TaskBoardCard from '../components/TaskBoardCard'
 import { useI18n, type TFunction } from '../i18n'
 import SchedulePage from './SchedulePage'
 import { deriveTaskLane, orderTaskLanes, type TaskLane } from './taskListLane'
+import { hasActiveTaskExecution } from '../utils/taskDisplayStatus'
 
 /* ── Styles ── */
 const topbarStyle: React.CSSProperties = {
@@ -594,7 +595,7 @@ export default function TaskList() {
           projectId={activeProject?.id} taskId={task.id} readOnly={!canEdit}
           canStart={can('task.run') && isTaskNotStarted(task.steps || [])}
           starting={startingTaskId === task.id} onStart={() => setConfirmStartTaskId(task.id)}
-          canArchive={can('task.archive')} canDelete={can('task.delete')}
+          canArchive={can('task.archive') && !hasActiveTaskExecution(task)} canDelete={can('task.delete') && !hasActiveTaskExecution(task)}
           onOpen={() => handleSelectTask(task.id)}
           onArchive={() => setArchiveTarget({ id: task.id, title: task.title })}
           onRestore={() => { void handleUnarchive(task.id) }}

@@ -135,6 +135,9 @@ def prepare_project_recovery(
         review_keys = set()
         review_step_runs = {}
         review_passed_keys = set()
+        TaskStep.update(waiting_interactions_json=None).where(
+            (TaskStep.task == task) & TaskStep.status.in_(['running', 'reviewing'])
+        ).execute()
         for step_run in StepRun.select().where(
             (StepRun.run == workflow_run)
             & (StepRun.status == "running")
@@ -274,6 +277,7 @@ def prepare_project_recovery(
                     _seal_event_journal(project, review_message, restore_content=False)
                 review_message.save()
         task.status = "running"
+        task.status_reason = 'execution'
         task.updated_at = now
         task.save()
         workflow_run.recovered_at = now

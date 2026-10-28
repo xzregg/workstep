@@ -1,6 +1,34 @@
 """Database schema bootstrap behavior exercised through the public model interface."""
 
 
+def test_legacy_paused_tasks_gain_distinct_states_without_losing_steps(tmp_path):
+    from models import Task, TaskStep, init_db
+    path = str(tmp_path / 'legacy-task-states.db')
+    db = init_db(path)
+    for identity, task_status, step_status in [
+        ('review', 'paused', 'awaiting_review'),
+        ('failure', 'paused', 'failed'),
+        ('manual-stop', 'paused', 'cancelled'),
+        ('active', 'running', 'running'),
+    ]:
+        task = Task.create(id=identity, title=identity, cwd=str(tmp_path), status=task_status, created_at=1, updated_at=1)
+        TaskStep.create(task=task, step_key='build', status=step_status, session_id='retained-session')
+    db.execute_sql('ALTER TABLE tasks DROP COLUMN status_reason')
+    db.execute_sql('ALTER TABLE taskstep DROP COLUMN waiting_interactions_json')
+    db.close()
+    for _ in range(2):
+        db = init_db(path)
+        try:
+            actual = {row.id: (row.status, row.status_reason) for row in Task.select()}
+            assert actual == {
+                'review': ('waiting', 'manual_review'), 'failure': ('failed', 'step_failed'),
+                'manual-stop': ('stopped', 'user_stop'), 'active': ('running', None),
+            }
+            assert all(row.session_id == 'retained-session' for row in TaskStep.select())
+        finally:
+            db.close()
+
+
 def test_existing_notification_hooks_gain_nullable_template_without_losing_data(tmp_path):
     import peewee
     from models import NotificationHook, init_db
@@ -527,7 +555,7 @@ def test_legacy_ready_tasks_only_promote_current_successful_run(tmp_path):
         for _ in range(2):
             db = init_db(path)
             assert {t.id: t.status for t in Task.select()} == {
-                "finished": "completed", "new": "ready", "paused": "paused",
+                "finished": "completed", "new": "ready", "paused": "failed",
                 "rerun": "ready", "failed": "ready",
             }
             assert Task.get_by_id("finished").updated_at == now

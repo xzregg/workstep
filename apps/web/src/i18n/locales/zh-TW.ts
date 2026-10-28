@@ -679,6 +679,10 @@ export const zhTW: Messages = {
     wrongPassword: '存取密鑰不正確',
   },
   status: {
+    waiting: '等待确认',
+    tool_approval: '等待工具审批',
+    user_input: '等待补充信息',
+    pending_confirmations: '待确认 {count} 项',
     ready: '預備中',
     running: '進行中',
     paused: '暫停',

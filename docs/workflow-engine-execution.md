@@ -46,8 +46,9 @@ Task
   ready ──申请槽位──> queued ──获得槽位──> running
     │                    └──取消排队──> ready
     └──直接获得槽位───────────────────> running
-  running ──全部完成──> ready
-  running ──失败/等待人工──> paused
+  running ──全部完成──> completed
+  running ──仅剩人工决定──> waiting ──用户响应/审核通过──> running
+  running ──执行失败/流程受阻──> failed
   running ──用户终止──> stopped
 
 WorkflowRun
@@ -58,7 +59,11 @@ WorkflowRun
   running/paused/failed ──局部重跑──> superseded + child running
 ```
 
-`Task.ready` 当前同时表示“尚未启动”和“本轮成功完成”，读取时必须结合 `active_workflow_run_id` 与运行历史判断。后续若拆分 `succeeded` 任务状态，需要同步迁移任务列表、调度和归档判断，不能只改 UI 文案。
+`Task.ready` 只表示尚未启动；成功收尾使用 `completed`。任务以主状态和 `status_reason` 表达原因，`pending_confirmations` 列出待决定的步骤（及仍挂起的交互 ID）。旧 `paused` 在数据库初始化时根据当前步骤归类为等待、失败或手动停止；旧 `ready` 只有当前运行已成功才升级为 `completed`，不使用较早一轮成功覆盖后来的失败或中断。
+
+有并行分支执行、自动审核或返工时，总状态保持 `running`，等待项仍显示在列表和详情中。下游 `rework_waiting` 仅表示依赖等待，不计为正在执行。没有执行分支且有 `awaiting_review`、未答工具审批或问题时，进入 `waiting`。`TaskStep.waiting_interactions_json` 只保存未回答的交互 ID 与原因，响应时逐项删除；重跑及恢复执行时清除旧交互。审批等待保留存活执行器和并发槽位，禁止将其当作可删除的空闲任务。手动停止统一为 `stopped/user_stop`，普通失败不再伪装为手动停止。
+
+通知钩子为兼容既有订阅和 Webhook 接收方，保留 `paused` 事件标识，界面名称为“任务等待确认”；任务生命周期的 `waiting` 映射至该旧标识。手动停止统一发送 `stopped`。任务自身状态和实时生命周期事件不使用该兼容别名。
 
 步骤转换为：
 
@@ -541,11 +546,15 @@ daemon 启动时执行两类恢复：
 
 | 状态 | 含义 |
 |---|---|
-| `ready` | 未启动，或本次运行已正常收尾 |
+| `ready` | 尚未启动 |
 | `queued` | 等待任务并发槽位 |
 | `running` | runner 正在执行或恢复调度 |
-| `paused` | 失败、审核耗尽、返回上限或路由冲突，需要人工处理 |
+| `waiting` | 等待确认；原因是 `manual_review`、`tool_approval`、`user_input`，或用户完成步骤后暂不执行下游的 `manual_continue` |
+| `failed` | 执行失败；原因是 `engine_error`、`step_failed` 或 `workflow_blocked` |
 | `stopped` | 用户明确终止当前运行；仍可从选定步骤创建新的子运行 |
+| `completed` | 本轮执行范围已全部通过 |
+
+`running` 的原因包括 `execution`、`auto_review`、`rework`；排队原因是 `concurrency_limit`。这些字段由后端工作单元写入，列表、详情、协调上下文和 AG-UI 事件共用同一含义；前端为尚未升级的远端保留步骤状态兼容推断。
 
 ### TaskStep 常见状态
 
