@@ -32,13 +32,13 @@ export function FlowBackdrop() {
           const p = point(step / 75, strand)
           if (!step) context.moveTo(p.x, p.y); else context.lineTo(p.x, p.y)
         }
-        context.strokeStyle = strand % 7 === 0 ? (dark ? 'rgba(240,138,96,.25)' : 'rgba(160,79,44,.19)') : (dark ? 'rgba(172,190,151,.10)' : 'rgba(100,123,91,.15)')
+        context.strokeStyle = strand % 7 === 0 ? (dark ? 'rgba(10,132,255,.25)' : 'rgba(0,113,227,.19)') : (dark ? 'rgba(152,152,157,.10)' : 'rgba(110,110,115,.15)')
         context.lineWidth = strand % 7 === 0 ? 1 : .6
         context.stroke()
         if (strand % 7 === 0) {
           const p = point(((time * .035 + strand * .032) % 1 + 1) % 1, strand)
           context.beginPath(); context.arc(p.x, p.y, 2, 0, Math.PI * 2)
-          context.fillStyle = dark ? 'rgba(240,138,96,.8)' : 'rgba(195,74,40,.65)'; context.fill()
+          context.fillStyle = dark ? 'rgba(10,132,255,.8)' : 'rgba(0,113,227,.65)'; context.fill()
         }
       }
     }

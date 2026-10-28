@@ -1,7 +1,7 @@
 # WorkStep 产品介绍页（apps/landing）
 
 独立的 Vite + React 落地页，用于向独立开发者 / 小团队介绍 WorkStep。与产品 UI
-（`apps/web`）解耦。新版采用纸张色、深绿黑与橙色强调的排版、流线背景，
+（`apps/web`）解耦。新版沿用软件的纯白底、浅灰分区与蓝色控件，使用轻量流线背景，
 支持日间 / 夜间模式及统一登记的 26 种语言。
 
 ## 开发命令
@@ -26,7 +26,7 @@ corepack yarn build      # tsc -b + vite build，产物在 dist/
 
 ## 页面结构
 
-- 首屏 Hero：从需求到交付的介绍与纸张示意，配有可暂停、遵循减少动态效果偏好的流线背景；保留引擎安装、认证和模型费用说明。
+- 首屏 Hero：精简双栏介绍，移除装饰卡片及英文标签，配有可暂停、遵循减少动态效果偏好的淡色流线背景；保留引擎安装、认证和模型费用说明。
 - 真实录屏（GuidedWalkthrough）：保留原始视频、四个章节、播放 / 暂停与进度跳转。
 - 开发任务示例（Philosophy）：用“给项目加一个搜索功能”解释步骤与预期交付内容，属于流程设计示例。
 - 操作演示（Demos）：三个动画共用选项卡与播放器；切换后播放，也可暂停、重播、拖动进度或放大查看。
@@ -42,7 +42,7 @@ corepack yarn build      # tsc -b + vite build，产物在 dist/
 - 演示内容：新增演示时在 `src/demo/demos.tsx` 注册 `DemoDef`，在
   `src/scenes/` 下新增场景组件（纯函数 `{ time: number } => UI`），并同步补充
   `src/i18n/zh-CN.ts` 与 `src/i18n/en-US.ts` 文案。
-- 文案：新增展示文案须同步 `src/i18n/index.tsx` 登记的全部语言。主词典由 `tests/i18n.test.ts` 检查；首屏与法律正文分别在 `editorial.ts`、`legal.ts`，通过对应页面测试验证。
+- 文案：新增展示文案须同步 `src/i18n/index.tsx` 登记的全部语言。主词典由 `tests/i18n.test.ts` 检查；教程标题和隐私补充文案在 `editorial.ts`，法律正文在 `legal.ts`，通过对应页面测试验证。
 
 ## 用户操作手册
 
