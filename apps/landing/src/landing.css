@@ -3595,4 +3595,19 @@ button {
 .privacy-page { max-width: 800px; padding-block: 120px 64px; min-height: 60vh; }
 .privacy-page h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.3; }
 .privacy-page p { font-size: 17px; line-height: 1.8; overflow-wrap: anywhere; }
+.legal-page { max-width: 800px; padding-block: 120px 64px; min-height: 60vh; }
+.legal-page h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.3; }
+.legal-page h2, .legal-supplement h2 { font-size: 20px; margin-block: 32px 12px; }
+.legal-page p { font-size: 17px; line-height: 1.8; overflow-wrap: anywhere; }
+.commerce-info { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; padding-block: 64px; scroll-margin-top: 96px; }
+.commerce-info h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.3; }
+.commerce-info h3 { font-size: 20px; }
+.commerce-info p { line-height: 1.8; overflow-wrap: anywhere; }
+.commerce-info .commerce-price { font-size: clamp(30px, 4vw, 44px); font-weight: 700; margin-block: 16px; }
+.commerce-info .btn { margin-block-start: 16px; }
+.commerce-support { border-inline-start: 1px solid var(--border); padding-inline-start: 32px; }
+@media (max-width: 767px) {
+  .commerce-info { grid-template-columns: minmax(0, 1fr); gap: 32px; padding-block: 40px; }
+  .commerce-support { border-inline-start: 0; border-block-start: 1px solid var(--border); padding-inline-start: 0; padding-block-start: 24px; }
+}
 :root[dir="rtl"] .hero-recorded .hero-copy { text-align: start; }

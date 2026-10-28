@@ -17,6 +17,8 @@ import { Workflow } from './components/Workflow'
 import type { DemoDef } from './demo/demos'
 import { getExperienceHref } from './config/entryPoints'
 import { PrivacyPage } from './components/PrivacyPage'
+import { CommerceInfo } from './components/CommerceInfo'
+import { TermsPage } from './components/TermsPage'
 
 function scrollToDemos() {
   document.getElementById('demos')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
@@ -30,7 +32,7 @@ export default function App() {
     return () => window.removeEventListener('hashchange', update)
   }, [])
   useEffect(() => {
-    if (isManualHash(hash) || hash === '#privacy') window.scrollTo(0, 0)
+    if (isManualHash(hash) || hash === '#privacy' || hash === '#terms') window.scrollTo(0, 0)
     else if (hash) document.getElementById(hash.slice(1))?.scrollIntoView()
   }, [hash])
   const [openDemo, setOpenDemo] = useState<DemoDef | null>(null)
@@ -39,7 +41,7 @@ export default function App() {
   return (
     <>
       <Nav />
-      {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : <main>
+      {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : <main>
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
         <Philosophy />
         <Demos onOpen={setOpenDemo} />
@@ -49,6 +51,7 @@ export default function App() {
         <Compare />
         <Channels />
         <RemoteShare />
+        <CommerceInfo />
         <FinalCta experienceHref={experienceHref} />
       </main>}
       <Footer />
