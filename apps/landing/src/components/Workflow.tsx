@@ -1,3 +1,4 @@
+import { FlowBackdrop } from './FlowBackdrop'
 import { useI18n } from '../i18n'
 
 interface TemplateDef {
@@ -17,7 +18,7 @@ export function Workflow() {
   const { t } = useI18n()
 
   return (
-    <section className="section" id="workflow">
+    <section className="section" id="workflow"><FlowBackdrop subtle />
       <div className="container">
         <div className="section-eyebrow">{t('workflow.eyebrow')}</div>
         <h2 className="section-title">{t('workflow.title')}</h2>

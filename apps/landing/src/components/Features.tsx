@@ -1,3 +1,4 @@
+import { FlowBackdrop } from './FlowBackdrop'
 import { CircleCheckBig, GitBranch, History, PackageOpen, RefreshCw, Waypoints } from 'lucide-react'
 import { useI18n } from '../i18n'
 
@@ -7,7 +8,7 @@ export function Features() {
   const { t } = useI18n()
 
   return (
-    <section className="section" id="features">
+    <section className="section" id="features"><FlowBackdrop subtle />
       <div className="container">
         <div className="section-eyebrow">{t('features.eyebrow')}</div>
         <h2 className="section-title">{t('features.title')}</h2>

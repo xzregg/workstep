@@ -1,3 +1,4 @@
+import { FlowBackdrop } from './FlowBackdrop'
 import { ArrowRight, CheckCircle2, Copy, UserRound } from 'lucide-react'
 import { useI18n } from '../i18n'
 
@@ -7,7 +8,7 @@ export function Philosophy() {
   const { t } = useI18n()
 
   return (
-    <section className="section philosophy" id="philosophy">
+    <section className="section philosophy" id="philosophy"><FlowBackdrop subtle />
       <div className="container philosophy-layout">
         <div className="philosophy-intro">
           <h2 className="section-title">{t('philosophy.title')}</h2>

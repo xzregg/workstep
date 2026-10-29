@@ -19,6 +19,7 @@ import { getExperienceHref } from './config/entryPoints'
 import { TermsPage } from './components/TermsPage'
 import { PrivacyPage } from './components/PrivacyPage'
 import { GuidedWalkthrough } from './components/GuidedWalkthrough'
+import { FlowBackdrop } from './components/FlowBackdrop'
 import { GettingStarted } from './components/GettingStarted'
 
 function scrollToDemos() {
@@ -44,7 +45,7 @@ export default function App() {
       <Nav />
       {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : <main>
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
-        <div className="container recorded-section"><GuidedWalkthrough /></div>
+        <div className="recorded-section"><FlowBackdrop subtle /><div className="container"><GuidedWalkthrough /></div></div>
         <Philosophy />
         <Demos onOpen={setOpenDemo} />
         <GettingStarted />

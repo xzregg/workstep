@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Pause, Play } from 'lucide-react'
-import { useI18n } from '../i18n'
 
-export function FlowBackdrop() {
-  const { t } = useI18n()
+export function FlowBackdrop({ subtle = false }: { subtle?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null)
-  const [paused, setPaused] = useState(false)
   const [reduced, setReduced] = useState(false)
   useEffect(() => {
     const media = matchMedia('(prefers-reduced-motion: reduce)')
@@ -20,13 +16,13 @@ export function FlowBackdrop() {
     let width = 0, height = 0, time = 0, last = 0, frame = 0
     let visible = true
     const point = (progress: number, strand: number) => ({
-      x: width * (.38 + progress * .8),
-      y: height * (.73 - .44 * progress) + Math.sin(progress * Math.PI * 1.18 + strand * .026 + time * .12) * height * .22 + strand * 5.6 + Math.sin(progress * 7 + time * .2) * 5,
+      x: width * (-.1 + progress * 1.2),
+      y: height * (.55 + Math.cos((progress - .5) * Math.PI * 2 + time * .12) * .18) + strand * Math.min(5.6, height * .012) + Math.sin(progress * 7 + time * .2) * 5,
     })
     const draw = () => {
       const dark = document.documentElement.dataset.theme === 'dark'
       context.clearRect(0, 0, width, height)
-      for (let strand = -15; strand < 22; strand++) {
+      for (let strand = -18; strand <= 18; strand++) {
         context.beginPath()
         for (let step = 0; step <= 75; step++) {
           const p = point(step / 75, strand)
@@ -50,7 +46,7 @@ export function FlowBackdrop() {
     }
     const sync = () => {
       cancelAnimationFrame(frame); draw()
-      if (!paused && !reduced && visible && !document.hidden) { last = performance.now(); frame = requestAnimationFrame(animate) }
+      if (!reduced && visible && !document.hidden) { last = performance.now(); frame = requestAnimationFrame(animate) }
     }
     const resize = new ResizeObserver(() => {
       const bounds = element.getBoundingClientRect()
@@ -66,6 +62,6 @@ export function FlowBackdrop() {
     theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
     document.addEventListener('visibilitychange', sync); sync()
     return () => { cancelAnimationFrame(frame); resize.disconnect(); intersection.disconnect(); theme.disconnect(); document.removeEventListener('visibilitychange', sync) }
-  }, [paused, reduced])
-  return <><canvas className="intro-flow" ref={canvas} aria-hidden="true" /><button type="button" className="intro-motion" aria-pressed={paused || reduced} disabled={reduced} onClick={() => setPaused(value => !value)}>{t(paused || reduced ? 'common.play' : 'common.pause')}{paused || reduced ? <Play size={13} /> : <Pause size={13} />}</button></>
+  }, [reduced])
+  return <canvas className={`intro-flow${subtle ? ' intro-flow--subtle' : ''}`} ref={canvas} aria-hidden="true" />
 }

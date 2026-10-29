@@ -1,3 +1,4 @@
+import { FlowBackdrop } from './FlowBackdrop'
 import { ArrowRight, Play } from 'lucide-react'
 import { useI18n } from '../i18n'
 
@@ -5,7 +6,7 @@ export function FinalCta({ experienceHref }: { experienceHref: string }) {
   const { t } = useI18n()
 
   return (
-    <section className="final-cta" id="download">
+    <section className="final-cta" id="download"><FlowBackdrop subtle />
       <div className="container final-cta-inner">
         <div>
           <h2>{t('finalCta.title')}</h2>
