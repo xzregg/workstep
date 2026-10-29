@@ -93,7 +93,7 @@ function formatCost(value: number, currency: 'USD' | 'CNY', locale: string): str
 }
 
 
-function TrendChart({
+export function TrendChart({
   title,
   data,
   mode,
@@ -125,7 +125,11 @@ function TrendChart({
     failed: failedLabel,
     totalTokens: totalTokensLabel,
   }) : null
-  const xAt = (index: number) => data.length === 1 ? width / 2 : index * width / (data.length - 1)
+  const slotWidth = width / Math.max(data.length, 1)
+  const barWidth = Math.min(slotWidth * 0.8, 24)
+  const xAt = (index: number) => mode === 'tokens'
+    ? (index + 0.5) * slotWidth
+    : data.length === 1 ? width / 2 : index * width / (data.length - 1)
   const yAt = (value: number) => height - Math.max(0, value) / maximum * height
 
   return (
@@ -164,10 +168,18 @@ function TrendChart({
               />
             </>
           ) : (
-            <polyline
-              points={seriesPoints(tokens, width, height, maximum)}
-              className="statistics-chart-line statistics-chart-token"
-            />
+            data.map((point, index) => (
+              <rect
+                key={point.bucket}
+                x={xAt(index) - barWidth / 2}
+                y={yAt(point.total_tokens)}
+                width={barWidth}
+                height={height - yAt(point.total_tokens)}
+                rx="3"
+                className="statistics-chart-bar"
+                data-active={activeIndex === index}
+              />
+            ))
           )}
           {activePoint && activeIndex !== null && (
             <>
@@ -180,13 +192,11 @@ function TrendChart({
                   <circle cx={xAt(activeIndex)} cy={yAt(activePoint.succeeded_runs)} r="4" className="statistics-chart-dot statistics-chart-dot-success" />
                   <circle cx={xAt(activeIndex)} cy={yAt(activePoint.failed_runs)} r="4" className="statistics-chart-dot statistics-chart-dot-danger" />
                 </>
-              ) : (
-                <circle cx={xAt(activeIndex)} cy={yAt(activePoint.total_tokens)} r="4" className="statistics-chart-dot statistics-chart-dot-token" />
-              )}
+              ) : null}
             </>
           )}
           {data.map((point, index) => {
-            const step = data.length > 1 ? width / (data.length - 1) : width
+            const step = mode === 'tokens' ? slotWidth : data.length > 1 ? width / (data.length - 1) : width
             const start = Math.max(0, xAt(index) - step / 2)
             const end = Math.min(width, xAt(index) + step / 2)
             const content = trendTooltipContent(point, mode, locale, {
@@ -214,7 +224,7 @@ function TrendChart({
           <div
             className="statistics-chart-tooltip"
             data-edge={activeIndex === 0 ? 'start' : activeIndex === data.length - 1 ? 'end' : undefined}
-            style={{ left: `${data.length === 1 ? 50 : activeIndex / (data.length - 1) * 100}%` }}
+            style={{ left: `${xAt(activeIndex) / width * 100}%` }}
             role="status"
           >
             <strong>{tooltip.bucket}</strong>

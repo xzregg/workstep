@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>WorkStep · 数字员工与记忆迭代架构</title>
+  <style>
+    :root { --paper:#fbfbfd; --surface:#fff; --ink:#1d1d1f; --muted:#6e6e73; --line:#d2d2d7; --blue:#0071e3; --blue-light:#f5f5f7; --violet:#7c3aed; --violet-light:#f5f5f7; --amber:#b45309; --amber-light:#fbfbfd; --sans:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.6 var(--sans); }
+    button,a { -webkit-tap-highlight-color:transparent; }
+    button { font:inherit; cursor:pointer; }
+    button:focus-visible,a:focus-visible { outline:3px solid #0071e3; outline-offset:4px; }
+    .page { max-width:1660px; margin:auto; padding:36px 38px 26px; }
+    .masthead { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:650; letter-spacing:.04em; }
+    .brand-mark { display:grid; grid-template-columns:repeat(3,5px); gap:3px; align-items:end; height:22px; }
+    .brand-mark i { background:var(--blue); width:5px; border-radius:12px; height:12px; }
+    .brand-mark i:nth-child(2) { height:17px; }
+    .brand-mark i:nth-child(3) { height:22px; }
+    .version { color:var(--muted); font-size:12px; }
+    .hero { margin:27px 0 26px; }
+    h1 { margin:0; font-size:clamp(30px,4vw,44px); line-height:1.3; letter-spacing:-.04em; font-weight:650; }
+    .hero p { margin:10px 0 0; max-width:920px; color:var(--muted); font-size:15px; }
+    .toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; margin:0 0 20px; }
+    .tabs { display:flex; gap:5px; padding:5px; border:1px solid var(--line); border-radius:12px; background:#f5f5f7; }
+    .tab { padding:9px 17px; border:0; border-radius:12px; color:var(--muted); background:transparent; font-weight:550; white-space:nowrap; }
+    .tab[aria-selected="true"] { color:var(--ink); background:#fff;  }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; }
+    .action { border:1px solid var(--line); border-radius:12px; background:#fff; color:var(--ink); padding:7px 12px; font-size:12px; text-decoration:none; }
+    .action:hover { background:#f5f5f7; }
+    .panel[hidden] { display:none; }
+    .panel-heading { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:12px; }
+    h2 { margin:0; font-size:20px; letter-spacing:-.02em; }
+    .hint { color:var(--muted); font-size:12px; margin:0; }
+    .diagram-shell { border:1px solid var(--line); border-radius:14px; background:#fff; overflow:hidden; }
+    .diagram-scroll { overflow:auto; overscroll-behavior-x:contain; }
+    .diagram { display:block; width:100%; min-width:1240px; height:auto; }
+    .diagram .node { cursor:pointer; }
+    .diagram .node:focus { outline:none; }
+    ::selection { background:#0071e3; color:#ffffff; }
+    .diagram-scroll { scrollbar-color:var(--line) var(--surface); }
+    @media (pointer:coarse) { .tab,.action { min-height:44px; display:inline-flex; align-items:center; justify-content:center; } }
+    .diagram .node:focus-visible .node-box { stroke:#0071e3; stroke-width:3; }
+    .diagram .node:hover .node-box { stroke:#0077ed; }
+    .diagram .node.is-selected .node-box { stroke:var(--node-accent,#0071e3); stroke-width:2.4; }
+    .diagram .edge { transition:opacity .14s; }
+    .diagram.has-selection .edge { opacity:.22; }
+    .diagram.has-selection .edge.is-related { opacity:1; }
+    .legend { display:flex; flex-wrap:wrap; gap:22px; padding:12px 20px; border-top:1px solid #e8e8ed; color:var(--muted); font-size:12px; }
+    .legend span { display:flex; align-items:center; gap:7px; }
+    .key { width:7px; height:7px; border-radius:50%; display:inline-block; background:var(--blue); }
+    .key.violet { background:var(--violet); }
+    .key.amber { background:var(--amber); }
+    .detail { margin-top:14px; padding:20px 22px; display:grid; grid-template-columns:minmax(190px,.7fr) 1.6fr 1fr; gap:26px; background:#fff; border:1px solid var(--line); border-radius:12px; min-height:150px; }
+    .detail-label { margin:0 0 6px; font-size:11px; font-weight:650; letter-spacing:.08em; color:var(--blue); }
+    .detail h3 { margin:0 0 8px; font-size:20px; line-height:1.4; }
+    .detail p { margin:0; color:var(--muted); font-size:12px; }
+    .status { display:inline-block; border-radius:12px; padding:2px 7px; background:#f5f5f7; color:#6e6e73; font-size:11px; }
+    .detail ul { margin:10px 0 0; padding-left:17px; font-size:12px; }
+    .detail li+li { margin-top:6px; }
+    .detail-flow { padding-left:22px; border-left:1px solid var(--line); }
+    .detail-flow strong { display:block; font-size:12px; margin-bottom:4px; }
+    .budget { display:grid; grid-template-columns:240px 1fr; align-items:center; gap:24px; padding:19px 23px; margin-top:14px; border:1px solid #d2d2d7; border-radius:12px; background:#f5f5f7; }
+    .budget h3 { font-size:15px; margin:0 0 3px; color:#424245; }
+    .budget p { margin:0; font-size:12px; color:#6e6e73; }
+    .budget-items { display:flex; gap:7px; align-items:center; flex-wrap:wrap; font-size:12px; color:#424245; }
+    .budget-items span { background:#fff; border:1px solid #e8e8ed; padding:6px 10px; border-radius:12px; }
+    .budget-items b { font-weight:500; }
+    .principles { display:grid; grid-template-columns:repeat(3,1fr); gap:28px; padding:24px 2px 10px; }
+    .principle h3 { margin:0 0 5px; font-size:12px; }
+    .principle p { margin:0; font-size:12px; color:var(--muted); }
+    footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-top:18px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; }
+    .footer-ref { max-width:850px; }
+    .no-script { margin:20px; padding:20px; border:1px solid var(--line); }
+    @media (prefers-reduced-motion:reduce) { * { transition:none!important; } }
+    @media (max-width:900px) { .page { padding:24px 18px; } .detail { grid-template-columns:1fr 2fr; gap:18px; } .detail-flow { grid-column:1/-1; border-left:0; border-top:1px solid var(--line); padding:12px 0 0; } .budget { grid-template-columns:1fr; gap:12px; } .principles { gap:16px; } }
+    @media (max-width:560px) { .page { padding:20px 12px; } .masthead { align-items:flex-start; } .version { max-width:130px; text-align:right; } .hero { margin:24px 0 20px; } .hero p { font-size:12px; } .toolbar { gap:12px; } .tabs { width:100%; } .tab { flex:1; padding:9px; font-size:12px; } .panel-heading { align-items:flex-start; flex-direction:column; gap:5px; } .detail { grid-template-columns:1fr; padding:17px; } .detail-flow { grid-column:auto; } .principles { grid-template-columns:1fr; gap:16px; } .legend { gap:12px; padding:12px; } }
+    @media print { @page { size:A3 landscape; margin:12mm; } body { background:#fff; } .page { max-width:none; padding:0; } .toolbar,.detail,.hint,.actions,footer,.principles { display:none!important; } .panel[hidden] { display:block; } .panel { break-inside:avoid; margin:0 0 20px; } .panel+.panel { break-before:page; } .diagram { min-width:0; } .diagram-scroll { overflow:visible; } .diagram-shell { border:0; } .hero { margin:12px 0; } h1 { font-size:30px; } .diagram.has-selection .edge { opacity:1; } }
+  </style>
+</head>
+<body>
+<main class="page">
+  <header class="masthead">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>WorkStep / 数字员工</div>
+    <span class="version">架构草图 · 2026.10.29 · v0.1</span>
+  </header>
+  <div class="hero">
+    <h1>一个项目，一名数字员工</h1>
+    <p>项目承载身份、性格、对话、流程与工作空间。员工通过有证据的记忆积累与能力更新持续成长，每轮上下文始终受预算约束。</p>
+  </div>
+  <div class="toolbar">
+    <div class="tabs" role="tablist" aria-label="架构视图">
+      <button class="tab" id="tab-overview" role="tab" aria-controls="panel-overview" aria-selected="true" type="button">整体架构</button>
+      <button class="tab" id="tab-learning" role="tab" aria-controls="panel-learning" aria-selected="false" tabindex="-1" type="button">记忆与自我迭代</button>
+    </div>
+    <div class="actions">
+      <button class="action" type="button" id="export-svg">下载当前图 SVG</button>
+      <a class="action" href="digital-employee-architecture.drawio" download>可编辑源图</a>
+      <button class="action" type="button" id="print">打印 / PDF</button>
+    </div>
+  </div>
+  <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="panel-heading"><h2>员工项目连接工作与成长</h2><p class="hint">点击节点查看职责 · 窄屏可横向浏览图面 · 图中新增能力均为规划</p></div>
+    <div class="diagram-shell"><div class="diagram-scroll" role="region" aria-label="整体架构图，可横向滚动" tabindex="0"><svg class="diagram" id="overview-svg" viewBox="0 0 1420 780" aria-labelledby="overview-title overview-desc" role="group"></svg></div><div class="legend"><span><i class="key"></i>工作与执行</span><span><i class="key violet"></i>知识与记忆</span><span><i class="key amber"></i>授权与分发</span><span>“已有 / 扩展 / 新增”表示实现基础</span></div></div>
+  </section>
+  <section class="panel" id="panel-learning" role="tabpanel" aria-labelledby="tab-learning" hidden>
+    <div class="panel-heading"><h2>从一次工作，到下一次做得更好</h2><p class="hint">实线：工作与经验流转 · 虚线：暂不生效，继续观察</p></div>
+    <div class="diagram-shell"><div class="diagram-scroll" role="region" aria-label="记忆与自我迭代图，可横向滚动" tabindex="0"><svg class="diagram" id="learning-svg" viewBox="0 0 1420 780" aria-labelledby="learning-title learning-desc" role="group"></svg></div><div class="legend"><span><i class="key"></i>工作与反馈</span><span><i class="key violet"></i>提炼、检索与短记忆</span><span><i class="key amber"></i>验证、版本与批准</span><span>推断不会直接变成长期规则</span></div></div>
+  </section>
+  <section class="detail" id="node-detail" aria-live="polite" aria-atomic="true"></section>
+  <section class="budget" aria-label="上下文容量原则">
+    <div><h3>资料可以增长，上下文必须有界</h3><p>统一计算预算，并为工具结果与输出留余量。</p></div>
+    <div class="budget-items"><span>岗位与当前任务</span><b>＋</b><span>有上限的短记忆</span><b>＋</b><span>相关历史片段</span><b>＋</b><span>当次所需技能</span><b>≤ 本轮可用预算</b></div>
+  </section>
+  <div class="principles">
+    <section class="principle"><h3>记住事实，也保留出处</h3><p>每条经验带适用范围与证据；重复合并、冲突待决、过期失效，老板可以查看、纠正和遗忘。</p></section>
+    <section class="principle"><h3>成长发生在老板的项目里</h3><p>发布的是岗位与能力模板。老板的业务资料、运行历史和成长记忆留在项目；升级模板时保留本地改进。</p></section>
+    <section class="principle"><h3>默认先学习，再验证升级</h3><p>建议默认：明确偏好与已验证事实自动记忆；推断保留候选；技能与流程通过评估和确认后启用。</p></section>
+  </div>
+  <footer><span class="footer-ref">参考：指定会话消息中的“短记忆 / 历史记录 / 按需技能”结构，以及本轮“项目即员工”的产品讨论。</span><span>设计草图，不代表所有能力已经实现 · 无外部资源依赖</span></footer>
+</main>
+<noscript><p class="no-script">此图需要启用 JavaScript。可直接打开同目录 digital-employee-architecture.drawio 查看两个可编辑视图。核心关系：项目承载员工；岗位、短记忆、历史片段和技能经预算组装后进入执行；工作证据经提炼与验证回到短记忆或技能版本。</p></noscript>
+<script>
+'use strict';
+const palette = {
+  blue:{fill:'#fbfbfd',stroke:'#d2d2d7',ink:'#0071e3'},
+  violet:{fill:'#fbfbfd',stroke:'#d2d2d7',ink:'#7c3aed'},
+  amber:{fill:'#fbfbfd',stroke:'#d2d2d7',ink:'#b45309'},
+  neutral:{fill:'#f5f5f7',stroke:'#d2d2d7',ink:'#424245'}
+};
+const graphs = {
+  overview:{
+    title:'数字员工整体架构', description:'一个 WorkStep 项目承载一名员工。岗位、技能、短记忆和工作历史进入有预算的上下文组装；员工通过对话或主动职责选择能力，在受控运行环境执行。市场只交付模板，模型与外部工具通过显式授权使用。',
+    groups:[{id:'project',x:280,y:36,w:840,h:684,title:'员工项目 / 长期身份与工作空间',sub:'复用项目、会话、流程、技能与存储；补齐员工配置和可信执行',fill:'#fbfbfd',stroke:'#d2d2d7'}],
+    annotations:[{x:40,y:130,text:'老板与分发平台',color:'#6e6e73'},{x:1160,y:130,text:'显式授权的数据接收方',color:'#6e6e73'},{x:320,y:694,text:'本地优先 · 自有内网可部署 · 远端托管需信任宿主运营方',color:'#6e6e73'}],
+    nodes:[
+      {id:'owner',x:40,y:300,title:'老板',lines:['派活、反馈、批准','查看进展与交付'],tone:'neutral',status:'使用者',detail:'老板通过项目中的多个会话与同一员工沟通，设置职责与授权，并对重要行动和能力升级作决定。',points:['新对话不会创建新员工；员工身份归项目。','需求、纠正与验收结果成为学习证据。','批准范围由运行系统执行，性格提示词不替代权限。'],flow:'输入：需求与授权。输出：任务、反馈与批准决定。'},
+      {id:'market',x:40,y:540,title:'员工订阅平台',lines:['岗位、技能、流程模板','版本、订阅与安装'],tone:'amber',status:'新增',detail:'作者从员工项目导出可复用模板。老板订阅后创建新的本地员工项目，重新配置模型、资料与权限。',points:['交付固定版本的岗位、Skills、流程和主动职责。','导出排除业务文件、凭据、聊天历史与成长记忆。','自建员工无需市场订阅；模板更新保留本地覆盖。'],flow:'平台 → 本地：能力包与授权信息。订阅校验不上传业务内容。'},
+      {id:'identity',x:320,y:140,title:'岗位与性格',lines:['职责、沟通风格、工作方法','从角色中心选择并冻结'],tone:'blue',status:'扩展',detail:'角色中心提供岗位模板，项目保存当前员工的稳定身份和行为风格。模板修订经采用后生成员工新版本。',points:['定义负责什么、如何汇报、遇到不确定时如何处理。','员工主身份与普通会话上下文分开保存。','执行任务所用的具体模型可以不同。'],flow:'岗位快照 → 员工对话 → 本轮上下文。'},
+      {id:'capabilities',x:600,y:140,title:'Skills 与工作流',lines:['方法、脚本与多步骤执行','只加载当次需要的能力'],tone:'blue',status:'已有＋扩展',detail:'复用项目技能和工作流画布，员工根据任务选择能力。能力目录与执行详情分层读取，避免每次注入全部脚本和方法。',points:['Skills 保存可复用的方法和脚本。','工作流组织步骤、输入产物、测试与审核。','经验证的本地改进形成独立版本，支持比较与回滚。'],flow:'能力摘要供选择；选中能力的内容按需进入上下文。'},
+      {id:'memory',x:880,y:140,title:'短记忆',lines:['稳定事实、偏好、关键约定','容量受限 · 合并替换'],tone:'violet',status:'已有＋扩展',detail:'沿用项目 MEMORY.md 作为唯一用户可编辑的长期记忆入口，并补齐容量、修订和整理机制。详细历史不不断追加到常驻内容。',points:['只保留长期有效且适用于本项目的内容。','写入前去重、合并和检查冲突；超限时生成精简方案。','原始证据留在工作历史，关键人工约定不能被静默删除。'],flow:'通过验证的记忆 → 有界常驻内容 → 每次相关工作。'},
+      {id:'chat',x:320,y:350,title:'员工对话与主动入口',lines:['老板派活 / 事件或定时唤醒','同一身份，多段会话'],tone:'blue',status:'扩展',detail:'沿用现有会话、流式消息和停止机制，让员工在对话中理解需求，也能被已授权职责主动唤醒。',points:['对话可以答疑、提议或发起真实工作流。','主动检查允许返回“无需行动”。','新会话仍能读取本项目相关长期记忆。'],flow:'用户请求 / 主动检查 → 上下文组装 → 判断与派发。'},
+      {id:'context',x:600,y:350,title:'上下文组装',lines:['短记忆 + 相关历史 + 技能','统一预算、来源、版本'],tone:'violet',status:'新增／统一',detail:'在对话、流程和主动检查前，统一选择本轮需要的知识。先保留当前任务与必要约定，再按相关性装入历史片段和技能。',points:['长期记忆、检索片段、技能和当前任务共同受总预算约束。','为模型输出、工具结果和后续轮次保留余量。','显示本轮使用了哪些记忆与证据；不足时继续检索。'],flow:'多种知识 → 有预算的本轮输入。大量历史不会整库注入。'},
+      {id:'dispatch',x:880,y:350,title:'判断与能力调度',lines:['答复 / 提案 / 派发流程','处理阻塞、审核与收尾'],tone:'blue',status:'扩展',detail:'基于现有助手与流程基础，将自然语言请求转换成可追踪的行动。统一复用运行、事件、停止与审核机制。',points:['能力匹配到真实流程或工具，不能只在聊天里宣称已执行。','需要批准的动作先生成提案。','完成后汇总证据、成果和未完成项。'],flow:'本轮上下文 → 行动计划 → 受控执行 → 可核对的结果。'},
+      {id:'duties',x:320,y:560,title:'主动职责',lines:['定时、事件、工作时段','去重、预算、暂停'],tone:'blue',status:'扩展',detail:'复用定时任务，新增员工职责判断与检查点。主动性来自明确职责与可运行的唤醒机制。',points:['先检查是否需要行动，再判断是否有授权。','同一事件不重复派发；限制频率、费用和失败重试。','暂停后停止后续唤醒，当前执行可以单独停止。'],flow:'职责规则 / 新事件 → 员工检查；无事可做时结束。'},
+      {id:'history',x:600,y:560,title:'工作空间与历史',lines:['文件、任务、对话、产物','完整证据保存 · 按需检索'],tone:'violet',status:'已有＋扩展',detail:'项目目录与独立数据库保存工作数据。详细过程沿用任务和对话日志，以索引和片段读取支持检索。',points:['原始记录是经验来源，不等于长期规则。','优先用任务、关键词与时间范围检索；语义索引可后续增加。','记录受项目授权约束，发布模板不携带这些数据。'],flow:'执行结果 → 历史证据 → 按需检索 / 自我迭代视图。'},
+      {id:'execution',x:880,y:560,title:'受控运行环境',lines:['授权资料副本、受控动作','模型与工具代理、停止'],tone:'amber',status:'待验证',detail:'复用引擎与流程执行能力，补齐员工隔离和受信控制程序。项目划分本身并不构成操作系统级安全边界。',points:['工作进程仅接触获准资料，原始凭据留在环境外。','必要模型与外部动作经受控代理，按授权取数与执行。','安全承诺须经过文件、外联、撤权和输出预览验证。'],flow:'获准动作 → 引擎 / 工具 → 结果与审计。撤权阻止后续动作。'},
+      {id:'models',x:1160,y:350,title:'模型服务',lines:['本地 / 企业内网 / 云模型','由老板配置与付费'],tone:'neutral',status:'已有',detail:'员工使用老板选择的模型。选择云模型时，送入上下文的内容会进入对应模型服务，必须在入职时明确展示。',points:['本地部署 WorkStep 不代表推理一定留在本地。','只发送本轮需要且已获授权的内容。','模型调用按实际供应商计费并记录用量。'],flow:'受控代理 → 获准的本轮输入 → 模型结果。'},
+      {id:'tools',x:1160,y:560,title:'外部工具与系统',lines:['代码仓库、测试、通知等','按动作授权，留存记录'],tone:'neutral',status:'已有＋扩展',detail:'员工通过被授权的连接完成研发工作。平台提供能力，老板决定具体资源、接收方和可执行动作。',points:['读仓库、运行测试、推送代码分别授予权限。','工具输出与外部内容按数据处理，不能提高权限。','重要写操作先预览影响，并使用已有批准机制。'],flow:'受控请求 → 指定工具 → 可验证结果。'}
+    ],
+    edges:[
+      {from:'owner',to:'chat',path:'M260 352 H290 V402 H320',label:'派活 / 反馈',lx:290,ly:328,tone:'blue'},
+      {from:'identity',to:'chat',path:'M430 244 V350',label:'稳定身份',lx:470,ly:300,tone:'blue'},
+      {from:'capabilities',to:'context',path:'M710 244 V350',label:'按需加载',lx:752,ly:300,tone:'blue'},
+      {from:'memory',to:'context',path:'M990 244 V280 H805 V325 H760 V350',label:'有界记忆',lx:898,ly:271,tone:'violet'},
+      {from:'chat',to:'context',path:'M540 402 H600',tone:'blue'},
+      {from:'context',to:'dispatch',path:'M820 402 H880',tone:'violet'},
+      {from:'dispatch',to:'execution',path:'M990 454 V560',label:'校验授权',lx:1032,ly:512,tone:'amber'},
+      {from:'duties',to:'chat',path:'M430 560 V454',label:'主动唤醒',lx:473,ly:512,tone:'blue'},
+      {from:'execution',to:'history',path:'M880 612 H820',tone:'blue'},
+      {from:'history',to:'context',path:'M710 560 V454',label:'相关片段',lx:752,ly:512,tone:'violet'},
+      {from:'execution',to:'models',path:'M1100 587 H1138 V402 H1160',tone:'amber'},
+      {from:'execution',to:'tools',path:'M1100 633 H1160',tone:'amber'},
+      {from:'market',to:'project',path:'M260 592 H280',tone:'amber'},
+      {from:'history',to:'owner',path:'M710 664 V742 H20 V460 H150 V404',label:'成果、进展与待批准事项',lx:370,ly:733,tone:'blue'}
+    ]
+  },
+  learning:{
+    title:'记忆与自我迭代闭环',description:'工作证据经过提炼、筛选和验证，再进入有限容量的短记忆。稳定方法形成技能或流程改进草稿，评估并批准后生成可回滚版本。短记忆、相关历史和技能按预算组装用于下一次工作；未通过验证的经验保留候选或淘汰。',
+    groups:[{id:'learning-area',x:20,y:90,w:1380,h:640,title:'成长发生在员工项目内',sub:'原始经历持续累积；记忆与能力变更需要证据、适用范围和版本',fill:'#fbfbfd',stroke:'#d2d2d7'}],
+    annotations:[{x:40,y:53,text:'工作反馈 → 候选经验 → 验证 → 长期记忆 / 能力升级 → 下一次工作',color:'#424245'},{x:40,y:747,text:'示例：接口字段遗漏 → 提炼“同步类型与调用方” → 在后续任务验证 → 固化为检查步骤',color:'#424245'}],
+    nodes:[
+      {id:'work',x:40,y:180,title:'一次真实工作',lines:['需求、执行、测试、审核','老板纠正与验收'],tone:'blue',status:'已有',detail:'学习从真实结果出发：做了什么、为什么失败、老板纠正了什么、最终怎样通过验收。',points:['成功、失败和返工都可提供证据。','普通重试不等于多次独立纠正。','优先采集可核对的测试与人工反馈。'],flow:'任务过程与结果 → 已有任务、对话和事件日志。'},
+      {id:'evidence',x:320,y:180,title:'完整证据与检索索引',lines:['历史原文、反馈、产物','保留出处，不全量常驻'],tone:'violet',status:'已有＋扩展',detail:'复用项目存储保存原始经历，用任务和消息引用建立检索索引。索引可重建，原始证据仍是权威来源。',points:['可按任务、关键词和时间检索相关片段。','证据文本不能直接获得系统指令的权限。','跨任务检索始终限制在获准项目。'],flow:'原始证据 → 提炼 / 检索。上下文只接收选中的片段。'},
+      {id:'candidate',x:600,y:180,title:'提炼候选经验',lines:['适用条件、经验、证据','去重、冲突与时效检查'],tone:'violet',status:'扩展',detail:'将工作经历提炼为可操作的经验候选，而不是自动生成越来越长的任务总结。现有归档经验可作为入口。',points:['区分明确事实、老板偏好与模型推断。','与已有记忆比较，避免重复或相互矛盾。','没有新经验时允许零条；保留证据与适用范围。'],flow:'证据 → 候选。候选不会自动变成长驻指令。'},
+      {id:'verify',x:880,y:180,title:'验证与分流',lines:['直接确认 / 独立结果证据','检查范围与有效期'],tone:'amber',status:'新增',detail:'明确指示可直接确认；从工作中推断的规则需要足够证据。技能改动还需独立测试与历史案例比较。',points:['模型自评不能单独证明改进有效。','冲突、证据不足或过期时暂缓生效。','验证通过后分别进入短记忆或能力草稿。'],flow:'通过 → 更新记忆 / 提出能力升级；不足 → 留待观察。'},
+      {id:'skilldraft',x:1160,y:180,title:'技能 / 流程改进草稿',lines:['新方法、脚本、检查步骤','差异 + 测试证据'],tone:'blue',status:'新增',detail:'将多次有效的方法组织成可重复执行的能力，而不是继续占用短记忆篇幅。',points:['从当前本地能力版本派生改进草稿。','展示增加、删除和行为变化。','用回归案例验证成功率、返工和成本变化。'],flow:'有效方法 → 能力差异与评估结果 → 老板确认。'},
+      {id:'next',x:40,y:400,title:'下一次工作',lines:['主动采用相关经验','继续检查真实效果'],tone:'blue',status:'扩展',detail:'员工在类似工作中主动使用经验，并把实际效果回到证据库，形成持续循环。',points:['能看到本轮引用了哪些记忆和技能。','关注同类错误是否减少、交付是否通过验收。','发现经验失效时生成纠正或撤销建议。'],flow:'有界上下文 → 行为变化 → 新反馈与新证据。'},
+      {id:'assemble',x:320,y:400,title:'按任务组装上下文',lines:['短记忆 + 相关历史 + 技能','统一预算 · 按需继续读'],tone:'violet',status:'新增／统一',detail:'不同来源的内容一起计算预算。当前任务和必要约定优先，历史与技能只加载本轮需要的部分。',points:['对话、工作流和主动检查共享同一规则。','预留模型输出与工具结果的空间。','预算不足时选取、精简或继续检索，不静默截断关键约定。'],flow:'有限常驻 + 按需读取 → 有边界的模型输入。'},
+      {id:'short',x:600,y:400,title:'短记忆 · MEMORY.md',lines:['偏好、约定、稳定经验','固定容量，持续整理'],tone:'violet',status:'已有＋扩展',detail:'记忆内容保持精炼。完整来源和修订记录保存在项目数据库，老板仍从统一记忆入口查看和编辑。',points:['新增前合并与压缩，避免无止境追加。','重要人工约定需要显式处理冲突，不能静默丢弃。','支持查看来源、修正、遗忘和回滚，防止旧经验再次误用。'],flow:'记忆更新 → 后续任务。当前执行保留自己的版本快照。'},
+      {id:'merge',x:880,y:400,title:'合并与版本记录',lines:['新增 / 替换 / 失效','容量检查、保留人工约定'],tone:'amber',status:'新增',detail:'通过验证的内容写入前再次检查最新版记忆，处理并发、重复和冲突，并记录修改前后的差异。',points:['同一证据反复到达不会重复写入。','达到容量上限时整理内容，证据仍保留在历史中。','错误记忆可撤销；被删除内容不能因旧索引自动复活。'],flow:'验证结果 → 原子更新短记忆 → 修订与来源索引。'},
+      {id:'approval',x:1160,y:400,title:'评估与老板确认',lines:['通过回归与独立案例','确认后发布本地版本'],tone:'amber',status:'新增',detail:'建议首版将技能和流程升级保持为可审阅提案。批准绑定具体差异与版本，不能被后续修改复用。',points:['验证既有能力没有被破坏。','批准前不修改实际执行的技能或流程。','拒绝后保留原因，供后续修正。'],flow:'可审阅的能力草稿 → 获批本地能力版本。'},
+      {id:'pending',x:600,y:580,title:'待观察 / 失效 / 淘汰',lines:['证据不足、冲突或已过期','不进入有效短记忆'],tone:'neutral',status:'新增',detail:'未通过验证的候选保留状态和原因。等待新证据或老板裁决，过期内容停止参与后续上下文。',points:['重复次数多并不自动意味着正确。','无需为每次任务强行制造经验。','冲突由明确约定与新证据解决，不按模型自信度覆盖。'],flow:'暂不生效 → 新证据到来时重新评估，或结束候选。'},
+      {id:'version',x:1160,y:580,title:'可回滚的能力版本',lines:['本地改进与市场基线分离','后续工作按需加载'],tone:'blue',status:'新增',detail:'通过确认的技能或流程形成新版本。运行中的任务使用锁定版本，后续任务采用新版本。',points:['问题出现时可以回到上一个已验证版本。','市场模板升级不自动覆盖老板的本地改进。','成长数据不因更新、续费或发布模板而外传。'],flow:'能力版本 → 按需加载 → 下一次工作 → 继续验证效果。'}
+    ],
+    edges:[
+      {from:'work',to:'evidence',path:'M260 232 H320',tone:'blue'},
+      {from:'evidence',to:'candidate',path:'M540 232 H600',tone:'violet'},
+      {from:'candidate',to:'verify',path:'M820 232 H880',tone:'violet'},
+      {from:'verify',to:'skilldraft',path:'M1100 232 H1160',tone:'amber'},
+      {from:'verify',to:'merge',path:'M990 284 V400',label:'有效事实 / 规则',lx:1051,ly:345,tone:'amber'},
+      {from:'merge',to:'short',path:'M880 452 H820',tone:'violet'},
+      {from:'short',to:'assemble',path:'M600 452 H540',tone:'violet'},
+      {from:'assemble',to:'next',path:'M320 452 H260',tone:'blue'},
+      {from:'next',to:'work',path:'M150 400 V284',label:'新反馈',lx:194,ly:345,tone:'blue'},
+      {from:'evidence',to:'assemble',path:'M430 284 V400',label:'相关片段',lx:475,ly:345,tone:'violet'},
+      {from:'verify',to:'pending',path:'M1100 264 H1130 V550 H850 V632 H820',tone:'neutral',dashed:true},
+      {from:'skilldraft',to:'approval',path:'M1270 284 V400',label:'评估结果',lx:1314,ly:345,tone:'amber'},
+      {from:'approval',to:'version',path:'M1270 504 V580',label:'批准',lx:1300,ly:546,tone:'amber'},
+      {from:'version',to:'assemble',path:'M1160 650 H1090 V714 H430 V504',label:'新版本按需加载；异常可回滚',lx:855,ly:705,tone:'blue'}
+    ]
+  }
+};
+const SVG_NS='http://www.w3.org/2000/svg';
+const font='system-ui, -apple-system, PingFang SC, Microsoft YaHei, sans-serif';
+let activeGraph='overview';
+const selected={overview:'context',learning:'short'};
+function el(name,attrs={},text) { const item=document.createElementNS(SVG_NS,name); for(const [key,value] of Object.entries(attrs)) item.setAttribute(key,String(value)); if(text!==undefined)item.textContent=text; return item; }
+function textAt(parent,x,y,text,opts={}) { parent.appendChild(el('text',{x,y,'font-family':font,'font-size':opts.size||15,fill:opts.fill||'#1d1d1f','font-weight':opts.weight||400,'text-anchor':opts.anchor||'start',...opts.attrs},text)); }
+function routePoints(path) {
+  const tokens=path.match(/[MHV]|-?\d+(?:\.\d+)?/g),points=[];let x=0,y=0;
+  for(let i=0;i<tokens.length;){const command=tokens[i++];if(command==='M'){x=Number(tokens[i++]);y=Number(tokens[i++]);}else if(command==='H'){x=Number(tokens[i++]);}else if(command==='V'){y=Number(tokens[i++]);}points.push({x,y});}
+  return points;
+}
+function renderGraph(key) {
+  const graph=graphs[key], svg=document.getElementById(key+'-svg');
+  svg.appendChild(el('title',{id:key+'-title'},graph.title)); svg.appendChild(el('desc',{id:key+'-desc'},graph.description));
+  svg.appendChild(el('rect',{x:0,y:0,width:1420,height:780,fill:'#ffffff'}));
+  graph.groups.forEach(group=>{svg.appendChild(el('rect',{x:group.x,y:group.y,width:group.w,height:group.h,rx:15,fill:group.fill,stroke:group.stroke,'stroke-width':1.3}));textAt(svg,group.x+25,group.y+32,group.title,{size:18,weight:650});textAt(svg,group.x+25,group.y+56,group.sub,{size:12,fill:'#6e6e73'});});
+  graph.annotations.forEach(note=>textAt(svg,note.x,note.y,note.text,{size:13,fill:note.color}));
+  graph.edges.forEach((edge,index)=>{
+    const group=el('g',{'class':'edge','data-from':edge.from,'data-to':edge.to,'data-edge':index});
+    group.appendChild(el('path',{d:edge.path,fill:'none',stroke:palette[edge.tone].ink,'stroke-width':1.6,'stroke-linejoin':'round',...(edge.dashed?{'stroke-dasharray':'5 4'}:{})}));
+    const points=routePoints(edge.path),tip=points.at(-1),before=points.at(-2),length=Math.hypot(tip.x-before.x,tip.y-before.y),dx=(tip.x-before.x)/length,dy=(tip.y-before.y)/length;
+    group.appendChild(el('polygon',{points:`${tip.x},${tip.y} ${tip.x-8*dx+3.5*dy},${tip.y-8*dy-3.5*dx} ${tip.x-8*dx-3.5*dy},${tip.y-8*dy+3.5*dx}`,fill:palette[edge.tone].ink}));
+    if(edge.label) {const width=edge.label.length*12+14;group.appendChild(el('rect',{x:edge.lx-width/2,y:edge.ly-12,width,height:18,rx:4,fill:'#fbfbfd'}));textAt(group,edge.lx,edge.ly+1,edge.label,{size:12,fill:palette[edge.tone].ink,anchor:'middle'});}
+    svg.appendChild(group);
+  });
+  graph.nodes.forEach(node=>{
+    const color=palette[node.tone], group=el('g',{'class':'node','data-node':node.id,role:'button',tabindex:0,'aria-label':node.title+'，'+node.status+'，查看详情','aria-pressed':'false',style:'--node-accent:'+color.ink});
+    group.appendChild(el('rect',{'class':'node-box',x:node.x,y:node.y,width:220,height:104,rx:12,fill:color.fill,stroke:color.stroke,'stroke-width':1.2}));
+    group.appendChild(el('rect',{x:node.x+15,y:node.y+16,width:4,height:19,rx:2,fill:color.ink}));
+    textAt(group,node.x+28,node.y+31,node.title,{size:16,weight:650});
+    node.lines.forEach((line,index)=>textAt(group,node.x+16,node.y+57+index*19,line,{size:14,fill:'#424245'}));
+    textAt(group,node.x+204,node.y+94,node.status,{size:12,fill:color.ink,anchor:'end'});
+    group.addEventListener('click',()=>selectNode(key,node.id));
+    group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();selectNode(key,node.id);}});
+    svg.appendChild(group);
+  });
+}
+function selectNode(key,id,highlight=true) {
+  const node=graphs[key].nodes.find(item=>item.id===id);if(!node)return;
+  selected[key]=id;const svg=document.getElementById(key+'-svg');svg.classList.toggle('has-selection',highlight);
+  svg.querySelectorAll('.node').forEach(item=>{const active=item.dataset.node===id;item.classList.toggle('is-selected',active);item.setAttribute('aria-pressed',String(active));});
+  svg.querySelectorAll('.edge').forEach(item=>item.classList.toggle('is-related',item.dataset.from===id||item.dataset.to===id));
+  const detail=document.getElementById('node-detail');detail.replaceChildren();
+  const heading=document.createElement('div');const label=document.createElement('p');label.className='detail-label';label.textContent='节点职责';const title=document.createElement('h3');title.textContent=node.title;const status=document.createElement('span');status.className='status';status.textContent=node.status;heading.append(label,title,status);
+  const body=document.createElement('div');const paragraph=document.createElement('p');paragraph.textContent=node.detail;const list=document.createElement('ul');node.points.forEach(point=>{const item=document.createElement('li');item.textContent=point;list.append(item);});body.append(paragraph,list);
+  const flow=document.createElement('div');flow.className='detail-flow';const flowTitle=document.createElement('strong');flowTitle.textContent='输入与输出';const flowText=document.createElement('p');flowText.textContent=node.flow;flow.append(flowTitle,flowText);detail.append(heading,body,flow);
+}
+function switchGraph(key,focus=false){activeGraph=key;Object.keys(graphs).forEach(name=>{const active=name===key;const tab=document.getElementById('tab-'+name);tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;document.getElementById('panel-'+name).hidden=!active;});selectNode(key,selected[key],false);if(focus)document.getElementById('tab-'+key).focus();}
+Object.keys(graphs).forEach(key=>{renderGraph(key);const tab=document.getElementById('tab-'+key);tab.addEventListener('click',()=>switchGraph(key));tab.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();switchGraph(event.key==='Home'?'overview':event.key==='End'?'learning':key==='overview'?'learning':'overview',true);}});});
+document.getElementById('export-svg').addEventListener('click',()=>{
+  const clone=document.getElementById(activeGraph+'-svg').cloneNode(true);clone.setAttribute('xmlns',SVG_NS);clone.setAttribute('width','1420');clone.setAttribute('height','780');clone.removeAttribute('class');
+  clone.querySelectorAll('[tabindex]').forEach(item=>{item.removeAttribute('tabindex');item.removeAttribute('role');item.removeAttribute('aria-pressed');});
+  const blob=new Blob([new XMLSerializer().serializeToString(clone)],{type:'image/svg+xml;charset=utf-8'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='workstep-employee-'+activeGraph+'.svg';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+document.getElementById('print').addEventListener('click',()=>window.print());
+switchGraph('overview');
+</script>
+</body>
+</html>

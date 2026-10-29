@@ -522,7 +522,8 @@ class IdentityService:
                 ).values(revoked_at=_now()))
 
     async def admin_edit_user(self, user_id: str, display_name: str,
-                              new_password: str | None = None, username: str | None = None) -> User:
+                              new_password: str | None = None, username: str | None = None,
+                              *, group_ids: list[str] | None = None, actor_id: str | None = None) -> User:
         async with self.database.session() as session:
             target = await session.get(User, user_id)
             if target is None:
@@ -539,6 +540,9 @@ class IdentityService:
                     raise IdentityError('not_found', 'User not found')
                 if user.is_recovery or user.status == 'deleted':
                     raise IdentityError('forbidden', 'User cannot be edited')
+                if group_ids is not None:
+                    from gateway.services.user_group_memberships import update_user_groups
+                    await update_user_groups(session, self, actor_id, user_id, group_ids)
                 username_changed = username is not None and username != user.username
                 if username_changed:
                     existing = await session.scalar(select(User.id).where(User.username == username, User.id != user_id))

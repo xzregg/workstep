@@ -70,7 +70,7 @@ def test_group_bulk_members_atomic_and_directory_read_only(tmp_path):
         assert len(client.get(f'/api/groups/{group}/members').json()['members']) == 1
 
 
-@pytest.mark.parametrize('target', ['users', 'members', 'delete_users', 'delete_groups', 'purge_users', 'purge_groups'])
+@pytest.mark.parametrize('target', ['users', 'members', 'delete_users', 'delete_groups', 'purge_users', 'purge_groups', 'edit_groups'])
 def test_bulk_database_contention_keeps_health_responsive(tmp_path, target):
     import asyncio
     import sqlite3
@@ -90,6 +90,9 @@ def test_bulk_database_contention_keeps_health_responsive(tmp_path, target):
         if target == 'purge_groups':
             client.post(url, json={'group_ids': [group], 'action': 'delete'}, headers=headers)
             body = {'group_ids': [group], 'action': 'purge'}
+        if target == 'edit_groups':
+            url = f'/api/admin/users/{users[0]}'
+            body = {'display_name': 'Alice', 'group_ids': [group]}
         reached = threading.Event()
         def before_execute(connection, cursor, statement, parameters, context, many):
             if statement.startswith('UPDATE platform_settings') or statement.startswith('INSERT INTO group_memberships'):
@@ -98,7 +101,7 @@ def test_bulk_database_contention_keeps_health_responsive(tmp_path, target):
         event.listen(engine, 'before_cursor_execute', before_execute)
         async def scenario():
             async with AsyncClient(transport=ASGITransport(app=app), base_url='https://gateway.test', cookies=client.cookies) as actor:
-                pending = asyncio.create_task(actor.post(url, json=body, headers=headers))
+                pending = asyncio.create_task((actor.patch if target == 'edit_groups' else actor.post)(url, json=body, headers=headers))
                 try:
                     assert await asyncio.to_thread(reached.wait, 2)
                     assert (await asyncio.wait_for(actor.get('/api/health'), .5)).status_code == 200
@@ -278,3 +281,40 @@ def test_user_edit_password_hash_does_not_block_health(tmp_path, monkeypatch):
             assert client.get('/api/health').status_code == 200
             assert time.monotonic() - started < 0.4
             assert pending.result().status_code == 200
+
+
+def test_edit_user_multiple_groups_atomic_and_directory_read_only(tmp_path):
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path)), base_url='https://gateway.test') as client:
+        _, headers, users = setup(client)
+        groups = [client.post('/api/groups', json={'name': slug, 'slug': slug}, headers=headers).json()['id'] for slug in ['dev', 'other']]
+        url = f'/api/admin/users/{users[0]}'
+        body = {'display_name': 'Alice', 'group_ids': groups}
+        assert client.patch(url, json=body, headers=headers).status_code == 200
+        rows = client.get(url + '/groups').json()['groups']
+        assert {row['id'] for row in rows if row['selected']} == set(groups)
+        assert client.patch(url, json={**body, 'display_name': 'Bad', 'group_ids': [groups[0], 'missing']}, headers=headers).status_code == 404
+        assert next(row for row in client.get('/api/admin/users').json()['users'] if row['id'] == users[0])['display_name'] == 'Alice'
+        assert client.patch(url, json={**body, 'group_ids': [groups[1]]}, headers=headers).status_code == 200
+        assert client.get(f'/api/groups/{groups[0]}/members').json()['members'] == []
+        assert client.patch(url, json=body, headers=headers).status_code == 200
+        from gateway.models import GroupMembership
+        from sqlalchemy import select
+        async def synchronize():
+            async with client.app.state.database.session() as session:
+                async with session.begin():
+                    row = await session.scalar(select(GroupMembership).where(GroupMembership.user_id == users[0], GroupMembership.group_id == groups[0]))
+                    row.source = 'directory_sync'
+        client.portal.call(synchronize)
+        rows = client.get(url + '/groups').json()['groups']
+        assert next(row for row in rows if row['id'] == groups[0])['editable'] is False
+        assert client.patch(url, json={**body, 'group_ids': []}, headers=headers).status_code == 409
+        assert all(row['selected'] for row in client.get(url + '/groups').json()['groups'])
+        client.cookies.clear()
+        # A normal account cannot use either endpoint to inspect or change another user.
+        login = client.post('/api/auth/login', json={'username': 'owner', 'password': 'OwnerPassword123'}).json()
+        owner_headers = {'X-CSRF-Token': login['csrf_token']}
+        client.post('/api/admin/users/bulk', json={'user_ids': users, 'action': 'approve'}, headers=owner_headers)
+        client.cookies.clear()
+        login = client.post('/api/auth/login', json={'username': 'bobby', 'password': 'UserPassword123'}).json()
+        assert client.get(url + '/groups').status_code == 403
+        assert client.patch(url, json=body, headers={'X-CSRF-Token': login['csrf_token']}).status_code == 403

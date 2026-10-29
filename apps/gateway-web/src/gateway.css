@@ -124,6 +124,11 @@ a {
   font-size: clamp(30px, 4vw, 44px);
 }
 
+.gateway-auth-card .gateway-auth-title {
+  font-size: clamp(20px, 6vw, 32px);
+  white-space: nowrap;
+}
+
 .gateway-auth-description {
   margin-bottom: 28px;
   color: #6e6e73;
@@ -910,3 +915,29 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-admin-page button.gateway-device-name-button:hover { background: transparent; text-decoration: underline; }
 .gateway-admin-page button.gateway-device-name-button:focus-visible { outline: 2px solid var(--gateway-admin-accent); outline-offset: 3px; }
 .gateway-admin-page button.gateway-device-name-button:disabled { cursor: default; }
+
+
+.gateway-user-group-choices { grid-column: 1 / -1; min-width: 0; margin: 8px 0; padding: 12px; border: 1px solid var(--gateway-admin-border); border-radius: 8px; max-height: 280px; overflow-y: auto; }
+.gateway-auth-form .gateway-user-group-choices label.gateway-check-label { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.gateway-auth-form .gateway-user-group-choices input[type=checkbox] { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; flex: 0 0 16px; }
+
+.gateway-modal.gateway-edit-user-dialog { width: min(680px, calc(100vw - 32px)); }
+@media (min-width: 768px) {
+ .gateway-admin-page .gateway-edit-user-dialog .gateway-auth-form { grid-template-columns: 150px minmax(0, 1fr); max-width: none; }
+}
+
+
+.gateway-device-auth-card .gateway-auth-description { margin: 0 0 24px; font-size: 15px; }
+.gateway-device-auth-session { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: #52605b; font-size: 13px; }
+.gateway-device-auth-session::before { content: ""; width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #25845b; }
+.gateway-device-auth-actions { display: grid; gap: 12px; }
+.gateway-device-auth-card .gateway-device-auth-actions button { width: 100%; min-height: 44px; margin: 0; padding: 11px 16px; border: 1px solid transparent; border-radius: 10px; font-size: 15px; line-height: 1.4; transition: background-color .15s, border-color .15s; }
+.gateway-device-auth-card .gateway-device-auth-primary { background: #0071e3; color: #fff; }
+.gateway-device-auth-card .gateway-device-auth-primary:hover { background: #0063c7; }
+.gateway-device-auth-card .gateway-device-auth-actions .gateway-device-auth-secondary { background: #f5f6f8; border-color: #dfe3e8; color: #414b59; }
+.gateway-device-auth-card .gateway-device-auth-actions .gateway-device-auth-secondary:hover { background: #eceff3; border-color: #bbc4ce; }
+.gateway-device-auth-actions button:focus-visible, .gateway-device-auth-return a:focus-visible { outline: 3px solid #91c5ff; outline-offset: 3px; }
+.gateway-device-auth-return { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid #e8e8ed; text-align: center; font-size: 14px; }
+.gateway-device-auth-return a { color: #647184; text-decoration: none; }
+.gateway-device-auth-return a:hover { color: #0071e3; text-decoration: underline; }
+.gateway-device-auth-progress { display: flex; align-items: center; gap: 8px; color: #647184; font-size: 14px; }

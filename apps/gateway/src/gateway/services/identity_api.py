@@ -472,6 +472,7 @@ async def admin_reset_password(call: GatewayCall, user_id: str, body: ResetPassw
 
 
 class AdminEditUserInput(BaseModel):
+    group_ids: list[str] | None = Field(default=None, max_length=1000)
     username: str | None = Field(default=None, min_length=3, max_length=64)
     display_name: str = Field(min_length=1, max_length=256)
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
@@ -492,8 +493,9 @@ class AdminEditUserInput(BaseModel):
 
 
 async def admin_edit_user(call: GatewayCall, user_id: str, body: AdminEditUserInput):
-    identity, _ = await _user_manager_request(call, user_id)
+    identity, actor = await _user_manager_request(call, user_id)
     if body.new_password is not None or body.username is not None:
         _, auth_session = await identity.session_user(call.tokens.get(COOKIE_NAME))
         await identity.require_step_up(auth_session)
-    return public_user(await identity.admin_edit_user(user_id, body.display_name, body.new_password, body.username))
+    return public_user(await identity.admin_edit_user(user_id, body.display_name, body.new_password, body.username,
+        group_ids=body.group_ids, actor_id=actor.id))

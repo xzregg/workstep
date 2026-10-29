@@ -1,5 +1,15 @@
 # 操作手册维护与截图记录
 
+2026-10-29 local dev-to-main delivery review: user editing now supports multiple gateway groups, preserving read-only directory-synced memberships; device authorization has a revised confirmation layout; the Token trend uses proportional bars with keyboard-accessible daily tooltips. Gateway API regressions passed 19 tests, Gateway Web passed 244, and the website passed 277; Gateway Web and website production builds passed. The existing manual remains structurally valid at 66/79 declared screenshots, with 13 previously registered missing files. No demo service was started and no new screenshots were captured. The following additional delivery gaps are not yet declared as screenshot slots in the chapters and are not included in that 79-slot denominator; the manual is not complete.
+
+| Delivery gap | Required manual work | Proposed screenshot ID |
+| --- | --- | --- |
+| Gateway user group editing | Add the actual Users → Edit entry, multi-selection, save/retry behavior, synced/read-only boundaries, and synchronize all 26 manual languages. | `gateway-user-groups` |
+| Device authorization layout | Refresh the logged-in confirmation and pending authorization view; existing gateway setup instructions do not document this new layout. | `gateway-device-authorization` |
+| Token trend bars | Document the Statistics Token chart and keyboard/hover daily values, synchronize all 26 languages, and capture the actual chart. | `statistics-token-trend` |
+
+Web regression passed 1,688 tests and its production build passed. This is behavior/build verification, not new manual screenshots or visual acceptance at every viewport.
+
 2026-10-29 delivery review: the refreshed website retains all 26 website/manual languages and the existing SDK-first onboarding. DeepSeek session recovery and early Codex retry changes preserve the current installation and chat entry points; no new operation screens are introduced. Engine/coordinator/image regressions passed 225 tests, and the installed DeepSeek SDK passed the isolated real-runtime history-recovery test against a local mock endpoint, without provider credentials. Website tests (274), production build, lint, and prototype-media export passed. `manual:check` remains 66/79 because of the 13 registered screenshot gaps; existing outdated screenshots remain listed below. No demo service was started and no new screenshots or real-provider acceptance are claimed. Public release notes are maintained in English in `CHANGELOG.md`; the localized manual text and source fingerprint are unchanged.
 
 2026-10-29 官网视觉修订：日间配色对齐软件的纯白、浅灰和蓝色控件，精简首屏并提前展示录屏，夜间模式同步采用软件灰阶。操作手册正文、截图和源文指纹不变；274 项官网测试、构建、lint 通过，全部 26 种语言的 320px 页面无横向溢出。既有 13 张截图缺口继续保留。

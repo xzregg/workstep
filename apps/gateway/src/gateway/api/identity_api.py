@@ -162,3 +162,9 @@ from gateway.services.identity_api import AdminEditUserInput, admin_edit_user as
 @router.patch('/admin/users/{user_id}')
 async def admin_edit_user(request: Request, user_id: str, body: AdminEditUserInput):
     return await invoke(_handle_admin_edit_user, request=request, user_id=user_id, body=body)
+
+
+@router.get('/admin/users/{user_id}/groups')
+async def user_groups(request: Request, user_id: str):
+    from gateway.services.user_group_memberships import user_group_choices
+    return await invoke(user_group_choices, request=request, user_id=user_id)

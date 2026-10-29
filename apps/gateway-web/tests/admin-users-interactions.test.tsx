@@ -705,3 +705,33 @@ test('creating a user keeps the applied search and current list page', async () 
   const query = new URLSearchParams(urls.filter(url => url.startsWith('/api/admin/users?')).at(-1)!.split('?')[1])
   assert.equal(query.get('page'),'2'); assert.equal(query.get('q'),'alice')
 })
+
+
+test('user editor selects multiple groups, preserves directory groups and retries failed saves', async () => {
+ const requests: Record<string, unknown>[] = []
+ let saved = 0
+ globalThis.fetch = async (_input, init) => {
+  if (init?.method === 'PATCH') {
+   requests.push(JSON.parse(String(init.body)))
+   return new Response(null, {status: requests.length === 1 ? 500 : 200})
+  }
+  return Response.json({groups: [
+   {id:'dev',name:'研发',selected:true,editable:true},
+   {id:'sales',name:'销售',selected:false,editable:true},
+   {id:'sync',name:'企业部门',selected:true,editable:false,synced:true},
+  ]})
+ }
+ render(<AdminEditUserDialog csrf="csrf" user={{id:'alice',username:'alice',display_name:'Alice',status:'disabled',registration_source:'admin_created',must_change_password:false,created_at:''}} onClose={() => {}} onSaved={() => {saved++}} />)
+ const dev = await screen.findByRole('checkbox',{name:'研发'}) as HTMLInputElement
+ assert.equal(dev.checked,true)
+ const synced = screen.getByRole('checkbox',{name:/企业部门/}) as HTMLInputElement
+ assert.equal(synced.checked,true)
+ assert.equal(synced.disabled,true)
+ fireEvent.click(screen.getByRole('checkbox',{name:'销售'}))
+ fireEvent.click(screen.getByRole('button',{name:'保存修改'}))
+ await screen.findByText('保存失败，请重试。')
+ assert.deepEqual(requests[0].group_ids,['dev','sales','sync'])
+ assert.equal((screen.getByRole('checkbox',{name:'销售'}) as HTMLInputElement).checked,true)
+ fireEvent.click(screen.getByRole('button',{name:'保存修改'}))
+ await waitFor(() => assert.equal(saved,1))
+})

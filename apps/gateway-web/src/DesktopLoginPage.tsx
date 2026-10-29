@@ -167,8 +167,8 @@ export function DesktopLoginPage() {
   )
 
   return (
-    <section className="gateway-auth-card">
-      <h2>WorkStep 平台认证</h2>
+    <section className="gateway-auth-card gateway-device-auth-card">
+      <h2 className="gateway-auth-title">WorkStep 平台认证</h2>
       <p className="gateway-auth-description">登录后授权当前设备访问所属工作空间。</p>
       {status === 'checking' && <p role="status">正在检查登录状态…</p>}
       {status === 'login' && (
@@ -178,15 +178,18 @@ export function DesktopLoginPage() {
           {!passwordEnabled && !sources.length && <p><Link to={`/auth?next=${encodeURIComponent('/desktop/login?'+searchParams.toString())}`}>进入扫码登录页</Link></p>}
         </>
       )}
-      {status === 'ready' && <>
-        <button type="button" onClick={() => csrf && void authorize(csrf)}>在此设备上继续</button>
-        <button type="button" onClick={() => void switchAccount()}>登出并切换账号</button>
-      </>}
-      {status === 'submitting' && <p role="status">正在完成授权…</p>}
+      {status === 'ready' && <div className="gateway-device-auth-confirmation">
+        <p className="gateway-device-auth-session">当前账号已登录</p>
+        <div className="gateway-device-auth-actions">
+          <button className="gateway-device-auth-primary" type="button" onClick={() => csrf && void authorize(csrf)}>在此设备上继续</button>
+          <button className="gateway-device-auth-secondary" type="button" onClick={() => void switchAccount()}>登出并切换账号</button>
+        </div>
+      </div>}
+      {status === 'submitting' && <p className="gateway-device-auth-progress" role="status"><span className="gateway-spinner" aria-hidden="true" />正在处理，请稍候…</p>}
       {error && <p className="gateway-auth-error" role="alert">{error}</p>}
       {request.redirect_uri
-        ? <p><a href={new URL('/?gateway_auth=cancelled', request.redirect_uri).href}>返回本地工作台</a></p>
-        : <p><a href="workstep://auth/cancel">返回本地工作台</a></p>}
+        ? <p className="gateway-device-auth-return"><a href={new URL('/?gateway_auth=cancelled', request.redirect_uri).href}>返回本地工作台</a></p>
+        : <p className="gateway-device-auth-return"><a href="workstep://auth/cancel">返回本地工作台</a></p>}
     </section>
   )
 }

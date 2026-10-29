@@ -5627,12 +5627,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .statistics-chart-line { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .statistics-chart-success { stroke: var(--success); }
 .statistics-chart-danger { stroke: var(--danger); }
-.statistics-chart-token { stroke: var(--accent); }
+.statistics-chart-bar { fill: color-mix(in oklab, var(--accent) 40%, var(--bg)); }
+.statistics-chart-bar[data-active="true"] { fill: var(--accent); }
 .statistics-chart-guide { stroke: var(--meta); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.55; vector-effect: non-scaling-stroke; }
 .statistics-chart-dot { stroke: var(--bg); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .statistics-chart-dot-success { fill: var(--success); }
 .statistics-chart-dot-danger { fill: var(--danger); }
-.statistics-chart-dot-token { fill: var(--accent); }
 .statistics-chart-hit-area { fill: transparent; cursor: crosshair; }
 .statistics-chart-hit-area:focus-visible { outline: none; fill: color-mix(in oklab, var(--accent), transparent 94%); }
 

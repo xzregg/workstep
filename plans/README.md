@@ -13,6 +13,7 @@
 ## 功能方案与待验收边界
 
 - [数字员工订阅平台](digital-employee-marketplace.md) — 规划草案；包含角色中心融合与 StaffDeck 产品映射，以可信执行为前置，覆盖员工包发布、月订阅、本地主动研发及远端托管，尚未实现。
+- [数字员工与记忆迭代架构图](digital-employee-architecture.html)（[可编辑源图](digital-employee-architecture.drawio)）— 方向草图；以项目作为员工，展示有容量上限的短记忆、历史检索、按需技能及验证后迭代的闭环，图中标明现有基础与规划能力。
 - [Git 合并预览与三栏冲突解决](git-merge-conflict-resolution.md) — 尚未实现；现有 Git 行为见 [开发指南](../docs/development.md#git-管理的现行边界)。
 - [移动端适配与验收](mobile-adaptation.md) — 已实现的适配及仍待完成的 Safari/Chrome 真机检查；现行尺寸规范见 [前端设计](../docs/frontend-design.md)。
 - [助手提示词传输与查看](assistant-prompt-transport.md) — 已接入各入口，保留适配器恢复、指令更新及输入持久化边界。
