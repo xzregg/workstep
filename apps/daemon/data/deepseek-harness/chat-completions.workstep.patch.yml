@@ -1,0 +1,15 @@
+# SDK 0.2 uses Messages for llm-deepseek. Preserve WorkStep's declared
+# Chat Completions protocol via the bundled pi-ai adapter. Keep the route
+# name stable so existing session provider references remain resolvable.
+- id: llm-deepseek
+  disabled: true
+
+- id: llm-pi-ai
+  config:
+    providers:
+      deepseek-official:
+        api: openai-completions
+        apiKeyEnv: DEEPSEEK_API_KEY
+        baseURL: !!js process.env.DEEPSEEK_BASE_URL
+        models:
+          - id: !!js process.env.WORKSTEP_DEEPSEEK_MODEL

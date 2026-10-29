@@ -27,14 +27,24 @@ async def test_chat_api_persists_engine_id_and_resumes_after_host_cache_eviction
     class Harness:
         initialized = False
 
+        def __init__(self):
+            self.sessions = set()
+
         def start(self):
             if not self.initialized:
                 entered.set()
                 assert release.wait(2)
                 self.initialized = True
 
+        def resume_session(self, sid):
+            assert sid in histories
+            self.sessions.add(sid)
+
         def run(self, prompt, *, session_id, on_notification):
             calls.append(session_id)
+            if session_id in histories:
+                assert session_id in self.sessions
+            self.sessions.add(session_id)
             history = histories.setdefault(session_id, [])
             if not history:
                 history.append(prompt)
@@ -84,6 +94,7 @@ async def test_chat_api_persists_engine_id_and_resumes_after_host_cache_eviction
             native_id = detail["engine_session_id"]
             assert native_id.startswith("session-")
             module._sessions.clear()
+            await asyncio.to_thread(DeepSeekHarnessEngine.shutdown_pool)
             assert await _wait_turn(module, await send("暗号是什么？", "second")) == "completed"
             detail = (await client.get(f"/api/chat-sessions/{sid}", params={"project_id": project.id})).json()
             assert detail["engine_session_id"] == native_id

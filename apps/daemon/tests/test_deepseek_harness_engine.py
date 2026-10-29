@@ -89,7 +89,7 @@ def test_deepseek_harness_declares_sdk_install_and_safe_capabilities(monkeypatch
     monkeypatch.setattr(DeepSeekHarnessEngine, "is_configured", staticmethod(lambda: True))
 
     assert DeepSeekHarnessEngine.install_command() == (
-        "pip install deepseek-harness-sdk==0.1.5rc1"
+        "pip install deepseek-harness-sdk==0.2.1rc2"
     )
     assert DeepSeekHarnessEngine().capabilities == EngineCapabilities(
         supports_coordinator=True,
@@ -639,6 +639,18 @@ def test_build_harness_modern_sdk_uses_dsh_home_and_patches(monkeypatch, tmp_pat
     assert kwargs["base_url"]
 
 
+def test_build_harness_restorable_sdk_preserves_chat_completions_transport(monkeypatch, tmp_path):
+    monkeypatch.setattr(_HarnessRecorder, "resume_session", lambda self, sid: None, raising=False)
+    kwargs = _build(monkeypatch, tmp_path, ModernConfig)
+    assert len(kwargs["patches"]) == 2
+    text = Path(kwargs["patches"][1]).read_text()
+    assert "api: openai-completions" in text
+    assert "apiKeyEnv: DEEPSEEK_API_KEY" in text
+    assert "deepseek-official:" in text
+    assert "sk-test" not in text
+    assert kwargs["env"]["WORKSTEP_DEEPSEEK_MODEL"] == "deepseek-v4-flash"
+
+
 def test_build_harness_legacy_sdk_uses_session_root_and_cordis(monkeypatch, tmp_path):
     kwargs = _build(monkeypatch, tmp_path, LegacyConfig)
     expected_root = tmp_path / ".workstep" / "deepseek-harness" / "sessions"
@@ -668,12 +680,43 @@ def test_build_harness_unknown_generation_raises(monkeypatch, tmp_path):
 
 
 def test_install_surface_pins_latest_sdk():
-    assert DeepSeekHarnessEngine.SDK_PACKAGE == "deepseek-harness-sdk==0.1.5rc1"
+    assert DeepSeekHarnessEngine.SDK_PACKAGE == "deepseek-harness-sdk==0.2.1rc2"
     assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.kind == "pypi"
-    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.default_version == "0.1.5rc1"
-    # 适配器保留对 0.1.0rc7 世代的最低兼容线。
-    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.minimum == "0.1.0rc7"
+    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.default_version == "0.2.1rc2"
+    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.minimum == "0.2.1rc2"
     assert DeepSeekHarnessEngine.install_command() == f"pip install {DeepSeekHarnessEngine.SDK_PACKAGE}"
+    assert DeepSeekHarnessEngine.update_command() == f"pip install --upgrade {DeepSeekHarnessEngine.SDK_PACKAGE}"
+
+
+@pytest.mark.parametrize("action", ["install", "update"])
+async def test_install_and_update_use_exact_validated_sdk(monkeypatch, action):
+    calls = []
+
+    async def install(package, *, upgrade=False):
+        calls.append((package, upgrade))
+        return SimpleNamespace(success=True)
+
+    monkeypatch.setattr("engines.deepseek_harness.install_python_package", install)
+    monkeypatch.setattr("engines.core.base.install_python_package", install)
+    assert (await getattr(DeepSeekHarnessEngine(), action)()).success
+    assert calls == [("deepseek-harness-sdk==0.2.1rc2", action == "update")]
+
+
+async def test_runtime_catalog_excludes_sdk_before_persisted_resume(tmp_path):
+    import httpx
+    from services.engine_runtime import EngineRuntimeManager
+
+    releases = {
+        version: [{"filename": f"deepseek_harness_sdk-{version}-py3-none-any.whl",
+                   "url": "https://files.pythonhosted.org/sdk.whl", "size": 100}]
+        for version in ["0.1.0rc7", "0.1.5rc1", "0.2.1rc1", "0.2.1rc2", "0.2.2"]
+    }
+    manager = EngineRuntimeManager(tmp_path, transport=httpx.MockTransport(
+        lambda _: httpx.Response(200, json={"info": {"version": "0.2.2"}, "releases": releases}),
+    ))
+    entries, default = await manager.releases(DeepSeekHarnessEngine.RUNTIME_PACKAGE)
+    assert [entry["version"] for entry in entries] == ["0.2.2", "0.2.1rc2"]
+    assert default == "0.2.1rc2"
 
 
 def test_preset_templates_ship():
@@ -838,6 +881,102 @@ def _configure_spawn(monkeypatch, provider, build):
     )
     monkeypatch.setattr(DeepSeekHarnessEngine, "is_installed", staticmethod(lambda: True))
     monkeypatch.setattr(DeepSeekHarnessEngine, "_build_harness", build)
+
+
+async def test_explicit_resume_after_runtime_restart_keeps_history(
+    monkeypatch, tmp_path, deepseek_provider,
+):
+    monkeypatch.setattr(DeepSeekHarnessEngine, "get_binary_override", classmethod(lambda cls: None))
+    histories, restored, answers = {}, [], []
+
+    class Harness:
+        def __init__(self):
+            self.sessions = set()
+
+        def start(self):
+            pass
+
+        def resume_session(self, sid):
+            assert sid in histories
+            assert sid not in self.sessions
+            restored.append(sid)
+            self.sessions.add(sid)
+
+        def run(self, prompt, *, session_id, on_notification):
+            if session_id in histories:
+                assert session_id in self.sessions, "persisted session needs explicit resume"
+            self.sessions.add(session_id)
+            history = histories.setdefault(session_id, [])
+            answers.append(history[0] if history else prompt)
+            history.append(prompt)
+            return SimpleNamespace(finish_reason="completed")
+
+        def close(self):
+            pass
+
+    _configure_spawn(monkeypatch, deepseek_provider, lambda self, **_: Harness())
+
+    async def turn(prompt, sid=None):
+        events = [event async for event in DeepSeekHarnessEngine().spawn(
+            prompt, str(tmp_path), session_id=sid,
+        )]
+        assert not any(event.type == "error" for event in events)
+        return next(event.data["session_id"] for event in events
+                    if event.type == "session_started")
+
+    sid = await turn("secret-4271")
+    await turn("recall", sid)
+    assert restored == []
+    await asyncio.to_thread(DeepSeekHarnessEngine.shutdown_pool)
+    assert await turn("recall after restart", sid) == sid
+    await turn("recall again", sid)
+    assert restored == [sid]
+    assert answers == ["secret-4271"] * 4
+
+
+async def test_explicit_resume_failure_never_creates_replacement_and_keeps_loop_responsive(
+    monkeypatch, tmp_path, deepseek_provider,
+):
+    import threading
+
+    monkeypatch.setattr(DeepSeekHarnessEngine, "get_binary_override", classmethod(lambda cls: None))
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+
+    class Harness:
+        def start(self):
+            pass
+
+        def resume_session(self, sid):
+            calls.append(sid)
+            entered.set()
+            assert release.wait(2)
+            raise RuntimeError("persisted session unreadable")
+
+        def run(self, *args, **kwargs):
+            raise AssertionError("failed resume must not run a new session")
+
+        def close(self):
+            pass
+
+    _configure_spawn(monkeypatch, deepseek_provider, lambda self, **_: Harness())
+
+    async def collect():
+        return [event async for event in DeepSeekHarnessEngine().spawn(
+            "recall", str(tmp_path), session_id="session-saved",
+        )]
+
+    pending = asyncio.create_task(collect())
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        await asyncio.wait_for(asyncio.sleep(0.01), 0.5)
+    finally:
+        release.set()
+        events = await pending
+    assert calls == ["session-saved"]
+    assert events[-1].type == "error"
+    assert "unreadable" in events[-1].data["message"]
+    assert events[-1].data["session_id"] == "session-saved"
 
 
 async def test_model_interleaving_keeps_original_session_runtime(

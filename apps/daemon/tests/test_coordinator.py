@@ -1230,6 +1230,49 @@ async def test_archive_experience_uses_coordinator_with_task_history(
 
 
 @pytest.mark.anyio
+async def test_archive_experience_retries_codex_before_rollout_exists(api_context, monkeypatch):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    class UnmaterializedThreadEngine(CoordinatorFakeEngine):
+        ENGINE_ID = "codex_sdk"
+        calls = []
+        reply = {"reply": "- 重复漏做校验，提交前必须运行相关测试。"}
+
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+            if not type(self).calls:
+                type(self).calls.append({"prompt": prompt, "session_id": session_id})
+                yield InternalEvent("session_started", {"session_id": "unpersisted-thread"})
+                yield InternalEvent("error", {"message": "provider unavailable"})
+                return
+            if session_id:
+                yield InternalEvent("error", {"message":
+                    "JSON-RPC error -32600: no rollout found for thread id unpersisted-thread"})
+                return
+            async for event in super().spawn(prompt, cwd, model, session_id, **kwargs):
+                yield event
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", UnmaterializedThreadEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    response = await client.post(
+        f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
+    )
+    assert response.status_code == 200
+    assert response.json()["experience"] == UnmaterializedThreadEngine.reply["reply"]
+    assert [call["session_id"] for call in UnmaterializedThreadEngine.calls] == [None, None]
+    assert all("Extract reusable error lessons" in call["prompt"]
+               for call in UnmaterializedThreadEngine.calls)
+    memory = await client.get(f"/api/fs/memory?project_id={project_id}")
+    assert UnmaterializedThreadEngine.reply["reply"] not in memory.json()["content"]
+    task = await client.get(f"/api/task/{task_id}?project_id={project_id}")
+    assert task.json()["archived"] is False
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("reply", ["- " + "长" * 51, "- 一\n- 二\n- 三\n- 四"])
 async def test_archive_rejects_verbose_generated_lessons(api_context, monkeypatch, reply):
     from engines.core.registry import ENGINE_REGISTRY

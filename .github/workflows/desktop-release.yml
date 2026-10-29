@@ -55,6 +55,8 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { ref: "${{ inputs.tag || github.ref }}" }
       - name: Validate release tag
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -63,6 +65,7 @@ jobs:
             echo "Invalid release tag: $RELEASE_TAG" >&2
             exit 1
           fi
+          node scripts/extract-release-notes.cjs "$RELEASE_TAG" > /dev/null
 
   macos:
     needs: [validate, sandbox-image]
@@ -314,13 +317,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
+          node scripts/extract-release-notes.cjs "$RELEASE_TAG" > "$RUNNER_TEMP/release-notes.md"
           existing_release="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null || printf missing)"
           if [ "$existing_release" = "true" ]; then
             gh release delete-asset "$RELEASE_TAG" builder-debug.yml --yes 2>/dev/null || true
             gh release upload "$RELEASE_TAG" release/* --clobber
+            gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
           elif [ "$existing_release" = "false" ]; then
             echo "Release $RELEASE_TAG is already published; refusing to replace its assets." >&2
             exit 1
           else
-            gh release create "$RELEASE_TAG" release/* --draft --verify-tag --generate-notes --title "$RELEASE_TAG"
+            gh release create "$RELEASE_TAG" release/* --draft --verify-tag --notes-file "$RUNNER_TEMP/release-notes.md" --title "$RELEASE_TAG"
           fi

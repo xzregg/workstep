@@ -1,5 +1,7 @@
 # 操作手册维护与截图记录
 
+2026-10-29 delivery review: the refreshed website retains all 26 website/manual languages and the existing SDK-first onboarding. DeepSeek session recovery and early Codex retry changes preserve the current installation and chat entry points; no new operation screens are introduced. Engine/coordinator/image regressions passed 225 tests, and the installed DeepSeek SDK passed the isolated real-runtime history-recovery test against a local mock endpoint, without provider credentials. Website tests (274), production build, lint, and prototype-media export passed. `manual:check` remains 66/79 because of the 13 registered screenshot gaps; existing outdated screenshots remain listed below. No demo service was started and no new screenshots or real-provider acceptance are claimed. Public release notes are maintained in English in `CHANGELOG.md`; the localized manual text and source fingerprint are unchanged.
+
 2026-10-29 官网视觉修订：日间配色对齐软件的纯白、浅灰和蓝色控件，精简首屏并提前展示录屏，夜间模式同步采用软件灰阶。操作手册正文、截图和源文指纹不变；274 项官网测试、构建、lint 通过，全部 26 种语言的 320px 页面无横向溢出。既有 13 张截图缺口继续保留。
 
 2026-10-28 官网改版交付：新增首页六步教程，复用已验证的 SDK 安装、供应商认证、默认执行配置、本地项目、首个流程和首个任务章节及真实截图，正文与源文指纹不变。全部 26 种语言共用官网语言入口，新增首屏与匿名使用条款同步翻译；保留录屏、动画和文档入口，移除免费宣传。官网 274 项测试、构建及 lint 通过，浏览器验证视频章节跳转、教程键盘导航、截图弹窗、日夜切换及全部 26 种语言的 320px 宽度。`manual:check` 仍为 66/79，仅因下表已登记的 13 项截图缺口返回非零；本批不宣称手册全部完成。

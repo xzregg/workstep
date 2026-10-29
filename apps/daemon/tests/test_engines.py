@@ -268,6 +268,57 @@ async def test_engine_retry_reuses_session_from_failed_attempt():
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("engine_id", ["codex", "codex_sdk"])
+@pytest.mark.parametrize("entry", ["spawn_with_retry", "spawn_coordinator_with_retry"])
+@pytest.mark.parametrize("progress", [None, "agent_message_chunk", "agent_thought_chunk", "tool_call"])
+@pytest.mark.parametrize("existing_session", [None, "existing-thread"])
+async def test_codex_retry_does_not_resume_unmaterialized_new_thread(
+    tmp_path, engine_id, entry, progress, existing_session,
+):
+    class NewThreadEngine(StubEngine):
+        ENGINE_ID = engine_id
+
+        def __init__(self):
+            super().__init__([])
+            self.calls = []
+
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, session_id=None, **kwargs):
+            self.calls.append((session_id, prompt))
+            if len(self.calls) == 1:
+                yield InternalEvent("session_started", {"session_id": "new-thread"})
+                yield InternalEvent("status", {"status": "running"})
+                if progress:
+                    yield InternalEvent(progress, {"content": {"text": "started"}})
+                yield InternalEvent("error", {"message": "provider unavailable"})
+                return
+            if session_id == "new-thread" and not progress and not existing_session:
+                yield InternalEvent("error", {"message":
+                    "JSON-RPC error -32600: no rollout found for thread id new-thread"})
+                return
+            yield InternalEvent("agent_message_chunk", {"content": {"text": "recovered"}})
+
+        async def spawn_coordinator(self, **kwargs):
+            async for event in self.spawn(**kwargs):
+                yield event
+
+    engine = NewThreadEngine()
+    events = [event async for event in getattr(engine, entry)(
+        prompt="task evidence", cwd=str(tmp_path), session_id=existing_session,
+        system_prompt="Extract error lessons", capture_prompt_input=True,
+    )]
+    expected_session = "new-thread" if progress or existing_session else None
+    assert [call[0] for call in engine.calls] == [existing_session, expected_session]
+    assert not any(event.type == "error" for event in events)
+    if expected_session is None:
+        assert "Extract error lessons" in engine.calls[1][1]
+    assert len([event for event in events if event.type == "prompt_input"]) == 2
+
+
+@pytest.mark.anyio
 async def test_engine_retry_reports_only_second_error():
     class FailingEngine(StubEngine):
         def __init__(self):

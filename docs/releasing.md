@@ -40,6 +40,13 @@ Before tagging:
    reporting, branch rulesets, and the `release` Environment are enabled.
 5. Create and push the version tag. Do not reuse or move a published tag.
 
+Public changelog entries and GitHub Release notes are written in English.
+Keep the versioned entry in `CHANGELOG.md` as the source of truth; the desktop
+workflow extracts only the matching version with `scripts/extract-release-notes.cjs`
+and rejects missing, empty, duplicate, or Chinese-language entries before building.
+Do not generate release prose from untranslated commit or pull-request titles.
+Historical note translations change descriptions only, not tags or installer assets.
+
 The workflow publishes a sandbox image for Linux amd64 and arm64 to GHCR under
 the release tag and `latest`, and pins its immutable digest into every desktop package.
 The image build restores and exports a separate GHCR `buildcache` tag with

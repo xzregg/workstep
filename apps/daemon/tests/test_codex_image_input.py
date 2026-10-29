@@ -109,7 +109,8 @@ async def test_cli_rejects_nonlocal_images_before_launch(cli_transport, tmp_path
 
 
 @pytest.mark.anyio
-async def test_cli_retry_keeps_native_attachments_and_reference_only_snapshots(cli_transport, tmp_path, monkeypatch):
+@pytest.mark.parametrize("session_id", [None, "existing"])
+async def test_cli_retry_keeps_native_attachments_and_reference_only_snapshots(cli_transport, tmp_path, monkeypatch, session_id):
     commands, _ = cli_transport
     create = asyncio.create_subprocess_exec
     async def fail_first(*args, **kwargs):
@@ -121,10 +122,13 @@ async def test_cli_retry_keeps_native_attachments_and_reference_only_snapshots(c
     path = str(tmp_path / "shot.png")
     events = [event async for event in CodexEngine().spawn_with_retry(
         prompt="原问题", cwd=str(tmp_path), images=[EngineImage(path=path)],
+        session_id=session_id,
         capture_prompt_input=True,
     )]
     assert len(commands) == 2
-    assert "resume" in commands[1]
+    # An announced fresh id has no resumable rollout yet; existing sessions
+    # still resume. Both paths must retain the original native attachments.
+    assert ("resume" in commands[1]) is bool(session_id)
     assert all(cmd[cmd.index("--image") + 1] == path for cmd in commands)
     snapshots = [event.data for event in events if event.type == "prompt_input"]
     assert [snapshot["attempt"] for snapshot in snapshots] == [1, 2]

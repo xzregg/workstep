@@ -82,16 +82,18 @@ class _PooledHarness:
     harness: Any
     inflight: set[int] = field(default_factory=set)
     startup_lock: threading.Lock = field(default_factory=threading.Lock)
+    sessions: set[str] = field(default_factory=set)
 
 
 class DeepSeekHarnessEngine(AcpEngineBase):
     """Run the official local DeepSeek Harness composition through its SDK."""
 
     ENGINE_ID = "deepseek_harness"
-    # minimum 保留 rc7：适配器通过运行时签名同时兼容两代 SDK；
-    # default_version 跟随最新版（0.1.5rc1 起参数改为 dsh_home/patches/dsh_bin）。
-    RUNTIME_PACKAGE = RuntimePackage('deepseek-harness-sdk', 'pypi', '0.1.0rc7', '0.1.5rc1')
-    UPDATE_PACKAGE = "deepseek-harness-sdk"
+    # 安装与更新统一固定到已验证版本；禁止新安装缺少原生恢复入口的旧版。
+    SDK_VERSION = "0.2.1rc2"
+    SDK_PACKAGE = f"deepseek-harness-sdk=={SDK_VERSION}"
+    RUNTIME_PACKAGE = RuntimePackage("deepseek-harness-sdk", "pypi", SDK_VERSION, SDK_VERSION)
+    UPDATE_PACKAGE = SDK_PACKAGE
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -101,7 +103,6 @@ class DeepSeekHarnessEngine(AcpEngineBase):
     def provider_required(cls) -> bool:
         return True
 
-    SDK_PACKAGE = "deepseek-harness-sdk==0.1.5rc1"
     DEFAULT_PRESET = "standard"
     # 0.1.0rc7 世代：完整 Cordis 组合（``cordis`` / DSH_CORDIS_CONFIG 环境变量）。
     PRESET_COMPOSITIONS = {
@@ -121,10 +122,12 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             / "standard.workstep.patch.yml"
         ),
     }
+    CHAT_COMPLETIONS_PATCH = PRESET_PATCHES["standard"].with_name(
+        "chat-completions.workstep.patch.yml"
+    )
 
-    # 官方 SDK 只能续接同进程中的会话。按项目和配置分别保留运行时，
-    # 防止其它会话切换模型/供应商时销毁原会话；不能按空闲时间回收，
-    # 否则再次发送仍会遇到官方 SDK 无法加载持久化日志的问题。
+    # 按项目和配置保留运行时以复用会话资源；新版 SDK 支持显式恢复持久化
+    # 历史。旧版 SDK 仍依赖原进程，因此不按空闲时间回收。
     _POOL: dict[tuple[str, str], _PooledHarness] = {}
     _POOL_GUARD = threading.Lock()
 
@@ -166,6 +169,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             cls.get_binary_override() or "",
             str(cls._file_tag(base_patch)),
             str(cls._file_tag(base_composition)),
+            str(cls._file_tag(cls.CHAT_COMPLETIONS_PATCH)),
         ])
         return hashlib.sha256(seed.encode()).hexdigest()[:32]
 
@@ -449,6 +453,11 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             harness_home.mkdir(parents=True, exist_ok=True)
             kwargs["dsh_home"] = str(harness_home)
             kwargs["patches"] = (str(patch),)
+            if callable(getattr(DeepSeekHarness, "resume_session", None)):
+                # 新版默认的 DeepSeek 适配器改用 Messages；WorkStep 的
+                # 供应商契约仍为 Chat Completions，通过官方 pi-ai 路由保持。
+                kwargs["patches"] += (str(self.CHAT_COMPLETIONS_PATCH),)
+                kwargs["env"] = {"WORKSTEP_DEEPSEEK_MODEL": model}
             binary_key = "dsh_bin"
         else:
             try:
@@ -715,7 +724,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
     def _resume_error(session_id: str) -> str:
         return (
             f"无法恢复 DeepSeek Harness 会话 {session_id}："
-            "官方 SDK 当前无法在新进程中加载已有会话日志。"
+            "当前运行时未能加载已有会话日志，请检查 SDK 版本和日志兼容性。"
             "原会话 ID 和日志已保留，未自动开启新会话。"
         )
 
@@ -848,6 +857,12 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                 # 串行握手，之后 SDK 可按 session 分流并行运行。
                 with entry.startup_lock:
                     harness.start()
+                    if sid not in entry.sessions:
+                        resume = getattr(harness, "resume_session", None)
+                        if session_id and callable(resume):
+                            # 新进程必须显式恢复；失败直接上报，不能新建空会话。
+                            resume(sid)
+                        entry.sessions.add(sid)
                 return harness.run(
                     current_prompt, session_id=sid, on_notification=on_notification,
                 )

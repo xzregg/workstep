@@ -1,0 +1,75 @@
+/* Prototype adapter only. The recording and animated scenes retain their original implementation. */
+:root {
+  --bg: #f7f7f2;
+  --surface: #efefe9;
+  --surface-2: #ffffff;
+  --fg: #252722;
+  --fg-2: #444a40;
+  --muted: #64695e;
+  --meta: #64695e;
+  --border: #c0c4b8;
+  --border-soft: #dbded3;
+  --accent: #c34a28;
+  --accent-2: #c34a28;
+  --accent-light: #f5e5dc;
+  --radius-xl: 8px;
+  --elev: none;
+}
+:root[data-theme="dark"] {
+  --bg: #171a18;
+  --surface: #262b26;
+  --surface-2: #202420;
+  --fg: #eeefe5;
+  --fg-2: #ccd1c5;
+  --muted: #a1a89c;
+  --meta: #a1a89c;
+  --border: #545c4e;
+  --border-soft: #363d34;
+  --accent: #f08a60;
+  --accent-2: #f08a60;
+  --accent-light: #382b23;
+  --elev: none;
+}
+html, body { margin: 0; padding: 0; background: var(--bg); overflow-x: clip; }
+.media-preview { padding: 0 0 4px; }
+.guided-walkthrough { --walkthrough-bg: var(--surface-2); --walkthrough-fg: var(--fg); --walkthrough-muted: var(--muted); --walkthrough-accent: var(--accent); --walkthrough-line: var(--border-soft); }
+.walkthrough-player { border-radius: 8px; }
+.walkthrough-intro { font-family: inherit; letter-spacing: 0; font-size: 12px; }
+.walkthrough-caption { font-size: 12px; }
+.walkthrough-guide h2 { font-weight: 550; }
+.walkthrough-scene-label { border-radius: 4px; }
+.walkthrough-button { border-radius: 4px; }
+.walkthrough-play, .walkthrough-play:hover { color: var(--bg); }
+.animation-gallery { margin-top: 58px; }
+.animation-heading { display: flex; justify-content: space-between; align-items: end; gap: 25px; margin-bottom: 24px; }
+.animation-heading h2 { margin: 0 0 12px; font-size: 28px; font-weight: 550; letter-spacing: -.025em; }
+.animation-heading p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.animation-heading > span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.animation-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 6px 6px 0 0; overflow: hidden; }
+.animation-tabs button { display: flex; align-items: center; gap: 14px; padding: 18px 22px; background: var(--surface-2); color: var(--fg); border: 0; border-right: 1px solid var(--border-soft); text-align: left; cursor: pointer; }
+.animation-tabs button:last-child { border-right: 0; }
+.animation-tabs button[aria-selected="true"] { background: var(--surface); }
+.animation-tabs button > svg { flex: none; color: var(--accent); }
+.animation-tabs strong { font-size: 13px; font-weight: 550; }
+.animation-tabs small { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.animation-stage { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 6px 6px; padding: 16px; background: var(--surface-2); min-width: 0; }
+.animation-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding-bottom: 13px; }
+.animation-toolbar p { margin: 0; color: var(--muted); font-size: 12px; }
+.animation-toolbar button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; flex: none; background: var(--surface); color: var(--fg); border: 1px solid var(--border-soft); border-radius: 4px; cursor: pointer; }
+.animation-stage:fullscreen { border: 0; border-radius: 0; padding: 24px; overflow: auto; }
+.animation-stage:fullscreen .demo-player { max-width: 1400px; margin: 0 auto; }
+.animation-stage:fullscreen .animation-toolbar { max-width: 1400px; margin: 0 auto; }
+.animation-disclaimer, .fullscreen-error { margin: 13px 0 0; font-size: 12px; color: var(--muted); }
+.player-btn { border-radius: 4px; }
+@media (max-width: 760px) {
+  .animation-heading { flex-direction: column; align-items: start; gap: 12px; }
+  .animation-heading h2 { font-size: 23px; }
+  .animation-tabs button { flex-direction: column; align-items: start; gap: 9px; padding: 14px 10px; }
+  .animation-tabs strong { font-size: 12px; }
+  .animation-tabs small { font-size: 10px; }
+  .animation-stage { padding: 10px; }
+  .animation-toolbar p { font-size: 11px; }
+  .walkthrough-guide { min-height: 280px; }
+  .walkthrough-guide h2 { font-size: 27px; }
+  .walkthrough-intro { gap: 12px; font-size: 11px; }
+}

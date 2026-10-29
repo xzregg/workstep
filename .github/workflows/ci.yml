@@ -55,6 +55,7 @@ jobs:
       - name: Repository health
         run: |
           python scripts/check_repository_health.py
+          node --test scripts/tests/extract-release-notes.test.cjs
           python -m unittest discover -s scripts/tests -p test_check_secrets.py
           python scripts/check_secrets.py
       - name: Daemon tests

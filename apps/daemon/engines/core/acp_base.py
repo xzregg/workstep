@@ -141,6 +141,8 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         adapter supports resume.  Events emitted before the failure remain
         visible to preserve streaming; the first terminal error itself is
         replaced by a ``retrying`` status.  A second error is passed through.
+        Codex may announce a new thread before its rollout exists on disk;
+        restart such a thread if it failed before producing any turn events.
         """
         cwd = kwargs.get("cwd")
         if cwd:
@@ -151,6 +153,10 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             if not storage_root.is_relative_to(code_root):
                 kwargs["add_dirs"] = list(dict.fromkeys([*(kwargs.get("add_dirs") or []), str(storage_root)]))
         retry_session_id = kwargs.get("session_id")
+        fresh_codex_thread = (
+            self.ENGINE_ID in {"codex", "codex_sdk"} and not retry_session_id
+        )
+        has_turn_events = False
         for attempt_index in range(self.EXECUTION_MAX_ATTEMPTS):
             attempt_kwargs = dict(kwargs)
             if self.supports_resume:
@@ -172,6 +178,8 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             try:
                 iterator = spawn_method(**attempt_kwargs)
                 async for event in iterator:
+                    if event.type not in {"session_started", "status", "prompt_input", "error"}:
+                        has_turn_events = True
                     if event.type == "session_started":
                         announced_session_id = str(
                             event.data.get("session_id") or ""
@@ -202,6 +210,10 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     or "引擎执行失败"
                 )
 
+            if fresh_codex_thread and not has_turn_events:
+                # A thread id alone does not prove a resumable rollout exists.
+                # Keep the original prompt and rules when retrying from scratch.
+                retry_session_id = None
             yield InternalEvent(
                 type="status",
                 data={

@@ -20,6 +20,7 @@ async def verify(model_override: str | None, timeout: float) -> None:
     import services.config as config
     from engines.deepseek_harness import DeepSeekHarnessEngine
 
+    DeepSeekHarnessEngine.set_binary_override(None)
     snapshot = copy.deepcopy(config.config_store._load())
     old_dir, old_file = config.CONFIG_DIR, config.CONFIG_FILE
     old_cache = config.config_store._cache
@@ -119,7 +120,14 @@ async def verify(model_override: str | None, timeout: float) -> None:
                 )
                 assert token in answer
                 assert (third_sid, third_pid) == (first_sid, first_pid)
-                print("PASS: API 保存/恢复 ID、连续三轮上下文、独立会话隔离、PID 复用、健康检查", flush=True)
+                await asyncio.to_thread(DeepSeekHarnessEngine.shutdown_pool)
+                module._sessions.clear()
+                restored_sid, restored_pid, answer = await turn(
+                    sid, "运行时已重启。只输出本会话第一条消息中的暗号。不要使用工具。",
+                )
+                assert restored_sid == first_sid and restored_pid != first_pid
+                assert token in answer
+                print("PASS: API 保存/恢复 ID、连续三轮上下文、独立会话隔离、PID 复用、跨进程历史恢复、健康检查", flush=True)
         finally:
             if module:
                 await module.shutdown()
