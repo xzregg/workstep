@@ -23,7 +23,7 @@ section[id], .recorded-section { scroll-margin-top: 110px; }
 .section-alt { background: var(--surface); }
 .section-title { font-size: clamp(26px, 2.5vw, 34px); font-weight: 550; line-height: 1.35; letter-spacing: -.025em; max-width: 760px; }
 .section-eyebrow { font-size: 12px; letter-spacing: .1em; font-weight: 500; color: var(--muted); }
-.section-lede { font-size: 15px; line-height: 1.85; color: var(--muted); }
+.section-lede { max-width: 760px; font-size: 15px; line-height: 1.85; color: var(--muted); }
 .editorial-section-heading { display: grid; grid-template-columns: 1.25fr 1fr; align-items: end; gap: 70px; margin-bottom: 36px; }
 .editorial-section-heading .section-title, .editorial-section-heading .section-lede { margin-bottom: 0; }
 .nav { height: 68px; background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom: 1px solid var(--border-soft); backdrop-filter: blur(18px); }
@@ -108,6 +108,9 @@ section[id], .recorded-section { scroll-margin-top: 110px; }
 .feature-card { background: transparent; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; padding: 30px 25px; }
 .feature-card:hover { transform: none; box-shadow: none; background: var(--surface); }
 .philosophy-statement, .philosophy-compare, .workflow-card, .channel-card, .remote-share-card { box-shadow: none; }
+.remote-visual, .remote-window, .remote-settings-card { max-width: none; }
+.remote-person > div, .remote-project-stack { min-width: 0; overflow-wrap: anywhere; }
+.remote-third-member svg { flex-shrink: 0; }
 .final-cta { background: var(--surface); border-top: 1px solid var(--border-soft); padding-block: 80px; }
 .final-cta-inner { gap: 50px; }
 .final-cta h2 { font-size: clamp(28px, 2.7vw, 36px); font-weight: 550; letter-spacing: -.025em; }

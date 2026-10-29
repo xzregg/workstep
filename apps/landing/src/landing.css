@@ -2750,13 +2750,13 @@ button {
 .remote-exchange {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(180px, 0.8fr) minmax(360px, 1.4fr) minmax(180px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) minmax(0, 1fr);
   align-items: center;
   gap: 28px;
-  max-width: 1060px;
-  margin: 0 auto 52px;
-  padding: 28px 34px 42px;
-  background: var(--bg);
+  width: 100%;
+  margin: 0 0 36px;
+  padding: 28px 0;
+  background: transparent;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
@@ -2768,7 +2768,7 @@ button {
   min-width: 0;
 }
 
-.remote-person:last-of-type {
+.remote-person:nth-child(3) {
   justify-content: flex-end;
 }
 
@@ -2892,10 +2892,8 @@ button {
 }
 
 .remote-third-member {
-  position: absolute;
-  left: 50%;
-  bottom: 6px;
-  transform: translateX(-50%);
+  grid-column: 1 / -1;
+  justify-self: center;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -3208,10 +3206,8 @@ button {
 }
 
 .remote-flow-steps {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 8px;
 }
 
 .remote-flow-step {
@@ -3248,7 +3244,8 @@ button {
 
 .remote-flow-arrow {
   color: var(--meta);
-  flex: none;
+  margin-inline-start: 7px;
+  transform: rotate(90deg);
 }
 
 .remote-note {
@@ -3299,9 +3296,9 @@ button {
   }
 
   .remote-exchange {
-    grid-template-columns: minmax(150px, 0.75fr) minmax(320px, 1.5fr) minmax(150px, 0.75fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) minmax(0, 1fr);
     gap: 16px;
-    padding-inline: 18px;
+    padding-inline: 0;
   }
 
   .workflow-templates {
@@ -3372,11 +3369,11 @@ button {
   .remote-exchange {
     grid-template-columns: 1fr;
     gap: 18px;
-    padding: 22px 12px 48px;
+    padding: 22px 0;
   }
 
   .remote-person,
-  .remote-person:last-of-type {
+  .remote-person:nth-child(3) {
     justify-content: center;
   }
 
