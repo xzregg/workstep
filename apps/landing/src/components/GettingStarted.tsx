@@ -1,4 +1,3 @@
-import { FlowBackdrop } from './FlowBackdrop'
 import { useRef, useState } from 'react'
 import { ArrowRight, Check, ChevronLeft, Maximize2, X } from 'lucide-react'
 import { useI18n, languageDirection, type Lang } from '../i18n'
@@ -27,7 +26,7 @@ export function GettingStarted() {
     setIndex(next)
     if (focus) tabs.current[next]?.focus()
   }
-  return <section className="start-guide section" id="start" lang={lang} dir={languageDirection(lang)} aria-labelledby="start-heading"><FlowBackdrop subtle />
+  return <section className="start-guide section" id="start" lang={lang} dir={languageDirection(lang)} aria-labelledby="start-heading">
     <div className="container">
       <div className="editorial-section-heading"><div><p className="section-eyebrow">02 / {t('manual.groups.getting-started')}</p><h2 className="section-title" id="start-heading">{editorialCopy[lang].startTitle}</h2></div><p className="section-lede">{t('hero.setup')}</p></div>
       <div className="start-routes"><a href="#docs/getting-started">{t('download.title')} <ArrowRight size={16} /></a><a href="#docs/faq">Codex / Claude Code · CLI <ArrowRight size={16} /></a></div>

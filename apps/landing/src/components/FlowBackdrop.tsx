@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-export function FlowBackdrop({ subtle = false }: { subtle?: boolean }) {
+export function FlowBackdrop() {
   const canvas = useRef<HTMLCanvasElement>(null)
   const [reduced, setReduced] = useState(false)
   useEffect(() => {
@@ -63,5 +63,5 @@ export function FlowBackdrop({ subtle = false }: { subtle?: boolean }) {
     document.addEventListener('visibilitychange', sync); sync()
     return () => { cancelAnimationFrame(frame); resize.disconnect(); intersection.disconnect(); theme.disconnect(); document.removeEventListener('visibilitychange', sync) }
   }, [reduced])
-  return <canvas className={`intro-flow${subtle ? ' intro-flow--subtle' : ''}`} ref={canvas} aria-hidden="true" />
+  return <canvas className="page-flow" ref={canvas} aria-hidden="true" />
 }

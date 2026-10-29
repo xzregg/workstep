@@ -1,4 +1,3 @@
-import { FlowBackdrop } from './FlowBackdrop'
 import { useI18n } from '../i18n'
 
 const ENGINES = [
@@ -13,7 +12,7 @@ export function EnginesStrip() {
   const { t } = useI18n()
 
   return (
-    <section className="engines-strip"><FlowBackdrop subtle />
+    <section className="engines-strip">
       <div className="container">
         <div className="engines-label">{t('engines.label')}</div>
         <div className="engines-row">

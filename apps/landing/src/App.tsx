@@ -43,9 +43,10 @@ export default function App() {
   return (
     <>
       <Nav />
-      {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : <main>
+      {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : <main className="landing-home">
+        <FlowBackdrop />
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
-        <div className="recorded-section"><FlowBackdrop subtle /><div className="container"><GuidedWalkthrough /></div></div>
+        <div className="container recorded-section"><GuidedWalkthrough /></div>
         <Philosophy />
         <Demos onOpen={setOpenDemo} />
         <GettingStarted />

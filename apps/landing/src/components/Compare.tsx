@@ -1,4 +1,3 @@
-import { FlowBackdrop } from './FlowBackdrop'
 import { useI18n } from '../i18n'
 
 const ROWS = ['1', '2', '3', '4', '5', '6', '7'] as const
@@ -7,7 +6,7 @@ export function Compare() {
   const { t } = useI18n()
 
   return (
-    <section className="section section-alt" id="compare"><FlowBackdrop subtle />
+    <section className="section section-alt" id="compare">
       <div className="container">
         <div className="section-eyebrow">{t('compare.eyebrow')}</div>
         <h2 className="section-title">{t('compare.title')}</h2>

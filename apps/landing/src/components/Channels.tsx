@@ -1,4 +1,3 @@
-import { FlowBackdrop } from './FlowBackdrop'
 import { CircleCheckBig, MessagesSquare, Workflow } from 'lucide-react'
 import { useI18n } from '../i18n'
 
@@ -8,7 +7,7 @@ export function Channels() {
   const { t } = useI18n()
 
   return (
-    <section className="section section-alt" id="channels"><FlowBackdrop subtle />
+    <section className="section section-alt" id="channels">
       <div className="container">
         <div className="section-eyebrow">{t('channels.eyebrow')}</div>
         <h2 className="section-title">{t('channels.title')}</h2>

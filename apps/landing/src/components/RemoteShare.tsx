@@ -1,4 +1,3 @@
-import { FlowBackdrop } from './FlowBackdrop'
 import { ArrowDown, ArrowRight, Check, Copy, FolderKanban, Globe2, KeyRound, Monitor, Network, Smartphone, User, Users } from 'lucide-react'
 import { useI18n } from '../i18n'
 
@@ -15,7 +14,7 @@ export function RemoteShare() {
   ]
 
   return (
-    <section className="section section-alt" id="remote"><FlowBackdrop subtle />
+    <section className="section section-alt" id="remote">
       <div className="container">
         <div className="section-eyebrow">{t('remoteShare.eyebrow')}</div>
         <h2 className="section-title">{t('remoteShare.title')}</h2>

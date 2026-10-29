@@ -1,12 +1,10 @@
 import { ArrowRight, Play } from 'lucide-react'
 import { useI18n } from '../i18n'
-import { FlowBackdrop } from './FlowBackdrop'
 
 interface HeroProps { onOpenDemos: () => void; experienceHref: string }
 export function Hero({ onOpenDemos, experienceHref }: HeroProps) {
   const { t } = useI18n()
   return <section className="intro" id="top" aria-labelledby="intro-title">
-    <FlowBackdrop />
     <div className="container intro-content">
       <div className="intro-heading">
         <p className="intro-kicker">{t('hero.eyebrow')}</p>
