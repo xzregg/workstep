@@ -28,7 +28,7 @@ export function Demos({ onOpen }: { onOpen: (demo: DemoDef) => void }) {
     </div>
     <div className="mechanism-panel" id="mechanism-panel" role="tabpanel" aria-labelledby={`mechanism-tab-${selected}`} tabIndex={0}>
       <div className="mechanism-toolbar"><p>{t(`demos.item${selected + 1}Desc`)}</p><button type="button" aria-label={t('demos.hint')} onClick={() => onOpen(DEMOS[selected])}><Maximize2 size={17} /></button></div>
-      <DemoPlayer key={`${selected}-${revision}`} demo={DEMOS[selected]} autoplay={revision > 0} loop={false} />
+      <DemoPlayer key={`${selected}-${revision}`} demo={DEMOS[selected]} autoplay loop />
     </div>
   </div></section>
 }

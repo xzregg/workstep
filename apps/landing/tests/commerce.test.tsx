@@ -7,7 +7,7 @@ import { legalCopy } from '../src/i18n/legal'
 
 afterEach(() => vi.unstubAllGlobals())
 function render(hash = '', lang = 'en-US') {
-  vi.stubGlobal('window', { location: { hash, pathname: '/workstep/' }, localStorage: { getItem: () => lang }, navigator: { language: lang } })
+  vi.stubGlobal('window', { location: { hash, pathname: '/workstep/' }, localStorage: { getItem: () => lang }, navigator: { language: lang }, matchMedia: () => ({ matches: false }) })
   return renderToStaticMarkup(<I18nProvider><App /></I18nProvider>)
 }
 describe('public information without pricing promises or personal attribution', () => {
