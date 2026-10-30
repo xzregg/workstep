@@ -31,8 +31,10 @@ def install_engine(module, monkeypatch, *, resume=True):
     calls, behavior = [], {'fail': False, 'compact': False, 'thread': 'engine-context-A'}
 
     async def invoke(session, turn, callback, engine, model, cwd, prompt, session_id, **kwargs):
-        calls.append(prompt)
-        await callback(InternalEvent('prompt_input', {'prompt': prompt}))
+        instruction = kwargs.get('system_prompt', '')
+        assert 'ARCHITECT' not in prompt and 'TEAM RULE' not in prompt
+        calls.append(instruction)
+        await callback(InternalEvent('prompt_input', {'prompt': prompt, 'system_prompt': instruction}))
         if behavior['fail']:
             raise RuntimeError('模拟引擎失败')
         events = []
@@ -74,11 +76,11 @@ async def test_role_binding_restores_and_only_reinjects_when_content_or_context_
     assert await send(module, project, sid, 'first') == 'completed'
     assert 'ARCHITECT ORIGINAL' in calls[-1]
     assert await send(module, project, sid, 'second') == 'completed'
-    assert 'ARCHITECT ORIGINAL' not in calls[-1]
+    assert 'ARCHITECT ORIGINAL' in calls[-1]
     # Editing another asset must not invalidate the selected role.
     library.save_role(RoleWrite(name=b['name'], category=b['category'], prompt='OTHER UPDATED', expected_revision=b['revision']), b['id'])
     await send(module, project, sid, 'unrelated')
-    assert 'ARCHITECT ORIGINAL' not in calls[-1]
+    assert 'ARCHITECT ORIGINAL' in calls[-1]
     library.save_role(RoleWrite(name='架构专家改名', category=a['category'], prompt='ARCHITECT UPDATED', expected_revision=a['revision']), a['id'])
     await send(module, project, sid, 'edited')
     assert 'ARCHITECT UPDATED' in calls[-1]
@@ -92,12 +94,12 @@ async def test_role_binding_restores_and_only_reinjects_when_content_or_context_
     try:
         assert restored.get_session(project.id, sid)['role_binding'] == ref
         await send(restored, project, sid, 'restored')
-        assert 'ARCHITECT UPDATED' not in calls[-1]
+        assert 'ARCHITECT UPDATED' in calls[-1]
         await bind(restored, project, sid, None)
         await send(restored, project, sid, 'removed')
         assert 'no longer apply' in calls[-1]
         await send(restored, project, sid, 'removed-again')
-        assert 'no longer apply' not in calls[-1]
+        assert 'no longer apply' in calls[-1]
     finally:
         await restored.shutdown()
 
@@ -114,7 +116,7 @@ async def test_team_resolves_every_member_and_detects_member_edits(chat_module, 
     await send(module, project, sid, 'team-first')
     assert all(part in calls[-1] for part in ['TEAM RULE', 'ARCHITECT ORIGINAL', 'SECURITY ORIGINAL', 'DESIGN FIRST', 'REVIEW NEXT'])
     await send(module, project, sid, 'team-second')
-    assert 'TEAM RULE' not in calls[-1]
+    assert 'TEAM RULE' in calls[-1]
     library.save_role(RoleWrite(name=b['name'], category=b['category'], prompt='SECURITY UPDATED', expected_revision=b['revision']), b['id'])
     await send(module, project, sid, 'team-member-edited')
     assert 'SECURITY UPDATED' in calls[-1]
@@ -301,7 +303,8 @@ async def test_missing_rollout_rebuild_reinjects_and_busy_binding_is_rejected(ch
     await send(module, project, sid, 'before-rebuild')
     session = module._sessions[module._session_identity(project.id, sid)[0]]
     rebuilt = await asyncio.to_thread(module._build_rebuild_prompt, session)
-    assert 'ARCHITECT ORIGINAL' in rebuilt
+    assert 'ARCHITECT ORIGINAL' not in rebuilt
+    assert 'ARCHITECT ORIGINAL' in await asyncio.to_thread(module._engine_system_prompt, session)
     entered, release = asyncio.Event(), asyncio.Event()
     invoke = module._invoke_with_idle_watchdog
     async def slow(*args, **kwargs):
@@ -317,3 +320,91 @@ async def test_missing_rollout_rebuild_reinjects_and_busy_binding_is_rejected(ch
     finally:
         release.set()
         await _wait_turn(module, accepted.turn_id)
+
+
+@pytest.mark.parametrize('transport', ['system', 'developer', 'body'])
+async def test_role_uses_engine_instruction_transport_and_updates_on_resume(
+    chat_module, role_library, monkeypatch, transport,
+):
+    from engines.core.acp_base import AcpEngineBase
+    from engines.codex_sdk import CodexSDKEngine
+
+    module, _, _, project, _ = chat_module
+    _, a, b = role_library
+    calls = []
+
+    adapter = CodexSDKEngine if transport == 'developer' else AcpEngineBase
+
+    class Engine(FakeEngine, adapter):
+        SYSTEM_PROMPT_MODE = transport
+        supports_resume = True
+
+        @staticmethod
+        def is_installed():
+            return True
+
+        @staticmethod
+        def get_version():
+            return 'test'
+
+        @staticmethod
+        def resolve_binary():
+            return None
+
+        async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+            calls.append((prompt, kwargs))
+            yield InternalEvent('session_started', {'session_id': 'thread'})
+            yield InternalEvent('agent_message_chunk', {'content': {'type': 'text', 'text': '完成'}})
+            yield InternalEvent('done', {})
+
+    for target in ['agent_assistants.base.create_engine', 'agent_assistants.chat_session.create_engine',
+                   'agent_assistants.chat_roles.create_engine']:
+        monkeypatch.setattr(target, lambda _id: Engine())
+    sid = module.create_session(project.id)['id']
+    module.set_system_prompt(project.id, 'PROJECT RULE')
+    await bind(module, project, sid, {'kind': 'role', 'id': a['id']})
+    for key in ['first', 'resume']:
+        assert await send(module, project, sid, key) == 'completed'
+    await bind(module, project, sid, {'kind': 'role', 'id': b['id']})
+    assert await send(module, project, sid, 'switch') == 'completed'
+    await bind(module, project, sid, None)
+    assert await send(module, project, sid, 'remove') == 'completed'
+    for index, expected in [(0, 'ARCHITECT ORIGINAL'), (2, 'SECURITY ORIGINAL'), (3, 'no longer apply')]:
+        body, kwargs = calls[index]
+        instructions = body if transport == 'body' else kwargs['system_prompt']
+        assert expected in instructions and 'PROJECT RULE' in instructions
+        if transport != 'body':
+            assert expected not in body
+    if transport == 'body':
+        assert 'ARCHITECT ORIGINAL' not in calls[1][0]
+    elif transport == 'developer':
+        assert not calls[1][1].get('system_prompt')
+    else:
+        assert 'ARCHITECT ORIGINAL' in calls[1][1]['system_prompt']
+
+
+async def test_slow_role_system_instruction_read_keeps_loop_responsive(chat_module, role_library, monkeypatch):
+    module, _, _, project, _ = chat_module
+    library, a, _ = role_library
+    sid = module.create_session(project.id)['id']
+    install_engine(module, monkeypatch)
+    await bind(module, project, sid, {'kind': 'role', 'id': a['id']})
+    entered, release = threading.Event(), threading.Event()
+    original = library.get_role
+
+    def slow_get(role_id):
+        entered.set()
+        assert release.wait(2)
+        return original(role_id)
+
+    monkeypatch.setattr(library, 'get_role', slow_get)
+    pending = asyncio.create_task(send(module, project, sid, 'slow-system-read'))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        start = time.monotonic()
+        await asyncio.wait_for(asyncio.sleep(.01), timeout=.15)
+        assert time.monotonic() - start < .15
+        assert not pending.done()
+    finally:
+        release.set()
+    assert await pending == 'completed'

@@ -827,10 +827,12 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
 
     monkeypatch.setattr('services.providers.text_completion', fake_completion)
     monkeypatch.setattr(gateway_client, 'record_one_shot_usage', record_usage)
-    response = await http.post(url + '/commit-message', json={'paths': ['one.txt', 'new.txt'], 'snapshot': state['snapshot']})
+    response = await http.post(url + '/commit-message', json={'paths': ['one.txt', 'new.txt'], 'snapshot': state['snapshot'], 'locale': 'de-DE'})
     assert response.status_code == 200, response.text
     assert response.json()['message'].startswith('fix(git):')
     assert calls[0][1] == 'fast-model'
+    assert 'de-DE' in calls[0][2][0]['content']
+    assert 'Conventional Commits' in calls[0][2][0]['content']
     assert 'fixed behavior' in calls[0][2][1]['content']
     assert 'new behavior' in calls[0][2][1]['content']
     assert 'two.txt' not in calls[0][2][1]['content']

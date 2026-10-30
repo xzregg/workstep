@@ -63,6 +63,22 @@ def ensure_global_templates() -> None:
             logger.warning("Failed to seed template %s: %s", src.name, exc)
 
 
+def _template_document(data: dict, template_id: str) -> dict:
+    """Normalize legacy shipped files in memory; never rewrite user assets."""
+    shipped_path = TEMPLATES_DIR / f"{template_id}.json"
+    shipped = json.loads(shipped_path.read_text()) if shipped_path.is_file() else {}
+    document = dict(data)
+    if template_id == "dev-workflow" and "steps" not in document and "nodes" in document:
+        document = {"steps": document}
+    for key in ("id", "name", "description", "locale", "default"):
+        if key not in document and key in shipped:
+            document[key] = shipped[key]
+    document.setdefault("id", template_id)
+    document.setdefault("name", template_id)
+    document.setdefault("description", "")
+    return document
+
+
 class Template(BaseSchema):
     id: str
     name: str
@@ -81,7 +97,7 @@ def _list_templates_sync():
     if GLOBAL_TEMPLATES_DIR.exists():
         for f in GLOBAL_TEMPLATES_DIR.glob("*.json"):
             try:
-                data = json.loads(f.read_text())
+                data = _template_document(json.loads(f.read_text()), f.stem)
                 templates.append({
                     "id": data.get("id", f.stem),
                     "name": data.get("name", f.stem),
@@ -89,6 +105,7 @@ def _list_templates_sync():
                     "nodeCount": len(data.get("steps", {}).get("nodes", [])),
                     "custom": True,
                     "default": data.get("default", False),
+                    "locale": data.get("locale"),
                 })
             except Exception:
                 pass
@@ -107,7 +124,7 @@ def _get_template_sync(template_id: str):
     template_path = GLOBAL_TEMPLATES_DIR / f"{template_id}.json"
     if template_path.exists():
         try:
-            return json.loads(template_path.read_text())
+            return _template_document(json.loads(template_path.read_text()), template_id)
         except Exception:
             pass
 
@@ -142,21 +159,14 @@ def _save_template_sync(req: SaveTemplateRequest):
         "description": req.description,
         "steps": req.steps,
     }
-    # Preserve the default flag when overwriting a seeded default template
-    default_flag = False
     try:
-        existing = json.loads(path.read_text())
-        default_flag = bool(existing.get("default"))
-    except Exception:
-        pass
-    if not default_flag:
-        # Fall back to the shipped template metadata (e.g. fresh global file)
-        try:
-            shipped = json.loads((TEMPLATES_DIR / f"{req.id}.json").read_text())
-            default_flag = bool(shipped.get("default"))
-        except Exception:
-            pass
-    if default_flag:
+        previous = json.loads(path.read_text()) if path.exists() else {}
+    except (OSError, ValueError):
+        previous = {}
+    existing = _template_document(previous, req.id)
+    if existing.get("locale"):
+        data["locale"] = existing["locale"]
+    if existing.get("default"):
         data["default"] = True
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
     return {"saved": True, "id": req.id}
@@ -174,7 +184,7 @@ def _delete_template_sync(template_id: str):
     if not template_path.exists():
         raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")
     try:
-        data = json.loads(template_path.read_text())
+        data = _template_document(json.loads(template_path.read_text()), template_id)
         if data.get("default"):
             raise HTTPException(
                 status_code=400,

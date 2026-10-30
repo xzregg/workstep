@@ -3,6 +3,14 @@ import { zhCN, type Messages } from './zh-CN'
 // 未翻译项沿用中文，键集合随基础词典同步。
 export const frFR: Messages = {
   ...zhCN,
+  builtinContent: {
+    "skillTitle": "Création de compétence personnalisée",
+    "engineTitle": "Configuration du moteur personnalisé",
+    "importTitle": "Importer un moteur personnalisé",
+    "skinTitle": "Conception de thème personnalisé",
+    "skillDraft": "Aide-moi à créer une compétence personnalisée. Demande d’abord son usage, ses conditions de déclenchement, ses entrées, ses sorties et les outils nécessaires.\nEspace Runtime partagé et racine de création : {workspace}\nCrée un paquet nommé dans cette racine avec SKILL.md et les fichiers references, scripts et assets nécessaires. Ne modifie ni les autres travaux ni les compétences installées. Le frontmatter de SKILL.md doit contenir name et description. Décris l’utilisation réelle et les limites, et valide les exemples. À la fin, indique l’emplacement et les étapes d’installation. Copie dans une bibliothèque existante uniquement si l’utilisateur demande explicitement l’installation ; ne charge pas un brouillon comme compétence installée.",
+    "importDraft": "Aide-moi à installer et enregistrer un moteur personnalisé importé.\nRépertoire de travail : {workspace}\nPaquet importé : {package}\nLis references/custom-engine.md et le contrat de l’adaptateur via workstep-cli selon les besoins. Utilise le paquet existant sans recréer l’adaptateur. Vérifie le manifeste et les moteurs existants ; demande confirmation avant de remplacer un ID déjà enregistré. Les exports ne contiennent ni identifiants, ni dépendances, ni rapports de validation locaux. Installe les dependencies du paquet et configure fournisseur, authentification et modèle dans les paramètres, sans modifier l’environnement Python de WorkStep. Teste la connexion réelle, les méthodes et les événements ; réussis engine validate avant register. Après l’enregistrement, demande de relancer l’analyse dans la page des moteurs des paramètres ; aucun redémarrage n’est nécessaire."
+},
   common: {
     ...zhCN.common,
     featureUnavailable: "Cette fonctionnalité n’est pas autorisée pour ce projet.",
@@ -238,6 +246,7 @@ export const frFR: Messages = {
   },
   settings: {
     ...zhCN.settings,
+    customEngineOnboardingPrompt: "Aide-moi à intégrer un moteur LLM personnalisé. Demande d’abord son nom, la documentation officielle SDK/CLI, le mode d’authentification et les capacités nécessaires. Suis workstep-cli et lis references/custom-engine.md et le contrat de l’adaptateur selon les besoins ; aucune compétence séparée n’est nécessaire.\nRépertoire de travail : {workspace}\nVérifie d’abord les moteurs existants via WorkStep CLI pour éviter de les écraser. Installe les dépendances dans le répertoire dependencies de chaque moteur sans modifier l’environnement Python de WorkStep. Enregistre les identifiants dans les paramètres. Effectue les tests réels de connexion, méthodes et événements ; réussis engine validate avant register. Après un enregistrement réussi et un rapport validé, demande de relancer l’analyse sur la page des moteurs des paramètres ; aucun redémarrage n’est nécessaire. Commence par compléter les informations nécessaires.",
     closeSettings: "Fermer les paramètres",
     enginesNav: "Moteurs d’exécution",
     assistantNav: "Assistants IA",
@@ -330,6 +339,10 @@ export const frFR: Messages = {
   },
   aiFlow: {
     ...zhCN.aiFlow,
+    quickGeneratePrompt: "Génère un workflow de base complet pour l’objectif actuel, avec des étapes, dépendances et livrables clairs.",
+    quickOptimizePrompt: "Vérifie et optimise le découpage, l’ordre et les dépendances des étapes du workflow actuel.",
+    quickReviewPrompt: "Ajoute des contrôles de validation et des stratégies de nouvelle tentative appropriés aux étapes clés.",
+    quickSimplifyPrompt: "Simplifie le workflow actuel et fusionne les étapes redondantes sans compromettre l’objectif.",
     agent: "Coordination",
     sendFailed: "Échec de l’envoi. Réessayez.",
     restoreSteps: "Rétablir",
@@ -341,6 +354,11 @@ export const frFR: Messages = {
   },
   taskList: {
     ...zhCN.taskList,
+    aiCreatePrompt: "Complète la description de la tâche « {name} » et choisis l’étape de départ la plus adaptée.",
+    aiQuickDescribePrompt: "Complète le contexte, les objectifs, le périmètre et les livrables précis de la tâche.",
+    aiQuickAcceptancePrompt: "Ajoute des critères d’acceptation précis et vérifiables.",
+    aiQuickStepsPrompt: "Décompose les principales étapes de mise en œuvre et décris le résultat de chacune.",
+    aiQuickRisksPrompt: "Analyse les risques, les cas limites et les questions à clarifier.",
     loadFailed: "Échec du chargement des tâches",
     copyTask: "Dupliquer la tâche",
     copyTitle: "{title} (copie)",
@@ -516,6 +534,9 @@ export const frFR: Messages = {
   },
   skins: {
     ...zhCN.skins,
+    studioContinuePrompt: "Continue à ajuster cette version du thème « {name} ».",
+    studioDraft: "Lis d’abord skin-design.md et skin-contract.json à la racine Runtime, puis aide-moi à ajuster l’apparence. Les polices, les quatre tailles de texte, les couleurs et la disposition sont modifiables. Ne change que les éléments demandés et valide le paquet du thème une fois terminé.",
+
     scene_chat: "Conversations",
     scene_flow: "Workflow",
     studioHistory: "Historique de conversation",

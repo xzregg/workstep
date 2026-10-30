@@ -1,104 +1,56 @@
-import { passwordRequirements, validPortalPassword } from './portalAccount'
-import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { AdminTabs } from './AdminTabs'
+import { loginUsername } from './AdminSelection'
+import { AccountSecurityPanel } from './AccountSecurityPanel'
+import { AccountUsagePanel } from './AccountUsagePanel'
+export { validPasswordChange } from './AccountSecurityPanel'
 
-type User = { username: string; display_name: string; must_change_password: boolean }
-
-export function validPasswordChange(current: string, next: string, confirmation: string, passwordRequired = true, username = ''): boolean {
-  return (!passwordRequired || !!current) && validPortalPassword(username, next) && next !== current && next === confirmation
-}
-
+type User = {id?:string; username:string; display_name:string; must_change_password?:boolean}
 export function AccountPage() {
-  const navigate = useNavigate()
-  const [status, setStatus] = useState<'checking' | 'ready' | 'expired'>('checking')
-  const [user, setUser] = useState<User | null>(null)
-  const [csrf, setCsrf] = useState('')
-  const [passwordRequired, setPasswordRequired] = useState(true)
-  const [current, setCurrent] = useState('')
-  const [next, setNext] = useState('')
-  const [confirmation, setConfirmation] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
-
-  useEffect(() => {
-    const controller = new AbortController()
-    void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
-      .then(async response => {
-        if (!response.ok) { setStatus('expired'); return }
-        const session = await response.json()
-        if (!controller.signal.aborted) {
-          setUser(session.user)
-          setPasswordRequired(session.password_confirmation_required !== false)
-          setCsrf(session.csrf_token)
-          setStatus('ready')
-        }
-      })
-      .catch(reason => { if (reason?.name !== 'AbortError') setError('无法检查登录状态，请刷新重试。') })
-    return () => controller.abort()
-  }, [])
-
-  async function changePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!validPasswordChange(current, next, confirmation, passwordRequired, user?.username ?? '')) return
-    setBusy(true); setError(''); setNotice('')
-    try {
-      const response = await fetch('/api/auth/password', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-        body: JSON.stringify({ current_password: current, new_password: next }),
-      })
-      if (response.status === 401) { setStatus('expired'); return }
-      if (!response.ok) throw new Error(response.status === 403 ? '当前密码不正确。' : '修改密码失败，请重试。')
-      setCurrent(''); setNext(''); setConfirmation('')
-      setNotice('密码已更新，其他登录会话已失效。')
-      setUser(previous => previous ? { ...previous, must_change_password: false } : previous)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '修改密码失败。') }
-    finally { setBusy(false) }
-  }
-
-  async function logout() {
-    setBusy(true); setError('')
-    try {
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
-      })
-      if (!response.ok && response.status !== 401) throw new Error('退出登录失败，请重试。')
-      navigate('/auth', { replace: true })
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '退出登录失败。') }
-    finally { setBusy(false) }
-  }
-
-  return <section className="gateway-admin-page gateway-account-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
-    <h2>个人账户</h2>
-    {status === 'checking' && <p role="status">正在检查登录状态…</p>}
-    {status === 'expired' && <p>登录已失效。<Link to="/auth?next=%2Faccount">重新登录</Link></p>}
-    {status === 'ready' && user && <>
-      <dl className="gateway-account-summary">
-        <div><dt>显示名称</dt><dd>{user.display_name}</dd></div>
-        <div><dt>用户名</dt><dd>{user.username}</dd></div>
-      </dl>
-      <form className="gateway-auth-form gateway-account-form" onSubmit={event => void changePassword(event)}>
-        <h3>修改密码</h3>
-        {passwordRequired && <><label htmlFor="account-current-password">当前密码</label>
-        <input id="account-current-password" type="password" autoComplete="current-password" value={current}
-          onChange={event => setCurrent(event.target.value)} required /></>}
-        <p>{passwordRequirements}</p>
-        <label htmlFor="account-new-password">新密码（至少 8 位）</label>
-        <input id="account-new-password" type="password" autoComplete="new-password" value={next}
-          onChange={event => setNext(event.target.value)} required minLength={8} />
-        <label htmlFor="account-confirm-password">确认新密码</label>
-        <input id="account-confirm-password" type="password" autoComplete="new-password" value={confirmation}
-          onChange={event => setConfirmation(event.target.value)} required />
-        <button type="submit" disabled={busy || !validPasswordChange(current, next, confirmation, passwordRequired, user?.username ?? '')}>
-          {busy ? '正在保存…' : '保存新密码'}
-        </button>
-      </form>
-      <button className="gateway-account-logout" type="button" disabled={busy} onClick={() => void logout()}>退出登录</button>
-    </>}
-    {notice && <p role="status">{notice}</p>}
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
-  </section>
+ const navigate=useNavigate()
+ const [params,setParams]=useSearchParams()
+ const tab=params.get('view')==='security'?'security':'overview'
+ const [status,setStatus]=useState<'checking'|'ready'|'expired'|'error'>('checking')
+ const [session,setSession]=useState<{user:User;csrf_token:string;password_confirmation_required?:boolean}|null>(null)
+ const [revision,setRevision]=useState(0)
+ const [busy,setBusy]=useState(false)
+ const [error,setError]=useState('')
+ const expire=useCallback(()=>setStatus('expired'),[])
+ useEffect(()=>{
+  const controller=new AbortController()
+  setStatus('checking')
+  void fetch('/api/auth/session',{credentials:'same-origin',signal:controller.signal}).then(async response=>{
+   if(response.status===401){if(!controller.signal.aborted)setStatus('expired');return}
+   if(!response.ok)throw Error('session')
+   const data=await response.json()
+   if(!controller.signal.aborted){setSession(data);setStatus('ready')}
+  }).catch(()=>{if(!controller.signal.aborted)setStatus('error')})
+  return ()=>controller.abort()
+ },[revision])
+ async function logout(){
+  if(busy || !session)return
+  setBusy(true);setError('')
+  try{
+   const response=await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':session.csrf_token}})
+   if(!response.ok && response.status!==401)throw Error('退出登录失败，请重试。')
+   window.dispatchEvent(new Event('gateway-auth-changed'))
+   navigate('/auth',{replace:true})
+  }catch(reason){setError(reason instanceof Error?reason.message:'退出登录失败。')}
+  finally{setBusy(false)}
+ }
+ return <section className="gateway-admin-page gateway-account-center">
+  <div className="gateway-center-page-heading"><div><span className="gateway-center-eyebrow">WORKSTEP</span><h2>用户中心</h2><p>查看你的使用情况，管理账号安全。</p></div><Link className="gateway-center-back" to="/">进入工作台 <span aria-hidden="true">↗</span></Link></div>
+  {status==='checking' && <p className="gateway-center-state" role="status"><span className="gateway-spinner"/> 正在检查登录状态…</p>}
+  {status==='expired' && <p className="gateway-center-state">登录已失效。<Link to="/auth?next=%2Faccount">重新登录</Link></p>}
+  {status==='error' && <p className="gateway-center-state" role="alert">无法检查登录状态。<button onClick={()=>setRevision(value=>value+1)}>重试</button></p>}
+  {status==='ready' && session && <>
+   <div className="gateway-center-profile"><div className="gateway-center-avatar" aria-hidden="true">{Array.from(session.user.display_name || session.user.username)[0]}</div><div className="gateway-center-profile-name"><h3>{session.user.display_name || session.user.username}</h3><p>{loginUsername(session.user) ? `登录用户名：${loginUsername(session.user)}` : '企业账号'}</p></div><span className="gateway-center-account-state">已登录</span><button type="button" className="gateway-center-logout" disabled={busy} onClick={()=>void logout()}>{busy?<><span className="gateway-spinner"/> 正在退出…</>:'退出登录'}</button></div>
+   {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+   <AdminTabs label="用户中心" value={tab} onChange={value=>setParams(value==='security'?{view:'security'}:{})} items={[
+    {id:'overview',label:'用量概览',content:<AccountUsagePanel onExpired={expire}/>},
+    {id:'security',label:'安全设置',content:<AccountSecurityPanel user={session.user} csrf={session.csrf_token} passwordRequired={session.password_confirmation_required!==false} onExpired={expire}/>},
+   ]}/>
+  </>}
+ </section>
 }

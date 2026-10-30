@@ -3,10 +3,11 @@ import { useEffect, useState } from 'react'
 import { GatewayModal } from './GatewayModal'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
+import { AdminUserGroupTree } from './AdminUserGroupTree'
 import { loginUsername } from './AdminSelection'
 import type { AdminUser } from './AdminUsersPage'
 
-type UserGroupChoice = { id: string; name: string; selected: boolean; editable: boolean; synced?: boolean }
+type UserGroupChoice = { id: string; name: string; selected: boolean; editable: boolean; synced?: boolean; parent_id?: string | null; source_type?: string }
 
 export function AdminEditUserDialog({ user, csrf, onSaved, onClose }: {
  user: AdminUser; csrf: string; onSaved: () => void; onClose: () => void
@@ -69,39 +70,54 @@ export function AdminEditUserDialog({ user, csrf, onSaved, onClose }: {
  return <>
   <GatewayModal className="gateway-edit-user-dialog" title="编辑用户" onClose={close} footer={<>
    <button type="button" disabled={busy} onClick={close}>取消</button>
-   <button type="button" disabled={!valid || busy || !csrf} onClick={() => void save()}>{busy ? <><span className="gateway-spinner"/> 正在保存…</> : '保存修改'}</button>
+   <button type="button" className="gateway-admin-primary" disabled={!valid || busy || !csrf} onClick={() => void save()}>{busy ? <><span className="gateway-spinner"/> 正在保存…</> : '保存修改'}</button>
   </>}>
-   <div className="gateway-auth-form">
-    <label htmlFor="edit-user-login">登录用户名</label>
-    <input id="edit-user-login" value={username} placeholder={local ? undefined : '可选，设置后支持账号密码登录'} maxLength={64} disabled={busy} onChange={event=>setUsername(event.target.value)} />
-    <p>用户名为 3–64 位，以小写字母开头，可包含小写字母、数字、下划线和短横线。</p>
-    <label htmlFor="edit-user-name">显示名称</label>
-    <input id="edit-user-name" value={name} maxLength={256} disabled={busy} onChange={event => setName(event.target.value)} />
-    <fieldset className="gateway-user-group-choices" disabled={busy}>
-     <legend>用户组（可多选）</legend>
-     <p>一个用户可以加入多个组；企业同步的成员关系由组织同步维护。</p>
-     {!groupsReady && !groupsError && <p role="status"><span className="gateway-spinner" /> 正在加载用户组…</p>}
-     {groupsError && <p role="status">用户组加载失败。<button type="button" onClick={() => setGroupsRevision(value => value + 1)}>重试加载用户组</button></p>}
-     {groupsReady && groups.map(group => <label className="gateway-check-label" key={group.id}>
-      <input type="checkbox" checked={selectedGroups.includes(group.id)} disabled={!group.editable || busy}
-       onChange={event => setSelectedGroups(current => event.target.checked ? [...current, group.id] : current.filter(id => id !== group.id))} />
-      {group.name}{!group.editable && (group.synced ? '（企业同步，只读）' : '（只读）')}
-     </label>)}
-     {groupsReady && !groups.length && <p>暂无可分配的用户组。</p>}
-    </fieldset>
-    <>
-     <p>{passwordRequirements}</p>
-        <label htmlFor="edit-user-password">新密码（可选）</label>
-     <input id="edit-user-password" type="password" autoComplete="new-password" value={newPassword} disabled={busy} maxLength={128} onChange={event => setNewPassword(event.target.value)} />
-     <p>{local ? '留空保持原密码；修改登录信息后，该用户需要重新登录。' : '首次开启账号密码登录，需同时填写用户名和新密码。企业扫码登录仍可使用；同步不会覆盖平台用户名和密码。'}</p>
-     {newPassword && <>
-      <label htmlFor="edit-user-password-repeat">确认新密码</label>
-      <input id="edit-user-password-repeat" type="password" autoComplete="new-password" value={repeat} disabled={busy} onChange={event => setRepeat(event.target.value)} />
-      {repeat && repeat !== newPassword && <p role="alert">两次输入的密码不一致。</p>}
-     </>}
-     {credentialsChanged && <PasswordConfirmation id="edit-user-admin-password" label="输入你的密码确认" value={password} onChange={setPassword} disabled={busy} />}
-     {!local && <p>企业同步仍管理员工状态和组织关系，可能更新显示名称。</p>}
-    </>
+   <div className="gateway-auth-form gateway-edit-user-form">
+    <div className="gateway-edit-user-details">
+    <section className="gateway-edit-user-section" aria-labelledby="edit-user-account-title">
+     <h4 id="edit-user-account-title">账号信息</h4>
+     <div className="gateway-edit-user-fields">
+      <div className="gateway-edit-user-field">
+       <label htmlFor="edit-user-name">显示名称</label>
+       <input id="edit-user-name" value={name} maxLength={256} disabled={busy} onChange={event => setName(event.target.value)} />
+      </div>
+      <div className="gateway-edit-user-field">
+       <label htmlFor="edit-user-login">登录用户名</label>
+       <input id="edit-user-login" value={username} placeholder={local ? undefined : '可选，开启账号密码登录'} maxLength={64} disabled={busy} onChange={event=>setUsername(event.target.value)} />
+       <p>3–64 位，以小写字母开头，可包含数字、下划线和短横线。</p>
+      </div>
+     </div>
+    </section>
+    <section className="gateway-edit-user-section" aria-labelledby="edit-user-security-title">
+     <h4 id="edit-user-security-title">密码设置</h4>
+     <div className="gateway-edit-user-fields">
+      <div className="gateway-edit-user-field">
+       <label htmlFor="edit-user-password">新密码（可选）</label>
+       <input id="edit-user-password" type="password" autoComplete="new-password" value={newPassword} disabled={busy} maxLength={128} onChange={event => setNewPassword(event.target.value)} />
+      </div>
+      {newPassword && <div className="gateway-edit-user-field">
+       <label htmlFor="edit-user-password-repeat">确认新密码</label>
+       <input id="edit-user-password-repeat" type="password" autoComplete="new-password" value={repeat} disabled={busy} maxLength={128} onChange={event => setRepeat(event.target.value)} />
+       {repeat && repeat !== newPassword && <p role="alert">两次输入的密码不一致。</p>}
+      </div>}
+     </div>
+     <p className="gateway-edit-user-section-hint">{local ? '留空保持原密码；修改登录信息后，该用户需要重新登录。' : '首次开启账号密码登录，需同时填写用户名和新密码。企业扫码登录仍可使用；同步不会覆盖平台用户名和密码。'}</p>
+     <p className="gateway-edit-user-section-hint">{passwordRequirements}</p>
+     {credentialsChanged && <div className="gateway-edit-user-field gateway-edit-user-confirm-password"><PasswordConfirmation id="edit-user-admin-password" label="输入你的密码确认" value={password} onChange={setPassword} disabled={busy} /></div>}
+     {!local && <p className="gateway-edit-user-section-hint">企业同步仍管理员工状态和组织关系，可能更新显示名称。</p>}
+    </section>
+    </div>
+    <section className="gateway-edit-user-section gateway-edit-user-groups" aria-labelledby="edit-user-groups-title">
+     <div className="gateway-edit-user-section-heading"><h4 id="edit-user-groups-title">用户组</h4><span>已加入 {selectedGroups.length} 个组</span></div>
+     <p className="gateway-edit-user-section-hint">可加入多个组，各级组独立勾选。企业同步关系只读。</p>
+     <div className="gateway-user-group-choices">
+      {!groupsReady && !groupsError && <p role="status"><span className="gateway-spinner" /> 正在加载用户组…</p>}
+      {groupsError && <p role="status">用户组加载失败。<button type="button" onClick={() => setGroupsRevision(value => value + 1)}>重试加载用户组</button></p>}
+      {groupsReady && <AdminUserGroupTree allUsers={false} checked={selectedGroups} onCheck={setSelectedGroups} disabled={busy} selectionMode="independent"
+       nodes={groups.map(group => ({id: group.id, name: group.name, parent_id: group.parent_id ?? null, source_type: group.source_type ?? 'manual', disabled: !group.editable,
+        note: !group.editable ? (group.synced ? '企业同步 · 只读' : '只读') : undefined}))} />}
+     </div>
+    </section>
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
    </div>
   </GatewayModal>

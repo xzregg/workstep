@@ -1,6 +1,14 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const jaJP: Messages = {
+  builtinContent: {
+    "skillTitle": "カスタムスキルの作成",
+    "engineTitle": "カスタムエンジンの設定",
+    "importTitle": "カスタムエンジンのインポート",
+    "skinTitle": "カスタムスキンの設計",
+    "skillDraft": "カスタムスキルの作成を手伝ってください。まず用途、起動条件、入出力、必要なツールを確認してください。\n共有 Runtime 作業ディレクトリおよびスキル作成ルート：{workspace}\nこのルート内に名前付きパッケージを作り、SKILL.md と必要な references、scripts、assets を用意してください。他の既存成果物やインストール済みスキルを変更しないでください。SKILL.md の frontmatter に name と description を含め、実際の使い方と能力の限界を説明し、例を検証してください。完了後にインストール先と手順を説明してください。ユーザーが明示的にインストールを要求した場合のみスキルライブラリにコピーし、下書きをインストール済みスキルとして読み込まないでください。",
+    "importDraft": "インポート済みカスタムエンジンのインストールと登録を手伝ってください。\n作業ディレクトリ：{workspace}\nインポート済みパッケージ：{package}\nworkstep-cli で references/custom-engine.md とアダプター契約を必要に応じて読んでください。既存パッケージを使い、アダプターを作り直さないでください。まずマニフェストと既存エンジンを確認し、同じ ID が登録済みなら上書き前に確認してください。エクスポートには認証情報、依存関係、ローカル検証レポートが含まれません。dependencies をインストールし、設定からプロバイダー、認証、モデルを構成してください。WorkStep の Python 環境を変更しないでください。実接続、メソッド、イベントをテストし、engine validate に合格してから register を実行してください。登録後は設定のエンジンページで再スキャンするよう案内してください。再起動は不要です。"
+},
   skinExtensions: zhCN.skinExtensions,
   taskWorkflow: zhCN.taskWorkflow,
   roleCenter: zhCN.roleCenter,
@@ -115,10 +123,10 @@ export const jaJP: Messages = {
     studioHistory: "对话记录",
     studioChatTab: "聊天",
     studioPreviewTab: "编辑与预览",
-    studioDraft: "请先阅读 Runtime 根目录的 skin-design.md 和 skin-contract.json，再帮我调整外观。字体类型、四档字号、颜色与布局都可以调整；只修改我提出的部分，完成后校验皮肤包。",
+    studioDraft: "最初に Runtime ルートの skin-design.md と skin-contract.json を読み、外観の調整を手伝ってください。フォント、4 段階の文字サイズ、色、レイアウトを調整できます。指定した部分だけ変更し、完了後にスキンパッケージを検証してください。",
     studioVersionHint: "已读取的外观方案 · PC / 手机 · 字体与样式可继续调整",
     studioContinue: "用这一版继续调整",
-    studioContinuePrompt: "请继续调整「{name}」这一版皮肤。",
+    studioContinuePrompt: "スキン「{name}」のこのバージョンの調整を続けてください。",
     studioDefaultName: "我的专属皮肤",
     studioPackage: "皮肤包目录",
     studioReadPackage: "读取此包",

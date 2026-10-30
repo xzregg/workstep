@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from gateway.models import AuditEvent, GroupMembership, UserGroup
+from gateway.models import AuditEvent, DirectoryDepartment, GroupMembership, UserGroup
 from gateway.services.capabilities import bump_group_capability_revisions
 from gateway.services.errors import GatewayError
 from gateway.services.groups_api import _can_manage_group
@@ -22,6 +22,12 @@ async def user_group_choices(call, user_id):
             GroupMembership, (GroupMembership.group_id == UserGroup.id) &
             (GroupMembership.user_id == user_id)).where(UserGroup.status == 'active')
             .order_by(UserGroup.name, UserGroup.id))).all()
+        department_ids = [group.external_department_id for group, _ in rows if group.external_department_id]
+        departments = {row.id: row for row in (await session.scalars(select(DirectoryDepartment).where(
+            DirectoryDepartment.id.in_(department_ids)))).all()} if department_ids else {}
+        parent_groups = {(departments[group.external_department_id].source_id,
+                          departments[group.external_department_id].external_id): group.id
+                         for group, _ in rows if group.external_department_id in departments}
         groups = []
         for group, membership in rows:
             manageable = await _can_manage_group(session, identity, actor, group.id)
@@ -29,7 +35,10 @@ async def user_group_choices(call, user_id):
             if not manageable and not selected:
                 continue
             synced = membership is not None and membership.source != 'manual'
-            groups.append({'id': group.id, 'name': group.name, 'selected': selected,
+            department = departments.get(group.external_department_id)
+            parent_id = parent_groups.get((department.source_id, department.parent_external_id)) if department else group.parent_group_id
+            groups.append({'id': group.id, 'name': group.name, 'parent_id': parent_id,
+                           'source_type': group.source_type, 'selected': selected,
                            'editable': manageable and not synced, 'synced': synced})
     return {'groups': groups}
 

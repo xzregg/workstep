@@ -176,7 +176,7 @@ def persist_archive_draft(
     )
 
 
-def persist_experience_and_archive(project, task_service, pid, task_id, experience) -> tuple[bool, bool]:
+def persist_experience_and_archive(project, task_service, pid, task_id, experience, locale="zh-CN") -> tuple[bool, bool]:
     """Return (archived, memory_saved) after checking the latest Memory for duplicates."""
     from models import Task
 
@@ -199,9 +199,10 @@ def persist_experience_and_archive(project, task_service, pid, task_id, experien
             raise ValueError("Task not found")
         return archived, False
     separator = "\n\n" if existing.rstrip() else ""
+    heading = "错误经验：" if locale.lower().startswith("zh") else "Error lessons: "
     content = (
         f"{existing.rstrip()}{separator}"
-        f"## 错误经验：{task.title}\n\n{experience}\n"
+        f"## {heading}{task.title}\n\n{experience}\n"
     )
     if len(content.encode("utf-8")) > 500_000:
         raise OverflowError("Memory content exceeds 500KB")

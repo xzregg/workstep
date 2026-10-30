@@ -18,7 +18,7 @@ export default function SkillDraftCreateButton({ onStarted }: { onStarted?: () =
     setBusy(true); setError('')
     try {
       const result = await skillApi.onboarding()
-      saveDraft(result.session_id, result.prompt)
+      saveDraft(result.session_id, t('builtinContent.skillDraft', { workspace: result.workspace_path }))
       await useProjectStore.getState().fetchProjects()
       navigate(`/chat?${new URLSearchParams({ project: result.project_name, session: result.session_id })}`)
       onStarted?.()

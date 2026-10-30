@@ -1105,8 +1105,8 @@ async def test_archive_background_preparation_survives_request_and_is_deduplicat
     release = asyncio.Event()
     calls = []
 
-    async def draft(*args):
-        calls.append(args)
+    async def draft(*args, **kwargs):
+        calls.append((args, kwargs))
         entered.set()
         await release.wait()
         return "- Error: build failed; Cause: wrong type; Fix: check types."
@@ -1114,13 +1114,13 @@ async def test_archive_background_preparation_survives_request_and_is_deduplicat
     monkeypatch.setattr(main.coordinator_module, "draft_archive_experience", draft)
     url = (f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
            "&message_id=background-draft&background=true")
-    first = await asyncio.wait_for(client.post(url), timeout=0.5)
+    first = await asyncio.wait_for(client.post(url, json={"locale": "en-US"}), timeout=0.5)
     assert first.status_code == 202
     assert first.json() == {"status": "running", "message_id": "background-draft"}
     await asyncio.wait_for(entered.wait(), timeout=0.5)
     try:
         # Each poll is independent of the request which started generation.
-        poll = await asyncio.wait_for(client.post(url), timeout=0.5)
+        poll = await asyncio.wait_for(client.post(url, json={"locale": "de-DE"}), timeout=0.5)
         assert poll.status_code == 202
         assert (await asyncio.wait_for(client.get("/api/health"), 0.2)).status_code == 200
         assert len(calls) == 1
@@ -1135,6 +1135,7 @@ async def test_archive_background_preparation_survives_request_and_is_deduplicat
     assert response.json()["experience"].startswith("- Error:")
     assert (await client.post(url)).json() == response.json()
     assert len(calls) == 1
+    assert calls[0][1] == {"locale": "en-US"}
     saved = await client.get(
         f"/api/task/{task_id}/archive-experience/draft?project_id={project_id}"
     )
@@ -1226,7 +1227,7 @@ async def test_archive_experience_uses_coordinator_with_task_history(
     assert "at least two distinct corrections or rejections about the SAME mistake" in prompt
     assert "Default to zero lessons" in prompt
     assert "even when worded differently" in prompt
-    assert "Simplified Chinese" in prompt
+    assert "zh-CN" in prompt
 
 
 @pytest.mark.anyio
@@ -4476,3 +4477,33 @@ async def test_task_schedule_notification_default_delivery_and_api_retry(api_con
         updated=(await client.get(f'/api/schedule/{rule["id"]}/runs?project_id={project_id}')).json()['runs'][0]
         assert updated['notification_status']=='sent' and updated['status']=='succeeded'
     finally:await module.shutdown()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('locale, reply, has_experience', [
+    ('en-US', '- Repeatedly omitted validation; run the relevant behavior tests before submitting each change.', True),
+    ('ja-JP', '', False),
+])
+async def test_archive_experience_uses_request_language_and_structured_empty_result(api_context, monkeypatch, locale, reply, has_experience):
+    from engines.core.registry import ENGINE_REGISTRY
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, 'claude', CoordinatorFakeEngine)
+    monkeypatch.setattr(CoordinatorFakeEngine, 'calls', [])
+    monkeypatch.setattr(CoordinatorFakeEngine, 'reply', {
+        'version': 1, 'reply': reply, 'has_experience': has_experience,
+        'intent': 'answer', 'artifact_requests': [], 'proposal': None,
+    })
+    project_id, task_id = await _create_task(client, tmp_path)
+    base = f'/api/task/{task_id}/archive-experience'
+    response = await client.post(base + f'/prepare?project_id={project_id}', json={'locale': locale})
+    assert response.status_code == 200, response.text
+    assert response.json()['has_experience'] is has_experience
+    assert response.json()['experience'] == reply
+    prompt = CoordinatorFakeEngine.calls[0]['prompt']
+    assert locale in prompt
+    assert 'at least two distinct corrections or rejections about the SAME mistake' in prompt
+    assert '240 characters' in prompt and '720 characters' in prompt
+    assert 'Write Simplified Chinese' not in prompt
+    saved = await client.get(base + f'/draft?project_id={project_id}')
+    assert saved.json()['has_experience'] is has_experience
+    assert saved.json()['experience'] == reply

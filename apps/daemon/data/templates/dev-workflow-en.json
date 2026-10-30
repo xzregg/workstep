@@ -1,0 +1,462 @@
+{
+  "id": "dev-workflow-en",
+  "default": true,
+  "name": "Development workflow",
+  "description": "Requirements → Design → Development → Testing → Deployment",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "req",
+        "title": "Requirements",
+        "color": "#c026d3",
+        "autoStart": false,
+        "position": {
+          "x": -384.6939457545666,
+          "y": -3.946412463027528
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Produce a PRD and prototypes based on business requirements and user research. Define user scenarios, features, and acceptance criteria.",
+        "kind": "llm",
+        "config": {},
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": "",
+          "config": {}
+        },
+        "inputs": [
+          {
+            "name": "Business requirements",
+            "type": "Document",
+            "outputs": [
+              {
+                "name": "Product requirements document",
+                "type": "md"
+              },
+              {
+                "name": "Specification document",
+                "type": "md"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Product requirements document",
+            "type": "md"
+          },
+          {
+            "name": "Specification document",
+            "type": "md"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "ui",
+        "title": "UI design",
+        "color": "#2563eb",
+        "autoStart": false,
+        "position": {
+          "x": -41.740689015666334,
+          "y": -218.61303697665932
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Based on the PRD and prototypes, find the corresponding project design style under design/, design high-fidelity UI screens, and produce designs and a design specification document.",
+        "kind": "llm",
+        "config": {},
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": "",
+          "config": {}
+        },
+        "inputs": [
+          {
+            "name": "Product requirements document",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "UI designs",
+                "type": "html"
+              },
+              {
+                "name": "Design specifications",
+                "type": "md"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "UI designs",
+            "type": "html"
+          },
+          {
+            "name": "Design specifications",
+            "type": "md"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "frontend",
+        "title": "Frontend development",
+        "color": "#db2777",
+        "autoStart": false,
+        "position": {
+          "x": 365.5024273925945,
+          "y": -328.18501956381795
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Based on the UI designs and PRD, find the corresponding project under frontend/, follow project conventions, integrate with the backend API documentation, and implement frontend code. Output the feature branch name and shared component documentation if an abstraction layer is created.",
+        "kind": "llm",
+        "config": {},
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": "",
+          "config": {}
+        },
+        "inputs": [
+          {
+            "name": "Frontend feature development/API integration",
+            "type": "html",
+            "outputs": [
+              {
+                "name": "Shared component documentation",
+                "type": "md"
+              },
+              {
+                "name": "Branch name",
+                "type": "md"
+              }
+            ]
+          },
+          {
+            "name": "Frontend bug fixes",
+            "type": "md",
+            "outputs": [
+              {
+                "name": "Fix list",
+                "type": "md"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Shared component documentation",
+            "type": "md"
+          },
+          {
+            "name": "Branch name",
+            "type": "md"
+          },
+          {
+            "name": "Fix list",
+            "type": "md"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "backend",
+        "title": "Backend development",
+        "color": "#059669",
+        "autoStart": false,
+        "position": {
+          "x": 12.887824793694023,
+          "y": 150.93296195841347
+        },
+        "engine": "codex",
+        "model": "gpt-5.5",
+        "prompt": "Implement backend features according to the PRD. Output API documentation, a database schema design document, and the feature branch name.",
+        "kind": "llm",
+        "config": {},
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": "",
+          "config": {}
+        },
+        "inputs": [
+          {
+            "name": "Backend feature development",
+            "type": "md",
+            "outputs": [
+              {
+                "name": "API documentation",
+                "type": "md"
+              },
+              {
+                "name": "Database design document",
+                "type": "md"
+              },
+              {
+                "name": "Branch name",
+                "type": "md"
+              }
+            ]
+          },
+          {
+            "name": "Backend bug fixes",
+            "type": "md",
+            "outputs": [
+              {
+                "name": "Fix list",
+                "type": "md"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "API documentation",
+            "type": "md"
+          },
+          {
+            "name": "Database design document",
+            "type": "md"
+          },
+          {
+            "name": "Branch name",
+            "type": "md"
+          },
+          {
+            "name": "Fix list",
+            "type": "md"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "test",
+        "title": "Testing",
+        "color": "#9333ea",
+        "autoStart": false,
+        "position": {
+          "x": 736.6450167784561,
+          "y": -191.78765723733216
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Perform integration tests on frontend pages and backend APIs. Produce a test report and bug list.",
+        "kind": "llm",
+        "config": {},
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": "",
+          "config": {}
+        },
+        "inputs": [
+          {
+            "name": "Frontend feature testing",
+            "type": "md",
+            "outputs": [
+              {
+                "name": "Test report",
+                "type": "HTML"
+              },
+              {
+                "name": "Bug list",
+                "type": "md"
+              }
+            ]
+          },
+          {
+            "name": "Backend feature testing",
+            "type": "md",
+            "outputs": [
+              {
+                "name": "Bug list",
+                "type": "md"
+              },
+              {
+                "name": "Test report",
+                "type": "md"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Test report",
+            "type": "HTML"
+          },
+          {
+            "name": "Bug list",
+            "type": "md"
+          },
+          {
+            "name": "Bug list",
+            "type": "md"
+          },
+          {
+            "name": "Test report",
+            "type": "md"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "deploy",
+        "title": "Deployment",
+        "color": "#544285",
+        "autoStart": false,
+        "position": {
+          "x": 1117.7714383262412,
+          "y": -56.32311295735819
+        },
+        "engine": "hermes",
+        "model": "grok-4.3",
+        "prompt": "Deploy the service to production according to the test report and deployment documentation.",
+        "kind": "llm",
+        "config": {},
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": "",
+          "config": {}
+        },
+        "inputs": [
+          {
+            "name": "Test report",
+            "type": "md",
+            "outputs": [
+              {
+                "name": "Deployment report",
+                "type": "html"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Deployment report",
+            "type": "html"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 1,
+        "kind": "solid"
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 5,
+        "fromPort": 3,
+        "to": 6,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 5,
+        "fromPort": 2,
+        "to": 4,
+        "toPort": 1,
+        "kind": "dashed"
+      },
+      {
+        "from": 1,
+        "fromPort": 1,
+        "to": 4,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 4,
+        "fromPort": 2,
+        "to": 5,
+        "toPort": 1,
+        "kind": "solid"
+      },
+      {
+        "from": 1,
+        "fromPort": 1,
+        "to": 2,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 2,
+        "fromPort": 1,
+        "to": 3,
+        "toPort": 0,
+        "kind": "solid"
+      },
+      {
+        "from": 5,
+        "fromPort": 1,
+        "to": 3,
+        "toPort": 1,
+        "kind": "dashed"
+      }
+    ],
+    "bookmarks": []
+  },
+  "locale": "en-US"
+}

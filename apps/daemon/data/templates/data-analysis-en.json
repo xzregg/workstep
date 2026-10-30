@@ -1,0 +1,335 @@
+{
+  "id": "data-analysis-en",
+  "default": true,
+  "name": "Data analysis",
+  "description": "Data collection → Cleaning → Modeling → Evaluation → Report",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "data_collection",
+        "title": "Data collection",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Collect raw data according to the analysis requirements: connect data sources (databases/APIs/logs/files/web crawlers), define extraction rules and time windows, and handle incremental or full synchronization. Produce a raw dataset and data dictionary (field descriptions, types, sources, and quality flags).",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Analysis requirements",
+            "type": "Document",
+            "outputs": [
+              {
+                "name": "Raw data",
+                "type": "json"
+              },
+              {
+                "name": "Data dictionary",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Raw data",
+            "type": "json"
+          },
+          {
+            "name": "Data dictionary",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "data_cleaning",
+        "title": "Data cleaning",
+        "position": {
+          "x": 380,
+          "y": 120
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Clean and preprocess the raw data: handle missing values (deletion/mean imputation/model prediction), detect and handle outliers (IQR/Z-score/business rules), standardize formats (dates/amounts/encodings), remove duplicates, and check consistency. Produce a cleaned dataset and data quality report, including before-and-after comparisons.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Raw data",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Cleaned data",
+                "type": "json"
+              },
+              {
+                "name": "Quality report",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Cleaned data",
+            "type": "json"
+          },
+          {
+            "name": "Quality report",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "feature_engineering",
+        "title": "Feature engineering",
+        "position": {
+          "x": 380,
+          "y": 300
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Build analytical features from cleaned data: derive features (cross features/aggregates/time windows), encode features (One-Hot/Label/Target Encoding), select features (correlation/IV/feature importance), scale features, and reduce dimensionality. Produce a feature table and feature importance analysis.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Cleaned data",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Feature table",
+                "type": "json"
+              },
+              {
+                "name": "Feature analysis",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Feature table",
+            "type": "json"
+          },
+          {
+            "name": "Feature analysis",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "modeling",
+        "title": "Model development",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Build analytical and predictive models: select algorithms for the problem (regression/classification/clustering/time-series forecasting/causal inference), split training and validation sets, tune parameters (grid search/Bayesian optimization), and evaluate models (accuracy/AUC/RMSE/business metrics). Produce a trained model and model evaluation report, including interpretability analysis.",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Feature table",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Trained model",
+                "type": "file"
+              },
+              {
+                "name": "Evaluation report",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "Quality report",
+            "type": "file",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Trained model",
+            "type": "file"
+          },
+          {
+            "name": "Evaluation report",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "report_generation",
+        "title": "Report generation",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Turn analysis results into a business report: extract key findings and insights, create visualizations (trend/comparison/distribution/heatmap/funnel charts), and write conclusions and actionable recommendations. Produce a formal analysis report (executive summary, methodology, detailed findings, and proposed recommendations) and presentation slides.",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Evaluation report",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Analysis report",
+                "type": "file"
+              },
+              {
+                "name": "Presentation slides",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "Feature analysis",
+            "type": "file",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Analysis report",
+            "type": "file"
+          },
+          {
+            "name": "Presentation slides",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "decision_support",
+        "title": "Decision recommendations",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Produce decision-support proposals based on the analysis: assess costs, benefits, and risks of each option, simulate business impacts of different decision paths, and provide priorities and an implementation roadmap. Produce a decision recommendation document and action plan, including a KPI tracking framework, and update the business knowledge base.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Analysis report",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Decision recommendation document",
+                "type": "file"
+              },
+              {
+                "name": "Action plan",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Decision recommendation document",
+            "type": "file"
+          },
+          {
+            "name": "Action plan",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 1
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 1
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      }
+    ]
+  },
+  "locale": "en-US"
+}

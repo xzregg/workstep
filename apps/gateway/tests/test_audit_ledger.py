@@ -168,6 +168,12 @@ def test_admin_audit_query_only_exposes_published_project_events(tmp_path):
         all_events = client.get("/api/admin/audit")
         assert all_events.status_code == 200
         assert "hidden" not in {item["id"] for item in all_events.json()["items"]}
+        options = client.get('/api/admin/audit/filter-options', params={'kind': 'device', 'q': 'PC'})
+        assert options.status_code == 200, options.text
+        assert options.json()['items'] == [{'id': 'device-1', 'label': 'PC'}]
+        users = client.get('/api/admin/audit/filter-options', params={'kind': 'user', 'q': 'owner'})
+        assert {'id': owner_id, 'label': 'Owner · owner'} in users.json()['items']
+        assert client.get('/api/admin/audit/filter-options', params={'kind': 'device', 'q': '%'}).json()['items'] == []
         legacy = next(item for item in all_events.json()["items"]
                       if item["id"] == "global-secret")
         assert legacy["metadata"] == {"user_id": "owner"}
@@ -209,6 +215,7 @@ def test_admin_audit_query_only_exposes_published_project_events(tmp_path):
 
     with TestClient(app, base_url="https://gateway.test") as anonymous:
         assert anonymous.get("/api/admin/audit").status_code == 401
+        assert anonymous.get("/api/admin/audit/filter-options", params={"kind": "user"}).status_code == 401
 
 
 def test_department_audit_admin_only_sees_own_department_and_children(tmp_path):
@@ -357,6 +364,8 @@ def test_department_audit_admin_only_sees_own_department_and_children(tmp_path):
         assert {item["id"] for item in response.json()["items"]} == {
             "alice-event", "alice-scheduled", "alice-published",
         }
+        assert client.get('/api/admin/audit/filter-options', params={'kind': 'user', 'q': 'Bob'}).json()['items'] == []
+        assert client.get('/api/admin/audit/filter-options', params={'kind': 'user', 'q': 'Alice'}).json()['items'] == [{'id': users['alice'], 'label': 'Alice · alice'}]
         scoped_project = client.get("/api/admin/audit", params={
             "project_id": "published-1",
         })
@@ -437,3 +446,58 @@ def test_device_audit_cannot_forge_gateway_login_events_or_methods():
         AuditEventInput.model_validate({**_event(), "action": "auth.login"})
     with pytest.raises(ValidationError):
         AuditEventInput.model_validate({**_event(), "metadata": {"login_method": "dingtalk"}})
+
+
+def test_audit_options_and_device_health_filter_keep_loop_responsive(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+    import time
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import event as sql_event
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        setup = client.post('/api/platform/setup', json={
+            'username': 'owner', 'display_name': 'Owner', 'password': 'OwnerPassphrase-2026!',
+            'recovery_username': 'recovery', 'recovery_password': 'RecoveryPassphrase-2026!',
+            'registration_mode': 'closed',
+        })
+        assert setup.status_code == 201, setup.text
+        async def seed():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    for index in range(3):
+                        session.add(Device(id=f'pc-{index}', name=f'PC {index}', public_key='test', app_instance_id=f'app-{index}', version='1', status='active'))
+        client.portal.call(seed)
+        monkeypatch.setattr(app.state.control_connections, 'daemon_health', lambda device_id: False if device_id != 'pc-0' else True)
+        response = client.get('/api/admin/devices?health=unhealthy&page_size=1')
+        assert response.status_code == 200, response.text
+        assert response.json()['total'] == 2
+        assert len(response.json()['devices']) == 1
+        assert response.json()['devices'][0]['id'] != 'pc-0'
+        reached = threading.Event()
+        def delay():
+            reached.set(); time.sleep(.35)
+            return 1
+        def slow_query(connection, cursor, statement, parameters, context, many):
+            if ('EXISTS' in statement and 'audit_events' in statement) or statement.startswith('SELECT devices.id '):
+                connection.connection.dbapi_connection.create_function('ux_delay', 0, delay)
+                statement = statement.replace('WHERE ', 'WHERE ux_delay() = 1 AND ', 1)
+            return statement, parameters
+        engine = app.state.database.engine.sync_engine
+        sql_event.listen(engine, 'before_cursor_execute', slow_query, retval=True)
+        async def canary():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url='https://gateway.test', cookies=client.cookies) as actor:
+                for path in ('/api/admin/audit/filter-options?kind=user&q=owner', '/api/admin/devices?health=unhealthy'):
+                    reached.clear()
+                    pending = asyncio.create_task(actor.get(path))
+                    try:
+                        assert await asyncio.to_thread(reached.wait, 2)
+                        assert (await asyncio.wait_for(actor.get('/api/health'), .25)).status_code == 200
+                        assert not pending.done()
+                    finally:
+                        response = await pending
+                    assert response.status_code == 200, response.text
+        try:
+            client.portal.call(canary)
+        finally:
+            sql_event.remove(engine, 'before_cursor_execute', slow_query)

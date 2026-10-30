@@ -881,7 +881,12 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
     def _engine_system_prompt(self, session) -> str:
         if self._config.name != "chat_session":
             return super()._engine_system_prompt(session)
-        return self.get_system_prompt(session.project_id)
+        return "\n\n".join(part for part in (
+            self.get_system_prompt(session.project_id), self._role_system_prompt(session),
+        ) if part)
+
+    def _session_system_prompt_each_turn(self, session) -> bool:
+        return bool(session.extra.get('pending_role_checkpoint')) or super()._session_system_prompt_each_turn(session)
 
     def _capture_prompt_input(self) -> bool:
         return self._config.name in {"chat_session", "channel_chat"} or super()._capture_prompt_input()
@@ -893,7 +898,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         return ""
 
     def _build_prompt(self, session) -> str:
-        return self._with_role_prompt(session, self._build_chat_prompt(session))
+        return self._build_chat_prompt(session)
 
     def _build_chat_prompt(self, session) -> str:
         """Build user/context input; configured chat rules travel independently."""
@@ -966,7 +971,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 if self._prompt_system_instruction(session)
                 else tail
             )
-        return self._with_role_prompt(session, prompt, force=True)
+        return prompt
 
     def _system_prompt_for_display(self, session) -> str:
         """Show the project-specific instruction, including on resumed turns."""
@@ -1087,7 +1092,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 provider=provider_snapshot, usage=usage or None,
             )
             return result
-        enhance_input = f"{ENHANCE_SYSTEM_PROMPT}\n\n用户提示词：\n{prompt}"
+        enhance_input = f"{ENHANCE_SYSTEM_PROMPT}\n\nUser prompt:\n{prompt}"
         usage_details: dict = {}
         try:
             from engines.pydantic_ai import PydanticAIEngine

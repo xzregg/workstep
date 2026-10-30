@@ -91,6 +91,7 @@ export const systemSettingsApi = {
 // --- Template API ---
 
 export interface TemplateInfo {
+  locale?: string | null
   id: string
   name: string
   description: string

@@ -20,7 +20,7 @@ from gateway.services.identity import COOKIE_NAME, IdentityService, public_user
 
 from gateway.services.identity_api import _check_csrf
 
-from gateway.models import ClientRelease, User
+from gateway.models import ClientRelease, User, Device
 
 from gateway.services.management_scope import device_manager
 
@@ -137,11 +137,16 @@ async def approve_device(call: GatewayCall, device_id: str):
 
 
 async def list_devices(call: GatewayCall, status: Literal["pending", "active", "disabled", "revoked"] | None = None,
-                       q: str = '',
+                       health: str | None = None, q: str = '',
                        sort: Literal['created_at', 'name', 'status'] = 'created_at',
                        direction: Literal['asc', 'desc'] = 'desc',
                        page: int = 1, page_size: int = 25):
     _, _, allowed = await device_manager(call)
+    if health == 'unhealthy':
+        async with call.database.session() as session:
+            ids = (await session.scalars(select(Device.id).where(Device.status == 'active',
+                *([Device.id.in_(allowed)] if allowed is not None else [])))).all()
+        allowed = {device_id for device_id in ids if call.control_connections.daemon_health(device_id) is False}
     devices, total = await _service(call).list_devices(status=status, q=q, sort=sort, direction=direction, page=page, page_size=page_size, allowed_ids=allowed)
     platforms = {(device.os, device.arch) for device in devices if device.os and device.arch}
     latest: dict[tuple[str, str], tuple[Version, str]] = {}

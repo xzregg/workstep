@@ -1,3 +1,5 @@
+import { useAdminSession } from './useAdminSession'
+import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminManagementDialog } from './AdminManagementDialog'
 import { AdminListStatus } from './AdminListStatus'
 import { AdminRecordTable } from './AdminRecordTable'
@@ -14,7 +16,8 @@ type Provider = ManagedProvider & { model_count: number; price_version: string |
 type Filters = { q: string; enabled: string; sort: string; direction: string; page: number }
 
 export function AdminProvidersPage() {
-  const [csrf, setCsrf] = useState('')
+  const session = useAdminSession()
+  const csrf = session.csrf
   const [providers, setProviders] = useState<Provider[]>([])
   const [total, setTotal] = useState(0)
   const [query, setQuery] = useState('')
@@ -29,25 +32,15 @@ export function AdminProvidersPage() {
   const [assignmentsFor, setAssignmentsFor] = useState<Provider | null>(null)
   const [testFor, setTestFor] = useState<Provider | null>(null)
 
-  useEffect(() => {
-    const controller = new AbortController()
-    void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
-      .then(async response => {
-        if (!response.ok) throw new Error('登录状态已失效，请重新登录。')
-        const data = await response.json()
-        if (!controller.signal.aborted) setCsrf(data.csrf_token)
-      }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '登录状态加载失败。')
-      })
-    return () => controller.abort()
-  }, [])
+
 
   useEffect(() => {
+    if (!csrf) return
     const controller = new AbortController()
     const params = new URLSearchParams({ q: filters.q, sort: filters.sort,
       direction: filters.direction, page: String(filters.page), page_size: '25' })
     if (filters.enabled) params.set('enabled', filters.enabled)
-    setLoading(true); setError('')
+    setLoading(true); setError(''); setProviders([]); setTotal(0)
     void fetch(`/api/admin/providers?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error(response.status === 403
@@ -58,9 +51,10 @@ export function AdminProvidersPage() {
         if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '供应商列表加载失败。')
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [filters, revision])
+  }, [csrf, filters, revision])
 
   return <section className="gateway-admin-page">
+    <AdminSessionStatus loading={session.loading} error={session.error} onRetry={session.retry} />
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>供应商管理</h2></div>
     <p>供应商密钥只在创建和轮换时提交；列表不返回密钥。</p>

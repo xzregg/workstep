@@ -16,7 +16,7 @@ test('portal navigation marks the current page and separates sign-in from worksp
 test('portal navigation omits management access for a regular account', () => {
  const html = renderToString(<MemoryRouter><PortalHeader hasAdminAccess={false} /></MemoryRouter>)
  assert.doesNotMatch(html, /管理后台/)
- assert.match(html, /个人账户/)
+ assert.match(html, /用户中心/)
  assert.match(html, /登录 \/ 注册/)
 })
 

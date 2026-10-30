@@ -1,0 +1,364 @@
+{
+  "id": "hr-recruitment-en",
+  "default": true,
+  "name": "Recruitment workflow",
+  "description": "Requirements confirmation → Sourcing → Interviews → Hiring approval",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "requirement_confirm",
+        "title": "Requirements confirmation",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Confirm hiring requirements with the business department: job title, level, employment type (permanent/outsourced/intern), salary range, location, and urgency. Analyze the role profile: required skills, desirable skills, soft skills, and team-style fit. Produce a draft job description and recruitment timeline.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Staffing requirements",
+            "type": "Document",
+            "outputs": [
+              {
+                "name": "Job description",
+                "type": "Markdown"
+              },
+              {
+                "name": "Recruitment plan",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Job description",
+            "type": "Markdown"
+          },
+          {
+            "name": "Recruitment plan",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "job_posting",
+        "title": "Job posting",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "hermes",
+        "model": "",
+        "prompt": "Publish the approved job description across channels: recruitment sites (BOSS Zhipin/Liepin/Lagou, etc.), the corporate careers page, internal referrals, and social platforms such as LinkedIn/Maimai. Optimize titles and descriptions for search visibility, set automatic refresh strategies, and configure resume receipt rules.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Job description",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Publication record",
+                "type": "json"
+              },
+              {
+                "name": "Channel configuration",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Publication record",
+            "type": "json"
+          },
+          {
+            "name": "Channel configuration",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "resume_screening",
+        "title": "Resume screening",
+        "position": {
+          "x": 680,
+          "y": 80
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Screen received resumes: match keywords and experience against the job description, analyze experience relevance and stability, assess project fit, and flag strengths and risks (frequent job changes, employment gaps, etc.). Produce a ranked initial shortlist and an assessment summary for each resume.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Applicant resumes",
+            "type": "PDF",
+            "outputs": [
+              {
+                "name": "Screening results",
+                "type": "json"
+              },
+              {
+                "name": "Assessment summary",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Screening results",
+            "type": "json"
+          },
+          {
+            "name": "Assessment summary",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "phone_screen",
+        "title": "Phone screening",
+        "position": {
+          "x": 680,
+          "y": 260
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Prepare phone screening outlines for candidates who passed resume screening: verify basic details (current salary, reasons for leaving, availability), assess communication and motivation, and confirm salary expectations fit the budget. Produce screening assessments and an interview invitation shortlist.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Screening results",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Initial screening results",
+                "type": "json"
+              },
+              {
+                "name": "Interview shortlist",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Initial screening results",
+            "type": "json"
+          },
+          {
+            "name": "Interview shortlist",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "interview",
+        "title": "Interview assessment",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Organize interviews and complete assessments: generate structured question banks (technical skills, behavioral questions, situational exercises), coordinate interviewer availability, and consolidate feedback from each round. Produce comprehensive candidate assessments (skill scores, culture fit, growth potential, salary recommendations), ranked by recommendation.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Initial screening results",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Evaluation report",
+                "type": "file"
+              },
+              {
+                "name": "Interview question bank",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Evaluation report",
+            "type": "file"
+          },
+          {
+            "name": "Interview question bank",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "offer_approval",
+        "title": "Hiring approval",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Initiate hiring approval: generate an offer proposal from interview assessments (level, compensation structure, options/equity, signing bonus, probation arrangements), benchmark market pay for competitiveness, and submit through the company approval matrix. Produce an offer approval form and onboarding materials checklist.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Evaluation report",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Offer proposal",
+                "type": "json"
+              },
+              {
+                "name": "Approval record",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Offer proposal",
+            "type": "json"
+          },
+          {
+            "name": "Approval record",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "onboarding",
+        "title": "Onboarding",
+        "position": {
+          "x": 1580,
+          "y": 200
+        },
+        "engine": "hermes",
+        "model": "",
+        "prompt": "Complete new employee onboarding: send the offer email and track signed acceptance, arrange medical and background checks, provision office equipment and system permissions, and create a training plan (company culture, role skills, compliance). Produce onboarding checklist completion status and new employee records.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Offer proposal",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Onboarding checklist",
+                "type": "json"
+              },
+              {
+                "name": "Employee records",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Onboarding checklist",
+            "type": "json"
+          },
+          {
+            "name": "Employee records",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      },
+      {
+        "from": 6,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 0
+      }
+    ]
+  },
+  "locale": "en-US"
+}

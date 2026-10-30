@@ -23,7 +23,9 @@ test('skill creation opens an ordinary runtime conversation without installing o
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkillDraftCreateButton onStarted={() => { closed++ }} /><Location /></I18nProvider></MemoryRouter>))
     await act(async () => document.querySelector<HTMLButtonElement>('button')!.click())
     assert.equal(document.querySelector('output')?.textContent, '/chat?project=runtime&session=draft-session')
-    assert.equal(loadDraft('draft-session'), '只编写草稿，不安装技能')
+    assert.match(loadDraft('draft-session')!, /SKILL\.md/)
+    assert.match(loadDraft('draft-session')!, /\/runtime/)
+    assert.doesNotMatch(loadDraft('draft-session')!, /只编写草稿，不安装技能/)
     assert.equal(refreshed, 1); assert.equal(closed, 1)
   } finally { await act(async () => root.unmount()); skillApi.onboarding = oldCreate; useProjectStore.setState(oldState); await window.happyDOM.close() }
 })

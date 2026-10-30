@@ -55,11 +55,11 @@ def stage_package(data: bytes, workspace: Path) -> Path:
         raise
 
 
-async def import_package(data: bytes) -> dict:
+async def import_package(data: bytes, title: str | None = None) -> dict:
     from services.custom_engine_onboarding import create_onboarding, workspace_parent
     root = await asyncio.to_thread(lambda: stage_package(data, workspace_parent()))
     try:
-        return await create_onboarding(package_path=root)
+        return await create_onboarding(package_path=root, **({"title": title} if title else {}))
     except BaseException:
         await asyncio.to_thread(shutil.rmtree, root, True)
         raise

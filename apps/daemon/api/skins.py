@@ -2,7 +2,7 @@
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -94,9 +94,9 @@ async def export_to_path(request: ExportRequest):
 
 
 @router.post("/onboarding", dependencies=[Depends(authorize)])
-async def onboarding():
+async def onboarding(title: str | None = Query(default=None, min_length=1, max_length=160)):
     from services.skin_onboarding import create_onboarding
-    return await invoke(create_onboarding())
+    return await invoke(create_onboarding(**({"title": title} if title else {})))
 
 
 @router.get("/assets/{revision}/{name:path}", dependencies=[Depends(authorize_read)])

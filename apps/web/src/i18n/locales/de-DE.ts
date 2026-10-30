@@ -3,6 +3,14 @@ import { zhCN, type Messages } from './zh-CN'
 // 未翻译项沿用中文，键集合随基础词典同步。
 export const deDE: Messages = {
   ...zhCN,
+  builtinContent: {
+    "skillTitle": "Eigene Fähigkeit erstellen",
+    "engineTitle": "Eigenes Modellmodul einrichten",
+    "importTitle": "Eigenes Modellmodul importieren",
+    "skinTitle": "Eigenes Design erstellen",
+    "skillDraft": "Hilf mir, eine eigene Fähigkeit zu erstellen. Frage zuerst nach Zweck, Auslösern, Ein- und Ausgaben sowie benötigten Werkzeugen.\nGemeinsamer Runtime-Arbeitsbereich und Erstellungswurzel: {workspace}\nErstelle darin ein benanntes Paket mit SKILL.md und erforderlichen references, scripts und assets. Ändere weder andere Arbeiten noch installierte Fähigkeiten. Der Frontmatter von SKILL.md muss name und description enthalten. Beschreibe die tatsächliche Nutzung und Grenzen und prüfe die Beispiele. Erkläre anschließend Installationsort und Schritte. Kopiere nur auf ausdrücklichen Installationswunsch in eine vorhandene Bibliothek; lade Entwürfe nicht als installierte Fähigkeiten.",
+    "importDraft": "Hilf mir, ein importiertes eigenes Modellmodul zu installieren und zu registrieren.\nArbeitsverzeichnis: {workspace}\nImportiertes Paket: {package}\nLies bei Bedarf references/custom-engine.md und den Adaptervertrag über workstep-cli. Nutze das vorhandene Paket, ohne den Adapter neu zu erstellen. Prüfe Manifest und vorhandene Module; frage vor dem Ersetzen einer registrierten ID. Exporte enthalten keine Zugangsdaten, Abhängigkeiten oder lokalen Abnahmeberichte. Installiere dependencies des Pakets und richte Anbieter, Authentifizierung und Modell in den Einstellungen ein, ohne die Python-Umgebung von WorkStep zu ändern. Prüfe echte Verbindung, Methoden und Ereignisse; engine validate muss vor register erfolgreich sein. Bitte nach der Registrierung um erneutes Scannen auf der Modulseite der Einstellungen; ein Neustart ist nicht nötig."
+},
   common: {
     ...zhCN.common,
     featureUnavailable: "Diese Funktion ist für dieses Projekt nicht freigegeben.",
@@ -238,6 +246,7 @@ export const deDE: Messages = {
   },
   settings: {
     ...zhCN.settings,
+    customEngineOnboardingPrompt: "Hilf mir, ein eigenes LLM-Modellmodul einzubinden. Frage zuerst nach Name, offizieller SDK/CLI-Dokumentation, Authentifizierung und benötigten Fähigkeiten. Folge workstep-cli und lies bei Bedarf references/custom-engine.md und den Adaptervertrag; eine separate Fähigkeit ist nicht nötig.\nArbeitsverzeichnis: {workspace}\nPrüfe zuerst vorhandene Module mit WorkStep CLI, um sie nicht zu überschreiben. Installiere Abhängigkeiten im jeweiligen dependencies-Verzeichnis und ändere nicht die Python-Umgebung von WorkStep. Speichere Zugangsdaten über die Einstellungen. Prüfe echte Verbindung, Methoden und Ereignisverträge; engine validate muss vor register erfolgreich sein. Bitte erst nach erfolgreicher Registrierung und bestandenem Bericht um erneutes Scannen auf der Modulseite der Einstellungen; ein Neustart ist nicht nötig. Hilf mir zuerst, die erforderlichen Angaben zu vervollständigen.",
     closeSettings: "Einstellungen schließen",
     enginesNav: "Ausführungs-Engines",
     assistantNav: "KI-Assistenten",
@@ -330,6 +339,10 @@ export const deDE: Messages = {
   },
   aiFlow: {
     ...zhCN.aiFlow,
+    quickGeneratePrompt: "Erstelle einen vollständigen Basisworkflow für das aktuelle Ziel mit klaren Schritten, Abhängigkeiten und Ergebnissen.",
+    quickOptimizePrompt: "Prüfe und optimiere Aufteilung, Reihenfolge und Abhängigkeiten der aktuellen Workflowschritte.",
+    quickReviewPrompt: "Ergänze geeignete Prüfungen und Wiederholungsstrategien bei Fehlern an den wichtigsten Schritten.",
+    quickSimplifyPrompt: "Vereinfache den aktuellen Workflow und fasse redundante Schritte zusammen, ohne das Ziel zu beeinträchtigen.",
     agent: "Koordination",
     sendFailed: "Senden fehlgeschlagen. Bitte erneut versuchen.",
     restoreSteps: "Wiederherstellen",
@@ -341,6 +354,11 @@ export const deDE: Messages = {
   },
   taskList: {
     ...zhCN.taskList,
+    aiCreatePrompt: "Vervollständige die Aufgabenbeschreibung für „{name}“ und wähle den geeignetsten Startschritt.",
+    aiQuickDescribePrompt: "Ergänze Hintergrund, Ziele, Umfang und konkrete Ergebnisse der Aufgabe.",
+    aiQuickAcceptancePrompt: "Ergänze konkrete, überprüfbare Abnahmekriterien.",
+    aiQuickStepsPrompt: "Gliedere die wichtigsten Umsetzungsschritte und beschreibe das Ergebnis jedes Schritts.",
+    aiQuickRisksPrompt: "Analysiere Risiken, Randbedingungen und offene Fragen der Aufgabe.",
     loadFailed: "Aufgabenliste konnte nicht geladen werden",
     copyTask: "Aufgabe kopieren",
     copyTitle: "{title} (Kopie)",
@@ -516,6 +534,9 @@ export const deDE: Messages = {
   },
   skins: {
     ...zhCN.skins,
+    studioContinuePrompt: "Passe diese Version des Designs „{name}“ weiter an.",
+    studioDraft: "Lies zuerst skin-design.md und skin-contract.json im Runtime-Stammverzeichnis und hilf mir dann, das Aussehen anzupassen. Schriftarten, vier Schriftgrößen, Farben und Layouts sind anpassbar. Ändere nur die angeforderten Teile und validiere danach das Designpaket.",
+
     scene_chat: "Unterhaltungen",
     scene_flow: "Workflow",
     studioHistory: "Unterhaltungsverlauf",

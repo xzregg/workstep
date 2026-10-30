@@ -49,7 +49,7 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
     const query = new URLSearchParams()
     if (subjectType) query.set('subject_type', subjectType)
     if (subjectType && subjectId) query.set('subject_id', subjectId)
-    setLoading(true); setError('')
+    setLoading(true); setError(''); setAssignments([])
     void fetch(`/api/admin/permissions${query.size ? `?${query}` : ''}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {

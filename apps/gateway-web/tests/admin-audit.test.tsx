@@ -99,3 +99,52 @@ test('audit distinguishes pending device approval and unauthenticated password a
   fireEvent.click(screen.getByRole('button', { name: '查询审计' }))
   await waitFor(() => assert.ok(urls.some(url => url.includes('device_id=pc-1'))))
 })
+
+
+test('audit searches scoped names and applies selected IDs, then clears both selectors', async () => {
+  const urls: string[] = []
+  globalThis.fetch = async input => {
+    const url = String(input); urls.push(url)
+    if (url.includes('/filter-options?')) {
+      const kind = new URLSearchParams(url.split('?')[1]).get('kind')
+      return Response.json({ items: [{ id: kind === 'user' ? 'alice-id' : 'pc-id', label: kind === 'user' ? '张三 · alice' : '研发电脑' }] })
+    }
+    return Response.json({ items: [], total: 0 })
+  }
+  render(<MemoryRouter><AdminAuditPage /></MemoryRouter>)
+  fireEvent.change(screen.getByLabelText('用户', { exact: true }), { target: { value: '张三' } })
+  fireEvent.click(screen.getByRole('button', { name: '查找用户' }))
+  fireEvent.click(await screen.findByRole('button', { name: '张三 · alice' }))
+  fireEvent.change(screen.getByLabelText('设备', { exact: true }), { target: { value: '研发' } })
+  fireEvent.keyDown(screen.getByLabelText('设备', { exact: true }), { key: 'Enter' })
+  fireEvent.click(await screen.findByRole('button', { name: '研发电脑' }))
+  fireEvent.click(screen.getByRole('button', { name: '查询审计' }))
+  await waitFor(() => assert.ok(urls.some(url => url.includes('user_id=alice-id') && url.includes('device_id=pc-id'))))
+  fireEvent.click(screen.getByRole('button', { name: '清除筛选' }))
+  assert.equal((screen.getByLabelText('用户', { exact: true }) as HTMLInputElement).value, '')
+  assert.equal(screen.queryByText('已选：研发电脑'), null)
+  fireEvent.change(screen.getByLabelText('用户', { exact: true }), { target: { value: '未选择的搜索词' } })
+  fireEvent.click(screen.getByRole('button', { name: '清除筛选' }))
+  assert.equal((screen.getByLabelText('用户', { exact: true }) as HTMLInputElement).value, '')
+})
+
+test('changing entity search hides old results and ignores delayed responses', async () => {
+  const { AuditEntityFilter } = await import('../src/AuditEntityFilter')
+  let finish: (response: Response) => void = () => {}
+  let calls = 0
+  globalThis.fetch = async () => {
+    calls++
+    return new Promise<Response>(resolve => { finish = resolve })
+  }
+  render(<AuditEntityFilter kind="user" value="" onChange={() => {}} />)
+  const input = screen.getByLabelText('用户', { exact: true })
+  fireEvent.change(input, { target: { value: '旧查询' } })
+  fireEvent.click(screen.getByRole('button', { name: '查找用户' }))
+  await waitFor(() => assert.equal(calls, 1))
+  fireEvent.change(input, { target: { value: '新查询' } })
+  finish(Response.json({ items: [{ id: 'old', label: '旧结果' }] }))
+  await waitFor(() => assert.equal(screen.queryByRole('status'), null))
+  assert.equal(screen.queryByRole('button', { name: '旧结果' }), null)
+  fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 })
+  assert.equal(calls, 1, 'IME confirmation must not submit a search')
+})

@@ -22,7 +22,7 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     assert "workstep-cli" in result["prompt"]
     assert "custom-engine.md" in result["prompt"]
     assert result["workspace_path"] in result["prompt"]
-    assert "重启" in result["prompt"]
+    assert "no restart is needed" in result["prompt"]
     module.create_session.assert_called_once()
 
 @pytest.mark.asyncio
@@ -65,7 +65,7 @@ async def test_onboarding_api_uses_real_db_without_blocking_event_loop(tmp_path,
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
             if imported:
                 from tests.test_custom_engine_import import package
-                pending = asyncio.create_task(client.post('/custom/import', content=package()))
+                pending = asyncio.create_task(client.post('/custom/import?title=Imported%20engine', content=package()))
             else:
                 pending = asyncio.create_task(client.post("/custom/onboarding"))
             await asyncio.sleep(.05)
@@ -74,12 +74,12 @@ async def test_onboarding_api_uses_real_db_without_blocking_event_loop(tmp_path,
             assert response.status_code == 200, response.text
             result = response.json()
             detail = await manager.run_db(result["project_id"], lambda current: module.get_session(result["project_id"], result["session_id"]))
-            assert detail["title"] == ("导入自定义引擎" if imported else "自定义引擎接入")
+            assert detail["title"] == ("Imported engine" if imported else "自定义引擎接入")
             if imported:
                 assert result['package_path'] in result['prompt']
                 assert 'engine validate' in result['prompt']
-                assert '同 ID' in result['prompt']
-                assert '不重新创建适配器' in result['prompt']
+                assert 'same engine ID' in result['prompt']
+                assert 'do not recreate the adapter' in result['prompt']
     finally:
         await module.shutdown(); await bus.close(); await asyncio.to_thread(manager.close_all)
 

@@ -359,5 +359,6 @@
         "toPort": 0
       }
     ]
-  }
+  },
+  "locale": "zh-CN"
 }

@@ -116,3 +116,18 @@ def test_department_admin_overview_counts_only_members_in_scope(tmp_path):
         data = client.get('/api/admin/overview').json()
         assert data['users'] == {'total': 1, 'pending': 0}
         assert data['devices'] is None
+
+
+def test_audit_and_overview_times_include_utc_offset_on_sqlite(tmp_path):
+    from datetime import datetime, timezone
+
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        _setup(client)
+        overview = client.get('/api/admin/overview').json()['recent_actions']
+        audit = client.get('/api/admin/audit').json()['items']
+        assert overview and audit
+        for value in [item['created_at'] for item in overview] + [item['occurred_at'] for item in audit]:
+            parsed = datetime.fromisoformat(value)
+            assert parsed.tzinfo is not None
+            assert parsed.utcoffset() == timezone.utc.utcoffset(parsed)

@@ -1,0 +1,313 @@
+{
+  "id": "finance-payable-en",
+  "default": true,
+  "name": "Accounts payable",
+  "description": "Invoice receipt → Validation → Payment approval → Payment",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "invoice_receive",
+        "title": "Invoice receipt",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Receive supplier invoices and extract key information: invoice number, amount, tax amount, issue date, supplier name, and purchased items. Perform OCR and field validation, and generate structured invoice data. Flag incomplete information or abnormal formats and request corrections.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Original invoice",
+            "type": "PDF/image",
+            "outputs": [
+              {
+                "name": "Invoice data",
+                "type": "json"
+              },
+              {
+                "name": "Exception list",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Invoice data",
+            "type": "json"
+          },
+          {
+            "name": "Exception list",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "invoice_audit",
+        "title": "Invoice review",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Review invoice compliance: match amounts to purchase orders, verify tax rates and supplier qualifications, and check invoice authenticity. Produce review comments for noncompliant items, assign low/medium/high risk levels, and route approved invoices to accounting.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Invoice data",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Review results",
+                "type": "json"
+              },
+              {
+                "name": "Risk report",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Review results",
+            "type": "json"
+          },
+          {
+            "name": "Risk report",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "accounting",
+        "title": "Accounting",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Generate accounting vouchers from approved invoice data: determine debit and credit accounts, calculate input VAT, and generate journal entries. Match the purchase order and goods receipt to ensure three-way matching. Produce accounting vouchers and accounts payable details.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Review results",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Accounting voucher",
+                "type": "json"
+              },
+              {
+                "name": "Payables details",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Accounting voucher",
+            "type": "json"
+          },
+          {
+            "name": "Payables details",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "payment_approval",
+        "title": "Payment approval",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Initiate payment approval using payables details and the funding plan: check payment conditions (terms, retention, etc.), verify payee bank details, and match budget limits. Generate a payment request and trigger amount-based approval levels (department manager/finance director/general manager).",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Payables details",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Payment request",
+                "type": "json"
+              },
+              {
+                "name": "Approval record",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Payment request",
+            "type": "json"
+          },
+          {
+            "name": "Approval record",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "payment_execute",
+        "title": "Payment execution",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Execute approved payments: connect to the bank API or online banking system to transfer funds, generate payment vouchers, and mark payables as paid. Record payment times and bank transaction references, and handle exceptions (incorrect accounts, insufficient funds, etc.).",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Payment request",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Payment voucher",
+                "type": "json"
+              },
+              {
+                "name": "Bank receipt",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Payment voucher",
+            "type": "json"
+          },
+          {
+            "name": "Bank receipt",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "archive",
+        "title": "Archiving",
+        "position": {
+          "x": 1580,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Archive the entire payment trail according to financial record standards: invoices, review records, accounting vouchers, payment requests, and bank receipts. Generate a monthly payables report summary, mark completed and pending items, and update the supplier payables ledger.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Payment voucher",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Archived files",
+                "type": "json"
+              },
+              {
+                "name": "Monthly payables report",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Archived files",
+            "type": "json"
+          },
+          {
+            "name": "Monthly payables report",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      }
+    ]
+  },
+  "locale": "en-US"
+}

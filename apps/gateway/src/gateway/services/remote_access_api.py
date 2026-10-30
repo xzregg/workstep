@@ -1,17 +1,17 @@
 from gateway.services.errors import GatewayError
-from gateway.contracts import GatewayCall, GatewaySocket, CredentialGrant, RedirectTarget
+from gateway.contracts import GatewayCall, GatewaySocket, CredentialGrant, RedirectTarget, JsonValue
 import hashlib
 
 import asyncio
 
 import time
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from urllib.parse import parse_qs, urlsplit
 
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from sqlalchemy.exc import IntegrityError
 
@@ -24,7 +24,7 @@ from gateway.services.capabilities import compiled_device_policy
 from gateway.services.identity_errors import IdentityError
 from gateway.services.identity import COOKIE_NAME, IdentityService
 
-from gateway.models import Device, PlatformProject, UsedDeviceAccessTicket, User, UserDevice
+from gateway.models import AuthSession, Device, PlatformProject, UsedDeviceAccessTicket, User, UserDevice
 
 from gateway.services.project_access_api import effective_project_access, project_grant_rows
 
@@ -32,6 +32,17 @@ from gateway.services.platform_shares import can_create_platform_share
 
 
 """One-time, host-bound entry into a managed PC's remote workspace."""
+
+REMOTE_SESSION_SECONDS = 3600
+
+
+def _remote_cookie_grants(call: GatewayCall, token: str) -> list[CredentialGrant]:
+    grants = [CredentialGrant('workstep_remote_session' if call.workspace_path else COOKIE_NAME,
+                              token, lifetime=REMOTE_SESSION_SECONDS, path=call.workspace_path or '/')]
+    if call.workspace_device_id:
+        grants.append(CredentialGrant('workstep_remote_ws_session', token, lifetime=REMOTE_SESSION_SECONDS,
+                                      path='/ws/workspace/' + call.workspace_device_id))
+    return grants
 
 
 def _device_host(call: GatewayCall) -> str:
@@ -202,7 +213,7 @@ async def redeem_device_ticket(call: GatewayCall):
             "read" if "read" in (claims["access_level"], current_level) else "edit"
         )
     auth_session.expires_at = datetime.fromtimestamp(
-        claims["exp"] + 3600, timezone.utc,
+        claims["exp"] + REMOTE_SESSION_SECONDS, timezone.utc,
     )
     try:
         async with call.database.session() as session:
@@ -221,10 +232,7 @@ async def redeem_device_ticket(call: GatewayCall):
     except IntegrityError as exc:
         raise GatewayError('conflict', 'Ticket already used') from exc
     response = RedirectTarget((call.workspace_path or '/') + next_path)
-    response.grants.append(CredentialGrant('workstep_remote_session' if call.workspace_path else COOKIE_NAME, token, lifetime=3600, path=call.workspace_path or '/'))
-    if call.workspace_device_id:
-        response.grants.append(CredentialGrant('workstep_remote_ws_session', token, lifetime=3600,
-                                               path='/ws/workspace/' + call.workspace_device_id))
+    response.grants.extend(_remote_cookie_grants(call, token))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -258,7 +266,7 @@ async def remote_session(call: GatewayCall):
             permissions = [key for key in permissions if key not in ('task.create', 'task.copy', 'task.ai_create', 'task.start_on_create')]
         if not share_create:
             permissions = [key for key in permissions if not key.startswith('share.')]
-    return {"user_id": user.id, "username": user.display_name,
+    result = {"user_id": user.id, "username": user.display_name,
             "device_id": device_id, "device_name": device.name,
             "project_id": project.id if project else None,
             "host_project_id": project.host_project_id if project else target_host_id,
@@ -269,6 +277,21 @@ async def remote_session(call: GatewayCall):
             "can_manage_project_access": await IdentityService(call.database).is_super_admin(user.id),
             "online": True,
             "gateway_url": call.settings.public_origin + "/devices"}
+    response = JsonValue(result, headers={"Cache-Control": "no-store"})
+    now = datetime.now(timezone.utc)
+    # Refresh only near expiry, after all current permissions were checked. Use
+    # a conditional write so a concurrent logout cannot resurrect the session.
+    if auth_session.expires_at is not None and auth_session.expires_at.replace(tzinfo=timezone.utc) < now + timedelta(minutes=30):
+        async with call.database.session() as session:
+            async with session.begin():
+                renewed = await session.execute(update(AuthSession).where(
+                    AuthSession.id == auth_session.id,
+                    AuthSession.revoked_at.is_(None),
+                    AuthSession.expires_at > now,
+                ).values(expires_at=now + timedelta(seconds=REMOTE_SESSION_SECONDS)))
+        if renewed.rowcount:
+            response.grants.extend(_remote_cookie_grants(call, call.tokens[COOKIE_NAME]))
+    return response
 
 
 async def remote_project_grants(call: GatewayCall):

@@ -88,37 +88,36 @@ class ChatRoleBindings:
                     memory.extra['role_checkpoint'] = {'clear_pending': True}
         return {'binding': binding, 'name': name, 'missing': False}
 
-    def _with_role_prompt(self, session, prompt: str, *, force=False) -> str:
+    def _role_system_prompt(self, session) -> str:
         if self._config.name != 'chat_session':
-            return prompt
+            return ""
         session.extra.pop('pending_role_checkpoint', None)
         user = next((str(item.get('content') or '') for item in reversed(session.messages)
                      if item.get('role') == 'user'), '')
         # Preserve native control-command recognition. Its compaction event
         # invalidates the checkpoint without wrapping /compact in instructions.
         if user.strip() == '/compact' or user.strip().startswith('/goal '):
-            return prompt
+            return ""
         binding = session.extra.get('role_binding')
         try:
             _, body = resolve_binding(binding)
         except FileNotFoundError as exc:
             raise ValueError('角色或专家团成员不存在，请重新选择') from exc
-        fingerprint = hashlib.sha256((json.dumps(binding, sort_keys=True) + '\n' + body).encode()).hexdigest()
+        fingerprint = hashlib.sha256(('system-v1\n' + json.dumps(binding, sort_keys=True) + '\n' + body).encode()).hexdigest()
         engine = create_engine(session.engine)
-        context_id = session.resolved_session_id if not force and engine and engine.supports_resume else None
+        context_id = session.resolved_session_id if engine and engine.supports_resume else None
         previous = session.extra.get('role_checkpoint') or {}
         current = {'engine': session.engine, 'session_id': context_id, 'fingerprint': fingerprint}
         if binding is None and not previous:
-            return prompt
-        if context_id and previous == current:
-            return prompt
-        session.extra['pending_role_checkpoint'] = {
-            **current, 'epoch': session.extra.get('role_context_epoch', 0),
-        }
+            return ""
+        if not context_id or previous != current:
+            session.extra['pending_role_checkpoint'] = {
+                **current, 'epoch': session.extra.get('role_context_epoch', 0),
+            }
         instruction = body or 'The previously loaded role/team instructions no longer apply. Continue without an assigned expert role.'
         return ('## Current conversation role instructions\n'
                 'This block replaces any previously assigned expert identity. Follow existing project rules and permissions.\n'
-                + instruction + '\n\n## Current user input\n' + prompt)
+                + instruction)
 
     async def _on_context_compacted(self, session) -> None:
         await super()._on_context_compacted(session)

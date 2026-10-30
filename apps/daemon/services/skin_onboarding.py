@@ -40,7 +40,7 @@ def prepare(root, prompt):
         if temporary is not None: temporary.unlink(missing_ok=True)
 
 
-def design_session(project, module):
+def design_session(project, module, title=None):
     """Run in the project's DB executor; keep identity across rename/restart."""
     setting = ProjectSetting.get_or_none(ProjectSetting.project_id == project.id, ProjectSetting.key == 'skin_design_session')
     session_id = json.loads(setting.value_json) if setting else None
@@ -48,7 +48,7 @@ def design_session(project, module):
     if row is None:
         row = ChatSession.select().where(ChatSession.title == '自定义皮肤设计', ChatSession.archived == False).order_by(ChatSession.updated_at.desc()).first()
     created = row is None
-    session_id = module.create_session(project.id, title='自定义皮肤设计')['id'] if created else row.id
+    session_id = module.create_session(project.id, title=title or '自定义皮肤设计')['id'] if created else row.id
     if setting:
         setting.value_json = json.dumps(session_id)
         setting.updated_at = utc_now()
@@ -58,13 +58,13 @@ def design_session(project, module):
     return {'id': session_id, 'created': created}
 
 
-async def create_onboarding():
+async def create_onboarding(title: str | None = None):
     module = chat_module()
     await asyncio.to_thread(module._resolve_engine_models)
     project = await asyncio.to_thread(lambda: runtime_project(project_manager, workspace_parent()))
     root = project.path
     await asyncio.to_thread(skill_center.runtime_selection, root)
-    session = await project_manager.run_db(project.id, lambda current: design_session(current, module))
+    session = await project_manager.run_db(project.id, lambda current: design_session(current, module, title))
     prompt = ("Help me create a personalized WorkStep skin. You can adjust colors, backgrounds, desktop/mobile layouts, font families, and four font sizes. If the user only requests a font or size change, adjust that configuration directly and preserve the rest of the appearance without asking for a new color scheme.\n"
               f"Shared Runtime workspace: {root}\nSuggested skin package directory: {root / 'skin'}\nCurrent contract file: {root / 'skin-contract.json'}\n"
               "Create or modify a skin package within the Runtime root. You may choose the package directory name; use the suggested directory by default so the right panel can read it easily. Do not overwrite other existing work. First read the current contract file and workstep-cli's references/custom-skin.md. The contract covers engine selectors and expanded options, inputs, messages, tasks, workflows, Git, settings, and all overlays. "

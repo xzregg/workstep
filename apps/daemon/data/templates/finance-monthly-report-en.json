@@ -1,0 +1,386 @@
+{
+  "id": "finance-monthly-report-en",
+  "default": true,
+  "name": "Monthly financial report",
+  "description": "Data collection → Reconciliation → Accruals → Statements → Analysis",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "data_collection",
+        "title": "Data collection",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Collect raw financial data for the month from all business systems: revenue details, costs and expenses, bank transactions, invoice ledgers, fixed asset depreciation, payroll, and tax details. Check completeness and consistency, request missing submissions from business departments, and produce a raw data summary table.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Business system data",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Raw data summary",
+                "type": "json"
+              },
+              {
+                "name": "Data validation report",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Raw data summary",
+            "type": "json"
+          },
+          {
+            "name": "Data validation report",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "account_reconciliation",
+        "title": "Reconciliation",
+        "position": {
+          "x": 380,
+          "y": 120
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Perform month-end reconciliation: reconcile bank statements with journals, confirm receivables with customers and payables with suppliers, and analyze inventory count discrepancies. Flag outstanding items and differences, and produce a bank reconciliation statement and receivables/payables aging analysis.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Raw data summary",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Reconciliation results",
+                "type": "json"
+              },
+              {
+                "name": "Reconciliation statement",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Reconciliation results",
+            "type": "json"
+          },
+          {
+            "name": "Reconciliation statement",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "accrual_adjustment",
+        "title": "Accrual adjustments",
+        "position": {
+          "x": 380,
+          "y": 320
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Perform month-end accruals and amortization: accrue expenses, amortize prepaid expenses, depreciate fixed assets, provide for bad debts, and calculate taxes (VAT, income tax, and surtaxes). Prepare accrual/amortization schedules and tax working papers.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Raw data summary",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Accrual details",
+                "type": "json"
+              },
+              {
+                "name": "Tax working papers",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Accrual details",
+            "type": "json"
+          },
+          {
+            "name": "Tax working papers",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "financial_statements",
+        "title": "Statement preparation",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Prepare the three core financial statements: balance sheet (assets = liabilities + equity), income statement (revenue - costs - expenses = profit), and cash flow statement (operating + investing + financing). Prepare the statement of changes in equity and notes; ensure cross-statement relationships are correct and data matches the subsidiary ledgers.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Reconciliation results",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Financial statements",
+                "type": "json"
+              },
+              {
+                "name": "Notes",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "Accrual details",
+            "type": "json",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Financial statements",
+            "type": "json"
+          },
+          {
+            "name": "Notes",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "analysis",
+        "title": "Financial analysis",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Analyze financial statements in depth: profitability (gross margin, net margin, ROE), solvency (current ratio, debt-to-assets ratio), operating efficiency (turnover, aging), and year-over-year and month-over-month trends. Produce a financial analysis report and management recommendations.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Financial statements",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Analysis report",
+                "type": "file"
+              },
+              {
+                "name": "Management recommendations",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Analysis report",
+            "type": "file"
+          },
+          {
+            "name": "Management recommendations",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "tax_filing",
+        "title": "Tax filing",
+        "position": {
+          "x": 680,
+          "y": 380
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Generate tax returns from financial statements and tax working papers: VAT, prepaid corporate income tax, surtaxes, and stamp duty. Reconcile filing data with accounting data, and generate a filing data package for submission to the electronic tax bureau.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Financial statements",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Filing data package",
+                "type": "json"
+              },
+              {
+                "name": "Filing receipt",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Filing data package",
+            "type": "json"
+          },
+          {
+            "name": "Filing receipt",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "archive",
+        "title": "Archiving and closing",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Complete monthly closing and archiving: lock the accounting period, generate a financial archive directory, and archive all vouchers, statements, and analysis reports. Generate a monthly business management briefing summary, update the financial metrics dashboard, and flag abnormal metrics with proposed actions.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Analysis report",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Archived files",
+                "type": "json"
+              },
+              {
+                "name": "Business briefing",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "Filing receipt",
+            "type": "file",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Archived files",
+            "type": "json"
+          },
+          {
+            "name": "Business briefing",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 1
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 0
+      },
+      {
+        "from": 6,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 1
+      }
+    ]
+  },
+  "locale": "en-US"
+}

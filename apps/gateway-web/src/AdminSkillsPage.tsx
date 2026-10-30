@@ -1,3 +1,5 @@
+import { useAdminSession } from './useAdminSession'
+import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminRecordTable } from './AdminRecordTable'
 import { AdminTabs } from './AdminTabs'
 import { useEffect, useState } from 'react'
@@ -26,7 +28,8 @@ const statusNames: Record<string, string> = {
 }
 
 export function AdminSkillsPage() {
-  const [csrf, setCsrf] = useState('')
+  const session = useAdminSession()
+  const csrf = session.csrf
   const [skills, setSkills] = useState<Skill[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [applications, setApplications] = useState<Application[]>([])
@@ -39,15 +42,10 @@ export function AdminSkillsPage() {
   const [action, setAction] = useState<SkillAction | null>(null)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    const controller = new AbortController()
-    void read<{ csrf_token: string }>('/api/auth/session', controller.signal)
-      .then(result => { if (!controller.signal.aborted) setCsrf(result.csrf_token) })
-      .catch(reason => { if (!controller.signal.aborted) setError(String(reason)) })
-    return () => controller.abort()
-  }, [])
+
 
   useEffect(() => {
+    if (!csrf) return
     const controller = new AbortController()
     void Promise.all([
       read<{ skills: Skill[] }>('/api/admin/skills', controller.signal),
@@ -61,7 +59,7 @@ export function AdminSkillsPage() {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '加载失败。')
     })
     return () => controller.abort()
-  }, [revision])
+  }, [csrf, revision])
 
   useEffect(() => {
     if (!skillId) return
@@ -98,15 +96,16 @@ export function AdminSkillsPage() {
   }
 
   return <section className="gateway-admin-page">
+    <AdminSessionStatus loading={session.loading} error={session.error} onRetry={session.retry} />
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>平台 Skill 管理</h2></div>
     <p>版本上传后需单独审核；只有已批准版本可授权用户组。撤销版本会使相关项目分配失效。</p>
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
-      <label>Skill<select value={skillId} onChange={event => {
+      <div className="gateway-admin-form-row"><label>Skill<select value={skillId} onChange={event => {
         setSkillId(event.target.value); setVersions([]); setGrantVersionId('')
       }}><option value="">选择 Skill</option>{skills.map(skill =>
-        <option key={skill.id} value={skill.id}>{skill.name}</option>)}</select></label>
+        <option key={skill.id} value={skill.id}>{skill.name}</option>)}</select></label></div>
     <AdminTabs label="Skill 管理分类" items={[
      { id: 'catalog', label: 'Skill 目录', content: (
     <section className="gateway-overview-card">
@@ -132,7 +131,7 @@ export function AdminSkillsPage() {
      { id: 'grants', label: '用户组授权', content: (
     <section className="gateway-overview-card">
       <h3>用户组授权</h3>
-      <label>用户组<select value={groupId} onChange={event => {
+      <div className="gateway-admin-form-row"><label>用户组<select value={groupId} onChange={event => {
         setGroupId(event.target.value); setGrants([])
       }}><option value="">选择用户组</option>{groups.map(group =>
         <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
@@ -142,7 +141,8 @@ export function AdminSkillsPage() {
           .map(version => <option key={version.id} value={version.id}>{version.version}</option>)}</select></label>
       <button type="button" disabled={!csrf || !groupId || !grantVersionId}
         onClick={() => setAction({ kind: 'grant', groupId, versionId: grantVersionId })}>
-        授权用户组</button>
+        授权用户组</button></div>
+      {!skillId && <p className="gateway-admin-cell-meta">先选择 Skill，再选择已批准的版本并授权用户组。</p>}
       {groupId && <AdminRecordTable columns={['Skill','版本','状态','操作']}>
         {grants.map(grant => <tr key={grant.skill_id}><td>{grant.name}</td><td>{grant.version}</td><td>已授权</td>
           <td><button type="button" className="gateway-admin-danger" disabled={!csrf} aria-label={`撤销组授权 ${grant.name}`}

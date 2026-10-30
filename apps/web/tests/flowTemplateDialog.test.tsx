@@ -96,3 +96,38 @@ test('saving the current canvas as a template refreshes the catalog', async () =
     await window.happyDOM.close()
   }
 })
+
+test('switching UI language filters builtins locally and retains custom templates', async () => {
+  const { useLocaleStore } = await import('../src/i18n')
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = templateApi.list
+  const previousLocale = useLocaleStore.getState().locale
+  let requests = 0
+  templateApi.list = async () => {
+    requests++
+    return {templates: [
+      {id: 'flow', name: '中文流程', description: '', nodeCount: 1, default: true, locale: 'zh-CN'},
+      {id: 'flow-en', name: 'English workflow', description: '', nodeCount: 1, default: true, locale: 'en-US'},
+      {id: 'mine', name: 'My custom flow', description: '', nodeCount: 1},
+    ]}
+  }
+  invalidateTemplates()
+  useLocaleStore.setState({locale: 'en-US'})
+  const names = () => [...document.querySelectorAll('.flow-template-choice-name')].map(el => el.textContent)
+  try {
+    await act(async () => root.render(<I18nProvider><FlowTemplateDialog open onClose={() => {}} getSteps={() => ({})} onApply={() => {}} onFeedback={() => {}} /></I18nProvider>))
+    assert.deepEqual(names(), ['English workflow', 'My custom flow'])
+    await act(async () => useLocaleStore.setState({locale: 'zh-TW'}))
+    assert.deepEqual(names(), ['中文流程', 'My custom flow'])
+    await act(async () => useLocaleStore.setState({locale: 'ja-JP'}))
+    assert.deepEqual(names(), ['English workflow', 'My custom flow'])
+    assert.equal(requests, 1)
+  } finally {
+    await act(async () => root.unmount())
+    templateApi.list = original
+    useLocaleStore.setState({locale: previousLocale})
+    invalidateTemplates()
+    await window.happyDOM.close()
+  }
+})

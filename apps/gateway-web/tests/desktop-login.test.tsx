@@ -35,7 +35,7 @@ test('platform login accepts mobile callback entries and rejects malformed redir
 test('device authentication hides unrelated portal navigation and provides a browser return link', () => {
   const redirect = encodeURIComponent('http://127.0.0.1:8765/api/gateway-platform/callback')
   const html = renderToString(<MemoryRouter initialEntries={[`/desktop/login${query}&redirect_uri=${redirect}`]}><App /></MemoryRouter>)
-  assert.doesNotMatch(html, /项目分享与添加|个人账户/)
+  assert.doesNotMatch(html, /项目分享与添加|用户中心/)
   assert.match(html, /返回本地工作台/)
   assert.match(html, /http:\/\/127.0.0.1:8765\//)
 })

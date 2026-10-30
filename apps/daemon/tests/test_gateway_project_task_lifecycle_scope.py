@@ -128,9 +128,10 @@ async def test_project_proxy_task_archive_delete_and_copy_require_scope_and_capa
                               message_id="archive-message-1"))[0] == 403
         assert (await request("POST", private_path, {},
                               message_id="archive-message-1"))[0] == 404
-        assert (await request("POST", path, {},
+        assert (await request("POST", path, {"locale": "de-DE"} if action == "prepare" else {},
                               message_id="archive-message-1"))[0] == 200
     draft.assert_awaited_once()
+    assert draft.await_args.kwargs == {"locale": "de-DE"}
     stop.assert_awaited_once()
     confirm_path = "/api/task/copy-source/archive-experience/confirm"
     assert (await request("POST", confirm_path, {"experience": "Remember"},

@@ -6,5 +6,6 @@
   "steps": {
     "nodes": [],
     "connections": []
-  }
+  },
+  "locale": "zh-CN"
 }

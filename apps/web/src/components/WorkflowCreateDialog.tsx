@@ -1,3 +1,4 @@
+import { visibleTemplates } from '../utils/contentLocale'
 import ResizablePanel from './ResizablePanel'
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
@@ -24,7 +25,7 @@ interface WorkflowCreateDialogProps {
 const hasWhitespace = (value: string) => /\s/.test(value)
 
 export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCreateDialogProps) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const createWorkflow = useProjectStore((state) => state.createWorkflow)
   const [templates, setTemplates] = useState<TemplateInfo[]>([])
   const [templateId, setTemplateId] = useState('')
@@ -259,7 +260,7 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
                   style={{ width: '100%' }}
                 >
                   <option value="">{t('layout.blankFlow')}</option>
-                  {templates.map((template) => (
+                  {visibleTemplates(templates, locale, templateId).map((template) => (
                     <option key={template.id} value={template.id}>
                       {template.name}（{t('flow.nodeCount', { count: template.nodeCount })}）
                     </option>

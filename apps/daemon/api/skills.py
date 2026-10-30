@@ -18,10 +18,10 @@ def authorize_onboarding():
 
 
 @router.post('/onboarding', dependencies=[Depends(authorize_onboarding)])
-async def onboarding():
+async def onboarding(title: str | None = Query(default=None, min_length=1, max_length=160)):
     from services.skill_onboarding import create_onboarding
     try:
-        return await create_onboarding()
+        return await create_onboarding(title=title)
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc)) from exc
 

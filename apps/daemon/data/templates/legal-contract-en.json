@@ -1,0 +1,324 @@
+{
+  "id": "legal-contract-en",
+  "default": true,
+  "name": "Contract management",
+  "description": "Contract drafting → Legal review → Signing → Archiving",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "contract_draft",
+        "title": "Contract drafting",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Draft a contract based on business requirements and contract type (purchase/sale/service/NDA/partnership, etc.): select a suitable template, fill in key clauses (subject matter, amount, payment terms, delivery standards, liability, dispute resolution), and mark negotiable and legally mandatory clauses. Produce a contract draft and clause list.",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Business requirements",
+            "type": "Document",
+            "outputs": [
+              {
+                "name": "Contract draft",
+                "type": "Markdown"
+              },
+              {
+                "name": "Clause list",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Contract draft",
+            "type": "Markdown"
+          },
+          {
+            "name": "Clause list",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "legal_review",
+        "title": "Legal review",
+        "position": {
+          "x": 380,
+          "y": 120
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Have the legal team review contract clauses: check legality and compliance (contract law/civil code/industry regulations), identify legal risks and assign high/medium/low risk levels, and review intellectual property and data protection clauses. Produce legal review comments and a risk matrix.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Contract draft",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Legal review comments",
+                "type": "file"
+              },
+              {
+                "name": "Risk matrix",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Legal review comments",
+            "type": "file"
+          },
+          {
+            "name": "Risk matrix",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "commercial_review",
+        "title": "Commercial review",
+        "position": {
+          "x": 380,
+          "y": 300
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Have the commercial team review commercial terms: verify pricing and payment terms, assess feasibility of delivery schedules and acceptance criteria, and review whether liability and damages caps are acceptable. Produce commercial review comments and negotiation strategy recommendations.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Contract draft",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Commercial review comments",
+                "type": "file"
+              },
+              {
+                "name": "Negotiation strategy",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Commercial review comments",
+            "type": "file"
+          },
+          {
+            "name": "Negotiation strategy",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "revision",
+        "title": "Clause revision",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Consolidate legal and commercial review comments and revise the clauses: merge proposed changes, mark revisions using tracked changes, and offer alternatives for disputed clauses. Produce a revised contract and point-by-point responses to review comments.",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Legal review comments",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Revised contract",
+                "type": "Markdown"
+              },
+              {
+                "name": "Response notes",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "Commercial review comments",
+            "type": "file",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Revised contract",
+            "type": "Markdown"
+          },
+          {
+            "name": "Response notes",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "counterparty_negotiation",
+        "title": "Mutual confirmation",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Obtain final confirmation from the counterparty: send the revised contract for review, track feedback clause by clause, address counterproposals and update versions, and confirm both parties agree on all clauses. Produce the final contract and negotiation minutes.",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Revised contract",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Final contract",
+                "type": "Markdown"
+              },
+              {
+                "name": "Negotiation minutes",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Final contract",
+            "type": "Markdown"
+          },
+          {
+            "name": "Negotiation minutes",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "sign_archive",
+        "title": "Signing and archiving",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "hermes",
+        "model": "",
+        "prompt": "Execute signing and archiving: initiate electronic signatures (both parties plus timestamps), verify signatory authority and seal validity, archive in the contract management system, and set key milestone reminders (payments, deliveries, renewal windows). Produce signed contract files and an archive index.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Final contract",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Signed documents",
+                "type": "file"
+              },
+              {
+                "name": "Archive index",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Signed documents",
+            "type": "file"
+          },
+          {
+            "name": "Archive index",
+            "type": "json"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 1
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      }
+    ]
+  },
+  "locale": "en-US"
+}

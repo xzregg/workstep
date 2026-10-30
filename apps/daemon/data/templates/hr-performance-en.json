@@ -1,0 +1,426 @@
+{
+  "id": "hr-performance-en",
+  "default": true,
+  "name": "Performance review",
+  "description": "Goal setting → Progress tracking → Evaluation → Feedback",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "goal_setting",
+        "title": "Goal setting",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Start goal setting for the performance review cycle: align corporate strategy with departmental and individual goals, and define measurable indicators using OKRs or KPIs. Produce individual performance goal sheets (weights, scoring criteria, and data sources), ensuring SMART goals confirmed by managers.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Strategic goals",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Performance goal sheet",
+                "type": "json"
+              },
+              {
+                "name": "OKR alignment",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Performance goal sheet",
+            "type": "json"
+          },
+          {
+            "name": "OKR alignment",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "mid_review",
+        "title": "Mid-cycle review",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Conduct a mid-cycle review: compare actual progress against goals, identify blockers and resource gaps, and assess whether goals need adjustment. Produce a mid-cycle report (progress scores, risk warnings, and improvement plans for the second half), and arrange one-on-one feedback meetings.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Performance goal sheet",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Review report",
+                "type": "file"
+              },
+              {
+                "name": "Improvement plan",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Review report",
+            "type": "file"
+          },
+          {
+            "name": "Improvement plan",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "self_evaluation",
+        "title": "Employee self-assessment",
+        "position": {
+          "x": 680,
+          "y": 80
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Guide employee self-assessment: score each performance goal, summarize key achievements and strengths, reflect on shortcomings and growth opportunities, and propose development goals for the next cycle. Produce a self-assessment report and 360-degree feedback collection plan (peers/direct reports/cross-functional partners).",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Review report",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Self-assessment report",
+                "type": "file"
+              },
+              {
+                "name": "360-degree feedback",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Self-assessment report",
+            "type": "file"
+          },
+          {
+            "name": "360-degree feedback",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "manager_evaluation",
+        "title": "Manager assessment",
+        "position": {
+          "x": 680,
+          "y": 260
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Have direct managers assess performance: score each item using actual data rather than subjective impressions, incorporating 360-degree feedback and multiple dimensions (results, capability growth, values alignment, team contribution). Produce manager assessment reports and recommended performance ratings (S/A/B/C/D).",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Self-assessment report",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Manager assessment",
+                "type": "file"
+              },
+              {
+                "name": "Performance rating",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Manager assessment",
+            "type": "file"
+          },
+          {
+            "name": "Performance rating",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "calibration",
+        "title": "Calibration meeting",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Organize a performance calibration meeting: compare departmental rating distributions for fairness, discuss borderline cases and disputed ratings, and determine forced distribution ratios. Produce calibrated performance results and departmental performance distribution reports.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Performance rating",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Calibration results",
+                "type": "json"
+              },
+              {
+                "name": "Distribution report",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Calibration results",
+            "type": "json"
+          },
+          {
+            "name": "Distribution report",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "result_communication",
+        "title": "Results discussion",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Prepare performance discussion materials and talking points: generate personalized feedback reports (achievements, shortcomings, improvement suggestions), define individual development plans (IDPs) and training needs, and communicate salary adjustments and bonus proposals. Produce performance feedback reports and signed employee acknowledgments.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Calibration results",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Feedback report",
+                "type": "file"
+              },
+              {
+                "name": "Individual development plan",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Feedback report",
+            "type": "file"
+          },
+          {
+            "name": "Individual development plan",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "compensation_exec",
+        "title": "Compensation adjustments",
+        "position": {
+          "x": 1580,
+          "y": 120
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Implement compensation adjustments based on performance results: calculate salary changes and bonuses, generate compensation change details, and update the payroll system. Ensure total adjustments remain within budget, and produce a compensation change summary and personal income tax impact analysis.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Calibration results",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Compensation change sheet",
+                "type": "json"
+              },
+              {
+                "name": "Personal income tax analysis",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Compensation change sheet",
+            "type": "json"
+          },
+          {
+            "name": "Personal income tax analysis",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "type": "archive",
+        "title": "Review archiving",
+        "position": {
+          "x": 1580,
+          "y": 300
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Archive the performance review cycle: consolidate all employee results, generate organizational performance analysis (nine-box talent grid/potential map/attrition risk), and archive all review documents in employee records. Produce a performance summary report and optimization recommendations for the next cycle.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Feedback report",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Performance records",
+                "type": "json"
+              },
+              {
+                "name": "Summary report",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "Compensation change sheet",
+            "type": "json",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Performance records",
+            "type": "json"
+          },
+          {
+            "name": "Summary report",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 0
+      },
+      {
+        "from": 6,
+        "fromPort": 0,
+        "to": 8,
+        "toPort": 0
+      },
+      {
+        "from": 7,
+        "fromPort": 0,
+        "to": 8,
+        "toPort": 1
+      }
+    ]
+  },
+  "locale": "en-US"
+}

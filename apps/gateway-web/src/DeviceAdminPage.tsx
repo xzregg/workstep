@@ -1,3 +1,5 @@
+import { useSearchParams } from 'react-router-dom'
+import { DeviceHealthDetails } from './DeviceHealthDetails'
 import { AdminRowMenu } from './AdminRowMenu'
 import { AdminRecordDetails } from './AdminRecordDetails'
 import { AdminListStatus } from './AdminListStatus'
@@ -11,7 +13,7 @@ import { AdminDeviceActionDialog } from './AdminDeviceActionDialog'
 import { AdminDeviceNameDialog } from './AdminDeviceNameDialog'
 import type { AdminDevice, DeviceAction } from './AdminDeviceActionDialog'
 
-type DeviceFilters = { status: string; q: string; sort: string; direction: string; page: number; pageSize: number }
+type DeviceFilters = { health?: string; status: string; q: string; sort: string; direction: string; page: number; pageSize: number }
 const deviceStatusLabel: Record<string, string> = { pending: '待审批', active: '已启用', disabled: '已停用', revoked: '已撤销' }
 
 export function deviceDisplayName(device: { name?: string | null; connection_ip?: string | null }): string {
@@ -25,16 +27,21 @@ export function deviceDisplayName(device: { name?: string | null; connection_ip?
 export function buildDeviceListQuery(filters: DeviceFilters): string {
   const params = new URLSearchParams({ sort: filters.sort, direction: filters.direction,
     page: String(filters.page), page_size: String(filters.pageSize) })
+  if (filters.health) params.set('health', filters.health)
   if (filters.status) params.set('status', filters.status)
   if (filters.q.trim()) params.set('q', filters.q.trim())
   return params.toString()
 }
 
 export function DeviceAdminPage() {
-  const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
+  const [params] = useSearchParams()
+  const linkedStatus = ['pending','active','disabled','revoked'].includes(params.get('status') ?? '') ? params.get('status')! : ''
+  const linkedHealth = params.get('health') === 'unhealthy' ? 'unhealthy' : ''
+  const [status, setStatus] = useState<'checking' | 'login' | 'ready' | 'session-error'>('checking')
+  const [sessionRevision, setSessionRevision] = useState(0)
   const [csrf, setCsrf] = useState('')
   const [devices, setDevices] = useState<AdminDevice[]>([])
-  const [filters, setFilters] = useState<DeviceFilters>({ status: '', q: '', sort: 'created_at',
+  const [filters, setFilters] = useState<DeviceFilters>({ health: linkedHealth, status: linkedStatus, q: '', sort: 'created_at',
     direction: 'desc', page: 1, pageSize: 25 })
   const [searchDraft, setSearchDraft] = useState('')
   const [total, setTotal] = useState(0)
@@ -48,31 +55,41 @@ export function DeviceAdminPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    setFilters(current => current.status === linkedStatus && current.health === linkedHealth ? current
+      : { ...current, status: linkedStatus, health: linkedHealth, page: 1 })
+  }, [linkedStatus, linkedHealth])
+
+  useEffect(() => {
     const controller = new AbortController()
+    setStatus('checking'); setError('')
     void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
       .then(async (response) => {
-        if (!response.ok) { setStatus('login'); return }
+        if (controller.signal.aborted) return
+        if (response.status === 401) { setStatus('login'); return }
+        if (!response.ok) throw new Error('登录状态加载失败，请重试。')
         const result = await response.json()
         if (controller.signal.aborted) return
         setCsrf(result.csrf_token)
         setStatus('ready')
       })
-      .catch((reason) => { if (reason?.name !== 'AbortError') setStatus('login') })
+      .catch(() => { if (!controller.signal.aborted) { setStatus('session-error'); setError('登录状态加载失败，请重试。') } })
     return () => controller.abort()
-  }, [])
+  }, [sessionRevision])
 
   useEffect(() => {
     if (status !== 'ready') return
     const controller = new AbortController()
-    setLoading(true); setError('')
+    setLoading(true); setError(''); setDevices([]); setTotal(0)
     void fetch(`/api/admin/devices?${buildDeviceListQuery(filters)}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
+      if (controller.signal.aborted) return
+      if (response.status === 401) { setCsrf(''); setStatus('login'); return }
       if (!response.ok) throw new Error(response.status === 403 ? '当前账号没有设备管理权限。' : '设备列表加载失败。')
       const result = await response.json()
       if (!controller.signal.aborted) { setDevices(result.devices ?? []); setTotal(result.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '设备列表加载失败。')
+      if (!controller.signal.aborted && reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '设备列表加载失败。')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [status, filters, revision])
@@ -116,6 +133,10 @@ export function DeviceAdminPage() {
         <option value="pending">待审批</option><option value="active">已启用</option>
         <option value="disabled">已停用</option><option value="revoked">已撤销</option><option value="">全部</option>
       </select>
+      <label htmlFor="device-health">服务健康</label>
+      <select id="device-health" value={filters.health ?? ''} onChange={event => setFilters(current => ({ ...current, health: event.target.value, page: 1 }))}>
+        <option value="">全部</option><option value="unhealthy">异常设备</option>
+      </select>
       <label htmlFor="device-sort">排序</label>
       <select id="device-sort" value={filters.sort} onChange={event => setFilters(current => (
         { ...current, sort: event.target.value, page: 1 }))}>
@@ -141,7 +162,7 @@ export function DeviceAdminPage() {
               <div><dt>连接 IP</dt><dd>{device.connection_ip ?? (device.online ? '未知' : '离线，暂无连接 IP')}</dd></div>
               <div><dt>daemon 版本</dt><dd>{device.version || '未上报'}</dd></div>
               <div><dt>升级检查</dt><dd>{device.update_available == null ? '暂无对应发布版本，无法比较' : device.update_available ? `有新版本 ${device.latest_version}` : '已是最新'}</dd></div>
-            </dl>{device.status === 'revoked' && <p>该设备身份已撤销，不能直接重新启用。需要重新接入时，可彻底删除后再次登录登记。</p>}</AdminRecordDetails>
+            </dl><DeviceHealthDetails device={device} />{device.status === 'revoked' && <p>该设备身份已撤销，不能直接重新启用。需要重新接入时，可彻底删除后再次登录登记。</p>}</AdminRecordDetails>
             <AdminRowMenu label={`${deviceDisplayName(device)} · 更多操作`}>
             <button type="button" disabled={loading} onClick={() => setRenameDevice(device)}>修改名称</button>
             <button type="button" disabled={loading || device.status === 'revoked'} onClick={() => setOwnerDevice(device)}>转移所有者</button>
@@ -180,7 +201,7 @@ export function DeviceAdminPage() {
       onClose={() => setRenameDevice(null)} onComplete={() => {
         setRenameDevice(null); setRevision(value => value + 1)
       }} />}
-    {error && <p className="gateway-auth-error" role="alert">{error} {status === 'ready' &&
-      <button type="button" onClick={() => setRevision(value => value + 1)}>重试</button>}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{error} {(status === 'ready' || status === 'session-error') &&
+      <button type="button" onClick={() => status === 'session-error' ? setSessionRevision(value => value + 1) : setRevision(value => value + 1)}>重试</button>}</p>}
   </section>
 }

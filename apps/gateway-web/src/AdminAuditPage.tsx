@@ -1,3 +1,4 @@
+import { AuditEntityFilter } from './AuditEntityFilter'
 import { AdminRecordDetails } from './AdminRecordDetails'
 import { AdminListStatus } from './AdminListStatus'
 import { GatewayDateRange } from './GatewayDateRange'
@@ -37,6 +38,7 @@ export function AdminAuditPage() {
   const [error, setError] = useState('')
   const [validation, setValidation] = useState('')
   const [revision, setRevision] = useState(0)
+  const [filterReset, setFilterReset] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -74,19 +76,23 @@ export function AdminAuditPage() {
     setPage(1); setFilters(params.toString())
   }
 
-  return <section className="gateway-admin-page">
+  return <section className="gateway-admin-page gateway-audit-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>审计记录</h2></div>
     <p>区分平台登录、桌面设备授权和进入设备工作台；待设备审批不代表已成功登录设备。失败时的尝试账号不代表已验证身份。历史事件不会补录。</p>
     <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
       <GatewayDateRange from={draft.from_time} to={draft.to_time}
         onChange={range => setDraft(current => ({ ...current, ...range }))} />
+      <AuditEntityFilter key={`user-${filterReset}`} kind="user" value={draft.user_id} onChange={user_id => setDraft(current => ({ ...current, user_id }))} />
+      <AuditEntityFilter key={`device-${filterReset}`} kind="device" value={draft.device_id} onChange={device_id => setDraft(current => ({ ...current, device_id }))} />
+      <details className="gateway-audit-exact-filters"><summary>精确 ID 筛选</summary>
       <label>用户 ID<input value={draft.user_id} maxLength={64}
         onChange={event => setDraft(current => ({ ...current, user_id: event.target.value }))} /></label>
       <label>设备 ID<input value={draft.device_id} maxLength={64}
         onChange={event => setDraft(current => ({ ...current, device_id: event.target.value }))} /></label>
       <label>平台项目 ID<input value={draft.project_id} maxLength={64}
         onChange={event => setDraft(current => ({ ...current, project_id: event.target.value }))} /></label>
+      </details>
       <label>操作类型<input value={draft.action} maxLength={128}
         onChange={event => setDraft(current => ({ ...current, action: event.target.value }))} /></label>
       <label>结果<select value={draft.result}
@@ -98,7 +104,7 @@ export function AdminAuditPage() {
         onChange={event => setDraft(current => ({ ...current, q: event.target.value }))} /></label>
       <div className="gateway-usage-filter-actions"><button type="submit">查询审计</button>
         <button type="button" onClick={() => {
-          setDraft(emptyFilters); setPage(1); setFilters(''); setValidation('')
+          setDraft(emptyFilters); setPage(1); setFilters(''); setValidation(''); setFilterReset(value => value + 1)
         }}>清除筛选</button></div>
     </form>
     {validation && <p role="alert" className="gateway-auth-error">{validation}</p>}

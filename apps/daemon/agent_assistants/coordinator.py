@@ -268,10 +268,10 @@ class CoordinatorModule:
         )
 
     async def draft_archive_experience(
-        self, project_id: str, task_id: str, message_id: str | None = None,
+        self, project_id: str, task_id: str, message_id: str | None = None, locale: str = "zh-CN",
     ) -> str:
         return await self._archive_drafts.draft_archive_experience(
-            project_id, task_id, message_id,
+            project_id, task_id, message_id, locale,
         )
 
     def poll_archive_preparation(self, project_id, task_id, message_id, prepare):

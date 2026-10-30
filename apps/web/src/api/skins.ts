@@ -1,3 +1,4 @@
+import { zhCNT } from '../i18n'
 import { request, BASE, ApiError } from './transport'
 import { workspaceCatalogPath } from './workspaceScope'
 import { gatewayFetch, gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
@@ -45,5 +46,5 @@ export const skinsApi = {
   remove: (id: string) => request('/skins/' + encodeURIComponent(id), { method: 'DELETE' }),
   import: async (file: File, replace = false) => prepareSkin(await (await binary('/skins/import?replace=' + replace, { method: 'POST', body: file, headers: { 'Content-Type': 'application/zip' } })).json() as SkinDocument),
   export: async (id: string) => (await binary('/skins/' + encodeURIComponent(id) + '/export')).blob(),
-  onboarding: () => request<SkinWorkspace>('/skins/onboarding', { method: 'POST' }),
+  onboarding: () => request<SkinWorkspace>('/skins/onboarding?title=' + encodeURIComponent(zhCNT('builtinContent.skinTitle')), { method: 'POST' }),
 }

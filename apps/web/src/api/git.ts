@@ -1,3 +1,4 @@
+import { contentLocale } from '../utils/contentLocale'
 import { request } from './client'
 
 export interface GitFile { path: string; old_path: string | null; index_status: string; worktree_status: string; untracked: boolean; staged: boolean; conflict: boolean; submodule: boolean }
@@ -60,7 +61,7 @@ export function createGitApi(client: typeof request = request) {
   discard: (id: string, path: string, snapshot: string) => client<GitStatus>(route(id) + '/discard', post({ path, snapshot })),
   ignore: (id: string, path: string, snapshot: string) => client<GitStatus>(route(id) + '/ignore', post({ path, snapshot })),
   saveFile: (id: string, path: string, content: string, snapshot: string, expectedContent?: string) => client<GitStatus>(route(id) + '/files/content', post({ path, content, snapshot, expected_content: expectedContent })),
-  generateCommitMessage: (id: string, paths: string[], snapshot: string) => client<{ message: string }>(route(id) + '/commit-message', post({ paths, snapshot })),
+  generateCommitMessage: (id: string, paths: string[], snapshot: string) => client<{ message: string }>(route(id) + '/commit-message', post({ paths, snapshot, locale: contentLocale() })),
   fetch: (id: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/fetch', post()),
   fetchRemote: (id: string, remote: string) => client<GitRemotes>(route(id) + '/fetch-remote', post({ remote })),
   push: (id: string, branch: string, snapshot: string, target?: { remote: string; targetBranch: string; setUpstream: boolean }) => client<GitStatus>(route(id) + '/push', post({ branch, snapshot, remote: target?.remote, target_branch: target?.targetBranch, set_upstream: target?.setUpstream || false })),

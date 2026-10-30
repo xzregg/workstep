@@ -1,3 +1,4 @@
+import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminListStatus } from './AdminListStatus'
 import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
@@ -29,7 +30,8 @@ const roleNames: Record<string, string> = {
 
 export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
   const navigate = useNavigate()
-  const [access, setAccess] = useState<'checking' | 'ready' | 'forbidden'>('checking')
+  const [access, setAccess] = useState<'checking' | 'ready' | 'forbidden' | 'session-error'>('checking')
+  const [sessionRevision, setSessionRevision] = useState(0)
   const [csrf, setCsrf] = useState('')
   const [roles, setRoles] = useState<AdminRole[]>([])
   const [total, setTotal] = useState(0)
@@ -44,15 +46,16 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
 
   useEffect(() => {
     const controller = new AbortController()
+    setAccess('checking'); setError('')
     void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (response.status === 401) { navigate('/auth?next=%2Fadmin%2Fadmins', { replace: true }); return }
         if (!response.ok) throw new Error('登录状态加载失败。')
         const session = await response.json()
         if (!controller.signal.aborted) { setCsrf(session.csrf_token); setAccess('ready') }
-      }).catch(reason => { if (reason?.name !== 'AbortError') setError('登录状态加载失败，请刷新重试。') })
+      }).catch(reason => { if (!controller.signal.aborted) { setError('登录状态加载失败，请重试。'); setAccess('session-error') } })
     return () => controller.abort()
-  }, [navigate])
+  }, [navigate, sessionRevision])
 
   useEffect(() => {
     if (access !== 'ready') return
@@ -81,7 +84,7 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <h2>管理员权限</h2>
-    {access === 'checking' && <p role="status">正在检查登录状态…</p>}
+    <AdminSessionStatus loading={access === 'checking'} error={access === 'session-error' ? error : ''} onRetry={() => setSessionRevision(value => value + 1)} />
     {access === 'forbidden' && <p role="alert">当前账号没有管理员权限配置资格。</p>}
     {access === 'ready' && <>
       <div className="gateway-admin-toolbar">

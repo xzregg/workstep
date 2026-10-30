@@ -3,6 +3,7 @@ from gateway.services.audit_ledger import query_audit as _handle_query_audit
 
 
 from datetime import datetime
+from typing import Literal
 
 
 from fastapi import APIRouter, Query, Request
@@ -26,3 +27,9 @@ async def query_audit(
     offset: int = Query(default=0, ge=0),
 ):
     return await invoke(_handle_query_audit, request=request, project_id=project_id, device_id=device_id, action=action, user_id=user_id, result=result, q=q, from_time=from_time, to_time=to_time, limit=limit, offset=offset)
+
+
+@router.get('/filter-options')
+async def audit_filter_options(request: Request, kind: Literal['user', 'device'], q: str = Query('', max_length=128)):
+    from gateway.services.audit_ledger import audit_filter_options as handle
+    return await invoke(handle, request=request, kind=kind, q=q)

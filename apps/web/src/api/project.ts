@@ -1,3 +1,4 @@
+import { zhCNT } from '../i18n'
 import { workspaceCatalogPath } from './workspaceScope'
 import { request } from './transport'
 import type { ProjectConcurrencyResult, ProjectSettingsResult } from './client'
@@ -171,7 +172,7 @@ export interface ProjectSkillSelection {
 }
 
 export const skillApi = {
-  onboarding: () => request<{ project_id: string; project_name: string; session_id: string; workspace_path: string; package_path: string; prompt: string }>('/skills/onboarding', { method: 'POST' }),
+  onboarding: () => request<{ project_id: string; project_name: string; session_id: string; workspace_path: string; package_path: string; prompt: string }>('/skills/onboarding?title=' + encodeURIComponent(zhCNT('builtinContent.skillTitle')), { method: 'POST' }),
   list: (projectId: string) => request<ProjectSkillSelection>(
     `/skills?project_id=${encodeURIComponent(projectId)}`,
   ),

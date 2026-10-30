@@ -22,9 +22,10 @@ test('audit administrator only sees authorized navigation', () => {
  assert.doesNotMatch(html, /平台设置/)
 })
 
-test('administration menu categories start collapsed even on a child route', () => {
+test('administration expands only the current category and keeps the mobile drawer closed', () => {
  const html = renderToString(<MemoryRouter initialEntries={['/admin/users']}><AdminLayout roles={['super_admin']}><p>用户列表</p></AdminLayout></MemoryRouter>)
- assert.doesNotMatch(html, /<details[^>]*\bopen(?:=""|\s|>)/)
+ assert.match(html, /<details[^>]*data-current="true"[^>]*open=""><summary>用户与权限/ )
+ assert.doesNotMatch(html, /<details[^>]*open=""><summary>设备管理/ )
  assert.match(html, /aria-label="打开管理菜单"/)
  assert.match(html, /aria-expanded="false"/)
  assert.match(html, /aria-label="移动端管理菜单"/)

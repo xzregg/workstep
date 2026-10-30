@@ -1,6 +1,14 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const enUS: Messages = {
+  builtinContent: {
+    "skillTitle": "Custom skill creation",
+    "engineTitle": "Custom engine setup",
+    "importTitle": "Import custom engine",
+    "skinTitle": "Custom skin design",
+    "skillDraft": "Help me create a custom skill. First ask about its purpose, trigger conditions, inputs, outputs, and required tools.\nShared Runtime workspace and skill creation root: {workspace}\nCreate a named skill package inside this root with SKILL.md and any required references, scripts, and assets. Do not modify other existing work or installed skill libraries. SKILL.md must include name and description frontmatter, describe actual usage and capability boundaries, and provide validated examples. Explain the installation location and steps when done. Copy into an existing skill library only when the user explicitly requests installation; do not load drafts as installed skills.",
+    "importDraft": "Help me install and register an imported custom engine package.\nWorking directory: {workspace}\nImported package: {package}\nUse workstep-cli to read references/custom-engine.md and the adapter contract on demand. Use the existing package; do not recreate the adapter. Check its manifest and existing engines first. If the same engine ID is registered, ask before replacing it; do not overwrite directly. Exported packages exclude credentials, dependencies, and local acceptance reports. Install package dependencies and configure the provider, authentication, and model through Settings without modifying WorkStep's Python environment. Complete real connection, method, and event tests; pass engine validate before register. After registration, ask me to click Rescan on the Settings engine page; no restart is needed."
+},
   skinExtensions: zhCN.skinExtensions,
   taskWorkflow: zhCN.taskWorkflow,
   roleCenter: zhCN.roleCenter,
@@ -115,10 +123,10 @@ export const enUS: Messages = {
     studioHistory: "对话记录",
     studioChatTab: "聊天",
     studioPreviewTab: "编辑与预览",
-    studioDraft: "请先阅读 Runtime 根目录的 skin-design.md 和 skin-contract.json，再帮我调整外观。字体类型、四档字号、颜色与布局都可以调整；只修改我提出的部分，完成后校验皮肤包。",
+    studioDraft: "First read skin-design.md and skin-contract.json in the Runtime root, then help me adjust the appearance. Font families, four font sizes, colors, and layouts can be adjusted. Change only the parts I request and validate the skin package when done.",
     studioVersionHint: "已读取的外观方案 · PC / 手机 · 字体与样式可继续调整",
     studioContinue: "用这一版继续调整",
-    studioContinuePrompt: "请继续调整「{name}」这一版皮肤。",
+    studioContinuePrompt: "Continue adjusting this version of the skin: {name}.",
     studioDefaultName: "我的专属皮肤",
     studioPackage: "皮肤包目录",
     studioReadPackage: "读取此包",

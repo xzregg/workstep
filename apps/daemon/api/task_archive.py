@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import Field
 from starlette.responses import JSONResponse
 
 from api.task_context import _project, _require_scoped_task, _run_db, _release_task_channel_bindings
@@ -19,7 +20,11 @@ class ArchiveTaskRequest(BaseSchema):
     task_id: str
 
 
-class ConfirmArchiveExperienceRequest(BaseSchema):
+class ArchiveLanguageRequest(BaseSchema):
+    locale: str = Field(default="zh-CN", max_length=64)
+
+
+class ConfirmArchiveExperienceRequest(ArchiveLanguageRequest):
     experience: str
 
 
@@ -73,6 +78,7 @@ async def archive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="pro
 @router.post("/{task_id}/archive-experience/prepare")
 async def prepare_archive_experience(
     task_id: str,
+    body: ArchiveLanguageRequest | None = None,
     pid: str = Query(..., alias="project_id"),
     message_id: str | None = Query(None),
     background: bool = Query(False),
@@ -84,6 +90,7 @@ async def prepare_archive_experience(
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
     await _require_scoped_task(pid, task_id)
+    locale = body.locale if body else "zh-CN"
     progress_message_id = message_id or str(uuid.uuid4())
     if background:
         if not message_id:
@@ -91,7 +98,7 @@ async def prepare_archive_experience(
         try:
             result = coordinator_module.poll_archive_preparation(
                 pid, task_id, progress_message_id,
-                lambda: _generate_archive_experience(pid, task_id, progress_message_id),
+                lambda: _generate_archive_experience(pid, task_id, progress_message_id, locale),
             )
         except ArchiveExperienceStopped as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -100,10 +107,10 @@ async def prepare_archive_experience(
         return result if result is not None else JSONResponse(
             {"status": "running", "message_id": progress_message_id}, status_code=202,
         )
-    return await _generate_archive_experience(pid, task_id, progress_message_id)
+    return await _generate_archive_experience(pid, task_id, progress_message_id, locale)
 
 
-async def _generate_archive_experience(pid: str, task_id: str, progress_message_id: str):
+async def _generate_archive_experience(pid: str, task_id: str, progress_message_id: str, locale: str = "zh-CN"):
     from agent_assistants.coordinator import ArchiveExperienceStopped
     from main import coordinator_module
 
@@ -113,6 +120,7 @@ async def _generate_archive_experience(pid: str, task_id: str, progress_message_
             pid,
             task_id,
             progress_message_id,
+            **({"locale": locale} if locale != "zh-CN" else {}),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -192,7 +200,7 @@ async def confirm_archive_experience(
 
     try:
         archived, memory_saved = await _run_db(pid, lambda: persist_experience_and_archive(
-            project, task_service, pid, task_id, experience,
+            project, task_service, pid, task_id, experience, req.locale,
         ))
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail="Memory file access denied") from exc

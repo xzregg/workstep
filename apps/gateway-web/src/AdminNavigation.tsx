@@ -39,7 +39,7 @@ export function AdminNavigation({ roles, onNavigate }: { roles: string[]; onNavi
   {groups.map(group => {
    const visible = modules.filter(item => group.paths.includes(item.path) && (roles.includes('super_admin') || item.roles.some(role => roles.includes(role))))
    return visible.length > 0 && <details className="gateway-admin-nav-group" key={group.title} data-current={group.paths.includes(pathname) || undefined}
-    open={expanded[group.title] ?? false} onToggle={event => {
+    open={expanded[group.title] ?? group.paths.includes(pathname)} onToggle={event => {
      const open = event.currentTarget.open
      setExpanded(previous => previous[group.title] === open ? previous : { ...previous, [group.title]: open })
     }}>

@@ -51,7 +51,7 @@ test('manual controls edit the shared package, isolate preview, and protect dirt
     assert.match(document.querySelector('.skin-studio-chat')!.textContent!, /之前想要蓝色背景/)
     await act(async () => { history.value = 'session'; history.dispatchEvent(new window.Event('change', { bubbles: true })) })
     await act(async () => document.querySelector<HTMLButtonElement>('.skin-studio-version button')!.click())
-    assert.match(document.querySelector<HTMLTextAreaElement>('.skin-studio-chat textarea')!.value, /请继续调整「我的皮肤」/)
+    assert.match(document.querySelector<HTMLTextAreaElement>('.skin-studio-chat textarea')!.value, /Continue adjusting this version of the skin: 我的皮肤/)
     const field = document.querySelector('.skin-studio-controls fieldset input:not([type])') as HTMLInputElement || document.querySelector('.skin-studio-controls fieldset input[type=text]') as HTMLInputElement
     await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(field, '手动微调'); field.dispatchEvent(new window.Event('input', { bubbles: true })) })
     await act(async () => document.querySelector<HTMLButtonElement>('.skin-studio-palette button[aria-label="#7c65d5"]')!.click())

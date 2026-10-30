@@ -1,4 +1,12 @@
 export const zhCN = {
+  builtinContent: {
+    "skillTitle": "自定义技能制作",
+    "engineTitle": "自定义引擎接入",
+    "importTitle": "导入自定义引擎",
+    "skinTitle": "自定义皮肤设计",
+    "skillDraft": "请帮我制作一个自定义技能。先询问用途、触发条件、输入输出和需要的工具。\n共享 Runtime 工作目录及技能创作根目录：{workspace}\n在此根目录内创建具名技能包，编写 SKILL.md 及所需的 references、scripts、assets 文件。不修改其他已有成果或已安装技能库。SKILL.md 必须包含 name 和 description frontmatter，说明真实使用方法和能力边界，并验证示例。完成后说明安装位置与步骤；只有用户明确要求安装时才复制到已有技能库，不能把草稿作为已安装技能加载。",
+    "importDraft": "请协助我安装并注册已导入的自定义引擎包。\n本次工作目录：{workspace}\n已导入的引擎包：{package}\n通过 workstep-cli 按需阅读 references/custom-engine.md 和接口契约。使用已有包，不重新创建适配器。先检查清单与现有引擎；同 ID 已注册时先询问是否替换，不直接覆盖。导出包不包含凭据、依赖和本机验收报告；请安装包内 dependencies，通过设置完成供应商、认证及模型配置，不修改 WorkStep 的 Python 环境。完成真实连接、方法及事件测试，通过 engine validate 后才能 register。注册成功后提示我在设置的引擎页面点击“重新扫描”，无需重启。"
+},
   skinExtensions: {
     features: '附加功能', codeDisabled: '此皮肤的自定义组件尚未启用，仅应用外观。',
     enable: '启用自定义组件', trust: '仅启用你信任的皮肤。组件与当前界面拥有相同权限，可以访问当前账号数据和浏览器存储；这不是隔离运行环境。',

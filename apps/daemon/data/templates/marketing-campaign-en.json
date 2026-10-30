@@ -1,0 +1,375 @@
+{
+  "id": "marketing-campaign-en",
+  "default": true,
+  "name": "Marketing campaign",
+  "description": "Market research → Planning → Implementation → Retrospective",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "market_research",
+        "title": "Market research",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Conduct pre-campaign market research: analyze target audience profiles and behavior, recent competitor marketing activities and strategies, market trends, and seasonal factors. Produce a market research report and audience insights (media habits, content preferences, decision paths).",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Marketing objectives",
+            "type": "Document",
+            "outputs": [
+              {
+                "name": "Research report",
+                "type": "file"
+              },
+              {
+                "name": "Audience insights",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Research report",
+            "type": "file"
+          },
+          {
+            "name": "Audience insights",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "campaign_planning",
+        "title": "Campaign planning",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Develop the overall campaign plan: define the theme and core creative idea, design mechanics (threshold discounts/discounts/group buying/referrals/check-ins, etc.), map participation paths and conversion funnels, and allocate budgets (channels/content/KOLs/advertising). Produce a campaign proposal and Gantt timeline.",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Research report",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Campaign proposal",
+                "type": "file"
+              },
+              {
+                "name": "Project Gantt chart",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Campaign proposal",
+            "type": "file"
+          },
+          {
+            "name": "Project Gantt chart",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "creative_production",
+        "title": "Creative production",
+        "position": {
+          "x": 680,
+          "y": 80
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Create all campaign assets: channel ad copy (feed/search/SEM), landing page design and copy, social content (text/images/short-video scripts/live-stream scripts), KOL collaboration briefs, and email/SMS/push copy. Produce an asset library and distribution schedule.",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Campaign proposal",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Asset library",
+                "type": "json"
+              },
+              {
+                "name": "Distribution schedule",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Asset library",
+            "type": "json"
+          },
+          {
+            "name": "Distribution schedule",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "landing_page",
+        "title": "Landing page development",
+        "position": {
+          "x": 680,
+          "y": 280
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Build the campaign landing page and conversion path: develop a responsive campaign page, configure marketing automation (user tags/trigger rules/A-B traffic splitting), and set up conversion tracking and dashboards. Produce the landing page URL and technical configuration documentation.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Campaign proposal",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Landing page",
+                "type": "file"
+              },
+              {
+                "name": "Technical documentation",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Landing page",
+            "type": "file"
+          },
+          {
+            "name": "Technical documentation",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "channel_launch",
+        "title": "Channel distribution",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "hermes",
+        "model": "",
+        "prompt": "Execute scheduled multichannel distribution: launch feed ads (Douyin/Xiaohongshu/WeChat), search SEM ads, KOL/KOC content, and private community messages. Monitor results and budget consumption in real time, and adjust bids and targeting promptly for underperforming channels.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Asset library",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Distribution record",
+                "type": "json"
+              },
+              {
+                "name": "Real-time data",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "Landing page",
+            "type": "file",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Distribution record",
+            "type": "json"
+          },
+          {
+            "name": "Real-time data",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "performance_monitor",
+        "title": "Performance monitoring",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Monitor campaign performance and optimize in real time: track funnel metrics (impressions/clicks/conversions/payments), calculate channel ROI, forecast retention and LTV, and detect abnormal traffic and promotion abuse. Produce daily performance monitoring reports and optimization recommendations.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Distribution record",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Monitoring report",
+                "type": "file"
+              },
+              {
+                "name": "Optimization recommendations",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Monitoring report",
+            "type": "file"
+          },
+          {
+            "name": "Optimization recommendations",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "retrospective",
+        "title": "Retrospective and optimization",
+        "position": {
+          "x": 1580,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Conduct a full post-campaign retrospective: analyze goal attainment (GMV/ROI/acquisition cost/brand awareness), summarize success factors and lessons from failures, rank channel efficiency and propose budget improvements, and analyze feedback and reputation. Produce a retrospective report and campaign archive (assets/data/methodology), capturing best practices for the next campaign.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Monitoring report",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Retrospective report",
+                "type": "file"
+              },
+              {
+                "name": "Best practices",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Retrospective report",
+            "type": "file"
+          },
+          {
+            "name": "Best practices",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 1
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      },
+      {
+        "from": 6,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 0
+      }
+    ]
+  },
+  "locale": "en-US"
+}

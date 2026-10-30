@@ -22,7 +22,7 @@ test('account page validates a new distinct password and confirmation', () => {
 
 test('account area is present in the Gateway workbench', () => {
   const html = renderToString(<MemoryRouter initialEntries={['/account']}><App /></MemoryRouter>)
-  assert.match(html, /个人账户/)
+  assert.match(html, /用户中心/)
   assert.match(renderToString(<MemoryRouter><AccountPage /></MemoryRouter>), /正在检查登录状态/)
 })
 

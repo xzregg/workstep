@@ -15,19 +15,19 @@ def workspace_parent():
     return workspace_root()
 
 
-async def create_onboarding():
+async def create_onboarding(title: str | None = None):
     module = chat_module()
     await asyncio.to_thread(module._resolve_engine_models)
     project = await asyncio.to_thread(lambda: runtime_project(project_manager, workspace_parent()))
     await asyncio.to_thread(skill_center.runtime_selection, project.path)
-    session = await project_manager.run_db(project.id, lambda current: module.create_session(project.id, title='自定义技能制作'))
+    session = await project_manager.run_db(project.id, lambda current: module.create_session(project.id, title=title or '自定义技能制作'))
     prompt = (
-        '请帮我制作一个自定义技能。先询问用途、触发条件、输入输出和需要的工具。'
-        f'\n共享 runtime 工作目录：{project.path}\n技能创作根目录：{project.path}\n'
-        '在 Runtime 根目录内自行创建具名技能包，编写 SKILL.md 及 references、scripts、assets 等配套文件，'
-        '不修改其他已有成果或已安装技能库。SKILL.md 需要 name 和 description frontmatter，'
-        '说明真实使用方法和能力边界，并验证示例。完成后说明安装位置与步骤；'
-        '只有用户明确要求安装时才复制到已有技能库，不能把草稿直接作为已安装技能加载。'
+        'Help me create a custom skill. First ask about its purpose, trigger conditions, inputs, outputs, and required tools.'
+        f'\nShared Runtime workspace: {project.path}\nSkill creation root: {project.path}\n'
+        'Create a named skill package within the Runtime root, with SKILL.md and any required references, scripts, and assets. '
+        'Do not modify other existing work or installed skill libraries. SKILL.md requires name and description frontmatter. '
+        'Describe actual usage and capability boundaries, and validate examples. Explain the installation location and steps when done. '
+        'Copy into an existing skill library only if the user explicitly requests installation; do not load drafts as installed skills.'
     )
     return {'project_id': project.id, 'project_name': project.name, 'session_id': session['id'],
             'workspace_path': str(project.path), 'package_path': str(project.path), 'prompt': prompt}

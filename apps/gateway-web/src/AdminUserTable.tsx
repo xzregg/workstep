@@ -19,6 +19,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh, canVi
  const [notice, setNotice] = useState('')
  const chosen = users.filter(user=>selected.includes(user.id))
  function action(kind:'approve'|'enable'|'disable'|'delete'|'restore'|'purge', ids = selected) {
+  setNotice('')
   const verb = {approve:'批准',enable:'启用',disable:'停用',delete:'删除',restore:'恢复',purge:'彻底删除'}[kind]
   setBulk({title:`批量${verb}用户`,label:`确认${verb}`,url:'/api/admin/users/bulk',
    body:{action:kind,user_ids:ids},password:['disable','delete','restore','purge'].includes(kind),
@@ -45,10 +46,10 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh, canVi
     <td>{user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '暂无记录'}</td>
     <td><div className="gateway-row-actions">
      {canViewAudit && <a href={`/admin/audit?user_id=${encodeURIComponent(user.id)}`} aria-label={`${user.display_name}的审计日志`}>审计日志</a>}
-     {user.status!=='deleted' && !user.is_recovery && <button type="button" disabled={loading} onClick={()=>setEditing(user)}>编辑</button>}
-     {user.status==='pending' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>setSingle({user,kind:'approve'})}>批准</button>}
+     {user.status!=='deleted' && !user.is_recovery && <button type="button" disabled={loading} onClick={()=>{setNotice('');setEditing(user)}}>编辑</button>}
+     {user.status==='pending' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>{setNotice('');setSingle({user,kind:'approve'})}}>批准</button>}
      {user.status==='deleted' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('restore',[user.id])}>恢复</button> : user.status==='disabled' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('enable',[user.id])}>启用</button>
-      : <button type="button" disabled={loading || user.is_recovery} onClick={()=>setSingle({user,kind:'disable'})}>停用</button>}
+      : <button type="button" disabled={loading || user.is_recovery} onClick={()=>{setNotice('');setSingle({user,kind:'disable'})}}>停用</button>}
      {user.status!=='deleted' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('delete',[user.id])}>删除</button>}
      {user.status==='deleted' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('purge',[user.id])}>彻底删除</button>}
      {user.is_recovery && <span className="gateway-person-note">受保护账号</span>}

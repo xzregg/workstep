@@ -391,9 +391,6 @@ dialog.gateway-dialog-backdrop::backdrop { background: transparent; }
 .gateway-account-summary div { display: flex; gap: 16px; }
 .gateway-account-summary dt { min-width: 80px; color: #6e6e73; }
 .gateway-account-summary dd { margin: 0; overflow-wrap: anywhere; }
-.gateway-account-form { max-width: 440px; }
-.gateway-account-form h3 { margin-bottom: 0; }
-.gateway-admin-page button.gateway-account-logout { margin-top: 32px; background: #f5f5f7; color: #1d1d1f; }
 .gateway-device-list { list-style: none; padding: 0; }
 .gateway-device-list li {
   display: flex;
@@ -571,6 +568,7 @@ main > .gateway-portal-header {
 .gateway-tree-scroll { overflow: auto; max-height: 65vh; }
 .gateway-tree-scroll > ul { min-width: max-content; }
 .gateway-tree-row { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.gateway-user-group-tree li > .gateway-tree-row { padding-left: 24px; }
 .gateway-user-group-tree .gateway-tree-row input[type=checkbox] { margin: 0; }
 .gateway-tree-row button span { white-space: nowrap; }
 .gateway-tree-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
@@ -611,7 +609,7 @@ main > .gateway-portal-header {
 body:has(.gateway-admin-mobile-menu[open]) { overflow: hidden; }
 body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-admin-shell .gateway-confirm-dialog { max-height: calc(100dvh - 32px); }
-@media (max-width: 1200px) { .gateway-users-workspace { grid-template-columns: 280px minmax(0, 1fr); gap: 20px; } }
+@media (max-width: 1440px) { .gateway-users-workspace { grid-template-columns: 260px minmax(0, 1fr); gap: 20px; } }
 @media (max-width: 1023px) {
  .gateway-admin-shell { display: block; }
  .gateway-admin-desktop-sidebar { display: none; }
@@ -917,15 +915,37 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-admin-page button.gateway-device-name-button:disabled { cursor: default; }
 
 
-.gateway-user-group-choices { grid-column: 1 / -1; min-width: 0; margin: 8px 0; padding: 12px; border: 1px solid var(--gateway-admin-border); border-radius: 8px; max-height: 280px; overflow-y: auto; }
-.gateway-auth-form .gateway-user-group-choices label.gateway-check-label { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-.gateway-auth-form .gateway-user-group-choices input[type=checkbox] { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; flex: 0 0 16px; }
-
-.gateway-modal.gateway-edit-user-dialog { width: min(680px, calc(100vw - 32px)); }
-@media (min-width: 768px) {
- .gateway-admin-page .gateway-edit-user-dialog .gateway-auth-form { grid-template-columns: 150px minmax(0, 1fr); max-width: none; }
+.gateway-modal.gateway-edit-user-dialog { width: min(960px, calc(100vw - 32px)); }
+.gateway-admin-page .gateway-edit-user-dialog .gateway-edit-user-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; gap: 24px; max-width: none; }
+.gateway-admin-page .gateway-edit-user-form > .gateway-edit-user-details { grid-column: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.gateway-edit-user-groups { grid-column: 2; grid-row: 1; padding-left: 24px; border-left: 1px solid var(--gateway-admin-separator); }
+.gateway-admin-page .gateway-edit-user-form > .gateway-auth-error { grid-column: 1 / -1; }
+.gateway-edit-user-section { min-width: 0; }
+.gateway-edit-user-section + .gateway-edit-user-section { padding-top: 20px; border-top: 1px solid var(--gateway-admin-separator); }
+.gateway-edit-user-section h4 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
+.gateway-edit-user-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.gateway-edit-user-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.gateway-edit-user-field p, .gateway-edit-user-section-hint { margin: 8px 0 0; color: var(--gateway-admin-muted); font-size: 12px; line-height: 1.6; }
+.gateway-edit-user-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gateway-edit-user-section-heading h4 { margin: 0; }
+.gateway-edit-user-section-heading > span { color: var(--gateway-admin-muted); font-size: 12px; }
+.gateway-edit-user-confirm-password { margin-top: 16px; max-width: 320px; }
+.gateway-user-group-choices { margin-top: 12px; min-width: 0; padding: 12px; border: 1px solid var(--gateway-admin-separator); border-radius: 10px; }
+.gateway-user-group-choices .gateway-user-group-tree > h3 { display: none; }
+.gateway-user-group-choices .gateway-tree-scroll { height: 460px; max-height: 50vh; }
+.gateway-user-group-choices .gateway-tree-scroll > ul { min-width: 0; }
+.gateway-user-group-choices .gateway-tree-row > button { gap: 8px; margin: 0; min-width: 0; }
+.gateway-user-group-choices .gateway-tree-row > button span { white-space: normal; overflow-wrap: anywhere; }
+.gateway-user-group-choices .gateway-tree-row > button small { flex-shrink: 0; font-size: 11px; }
+.gateway-user-group-choices .gateway-tree-tools { justify-content: space-between; margin: 8px 0; }
+.gateway-auth-form .gateway-user-group-choices label.gateway-check-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; }
+.gateway-admin-page .gateway-auth-form .gateway-user-group-choices input[type=checkbox] { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; flex: 0 0 16px; }
+.gateway-admin-page .gateway-user-group-choices .gateway-tree-tools button { width: auto; min-height: 28px; padding: 4px 8px; font-size: 12px; }
+@media (max-width: 767px) {
+ .gateway-admin-page .gateway-edit-user-dialog .gateway-edit-user-form { grid-template-columns: minmax(0, 1fr); }
+ .gateway-edit-user-groups { grid-column: 1; grid-row: auto; padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--gateway-admin-separator); }
+ .gateway-user-group-choices .gateway-tree-scroll { height: 220px; max-height: 32vh; }
 }
-
 
 .gateway-device-auth-card .gateway-auth-description { margin: 0 0 24px; font-size: 15px; }
 .gateway-device-auth-session { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: #52605b; font-size: 13px; }

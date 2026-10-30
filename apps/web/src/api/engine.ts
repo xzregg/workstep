@@ -1,3 +1,4 @@
+import { zhCNT } from '../i18n'
 import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { request, singleFlight } from './transport'
 import { browserActorHeaders } from '../utils/browserActor'
@@ -432,14 +433,14 @@ export function invalidateEngineModels(engineId: string): void {
 
 export const engineApi = {
   customImport: async (file: File) => {
-    const response = await gatewayFetch('/api/engine/custom/import', {
+    const response = await gatewayFetch('/api/engine/custom/import?title=' + encodeURIComponent(zhCNT('builtinContent.importTitle')), {
       method: 'POST', body: file,
       headers: { ...browserActorHeaders(), 'Content-Type': 'application/zip' },
     })
     if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || `HTTP ${response.status}`)
     return response.json() as Promise<{ project_id: string; project_name: string; session_id: string; workspace_path: string; package_path: string; prompt: string }>
   },
-  customOnboarding: () => request<{ project_id: string; project_name: string; session_id: string; workspace_path: string; prompt: string }>('/engine/custom/onboarding', { method: 'POST' }),
+  customOnboarding: () => request<{ project_id: string; project_name: string; session_id: string; workspace_path: string; package_path?: string; prompt: string }>('/engine/custom/onboarding?title=' + encodeURIComponent(zhCNT('builtinContent.engineTitle')), { method: 'POST' }),
   customDisable: (engineId: string, disabled: boolean) => request<{ restart_required?: boolean }>('/engine/custom/disable', { method: 'POST', body: JSON.stringify({ engine_id: engineId, disabled }) }),
   customRollback: (engineId: string) => request<{ restart_required: boolean }>('/engine/custom/rollback', { method: 'POST', body: JSON.stringify({ engine_id: engineId }) }),
   customExport: async (engineId: string) => {

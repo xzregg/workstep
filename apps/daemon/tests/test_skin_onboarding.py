@@ -10,7 +10,7 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     module = SimpleNamespace(_resolve_engine_models=lambda: ("codex_sdk", None, None),
                              create_session=Mock(return_value={"id": "session"}))
     monkeypatch.setattr(onboarding, "chat_module", lambda: module)
-    monkeypatch.setattr(onboarding, "design_session", lambda project, chat: {**chat.create_session(project.id, title="自定义皮肤设计"), "created": True})
+    monkeypatch.setattr(onboarding, "design_session", lambda project, chat, title=None: {**chat.create_session(project.id, title=title or "自定义皮肤设计"), "created": True})
     monkeypatch.setattr(onboarding, "workspace_parent", lambda: tmp_path)
     project = SimpleNamespace(id="project", name="runtime", path=tmp_path)
     monkeypatch.setattr(onboarding.project_manager, "init_project", lambda *a, **kw: project)
@@ -72,14 +72,14 @@ async def test_onboarding_api_uses_real_db_without_blocking_event_loop(tmp_path,
     async def health(): return {"ok": True}
     try:
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
-            pending = asyncio.create_task(client.post("/api/skins/onboarding"))
+            pending = asyncio.create_task(client.post("/api/skins/onboarding?title=Custom%20skin"))
             await asyncio.sleep(.05)
             assert (await asyncio.wait_for(client.get("/health"), .1)).json()["ok"]
             response = await pending
             assert response.status_code == 200, response.text
             result = response.json()
             detail = await manager.run_db(result["project_id"], lambda current: module.get_session(result["project_id"], result["session_id"]))
-            assert detail["title"] == "自定义皮肤设计"
+            assert detail["title"] == "Custom skin"
             from models.chat_session import ChatSession, ChatMessage
             from models.fields import utc_now
             def write_history(current):

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ApiError, request } from '../api/transport'
+import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 
 export interface GatewayRemoteSession {
   user_id?: string
@@ -25,6 +26,47 @@ interface GatewaySessionState {
 }
 
 let pending: Promise<GatewayRemoteSession> | null = null
+
+// Only navigation scope is stored; credentials stay in HttpOnly cookies.
+function rememberScope(session: GatewayRemoteSession) {
+  const path = gatewayWorkspacePath()
+  if (!path) return
+  try { sessionStorage.setItem('workstep-remote-scope:' + path, JSON.stringify({ device_id: session.device_id, project_id: session.project_id })) }
+  catch { /* Optional tab storage. */ }
+}
+
+async function recoverSession(previous: GatewayRemoteSession | null, signal: AbortSignal) {
+  const path = gatewayWorkspacePath()
+  if (!path) return false
+  let scope = previous
+  if (!scope) {
+    try { scope = JSON.parse(sessionStorage.getItem('workstep-remote-scope:' + path) ?? 'null') }
+    catch { /* A missing scope requires entering through the portal again. */ }
+  }
+  if (!scope || path !== '/workspace/' + scope.device_id ||
+      (scope.project_id !== null && typeof scope.project_id !== 'string')) return false
+  // Use the platform cookie, never the expired remote cookie. Keep project-only
+  // sessions project-scoped and let the platform check current permissions.
+  const endpoint = `/api/${scope.project_id ? 'projects' : 'devices'}/${encodeURIComponent(scope.project_id ?? scope.device_id)}/access`
+  const accessResponse = await fetch(endpoint, { credentials: 'same-origin', signal })
+  if (!accessResponse.ok) throw new ApiError('远程访问授权恢复失败。', accessResponse.status)
+  const access = await accessResponse.json()
+  const target = new URL(access.url, window.location.origin)
+  if (target.origin !== window.location.origin || target.pathname !== path + '/' || !access.ticket) {
+    throw new Error('远程访问授权无效。')
+  }
+  const redeemed = await fetch(new URL('api/remote/redeem', target).href, {
+    method: 'POST', credentials: 'same-origin', signal, redirect: 'manual',
+    body: new URLSearchParams({ ticket: access.ticket }),
+  })
+  // Browsers hide manual redirect responses but still accept their Set-Cookie.
+  // Do not navigate or follow the redirect: keep the current page and drafts.
+  if (redeemed.type !== 'opaqueredirect' && redeemed.status !== 303) {
+    throw new ApiError('远程访问授权恢复失败。', redeemed.status)
+  }
+  return true
+}
+
 export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => ({
   session: null, error: '', errorStatus: null, loading: false,
   load: (force = false) => {
@@ -33,13 +75,21 @@ export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => 
     set({ loading: true })
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 10000)
-    pending = request<GatewayRemoteSession>('/remote/session', {signal: controller.signal}).then(session => {
+    pending = request<GatewayRemoteSession>('/remote/session', {signal: controller.signal}).catch(async reason => {
+      if (!(reason instanceof ApiError) || reason.status !== 401) throw reason
+      const previous = get().session
+      set({ session: null })
+      if (!await recoverSession(previous, controller.signal)) throw reason
+      // One attempt only. A revoked platform login or scope never loops.
+      return request<GatewayRemoteSession>('/remote/session', {signal: controller.signal})
+    }).then(session => {
       if (!session.device_id || !session.gateway_url ||
           (!!session.project_id !== !!session.host_project_id) ||
           (session.project_id && !['read', 'edit'].includes(session.access_level ?? '')) ||
           (session.permissions != null && (!Array.isArray(session.permissions) || session.permissions.some((key: unknown) => typeof key !== 'string')))) {
         throw new Error('远程项目会话无效，请从平台重新打开。')
       }
+      rememberScope(session)
       set({ session, error: '', errorStatus: null })
       return session
     }).catch(reason => {

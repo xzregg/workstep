@@ -347,6 +347,7 @@ class SaveFileRequest(FileActionRequest):
 
 
 class CommitMessageRequest(BaseModel):
+    locale: str = Field(default="zh-CN", max_length=64)
     paths: list[str] = Field(min_length=1, max_length=500)
     snapshot: str = Field(min_length=64, max_length=64)
 
@@ -373,7 +374,7 @@ async def save_file(id: str, body: SaveFileRequest):
 
 @router.post('/worktrees/{id}/commit-message')
 async def commit_message(id: str, body: CommitMessageRequest):
-    return await result(git_service.generate_commit_message(id, body.paths, body.snapshot))
+    return await result(git_service.generate_commit_message(id, body.paths, body.snapshot, body.locale))
 
 
 @router.post('/worktrees/{id}/switch')

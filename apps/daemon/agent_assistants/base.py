@@ -1261,6 +1261,9 @@ class AssistantRuntime:
     def _system_prompt_each_turn(self) -> bool:
         return False
 
+    def _session_system_prompt_each_turn(self, session: AssistantSession) -> bool:
+        return self._system_prompt_each_turn()
+
     def _capture_prompt_input(self) -> bool:
         return self._config.system_prompt_transport or self._system_prompt_each_turn()
 
@@ -1746,6 +1749,8 @@ class AssistantRuntime:
                 invoke_kwargs = {"message_history": session.engine_state}
                 if system_prompt:
                     invoke_kwargs["system_prompt"] = system_prompt
+                if self._session_system_prompt_each_turn(session):
+                    invoke_kwargs["system_prompt_each_turn"] = True
                 if images:
                     invoke_kwargs["images"] = images
                 try:
@@ -2269,6 +2274,7 @@ class AssistantRuntime:
         message_history: list | None = None,
         images: list[EngineImage] | None = None,
         system_prompt: str | None = None,
+        system_prompt_each_turn: bool = False,
     ) -> tuple[str, list[dict], str | None]:
         current_task = asyncio.current_task()
         run_key = next(
@@ -2345,7 +2351,7 @@ class AssistantRuntime:
             config_overrides=config_overrides,
             live_message_queue=turn_state.get("live_message_queue"),
             **({"system_prompt": system_prompt} if system_prompt else {}),
-            **({"system_prompt_each_turn": True} if self._system_prompt_each_turn() else {}),
+            **({"system_prompt_each_turn": True} if system_prompt_each_turn or self._system_prompt_each_turn() else {}),
             **({"capture_prompt_input": True} if self._capture_prompt_input() else {}),
         )
 

@@ -64,3 +64,14 @@ test('share management lists metadata without credentials and pauses, resumes, r
   fireEvent.change(screen.getByLabelText('分享状态'), { target: { value: 'paused' } })
   await waitFor(() => assert.ok(calls.some(call => call.url.includes('status=paused'))))
 })
+
+ test('expired shares cannot be paused or resumed', async () => {
+  globalThis.fetch = async input => String(input) === '/api/auth/session'
+   ? Response.json({ csrf_token: 'csrf' })
+   : Response.json({ total: 1, shares: [{ id: 'expired-share', title: 'Expired review', created_by: 'u1', device_name: 'PC', project_name: 'Demo', task_id: 'task1', mode: 'read_only', visit_count: 0, last_seen_at: null, created_at: '2026-01-01', expires_at: '2026-01-02', status: 'expired' }] })
+  render(<MemoryRouter><AdminSharesPage /></MemoryRouter>)
+  await screen.findByText('Expired review')
+  const pause = screen.getByRole('button', { name: '暂停' }) as HTMLButtonElement
+  assert.equal(pause.disabled, true)
+  assert.equal(pause.title, '分享已过期，无法暂停或恢复。')
+ })

@@ -14,8 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from sqlalchemy import and_, exists, func, or_, select
 
 from gateway.services.ledger_scope import ledger_scope
+from gateway.services.identity import _as_utc
 
-from gateway.models import AuditEvent, AuditEventReceipt, PlatformProject, User
+from gateway.models import AuditEvent, AuditEventReceipt, PlatformProject, User, Device
 
 
 """Validate and idempotently receive bounded project audit batches."""
@@ -162,6 +163,35 @@ def _visible_metadata(raw: str | None) -> dict:
     }
 
 
+def visible_audit_conditions(scope):
+    published = exists(select(PlatformProject.id).where(
+        PlatformProject.device_id == AuditEvent.device_id,
+        PlatformProject.host_project_id == AuditEvent.project_id,
+        PlatformProject.access_mode == "remote_published",
+        PlatformProject.status == "active",
+    ))
+    conditions = [or_(AuditEvent.project_id.is_(None), published)]
+    if scope is not None:
+        conditions.append(scope)
+    return conditions
+
+
+async def audit_filter_options(call: GatewayCall, kind: str, q: str = ''):
+    async with call.database.session() as session:
+        scope = await ledger_scope(call, session, AuditEvent)
+        conditions = visible_audit_conditions(scope)
+        entity = User if kind == 'user' else Device
+        relation = or_(AuditEvent.user_id == User.id, AuditEvent.initiated_by_user_id == User.id) if kind == 'user' else AuditEvent.device_id == Device.id
+        visible = exists(select(AuditEvent.id).where(*conditions, relation))
+        pattern = '%' + q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        columns = (User.display_name, User.username, User.id) if kind == 'user' else (Device.name, Device.id)
+        rows = (await session.scalars(select(entity).where(visible, or_(*(
+            column.ilike(pattern, escape='\\') for column in columns
+        ))).order_by(entity.id).limit(21))).all()
+        return {'items': [{'id': row.id, 'label': f'{row.display_name or row.username} · {row.username}' if kind == 'user' else row.name or row.id}
+                          for row in rows[:20]], 'has_more': len(rows) > 20}
+
+
 async def query_audit(
     call: GatewayCall,
     project_id: str | None = None,
@@ -181,15 +211,7 @@ async def query_audit(
         raise GatewayError('invalid', 'End time must be after start time')
     async with call.database.session() as session:
         scope = await ledger_scope(call, session, AuditEvent)
-        published = exists(select(PlatformProject.id).where(
-            PlatformProject.device_id == AuditEvent.device_id,
-            PlatformProject.host_project_id == AuditEvent.project_id,
-            PlatformProject.access_mode == "remote_published",
-            PlatformProject.status == "active",
-        ))
-        conditions = [or_(AuditEvent.project_id.is_(None), published)]
-        if scope is not None:
-            conditions.append(scope)
+        conditions = visible_audit_conditions(scope)
         if project_id:
             project = await session.get(PlatformProject, project_id)
             if (project is None or project.access_mode != "remote_published"
@@ -273,7 +295,7 @@ async def query_audit(
                 "initiated_by_username": row.initiated_by_username or user_labels.get(row.initiated_by_user_id, (None, None))[1],
                 "metadata": metadata_map[row.id],
                 "request_ip": metadata_map[row.id].get("request_ip"),
-                "occurred_at": (row.occurred_at or row.created_at).isoformat(),
+                "occurred_at": _as_utc(row.occurred_at or row.created_at).isoformat(),
             } for row in rows[:limit]],
             "total": total or 0,
             "next_offset": offset + limit if len(rows) > limit else None,

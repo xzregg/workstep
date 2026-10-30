@@ -1,6 +1,14 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const zhTW: Messages = {
+  builtinContent: {
+    "skillTitle": "自訂技能製作",
+    "engineTitle": "自訂引擎設定",
+    "importTitle": "匯入自訂引擎",
+    "skinTitle": "自訂外觀設計",
+    "skillDraft": "請幫我製作一個自訂技能。先詢問用途、觸發條件、輸入輸出和需要的工具。\n共用 Runtime 工作目錄及技能創作根目錄：{workspace}\n在此根目錄內建立具名技能套件，編寫 SKILL.md 及所需的 references、scripts、assets 檔案。不要修改其他既有成果或已安裝的技能庫。SKILL.md 必須包含 name 和 description frontmatter，說明實際用法與能力邊界，並驗證範例。完成後說明安裝位置及步驟；只有使用者明確要求安裝時才複製到技能庫，不得將草稿當作已安裝技能載入。",
+    "importDraft": "請協助我安裝並註冊已匯入的自訂引擎套件。\n本次工作目錄：{workspace}\n已匯入套件：{package}\n透過 workstep-cli 按需閱讀 references/custom-engine.md 和介面契約。使用既有套件，不重新建立適配器。先檢查清單與現有引擎；相同 ID 已註冊時，先詢問是否替換，不直接覆寫。匯出套件不含憑證、依賴和本機驗收報告。安裝套件 dependencies，透過設定完成供應商、驗證及模型設定，不修改 WorkStep 的 Python 環境。完成真實連線、方法和事件測試，通過 engine validate 後才能 register。註冊成功後提示我在設定的引擎頁面點擊「重新掃描」，無需重新啟動。"
+},
   skinExtensions: zhCN.skinExtensions,
   taskWorkflow: zhCN.taskWorkflow,
   roleCenter: zhCN.roleCenter,
@@ -115,10 +123,10 @@ export const zhTW: Messages = {
     studioHistory: "对话记录",
     studioChatTab: "聊天",
     studioPreviewTab: "编辑与预览",
-    studioDraft: "请先阅读 Runtime 根目录的 skin-design.md 和 skin-contract.json，再帮我调整外观。字体类型、四档字号、颜色与布局都可以调整；只修改我提出的部分，完成后校验皮肤包。",
+    studioDraft: "請先閱讀 Runtime 根目錄的 skin-design.md 和 skin-contract.json，再協助我調整外觀。可調整字型、四種字級、色彩與版面；只修改我提出的部分，完成後驗證外觀套件。",
     studioVersionHint: "已读取的外观方案 · PC / 手机 · 字体与样式可继续调整",
     studioContinue: "用这一版继续调整",
-    studioContinuePrompt: "请继续调整「{name}」这一版皮肤。",
+    studioContinuePrompt: "請繼續調整「{name}」這一版外觀。",
     studioDefaultName: "我的专属皮肤",
     studioPackage: "皮肤包目录",
     studioReadPackage: "读取此包",

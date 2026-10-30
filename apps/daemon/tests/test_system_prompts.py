@@ -14,6 +14,7 @@ from agent_assistants.task_draft import (
 )
 from agent_assistants.workflow_gen import SYSTEM_PROMPT as FLOW_SYSTEM_PROMPT
 from services.chat_permissions import PLAN_MODE_INSTRUCTION
+from services.git.write import COMMIT_MESSAGE_SYSTEM_PROMPT
 from services.prompt import OUTPUT_TYPE_CONSTRAINTS
 from services.prompt import SYSTEM_PROMPT as PIPELINE_SYSTEM_PROMPT
 
@@ -21,6 +22,7 @@ from services.prompt import SYSTEM_PROMPT as PIPELINE_SYSTEM_PROMPT
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 
 PROMPTS = {
+    "git_commit": COMMIT_MESSAGE_SYSTEM_PROMPT,
     "pipeline": PIPELINE_SYSTEM_PROMPT,
     "chat": CHAT_SYSTEM_PROMPT,
     "enhance": ENHANCE_SYSTEM_PROMPT,

@@ -86,3 +86,10 @@ test('the brand returns to overview and closes the mobile menu', async () => {
  assert.equal(within(users).queryByText('网关平台权限'), null)
  assert.equal(within(system).queryByText('用户与用户组权限'), null)
  })
+
+test('direct entry expands the current category so the active destination is visible', () => {
+ render(<MemoryRouter initialEntries={['/admin/devices?health=unhealthy']}><AdminNavigation roles={['super_admin']} /></MemoryRouter>)
+ assert.equal(screen.getByText('设备管理', { selector: 'summary' }).closest('details')!.open, true)
+ assert.equal(screen.getByRole('link', { name: '设备管理' }).getAttribute('aria-current'), 'page')
+ assert.equal(screen.getByText('用户与权限').closest('details')!.open, false)
+})

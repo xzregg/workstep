@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { JSDOM } from 'jsdom'
@@ -59,7 +60,7 @@ test('device name validates, preserves edits on failure, and saves without chang
   currentName = JSON.parse(String(init?.body)).name
   return new Response(null, { status: 204 })
  }
- render(<DeviceAdminPage />)
+ render(<MemoryRouter><DeviceAdminPage /></MemoryRouter>)
  await screen.findByRole('columnheader', { name: '设备名称' })
  const nameButton = await screen.findByRole('button', { name: '修改设备名称：93a1f068d205' })
  assert.equal(nameButton.textContent, '93a1f068d205')

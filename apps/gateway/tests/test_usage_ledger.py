@@ -380,3 +380,80 @@ def test_usage_dimension_labels_show_names_without_changing_group_identity(tmp_p
                 finally: response=await pending
                 assert response.status_code==200
         client.portal.call(network_canary)
+
+
+def test_account_usage_is_self_scoped_and_nonblocking(tmp_path):
+    import asyncio
+    import threading
+    import time
+    from datetime import timedelta
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import event as sql_event
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post('/api/platform/setup', json={
+            'username': 'owner', 'display_name': 'Owner', 'password': 'OwnerPassphrase-2026!',
+            'recovery_username': 'recovery', 'recovery_password': 'RecoveryPassphrase-2026!',
+            'registration_mode': 'open',
+        }).json()
+        owner = setup['user']['id']
+        headers = {'X-CSRF-Token': setup['csrf_token']}
+        other = client.post('/api/admin/users', json={'username':'alice','display_name':'Alice',
+            'password':'AlicePassphrase-2026!','status':'active'}, headers=headers).json()['id']
+        async def seed():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(id='self-device',name='PC',public_key='test',app_instance_id='self-app',version='1',status='active'))
+        client.portal.call(seed)
+        events = [{**_event('self-1'), 'user_id':other, 'initiated_by_user_id':other},
+                  {**_event('owner-1'), 'user_id':owner, 'initiated_by_user_id':other},
+                  {**_event('old-1'), 'user_id':other},
+                  {'usage_event_id':'unknown-1','user_id':other,'model':'unknown-model','metering_status':'unmetered',
+                   'occurred_at':datetime.now(timezone.utc).isoformat()}]
+        assert not client.portal.call(record_usage_batch,app.state.database,'self-device','self-batch',events)['rejected']
+        async def age_event():
+            from sqlalchemy import update
+            from gateway.models import UsageEvent
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    await session.execute(update(UsageEvent).where(UsageEvent.id=='old-1')
+                        .values(occurred_at=datetime.now(timezone.utc)-timedelta(days=120)))
+        client.portal.call(age_event)
+        client.cookies.clear()
+        assert client.get('/api/account/usage').status_code == 401
+        client.post('/api/auth/login',json={'username':'alice','password':'AlicePassphrase-2026!'})
+        assert client.get('/api/admin/usage').status_code == 403
+        response = client.get('/api/account/usage',params={'days':30,'user_id':owner})
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data['summary']['event_count'] == 2
+        assert data['summary']['unmetered_count'] == 1
+        assert data['summary']['total_tokens'] == 150
+        assert len(data['daily']) == 30
+        assert sum(row['event_count'] for row in data['daily']) == 2
+        assert {row['value'] for row in data['models']} == {'model-a','unknown-model'}
+        assert next(row for row in data['models'] if row['value']=='unknown-model')['total_tokens'] is None
+        assert client.get('/api/account/usage?days=999').status_code == 422
+        reached = threading.Event()
+        def delay_in_sqlite_worker():
+            reached.set(); time.sleep(.35)
+            return 1
+        def slow_usage(connection, cursor, statement, parameters, context, many):
+            if 'count(usage_events.id)' in statement:
+                connection.connection.dbapi_connection.create_function('account_usage_delay',0,delay_in_sqlite_worker)
+                statement=statement.replace('WHERE ', 'WHERE account_usage_delay() = 1 AND ',1)
+            return statement, parameters
+        engine = app.state.database.engine.sync_engine
+        sql_event.listen(engine,'before_cursor_execute',slow_usage,retval=True)
+        async def canary():
+            async with AsyncClient(transport=ASGITransport(app=app),base_url='https://gateway.test',cookies=client.cookies) as actor:
+                pending=asyncio.create_task(actor.get('/api/account/usage'))
+                try:
+                    assert await asyncio.to_thread(reached.wait,2)
+                    assert (await asyncio.wait_for(actor.get('/api/health'),.25)).status_code == 200
+                    assert not pending.done()
+                finally:
+                    result=await pending
+                assert result.status_code == 200
+        try: client.portal.call(canary)
+        finally: sql_event.remove(engine,'before_cursor_execute',slow_usage)

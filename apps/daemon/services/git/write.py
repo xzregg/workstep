@@ -9,19 +9,20 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from services.output_language import output_language_instruction
 from .command import text
 from pathlib import Path
 
 from .command import GitError
 from .query import read_file, safe_file
 
-COMMIT_MESSAGE_SYSTEM_PROMPT = """你是 Git 提交说明生成器。根据用户提供的已选文件状态和 diff，生成一条准确、简洁的 Conventional Commits 提交说明。
-要求：
-1. 第一行必须是 <type>(可选 scope): 中文简述；type 只能是 feat、fix、refactor、perf、docs、test、build、ci、chore、style、revert。
-2. 第一行尽量不超过 72 个字符，使用祈使语气，描述行为和目的，不罗列文件名。
-3. 变更较复杂时，空一行后添加精炼的项目符号正文；简单变更只输出第一行。
-4. 只能依据输入内容，不得虚构功能、问题编号或影响范围。
-5. 只返回提交说明正文，不要 Markdown 代码块、解释或候选项。"""
+COMMIT_MESSAGE_SYSTEM_PROMPT = """You generate accurate, concise Conventional Commits messages from selected file statuses and diffs.
+Requirements:
+1. The first line must be <type>(optional scope): brief summary; type must be feat, fix, refactor, perf, docs, test, build, ci, chore, style, or revert.
+2. Aim for at most 72 characters on the first line. Use imperative wording describing behavior and purpose rather than listing filenames.
+3. For complex changes, add a blank line and a concise bulleted body; for simple changes, output only the first line.
+4. Use only the supplied evidence. Do not invent features, issue numbers, or impact.
+5. Return only the commit message, without Markdown fences, explanations, or alternatives."""
 
 
 def normalize_commit_message(value):
@@ -403,7 +404,7 @@ class GitWrites:
             await asyncio.to_thread(replace_worktree_file, root, value, content)
             return await self.status(id)
 
-    async def generate_commit_message(self, id, paths, snapshot):
+    async def generate_commit_message(self, id, paths, snapshot, locale="zh-CN"):
         directory = await self.directory(id)
         root = directory['path']
         state = await self.reviewed(id, snapshot)
@@ -423,19 +424,19 @@ class GitWrites:
                 if exc.status != 413:
                     raise
                 raw, _ = await self.command(root, 'diff', '--stat', 'HEAD', '--', *names)
-                patch = text(raw) + '\n[详细 diff 过大，已省略]'
+                patch = text(raw) + '\n[Detailed diff omitted because it is too large]'
         untracked_parts = []
         for path in paths:
             if not files[path]['untracked']:
                 continue
             data, truncated = await asyncio.to_thread(read_file, root, path)
             if b'\0' in data:
-                untracked_parts.append(f"### 新增二进制文件 {path}")
+                untracked_parts.append(f"### New binary file {path}")
             else:
                 body = text(data[:20000])
-                suffix = '\n[内容已截断]' if truncated or len(data) > 20000 else ''
-                untracked_parts.append(f"### 新增文件 {path}\n{body}{suffix}")
-        context = '已选文件状态：\n' + '\n'.join(status_lines) + '\n\nGit diff：\n' + (patch or '[无已跟踪文件 diff]')
+                suffix = '\n[Content truncated]' if truncated or len(data) > 20000 else ''
+                untracked_parts.append(f"### New file {path}\n{body}{suffix}")
+        context = 'Selected file statuses:\n' + '\n'.join(status_lines) + '\n\nGit diff:\n' + (patch or '[No tracked-file diff]')
         if untracked_parts:
             context += '\n\n' + '\n\n'.join(untracked_parts)
         context = context[:120000]
@@ -453,7 +454,7 @@ class GitWrites:
         usage: dict = {}
         try:
             result = await provider_service.text_completion(provider, config['model'], [
-                {'role': 'system', 'content': COMMIT_MESSAGE_SYSTEM_PROMPT},
+                {'role': 'system', 'content': COMMIT_MESSAGE_SYSTEM_PROMPT + '\n' + output_language_instruction(locale)},
                 {'role': 'user', 'content': context},
             ], max_tokens=800, timeout=180, thinking='disabled',
                 protocol=config.get('protocol') or None, usage_collector=usage)

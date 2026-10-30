@@ -179,3 +179,21 @@ test('project summary shows saved fine permissions and their names instead of on
  assert.ok(screen.getByText('禁止 · 删除文件'))
  assert.ok(screen.getByText(/基础授权：允许 2 条 · 禁止 0 条/))
 })
+
+ test('failed permission refresh removes stale actionable rules', async () => {
+  let fail = false
+  globalThis.fetch = async input => {
+   const url = String(input)
+   if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+   if (url.endsWith('/catalog')) return Response.json({ permissions: [{ id: 'task.create', name: '创建任务', scopes: ['global'], effects: ['allow'] }] })
+   if (fail) return new Response(null, { status: 403 })
+   return Response.json({ assignments: [{ id: 'rule1', subject_type: 'user', subject_id: 'u1', subject_name: 'Stale User', permission: 'task.create', scope_type: 'global', scope_id: null, effect: 'allow' }] })
+  }
+  render(<MemoryRouter><AdminPermissionsPage /></MemoryRouter>)
+  await screen.findByText('Stale User')
+  fail = true
+  fireEvent.click(screen.getByRole('button', { name: '刷新规则' }))
+  await screen.findByText('权限规则加载失败，请重试。')
+  assert.equal(screen.queryByText('Stale User') === null, true)
+  assert.equal(screen.queryByRole('button', { name: '查看规则' }), null)
+ })

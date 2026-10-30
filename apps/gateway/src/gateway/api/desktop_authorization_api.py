@@ -46,11 +46,12 @@ async def delete_device(request: Request, device_id: str):
 
 @router.get("/admin/devices")
 async def list_devices(request: Request, status: Literal["pending", "active", "disabled", "revoked"] | None = None,
+                       health: Literal['unhealthy'] | None = None,
                        q: str = Query(default='', max_length=128),
                        sort: Literal['created_at', 'name', 'status'] = 'created_at',
                        direction: Literal['asc', 'desc'] = 'desc',
                        page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100)):
-    return await invoke(_handle_list_devices, request=request, status=status, q=q, sort=sort, direction=direction, page=page, page_size=page_size)
+    return await invoke(_handle_list_devices, request=request, status=status, health=health, q=q, sort=sort, direction=direction, page=page, page_size=page_size)
 
 
 @router.post("/admin/devices/{device_id}/disable", status_code=204)

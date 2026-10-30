@@ -1,3 +1,4 @@
+import { visibleTemplates } from '../utils/contentLocale'
 import ResizablePanel from '../components/ResizablePanel'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -27,7 +28,7 @@ const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
    ══════════════════════════════════════════ */
 
 export default function TemplateSettings() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const activeProject = useProjectStore((state) => state.activeProject)
   const [templates, setTemplates] = useState<TemplateInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -213,7 +214,7 @@ export default function TemplateSettings() {
         <div style={{ padding: '18px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>{t('templateSettings.noTemplates')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {templates.map((template) => (
+          {visibleTemplates(templates, locale).map((template) => (
             <div
               key={template.id}
               style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg)' }}

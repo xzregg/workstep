@@ -1,3 +1,4 @@
+import { visibleTemplates } from '../utils/contentLocale'
 import { useEffect, useState } from 'react'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -16,7 +17,7 @@ interface Props {
 }
 
 export default function FlowTemplateDialog({ open, onClose, getSteps, onApply, onFeedback }: Props) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [templates, setTemplates] = useState<TemplateInfo[]>([])
   const [pending, setPending] = useState<TemplateInfo | null>(null)
   const [search, setSearch] = useState('')
@@ -76,7 +77,7 @@ export default function FlowTemplateDialog({ open, onClose, getSteps, onApply, o
   }
 
   const query = search.trim().toLowerCase()
-  const filtered = templates.filter((template) => !query
+  const filtered = visibleTemplates(templates, locale).filter((template) => !query
     || template.name.toLowerCase().includes(query)
     || (template.description || '').toLowerCase().includes(query)
     || template.id.toLowerCase().includes(query))

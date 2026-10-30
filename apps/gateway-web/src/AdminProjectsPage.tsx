@@ -1,3 +1,5 @@
+import { useAdminSession } from './useAdminSession'
+import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminListStatus } from './AdminListStatus'
 import { GatewayModal } from './GatewayModal'
 import { AdminRecordTable } from './AdminRecordTable'
@@ -13,7 +15,8 @@ type Filters = { q: string; sort: string; direction: string; page: number }
 
 
 export function AdminProjectsPage({ canConfigurePermissions = true }: { canConfigurePermissions?: boolean }) {
-  const [csrf, setCsrf] = useState('')
+  const session = useAdminSession()
+  const csrf = session.csrf
   const [projects, setProjects] = useState<Project[]>([])
   const [total, setTotal] = useState(0)
   const [query, setQuery] = useState('')
@@ -25,25 +28,14 @@ export function AdminProjectsPage({ canConfigurePermissions = true }: { canConfi
   const [showPublish, setShowPublish] = useState(false)
   const [unpublish, setUnpublish] = useState<Project | null>(null)
 
-  useEffect(() => {
-    const controller = new AbortController()
-    void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
-      .then(async response => {
-        if (!response.ok) throw new Error('登录状态已失效，请重新登录。')
-        const data = await response.json()
-        if (!controller.signal.aborted) setCsrf(data.csrf_token)
-      }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '登录状态加载失败。')
-      })
-    return () => controller.abort()
-  }, [])
+
 
   useEffect(() => {
     if (!csrf) return
     const controller = new AbortController()
     const params = new URLSearchParams({ q: filters.q, sort: filters.sort, direction: filters.direction,
       page: String(filters.page), page_size: '25' })
-    setLoading(true); setError('')
+    setLoading(true); setError(''); setProjects([]); setTotal(0)
     void fetch(`/api/admin/projects?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error(response.status === 403 ? '当前账号没有项目管理权限。' : '项目列表加载失败。')
@@ -61,10 +53,11 @@ export function AdminProjectsPage({ canConfigurePermissions = true }: { canConfi
   }
 
   return <section className="gateway-admin-page gateway-projects-page">
+    <AdminSessionStatus loading={session.loading} error={session.error} onRetry={session.retry} />
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>项目管理</h2>
       {csrf && <button type="button" className="gateway-admin-primary" onClick={() => setShowPublish(true)}>从 PC 发布项目</button>}</div>
-    {!csrf && !error && <p role="status">正在检查登录状态…</p>}
+
     {csrf && <>
       <p>仅展示已发布项目的元数据。管理权限不会自动授予项目内容访问。</p>
       {showPublish && <GatewayModal title="从 PC 发布项目" onClose={() => closeWorkspace(() => setShowPublish(false))}

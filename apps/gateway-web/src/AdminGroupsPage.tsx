@@ -1,27 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useAdminSession } from './useAdminSession'
+import { AdminSessionStatus } from './AdminSessionStatus'
+import { useState } from 'react'
 import { AdminGroupLifecyclePanel } from './AdminGroupLifecyclePanel'
 import { AdminGroupCreateDialog } from './AdminGroupCreateDialog'
 import { GroupMembersManager } from './GroupMembersManager'
 import { GroupProjectsManager } from './GroupProjectsManager'
 
 export function AdminGroupsPage() {
- const [csrf,setCsrf]=useState('')
+ const session = useAdminSession()
+  const csrf = session.csrf
  const [groupId,setGroupId]=useState('')
  const [revision,setRevision]=useState(0)
  const [createOpen,setCreateOpen]=useState(false)
- const [error,setError]=useState('')
- useEffect(()=>{
-  const controller=new AbortController()
-  void fetch('/api/auth/session',{credentials:'same-origin',signal:controller.signal}).then(async response=>{
-   if(!response.ok)throw Error('登录状态加载失败，请刷新重试。')
-   const data=await response.json();if(!controller.signal.aborted)setCsrf(data.csrf_token)
-  }).catch(reason=>{if(!controller.signal.aborted)setError(reason.message)})
-  return()=>controller.abort()
- },[])
  return <section className="gateway-admin-page">
-  <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
+  <AdminSessionStatus loading={session.loading} error={session.error} onRetry={session.retry} />
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
   <div className="gateway-admin-toolbar"><h2>用户组管理</h2></div>
-  {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+
   <div className="gateway-admin-toolbar"><button type="button" className="gateway-admin-primary" disabled={!csrf} onClick={()=>setCreateOpen(true)}>创建用户组</button></div>
   <div className="gateway-users-workspace"><div className="gateway-users-tree-panel">
    <AdminGroupLifecyclePanel csrf={csrf} selected={groupId} revision={revision} onSelect={setGroupId} onChanged={()=>setRevision(value=>value+1)}/>

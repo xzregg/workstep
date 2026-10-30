@@ -36,7 +36,10 @@ async def test_skill_creation_api_uses_shared_db_off_loop_and_rejects_project_ac
             response = await pending
             assert response.status_code == 200, response.text
             result = response.json()
-            again = (await client.post('/api/skills/onboarding')).json()
+            again = (await client.post('/api/skills/onboarding?title=Custom%20skill')).json()
+            translated = await manager.run_db(again['project_id'], lambda current: module.get_session(again['project_id'], again['session_id']))
+            assert translated['title'] == 'Custom skill'
+            assert 'only if the user explicitly requests installation' in again['prompt']
             assert again['project_id'] == result['project_id']
             assert again['workspace_path'] == result['workspace_path']
             assert again['package_path'] == result['package_path']

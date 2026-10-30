@@ -1,0 +1,195 @@
+{
+  "id": "data-workflow-en",
+  "default": true,
+  "name": "Data workflow",
+  "description": "Data collection → Cleaning → Modeling → Evaluation → Report",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "collect",
+        "title": "Data collection",
+        "position": {
+          "x": 100,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Design and execute a data collection plan based on the data requirements.",
+        "inputs": [
+          {
+            "name": "Data requirements",
+            "type": "Document",
+            "outputs": [
+              {
+                "name": "Raw data",
+                "type": "CSV"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Raw data",
+            "type": "CSV"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "clean",
+        "title": "Data cleaning",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Clean the raw data, handle missing values and outliers, and standardize formats.",
+        "inputs": [
+          {
+            "name": "Raw data",
+            "type": "CSV",
+            "outputs": [
+              {
+                "name": "Cleaned data",
+                "type": "CSV"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Cleaned data",
+            "type": "CSV"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "model",
+        "title": "Modeling",
+        "position": {
+          "x": 660,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Train a machine learning model using the cleaned data.",
+        "inputs": [
+          {
+            "name": "Cleaned data",
+            "type": "CSV",
+            "outputs": [
+              {
+                "name": "Model file",
+                "type": "Pickle"
+              },
+              {
+                "name": "Training log",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Model file",
+            "type": "Pickle"
+          },
+          {
+            "name": "Training log",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "evaluate",
+        "title": "Evaluation",
+        "position": {
+          "x": 940,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Evaluate model performance and produce an evaluation report.",
+        "inputs": [
+          {
+            "name": "Model file",
+            "type": "Pickle",
+            "outputs": [
+              {
+                "name": "Evaluation report",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Evaluation report",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "report",
+        "title": "Report",
+        "position": {
+          "x": 1220,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Summarize the entire data analysis workflow and produce the final report.",
+        "inputs": [
+          {
+            "name": "Evaluation report",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Final report",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Final report",
+            "type": "Markdown"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      }
+    ]
+  },
+  "locale": "en-US"
+}

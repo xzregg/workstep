@@ -26,7 +26,7 @@ function OnboardingButton({ onStarted, navigate }: { onStarted?: () => void; nav
     setBusy(file ? 'import' : 'create'); setError('')
     try {
       const result = file ? await engineApi.customImport(file) : await engineApi.customOnboarding()
-      saveDraft(result.session_id, file ? result.prompt : t('settings.customEngineOnboardingPrompt', { workspace: result.workspace_path }))
+      saveDraft(result.session_id, file ? t('builtinContent.importDraft', { workspace: result.workspace_path, package: result.package_path ?? '' }) : t('settings.customEngineOnboardingPrompt', { workspace: result.workspace_path }))
       useChatListStore.getState().refreshSessions(result.project_id)
       await useProjectStore.getState().fetchProjects()
       navigate(`/chat?${new URLSearchParams({ project: result.project_name, session: result.session_id })}`)

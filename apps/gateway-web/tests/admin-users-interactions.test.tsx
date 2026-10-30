@@ -1,8 +1,9 @@
+import { AdminUserTable } from '../src/AdminUserTable'
 import { AdminEditUserDialog } from '../src/AdminEditUserDialog'
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { JSDOM } from 'jsdom'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { AdminCreateUserDialog } from '../src/AdminCreateUserDialog'
 import { AdminUsersPage } from '../src/AdminUsersPage'
 import { DeviceAdminPage, deviceDisplayName } from '../src/DeviceAdminPage'
@@ -167,6 +168,7 @@ test('revoked device offers a name edit and explains why reenable is unavailable
   fireEvent.click(screen.getByRole('button',{name:'取消'}))
   fireEvent.click(screen.getByRole('button',{name:'Container PC · 设备详情'}))
   assert.ok(screen.getByText(/该设备身份已撤销，不能直接重新启用。/))
+  assert.ok(screen.getByText('设备离线，暂时无法检测本地服务。'))
 })
 
 test('permanent deletion is available for revoked devices and refreshes the list after confirmation', async () => {
@@ -331,6 +333,8 @@ test('overview distinguishes control connectivity from daemon health and recover
   assert.match(document.body.textContent ?? '', /运行状态尚未全部上报/)
   assert.match(document.body.textContent ?? '', /1 个项目状态未知/)
   assert.equal(calls, 2)
+  assert.equal(screen.getByRole('link', { name: '待审核用户' }).getAttribute('href'), '/admin/users?status=pending')
+  assert.equal(screen.getByRole('link', { name: '异常设备' }).getAttribute('href'), '/admin/devices?health=unhealthy')
   assert.ok(screen.queryByRole('navigation', { name: '管理模块' }) === null, 'overview should use the shared sidebar navigation')
   assert.ok(screen.queryByRole('link', { name: '返回工作台' }) === null, 'workbench navigation belongs to the shared layout')
 })
@@ -722,16 +726,159 @@ test('user editor selects multiple groups, preserves directory groups and retrie
   ]})
  }
  render(<AdminEditUserDialog csrf="csrf" user={{id:'alice',username:'alice',display_name:'Alice',status:'disabled',registration_source:'admin_created',must_change_password:false,created_at:''}} onClose={() => {}} onSaved={() => {saved++}} />)
- const dev = await screen.findByRole('checkbox',{name:'研发'}) as HTMLInputElement
+ const dev = await screen.findByRole('checkbox',{name:'选择用户组研发'}) as HTMLInputElement
  assert.equal(dev.checked,true)
  const synced = screen.getByRole('checkbox',{name:/企业部门/}) as HTMLInputElement
  assert.equal(synced.checked,true)
  assert.equal(synced.disabled,true)
- fireEvent.click(screen.getByRole('checkbox',{name:'销售'}))
+ fireEvent.click(screen.getByRole('checkbox',{name:'选择用户组销售'}))
  fireEvent.click(screen.getByRole('button',{name:'保存修改'}))
  await screen.findByText('保存失败，请重试。')
  assert.deepEqual(requests[0].group_ids,['dev','sales','sync'])
- assert.equal((screen.getByRole('checkbox',{name:'销售'}) as HTMLInputElement).checked,true)
+ assert.equal((screen.getByRole('checkbox',{name:'选择用户组销售'}) as HTMLInputElement).checked,true)
  fireEvent.click(screen.getByRole('button',{name:'保存修改'}))
  await waitFor(() => assert.equal(saved,1))
+})
+
+
+test('user group picker searches the shared hierarchy without changing parent or readonly memberships', async () => {
+ let loads = 0
+ let payload: Record<string, unknown> = {}
+ globalThis.fetch = async (_input, init) => {
+  if (init?.method === 'PATCH') { payload = JSON.parse(String(init.body)); return Response.json({}) }
+  loads++
+  return Response.json({groups:[
+   {id:'root',name:'总部',parent_id:null,selected:false,editable:true},
+   {id:'dev',name:'研发组',parent_id:'root',selected:false,editable:true},
+   {id:'sales',name:'销售组',parent_id:'root',selected:false,editable:true},
+   {id:'sync',name:'企业部门',parent_id:'root',selected:true,editable:false,synced:true},
+  ]})
+ }
+ render(<AdminEditUserDialog csrf="csrf" user={{id:'alice',username:'alice',display_name:'Alice',status:'active',registration_source:'admin_created',must_change_password:false,created_at:''}} onSaved={() => {}} onClose={() => {}} />)
+ const search = await screen.findByRole('textbox',{name:'搜索用户组'})
+ const tree = screen.getByRole('tree',{name:'用户组'})
+ assert.ok(within(tree).getAllByRole('group').length)
+ const branch = tree.querySelector('details')!
+ branch.open = false
+ fireEvent.change(search,{target:{value:'研发'}})
+ assert.equal(tree.querySelector('details')!.open,true)
+ assert.equal(screen.queryByRole('checkbox',{name:'选择用户组销售组'}),null)
+ assert.ok(screen.getByRole('checkbox',{name:'选择用户组总部'}))
+ fireEvent.click(screen.getByRole('button',{name:'勾选搜索结果'}))
+ assert.equal((screen.getByRole('checkbox',{name:'选择用户组总部'}) as HTMLInputElement).checked,false)
+ fireEvent.change(search,{target:{value:''}})
+ assert.equal((screen.getByRole('checkbox',{name:'选择用户组研发组'}) as HTMLInputElement).checked,true)
+ assert.equal((screen.getByRole('checkbox',{name:'选择用户组企业部门'}) as HTMLInputElement).disabled,true)
+ fireEvent.click(screen.getByRole('checkbox',{name:'全选用户组'}))
+ fireEvent.click(screen.getByRole('checkbox',{name:'全选用户组'}))
+ assert.equal((screen.getByRole('checkbox',{name:'选择用户组企业部门'}) as HTMLInputElement).checked,true)
+ fireEvent.click(screen.getByRole('checkbox',{name:'选择用户组研发组'}))
+ fireEvent.click(screen.getByRole('button',{name:'保存修改'}))
+ await waitFor(()=>assert.deepEqual(payload.group_ids,['dev','sync']))
+ assert.equal(loads,1)
+})
+
+
+test('overview device shortcut applies health filter and explains unhealthy status', async () => {
+  const urls: string[] = []
+  globalThis.fetch = async input => {
+    const url = String(input); urls.push(url)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    return Response.json({ total: 1, devices: [{ id: 'pc', name: '异常电脑', status: 'active', online: true, daemon_health: false }] })
+  }
+  render(<MemoryRouter initialEntries={['/admin/devices?health=unhealthy']}><DeviceAdminPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '异常电脑 · 设备详情' }))
+  assert.ok(screen.getByText('设备控制连接在线，但本地服务健康检查未通过。'))
+  assert.ok(screen.getByText(/未提供具体错误原因/))
+  assert.ok(urls.some(url => url.includes('health=unhealthy')))
+})
+
+test('device session network failure can retry without asking for credentials', async () => {
+  let sessions = 0
+  globalThis.fetch = async input => {
+    if (String(input) === '/api/auth/session') {
+      if (++sessions === 1) throw new Error('offline')
+      return Response.json({ csrf_token: 'csrf' })
+    }
+    return Response.json({ devices: [], total: 0 })
+  }
+  render(<MemoryRouter><DeviceAdminPage /></MemoryRouter>)
+  await screen.findByText('登录状态加载失败，请重试。')
+  assert.equal(screen.queryByLabelText('密码'), null)
+  fireEvent.click(screen.getByRole('button', { name: '重试' }))
+  await screen.findByText('当前筛选下没有设备。')
+  assert.equal(sessions, 2)
+})
+
+test('device permissions failure clears stale device records', async () => {
+  let lists = 0
+  globalThis.fetch = async input => {
+    if (String(input) === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (++lists > 1) return new Response(null, { status: 403 })
+    return Response.json({ devices: [{ id: 'pc', name: '旧设备', online: true, status: 'active' }], total: 1 })
+  }
+  render(<MemoryRouter><DeviceAdminPage /></MemoryRouter>)
+  await screen.findByRole('button', { name: '旧设备 · 设备详情' })
+  fireEvent.click(screen.getByRole('button', { name: '刷新设备' }))
+  await screen.findByText('当前账号没有设备管理权限。')
+  assert.equal(screen.queryByRole('button', { name: '旧设备 · 设备详情' }), null)
+})
+
+for (const [name, Page, endpoint] of [
+  ['users', AdminUsersPage, '/api/admin/users?'],
+  ['roles', AdminRolesPage, '/api/admin/roles?'],
+] as const) {
+  test(`${name} recovers a failed session without reloading the page`, async () => {
+    let sessions = 0
+    globalThis.fetch = async input => {
+      const url = String(input)
+      if (url === '/api/auth/session') {
+        if (++sessions === 1) throw new Error('offline')
+        return Response.json({ csrf_token: 'csrf' })
+      }
+      if (url.startsWith(endpoint)) return Response.json({ users: [], roles: [], total: 0 })
+      return Response.json({ groups: [], nodes: [] })
+    }
+    render(<MemoryRouter><Page /></MemoryRouter>)
+    await screen.findByRole('alert')
+    assert.equal(screen.queryByText('正在检查登录状态…'), null)
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    await screen.findByText(name === 'users' ? '当前条件下没有用户。' : '当前条件下没有管理员。')
+    assert.equal(sessions, 2)
+  })
+}
+
+for (const [name, Page, path] of [['users', AdminUsersPage, 'users'], ['devices', DeviceAdminPage, 'devices']] as const) {
+ test(`${name} follows changed status links without remounting`, async () => {
+  const requests: string[] = []
+  globalThis.fetch = async input => {
+   const url = String(input); requests.push(url)
+   if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+   return Response.json({ users: [], devices: [], groups: [], nodes: [], total: 0 })
+  }
+  function Harness() {
+   const navigate = useNavigate()
+   return <><button onClick={() => navigate(`/admin/${path}?status=disabled`)}>切换状态链接</button><Page /></>
+  }
+  render(<MemoryRouter initialEntries={[`/admin/${path}?status=pending`]}><Harness /></MemoryRouter>)
+  await waitFor(() => assert.ok(requests.some(url => url.startsWith(`/api/admin/${path}?`) && url.includes('status=pending'))))
+  fireEvent.click(screen.getByRole('button', { name: '切换状态链接' }))
+  await waitFor(() => assert.ok(requests.some(url => url.startsWith(`/api/admin/${path}?`) && url.includes('status=disabled'))))
+ })
+}
+
+
+test('starting another user edit clears the previous save notice', async () => {
+  globalThis.fetch = async (_input, init) => init?.method === 'PATCH'
+    ? Response.json({}) : Response.json({ groups: [] })
+  render(<AdminUserTable users={[{ id: 'alice', username: 'alice', display_name: 'Alice',
+    status: 'active', registration_source: 'local', must_change_password: false,
+    created_at: '2026-01-01' }]} csrf="csrf" loading={false} resetKey="all" onRefresh={() => {}} />)
+  fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+  await screen.findByLabelText('搜索用户组')
+  fireEvent.change(screen.getByLabelText('显示名称'), { target: { value: 'Alice edited' } })
+  fireEvent.click(screen.getByRole('button', { name: '保存修改' }))
+  await screen.findByText('用户资料已保存。')
+  fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+  assert.equal(!!screen.queryByText('用户资料已保存。'), false)
 })

@@ -1,3 +1,4 @@
+import { contentLocale } from '../utils/contentLocale'
 import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
 import { ApiError, FULL_PAGE_LIMIT, request } from './transport'
 import type { ShareInfo } from './share'
@@ -603,10 +604,11 @@ export const taskApi = {
   prepareArchiveExperience: async (taskId: string, projectId: string, messageId: string) => {
     type Draft = { message_id: string; experience: string; has_experience: boolean; cached: boolean }
     const path = `/task/${encodeURIComponent(taskId)}/archive-experience/prepare?project_id=${encodeURIComponent(projectId)}&message_id=${encodeURIComponent(messageId)}&background=true`
+    const body = JSON.stringify({ locale: contentLocale() })
     let failures = 0
     for (;;) {
       try {
-        const result = await request<Draft | { status: 'running'; message_id: string }>(path, { method: 'POST' })
+        const result = await request<Draft | { status: 'running'; message_id: string }>(path, { method: 'POST', body })
         if (!('status' in result)) return result
         failures = 0
       } catch (error) {
@@ -627,7 +629,7 @@ export const taskApi = {
       `/task/${encodeURIComponent(taskId)}/archive-experience/confirm?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',
-        body: JSON.stringify({ experience }),
+        body: JSON.stringify({ experience, locale: contentLocale() }),
       },
     ),
   unarchive: (taskId: string, projectId: string) =>

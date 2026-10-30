@@ -1,3 +1,5 @@
+import { useAdminSession } from './useAdminSession'
+import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminRecordDetails } from './AdminRecordDetails'
 import { AdminListStatus } from './AdminListStatus'
 import { AdminRecordTable } from './AdminRecordTable'
@@ -14,7 +16,8 @@ type Listing = { total: number; shares: Share[] }
 const statusLabel = { active: '有效', paused: '已暂停', revoked: '已撤销', expired: '已过期' }
 
 export function AdminSharesPage() {
-  const [csrfToken, setCsrfToken] = useState('')
+  const session = useAdminSession()
+  const csrfToken = session.csrf
   const [listing, setListing] = useState<Listing | null>(null)
   const [status, setStatus] = useState('')
   const [query, setQuery] = useState('')
@@ -28,19 +31,12 @@ export function AdminSharesPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<Share | null>(null)
 
-  useEffect(() => {
-    const controller = new AbortController()
-    void fetch('/api/auth/session', { signal: controller.signal })
-      .then(async response => {
-        if (!response.ok) throw new Error('管理员会话已失效。')
-        const data: { csrf_token: string } = await response.json()
-        if (!controller.signal.aborted) setCsrfToken(data.csrf_token)
-      }).catch(reason => { if (reason?.name !== 'AbortError') setError('管理员会话已失效。') })
-    return () => controller.abort()
-  }, [])
+
 
   useEffect(() => {
+    if (!csrfToken) return
     const controller = new AbortController()
+    setListing(null)
     setLoading(true)
     setError('')
     const params = new URLSearchParams({ offset: String(offset), limit: '20' })
@@ -55,7 +51,7 @@ export function AdminSharesPage() {
         if (reason?.name !== 'AbortError') setError('分享列表加载失败。')
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [status, submittedQuery, offset, revision])
+  }, [csrfToken, status, submittedQuery, offset, revision])
 
   async function change(share: Share, action: 'pause' | 'resume' | 'revoke' | 'delete') {
     if (busy || !csrfToken) return
@@ -74,6 +70,7 @@ export function AdminSharesPage() {
   }
 
   return <section className="gateway-admin-page gateway-share-management">
+    <AdminSessionStatus loading={session.loading} error={session.error} onRetry={session.retry} />
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>平台分享管理</h2></div>
     <form className="gateway-share-filters" onSubmit={event => {
@@ -94,7 +91,7 @@ export function AdminSharesPage() {
     {error && <p className="gateway-auth-error" role="alert">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在更新分享…</p>}
-    <AdminListStatus loading={loading} label="正在加载分享…"/>
+    <AdminListStatus loading={!!csrfToken && loading} label="正在加载分享…"/>
     {listing && <>
       <p>共 {listing.total} 个分享</p>
       {listing.shares.length === 0 ? <p>没有符合条件的分享。</p> : <AdminRecordTable busy={loading || busy} columns={['分享','项目 / 设备','创建者','状态','访问次数','操作']}>
@@ -104,9 +101,11 @@ export function AdminSharesPage() {
           <td>{statusLabel[share.status]}</td><td>{share.visit_count}</td>
           <td><div className="gateway-row-actions">
             <AdminRecordDetails title={`分享详情 ${share.id}`}><p>任务 {share.task_id}</p><p>创建 {new Date(share.created_at).toLocaleString()} · 最后访问 {share.last_seen_at ? new Date(share.last_seen_at).toLocaleString() : '暂无'} · 过期 {share.expires_at ? new Date(share.expires_at).toLocaleString() : '未设置'}</p></AdminRecordDetails>
-            <button type="button" disabled={loading || busy || share.status === 'revoked'} onClick={() => void change(share,share.status === 'paused' ? 'resume' : 'pause')}>{share.status === 'paused' ? '恢复' : '暂停'}</button>
-            <button type="button" className="gateway-admin-danger" disabled={loading || busy || share.status === 'revoked'} onClick={() => setRevokeTarget(share)}>撤销</button>
-            <button type="button" className="gateway-admin-danger" disabled={loading || busy} onClick={() => setDeleteTarget(share)}>删除</button>
+            <button type="button" disabled={!csrfToken || loading || busy || share.status === 'revoked' || share.status === 'expired'}
+              title={share.status === 'expired' ? '分享已过期，无法暂停或恢复。' : undefined}
+              onClick={() => void change(share,share.status === 'paused' ? 'resume' : 'pause')}>{share.status === 'paused' ? '恢复' : '暂停'}</button>
+            <button type="button" className="gateway-admin-danger" disabled={!csrfToken || loading || busy || share.status === 'revoked'} onClick={() => setRevokeTarget(share)}>撤销</button>
+            <button type="button" className="gateway-admin-danger" disabled={!csrfToken || loading || busy} onClick={() => setDeleteTarget(share)}>删除</button>
           </div></td>
         </tr>)}
       </AdminRecordTable>}

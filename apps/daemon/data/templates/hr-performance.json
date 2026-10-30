@@ -421,5 +421,6 @@
         "toPort": 1
       }
     ]
-  }
+  },
+  "locale": "zh-CN"
 }

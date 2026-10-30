@@ -169,3 +169,26 @@ test('share clipboard localizes its labels without translating task names or cre
     }), expected[locale as keyof typeof expected])
   }
 })
+
+test('editable builtin drafts preserve paths, constraints and placeholders in every language', () => {
+  for (const [locale, messages] of Object.entries(locales)) {
+    const t = createT(messages)
+    const skill = t('builtinContent.skillDraft', {workspace: '/runtime/demo'})
+    const imported = t('builtinContent.importDraft', {workspace: '/runtime/demo', package: '/runtime/demo/imported'})
+    assert.match(skill, /SKILL\.md/)
+    assert.match(skill, /name/)
+    assert.match(skill, /description/)
+    assert.match(skill, /\/runtime\/demo/)
+    for (const text of ['engine validate', 'register', 'references/custom-engine.md', '/runtime/demo/imported']) {
+      assert.ok(imported.includes(text), `${locale}: ${text}`)
+    }
+    const keys = ['builtinContent.skillDraft', 'builtinContent.importDraft', 'skins.studioDraft', 'skins.studioContinuePrompt', 'settings.customEngineOnboardingPrompt', 'aiFlow.quickGeneratePrompt', 'taskList.aiQuickDescribePrompt'] as const
+    for (const key of keys) {
+      const text = t(key)
+      const original = createT(zhCN)(key)
+      assert.deepEqual(text.match(/\{\w+\}/g)?.sort(), original.match(/\{\w+\}/g)?.sort(), `${locale}: ${key}`)
+      if (!locale.startsWith('zh')) assert.notEqual(text, original, `${locale}: ${key}`)
+      if (['en-US','fr-FR','de-DE','ar'].includes(locale)) assert.doesNotMatch(text, /[\u3400-\u9fff]/, `${locale}: ${key}`)
+    }
+  }
+})

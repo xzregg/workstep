@@ -168,3 +168,9 @@ async def admin_edit_user(request: Request, user_id: str, body: AdminEditUserInp
 async def user_groups(request: Request, user_id: str):
     from gateway.services.user_group_memberships import user_group_choices
     return await invoke(user_group_choices, request=request, user_id=user_id)
+
+
+@router.get('/account/usage')
+async def account_usage(request: Request, days: int = Query(30, ge=1, le=90)):
+    from gateway.services.account_usage import account_usage as handle
+    return await invoke(handle, request=request, days=days)

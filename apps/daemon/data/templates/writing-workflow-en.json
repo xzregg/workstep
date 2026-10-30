@@ -1,0 +1,187 @@
+{
+  "id": "writing-workflow-en",
+  "default": true,
+  "name": "Writing workflow",
+  "description": "Topic selection → Outline → First draft → Proofreading → Layout",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "topic",
+        "title": "Topic selection",
+        "position": {
+          "x": 100,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Choose the article topic and core arguments based on the target readers and topic direction.",
+        "inputs": [
+          {
+            "name": "Topic direction",
+            "type": "Document",
+            "outputs": [
+              {
+                "name": "Topic selection report",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Topic selection report",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "outline",
+        "title": "Outline",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Write a detailed article outline based on the topic selection report, including key points for each section.",
+        "inputs": [
+          {
+            "name": "Topic selection report",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Article outline",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Article outline",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "draft",
+        "title": "First draft",
+        "position": {
+          "x": 660,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Write a complete first draft based on the article outline.",
+        "inputs": [
+          {
+            "name": "Article outline",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Article draft",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Article draft",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "review",
+        "title": "Proofreading",
+        "position": {
+          "x": 940,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Proofread the article draft, correct errors, and improve expression.",
+        "inputs": [
+          {
+            "name": "Article draft",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Proofread draft",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Proofread draft",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "format",
+        "title": "Layout",
+        "position": {
+          "x": 1220,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Finalize the proofread draft layout and output the publication version.",
+        "inputs": [
+          {
+            "name": "Proofread draft",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Publication version",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Publication version",
+            "type": "Markdown"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      }
+    ]
+  },
+  "locale": "en-US"
+}

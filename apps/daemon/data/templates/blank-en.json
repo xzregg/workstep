@@ -1,0 +1,11 @@
+{
+  "id": "blank-en",
+  "default": true,
+  "name": "Blank template",
+  "description": "Create a workflow from scratch",
+  "steps": {
+    "nodes": [],
+    "connections": []
+  },
+  "locale": "en-US"
+}

@@ -4,7 +4,7 @@ from gateway.contracts import GatewayCall
 
 from sqlalchemy import func, select
 
-from gateway.services.identity import COOKIE_NAME, IdentityService
+from gateway.services.identity import COOKIE_NAME, IdentityService, _as_utc
 
 from gateway.services.management_scope import device_scope
 
@@ -80,7 +80,7 @@ async def admin_overview(call: GatewayCall):
             recent = (await session.scalars(select(AuditEvent).order_by(
                 AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(5))).all()
             recent_actions = [{"action": event.action, "result": event.result,
-                               "created_at": event.created_at.isoformat()} for event in recent]
+                               "created_at": _as_utc(event.created_at).isoformat()} for event in recent]
 
     return {"roles": sorted(roles), "users": users, "devices": devices, "projects": projects,
             "tasks": tasks if manages_devices else {"running": None, "unknown_projects": None},

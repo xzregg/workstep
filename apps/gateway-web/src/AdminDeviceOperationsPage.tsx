@@ -1,3 +1,5 @@
+import { useAdminSession } from './useAdminSession'
+import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminTabs } from './AdminTabs'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
@@ -189,26 +191,16 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
 
 export function AdminDeviceOperationsPage() {
   const [tab, setTab] = useState('create')
-  const [csrf, setCsrf] = useState('')
-  const [error, setError] = useState('')
+  const session = useAdminSession()
+  const csrf = session.csrf
   const [revision, setRevision] = useState(0)
-  useEffect(() => {
-    const controller = new AbortController()
-    void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
-      .then(async response => {
-        if (!response.ok) throw new Error('登录状态已失效，请重新登录。')
-        const data = await response.json()
-        if (!controller.signal.aborted) setCsrf(data.csrf_token)
-      }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '登录状态加载失败。')
-      })
-    return () => controller.abort()
-  }, [])
+
   return <section className="gateway-admin-page">
+    <AdminSessionStatus loading={session.loading} error={session.error} onRetry={session.retry} />
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>设备批量作业</h2></div>
-    {!csrf && !error && <p role="status">正在检查登录状态…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+
+
     {csrf && <AdminTabs label="设备作业分类" value={tab} onChange={setTab} items={[
       { id: 'create', label: '创建批量作业', content: <OperationCreate csrf={csrf}
         onCreated={() => { setRevision(value => value + 1); setTab('history') }} /> },

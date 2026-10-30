@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 type Overview = {
   roles: string[]
@@ -45,21 +45,21 @@ export function AdminOverviewPage() {
       <div className="gateway-overview-grid">
         {overview.users && <section className="gateway-overview-card"><h3>用户</h3>
           <p><strong>{overview.users.total}</strong> 位用户</p>
-          <p>{overview.users.pending} 位待审核</p></section>}
+          <p>{overview.users.pending} 位待审核</p><div className="gateway-overview-links"><Link to="/admin/users">管理用户</Link><Link to="/admin/users?status=pending">待审核用户</Link></div></section>}
         {overview.devices && <section className="gateway-overview-card"><h3>受管电脑</h3>
           <p><strong>{overview.devices.online}</strong> 台控制连接在线 · 共 {overview.devices.total} 台</p>
           <p>{overview.devices.offline} 台离线 · {overview.devices.pending} 台待审批</p>
           <p>daemon 健康：{overview.devices.daemon_healthy} 台正常 · {
-            overview.devices.daemon_unhealthy} 台异常 · {overview.devices.daemon_unknown} 台未知</p></section>}
+            overview.devices.daemon_unhealthy} 台异常 · {overview.devices.daemon_unknown} 台未知</p><div className="gateway-overview-links"><Link to="/admin/devices">管理设备</Link><Link to="/admin/devices?status=pending">待审批设备</Link><Link to="/admin/devices?health=unhealthy">异常设备</Link></div></section>}
         {overview.projects && <section className="gateway-overview-card"><h3>项目</h3>
           <p><strong>{overview.projects.published}</strong> 个已发布 · {overview.projects.shared} 个已共享</p>
-          <p>{overview.projects.host_offline} 个项目的宿主电脑离线</p></section>}
+          <p>{overview.projects.host_offline} 个项目的宿主电脑离线</p>{overview.roles.some(role => ['super_admin', 'org_admin', 'department_admin'].includes(role)) && <Link to="/admin/projects">管理项目</Link>}</section>}
         <section className="gateway-overview-card"><h3>运行中任务</h3>
           <p>{overview.tasks.running === null ? '运行状态尚未全部上报' : `${overview.tasks.running} 项`}</p>
           {overview.tasks.unknown_projects !== null && overview.tasks.unknown_projects > 0 &&
             <p>{overview.tasks.unknown_projects} 个项目状态未知</p>}</section>
       </div>
-      {overview.recent_actions && <section className="gateway-overview-activity"><h3>最近关键操作</h3>
+      {overview.recent_actions && <section className="gateway-overview-activity"><h3>最近关键操作</h3><Link to="/admin/audit">查看全部审计记录</Link>
         {overview.recent_actions.length === 0 ? <p>暂无操作记录。</p> : <ul>{overview.recent_actions.map((action, index) =>
           <li key={`${action.created_at}-${index}`}><strong>{action.action}</strong> · {action.result} · {
             new Date(action.created_at).toLocaleString()}</li>)}</ul>}

@@ -1,10 +1,11 @@
+import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminListStatus } from './AdminListStatus'
 import { AdminUserGroupTree } from './AdminUserGroupTree'
 import { AdminGroupCreateDialog } from './AdminGroupCreateDialog'
 import { AdminUserTable } from './AdminUserTable'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AdminCreateUserDialog } from './AdminCreateUserDialog'
 
 export type AdminUser = {
@@ -25,13 +26,16 @@ export function buildUserListQuery(filters: Filters): string {
 }
 
 export function AdminUsersPage() {
+  const [params] = useSearchParams()
+  const linkedStatus = ['pending','active','disabled','deleted'].includes(params.get('status') ?? '') ? params.get('status')! : ''
   const navigate = useNavigate()
-  const [access, setAccess] = useState<'checking' | 'ready' | 'forbidden'>('checking')
+  const [access, setAccess] = useState<'checking' | 'ready' | 'forbidden' | 'session-error'>('checking')
+  const [sessionRevision, setSessionRevision] = useState(0)
   const [csrf, setCsrf] = useState('')
   const [users, setUsers] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
   const [searchDraft, setSearchDraft] = useState('')
-  const [filters, setFilters] = useState<Filters>({ q: '', status: '', sort: 'created_at',
+  const [filters, setFilters] = useState<Filters>({ q: '', status: linkedStatus, sort: 'created_at',
     direction: 'desc', page: 1, pageSize: 100 })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -42,7 +46,13 @@ export function AdminUsersPage() {
   const [canViewAudit, setCanViewAudit] = useState(false)
 
   useEffect(() => {
+    setFilters(current => current.status === linkedStatus ? current
+      : { ...current, status: linkedStatus, page: 1 })
+  }, [linkedStatus])
+
+  useEffect(() => {
     const controller = new AbortController()
+    setAccess('checking'); setError('')
     void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (response.status === 401) { navigate('/auth?next=%2Fadmin%2Fusers', { replace: true }); return }
@@ -50,9 +60,9 @@ export function AdminUsersPage() {
         const session = await response.json()
         if (!controller.signal.aborted) { setCsrf(session.csrf_token); setSuperAdmin((session.admin_roles ?? []).includes('super_admin')); setCanViewAudit((session.admin_roles ?? []).some((role: string) => ['super_admin', 'audit_admin'].includes(role))); setAccess('ready') }
       })
-      .catch(reason => { if (reason?.name !== 'AbortError') setError('登录状态加载失败，请刷新重试。') })
+      .catch(reason => { if (!controller.signal.aborted) { setError('登录状态加载失败，请重试。'); setAccess('session-error') } })
     return () => controller.abort()
-  }, [navigate])
+  }, [navigate, sessionRevision])
 
   useEffect(() => {
     if (access !== 'ready') return
@@ -85,7 +95,7 @@ export function AdminUsersPage() {
     <h2>{filters.status === 'deleted' ? '用户回收站' : '用户管理'}</h2>
     <div className="gateway-device-actions"><button type="button" onClick={() => setFilters(current => ({ ...current, status: '', groupId: undefined, page: 1 }))}>用户列表</button><button type="button" onClick={() => setFilters(current => ({ ...current, status: 'deleted', groupId: undefined, q: '', page: 1 }))}>回收站</button></div>
     {filters.status === 'deleted' && <p>删除的用户可单项或批量恢复；恢复后为停用状态，可返回用户列表启用。彻底删除需要管理员密码确认，完成后无法恢复。</p>}
-    {access === 'checking' && <p role="status">正在检查登录状态…</p>}
+    <AdminSessionStatus loading={access === 'checking'} error={access === 'session-error' ? error : ''} onRetry={() => setSessionRevision(value => value + 1)} />
     {access === 'forbidden' && <p role="alert">当前账号没有用户管理权限。</p>}
     {access === 'ready' && <div className="gateway-users-workspace">
       <div className="gateway-users-tree-panel"><AdminUserGroupTree selected={filters.groupId ?? ''} revision={revision} onSelect={groupId => setFilters(current => ({ ...current, groupId, page: 1 }))} />

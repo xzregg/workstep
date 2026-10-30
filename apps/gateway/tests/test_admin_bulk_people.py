@@ -287,7 +287,10 @@ def test_edit_user_multiple_groups_atomic_and_directory_read_only(tmp_path):
     with TestClient(create_app(GatewaySettings(data_dir=tmp_path)), base_url='https://gateway.test') as client:
         _, headers, users = setup(client)
         groups = [client.post('/api/groups', json={'name': slug, 'slug': slug}, headers=headers).json()['id'] for slug in ['dev', 'other']]
+        child = client.post('/api/groups', json={'name': '子组', 'slug': 'child', 'parent_id': groups[0]}, headers=headers).json()['id']
         url = f'/api/admin/users/{users[0]}'
+        choices = client.get(url + '/groups').json()['groups']
+        assert next(row for row in choices if row['id'] == child)['parent_id'] == groups[0]
         body = {'display_name': 'Alice', 'group_ids': groups}
         assert client.patch(url, json=body, headers=headers).status_code == 200
         rows = client.get(url + '/groups').json()['groups']
@@ -308,7 +311,7 @@ def test_edit_user_multiple_groups_atomic_and_directory_read_only(tmp_path):
         rows = client.get(url + '/groups').json()['groups']
         assert next(row for row in rows if row['id'] == groups[0])['editable'] is False
         assert client.patch(url, json={**body, 'group_ids': []}, headers=headers).status_code == 409
-        assert all(row['selected'] for row in client.get(url + '/groups').json()['groups'])
+        assert {row['id'] for row in client.get(url + '/groups').json()['groups'] if row['selected']} == set(groups)
         client.cookies.clear()
         # A normal account cannot use either endpoint to inspect or change another user.
         login = client.post('/api/auth/login', json={'username': 'owner', 'password': 'OwnerPassword123'}).json()

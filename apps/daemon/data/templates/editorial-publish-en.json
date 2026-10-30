@@ -1,0 +1,364 @@
+{
+  "id": "editorial-publish-en",
+  "default": true,
+  "name": "Content publishing",
+  "description": "Topic planning → Writing → Review → Layout and publication",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "topic_planning",
+        "title": "Topic planning",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Plan topics based on target audience profiles, trending topics, and the content calendar: analyze competitor content strategies, identify user search intent, and assess commercial value. Produce a topic list (title options, keywords, expected readership, and SEO scores), assigning each topic a P0/P1/P2 priority.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Content strategy",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Topic list",
+                "type": "json"
+              },
+              {
+                "name": "Competitor analysis",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Topic list",
+            "type": "json"
+          },
+          {
+            "name": "Competitor analysis",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "outline",
+        "title": "Outline writing",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Write an outline for the selected topic: define the article structure (introduction/body/conclusion), core arguments and supporting data for each section, infographic/chart needs, references, and citation sources. Produce a detailed outline and asset requirements list (images, data, cases, etc.).",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Topic list",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Content outline",
+                "type": "Markdown"
+              },
+              {
+                "name": "Asset requirements",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Content outline",
+            "type": "Markdown"
+          },
+          {
+            "name": "Asset requirements",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "draft_writing",
+        "title": "Draft writing",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Write a first draft from the outline: follow brand voice guidelines, ensure accuracy and logical coherence, embed SEO keywords and internal links, and mark chart and visualization positions. Produce a complete draft (including a meta description and OG tag suggestions), marking facts and data requiring human confirmation.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Content outline",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "First draft",
+                "type": "Markdown"
+              },
+              {
+                "name": "Fact-checking checklist",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "First draft",
+            "type": "Markdown"
+          },
+          {
+            "name": "Fact-checking checklist",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "editing",
+        "title": "Editorial review",
+        "position": {
+          "x": 680,
+          "y": 380
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Review the draft: check logical structure, grammar, style consistency, and factual accuracy. Compare differentiation from competitor content, assess title appeal (with an A/B testing plan), and review brand compliance and legal risks. Produce review comments and revision suggestions, separating required changes from suggested improvements.",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "First draft",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Review comments",
+                "type": "file"
+              },
+              {
+                "name": "Revision suggestions",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Review comments",
+            "type": "file"
+          },
+          {
+            "name": "Revision suggestions",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "layout_design",
+        "title": "Layout design",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "Lay out the approved final draft: configure typography (heading hierarchy, blockquotes, code blocks, and infographic positions), propose cover and inline illustrations, and adapt the reading experience for mobile and desktop. Produce publication-ready layout files.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "First draft",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "Layout files",
+                "type": "file"
+              },
+              {
+                "name": "Illustration plan",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Layout files",
+            "type": "file"
+          },
+          {
+            "name": "Illustration plan",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "publish",
+        "title": "Final review and publication",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "hermes",
+        "model": "",
+        "prompt": "Perform final publication checks: confirm all review comments are addressed, check rendering across devices, verify links and multimedia access, and set publication time (immediate/scheduled). Publish to content platforms and distribute simultaneously to social media, email, and RSS.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Layout files",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "Publication record",
+                "type": "json"
+              },
+              {
+                "name": "Distribution status",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Publication record",
+            "type": "json"
+          },
+          {
+            "name": "Distribution status",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "performance_analysis",
+        "title": "Data analysis",
+        "position": {
+          "x": 1580,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "Track and analyze published content: views, completion rate, share rate, conversion rate (CTA clicks), SEO ranking changes, and comment sentiment. Produce a content performance report and iterative optimization recommendations, and update the content calendar and topic library.",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "Publication record",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "Performance report",
+                "type": "file"
+              },
+              {
+                "name": "Optimization recommendations",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Performance report",
+            "type": "file"
+          },
+          {
+            "name": "Optimization recommendations",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      },
+      {
+        "from": 6,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 0
+      }
+    ]
+  },
+  "locale": "en-US"
+}
