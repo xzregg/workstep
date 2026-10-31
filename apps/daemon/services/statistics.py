@@ -148,6 +148,7 @@ class StatisticsModule:
             "review_durations": [],
         }
         trend: dict[str, MetricBucket] = {}
+        activity: dict[str, dict[str, Any]] = {}
         workflow_meta: dict[tuple[str, str], dict[str, Any]] = {}
         earliest: datetime | None = None
 
@@ -263,6 +264,11 @@ class StatisticsModule:
                     if not self._eligible_message(message, period):
                         continue
                     task = task_by_id[message.task_id]
+                    timestamp = message.started_at or message.created_at
+                    day_key = _utc(timestamp).astimezone(period.timezone).date().isoformat()
+                    daily = activity.setdefault(day_key, {"date": day_key, "count": 0, "tokens": None})
+                    daily["count"] += 1
+                    earliest = _earlier(earliest, timestamp)
                     global_bucket.eligible_calls += 1
                     project_bucket.eligible_calls += 1
                     workflow_bucket = self._workflow_bucket(
@@ -278,6 +284,7 @@ class StatisticsModule:
                         pricing,
                         engine=message.engine or "",
                     )
+                    daily["tokens"] = (daily["tokens"] or 0) + usage["total_tokens"]
                     global_bucket.add_usage(usage, cost)
                     project_bucket.add_usage(usage, cost)
                     workflow_bucket.add_usage(usage, cost)
@@ -323,6 +330,10 @@ class StatisticsModule:
                         and _in_period(timestamp, period)
                     ):
                         continue
+                    day_key = _utc(timestamp).astimezone(period.timezone).date().isoformat()
+                    daily = activity.setdefault(day_key, {"date": day_key, "count": 0, "tokens": None})
+                    daily["count"] += 1
+                    earliest = _earlier(earliest, timestamp)
                     global_bucket.eligible_calls += 1
                     project_bucket.eligible_calls += 1
                     workflow_id = message.session.workflow_id or None
@@ -343,6 +354,7 @@ class StatisticsModule:
                         pricing,
                         engine=message.engine or "",
                     )
+                    daily["tokens"] = (daily["tokens"] or 0) + usage["total_tokens"]
                     global_bucket.add_usage(usage, cost)
                     project_bucket.add_usage(usage, cost)
                     if workflow_bucket is not None:
@@ -401,6 +413,7 @@ class StatisticsModule:
             "period": self._period_report(period),
             "summary": summary,
             "trend": [self._trend_report(key, trend[key]) for key in sorted(trend)],
+            "activity": [activity[key] for key in sorted(activity)],
             "projects": self._project_reports(projects, project_buckets) if query.project_id is None else [],
             "workflows": self._workflow_reports(
                 projects, workflow_buckets, workflow_meta, query,

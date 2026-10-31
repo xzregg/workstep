@@ -88,6 +88,43 @@ async def test_direct_html_and_upload_responses_enforce_sandbox(preview_site):
         assert 'allow-same-origin' not in served.headers['content-security-policy']
 
 
+@pytest.mark.parametrize('extension', ['html', 'htm'])
+async def test_html_preview_accepts_large_documents_up_to_resource_limit(preview_site, extension):
+    from services.html_preview import MAX_RESOURCE_BYTES
+    client, site = preview_site
+    document = site / f'large.{extension}'
+    content = '<!doctype html><p>Large diagram</p>'
+    content += ' ' * (2548843 - len(content))
+    document.write_text(content)
+    headers = {'x-workstep-desktop-token': 'test-desktop-token'}
+    params = {'project_id': 'project-1', 'path': f'prototype/{document.name}'}
+    response = await client.get('/api/fs/preview', params=params, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()['content'] == content
+    grant = response.json()['html_preview']
+    resource = await client.get(f"/api/fs/html-resource/project-1/{grant['token']}/{grant['entry']}")
+    assert resource.status_code == 200
+    assert 'Large diagram' in resource.text
+    assert 'sandbox allow-scripts' in resource.headers['content-security-policy']
+
+    # The preview metadata and actual resource enforce the same upper bound.
+    with document.open('r+b') as stream:
+        stream.truncate(MAX_RESOURCE_BYTES)
+    assert (await client.get('/api/fs/preview', params=params, headers=headers)).status_code == 200
+    with document.open('r+b') as stream:
+        stream.truncate(MAX_RESOURCE_BYTES + 1)
+    assert (await client.get('/api/fs/preview', params=params, headers=headers)).status_code == 413
+
+
+async def test_non_html_preview_keeps_one_mib_limit(preview_site):
+    client, site = preview_site
+    (site / 'large.txt').write_bytes(b'x' * (1024 * 1024 + 1))
+    response = await client.get('/api/fs/preview',
+        params={'project_id': 'project-1', 'path': 'prototype/large.txt'},
+        headers={'x-workstep-desktop-token': 'test-desktop-token'})
+    assert response.status_code == 413
+
+
 async def test_expired_resource_ticket_cannot_read_files(preview_site, monkeypatch):
     import services.html_preview as preview
     client, _ = preview_site

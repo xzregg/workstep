@@ -573,3 +573,17 @@ async def test_statistics_api_returns_overview(statistics_fixture, monkeypatch):
     assert response.json()["scope"]["level"] == "project"
     assert response.json()["summary"]["run_count"] == 2
     assert invalid.status_code == 422
+
+
+def test_daily_activity_keeps_daily_resolution_and_counts_unmetered_calls(statistics_fixture):
+    manager, *_ = statistics_fixture
+    report = StatisticsModule(manager).overview(StatisticsQuery(
+        range_key="custom", start=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        end=datetime(2027, 1, 1, tzinfo=timezone.utc), timezone="Asia/Shanghai",
+    ))
+    assert report["period"]["granularity"] != "day"
+    days = report["activity"]
+    assert days
+    assert all(len(day["date"]) == 10 for day in days)
+    assert sum(day["count"] for day in days) == report["data_quality"]["eligible_token_calls"]
+    assert sum(day["tokens"] or 0 for day in days) == report["summary"]["total_tokens"]

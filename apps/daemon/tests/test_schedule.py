@@ -1139,6 +1139,52 @@ async def test_zero_agent_retries_means_one_attempt(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_empty_agent_batch_is_skipped_without_retry(tmp_path, monkeypatch):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+    from models import Task
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / 'project')
+    agent = StubTaskAgent([[]])
+    module = ScheduleModule(manager, None, None, task_agent=agent)
+    storing = threading.Event()
+    release_store = threading.Event()
+    original_store = module._store_task_results
+
+    def slow_store(*args, **kwargs):
+        storing.set()
+        release_store.wait(timeout=2)
+        return original_store(*args, **kwargs)
+
+    monkeypatch.setattr(module, '_store_task_results', slow_store)
+    try:
+        schedule = _agent_schedule(module, project)
+        tick = asyncio.create_task(module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc)))
+        async def wait_for_store():
+            while not storing.is_set():
+                await asyncio.sleep(.001)
+        await asyncio.wait_for(wait_for_store(), timeout=2)
+        await asyncio.wait_for(asyncio.sleep(.01), timeout=.1)
+        assert any(not worker.done() for worker in module._workers)
+        release_store.set()
+        await tick
+        await module.wait_idle()
+        run = module.list_runs(project.id, schedule['id'])[0]
+        assert run['status'] == 'skipped'
+        assert run['reason'] == '本次未生成任务'
+        assert run['created_tasks'] == []
+        assert run['task_id'] is None
+        assert run['ended_at'] is not None
+        assert len(agent.calls) == 1
+        assert await manager.run_db(project.id, lambda _: Task.select().count()) == 0
+    finally:
+        release_store.set()
+        await module.shutdown()
+        manager.close_all()
+
+
+@pytest.mark.anyio
 async def test_batch_task_and_run_index_roll_back_together(tmp_path, monkeypatch):
     from services.project import ProjectManager, DEFAULT_STEPS
     from services.schedule import ScheduleModule

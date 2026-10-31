@@ -261,6 +261,13 @@ test('statistics tabs share the applied time filters and load only the active re
  render(<MemoryRouter><AdminUsagePage readOnly /></MemoryRouter>)
  await screen.findByRole('img',{name:'每日 Token 趋势（UTC）'})
  assert.ok(screen.getByRole('img',{name:'每日调用趋势（UTC）'}))
+ const heatmap=screen.getByRole('region',{name:'使用活跃情况（UTC）'})
+ assert.equal(heatmap.querySelectorAll('[data-date]').length,365)
+ const activeDay=heatmap.querySelector('[data-date="2026-10-02"]')!
+ fireEvent.focus(activeDay)
+ assert.match(screen.getByRole('status').textContent ?? '',/2026-10-02.*5 次调用.*未上报/)
+ fireEvent.blur(activeDay)
+
  const chart=screen.getByRole('img',{name:'每日 Token 趋势（UTC）'})
  assert.equal(chart.querySelectorAll('polyline').length,0)
  assert.equal(chart.querySelectorAll('circle').length,1)

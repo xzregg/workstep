@@ -1,3 +1,5 @@
+import { ActivityHeatmap, activityDateRange } from '@workstep/gateway-ui/ActivityHeatmap'
+import '@workstep/gateway-ui/ActivityHeatmap.css'
 import Select from '../components/Select'
 import SystemStatisticsPanel from '../components/SystemStatisticsPanel'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
@@ -442,6 +444,10 @@ function BusinessStatistics() {
           {report.summary.run_count === 0 && (
             <div className="statistics-empty-note">{t('statistics.noActivity')}</div>
           )}
+
+          <ActivityHeatmap rows={report.activity ?? []}
+            {...activityDateRange(report.period.start, report.period.end, report.period.timezone)}
+            locale={locale} labels={{ title: t('statistics.activityTitle'), previous: t('statistics.activityPrevious'), next: t('statistics.activityNext'), less: t('statistics.activityLess'), more: t('statistics.activityMore'), outside: t('statistics.activityOutside'), unknown: t('statistics.activityUnknown'), calls: t('statistics.activityCalls'), days: t('statistics.activityDays'), hint: t('statistics.activityHint') }} />
 
           <div className="statistics-chart-grid-layout">
             <TrendChart

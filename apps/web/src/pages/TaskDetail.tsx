@@ -392,19 +392,6 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
   }, [shared?.messages])
 
   useEffect(() => {
-    if (historyLoading || !pendingStepScrollRef.current) return
-    const stepKey = pendingStepScrollRef.current
-    const frame = requestAnimationFrame(() => {
-      stepLastMessageRefs.current[stepKey]?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      })
-      pendingStepScrollRef.current = null
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [historyLoading, historyMessages])
-
-  useEffect(() => {
     if (taskStatus) setRunning(hasActiveTaskExecution(task))
   }, [taskStatus, task?.steps])
 
@@ -915,19 +902,6 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
     }
 
     setSelectedStep(stepIndex)
-    const stepKey = steps[stepIndex]?.key
-    if (!stepKey) return
-
-    pendingStepScrollRef.current = stepKey
-    if (historyLoading) return
-
-    requestAnimationFrame(() => {
-      stepLastMessageRefs.current[stepKey]?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      })
-      pendingStepScrollRef.current = null
-    })
   }
 
   return (

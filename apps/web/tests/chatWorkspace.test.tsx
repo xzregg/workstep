@@ -133,7 +133,9 @@ test('desktop chat opens at most four independent panes, preserves drafts across
         assert.equal(window.getComputedStyle(button).flexShrink, '0')
       }
       const close = pane.querySelector<HTMLElement>('[aria-label="关闭对话窗口"]')!
-      const windowButton = close.nextElementSibling!
+      const newConversationButton = close.nextElementSibling!
+      assert.match(newConversationButton.textContent!, /New conversation|新建对话/)
+      const windowButton = newConversationButton.nextElementSibling!
       assert.equal(windowButton.getAttribute('aria-label'), '对话窗口')
       const closeStyle = window.getComputedStyle(close)
       const windowStyle = window.getComputedStyle(windowButton)
@@ -173,7 +175,7 @@ test('desktop chat opens at most four independent panes, preserves drafts across
     assert.equal(useChatSessionStore.getState().sessions.a.running, true, 'closing a pane must not stop its turn')
     await act(async () => openWindows())
     await act(async () => arrangementOption('增加对话窗口').click())
-    assert.equal(document.querySelector('.chat-workspace-pane--active [aria-label="关闭对话窗口"]')?.nextElementSibling?.getAttribute('aria-label'), '对话窗口')
+    assert.equal(document.querySelector('.chat-workspace-pane--active [aria-label="关闭对话窗口"]')?.nextElementSibling, document.querySelector('.chat-workspace-pane--active .chat-session-empty .btn-primary'))
     const create = () => document.querySelector<HTMLButtonElement>('.chat-workspace-pane--active .chat-session-empty .btn-primary')!
     await act(async () => create().click())
     assert.match(document.querySelector('.chat-workspace-pane--active')!.textContent!, /创建失败，请重试/)

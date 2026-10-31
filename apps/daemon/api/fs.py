@@ -572,6 +572,9 @@ def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
     file_size = file_path.stat().st_size
     relative_path = _project_relative_path(file_path, project_id)
     max_size = 1024 * 1024
+    if content_type == 'text/html':
+        from services.html_preview import MAX_RESOURCE_BYTES
+        max_size = MAX_RESOURCE_BYTES
     if file_size > max_size:
         raise HTTPException(
             status_code=413,

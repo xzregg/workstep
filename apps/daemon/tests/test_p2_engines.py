@@ -4258,6 +4258,7 @@ async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_
             "custom_config": (
                 "model_context_window = 128000\n"
                 "model_reasoning_effort = low\n"
+                "tools.update_plan.enabled = false\n"
             ),
         },
     )
@@ -4272,6 +4273,7 @@ async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_
     assert config["model_context_window"] == "128000"
     # WorkStep 的推理强度优先，自定义的 low 不得覆盖。
     assert config["model_reasoning_effort"] == effort
+    assert config["tools.update_plan.enabled"] == "false"
 
 
 @pytest.mark.anyio
@@ -4327,6 +4329,7 @@ async def test_codex_sdk_spawn_omits_approval_mode_when_unset(tmp_path, monkeypa
     assert captured["start_kwargs"]["config"] == {
         "model_reasoning_summary": "detailed",
         "model_supports_reasoning_summaries": True,
+        "tools.update_plan.enabled": True,
     }
     assert [event.type for event in events] == [
         "status",
@@ -4388,6 +4391,7 @@ async def test_codex_sdk_spawn_passes_configured_approval_mode(tmp_path, monkeyp
         "model_reasoning_effort": "high",
         "model_reasoning_summary": "detailed",
         "model_supports_reasoning_summaries": True,
+        "tools.update_plan.enabled": True,
     }
     assert [event.type for event in events] == [
         "status",

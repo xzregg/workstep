@@ -543,9 +543,9 @@ export default function TaskDetailView({
   const [mobileTab, setMobileTab] = useState<'conversation' | 'steps' | 'artifacts'>('conversation')
   const [detailMode, setDetailMode] = useState<'detail' | 'artifacts' | 'analysis' | 'git'>('detail')
   const {
-    scrollRef, endRef, contentRef, stepLastRef, pendingScrollRef,
+    scrollRef, endRef, contentRef, stepLastRef,
     scrolledToBottom, unreadMessages, registerOverlay, overlayPaddingBottom,
-    onWheelCapture, onKeyDownCapture, onScroll, jumpToLatest,
+    onWheelCapture, onKeyDownCapture, onScroll, jumpToLatest, jumpToStep,
   } = useTaskConversationScroll({
     active: detailMode === 'detail' && (!compact || mobileTab === 'conversation'),
     historyMessages, liveMessages, events, content,
@@ -601,14 +601,7 @@ export default function TaskDetailView({
     onStepClick(stepIndex)
     const stepKey = steps[stepIndex]?.key
     if (!stepKey) return
-    pendingScrollRef.current = stepKey
-    requestAnimationFrame(() => {
-      stepLastRef.current[stepKey]?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      })
-      pendingScrollRef.current = null
-    })
+    jumpToStep(stepKey)
   }
 
   // ── Render: Left panel ──

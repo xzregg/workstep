@@ -1,8 +1,8 @@
 import { Children, isValidElement } from 'react'
 import type { ReactNode } from 'react'
 
-export function AdminRecordTable({ children, columns = ['信息', '操作'], busy = false }: { children: ReactNode; columns?: ReactNode[]; busy?: boolean }) {
- return <div className="gateway-admin-table-scroll" aria-busy={busy} tabIndex={0} role="region" aria-label="数据表格，可左右滚动"><table className="gateway-admin-table"><thead><tr>{columns.map((column, index) => <th scope="col" key={index}>{column}</th>)}</tr></thead><tbody inert={busy}>{children}</tbody></table></div>
+export function AdminRecordTable({ children, columns = ['信息', '操作'], busy = false, columnSort }: { children: ReactNode; columns?: ReactNode[]; busy?: boolean; columnSort?: { index: number; direction: 'none' | 'ascending' | 'descending' } }) {
+ return <div className="gateway-admin-table-scroll" aria-busy={busy} tabIndex={0} role="region" aria-label="数据表格，可左右滚动"><table className="gateway-admin-table"><thead><tr>{columns.map((column, index) => <th scope="col" key={index} aria-sort={columnSort?.index === index ? columnSort.direction : undefined}>{column}</th>)}</tr></thead><tbody inert={busy}>{children}</tbody></table></div>
 }
 
 export function AdminRecordRow({ children }: { children: ReactNode }) {

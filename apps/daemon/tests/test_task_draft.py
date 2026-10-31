@@ -662,7 +662,8 @@ async def test_task_assistant_actual_system_input(draft_module, monkeypatch, sch
         SYSTEM_PROMPT_MODE = "system"
         async def spawn(self, **kwargs):
             calls.append(kwargs)
-            yield InternalEvent("agent_message_chunk", {"content":{"text":json.dumps({"reply":"请补充", "task_draft":None})}})
+            payload = {"task_drafts": []} if schedule_mode else {"task_draft": None}
+            yield InternalEvent("agent_message_chunk", {"content":{"text":json.dumps({"reply":"请补充", **payload})}})
     monkeypatch.setattr(base, "create_engine", lambda _: Engine())
     accepted = module.submit_message(project.id, None, "实际用户要求", "actual-input", title="创建任务")
     session = next(iter(module._sessions.values()))
@@ -722,7 +723,7 @@ def test_schedule_draft_rejects_invalid_creation_parameters(changes):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize('payload', [
-    {'task_drafts': []},
+    {'task_draft': None},
     {'task_drafts': [{}]},
     {'task_drafts': [None]},
     {'task_drafts': {'title': 'not a list'}},
@@ -747,3 +748,43 @@ async def test_invalid_batch_payload_never_publishes_partial_drafts(draft_module
         await module.run_schedule(project.id, instruction='生成任务')
     assert not any(event.get('name') == 'workstep.task_draft' for event in published)
     assert await module._project_manager.run_db(project.id, lambda _: Task.select().count()) == 0
+
+
+@pytest.mark.anyio
+async def test_schedule_empty_batch_completes_without_repair_or_task(draft_module, monkeypatch):
+    module, _, manager, project, _ = draft_module
+    calls = []
+
+    async def invoke(*args, **kwargs):
+        calls.append(args)
+        return json.dumps({'reply': '没有符合条件的新需求', 'task_drafts': []}), [], None
+
+    monkeypatch.setattr(module, '_invoke', invoke)
+    assert await module.run_schedule(project.id, instruction='为新需求创建任务') == []
+    assert len(calls) == 1
+    assert await manager.run_db(project.id, lambda _: Task.select().count()) == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('cancel', [False, True])
+async def test_schedule_stops_background_turn_before_returning(draft_module, monkeypatch, cancel):
+    module, _, _, project, _ = draft_module
+    started = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def invoke(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            stopped.set()
+
+    monkeypatch.setattr(module, '_invoke', invoke)
+    task = asyncio.create_task(module.run_schedule(project.id, instruction='生成任务', timeout=.1))
+    await asyncio.wait_for(started.wait(), timeout=2)
+    if cancel:
+        task.cancel()
+    with pytest.raises(asyncio.CancelledError if cancel else RuntimeError, match=None if cancel else 'timed out'):
+        await task
+    assert stopped.is_set()
+    assert all(task.done() for task in module._turn_tasks.values())

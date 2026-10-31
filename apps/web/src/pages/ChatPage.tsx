@@ -457,10 +457,10 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
             description={t('chatSession.noSession')}
             action={<div className="chat-session-empty-action-group">
               <div className="chat-session-empty-actions">
+                {!compact && pane?.closeAction}
                 {can('session.create') && <Button variant="primary" loading={creating} onClick={() => void createSession()}>
                   {t('chatSession.createFirst')}
                 </Button>}
-                {!compact && pane?.closeAction}
                 {!compact && pane?.headerActions}
                 {can('session.manage') && <Button variant="ghost" onClick={() => setShowArchive(true)}>
                   <Icon name="archive" size={13} />{t('chatSession.viewArchive')}
@@ -525,6 +525,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         copy={panelCopy}
         headerActions={!embedded && (
           <>
+            {!compact && pane?.closeAction}
             {can('session.create') && <Button
               variant="ghost"
               size="sm"
@@ -534,7 +535,6 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
             >
               {t('chatSession.newSession')}
             </Button>}
-            {!compact && pane?.closeAction}
             {!compact && pane?.headerActions}
             {can('session.manage') && <Button
               variant="ghost"

@@ -320,16 +320,22 @@ class ControlConnections:
                     self._pending_data.pop(pending_token, None)
                     self._device_pending.pop(device_id, None)
                 if not future.done():
-                    future.cancel()
+                    future.set_exception(ConnectionError("Data connection unavailable"))
+                    # The initiating request may be the only waiter.
+                    future.exception()
                 raise
         try:
             return await asyncio.wait_for(asyncio.shield(future), timeout=10)
         finally:
             if not future.done():
                 async with self._lock:
-                    self._pending_data.pop(pending_token, None)
-                    self._device_pending.pop(device_id, None)
-                future.cancel()
+                    if not future.done():
+                        self._pending_data.pop(pending_token, None)
+                        self._device_pending.pop(device_id, None)
+                        # A shared cancellation escapes sibling HTTP handlers as
+                        # CancelledError instead of an ordinary upstream failure.
+                        future.set_exception(ConnectionError("Data connection unavailable"))
+                        future.exception()
 
     async def request_project_catalog(self, device_id: str) -> list[dict]:
         request_id = uuid4().hex

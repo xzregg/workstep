@@ -12,7 +12,9 @@
     "./NotificationCenter.css": "./src/NotificationCenter.css",
     "./DeviceTabs.css": "./src/DeviceTabs.css",
     "./TaskShareLoginToggle": "./src/TaskShareLoginToggle.tsx",
-    "./TaskShareLoginToggle.css": "./src/TaskShareLoginToggle.css"
+    "./TaskShareLoginToggle.css": "./src/TaskShareLoginToggle.css",
+    "./ActivityHeatmap": "./src/ActivityHeatmap.tsx",
+    "./ActivityHeatmap.css": "./src/ActivityHeatmap.css"
   },
   "peerDependencies": {
     "react": "^19.2.7"

@@ -8,8 +8,8 @@ import { AdminUserActionDialog } from './AdminUserActionDialog'
 import type { AdminUser } from './AdminUsersPage'
 
 const sources: Record<string,string> = {local:'自主注册',admin_created:'管理员创建',directory_sync:'组织同步',dingtalk:'钉钉',wecom:'企业微信',feishu:'飞书',lark:'Lark'}
-export function AdminUserTable({users, csrf, loading, resetKey, onRefresh, canViewAudit = false}: {
- users: AdminUser[]; csrf: string; loading: boolean; resetKey: unknown; onRefresh: () => void; canViewAudit?: boolean
+export function AdminUserTable({users, csrf, loading, resetKey, onRefresh, canViewAudit = false, loginSort, onSortLogin}: {
+ users: AdminUser[]; csrf: string; loading: boolean; resetKey: unknown; onRefresh: () => void; canViewAudit?: boolean; loginSort?: 'asc' | 'desc'; onSortLogin?: () => void
 }) {
  const selectable = users.filter(user=>!user.is_recovery).map(user=>user.id)
  const {selected, setSelected, toggle} = useAdminSelection(selectable, resetKey)
@@ -36,7 +36,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh, canVi
    {!!selected.length && <button type="button" onClick={()=>setSelected([])}>取消选择</button>}
   </div>
   {notice && <p role="status">{notice}</p>}
-  <AdminRecordTable busy={loading} columns={[<AdminSelectAll ids={selectable} selected={selected} onChange={setSelected} disabled={loading}/>, '显示名', '登录用户名', '状态', '注册来源', '上次登录时间', '操作']}>
+  <AdminRecordTable busy={loading} columnSort={onSortLogin ? {index: 5, direction: loginSort === 'asc' ? 'ascending' : loginSort === 'desc' ? 'descending' : 'none'} : undefined} columns={[<AdminSelectAll ids={selectable} selected={selected} onChange={setSelected} disabled={loading}/>, '显示名', '登录用户名', '状态', '注册来源', onSortLogin ? <button type="button" className="gateway-table-sort" onClick={onSortLogin} aria-label={`按上次登录时间${loginSort === 'desc' ? '升' : '降'}序排序`}>上次登录时间<span aria-hidden="true">{loginSort === 'desc' ? '↓' : loginSort === 'asc' ? '↑' : '↕'}</span></button> : '上次登录时间', '操作']}>
    {users.map(user=><tr key={user.id}>
     <td><input type="checkbox" className="gateway-table-checkbox" aria-label={`选择${user.display_name}`} checked={selected.includes(user.id)} disabled={loading || user.is_recovery} onChange={event=>toggle(user.id,event.target.checked)}/></td>
     <td><strong>{user.display_name}</strong></td>

@@ -5,6 +5,7 @@ context, but it never creates a Task row.  A task exists only after the user
 accepts the generated description and submits the ordinary create-task form.
 """
 
+import asyncio
 import json
 import re
 import uuid
@@ -45,6 +46,7 @@ Understand the instruction using project memory and any reference title/notes. U
 Return valid JSON:
 {"reply":"Markdown explanation for the user or execution log","task_drafts":[{"title":"task title","description":"complete Markdown task content","workflow_id":"selected candidate workflow id","start_step_key":"optional step key","scheduled_start_at":"optional ISO 8601 future timestamp with timezone"}]}
 Return one entry per requested task. Each entry uses the task creation parameters: title, description, workflow_id, start_step_key, cwd, engine, auto_start, review_overrides, scheduled_start_at. Omit optional fields unless requested. auto_start=true means immediate, false means manual; when omitted use the schedule execution mode. scheduled_start_at sets an independent future start and must not be combined with auto_start=true. Use explicit timezone offsets, based on current_time in the context. Never include creator or project identity fields.
+If no tasks meet the instruction's conditions, return {"reply":"explanation why no tasks are needed","task_drafts":[]}. Do not invent tasks to fill the list. An empty list is only for a successful check with no matching work; tool failures or unavailable data are errors, not evidence that no work exists.
 Return JSON only. Do not repeat the full task content in reply."""
 @dataclass(frozen=True, slots=True)
 class ChatAccepted:
@@ -210,7 +212,13 @@ class TaskDraftModule(AssistantRuntime):
         self.start_queued_turn(accepted.turn_id)
         try:
             await self.await_turn(accepted.turn_id, timeout=timeout)
-        except TimeoutError:
+        except (TimeoutError, asyncio.CancelledError) as exc:
+            await self.stop_current(accepted.session_id, project_id)
+            task = self._turn_tasks.get(accepted.turn_id)
+            if task is not None:
+                await asyncio.gather(task, return_exceptions=True)
+            if isinstance(exc, asyncio.CancelledError):
+                raise
             raise RuntimeError(
                 f"Scheduled task agent timed out after {timeout} seconds"
             ) from None
@@ -218,7 +226,7 @@ class TaskDraftModule(AssistantRuntime):
         if session is None:
             raise RuntimeError("Scheduled task agent session was lost")
         result = session.extra.get("schedule_result")
-        if not isinstance(result, list) or not result:
+        if not isinstance(result, list):
             raise RuntimeError("Scheduled task agent returned no result")
         return result
 
@@ -410,8 +418,10 @@ class TaskDraftModule(AssistantRuntime):
         from schemas.task import ScheduledTaskDraft
 
         drafts = draft if isinstance(draft, list) else [draft]
-        if not drafts or not all(isinstance(item, dict) for item in drafts):
+        if not all(isinstance(item, dict) for item in drafts):
             raise RuntimeError("Scheduled task agent returned an invalid task list")
+        if not drafts:
+            return []
         allowed = {wf["id"] for wf in self._allowed_workflow_ids(session)}
         results = []
         for item in drafts:
@@ -429,9 +439,9 @@ class TaskDraftModule(AssistantRuntime):
     async def _resolve_draft(self, session, raw: str):
         schedule_mode = bool(session.extra.get("schedule_mode"))
         try:
-            reply, draft = self._parse_reply(raw)
+            reply, draft = self._parse_reply(raw, allow_empty=schedule_mode)
             validated = self._validate_draft(session, draft)
-            if schedule_mode and validated:
+            if schedule_mode:
                 session.extra["schedule_result"] = validated
             return reply, validated, []
         except RuntimeError:
@@ -449,9 +459,9 @@ class TaskDraftModule(AssistantRuntime):
                 None,
                 system_prompt=instruction,
             )
-            reply, draft = self._parse_reply(repaired)
+            reply, draft = self._parse_reply(repaired, allow_empty=schedule_mode)
             validated = self._validate_draft(session, draft)
-            if schedule_mode and validated:
+            if schedule_mode:
                 session.extra["schedule_result"] = validated
             return reply, validated, events
 
@@ -465,6 +475,7 @@ class TaskDraftModule(AssistantRuntime):
                 'the form {"reply":"...","task_drafts":[{"title":"...",'
                 '"description":"...","workflow_id":"chosen candidate workflow id"}]}. '
                 "Preserve all requested tasks and valid task creation parameters, including scheduled_start_at with timezone. "
+                "Preserve an empty task_drafts list when no tasks meet the instruction; never invent tasks. "
                 "Return JSON only.",
                 f"Valid workflow ids: {allowed_ids}\n\n"
                 f"Valid step keys: {sorted(valid_keys)}\n\n"
@@ -492,7 +503,7 @@ class TaskDraftModule(AssistantRuntime):
         return keys
 
     @staticmethod
-    def _parse_reply(raw: str) -> tuple[str, dict | list[dict] | None]:
+    def _parse_reply(raw: str, *, allow_empty: bool = False) -> tuple[str, dict | list[dict] | None]:
         candidates = []
         fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
         if fenced:
@@ -509,7 +520,7 @@ class TaskDraftModule(AssistantRuntime):
                 continue
             if "task_drafts" in parsed:
                 drafts = parsed["task_drafts"]
-                if not isinstance(drafts, list) or not drafts or not all(isinstance(item, dict) for item in drafts):
+                if not isinstance(drafts, list) or (not drafts and not allow_empty) or not all(isinstance(item, dict) for item in drafts):
                     raise RuntimeError("Task creation agent returned an invalid task list")
                 return parsed["reply"], drafts
             draft = parsed.get("task_draft")
@@ -533,6 +544,8 @@ class TaskDraftModule(AssistantRuntime):
 
     def _validate_draft(self, session, draft: dict | list[dict] | None) -> list[dict]:
         if draft is None:
+            if session.extra.get("schedule_mode"):
+                raise RuntimeError("Scheduled task agent returned no task list")
             return []
         if session.extra.get("schedule_mode"):
             return self._validate_schedule_draft(session, draft)

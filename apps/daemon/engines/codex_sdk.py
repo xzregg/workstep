@@ -83,6 +83,11 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     UPDATE_PACKAGE = "openai-codex"
     QUOTA_TIMEOUT_SECONDS = 5
 
+    def _execution_retry_delays(self, message: str) -> tuple[float, ...]:
+        if "selected model is at capacity" in message.casefold():
+            return (5, 10, 20, 40)
+        return super()._execution_retry_delays(message)
+
     @staticmethod
     def _combined_developer_instructions(config: dict, instruction: str) -> str:
         existing = next((
@@ -497,6 +502,8 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             sdk_config.get("custom_config")
         ):
             thread_config.setdefault(key, value)
+        # Codex 0.160 requires opting in to the TODO/checklist tool.
+        thread_config.setdefault("tools.update_plan.enabled", True)
         thread_kwargs: dict[str, Any] = {
             "cwd": cwd,
             "model": model or None,
@@ -1117,6 +1124,8 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         return option_id in {"allow_once", "allow_for_session"}
 
     async def stop(self) -> None:
+        if self._retry_wait_task is not None:
+            self._retry_wait_task.cancel()
         if self._stream_task is not None and not self._stream_task.done():
             self._stream_task.cancel()
             await asyncio.gather(self._stream_task, return_exceptions=True)

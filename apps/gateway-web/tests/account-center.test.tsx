@@ -27,6 +27,8 @@ test('user center starts with own usage and keeps security edits when switching 
  await screen.findByRole('heading',{name:'用户中心'})
  await screen.findByText('demo-model')
  assert.equal(screen.queryByLabelText('当前密码'),null)
+ const heatmap=screen.getByRole('region',{name:'使用活跃情况（UTC）'})
+ assert.match(heatmap.querySelector('[data-date="2026-10-29"]')?.getAttribute('aria-label') ?? '',/12 次调用.*150 tokens/)
  assert.equal(reads.filter(url=>url.includes('/usage')).length,1)
  fireEvent.click(screen.getByRole('tab',{name:'安全设置'}))
  fireEvent.change(screen.getByLabelText('当前密码'),{target:{value:'OldPassphrase-2026!'}})

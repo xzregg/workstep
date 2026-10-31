@@ -44,6 +44,7 @@ export function useTaskConversationScroll({
   const localStepLastRef = useRef<Record<string, HTMLDivElement | null>>({})
   const localPendingStepRef = useRef<string | null>(null)
   const [localUnread, setLocalUnread] = useState(false)
+  const [, requestStepNavigation] = useState(0)
   const scrollRef = chatScrollRef ?? localScrollRef
   const endRef = chatEndRef ?? localEndRef
   const followRef = shouldFollowMessagesRef ?? localFollowRef
@@ -71,7 +72,7 @@ export function useTaskConversationScroll({
     const returningToConversation = active && !wasActiveRef.current
     wasActiveRef.current = active
     if (!active) return
-    if (returningToConversation) followRef.current = true
+    if (returningToConversation && !pendingScrollRef.current) followRef.current = true
     const container = scrollRef.current
     if (!returningToConversation && container && hasActiveSelectionWithin(
       container, container.ownerDocument.getSelection(),
@@ -99,6 +100,37 @@ export function useTaskConversationScroll({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, historyMessages, liveMessages, events, content, actionScrollKey])
+
+  // Keep step navigation in this scroll owner, including anchors loaded after the click.
+  useEffect(() => {
+    if (!active || !pendingScrollRef.current) return
+    const frame = requestAnimationFrame(() => {
+      const stepKey = pendingScrollRef.current
+      const container = scrollRef.current
+      const anchor = stepKey ? stepLastRef.current[stepKey] : null
+      if (!container || !anchor || !container.contains(anchor)) return
+      followRef.current = false
+      const top = Math.max(0, Math.min(
+        container.scrollTop + anchor.getBoundingClientRect().top
+          - container.getBoundingClientRect().top - container.clientTop,
+        conversationBottomScrollTop(container.scrollHeight, container.clientHeight),
+      ))
+      programmaticRef.current = top
+      lastScrollTopRef.current = top
+      lastScrollHeightRef.current = container.scrollHeight
+      // Position immediately so content updates cannot interrupt a long smooth scroll.
+      container.scrollTo({ top, behavior: 'instant' })
+      pendingScrollRef.current = null
+      setScrolledToBottom(isNearConversationBottom(container.scrollHeight, top, container.clientHeight))
+    })
+    return () => cancelAnimationFrame(frame)
+  })
+
+  const jumpToStep = (stepKey: string) => {
+    followRef.current = false
+    pendingScrollRef.current = stepKey
+    requestStepNavigation(value => value + 1)
+  }
 
   useEffect(() => {
     if (!active) return
@@ -132,11 +164,13 @@ export function useTaskConversationScroll({
 
   const onWheelCapture = (event: WheelEvent<HTMLDivElement>) => {
     if (shouldPauseConversationFollow({ type: 'wheel', deltaY: event.deltaY })) {
+      pendingScrollRef.current = null
       followRef.current = false
     }
   }
   const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
     if (shouldPauseConversationFollow({ type: 'key', key: event.key })) {
+      pendingScrollRef.current = null
       followRef.current = false
     }
   }
@@ -164,7 +198,7 @@ export function useTaskConversationScroll({
         followRef.current = false
       }
     }
-    if (container.scrollTop >= lastScrollTopRef.current && nearBottom && !followRef.current) {
+    if (!programmaticEcho && container.scrollTop >= lastScrollTopRef.current && nearBottom && !followRef.current) {
       followRef.current = true
       setUnreadMessages(false)
     }
@@ -173,6 +207,7 @@ export function useTaskConversationScroll({
     lastScrollHeightRef.current = container.scrollHeight
   }
   const jumpToLatest = () => {
+    pendingScrollRef.current = null
     followRef.current = true
     setUnreadMessages(false)
     const container = scrollRef.current
@@ -186,6 +221,6 @@ export function useTaskConversationScroll({
   return {
     scrollRef, endRef, contentRef, stepLastRef, pendingScrollRef,
     scrolledToBottom, unreadMessages, registerOverlay, overlayPaddingBottom,
-    onWheelCapture, onKeyDownCapture, onScroll, jumpToLatest,
+    onWheelCapture, onKeyDownCapture, onScroll, jumpToLatest, jumpToStep,
   }
 }

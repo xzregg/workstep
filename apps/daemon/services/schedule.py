@@ -850,7 +850,7 @@ class ScheduleModule:
 
         raw_drafts = result if isinstance(result, list) else [result]
         if not raw_drafts:
-            raise ScheduleValidationError("Scheduled task agent returned no tasks")
+            return []
         # Validate the complete batch before the first write, including when the
         # task-agent adapter supplies a legacy single result.
         drafts = [ScheduledTaskDraft.model_validate(item) for item in raw_drafts]
@@ -918,11 +918,11 @@ class ScheduleModule:
              "workflow_run_id": result.run_handle.id if result.run_handle else None}
             for result in results
         ], ensure_ascii=False, default=str)
-        run.task_id = results[0].task["id"]
-        run.workflow_run_id = results[0].run_handle.id if results[0].run_handle else None
+        run.task_id = results[0].task["id"] if results else None
+        run.workflow_run_id = results[0].run_handle.id if results and results[0].run_handle else None
         if complete:
-            run.status = "created"
-            run.reason = None
+            run.status = "created" if results else "skipped"
+            run.reason = None if results else "本次未生成任务"
             run.ended_at = utc_now()
         run.save()
 

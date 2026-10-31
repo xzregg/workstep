@@ -44,8 +44,9 @@ export function AdminUsageSummary({ filters, groupBy = 'day', overview = false, 
    <p>{summary.event_count} 条计量事件 · {summary.unmetered_count} 条未完成计量</p>
    <UsageMetricStrip summary={summary} filters={filters} overview={overview}/>
    {summary.unmetered_count > 0 && <p className="gateway-usage-measurement-note">部分调用未完成计量，Token 和成本仅汇总已上报值。</p>}
+   {overview && <UsageOverviewCharts filters={filters}/>}
    {summary.event_count === 0 ? <p>当前条件下没有计量事件。</p> : <>
-    {overview ? <UsageOverviewCharts filters={filters}/> : effectiveGroup !== 'day' && <UsageDistributionChart rows={groups} dimension={effectiveGroup} bars/>}
+    {!overview && effectiveGroup !== 'day' && <UsageDistributionChart rows={groups} dimension={effectiveGroup} bars/>}
     <h3>{dimension.label}用量分布{effectiveGroup === 'day' ? '（UTC）' : ''}</h3>
     <AdminRecordTable columns={[dimension.label,countLabel,'未完成计量','输入 Token','输出 Token','缓存读取','缓存写入','缓存率','总 Token',costLabel, ...(dimension.filter ? ['操作'] : [])]}>
      {groups.map((row,index) => <tr key={row.value ?? index}>

@@ -1681,6 +1681,10 @@ details[open] > summary > .process-trace-chevron {
   opacity: 1;
 }
 
+.plan-item.done .plan-icon.on {
+  color: var(--success);
+}
+
 .plan-icon.strong {
   color: var(--fg);
 }

@@ -114,6 +114,7 @@ export interface StatisticsReport {
     granularity: 'day' | 'week' | 'month'
   }
   summary: StatisticsSummary
+  activity?: { date: string; count: number; tokens: number | null }[]
   trend: StatisticsTrendPoint[]
   projects: StatisticsProjectRow[]
   workflows: StatisticsWorkflowRow[]

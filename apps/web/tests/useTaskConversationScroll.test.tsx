@@ -137,3 +137,61 @@ test('task transcript follows new messages until the user scrolls away', async (
     await window.happyDOM.close()
   }
 })
+
+for (const anchorTop of [80, 1560]) {
+  test(`step navigation scrolls only the transcript and pauses bottom follow across updates (anchor ${anchorTop})`, async () => {
+    const { window } = installDomEnvironment()
+    const container = document.body.appendChild(document.createElement('div'))
+    const root = createRoot(container)
+    const calls: ScrollToOptions[] = []
+    function Transcript({ messages }: { messages: unknown[] }) {
+      const scroll = useTaskConversationScroll({ historyMessages: messages, liveMessages: {}, events: [], content: '' })
+      return <>
+        <div ref={(node) => {
+          scroll.scrollRef.current = node
+          if (node) {
+            Object.defineProperties(node, {
+              scrollHeight: { configurable: true, value: 2000 },
+              clientHeight: { configurable: true, value: 400 },
+            })
+            node.getBoundingClientRect = () => ({ top: 100 }) as DOMRect
+            node.scrollTo = (options: ScrollToOptions) => { calls.push(options); node.scrollTop = options.top ?? 0 }
+          }
+        }} onScroll={scroll.onScroll}>
+          {messages.length > 0 && <div ref={(node) => {
+            scroll.stepLastRef.current.build = node
+            if (node) {
+              node.getBoundingClientRect = () => ({ top: 100 + anchorTop - (scroll.scrollRef.current?.scrollTop ?? 0) }) as DOMRect
+              node.scrollIntoView = () => { throw new Error('must not scroll ancestor containers') }
+            }
+          }} />}
+        </div>
+        <button onClick={() => scroll.jumpToStep('build')}>step</button>
+      </>
+    }
+    try {
+      await act(async () => root.render(<Transcript messages={[]} />))
+      const viewport = container.querySelector('div')!
+      await act(async () => container.querySelector('button')!.click())
+      // The requested anchor may only appear when history finishes loading.
+      await act(async () => root.render(<Transcript messages={[{ id: 'build' }]} />))
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)) })
+      assert.equal(calls.length, 1)
+      assert.equal(viewport.scrollTop, anchorTop)
+      await act(async () => viewport.dispatchEvent(new window.Event('scroll', { bubbles: true })))
+      await act(async () => root.render(<Transcript messages={[{ id: 'build' }, { id: 'new' }]} />))
+      await act(async () => viewport.dispatchEvent(new window.Event('load')))
+      assert.equal(viewport.scrollTop, anchorTop)
+      // Selecting the same step again must reposition it, too.
+      viewport.scrollTop = 300
+      await act(async () => container.querySelector('button')!.click())
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)) })
+      assert.equal(calls.length, 2)
+      assert.equal(viewport.scrollTop, anchorTop)
+    } finally {
+      await act(async () => root.unmount())
+      container.remove()
+      await window.happyDOM.close()
+    }
+  })
+}

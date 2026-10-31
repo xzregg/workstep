@@ -22,6 +22,8 @@
 
 ### 会话系统指令追加
 
+统一执行入口默认在失败后立即重试一次。Codex SDK 收到 `Selected model is at capacity` 容量错误时，改为等待 5、10、20、40 秒后重试，最多执行 5 次；保留原模型和已有会话，新线程尚无回合事件时仍重新创建。重试等待使用异步计时，调用停止或取消运行会打断等待；耗尽后才透出最终错误。手动 `/compact` 沿用不自动重试的规则。行为回归：`tests/test_codex_sdk_retry.py`、`tests/test_engines.py`。
+
 `AcpEngineBase.spawn_with_retry` 和 `spawn_coordinator_with_retry` 接受独立的可选 `system_prompt`。这是 WorkStep 的基类扩展，不是 ACP `session/prompt` 的协议字段；语义是补充会话角色和来源背景，保留引擎内置指令。每轮调用可提供同一份配置，由适配器管理创建、恢复和重新创建会话时的传输，不能把配置重复追加成历史消息。`/compact` 不接收该指令。
 
 原生适配器声明 `SYSTEM_PROMPT_MODE`：Codex SDK 使用 `developer`，映射为线程的 `developer_instructions`，保留 `base_instructions`；Claude/Qoder SDK 使用 `system`，分别通过 `claude_code` / `qodercli` 预设的 `append` 追加；Pydantic AI 使用 `system`，通过持久化的 `SystemPromptPart` 与现有 harness 能力指令共同生效，固定规则随会话历史恢复；相同规则不重新注入，变更／清空只替换 WorkStep 自己的系统消息，历史缺失时重新初始化。未声明的引擎默认为 `body`，基类只在新会话或无恢复能力时前置正文，恢复与恢复重试不重复前置。
@@ -223,6 +225,8 @@ SDK 可以封装子进程、JSONL、JSON-RPC 或进程内消息流；这些都�
 - 引擎的权限回调（`can_use_tool` / `approval_handler` / 沙箱拒绝路径）只需调用 `request_interaction` / `handle_tool_permission`，不要自己实现第二套审批通道。
 
 ### 3.5 `acp_events` 能力声明
+
+Codex SDK 在线程创建与恢复时默认传入 `tools.update_plan.enabled=true`，启用 Codex 0.160 默认关闭的待办进度工具；引擎自定义配置显式设置为 `false` 时仍尊重关闭。该工具不切换计划模式或目标模式，原生 `turn/plan/updated` 通知继续通过 `plan_event()` 归一为 ACP `plan`。回归见 `tests/test_p2_engines.py` 的 SDK 启动配置与计划通知测试。
 
 **声明 = 实际**：每个引擎声明自己实际产出的 ACP 词汇事件集合（`frozenset[str]`），有原生等价就映射，无来源不发、不合成默认值。**能力覆盖原则**：引擎原生支持某类语义（子代理/后台任务、计划、思考、审批等），就必须映射为对应的 ACP/编排事件，不得降级为普通 `tool_call` 或丢弃；`acp_events` 缺席某类型即承诺“本引擎无此来源”。新引擎接入时先列出下游原生能力清单，对照 `ACP_EVENTS` 逐项打勾。契约测试（`tests/test_engine_base_hierarchy.py`）保证：
 

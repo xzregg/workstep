@@ -14,7 +14,7 @@ export type AdminUser = {
   last_login_at?: string | null; login_username?: string | null; is_recovery?: boolean
 }
 
-type Filters = { q: string; status: string; sort: string; direction: string; page: number; pageSize: number; groupId?: string }
+type Filters = { q: string; status: string; sort: string; direction: 'asc' | 'desc'; page: number; pageSize: number; groupId?: string }
 
 export function buildUserListQuery(filters: Filters): string {
   const params = new URLSearchParams({ sort: filters.sort, direction: filters.direction,
@@ -123,17 +123,20 @@ export function AdminUsersPage() {
         <select id="admin-user-sort" value={filters.sort} onChange={event => setFilters(current => (
           { ...current, sort: event.target.value, page: 1 }))}>
           <option value="created_at">创建时间</option><option value="username">用户名</option>
-          <option value="display_name">显示名称</option>
+          <option value="display_name">显示名称</option><option value="last_login_at">上次登录时间</option>
         </select>
         <select aria-label="排序方向" value={filters.direction} onChange={event => setFilters(current => (
-          { ...current, direction: event.target.value, page: 1 }))}>
+          { ...current, direction: event.target.value as 'asc' | 'desc', page: 1 }))}>
           <option value="desc">降序</option><option value="asc">升序</option>
         </select>
       </div>
       <AdminListStatus loading={loading} label="正在加载用户…"/>
       {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
       {!loading && !error && users.length === 0 && <p>当前条件下没有用户。</p>}
-      {!error && <AdminUserTable users={users} csrf={csrf} loading={loading} resetKey={filters} onRefresh={refresh} canViewAudit={canViewAudit}/>}
+      {!error && <AdminUserTable users={users} csrf={csrf} loading={loading} resetKey={filters} onRefresh={refresh} canViewAudit={canViewAudit}
+        loginSort={filters.sort === 'last_login_at' ? filters.direction : undefined}
+        onSortLogin={() => setFilters(current => ({ ...current, sort: 'last_login_at',
+          direction: current.sort === 'last_login_at' && current.direction === 'desc' ? 'asc' : 'desc', page: 1 }))}/>}
       <div className="gateway-admin-pagination">
         <span>共 {total} 位用户 · 每页 {filters.pageSize} 位 · 第 {filters.page}/{pages} 页</span>
         <button type="button" disabled={filters.page <= 1 || loading} onClick={() => setFilters(current => (

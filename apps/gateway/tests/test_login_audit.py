@@ -125,3 +125,48 @@ def test_audit_ip_uses_transport_peer_and_isolates_concurrent_requests(tmp_path)
         client.portal.call(scenario)
         rows = client.get('/api/admin/audit', params={'action': 'auth.login', 'result': 'failed'}).json()['items']
         assert {row['actor_username']: row['request_ip'] for row in rows} == {'first': '198.51.100.1', 'second': '198.51.100.2'}
+
+
+@pytest.mark.parametrize('direction,expected', [
+    ('desc', ['sort_new', 'sort_same_a', 'sort_same_b', 'sort_old', 'sort_none']),
+    ('asc', ['sort_old', 'sort_same_a', 'sort_same_b', 'sort_new', 'sort_none']),
+])
+def test_users_sort_login_time_before_pagination_and_keep_missing_last(tmp_path, direction, expected):
+    import sqlite3
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        _setup(client)
+        with sqlite3.connect(tmp_path / 'workstep_platform.db') as connection:
+            for name, stamp in [('sort_new', '2026-10-29 10:00:00'), ('sort_same_a', '2026-10-28 10:00:00'),
+                                ('sort_same_b', '2026-10-28 10:00:00'), ('sort_old', '2026-10-27 10:00:00'),
+                                ('sort_none', None)]:
+                connection.execute("INSERT INTO users (id, username, display_name, status, last_login_at) VALUES (?, ?, ?, 'active', ?)",
+                                   (name, name, name, stamp))
+        found = []
+        for page in range(1, 4):
+            response = client.get('/api/admin/users', params={
+                'sort': 'last_login_at', 'direction': direction, 'q': 'sort_', 'status': 'active', 'page': page, 'page_size': 2})
+            assert response.status_code == 200, response.text
+            assert response.json()['total'] == 5
+            found.extend(user['username'] for user in response.json()['users'])
+        assert found == expected
+
+
+def test_user_login_sort_waiting_for_sqlite_keeps_health_responsive(tmp_path):
+    import sqlite3
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        _setup(client)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with sqlite3.connect(tmp_path / 'workstep_platform.db') as holder:
+                holder.execute('BEGIN EXCLUSIVE')
+                pending = pool.submit(client.get, '/api/admin/users?sort=last_login_at&direction=desc')
+                time.sleep(0.1)
+                assert not pending.done()
+                started = time.monotonic()
+                assert client.get('/api/health').status_code == 200
+                assert time.monotonic() - started < 0.3
+                holder.rollback()
+            assert pending.result(timeout=5).status_code == 200

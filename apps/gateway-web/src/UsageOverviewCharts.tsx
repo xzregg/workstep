@@ -1,3 +1,4 @@
+import { UsageActivityHeatmap } from './UsageActivityHeatmap'
 import { useEffect, useState } from 'react'
 import { UsageTrendChart } from './UsageTrendChart'
 import { UsageDistributionChart } from './UsageDistributionChart'
@@ -26,5 +27,5 @@ export function UsageOverviewCharts({ filters }: { filters: string }) {
  },[filters,revision])
  if(loading)return <p role="status"><span className="gateway-spinner"/> 正在加载图表…</p>
  if(error)return <p role="alert">{error}<button type="button" onClick={()=>setRevision(value=>value+1)}>重试图表</button></p>
- return <><div className="gateway-usage-charts"><UsageTrendChart rows={data.day} field="total_tokens" title="每日 Token 趋势（UTC）"/><UsageTrendChart rows={data.day} field="event_count" title={new URLSearchParams(filters).get('source')==='provider_reconciled'?'每日账单行趋势（UTC）':'每日调用趋势（UTC）'}/><UsageDistributionChart rows={data.model}/></div>{truncated && <p className="gateway-usage-chart-note">图表仅显示前 1000 天／组；完整统计请在对应 Tab 分页查看。</p>}</>
+ return <><UsageActivityHeatmap rows={data.day} filters={filters}/><div className="gateway-usage-charts"><UsageTrendChart rows={data.day} field="total_tokens" title="每日 Token 趋势（UTC）"/><UsageTrendChart rows={data.day} field="event_count" title={new URLSearchParams(filters).get('source')==='provider_reconciled'?'每日账单行趋势（UTC）':'每日调用趋势（UTC）'}/><UsageDistributionChart rows={data.model}/></div>{truncated && <p className="gateway-usage-chart-note">图表仅显示前 1000 天／组；完整统计请在对应 Tab 分页查看。</p>}</>
 }

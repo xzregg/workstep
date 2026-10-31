@@ -288,7 +288,7 @@ async def admin_create_user(call: GatewayCall, body: AdminCreateInput):
 async def admin_list_users(call: GatewayCall, q: str = '',
                            group_id: str | None = None,
                            status: Literal["active", "pending", "disabled", "deleted"] | None = None,
-                           sort: Literal["username", "display_name", "created_at"] = "created_at",
+                           sort: Literal["username", "display_name", "created_at", "last_login_at"] = "created_at",
                            direction: Literal["asc", "desc"] = "desc",
                            page: int = 1, page_size: int = 25):
     identity = _identity(call)
@@ -314,8 +314,10 @@ async def admin_list_users(call: GatewayCall, q: str = '',
                                   User.display_name.ilike(pattern, escape="\\")))
         total = await session.scalar(select(func.count()).select_from(User).where(*conditions))
         column = {"username": User.username, "display_name": User.display_name,
-                  "created_at": User.created_at}[sort]
+                  "created_at": User.created_at, "last_login_at": User.last_login_at}[sort]
         ordered = column.asc() if direction == "asc" else column.desc()
+        if sort == "last_login_at":
+            ordered = ordered.nulls_last()
         rows = (await session.scalars(select(User).where(*conditions)
             .order_by(ordered, User.id).offset((page - 1) * page_size).limit(page_size))).all()
         users = [{**public_user(user), "registration_source": user.registration_source,

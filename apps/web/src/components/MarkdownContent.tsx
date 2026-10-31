@@ -3,6 +3,7 @@ import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-mar
 import remarkGfm from 'remark-gfm'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import { convertVisualizeMarkers } from '../utils/markdownVisualize'
+import { convertFileCitations } from '../utils/markdownFileCitation'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
 import { useI18n } from '../i18n'
 import MermaidBlock, { MarkdownStreamingContext } from './MermaidBlock'
@@ -24,7 +25,7 @@ interface MarkdownContentProps {
 
 // Inline Markdown image / link tokens: `![alt](url)` and `[label](url)`.
 // Group 1 is `!` for images, group 2 the alt/label, group 3 the URL target.
-const MARKDOWN_INLINE = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
+const MARKDOWN_INLINE = /(!?)\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
 
 type PlainSegment =
   | { type: 'text'; text: string }
@@ -37,7 +38,8 @@ function splitPlainText(markdown: string): PlainSegment[] {
   for (const match of markdown.matchAll(MARKDOWN_INLINE)) {
     const start = match.index ?? 0
     if (start > cursor) segments.push({ type: 'text', text: markdown.slice(cursor, start) })
-    const [, bang, label, url] = match
+    const [, bang, rawLabel, url] = match
+    const label = rawLabel.replace(/\\([\\[\]])/g, '$1')
     if (bang) segments.push({ type: 'image', alt: label, url })
     else segments.push({ type: 'link', label, url })
     cursor = start + match[0].length
@@ -85,7 +87,7 @@ export default function MarkdownContent({
   const { t } = useI18n()
   const markdownUrlResolver = useMarkdownUrlResolver()
   const taskFilePreview = useTaskFilePreview()
-  const normalizedContent = convertVisualizeMarkers(content)
+  const normalizedContent = convertFileCitations(convertVisualizeMarkers(content))
   const markdown = streaming ? closeStreamingFence(normalizedContent) : normalizedContent
   const plainSegments = plainText ? splitPlainText(normalizedContent) : []
 

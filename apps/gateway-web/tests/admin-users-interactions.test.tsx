@@ -882,3 +882,38 @@ test('starting another user edit clears the previous save notice', async () => {
   fireEvent.click(screen.getByRole('button', { name: '编辑' }))
   assert.equal(!!screen.queryByText('用户资料已保存。'), false)
 })
+
+
+test('login time header toggles server sorting, resets pagination and syncs filters', async () => {
+  const requests: URLSearchParams[] = []
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/users?')) {
+      requests.push(new URLSearchParams(url.split('?')[1]))
+      return Response.json({users: [], total: 201})
+    }
+    return Response.json({groups: []})
+  }
+  render(<MemoryRouter><AdminUsersPage /></MemoryRouter>)
+  await screen.findByRole('button', { name: '按上次登录时间降序排序' })
+  fireEvent.change(screen.getByLabelText('搜索用户'), {target: {value: '张'}})
+  fireEvent.click(screen.getByRole('button', {name: '搜索'}))
+  await waitFor(() => assert.equal(requests.at(-1)?.get('q'), '张'))
+  await waitFor(() => assert.equal((screen.getByRole('button', {name: '下一页'}) as HTMLButtonElement).disabled, false))
+  fireEvent.click(screen.getByRole('button', {name: '下一页'}))
+  await waitFor(() => assert.equal(requests.at(-1)?.get('page'), '2'))
+  fireEvent.click(screen.getByRole('button', {name: '按上次登录时间降序排序'}))
+  await waitFor(() => assert.equal(requests.at(-1)?.get('sort'), 'last_login_at'))
+  assert.equal(requests.at(-1)?.get('page'), '1')
+  assert.equal(requests.at(-1)?.get('direction'), 'desc')
+  assert.equal(requests.at(-1)?.get('q'), '张')
+  assert.equal((screen.getByLabelText('排序') as HTMLSelectElement).value, 'last_login_at')
+  assert.equal(screen.getByRole('columnheader', {name: /上次登录时间/}).getAttribute('aria-sort'), 'descending')
+  fireEvent.click(screen.getByRole('button', {name: '按上次登录时间升序排序'}))
+  await waitFor(() => assert.equal(requests.at(-1)?.get('direction'), 'asc'))
+  assert.equal(screen.getByRole('columnheader', {name: /上次登录时间/}).getAttribute('aria-sort'), 'ascending')
+  fireEvent.change(screen.getByLabelText('排序'), {target: {value: 'created_at'}})
+  await waitFor(() => assert.equal(requests.at(-1)?.get('sort'), 'created_at'))
+  assert.equal(screen.getByRole('columnheader', {name: /上次登录时间/}).getAttribute('aria-sort'), 'none')
+})

@@ -632,6 +632,17 @@ export const enUS: Messages = {
     partial: '部分指标不可用，汇总数据不完整；当前仍展示可读取的指标。',
   },
   statistics: {
+    activityTitle: '使用活跃情况',
+    activityPrevious: '上一年',
+    activityNext: '下一年',
+    activityLess: '少',
+    activityMore: '多',
+    activityOutside: '不在统计范围',
+    activityUnknown: '未上报',
+    activityCalls: '次调用',
+    activityDays: '活跃天数',
+    activityHint: '仅统计所选时间范围，颜色按每日调用次数显示',
+
     title: 'Statistics',
     subtitle: 'Review runtime quality and token usage by project, workflow, and step',
     global: 'All projects',

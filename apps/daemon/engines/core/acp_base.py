@@ -99,6 +99,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         self._running = False
         self._handler: _StreamingClient | None = None
         self._last_cwd: str | None = None
+        self._retry_wait_task: asyncio.Task | None = None
         # tool_call_id → 待审批的 interaction_request 事件（非 ACP 引擎的
         # request_permission 在 request_interaction 中登记，approve_tool*
         # 据此把决定写回挂起的 Future）。
@@ -126,6 +127,10 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             return False
         return None
 
+    def _execution_retry_delays(self, message: str) -> tuple[float, ...]:
+        """Delays before each retry; adapters may specialize transient failures."""
+        return (0,) * (self.EXECUTION_MAX_ATTEMPTS - 1)
+
     async def _stream_with_retry(
         self,
         spawn_method,
@@ -135,12 +140,12 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         capture_prompt_input: bool = False,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
-        """Run one engine stream, retrying its first terminal failure once.
+        """Run one engine stream with the adapter's bounded failure policy.
 
         The retry resumes the session announced by the failed attempt when the
         adapter supports resume.  Events emitted before the failure remain
         visible to preserve streaming; the first terminal error itself is
-        replaced by a ``retrying`` status.  A second error is passed through.
+        replaced by a ``retrying`` status until the retry budget is exhausted.
         Codex may announce a new thread before its rollout exists on disk;
         restart such a thread if it failed before producing any turn events.
         """
@@ -157,7 +162,8 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             self.ENGINE_ID in {"codex", "codex_sdk"} and not retry_session_id
         )
         has_turn_events = False
-        for attempt_index in range(self.EXECUTION_MAX_ATTEMPTS):
+        attempt_index = 0
+        while True:
             attempt_kwargs = dict(kwargs)
             if self.supports_resume:
                 attempt_kwargs["session_id"] = retry_session_id
@@ -175,6 +181,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     ),
                 )
             failed_event: InternalEvent | None = None
+            failure_exception: Exception | None = None
             try:
                 iterator = spawn_method(**attempt_kwargs)
                 async for event in iterator:
@@ -186,10 +193,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                         ).strip()
                         if announced_session_id:
                             retry_session_id = announced_session_id
-                    if (
-                        event.type == "error"
-                        and attempt_index + 1 < self.EXECUTION_MAX_ATTEMPTS
-                    ):
+                    if event.type == "error":
                         failed_event = event
                         with suppress(Exception):
                             await iterator.aclose()
@@ -198,8 +202,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                if attempt_index + 1 >= self.EXECUTION_MAX_ATTEMPTS:
-                    raise
+                failure_exception = exc
                 failure_message = str(exc) or exc.__class__.__name__
             else:
                 if failed_event is None:
@@ -210,19 +213,37 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     or "引擎执行失败"
                 )
 
+            retry_delays = self._execution_retry_delays(failure_message)
+            if attempt_index >= len(retry_delays):
+                if failure_exception is not None:
+                    raise failure_exception
+                yield failed_event
+                return
+            delay = retry_delays[attempt_index]
             if fresh_codex_thread and not has_turn_events:
                 # A thread id alone does not prove a resumable rollout exists.
                 # Keep the original prompt and rules when retrying from scratch.
                 retry_session_id = None
-            yield InternalEvent(
-                type="status",
-                data={
-                    "status": "retrying",
-                    "attempt": attempt_index + 2,
-                    "max_attempts": self.EXECUTION_MAX_ATTEMPTS,
-                    "message": failure_message,
-                },
-            )
+            retry_wait = asyncio.create_task(asyncio.sleep(delay)) if delay else None
+            self._retry_wait_task = retry_wait
+            try:
+                yield InternalEvent(
+                    type="status",
+                    data={
+                        "status": "retrying",
+                        "attempt": attempt_index + 2,
+                        "max_attempts": len(retry_delays) + 1,
+                        "message": failure_message,
+                        **({"retry_after_seconds": delay} if delay else {}),
+                    },
+                )
+                if retry_wait is not None:
+                    await retry_wait
+            finally:
+                if retry_wait is not None:
+                    retry_wait.cancel()
+                self._retry_wait_task = None
+            attempt_index += 1
 
     def _prompt_input_event(
         self, kwargs: dict, attempt: int = 1, *, instruction_in_body: bool = False,
@@ -261,7 +282,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         self, *, system_prompt: str | None = None, system_prompt_each_turn: bool = False,
         capture_prompt_input: bool = False, **kwargs,
     ) -> AsyncIterator[InternalEvent]:
-        """Run the normal execution entry point with one failure retry."""
+        """Run normal execution with the adapter's failure retry policy."""
         if str(kwargs.get("prompt") or "").strip() == "/compact":
             from engines.core.input_items import NO_MANUAL_COMPACTION
 
@@ -303,7 +324,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         capture_prompt_input: bool = False,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
-        """Run the coordinator entry point with one failure retry."""
+        """Run coordinator execution with the adapter's failure retry policy."""
         if capture_prompt_input:
             # Assistant-owned rules are already supplied; do not add a second role.
             kwargs["_coordinator_prepared"] = True

@@ -1,3 +1,4 @@
+@import '@workstep/gateway-ui/ActivityHeatmap.css';
 @import '@workstep/gateway-ui/TaskShareLoginToggle.css';
 @import './AdminUsagePage.css';
 @import './AdminDeviceGroupsPage.css';
@@ -961,3 +962,11 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-device-auth-return a { color: #647184; text-decoration: none; }
 .gateway-device-auth-return a:hover { color: #0071e3; text-decoration: underline; }
 .gateway-device-auth-progress { display: flex; align-items: center; gap: 8px; color: #647184; font-size: 14px; }
+
+.gateway-admin-table .gateway-table-sort { display: inline-flex; align-items: center; gap: 8px; padding: 0; margin: 0; border: 0; background: transparent; color: inherit; font: inherit; box-shadow: none; }
+.gateway-admin-table .gateway-table-sort:hover,
+.gateway-admin-table th[aria-sort="ascending"] .gateway-table-sort,
+.gateway-admin-table th[aria-sort="descending"] .gateway-table-sort { color: var(--gateway-admin-accent); }
+.gateway-table-sort:focus-visible { outline: 2px solid var(--gateway-admin-accent); outline-offset: 4px; }
+
+.gateway-account-usage > .activity-heatmap, .gateway-usage-report > .activity-heatmap { margin-bottom: 24px; }
