@@ -92,7 +92,8 @@ async def test_parallel_review_is_accepted_and_continues_without_repeating_sibli
 
 
 @pytest.mark.anyio
-async def test_parallel_reviews_can_be_approved_one_after_another(scenario):
+@pytest.mark.parametrize("approval_timing", ["immediate", "after_resume"])
+async def test_parallel_reviews_can_be_approved_one_after_another(scenario, approval_timing):
     s = scenario
     handle, review = await start_parallel(s, manual_sibling=True)
     try:
@@ -101,9 +102,15 @@ async def test_parallel_reviews_can_be_approved_one_after_another(scenario):
             json={"review_run_id": review.id},
         )
         assert response.status_code == 200, response.text
+        continuation = s.runtime._review_resumes[s.task_id]
     finally:
         s.script.release.set()
     await s.runtime.wait(handle)
+    if approval_timing == "after_resume":
+        # Force the first decision's downstream pass to finish before deciding
+        # the sibling review. Pending manual work must not execute a second time.
+        await asyncio.wait_for(s.runtime.wait(continuation), 5)
+        assert len(s.script.select("develop")) == 1
     second = await pending_review(s)
     assert second.step_key == "develop"
     response = await s.client.post(

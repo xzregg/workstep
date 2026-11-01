@@ -15,6 +15,7 @@ No unreleased changes recorded.
 - Localize built-in workflow templates and generated content, preserve existing user assets, and improve conversation role instructions, Codex capacity retries and planning-tool support.
 - Add activity heatmaps, improve task step navigation and streamed text/video previews, and open Codex file citations through the shared file preview.
 - Allow successful scheduled checks to produce no tasks without inventing work. Improve cancellation and shared gateway connection failure handling.
+- Preserve sibling stages waiting for manual review when resuming after another stage is approved; do not execute them again or replace the pending review.
 - Improve gateway user-group editing, last-login sorting, account usage and security settings, audit filters, device health details, and session recovery.
 - Refresh the website and add localized narrated product introduction videos. Synchronize desktop-update instructions across all 26 website/manual languages.
 - Correct release-contract tests to allow refreshing English notes on an existing draft while continuing to reject mutations to published releases.

@@ -217,7 +217,7 @@ class TaskRunner:
 
         scheduler = DAGScheduler(step_list)
 
-        def initialize_pipeline_state() -> tuple[set[str], str | None]:
+        def initialize_pipeline_state() -> tuple[set[str], set[str], str | None]:
             # Ensure task_steps exist for all steps.
             for step in step_list:
                 TaskStep.get_or_create(
@@ -287,10 +287,12 @@ class TaskRunner:
                     persisted_completed.add(ts.step_key)
             return (
                 persisted_completed,
+                {key for key, status in task_step_statuses.items()
+                 if status == "awaiting_review"},
                 workflow_run.routing_state_json if workflow_run is not None else None,
             )
 
-        completed, routing_state_json = await self._run_db(initialize_pipeline_state)
+        completed, awaiting_review, routing_state_json = await self._run_db(initialize_pipeline_state)
         completed.intersection_update(scheduler.steps)
         self._artifact_routes.restore(routing_state_json, execution_scope)
         overlay = json.loads(task.workflow_overrides_json or "{}")
@@ -305,7 +307,9 @@ class TaskRunner:
         if scope is not None:
             completed |= {key for key in scheduler.steps if key not in scope}
         running = set()
-        failed = set()
+        # Match the live review path: a pending human decision blocks scheduling,
+        # but does not complete or re-execute the stage when a sibling resumes.
+        failed = awaiting_review & scheduler.steps.keys()
         await self._artifact_routes.seed_completed_forward_routes(
             task,
             scheduler,
