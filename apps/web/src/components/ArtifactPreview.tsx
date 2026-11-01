@@ -268,6 +268,16 @@ export default function ArtifactPreview({
     </Button>
   ) : null
 
+  if (type === 'video') {
+    return (
+      <div className="artifact-video-preview">
+        {fileHeader(name || filenameFromPath(view.path), <>{downloadButton}{openWindowButton}</>)}
+        <video className="artifact-video-player" src={rawUrl} controls playsInline preload="metadata" />
+        {fileFooter(content_type, file_size)}
+      </div>
+    )
+  }
+
   if (isImage) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>

@@ -13,3 +13,4 @@
 logs
 *.db
 .DS_Store
+/examples/

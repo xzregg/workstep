@@ -571,6 +571,16 @@ def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
     content_type, _ = mimetypes.guess_type(str(file_path))
     file_size = file_path.stat().st_size
     relative_path = _project_relative_path(file_path, project_id)
+    # Video bytes are streamed by the raw endpoint, never embedded in JSON.
+    if content_type and content_type.startswith('video/'):
+        return {
+            "type": "video",
+            "content_type": content_type,
+            "content": "",
+            "file_size": file_size,
+            "extension": file_path.suffix,
+            "relative_path": relative_path,
+        }
     max_size = 1024 * 1024
     if content_type == 'text/html':
         from services.html_preview import MAX_RESOURCE_BYTES

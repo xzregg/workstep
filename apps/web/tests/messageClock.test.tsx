@@ -1,6 +1,7 @@
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ProcessTrace from '../src/components/ProcessTrace'
@@ -10,6 +11,8 @@ import { I18nProvider, useLocaleStore } from '../src/i18n'
 for (const signal of ['workstep:resume', 'pageshow', 'visibilitychange']) {
   test(`running elapsed time catches up immediately on ${signal} and stops at completion`, async (context) => {
     const { window, document } = installDomEnvironment()
+    const style = document.head.appendChild(document.createElement('style'))
+    style.textContent = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
     useLocaleStore.setState({ locale: 'zh-CN' })
     const start = Date.parse('2026-10-07T05:56:08Z')
     let now = start + 17_000
@@ -31,6 +34,7 @@ for (const signal of ['workstep:resume', 'pageshow', 'visibilitychange']) {
       await act(async () => render(true))
       const label = () => container.querySelector('.process-trace-session-summary span')!.textContent
       assert.equal(label(), '处理中 17秒')
+      assert.equal(window.getComputedStyle(container.querySelector('.process-trace-session-summary')!).fontVariantNumeric, 'tabular-nums')
       now += 1000
       await act(async () => { for (const tick of ticks.values()) tick() })
       assert.equal(label(), '处理中 18秒')

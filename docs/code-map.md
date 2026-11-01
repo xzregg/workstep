@@ -22,6 +22,8 @@
 
 # 按功能查找代码
 
+消息正文的流式晕染由 `MarkdownMessage.tsx` 接入，`useStreamReveal` 继续控制分批揭示节奏，`MarkdownContent.tsx` 通过 `utils/rehypeStreamReveal.ts` 仅包装正文文本；`StreamRevealText.tsx` 管理新增字符及稳定节点，`index.css` 执行单字 90ms、相邻字错开 30ms 的模糊淡入。每个文本节点最多保留 32 个动画字符，代码块、历史恢复消息及关闭动效时直接显示，减少动态效果由 CSS 禁用动画；不新增 API。行为入口：`tests/streamRevealText.test.tsx`、`tests/useStreamReveal.test.tsx`。消息的处理中／耗时标题和底部统计通过 `index.css` 使用等宽数字，计时回归为 `tests/messageClock.test.tsx`。
+
 消息中的 Codex 文件引用 `:codex-file-citation{path="…" purpose="output"}` 由 `apps/web/src/utils/markdownFileCitation.ts` 转换，`MarkdownContent.tsx` 在 Markdown 和纯文本消息模式共用文件名链接渲染；点击沿用 `MarkdownMessage.tsx` → `FilePreviewDialog.tsx`，分享页沿用 `TaskFilePreview` 授权能力，不新增读取接口。代码示例、未完成和无效标记保留原文。行为入口为 `apps/web/tests/markdownFileCitation.test.tsx`（中文及特殊字符路径、多文件、Windows 路径、分享链接与点击后按需读取）。
 
 渠道机器人未保存配置的外层退出保护由 `BotSettings.tsx::onDirtyChange` 向 `SettingsPage.tsx` 上报；设置窗口关闭按钮、Escape、遮罩关闭和切换其他设置分区统一进入现有 `ConfirmDialog`，取消保留原草稿，确认后才关闭或切换，卸载时清理标记。入口装配回归为 `apps/web/tests/settingsChannelDraft.test.tsx`；机器人编辑、保存与错误恢复仍由 `BotSettingsEditor.tsx` 及其行为测试持有。
@@ -1077,3 +1079,5 @@ Gateway 企业身份首次登录由 `apps/gateway/src/gateway/services/external_
 技能制作、引擎导入的用户可编辑草稿由语言包 `builtinContent` 提供，皮肤草稿仍使用 `skins.studioDraft/studioContinuePrompt`；会话名从语言包传给 onboarding API，已有皮肤会话按稳定 ID 复用，不因改语言重命名。后端提供的通用模型指令使用英文。Git 提交说明和归档经验分别通过请求正文 `locale` 传递当前语言包的真实 locale，旧客户端不传时保持中文输出；`services/output_language.py` 校验语言标识并生成英文输出约束，用户明确指定语言优先。归档后台任务固定首次请求语言，结构化 `has_experience:false` 表示空结果，兼容旧中文和英文哨兵；最多三条、重复证据和去重要求不变，中文每条/总计 50/150 字符，其余 240/720 字符。回归为 `test_coordinator.py`、`test_git_api.py`、`test_output_language.py`、`test_*onboarding.py`、`archiveExperienceApi.test.ts`、`customEngineControls.test.tsx`、`skillDraftCreate.test.tsx`。
 
 数据统计与网关用量的活跃日历共用 `packages/gateway-ui/src/ActivityHeatmap.tsx` / `ActivityHeatmap.css`：按周一至周日排布全年日期，支持筛选范围内跨年切换、调用次数色阶、逐日 Token 详情与窄屏横向滚动；范围外日期不表示零用量。Web `StatisticsPage.tsx` 消费 daemon `services/statistics.py::overview` 的独立逐日 `activity`（包含未上报 Token 的调用，不受趋势周/月聚合影响）；网关 `UsageActivityHeatmap.tsx` 复用 `UsageOverviewCharts` 与 `AccountUsagePanel` 已有日汇总，沿用时间及权限筛选，账单来源按账单行数显示。行为测试：`apps/web/tests/activityHeatmap.test.tsx`、`apps/daemon/tests/test_statistics.py`、`apps/gateway-web/tests/admin-usage.test.tsx`。
+
+视频文件预览由 `ArtifactPreview.tsx` 的原生 video 播放器负责（移动端 playsInline、仅预加载元信息），普通文件和分享页共用 `TaskFilePreview.rawUrl` 文件能力。daemon `api/fs.py::_preview_file_sync` 对视频仅返回类型、大小与路径，不读取或 Base64 编码正文，因此不受文本 1 MB 预览限制；内容沿用 raw 文件接口和 Range 分段响应。平台分享 `api/platform_share.py::read_platform_share_artifact_content` 保留任务授权范围并返回视频 MIME。回归入口为 `apps/web/tests/artifactPreviewVideo.test.tsx` 和 `apps/daemon/tests/test_video_preview.py`（9.4 MB 文件、Range、路径越界、文本大小限制和慢盘健康检查）。

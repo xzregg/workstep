@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WorkStep · 智能接入现有项目</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="onboarding.css"><script src="onboarding.js" defer></script></head>
+<body class="native-prototype">
+<div class="demo-ribbon"><span><strong>现有界面接入原型</strong> · 所有项目、分析和执行均为模拟</span><div class="actions"><label for="demo-case">体验路径</label><select id="demo-case"><option value="existing">导入已有项目</option><option value="empty">添加空目录</option><option value="failure">启动验证失败</option><option value="settings">现有项目补配置</option></select><button data-onboard="restart">重置演示</button><a href="flows.html?view=intelligent">步骤流程图 ↗</a><a href="index.html">版本发布原型 ↗</a></div></div>
+<div class="native-layout">
+ <aside class="native-sidebar" aria-label="项目与会话">
+  <div class="native-brand"><span class="brand-mark">W</span><strong>WorkStep</strong><small>介绍</small></div>
+  <div class="native-section-label"><strong>⌄ 项目</strong><div class="actions"><span aria-hidden="true">⌕</span><button class="icon-button" data-onboard="add" aria-label="添加项目">＋</button></div></div>
+  <div class="native-project"><span>⌄ 客户管理演示</span><button class="icon-button" data-onboard="project-menu" aria-label="项目更多操作">⋯</button></div>
+  <div id="native-workflows"></div>
+  <div class="native-section-label nested"><span>对话</span><button class="icon-button" data-onboard="new-chat" aria-label="新建对话">＋</button></div>
+  <button class="native-session selected" data-onboard="chat">应用开发讨论</button>
+  <button class="native-session" data-onboard="chat">整理客户管理需求</button>
+  <div class="native-project collapsed">› 操作手册演示</div><div class="native-project collapsed">› 默认工作区</div>
+  <div class="native-recent"><div class="native-section-label">⌄ 最近聊天</div><button data-onboard="chat" class="native-session">应用开发讨论 <small>刚刚</small></button><button data-onboard="chat" class="native-session">整理客户管理需求 <small>今天</small></button></div>
+  <footer class="native-sidebar-footer"><button data-onboard="info">◴ 数据统计</button><button data-onboard="info">◷ 定时任务</button><button data-onboard="info">♧ 角色中心</button><button data-onboard="info">◐ 外观</button><button data-onboard="settings">⚙ 设置</button></footer>
+ </aside>
+ <main class="native-main">
+  <header class="native-chat-header"><div><strong>应用开发讨论</strong><small>客户管理演示</small></div><div class="actions"><button data-onboard="new-chat">新建对话</button><button class="icon-button" data-onboard="info" aria-label="对话窗口">▥</button><button data-onboard="info">⌂ 打开目录</button><button data-onboard="info">Git</button><button id="native-workbench-entry" data-onboard="workbench">工作台 <span class="badge blue">新增</span></button><button data-onboard="settings">配置</button></div></header>
+  <div id="native-project-actions"></div>
+  <div id="native-chat-area"></div>
+  <div class="native-composer-area"><div id="native-chat-shortcuts" class="actions"></div><div class="native-input"><label for="native-message">向当前项目发送消息</label><textarea id="native-message" placeholder="描述你想修改的程序功能…"></textarea><div class="native-input-bottom"><div class="actions"><button data-onboard="info" aria-label="添加附件">＋</button><label class="check"><input type="checkbox">计划</label></div><div class="actions"><small>默认权限</small><button data-onboard="info">Codex · 默认模型 ⌄</button><button data-onboard="send" class="primary" id="native-send" disabled>发送</button></div></div></div></div>
+ </main>
+</div>
+<dialog id="onboarding-dialog"><div id="wizard-content"></div></dialog>
+<dialog id="guard-dialog"><div class="modal-header"><h2>保留配置草稿？</h2></div><div class="modal-body"><p>当前步骤的配置还没有应用到项目。保留后可从“工作台”继续。</p></div><div class="modal-footer"><button data-onboard="continue">继续配置</button><button data-onboard="keep-draft" class="primary">保留并关闭</button></div></dialog>
+<div id="onboard-toast" role="status" aria-live="polite"></div>
+</body></html>

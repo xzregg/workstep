@@ -45,3 +45,6 @@ logs/
 
 # Local security audit evidence and generated test credentials
 /audit-context/
+
+# Local examples
+/examples/

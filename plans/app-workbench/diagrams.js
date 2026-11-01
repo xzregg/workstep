@@ -37,6 +37,16 @@ const architecture={
  node('restore',365,555,'不兼容回退 → 独立恢复方案','暂停写入／备份／校验／切换','risk','旧代码不兼容时阻止直接回退；数据恢复需明确损失范围并再次确认。',['优先修复前进','恢复到隔离目标验证','不能只切旧镜像就报告成功'])],edges:[edge('draft','version'),edge('version','schema'),edge('draft','testenv'),edge('version','deployment'),edge('schema','prodenv'),edge('testenv','testinstance'),edge('deployment','prodenv'),edge('prodenv','prodinstance'),edge('prodinstance','snapshots','一致性备份'),edge('snapshots','testinstance','恢复／抽取'),edge('deployment','restore','不兼容时',[[455,325],[590,325],[590,593],[545,593]])]}
 };
 const flows={
+ intelligent:{title:'智能接入',summary:'沿用项目侧栏＋与项目配置入口：目录选择 → 只读分析 → 带依据确认 → 测试验证 → 生成流程和按钮 → 返回原聊天与预览。',height:900,nodes:[
+ node('entry',65,25,'侧栏项目＋／项目配置','沿用现有入口','existing','新项目从添加项目进入；已有项目从配置→工作台进入，无需重复注册。'),
+ node('source',365,25,'选择目录／Git 检出','可仅添加普通项目','existing','保留本地与远程项目语义；Docker主机在后续部署配置。'),
+ node('analysis',365,175,'分析启动与交付方式','只读，不执行仓库脚本','new','识别技术栈、多服务、启动、数据库、Docker和CI/CD。',['空目录转到模板方案','建议注明文件来源与确定性']),
+ node('empty',665,175,'空目录选择模板','底座＋流程＋两类按钮','new','不选择模板则保持普通空项目，不默认创建流程。'),
+ node('plan',365,340,'确认接入方案','启动方式／测试库／CI衔接','risk','修正推测和缺失项；沿用CI、触发原CI或工作台交付需要明确选择。',['不修改原代码和流水线','同名流程加工作台后缀，不覆盖']),
+ node('verify',365,510,'明确执行后验证','隔离测试环境','new','绑定测试库并确认执行计划后验证启动、健康检查和测试。',['不使用正式库','不触发正式CI/CD发布']),
+ node('fix',65,510,'失败修改与重试','端口／依赖／测试配置','risk','失败不标记预览可用，保留日志。也可保存未验证草稿。'),
+ node('apply',365,675,'确认并生成工作台','预览新增项和保留项','new','应用配置、流程与两类快捷按钮。正式发布仍待配置并保持禁用。'),
+ node('chat',665,790,'回到现有聊天与预览','侧栏流程／原快捷操作区','runtime','继续聊天开发；验证过的测试环境可预览，创建版本后进入既定发布流程。')],edges:[edge('entry','source'),edge('source','analysis'),edge('analysis','empty','空目录'),edge('analysis','plan','已有代码'),edge('empty','plan','选模板'),edge('plan','verify'),edge('verify','fix','失败'),edge('fix','plan','调整方案',[[40,548],[40,378]]),edge('verify','apply','通过或保存草稿'),edge('apply','chat')]},
  onboarding:{title:'创建与接入',summary:'两个入口，一套应用运行契约。工作台模板打包底座、默认流程及项目／对话快捷按钮；导入项目可只应用流程与按钮。',height:620,nodes:[
  node('template',65,35,'选择工作台模板','底座／流程／两类快捷按钮','new','空项目主动选择模板，一并生成底座配置、默认流程、项目快捷按钮和对话快捷按钮。',['初始化、开发、创建版本、发布、切换、测试数据六条流程','按钮自动关联项目流程实例','只创建配置，不自动执行']),
  node('import',665,35,'导入已有程序','本地目录／Git 仓库','existing','在现有项目开启应用能力，不要求迁移框架。',['Git 分支和子目录可配置','仓库脚本先查看再执行']),

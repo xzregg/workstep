@@ -6,6 +6,7 @@ import ImagePreview from './ImagePreview'
 import MarkdownContent from './MarkdownContent'
 import useStreamReveal from '../hooks/useStreamReveal'
 import { useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
+import { useActiveSkin } from '../skins/runtime'
 
 interface MarkdownMessageProps {
   content: string
@@ -13,7 +14,7 @@ interface MarkdownMessageProps {
   /**
    * 流式文字揭示动画模式。
    * - 'a'（默认）：跟随 token 到达快速揭示（帧率 ≤ token 频率，无额外重渲染开销），
-   *   配合 .is-streaming 的尾部 mask 与光标，形成"浮现"观感
+   *   新字以 90ms 模糊淡入、相邻字错开 30ms，形成晕染观感
    * - 'off'：关闭揭示层，渲染结果与历史版本完全一致（回退开关）
    * compactParagraphs（嵌套时间线）场景由调用方决定是否传入。
    */
@@ -57,6 +58,8 @@ function MarkdownMessage({
   const taskFilePreview = useTaskFilePreview()
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const freshStream = useRef(streaming && content.length === 0)
+  const effects = useActiveSkin().effects
   const latestRenderRef = useRef({ content, streaming })
   latestRenderRef.current = { content, streaming }
   const [selectionSnapshot, setSelectionSnapshot] = useState<{
@@ -64,6 +67,11 @@ function MarkdownMessage({
     streaming: boolean
   } | null>(null)
   const watchSelection = streaming || selectionSnapshot !== null
+
+  useEffect(() => {
+    // 选区释放会全量追平，不把追平的文字再次当作新流播放。
+    if (selectionSnapshot !== null) freshStream.current = false
+  }, [selectionSnapshot])
 
   useEffect(() => {
     if (!watchSelection) return
@@ -107,6 +115,7 @@ function MarkdownMessage({
     <>
       <MarkdownContent
         content={revealedContent}
+        animateReveal={freshStream.current && reveal === 'a' && !plainText && effects?.reveal !== false && selectionSnapshot === null && (renderedStreaming || revealedContent !== renderedContent)}
         streaming={renderedStreaming}
         projectId={projectId}
         className={className}

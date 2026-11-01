@@ -8,6 +8,8 @@ import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdown
 import { useI18n } from '../i18n'
 import MermaidBlock, { MarkdownStreamingContext } from './MermaidBlock'
 import { useMarkdownUrlResolver, useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
+import StreamRevealText from './StreamRevealText'
+import rehypeStreamReveal from '../utils/rehypeStreamReveal'
 
 interface MarkdownContentProps {
   content: string
@@ -21,6 +23,7 @@ interface MarkdownContentProps {
   onImageClick?: (src: string, alt: string) => void
   onFileClick?: (file: ProjectFileLink) => void
   rootRef?: RefObject<HTMLDivElement | null>
+  animateReveal?: boolean
 }
 
 // Inline Markdown image / link tokens: `![alt](url)` and `[label](url)`.
@@ -83,6 +86,7 @@ export default function MarkdownContent({
   onImageClick,
   onFileClick,
   rootRef,
+  animateReveal = false,
 }: MarkdownContentProps) {
   const { t } = useI18n()
   const markdownUrlResolver = useMarkdownUrlResolver()
@@ -134,6 +138,8 @@ export default function MarkdownContent({
   }, [markdownUrlResolver, onFileClick, projectId, taskFilePreview, t])
 
   const components = useMemo(() => ({
+    'stream-reveal-text': ({ node }: { node?: { properties?: Record<string, unknown> } }) =>
+      <StreamRevealText text={String(node?.properties?.text ?? '')} enabled={animateReveal} />,
     p: ({ children }: { children?: React.ReactNode }) => compactParagraphs
       ? <div className="markdown-compact-paragraph">{children}</div>
       : <p>{children}</p>,
@@ -148,7 +154,7 @@ export default function MarkdownContent({
       }
       return <pre>{children}</pre>
     },
-  }), [compactParagraphs, mermaidRenderDelayMs, renderImage, renderLink])
+  }), [animateReveal, compactParagraphs, mermaidRenderDelayMs, renderImage, renderLink])
 
   return (
     <MarkdownStreamingContext.Provider value={streaming}>
@@ -169,7 +175,7 @@ export default function MarkdownContent({
           ) return null
           return <span key={index}>{segment.text}</span>
         }) : (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={fileAwareUrlTransform}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={animateReveal ? [rehypeStreamReveal] : []} components={components} urlTransform={fileAwareUrlTransform}>
             {markdown}
           </ReactMarkdown>
         )}
