@@ -21,6 +21,7 @@ import { PrivacyPage } from './components/PrivacyPage'
 import { GuidedWalkthrough } from './components/GuidedWalkthrough'
 import { FlowBackdrop } from './components/FlowBackdrop'
 import { GettingStarted } from './components/GettingStarted'
+import { ProductIntro } from './components/ProductIntro'
 
 function scrollToDemos() {
   document.getElementById('demos')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
@@ -46,6 +47,7 @@ export default function App() {
       {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : <main className="landing-home">
         <FlowBackdrop />
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
+        <ProductIntro />
         <div className="container recorded-section"><GuidedWalkthrough /></div>
         <Philosophy />
         <Demos onOpen={setOpenDemo} />
