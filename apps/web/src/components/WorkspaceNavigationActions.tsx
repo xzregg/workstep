@@ -6,6 +6,7 @@ import type { SettingsSection } from '../pages/SettingsPage'
 import Button from './Button'
 import Icon, { type IconName } from './Icon'
 import ScheduleCenter from './ScheduleCenter'
+import DesktopUpdateRailAction from './DesktopUpdateRailAction'
 
 export const WORKSPACE_TOOL_RAIL_WIDTH = 48
 
@@ -31,6 +32,7 @@ export default function WorkspaceNavigationActions({ onOpenSettings, activeSetti
     {can('statistics.read') && action(t('nav.statistics'), 'bar-chart', () => navigate('/statistics'), pathname === '/statistics')}
     <ScheduleCenter />
     {!bound && action(t('roleCenter.title'), 'drama', () => onOpenSettings('roles'), activeSettingsSection === 'roles', 'layout-sidebar-external-only')}
+    <DesktopUpdateRailAction onOpenSettings={onOpenSettings} />
     {action(t('skins.appearance'), 'sparkles', () => bound ? navigate('/appearance') : onOpenSettings('appearance'),
       bound ? pathname === '/appearance' : activeSettingsSection === 'appearance',
       bound ? 'layout-sidebar-settings-button layout-sidebar-appearance' : 'layout-sidebar-external-only layout-sidebar-appearance')}

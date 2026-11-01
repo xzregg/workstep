@@ -1,5 +1,5 @@
 const { createPrivateKey, randomBytes, sign } = require('node:crypto')
-const { app, BrowserWindow, Menu, Notification, Tray, clipboard, crashReporter, dialog, ipcMain, nativeImage, safeStorage, session, shell } = require('electron')
+const { app, BrowserWindow, Menu, Notification, Tray, clipboard, crashReporter, dialog, ipcMain, nativeImage, net, safeStorage, session, shell } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const { createDiagnostics, installDiagnostics, captureConsole } = require('./diagnostics.cjs')
@@ -585,12 +585,45 @@ function configureManagedSessionRecovery(managed) {
 
 function configureUpdater() {
   const updater = createDesktopUpdateService(app)
+  let automatic
+  const autoUpdate = () => {
+    if (!app.isPackaged) throw new Error('自动更新仅支持已安装的正式包')
+    if (process.platform === 'linux' && !process.env.APPIMAGE) throw new Error('自动更新仅支持 AppImage 安装包')
+    if (!automatic) {
+      const engine = process.platform === 'darwin'
+        ? new (require('./macos-update.cjs').MacBundleUpdater)({ app, fetchImpl: net.fetch.bind(net) })
+        : require('electron-updater').autoUpdater
+      if (process.platform === 'win32') engine.channel = `latest-${process.arch}`
+      engine.on('error', () => {
+        if (updateQuitReady) { updateQuitReady = false; quitting = false }
+      })
+      automatic = require('./auto-update.cjs').createAutoUpdateController({
+        updater: engine, currentVersion: app.getVersion(),
+        beforeInstall: async () => { await stopBackend(); await engine.prepareInstall?.() },
+        install: () => {
+          updateQuitReady = true; quitting = true
+          try { engine.quitAndInstall(true, true) }
+          catch (error) { updateQuitReady = false; quitting = false; throw error }
+        },
+      })
+    }
+    return automatic
+  }
   ipcMain.removeHandler('workstep:update:status')
   ipcMain.removeHandler('workstep:update:check')
   ipcMain.removeHandler('workstep:update:open-download')
+  ipcMain.removeHandler('workstep:update:auto-status')
+  ipcMain.removeHandler('workstep:update:start')
   ipcMain.handle('workstep:update:status', () => updater.check())
   ipcMain.handle('workstep:update:check', () => updater.check({ force: true }))
   ipcMain.handle('workstep:update:open-download', (_event, url) => shell.openExternal(safeReleaseUrl(url)))
+  ipcMain.handle('workstep:update:auto-status', () => automatic?.status() || { phase: 'idle', percent: 0, error: null })
+  ipcMain.handle('workstep:update:start', event => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || !isTrustedNavigation(event.senderFrame?.url, rootUrl)) {
+      throw new Error('更新操作来源无效')
+    }
+    return autoUpdate().start()
+  })
   if (app.isPackaged) {
     const check = () => void updater.check().catch(error => console.error('Unable to check for desktop updates', error))
     check()
@@ -599,6 +632,7 @@ function configureUpdater() {
   }
 }
 
+let updateQuitReady = false
 const handleGracefulQuit = createGracefulQuit({
   stop: stopBackend,
   quit: () => app.quit(),
@@ -612,7 +646,7 @@ const handleGracefulQuit = createGracefulQuit({
 app.on('before-quit', (event) => {
   if (controlStatusTimer) clearInterval(controlStatusTimer)
   if (updateCheckTimer) clearInterval(updateCheckTimer)
-  handleGracefulQuit(event)
+  if (!updateQuitReady) handleGracefulQuit(event)
 })
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()

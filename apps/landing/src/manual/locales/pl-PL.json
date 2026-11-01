@@ -1346,17 +1346,17 @@
         "title": "Sprawdź wersję na komputery stacjonarne i pobierz aktualizacje",
         "steps": [
           "Na komputerze otwórz Ustawienia → Ustawienia systemu → Aktualizacje pulpitu, aby sprawdzić aktualną wersję.",
-          "Kliknij opcję Sprawdź aktualizacje, aby znaleźć najnowszą oficjalną wersję GitHub. Jeśli jest nowszy, kliknij Pobierz z GitHub.",
-          "Wybierz instalator swojego systemu na stronie wydania, zakończ aktywną pracę i zainstaluj go samodzielnie."
+          "Po sprawdzeniu zapisz zmiany i zakończ aktywną pracę. Kliknij automatyczną aktualizację lub przycisk skrajnie po lewej; zobaczysz postęp pobierania, a po weryfikacji instalację i ponowne uruchomienie.",
+          "W razie błędu sprawdź przyczynę w ustawieniach systemowych i ponów próbę albo pobierz właściwy instalator z GitHub i zainstaluj ręcznie."
         ],
         "tips": [
-          "Pulpit sprawdza raz dziennie bez automatycznego pobierania, instalowania lub ponownego uruchamiania. Tylko nowsza oficjalna wersja powoduje aktualizację, a nie wypychanie kodu lub wersje robocze.",
-          "Ponów próbę, która zakończyła się niepowodzeniem później. Wersja internetowa nie zawiera wpisu dotyczącego aktualizacji na pulpicie."
+          "Sprawdzanie odbywa się codziennie. Oferowana jest tylko nowsza opublikowana Release, nie wysłanie kodu ani szkic. Pobieranie rozpoczyna się dopiero po kliknięciu aktualizacji.",
+          "Obsługiwane są Windows NSIS, Linux AppImage i macOS. macOS wymaga zapisywalnego katalogu instalacji poza DMG i App Translocation. Ostrzeżenia systemowe są nadal możliwe. Inne formaty Linux pobiera się ręcznie; wersja web nie ma aktualizacji desktopowej."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Aktualna wersja na komputery stacjonarne i wpis dotyczący sprawdzania aktualizacji w ustawieniach systemu",
-          "caption": "Sprawdź ręcznie, a następnie pobierz z GitHub, gdy dostępna będzie aktualizacja."
+          "caption": "Nadal brakuje rzeczywistego zrzutu automatycznej aktualizacji, postępu i ręcznego pobierania z GitHub."
         }
       },
       {

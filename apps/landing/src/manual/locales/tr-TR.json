@@ -1346,17 +1346,17 @@
         "title": "Masaüstü sürümünü kontrol edin ve güncellemeleri indirin",
         "steps": [
           "Geçerli sürümü incelemek için masaüstünde Ayarlar → Sistem ayarları → Masaüstü güncellemeleri öğesini açın.",
-          "En son resmi GitHub sürümünü bulmak için Güncellemeleri kontrol et seçeneğine tıklayın. Daha yeniyse GitHub'dan İndir'e tıklayın.",
-          "Sürüm sayfasında sisteminizin yükleyicisini seçin, aktif çalışmayı tamamlayın ve kendiniz kurun."
+          "Kontrolden sonra değişiklikleri kaydedip etkin işleri tamamlayın. Otomatik güncelleme veya en soldaki düğmeye tıklayın; indirme ilerlemesinin ardından doğrulama, kurulum ve yeniden başlatma gerçekleşir.",
+          "Başarısız olursa sistem ayarlarında nedeni inceleyip yeniden deneyin veya uygun yükleyiciyi GitHub üzerinden indirip elle kurun."
         ],
         "tips": [
-          "Masaüstü, otomatik olarak indirmeye, yüklemeye veya yeniden başlatmaya gerek kalmadan günde bir kez kontrol eder. Yalnızca daha yeni bir resmi Sürüm bir güncellemeyi tetikler; kod aktarmaları veya taslakları tetiklemez.",
-          "Başarısız olan kontrolleri daha sonra yeniden deneyin. Web sürümünde masaüstü güncelleme girişi yoktur."
+          "Her gün kontrol edilir. Yalnızca daha yeni yayımlanmış Release sunulur; kod gönderimleri ve taslaklar tetiklemez. İndirme yalnızca güncelleme düğmesine tıklayınca başlar.",
+          "Windows NSIS, Linux AppImage ve macOS desteklenir. macOS için DMG ve App Translocation dışında yazılabilir kurulum dizini gerekir. Sistem güvenlik uyarıları görülebilir. Diğer Linux biçimlerini elle indirin; web sürümünde masaüstü güncellemesi yoktur."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Güncel masaüstü sürümü ve sistem ayarlarında güncelleme-kontrol girişi",
-          "caption": "Manuel olarak kontrol edin, ardından bir güncelleme mevcut olduğunda GitHub'dan indirin."
+          "caption": "Otomatik güncelleme, indirme ilerlemesi ve GitHub üzerinden elle indirme için gerçek ekran görüntüsü henüz gereklidir."
         }
       },
       {

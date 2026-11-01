@@ -1346,17 +1346,17 @@
         "title": "Verifique la versión de escritorio y descargue actualizaciones",
         "steps": [
           "En el escritorio, abra Configuración → Configuración del sistema → Actualizaciones de escritorio para inspeccionar la versión actual.",
-          "Haga clic en Buscar actualizaciones para encontrar la última versión oficial de GitHub. Si es más reciente, haga clic en Descargar desde GitHub.",
-          "Elija el instalador de su sistema en la página de lanzamiento, finalice el trabajo activo e instálelo usted mismo."
+          "Tras comprobar, guarde los cambios y termine los trabajos activos. Pulse la actualización automática o el botón de la barra izquierda; verá el progreso y, tras la verificación, la instalación y el reinicio.",
+          "Si falla, consulte la causa en los ajustes del sistema y reintente, o descargue desde GitHub el instalador adecuado para instalarlo manualmente."
         ],
         "tips": [
-          "El escritorio realiza comprobaciones una vez al día sin descargar, instalar ni reiniciar automáticamente. Sólo una versión oficial más reciente activa una actualización, no envíos de código ni borradores.",
-          "Vuelva a intentar las comprobaciones fallidas más tarde. La versión web no tiene entrada de actualización de escritorio."
+          "Se comprueba cada día. Solo se ofrece una Release publicada más reciente, no los envíos de código ni los borradores. La descarga empieza únicamente al pulsar el botón de actualización.",
+          "Compatible con Windows NSIS, Linux AppImage y macOS. macOS requiere una carpeta de instalación con escritura, fuera de DMG y App Translocation. Pueden aparecer avisos del sistema. Otros formatos Linux usan descarga manual; la web no tiene actualización de escritorio."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Versión de escritorio actual y entrada de verificación de actualización en la configuración del sistema",
-          "caption": "Verifique manualmente y luego descárguelo desde GitHub cuando haya una actualización disponible."
+          "caption": "Falta una captura real de la actualización automática, su progreso y la descarga manual de GitHub."
         }
       },
       {

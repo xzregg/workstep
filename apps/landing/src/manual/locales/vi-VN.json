@@ -1346,17 +1346,17 @@
         "title": "Kiểm tra phiên bản máy tính để bàn và tải xuống các bản cập nhật",
         "steps": [
           "Trên máy tính để bàn, mở Cài đặt → Cài đặt hệ thống → Cập nhật màn hình để kiểm tra phiên bản hiện tại.",
-          "Nhấp vào Kiểm tra bản cập nhật để tìm bản phát hành GitHub chính thức mới nhất. Nếu mới hơn, hãy nhấp vào Tải xuống từ GitHub.",
-          "Chọn trình cài đặt hệ thống của bạn trên trang phát hành, hoàn thành công việc đang hoạt động và tự cài đặt nó."
+          "Sau khi kiểm tra, lưu chỉnh sửa và hoàn tất công việc đang chạy. Nhấn cập nhật tự động hoặc nút ở thanh ngoài cùng bên trái; theo dõi tiến độ tải, sau đó ứng dụng cài đặt và khởi động lại khi xác minh xong.",
+          "Nếu lỗi, xem nguyên nhân trong cài đặt hệ thống rồi thử lại, hoặc tải bộ cài phù hợp từ GitHub và cài thủ công."
         ],
         "tips": [
-          "Máy tính để bàn sẽ kiểm tra mỗi ngày một lần mà không tự động tải xuống, cài đặt hoặc khởi động lại. Chỉ Bản phát hành chính thức mới hơn mới kích hoạt bản cập nhật, không phải bản đẩy mã hoặc bản nháp.",
-          "Hãy thử lại những lần kiểm tra không thành công sau. Phiên bản web không có mục cập nhật máy tính để bàn."
+          "Kiểm tra hằng ngày. Chỉ Release đã phát hành có phiên bản mới hơn mới được đề xuất, không phải đẩy mã hay bản nháp. Chỉ tải xuống khi nhấn nút cập nhật.",
+          "Hỗ trợ Windows NSIS, Linux AppImage và macOS. macOS cần thư mục cài đặt có quyền ghi, không nằm trong DMG hoặc App Translocation. Vẫn có thể xuất hiện cảnh báo hệ thống. Các định dạng Linux khác tải thủ công; bản web không có cập nhật máy tính."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Phiên bản máy tính để bàn hiện tại và mục kiểm tra cập nhật trong cài đặt hệ thống",
-          "caption": "Kiểm tra thủ công, sau đó tải xuống từ GitHub khi có bản cập nhật."
+          "caption": "Còn thiếu ảnh chụp thật của cập nhật tự động, tiến độ tải và tải thủ công từ GitHub."
         }
       },
       {

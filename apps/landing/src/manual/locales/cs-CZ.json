@@ -1346,17 +1346,17 @@
         "title": "Zkontrolujte verzi pro počítače a stáhněte si aktualizace",
         "steps": [
           "Na ploše otevřete Nastavení → Nastavení systému → Aktualizace plochy a zkontrolujte aktuální verzi.",
-          "Kliknutím na Vyhledat aktualizace najdete nejnovější oficiální vydání GitHub. Pokud je novější, klikněte na Stáhnout z GitHub.",
-          "Vyberte instalační program vašeho systému na stránce vydání, dokončete aktivní práci a nainstalujte jej sami."
+          "Po kontrole uložte změny a dokončete aktivní práci. Klikněte na automatickou aktualizaci nebo tlačítko zcela vlevo; zobrazí se průběh stahování a po ověření následuje instalace a restart.",
+          "Při selhání zjistěte příčinu v systémovém nastavení a zkuste to znovu, nebo stáhněte vhodný instalátor z GitHub a nainstalujte ručně."
         ],
         "tips": [
-          "Desktop kontroluje jednou denně bez automatického stahování, instalace nebo restartování. Aktualizaci spouští pouze novější oficiální vydání, nikoli vkládání kódu nebo koncepty.",
-          "Opakujte neúspěšné kontroly později. Webová verze neobsahuje žádnou položku aktualizace na ploše."
+          "Kontrola probíhá denně. Nabízí se pouze novější zveřejněná Release, nikoli odeslání kódu nebo koncepty. Stahování začne až po kliknutí na aktualizaci.",
+          "Podporuje Windows NSIS, Linux AppImage a macOS. macOS vyžaduje zapisovatelnou instalační složku mimo DMG a App Translocation. Systémová varování mohou přetrvat. Ostatní formáty Linux se stahují ručně; web nemá desktopovou aktualizaci."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Aktuální verze pro stolní počítače a záznam kontroly aktualizací v nastavení systému",
-          "caption": "Zkontrolujte ručně a poté stáhněte z GitHub, jakmile bude k dispozici aktualizace."
+          "caption": "Stále chybí skutečný snímek automatické aktualizace, průběhu stahování a ručního stažení z GitHub."
         }
       },
       {

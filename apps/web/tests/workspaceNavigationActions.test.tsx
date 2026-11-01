@@ -10,6 +10,13 @@ import WorkspaceNavigationActions from '../src/components/WorkspaceNavigationAct
 
 test('desktop rail opens existing appearance and role settings, and keeps one schedule entry', async () => {
   const { window } = installDomEnvironment()
+  window.workstepDesktop = { updates: {
+    status: async () => ({ currentVersion: '1.0.16', latestVersion: '1.0.17', updateAvailable: true,
+      checkedAt: 1, source: 'network', releaseUrl: '' }),
+    check: async () => { throw new Error('unexpected check') },
+    openDownload: async () => {}, start: async () => {},
+    autoStatus: async () => ({ phase: 'idle', percent: 0, error: null }),
+  } }
   useLocaleStore.setState({ locale: 'zh-CN' })
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
@@ -23,6 +30,13 @@ test('desktop rail opens existing appearance and role settings, and keeps one sc
     assert.ok(button('外观'))
     assert.ok(button('角色中心'))
     assert.deepEqual([...container.querySelectorAll('nav > button')].slice(0, 3).map(button => button.getAttribute('aria-label')), ['数据统计', '定时任务', '角色中心'])
+    assert.deepEqual([...container.querySelectorAll('nav > button')].slice(3).map(button => button.getAttribute('aria-label')),
+      ['自动更新 1.0.17', '外观', '设置'])
+    const style = document.createElement('style')
+    style.textContent = await readFile(new URL('../src/components/Layout.css', import.meta.url), 'utf8')
+    document.head.appendChild(style)
+    assert.equal(getComputedStyle(button('自动更新 1.0.17')).marginTop, 'auto')
+    assert.equal(getComputedStyle(button('外观')).marginTop, '0px')
     assert.ok(button('角色中心').querySelector('svg.lucide-drama'))
     assert.equal(container.querySelector('button[aria-label="工作台"]'), null)
     assert.equal(container.querySelector('button[aria-label="项目与会话"]'), null)

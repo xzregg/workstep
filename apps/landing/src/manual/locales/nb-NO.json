@@ -1346,17 +1346,17 @@
         "title": "Sjekk skrivebordsversjonen og last ned oppdateringer",
         "steps": [
           "På skrivebordet åpner du Innstillinger → Systeminnstillinger → Skrivebordsoppdateringer for å inspisere gjeldende versjon.",
-          "Klikk Se etter oppdateringer for å finne den siste offisielle GitHub-utgivelsen. Hvis nyere, klikk Last ned fra GitHub.",
-          "Velg systemets installasjonsprogram på utgivelsessiden, fullfør aktivt arbeid og installer det selv."
+          "Lagre endringer og avslutt aktivt arbeid etter kontrollen. Klikk automatisk oppdatering eller knappen helt til venstre; etter nedlastingsfremdrift og kontroll installeres appen og starter på nytt.",
+          "Ved feil, se årsaken i systeminnstillingene og prøv igjen, eller last ned riktig installasjonsprogram fra GitHub og installer manuelt."
         ],
         "tips": [
-          "Desktop sjekker én gang daglig uten automatisk nedlasting, installasjon eller omstart. Bare en nyere offisiell utgivelse utløser en oppdatering, ikke kodepush eller utkast.",
-          "Prøv mislykkede kontroller på nytt senere. Nettversjonen har ingen oppføring for skrivebordsoppdatering."
+          "Det kontrolleres daglig. Bare en nyere publisert Release tilbys, ikke kodepush eller utkast. Nedlasting starter først når oppdateringsknappen klikkes.",
+          "Støtter Windows NSIS, Linux AppImage og macOS. macOS krever en skrivbar installasjonsmappe utenfor DMG og App Translocation. Systemvarsler kan fortsatt vises. Andre Linux-formater lastes ned manuelt; nettappen har ingen skrivebordsoppdatering."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Gjeldende skrivebordsversjon og oppdatering-sjekk oppføring i systeminnstillingene",
-          "caption": "Sjekk manuelt, og last ned fra GitHub når en oppdatering er tilgjengelig."
+          "caption": "Et ekte skjermbilde av automatisk oppdatering, nedlastingsfremdrift og manuell GitHub-nedlasting mangler ennå."
         }
       },
       {

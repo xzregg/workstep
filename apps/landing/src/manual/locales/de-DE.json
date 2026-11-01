@@ -1346,17 +1346,17 @@
         "title": "Desktopversion und Updates prüfen",
         "steps": [
           "Öffnen Sie am Desktop Einstellungen → Systemeinstellungen → Desktopupdates und prüfen Sie die Version.",
-          "Wählen Sie Updates prüfen für das neueste reguläre GitHub-Release; bei neuer Version klicken Sie auf Auf GitHub herunterladen.",
-          "Wählen Sie auf der Releaseseite das Systempaket und installieren Sie selbst nach Abschluss laufender Arbeit."
+          "Speichern Sie nach der Prüfung Änderungen und beenden Sie laufende Arbeiten. Klicken Sie auf die automatische Aktualisierung oder die Schaltfläche ganz links; nach Download-Fortschritt und Prüfung folgen Installation und Neustart.",
+          "Prüfen Sie bei Fehlern die Ursache in den Systemeinstellungen und versuchen Sie es erneut, oder laden Sie das passende Installationspaket von GitHub zur manuellen Installation herunter."
         ],
         "tips": [
-          "Der Desktop prüft täglich, lädt oder installiert aber nicht automatisch und startet nicht neu. Nur höhere reguläre Releases gelten als Updates; Code-Push oder Entwurf genügen nicht.",
-          "Bei Fehlern versuchen Sie später erneut. Die Webversion zeigt keine Desktopupdatefunktion."
+          "Die Prüfung erfolgt täglich. Nur eine neuere veröffentlichte Release wird angeboten, keine Code-Pushes oder Entwürfe. Der Download beginnt erst nach einem Klick auf die Update-Schaltfläche.",
+          "Unterstützt Windows NSIS, Linux AppImage und macOS. macOS benötigt ein beschreibbares Installationsverzeichnis außerhalb von DMG und App Translocation. Systemwarnungen bleiben möglich. Andere Linux-Formate werden manuell geladen; die Webversion hat kein Desktop-Update."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Aktuelle Version und Updateprüfung in den Desktop-Systemeinstellungen",
-          "caption": "Prüfen Sie manuell und wechseln Sie bei neuer Version zum GitHub-Download."
+          "caption": "Ein echter Screenshot von automatischem Update, Download-Fortschritt und manuellem GitHub-Download fehlt noch."
         }
       },
       {

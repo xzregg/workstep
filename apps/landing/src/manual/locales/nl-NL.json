@@ -1346,17 +1346,17 @@
         "title": "Controleer de desktopversie en download updates",
         "steps": [
           "Open op het bureaublad Instellingen → Systeeminstellingen → Bureaubladupdates om de huidige versie te inspecteren.",
-          "Klik op Controleren op updates om de nieuwste officiële GitHub-release te vinden. Indien nieuwer, klik op Downloaden van GitHub.",
-          "Kies het installatieprogramma voor uw systeem op de releasepagina, voltooi het actieve werk en installeer het zelf."
+          "Sla na de controle wijzigingen op en rond actief werk af. Klik op automatisch bijwerken of de knop helemaal links; na de downloadvoortgang en verificatie volgen installatie en herstart.",
+          "Bekijk bij fouten de oorzaak in de systeeminstellingen en probeer opnieuw, of download het juiste installatiebestand van GitHub voor handmatige installatie."
         ],
         "tips": [
-          "Desktopcontroles één keer per dag zonder automatisch te downloaden, installeren of opnieuw opstarten. Alleen een nieuwere officiële release activeert een update, geen code-pushs of concepten.",
-          "Probeer mislukte controles later opnieuw. De webversie heeft geen vermelding voor desktopupdates."
+          "Er wordt dagelijks gecontroleerd. Alleen een nieuwere gepubliceerde Release wordt aangeboden, geen code-pushes of concepten. Downloaden begint pas na een klik op de updateknop.",
+          "Ondersteunt Windows NSIS, Linux AppImage en macOS. macOS vereist een beschrijfbare installatiemap buiten DMG en App Translocation. Systeemwaarschuwingen blijven mogelijk. Andere Linux-formaten worden handmatig gedownload; de webversie heeft geen desktop-update."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Huidige desktopversie en updatecontrole in systeeminstellingen",
-          "caption": "Controleer dit handmatig en download vervolgens van GitHub wanneer er een update beschikbaar is."
+          "caption": "Een echte schermafbeelding van automatisch bijwerken, voortgang en handmatig downloaden via GitHub ontbreekt nog."
         }
       },
       {

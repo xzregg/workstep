@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "6ff9402749ad4e7756388fa053d617bcd36c7f0864f59520887c26905a57a6f3",
+  "revision": "b0af53237ff837ab88ba1d713e36b45b02b30aed72d463714effdeb1714440b0",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -2186,7 +2186,12 @@
     "settings.desktopUpdate": "桌面更新",
     "settings.problemFeedback": "反馈问题",
     "settings.problemFeedbackIntro": "前往 GitHub 提交问题，请提供复现步骤，并在提交前移除密钥、个人路径和私有项目内容。",
-    "settings.desktopUpdateIntro": "每天从 GitHub Release 检查一次新版本，不会自动下载或安装。",
+    "settings.autoUpdate": "自动更新",
+    "settings.autoUpdateHint": "下载完成后将关闭当前应用、安装并重新启动，请先保存正在编辑的内容。",
+    "settings.autoUpdateDownloading": "下载中 {percent}%",
+    "settings.autoUpdateInstalling": "正在安装并重启…",
+    "settings.autoUpdateFailed": "自动更新失败：{error}。可重试或前往 GitHub 下载。",
+    "settings.desktopUpdateIntro": "每天从 GitHub Release 检查一次新版本，点击自动更新后下载并安装。",
     "settings.currentVersion": "当前版本 {version}",
     "settings.newVersion": "发现新版本 {version}",
     "settings.latestVersion": "已是最新版本",

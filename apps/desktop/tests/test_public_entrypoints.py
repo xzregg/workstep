@@ -99,7 +99,15 @@ def test_release_publish_job_refreshes_an_existing_draft_only():
     assert 'if [ "$existing_release" = "true" ]; then' in publish_job
     assert 'gh release upload "$RELEASE_TAG" release/* --clobber' in publish_job
     assert 'gh release delete-asset "$RELEASE_TAG" builder-debug.yml --yes' in publish_job
-    assert "gh release edit" not in publish_job
+    draft_branch, published_branch = publish_job.split(
+        'elif [ "$existing_release" = "false" ]; then', 1
+    )
+    published_branch = published_branch.split("\n          else", 1)[0]
+    assert 'gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"' in draft_branch
+    assert "gh release edit" not in published_branch
+    assert "gh release upload" not in published_branch
+    assert "gh release delete" not in published_branch
+    assert "--draft=false" not in publish_job
     assert '--target "$GITHUB_SHA"' not in publish_job
     assert 'elif [ "$existing_release" = "false" ]; then' in publish_job
     assert 'exit 1' in publish_job

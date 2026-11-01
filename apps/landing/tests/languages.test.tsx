@@ -19,6 +19,16 @@ function proseStrings(value: unknown): string[] {
 }
 
 describe('builtin language selection', () => {
+  for (const lang of supportedLanguages.map(item => item.locale)) {
+    it(`documents click-to-install desktop updates and platform limits in ${lang}`, () => {
+      const section = getManualChapters(lang).find(chapter => chapter.id === 'settings-troubleshooting')!
+        .sections.find(section => section.screenshot?.id === 'desktop-update')!
+      expect(section.steps).toHaveLength(3)
+      expect(section.tips?.join(' ')).toContain('AppImage')
+      expect(section.tips?.join(' ')).toContain('macOS')
+      expect(section.steps[2]).toContain('GitHub')
+    })
+  }
   for (const { locale, label } of supportedLanguages) {
     it(`renders ${locale} on the site and manual from the same saved selection`, () => {
       vi.stubGlobal('window', { localStorage: { getItem: () => locale }, navigator: { language: 'zh-CN' }, matchMedia: () => ({ matches: false }) })

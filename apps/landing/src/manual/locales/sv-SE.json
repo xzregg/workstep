@@ -1346,17 +1346,17 @@
         "title": "Kontrollera skrivbordsversionen och ladda ner uppdateringar",
         "steps": [
           "På skrivbordet, öppna Inställningar → Systeminställningar → Skrivbordsuppdateringar för att inspektera den aktuella versionen.",
-          "Klicka på Sök efter uppdateringar för att hitta den senaste officiella GitHub-versionen. Om nyare, klicka på Ladda ner från GitHub.",
-          "Välj ditt systems installationsprogram på releasesidan, avsluta aktivt arbete och installera det själv."
+          "Spara ändringar och avsluta aktivt arbete efter kontrollen. Klicka på automatisk uppdatering eller knappen längst till vänster; efter nedladdningsförlopp och verifiering installeras appen och startas om.",
+          "Vid fel, se orsaken i systeminställningarna och försök igen, eller hämta rätt installationsprogram från GitHub och installera manuellt."
         ],
         "tips": [
-          "Desktop kontrollerar en gång dagligen utan att automatiskt ladda ner, installera eller starta om. Endast en nyare officiell utgåva utlöser en uppdatering, inte kod push eller utkast.",
-          "Försök igen misslyckade kontroller senare. Webbversionen har ingen post för skrivbordsuppdatering."
+          "Kontrollen sker dagligen. Endast en nyare publicerad Release erbjuds, inte kodpushar eller utkast. Nedladdning börjar först när uppdateringsknappen klickas.",
+          "Stöder Windows NSIS, Linux AppImage och macOS. macOS kräver en skrivbar installationsmapp utanför DMG och App Translocation. Systemvarningar kan fortfarande visas. Andra Linux-format hämtas manuellt; webbappen har ingen skrivbordsuppdatering."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Aktuell skrivbordsversion och uppdateringskontroll i systeminställningarna",
-          "caption": "Kontrollera manuellt och ladda sedan ner från GitHub när en uppdatering är tillgänglig."
+          "caption": "En riktig skärmbild av automatisk uppdatering, nedladdningsförlopp och manuell GitHub-hämtning saknas ännu."
         }
       },
       {

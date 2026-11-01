@@ -1346,17 +1346,17 @@
         "title": "Controlla la versione desktop e scarica gli aggiornamenti",
         "steps": [
           "Sul desktop, apri Impostazioni → Impostazioni di sistema → Aggiornamenti desktop per controllare la versione corrente.",
-          "Fare clic su Controlla aggiornamenti per trovare l'ultima versione ufficiale di GitHub. Se più recente, fare clic su Scarica da GitHub.",
-          "Scegli il programma di installazione del tuo sistema nella pagina di rilascio, completa il lavoro attivo e installalo tu stesso."
+          "Dopo il controllo, salva le modifiche e termina i lavori attivi. Premi l’aggiornamento automatico o il pulsante nella barra a sinistra; vedrai l’avanzamento, poi installazione e riavvio dopo la verifica.",
+          "In caso di errore, controlla il motivo nelle impostazioni di sistema e riprova, oppure scarica da GitHub il programma adatto e installalo manualmente."
         ],
         "tips": [
-          "Il desktop viene controllato una volta al giorno senza download, installazione o riavvio automatico. Solo una versione ufficiale più recente attiva un aggiornamento, non push di codice o bozze.",
-          "Riprovare i controlli non riusciti più tardi. La versione web non ha voce di aggiornamento desktop."
+          "Il controllo è giornaliero. Viene proposta solo una Release pubblicata più recente, non invii di codice o bozze. Il download inizia soltanto premendo il pulsante di aggiornamento.",
+          "Supporta Windows NSIS, Linux AppImage e macOS. macOS richiede una cartella di installazione scrivibile, fuori da DMG e App Translocation. Sono possibili avvisi di sicurezza. Gli altri formati Linux usano il download manuale; il web non offre aggiornamenti desktop."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Versione desktop corrente e voce di controllo degli aggiornamenti nelle impostazioni di sistema",
-          "caption": "Controlla manualmente, quindi scarica da GitHub quando è disponibile un aggiornamento."
+          "caption": "Manca ancora una schermata reale di aggiornamento automatico, avanzamento e download manuale da GitHub."
         }
       },
       {

@@ -1346,17 +1346,17 @@
         "title": "Verifique a versão desktop e baixe atualizações",
         "steps": [
           "Na área de trabalho, abra Configurações → Configurações do sistema → Atualizações da área de trabalho para inspecionar a versão atual.",
-          "Clique em Verificar atualizações para encontrar a versão oficial mais recente do GitHub. Se for mais recente, clique em Baixar do GitHub.",
-          "Escolha o instalador do seu sistema na página de lançamento, finalize o trabalho ativo e instale você mesmo."
+          "Após verificar, salve as alterações e conclua os trabalhos ativos. Clique na atualização automática ou no botão da barra à esquerda; acompanhe o download e, após a verificação, a instalação e a reinicialização.",
+          "Se falhar, consulte o motivo nas configurações do sistema e tente novamente, ou baixe no GitHub o instalador adequado para instalar manualmente."
         ],
         "tips": [
-          "A área de trabalho verifica uma vez por dia sem baixar, instalar ou reiniciar automaticamente. Somente uma versão oficial mais recente aciona uma atualização, e não envios de código ou rascunhos.",
-          "Tente novamente as verificações com falha mais tarde. A versão web não possui entrada de atualização de desktop."
+          "A verificação é diária. Apenas uma Release publicada mais recente é oferecida, não envios de código ou rascunhos. O download só começa ao clicar no botão de atualização.",
+          "Compatível com Windows NSIS, Linux AppImage e macOS. macOS exige uma pasta de instalação gravável, fora de DMG e App Translocation. Avisos de segurança ainda podem aparecer. Outros formatos Linux usam download manual; a versão web não tem atualização de desktop."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Versão atual do desktop e entrada de verificação de atualização nas configurações do sistema",
-          "caption": "Verifique manualmente e baixe do GitHub quando uma atualização estiver disponível."
+          "caption": "Ainda falta uma captura real da atualização automática, do progresso e do download manual no GitHub."
         }
       },
       {

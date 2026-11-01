@@ -1346,17 +1346,17 @@
         "title": "Vérifier la version et les mises à jour",
         "steps": [
           "Sur bureau, ouvrez Paramètres → Système → Mises à jour pour la version courante.",
-          "Rechercher des mises à jour consulte la dernière Release officielle GitHub. Cliquez ensuite Télécharger sur GitHub si une version supérieure existe.",
-          "Choisissez l’installateur, terminez le travail actif puis installez vous-même."
+          "Après vérification, enregistrez vos modifications et terminez les travaux actifs. Cliquez sur la mise à jour automatique ou le bouton de la barre tout à gauche : la progression apparaît, puis la vérification précède l’installation et le redémarrage.",
+          "En cas d’échec, consultez la cause dans les paramètres système et réessayez, ou téléchargez le programme adapté sur GitHub pour une installation manuelle."
         ],
         "tips": [
-          "Vérification quotidienne, sans téléchargement, installation ni redémarrage automatiques. Une Release officielle supérieure seule déclenche, pas un push ou brouillon.",
-          "Réessayez plus tard en cas d’échec ; pas d’entrée de mise à jour bureau dans le web."
+          "La vérification est quotidienne. Seule une Release publiée plus récente est proposée, pas les envois de code ni les brouillons. Le téléchargement nécessite un clic sur le bouton de mise à jour.",
+          "Compatible avec Windows NSIS, Linux AppImage et macOS. macOS exige un dossier d’installation accessible en écriture, hors DMG et App Translocation. Des alertes système restent possibles. Les autres formats Linux se téléchargent manuellement ; aucune mise à jour de bureau dans la version web."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Version courante et contrôle de mise à jour",
-          "caption": "Vérifiez manuellement puis téléchargez sur GitHub si nécessaire."
+          "caption": "Une capture réelle de la mise à jour automatique, de sa progression et du téléchargement manuel GitHub reste à fournir."
         }
       },
       {

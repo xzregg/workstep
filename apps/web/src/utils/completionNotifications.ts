@@ -1,7 +1,7 @@
 import { postAndroidCompletion } from '@workstep/gateway-ui/androidNotifications'
 import { gatewayWorkspacePath } from './gatewayWorkspacePath'
 import type { SandboxBridge } from './desktopSandbox'
-import type { DesktopUpdateBridge } from '../components/DesktopUpdateSettings'
+import type { DesktopUpdateBridge } from '../stores/desktopUpdateStore'
 import { completionScopeName } from './completionNotificationContext'
 export { completionScopeName } from './completionNotificationContext'
 export interface CompletionNotice {

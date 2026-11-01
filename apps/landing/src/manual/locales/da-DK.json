@@ -1346,17 +1346,17 @@
         "title": "Tjek desktopversionen og download opdateringer",
         "steps": [
           "På skrivebordet skal du åbne Indstillinger → Systemindstillinger → Skrivebordsopdateringer for at inspicere den aktuelle version.",
-          "Klik på Søg efter opdateringer for at finde den seneste officielle GitHub-udgivelse. Hvis nyere, klik på Download fra GitHub.",
-          "Vælg dit systems installationsprogram på udgivelsessiden, afslut aktivt arbejde og installer det selv."
+          "Gem ændringer og afslut aktivt arbejde efter kontrollen. Klik på automatisk opdatering eller knappen længst til venstre; efter downloadfremdrift og kontrol installeres appen og genstartes.",
+          "Ved fejl, se årsagen i systemindstillingerne og prøv igen, eller hent det rette installationsprogram fra GitHub og installer manuelt."
         ],
         "tips": [
-          "Desktop tjekker én gang dagligt uden automatisk at downloade, installere eller genstarte. Kun en nyere officiel udgivelse udløser en opdatering, ikke kode-push eller udkast.",
-          "Prøv mislykkede kontroller igen senere. Webversionen har ingen desktop-opdateringspost."
+          "Der kontrolleres dagligt. Kun en nyere udgivet Release tilbydes, ikke kodepush eller kladder. Download begynder først ved klik på opdateringsknappen.",
+          "Understøtter Windows NSIS, Linux AppImage og macOS. macOS kræver en skrivbar installationsmappe uden for DMG og App Translocation. Systemadvarsler kan stadig vises. Andre Linux-formater hentes manuelt; webappen har ingen desktopopdatering."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Aktuel desktopversion og opdaterings-tjek indtastning i systemindstillinger",
-          "caption": "Tjek manuelt, og download derefter fra GitHub, når en opdatering er tilgængelig."
+          "caption": "Et ægte skærmbillede af automatisk opdatering, downloadfremdrift og manuel GitHub-download mangler stadig."
         }
       },
       {

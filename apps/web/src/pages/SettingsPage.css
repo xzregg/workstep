@@ -96,6 +96,9 @@
 }
 
 .desktop-update-version {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   margin: 0 0 10px;
   font-size: calc(12px * var(--font-scale));
 }

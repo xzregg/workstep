@@ -1346,17 +1346,17 @@
         "title": "Check the desktop version and download updates",
         "steps": [
           "On desktop, open Settings → System settings → Desktop updates to inspect the current version.",
-          "Click Check for updates to find the latest official GitHub release. If newer, click Download from GitHub.",
-          "Choose your system's installer on the release page, finish active work and install it yourself."
+          "After checking, save edits and finish active work. Click Auto update or the update button on the far-left rail; watch download progress, then installation and restart after verification.",
+          "If it fails, inspect the reason in system settings and retry, or download the appropriate installer from GitHub and install it manually."
         ],
         "tips": [
-          "Desktop checks once daily without automatically downloading, installing or restarting. Only a newer official Release triggers an update, not code pushes or drafts.",
-          "Retry failed checks later. The web version has no desktop-update entry."
+          "Checks run daily. Only a newer published Release offers an update, not code pushes or drafts. Download starts only after clicking the update button.",
+          "Supports Windows NSIS, Linux AppImage and macOS. macOS needs a writable installation directory, not a DMG or App Translocation location. System security prompts may still appear. Other Linux formats use manual downloads; the web app has no desktop-update entry."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Current desktop version and update-check entry in system settings",
-          "caption": "Check manually, then download from GitHub when an update is available."
+          "caption": "A real screenshot of automatic updates, download progress and the manual GitHub download action is still needed."
         }
       },
       {

@@ -100,7 +100,9 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 
 已发布 Windows 安装包的独立补测方法及未覆盖的实机项目见 [Windows 安装包自动验收](../../docs/releasing.md#windows-安装包自动验收)。
 
-桌面端不自动下载或安装更新。正式包启动时最多每天查询一次 GitHub 最新 Release，并把结果缓存在本机；用户也可以在“设置 → 系统设置 → 桌面更新”中手动检查。发现更高版本后，只显示“前往 GitHub 下载”按钮并用系统浏览器打开 Release 页面。仅推送 `main` 不会触发更新，必须发布版本号更高的 GitHub Release。
+正式包启动时最多每天查询一次 GitHub 最新 Release，并把结果缓存在本机；用户也可以在“设置 → 系统设置 → 桌面更新”中手动检查。发现更高版本后，可点击“自动更新”：下载期间显示进度，校验成功后停止后台、安装并重启应用，更新前应保存正在编辑的内容。最左侧图标栏的外观按钮上方会在发现新版本时显示下载图标，点击直接更新，悬停显示版本或下载进度；失败时打开系统设置展示原因。只有点击按钮才会下载，保留“前往 GitHub 下载”入口及失败重试。仅推送 `main` 不会触发更新，必须发布版本号更高的 GitHub Release。
+
+Windows NSIS 和 Linux AppImage 使用 `electron-updater` 与 Release 更新元数据（Windows 为 `latest-<arch>.yml`）；其他 Linux 安装方式不支持自动更新。macOS 当前为 ad-hoc 签名，使用同架构 ZIP 与 `SHA256SUMS.txt`，依次验证 SHA-256、代码签名完整性、应用标识和版本，再由独立系统进程在应用退出后替换并打开新应用；替换或打开命令失败时恢复原应用。安装日志保存在 Electron 用户数据目录的 `desktop-update-install.log`。macOS 应用须放在可写的安装目录，不能从 DMG 或应用隔离目录内更新；权限不足时使用手动下载入口。macOS 的 SHA-256 和 ad-hoc 签名检查用于文件完整性，不等同于 Developer ID 发布者认证。
 
 生产 sidecar 每次启动都会生成新的随机令牌。令牌只保留在 Electron 主进程与 sidecar 环境中，由主进程为桌面后台的 HTTP/WebSocket 请求注入；渲染进程不会获得令牌。沙箱和非沙箱模式都首选宿主机端口 `8766`，冲突时才回退到空闲端口。后台监听宿主机网络接口，但远程访问未开启时业务 API 仍要求桌面令牌；开启后，局域网浏览器再按远程访问设置及访问密钥鉴权。外部导航、新窗口、WebView 和浏览器权限请求均由桌面壳限制。
 
@@ -110,7 +112,7 @@ LLM 回复或任务步骤执行完成、失败且窗口不在前台时，网页�
 
 Windows 构建使用隐藏子进程窗口并保留 stdout 管道，以便 `PORT:<port>` 就绪协议可靠传回主进程。
 
-未签名构建会触发 Windows SmartScreen 或 macOS Gatekeeper 提示；macOS 用户可能需要在“系统设置 → 隐私与安全性”中明确允许首次打开。未签名构建不应承诺无提示自动更新，升级时应重新下载并人工确认。
+未签名构建会触发 Windows SmartScreen 或 macOS Gatekeeper 提示；macOS 用户可能需要在“系统设置 → 隐私与安全性”中明确允许首次打开。未签名构建的升级仍可能遇到系统安全提示，自动更新不能绕过这些系统限制；失败时可重新下载并人工确认。
 
 ## 沙箱模式
 

@@ -1,6 +1,6 @@
 {
   "name": "workstep-desktop",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "packageManager": "yarn@1.22.22",
   "private": true,
   "description": "Electron shell for the WorkStep FastAPI sidecar",
@@ -22,7 +22,9 @@
     "bundle:managed": "node scripts/create-managed-bundle.cjs",
     "dist:managed": "node scripts/build-managed.cjs"
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.8.0"
+  },
   "devDependencies": {
     "electron": "43.4.0",
     "electron-builder": "26.15.3",

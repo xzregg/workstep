@@ -6,6 +6,29 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 No unreleased changes recorded.
 
+## 1.0.17
+
+### Highlights
+
+- Add explicit, click-to-install desktop updates with download progress, integrity checks and application restart. Keep daily checks against published GitHub Releases and the manual GitHub download option; pushing code or creating a draft does not offer an update.
+- Show an update action in the desktop navigation rail and share update state with system settings. Windows NSIS and Linux AppImage use release update metadata; macOS uses an architecture-matched ZIP with SHA-256, bundle identity, version and signature-integrity checks. macOS ad-hoc signatures do not authenticate a Developer ID publisher.
+- Localize built-in workflow templates and generated content, preserve existing user assets, and improve conversation role instructions, Codex capacity retries and planning-tool support.
+- Add activity heatmaps, improve task step navigation and streamed text/video previews, and open Codex file citations through the shared file preview.
+- Allow successful scheduled checks to produce no tasks without inventing work. Improve cancellation and shared gateway connection failure handling.
+- Improve gateway user-group editing, last-login sorting, account usage and security settings, audit filters, device health details, and session recovery.
+- Refresh the website and add localized narrated product introduction videos. Synchronize desktop-update instructions across all 26 website/manual languages.
+- Correct release-contract tests to allow refreshing English notes on an existing draft while continuing to reject mutations to published releases.
+
+### Downloads and updates
+
+Installers are available for Windows x64, macOS Apple Silicon and Intel, and Linux x64. Packages are intentionally unsigned and not notarized; operating-system security prompts remain possible. Save edits and finish active work before clicking the update action. macOS updates require a writable installation directory, not a mounted DMG or App Translocation location. Other Linux installation formats retain manual downloads.
+
+Sandbox image: `ghcr.io/xzregg/workstep:v1.0.17` and `latest`, for Linux amd64 and arm64. Desktop packages pin the image digest. Windows hosts require WSL2/Podman; this is not a native Windows container image.
+
+### Validation boundaries
+
+Publication requires passing source CI, Windows installer acceptance and both native macOS DMG acceptance jobs. Source/mock tests do not establish live-provider execution, operating-system security-prompt behavior, live automatic upgrade/relaunch, or Podman/WSL2 validation. Existing manual screenshot and guidance gaps remain explicitly recorded; prototype files under `plans/` are not shipped product features. Historical releases and installer assets remain unchanged.
+
 ## 1.0.16
 
 ### Highlights

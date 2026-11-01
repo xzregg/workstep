@@ -59,8 +59,14 @@ SHA-256 checksums, and a CycloneDX SBOM. It then creates a draft
 Release. Before publishing the draft, install every platform artifact on a clean
 machine and verify first launch, sidecar startup, deep links, task execution,
 the Settings desktop version check and GitHub download link, upgrade, and uninstall behavior.
-Desktop updates only query the latest published GitHub Release daily; packages are
-downloaded and installed manually. Publishing the draft is an explicit release step.
+Desktop updates query the latest published GitHub Release daily. Download and
+installation start only after an explicit click in system settings or the update
+rail action; verified packages then install and restart the application. Manual
+GitHub downloads remain available. Windows NSIS and Linux AppImage use
+electron-updater metadata; macOS uses a same-architecture ZIP, SHA-256 checks,
+bundle identity/version and ad-hoc signature-integrity verification before replacing
+the bundle after exit. These checks do not provide Developer ID authentication or
+bypass operating-system security prompts. Publishing the draft is an explicit release step.
 
 macOS builds use a native runner matrix (`macos-15` arm64 and `macos-15-intel`
 x64), with an explicit matching CPython request and architecture checks. Each DMG

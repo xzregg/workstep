@@ -1346,17 +1346,17 @@
         "title": "Tarkista työpöytäversio ja lataa päivitykset",
         "steps": [
           "Tarkista nykyinen versio avaamalla työpöydällä Asetukset → Järjestelmäasetukset → Työpöytäpäivitykset.",
-          "Napsauta Tarkista päivitykset löytääksesi uusimman virallisen GitHub-julkaisun. Jos uudempi, napsauta Lataa GitHub:sta.",
-          "Valitse julkaisusivulta järjestelmäsi asennusohjelma, suorita aktiivinen työ ja asenna se itse."
+          "Tallenna muutokset ja päätä aktiivinen työ tarkistuksen jälkeen. Napsauta automaattista päivitystä tai vasemman reunan painiketta; latauksen ja tarkistuksen jälkeen sovellus asennetaan ja käynnistetään uudelleen.",
+          "Jos päivitys epäonnistuu, tarkista syy järjestelmäasetuksista ja yritä uudelleen tai lataa sopiva asennusohjelma GitHub-palvelusta ja asenna käsin."
         ],
         "tips": [
-          "Työpöytä tarkistaa kerran päivässä ilman automaattista latausta, asennusta tai uudelleenkäynnistystä. Vain uudempi virallinen julkaisu käynnistää päivityksen, ei koodityöntöjä tai luonnoksia.",
-          "Yritä myöhemmin uudelleen epäonnistuneita tarkistuksia. Verkkoversiossa ei ole työpöytäpäivitysmerkintää."
+          "Tarkistus tehdään päivittäin. Vain uudempi julkaistu Release tarjotaan, eivät koodipäivitykset tai luonnokset. Lataus alkaa vasta päivityspainikkeen napsautuksesta.",
+          "Tukee Windows NSIS-, Linux AppImage- ja macOS-asennuksia. macOS vaatii kirjoitettavan asennuskansion DMG:n ja App Translocationin ulkopuolella. Järjestelmävaroituksia voi näkyä. Muut Linux-muodot ladataan käsin; verkkoversiossa ei ole työpöytäpäivitystä."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Nykyinen työpöytäversio ja päivitystarkistusmerkintä järjestelmäasetuksissa",
-          "caption": "Tarkista manuaalisesti ja lataa sitten GitHub:sta, kun päivitys on saatavilla."
+          "caption": "Aito kuvakaappaus automaattisesta päivityksestä, latauksen edistymisestä ja GitHub-käsinlatauksesta puuttuu vielä."
         }
       },
       {

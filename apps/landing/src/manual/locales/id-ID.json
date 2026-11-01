@@ -1346,17 +1346,17 @@
         "title": "Periksa versi desktop dan unduh pembaruan",
         "steps": [
           "Di desktop, buka Pengaturan → Pengaturan sistem → Pembaruan desktop untuk memeriksa versi saat ini.",
-          "Klik Periksa pembaruan untuk menemukan rilis resmi GitHub terbaru. Jika lebih baru, klik Unduh dari GitHub.",
-          "Pilih penginstal sistem Anda di halaman rilis, selesaikan pekerjaan aktif dan instal sendiri."
+          "Setelah memeriksa, simpan perubahan dan selesaikan pekerjaan aktif. Klik pembaruan otomatis atau tombol di bilah paling kiri; kemajuan unduhan ditampilkan, lalu aplikasi dipasang dan dimulai ulang setelah verifikasi.",
+          "Jika gagal, periksa penyebabnya di pengaturan sistem dan coba lagi, atau unduh pemasang yang sesuai dari GitHub lalu pasang secara manual."
         ],
         "tips": [
-          "Desktop memeriksa sekali sehari tanpa mengunduh, menginstal, atau memulai ulang secara otomatis. Hanya Rilis resmi yang lebih baru yang memicu pembaruan, bukan dorongan atau draf kode.",
-          "Coba lagi pemeriksaan yang gagal nanti. Versi web tidak memiliki entri pembaruan desktop."
+          "Pemeriksaan dilakukan setiap hari. Hanya Release terbit yang lebih baru ditawarkan, bukan pengiriman kode atau draf. Unduhan dimulai hanya setelah tombol pembaruan diklik.",
+          "Mendukung Windows NSIS, Linux AppImage dan macOS. macOS memerlukan direktori pemasangan yang dapat ditulis, bukan DMG atau App Translocation. Peringatan keamanan sistem tetap mungkin muncul. Format Linux lain memakai unduhan manual; web tidak memiliki pembaruan desktop."
         ],
         "screenshot": {
           "id": "desktop-update",
           "alt": "Versi desktop saat ini dan entri pemeriksaan pembaruan di pengaturan sistem",
-          "caption": "Periksa secara manual, lalu unduh dari GitHub ketika pembaruan tersedia."
+          "caption": "Tangkapan layar nyata pembaruan otomatis, kemajuan unduhan dan unduhan manual GitHub masih diperlukan."
         }
       },
       {
