@@ -10,12 +10,20 @@ import {
   toMilliseconds,
 } from '../src/utils/datetime.ts'
 
-test('formats same-week conversation times by weekday and earlier times in full', () => {
+test('formats today before applying calendar-week conversation labels', () => {
   const now = new Date(2026, 7, 10, 12, 0, 0)
 
-  // Same calendar week (Mon 2026-08-10 through Sun 2026-08-16) → weekday.
+  // Today takes priority even on the first day of the calendar week.
   assert.equal(
     formatConversationDateTime(new Date(2026, 7, 10, 11, 22, 33), now),
+    '今天 11:22:33',
+  )
+  assert.equal(
+    formatConversationDateTime(new Date(2026, 7, 10, 23, 59, 59), now, 'en-US'),
+    'today 23:59:59',
+  )
+  assert.equal(
+    formatConversationDateTime(new Date(2026, 7, 10, 11, 22, 33), new Date(2026, 7, 11)),
     '周一 11:22:33',
   )
   // Last calendar week uses the same weekday format with a last-week prefix.

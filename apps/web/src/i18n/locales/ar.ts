@@ -13,6 +13,7 @@ export const ar: Messages = {
 },
   common: {
     ...zhCN.common,
+    quickPromptMore: 'المزيد',
     featureUnavailable: "هذه الميزة غير متاحة ضمن صلاحيات المشروع الحالي.",
     view: "عرض",
     save: "حفظ",
@@ -132,6 +133,7 @@ export const ar: Messages = {
     passwordPlaceholder: "أدخل مفتاح الوصول",
     unlock: "دخول",
     wrongPassword: "مفتاح الوصول غير صحيح",
+    gatewayLogin: '使用网关账号登录',
   },
   interaction: {
     ...zhCN.interaction,
@@ -201,6 +203,8 @@ export const ar: Messages = {
   },
   bubble: {
     ...zhCN.bubble,
+    moreMessage: 'المزيد',
+    collapseMessage: 'طي',
     editMessage: "تعديل الرسالة",
     sendToInput: "إرسال إلى حقل الإدخال",
   },
@@ -429,6 +433,7 @@ export const ar: Messages = {
   },
   chatSession: {
     ...zhCN.chatSession,
+    welcome: 'ما الذي تريد إنجازه في {project}؟',
     title: "المحادثة",
     flowSection: "سير العمل",
     addSessionTitle: "إضافة محادثة",
@@ -664,6 +669,9 @@ export const ar: Messages = {
   },
   flow: {
     ...zhCN.flow,
+    executionSettings: "إعدادات التنفيذ",
+    reuseSuccess: "إعادة الاستخدام بعد النجاح",
+    reuseSuccessHint: "تُستخدم المخرجات الناجحة مجدداً في المسار العادي. تُعاد الخطوة عند إرجاعها مباشرة للتصحيح، أو الإشارة إليها يدوياً بعلامة @، أو تشغيلها صراحةً من مساعد التنسيق.",
     engine: "المحرك",
     retry: "إعادة المحاولة",
     templates: "قالب سير العمل",

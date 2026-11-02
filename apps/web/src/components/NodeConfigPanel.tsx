@@ -15,6 +15,7 @@ import EngineSelect from './EngineSelect'
 import StepConfigFields from './StepConfigFields'
 import StepPromptVariablesHint from './StepPromptVariablesHint'
 import WorkflowQuickButtonsSection from './WorkflowQuickButtonsSection'
+import './NodeExecutionSettings.css'
 
 /* ══════════════════════════════════════════
    Section title style
@@ -468,6 +469,17 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
               />
             </div>
           )}
+          <section className="node-execution-settings">
+            <div className="node-execution-settings-title">{t('flow.executionSettings')}</div>
+            <label className="node-execution-settings-toggle" htmlFor="step-reuse-success">
+              <input id="step-reuse-success" type="checkbox"
+                checked={draft.reuseSuccess === true}
+                onChange={(event) => updateDraft('reuseSuccess', event.target.checked)}
+                aria-describedby="step-reuse-success-help" />
+              {t('flow.reuseSuccess')}
+            </label>
+            <p id="step-reuse-success-help" className="node-execution-settings-help">{t('flow.reuseSuccessHint')}</p>
+          </section>
           <div>
             <div style={sectionTitle}>{t('flow.returnRouting')}</div>
             <label

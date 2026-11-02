@@ -258,6 +258,57 @@ def _browser_managed_app():
     return app, token, COOKIE
 
 
+@pytest.mark.parametrize('desktop', [False, True])
+def test_lan_can_choose_native_key_or_gateway_session(monkeypatch, desktop):
+    import asyncio
+    from types import SimpleNamespace
+    from api.remote_access_guard import RemoteAccessGuardMiddleware, websocket_access_allowed
+    from api import remote_project
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1' if desktop else '0')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    app, session, cookie = _browser_managed_app()
+    access = SimpleNamespace(
+        settings=lambda: {'enabled': True}, access_password_required=lambda: True,
+        verify_access_token=lambda token: token == 'native-access')
+    app.state.remote_access_service = access
+    monkeypatch.setattr(remote_project, 'remote_access_service', access)
+    app.add_api_route('/api/remote-project/access/status', remote_project.remote_access_status)
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+
+    @app.websocket('/ws/auth-choice')
+    async def choice_socket(ws: WebSocket):
+        if not await asyncio.to_thread(websocket_access_allowed, ws, access):
+            await ws.close(code=4401)
+            return
+        await ws.accept()
+        await ws.send_text('ok')
+
+    with TestClient(app, base_url='http://192.168.52.156:8755', client=('192.168.52.100', 123)) as client:
+        assert client.get('/', follow_redirects=False).status_code == 200
+        status = client.get('/api/remote-project/access/status')
+        assert status.status_code == 200
+        assert status.json()['gateway_login_available'] is True
+        assert status.json()['authorized'] is False
+        assert client.get('/api/private').status_code == 401
+        client.cookies.set('workstep_access', 'native-access')
+        assert client.get('/api/private').status_code == 200
+        client.cookies.clear()
+        client.cookies.set(cookie, session)
+        assert client.get('/api/remote-project/access/status').json()['authorized'] is True
+        assert client.get('/api/private').status_code == 200
+        with client.websocket_connect('/ws/auth-choice', headers={'Origin': 'http://192.168.52.156:8755'}) as ws:
+            assert ws.receive_text() == 'ok'
+        client.cookies.set(cookie, 'invalid-session')
+        assert client.get('/api/private').status_code == 401
+        project_session = app.state.gateway_client.local_sessions.create(
+            ManagedActor('project-user', 'bob', 'device-1', 'instance-1', 1, project_id='project-1'))
+        client.cookies.set(cookie, project_session)
+        assert client.get('/api/remote-project/access/status').json()['authorized'] is False
+        assert client.get('/api/private').status_code == 401
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect('/ws/auth-choice'): pass
+
+
 def test_browser_platform_cookie_requires_same_origin_writes_and_websocket(monkeypatch):
     monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
     app, token, cookie = _browser_managed_app()

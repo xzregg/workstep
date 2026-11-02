@@ -476,6 +476,7 @@ export const enUS: Messages = {
     viewNode: '节点配置', taskList: '任务列表', emptyTasks: '暂无任务',
   },
   common: {
+    quickPromptMore: 'More',
     featureUnavailable: '当前项目权限未开放此功能。',
     view: '查看',
     save: 'Save',
@@ -712,6 +713,7 @@ export const enUS: Messages = {
     passwordPlaceholder: 'Enter access password',
     unlock: 'Enter',
     wrongPassword: 'Incorrect access password',
+    gatewayLogin: '使用网关账号登录',
   },
   status: {
     waiting: 'Waiting for confirmation',
@@ -914,6 +916,8 @@ export const enUS: Messages = {
     retryFailedMessageTitle: 'Retry failed message',
   },
   bubble: {
+    moreMessage: 'More',
+    collapseMessage: 'Collapse',
     thinking: '',
     editMessage: 'Edit message',
     sendToInput: 'Send to input',
@@ -1276,6 +1280,9 @@ export const enUS: Messages = {
     currentConfigSuffix: ' (current)',
     stepConfig: 'Engine config',
     returnRouting: 'Return routing',
+    executionSettings: "Execution settings",
+    reuseSuccess: "Reuse after success",
+    reuseSuccessHint: "Reuse successful outputs during normal flow. Direct rework, a manual @ mention, or an explicit coordinator trigger runs this step again.",
     maxReturnRounds: 'Maximum return rounds',
     maxReturnRoundsHint: 'Applies only to dashed return connections from this step. Defaults to {default}; allowed range is 1–{max}. This is separate from review retries.',
     reviewConfig: 'Review engine config',
@@ -2628,6 +2635,7 @@ export const enUS: Messages = {
     },
   },
   chatSession: {
+    welcome: 'What would you like to accomplish in {project}?',
     ordinaryTabShort: '普通',
     channelTabShort: '渠道',
     conversationTypes: '会话类型',

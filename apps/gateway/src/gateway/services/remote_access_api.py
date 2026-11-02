@@ -1,5 +1,5 @@
 from gateway.services.errors import GatewayError
-from gateway.contracts import GatewayCall, GatewaySocket, CredentialGrant, RedirectTarget, JsonValue
+from gateway.contracts import GatewayCall, GatewaySocket, SocketClosed, CredentialGrant, RedirectTarget, JsonValue
 import hashlib
 
 import asyncio
@@ -160,7 +160,7 @@ async def proxy_remote_request(call: GatewayCall):
             await _active_access(call, user.id, device_id)
 
         return await connection.proxy_http(call, device_owner=device_owner, authorization_check=authorize_pc_stream, user_id=user.id, username=user.username, display_name=user.display_name, provider_ids=provider_ids, provider_grant_expires_at=provider_grant_expires_at)
-    except (ConnectionError, asyncio.TimeoutError) as exc:
+    except (ConnectionError, SocketClosed, asyncio.TimeoutError) as exc:
         raise GatewayError('upstream_failed', 'Device data connection unavailable') from exc
 
 
@@ -353,7 +353,7 @@ async def proxy_remote_websocket(ws: GatewaySocket, path: str):
         )
     except (GatewayError, IdentityError):
         await ws.close(code=4403)
-    except (ConnectionError, asyncio.TimeoutError):
+    except (ConnectionError, SocketClosed, asyncio.TimeoutError):
         await ws.close(code=1013)
 
 

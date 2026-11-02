@@ -476,6 +476,7 @@ export const zhTW: Messages = {
     viewNode: '节点配置', taskList: '任务列表', emptyTasks: '暂无任务',
   },
   common: {
+    quickPromptMore: '更多',
     featureUnavailable: '当前项目权限未开放此功能。',
     view: '查看',
     save: '儲存',
@@ -696,6 +697,7 @@ export const zhTW: Messages = {
     passwordPlaceholder: '輸入存取密鑰',
     unlock: '進入',
     wrongPassword: '存取密鑰不正確',
+    gatewayLogin: '使用网关账号登录',
   },
   status: {
     waiting: '等待确认',
@@ -898,6 +900,8 @@ export const zhTW: Messages = {
     retryFailedMessageTitle: '重啟失敗的訊息',
   },
   bubble: {
+    moreMessage: '更多',
+    collapseMessage: '收起',
     thinking: '',
     editMessage: '編輯訊息',
     sendToInput: '傳送到輸入框',
@@ -1260,6 +1264,9 @@ export const zhTW: Messages = {
     currentConfigSuffix: '（當前配置）',
     stepConfig: '引擎配置',
     returnRouting: '返回線',
+    executionSettings: "執行設定",
+    reuseSuccess: "成功後重用",
+    reuseSuccessHint: "正常流程沿用既有成功產物；直接退回重做、手動 @ 或協調助手觸發時重新執行。",
     maxReturnRounds: '最大返回次數',
     maxReturnRoundsHint: '僅作用於此步驟發出的虛線返回連線。預設 {default} 次，可設定 1–{max} 次；與審核重試次數無關。',
     reviewConfig: '審核引擎配置',
@@ -2612,6 +2619,7 @@ export const zhTW: Messages = {
     },
   },
   chatSession: {
+    welcome: '你想在 {project} 中完成什麼？',
     ordinaryTabShort: '普通',
     channelTabShort: '渠道',
     conversationTypes: '会话类型',

@@ -42,6 +42,28 @@ function installDom() {
   return window
 }
 
+test('reuse success survives canvas serialization and reload', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>()
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider>
+        <FlowCanvas ref={canvasRef} initialSteps={{ nodes: [{ id: 1, type: 'branch', reuseSuccess: true }], connections: [] }} onSave={() => {}} />
+      </ReactFlowProvider></I18nProvider>,
+    ))
+    assert.equal(canvasRef.current?.getSteps().nodes[0].reuseSuccess, true)
+    const saved = canvasRef.current!.getSteps()
+    saved.nodes[0].reuseSuccess = false
+    await act(async () => canvasRef.current?.loadSteps(saved))
+    assert.equal(canvasRef.current?.getSteps().nodes[0].reuseSuccess, false)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('warns before saving when a verifier requires a feedback-only output', async () => {
   const window = installDom()
   const container = document.body.appendChild(document.createElement('div'))

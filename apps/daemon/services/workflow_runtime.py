@@ -1329,6 +1329,7 @@ class WorkflowRuntime:
                         reset_session_step_key=(step_key if reset_session else None),
                         feedback_inputs=inspected["feedback_inputs"],
                         valid_step_keys={item["key"] for item in steps_config["steps"]},
+                        reuse_step_keys={item["key"] for item in steps_config["steps"] if item.get("reuseSuccess") is True},
                     )
                     actor = get_effective_actor()
                     record_project_audit(

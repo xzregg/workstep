@@ -5,6 +5,7 @@ import { remoteProjectApi } from '../api/client'
 import { useI18n } from '../i18n'
 import Button from './Button'
 import Input from './Input'
+import './RemoteAccessGate.css'
 
 /**
  * Blocks the whole app for non-local visitors until they enter the remote
@@ -15,6 +16,7 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
   const { t } = useI18n()
   const [checked, setChecked] = useState(false)
   const [unlocked, setUnlocked] = useState(false)
+  const [gatewayAvailable, setGatewayAvailable] = useState(false)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -26,6 +28,7 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
       .then((status) => {
         if (!active) return
         setUnlocked(!status.required || status.local || status.authorized)
+        setGatewayAvailable(Boolean(status.gateway_login_available))
       })
       .catch(() => {
         // If the check itself fails, keep the app usable; the server guard
@@ -59,19 +62,18 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
   if (unlocked) return <>{children}</>
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 4000 }}>
+    <div className="modal-overlay remote-access-gate">
       <ResizablePanel
-        className="modal"
+        className="modal remote-access-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="remote-access-title"
-        style={{ width: 420, maxWidth: 'calc(100vw - 32px)' }}
       >
         <div className="modal-header">
           <span id="remote-access-title" className="modal-title">{t('remoteAccess.title')}</span>
         </div>
         <div className="modal-body">
-          <p style={{ margin: '0 0 16px', color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>
+          <p className="remote-access-intro">
             {t('remoteAccess.intro')}
           </p>
           <label className="field-label" htmlFor="remote-access-password">{t('remoteAccess.password')}</label>
@@ -91,12 +93,15 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
             maxLength={200}
           />
           {error && (
-            <div role="status" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))' }}>
+            <div role="status" className="remote-access-error">
               {error}
             </div>
           )}
         </div>
         <div className="modal-footer">
+          {gatewayAvailable && <a className="remote-access-gateway-login" href="/gateway/login">
+            {t('remoteAccess.gatewayLogin')}
+          </a>}
           <Button variant="primary" loading={submitting} disabled={!draft.trim()} onClick={() => void submit()}>
             {t('remoteAccess.unlock')}
           </Button>

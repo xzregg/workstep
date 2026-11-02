@@ -204,6 +204,7 @@ export interface RemoteAccessStatus {
   required: boolean
   local: boolean
   authorized: boolean
+  gateway_login_available?: boolean
 }
 
 export interface RemoteDevice {

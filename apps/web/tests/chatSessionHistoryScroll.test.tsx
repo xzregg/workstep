@@ -84,3 +84,30 @@ test('upward history paging preserves viewport and does not mark old messages un
     await window.happyDOM.close()
   }
 })
+
+
+test('welcome hides while running or after the first message', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const render = (hasMessage = false, running = false) => act(async () => root.render(
+    <I18nProvider><AssistantChatPanel projectId="" title="Chat"
+      messages={hasMessage ? [{ id: 'first', role: 'user', content: '你好', timestamp: '' }] : []}
+      welcome running={running} stopping={false} input="" locale="zh-CN" config={{} as never}
+      copy={{ emptyIntro: '你想在 minidoc 中完成什么？', thinking: '', me: '用户', meInitials: 'U', agent: '助手', agentInitials: 'AI', placeholder: '', fullPrompt: '', closePrompt: '' }}
+      attachmentPrefix="test" onInputChange={() => {}} onSend={() => {}}
+      onSendContent={async () => true} onStop={() => {}} /></I18nProvider>
+  ))
+  try {
+    await render()
+    assert.match(document.querySelector('.chat-session-welcome')?.textContent || '', /minidoc/)
+    await render(false, true)
+    assert.equal(document.querySelector('.chat-session-welcome'), null)
+    await render(true)
+    assert.equal(document.querySelector('.chat-session-welcome'), null)
+    await render()
+    assert.ok(document.querySelector('.chat-session-welcome'))
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

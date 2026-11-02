@@ -6,7 +6,7 @@ import ProcessTrace from './ProcessTrace'
 
 interface AssistantThinkingMessageProps {
   sender: string
-  initials: string
+  initials: ReactNode
   color?: string
   /** Rendered under the placeholder (e.g. usage footer with engine * model). */
   footer?: ReactNode

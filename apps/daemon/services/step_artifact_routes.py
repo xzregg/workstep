@@ -205,6 +205,18 @@ class StepArtifactRoutes:
             snapshot["baseline_round"] = self._feedback_baselines[step.key]
         return snapshot
 
+    def explicitly_triggered(self, step_key: str) -> bool:
+        return step_key in self._state.get("force_execute_steps", [])
+
+    async def consume_explicit_trigger(self, step_key: str, workflow_run: WorkflowRun | None) -> None:
+        async with self._lock:
+            targets = self._state.get("force_execute_steps", [])
+            if step_key not in targets:
+                return
+            self._state["force_execute_steps"] = [key for key in targets if key != step_key]
+            if workflow_run is not None:
+                await self._persist_state(workflow_run)
+
     def input_rounds_for(self, step_key: str) -> dict[str, int]:
         return dict(self._input_rounds_by_step.get(step_key, {}))
 

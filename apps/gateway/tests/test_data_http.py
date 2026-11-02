@@ -697,3 +697,33 @@ async def test_full_stream_queue_cannot_hold_the_shared_socket_reader():
         await connection.deliver(frame)
     with pytest.raises(ConnectionError, match='queue full'):
         await asyncio.wait_for(connection.deliver(frame), timeout=0.1)
+
+
+@pytest.mark.parametrize('path,accept,recover', [
+    ('/chat', 'text/html', True), ('/', '*/*', True),
+    ('/api/tasks', 'application/json', False),
+])
+async def test_failed_workspace_document_releases_stream_for_recovery(path, accept, recover):
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'end':
+                for payload in ({'phase': 'start', 'status': 502, 'headers': []}, {'phase': 'end'}):
+                    await connection.deliver(ProxyFrame(stream_id=frame.stream_id, type=FrameType.http_response, payload=payload))
+    connection = DataConnection('device-1', Socket())
+    from gateway.contracts import GatewayCall, ProofHeaders
+    async def payload():
+        if False:
+            yield b''
+    call = GatewayCall(target=urlsplit('https://gateway.test' + path),
+                       workspace_path='/workspace/device-1/', payload=payload,
+                       proofs=ProofHeaders({'accept': accept}))
+    if recover:
+        with pytest.raises(ConnectionError, match='workspace document unavailable'):
+            await connection.proxy_http(call, user_id='user-1', username='admin')
+    else:
+        response = await connection.proxy_http(call, user_id='user-1', username='admin')
+        assert response.status == 502
+        assert [chunk async for chunk in response.chunks] == []
+    assert not connection._streams
+    assert not connection._outbound_windows

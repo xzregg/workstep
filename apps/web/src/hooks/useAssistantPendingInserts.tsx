@@ -94,6 +94,7 @@ export function useAssistantPendingInserts({
   }
 
   const panel = activeMessageId && items.length > 0 ? <PendingMessageInserts
+    projectId={projectId}
     items={items}
     title={t('chatSession.pendingInsertTitle')}
     titleTooltip={t('chatSession.pendingInsertHint')}

@@ -691,6 +691,10 @@ class DataConnection:
             status = first.payload.get("status")
             if type(status) is not int or status < 100 or status > 599:
                 raise ValueError("Invalid proxy status")
+            from gateway.services.workspace_paths import is_workspace_document
+            if (status >= 500 and call.workspace_path
+                    and is_workspace_document(call.operation, call.target.path, call.proofs)):
+                raise ConnectionError("Device workspace document unavailable")
             response_headers = first.payload.get("headers", [])
             if not isinstance(response_headers, list):
                 raise ValueError("Invalid proxy headers")

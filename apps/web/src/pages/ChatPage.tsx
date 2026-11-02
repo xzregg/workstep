@@ -214,16 +214,16 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
   // 否则流式期间每个 token 都会击穿 memo，历史气泡全量重渲染。
   const hasEmbeddedIntro = Boolean(embedded?.emptyContent)
   const panelCopy = useMemo(() => ({
-    emptyIntro: hasEmbeddedIntro ? '' : t('chatSession.emptyIntro'),
+    emptyIntro: hasEmbeddedIntro ? '' : isEmbedded ? t('chatSession.emptyIntro') : t('chatSession.welcome', { project: activeProject?.name || '' }),
     thinking: t('chatSession.thinking'),
     me: t('chatSession.me'),
     meInitials: t('chatSession.meInitials'),
     agent: t('chatSession.agent'),
-    agentInitials: t('chatSession.agentInitials'),
+    agentInitials: <Icon name="bot" size={18} />,
     placeholder: embedded?.placeholder || t(compact ? 'chatSession.placeholderCompact' : 'chatSession.placeholder'),
     fullPrompt: t('aiFlow.fullPrompt'),
     closePrompt: t('aiFlow.closePrompt'),
-  }), [t, compact, hasEmbeddedIntro, embedded?.placeholder])
+  }), [t, compact, hasEmbeddedIntro, embedded?.placeholder, isEmbedded, activeProject?.name])
   const quickPromptItems = useMemo(
     () => quickButtons.filter((button) => !isEmbedded && button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
       id: button.id,
@@ -487,6 +487,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         title={sessionTitle || t('chatSession.title')}
         onTitleDoubleClick={!compact && !isEmbedded && can('session.manage') ? () => setRenameOpen(true) : undefined}
         hideHeaderStatus={!isEmbedded}
+        welcome={!isEmbedded}
         messages={messages}
         actionRuns={projectActions.runs}
         onStopAction={(runId) => { void projectActions.stop(runId) }}
@@ -536,13 +537,6 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
               {t('chatSession.newSession')}
             </Button>}
             {!compact && pane?.headerActions}
-            {can('session.manage') && <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setRenameOpen(true)}
-            >
-              {t('common.rename')}
-            </Button>}
             {can('session.manage') && <Button
               variant="ghost"
               size="sm"

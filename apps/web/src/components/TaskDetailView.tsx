@@ -863,6 +863,7 @@ export default function TaskDetailView({
             {composerState.running && (
               <ComposerOverlayHostContext.Provider value={registerOverlay}>
               <PendingMessageInserts
+                projectId={projectId}
                 items={stepInserts ?? []}
                 title={t('taskDetail.insertMessages')}
                 titleTooltip={t('taskDetail.insertMessagesTitle', {

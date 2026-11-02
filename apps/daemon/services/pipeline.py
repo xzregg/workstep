@@ -30,6 +30,7 @@ class Step:
     outgoing_connections: list[dict] = field(default_factory=list)
     kind: str = "llm"
     dispatch: dict = field(default_factory=dict)
+    reuse_success: bool = False
 
     @classmethod
     def from_dict(cls, d: dict) -> "Step":
@@ -52,6 +53,7 @@ class Step:
             outgoing_connections=list(d.get("outgoingConnections", [])),
             kind=d.get("kind", "llm"),
             dispatch=dict(d.get("dispatch") or {}),
+            reuse_success=d.get("reuseSuccess") is True,
         )
 
 

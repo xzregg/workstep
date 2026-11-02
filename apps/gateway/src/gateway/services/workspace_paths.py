@@ -11,3 +11,9 @@ async def rewrite_workspace_html(chunks, prefix: str):
     document = document.replace('<head>', '<head><base href="' + prefix + '">', 1)
     document = document.replace('"/assets/', '"' + prefix + 'assets/').replace("'/assets/", "'" + prefix + 'assets/')
     yield document.encode('utf-8')
+
+
+def is_workspace_document(method: str, path: str, headers) -> bool:
+    return method == 'GET' and not path.startswith(('/api/', '/assets/')) and (
+        path == '/' or headers.get('sec-fetch-dest') == 'document'
+        or 'text/html' in headers.get('accept', '').lower())

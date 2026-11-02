@@ -13,7 +13,7 @@ class WorkflowConflict(WorkflowValidationError):
 
 NODE_FIELDS = {
     "title", "color", "position", "prompt", "engine", "model", "config",
-    "review", "maxReturnRounds", "inputs", "outputs",
+    "review", "maxReturnRounds", "inputs", "outputs", "reuseSuccess",
 }
 PATCH_FIELDS = (NODE_FIELDS - {"inputs", "outputs"}) | {"append_outputs", "append_input_outputs"}
 

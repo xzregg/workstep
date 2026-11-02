@@ -610,6 +610,7 @@ export const zhCN = {
     viewNode: '节点配置', taskList: '任务列表', emptyTasks: '暂无任务',
   },
   common: {
+    quickPromptMore: '更多',
     featureUnavailable: '当前项目权限未开放此功能。',
     view: '查看',
     save: '保存',
@@ -846,6 +847,7 @@ export const zhCN = {
     passwordPlaceholder: '输入访问密钥',
     unlock: '进入',
     wrongPassword: '访问密钥不正确',
+    gatewayLogin: '使用网关账号登录',
   },
   status: {
     waiting: '等待确认',
@@ -1048,6 +1050,8 @@ export const zhCN = {
     retryFailedMessageTitle: '重启失败的消息',
   },
   bubble: {
+    moreMessage: '更多',
+    collapseMessage: '收起',
     thinking: '',
     editMessage: '编辑消息',
     sendToInput: '发送到输入框',
@@ -1410,6 +1414,9 @@ export const zhCN = {
     currentConfigSuffix: '（当前配置）',
     stepConfig: '引擎配置',
     returnRouting: '返回线',
+    executionSettings: "执行设置",
+    reuseSuccess: "成功后复用",
+    reuseSuccessHint: "正常流转时沿用已有成功产物；直接返工、手动 @ 或协调助手触发时重新执行。",
     maxReturnRounds: '最大返回次数',
     maxReturnRoundsHint: '仅作用于该步骤发出的虚线返回连接。默认 {default} 次，可设置 1–{max} 次；与审核重试次数无关。',
     reviewConfig: '审核引擎配置',
@@ -2772,6 +2779,7 @@ export const zhCN = {
     },
   },
   chatSession: {
+    welcome: '你想在 {project} 中完成什么？',
     ordinaryTabShort: '普通',
     channelTabShort: '渠道',
     conversationTypes: '会话类型',

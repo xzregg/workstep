@@ -917,3 +917,35 @@ test('login time header toggles server sorting, resets pagination and syncs filt
   await waitFor(() => assert.equal(requests.at(-1)?.get('sort'), 'created_at'))
   assert.equal(screen.getByRole('columnheader', {name: /上次登录时间/}).getAttribute('aria-sort'), 'none')
 })
+
+
+test('overview refreshes its snapshot and preserves permission-scoped sections', async () => {
+  let calls = 0
+  globalThis.fetch = async () => {
+    calls++
+    return Response.json({ roles: ['identity_admin'], users: { total: calls, pending: 0 },
+      devices: null, projects: null, tasks: { running: null, unknown_projects: null },
+      recent_actions: null })
+  }
+  render(<MemoryRouter><AdminOverviewPage /></MemoryRouter>)
+  await screen.findByRole('heading', { name: '待处理事项' })
+  assert.equal(screen.queryByRole('heading', { name: '设备运行状况' }), null)
+  assert.equal(screen.queryByRole('link', { name: '查看全部审计记录' }), null)
+  fireEvent.click(screen.getByRole('button', { name: '刷新概览' }))
+  await waitFor(() => assert.equal(calls, 2))
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: '刷新概览' }).hasAttribute('disabled'), false))
+  assert.match(document.body.textContent ?? '', /当前无待审核用户/)
+})
+
+test('overview shows readable audit outcomes without hiding original event names', async () => {
+  globalThis.fetch = async () => Response.json({ roles: ['super_admin'], users: null,
+    devices: null, projects: null, tasks: { running: 0, unknown_projects: 0 },
+    recent_actions: [{ action: 'auth.desktop.login', result: 'success', created_at: '2026-11-02T03:41:50Z' },
+      { action: 'custom.action', result: 'denied', created_at: '2026-11-02T03:40:00Z' }] })
+  render(<MemoryRouter><AdminOverviewPage /></MemoryRouter>)
+  await screen.findByText('桌面端登录')
+  assert.ok(screen.getByText('auth.desktop.login'))
+  assert.ok(screen.getByText('成功'))
+  assert.ok(screen.getByText('custom.action'))
+  assert.ok(screen.getByText('拒绝'))
+})

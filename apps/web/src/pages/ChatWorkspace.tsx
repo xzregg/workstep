@@ -50,7 +50,7 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
   const projects = useProjectStore(s => s.projects)
   const routeKey = JSON.stringify([project.id, sessionId])
   const [initial] = useState(() => {
-    const saved = useChatWorkspaceStore.getState().workspaces[workspaceScope]
+    const saved = useChatWorkspaceStore.getState().restore(workspaceScope)
     if (!saved) return undefined
     const panes = saved.panes.filter(pane => projects.some(project => project.id === pane.projectId)
       && resolveProjectPermissions(isGatewayRemoteBrowser(), useGatewaySessionStore.getState().session, pane.projectId).can('session.read')).slice(0, 4)

@@ -12,7 +12,19 @@ from services.remote_access import (
     RemoteAccessService, ACCESS_COOKIE_NAME, _current_actor, get_current_actor, authenticated_remote_dispatch,
     actor_from_browser_headers, _is_loopback, _client_host, _guard_exempt,
 )
-from api.desktop_security import desktop_runtime_authenticated
+from api.desktop_security import desktop_runtime_authenticated, LOCAL_SESSION_HEADER
+from services.gateway_client.browser_login import local_session_cookie_name
+
+
+def gateway_browser_authenticated(request: Request | WebSocket) -> bool:
+    """An existing host Gateway session is an alternative to the native key."""
+    gateway = getattr(request.app.state, 'gateway_client', None)
+    if gateway is None or getattr(gateway, 'managed_config', None) is None:
+        return False
+    actor = gateway.local_sessions.resolve(
+        request.headers.get(LOCAL_SESSION_HEADER)
+        or request.cookies.get(local_session_cookie_name(request.app)))
+    return actor is not None and actor.project_id is None
 
 
 def _gateway_bridge_authenticated(request: Request | WebSocket) -> bool:
@@ -63,7 +75,8 @@ class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
 
     def _authorized(self, request: Request) -> bool:
         if (authenticated_remote_dispatch() is not None
-                or _gateway_bridge_authenticated(request) or desktop_runtime_authenticated(request)):
+                or _gateway_bridge_authenticated(request) or desktop_runtime_authenticated(request)
+                or gateway_browser_authenticated(request)):
             return True
         if _is_loopback(_client_host(request.headers, request.client)):
             return True
@@ -89,7 +102,8 @@ class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
 
 def websocket_access_allowed(ws: WebSocket, access_service: "RemoteAccessService") -> bool:
     """Mirror ``RemoteAccessGuardMiddleware`` for the main WebSocket feed."""
-    if _gateway_bridge_authenticated(ws) or desktop_runtime_authenticated(ws):
+    if (_gateway_bridge_authenticated(ws) or desktop_runtime_authenticated(ws)
+            or gateway_browser_authenticated(ws)):
         return True
     if _is_loopback(_client_host(ws.headers, ws.client)):
         return True

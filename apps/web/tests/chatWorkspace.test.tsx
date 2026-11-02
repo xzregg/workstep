@@ -106,11 +106,12 @@ test('desktop chat opens at most four independent panes, preserves drafts across
     assert.equal(renameInput.selectionEnd, renameInput.value.length)
     await act(async () => document.querySelector<HTMLButtonElement>('.confirm-dialog-footer .btn-ghost')!.click())
     const arrangementStyle = window.getComputedStyle(button('对话窗口'))
-    const renameStyle = window.getComputedStyle(button('对话窗口').nextElementSibling!)
+    const archiveStyle = window.getComputedStyle(button('对话窗口').nextElementSibling!)
     for (const property of ['padding-top', 'padding-bottom', 'padding-left', 'padding-right', 'font-size', 'line-height', 'height', 'min-height']) {
-      assert.equal(arrangementStyle.getPropertyValue(property), renameStyle.getPropertyValue(property), `arrangement button must match the shared header size: ${property}`)
+      assert.equal(arrangementStyle.getPropertyValue(property), archiveStyle.getPropertyValue(property), `arrangement button must match the shared header size: ${property}`)
     }
-    assert.ok(button('对话窗口').nextElementSibling?.textContent?.match(/Rename|重命名/))
+    assert.ok(button('对话窗口').nextElementSibling?.textContent?.match(/archive|归档/i))
+    assert.equal([...document.querySelectorAll('.assistant-chat-header button')].some(item => /Rename|重命名/.test(item.textContent ?? '')), false)
     await drop('b', 'another-project')
     await drop('unknown')
     await drop('b', 'p', false)

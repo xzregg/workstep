@@ -349,14 +349,15 @@ def test_container_websocket_requires_desktop_token_or_access_key(monkeypatch):
             assert ws.receive_text() == 'ok'
 
 
-def test_gateway_configured_desktop_keeps_lan_password_unlock_available(monkeypatch):
+@pytest.mark.parametrize('desktop', [False, True])
+def test_gateway_configured_desktop_keeps_lan_password_unlock_available(monkeypatch, desktop):
     from api.desktop_security import DesktopSecurityMiddleware, desktop_websocket_allowed
     from api.remote_access_guard import websocket_access_allowed
     from services.gateway_client.identity import ManagedLocalSessions
     from starlette.websockets import WebSocketDisconnect
     import pytest
 
-    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1' if desktop else '0')
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'desktop-secret')
     config = MemoryConfig()
     config.set('remote_access', {'enabled': True})
@@ -388,7 +389,8 @@ def test_gateway_configured_desktop_keeps_lan_password_unlock_available(monkeypa
         assert client.get('/api/private').json()['code'] == 'remote_access_locked'
         status = client.get('/api/remote-project/access/status')
         assert status.status_code == 200
-        assert status.json() == {'required': True, 'local': False, 'authorized': False}
+        assert status.json() == {'required': True, 'local': False, 'authorized': False,
+                                 'gateway_login_available': True}
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect('/ws'): pass
         assert client.post('/api/remote-project/access/unlock', json={'password':'wrong'}).status_code == 401
@@ -446,6 +448,7 @@ async def test_main_websocket_slow_access_check_keeps_event_loop_responsive(monk
     websocket_routes.register_websocket_routes(app)
     endpoint = next(route.endpoint for route in app.routes if route.path == "/ws")
     ws = SimpleNamespace(
+        app=app,
         headers={}, cookies={}, query_params={},
         client=SimpleNamespace(host="203.0.113.9"),
         close=AsyncMock(),
@@ -1985,7 +1988,8 @@ async def test_remote_access_status_trusts_desktop_runtime_token(monkeypatch):
         )
 
     assert status.status_code == 200
-    assert status.json() == {"required": True, "local": True, "authorized": True}
+    assert status.json() == {"required": True, "local": True, "authorized": True,
+                             "gateway_login_available": False}
 
 
 async def test_remote_project_share_and_device_expiry_api(monkeypatch):

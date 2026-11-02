@@ -156,7 +156,11 @@ def _persist_failed_step_completion_transaction(
                 result.state["execution_scope"] = sorted(
                     {str(key) for key in scope} | rewind
                 )
+            from services.step_success_reuse import preserved_success_keys
+            preserved = preserved_success_keys(task, list(scheduler.steps.values()), targets)
             for key in rewind:
+                if key in preserved:
+                    continue
                 row = TaskStep.get_or_none(
                     (TaskStep.task == task) & (TaskStep.step_key == key)
                 )

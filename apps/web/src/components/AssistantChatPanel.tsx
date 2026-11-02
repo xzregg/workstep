@@ -1,3 +1,4 @@
+import Icon from './Icon'
 import ConversationLayout from './ConversationLayout'
 import { SkinExtensionSlot } from './SkinExtensions'
 import { useSkinActions } from '../skins/actions'
@@ -50,6 +51,7 @@ import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import { useI18n } from '../i18n'
 import { resolveMessageError } from '../pages/taskDetailChat'
 import QuickPromptButton from './QuickPromptButton'
+import QuickPromptOverflow from './QuickPromptOverflow'
 import './AssistantActionBar.css'
 import { ActionConversationMessage } from './TaskActionShortcuts'
 import { actionConversationScrollKey, mergeActionMessages } from '../utils/actionConversation'
@@ -60,7 +62,7 @@ export interface AssistantChatCopy {
   me: string
   meInitials: string
   agent: string
-  agentInitials: string
+  agentInitials: ReactNode
   tag?: string
   userTagTitle?: string
   placeholder: string
@@ -85,6 +87,7 @@ export interface AssistantChatPanelProps {
   title: string
   onTitleDoubleClick?: () => void
   hideHeaderStatus?: boolean
+  welcome?: boolean
   messages: AssistantChatMessage[]
   running: boolean
   stopping: boolean
@@ -280,7 +283,7 @@ const MessageItem = memo(function MessageItem({
 
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
-  projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeaderStatus = false, messages, running, stopping, input, sendError, copy,
+  projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeaderStatus = false, welcome = false, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
   onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
@@ -588,9 +591,10 @@ export default function AssistantChatPanel({
             ref={contentRef}
             className="chat-history-content chat-history-content--assistant"
           >
-          {conversationMessages.length === 0 && copy.emptyIntro && (
-            <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
-              {copy.emptyIntro}
+          {conversationMessages.length === 0 && copy.emptyIntro && !(welcome && running) && (
+            <div className={welcome ? 'chat-session-welcome' : 'assistant-empty-intro'}>
+              {welcome && <span className="chat-session-welcome-icon" aria-hidden="true"><Icon name="bot" size={40} /></span>}
+              {welcome ? <h2>{copy.emptyIntro}</h2> : copy.emptyIntro}
             </div>
           )}
           {conversationMessages.map((message) => message.engine === 'action' ? (
@@ -681,14 +685,8 @@ export default function AssistantChatPanel({
         >
           {composerStatus}
           {(composerActions || (quickPrompts && quickPrompts.length > 0)) && !compactLayout && (
-              <div
-                className="chat-quick-prompts"
-                role="group"
-                aria-label={quickPromptsLabel}
-                style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}
-              >
-                {composerActions}
-                {quickPrompts?.map((item) => (
+              <QuickPromptOverflow label={quickPromptsLabel} prefix={composerActions}
+                items={(quickPrompts || []).map((item) => (
                   <QuickPromptButton
                     key={item.id || item.label}
                     disabled={item.disabled ?? (item.kind === 'action' ? false : running)}
@@ -701,10 +699,9 @@ export default function AssistantChatPanel({
                       else onQuickPromptSelect?.(prompt)
                       if (item.kind !== 'action') requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
                     }}
-                    style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
                   />
                 ))}
-              </div>
+              />
             )}
           <SkinExtensionSlot name="composer-before" />
           <ChatInput

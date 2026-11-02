@@ -289,11 +289,16 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         native_public_share = (managed and actor is None
             and request.url.path.startswith('/api/task-share/public/')
             and await asyncio.to_thread(_remote_access_enabled, request.app))
-        remote_access = (
+        remote_access = request.url.path == '/api/health' or (
             (protected or request.url.path == "/") and not remote_bridge
-            and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
+            and not desktop_authenticated
+            and request.url.path != '/api/health' and not native_public_share
             and await asyncio.to_thread(_remote_access_enabled, request.app)
         )
+        if (remote_access and managed and protected and request.url.path != '/api/health'
+                and not (request.method == 'GET' and request.url.path == '/api/remote-project/access/status')
+                and not (request.method == 'POST' and request.url.path == '/api/remote-project/access/unlock')):
+            remote_access = await gateway_workspace_access_allowed(request)
         share_scope = request.scope.get("gateway_share_scope")
         if managed and (share_scope is not None or request.url.path.startswith("/api/platform-share/")):
             if (not remote_bridge or not isinstance(share_scope, dict)

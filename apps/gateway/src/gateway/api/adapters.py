@@ -59,7 +59,10 @@ class AsgiSocketPort:
             raise SocketClosed() from exc
 
     async def send_json(self, value):
-        await self.socket.send_json(value)
+        try:
+            await self.socket.send_json(value)
+        except WebSocketDisconnect as exc:
+            raise SocketClosed() from exc
 
     async def receive(self):
         try:

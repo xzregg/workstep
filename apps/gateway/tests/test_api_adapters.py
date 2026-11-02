@@ -68,3 +68,14 @@ async def test_business_errors_preserve_http_status_and_message(reason, status):
     response = await gateway_error_response(None, GatewayError(reason, "Failure"))
     assert response.status_code == status
     assert json.loads(response.body) == {"error": {"code": "http_error", "message": "Failure"}}
+
+
+async def test_socket_send_disconnect_is_translated_to_service_error():
+    from starlette.websockets import WebSocketDisconnect
+    from gateway.api.adapters import AsgiSocketPort
+    from gateway.contracts import SocketClosed
+    class Disconnected:
+        async def send_json(self, value):
+            raise WebSocketDisconnect(code=1006)
+    with pytest.raises(SocketClosed):
+        await AsgiSocketPort(Disconnected()).send_json({"credits": 1})

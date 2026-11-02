@@ -127,6 +127,10 @@ export function formatConversationDateTime(
   const date = new Date(milliseconds)
   const pad = (part: number) => String(part).padStart(2, '0')
   const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  if (nowMilliseconds !== null && date.toDateString() === new Date(nowMilliseconds).toDateString()) {
+    const today = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(0, 'day')
+    return `${today} ${time}`
+  }
   const sameWeek = nowMilliseconds !== null
     && startOfWeek(date) === startOfWeek(new Date(nowMilliseconds))
   if (sameWeek) {

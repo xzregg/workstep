@@ -360,7 +360,11 @@ def persist_review_decision(
                         {entry_key, *scheduler.get_all_downstream(entry_key)}
                         | rewind
                     )
+                from services.step_success_reuse import preserved_success_keys
+                preserved = preserved_success_keys(task, list(scheduler.steps.values()), targets)
                 for key in rewind:
+                    if key in preserved:
+                        continue
                     row = TaskStep.get(
                         (TaskStep.task == task) & (TaskStep.step_key == key)
                     )
@@ -373,7 +377,7 @@ def persist_review_decision(
                     row.save()
                 if notifications is not None:
                     notifications.extend(artifact_return_events(
-                        task.id, routed_step, scheduler, result.feedback_edges,
+                        task.id, routed_step, scheduler, result.feedback_edges, preserved,
                     ))
             workflow_run.routing_state_json = json.dumps(
                 result.state, ensure_ascii=False, sort_keys=True

@@ -3,6 +3,7 @@ import { ComposerOverlayHostContext } from '../hooks/useComposerOverlayClearance
 import { useI18n } from '../i18n'
 import Icon from './Icon'
 import Textarea from './Textarea'
+import MarkdownMessage from './MarkdownMessage'
 
 export interface PendingMessageInsert {
   id: string
@@ -10,6 +11,7 @@ export interface PendingMessageInsert {
 }
 
 interface PendingMessageInsertsProps {
+  projectId?: string
   items: PendingMessageInsert[]
   title: string
   titleTooltip: string
@@ -31,6 +33,7 @@ interface PendingMessageInsertsProps {
 }
 
 export default function PendingMessageInserts({
+  projectId,
   items,
   title,
   titleTooltip,
@@ -173,7 +176,7 @@ export default function PendingMessageInserts({
                   title={item.content}
                   className="pending-insert-content"
                 >
-                  {item.content}
+                  <MarkdownMessage content={item.content} projectId={projectId} plainText className="pending-insert-preview" />
                 </div>
               </>
             )}

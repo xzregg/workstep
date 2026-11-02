@@ -2426,6 +2426,31 @@ details[open] > summary > .process-trace-chevron {
   padding: 4px 8px 4px 8px;
 }
 
+/* Keep padding outside the five rendered text lines. */
+.user-message-content {
+  padding: 4px 8px;
+}
+
+.user-message-content .user-message-markdown {
+  padding: 0;
+}
+
+.user-message-content-body--collapsed {
+  max-height: 5lh;
+  overflow: hidden;
+}
+
+.user-message-content-toggle {
+  display: block;
+  padding: 2px 0;
+  margin-top: 4px;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
 /* Prompt inspection preserves the captured text while wrapping it to the dialog. */
 .markdown-message.prompt-viewer-markdown pre,
 .markdown-message.prompt-viewer-markdown pre code {
@@ -4288,6 +4313,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .pending-insert-icon { flex-shrink: 0; color: var(--muted); opacity: 0.7; }
 .pending-insert-icon.is-reorderable { color: var(--meta); opacity: 0.85; cursor: grab; }
 .pending-insert-content { flex: 1; min-width: 0; overflow: hidden; color: var(--fg); font-size: calc(13px * var(--font-scale)); line-height: 1.4; white-space: nowrap; text-overflow: ellipsis; }
+.pending-insert-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow-y: auto; }
+.pending-insert-preview .markdown-inline-image,
+.pending-insert-preview .markdown-image-click { display: inline-block; vertical-align: middle; }
+.pending-insert-preview .markdown-inline-image + .markdown-inline-image { margin-left: 6px; }
+.pending-insert-preview img { width: 64px; height: 48px; margin: 2px 0; object-fit: cover; border: 1px solid var(--border-soft); border-radius: 6px; }
 .pending-insert-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .pending-insert-panel .pending-insert-button { min-height: 24px; padding: 2px 8px; border-radius: 6px; font-size: calc(11px * var(--font-scale)); cursor: pointer; }
 .pending-insert-panel .pending-insert-button:disabled { cursor: not-allowed; }
@@ -6220,4 +6250,35 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   object-fit: contain;
   background: #000;
   border-radius: 8px;
+}
+
+
+.assistant-empty-intro {
+  font-size: calc(13px * var(--font-scale));
+  color: var(--meta);
+  padding: 4px 2px;
+  line-height: 1.6;
+}
+
+.chat-session-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  padding: 32px 16px;
+  text-align: center;
+  min-width: 0;
+}
+
+.chat-session-welcome-icon { color: var(--meta); }
+
+.chat-session-welcome h2 {
+  margin: 0;
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }

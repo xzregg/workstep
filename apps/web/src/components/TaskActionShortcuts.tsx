@@ -6,6 +6,7 @@ import Button from './Button'
 import ActionConfirmDialog from './ActionConfirmDialog'
 import Icon from './Icon'
 import QuickPromptButton from './QuickPromptButton'
+import QuickPromptOverflow from './QuickPromptOverflow'
 import ChatMessageBubble from './ChatMessageBubble'
 import MobileSheet from './MobileSheet'
 import { useMessageClock } from '../hooks/useMessageClock'
@@ -77,7 +78,7 @@ export function TaskActionButtons({ state, onFillPrompt, onSendPrompt, compact =
           else onFillPrompt?.(button.prompt)
         }
       }}
-      style={inSheet ? { justifyContent: 'flex-start', width: '100%' } : { flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
+      style={inSheet ? { justifyContent: 'flex-start', width: '100%' } : undefined}
     />
   }
   return <>
@@ -87,9 +88,7 @@ export function TaskActionButtons({ state, onFillPrompt, onSendPrompt, compact =
       <MobileSheet open={open} title={t('actionShortcuts.quickButtons')} onClose={() => setOpen(false)}>
         {enabledButtons.map((button) => renderButton(button, true))}
       </MobileSheet>
-    </> : <div className="chat-quick-prompts" role="group" aria-label={t('actionShortcuts.quickButtons')} style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}>
-      {enabledButtons.map((button) => renderButton(button, false))}
-    </div>)}
+    </> : <QuickPromptOverflow label={t('actionShortcuts.quickButtons')} items={enabledButtons.map((button) => renderButton(button, false))} />)}
     {state.error && !compact && <span role="alert" style={{ color: 'var(--danger)' }}>{state.error}</span>}
     <ActionConfirmDialog
       button={state.pending} directory={state.pending?.cwd_mode || 'task'} loading={state.busy}

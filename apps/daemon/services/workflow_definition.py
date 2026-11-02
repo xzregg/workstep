@@ -389,6 +389,10 @@ class WorkflowDefinition:
             "condition": step.get("condition", ""),
             "reworkUpstream": list(step.get("reworkUpstream", [])),
         }
+        if "reuseSuccess" in step:
+            if not isinstance(step["reuseSuccess"], bool):
+                raise WorkflowValidationError(f"step '{normalized['key']}'.reuseSuccess: expected a boolean")
+            normalized["reuseSuccess"] = step["reuseSuccess"]
         if "maxReturnRounds" in step:
             max_return_rounds = step.get("maxReturnRounds")
             if (

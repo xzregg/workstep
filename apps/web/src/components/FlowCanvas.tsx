@@ -515,6 +515,7 @@ function FlowCanvasInner({
       return {
         id: d.nodeId, type: d.key, title: d.label, color: d.color,
         autoStart: Boolean(d.autoStart),
+        reuseSuccess: d.reuseSuccess === true,
         position: n.position, engine: d.engine, model: d.model,
         prompt: d.prompt,
         kind: d.kind || 'llm',

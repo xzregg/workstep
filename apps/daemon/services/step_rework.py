@@ -4,9 +4,10 @@ from typing import Awaitable, Callable
 
 from models import Task, TaskStep
 from services.pipeline import DAGScheduler, Step
+from services.step_success_reuse import preserved_success_keys
 
 
-def artifact_return_events(task_id, source_step, scheduler, feedback_edges):
+def artifact_return_events(task_id, source_step, scheduler, feedback_edges, preserved=()):
     """Describe selected repairs and their waiting downstream after commit."""
     targets = {str(edge.get("to")) for edge in feedback_edges}
     rewind = set(targets)
@@ -14,7 +15,7 @@ def artifact_return_events(task_id, source_step, scheduler, feedback_edges):
         rewind.update(scheduler.get_all_downstream(target))
     events = [{
         "type": "status", "step_key": key,
-        "data": {"status": "rework" if key in targets else "rework_waiting",
+        "data": {"status": "passed" if key in preserved else "rework" if key in targets else "rework_waiting",
                  "task_id": task_id, "step_key": key},
     } for key in sorted(rewind)]
     events.append({
@@ -87,12 +88,17 @@ class StepRework:
         for target in targets:
             rewind.add(target)
             rewind.update(scheduler.get_all_downstream(target))
-        self._invalidate({key: "rework" if key in targets else "rework_waiting" for key in rewind})
+        preserved = await self._run_db(lambda: preserved_success_keys(
+            task, list(scheduler.steps.values()), targets,
+        ))
+        self._invalidate({key: "passed" if key in preserved else "rework" if key in targets else "rework_waiting" for key in rewind})
         completed.difference_update(rewind)
         failed.difference_update(rewind)
 
         def persist_return():
             for key in rewind:
+                if key in preserved:
+                    continue
                 row = TaskStep.get(
                     (TaskStep.task == task) & (TaskStep.step_key == key)
                 )
@@ -108,7 +114,7 @@ class StepRework:
 
         await self._run_db(persist_return)
         for event in artifact_return_events(
-            task.id, source_step, scheduler, feedback_edges,
+            task.id, source_step, scheduler, feedback_edges, preserved,
         ):
             await self._publish(task.id, event["step_key"], event)
 
@@ -129,11 +135,16 @@ class StepRework:
 
         targets = set(step.rework_upstream)
         rework_keys = [key for key in sorted(rewind) if key != step.key]
-        self._invalidate({key: "rework" for key in rework_keys}, {key: feedback for key in targets})
+        preserved = await self._run_db(lambda: preserved_success_keys(
+            task, list(scheduler.steps.values()), targets,
+        ))
+        self._invalidate({key: "passed" if key in preserved else "rework" for key in rework_keys}, {key: feedback for key in targets})
         completed.difference_update(rework_keys)
 
         def persist_rework():
             for key in rework_keys:
+                if key in preserved:
+                    continue
                 ts = TaskStep.get(
                     (TaskStep.task == task) & (TaskStep.step_key == key)
                 )
@@ -146,7 +157,7 @@ class StepRework:
         for key in rework_keys:
             await self._publish(task.id, key, {
                 "type": "status",
-                "data": {"status": "rework", "task_id": task.id, "step_key": key},
+                "data": {"status": "passed" if key in preserved else "rework", "task_id": task.id, "step_key": key},
             })
 
         await self._publish(task.id, step.key, {

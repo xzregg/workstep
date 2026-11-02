@@ -143,9 +143,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             local_path = '/' + path_parts[3]
             gateway_route = (local_path == '/api/remote/task-shares' or local_path.startswith('/api/remote/task-shares/') or local_path in ('/api/remote/redeem', '/api/remote/session', '/api/remote/project-grants', '/api/remote/devices')
                 or (local_path.startswith('/api/remote/devices/') and local_path.endswith('/access') and len(local_path.split('/')) == 6))
-            document_navigation = request.method == 'GET' and not local_path.startswith(('/api/', '/assets/')) and (
-                local_path == '/' or request.headers.get('sec-fetch-dest') == 'document'
-                or 'text/html' in request.headers.get('accept', '').lower())
+            from gateway.services.workspace_paths import is_workspace_document
+            document_navigation = is_workspace_document(request.method, local_path, request.headers)
             if not gateway_route:
                 recovery_path = '/'
                 if (local_path in ('/tasks', '/chat') and request.query_params.get('project')
@@ -160,6 +159,9 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
                         return RedirectResponse(recovery_path, status_code=303)
                     return await identity_error_response(request, exc)
                 except GatewayError as exc:
+                    if document_navigation and exc.reason in ('upstream_failed', 'timeout', 'unavailable', 'conflict'):
+                        return RedirectResponse('/?workspace_recovery=1', status_code=303,
+                                                headers={'Cache-Control': 'no-store'})
                     if document_navigation and exc.reason in ('unauthenticated', 'forbidden'):
                         return RedirectResponse(recovery_path, status_code=303)
                     return await gateway_error_response(request, exc)

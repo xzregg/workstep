@@ -15,7 +15,8 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
   const [loading,setLoading]=useState(true)
   const [retry,setRetry]=useState(0)
   const [error, setError] = useState('')
-  const [portalVisible, setPortalVisible] = useState(!autoEnter)
+  const recovering = new URLSearchParams(location.search).get('workspace_recovery') === '1'
+  const [portalVisible, setPortalVisible] = useState(!autoEnter || recovering)
   const showPortal = useCallback(() => setPortalVisible(true), [])
 
   useEffect(() => {
@@ -70,9 +71,10 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
     <h2 className="gateway-workspace-heading">我的 WorkStep</h2>
     {(location.state as { adminDenied?: boolean } | null)?.adminDenied &&
       <p role="alert">当前账号没有访问该管理页面的权限。</p>}
+    {recovering && <p className="gateway-auth-error" role="alert">设备工作台连接失败，已暂停自动跳转。请重新连接设备，或切换其他设备。</p>}
     {status === 'checking' && !error && <div className="gateway-direct-state" role="status"><span className="gateway-spinner"/>正在检查登录状态…</div>}
     {status === 'ready' && <>
-      {loading && !devices.length?<div className="gateway-direct-state" role="status"><span className="gateway-spinner"/>正在加载工作空间…</div>:!!devices.length && <DirectWorkstepWorkspace devices={devices} projects={projects} hideNavigation={!portalVisible && !error} onShowNavigation={showPortal}/>}
+      {loading && !devices.length?<div className="gateway-direct-state" role="status"><span className="gateway-spinner"/>正在加载工作空间…</div>:!!devices.length && <DirectWorkstepWorkspace autoConnect={!recovering} devices={devices} projects={projects} hideNavigation={!portalVisible && !error} onShowNavigation={showPortal}/>}
     </>}
     {error && <p className="gateway-auth-error" role="alert">{error} {status==='ready' && <button type="button" disabled={loading} onClick={()=>setRetry(value=>value+1)}>重新加载</button>}</p>}
   </section></>

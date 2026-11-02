@@ -13,6 +13,7 @@ export const frFR: Messages = {
 },
   common: {
     ...zhCN.common,
+    quickPromptMore: 'Plus',
     featureUnavailable: "Cette fonctionnalité n’est pas autorisée pour ce projet.",
     view: "Voir",
     save: "Enregistrer",
@@ -132,6 +133,7 @@ export const frFR: Messages = {
     passwordPlaceholder: "Saisissez la clé d’accès",
     unlock: "Entrer",
     wrongPassword: "Clé d’accès incorrecte",
+    gatewayLogin: '使用网关账号登录',
   },
   interaction: {
     ...zhCN.interaction,
@@ -201,6 +203,8 @@ export const frFR: Messages = {
   },
   bubble: {
     ...zhCN.bubble,
+    moreMessage: 'Voir plus',
+    collapseMessage: 'Réduire',
     editMessage: "Modifier le message",
     sendToInput: "Insérer dans le champ de saisie",
   },
@@ -429,6 +433,7 @@ export const frFR: Messages = {
   },
   chatSession: {
     ...zhCN.chatSession,
+    welcome: 'Que souhaitez-vous réaliser dans {project} ?',
     title: "Conversation",
     flowSection: "Workflows",
     addSessionTitle: "Ajouter une conversation",
@@ -664,6 +669,9 @@ export const frFR: Messages = {
   },
   flow: {
     ...zhCN.flow,
+    executionSettings: "Paramètres d’exécution",
+    reuseSuccess: "Réutiliser après réussite",
+    reuseSuccessHint: "Réutilise les résultats réussis pendant le déroulement normal. Une reprise directe, une mention @ manuelle ou un déclenchement explicite du coordinateur relance cette étape.",
     engine: "Moteur",
     retry: "Réessayer",
     templates: "Modèle de workflow",

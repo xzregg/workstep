@@ -133,6 +133,7 @@ def create_restart_run(
     reset_session_step_key: str | None = None,
     feedback_inputs: dict[str, dict] | None = None,
     valid_step_keys: set[str] | None = None,
+    reuse_step_keys: set[str] | None = None,
 ) -> tuple[Task, WorkflowRun]:
     """Replace a run atomically inside the selected project's DB executor."""
     now = utc_now()
@@ -182,6 +183,7 @@ def create_restart_run(
         routing_state = empty_routing_state()
         routing_state["configuration_current"] = True
         routing_state["entry_step_key"] = step_key
+        routing_state["force_execute_steps"] = [step_key]
         routing_state["execution_scope"] = sorted(execution_keys)
         if feedback_inputs:
             routing_state["feedback_inputs"][step_key] = feedback_inputs
@@ -253,6 +255,10 @@ def create_restart_run(
                 started_at=now,
                 ended_at=now,
             )
+        preserved = {row.step_key for row in TaskStep.select().where(
+            (TaskStep.task == task) & (TaskStep.status == "passed")
+            & (TaskStep.step_key.in_((reuse_step_keys or set()) - {step_key}))
+        )}
         TaskStep.update(
             status="pending",
             waiting_interactions_json=None,
@@ -261,7 +267,7 @@ def create_restart_run(
             error=None,
         ).where(
             (TaskStep.task == task)
-            & (TaskStep.step_key.in_(execution_keys))
+            & (TaskStep.step_key.in_(execution_keys - preserved))
         ).execute()
         if reset_session_step_key:
             TaskStep.update(

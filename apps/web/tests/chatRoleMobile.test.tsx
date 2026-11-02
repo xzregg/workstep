@@ -42,6 +42,7 @@ for (const projectScoped of [false, true]) test(`phone gateway ${projectScoped ?
     await act(async () => root.render(<MemoryRouter initialEntries={['/chat?project=phone&session=phone-session']}>
       <I18nProvider><ChatPage /></I18nProvider>
     </MemoryRouter>))
+    assert.match(document.querySelector('.chat-session-welcome')?.textContent || '', /你想在 phone 中完成什么？/)
     const plus = document.querySelector<HTMLButtonElement>('.chat-input-attach')
     assert.ok(plus)
     await act(async () => plus.click())

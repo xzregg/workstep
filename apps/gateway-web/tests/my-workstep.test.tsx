@@ -273,3 +273,27 @@ test('offline device status refreshes and opens automatically when it comes onli
  assert.equal(screen.getByRole('tab',{name:/恢复上线电脑/}).getAttribute('aria-selected'),'true')
  } finally {cleanup();globalThis.setTimeout=originalTimer}
 })
+
+
+test('workspace recovery stays in the portal until the user retries, even after device refresh',async()=>{
+ let access=0,submitted=0
+ dom.window.localStorage.setItem('workstep:last-workspace-page',JSON.stringify({deviceId:'d',next:'chat?project=demo&session=old'}))
+ dom.window.HTMLFormElement.prototype.submit=function(){submitted++}
+ globalThis.fetch=async input=>{
+  const url=String(input)
+  if(url==='/api/auth/session')return Response.json({user:{id:'u'}})
+  if(url==='/api/devices')return Response.json({devices:[{id:'d',name:'研发电脑',online:true}]})
+  if(url==='/api/projects')return Response.json({projects:[]})
+  if(url==='/api/devices/d/access'){access++;return Response.json({url:'https://gateway.test/workspace/d/',ticket:'ticket'})}
+  throw Error(url)
+ }
+ render(<MemoryRouter initialEntries={['/?workspace_recovery=1']}><ProjectsPage autoEnter portalHeader={<PortalHeader hasAdminAccess/>}/></MemoryRouter>)
+ await screen.findByRole('tab',{name:/研发电脑/})
+ assert.ok(screen.getByRole('navigation',{name:'工作台导航'}))
+ assert.match(screen.getByRole('alert').textContent ?? '',/连接失败/)
+ assert.equal(access,0)
+ assert.equal(submitted,0)
+ fireEvent.click(screen.getByRole('button',{name:'重新连接设备'}))
+ await waitFor(()=>assert.equal(submitted,1))
+ assert.equal(access,1)
+})

@@ -1,0 +1,48 @@
+.quick-prompt-overflow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  padding: 0 1px 8px;
+}
+.quick-prompt-overflow-prefix,
+.quick-prompt-overflow-item,
+.quick-prompt-overflow-more {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.quick-prompt-overflow-item > .btn,
+.quick-prompt-overflow-more { border-radius: 999px; }
+.quick-prompt-overflow-item[data-overflow="true"],
+.quick-prompt-overflow-more[data-hidden="true"] {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+.quick-prompt-overflow-card {
+  position: fixed;
+  z-index: 2101;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: min(320px, calc(100dvh - 16px));
+  overflow-y: auto;
+  padding: 12px;
+  border: 0.5px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.quick-prompt-overflow-option { min-width: 0; max-width: 100%; }
+.quick-prompt-overflow-option > .btn,
+.quick-prompt-overflow-option > .chat-quick-prompt-html {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}

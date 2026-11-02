@@ -476,6 +476,7 @@ export const jaJP: Messages = {
     viewNode: '节点配置', taskList: '任务列表', emptyTasks: '暂无任务',
   },
   common: {
+    quickPromptMore: 'その他',
     featureUnavailable: '当前项目权限未开放此功能。',
     view: '查看',
     save: '保存',
@@ -696,6 +697,7 @@ export const jaJP: Messages = {
     passwordPlaceholder: 'アクセスキーを入力',
     unlock: '入る',
     wrongPassword: 'アクセスキーが正しくありません',
+    gatewayLogin: '使用网关账号登录',
   },
   status: {
     waiting: '等待确认',
@@ -898,6 +900,8 @@ export const jaJP: Messages = {
     retryFailedMessageTitle: '失敗したメッセージを再実行します',
   },
   bubble: {
+    moreMessage: 'もっと見る',
+    collapseMessage: '折りたたむ',
     thinking: '',
     editMessage: 'メッセージを編集',
     sendToInput: '入力欄に送る',
@@ -1260,6 +1264,9 @@ export const jaJP: Messages = {
     currentConfigSuffix: '（現在の設定）',
     stepConfig: 'エンジン設定',
     returnRouting: '戻り線',
+    executionSettings: "実行設定",
+    reuseSuccess: "成功後に再利用",
+    reuseSuccessHint: "通常のフローでは成功済み成果物を再利用します。直接の差し戻し、手動の @ 指定、調整アシスタントによる明示的な指示で再実行します。",
     maxReturnRounds: '最大戻り回数',
     maxReturnRoundsHint: 'このステップから出る破線の戻り接続だけに適用します。既定は {default} 回、設定範囲は 1〜{max} 回です。レビュー再試行回数とは別です。',
     reviewConfig: 'レビューエンジン設定',
@@ -2612,6 +2619,7 @@ export const jaJP: Messages = {
     },
   },
   chatSession: {
+    welcome: '{project} で何を実現したいですか？',
     ordinaryTabShort: '普通',
     channelTabShort: '渠道',
     conversationTypes: '会话类型',

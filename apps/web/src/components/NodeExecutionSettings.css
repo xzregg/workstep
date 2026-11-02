@@ -1,0 +1,23 @@
+.node-execution-settings-title {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+}
+
+.node-execution-settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--fg-2);
+  font-size: calc(13px * var(--font-scale));
+}
+
+.node-execution-settings-help {
+  margin: 6px 0 0;
+  max-width: 68ch;
+  color: var(--meta);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.5;
+}

@@ -296,6 +296,9 @@ def prepare_start_from_step_without_parent(
         if row.step_key in scheduler.steps
     }
 
+    from services.step_success_reuse import preserved_success_keys
+    preserved = preserved_success_keys(task, list(scheduler.steps.values()), {step_key})
+
     with db_proxy.atomic():
         TaskStep.update(
             status="pending",
@@ -304,7 +307,7 @@ def prepare_start_from_step_without_parent(
             error=None,
         ).where(
             (TaskStep.task == task)
-            & (TaskStep.step_key.in_(execution_keys))
+            & (TaskStep.step_key.in_(execution_keys - preserved))
         ).execute()
         TaskStep.update(
             status="skipped",
@@ -334,6 +337,7 @@ def prepare_start_from_step_without_parent(
         if workflow_run.routing_state_json else None
     )
     routing_state["entry_step_key"] = step_key
+    routing_state["force_execute_steps"] = [step_key]
     routing_state["execution_scope"] = sorted(execution_keys)
     if feedback_inputs:
         routing_state["feedback_inputs"][step_key] = feedback_inputs

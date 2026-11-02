@@ -40,6 +40,7 @@ export interface StepNodeData {
   key: string
   label: string
   autoStart?: boolean
+  reuseSuccess?: boolean
   engine: string
   model: string
   color: string
@@ -144,6 +145,7 @@ export function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connect
         key,
         label: String(n.title || n.label || n.name || key || `Step ${index + 1}`),
         autoStart: Boolean(n.autoStart),
+        reuseSuccess: n.reuseSuccess === true,
         engine: n.engine === undefined || n.engine === null
           ? ''
           : String(n.engine),
@@ -223,6 +225,7 @@ export function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connect
       })),
       outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'markdown' })),
       maxReturnRounds: normalizeMaxReturnRounds(s.maxReturnRounds),
+      reuseSuccess: s.reuseSuccess === true,
       kind: s.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',
       dispatch: s.dispatch,
       quickButtons: Array.isArray(s.quickButtons) ? s.quickButtons : [],

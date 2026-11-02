@@ -29,6 +29,7 @@ from services.step_execution_messages import StepExecutionMessages
 from services.step_interaction_messages import StepInteractionMessages
 from services.step_rework import StepRework
 from services.step_artifact_routes import StepArtifactRoutes
+from services.step_success_reuse import reuse_successful_step
 from services.step_live_messages import StepLiveMessages
 from services.review_messages import (
     ReviewEvaluation,
@@ -294,6 +295,14 @@ class TaskRunner:
 
         completed, awaiting_review, routing_state_json = await self._run_db(initialize_pipeline_state)
         completed.intersection_update(scheduler.steps)
+        # A saved success is still an ordering barrier when an upstream step
+        # is being rerun. Do not let its consumer overtake that upstream.
+        while True:
+            waiting = {key for key in completed if scheduler.steps[key].reuse_success
+                       and not set(scheduler.steps[key].depends_on).issubset(completed)}
+            if not waiting:
+                break
+            completed.difference_update(waiting)
         self._artifact_routes.restore(routing_state_json, execution_scope)
         overlay = json.loads(task.workflow_overrides_json or "{}")
         await self._artifact_routes.reconcile_configuration(
@@ -751,6 +760,30 @@ class TaskRunner:
                 )
                 return
         run_key = f"{task.id}:{step_key}"
+        if step.reuse_success and not self._artifact_routes.explicitly_triggered(step_key):
+            try:
+                reused_round = await self._run_db(lambda: reuse_successful_step(
+                    task, step, artifacts_dir, workflow_run,
+                ))
+            except ValueError as exc:
+                row = await self._run_db(lambda: TaskStep.get(
+                    (TaskStep.task == task) & (TaskStep.step_key == step_key)
+                ))
+                await self._fail_step(row, task, step_key, str(exc))
+                failed.add(step_key)
+                return
+            if reused_round is not None:
+                completed.add(step_key)
+                await self._artifact_routes.seed_completed_forward_routes(
+                    task, scheduler, artifacts_dir, workflow_run, {step_key},
+                )
+                await self._publish(task.id, step_key, {
+                    "type": "status", "data": {
+                        "status": "passed", "step_key": step_key,
+                        "artifact_round": reused_round, "reused": True,
+                    },
+                })
+                return
         engine = (
             await asyncio.to_thread(create_engine, step.engine)
             if step.kind != "task_dispatch" else None
@@ -803,6 +836,7 @@ class TaskRunner:
             input_snapshot=input_snapshot,
         ))
         ts = started_state.task_step
+        await self._artifact_routes.consume_explicit_trigger(step_key, workflow_run)
         step_run = started_state.step_run
         pending_handoff = started_state.pending_handoff
         artifact_round = started_state.artifact_round

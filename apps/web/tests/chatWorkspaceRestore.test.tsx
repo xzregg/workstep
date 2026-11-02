@@ -58,6 +58,16 @@ test('returning from task and workflow routes restores panes, layout, sizes and 
     for (const pane of panes()) pane.getBoundingClientRect = () => ({ width: 500, height: 400 }) as DOMRect
     await act(async () => document.querySelector('[role="separator"]')!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
     const sizes = document.querySelector<HTMLElement>('.chat-workspace-panes')!.style.gridTemplateRows
+    await act(async () => panes()[0].dispatchEvent(new window.Event('pointerdown', { bubbles: true })))
+    const refreshUrl = `/chat${document.querySelector('output')!.textContent}`
+    // A refresh destroys the React tree and all in-memory workspace snapshots.
+    await act(async () => root.render(null))
+    useChatWorkspaceStore.setState({ workspaces: {} })
+    await act(async () => root.render(<MemoryRouter initialEntries={[refreshUrl]}><I18nProvider><Surface /></I18nProvider></MemoryRouter>))
+    assert.equal(panes().length, 4, 'refresh must restore panes from browser storage')
+    assert.ok(document.querySelector('.chat-workspace-panes--vertical'))
+    assert.equal(document.querySelector<HTMLElement>('.chat-workspace-panes')!.style.gridTemplateRows, sizes)
+    assert.equal(panes()[0].querySelector<HTMLTextAreaElement>('textarea')!.value, '保留草稿')
     await act(async () => navigate('/tasks'))
     assert.equal(panes().length, 0)
     await act(async () => navigate('/chat?project=Alpha&session=s2'))

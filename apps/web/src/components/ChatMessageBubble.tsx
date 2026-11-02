@@ -6,6 +6,7 @@ import A2uiMessage from './A2uiMessage'
 import ImagePreview from './ImagePreview'
 import MarqueeText from './MarqueeText'
 import MarkdownMessage from './MarkdownMessage'
+import UserMessageContent from './UserMessageContent'
 import MessageTimeline from './MessageTimeline'
 import { MessageCopyButton } from './MessageResponseFooter'
 import StreamingStatusText from './StreamingStatusText'
@@ -50,8 +51,8 @@ export interface ChatMessageBubbleProps {
   sender: string
   /** Optional richer avatar tooltip, such as sender and device name. */
   senderTitle?: string
-  /** Avatar text (initials). */
-  initials: string
+  /** Avatar content (initials or an icon). */
+  initials: ReactNode
   /** Avatar background color. */
   color: string
   content: string
@@ -110,7 +111,7 @@ function MessageAvatar({
 }: {
   sender: string
   senderTitle?: string
-  initials: string
+  initials: ReactNode
   color: string
   badge?: ReactNode
   showTooltip: boolean
@@ -290,13 +291,15 @@ export default function ChatMessageBubble({
               minWidth: 0, maxWidth: '100%', overflow: 'hidden',
             }}>
               {isUser ? (
-                <MarkdownMessage
-                  content={content}
-                  projectId={projectId}
-                  className="user-message-markdown"
-                  plainText
-                  onImageClick={handleImageClick}
-                />
+                <UserMessageContent content={content}>
+                  <MarkdownMessage
+                    content={content}
+                    projectId={projectId}
+                    className="user-message-markdown"
+                    plainText
+                    onImageClick={handleImageClick}
+                  />
+                </UserMessageContent>
               ) : (
                 <>
                   <MessageTimeline
