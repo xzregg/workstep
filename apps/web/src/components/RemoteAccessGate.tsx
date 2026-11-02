@@ -14,6 +14,7 @@ import './RemoteAccessGate.css'
  */
 export default function RemoteAccessGate({ children }: { children: ReactNode }) {
   const { t } = useI18n()
+  const [checkRevision, setCheckRevision] = useState(0)
   const [checked, setChecked] = useState(false)
   const [unlocked, setUnlocked] = useState(false)
   const [gatewayAvailable, setGatewayAvailable] = useState(false)
@@ -23,6 +24,8 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     let active = true
+    setChecked(false)
+    setError('')
     remoteProjectApi
       .accessStatus()
       .then((status) => {
@@ -30,10 +33,11 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
         setUnlocked(!status.required || status.local || status.authorized)
         setGatewayAvailable(Boolean(status.gateway_login_available))
       })
-      .catch(() => {
-        // If the check itself fails, keep the app usable; the server guard
-        // still rejects protected API calls.
-        if (active) setUnlocked(true)
+      .catch((reason) => {
+        if (active) {
+          setUnlocked(false)
+          setError(reason instanceof Error ? reason.message : String(reason))
+        }
       })
       .finally(() => {
         if (active) setChecked(true)
@@ -41,7 +45,7 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
     return () => {
       active = false
     }
-  }, [])
+  }, [checkRevision])
 
   const submit = async () => {
     if (!draft.trim()) return
@@ -99,6 +103,9 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
           )}
         </div>
         <div className="modal-footer">
+          {error && <Button variant="ghost" onClick={() => setCheckRevision(value => value + 1)}>
+            {t('common.retry')}
+          </Button>}
           {gatewayAvailable && <a className="remote-access-gateway-login" href="/gateway/login">
             {t('remoteAccess.gatewayLogin')}
           </a>}

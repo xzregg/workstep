@@ -125,16 +125,22 @@ test('desktop chat opens at most four independent panes, preserves drafts across
     await act(async () => openWindows())
     for (const pane of document.querySelectorAll('.chat-workspace-pane')) {
       const headerStyle = window.getComputedStyle(pane.querySelector('.assistant-chat-header')!)
-      assert.equal(headerStyle.flexWrap, 'wrap')
-      assert.equal(headerStyle.height, 'auto')
+      assert.equal(headerStyle.flexWrap, 'nowrap')
+      assert.equal(headerStyle.height, '40px')
       assert.equal(headerStyle.minHeight, '40px')
       assert.equal(headerStyle.overflowX, 'visible')
       assert.equal(headerStyle.overflowY, 'visible')
+      const secondaryActions = pane.querySelector('.chat-header-hover-actions')!
+      assert.equal(window.getComputedStyle(secondaryActions).position, 'absolute')
+      assert.equal(window.getComputedStyle(secondaryActions).flexWrap, 'wrap')
+      assert.ok(pane.querySelector('.chat-header-persistent-actions'))
       for (const button of pane.querySelectorAll('.assistant-chat-header > button')) {
         assert.equal(window.getComputedStyle(button).flexShrink, '0')
       }
       const close = pane.querySelector<HTMLElement>('[aria-label="关闭对话窗口"]')!
-      const newConversationButton = close.nextElementSibling!
+      assert.ok(close.closest('.chat-header-persistent-actions'))
+      assert.match(close.nextElementSibling!.textContent!, /Git/)
+      const newConversationButton = secondaryActions.firstElementChild!
       assert.match(newConversationButton.textContent!, /New conversation|新建对话/)
       const windowButton = newConversationButton.nextElementSibling!
       assert.equal(windowButton.getAttribute('aria-label'), '对话窗口')

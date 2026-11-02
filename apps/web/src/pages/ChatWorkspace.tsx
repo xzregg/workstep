@@ -1,5 +1,5 @@
 import { Fragment, startTransition, useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
 import Icon from '../components/Icon'
 import ChatWindowMenu from '../components/ChatWindowMenu'
@@ -20,7 +20,7 @@ import { appearanceStorageKey } from '../utils/appearanceStorage'
 import { useChatWorkspaceStore, type ChatWorkspacePane as Pane } from '../stores/chatWorkspaceStore'
 import './ChatWorkspace.css'
 
-interface WorkspaceState { panes: Pane[]; activeId: string; routeKey: string }
+interface WorkspaceState { panes: Pane[]; activeId: string; routeKey: string; navigationKey: string; revealPaneId?: string }
 
 /** Each pane reuses the complete session UI; only selection and arrangement live here. */
 export default function ChatWorkspace() {
@@ -44,6 +44,7 @@ export default function ChatWorkspace() {
 
 function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullable<ReturnType<typeof useProjectStore.getState>['activeProject']>; workspaceScope: string }) {
   const { t } = useI18n()
+  const location = useLocation()
   const compact = useCompactLayout()
   const [params, setParams] = useSearchParams()
   const sessionId = params.get('session')
@@ -70,24 +71,21 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
   const [state, setState] = useState<WorkspaceState>(() => {
     const panes = initial?.panes || [{ id: 'initial', projectId: project.id, sessionId }]
     return {
-      panes, activeId: panes[0].id,
+      panes, activeId: panes[0].id, navigationKey: location.key,
       routeKey: initial && sessionId ? JSON.stringify([panes[0].projectId, panes[0].sessionId]) : routeKey,
     }
   })
   const restoreRoute = useRef(Boolean(initial && !sessionId))
   // Reconcile external navigation before children render, so a sidebar click never
   // briefly hydrates the previous pane with another session's history.
-  if (state.routeKey !== routeKey) {
+  if (state.routeKey !== routeKey || state.navigationKey !== location.key) {
     const existing = sessionId ? state.panes.find(p => p.projectId === project.id && p.sessionId === sessionId) : undefined
-    const selected = state.panes.find(p => p.id === state.activeId)!
     setState({
-      panes: state.panes.map(p => {
-        if (p.id === state.activeId) return { ...p, projectId: project.id, sessionId }
-        if (p.id === existing?.id) return { ...p, projectId: selected.projectId, sessionId: selected.sessionId }
-        return p
-      }),
-      activeId: state.activeId,
+      panes: existing ? state.panes : state.panes.map(p => p.id === state.activeId ? { ...p, projectId: project.id, sessionId } : p),
+      activeId: existing?.id || state.activeId,
       routeKey,
+      navigationKey: location.key,
+      revealPaneId: location.state?.revealChatPane && state.panes.length > 1 ? existing?.id : undefined,
     })
   }
   const commit = useCallback((panes: Pane[], activeId: string, replace = false) => {
@@ -101,10 +99,10 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
     if (nextSession) next.set('session', nextSession)
     else next.delete('session')
     startTransition(() => {
-      setState({ panes, activeId, routeKey: JSON.stringify([activePane.projectId, nextSession]) })
+      setState({ panes, activeId, routeKey: JSON.stringify([activePane.projectId, nextSession]), navigationKey: location.key })
       setParams(next, { replace })
     })
-  }, [params, projects, setParams])
+  }, [params, projects, setParams, location.key])
   const latest = useRef(state)
   latest.current = state
   const resize = useChatPaneResize(state.panes.map(p => p.id), layout, compact, initial?.sizes)
@@ -170,6 +168,7 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
         aria-label={t('chatWorkspace.pane', { count: index + 1 })}
         onFocusCapture={() => { if (pane.id !== state.activeId) commit(state.panes, pane.id, true) }}
         onPointerDown={() => { if (pane.id !== state.activeId) commit(state.panes, pane.id, true) }}>
+        {!compact && state.revealPaneId === pane.id && <span key={state.navigationKey} className="chat-workspace-pane-reveal" aria-hidden="true" />}
         <div className="chat-workspace-pane-content"><ChatPage pane={{
           project: paneProject, active: pane.id === state.activeId, sessionId: pane.sessionId,
           onSessionChange: id => changeSession(pane.id, id),

@@ -119,8 +119,12 @@ async def get_system_settings(request: Request):
     actor = getattr(request.state, 'managed_actor', None)
     gateway = getattr(request.app.state, 'gateway_client', None)
     gateway_mode = bool(gateway and gateway.managed_config)
+    from api.desktop_security import local_gateway_fallback_allowed
+    host_workspace = local_gateway_fallback_allowed(request)
     def load() -> dict:
-        platform_identity = gateway_mode or _configured_gateway_mode()
+        # Gateway configuration belongs to the host. Native LAN visitors
+        # still supply their own browser profile unless they actually log in.
+        platform_identity = host_workspace and (gateway_mode or _configured_gateway_mode())
         return {
             "user_name": (actor.display_name or actor.username) if actor else ('' if platform_identity else config_store.get_user_name()),
             "identity_source": 'gateway' if actor or platform_identity else 'local',

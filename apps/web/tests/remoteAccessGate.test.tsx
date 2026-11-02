@@ -113,3 +113,30 @@ test('remote access check shows a loading status while the network is slow', asy
     await act(async () => root.unmount())
   }
 })
+
+
+test('remote access check failure keeps application content locked', async () => {
+  const { document } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => { throw new Error('network unavailable') }
+  const root = renderGate(document)
+  try {
+    await act(async () => {
+      root.render(<I18nProvider><RemoteAccessGate><div id="app-body">应用内容</div></RemoteAccessGate></I18nProvider>)
+    })
+    assert.equal(document.querySelector('#app-body'), null)
+    assert.ok(document.querySelector('[role="dialog"]'))
+    assert.ok(document.querySelector('[role="status"]')?.textContent)
+    globalThis.fetch = async () => Response.json({ required: true, local: false, authorized: true })
+    await act(async () => {
+      const retry = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('重试'))
+      assert.ok(retry)
+      retry.click()
+    })
+    assert.equal(document.querySelector('#app-body')?.textContent, '应用内容')
+  } finally {
+    globalThis.fetch = originalFetch
+    await act(async () => root.unmount())
+  }
+})

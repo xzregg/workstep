@@ -34,6 +34,10 @@ test('step execution settings save reuse success explicitly, with direct-trigger
       onSave={(value) => saved.push(value)} onRequestDelete={noop} onClose={noop} /></I18nProvider>))
     const checkbox = container.querySelector<HTMLInputElement>('#step-reuse-success')
     assert.ok(checkbox)
+    const keyRow = container.querySelector('#step-type')?.parentElement
+    assert.ok(keyRow?.contains(checkbox), 'reuse success belongs in the step identifier row')
+    assert.match(keyRow.textContent || '', /创建后自动开始/)
+    assert.equal(container.querySelector('.node-execution-settings'), null)
     assert.equal(checkbox.checked, false)
     assert.match(container.textContent || '', /成功后复用/)
     assert.match(container.textContent || '', /返工/)

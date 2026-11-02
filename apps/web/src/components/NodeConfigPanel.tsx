@@ -336,7 +336,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
             <label htmlFor="step-type" style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
               {t('flow.stepKey')}<span style={{ color: 'var(--danger)' }}> *</span>
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="node-step-key-row">
               <Input
                 id="step-type"
                 disabled={Boolean(lockedSource)}
@@ -345,10 +345,10 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                 required
                 aria-invalid={Boolean(keyError)}
                 aria-describedby={keyError ? 'step-type-error' : 'step-type-help'}
-                style={{ flex: 1, ...(keyError ? { borderColor: 'var(--danger)' } : {}) }}
+                style={keyError ? { borderColor: 'var(--danger)' } : undefined}
                 placeholder="frontend"
               />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <label className="node-execution-settings-toggle">
                 <input
                 type="checkbox"
                 disabled={Boolean(lockedSource)}
@@ -358,11 +358,18 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                   setDraft(updated)
                   onSave({ ...updated, key: normalizedKey })
                 }}
-                style={{ width: 16, height: 16 }}
                 />
                 {t('flow.autoStart')}
               </label>
+              <label className="node-execution-settings-toggle" htmlFor="step-reuse-success" title={t('flow.reuseSuccessHint')}>
+                <input id="step-reuse-success" type="checkbox"
+                  checked={draft.reuseSuccess === true}
+                  onChange={(event) => updateDraft('reuseSuccess', event.target.checked)}
+                  aria-describedby="step-reuse-success-help" />
+                {t('flow.reuseSuccess')}
+              </label>
             </div>
+            <span id="step-reuse-success-help" hidden>{t('flow.reuseSuccessHint')}</span>
             <div
               id={keyError ? 'step-type-error' : 'step-type-help'}
               style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: keyError ? 'var(--danger)' : 'var(--fg-3)', lineHeight: 1.4 }}
@@ -469,17 +476,6 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
               />
             </div>
           )}
-          <section className="node-execution-settings">
-            <div className="node-execution-settings-title">{t('flow.executionSettings')}</div>
-            <label className="node-execution-settings-toggle" htmlFor="step-reuse-success">
-              <input id="step-reuse-success" type="checkbox"
-                checked={draft.reuseSuccess === true}
-                onChange={(event) => updateDraft('reuseSuccess', event.target.checked)}
-                aria-describedby="step-reuse-success-help" />
-              {t('flow.reuseSuccess')}
-            </label>
-            <p id="step-reuse-success-help" className="node-execution-settings-help">{t('flow.reuseSuccessHint')}</p>
-          </section>
           <div>
             <div style={sectionTitle}>{t('flow.returnRouting')}</div>
             <label

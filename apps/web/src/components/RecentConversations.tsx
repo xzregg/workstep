@@ -110,11 +110,12 @@ export default function RecentConversations({ now = Date.now(), heading, collaps
           }}
           aria-current={active ? 'page' : undefined} title={cached?.title || entry.title}
           onClick={() => {
+            useChatListStore.getState().clearSelection()
             if (entry.kind === 'session') useSidebarActivityStore.getState().markSessionRead(entry.id)
             else useRecentActivityStore.getState().markTaskRead(entry)
             useRecentVisitsStore.getState().visit(entry)
             setActiveProject(project)
-            navigate(recentVisitPath(entry, project))
+            navigate(recentVisitPath(entry, project), { state: entry.kind === 'session' ? { revealChatPane: true } : null })
             dismiss?.()
           }}>
           <Icon name={entry.kind === 'task' ? 'workflow' : 'bot'} size={13} strokeWidth={2} />

@@ -17,7 +17,7 @@ def test_enabled_gateway_before_authorization_never_requires_a_local_profile(tmp
     monkeypatch.setattr(module, 'config_store', store)
     app = FastAPI(); app.include_router(router)
     app.state.gateway_client = SimpleNamespace(managed_config=None)
-    with TestClient(app) as client:
+    with TestClient(app, base_url='http://localhost', client=('127.0.0.1', 1234)) as client:
         data = client.get('/api/system-settings').json()
         assert data['identity_source'] == 'gateway'
         assert data['user_name'] == ''
@@ -37,3 +37,21 @@ def test_gateway_account_is_readonly_and_used_after_desktop_session_expires(monk
         assert data['identity_source'] == 'gateway'
         assert data['gateway_username'] == 'alice'
         assert client.put('/api/system-settings', headers=headers, json={'user_name':'fake'}).status_code == 403
+
+
+def test_lan_browser_with_native_access_keeps_its_own_profile(tmp_path, monkeypatch):
+    import services.config as config_module
+    import api.system_settings as module
+    from services.config import ConfigStore
+    monkeypatch.setattr(config_module, 'CONFIG_FILE', tmp_path / 'config.json')
+    store = ConfigStore()
+    store.set('gateway_platform', {'enabled': True, 'authorized': True})
+    store.set_user_name('宿主名称')
+    monkeypatch.setattr(module, 'config_store', store)
+    app = FastAPI()
+    app.include_router(router)
+    app.state.gateway_client = SimpleNamespace(managed_config=object())
+    with TestClient(app, client=('192.168.1.20', 1234)) as client:
+        data = client.get('/api/system-settings').json()
+        assert data['identity_source'] == 'local'
+        assert data['gateway_username'] == ''

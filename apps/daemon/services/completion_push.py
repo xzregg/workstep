@@ -59,7 +59,7 @@ def _send(subscription: dict, payload: dict, private_file: Path) -> None:
         subscription_info=subscription,
         data=json.dumps(payload, ensure_ascii=False),
         vapid_private_key=str(private_file),
-        vapid_claims={"sub": "https://github.com/xzregg/workstep"},
+        vapid_claims={"sub": "mailto:support@workstep.me"},
         ttl=3600,
     )
 

@@ -89,13 +89,13 @@ test('recent chats drag across projects while histories, sends, quick buttons an
     const otherPane = [...document.querySelectorAll('.chat-workspace-pane')].find(pane => pane.textContent?.includes('history-b'))!
     await act(async () => navigate('/chat?project=Beta&session=sb'))
     assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 3)
-    assert.equal(document.querySelector('.chat-workspace-pane--active'), selectedPane, 'navigation must change the selected pane rather than focus another pane')
+    assert.equal(document.querySelector('.chat-workspace-pane--active'), otherPane, 'navigation activates the pane already showing the conversation')
     assert.match(document.querySelector('.chat-workspace-pane--active')!.textContent!, /history-b/)
-    assert.match(otherPane.textContent!, /history-remote:c/, 'opening an already visible chat swaps it into the selected pane')
+    assert.match(selectedPane.textContent!, /history-remote:c/, 'activating an existing conversation preserves other pane contents')
     await act(async () => navigate('/chat?project=Alpha'))
-    assert.equal(document.querySelector('.chat-workspace-pane--active'), selectedPane)
-    assert.ok(selectedPane.querySelector('.chat-session-empty'), 'an unopened target also replaces the selected pane')
-    assert.match(otherPane.textContent!, /history-remote:c/)
+    assert.equal(document.querySelector('.chat-workspace-pane--active'), otherPane)
+    assert.ok(otherPane.querySelector('.chat-session-empty'), 'an unopened target replaces the selected pane')
+    assert.match(selectedPane.textContent!, /history-remote:c/)
     await dragRecent('title-sc')
     assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 3)
   } finally {

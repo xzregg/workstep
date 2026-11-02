@@ -526,7 +526,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         copy={panelCopy}
         headerActions={!embedded && (
           <>
-            {!compact && pane?.closeAction}
+            <div className="chat-header-hover-actions">
             {can('session.create') && <Button
               variant="ghost"
               size="sm"
@@ -547,6 +547,9 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
               {t('chatSession.viewArchive')}
             </Button>}
             {can('file.read') && <OpenLocationButton activeProject={activeProject} t={t} />}
+            </div>
+            <div className="chat-header-persistent-actions">
+            {!compact && pane?.closeAction}
             <ProjectGitButton project={activeProject} />
             {canOpenSettings && <Button
               variant="ghost"
@@ -557,6 +560,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
               <Icon name="settings" size={13} strokeWidth={2} />
               {t('taskList.settings')}
             </Button>}
+            </div>
           </>
         )}
         config={{

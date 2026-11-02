@@ -231,7 +231,7 @@ class WeComAdapter(ChannelAdapter):
             header = execution_header(metadata)
             details = [header] if header else []
             if card.message_id:
-                details.append('ID: ' + card.message_id)
+                details.append(card.message_id)
             compact_description = '\n'.join(details)
             description = ''
         identifier = '消息 ID: ' + card.message_id if card.message_id else ''

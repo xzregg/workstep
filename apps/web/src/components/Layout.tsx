@@ -123,6 +123,16 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [bulkDeleteError, setBulkDeleteError] = useState('')
   const activeSessionId = location.pathname === '/chat' ? searchParams.get('session') : null
+  const activeSessionProjectName = searchParams.get('project')
+  useEffect(() => {
+    // Navigation (including pane focus) invalidates a previous list selection.
+    // Read selection here so modifier clicks without navigation keep working.
+    const selection = useChatListStore.getState()
+    const selectedProject = useProjectStore.getState().projects.find(p => p.id === selection.selectionProjectId)
+    if (selection.selectedIds.size && !(selection.selectedIds.size === 1
+      && activeSessionId && selection.selectedIds.has(activeSessionId)
+      && selectedProject?.name === activeSessionProjectName)) clearSelection()
+  }, [activeSessionId, activeSessionProjectName, clearSelection])
   const mobileHeaderTitle = (activeProject && activeSessionId
     ? sessionsByProject[activeProject.id]?.find((session) => session.id === activeSessionId)?.title
     : null) || activeProject?.name || 'WorkStep'
@@ -908,7 +918,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             if (!e.metaKey && !e.ctrlKey && !e.shiftKey) {
                               useSidebarActivityStore.getState().markSessionRead(session.id)
                               useRecentVisitsStore.getState().visit({ kind: 'session', id: session.id, projectId: p.id, title: session.title })
-                              navigate(`/chat?project=${encodeURIComponent(p.name)}&session=${encodeURIComponent(session.id)}`)
+                              navigate(`/chat?project=${encodeURIComponent(p.name)}&session=${encodeURIComponent(session.id)}`, { state: { revealChatPane: true } })
                             }
                           }}
                           onDoubleClick={(e) => {

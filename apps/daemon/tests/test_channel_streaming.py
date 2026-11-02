@@ -210,7 +210,7 @@ async def test_wecom_running_reply_uses_independent_stop_card(conversation_type)
     assert bodies[1]['chatid'] == 'room'
     assert bodies[1]['template_card']['main_title']['title'] == '处理中'
     assert bodies[1]['template_card']['button_list'][0]['style'] == 3
-    assert bodies[1]['template_card']['main_title']['desc'] == 'ID: assistant'
+    assert bodies[1]['template_card']['main_title']['desc'] == 'assistant'
     assert not bodies[1]['template_card']['sub_title_text']
     assert bodies[0]['stream']['content'] == ('' if conversation_type == 'single' else '正在处理…')
     assert bodies[4]['stream']['content'] == '完整正文' + ('\n\n<@user>' if conversation_type == 'group' else '')
@@ -281,7 +281,7 @@ async def test_wecom_reply_control_uses_compact_execution_metadata():
         '点击中止可停止本次运行。\n消息 ID: assistant',
         (ChannelButton('0', '中止', danger=True),), running=True, message_id='assistant'))
     template = adapter._client.send_message.await_args.args[1]['template_card']
-    assert template['main_title']['desc'] == 'Codex * gpt-5.4\nID: assistant'
+    assert template['main_title']['desc'] == 'Codex * gpt-5.4\nassistant'
     assert template['sub_title_text'] == ''
     assert template['button_list'] == [{'text': '中止', 'key': '0', 'style': 3}]
     assert not adapter._reply_metadata

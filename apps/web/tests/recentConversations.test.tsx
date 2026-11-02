@@ -20,6 +20,7 @@ import type { RecentVisitTarget } from '../src/stores/recentVisitsStore'
 test('recent records are expanded immediately and clicks reopen the original target in its project', async () => {
   const { window } = installDomEnvironment()
   const oldProject = useProjectStore.getState()
+  const oldList = useChatListStore.getState()
   const projects = [
     { id: 'p', name: '项目已重命名', path: '/tmp/demo', steps: {}, workflows: [] },
     { id: 'q', name: '另一个项目', path: '/tmp/other', steps: {}, workflows: [] },
@@ -41,14 +42,20 @@ test('recent records are expanded immediately and clicks reopen the original tar
     assert.ok(rows()[1].querySelector('svg.lucide-bot'), 'conversations keep the existing bot icon')
     assert.equal(container.querySelector('input'), null)
     assert.ok(useRecentActivityStore.getState().targets.every(target => target.projectId !== 'removed'), 'unreadable records are excluded from status subscriptions')
+    useChatListStore.setState({ selectedIds: new Set(['previous']), selectionProjectId: 'p', selectAnchor: 'previous' })
     await act(async () => rows()[1].click())
+    assert.equal(useChatListStore.getState().selectedIds.size, 0, 'opening a recent session clears the previous sidebar selection')
+    assert.equal(useChatListStore.getState().selectAnchor, null)
     let url = new URL(container.querySelector('output')!.textContent!, 'http://localhost')
     assert.equal(url.pathname, '/chat')
     assert.equal(url.searchParams.get('project'), '项目已重命名')
     assert.equal(url.searchParams.get('session'), 's1')
     assert.equal(rows()[0].textContent, '原会话')
     assert.equal(rows()[0].getAttribute('aria-current'), 'page')
+    useChatListStore.setState({ selectedIds: new Set(['s1', 's2']), selectionProjectId: 'p', selectAnchor: 's1' })
     await act(async () => rows()[1].click())
+    assert.equal(useChatListStore.getState().selectedIds.size, 0, 'opening a recent task also clears sidebar selection')
+    assert.equal(useChatListStore.getState().selectionProjectId, null)
     url = new URL(container.querySelector('output')!.textContent!, 'http://localhost')
     assert.equal(url.pathname, '/tasks')
     assert.equal(url.searchParams.get('task'), 't1')
@@ -58,6 +65,7 @@ test('recent records are expanded immediately and clicks reopen the original tar
   } finally {
     await act(async () => root.unmount())
     useProjectStore.setState(oldProject)
+    useChatListStore.setState(oldList)
     await window.happyDOM.close()
   }
 })
