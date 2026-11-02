@@ -302,6 +302,7 @@ class AssistantRuntime:
         fast_model: str | None = None,
         vision_model: str | None = None,
         thinking_effort: str | None = None,
+        service_tier: str | None = None,
         permission_mode: str | None = None,
         plan_mode: bool | None = None,
         goal_mode: bool | None = None,
@@ -329,6 +330,9 @@ class AssistantRuntime:
 
             require_user_actor()
         normalized_effort = (thinking_effort or "").strip()
+        normalized_service_tier = (service_tier or "").strip()
+        if normalized_service_tier not in {"", "default", "priority", "fast", "ultrafast"}:
+            raise ValueError("不支持的速度档位")
         if not normalized_effort:
             # “默认”表示不覆盖，由引擎自己的配置决定；只有协调助手
             # 有全局协调默认这一层显式回退。
@@ -501,6 +505,7 @@ class AssistantRuntime:
             "assistant_message_id": assistant_message_id,
             "session_id": session.session_id,
             "thinking_effort": normalized_effort or None,
+            "service_tier": normalized_service_tier or None,
             "permission_mode": normalized_permission or None,
             "plan_mode": bool(plan_mode),
             "goal_mode": bool(goal_mode),
@@ -2323,6 +2328,11 @@ class AssistantRuntime:
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )
+        if engine_id in {"codex", "codex_sdk"} and turn_state.get("service_tier"):
+            config_overrides = {
+                **(config_overrides or {}),
+                "service_tier": turn_state["service_tier"],
+            }
         if run_key:
             turn_state["resolved_provider_id"] = provider_id
             selected, snapshot = await self._usage_provider_snapshot(

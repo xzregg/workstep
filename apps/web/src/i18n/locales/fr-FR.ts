@@ -656,6 +656,12 @@ export const frFR: Messages = {
   coord: {
     ...zhCN.coord,
     engine: "Moteur",
+    speed: '速度',
+    speedDefault: '默认',
+    speedStandard: '标准',
+    speedFast: '快速',
+    speedUltrafast: '超快',
+    speedTitle: '默认沿用 Codex 和供应商配置；加速档位需供应商、模型及账号支持，可能增加用量。',
     thinkingEffort: "Intensité du raisonnement",
     thinkingEffortDefault: "Par défaut",
     thinkingLevels: {

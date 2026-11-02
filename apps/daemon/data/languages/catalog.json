@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "154d6e56a6d3ad6a83106d3323c7b8c986ac1d243925e7d46fa21d3b6209b042",
+  "revision": "6f0c4f18d8742724ae328cde5c616c99230b2a5cb6c91f3511cae918f5a90f83",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -1524,6 +1524,12 @@
     "coord.vision": "图片理解",
     "coord.visionTitle": "图片理解模型：主模型不支持图片输入时，用于分析图片和截图内容；从下一条消息生效",
     "coord.visionFollow": "图片理解（跟随推理）",
+    "coord.speed": "速度",
+    "coord.speedDefault": "默认",
+    "coord.speedStandard": "标准",
+    "coord.speedFast": "快速",
+    "coord.speedUltrafast": "超快",
+    "coord.speedTitle": "默认沿用 Codex 和供应商配置；加速档位需供应商、模型及账号支持，可能增加用量。",
     "coord.thinkingEffort": "思考强度",
     "coord.thinkingEffortTitle": "思考强度：控制本次对话 LLM 的推理投入程度；从下一条消息生效",
     "coord.thinkingEffortDefault": "默认",

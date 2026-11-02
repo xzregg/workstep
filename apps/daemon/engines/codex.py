@@ -389,6 +389,12 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 cmd.extend(
                     ["-c", f"model_reasoning_effort={reasoning_effort}"]
                 )
+            if codex_config.get("service_tier"):
+                cmd.extend(["-c", "service_tier=" + json.dumps(codex_config["service_tier"])])
+                if codex_config["service_tier"] in {"priority", "fast", "ultrafast"}:
+                    cmd.extend(["-c", "features.fast_mode=true"])
+                if codex_config["service_tier"] == "ultrafast":
+                    cmd.extend(["-c", "features.ultrafast_mode=true"])
             cmd.extend([
                 "-c", 'model_reasoning_summary="detailed"',
                 "-c", "model_supports_reasoning_summaries=true",

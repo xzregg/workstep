@@ -226,6 +226,8 @@ SDK 可以封装子进程、JSONL、JSON-RPC 或进程内消息流；这些都�
 
 ### 3.5 `acp_events` 能力声明
 
+普通对话支持逐轮指定 Codex CLI/SDK 的 `service_tier`，由对话配置的“速度”菜单选择。默认省略覆盖并沿用原生／上游配置；标准为显式 `default`，快速为 `priority`，超快为 `ultrafast`。加速档位同时打开 `features.fast_mode`，超快另打开 `features.ultrafast_mode`；不对供应商能力或计费作推断，不将选项可选当作上游已接受加速的证据。会话内选择保存在前端本地，换供应商／引擎和上下文交接时重置，不改写供应商或 Codex 的全局配置。
+
 Codex SDK 在线程创建与恢复时默认传入 `tools.update_plan.enabled=true`，启用 Codex 0.160 默认关闭的待办进度工具；引擎自定义配置显式设置为 `false` 时仍尊重关闭。该工具不切换计划模式或目标模式，原生 `turn/plan/updated` 通知继续通过 `plan_event()` 归一为 ACP `plan`。回归见 `tests/test_p2_engines.py` 的 SDK 启动配置与计划通知测试。
 
 **声明 = 实际**：每个引擎声明自己实际产出的 ACP 词汇事件集合（`frozenset[str]`），有原生等价就映射，无来源不发、不合成默认值。**能力覆盖原则**：引擎原生支持某类语义（子代理/后台任务、计划、思考、审批等），就必须映射为对应的 ACP/编排事件，不得降级为普通 `tool_call` 或丢弃；`acp_events` 缺席某类型即承诺“本引擎无此来源”。新引擎接入时先列出下游原生能力清单，对照 `ACP_EVENTS` 逐项打勾。契约测试（`tests/test_engine_base_hierarchy.py`）保证：

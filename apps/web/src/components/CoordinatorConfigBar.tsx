@@ -40,6 +40,8 @@ export interface CoordinatorConfigBarProps {
   visionModel?: string
   /** '' = follow the engine default. */
   thinkingEffort?: string
+  serviceTier?: string
+  onServiceTierChange?: (value: string) => void
   /** Effective default shown when thinkingEffort is empty. */
   defaultThinkingEffort?: string
   /** Enabled providers compatible with the selected engine. */
@@ -90,7 +92,7 @@ interface MenuFieldProps {
   disabled?: boolean
   options: MenuOption[]
   onChange: (value: string) => void
-  icon: 'terminal' | 'sparkles' | 'sliders-horizontal' | 'image'
+  icon: 'terminal' | 'sparkles' | 'sliders-horizontal' | 'image' | 'zap'
   autoOpen?: boolean
 }
 
@@ -178,6 +180,8 @@ export default function CoordinatorConfigBar({
   fastModel,
   visionModel,
   thinkingEffort = '',
+  serviceTier = '',
+  onServiceTierChange,
   defaultThinkingEffort = '',
   providers = [],
   providerId = '',
@@ -215,6 +219,13 @@ export default function CoordinatorConfigBar({
   const catalogScope = `${engineId}::${supportsProvider ? providerId : ''}::${projectId || ''}`
   const models = catalog.scope === catalogScope ? catalog.models : []
   const thinkingOptions = engineEffortOptions(selectedEngine)
+  const showSpeed = ['codex', 'codex_sdk'].includes(engineId) && onServiceTierChange
+  const speedOptions = [
+    { value: '', label: t('coord.speedDefault') },
+    { value: 'default', label: t('coord.speedStandard') },
+    { value: 'priority', label: t('coord.speedFast') },
+    { value: 'ultrafast', label: t('coord.speedUltrafast') },
+  ]
   useEffect(() => {
     if (!engineId) {
       setCatalog({ scope: catalogScope, models: [] })
@@ -359,6 +370,18 @@ export default function CoordinatorConfigBar({
               onChange={onStepFieldChange}
             />
           )}
+          {showSpeed && (
+            <MenuField
+              label={t('coord.speed')}
+              title={t('coord.speedTitle')}
+              value={serviceTier}
+              placeholder={t('coord.speedDefault')}
+              disabled={disabled}
+              icon="zap"
+              onChange={onServiceTierChange}
+              options={speedOptions}
+            />
+          )}
         </>
       ) : (
         <>
@@ -442,6 +465,17 @@ export default function CoordinatorConfigBar({
                   {thinkingEffortLabel(option.value, t, thinkingOptions)}
                 </option>
               ))}
+            </Select>
+          )}
+          {showSpeed && (
+            <Select
+              value={serviceTier}
+              disabled={disabled}
+              onChange={(event) => onServiceTierChange(event.target.value)}
+              title={t('coord.speedTitle')}
+              className="coordinator-config-select"
+            >
+              {speedOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
             </Select>
           )}
         </>

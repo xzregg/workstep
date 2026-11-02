@@ -83,6 +83,7 @@ export interface ChatInputEngineConfig {
   visionModel?: string
   /** '' = follow the engine default. */
   thinkingEffort?: string
+  serviceTier?: string
   /** Effective thinking effort shown when thinkingEffort is empty. */
   defaultThinkingEffort?: string
   /** Enabled providers for the built-in Pydantic AI engine's dynamic config. */
@@ -106,6 +107,7 @@ export interface ChatInputEngineConfig {
   onFastModelChange: (model: string) => void
   onVisionModelChange?: (model: string) => void
   onThinkingEffortChange?: (value: string) => void
+  onServiceTierChange?: (value: string) => void
   /** Step mode exposes the selected engine's non-sensitive workflow fields. */
   stepFields?: EngineConfigField[]
   stepValues?: Record<string, string>
@@ -1244,6 +1246,8 @@ export default function ChatInput({
                       hint={config.hint}
                       engineTitle={config.engineTitle}
                       stepFields={config.stepFields}
+                      serviceTier={config.serviceTier}
+                      onServiceTierChange={config.onServiceTierChange}
                       stepValues={config.stepValues}
                       onStepFieldChange={config.onStepFieldChange}
                       requireCoordinator={config.requireCoordinator}

@@ -8,6 +8,44 @@ import { I18nProvider } from '../src/i18n'
 import { useChatSessionActions } from '../src/hooks/useChatSessionActions'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
 
+for (const [engine, tier, expected] of [
+  ['codex_sdk', 'priority', 'priority'], ['codex', 'default', 'default'],
+  ['codex_sdk', '', undefined], ['claude', 'priority', undefined],
+] as const) {
+  test(`chat sends speed override only for Codex (${engine}, ${tier || 'inherited'})`, async () => {
+    const { window } = installDomEnvironment()
+    const original = { chat: chatSessionApi.chat, list: chatSessionApi.list }
+    let actions!: ReturnType<typeof useChatSessionActions>
+    let selected: string | undefined
+    function Harness() {
+      actions = useChatSessionActions({
+        sessionId: 'speed', projectId: 'p', running: false,
+        engineConfig: { engine, model: '', fastModel: '', visionModel: '', thinkingEffort: '', providerId: 'third-party', serviceTier: tier },
+        permissionMode: '', planMode: false, goalMode: false, effectiveEngine: engine,
+        onSessionIdChange: () => {}, onTitleChange: () => {},
+      })
+      return null
+    }
+    const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
+    try {
+      chatSessionApi.chat = async (_id, _project, _content, _key, options) => {
+        selected = options?.service_tier
+        assert.equal(options?.provider_id, 'third-party')
+        return { session_id: 'speed', turn_id: 't', assistant_message_id: 'reply', status: 'queued' }
+      }
+      chatSessionApi.list = async () => ({ sessions: [] })
+      await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+      await act(async () => { assert.equal(await actions.sendMessageNow('hi'), true) })
+      assert.equal(selected, expected)
+    } finally {
+      await act(async () => root.unmount())
+      Object.assign(chatSessionApi, original)
+      useChatSessionStore.getState().resetSession('speed')
+      await window.happyDOM.close()
+    }
+  })
+}
+
 for (const scenario of ['normal', 'live', 'list-failed']) {
   const live = scenario === 'live'
   const listFailed = scenario === 'list-failed'

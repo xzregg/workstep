@@ -1637,7 +1637,8 @@ async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch, t
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_injects_custom_config_and_skips_managed_keys(tmp_path, monkeypatch):
+@pytest.mark.parametrize("service_tier", [None, "default", "priority", "ultrafast"])
+async def test_codex_spawn_injects_custom_config_and_skips_managed_keys(tmp_path, monkeypatch, service_tier):
     """自定义 config 覆盖按 key=value 透传 -c；已托管的键不重复注入。"""
     captured = {}
 
@@ -1662,7 +1663,10 @@ async def test_codex_spawn_injects_custom_config_and_skips_managed_keys(tmp_path
         },
     )
 
-    async for _event in CodexEngine().spawn(prompt="hello", cwd=str(tmp_path)):
+    async for _event in CodexEngine().spawn(
+        prompt="hello", cwd=str(tmp_path),
+        config_overrides={"service_tier": service_tier} if service_tier else None,
+    ):
         pass
 
     cmd = captured["cmd"]
@@ -1673,6 +1677,12 @@ async def test_codex_spawn_injects_custom_config_and_skips_managed_keys(tmp_path
     # 已由 WorkStep 的推理强度设置的键，自定义覆盖不得重复注入。
     assert not any(item.startswith("model_reasoning_effort=") and item.endswith("=low") for item in configs)
     assert "model_reasoning_effort=high" in configs
+    if service_tier:
+        assert f'service_tier="{service_tier}"' in configs
+        if service_tier == "ultrafast":
+            assert "features.ultrafast_mode=true" in configs
+    else:
+        assert not any(item.startswith("service_tier=") for item in configs)
 
 
 @pytest.mark.anyio
@@ -4213,7 +4223,8 @@ def test_codex_sdk_spawn_error_without_sdk(monkeypatch):
 @pytest.mark.parametrize("effort", ["high", "none", "max", "ultra"])
 @pytest.mark.parametrize("source", ["engine_default", "turn_override"])
 @pytest.mark.parametrize("session_id", [None, "thread-existing"])
-async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_path, monkeypatch, effort, source, session_id):
+@pytest.mark.parametrize("service_tier", [None, "default", "priority", "ultrafast"])
+async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_path, monkeypatch, effort, source, session_id, service_tier):
     """自定义 config 写入 thread config；已托管的键不被覆盖。"""
     import openai_codex as codex_module
 
@@ -4266,6 +4277,7 @@ async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_
     async for _event in CodexSDKEngine().spawn(
         prompt="hi", cwd=str(tmp_path), session_id=session_id,
         thinking_effort=effort if source == "turn_override" else None,
+        config_overrides={"service_tier": service_tier} if service_tier else None,
     ):
         pass
 
@@ -4274,6 +4286,14 @@ async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_
     # WorkStep 的推理强度优先，自定义的 low 不得覆盖。
     assert config["model_reasoning_effort"] == effort
     assert config["tools.update_plan.enabled"] == "false"
+    if service_tier:
+        assert config["service_tier"] == service_tier
+        if service_tier == "ultrafast":
+            assert config["features.ultrafast_mode"] is True
+        if service_tier == "priority":
+            assert config["features.fast_mode"] is True
+    else:
+        assert "service_tier" not in config
 
 
 @pytest.mark.anyio

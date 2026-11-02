@@ -73,6 +73,7 @@ class ChatMessageRequest(BaseSchema):
     vision_model: str | None = None
     provider_id: str | None = None
     thinking_effort: str | None = None
+    service_tier: str | None = None
     permission_mode: str | None = None
     plan_mode: bool | None = None
     goal_mode: bool | None = None
@@ -435,6 +436,7 @@ async def chat_message(
                 vision_model=req.vision_model,
                 provider_id=req.provider_id,
                 thinking_effort=req.thinking_effort,
+                service_tier=req.service_tier,
                 permission_mode=req.permission_mode,
                 plan_mode=req.plan_mode,
                 goal_mode=req.goal_mode,

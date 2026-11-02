@@ -3,6 +3,24 @@ import test from 'node:test'
 
 import { chatSessionApi } from '../src/api/conversations'
 
+test('chat speed uses native service tier values and omits inherited defaults', async () => {
+  const originalFetch = globalThis.fetch
+  const bodies: Record<string, unknown>[] = []
+  globalThis.fetch = async (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)))
+    return Response.json({ session_id: 's', turn_id: 't' })
+  }
+  try {
+    for (const tier of ['', 'default', 'priority', 'ultrafast']) {
+      await chatSessionApi.chat('s', 'p', 'hi', 'key', { service_tier: tier })
+    }
+    assert.equal(Object.hasOwn(bodies[0], 'service_tier'), false)
+    assert.deepEqual(bodies.slice(1).map(body => body.service_tier), ['default', 'priority', 'ultrafast'])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('session writes include the bound project in URL and body', async () => {
   const originalFetch = globalThis.fetch
   const calls: Array<{ url: string; body: string }> = []

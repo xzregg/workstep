@@ -154,6 +154,34 @@ async def _wait_turn(module, turn_id, timeout=5.0):
     raise AssertionError("turn did not finish")
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("tier", [None, "default", "priority", "ultrafast"])
+async def test_chat_api_codex_service_tier_is_per_turn(chat_module, monkeypatch, tier):
+    import main
+
+    module, _, manager, project, _ = chat_module
+    captured = []
+
+    async def fake_invoke(*args, **kwargs):
+        captured.append(kwargs.get("config_overrides"))
+        return "ok", [], "native-thread"
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    session = module.create_session(project.id, engine="codex_sdk")
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        for index, requested in enumerate([tier, None]):
+            response = await client.post(
+                f"/api/chat-sessions/{session['id']}/chat",
+                json={"project_id": project.id, "content": "hi", "service_tier": requested},
+                headers={"Idempotency-Key": f"speed-{index}"},
+            )
+            assert response.status_code == 200, response.text
+            assert await _wait_turn(module, response.json()["turn_id"]) == "completed"
+    assert captured == [{"service_tier": tier} if tier else None, None]
+
+
 @pytest.fixture
 async def chat_module(tmp_path, monkeypatch):
     import agent_assistants.chat_session as chat_service

@@ -413,6 +413,7 @@ export interface ChatMessageOptions {
   vision_model?: string
   provider_id?: string
   thinking_effort?: string
+  service_tier?: string
   permission_mode?: string
   plan_mode?: boolean
   goal_mode?: boolean
@@ -514,6 +515,7 @@ export const chatSessionApi = {
         vision_model: options.vision_model || undefined,
         provider_id: options.provider_id || undefined,
         thinking_effort: options.thinking_effort || undefined,
+        service_tier: options.service_tier || undefined,
         permission_mode: options.permission_mode || undefined,
         plan_mode: options.plan_mode || undefined,
         goal_mode: options.goal_mode || undefined,

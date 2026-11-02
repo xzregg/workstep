@@ -492,6 +492,12 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         )
         if reasoning_effort:
             thread_config["model_reasoning_effort"] = reasoning_effort
+        if sdk_config.get("service_tier"):
+            thread_config["service_tier"] = sdk_config["service_tier"]
+            if sdk_config["service_tier"] in {"priority", "fast", "ultrafast"}:
+                thread_config["features.fast_mode"] = True
+            if sdk_config["service_tier"] == "ultrafast":
+                thread_config["features.ultrafast_mode"] = True
         from services.project_storage import data_directory
         from pathlib import Path
         storage_root = await asyncio.to_thread(data_directory, cwd)

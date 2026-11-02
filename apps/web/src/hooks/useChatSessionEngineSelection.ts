@@ -112,10 +112,13 @@ export function useChatSessionEngineSelection({
   const setThinkingEffort = useCallback((thinkingEffort: string) => {
     setConfig((current) => ({ ...current, thinkingEffort }))
   }, [])
+  const setServiceTier = useCallback((serviceTier: string) => {
+    setConfig((current) => ({ ...current, serviceTier }))
+  }, [])
   const reset = useCallback(() => { setConfig({ ...EMPTY_ENGINE_CONFIG }) }, [])
 
   return {
     config, setDefaults, restoreSession, applyHandoff, chooseEngine, chooseProvider,
-    setModel, setFastModel, setVisionModel, setThinkingEffort, reset,
+    setModel, setFastModel, setVisionModel, setThinkingEffort, setServiceTier, reset,
   }
 }

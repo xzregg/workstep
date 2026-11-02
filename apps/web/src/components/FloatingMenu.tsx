@@ -44,7 +44,7 @@ export interface FloatingMenuProps {
   side?: 'right' | 'top' | 'bottom'
   /** Called with true/false while the pointer enters/leaves the menu (hover flyouts). */
   onHoverChange?: (hovering: boolean) => void
-  icon?: 'terminal' | 'sparkles' | 'sliders-horizontal' | 'image' | 'shield'
+  icon?: 'terminal' | 'sparkles' | 'sliders-horizontal' | 'image' | 'shield' | 'zap'
   width?: number
   title?: string
   /** Show a filter input. Defaults to true when there are more than 7 options. */

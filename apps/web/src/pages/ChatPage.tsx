@@ -127,6 +127,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     chooseEngine, chooseProvider, setModel: setSelectedModel,
     setFastModel: setSelectedFastModel, setVisionModel: setSelectedVisionModel,
     setThinkingEffort: setSelectedThinkingEffort, reset: resetEngineSelection,
+    setServiceTier,
   } = useChatSessionEngineSelection({
     projectId: routeProjectId || activeProject?.id || '',
     sessionId, savedSessionId: sessionParam, engines: sharedEngines, providers,
@@ -575,6 +576,8 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
           visionModel: selectedVisionModel,
           showVision: true,
           thinkingEffort: selectedThinkingEffort,
+          serviceTier: engineConfig.serviceTier || '',
+          onServiceTierChange: setServiceTier,
           defaultThinkingEffort: assistantConfig?.configured.thinking_effort
             || assistantConfig?.resolved?.thinking_effort
             || '',

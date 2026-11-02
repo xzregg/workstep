@@ -19,6 +19,8 @@ export interface ChatEngineConfigState {
   fastModel: string
   visionModel: string
   thinkingEffort: string
+  /** Empty inherits the Codex/provider configuration. */
+  serviceTier?: string
   /** 用户显式选了供应商「跟随默认」（区别于“从未选过”），发送时发 '' 以持久化清空。 */
   providerCleared?: boolean
 }
@@ -57,6 +59,7 @@ export function hasChatEngineConfig(config: ChatEngineConfigState): boolean {
   return Boolean(
     config.engine || config.providerId || config.model
     || config.fastModel || config.visionModel || config.thinkingEffort
+    || config.serviceTier
     || config.providerCleared,
   )
 }
@@ -96,6 +99,7 @@ export function loadChatEngineConfig(projectId: string, sessionId: string): Chat
       fastModel: parsed_string(parsed.fastModel),
       visionModel: parsed_string(parsed.visionModel),
       thinkingEffort: parsed_string(parsed.thinkingEffort),
+      ...(parsed.serviceTier ? { serviceTier: parsed_string(parsed.serviceTier) } : {}),
       providerCleared: parsed.providerCleared === true,
     }
   } catch {
@@ -129,5 +133,8 @@ export function clearIncompatibleProvider(
     engine.supports_provider
     && (engine.provider_protocols || []).includes(provider.protocol),
   )
-  return compatible ? config : { ...config, providerId: '' }
+  if (compatible) return config
+  const next = { ...config, providerId: '' }
+  delete next.serviceTier
+  return next
 }

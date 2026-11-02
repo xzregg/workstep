@@ -53,6 +53,8 @@ export function useChatSessionActions({
         fast_model: engineConfig.fastModel || undefined,
         vision_model: engineConfig.visionModel || undefined,
         thinking_effort: engineConfig.thinkingEffort || undefined,
+        service_tier: ['codex', 'codex_sdk'].includes(effectiveEngine)
+          ? engineConfig.serviceTier || undefined : undefined,
         permission_mode: permissionMode || undefined,
         plan_mode: goalCommand ? false : planMode || undefined,
         goal_mode: goalCommand ? false : goalMode && effectiveEngine === 'codex_sdk' || undefined,
