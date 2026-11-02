@@ -13,7 +13,7 @@ function render(hash = '', lang = 'en-US') {
 describe('public information without pricing promises or personal attribution', () => {
   it('keeps terms, support and the license but removes free-pricing entries', () => {
     const html = render()
-    expect(html).toContain('href="mailto:xzregg@gmail.com"')
+    expect(html).toContain('href="mailto:support@workstep.me"')
     expect(html).toContain('Apache License 2.0')
     expect(html).toContain('href="#terms"')
     expect(html).not.toContain('href="#pricing"')
@@ -38,7 +38,7 @@ describe('public information without pricing promises or personal attribution', 
     it(`uses actual ${locale} privacy copy without a checkout or fee claim`, () => {
       const html = render('#privacy', locale)
       expect(html).toContain('Cloudflare Web Analytics')
-      expect(html).toContain('href="mailto:xzregg@gmail.com"')
+      expect(html).toContain('href="mailto:support@workstep.me"')
       expect(html).not.toContain('Creem')
       expect(html).not.toContain('independent developer')
       expect(editorialCopy[locale].supportNotice.length).toBeGreaterThan(20)
