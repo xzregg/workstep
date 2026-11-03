@@ -210,6 +210,10 @@ export const ar: Messages = {
   },
   chatInput: {
     ...zhCN.chatInput,
+    workflowMode: "وضع سير العمل",
+    removeWorkflowSkill: "إزالة مهارة التنفيذ",
+    workflowSkillEmpty: "لم يتم تحميل workstep-exec. فعّلها في مهارات المشروع.",
+    taskLinkUnavailable: "تعذر فتح هذه المهمة. تحقق من وجود المشروع والمهمة.",
     stopGenerating: "إيقاف التوليد",
     imageUploadFailed: "تعذر رفع الصورة",
     fileUploadFailed: "تعذر رفع الملف",
@@ -348,6 +352,7 @@ export const ar: Messages = {
     quickReviewPrompt: "أضف نقاط مراجعة وسياسات إعادة محاولة مناسبة عند الفشل إلى الخطوات الأساسية.",
     quickSimplifyPrompt: "بسّط سير العمل الحالي وادمج الخطوات الزائدة دون التأثير في الهدف.",
     agent: "التنسيق",
+    proposalUnavailable: 'بيانات المقترح غير مكتملة ولا يمكن تطبيقها. اطلب من مساعد سير العمل إنشاء المقترح مجددًا.',
     sendFailed: "تعذر الإرسال. أعد المحاولة.",
     restoreSteps: "استعادة",
     me: "أنا",

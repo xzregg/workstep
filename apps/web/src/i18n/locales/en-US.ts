@@ -1084,6 +1084,10 @@ export const enUS: Messages = {
     },
   },
   chatInput: {
+    workflowMode: "Workflow mode",
+    removeWorkflowSkill: "Remove Workflow mode skill",
+    workflowSkillEmpty: "This engine has not loaded workstep-exec. Enable it in project skills.",
+    taskLinkUnavailable: "Unable to open this task. Check that the project and task still exist.",
     stopGenerating: 'Stop generating',
     imageUploadFailed: 'Image upload failed',
     fileUploadFailed: 'File upload failed',
@@ -1186,6 +1190,7 @@ export const enUS: Messages = {
   aiFlow: {
     title: 'AI Flow Assistant',
     configLoadFailed: 'Failed to load coordinator config',
+    proposalUnavailable: 'The proposal data is incomplete and cannot be applied. Ask the workflow assistant to generate it again.',
     sendFailed: 'Failed to send, please retry',
     stopFailed: 'Failed to stop, please retry',
     resetFailed: '重置会话失败，请重试',

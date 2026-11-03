@@ -1633,7 +1633,7 @@ async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch, t
     assert merged["permissions"] == {"ask": ["Bash(rm\\s)"]}
     assert merged["model"] == "sonnet"
     assert "env" not in merged
-    assert merged["skillOverrides"] == {"workstep:workstep-cli": "on"}
+    assert merged["skillOverrides"] == {"workstep:workstep-cli": "on", "workstep:workstep-exec": "on"}
 
 
 @pytest.mark.anyio
@@ -2887,7 +2887,7 @@ async def test_claude_agent_sdk_spawn_injects_custom_settings_env_and_options(mo
     assert merged["permissions"] == {"ask": ["Bash(rm\\s)"]}
     assert merged["model"] == "sonnet"
     assert "env" not in merged
-    assert merged["skillOverrides"] == {"workstep:workstep-cli": "on"}
+    assert merged["skillOverrides"] == {"workstep:workstep-cli": "on", "workstep:workstep-exec": "on"}
 
 
 @pytest.mark.anyio

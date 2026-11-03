@@ -28,8 +28,8 @@ async def test_engine_inspection_only_lists_its_project_skills(tmp_path):
 
     # Inspection reports the SkillCenter whitelist, not each engine's native
     # project discovery roots. Existing .workstep skills are adopted enabled.
-    assert {skill["name"] for skill in codex["skills"]} == {"shared", "workstep-cli"}
-    assert {skill["name"] for skill in claude["skills"]} == {"shared", "workstep-cli"}
+    assert {skill["name"] for skill in codex["skills"]} == {"shared", "workstep-cli", "workstep-exec"}
+    assert {skill["name"] for skill in claude["skills"]} == {"shared", "workstep-cli", "workstep-exec"}
 
 
 @pytest.mark.asyncio
@@ -64,10 +64,10 @@ async def test_engine_inspection_returns_engine_owned_input_items(tmp_path):
     assert [item["name"] for item in claude["input_items"][:4]] == [
         "plan", "reasoning", "status", "compact",
     ]
-    assert next(item for item in claude["input_items"] if item["name"] == "shared")["insert_text"] == "/shared "
-    assert next(item for item in claude["input_items"] if item["name"] == "workstep-cli")["insert_text"] == "/workstep-cli "
+    assert next(item for item in claude["input_items"] if item["name"] == "shared")["insert_text"] == "/workstep:shared "
+    assert next(item for item in claude["input_items"] if item["name"] == "workstep-cli")["insert_text"] == "/workstep:workstep-cli "
     assert [item["name"] for item in openclaw["input_items"]] == [
-        "plan", "reasoning", "status", "shared", "workstep-cli",
+        "plan", "reasoning", "status", "shared", "workstep-cli", "workstep-exec",
     ]
 
 
@@ -75,9 +75,9 @@ async def test_engine_inspection_returns_engine_owned_input_items(tmp_path):
 async def test_engine_inspection_without_project_skills_returns_builtin_skill(tmp_path):
     result = await OpenClawEngine().inspect_capabilities(str(tmp_path))
 
-    assert [item["name"] for item in result["skills"]] == ["workstep-cli"]
+    assert [item["name"] for item in result["skills"]] == ["workstep-cli", "workstep-exec"]
     assert [item["name"] for item in result["input_items"]] == [
-        "plan", "reasoning", "status", "workstep-cli",
+        "plan", "reasoning", "status", "workstep-cli", "workstep-exec",
     ]
 
 

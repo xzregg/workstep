@@ -19,12 +19,18 @@ const taskChatSource = await readFile(new URL('../src/components/AiTaskCreateCha
 
 test('detects a slash skill query at the cursor', () => {
   assert.equal(slashInputQuery('/', 1), '')
-  assert.equal(slashInputQuery('/rev', 4), null)
+  assert.equal(slashInputQuery('/rev', 4), 'rev')
+  assert.equal(slashInputQuery(' \t\n/rev', 7), 'rev')
   assert.equal(slashInputQuery('说明\n/', 4), '')
-  assert.equal(slashInputQuery('请使用/', 4), '')
-  assert.equal(slashInputQuery('前文/后文', 3), '')
-  assert.equal(slashInputQuery('请使用 /rev', 8), null)
+  assert.equal(slashInputQuery('请使用/', 4), null)
+  assert.equal(slashInputQuery('前文/后文', 3), null)
+  assert.equal(slashInputQuery('请使用 /rev', 8), 'rev')
+  assert.equal(slashInputQuery('正文\t/re', 6), 're')
   assert.equal(slashInputQuery('/rev later', 10), null)
+  assert.equal(slashInputQuery('https://', 8), null)
+  assert.equal(slashInputQuery('//', 2), null)
+  assert.equal(slashInputQuery('/rev ', 5), null)
+  assert.equal(slashInputQuery('/rev later', 4), 'rev')
 })
 
 test('uses the invocation text returned by the current engine', () => {
@@ -34,11 +40,17 @@ test('uses the invocation text returned by the current engine', () => {
     value: '$deploy ',
     cursor: 8,
   })
-  assert.deepEqual(applySlashInputItem('说明\n/', 4, {
+  assert.deepEqual(applySlashInputItem(' \t/rev 后文', 6, {
     insert_text: '/review ',
   }), {
-    value: '说明\n/review ',
-    cursor: 11,
+    value: ' \t/review  后文',
+    cursor: 10,
+  })
+  assert.deepEqual(applySlashInputItem('正文/', 3, { insert_text: '/review ' }), {
+    value: '正文/', cursor: 3,
+  })
+  assert.deepEqual(applySlashInputItem('正文 /rev后文', 7, { insert_text: '/review ' }), {
+    value: '正文 /review 后文', cursor: 11,
   })
 })
 

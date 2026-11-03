@@ -1068,6 +1068,10 @@ export const zhTW: Messages = {
     },
   },
   chatInput: {
+    workflowMode: "流程模式",
+    removeWorkflowSkill: "移除流程模式技能",
+    workflowSkillEmpty: "目前引擎未載入流程模式技能，請在專案技能中啟用",
+    taskLinkUnavailable: "無法開啟此任務，請檢查專案或任務是否仍然存在",
     stopGenerating: '停止生成',
     imageUploadFailed: '圖片上傳失敗',
     fileUploadFailed: '檔案上傳失敗',
@@ -1170,6 +1174,7 @@ export const zhTW: Messages = {
   aiFlow: {
     title: 'AI 流程助手',
     configLoadFailed: '協調引擎配置載入失敗',
+    proposalUnavailable: '方案資料不完整，暫時無法套用。請讓流程助手重新產生方案。',
     sendFailed: '傳送失敗，請重試',
     stopFailed: '停止失敗，請重試',
     resetFailed: '重置会话失败，请重试',

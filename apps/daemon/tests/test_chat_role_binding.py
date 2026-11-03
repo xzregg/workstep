@@ -235,6 +235,48 @@ async def test_binding_api_validation_isolation_and_slow_io_canary(chat_module, 
             assert (await client.get(url, params={'project_id': project.id})).status_code == 403
 
 
+@pytest.mark.parametrize("source", [None, "managed"])
+async def test_host_binding_does_not_require_engine_install(chat_module, role_library, monkeypatch, source):
+    import main
+    from types import SimpleNamespace
+    from api import chat_roles
+    from services.gateway_client.policy import ManagedPolicyCache, require_managed_capability
+    from services.remote_access import ActorSnapshot, actor_context
+
+    module, _, manager, project, _ = chat_module
+    _, role, _ = role_library
+    sid = module.create_session(project.id)['id']
+    monkeypatch.setattr(main, 'chat_session_module', module)
+    monkeypatch.setattr(main, 'project_manager', manager)
+    monkeypatch.setattr(main, 'gateway_client', SimpleNamespace(
+        managed_config=object(), policy_cache=ManagedPolicyCache(),
+    ))
+    app = FastAPI()
+    app.include_router(chat_roles.router)
+    url = f'/api/chat-sessions/{sid}/role-binding'
+    actor = ActorSnapshot('user-1', 'alice', 'device-1', 'PC', source) if source else None
+    with actor_context(actor):
+        with pytest.raises(PermissionError, match='engine.install'):
+            require_managed_capability('engine.install')
+        async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+            result = await client.get(url, params={'project_id': project.id})
+            assert result.status_code == 200
+            assert result.json()['binding'] is None
+            binding = {'kind': 'role', 'id': role['id']}
+            result = await client.put(url, json={'project_id': project.id, 'binding': binding})
+            assert result.status_code == 200
+            assert (await client.get(url, params={'project_id': project.id})).json()['binding'] == binding
+            assert (await client.put(url, json={'project_id': project.id, 'binding': None})).status_code == 200
+
+    for project_id in (project.id, 'another-project'):
+        scoped_actor = ActorSnapshot('user-1', 'alice', 'device-1', 'PC', source or 'remote',
+                                     project_id=project_id, access_level='edit')
+        with actor_context(scoped_actor):
+            async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+                assert (await client.get(url, params={'project_id': project.id})).status_code == 403
+                assert (await client.put(url, json={'project_id': project.id, 'binding': binding})).status_code == 403
+
+
 async def test_locked_binding_write_keeps_api_health_responsive(chat_module, role_library, monkeypatch):
     from api import chat_roles
     import main

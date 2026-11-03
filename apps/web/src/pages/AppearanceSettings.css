@@ -23,9 +23,6 @@
 @container (max-width: 380px) {
   .settings-appearance-field { flex-basis: 100%; min-width: 0; }
 }
-@media (max-width: 1023px) {
-  .settings-content .settings-appearance-page .skin-settings-card { height: auto !important; min-height: 0 !important; }
-}
 @container (max-width: 650px) {
   .settings-appearance-page .skin-settings-workspace { grid-template-columns: minmax(0, 1fr); }
 }

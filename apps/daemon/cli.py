@@ -205,7 +205,13 @@ def build_parser() -> argparse.ArgumentParser:
     task_create.add_argument("--desc", dest="description", help="task description")
     task_create.add_argument("--workflow", dest="workflow_id", help="target workflow id")
     task_create.add_argument("--start-step", dest="start_step_key", help="workflow step key to start from")
+    task_create.add_argument("--no-auto-start", action="store_true", help="create without starting, regardless of workflow defaults")
     add_json(task_create)
+    task_run = task_sub.add_parser("run", help="start an existing task")
+    task_run.add_argument("--project", required=True, dest="project_id")
+    task_run.add_argument("--task", required=True, dest="task_id")
+    task_run.add_argument("--prompt", default="")
+    add_json(task_run)
     task_repos = task_sub.add_parser("repos", help="list project Git repositories")
     task_repos.add_argument("--project", required=True, dest="project_id")
     add_json(task_repos)
@@ -224,6 +230,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     workflow = subparsers.add_parser("workflow", help="inspect project workflows")
     workflow_sub = workflow.add_subparsers(dest="subcommand", required=True)
+    workflow_create = workflow_sub.add_parser("create", help="create a workflow from canvas JSON")
+    workflow_create.add_argument("--project", required=True, dest="project_id")
+    workflow_create.add_argument("--name", required=True)
+    workflow_create.add_argument("--steps-file", required=True, help="UTF-8 JSON file containing nodes and connections")
+    add_json(workflow_create)
     workflow_list = workflow_sub.add_parser("list", help="list workflows of a project")
     workflow_list.add_argument("--project", required=True, dest="project_id", help="project id")
     add_json(workflow_list, list_output=True)
@@ -579,6 +590,11 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 "branch_name": args.branch_name,
                 "confirm": "yes",
             })
+        if args.subcommand == "run":
+            return await client.call("workstep_run_task", {
+                "project_id": args.project_id, "task_id": args.task_id,
+                "prompt": args.prompt, "confirm": "yes",
+            })
         if args.subcommand == "create":
             arguments: dict = {
                 "project_id": args.project_id,
@@ -593,9 +609,18 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 arguments["workflow_id"] = args.workflow_id
             if args.start_step_key:
                 arguments["start_step_key"] = args.start_step_key
+            if args.no_auto_start:
+                arguments["auto_start"] = False
             return await client.call("workstep_create_task", arguments)
     if command == "workflow":
         arguments = {"project_id": args.project_id}
+        if args.subcommand == "create":
+            steps = json.loads(await asyncio.to_thread(Path(args.steps_file).read_text, encoding="utf-8"))
+            if not isinstance(steps, dict):
+                raise ValueError("Workflow steps must be a JSON object")
+            return await client.call("workstep_create_workflow", {
+                **arguments, "name": args.name, "steps": steps, "confirm": "yes",
+            })
         if args.subcommand == "list":
             return await client.call("workstep_list_workflows", arguments)
         if args.subcommand == "get":

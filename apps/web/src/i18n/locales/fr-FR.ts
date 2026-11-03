@@ -210,6 +210,10 @@ export const frFR: Messages = {
   },
   chatInput: {
     ...zhCN.chatInput,
+    workflowMode: "Mode de workflow",
+    removeWorkflowSkill: "Retirer la compétence",
+    workflowSkillEmpty: "workstep-exec n’est pas chargé. Activez-le dans les compétences du projet.",
+    taskLinkUnavailable: "Impossible d’ouvrir cette tâche. Vérifiez que le projet et la tâche existent toujours.",
     stopGenerating: "Arrêter la génération",
     imageUploadFailed: "Échec de l’envoi de l’image",
     fileUploadFailed: "Échec de l’envoi du fichier",
@@ -348,6 +352,7 @@ export const frFR: Messages = {
     quickReviewPrompt: "Ajoute des contrôles de validation et des stratégies de nouvelle tentative appropriés aux étapes clés.",
     quickSimplifyPrompt: "Simplifie le workflow actuel et fusionne les étapes redondantes sans compromettre l’objectif.",
     agent: "Coordination",
+    proposalUnavailable: 'Les données de la proposition sont incomplètes. Demandez à l’assistant de flux de générer une nouvelle proposition.',
     sendFailed: "Échec de l’envoi. Réessayez.",
     restoreSteps: "Rétablir",
     me: "Moi",

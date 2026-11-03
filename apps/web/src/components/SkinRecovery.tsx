@@ -9,7 +9,7 @@ export default function SkinRecovery() {
   const preview = useSkinPreviewing()
   const { t } = useI18n()
   const ref = useRef<HTMLDivElement>(null)
-  const visible = preview || skin.manifest.schema_version === 2
+  const visible = preview
   useEffect(() => {
     const measure = () => document.documentElement.style.setProperty('--skin-recovery-height', visible && ref.current ? ref.current.getBoundingClientRect().height + 16 + 'px' : '0px')
     measure()

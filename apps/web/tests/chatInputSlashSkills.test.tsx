@@ -17,12 +17,21 @@ function Harness() {
   )
 }
 
-test('slash opens skills anywhere, closes on further typing, and preserves surrounding text on selection', async () => {
+test('slash opens at the start or after whitespace and filters skills by name prefix without refetching', async () => {
   const { window } = installDomEnvironment()
   const originalFetch = globalThis.fetch
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    skills: [{ name: 'review', description: 'Review changes' }],
-  }), { headers: { 'Content-Type': 'application/json' } })
+  let requests = 0
+  globalThis.fetch = async () => {
+    requests += 1
+    return new Response(JSON.stringify({
+      skills: [
+        { name: 'review', description: 'Review changes' },
+        { name: 'release', description: 'Publish release' },
+        { name: 'preview', description: 'Contains review in name' },
+        { name: 'deploy', description: 'review mentioned only in description' },
+      ],
+    }), { headers: { 'Content-Type': 'application/json' } })
+  }
   const container = window.document.body.appendChild(window.document.createElement('div'))
   const root = createRoot(container as never)
   try {
@@ -39,25 +48,42 @@ test('slash opens skills anywhere, closes on further typing, and preserves surro
       })
     }
 
-    for (const value of ['/', '正文/', '第一行\n正文/']) {
+    for (const value of ['正文/', '第一行\n正文/', 'https://', './']) {
       await input(value)
-      assert.ok(container.querySelector('[role="listbox"]'), `opens for ${value}`)
-      for (const character of [' ', 'r', '中', '\n']) {
-        await input(value + character)
-        assert.equal(container.querySelector('[role="listbox"]'), null, `closes after ${JSON.stringify(character)}`)
-        await input(value)
-      }
+      assert.equal(container.querySelector('[role="listbox"]'), null, `closed for ${value}`)
+    }
+    assert.equal(requests, 0, 'ordinary text does not request skills')
+
+    for (const value of ['/', ' /', '\t/', '\n \t/', '正文 /', '正文\t/', '正文\n/']) {
+      await input(value)
+      assert.ok(container.querySelector('[role="listbox"]'), `opens for ${JSON.stringify(value)}`)
+      assert.equal(container.querySelectorAll('[role="option"]').length, 4)
+    }
+    const requestsBeforeSearch = requests
+    await input('正文 /re')
+    assert.equal(container.querySelectorAll('[role="option"]').length, 2)
+    await input('/REV')
+    const options = container.querySelectorAll('[role="option"]')
+    assert.equal(options.length, 1)
+    assert.ok(options[0].textContent?.includes('review'))
+    await input('/missing')
+    assert.equal(container.querySelectorAll('[role="option"]').length, 0)
+    assert.equal(requests, requestsBeforeSearch, 'search filters the loaded skills locally')
+
+    for (const value of ['/review ', '/review\t', '/review\n']) {
+      await input(value)
+      assert.equal(container.querySelector('[role="listbox"]'), null)
     }
 
-    await input('前文/后文', 3)
+    await input('正文 /rev后文', 7)
     const option = container.querySelector('[role="option"]') as HTMLButtonElement
     assert.ok(option, 'opens even when text follows the cursor')
     await act(async () => {
       option.click()
       await new Promise((resolve) => window.setTimeout(resolve, 0))
     })
-    assert.equal(textarea.value, '前文/review 后文')
-    assert.equal(textarea.selectionStart, 10)
+    assert.equal(textarea.value, '正文 /review 后文')
+    assert.equal(textarea.selectionStart, 11)
     assert.equal(container.querySelector('[role="listbox"]'), null)
   } finally {
     await act(async () => root.unmount())

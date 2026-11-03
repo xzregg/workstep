@@ -283,9 +283,14 @@ export default function AiFlowChat({
   }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t, resetEnhance, assistantConfig])
 
   const handleA2uiAction = useCallback((action: A2uiClientAction) => {
-    const flow = resolveA2uiFlowSteps(action, latestProposals)
-    if (flow) {
-      applyFlowSteps(flow.steps, flow.proposalId)
+    if (action.name === 'apply_flow') {
+      const flow = resolveA2uiFlowSteps(action, latestProposals)
+      if (flow) {
+        setSendError('')
+        applyFlowSteps(flow.steps, flow.proposalId)
+      } else {
+        setSendError(t('aiFlow.proposalUnavailable'))
+      }
       return
     }
     void send(t('taskDetail.a2uiActionMessage', a2uiActionMessageParams(action)))

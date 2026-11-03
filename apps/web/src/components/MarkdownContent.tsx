@@ -10,6 +10,8 @@ import MermaidBlock, { MarkdownStreamingContext } from './MermaidBlock'
 import { useMarkdownUrlResolver, useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
 import StreamRevealText from './StreamRevealText'
 import rehypeStreamReveal from '../utils/rehypeStreamReveal'
+import { parseTaskDetailLink } from '../utils/taskDetailLink'
+import MarkdownTaskLink from './MarkdownTaskLink'
 
 interface MarkdownContentProps {
   content: string
@@ -58,7 +60,7 @@ function splitPlainText(markdown: string): PlainSegment[] {
  * so project file links can stay previewable.
  */
 const fileAwareUrlTransform: UrlTransform = (url) =>
-  /^file:\/\//i.test(url) ? url : defaultUrlTransform(url)
+  /^file:\/\//i.test(url) || parseTaskDetailLink(url) ? url : defaultUrlTransform(url)
 
 function closeStreamingFence(markdown: string): string {
   let openFence = ''
@@ -115,6 +117,12 @@ export default function MarkdownContent({
   }, [markdownUrlResolver, onImageClick, projectId, t])
 
   const renderLink = useCallback((href: string | undefined, label: React.ReactNode, title?: string) => {
+    const task = parseTaskDetailLink(href)
+    if (task) {
+      return task.projectId === projectId
+        ? <MarkdownTaskLink key={href} target={task} disabled={streaming}>{label}</MarkdownTaskLink>
+        : <span>{label}</span>
+    }
     const resolvedHref = href && (markdownUrlResolver?.(href) ?? href)
     const file = classifyProjectFileLink(href, projectId || (taskFilePreview ? 'shared' : undefined))
     if (!file || !onFileClick) {
@@ -135,7 +143,7 @@ export default function MarkdownContent({
         {label}
       </a>
     )
-  }, [markdownUrlResolver, onFileClick, projectId, taskFilePreview, t])
+  }, [markdownUrlResolver, onFileClick, projectId, taskFilePreview, streaming, t])
 
   const components = useMemo(() => ({
     'stream-reveal-text': ({ node }: { node?: { properties?: Record<string, unknown> } }) =>

@@ -36,6 +36,7 @@ import ChatInput, {
   type ChatInputPermission,
   type ChatInputPlan,
   type ChatInputRoleBinding,
+  type ChatInputWorkflowSkill,
 } from './ChatInput'
 import ChatMessageBubble from './ChatMessageBubble'
 import AssistantThinkingMessage from './AssistantThinkingMessage'
@@ -123,6 +124,7 @@ export interface AssistantChatPanelProps {
   composerOverlay?: ReactNode
   composerStatus?: ReactNode
   roleBinding?: ChatInputRoleBinding
+  workflowSkill?: ChatInputWorkflowSkill
   afterMessages?: ReactNode
   actionRuns?: ActionRun[]
   onStopAction?: (runId: string) => void
@@ -163,6 +165,7 @@ interface MessageItemProps {
   onForkMessage?: (messageId: string, preferSmart?: boolean) => void
   onSendToInput: (content: string) => void
   onAsyncQuestionSubmit: (content: string) => Promise<boolean>
+  canResumeQuestion: boolean
   onA2uiAction?: (action: A2uiClientAction) => void
 }
 
@@ -178,7 +181,7 @@ interface MessageItemProps {
 const MessageItem = memo(function MessageItem({
   message, copy, deviceId, userName, locale, showUserTag, projectId, sessionId, visibilityPermission,
   a2uiEntry, respondInteraction, onViewPrompt, onLoadMessageEvents,
-  onForkMessage, onSendToInput, onAsyncQuestionSubmit, onA2uiAction,
+  onForkMessage, onSendToInput, onAsyncQuestionSubmit, canResumeQuestion, onA2uiAction,
 }: MessageItemProps) {
   const { t } = useI18n()
   const { can } = useGatewayProjectPermissions(projectId)
@@ -206,6 +209,7 @@ const MessageItem = memo(function MessageItem({
       eventDetail={message.event_detail}
       onLoadEventDetails={onLoadMessageEvents ? query => onLoadMessageEvents(message.id, query) : undefined}
       interactionsEnabled={canEdit && message.status === 'running'}
+      onInterruptedQuestionSubmit={canEdit && canResumeQuestion ? onAsyncQuestionSubmit : undefined}
       a2uiMessages={a2uiEntry}
       onInteractionRespond={canEdit ? respondInteraction : undefined}
       streaming={message.status === 'running'}
@@ -285,7 +289,7 @@ const MessageItem = memo(function MessageItem({
 export default function AssistantChatPanel({
   projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeaderStatus = false, welcome = false, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
+  onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, workflowSkill, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
   onLoadMessageEvents, onLoadOlderHistory, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
@@ -623,6 +627,7 @@ export default function AssistantChatPanel({
               onForkMessage={canEdit && can('session.create') ? onForkMessage : undefined}
               onSendToInput={handleSendToInput}
               onAsyncQuestionSubmit={handleAsyncQuestionSubmit}
+              canResumeQuestion={!running && message.status === 'stopped' && message.id === engineMessages.at(-1)?.id}
               onA2uiAction={canEdit ? handleA2uiAction : undefined}
             />
           ))}
@@ -728,6 +733,7 @@ export default function AssistantChatPanel({
             onRefreshQuota={onRefreshQuota}
             quotaRefreshing={quotaRefreshing}
             plan={plan}
+            workflowSkill={workflowSkill}
             goal={goal}
             left={compactLayout && quickPrompts && quickPrompts.length > 0 ? (
               <>

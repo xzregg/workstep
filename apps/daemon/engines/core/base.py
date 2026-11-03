@@ -778,6 +778,8 @@ class BaseLLMEngine(ABC):
 
     @property
     def skill_invocation_prefix(self) -> str:
+        if self.skill_policy is EngineSkillPolicy.CLAUDE_PLUGIN:
+            return "/workstep:"
         return "/"
 
     def input_commands(self) -> list[dict[str, str]]:

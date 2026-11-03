@@ -1,5 +1,19 @@
 ## Workflows
 
+Create a new workflow from a UTF-8 canvas JSON file, only after the user has
+confirmed the proposed steps:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow create \
+  --project <project_id> --name "WorkflowName" --steps-file /absolute/path/to/flow.json --json
+```
+
+The file contains the full `{"nodes":[...],"connections":[...]}` object, not a
+wrapper. Names must be non-empty and contain no whitespace. The server validates
+step keys, connections and dependencies. The equivalent native tool is
+`workstep_create_workflow(project_id, name, steps, confirm="yes")`. This creates a
+new reusable project workflow without changing an existing one or the default.
+
 List workflows to resolve the target workflow ID:
 
 ```bash
@@ -73,4 +87,3 @@ or alias, and save their `relative_path` rather than a machine-specific `path`.
 If input is required, include `confirmation_input_prompt` and read the supplied
 text as `"$WORKSTEP_ACTION_INPUT"` without evaluating it. Service scripts should
 print actual URLs, wait for children, and trap TERM/INT to stop the process group.
-

@@ -2714,9 +2714,9 @@ async def test_pydantic_ai_inspect_capabilities(engine_client, tmp_path):
     body = response.json()
     assert body["engine_id"] == "pydantic_ai"
     assert body["project_root"] == str(tmp_path.resolve())
-    assert {skill["name"] for skill in body["skills"]} == {"shared", "workstep-cli"}
+    assert {skill["name"] for skill in body["skills"]} == {"shared", "workstep-cli", "workstep-exec"}
     assert [item["name"] for item in body["input_items"]] == [
-        "plan", "reasoning", "status", "shared", "workstep-cli",
+        "plan", "reasoning", "status", "shared", "workstep-cli", "workstep-exec",
     ]
     assert all("description" in skill and "source_dir" in skill for skill in body["skills"])
     assert body["mcp_servers"] == [{

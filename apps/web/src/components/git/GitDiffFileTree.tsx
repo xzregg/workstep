@@ -75,15 +75,17 @@ export default function GitDiffFileTree({ files, path, projectRoot, disabled = f
     </li>
   })
   return <aside className="git-diff-file-tree" aria-label={t('browser.projectFiles')}>
-    <div className="git-diff-tree-toolbar">
-      <strong>{t('artifact.file')} <small>{files.length}</small></strong>
-      <button type="button" aria-label={t('git.expandAll')} title={t('git.expandAll')} disabled={!folders.length}
-        onClick={() => setCollapsed(new Set())}><Icon name="maximize-2" size={14} /></button>
-      <button type="button" aria-label={t('browser.collapseAll')} title={t('browser.collapseAll')} disabled={!folders.length || Boolean(query)}
-        onClick={() => setCollapsed(new Set(folders))}><Icon name="minimize-2" size={14} /></button>
+    <div className="git-diff-tree-controls">
+      <div className="git-diff-tree-toolbar">
+        <strong>{t('artifact.file')} <small>{files.length}</small></strong>
+        <button type="button" aria-label={t('git.expandAll')} title={t('git.expandAll')} disabled={!folders.length}
+          onClick={() => setCollapsed(new Set())}><Icon name="maximize-2" size={14} /></button>
+        <button type="button" aria-label={t('browser.collapseAll')} title={t('browser.collapseAll')} disabled={!folders.length || Boolean(query)}
+          onClick={() => setCollapsed(new Set(folders))}><Icon name="minimize-2" size={14} /></button>
+      </div>
+      <label className="git-diff-tree-search"><Icon name="search" size={14} /><input type="search" value={search}
+        aria-label={t('browser.searchFiles')} placeholder={t('browser.searchFiles')} onChange={event => setSearch(event.target.value)} /></label>
     </div>
-    <label className="git-diff-tree-search"><Icon name="search" size={14} /><input type="search" value={search}
-      aria-label={t('browser.searchFiles')} placeholder={t('browser.searchFiles')} onChange={event => setSearch(event.target.value)} /></label>
     <ul className="git-diff-tree-list" role="tree" aria-label={t('browser.projectTree')}>{render(filtered)}</ul>
     {!filtered.length && <p className="git-diff-tree-empty">{t('browser.noSearchResults')}</p>}
   </aside>

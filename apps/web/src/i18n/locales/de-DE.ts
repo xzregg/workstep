@@ -210,6 +210,10 @@ export const deDE: Messages = {
   },
   chatInput: {
     ...zhCN.chatInput,
+    workflowMode: "Workflow-Modus",
+    removeWorkflowSkill: "Skill entfernen",
+    workflowSkillEmpty: "workstep-exec ist nicht geladen. Aktivieren Sie den Skill im Projekt.",
+    taskLinkUnavailable: "Die Aufgabe kann nicht geöffnet werden. Prüfe, ob Projekt und Aufgabe noch existieren.",
     stopGenerating: "Generierung stoppen",
     imageUploadFailed: "Bild konnte nicht hochgeladen werden",
     fileUploadFailed: "Datei konnte nicht hochgeladen werden",
@@ -348,6 +352,7 @@ export const deDE: Messages = {
     quickReviewPrompt: "Ergänze geeignete Prüfungen und Wiederholungsstrategien bei Fehlern an den wichtigsten Schritten.",
     quickSimplifyPrompt: "Vereinfache den aktuellen Workflow und fasse redundante Schritte zusammen, ohne das Ziel zu beeinträchtigen.",
     agent: "Koordination",
+    proposalUnavailable: 'Die Vorschlagsdaten sind unvollständig und können nicht angewendet werden. Bitte den Workflow-Assistenten, den Vorschlag erneut zu erstellen.',
     sendFailed: "Senden fehlgeschlagen. Bitte erneut versuchen.",
     restoreSteps: "Wiederherstellen",
     me: "Ich",

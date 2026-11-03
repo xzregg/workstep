@@ -1,0 +1,29 @@
+.markdown-task-link-container {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.markdown-message .markdown-task-link.chat-message-action {
+  margin-block: 4px;
+  font: inherit;
+  width: auto;
+  min-width: max-content;
+  padding-inline: 10px;
+  opacity: 1;
+}
+
+@media (max-width: 1023px) {
+  .markdown-message .markdown-task-link.chat-message-action {
+    width: auto !important;
+    min-width: max-content !important;
+    padding-inline: 10px !important;
+  }
+}
+
+.markdown-task-link-error {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}

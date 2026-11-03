@@ -22,6 +22,8 @@ import InteractionPrompt from './InteractionPrompt'
 import PlanChecklist from './PlanChecklist'
 import {
   pendingInteractionItems,
+  interactionItemsFromEvents,
+  interactionForm,
   type InteractionEvent,
 } from '../utils/interaction'
 import { useI18n } from '../i18n'
@@ -95,6 +97,8 @@ export interface ChatMessageBubbleProps {
     response: Record<string, unknown>,
   ) => Promise<void>
   interactionsEnabled?: boolean
+  /** Continue a stopped question through a new conversation turn. */
+  onInterruptedQuestionSubmit?: (content: string) => Promise<boolean>
   /** Bubble background: 'surface' (default) or 'bg' (+ border). */
   variant?: 'surface' | 'bg'
   /** Extra props for the root element (ref / data attributes). */
@@ -197,6 +201,7 @@ export default function ChatMessageBubble({
   onAsyncQuestionSubmit,
   onA2uiAction,
   interactionsEnabled = true,
+  onInterruptedQuestionSubmit,
   events = [],
   eventDetail,
   onLoadEventDetails,
@@ -216,7 +221,12 @@ export default function ChatMessageBubble({
   const handleImageClick = useCallback((src: string, alt: string) => {
     setPreviewImage({ src, alt })
   }, [])
-  const interactions = pendingInteractionItems(events, interactionsEnabled)
+  const interactions = onInterruptedQuestionSubmit
+    ? interactionItemsFromEvents(events).filter(({ request, response }) => (
+      request.method === 'elicitation/create' && request.mode !== 'url'
+      && (!response || response.action === 'cancel')
+    )).map(({ request }) => ({ request, response: undefined }))
+    : pendingInteractionItems(events, interactionsEnabled)
   const asyncQuestions = asyncQuestionsFromEvents(events)
   const plan = latestPlanFromEvents(events)
   const goal = latestGoalFromEvents(events)
@@ -397,7 +407,16 @@ export default function ChatMessageBubble({
               key={item.request.interaction_id}
               request={item.request}
               response={item.response}
-              onRespond={onInteractionRespond}
+              onRespond={onInterruptedQuestionSubmit ? async (_id, response) => {
+                if (response.action !== 'accept') return
+                const form = interactionForm(item.request)
+                const values = response.content as Record<string, unknown>
+                const answer = [form.title, ...form.fields.map(field => {
+                  const value = values[field.id]
+                  return `${field.title}: ${Array.isArray(value) ? value.join('、') : String(value ?? '')}`
+                })].join('\n')
+                if (!await onInterruptedQuestionSubmit(answer)) throw new Error(t('interaction.submitFailed'))
+              } : onInteractionRespond}
             />
           ))}
           {!isUser && asyncQuestions.map((question, index) => {

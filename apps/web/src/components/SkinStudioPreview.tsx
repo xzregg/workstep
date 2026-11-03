@@ -53,6 +53,6 @@ export default function SkinStudioPreview({ skin, compact, scene = 'chat', varia
   }, [skin, compact, scene, variant, t])
   const viewportWidth = compact ? 390 : 1024
   const height = compact ? 620 : variant === 'center' ? 500 : 680
-  const scale = (compact ? Math.min(width, 220) : width) / viewportWidth
+  const scale = (compact ? Math.min(width, viewportWidth) : width) / viewportWidth
   return <div ref={ref} className="skin-studio-preview-container"><div className={`skin-studio-preview-frame${compact ? ' is-phone' : ''}`} style={{ width: viewportWidth * scale, height: height * scale }}><iframe title={t('skins.studioPreview')} className="skin-studio-preview" style={{ width: viewportWidth, height, transform: `scale(${scale})` }} sandbox="allow-same-origin" srcDoc={source} /></div></div>
 }

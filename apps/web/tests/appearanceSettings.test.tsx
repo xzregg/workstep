@@ -47,6 +47,8 @@ for (const projectScoped of [false, true]) test(`appearance settings embeds the 
     assert.equal(window.localStorage.getItem('workstep.fontFamily'), 'pingfang')
     const hasCreate = [...document.querySelectorAll('button')].some(button => button.textContent?.includes('聊聊外观怎么改'))
     assert.equal(hasCreate, !projectScoped)
+    const hasCustomize = [...document.querySelectorAll('.skin-settings-detail button')].some(button => button.textContent?.includes('聊聊怎么改'))
+    assert.equal(hasCustomize, !projectScoped, 'selected-skin customization keeps its existing access boundary')
     assert.ok(document.querySelector('.skin-settings-preview-stage'))
     const large = [...element.querySelectorAll<HTMLButtonElement>('.settings-appearance-font button')].find(button => /^大$|^Large$/.test(button.textContent ?? ''))!
     await act(async () => large.click())

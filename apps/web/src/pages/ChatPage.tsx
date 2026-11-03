@@ -41,6 +41,7 @@ import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useEngineQuota } from '../hooks/useEngineQuota'
 import { useChatSessionTransitions } from '../hooks/useChatSessionTransitions'
 import { useChatSessionActions } from '../hooks/useChatSessionActions'
+import { useWorkflowDesignSkill } from '../hooks/useWorkflowDesignSkill'
 import { useChatSessionHistory } from '../hooks/useChatSessionHistory'
 import { useChatSessionEngineSelection } from '../hooks/useChatSessionEngineSelection'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
@@ -173,6 +174,11 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     sessionId, projectId: activeProject?.id, running, engineConfig,
     permissionMode, planMode, goalMode, effectiveEngine,
     onSessionIdChange: setSessionId, onTitleChange: setSessionTitle,
+  })
+  const workflowSkill = useWorkflowDesignSkill({
+    projectId: routeProjectId, engine: effectiveEngine, sessionId, input, onChange: setInput, running,
+    onError: setSendError,
+    onLoaded: () => { setPlanMode(false); setGoalMode(false) },
   })
   const {
     enhance,
@@ -360,6 +366,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
   }, [activeProject?.id, permissionMode, sessionId, t])
 
   const send = useCallback(async (contentOverride?: string) => {
+    if (workflowSkill.loading) return false
     const content = (contentOverride ?? input).trim()
     if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
@@ -370,7 +377,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     clearDraft(sessionId, activeProject?.id ?? '')
     resetEnhance()
     return sendMessageNow(content)
-  }, [input, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance, beforeSend])
+  }, [input, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance, beforeSend, workflowSkill.loading])
 
   const handleInputChange = useCallback((value: string) => {
     enhanceInputChanged(value)
@@ -482,6 +489,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         enabled={(!sessionParam || historyReady) && !isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('session.config')}>
       {roleBinding => <AssistantChatPanel
         roleBinding={roleBinding}
+        workflowSkill={!isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('workflow.create') && can('task.create') ? workflowSkill : undefined}
         projectId={activeProject.id}
         sessionId={sessionId}
         headerContext={<ChannelConversationContext projectId={activeProject.id} sessionId={sessionId} />}
@@ -615,13 +623,13 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         }}
         plan={{
           active: planMode,
-          onChange: (active) => { setPlanMode(active); if (active) setGoalMode(false) },
-          disabled: running,
+          onChange: (active) => { setPlanMode(active); if (active) { setGoalMode(false); workflowSkill.onRemove() } },
+          disabled: running || workflowSkill.loading,
         }}
         goal={effectiveEngine === 'codex_sdk' ? {
           active: goalMode,
-          onChange: (active) => { setGoalMode(active); if (active) setPlanMode(false) },
-          disabled: running,
+          onChange: (active) => { setGoalMode(active); if (active) { setPlanMode(false); workflowSkill.onRemove() } },
+          disabled: running || workflowSkill.loading,
         } : undefined}
         enhance={enhance}
         context={context}

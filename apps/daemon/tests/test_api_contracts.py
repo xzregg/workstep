@@ -33,6 +33,46 @@ TEST_ACTOR_HEADERS = {
 
 
 @pytest.mark.anyio
+async def test_workflow_design_tools_save_real_flow_and_task_then_start(api_context, monkeypatch):
+    """The visible skill's tools use real API validation and project databases."""
+    import main
+    from types import SimpleNamespace
+    from services.tool_registry import WorkstepClient
+
+    client, directory = api_context
+    project_dir = directory / 'workflow-design'
+    project_dir.mkdir()
+    project_id = (await client.post('/api/project/init', json={'path': str(project_dir)})).json()['id']
+    tools = WorkstepClient(base_url='http://test', transport=ASGITransport(app=main.app))
+    steps = {'nodes': [
+        {'id': 1, 'type': 'inspect', 'title': '分析', 'prompt': '分析需求', 'position': {'x': 80, 'y': 80}},
+        {'id': 2, 'type': 'deliver', 'title': '交付', 'prompt': '交付并验证', 'position': {'x': 400, 'y': 80}},
+    ], 'connections': [{'from': 1, 'to': 2, 'kind': 'solid'}]}
+    workflow = await tools.call('workstep_create_workflow', {
+        'project_id': project_id, 'name': '想法流程', 'steps': steps, 'confirm': 'yes',
+    })
+    assert workflow.get('id'), workflow
+    saved = await client.get(f"/api/workflow/{workflow['id']}?project_id={project_id}")
+    assert saved.json()['steps'] == steps
+    start = AsyncMock(return_value=SimpleNamespace(id='design-run'))
+    monkeypatch.setattr(main.workflow_runtime, 'start', start)
+    task = await tools.call('workstep_create_task', {
+        'project_id': project_id, 'workflow_id': workflow['id'], 'title': '实现想法',
+        'description': '根据需求交付，并满足验收条件', 'auto_start': False, 'confirm': 'yes',
+    })
+    assert task.get('id'), task
+    start.assert_not_called()
+    assert task['task_detail_url'].endswith(f"task_id={task['id']}")
+    assert task['workflow_id'] == workflow['id']
+    assert {step['step_key'] for step in task['steps']} == {'inspect', 'deliver'}
+    result = await tools.call('workstep_run_task', {
+        'project_id': project_id, 'task_id': task['id'], 'confirm': 'yes',
+    })
+    assert result['status'] == 'started', result
+    start.assert_awaited_once_with(project_id, task['id'], '')
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("custom", [False, True])
 async def test_task_creation_review_selection_only_persists_actual_differences(api_context, custom):
     import main

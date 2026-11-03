@@ -5,6 +5,7 @@ import Button from './Button'
 import Input from './Input'
 import Icon from './Icon'
 import SkinStudioPreview from './SkinStudioPreview'
+import { useCompactLayout } from '../hooks/useCompactLayout'
 
 function SkinThumbnail({ skin }: { skin: SkinDocument }) {
   const tokens = effectiveSkinTokens(skin)
@@ -28,7 +29,8 @@ export default function SkinLibrary({ documents, activeId, preferredSkin, busy, 
     }
   }, [documents, preferredSkin])
   const [filter, setFilter] = useState('all'), [query, setQuery] = useState('')
-  const [phone, setPhone] = useState(false), [scene, setScene] = useState<'chat' | 'tasks' | 'flow'>('chat')
+  const compact = useCompactLayout()
+  const [phone, setPhone] = useState(compact), [scene, setScene] = useState<'chat' | 'tasks' | 'flow'>('chat')
   const selected = documents.find(skin => skin.manifest.id === selectedId) ?? documents[0] ?? defaultSkin()
   const visible = documents.filter(skin => (filter !== 'mine' || skin.manifest.id !== 'default')
     && `${skin.manifest.name} ${skin.manifest.description ?? ''}`.toLowerCase().includes(query.trim().toLowerCase()))

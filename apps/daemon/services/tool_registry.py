@@ -9,6 +9,7 @@ API contract.
 import asyncio
 import json
 import os
+from urllib.parse import urlencode
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -116,6 +117,16 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         required=("project_id",),
         read_only=True,
         query_params=("project_id",),
+    ),
+    WorkstepTool(
+        name="workstep_create_workflow",
+        description="Create a new project workflow from a user-confirmed canvas definition. Does not change the project default workflow.",
+        method="POST", path="/api/workflow/create",
+        parameters={"project_id": {"type": "string"}, "name": {"type": "string"},
+                    "steps": {"type": "object", "description": "canvas JSON with nodes and connections"}},
+        required=("project_id", "name", "steps"), read_only=False,
+        side_effect="create a project workflow",
+        query_params=("project_id",), body_params=("name", "steps"),
     ),
     WorkstepTool(
         name="workstep_get_workflow",
@@ -377,12 +388,22 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
             "description": {"type": "string", "description": "task description (optional)"},
             "workflow_id": {"type": "string", "description": "target workflow id (optional; defaults to the project default workflow)"},
             "start_step_key": {"type": "string", "description": "workflow step key to start from (optional)"},
+            "auto_start": {"type": "boolean", "description": "false to create without starting; omit to inherit workflow defaults"},
         },
         required=("project_id", "title"),
         read_only=False,
         side_effect="create a task in the project",
         query_params=("project_id",),
-        body_params=("title", "cwd", "description", "workflow_id", "start_step_key"),
+        body_params=("title", "cwd", "description", "workflow_id", "start_step_key", "auto_start"),
+    ),
+    WorkstepTool(
+        name="workstep_run_task",
+        description="Start an existing task after explicit user confirmation. Reuse the created task if startup fails; do not create a replacement.",
+        method="POST", path="/api/task/run",
+        parameters={"project_id": {"type": "string"}, "task_id": {"type": "string"}, "prompt": {"type": "string"}},
+        required=("project_id", "task_id"), read_only=False,
+        side_effect="start execution of an existing task",
+        query_params=("project_id",), body_params=("task_id", "prompt"),
     ),
     WorkstepTool(
         name="workstep_list_schedules",
@@ -692,6 +713,8 @@ class WorkstepClient:
             if "reset_session" in args:
                 args["reset_step"] = args.pop("reset_session")
 
+        project_id = args.get("project_id")
+
         url = tool.path
         for param in tool.path_params:
             url = url.replace("{" + param + "}", str(args.pop(param)))
@@ -705,6 +728,8 @@ class WorkstepClient:
             for key in tool.body_params
             if key in args and args[key] not in (None, "")
         }
+        if tool.name == "workstep_run_task":
+            body.setdefault("prompt", "")
         headers = await asyncio.to_thread(local_cli_headers, self.base_url)
         # Never forward a desktop credential to --url on another machine.
         origin = local_origin(self.base_url)
@@ -743,4 +768,10 @@ class WorkstepClient:
                     "ok": False,
                     "error": f"无法连接 daemon（{self.base_url}）：{exc}",
                 }
-        return response.json()
+        result = response.json()
+        if (tool.name == "workstep_create_task"
+                and isinstance(result, dict) and result.get("ok") is not False and result.get("id")):
+            result["task_detail_url"] = "workstep-task://open?" + urlencode({
+                "project_id": project_id, "task_id": result["id"],
+            })
+        return result

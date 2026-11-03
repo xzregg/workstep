@@ -7,10 +7,9 @@ from services.role_center import RoleConflict, role_center as manager
 
 
 def authorize():
-    # Global assets cannot be modified through a project-scoped remote ticket.
+    # Role assets and chat bindings are host capabilities, independent of engine installation.
+    # Project-scoped remote tickets still cannot access the global role library.
     require_catalog_project("")
-    from api.engine import _require_managed_engine_permission
-    _require_managed_engine_permission()
 
 
 router = APIRouter(prefix="/api/role-center", dependencies=[Depends(authorize)])

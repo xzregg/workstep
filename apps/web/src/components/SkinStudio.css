@@ -63,10 +63,6 @@
   .skin-studio-controls .skin-studio-toggle { min-height: var(--mobile-control-regular); margin-bottom: 4px; }
 }
 
-.skin-studio-version { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 12px 0 16px 36px; font-size: calc(11px * var(--font-scale)); }
-.skin-studio-version p { color: var(--muted); font-size: calc(10px * var(--font-scale)); margin: 6px 0 9px; }
-.skin-studio-version .btn { font-size: calc(10px * var(--font-scale)); }
-@media(max-width:1023px) { .skin-studio-version { margin-left: 0; } }
 .skin-studio-welcome .chat-message-avatar-anchor > div { color: var(--accent) !important; }
 
 .skin-studio-tabs { display: none; }

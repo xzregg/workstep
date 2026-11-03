@@ -147,16 +147,52 @@ async def test_slow_disk_does_not_block_real_api_health(center, monkeypatch, ope
         assert (await pending).status_code == 200
 
 
-async def test_project_scoped_actors_cannot_manage_global_role_assets(center):
+@pytest.mark.parametrize("source", ["remote", "managed"])
+async def test_project_scoped_actors_cannot_manage_global_role_assets(center, source):
     _, app = center
     app.dependency_overrides.clear()
     from services.remote_access import ActorSnapshot, actor_context
     actor = ActorSnapshot(actor_id="editor", user_name="editor", device_id="device",
-                          device_name="device", source="remote", project_id="project", access_level="edit")
+                          device_name="device", source=source, project_id="project", access_level="edit")
     with actor_context(actor):
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
             assert (await client.get("/api/role-center")).status_code == 403
             assert (await create_role(client)).status_code == 403
+
+
+@pytest.mark.parametrize("source", [None, "managed"])
+async def test_host_role_assets_do_not_require_engine_install(center, monkeypatch, source):
+    import main
+    from types import SimpleNamespace
+    from api.engine import router as engine_router
+    from services.gateway_client.policy import ManagedPolicyCache
+    from services.remote_access import ActorSnapshot, actor_context
+
+    _, app = center
+    app.dependency_overrides.clear()
+    app.include_router(engine_router)
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(
+        managed_config=object(), policy_cache=ManagedPolicyCache(),
+    ))
+    actor = ActorSnapshot("user-1", "alice", "device-1", "PC", source) if source else None
+    with actor_context(actor):
+        async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+            assert (await client.post("/api/engine/refresh")).status_code == 403
+            assert (await client.get("/api/role-center")).status_code == 200
+            result = await create_role(client)
+            assert result.status_code == 201
+            role = result.json()
+            path = "/api/role-center/roles/" + role["id"]
+            assert (await client.get(path)).status_code == 200
+            payload = {key: role[key] for key in ("name", "category", "description", "prompt")}
+            payload.update(prompt="更新角色指令", expected_revision=role["revision"])
+            assert (await client.put(path, json=payload)).status_code == 200
+            team = await client.post("/api/role-center/teams", json={
+                "name": "权限评审团", "prompt": "依次评审",
+                "members": [{"role_id": role["id"], "duty": "审核"}],
+            })
+            assert team.status_code == 201
+            assert (await client.get("/api/role-center/teams/" + team.json()["id"])).status_code == 200
 
 
 async def test_catalog_cache_skips_scans_and_refreshes_after_role_and_team_writes(center, monkeypatch):

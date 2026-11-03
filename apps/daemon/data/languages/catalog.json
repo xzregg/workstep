@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "6f0c4f18d8742724ae328cde5c616c99230b2a5cb6c91f3511cae918f5a90f83",
+  "revision": "ae63e5b80cc5c01664bc4a4689bfe65e02f6695c73b86a8247dded89255d6177",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -1542,6 +1542,10 @@
     "coord.thinkingLevels.medium": "中",
     "coord.thinkingLevels.high": "高",
     "coord.thinkingLevels.xhigh": "极高",
+    "chatInput.workflowMode": "流程模式",
+    "chatInput.removeWorkflowSkill": "移除流程模式技能",
+    "chatInput.workflowSkillEmpty": "当前引擎未加载流程模式技能，请在项目技能中启用",
+    "chatInput.taskLinkUnavailable": "无法打开此任务，请检查项目或任务是否仍然存在",
     "chatInput.stopGenerating": "停止生成",
     "chatInput.imageUploadFailed": "图片上传失败",
     "chatInput.fileUploadFailed": "文件上传失败",
@@ -1640,6 +1644,7 @@
     "engineForm.modelMapEmpty": "暂无缓存模型，请点击刷新",
     "aiFlow.title": "AI 流程助手",
     "aiFlow.configLoadFailed": "协调引擎配置加载失败",
+    "aiFlow.proposalUnavailable": "方案数据不完整，暂时无法应用。请让流程助手重新生成方案。",
     "aiFlow.sendFailed": "发送失败，请重试",
     "aiFlow.stopFailed": "停止失败，请重试",
     "aiFlow.resetFailed": "重置会话失败，请重试",

@@ -228,11 +228,18 @@
  .git-commit-form .git-commit-hint { display:none; }
  .git-file small { max-width:120px; overflow:hidden; text-overflow:ellipsis; }
  .git-file-actions { opacity:1; }
- .git-diff-backdrop { padding:0; }
+ .git-diff-backdrop { padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
  .git-diff-dialog { width:100%; height:100%; border:0; border-radius:0; min-width:0; resize:none; }
- .git-diff-dialog header { padding:8px; }
- .git-diff-toolbar { flex-wrap:wrap; padding:8px; }
- .git-diff-toolbar select { max-width:100%; }
+ .git-diff-dialog header { flex-shrink:0; gap:4px; padding:4px 8px; }
+ .git-diff-dialog header>.btn-icon { flex:0 0 var(--mobile-control-regular); width:var(--mobile-control-regular); height:var(--mobile-control-regular); }
+ .git-diff-dialog header>svg { flex-shrink:0; }
+ .git-diff-toolbar { flex-shrink:0; flex-wrap:nowrap; justify-content:flex-start; gap:6px; padding:4px 8px; overflow-x:auto; overscroll-behavior:contain; }
+ .git-diff-toolbar>.btn { flex-shrink:0; height:var(--mobile-control-regular); min-height:var(--mobile-control-regular); padding:0 8px; white-space:nowrap; }
+ .git-diff-toolbar .ws-select { flex:0 0 auto; width:auto; max-width:50%; min-width:0; height:var(--mobile-control-regular); margin-left:auto; }
+ .git-diff-toolbar small { flex-shrink:0; white-space:nowrap; }
+ .git-diff-labels { flex-shrink:0; }
+ .git-diff-labels span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:4px 8px; }
+ .git-diff-scroll h4 { padding:4px 8px; }
  .git-commit-form textarea { min-height:44px; max-height:64px; padding:6px 8px; resize:none; }
  .git-commit-form .git-danger,.git-commit-form .git-notice { margin:6px 0; line-height:1.4; }
 }
@@ -337,6 +344,6 @@
 /* 编辑记录的对比窗口在移动端也保留遮罩边距。 */
 .git-diff-backdrop--recorded .git-diff-dialog { width:1000px; height:80dvh; }
 @media (max-width:1023px) {
-  .git-diff-backdrop--recorded { padding:12px; }
-  .git-diff-backdrop--recorded .git-diff-dialog { width:100%; height:80dvh; min-width:0; min-height:0; border:1px solid var(--border); border-radius:8px; }
+  .git-diff-backdrop--recorded { padding:max(4px, env(safe-area-inset-top)) max(4px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left)); }
+  .git-diff-backdrop--recorded .git-diff-dialog { width:100%; height:100%; min-width:0; min-height:0; border:1px solid var(--border); border-radius:8px; }
 }

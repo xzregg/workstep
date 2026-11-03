@@ -37,6 +37,23 @@ uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task create \
 
 `--cwd` is optional and defaults to the project path.
 
+Add `--no-auto-start` to create without starting regardless of workflow defaults
+(native `workstep_create_task`: `auto_start=false`). A successful creation returns
+`task_detail_url`; include `[打开任务详情](<returned task_detail_url>)` in the reply
+to display an in-app task button. Use the actual returned value, never a guessed
+host URL or task ID. The button also works when the later startup fails.
+
+After the user authorizes execution, start an already-created task separately:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task run \
+  --project <project_id> --task <task_id> --json
+```
+
+Native operation: `workstep_run_task(project_id, task_id, confirm="yes")` with an
+optional `prompt`. On startup failure, retain and inspect the existing task;
+do not create another task. A `started` response means accepted, not completed.
+
 For a task that needs isolated changes in only some Git repositories, inspect
 the project's repositories, then create one Worktree for each relevant one:
 

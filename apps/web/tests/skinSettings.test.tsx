@@ -12,12 +12,12 @@ import { defaultSkin } from '../src/skins/contract'
 import { restoreDefaultSkin, currentSkin } from '../src/skins/runtime'
 
 const ocean = { ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: 'ocean', name: '海洋' }, revision: 'v1', tokens: { accent: '#0077aa' } }
-test('preview is cancellable and apply persists only the confirmed skin', async () => {
+for (const schemaVersion of [1, 2]) test(`v${schemaVersion} preview is cancellable and confirmed skins leave no recovery bar`, async () => {
   const { window } = installDomEnvironment()
   restoreDefaultSkin()
   const oldList = skinsApi.list, oldGet = skinsApi.get
   skinsApi.list = async () => [{ manifest: ocean.manifest, revision: 'v1' }]
-  skinsApi.get = async () => ocean
+  skinsApi.get = async () => ({ ...ocean, manifest: { ...ocean.manifest, schema_version: schemaVersion } })
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinSettings /><SkinRecovery /></I18nProvider></MemoryRouter>))
@@ -33,6 +33,11 @@ test('preview is cancellable and apply persists only the confirmed skin', async 
     await click('应用')
     assert.equal(currentSkin().manifest.id, 'ocean')
     assert.equal(document.querySelector('[data-skin-recovery]'), null)
+    assert.equal(document.documentElement.style.getPropertyValue('--skin-recovery-height'), '0px')
+    const restore = document.querySelector<HTMLButtonElement>('.skin-settings-detail button[aria-label="恢复默认皮肤"]')!
+    assert.ok(restore, 'restoration remains available in appearance settings')
+    await act(async () => restore.click())
+    assert.equal(currentSkin().manifest.id, 'default')
     assert.equal(document.querySelector('.skin-settings-footer-note button'), null)
   } finally { skinsApi.list = oldList; skinsApi.get = oldGet; await act(async () => root.unmount()); restoreDefaultSkin(); await window.happyDOM.close() }
 })

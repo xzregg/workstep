@@ -1218,6 +1218,10 @@ export const zhCN = {
     },
   },
   chatInput: {
+    workflowMode: "流程模式",
+    removeWorkflowSkill: "移除流程模式技能",
+    workflowSkillEmpty: "当前引擎未加载流程模式技能，请在项目技能中启用",
+    taskLinkUnavailable: "无法打开此任务，请检查项目或任务是否仍然存在",
     stopGenerating: '停止生成',
     imageUploadFailed: '图片上传失败',
     fileUploadFailed: '文件上传失败',
@@ -1320,6 +1324,7 @@ export const zhCN = {
   aiFlow: {
     title: 'AI 流程助手',
     configLoadFailed: '协调引擎配置加载失败',
+    proposalUnavailable: '方案数据不完整，暂时无法应用。请让流程助手重新生成方案。',
     sendFailed: '发送失败，请重试',
     stopFailed: '停止失败，请重试',
     resetFailed: '重置会话失败，请重试',

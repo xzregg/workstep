@@ -200,7 +200,16 @@ export interface ChatInputRoleBinding {
   onRetry: () => void
 }
 
+export interface ChatInputWorkflowSkill {
+  active: boolean
+  loading: boolean
+  disabled: boolean
+  onLoad: () => void | Promise<void>
+  onRemove: () => void
+}
+
 export interface ChatInputProps {
+  workflowSkill?: ChatInputWorkflowSkill
   roleBinding?: ChatInputRoleBinding
   value: string
   onChange: (value: string) => void
@@ -293,6 +302,7 @@ export default function ChatInput({
   mentions,
   imageAttach,
   roleBinding,
+  workflowSkill,
   left,
   onPaste,
   title,
@@ -344,6 +354,7 @@ export default function ChatInput({
   const valueRef = useChatInputDraft({ sessionId, taskId, value, onChange })
   const canSend = !disabled
     && !roleBinding?.loading
+    && !workflowSkill?.loading
     && (!running || allowSendWhileRunning)
     && !stopping
     && value.trim().length > 0
@@ -409,8 +420,7 @@ export default function ChatInput({
     if (item.kind === 'skill' && !can('skill.read')) return false
     const query = (inputQuery ?? '').toLocaleLowerCase()
     return !query
-      || item.name.toLocaleLowerCase().includes(query)
-      || item.description.toLocaleLowerCase().includes(query)
+      || item.name.toLocaleLowerCase().startsWith(query)
   })
   const skillMenuVisible = slashActive
     && slashDismissedValue !== value
@@ -977,7 +987,7 @@ export default function ChatInput({
         <div className="chat-input-toolbar">
           <div className="chat-input-toolbar-scroll">
             {left}
-            {(imageAttach || roleBinding) && (
+            {(imageAttach || roleBinding || workflowSkill) && (
             <>
               {imageAttach && <>
               <input
@@ -1072,11 +1082,19 @@ export default function ChatInput({
                         <span className="chat-input-menu-icon">{roleBinding.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="drama" size={14} strokeWidth={1.8} />}</span>
                         <span className="chat-input-menu-name">{t('roleCenter.chooseForChat')}</span>
                       </button>}
+                      {workflowSkill && <button type="button" className="chat-input-menu-item"
+                        disabled={workflowSkill.disabled} data-selected={workflowSkill.active}
+                        onClick={() => { setAttachMenuOpen(false); if (workflowSkill.active) workflowSkill.onRemove(); else void workflowSkill.onLoad() }}>
+                        <span className="chat-input-menu-icon">{workflowSkill.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="workflow" size={14} strokeWidth={1.8} />}</span>
+                        <span className="chat-input-menu-name">{t('chatInput.workflowMode')}</span>
+                        {workflowSkill.active && <Icon name="check" size={13} className="chat-input-menu-check-icon" />}
+                      </button>}
                       {plan && (
                         <button
                           type="button"
                           className="chat-input-menu-item"
                           data-selected={planActive}
+                          disabled={plan.disabled}
                           onClick={() => {
                             setAttachMenuOpen(false)
                             plan.onChange(!planActive)
@@ -1131,6 +1149,13 @@ export default function ChatInput({
               <span>{resetStep.label ?? t('chatInput.resetStep')}</span>
             </button>
           )}
+          {workflowSkill && (workflowSkill.active || workflowSkill.loading) && <button
+            type="button" className="chat-input-pill" data-kind="workflow-skill" data-active={workflowSkill.active}
+            disabled={workflowSkill.disabled} title={t('chatInput.removeWorkflowSkill')}
+            onClick={workflowSkill.onRemove}>
+            {workflowSkill.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="workflow" size={12} strokeWidth={1.8} />}
+            <span>{t('chatInput.workflowMode')}</span><Icon name="x" size={11} />
+          </button>}
           {plan && (
             <button
               type="button"
@@ -1150,42 +1175,6 @@ export default function ChatInput({
           )}
           <div className="chat-input-toolbar-spacer" />
           <ChatInputUsage context={context} quota={quota} onRefreshQuota={onRefreshQuota} quotaRefreshing={quotaRefreshing} compact={isCompact} />
-          {permission && (
-            <>
-              <button
-                ref={permissionButtonRef}
-                type="button"
-                className="chat-input-pill"
-                data-kind="permission"
-                data-open={permissionMenu.anchor != null}
-                data-selected={Boolean(permission.value)}
-                disabled={permission.disabled}
-                onClick={() => (permissionMenu.anchor ? permissionMenu.close() : permissionMenu.openFrom(permissionButtonRef.current))}
-                aria-expanded={permissionMenu.anchor != null}
-                title={t('chatSession.permissionLabel')}
-              >
-                <Icon name="shield" size={12} strokeWidth={1.8} color={permission.value ? 'var(--accent)' : 'var(--meta)'} />
-                <span>
-                  {permissionLabel}
-                </span>
-                <Icon name="chevron-down" size={9} strokeWidth={2.5} className="chat-input-pill-chevron" />
-              </button>
-              {permissionMenu.anchor && (
-                <FloatingMenu
-                  anchor={permissionMenu.anchor}
-                  triggerRef={permissionButtonRef}
-                  options={permissionOptions.map((option) => ({ value: option.value, label: option.label }))}
-                  value={permission.value}
-                  icon="shield"
-                  side="top"
-                  width={216}
-                  title={t('chatSession.permissionTitle')}
-                  onSelect={(mode) => { permission.onChange(mode) }}
-                  onClose={permissionMenu.close}
-                />
-              )}
-            </>
-          )}
           {config && (
             <div className="chat-input-config-anchor">
               <button
@@ -1262,6 +1251,42 @@ export default function ChatInput({
                 </ResponsivePopover>
               )}
             </div>
+          )}
+          {permission && (
+            <>
+              <button
+                ref={permissionButtonRef}
+                type="button"
+                className="chat-input-pill"
+                data-kind="permission"
+                data-open={permissionMenu.anchor != null}
+                data-selected={Boolean(permission.value)}
+                disabled={permission.disabled}
+                onClick={() => (permissionMenu.anchor ? permissionMenu.close() : permissionMenu.openFrom(permissionButtonRef.current))}
+                aria-expanded={permissionMenu.anchor != null}
+                title={t('chatSession.permissionLabel')}
+              >
+                <Icon name="shield" size={12} strokeWidth={1.8} color={permission.value ? 'var(--accent)' : 'var(--meta)'} />
+                <span>
+                  {permissionLabel}
+                </span>
+                <Icon name="chevron-down" size={9} strokeWidth={2.5} className="chat-input-pill-chevron" />
+              </button>
+              {permissionMenu.anchor && (
+                <FloatingMenu
+                  anchor={permissionMenu.anchor}
+                  triggerRef={permissionButtonRef}
+                  options={permissionOptions.map((option) => ({ value: option.value, label: option.label }))}
+                  value={permission.value}
+                  icon="shield"
+                  side="top"
+                  width={216}
+                  title={t('chatSession.permissionTitle')}
+                  onSelect={(mode) => { permission.onChange(mode) }}
+                  onClose={permissionMenu.close}
+                />
+              )}
+            </>
           )}
             {enhance && value.trim() && (
               enhance.enhancing ? (

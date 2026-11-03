@@ -204,7 +204,7 @@ test('chat page shows the resolved engine default when no session override exist
     })
     await act(async () => { await Promise.resolve() })
     assert.match(container.textContent || '', /默认（极简）/)
-    assert.match(container.textContent || '', /默认Codex/)
+    assert.match(container.querySelector('[data-kind="config"] .chat-input-config-engine')?.textContent || '', /Codex/)
   } finally {
     await act(async () => root.unmount())
     assistantApi.list = originals.assistantList
