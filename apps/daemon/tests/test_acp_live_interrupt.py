@@ -8,7 +8,6 @@ cancel 失败则回退为等整轮结束。其它 ACP 引擎仍走基类实现�
 """
 
 import asyncio
-import os
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
