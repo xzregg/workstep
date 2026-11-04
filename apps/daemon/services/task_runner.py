@@ -1184,12 +1184,10 @@ class TaskRunner:
                         )
                         completed.add(step_key)
                     else:
-                        review_status = (
-                            "reviewing" if review_mode == "auto"
-                            else "awaiting_review"
-                        )
+                        # Manual review is not actionable until its pending
+                        # record exists. The gate publishes both atomically.
                         ts = await self._persist_step_status(
-                            task.id, step_key, review_status, ts.error, ts.ended_at
+                            task.id, step_key, "reviewing", ts.error, ts.ended_at
                         )
                         await self._publish(task.id, step_key, {
                             "type": "status",

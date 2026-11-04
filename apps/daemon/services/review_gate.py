@@ -137,31 +137,36 @@ class ReviewGate:
         # 同一 step_run 下可能先后有自动审核与转人工审核等多条记录，
         # attempt 按已有记录递增，避免 (step_run, attempt) 唯一约束冲突。
         def create_review():
-            existing_attempts = [
-                review.attempt
-                for review in ReviewRun.select().where(ReviewRun.step_run == step_run)
-            ]
-            attempt = max(existing_attempts, default=0) + 1
-            review_run = ReviewRun.create(
-                id=str(uuid.uuid4()),
-                workflow_run=workflow_run,
-                step_run=step_run,
-                task=task,
-                step_key=step.key,
-                attempt=attempt,
-                mode=mode,
-                status="pending" if mode == "manual" else "running",
-                engine=engine_id if mode == "auto" else None,
-                model=model if mode == "auto" else None,
-                prompt_json=(None if mode == "manual" else
-                             json.dumps({"prompt": None, "input_prompt": prompt}, ensure_ascii=False)),
-                report_json=json.dumps(manual_report, ensure_ascii=False) if mode == "manual" else None,
-                started_at=now,
-            )
-            ts = TaskStep.get_or_none(
-                (TaskStep.task == task) & (TaskStep.step_key == step.key)
-            )
-            return review_run, ts.review_session_id if ts is not None else None
+            with Task._meta.database.atomic():
+                existing_attempts = [
+                    review.attempt
+                    for review in ReviewRun.select().where(ReviewRun.step_run == step_run)
+                ]
+                attempt = max(existing_attempts, default=0) + 1
+                review_run = ReviewRun.create(
+                    id=str(uuid.uuid4()),
+                    workflow_run=workflow_run,
+                    step_run=step_run,
+                    task=task,
+                    step_key=step.key,
+                    attempt=attempt,
+                    mode=mode,
+                    status="pending" if mode == "manual" else "running",
+                    engine=engine_id if mode == "auto" else None,
+                    model=model if mode == "auto" else None,
+                    prompt_json=(None if mode == "manual" else
+                                 json.dumps({"prompt": None, "input_prompt": prompt}, ensure_ascii=False)),
+                    report_json=json.dumps(manual_report, ensure_ascii=False) if mode == "manual" else None,
+                    started_at=now,
+                )
+                ts = TaskStep.get_or_none(
+                    (TaskStep.task == task) & (TaskStep.step_key == step.key)
+                )
+                if mode == "manual" and ts is not None:
+                    ts.status = "awaiting_review"
+                    ts.ended_at = None
+                    ts.save(only=[TaskStep.status, TaskStep.ended_at])
+                return review_run, ts.review_session_id if ts is not None else None
 
         review_run, review_session_id = await self._run_db(create_review)
 

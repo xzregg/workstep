@@ -5147,6 +5147,74 @@ async def _wait_for_task_status(client, project_id, task_id, expected, timeout=2
 
 
 @pytest.mark.anyio
+async def test_manual_review_readiness_does_not_block_health(api_context, monkeypatch):
+    """Pending review state must not precede its usable record; slow SQL stays off-loop."""
+    from services.review_gate import ReviewGate
+    from models import ReviewRun
+    from services.config import config_store
+    import threading
+
+    monkeypatch.setattr(config_store, "get_user_name", lambda: "Review tester")
+    monkeypatch.setattr(config_store, "get_device_identity", lambda: {"device_id": "review-device", "device_name": "Test"})
+    client, tmp_path = api_context
+    project_dir = tmp_path / "manual-review-readiness"
+    project_dir.mkdir()
+    project = await client.post("/api/project/init", json={"path": str(project_dir)})
+    assert project.status_code == 200, project.text
+    project_id = project.json()["id"]
+    workflow = await client.post(f"/api/workflow/create?project_id={project_id}", json={
+        "name": "ManualReady", "steps": {"nodes": [{
+            "id": "verify", "type": "verify", "title": "Verify",
+            "engine": "manual-ready", "review": {"mode": "manual"},
+        }], "connections": []},
+    })
+    assert workflow.status_code == 200, workflow.text
+    task = await client.post(f"/api/task/create?project_id={project_id}", json={
+        "title": "Manual review readiness", "cwd": str(project_dir), "workflow_id": workflow.json()["id"],
+    })
+    assert task.status_code == 200, task.text
+    task_id = task.json()["id"]
+    monkeypatch.setitem(ENGINE_REGISTRY, "manual-ready", lambda: ScriptedStepEngine([]))
+    entered, release = asyncio.Event(), asyncio.Event()
+    sql_entered, sql_release = threading.Event(), threading.Event()
+    original_evaluate, original_create = ReviewGate.evaluate, ReviewRun.create
+
+    async def delayed_evaluate(gate, **kwargs):
+        entered.set()
+        await release.wait()
+        return await original_evaluate(gate, **kwargs)
+
+    def delayed_create(**kwargs):
+        sql_entered.set()
+        assert sql_release.wait(5)
+        return original_create(**kwargs)
+
+    monkeypatch.setattr(ReviewGate, "evaluate", delayed_evaluate)
+    monkeypatch.setattr(ReviewRun, "create", delayed_create)
+    try:
+        started = await client.post(f"/api/task/run?project_id={project_id}", json={"task_id": task_id, "prompt": ""})
+        assert started.status_code == 200, started.text
+        await asyncio.wait_for(entered.wait(), 5)
+        snapshot = (await client.get(f"/api/task/{task_id}?project_id={project_id}")).json()
+        assert snapshot["steps"][0]["status"] != "awaiting_review"
+        assert snapshot["status"] != "waiting"
+        reviews_url = f"/api/task/{task_id}/reviews?project_id={project_id}"
+        assert (await client.get(reviews_url)).json()["reviews"] == []
+        release.set()
+        assert await asyncio.to_thread(sql_entered.wait, 5)
+        health = await asyncio.wait_for(client.get("/api/health"), .25)
+        assert health.status_code == 200
+        sql_release.set()
+        snapshot = await _wait_for_task_status(client, project_id, task_id, {"waiting"})
+        assert snapshot["steps"][0]["status"] == "awaiting_review"
+        reviews = (await client.get(reviews_url)).json()["reviews"]
+        assert len(reviews) == 1 and reviews[0]["status"] == "pending"
+    finally:
+        release.set()
+        sql_release.set()
+
+
+@pytest.mark.anyio
 async def test_review_flow_end_to_end_via_api(api_context, monkeypatch):
     """整个审核流程：跳过审核 → 自动审核重试 → 人工审核 → 驳回注入反馈 → 通过。"""
     client, tmp_path = api_context

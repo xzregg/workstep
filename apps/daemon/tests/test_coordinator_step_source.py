@@ -5,6 +5,7 @@ import json
 import threading
 import time
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -17,7 +18,7 @@ from models import CoordinatorTurn, Message, TaskStep
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("operation", ["start", "live"])
-async def test_coordinator_start_keeps_source_and_does_not_wait_for_step(api_context, monkeypatch, operation):
+async def test_coordinator_dispatch_preserves_source_and_does_not_block_health(api_context, monkeypatch, operation):
     import main
     if operation == "start":
         import services.step_message_restart as persistence
@@ -55,7 +56,7 @@ async def test_coordinator_start_keeps_source_and_does_not_wait_for_step(api_con
 
         runner = TaskRunner(bus, database_executor=main.project_manager.get_project_by_id(project_id).database_executor)
         runner._live._running_engines[f"{task_id}:{step_key}"] = SimpleNamespace(
-            capabilities=SimpleNamespace(supports_live_step_message=True))
+            capabilities=SimpleNamespace(supports_live_step_message=True), stop=AsyncMock())
         runner._live._queues[f"{task_id}:{step_key}"] = asyncio.Queue()
         main.workflow_runtime._runners[task_id] = runner
         await main.project_manager.run_db(project_id, lambda _: TaskStep.update(status="running").where(
@@ -99,7 +100,7 @@ async def test_coordinator_start_keeps_source_and_does_not_wait_for_step(api_con
     assert accepted.status_code == 200, accepted.text
     assert await asyncio.to_thread(entered.wait, 2)
     started = time.monotonic()
-    assert (await client.get("/health")).status_code == 200
+    assert (await client.get("/api/health")).status_code == 200
     assert time.monotonic() - started < 0.25
     reply = await _wait_for_reply(client, project_id, task_id, accepted.json()["assistant_message_id"])
     assert reply["run_status"] == "succeeded"
