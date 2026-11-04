@@ -13,7 +13,7 @@ function formatTime(seconds: number) {
 
 export function GuidedWalkthrough() {
   const { t } = useI18n()
-  const player = useRecordedWalkthrough()
+  const player = useRecordedWalkthrough(recording)
   const frame = getWalkthroughFrame(player.time)
   const key = `walkthrough.${frame.definition.id}`
   const chapterNumber = String(frame.chapter + 1).padStart(2, '0')
@@ -25,9 +25,7 @@ export function GuidedWalkthrough() {
         <div className="walkthrough-stage">
           <div className="walkthrough-viewport" ref={player.stageRef}>
             <div className="walkthrough-camera" ref={player.cameraRef}>
-              <video ref={player.videoRef} poster={poster} preload="metadata" playsInline muted aria-label={t('walkthrough.videoLabel')}>
-                <source src={recording} type="video/webm" />
-              </video>
+              <video ref={player.videoRef} poster={poster} preload="none" playsInline muted aria-label={t('walkthrough.videoLabel')} />
             </div>
             <div className="walkthrough-scrim" aria-hidden="true" />
           </div>

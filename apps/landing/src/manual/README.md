@@ -196,3 +196,5 @@ Web regression passed 1,688 tests and its production build passed. This is behav
 2026-10-23 本批 dev→main 交付同步：在上述 main 核对及四张真实截图基础上，纳入 dev 的任务助手批量草稿、定时批量创建、手机任务新菜单、飞书／Lark 企业身份和群通知、新版多渠道机器人配置，以及应用七种／官网五种内置语言说明。依据对应 API、渠道模拟帧、定时调度和前端行为测试核对；Telegram、Discord、Slack 的真实租户收发仍待联调，不把模拟测试写成实际平台验收。
 
 本批未启动日常服务或运行模型采图。静态检查为 25 章、66/78 张截图：十二项缺文件已登记，另有 task-mobile-controls 旧图待更新。保留真实旧图并明确适用版本，不以效果图或旧布局冒充新增功能；手册尚未全部完成。
+
+2026-11-04 website delivery review: introduction and walkthrough videos now show their posters without attaching media URLs on initial load. Playback attaches the URL only after a user clicks play; the walkthrough no longer starts merely by entering the viewport. This changes website playback only, with no application operation steps or manual chapter translations affected. Website validation passed 336 tests and the production build. `manual:check` remains 25 chapters and 66/79 screenshots, returning nonzero for the 13 existing registered gaps; this delivery does not claim manual completion.

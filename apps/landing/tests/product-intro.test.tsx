@@ -17,15 +17,17 @@ describe('localized product introduction', () => {
     expect(productIntroCopy[locale].description).toBeTruthy()
   })
 
-  it.each(['zh-CN', 'zh-TW', 'en-US', 'ja-JP'] as const)('renders audible user-controlled video and captions for %s', locale => {
+  it.each(['zh-CN', 'zh-TW', 'en-US', 'ja-JP'] as const)('renders only a poster and play button before user interaction for %s', locale => {
     const html = renderToStaticMarkup(<ProductIntroVideo locale={locale} errorLabel="Load failed" retryLabel="Retry" />)
     const media = getProductIntroMedia(locale)
-    expect(html).toContain(media.src)
-    expect(html).toContain('controls=""')
+    expect(html).not.toContain(media.src)
+    expect(html).toContain(media.poster)
+    expect(html).toContain('<button')
+    expect(html).not.toContain('controls=""')
     expect(html).toContain('preload="none"')
     expect(html).toContain('playsInline=""')
-    expect(html).toContain('kind="captions"')
-    expect(html).toContain(`srcLang="${media.language}"`)
+    expect(html).not.toContain('<source')
+    expect(html).not.toContain('<track')
     expect(html).not.toContain('autoPlay')
     expect(html).not.toContain('muted')
   })

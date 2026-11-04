@@ -3,6 +3,10 @@
 .product-intro-heading .section-title, .product-intro-heading .section-lede { margin: 0; }
 .product-intro-player { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); }
 .product-intro-player video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.product-intro-play { position: absolute; inset: 0; display: grid; place-items: center; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; color: var(--fg); background: transparent; cursor: pointer; }
+.product-intro-play svg { box-sizing: content-box; padding: 16px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); }
+.product-intro-play:hover { color: var(--accent); }
+.product-intro-play:focus-visible { outline: 3px solid var(--fg); outline-offset: -4px; }
 .product-intro-language { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .product-intro-error { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; color: var(--fg); background: var(--surface); }
 .product-intro-error p { margin: 0; }

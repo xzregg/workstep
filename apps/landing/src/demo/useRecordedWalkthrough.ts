@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getWalkthroughCamera, WALKTHROUGH_DURATION } from './walkthrough'
+import { playVideoOnDemand } from './playVideoOnDemand'
 
-export function useRecordedWalkthrough() {
+export function useRecordedWalkthrough(src: string) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const cameraRef = useRef<HTMLDivElement>(null)
-  const autoAllowed = useRef(true)
+  const autoAllowed = useRef(false)
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState(WALKTHROUGH_DURATION)
   const [playing, setPlaying] = useState(false)
@@ -16,8 +17,8 @@ export function useRecordedWalkthrough() {
     if (!video) return
     autoAllowed.current = true
     if (video.ended) video.currentTime = 0
-    void video.play().catch(() => setPlaying(false))
-  }, [])
+    void playVideoOnDemand(video, src).catch(() => setPlaying(false))
+  }, [src])
   const toggle = useCallback(() => {
     const video = videoRef.current
     if (!video) return
@@ -70,7 +71,6 @@ export function useRecordedWalkthrough() {
     observer.observe(stage)
     const resizeObserver = new ResizeObserver(measure)
     resizeObserver.observe(stage)
-    const source = video.querySelector('source')
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
     video.addEventListener('ended', onPause)
@@ -79,7 +79,6 @@ export function useRecordedWalkthrough() {
     video.addEventListener('loadedmetadata', onReady)
     video.addEventListener('loadeddata', onReady)
     video.addEventListener('error', onError)
-    source?.addEventListener('error', onError)
     document.addEventListener('visibilitychange', onVisibility)
     motion.addEventListener('change', onMotion)
     measure(); sync()
@@ -95,7 +94,6 @@ export function useRecordedWalkthrough() {
       video.removeEventListener('loadedmetadata', onReady)
       video.removeEventListener('loadeddata', onReady)
       video.removeEventListener('error', onError)
-      source?.removeEventListener('error', onError)
       document.removeEventListener('visibilitychange', onVisibility)
       motion.removeEventListener('change', onMotion)
       video.pause()
