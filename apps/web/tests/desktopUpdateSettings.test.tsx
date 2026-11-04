@@ -34,3 +34,62 @@ test('automatic update is explicit, displays progress, prevents repeat clicks an
     await act(async () => root.unmount()); node.remove(); await window.happyDOM.close()
   }
 })
+
+
+test('automatic check switch saves its value and manual checking remains available', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN', language: null })
+  const node = document.body.appendChild(document.createElement('div')), root = createRoot(node)
+  let enabled = true, checks = 0
+  const status = () => ({ currentVersion: '1.0.0', latestVersion: '', updateAvailable: false,
+    checkedAt: 0, releaseUrl: '', source: 'cache' as const, automaticCheckEnabled: enabled })
+  window.workstepDesktop = { updates: {
+    status: async () => status(), check: async () => { checks++; return status() },
+    openDownload: async () => {},
+    setAutomaticCheckEnabled: async value => { enabled = value; return status() },
+  } }
+  try {
+    await act(async () => root.render(<I18nProvider><DesktopUpdateSettings /></I18nProvider>))
+    const toggle = () => node.querySelector<HTMLButtonElement>('[role="switch"]')!
+    assert.equal(toggle().getAttribute('aria-checked'), 'true')
+    await act(async () => toggle().click())
+    assert.equal(enabled, false)
+    assert.equal(toggle().getAttribute('aria-checked'), 'false')
+    assert.doesNotMatch(node.textContent!, /当前已是最新版本/)
+    const manual = [...node.querySelectorAll('button')].find(b => b.textContent === '检查更新')!
+    await act(async () => manual.click())
+    assert.equal(checks, 1)
+    assert.equal(toggle().getAttribute('aria-checked'), 'false')
+    await act(async () => toggle().click())
+    assert.equal(enabled, true)
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
+})
+
+
+test('failed preference save keeps the previous switch value and allows retry', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN', language: null })
+  const node = document.body.appendChild(document.createElement('div')), root = createRoot(node)
+  let fail = true
+  const status = { currentVersion: '1.0.0', latestVersion: '', updateAvailable: false,
+    checkedAt: 0, releaseUrl: '', source: 'cache' as const, automaticCheckEnabled: true }
+  window.workstepDesktop = { updates: {
+    status: async () => status, check: async () => status, openDownload: async () => {},
+    setAutomaticCheckEnabled: async value => {
+      if (fail) throw new Error('write failed')
+      return { ...status, automaticCheckEnabled: value }
+    },
+  } }
+  try {
+    await act(async () => root.render(<I18nProvider><DesktopUpdateSettings /></I18nProvider>))
+    const toggle = node.querySelector<HTMLButtonElement>('[role="switch"]')!
+    await act(async () => toggle.click())
+    assert.equal(toggle.getAttribute('aria-checked'), 'true')
+    assert.equal(toggle.disabled, false)
+    assert.ok(node.querySelector('.settings-system-feedback--error'))
+    fail = false
+    await act(async () => toggle.click())
+    assert.equal(toggle.getAttribute('aria-checked'), 'false')
+    assert.equal(node.querySelector('.settings-system-feedback--error'), null)
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
+})

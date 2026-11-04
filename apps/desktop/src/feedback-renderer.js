@@ -29,7 +29,7 @@ function copyText() {
   if (busy) return
   discardImage()
   byId('consent').hidden = true
-  return perform('正在整理并复制诊断信息…', async () => {
+  return perform('正在整理并复制错误摘要…', async () => {
     await feedback.copyText()
     byId('consent').hidden = false
   }, '反馈信息已复制，可直接粘贴发送。')

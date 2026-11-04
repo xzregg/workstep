@@ -4,6 +4,7 @@ import type { PlanSnapshot } from '../utils/plan'
 
 interface Props {
   plan: PlanSnapshot
+  streaming?: boolean
 }
 
 /* ── Rolling digit: animates a single character slot up on change ── */
@@ -181,7 +182,7 @@ function DetailChevronIcon({ expanded }: { expanded: boolean }) {
 
 /* ── Main component ── */
 
-export default function PlanChecklist({ plan }: Props) {
+export default function PlanChecklist({ plan, streaming = false }: Props) {
   const { t } = useI18n()
   const [collapsed, setCollapsed] = useState(false)
   const [expandedDetails, setExpandedDetails] = useState<Set<string>>(() => new Set())
@@ -189,7 +190,7 @@ export default function PlanChecklist({ plan }: Props) {
 
   const hasActive = plan.entries.some((e) => e.status === 'in_progress')
   const allDone = plan.completed >= plan.total && plan.total > 0
-  const running = hasActive && !allDone
+  const running = streaming && hasActive && !allDone
   const pct = plan.total > 0 ? Math.round((plan.completed / plan.total) * 100) : 0
 
   const headerIcon = allDone ? (
@@ -218,7 +219,7 @@ export default function PlanChecklist({ plan }: Props) {
   )
 
   return (
-    <div className="plan-checklist">
+    <div className={`plan-checklist${running ? ' is-running' : ''}`}>
       <button
         type="button"
         className="plan-head"

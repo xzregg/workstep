@@ -1485,9 +1485,11 @@ class TaskRunner:
         step_key: str,
         content: str,
         as_guidance: bool = False,
+        coordinator_turn_id: str | None = None,
     ) -> dict:
         return await self._live.send_live_message(
-            task_id, step_key, content, as_guidance
+            task_id, step_key, content, as_guidance,
+            **({"coordinator_turn_id": coordinator_turn_id} if coordinator_turn_id else {}),
         )
 
     async def cancel_task(self, task_id: str, action: str = "task.cancel") -> bool:
@@ -1535,8 +1537,8 @@ class TaskRunner:
         payload = {
             "task_id": task_id,
             "step_key": step_key,
-            **event,
             **current_actor_event_fields(),
+            **event,
         }
         project_id = getattr(self._database_executor, "project_id", None)
         if project_id is not None:

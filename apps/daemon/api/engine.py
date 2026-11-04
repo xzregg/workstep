@@ -34,6 +34,7 @@ router = APIRouter(prefix="/api/engine")
 
 
 def _require_managed_engine_permission() -> None:
+    require_catalog_project("")
     try:
         require_managed_capability("engine.install")
     except PermissionError as exc:
@@ -195,6 +196,7 @@ async def get_execution_default_config(project_id: str = ""):
 
 @router.put("/execution/config")
 async def set_execution_default_config(req: DefaultEngineRequest):
+    _require_managed_engine_permission()
     engine_id = req.engine.strip()
     if engine_id:
         await asyncio.to_thread(_validate_engine, engine_id)
@@ -225,6 +227,7 @@ async def get_coordinator_default_config(project_id: str = ""):
 
 @router.put("/coordinator/config")
 async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
+    _require_managed_engine_permission()
     engine_id = req.engine.strip()
     model = req.model.strip()
     fast_model = req.fast_model.strip()
@@ -541,6 +544,7 @@ async def list_engine_models(
 @router.put("/{engine_id}/default-model")
 async def set_default_model(engine_id: str, req: DefaultModelRequest):
     """Persist the model inherited by steps without an explicit model."""
+    _require_managed_engine_permission()
     engine = await asyncio.to_thread(
         lambda: (refresh_registry(), create_engine(engine_id))[1]
     )
@@ -563,6 +567,7 @@ async def set_default_model(engine_id: str, req: DefaultModelRequest):
 @router.put("/{engine_id}/binary-path")
 async def set_binary_path(engine_id: str, req: BinaryPathRequest):
     """Persist or clear a backend's executable path override."""
+    _require_managed_engine_permission()
     supported = await asyncio.to_thread(
         lambda: {engine["id"] for engine in get_available_engines()}
     )
@@ -625,6 +630,7 @@ async def get_engine_config(engine_id: str):
 @router.put("/{engine_id}/config")
 async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
     """Persist engine config driven by the engine's config schema."""
+    _require_managed_engine_permission()
     engine_id = engine_id.replace("-", "_")
     cls = list_all_engines().get(engine_id)
     if cls is None:
@@ -668,6 +674,7 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
 @router.post("/{engine_id}/config/reveal")
 async def reveal_engine_config(engine_id: str, req: EngineConfigRevealRequest):
     """Return a stored secret after an explicit reveal action."""
+    _require_managed_engine_permission()
     engine_id = engine_id.replace("-", "_")
     cls = list_all_engines().get(engine_id)
     if cls is None:

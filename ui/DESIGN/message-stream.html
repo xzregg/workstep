@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WorkStep / 消息吐字实验</title>
+<style>
+:root{color-scheme:light;--bg:#faf9f6;--panel:#fff;--text:#252624;--muted:#777973;--line:#dedfd9;--soft:#f1f2ed;--accent:#39765b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:1320px;margin:auto;padding:40px 36px}header{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:30px}.eyebrow{font-size:12px;color:var(--muted);letter-spacing:.12em}h1{font-size:28px;font-weight:550;letter-spacing:-1px;margin:8px 0}p{margin:0}.intro{color:var(--muted)}button,select,input{font:inherit;color:inherit}button,select{border:.5px solid var(--line);background:var(--panel);border-radius:7px;min-height:36px;padding:6px 12px}button{cursor:pointer}button:hover{background:var(--soft)}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.primary{background:var(--text);color:var(--bg);border-color:var(--text)}.primary:hover{background:#444}.controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:16px 0 22px;border-bottom:.5px solid var(--line);margin-bottom:24px}.controls label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}.controls input{width:100px;accent-color:var(--accent)}output{min-width:30px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.variant{min-width:0;background:var(--panel);border:.5px solid var(--line);border-radius:12px;overflow:hidden}.variant-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 22px;border-bottom:.5px solid var(--line)}h2{font-size:14px;margin:0;font-weight:550}.number{color:var(--muted);margin-right:10px;font-variant-numeric:tabular-nums}.tag{font-size:12px;color:var(--accent)}.conversation{padding:24px 26px 18px}.user{margin-left:auto;width:fit-content;max-width:90%;background:var(--soft);padding:9px 14px;border-radius:15px 15px 4px 15px;margin-bottom:25px}.identity{display:flex;align-items:center;gap:9px;font-weight:550;margin-bottom:12px}.mark{display:grid;place-items:center;width:23px;height:23px;background:var(--text);color:var(--panel);border-radius:6px;font-size:12px}.state{font-size:12px;font-weight:400;color:var(--muted);margin-left:auto}.indicator{width:11px;height:11px;border:1.5px solid var(--line);border-top-color:var(--muted);border-radius:50%;animation:spin 1s linear infinite}.message[data-state="waiting"] .indicator,.message[data-state="paused"] .indicator,.message[data-state="done"] .indicator{animation:none;border-color:var(--muted)}.message[data-state="done"] .indicator{background:var(--accent);border-color:var(--accent);width:6px;height:6px}.body{white-space:pre-wrap;overflow-wrap:anywhere;min-height:255px;line-height:1.9;letter-spacing:.01em}.body span{animation:fade .22s ease-out both}.phrase .body span{animation-duration:.3s}.body .settled{animation:none}.message[data-state="paused"] .body span{animation-play-state:paused}.meta{border-top:.5px solid var(--line);padding:12px 22px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:12px}.actions{display:flex;gap:12px;margin-top:18px;min-height:30px}.actions button{font-size:12px;border:0;padding:0 4px;min-height:28px;color:var(--muted)}.message:not([data-state="done"]) .actions{visibility:hidden}footer{font-size:12px;color:var(--muted);margin-top:22px}body.dark{color-scheme:dark;--bg:#191a18;--panel:#222320;--text:#e6e6df;--muted:#9da096;--line:#3c3e37;--soft:#30322c;--accent:#a0c6aa}@keyframes fade{from{opacity:.12}to{opacity:1}}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:760px){main{padding:22px 16px}.grid{grid-template-columns:1fr;gap:18px}header{align-items:flex-start}h1{font-size:28px}.conversation{padding:20px}.controls{gap:10px}.body{min-height:280px}.variant-head,.meta{padding-left:18px;padding-right:18px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+<main>
+<header><div><div class="eyebrow">WORKSTEP / MOTION LAB</div><h1>让文字自然流出来。</h1><p class="intro">四种消息动效，同一段回复，同步对比。</p></div><button id="theme" aria-pressed="false">深色</button></header>
+<div class="controls">
+<button id="replay" class="primary">重新播放</button><button id="pause">暂停</button><button id="finish">立即显示全文</button>
+<label>到达节奏<select id="network"><option value="steady">平稳流入</option><option value="jitter">网络有波动</option><option value="burst">大段涌入</option></select></label>
+<label>播放速度<input id="speed" type="range" min="0.5" max="2" step="0.25" value="1"><output id="speedValue">1×</output></label>
+</div>
+<section class="grid" aria-label="消息动效对比"></section>
+<footer>交互动效原型，使用模拟数据。参考 Codex 的简洁消息观感，并非其内部实现。可暂停、重播或切换到达节奏。</footer>
+</main>
+<script>
+const variants=[
+  ['continuous','连续吐字','清晰直接','细粒度推进，文字不做淡入'],
+  ['soft','柔和淡入','推荐','连续推进，新文字用 220ms 淡入'],
+  ['phrase','短语浮现','安静阅读','按短语揭示，减少逐字闪动'],
+  ['adaptive','自适应追赶','适合长回复','积压时加速，收尾更利落']
+];
+const sample='可以。先把消息的阅读节奏理顺，让新文字连续出现，已经读过的部分保持稳定。\n\n我会先检查消息组件，再调整三个细节：\n\n1. 将成段跳字改为细粒度推进。\n2. 新文字轻柔浮现，旧文字不重复闪烁。\n3. 回复结束后及时收尾，不留下漫长等待。\n\n例如 useStreamReveal → 渲染层，只更新新增内容；中文、English 和 👩🏽‍💻 都保持完整。\n\n这样读起来会更自然，也更容易跟上思路。';
+const chars=Array.from(new Intl.Segmenter('zh',{granularity:'grapheme'}).segment(sample),s=>s.segment);
+const grid=document.querySelector('.grid');
+for(const [id,title,tag,note] of variants){
+  const card=document.createElement('article');card.className='variant '+id;
+  card.innerHTML=`<div class="variant-head"><h2><span class="number">0${grid.children.length+1}</span>${title}</h2><span class="tag">${tag}</span></div><div class="conversation"><div class="user">让消息吐字更丝滑一点。</div><div class="message" data-state="running"><div class="identity"><span class="mark">W</span>WorkStep<span class="state" role="status">正在回复</span><span class="indicator" aria-hidden="true"></span></div><div class="body"></div><div class="actions"><button class="copy">复制回复</button><button class="again">重播此项</button></div></div></div><div class="meta"><span>${note}</span><span class="count">0 字</span></div>`;
+  grid.append(card);
+}
+const items=[...document.querySelectorAll('.variant')].map((el,index)=>({el,index,body:el.querySelector('.body'),shown:0,credit:0,wait:0}));
+let frame=0,last=0,elapsed=0,received=0,nextArrival=0,packet=0,paused=false;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)');
+const pauseButton=document.querySelector('#pause');
+function state(item,value){item.el.querySelector('.message').dataset.state=value;item.el.querySelector('.state').textContent={done:'已完成',paused:'已暂停',running:'正在回复',waiting:'等待内容'}[value];}
+function append(item,end){
+  if(end<=item.shown)return;
+  const text=chars.slice(item.shown,end).join('');
+  if(item.index===0||reduce.matches){item.body.append(document.createTextNode(text));}
+  else{const span=document.createElement('span');span.textContent=text;span.addEventListener('animationend',()=>{span.classList.add('settled')},{once:true});item.body.append(span);}
+  item.shown=end;item.el.querySelector('.count').textContent=end+' 字';
+}
+function reset(item){item.shown=0;item.credit=0;item.wait=0;item.body.replaceChildren();item.el.querySelector('.count').textContent='0 字';state(item,'running');}
+function replay(){cancelAnimationFrame(frame);items.forEach(reset);elapsed=received=nextArrival=packet=last=0;paused=false;pauseButton.textContent='暂停';frame=requestAnimationFrame(tick);}
+function tick(now){
+  const dt=last?Math.min(now-last,50)*Number(document.querySelector('#speed').value):0;last=now;elapsed+=dt;
+  const network=document.querySelector('#network').value;
+  if(elapsed>=nextArrival&&received<chars.length){
+    const sizes=network==='burst'?[90,8,115,90]:network==='jitter'?[5,25,4,34,8,20]:[12];
+    const delays=network==='burst'?[1100,600,1200,500]:network==='jitter'?[100,420,80,600,160,220]:[180];
+    received=Math.min(chars.length,received+sizes[packet%sizes.length]);nextArrival=elapsed+delays[packet%delays.length];packet++;
+  }
+  for(const item of items){
+    const backlog=received-item.shown;
+    const rate=item.index===3?Math.max(65,backlog/0.45):65;
+    item.credit=Math.min(item.credit+rate*dt/1000,Math.max(1,backlog));item.wait+=dt;
+    let count=Math.min(backlog,Math.floor(item.credit));
+    if(item.index===2){count=item.wait>=110?Math.min(backlog,7):0;if(count)item.wait=0;}
+    if(reduce.matches)count=backlog;
+    if(count){append(item,item.shown+count);item.credit=Math.max(0,item.credit-count);}
+    state(item,item.shown===chars.length?'done':item.shown===received?'waiting':'running');
+  }
+  if(items.some(item=>item.shown<chars.length))frame=requestAnimationFrame(tick);
+}
+document.querySelector('#replay').onclick=replay;
+document.querySelector('#network').onchange=replay;
+document.querySelector('#speed').oninput=e=>document.querySelector('#speedValue').textContent=e.target.value+'×';
+pauseButton.onclick=()=>{paused=!paused;pauseButton.textContent=paused?'继续':'暂停';if(paused){cancelAnimationFrame(frame);items.forEach(item=>{if(item.shown<chars.length)state(item,'paused')});}else{last=0;frame=requestAnimationFrame(tick)}};
+document.querySelector('#finish').onclick=()=>{cancelAnimationFrame(frame);received=chars.length;items.forEach(item=>{append(item,chars.length);state(item,'done')});paused=false;pauseButton.textContent='暂停'};
+document.querySelector('#theme').onclick=e=>{const dark=document.body.classList.toggle('dark');e.target.textContent=dark?'浅色':'深色';e.target.setAttribute('aria-pressed',String(dark));};
+for(const item of items){
+  item.el.querySelector('.again').onclick=()=>{reset(item);if(paused){state(item,'paused');return;}cancelAnimationFrame(frame);last=0;frame=requestAnimationFrame(tick)};
+  item.el.querySelector('.copy').onclick=async e=>{try{await navigator.clipboard.writeText(sample);e.target.textContent='已复制'}catch{e.target.textContent='请选中文字复制'}setTimeout(()=>e.target.textContent='复制回复',1800)};
+}
+document.addEventListener('visibilitychange',()=>{last=0});
+replay();
+</script>
+</html>

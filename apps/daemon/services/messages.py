@@ -56,7 +56,7 @@ def current_actor_task_fields() -> dict[str, str]:
 def _message_author_fields(message: Message | None) -> dict[str, str]:
     if message is None:
         return {}
-    automated = message.author_type in {"assistant", "system", "scheduler"}
+    automated = message.author_type in {"assistant", "system", "scheduler", "coordinator"}
     user_id = (message.initiated_by_user_id if automated else message.author_id)
     username = (message.initiated_by_username if automated else
                 (message.author_username or message.author_name))
@@ -234,9 +234,15 @@ def allocate_message_sequences(task_id: str, count: int = 1) -> int:
 
 
 def create_task_message(
-    *, task: Task, channel: str, snapshot_current_actor: bool = True, **fields,
+    *, task: Task, channel: str, snapshot_current_actor: bool = True,
+    coordinator_turn_id: str | None = None, **fields,
 ) -> Message:
     """Create a message with a task-local monotonic sequence."""
+    if coordinator_turn_id:
+        from services.coordinator_source import coordinator_message_fields
+
+        fields.update(coordinator_message_fields(task, coordinator_turn_id))
+        snapshot_current_actor = False
     sequence = allocate_message_sequences(task.id)
     task.next_message_sequence = sequence + 1
     if "id" not in fields:

@@ -1,4 +1,5 @@
 import { diagnosticRoute, redactDiagnosticText, type DiagnosticPrivacyContext } from '../../../desktop/src/diagnostic-privacy.mjs'
+import { limitFeedbackText, summarizeErrors } from '../../../desktop/src/feedback-summary.mjs'
 import desktopPackage from '../../../desktop/package.json' with { type: 'json' }
 
 interface DiagnosticRecord { at: string; kind: 'page' | 'request'; detail: string }
@@ -73,19 +74,17 @@ export function buildBrowserFeedback({ window: target = window, diagnostics = br
   window?: Window; diagnostics?: BrowserDiagnostics; version?: string
 } = {}): string {
   const performance = target.performance
-  const startedAt = Number.isFinite(performance?.timeOrigin) ? new Date(performance.timeOrigin).toISOString() : '不可用'
   const uptime = Math.max(0, Math.floor((performance?.now() || 0) / 1000))
-  const records = diagnostics.snapshot()
-  return [
-    'WorkStep 问题反馈', '', '问题描述：', '复现步骤：', '预期结果：', '',
+  const errors = summarizeErrors(diagnostics.snapshot().map(record => ({ ...record, source: record.kind === 'page' ? '页面' : '接口' })))
+  return limitFeedbackText([
+    'WorkStep 问题反馈', '问题描述：', '复现步骤：', '',
     `生成时间：${new Date().toISOString()}（${Intl.DateTimeFormat().resolvedOptions().timeZone}）`,
     `前端版本：${version}`, `客户端：${target.WorkStepAndroid ? 'Android' : /Android|iPhone|iPad|Mobile/i.test(target.navigator.userAgent) ? '移动浏览器' : '浏览器'}`,
     `浏览器与系统：${browserInfo(target.navigator.userAgent)}`, `当前页面：${diagnosticRoute(target.location.pathname)}`,
-    `页面启动时间：${startedAt}`, `页面运行时长：${Math.floor(uptime / 3600)}小时${Math.floor(uptime / 60) % 60}分${uptime % 60}秒`,
+    `页面运行时长：${Math.floor(uptime / 3600)}小时${Math.floor(uptime / 60) % 60}分${uptime % 60}秒`,
     `网络状态：${target.navigator.onLine ? '在线' : '离线'}`, '后台文件日志与桌面进程信息：不可用（当前客户端未读取）', '',
-    '近期页面异常与接口失败（仅本次页面运行，最多 100 条；已脱敏，长记录截断）',
-    ...records.map(record => `${record.at} [${record.kind}] ${record.detail}`),
-    ...(records.length ? [] : ['暂无已记录异常。']), '',
+    '近期错误摘要（最多 5 类，重复已合并，仅保留关键堆栈）',
+    ...(errors.length ? errors : ['未发现已记录的错误，请补充问题描述与复现步骤。']), '',
     '不包含请求头、请求／响应正文、聊天正文或完整配置。截图需自行检查敏感信息后附上。',
-  ].join('\n')
+  ].join('\n'))
 }

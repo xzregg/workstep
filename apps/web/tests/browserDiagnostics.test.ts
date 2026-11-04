@@ -42,3 +42,17 @@ test('browser report contains version and uptime but no origin, search parameter
   for (const value of ['10.0.0.1', 'private-project', 'private-token']) assert.ok(!report.includes(value), value)
   await window.happyDOM.close()
 })
+
+test('copied browser feedback summarizes the latest five distinct errors instead of its full buffer', async () => {
+  const { window } = installDomEnvironment()
+  const diagnostics = createBrowserDiagnostics()
+  for (let index = 0; index < 20; index++) diagnostics.recordError(`Error: failure-${index}\n    at handler ([path]:12:3)\n${'    at extra ([path]:10:1)\n'.repeat(100)}`)
+  diagnostics.recordError('Error: failure-19\n    at handler ([path]:12:3)\n    at extra ([path]:10:1)')
+  const report = buildBrowserFeedback({ window: window as unknown as Window, diagnostics })
+  assert.ok(new TextEncoder().encode(report).length <= 8192)
+  assert.equal(report.match(/Error: failure-/g)?.length, 5)
+  assert.ok(!report.includes('Error: failure-0\n'))
+  assert.match(report, /最多 5 类/)
+  assert.ok(report.split('\n').length < 40)
+  await window.happyDOM.close()
+})

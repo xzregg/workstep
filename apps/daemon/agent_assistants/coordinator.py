@@ -1575,24 +1575,27 @@ class CoordinatorModule:
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )
-        return await invoke_engine(
-            engine_id,
-            model,
-            cwd,
-            prompt,
-            session_id,
-            on_event,
-            spawner=spawn,
-            system_prompt=system_prompt,
-            system_prompt_each_turn=system_prompt_each_turn,
-            capture_prompt_input=True,
-            error_prefix="Coordinator engine",
-            run_key=turn_id,
-            running_engines=self._running_engines,
-            assign_session_on_no_resume=True,
-            workstep_tools=COORDINATOR_CONFIG.workstep_tools,
-            config_overrides=config_overrides,
-        )
+        from services.coordinator_source import coordinator_source
+
+        with coordinator_source(turn_id):
+            return await invoke_engine(
+                engine_id,
+                model,
+                cwd,
+                prompt,
+                session_id,
+                on_event,
+                spawner=spawn,
+                system_prompt=system_prompt,
+                system_prompt_each_turn=system_prompt_each_turn,
+                capture_prompt_input=True,
+                error_prefix="Coordinator engine",
+                run_key=turn_id,
+                running_engines=self._running_engines,
+                assign_session_on_no_resume=True,
+                workstep_tools=COORDINATOR_CONFIG.workstep_tools,
+                config_overrides=config_overrides,
+            )
 
     def _parse_result(self, raw: str) -> dict:
         candidates = [raw]

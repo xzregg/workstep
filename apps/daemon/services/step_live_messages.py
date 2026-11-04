@@ -303,6 +303,7 @@ class StepLiveMessages:
         step_key: str,
         content: str,
         as_guidance: bool = False,
+        coordinator_turn_id: str | None = None,
     ) -> dict:
         """Persist and queue a user message for the running execution/review."""
         normalized = content.strip()
@@ -330,6 +331,7 @@ class StepLiveMessages:
             message = create_task_message(
                 id=message_id, task=task, channel=channel, step_key=step_key,
                 role="user", content=normalized, run_id=message_id,
+                coordinator_turn_id=coordinator_turn_id,
                 run_status="running", position=0, started_at=now,
                 created_at=now,
             )
@@ -351,14 +353,17 @@ class StepLiveMessages:
                 )
                 task.state_version += 1
                 task.save()
-            return message.sequence, injected_content
+            from services.coordinator_source import message_actor
 
-        sequence, injected_content = await self._run_db(persist_live_message)
+            return message.sequence, injected_content, message_actor(message)
+
+        sequence, injected_content, actor = await self._run_db(persist_live_message)
         self._prompts[message_id] = injected_content
         await self._publish(task_id, step_key, {
             "channel": channel,
             "message_id": message_id,
             "type": "message_started",
+            "actor": actor,
             "data": {
                 "content": normalized,
                 "status": "queued",

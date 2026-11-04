@@ -8,11 +8,13 @@ export interface DesktopUpdateStatus {
   releaseUrl: string
   checkedAt: number
   source: 'cache' | 'network'
+  automaticCheckEnabled?: boolean
 }
 
 export interface DesktopUpdateBridge {
   status: () => Promise<DesktopUpdateStatus>
   check: () => Promise<DesktopUpdateStatus>
+  setAutomaticCheckEnabled?: (enabled: boolean) => Promise<DesktopUpdateStatus>
   openDownload: (url: string) => Promise<void>
   start?: () => Promise<void>
   autoStatus?: () => Promise<DesktopAutoUpdateStatus>
@@ -25,7 +27,7 @@ export interface DesktopAutoUpdateStatus {
 }
 
 const idle: DesktopAutoUpdateStatus = { phase: 'idle', percent: 0, error: null }
-const initial = { status: null as DesktopUpdateStatus | null, checking: false, failed: false, automatic: idle }
+const initial = { status: null as DesktopUpdateStatus | null, checking: false, savingPreference: false, failed: false, automatic: idle }
 const busyPhase = (state: DesktopAutoUpdateStatus) => ['checking', 'downloading', 'installing'].includes(state.phase)
 let bridge: DesktopUpdateBridge | undefined
 let clients = 0, generation = 0, lastStatusRead = 0
@@ -89,7 +91,7 @@ function connect(updates: DesktopUpdateBridge | undefined) {
 async function start() {
   const source = bridge
   const state = useDesktopUpdateStore.getState()
-  if (!source?.start || starting || busyPhase(state.automatic) || state.checking) return
+  if (!source?.start || starting || busyPhase(state.automatic) || state.checking || state.savingPreference) return
   const current = generation
   useDesktopUpdateStore.setState({ automatic: { ...idle, phase: 'checking' } })
   starting = true
@@ -109,12 +111,31 @@ async function start() {
   } finally { if (current === generation) starting = false }
 }
 
-const check = () => busyPhase(useDesktopUpdateStore.getState().automatic) ? Promise.resolve() : refreshStatus(true)
+async function setAutomaticCheckEnabled(enabled: boolean) {
+  if (!bridge?.setAutomaticCheckEnabled || useDesktopUpdateStore.getState().savingPreference) return
+  const current = generation, source = bridge
+  useDesktopUpdateStore.setState({ savingPreference: true, failed: false })
+  try {
+    // Let any older status read finish before publishing the saved preference.
+    await statusPending
+    const status = await source.setAutomaticCheckEnabled!(enabled)
+    if (current === generation) {
+      useDesktopUpdateStore.setState({ status })
+      if (enabled) await refreshStatus()
+    }
+  } catch {
+    if (current === generation) useDesktopUpdateStore.setState({ failed: true })
+  } finally {
+    if (current === generation) useDesktopUpdateStore.setState({ savingPreference: false })
+  }
+}
+
+const check = () => (busyPhase(useDesktopUpdateStore.getState().automatic) || useDesktopUpdateStore.getState().savingPreference) ? Promise.resolve() : refreshStatus(true)
 
 /** Both update entries share one watcher and one in-flight request per IPC. */
 export function useDesktopUpdates() {
   const updates = window.workstepDesktop?.updates
   const state = useDesktopUpdateStore()
   useEffect(() => connect(updates), [updates])
-  return { ...state, updates, busy: busyPhase(state.automatic), check, start }
+  return { ...state, updates, busy: busyPhase(state.automatic), check, start, setAutomaticCheckEnabled }
 }

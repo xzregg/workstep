@@ -149,12 +149,17 @@ def require_managed_capability(action: str, *, creator_fields: dict | None = Non
                                project_id: str | None = None) -> None:
     """Fail closed at a shared service entry when this daemon is Gateway-managed."""
     from main import gateway_client
-    from services.remote_access import authenticated_remote_dispatch, get_current_actor
+    from services.remote_access import authenticated_remote_dispatch, get_current_actor, native_workspace_active
 
     if gateway_client.managed_config is None:
         return
     actor = get_current_actor()
     principal = authenticated_remote_dispatch()
+    # User-configured Gateway connections retain an explicitly authenticated
+    # native workspace. Browser identity headers alone never establish this.
+    if (native_workspace_active() and principal is None
+            and (actor is None or (actor.source in ("local", "browser") and actor.project_id is None))):
+        return
     # Native project connections authenticate their device/project separately
     # from Gateway users, just as native task-share management does.
     if (action == "task.create" and principal is not None

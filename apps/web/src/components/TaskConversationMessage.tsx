@@ -142,6 +142,7 @@ export default function TaskConversationMessage({
         (msg: any, i: number) => {
           const isUser =
             msg.role === 'user'
+          const isCoordinatorDispatch = isUser && msg.author_type === 'coordinator'
           const isSystem =
             msg.role === 'system'
           const isReview =
@@ -242,7 +243,9 @@ export default function TaskConversationMessage({
               msg,
               reviews,
             )
-          const sender = isUser
+          const sender = isCoordinatorDispatch
+            ? t('aiFlow.agent')
+            : isUser
             ? displayUserSender(
                 msg.author_name,
                 localUserName,
@@ -259,7 +262,9 @@ export default function TaskConversationMessage({
                   ? `${stepLabel} · ${t('taskDetail.manualReview')}`
                   : stepLabel
           const initials =
-            isUser || isSystem
+            isCoordinatorDispatch
+              ? t('aiFlow.agentInitials')
+              : isUser || isSystem
               ? sender.slice(0, 2)
               : isCoordinator
                 ? t(
@@ -270,7 +275,9 @@ export default function TaskConversationMessage({
                     t,
                   )
           const senderColor =
-            isUser
+            isCoordinatorDispatch
+              ? 'var(--ai-assistant)'
+              : isUser
               ? 'var(--accent)'
               : isSystem
                 ? 'var(--warn)'
@@ -329,13 +336,13 @@ export default function TaskConversationMessage({
                   ? 'system'
                   : isReview
                     ? 'review'
-                    : isUser
+                    : isUser && !isCoordinatorDispatch
                       ? 'user'
                       : 'assistant'
               }
               sender={sender}
               senderTitle={
-                isUser
+                isUser && !isCoordinatorDispatch
                   ? displayUserDetail(
                       msg.author_name,
                       msg.author_device_name,

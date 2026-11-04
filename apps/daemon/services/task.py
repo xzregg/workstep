@@ -291,6 +291,7 @@ class TaskService:
                 "author_name": msg.author_name,
                 "schedule_run_id": msg.schedule_run_id,
                 "author_type": msg.author_type,
+                "reply_to_message_id": msg.reply_to_message_id,
                 "initiated_by_user_id": msg.initiated_by_user_id,
                 "initiated_by_username": msg.initiated_by_username,
                 "author_device_id": msg.author_device_id,

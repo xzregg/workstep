@@ -23,13 +23,13 @@ export const MIN_REVEAL_FRAME_MS = 90
  * 常规吐字速度（字符/秒）。正文与思考块共用同一个 hook，节奏完全一致：
  * token 平稳到达时按这个速度逐帧浮现。
  */
-export const REVEAL_CHARS_PER_SECOND = 120
+export const REVEAL_CHARS_PER_SECOND = 65
 
 /**
  * 积压排空上限（毫秒）。队列里剩得再多，也会动态提速，
- * 保证在这么久内全部吐完——否则 5000 字按常规速度要四十多秒，尾巴太长。
+ * 默认约 450ms 追平本批积压，避免大段内容到达后仍拖着长尾。
  */
-export const MAX_REVEAL_DURATION_MS = 10_000
+export const MAX_REVEAL_DURATION_MS = 450
 
 /** 常规节奏下每帧推进的字符数。 */
 export const REVEAL_STEP_CHARS = Math.max(
@@ -69,6 +69,18 @@ export function revealStepFor(
   )
 }
 
+const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+/** Advance to a complete grapheme boundary, including emoji and combining marks. */
+function revealBoundary(text: string, start: number, step: number): number {
+  if (start + step >= text.length) return text.length
+  for (const part of segmenter.segment(text.slice(start))) {
+    const end = start + part.index + part.segment.length
+    if (end >= start + step) return end
+  }
+  return text.length
+}
+
 /**
  * 流式文本揭示层：输入父级最新 content，输出"当前应渲染的前缀"。
  *
@@ -105,7 +117,7 @@ export default function useStreamReveal(
   const prevFrozenRef = useRef(frozen)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 当前每帧步长。常规时等于 REVEAL_STEP_CHARS；积压过多时动态升速，
-  // 并保持到这批积压排空，避免"指数逼近"永远追不上 10 秒上限。
+  // 并保持到这批积压排空，避免随剩余量递减而形成指数长尾。
   const stepRef = useRef(baseStep)
   useEffect(() => { stepRef.current = baseStep }, [baseStep, effects?.maxDurationMs])
 
@@ -150,7 +162,7 @@ export default function useStreamReveal(
       return
     }
 
-    // 还有未揭示内容：按动态速度推进（常规节奏，积压过多时自动提速）。
+    // 还有未揭示内容：按动态速度推进（常规节奏，积压时自动提速）。
     // 这里刻意不看 streaming —— 消息结束后仍把剩余内容排空，
     // 否则一次性到达的长正文会"瞬间铺满"，失去吐字感。
     if (shownRef.current.length < content.length && timerRef.current == null) {
@@ -162,10 +174,10 @@ export default function useStreamReveal(
           stepRef.current = revealStepFor(0, 0, settings.current)
           return
         }
-        // 动态调速：积压多 → 升速，保证最多 10 秒排空；积压少 → 常规节奏。
+        // 动态调速：积压多 → 升速，保证默认约 450ms 排空；积压少 → 常规节奏。
         stepRef.current = revealStepFor(remaining, stepRef.current, settings.current)
         const step = Math.min(remaining, stepRef.current)
-        resetTo(target.slice(0, shownRef.current.length + step))
+        resetTo(target.slice(0, revealBoundary(target, shownRef.current.length, step)))
         if (contentRef.current.length - shownRef.current.length > 0) {
           timerRef.current = setTimeout(tick, MIN_REVEAL_FRAME_MS)
         } else {

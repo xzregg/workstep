@@ -397,7 +397,7 @@ class WorkflowRuntime:
         data: dict,
     ) -> None:
         """Translate a persisted user message into AG-UI live events."""
-        from services.remote_project import current_actor_event_fields
+        from services.coordinator_source import message_actor
 
         data = {**data, "role": "user"}
         payload = {
@@ -413,7 +413,7 @@ class WorkflowRuntime:
                 if message.created_at is not None
                 else utc_now().isoformat()
             ),
-            **current_actor_event_fields(),
+            "actor": message_actor(message),
         }
         ctx = AGUIContext.from_event(payload)
         for agui_event in to_agui_events(payload, ctx):
@@ -426,6 +426,7 @@ class WorkflowRuntime:
         step_key: str,
         content: str,
         as_guidance: bool = False,
+        coordinator_turn_id: str | None = None,
     ) -> dict:
         """Inject a user message into a running step or automatic review."""
         runner = self._runners.get(task_id)
@@ -436,6 +437,7 @@ class WorkflowRuntime:
             step_key,
             content,
             as_guidance=as_guidance,
+            **({"coordinator_turn_id": coordinator_turn_id} if coordinator_turn_id else {}),
         )
 
     async def cancel_message(self, project_id: str, task_id: str, message_id: str) -> bool:
@@ -551,6 +553,7 @@ class WorkflowRuntime:
         reset_session: bool = False,
         replay_pending: bool = False,
         allow_pending: bool = False,
+        coordinator_turn_id: str | None = None,
     ) -> dict:
         """Persist a user message and re-run a stopped or completed step.
 
@@ -574,6 +577,7 @@ class WorkflowRuntime:
             project_id, lambda _project: persist_step_followup(
                 task_id, step_key, normalized, author_name, pending_insert_ids,
                 allow_pending=allow_pending,
+                coordinator_turn_id=coordinator_turn_id,
             )
         )
         message_id = user_message.id

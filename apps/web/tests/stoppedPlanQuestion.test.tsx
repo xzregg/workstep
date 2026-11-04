@@ -8,6 +8,32 @@ import AssistantChatPanel from '../src/components/AssistantChatPanel'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { installDomEnvironment } from './helpers/domEnv'
 
+test('plan shimmer stops with its message even when the last step remains in progress', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const render = (streaming: boolean) => root.render(
+    <I18nProvider><ChatMessageBubble role="assistant" sender="助手" initials="AI" color="purple"
+      content="执行计划" streaming={streaming} events={[{
+        type: 'CUSTOM', name: 'workstep.plan', value: { entries: [
+          { content: '检查环境', status: 'completed' },
+          { content: '发布版本', status: 'in_progress' },
+        ] },
+      }]} /></I18nProvider>,
+  )
+  try {
+    await act(async () => render(true))
+    assert.ok(document.querySelector('.plan-checklist.is-running .plan-item.active'))
+    await act(async () => render(false))
+    assert.equal(document.querySelector('.plan-checklist.is-running'), null)
+    assert.equal(document.querySelector('.plan-item.active .plan-label')?.textContent, '发布版本')
+    assert.ok(document.querySelector('.plan-item.done'))
+    assert.equal(document.querySelector('.plan-head-count')?.textContent, '1/2')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 for (const cancelled of [false, true]) {
   test(`stopped plan question resumes as a new message (cancelled=${cancelled})`, async () => {
     const { window } = installDomEnvironment()

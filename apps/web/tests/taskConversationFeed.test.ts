@@ -46,6 +46,19 @@ test('conversation feed excludes persisted live messages and user execution echo
   assert.equal(feed.hasStructuredExecutionMessage, true)
 })
 
+test('coordinator instructions appear live and merge once into persisted history', () => {
+  const dispatch = { id: 'dispatch', role: 'user', author_type: 'coordinator',
+    channel: 'execution', step_key: 'build', content: '执行构建', status: 'queued' }
+  const build = (historyMessages: any[]) => buildTaskConversationTimeline({
+    historyMessages, liveMessages: { dispatch } as any, actionRuns: [],
+    coordinatorRunning: false, actionTitle: title => title,
+  }).orderedMessages
+  assert.equal(build([]).length, 1)
+  const recovered = build([{ ...dispatch, sequence: 1, run_status: 'completed' }])
+  assert.equal(recovered.length, 1)
+  assert.equal(recovered[0].author_type, 'coordinator')
+})
+
 test('timeline merges action runs and puts a pending coordinator reply after its prompt', () => {
   const timeline = buildTaskConversationTimeline({
     historyMessages: [{

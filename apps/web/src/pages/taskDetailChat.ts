@@ -86,7 +86,7 @@ interface ConversationMessage {
   author_id?: string | null
   author_username?: string | null
   author_name?: string | null
-  author_type?: 'user' | 'assistant' | 'system' | 'scheduler' | null
+  author_type?: 'user' | 'assistant' | 'system' | 'scheduler' | 'coordinator' | null
   initiated_by_user_id?: string | null
   initiated_by_username?: string | null
   author_device_id?: string | null
@@ -304,9 +304,8 @@ export function isVisibleHistoryMessage(message: ConversationMessage): boolean {
 }
 
 export function isVisibleLiveExecutionMessage(message: ConversationMessage): boolean {
-  // 实时插入的用户消息由乐观/历史渲染呈现（右侧 + @步骤名），
-  // 不应再以左侧执行消息的身份出现。
-  if (message.role === 'user') return false
+  // 人工插入的消息由乐观/历史渲染；协调指令可按真实来源直接显示。
+  if (message.role === 'user' && message.author_type !== 'coordinator') return false
   return (message.channel === 'execution' || message.channel === 'review')
     && (message.status === 'running'
       || TERMINAL_EXECUTION_STATUSES.includes(message.status || '')

@@ -19,7 +19,7 @@ test('only new characters bloom, with stable nodes and readable completed text',
     await render('你好')
     const first = host.querySelector('.stream-reveal-char')!
     assert.equal(host.querySelectorAll('.stream-reveal-char').length, 2)
-    assert.equal((first.nextElementSibling as HTMLElement).style.animationDelay, '30ms')
+    assert.ok(parseFloat((first.nextElementSibling as HTMLElement).style.animationDelay) <= 90)
     await render('你好世界')
     assert.equal(host.querySelector('.stream-reveal-char'), first)
     assert.equal(host.textContent, '你好世界')
@@ -39,6 +39,9 @@ test('graphemes stay intact and large batches bound animation nodes', async () =
   try {
     await act(async () => root.render(<StreamRevealText text={'字'.repeat(5000) + '👨‍👩‍👧‍👦'} enabled />))
     assert.ok(host.querySelectorAll('.stream-reveal-char').length <= 32)
+    for (const char of host.querySelectorAll<HTMLElement>('.stream-reveal-char')) {
+      assert.ok(parseFloat(char.style.animationDelay) < 90, 'catch-up animation must fit within a render interval')
+    }
     assert.equal(host.lastElementChild?.textContent, '👨‍👩‍👧‍👦')
   } finally {
     await act(async () => root.unmount())
@@ -92,6 +95,7 @@ test('a new message blooms appended prose and clears the reveal layer on complet
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 110)) })
     assert.equal(host.querySelectorAll('.stream-reveal-char').length, 2)
     const first = host.querySelector('.stream-reveal-char')
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 180)) })
     await render('你好世界')
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 110)) })
     assert.equal(host.textContent, '你好世界')

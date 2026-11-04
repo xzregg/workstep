@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, clipboard } = require('electron')
+const { app, BrowserWindow, ipcMain, clipboard, session } = require('electron')
 const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 const os = require('node:os')
@@ -21,6 +21,8 @@ async function run() {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'workstep-feedback-acceptance-'))
   app.setPath('userData', directory)
   await app.whenReady()
+  // Reproduce the packaged app's unavailable file transport, including assets.
+  session.defaultSession.protocol.handle('file', () => new Response('', { status: 404 }))
   savedClipboard = { text: clipboard.readText(), html: clipboard.readHTML(), rtf: clipboard.readRTF(), image: clipboard.readImage() }
   server = http.createServer((_request, response) => {
     response.setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -48,7 +50,9 @@ async function run() {
   })
   await workspace.webContents.executeJavaScript('window.workstepDesktop.feedback.open()')
   const preview = controller.getWindow()
+  assert.match(preview.webContents.getURL(), /^data:text\/html/)
   await waitFor(() => preview.webContents.executeJavaScript("document.getElementById('status').textContent.includes('反馈信息已复制')"))
+  assert.equal(await preview.webContents.executeJavaScript("getComputedStyle(document.body).display"), 'flex', 'bundled styles load under CSP')
   assert.equal(captures, 0, 'opening feedback must never take a screenshot')
   const text = clipboard.readText()
   assert.match(text, /42秒/)

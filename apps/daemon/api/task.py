@@ -317,6 +317,7 @@ async def send_step_message(
     step_key: str,
     req: StepMessageRequest,
     pid: str = Query(..., alias="project_id"),
+    coordinator_turn_id: str | None = Header(None, alias="X-WorkStep-Coordinator-Turn"),
 ):
     """Inject a user message into a running step or automatic review."""
     from main import workflow_runtime
@@ -331,6 +332,7 @@ async def send_step_message(
             step_key,
             req.content,
             as_guidance=req.as_guidance,
+            **({"coordinator_turn_id": coordinator_turn_id} if coordinator_turn_id else {}),
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -426,6 +428,7 @@ async def resume_step(
     step_key: str,
     req: StepResumeRequest,
     pid: str = Query(..., alias="project_id"),
+    coordinator_turn_id: str | None = Header(None, alias="X-WorkStep-Coordinator-Turn"),
 ):
     """Persist a user message and re-run a stopped or completed step."""
     from main import workflow_runtime
@@ -441,6 +444,7 @@ async def resume_step(
             req.content,
             reset_session=req.reset_step,
             **({"allow_pending": True} if req.allow_pending else {}),
+            **({"coordinator_turn_id": coordinator_turn_id} if coordinator_turn_id else {}),
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

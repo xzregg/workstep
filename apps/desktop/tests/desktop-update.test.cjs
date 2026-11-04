@@ -48,3 +48,60 @@ test('invalid cached data is ignored', async () => {
   assert.equal((await checker.check()).source, 'network')
   assert.equal(requests, 1)
 })
+
+
+test('automatic checks can be disabled persistently without preventing manual checks', async () => {
+  let preferences = {}, saved = null, requests = 0
+  const options = {
+    currentVersion: '1.0.9',
+    readCache: async () => saved,
+    writeCache: async value => { saved = value },
+    readPreferences: async () => preferences,
+    writePreferences: async value => { preferences = value },
+    fetchRelease: async () => { requests++; return { tag_name: 'v1.0.10' } },
+  }
+  const checker = createUpdateChecker(options)
+  const disabled = await checker.setAutomaticCheckEnabled(false)
+  assert.equal(disabled.automaticCheckEnabled, false)
+  assert.equal(disabled.checkedAt, 0)
+  assert.equal(requests, 0)
+  const restarted = createUpdateChecker(options)
+  assert.equal((await restarted.check()).automaticCheckEnabled, false)
+  assert.equal(requests, 0)
+  assert.equal((await restarted.check({ force: true })).updateAvailable, true)
+  assert.equal(requests, 1)
+  saved.checkedAt = 1
+  assert.equal((await restarted.check()).source, 'cache')
+  assert.equal(requests, 1)
+  assert.equal((await restarted.setAutomaticCheckEnabled(true)).automaticCheckEnabled, true)
+  assert.equal((await restarted.check()).source, 'network')
+  assert.equal(requests, 2)
+})
+
+test('automatic check preference defaults to enabled', async () => {
+  const checker = createUpdateChecker({
+    currentVersion: '1.0.9', readCache: async () => null, writeCache: async () => {},
+    fetchRelease: async () => ({ tag_name: 'v1.0.9' }),
+  })
+  assert.equal((await checker.check()).automaticCheckEnabled, true)
+})
+
+
+test('desktop service keeps the check preference across service instances', async () => {
+  const fs = require('node:fs/promises')
+  const os = require('node:os')
+  const path = require('node:path')
+  const { createDesktopUpdateService } = require('../src/desktop-update.cjs')
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'workstep-update-test-'))
+  let requests = 0
+  const app = { getPath: () => directory, getVersion: () => '1.0.9' }
+  const fetchRelease = async () => { requests++; return { ok: true, json: async () => ({ tag_name: 'v1.0.10' }) } }
+  try {
+    await createDesktopUpdateService(app, fetchRelease).setAutomaticCheckEnabled(false)
+    const restarted = createDesktopUpdateService(app, fetchRelease)
+    assert.equal((await restarted.check()).automaticCheckEnabled, false)
+    assert.equal(requests, 0)
+    await restarted.check({ force: true })
+    assert.equal(requests, 1)
+  } finally { await fs.rm(directory, { recursive: true, force: true }) }
+})

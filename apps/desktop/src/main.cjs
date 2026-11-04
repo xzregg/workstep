@@ -638,11 +638,13 @@ function configureUpdater() {
   }
   ipcMain.removeHandler('workstep:update:status')
   ipcMain.removeHandler('workstep:update:check')
+  ipcMain.removeHandler('workstep:update:set-automatic-check')
   ipcMain.removeHandler('workstep:update:open-download')
   ipcMain.removeHandler('workstep:update:auto-status')
   ipcMain.removeHandler('workstep:update:start')
   ipcMain.handle('workstep:update:status', () => updater.check())
   ipcMain.handle('workstep:update:check', () => updater.check({ force: true }))
+  ipcMain.handle('workstep:update:set-automatic-check', (_event, enabled) => updater.setAutomaticCheckEnabled(enabled))
   ipcMain.handle('workstep:update:open-download', (_event, url) => shell.openExternal(safeReleaseUrl(url)))
   ipcMain.handle('workstep:update:auto-status', () => automatic?.status() || { phase: 'idle', percent: 0, error: null })
   ipcMain.handle('workstep:update:start', event => {

@@ -67,7 +67,9 @@ export interface TaskEvent {
   output?: unknown
   isError?: boolean
   sequence?: number
-  actor?: { id?: string; name?: string; device_id?: string; device_name?: string }
+  actor?: { id?: string; name?: string; type?: LiveMessage['author_type']; username?: string;
+    device_id?: string; device_name?: string; initiated_by_user_id?: string;
+    initiated_by_username?: string; source_message_id?: string }
 }
 
 export interface LiveMessage {
@@ -89,7 +91,8 @@ export interface LiveMessage {
   author_id?: string
   author_username?: string
   author_name?: string
-  author_type?: 'user' | 'assistant' | 'system' | 'scheduler'
+  author_type?: 'user' | 'assistant' | 'system' | 'scheduler' | 'coordinator'
+  reply_to_message_id?: string
   initiated_by_user_id?: string
   initiated_by_username?: string
   author_device_id?: string
@@ -418,10 +421,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
 
     set((s) => {
-      if (isUserMessageEvent) {
-        // User messages are rendered from persisted history, not as live
-        // bubbles. Keep the event in the task stream and let the open detail
-        // panel refresh its history when the counter changes.
+      if (isUserMessageEvent && event.actor?.type !== 'coordinator') {
+        // Ordinary user messages render from persisted history. Coordinator
+        // instructions also keep a live bubble with their persisted identity;
+        // the history merge deduplicates it by message id on refresh.
         const prevEvents = s.events[taskId] || []
         return {
           events: { ...s.events, [taskId]: appendCappedEvent(prevEvents, timedEvent) },
@@ -485,7 +488,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           restarted,
           author_id: event.actor?.id,
           author_name: event.actor?.name,
-          author_type: event.schedule_run_id && event.role === 'user' ? 'scheduler' : undefined,
+          author_type: event.actor?.type || (event.schedule_run_id && event.role === 'user' ? 'scheduler' : undefined),
+          author_username: event.actor?.username,
+          initiated_by_user_id: event.actor?.initiated_by_user_id,
+          initiated_by_username: event.actor?.initiated_by_username,
+          reply_to_message_id: event.actor?.source_message_id,
           author_device_id: event.actor?.device_id,
           author_device_name: event.actor?.device_name,
           proposals: [],

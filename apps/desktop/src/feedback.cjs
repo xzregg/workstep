@@ -1,12 +1,5 @@
 const { isTrustedNavigation } = require('./security.cjs')
-const MAX_TEXT_BYTES = 256 * 1024
-
-function tail(value, bytes) {
-  const buffer = Buffer.from(String(value))
-  if (buffer.length <= bytes) return String(value)
-  const marker = '…[已截断，仅保留近期日志]\n'
-  return marker + buffer.subarray(buffer.length - Math.max(0, bytes - Buffer.byteLength(marker))).toString('utf8').replace(/^\uFFFD+/, '')
-}
+const { limitFeedbackText, extractLogErrors, summarizeErrors } = require('./feedback-summary.mjs')
 
 function duration(value) {
   if (!Number.isFinite(value)) return '不可用'
@@ -16,22 +9,19 @@ function duration(value) {
 
 function formatFeedback(report, runtime = {}) {
   const m = report.metadata || {}
-  const lines = ['WorkStep 问题反馈', '', '问题描述：', '复现步骤：', '预期结果：', '', '环境与运行信息',
-    `生成时间：${report.generatedAt}（${Intl.DateTimeFormat().resolvedOptions().timeZone}）`,
-    `应用版本：${m.version || '不可用'}`, `系统：${m.platform || '不可用'} ${m.osRelease || ''} ${m.arch || ''}`,
-    `Electron：${m.electron || '不可用'}；Node：${m.node || '不可用'}`,
-    `桌面启动时间：${runtime.startedAt || '不可用'}`, `桌面运行时长：${duration(runtime.uptimeSeconds)}`,
-    `后台模式：${runtime.backendMode || '不可用'}`, `后台状态：${runtime.backendState || '不可用'}`,
-    `后台启动时间：${runtime.backendStartedAt || '不可用'}`, `后台运行时长：${duration(runtime.backendUptimeSeconds)}`,
-    '', '诊断日志（不含原生崩溃转储）', ...(report.warnings || []).map(value => `注意：${value}`)]
-  let text = tail(lines.join('\n'), 16 * 1024)
-  const logs = Object.entries(report.logs || {}).sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
-  // Each source gets space, so a noisy daemon cannot displace desktop errors.
-  const budget = Math.floor((MAX_TEXT_BYTES - Buffer.byteLength(text) - 2048) / Math.max(1, logs.length))
-  for (const [name, value] of logs) text += `\n\n--- ${name} ---\n${tail(value, Math.max(128, budget - Buffer.byteLength(name) - 16))}`
-  if (!logs.length) text += '\n暂无可用日志。'
-  text += '\n\n更多日志可使用桌面帮助菜单中的「导出诊断包」。'
-  return text
+  const errors = summarizeErrors(extractLogErrors(report.logs))
+  return limitFeedbackText([
+    'WorkStep 问题反馈', '问题描述：', '复现步骤：', '',
+    `生成时间：${report.generatedAt || '不可用'}`,
+    `应用版本：${m.version || '不可用'}；系统：${m.platform || '不可用'} ${m.osRelease || ''} ${m.arch || ''}`,
+    `桌面运行时长：${duration(runtime.uptimeSeconds)}`,
+    `后台：${runtime.backendMode || '不可用'} / ${runtime.backendState || '不可用'}`,
+    ...(Number.isFinite(runtime.backendUptimeSeconds) ? [`后台运行时长：${duration(runtime.backendUptimeSeconds)}`] : []),
+    '', '近期错误摘要（最多 5 类，重复已合并，仅保留关键堆栈）',
+    ...(errors.length ? errors : ['未发现已记录的错误，请补充问题描述与复现步骤。']),
+    ...(report.warnings || []).slice(0, 2).map(value => `采集提示：${limitFeedbackText(value, 200)}`),
+    '', '需要完整日志时，可使用「导出诊断包」。',
+  ].join('\n'))
 }
 
 function createFeedbackService({ diagnostics, runtime, clipboard, getWindow, rootUrl, sandboxLogs }) {
@@ -54,7 +44,7 @@ function createFeedbackService({ diagnostics, runtime, clipboard, getWindow, roo
         let state = {}
         try { state = await runtime() }
         catch (error) { report.warnings.push(`后台状态不可用：${error.message}`) }
-        const text = diagnostics.redact(formatFeedback(report, state))
+        const text = limitFeedbackText(diagnostics.redact(formatFeedback(report, state)))
         if (current !== generation) throw Error('反馈窗口已关闭')
         clipboard.writeText(text)
         textCopied = true

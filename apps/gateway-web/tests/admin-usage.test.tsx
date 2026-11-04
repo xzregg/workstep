@@ -248,7 +248,10 @@ test('calendar shortcut changes the range sent to the usage API', async () => {
 })
 
 
-test('statistics tabs share the applied time filters and load only the active report', async () => {
+test('statistics tabs share the applied time filters and load only the active report', async (t) => {
+ // Keep the fixed October fixtures inside the default recent-month range.
+ // Mock Date only; asynchronous rendering and request timers remain real.
+ t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-20T12:00:00Z') })
  const paths:string[]=[]
  globalThis.fetch=async input=>{
   const path=String(input);paths.push(path)

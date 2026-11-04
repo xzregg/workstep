@@ -6,7 +6,7 @@ from services.messages import create_task_message, new_message_id
 from services.step_execution_config import ACTIVE_STEP_CONFIG_STATUSES
 
 
-def persist_step_followup(task_id, step_key, normalized, author_name, pending_insert_ids, *, allow_pending=False):
+def persist_step_followup(task_id, step_key, normalized, author_name, pending_insert_ids, *, allow_pending=False, coordinator_turn_id=None):
     """Write a validated follow-up and clear its consumed queue entries."""
     task = Task.get_or_none(Task.id == task_id)
     if task is None:
@@ -76,6 +76,7 @@ def persist_step_followup(task_id, step_key, normalized, author_name, pending_in
         channel="execution",
         step_key=step_key,
         role="user",
+        coordinator_turn_id=coordinator_turn_id,
         content=normalized,
         run_id=message_id,
         run_status="completed",

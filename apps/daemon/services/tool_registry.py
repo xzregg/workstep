@@ -731,6 +731,12 @@ class WorkstepClient:
         if tool.name == "workstep_run_task":
             body.setdefault("prompt", "")
         headers = await asyncio.to_thread(local_cli_headers, self.base_url)
+        from services.coordinator_source import (
+            COORDINATOR_TURN_ENV, COORDINATOR_TURN_HEADER, coordinator_source_env,
+        )
+        source_turn = coordinator_source_env().get(COORDINATOR_TURN_ENV) or os.environ.get(COORDINATOR_TURN_ENV)
+        if source_turn and tool.name in {"workstep_start_step", "workstep_send_step_message"}:
+            headers[COORDINATOR_TURN_HEADER] = source_turn
         # Never forward a desktop credential to --url on another machine.
         origin = local_origin(self.base_url)
         daemon_origin = local_origin(os.environ.get('WORKSTEP_DAEMON_URL') or DEFAULT_DAEMON_URL)

@@ -210,11 +210,21 @@ class ProviderRuntimeConfig:
             "engine_config": list(self.engine_config),
         }, ensure_ascii=False)
 
+    @property
+    def has_coordinator_source(self) -> bool:
+        from services.coordinator_source import coordinator_source_env
+
+        return bool(coordinator_source_env())
+
     def child_env(self) -> dict[str, str]:
+        from services.coordinator_source import COORDINATOR_TURN_ENV, coordinator_source_env
+
         env = dict(os.environ)
         for key in self.unset_env:
             env.pop(key, None)
         env.update(self.env)
+        env.pop(COORDINATOR_TURN_ENV, None)
+        env.update(coordinator_source_env())
         return env
 
 

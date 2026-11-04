@@ -427,6 +427,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
         sandbox_env = claude_sandbox_env(permission_mode)
         needs_child_env = bool(
             provider_runtime.provider_id
+            or provider_runtime.has_coordinator_source
             or provider_runtime.env
             or sandbox_env
             or custom_env

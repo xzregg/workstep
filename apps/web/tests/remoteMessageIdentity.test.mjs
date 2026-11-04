@@ -14,7 +14,7 @@ test('remote user avatars expose identity without a native tooltip', () => {
   assert.doesNotMatch(bubbleSource, /title=\{senderTitle \|\| sender\}/)
   assert.doesNotMatch(bubbleSource, /from 'antd'/)
   assert.match(bubbleSource, /className="chat-message-avatar-tooltip-wrap"[\s\S]*<MarqueeText text=\{label\} forceActive speed=\{48\} \/>/)
-  assert.match(taskDetailSource, /senderTitle=\{\s*isUser\s*\? displayUserDetail/)
+  assert.match(taskDetailSource, /senderTitle=\{\s*isUser && !isCoordinatorDispatch\s*\? displayUserDetail/)
   assert.match(
     assistantSource,
     /senderTitle=\{\s*message\.role === 'user'\s*\? displayUserDetail/,

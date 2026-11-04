@@ -1,16 +1,19 @@
 import { Fragment, memo, useState } from 'react'
+import { MIN_REVEAL_FRAME_MS } from '../hooks/useStreamReveal'
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 const MAX_ANIMATED_CHARS = 32
 type Character = { text: string; offset: number; delay: number; endsAt: number }
 
 function appendCharacters(text: string, offset: number, now: number): Character[] {
-  return Array.from(segmenter.segment(text.slice(offset))).slice(-MAX_ANIMATED_CHARS)
-    .map((part, index) => ({
+  const parts = Array.from(segmenter.segment(text.slice(offset))).slice(-MAX_ANIMATED_CHARS)
+  // Fit every batch into one parse interval, even when catch-up accelerates.
+  const stagger = MIN_REVEAL_FRAME_MS / Math.max(1, parts.length)
+  return parts.map((part, index) => ({
       text: part.segment,
       offset: offset + part.index,
-      delay: index * 30,
-      endsAt: now + index * 30 + 90,
+      delay: index * stagger,
+      endsAt: now + index * stagger + 160,
     }))
 }
 

@@ -88,7 +88,7 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
       revealPaneId: location.state?.revealChatPane && state.panes.length > 1 ? existing?.id : undefined,
     })
   }
-  const commit = useCallback((panes: Pane[], activeId: string, replace = false) => {
+  const commit = useCallback((panes: Pane[], activeId: string, replace = false, reveal = false) => {
     const activePane = panes.find(p => p.id === activeId)!
     const nextProject = projects.find(p => p.id === activePane.projectId)
     if (!nextProject) return
@@ -100,7 +100,7 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
     else next.delete('session')
     startTransition(() => {
       setState({ panes, activeId, routeKey: JSON.stringify([activePane.projectId, nextSession]), navigationKey: location.key })
-      setParams(next, { replace })
+      setParams(next, { replace, state: reveal ? { revealChatPane: true } : undefined })
     })
   }, [params, projects, setParams, location.key])
   const latest = useRef(state)
@@ -166,8 +166,8 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
         className={`chat-workspace-pane${pane.id === state.activeId ? ' chat-workspace-pane--active' : ''}`}
         hidden={compact && pane.id !== state.activeId}
         aria-label={t('chatWorkspace.pane', { count: index + 1 })}
-        onFocusCapture={() => { if (pane.id !== state.activeId) commit(state.panes, pane.id, true) }}
-        onPointerDown={() => { if (pane.id !== state.activeId) commit(state.panes, pane.id, true) }}>
+        onFocusCapture={() => { if (pane.id !== state.activeId) commit(state.panes, pane.id, true, true) }}
+        onPointerDown={() => { if (pane.id !== state.activeId) commit(state.panes, pane.id, true, true) }}>
         {!compact && state.revealPaneId === pane.id && <span key={state.navigationKey} className="chat-workspace-pane-reveal" aria-hidden="true" />}
         <div className="chat-workspace-pane-content"><ChatPage pane={{
           project: paneProject, active: pane.id === state.activeId, sessionId: pane.sessionId,

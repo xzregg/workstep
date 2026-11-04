@@ -19,13 +19,27 @@ from services.project import project_manager
 router = APIRouter(prefix="/api/provider")
 
 
-async def _reject_managed_mutation(request: Request, provider_id: str = "") -> None:
+async def _reject_managed_mutation(request: Request, provider_id: str = "", *, deleting: bool = False) -> None:
+    require_catalog_project("")
     if provider_id and getattr(config_store, 'managed_gateway_id', None):
         managed = await asyncio.to_thread(lambda: any(
             item.get("id") == provider_id and item.get("managed")
             for item in config_store.get_providers(include_unmanaged=True)))
         if managed:
             raise HTTPException(status_code=403, detail="该供应商由 Gateway 分发，请在网关修改")
+    if deleting:
+        from main import gateway_client
+        from services.remote_access import authenticated_remote_dispatch, get_current_actor
+
+        actor = get_current_actor()
+        policy = gateway_client.policy_cache.current
+        # The authenticated host owner may remove local credentials even when
+        # policy denies using them; project access and distributed entries stay protected.
+        if (actor is not None and actor.source == "managed" and actor.project_id is None
+                and authenticated_remote_dispatch() is None and policy is not None
+                and policy.valid and policy.user_id == actor.actor_id
+                and policy.device_id == actor.device_id):
+            return
     from services.gateway_client.policy import require_managed_capability
     try:
         require_managed_capability("provider.local")
@@ -277,6 +291,7 @@ async def save_provider(req: ProviderSaveRequest, request: Request):
 @router.get("/import/sources")
 async def import_sources(request: Request):
     """Discover third-party sources that can feed providers into WorkStep."""
+    await _reject_managed_mutation(request)
     candidates = await asyncio.to_thread(lambda: [
         candidate
         for candidate in provider_service.scan_cc_switch_providers()
@@ -306,6 +321,7 @@ async def import_sources(request: Request):
 @router.post("/import/cc-switch")
 async def import_cc_switch(req: ProviderImportRequest, request: Request):
     """Import selected CC Switch provider configurations into WorkStep."""
+    await _reject_managed_mutation(request)
     candidates, existing_names = await asyncio.to_thread(
         lambda: (
             {
@@ -385,7 +401,7 @@ async def import_cc_switch(req: ProviderImportRequest, request: Request):
 @router.delete("/{provider_id}")
 async def delete_provider(provider_id: str, request: Request):
     """Delete a provider; refuse while any engine or project still references it."""
-    await _reject_managed_mutation(request, provider_id)
+    await _reject_managed_mutation(request, provider_id, deleting=True)
     provider = await asyncio.to_thread(config_store.get_provider, provider_id)
     if provider is None:
         raise HTTPException(status_code=404, detail="供应商不存在")

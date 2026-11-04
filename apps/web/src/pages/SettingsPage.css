@@ -116,3 +116,18 @@
 .settings-system-page .settings-switch[aria-checked="true"] {
   background: var(--accent);
 }
+
+.desktop-update-check-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.desktop-update-check-setting .settings-switch {
+  flex-shrink: 0;
+  background: var(--border);
+}
+.desktop-update-check-setting .settings-switch[aria-checked="true"] { background: var(--accent); }
+
+.desktop-update-check-control { display: flex; align-items: center; gap: 8px; }

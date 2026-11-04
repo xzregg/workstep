@@ -7,11 +7,13 @@ const detailSource = fs.readFileSync(new URL('../src/pages/TaskDetail.tsx', impo
 const historySource = fs.readFileSync(new URL('../src/hooks/useTaskHistory.ts', import.meta.url), 'utf8')
 const assistantStoreSource = fs.readFileSync(new URL('../src/stores/assistantStore.ts', import.meta.url), 'utf8')
 
-test('task store surfaces remote user-message events without rendering live user bubbles', () => {
+test('task store refreshes persisted remote history and retains live user identity', () => {
   assert.match(storeSource, /userMessageEvents: Record<string, number>/)
   assert.match(storeSource, /userMessageEvents: \{\}/)
   assert.match(storeSource, /event\.role === 'user'/)
-  assert.match(storeSource, /User messages are rendered from persisted history/)
+  assert.match(storeSource, /author_type: event\.actor\?\.type/)
+  assert.match(storeSource, /reply_to_message_id: event\.actor\?\.source_message_id/)
+  assert.match(storeSource, /role: event\.type === 'TEXT_MESSAGE_START'[\s\S]*?event\.role === 'user' \? 'user' : 'assistant'/)
 })
 
 test('task details pass remote user-message refresh signals to their history module', () => {

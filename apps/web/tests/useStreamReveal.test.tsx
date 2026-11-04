@@ -163,10 +163,10 @@ test('a long burst still reveals gradually instead of appearing at once', async 
   await h.set({ content: longText })
   await act(async () => { await sleep(300) })
   const partial = outputs[outputs.length - 1]
-  // 5000 字按 120 字/秒，300ms 只能揭示一小部分
+  // 大段积压须明显加速，但不能在首批更新中直接跳到全文。
   assert.ok(
-    partial.length > 0 && partial.length < 500,
-    `expected slow reveal, got ${partial.length} chars after 300ms`,
+    partial.length > 0 && partial.length > 1500 && partial.length < 5000,
+    `expected adaptive catch-up, got ${partial.length} chars after 300ms`,
   )
   await h.unmount()
 })
@@ -234,7 +234,8 @@ test('keeps revealing as new tokens arrive incrementally', async () => {
   host.remove()
 })
 
-test('catch-up pacing keeps a long backlog within the 10s budget', () => {
+test('catch-up pacing keeps a long backlog within the 450ms budget', () => {
+  assert.equal(MAX_REVEAL_DURATION_MS, 450)
   const total = 5000
   let shown = 0
   let step = REVEAL_STEP_CHARS
@@ -254,7 +255,7 @@ test('catch-up pacing keeps a long backlog within the 10s budget', () => {
 })
 
 test('small backlogs keep the steady reveal pace', () => {
-  const step = revealStepFor(30, REVEAL_STEP_CHARS)
+  const step = revealStepFor(10, REVEAL_STEP_CHARS)
   assert.equal(step, REVEAL_STEP_CHARS, 'small backlog must not speed up')
 })
 
@@ -286,4 +287,18 @@ test('revealStepFor never decreases while a backlog drains', () => {
     assert.ok(step >= previous, 'step must be monotonic non-decreasing')
     previous = step
   }
+})
+
+
+test('catch-up never splits a complete emoji grapheme', async () => {
+  outputs = []
+  const h = await renderHarness({ content: '', streaming: true })
+  const emoji = '👩🏽‍💻'
+  const text = emoji.repeat(40)
+  try {
+    await h.set({ content: text })
+    await waitForSettle()
+    assert.equal(outputs.at(-1), text)
+    for (const out of outputs) assert.equal(out, emoji.repeat(out.length / emoji.length))
+  } finally { await h.unmount() }
 })

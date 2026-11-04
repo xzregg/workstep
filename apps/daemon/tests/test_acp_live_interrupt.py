@@ -16,6 +16,7 @@ import pytest
 
 import acp
 from engines.core.acp_base import AcpEngineBase
+from engines.core.base import ProviderRuntimeConfig
 from engines.core.events import InternalEvent
 from engines.opencode import OpencodeEngine
 
@@ -37,10 +38,7 @@ class _OpencodeProbe(OpencodeEngine):
         return None
 
     def resolve_provider_runtime(self, provider_id="", model=None, protocol=None):
-        return SimpleNamespace(
-            model=None, provider_id="", env={},
-            child_env=lambda: dict(os.environ),
-        )
+        return ProviderRuntimeConfig()
 
     def _validate_session_inputs(self, init_resp, add_dirs, mcp_servers):
         return None

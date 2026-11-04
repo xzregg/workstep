@@ -1231,6 +1231,145 @@ async def test_archive_experience_uses_coordinator_with_task_history(
 
 
 @pytest.mark.anyio
+async def test_archive_evidence_prefilters_routine_history(api_context, monkeypatch):
+    from models import Message, TaskStep, ReviewRun, StepRun, WorkflowRun
+    from models.fields import utc_now
+    import main
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    records = [
+        ("progress", "user", "completed", "现在进度怎么样？"),
+        ("success", "assistant", "succeeded", "构建成功，全部完成。" + "正常输出" * 100_000),
+        ("assistant-correction-quote", "assistant", "succeeded", "用户之前说：不要再漏掉校验。"),
+        ("code-only", "user", "completed", "```python\nraise RuntimeError('failed')\n```"),
+        ("correct-early", "user", "completed", "又漏了边界校验，先补校验再提交。"),
+        ("correct-late", "user", "completed", "还是没改对，边界校验依然缺失。"),
+        ("english-correction", "user", "completed", "This is wrong again. Validate the input first."),
+        ("failed-run", "assistant", "failed", "无法写入：\n```text\nOSError: 文件只读。\n```"),
+    ]
+
+    def history(_project):
+        for index, (identifier, role, status, content) in enumerate(records):
+            Message.create(
+                id=identifier, task=task_id, step_key="frontend", channel="coordinator",
+                role=role, run_status=status, content=content,
+                event_summary_json='{"tool_output": "summary-must-not-be-in-prompt"}',
+                sequence=1000 + index, position=index, created_at=utc_now(),
+            )
+        TaskStep.update(error="失败：文件只读", rework_feedback="返工：补齐边界校验").where(
+            (TaskStep.task == task_id) & (TaskStep.step_key == "frontend")
+        ).execute()
+        run = WorkflowRun.create(id="filter-run", task=task_id, workflow_schema_version=1)
+        step_run = StepRun.create(id="filter-step", run=run, step_key="frontend", attempt=1)
+        for index, (status, decision) in enumerate([
+            ("passed", "approve"), ("rejected", None), ("completed", "reject"), ("failed", None),
+        ]):
+            ReviewRun.create(
+                id=f"review-{status}", workflow_run=run, step_run=step_run, task=task_id,
+                step_key="frontend", attempt=index + 1, mode="auto", status=status,
+                decision=decision, error="审核进程退出" if status == "failed" else "",
+                report_json=json.dumps({"summary": f"report-{status}", "issues": []}),
+            )
+        return main.coordinator_module._archive_drafts._load_archive_evidence_sync(project_id, task_id)
+
+    loaded = await main.project_manager.run_db(project_id, history)
+    evidence = loaded["evidence"]
+    assert {message["id"] for message in evidence["messages"]} == {
+        "correct-early", "correct-late", "english-correction", "failed-run",
+    }
+    assert all("event_summary" not in message for message in evidence["messages"])
+    failed = next(message for message in evidence["messages"] if message["id"] == "failed-run")
+    assert "文件只读" in failed["content"]
+    assert "summary-must-not-be-in-prompt" not in loaded["evidence_text"]
+    assert "正常输出" not in loaded["evidence_text"]
+    assert "artifacts" not in evidence
+    assert {review["id"] for review in evidence["reviews"]} == {
+        "review-rejected", "review-completed", "review-failed",
+    }
+    assert len(loaded["evidence_text"]) < 10_000
+    assert any(step["rework_feedback"] == "返工：补齐边界校验" for step in evidence["steps"])
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("memory_size", [0, 60_000])
+async def test_archive_experience_batches_oversized_history(api_context, monkeypatch, memory_size):
+    """Routine bulk is removed before invocation, keeping first and late corrections."""
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
+    from models.fields import utc_now
+    import main
+
+    class BoundedEngine(CoordinatorFakeEngine):
+        calls = []
+
+        async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+            assert len(prompt) < 64000
+            assert session_id is None
+            type(self).calls.append(prompt)
+            assert "x" * 1000 not in prompt
+            if "Archive evidence fragment" in prompt:
+                markers = [marker for marker in ("early-correction", "late-correction", "memory-rule")
+                           if marker in prompt]
+                reply = {"reply": " ".join(markers)}
+            else:
+                assert all(marker in prompt for marker in (
+                    "early-correction", "late-correction", "memory-rule",
+                ))
+                reply = {"has_experience": True, "reply": "- 重复遗漏校验，提交前运行相关测试。"}
+            yield InternalEvent("agent_message_chunk", {
+                "content": {"text": json.dumps(reply, ensure_ascii=False)},
+            })
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", BoundedEngine)
+    memory = "memory-rule" + "m" * memory_size
+    await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": memory})
+    content = "错误：early-correction\n" + "x" * 1_100_000 + "\n再次纠正：late-correction"
+    await main.project_manager.run_db(project_id, lambda _project: Message.create(
+        id="oversized-archive-history", task=task_id, step_key="frontend", role="user",
+        channel="coordinator", sequence=1000, position=1000, content=content,
+        created_at=utc_now(),
+    ))
+    response = await client.post(
+        f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
+    )
+    assert response.status_code == 200, response.text
+    if memory_size:
+        assert len(BoundedEngine.calls) > 2
+    else:
+        assert len(BoundedEngine.calls) == 1
+        assert len(BoundedEngine.calls[0]) < 10_000
+    assert response.json()["experience"] == "- 重复遗漏校验，提交前运行相关测试。"
+    assert (await client.get(f"/api/fs/memory?project_id={project_id}")).json()["content"] == memory
+    assert (await client.get(f"/api/task/{task_id}?project_id={project_id}")).json()["archived"] is False
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("notes", ["", "x" * 8001])
+async def test_archive_rejects_unbounded_or_empty_evidence_notes(api_context, monkeypatch, notes):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    await client.put(
+        f"/api/fs/memory?project_id={project_id}", json={"content": "x" * 60_000},
+    )
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    monkeypatch.setattr(CoordinatorFakeEngine, "calls", [])
+    monkeypatch.setattr(CoordinatorFakeEngine, "reply", {"reply": notes})
+    response = await client.post(
+        f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
+    )
+    assert response.status_code == 502
+    assert "evidence notes" in response.json()["detail"]
+    assert len(CoordinatorFakeEngine.calls) == 1
+    draft = await client.get(f"/api/task/{task_id}/archive-experience/draft?project_id={project_id}")
+    assert draft.json()["found"] is False
+
+
+@pytest.mark.anyio
 async def test_archive_experience_retries_codex_before_rollout_exists(api_context, monkeypatch):
     from engines.core.registry import ENGINE_REGISTRY
 
@@ -1499,8 +1638,9 @@ async def test_archive_experience_streams_visible_coordinator_progress(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("background", [False, True])
+@pytest.mark.parametrize("oversized", [False, True])
 async def test_archive_experience_can_be_stopped_by_message_id(
-    api_context, monkeypatch, background,
+    api_context, monkeypatch, background, oversized,
 ):
     """A visible archive draft run has its own stoppable lifecycle."""
     from engines.core.registry import ENGINE_REGISTRY
@@ -1512,6 +1652,12 @@ async def test_archive_experience_can_be_stopped_by_message_id(
     BlockingArchiveCoordinatorFakeEngine.released = asyncio.Event()
     BlockingArchiveCoordinatorFakeEngine.stopped = False
     project_id, task_id = await _create_task(client, tmp_path)
+    if oversized:
+        updated = await client.put(
+            f"/api/fs/memory?project_id={project_id}",
+            json={"content": "x" * 60_000},
+        )
+        assert updated.status_code == 200
     message_id = "archive-progress-stoppable"
     events = main.coordinator_module._event_bus.subscribe()
     url = (f"/api/task/{task_id}/archive-experience/prepare"

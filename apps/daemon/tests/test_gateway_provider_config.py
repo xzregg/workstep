@@ -487,6 +487,51 @@ async def test_local_provider_catalog_and_execution_are_independent_of_gateway_m
                 if allowed:
                     assert CodexEngine().resolve_provider_runtime(provider_id="local", model="own-model").provider_id == "local"
                 else:
-                    assert (await client.delete("/api/provider/local")).status_code == 403
                     from services.providers import require_managed_model
                     require_managed_model({"id": "local"}, "own-model")
+                    monkeypatch.setattr("api.provider.refresh_registry", lambda: None)
+                    monkeypatch.setattr("api.provider.project_manager.provider_references", lambda _: [])
+                    assert (await client.delete("/api/provider/local")).status_code == 200
+                    assert store.get_provider("local") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["denied", "expired", "other-user", "project", "distributed", "referenced"])
+async def test_local_provider_cleanup_preserves_authorization_and_references(tmp_path, monkeypatch, mode):
+    import main
+    from dataclasses import replace
+    from services.gateway_client.policy import verify_policy_snapshot
+    from services.remote_access import ActorSnapshot, actor_context
+    from tests.test_gateway_policy import _signed_policy
+
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.save_provider({"id": "local", "name": "Local", "type": "custom"})
+    store.set_managed_gateway_id("gateway-test")
+    cache = ManagedPolicyCache()
+    token, pem, fingerprint = _signed_policy(allow_local_providers=False)
+    cache.apply(verify_policy_snapshot(token, pem, fingerprint, "gateway-test", "device-1", "user-1"))
+    if mode == "expired":
+        cache.current = replace(cache.current, expires_at=0)
+    if mode == "distributed":
+        store.delete_provider("local")
+        store.apply_managed_providers("gateway-test", 1, [{
+            "id": "local", "name": "Distributed", "type": "custom",
+            "protocols": ["openai_responses"], "api_key": "fixture-secret",
+            "protocol_base_urls": {"openai_responses": "https://example.test"},
+            "models": ["model"],
+        }])
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(managed_config=object(), policy_cache=cache))
+    monkeypatch.setattr("api.provider.config_store", store)
+    monkeypatch.setattr("api.provider.refresh_registry", lambda: None)
+    monkeypatch.setattr("api.provider.project_manager.provider_references", lambda _: (
+        [{"project_name": "Demo", "location": "step"}] if mode == "referenced" else []))
+    app = FastAPI()
+    app.include_router(provider_router)
+    actor = ActorSnapshot("user-2" if mode == "other-user" else "user-1", "Alice", "device-1", "PC", "managed",
+                          project_id="project" if mode == "project" else None)
+    with actor_context(actor):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+            response = await client.delete("/api/provider/local")
+    assert response.status_code == (200 if mode == "denied" else 400 if mode == "referenced" else 403), response.text
+    assert bool(store.get_providers(include_unmanaged=True)) == (mode != "denied")

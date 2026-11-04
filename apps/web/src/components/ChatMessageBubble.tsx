@@ -384,7 +384,7 @@ export default function ChatMessageBubble({
               />
             </section>
           )}
-          {!isUser && plan && <PlanChecklist plan={plan} />}
+          {!isUser && plan && <PlanChecklist plan={plan} streaming={streaming} />}
           {!isUser && goal && (
             <section className="chat-goal-card" aria-label={t('goal.title')} style={{
               padding: '10px 12px', border: '1px solid var(--border-soft)', borderRadius: 8,

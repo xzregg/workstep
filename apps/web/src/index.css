@@ -1787,11 +1787,11 @@ details[open] > summary > .process-trace-chevron {
   pointer-events: none;
 }
 
-.plan-item.active .plan-label {
+.plan-checklist.is-running .plan-item.active .plan-label {
   color: transparent;
 }
 
-.plan-item.active .plan-label::before {
+.plan-checklist.is-running .plan-item.active .plan-label::before {
   opacity: 1;
   animation: plan-shine 2.25s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
 }
@@ -1861,7 +1861,7 @@ details[open] > summary > .process-trace-chevron {
   .plan-label::before {
     transition: none;
   }
-  .plan-item.active .plan-label::before {
+  .plan-checklist.is-running .plan-item.active .plan-label::before {
     animation: none;
   }
   .plan-roll-inner {
@@ -3652,11 +3652,11 @@ details[open] > summary > .process-trace-chevron {
 .stream-reveal-char {
   display: inline-block;
   white-space: pre;
-  animation: stream-reveal-bloom 90ms cubic-bezier(.215, .61, .355, 1) both;
+  animation: stream-reveal-bloom 160ms cubic-bezier(.215, .61, .355, 1) both;
 }
 
 @keyframes stream-reveal-bloom {
-  from { filter: blur(6px); opacity: 0; }
+  from { filter: blur(3px); opacity: 0; }
   to { filter: blur(0); opacity: 1; }
 }
 

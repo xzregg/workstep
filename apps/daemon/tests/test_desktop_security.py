@@ -767,6 +767,54 @@ def test_temporary_local_workspace_is_same_origin_and_local_only(monkeypatch):
             assert restarted.get('/api/private').status_code == 401
 
 
+@pytest.mark.parametrize('pinned', [False, True])
+def test_native_workspace_capabilities_require_verified_fallback(monkeypatch, pinned):
+    import main
+    from fastapi import HTTPException
+    from services.gateway_client.browser_login import GatewayBrowserLogin
+    from services.gateway_client.policy import ManagedPolicyCache, require_managed_capability
+    from api.gateway_platform import router
+
+    monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
+    monkeypatch.delenv('WORKSTEP_MANAGED_BUNDLE_DIR', raising=False)
+    if pinned:
+        monkeypatch.setenv('WORKSTEP_MANAGED_BUNDLE_DIR', '/managed')
+    app, session, cookie = _browser_managed_app()
+    gateway = app.state.gateway_client
+    gateway.policy_cache = ManagedPolicyCache()
+    monkeypatch.setattr(main, 'gateway_client', gateway)
+    app.state.gateway_browser_login = GatewayBrowserLogin(gateway)
+    app.include_router(router)
+
+    @app.post('/api/capabilities')
+    async def capabilities():
+        try:
+            for action in ('engine.install', 'provider.local', 'task.create', 'project.publish'):
+                require_managed_capability(action)
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc)) from exc
+        return {'ok': True}
+
+    with TestClient(app, base_url='http://localhost:5173', client=('127.0.0.1', 123)) as client:
+        headers = {'Origin': 'http://localhost:5173'}
+        assert client.post('/api/capabilities', headers=headers).status_code == 401
+        response = client.post('/api/gateway-platform/local-workspace', headers=headers)
+        assert response.status_code == (403 if pinned else 200)
+        if pinned:
+            return
+        assert client.post('/api/capabilities', headers=headers).status_code == 200
+        assert client.post('/api/capabilities', headers={'Origin': 'https://evil.test'}).status_code == 403
+        with TestClient(app, base_url='http://localhost:5173', client=('10.0.0.2', 123)) as remote:
+            remote.cookies.update(client.cookies)
+            assert remote.post('/api/capabilities', headers=headers).status_code == 401
+        # An authenticated Gateway user keeps their policy, even with the native cookie.
+        client.cookies.set(app.state.gateway_browser_login.cookie_name, session)
+        assert client.post('/api/capabilities', headers=headers).status_code == 403
+    # The request-local fallback must never leak to unrelated operations.
+    with pytest.raises(PermissionError):
+        require_managed_capability('engine.install')
+
+
 @pytest.mark.asyncio
 async def test_temporary_workspace_does_not_cancel_gateway_restore(tmp_path, monkeypatch):
     import asyncio

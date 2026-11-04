@@ -19,12 +19,19 @@ function fixture() {
   return { service, source, writes, captures: () => captures, failText: value => { failText = value } }
 }
 
-test('feedback text includes runtime and newest Unicode logs under a byte budget', () => {
-  const report = { generatedAt: 'now', metadata: { version: 'v1', platform: 'darwin', arch: 'arm64', osRelease: '25', electron: '43' }, logs: { 'desktop.log': '错'.repeat(200000) + '\nlatest error' }, warnings: ['sandbox unavailable'] }
+test('feedback copies a compact error summary rather than file contents', () => {
+  const report = { generatedAt: 'now', metadata: { version: 'v1', platform: 'darwin', arch: 'arm64', osRelease: '25', electron: '43' }, logs: { 'desktop.log': '2026-11-04T00:00:00.000Z info normal startup\n' + '普通运行记录\n'.repeat(20000) + '2026-11-04T00:01:00.000Z error latest error\n    at handler ([path]:12:3)' }, warnings: ['sandbox unavailable'] }
   const text = formatFeedback(report, { startedAt: 'start', uptimeSeconds: 3661, backendState: '已退出' })
-  assert.ok(Buffer.byteLength(text) <= 256 * 1024)
-  for (const value of ['v1', 'darwin', 'arm64', '43', 'start', '1小时1分1秒', '已退出', 'latest error', '已截断', 'sandbox unavailable', '复现步骤']) assert.ok(text.includes(value), value)
+  assert.ok(Buffer.byteLength(text) <= 8 * 1024)
+  for (const value of ['v1', 'darwin', 'arm64', '1小时1分1秒', '已退出', 'latest error', ':12:3', '复现步骤']) assert.ok(text.includes(value), value)
+  for (const value of ['normal startup', '普通运行记录', 'desktop.log']) assert.ok(!text.includes(value), value)
   assert.ok(!text.includes('\uFFFD'))
+})
+
+test('feedback without errors says so and never substitutes ordinary logs', () => {
+  const text = formatFeedback({ metadata: {}, logs: { 'daemon.log': '2026-11-04T00:00:00.000Z error INFO: 127.0.0.1 GET /health 200 OK\n2026-11-04T00:00:01.000Z info ready' } })
+  assert.match(text, /未发现已记录的错误/)
+  assert.doesNotMatch(text, /GET|ready|200 OK/)
 })
 
 test('text copy precedes explicit screenshot consent; retry and cancel preserve text', async () => {

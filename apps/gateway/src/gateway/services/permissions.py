@@ -23,7 +23,7 @@ CATALOG = {
     "task.create": ("创建任务", "业务操作", ("global", "device", "project")),
     "project.publish": ("发布项目", "业务操作", ("global", "device")),
     "share.create": ("创建分享", "业务操作", ("global", "device", "project")),
-    "engine.install": ("安装引擎", "业务操作", ("global", "device")),
+    "engine.install": ("引擎管理（安装与配置）", "业务操作", ("global", "device")),
     "provider.local": ("使用本地供应商", "业务操作", ("global", "device")),
     "admin.super_admin": ("超级管理员", "平台管理", ("platform",)),
     "admin.identity_admin": ("用户与身份管理", "平台管理", ("platform", "department")),

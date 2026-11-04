@@ -70,6 +70,21 @@ _current_actor: ContextVar[ActorSnapshot | None] = ContextVar(
 _suppress_default_actor: ContextVar[bool] = ContextVar(
     "workstep_suppress_default_actor", default=False,
 )
+_native_workspace: ContextVar[bool] = ContextVar("workstep_native_workspace", default=False)
+
+
+@contextmanager
+def native_workspace_context(verified: bool):
+    """Set only by the HTTP boundary after verifying the native workspace cookie."""
+    token = _native_workspace.set(verified)
+    try:
+        yield
+    finally:
+        _native_workspace.reset(token)
+
+
+def native_workspace_active() -> bool:
+    return _native_workspace.get()
 
 
 def get_current_actor() -> ActorSnapshot | None:

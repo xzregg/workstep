@@ -42,3 +42,22 @@ test('a passed stage preserves task execution state until task completion arrive
     assert.equal(useProjectStore.getState().projectRunningState.project, false)
   } finally { useTaskStore.setState(state); useProjectStore.setState(projectState) }
 })
+
+test('live coordinator instructions retain source and initiator through completion', () => {
+  const state = useTaskStore.getState()
+  useTaskStore.setState({ liveMessages: {} })
+  try {
+    useTaskStore.getState().handleWsEvent({ type: 'TEXT_MESSAGE_START',
+      task_id: 'task', messageId: 'dispatch', channel: 'execution', step_key: 'build', role: 'user',
+      content: '执行构建', status: 'queued', actor: { id: 'coordinator', name: '协调助手',
+        type: 'coordinator', initiated_by_user_id: 'requester', source_message_id: 'coordinator-reply' } })
+    useTaskStore.getState().handleWsEvent({ type: 'TEXT_MESSAGE_END',
+      task_id: 'task', messageId: 'dispatch', status: 'succeeded' })
+    const message = useTaskStore.getState().liveMessages.task.dispatch
+    assert.equal(message.author_type, 'coordinator')
+    assert.equal(message.author_name, '协调助手')
+    assert.equal(message.initiated_by_user_id, 'requester')
+    assert.equal(message.reply_to_message_id, 'coordinator-reply')
+    assert.equal(message.status, 'succeeded')
+  } finally { useTaskStore.setState(state) }
+})

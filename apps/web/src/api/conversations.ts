@@ -49,7 +49,7 @@ export interface WorkflowGenHistoryMessage {
   author_id?: string
   author_username?: string
   author_name?: string
-  author_type?: 'user' | 'assistant' | 'system' | 'scheduler'
+  author_type?: 'user' | 'assistant' | 'system' | 'scheduler' | 'coordinator'
   initiated_by_user_id?: string
   initiated_by_username?: string
   author_device_id?: string

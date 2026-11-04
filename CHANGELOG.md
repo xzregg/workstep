@@ -11,6 +11,10 @@ No unreleased changes recorded.
 ### Highlights
 
 - Add local-only, one-click problem feedback in Settings. Desktop users can copy redacted diagnostic text, then explicitly preview and copy a screenshot of the current workspace. Browser users can copy bounded frontend diagnostics without reading backend files. Nothing is submitted automatically; screenshots require a separate privacy review.
+- Summarize repeated diagnostic errors into a bounded, privacy-filtered report with key stack frames; keep full diagnostic export available. Improve feedback-window recovery and screenshot controls.
+- Add a persistent automatic-update-check preference in desktop settings. Turning it off prevents background Release requests; explicit manual checks remain available.
+- Preserve coordinator provenance in step instructions, live messages and persisted history while retaining the original initiating user. Improve archive-experience evidence filtering and bounded processing of long histories without writing Memory before confirmation.
+- Enforce matching host permissions for engine configuration, stored-secret reveal and provider import; retain explicitly authenticated native workspace access and scoped cleanup of unused local provider credentials.
 - Add workflow mode to ordinary local-project chat: insert the workflow skill reference, review a diagram and confirm before creating and starting work. Resolve same-project task links before opening task details; do not expose the entry in remote or embedded chats.
 - Add per-conversation Codex CLI and SDK speed selection. Follow default, Standard, Fast and Ultrafast are forwarded per turn; actual availability depends on the runtime, provider, model and account.
 - Add opt-in reuse of successful workflow steps when their accepted artifacts and configuration still match. Explicit reruns and coordinator-directed execution continue to run the selected step again.

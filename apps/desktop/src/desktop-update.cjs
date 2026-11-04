@@ -36,24 +36,41 @@ function validCache(value) {
     && typeof value.releaseUrl === 'string'
 }
 
-function createUpdateChecker({ currentVersion, now = Date.now, readCache, writeCache, fetchRelease }) {
+function createUpdateChecker({ currentVersion, now = Date.now, readCache, writeCache, fetchRelease,
+  readPreferences = async () => ({}), writePreferences = async () => {},
+}) {
   return {
-    async check({ force = false } = {}) {
+    async check({ force = false, cachedOnly = false } = {}) {
       const checkedAt = now()
+      const preferences = await readPreferences().catch(() => ({}))
+      const automaticCheckEnabled = preferences?.automaticCheckEnabled !== false
       const cached = await readCache().catch(() => null)
-      if (!force && validCache(cached) && cached.currentVersion === normalizeVersion(currentVersion)
-        && checkedAt - cached.checkedAt < CHECK_INTERVAL_MS) return { ...cached, source: 'cache' }
+      const usableCache = validCache(cached) && cached.currentVersion === normalizeVersion(currentVersion)
+      if (cachedOnly || (!force && !automaticCheckEnabled)) {
+        return { ...(usableCache ? cached : releaseStatus(currentVersion, null, 0)), source: 'cache', automaticCheckEnabled }
+      }
+      if (!force && usableCache && checkedAt - cached.checkedAt < CHECK_INTERVAL_MS) {
+        return { ...cached, source: 'cache', automaticCheckEnabled }
+      }
       const status = releaseStatus(currentVersion, await fetchRelease(), checkedAt)
       await writeCache(status).catch(() => undefined)
-      return { ...status, source: 'network' }
+      return { ...status, source: 'network', automaticCheckEnabled }
+    },
+    async setAutomaticCheckEnabled(enabled) {
+      if (typeof enabled !== 'boolean') throw new TypeError('Expected a boolean update preference')
+      await writePreferences({ automaticCheckEnabled: enabled })
+      return this.check({ cachedOnly: true })
     },
   }
 }
 
 function createDesktopUpdateService(app, fetchImpl = fetch) {
   const cacheFile = path.join(app.getPath('userData'), 'desktop-update.json')
+  const preferencesFile = path.join(app.getPath('userData'), 'desktop-update-preferences.json')
   return createUpdateChecker({
     currentVersion: app.getVersion(),
+    readPreferences: async () => JSON.parse(await fs.readFile(preferencesFile, 'utf8')),
+    writePreferences: async value => fs.writeFile(preferencesFile, `${JSON.stringify(value, null, 2)}\n`, 'utf8'),
     readCache: async () => JSON.parse(await fs.readFile(cacheFile, 'utf8')),
     writeCache: async value => fs.writeFile(cacheFile, `${JSON.stringify(value, null, 2)}\n`, 'utf8'),
     fetchRelease: async () => {

@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 from services.gateway_client.browser_login import local_session_cookie_name
 
-from services.remote_access import ActorSnapshot, actor_context, authenticated_remote_dispatch, is_project_upload_path
+from services.remote_access import ActorSnapshot, actor_context, authenticated_remote_dispatch, is_project_upload_path, native_workspace_context
 from services.project_request_audit import record_remote_request_failure
 from services.project_scope import project_http_allowed
 
@@ -397,7 +397,9 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 provider_grant_expires_at=actor.provider_grant_expires_at,
                 access_source=("gateway_share" if share_scope else "gateway") if remote_bridge else None,
             )) if actor is not None else nullcontext()
-            with context:
+            with context, native_workspace_context(
+                local_workspace and actor is None and not remote_bridge and not native_dispatch
+            ):
                 try:
                     response = await call_next(request)
                 except Exception:

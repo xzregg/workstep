@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('workstepDesktop', {
     autoStatus: () => ipcRenderer.invoke('workstep:update:auto-status'),
     status: () => ipcRenderer.invoke('workstep:update:status'),
     check: () => ipcRenderer.invoke('workstep:update:check'),
+    setAutomaticCheckEnabled: (enabled) => ipcRenderer.invoke('workstep:update:set-automatic-check', enabled),
     openDownload: (url) => ipcRenderer.invoke('workstep:update:open-download', url),
   },
 })
