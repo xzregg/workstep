@@ -31,7 +31,7 @@ section[id], .recorded-section { scroll-margin-top: 110px; }
 .nav-links { gap: 22px; margin-inline-start: auto; }
 .nav-spacer { display: none; }
 .brand { font-size: 23px; font-weight: 650; letter-spacing: -.04em; }
-.nav-actions { gap: 14px; margin-inline-start: auto; }
+.nav-actions { gap: 14px; margin-inline-start: 0; }
 .nav-control { border-radius: 3px; background: transparent; min-height: 34px; }
 .nav-docs, .nav-download, .nav-github { font-size: 13px; white-space: nowrap; }
 .nav-docs, .nav-download { border: 0; padding-inline: 0; }
@@ -126,6 +126,7 @@ section[id], .recorded-section { scroll-margin-top: 110px; }
 @media (max-width: 900px) {
   .intro-content { gap: 36px; padding-top: 48px; }
   .nav-links { display: none; }
+  .nav-actions { margin-inline-start: auto; }
   .editorial-section-heading { gap: 30px; }.start-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 20px; }.start-panel { padding: 26px; }
 }
 @media (max-width: 700px) {
