@@ -20,6 +20,12 @@ RUN npm config set registry "$NPM_REGISTRY" \
 COPY apps/web ./
 # Web imports the shared skin contract and example tokens at build time.
 COPY apps/daemon/data/skins /app/apps/daemon/data/skins
+# Web diagnostics share privacy filtering, summaries and the desktop app version.
+COPY apps/desktop/package.json /app/apps/desktop/package.json
+COPY apps/desktop/src/diagnostic-privacy.mjs /app/apps/desktop/src/diagnostic-privacy.mjs
+COPY apps/desktop/src/diagnostic-privacy.d.mts /app/apps/desktop/src/diagnostic-privacy.d.mts
+COPY apps/desktop/src/feedback-summary.mjs /app/apps/desktop/src/feedback-summary.mjs
+COPY apps/desktop/src/feedback-summary.d.mts /app/apps/desktop/src/feedback-summary.d.mts
 RUN yarn build && yarn build:gateway-share
 
 WORKDIR /app/apps/gateway-web

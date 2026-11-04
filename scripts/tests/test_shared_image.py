@@ -55,6 +55,21 @@ class SharedImageTests(unittest.TestCase):
                         imports.append(value)
             self.assertGreaterEqual(len(imports), 2)
 
+    def test_web_build_includes_desktop_diagnostic_dependencies(self):
+        stage = (ROOT / "Dockerfile").read_text().split("RUN yarn build", 1)[0]
+        files = (
+            "package.json",
+            "src/diagnostic-privacy.mjs",
+            "src/diagnostic-privacy.d.mts",
+            "src/feedback-summary.mjs",
+            "src/feedback-summary.d.mts",
+        )
+        for relative in files:
+            source = f"apps/desktop/{relative}"
+            with self.subTest(source=source):
+                self.assertTrue((ROOT / source).is_file())
+                self.assertIn(f"COPY {source} /app/{source}", stage)
+
     def test_frontend_install_uses_mirror_for_registry_and_locked_tarballs(self):
         dockerfile = (ROOT / "Dockerfile").read_text().split(" AS git-build", 1)[0]
         self.assertIn("ARG NPM_REGISTRY=https://registry.npmmirror.com", dockerfile)
