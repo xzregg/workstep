@@ -109,6 +109,50 @@ test('diagnostic export contains only allowlisted logs and metadata', async t =>
   assert.ok(!JSON.stringify(report).includes('private'))
 })
 
+test('feedback collection handles missing logs, failed files, symlinks and slow reads', async t => {
+  const logger = await fixture(t)
+  logger.write('desktop', 'error', `failure at ${os.homedir()}/private token=secret`)
+  await logger.flush()
+  await fs.writeFile(path.join(logger.directory, 'daemon.log'), 'daemon failure')
+  await fs.writeFile(path.join(logger.directory, 'credentials.json'), 'do not collect')
+  await fs.symlink(path.join(logger.directory, 'credentials.json'), path.join(logger.directory, 'fatal.log'))
+  const original = fs.open
+  let entered, release
+  const started = new Promise(resolve => { entered = resolve })
+  fs.open = async (file, ...rest) => {
+    if (file === path.join(logger.directory, 'daemon.log')) throw Error('read denied')
+    const handle = await original(file, ...rest)
+    if (file === path.join(logger.directory, 'desktop.log')) {
+      const read = handle.read.bind(handle)
+      handle.read = async (...args) => {
+        entered()
+        await new Promise(resolve => { release = resolve })
+        return read(...args)
+      }
+    }
+    return handle
+  }
+  let pending
+  try {
+    let completed = false
+    pending = logger.collectReport(undefined, 1024).then(report => { completed = true; return report })
+    await started
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.equal(completed, false, 'lightweight timer stays responsive during slow read')
+    release()
+    const report = await pending
+    assert.deepEqual(Object.keys(report.logs), ['desktop.log'])
+    assert.match(report.logs['desktop.log'], /\[path\]/)
+    assert.ok(!report.logs['desktop.log'].includes('/private'))
+    assert.ok(!JSON.stringify(report).includes('token=secret'))
+    assert.match(report.warnings.join(''), /daemon.log.*read denied/)
+  } finally { release?.(); await pending; fs.open = original }
+  await fs.rm(logger.directory, { recursive: true })
+  const missing = await logger.collectReport()
+  assert.deepEqual(missing.logs, {})
+  assert.match(missing.warnings.join(''), /日志目录不可用/)
+})
+
 test('disk errors do not reject logging or break the application', async t => {
   const logger = await fixture(t)
   await fs.rmdir(logger.directory)

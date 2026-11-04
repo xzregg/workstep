@@ -13,9 +13,8 @@ router = APIRouter(prefix="/api/skins")
 
 
 def authorize():
+    # Appearance packages are host-scoped, independent of engine installation.
     require_catalog_project("")
-    from api.engine import _require_managed_engine_permission
-    _require_managed_engine_permission()
 
 
 def authorize_read(project_id: str = ""):

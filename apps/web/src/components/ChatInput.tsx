@@ -738,14 +738,6 @@ export default function ChatInput({
 
   return (
     <div className="chat-input-root">
-      {roleBinding?.name && <div className="chat-role-binding" data-missing={roleBinding.missing || undefined}>
-        <button type="button" className="chat-role-binding-name" disabled={roleBinding.disabled} onClick={roleBinding.onOpen}
-          aria-label={t('roleCenter.boundRoleLabel', { name: roleBinding.name })}>
-          {roleBinding.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="drama" size={14} />}<span>{roleBinding.name}</span>
-        </button>
-        <button type="button" className="chat-role-binding-remove" disabled={roleBinding.disabled} onClick={roleBinding.onRemove}
-          aria-label={t('roleCenter.removeChatRole')}><Icon name="x" size={13} /></button>
-      </div>}
       {(roleBinding?.error || roleBinding?.missing) && <div className="chat-role-binding-error" role="alert">
         {roleBinding.error || t('roleCenter.missingChatRole')}
         {roleBinding.error && <button type="button" onClick={roleBinding.onRetry} disabled={roleBinding.loading}>{t('roleCenter.retry')}</button>}
@@ -1173,6 +1165,14 @@ export default function ChatInput({
               </span>
             </button>
           )}
+          {roleBinding?.name && <div className="chat-role-binding" data-missing={roleBinding.missing || undefined}>
+            <button type="button" className="chat-role-binding-name" disabled={roleBinding.disabled} onClick={roleBinding.onOpen}
+              aria-label={t('roleCenter.boundRoleLabel', { name: roleBinding.name })}>
+              {roleBinding.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="drama" size={14} />}<span>{roleBinding.name}</span>
+            </button>
+            <button type="button" className="chat-role-binding-remove" disabled={roleBinding.disabled} onClick={roleBinding.onRemove}
+              aria-label={t('roleCenter.removeChatRole')}><Icon name="x" size={13} /></button>
+          </div>}
           <div className="chat-input-toolbar-spacer" />
           <ChatInputUsage context={context} quota={quota} onRefreshQuota={onRefreshQuota} quotaRefreshing={quotaRefreshing} compact={isCompact} />
           {config && (

@@ -53,7 +53,7 @@ function desktopHarness() {
           showSaveDialog: async () => handlers.get('save-result') || { canceled: true },
           showMessageBox: async value => { handlers.set('diagnostic-dialog', value); return { response: 0 } },
         },
-        ipcMain: { removeAllListeners() {}, on() {} },
+        ipcMain: { removeAllListeners() {}, on() {}, removeHandler() {}, handle() {} },
       }
       if (name === './sandbox-ipc.cjs') return { registerSandboxIpc() {} }
       if (name === './diagnostics.cjs') return {
@@ -206,7 +206,7 @@ test('desktop help exposes working diagnostic directory and export actions', asy
   vm.runInContext('diagnostics.directory = diagnosticDirectory', context)
   vm.runInContext('rootUrl = "http://127.0.0.1:8766"; createWindow(rootUrl)', context)
   const menu = handlers.get('application-menu').find(item => item.label === '帮助').submenu
-  assert.deepEqual(Array.from(menu, item => item.label), ['打开日志目录', '导出诊断包'])
+  assert.deepEqual(Array.from(menu, item => item.label), ['一键反馈', '打开日志目录', '导出诊断包'])
   await vm.runInContext('openDiagnosticsDirectory()', context)
   assert.equal(handlers.get('opened-logs'), directory)
   await vm.runInContext('exportDiagnostics()', context)

@@ -17,7 +17,10 @@ describe('homepage onboarding', () => {
       expect(html).toContain('sdk-install-version')
       expect(html).toContain('href="#docs/sdk-installation"')
       expect(steps.every(step => step.sections.length > 0)).toBe(true)
-      expect(html).toContain('aria-selected="true"')
+      for (const step of steps) {
+        expect(html).toContain(`class="start-step-link" href="#docs/${step.id}"`)
+      }
+      expect(html).not.toContain('role="tab"')
     })
   }
 })

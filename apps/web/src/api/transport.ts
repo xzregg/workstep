@@ -5,6 +5,7 @@ import { gatewayFetch, gatewayWorkspacePath } from '../utils/gatewayWorkspacePat
 
 import { browserActorHeaders } from '../utils/browserActor'
 import { zhCNT } from '../i18n'
+import { browserDiagnostics } from '../utils/browserDiagnostics'
 
 export const BASE = gatewayWorkspacePath() + '/api'
 /** Default page size for loading full event logs / message histories. */
@@ -69,15 +70,22 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     else if (path === '/schedule/preview') path = await workspaceCatalogPath(path)
   }
   const run = async () => {
-    const res = await gatewayFetch(`${BASE}${path}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...browserActorHeaders(),
-        ...(options?.headers || {}),
-      },
-    })
-    return readApiResponse<T>(res, path)
+    try {
+      const res = await gatewayFetch(`${BASE}${path}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...browserActorHeaders(),
+          ...(options?.headers || {}),
+        },
+      })
+      return await readApiResponse<T>(res, path)
+    } catch (error) {
+      if (!options?.signal?.aborted && !(error instanceof Error && error.name === 'AbortError')) {
+        browserDiagnostics.recordRequestFailure(path, (options?.method || 'GET').toUpperCase(), error instanceof ApiError ? error.status : undefined, error)
+      }
+      throw error
+    }
   }
 
   const method = (options?.method || 'GET').toUpperCase()
@@ -112,16 +120,23 @@ export async function shareRequest<T>(
   options?: RequestInit,
 ): Promise<T> {
   const run = async () => {
-    const res = await gatewayFetch(`${BASE}${path}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Share-Session': sessionToken,
-        ...browserActorHeaders(),
-        ...(options?.headers || {}),
-      },
-    })
-    return readApiResponse<T>(res, path)
+    try {
+      const res = await gatewayFetch(`${BASE}${path}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Share-Session': sessionToken,
+          ...browserActorHeaders(),
+          ...(options?.headers || {}),
+        },
+      })
+      return await readApiResponse<T>(res, path)
+    } catch (error) {
+      if (!options?.signal?.aborted && !(error instanceof Error && error.name === 'AbortError')) {
+        browserDiagnostics.recordRequestFailure(path, (options?.method || 'GET').toUpperCase(), error instanceof ApiError ? error.status : undefined, error)
+      }
+      throw error
+    }
   }
 
   const method = (options?.method || 'GET').toUpperCase()

@@ -13,9 +13,8 @@ router = APIRouter(prefix="/api/language-packs")
 
 
 def authorize():
+    # Language packages share the appearance studio's host-only boundary.
     require_catalog_project("")
-    from api.engine import _require_managed_engine_permission
-    _require_managed_engine_permission()
 
 
 def authorize_read(project_id: str = ""):

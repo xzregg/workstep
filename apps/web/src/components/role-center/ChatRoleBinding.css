@@ -1,6 +1,7 @@
-.chat-role-binding { display: flex; align-items: center; gap: 6px; padding: 6px 0; min-width: 0; }
+.chat-role-binding { display: flex; align-items: center; gap: 6px; flex-shrink: 0; max-width: 100%; min-width: 0; }
 .chat-role-binding > button { padding: 0; border: 0; background: var(--surface); color: var(--accent); border-radius: var(--radius-sm); min-height: 28px; }
-.chat-role-binding .chat-role-binding-name { display: flex; gap: 6px; align-items: center; padding: 4px 8px; max-width: min(100%, 320px); min-width: 0; }
+.chat-role-binding .chat-role-binding-name { display: flex; gap: 6px; align-items: center; padding: 4px 8px; max-width: min(65vw, 320px); min-width: 0; }
+.chat-role-binding-name > svg, .chat-role-binding-name > .task-status-spinner { flex-shrink: 0; }
 .chat-role-binding-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-role-binding .chat-role-binding-remove { display: grid; place-items: center; width: 28px; flex-shrink: 0; }
 .chat-role-binding[data-missing] > button { color: var(--danger); }

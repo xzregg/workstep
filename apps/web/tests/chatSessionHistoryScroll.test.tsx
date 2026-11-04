@@ -46,10 +46,12 @@ test('shortcut messages and output follow the conversation and respect upward sc
   }
 })
 
-test('upward history paging preserves viewport and does not mark old messages unread', async () => {
+for (const width of [390, 1280]) {
+test(`upward history paging at width ${width} preloads and preserves viewport`, async () => {
   const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width })
   let requests = 0
-  let height = 1000
+  let height = 4000
   const message = (id: string) => ({ id, role: 'user' as const, content: id, status: 'succeeded' as const })
   function Harness() {
     const [messages, setMessages] = useState([message('latest')])
@@ -61,7 +63,7 @@ test('upward history paging preserves viewport and does not mark old messages un
       onLoadOlderHistory={async (beforePrepend) => {
         requests++
         beforePrepend?.()
-        height = 1600
+        height = 4600
         setMessages(current => [message('older'), ...current])
       }} />
   }
@@ -70,13 +72,14 @@ test('upward history paging preserves viewport and does not mark old messages un
     await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
     const list = window.document.querySelector<HTMLDivElement>('.chat-history-scroll')!
     Object.defineProperties(list, { scrollHeight: { get: () => height }, clientHeight: { value: 400 } })
-    list.scrollTop = 60
+    list.scrollTop = width === 390 ? 1800 : 60
     await act(async () => list.dispatchEvent(new window.Event('scroll')))
     assert.equal(requests, 0)
-    list.scrollTop = 30
+    // Mobile preloads three screens before the top, desktop keeps its 40px trigger.
+    list.scrollTop = width === 390 ? 1100 : 30
     await act(async () => list.dispatchEvent(new window.Event('scroll')))
     assert.equal(requests, 1)
-    assert.equal(list.scrollTop, 630)
+    assert.equal(list.scrollTop, width === 390 ? 1700 : 630)
     assert.equal(window.document.querySelector('.conversation-new-messages-button.has-label'), null)
     assert.match(list.textContent || '', /older.*latest/s)
   } finally {
@@ -84,6 +87,7 @@ test('upward history paging preserves viewport and does not mark old messages un
     await window.happyDOM.close()
   }
 })
+}
 
 
 test('welcome hides while running or after the first message', async () => {

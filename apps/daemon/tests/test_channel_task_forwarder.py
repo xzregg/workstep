@@ -307,6 +307,46 @@ async def test_final_loads_persisted_body_and_sends_project_attachments_once(set
     assert adapter.send.await_count == 1
 
 
+@pytest.mark.parametrize('failed_text', ['正在执行…', '部分正文'])
+@pytest.mark.parametrize('error_type', [TimeoutError, ConnectionError])
+async def test_task_stream_recovers_before_completion_after_transient_send_failure(setup, failed_text, error_type):
+    forwarder,bus,event,adapter,_,_,project = setup
+    adapter.supports_streaming_reply = lambda recipient: recipient.reply_context is not None
+    origin = IncomingMessage('bot','incoming','group','one','u','问题',reply_context={'headers':{'req_id':'req'}})
+    forwarder.register_origin(project.id,'task','coord',origin)
+    failed = asyncio.Event()
+    retry_started, release_retry = asyncio.Event(), asyncio.Event()
+    delivered = []
+    async def update(recipient, text):
+        assert recipient is origin
+        if failed_text in text and not failed.is_set():
+            failed.set()
+            raise error_type('temporary send failure')
+        if failed.is_set() and '部分正文' in text:
+            retry_started.set()
+            await release_retry.wait()
+        delivered.append(text)
+    adapter.update_reply = AsyncMock(side_effect=update)
+    try:
+        await bus.publish(event('coord','TEXT_MESSAGE_START'))
+        await until(lambda: adapter.update_reply.await_count > 0)
+        await bus.publish(event('coord','TEXT_MESSAGE_CHUNK',delta='部分正文'))
+        await asyncio.wait_for(failed.wait(), 1)
+        # No further engine events: retry the latest body while the turn is running.
+        await asyncio.wait_for(retry_started.wait(), 1)
+        async with AsyncClient(transport=ASGITransport(app=main.app),base_url='http://test') as client:
+            assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
+        adapter.send_text.assert_not_awaited()
+        release_retry.set()
+        await until(lambda: '@协调\n部分正文' in delivered)
+        assert forwarder._messages and not next(iter(forwarder._messages.values())).status
+        await bus.publish(event('coord','TEXT_MESSAGE_END',status='succeeded',content='部分正文完成'))
+        await until(lambda: not forwarder._messages)
+        assert sorted(c.args[1] for c in adapter.send_text.await_args_list) == ['@协调\n部分正文完成'] * 2
+    finally:
+        release_retry.set()
+
+
 async def test_failed_progress_still_retries_final_without_affecting_other_group(setup):
     forwarder,bus,event,adapter,*_ = setup
     adapter.supports_streaming_reply = lambda recipient: True

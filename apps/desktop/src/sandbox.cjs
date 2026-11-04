@@ -397,12 +397,14 @@ class SandboxManager {
         const containers = JSON.parse(await session.command(['ps', '-a', '--filter', `label=com.workstep.sandbox=${config.id}`, '--format=json']))
         for (const item of containers) await session.command(['rm', '--force', item.Id || item.ID])
         try {
+          this.startedAt = new Date().toISOString()
           await session.command(containerArgs(config, this.platform, port, token, managedEnv))
         } catch (error) {
           // Podman may leave a created container after publishing fails.
           // Retry only port conflicts, preserving other startup failures.
           if (!port || !/address already in use|port is already allocated|port.*already in use/i.test(error.message)) throw error
           await session.command(['rm', '--force', `workstep-${config.id}`]).catch(() => {})
+          this.startedAt = new Date().toISOString()
           await session.command(containerArgs(config, this.platform, 0, token, managedEnv))
         }
         const mapping = await session.command(['port', `workstep-${config.id}`, '8765/tcp'])

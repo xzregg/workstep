@@ -6,6 +6,30 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 No unreleased changes recorded.
 
+## 1.0.18
+
+### Highlights
+
+- Add local-only, one-click problem feedback in Settings. Desktop users can copy redacted diagnostic text, then explicitly preview and copy a screenshot of the current workspace. Browser users can copy bounded frontend diagnostics without reading backend files. Nothing is submitted automatically; screenshots require a separate privacy review.
+- Add workflow mode to ordinary local-project chat: insert the workflow skill reference, review a diagram and confirm before creating and starting work. Resolve same-project task links before opening task details; do not expose the entry in remote or embedded chats.
+- Add per-conversation Codex CLI and SDK speed selection. Follow default, Standard, Fast and Ultrafast are forwarded per turn; actual availability depends on the runtime, provider, model and account.
+- Add opt-in reuse of successful workflow steps when their accepted artifacts and configuration still match. Explicit reruns and coordinator-directed execution continue to run the selected step again.
+- Improve multi-pane chat activation, reload recovery, compact shortcuts, pending-image previews, long-message folding, slash-command filtering and unanswered questions after a stopped reply.
+- Reduce mobile chat-history page size while preserving pagination and scroll position. Improve mobile conversation creation, Git diff navigation and narrow-pane role controls.
+- Refresh coordinator role boundaries on resumed turns, and retry transient streaming channel delivery failures before completion without changing final-delivery behavior.
+- Keep host-scoped role, skin and language management independent of engine-install permission while preserving project-scoped remote restrictions. Improve LAN identity handling and remote-access failure recovery.
+- Refresh the website onboarding links, support contact, skin workspace and gateway overview/recovery interfaces.
+
+### Downloads and updates
+
+Installers target Windows x64, macOS Apple Silicon and Intel, and Linux x64. Packages are intentionally unsigned and not notarized; operating-system security prompts remain possible. Daily update checks use published GitHub Releases, not branch pushes or draft releases. Download, installation and restart require an explicit user action; manual GitHub downloads remain available.
+
+Sandbox image: `ghcr.io/xzregg/workstep:v1.0.18` and `latest`, for Linux amd64 and arm64. Desktop packages pin the image digest. Windows hosts require WSL2/Podman; this is not a native Windows container image.
+
+### Validation boundaries
+
+Publication requires passing source CI, Windows installer acceptance and both native macOS DMG acceptance jobs. Automated tests do not establish live-provider speed or execution, real messaging-tenant delivery, operating-system security-prompt behavior, live automatic upgrade/relaunch, or Podman/WSL2 acceptance. Diagnostic redaction is a safeguard, not a guarantee that copied text or screenshots contain no sensitive information. Review both before sharing. Existing manual guidance, translation and screenshot gaps remain recorded; design files under `plans/` are not shipped features. Historical tags and installer assets remain unchanged.
+
 ## 1.0.17
 
 ### Highlights

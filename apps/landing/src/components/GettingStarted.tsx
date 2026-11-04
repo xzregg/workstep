@@ -14,7 +14,7 @@ export function GettingStarted() {
   const { t, lang } = useI18n()
   const [index, setIndex] = useState(0)
   const [image, setImage] = useState<ManualScreenshot | null>(null)
-  const tabs = useRef<(HTMLButtonElement | null)[]>([])
+  const panel = useRef<HTMLElement>(null)
   const dialog = useRef<HTMLDialogElement>(null)
   const steps = getGettingStartedSteps(lang)
   const chapter = steps[index]
@@ -24,26 +24,18 @@ export function GettingStarted() {
   const screenshot = section.screenshot
   const select = (next: number, focus = false) => {
     setIndex(next)
-    if (focus) tabs.current[next]?.focus()
+    if (focus) panel.current?.focus()
   }
   return <section className="start-guide section" id="start" lang={lang} dir={languageDirection(lang)} aria-labelledby="start-heading">
     <div className="container">
       <div className="editorial-section-heading"><div><p className="section-eyebrow">02 / {t('manual.groups.getting-started')}</p><h2 className="section-title" id="start-heading">{editorialCopy[lang].startTitle}</h2></div><p className="section-lede">{t('hero.setup')}</p></div>
       <div className="start-routes"><a href="#docs/getting-started">{t('download.title')} <ArrowRight size={16} /></a><a href="#docs/faq">Codex / Claude Code · CLI <ArrowRight size={16} /></a></div>
       <div className="start-layout">
-        <div className="start-sidebar"><div role="tablist" aria-label={t('manual.groups.getting-started')} aria-orientation="vertical">
-          {steps.map((step, i) => <button type="button" role="tab" key={step.id} ref={node => { tabs.current[i] = node }} id={`start-tab-${i}`} aria-controls="start-panel" aria-selected={i === index} tabIndex={i === index ? 0 : -1} onClick={() => select(i)} onKeyDown={event => {
-            let next = index
-            if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % steps.length
-            else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (index + steps.length - 1) % steps.length
-            else if (event.key === 'Home') next = 0
-            else if (event.key === 'End') next = steps.length - 1
-            else return
-            event.preventDefault(); select(next, true)
-          }}><span className="start-number">{String(i + 1).padStart(2, '0')}</span><span>{step.title}</span>{i === index && <Check size={15} aria-hidden="true" />}</button>)}
-        </div><a className="start-manual" href="#docs">{t('manual.title')} ↗</a></div>
-        <article className="start-panel" id="start-panel" role="tabpanel" aria-labelledby={`start-tab-${index}`} tabIndex={0}>
-          <p className="start-count">0{index + 1} / 0{steps.length}</p><h3>{chapter.title}</h3><p className="start-summary">{chapter.summary}</p>
+        <div className="start-sidebar"><nav className="start-step-links" aria-label={t('manual.groups.getting-started')}>
+          {steps.map((step, i) => <a className="start-step-link" href={`#docs/${step.id}`} key={step.id} data-preview={i === index ? 'true' : undefined}><span className="start-number">{String(i + 1).padStart(2, '0')}</span><span>{step.title}</span>{i === index ? <Check size={15} aria-hidden="true" /> : <ArrowRight size={15} aria-hidden="true" />}</a>)}
+        </nav><a className="start-manual" href="#docs">{t('manual.title')} ↗</a></div>
+        <article className="start-panel" id="start-panel" ref={panel} aria-labelledby="start-panel-heading" tabIndex={-1}>
+          <p className="start-count">0{index + 1} / 0{steps.length}</p><h3 id="start-panel-heading">{chapter.title}</h3><p className="start-summary">{chapter.summary}</p>
           <h4>{section.title}</h4><ol className="start-instructions">{section.steps.map(step => <li key={step}>{step}</li>)}</ol>
           {screenshot && <figure className="start-screenshot"><button type="button" aria-label={`${t('manual.enlarge')}: ${screenshot.alt}`} onClick={() => { setImage(screenshot); dialog.current?.showModal() }}><img src={screenshotUrl(screenshot.id)} alt={screenshot.alt} loading="lazy" /><span><Maximize2 size={14} />{t('manual.enlarge')}</span></button><figcaption>{screenshot.caption}{lang !== 'zh-CN' && <> {t('manual.screenshotNotice')}</>}</figcaption></figure>}
           {section.tips?.map(tip => <p className="start-tip" key={tip}>{tip}</p>)}

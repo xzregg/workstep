@@ -21,7 +21,7 @@ buildSync({
       return <I18nProvider><GitDiffDialog id="demo" files={files} path={file}
         comparison={{}} onSelect={select} onClose={()=>{}}
         recordedDiff={{path:file,old_path:file,base:null,target:null,before:'',after:'',binary:false,truncated:false,submodule:false,
-          patch:'@@ -1,30 +1,30 @@\\n'+Array.from({length:30},(_,i)=>' '+ 'const example'+i+' = true;').join('\\n')+'\\n'}} /></I18nProvider>;
+          patch:'@@ -1,31 +1,31 @@\\n'+Array.from({length:30},(_,i)=>' '+ 'const example'+i+' = '+(i === 0 ? JSON.stringify('long content '.repeat(30)) : 'true')+';').join('\\n')+'\\n-short before\\n+short after\\n'}} /></I18nProvider>;
     }
     createRoot(document.getElementById('root')).render(<App/>);
   `, loader: 'tsx', resolveDir: path.resolve(__dirname, '..') },
@@ -62,6 +62,24 @@ buildSync({
         } else {
           assert.ok(metrics.tree.x < metrics.content.x, 'desktop tree stays beside diff');
         }
+        const backgrounds = await page.evaluate(() => {
+          const scrollers = document.querySelector('.git-diff-dialog').classList.contains('split')
+            ? [...document.querySelectorAll('.git-code-pane')]
+            : [document.querySelector('.git-diff-scroll')];
+          return scrollers.map(scroller => {
+            scroller.scrollLeft = scroller.scrollWidth - scroller.clientWidth;
+            const edge = scroller.getBoundingClientRect().left + scroller.clientLeft + scroller.clientWidth;
+            const rows = [...scroller.querySelectorAll('.git-code-cell.added, .git-code-cell.removed, h4')];
+            return { scrolled: scroller.scrollLeft > 0, rows: rows.length,
+              covered: rows.every(row => row.getBoundingClientRect().right >= edge - 1) };
+          });
+        });
+        for (const background of backgrounds) {
+          assert.ok(background.scrolled, `${width}/${split}: fixture must overflow horizontally`);
+          assert.ok(background.rows > 0, `${width}/${split}: fixture must contain colored rows`);
+          assert.ok(background.covered, `${width}/${split}: row backgrounds stop before the scrolled right edge`);
+        }
+        await page.locator('.git-diff-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
         await page.screenshot({ path:path.join(output, `${width}-${split ? 'split' : 'unified'}.png`) });
       }
       assert.deepEqual(errors, []);

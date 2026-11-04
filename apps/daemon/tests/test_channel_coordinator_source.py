@@ -97,9 +97,9 @@ async def test_channel_source_is_persisted_and_applied_to_current_turn_after_res
             assert 'must-not-reach-engine' not in call['prompt']
             assert 'Channel request background' not in (call.get('system_prompt') or '')
             from agent_assistants.coordinator_context import COORDINATOR_ROLE_RULES
-            assert call['prompt'].count(COORDINATOR_ROLE_RULES) == (1 if mode == 'body' and index == 1 else 0)
+            assert call['prompt'].count(COORDINATOR_ROLE_RULES) == (1 if mode == 'body' else 0)
             if mode == 'developer':
-                assert bool(call.get('system_prompt')) == (index == 1)
+                assert COORDINATOR_ROLE_RULES in call['system_prompt']
             def read(_project):
                 user = Message.get_by_id(accepted[index-1].user_message_id)
                 return user.content,json.loads(user.prompt_json)
@@ -118,9 +118,9 @@ async def test_channel_source_is_persisted_and_applied_to_current_turn_after_res
         assert '"origin": "workstep"' in instruction
         assert '"sender_id": "web-user"' in instruction
         assert 'group-2' not in instruction
-        assert COORDINATOR_ROLE_RULES not in instruction
+        assert instruction.count(COORDINATOR_ROLE_RULES) == (1 if mode == 'body' else 0)
         if mode == 'developer':
-            assert not SourceEngine.calls[2].get('system_prompt')
+            assert COORDINATOR_ROLE_RULES in SourceEngine.calls[2]['system_prompt']
     finally:
         release.set()
         await fresh.shutdown()

@@ -2316,7 +2316,7 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     resumed_context = json.loads(ResumeCoordinatorFakeEngine.calls[1]["prompt"].split("Context:\n", 1)[1])
     assert [m["content"] for m in resumed_context["recent_coordinator_messages"]] == ["第二问"]
     assert resumed_context["task"]["id"] == task_id
-    assert "Understand the task" not in ResumeCoordinatorFakeEngine.calls[1]["prompt"]
+    assert "Never modify project code" in ResumeCoordinatorFakeEngine.calls[1]["prompt"]
 
     third = await client.post(
         f"/api/task/{task_id}/chat?project_id={project_id}",
@@ -4214,7 +4214,7 @@ async def test_channel_stop_targets_exact_coordinator_reply_and_slow_sql_keeps_h
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("transport", ["body", "system", "developer"])
+@pytest.mark.parametrize("transport", ["body", "system", "developer", "codex_sdk"])
 async def test_coordinator_actual_input_and_persisted_view(api_context, monkeypatch, transport):
     import main
     from models import Message
@@ -4231,9 +4231,15 @@ async def test_coordinator_actual_input_and_persisted_view(api_context, monkeypa
                 assert release.wait(3)
             return original_update(*args, **kwargs)
         monkeypatch.setattr(Message, "update", staticmethod(slow_prompt_update))
+    from engines.codex_sdk import CodexSDKEngine
+
+    class SDKResumeEngine(CoordinatorFakeEngine, CodexSDKEngine):
+        """Keep the SDK's real instruction preparation on resumed sessions."""
+        spawn_coordinator = AcpEngineBase.spawn_coordinator
+
     calls = []
-    class Engine(CoordinatorFakeEngine):
-        SYSTEM_PROMPT_MODE = transport
+    class Engine(SDKResumeEngine if transport == "codex_sdk" else CoordinatorFakeEngine):
+        SYSTEM_PROMPT_MODE = "developer" if transport == "codex_sdk" else transport
         @property
         def supports_resume(self):
             return True
@@ -4260,10 +4266,10 @@ async def test_coordinator_actual_input_and_persisted_view(api_context, monkeypa
         assert calls[index]["prompt"] in view
         assert f"问题{index}" in calls[index]["prompt"]
         if transport == "body":
-            assert ("Understand the task" in calls[index]["prompt"]) == (index == 0)
+            assert "Never modify project code" in calls[index]["prompt"]
             assert "独立指令" not in view
         else:
-            assert "Understand the task" in calls[index]["system_prompt"]
+            assert "Never modify project code" in calls[index]["system_prompt"]
             assert "Understand the task" not in calls[index]["prompt"]
             assert calls[index]["system_prompt"] in view
         def inspect_storage(_project):

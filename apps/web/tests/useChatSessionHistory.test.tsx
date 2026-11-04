@@ -154,9 +154,11 @@ test('event details follow the current session id after a send migrates it', asy
 })
 
 
-test('history loads latest 300, deduplicates older requests and stops at the end', async () => {
+for (const [width, pageSize] of [[390, 20], [1023, 20], [1280, 300]]) {
+test(`history at width ${width} loads latest ${pageSize}, deduplicates older requests and stops at the end`, async () => {
   const { window } = installDomEnvironment()
   const originalGet = chatSessionApi.get
+  window.happyDOM.setWindowSize({ width })
   const requests: number[] = []
   let history!: ReturnType<typeof useChatSessionHistory>
   let beforePrepend = 0
@@ -168,9 +170,9 @@ test('history loads latest 300, deduplicates older requests and stops at the end
   try {
     useChatSessionStore.setState({ sessions: {} })
     chatSessionApi.get = (async (id, project, limit, offset) => {
-      assert.equal(limit, 300)
+      assert.equal(limit, pageSize)
       requests.push(offset)
-      return { id, running: false, messages: Array.from({ length: offset === 0 ? 300 : 2 }, (_, i) => ({
+      return { id, running: false, messages: Array.from({ length: offset === 0 ? pageSize : 2 }, (_, i) => ({
         id: String(offset === 0 ? i + 2 : i), role: 'user', content: '消息', status: 'succeeded',
       })) }
     }) as never
@@ -179,10 +181,10 @@ test('history loads latest 300, deduplicates older requests and stops at the end
       await Promise.all([history.loadOlderHistory(() => beforePrepend++), history.loadOlderHistory()])
     })
     await act(async () => { await history.loadOlderHistory() })
-    assert.deepEqual(requests, [0, 300])
+    assert.deepEqual(requests, [0, pageSize])
     assert.equal(beforePrepend, 1)
     const messages = useChatSessionStore.getState().sessions.paged.messages
-    assert.equal(messages.length, 302)
+    assert.equal(messages.length, pageSize + 2)
     assert.deepEqual(messages.slice(0, 3).map(m => m.id), ['0', '1', '2'])
   } finally {
     await act(async () => root.unmount())
@@ -191,6 +193,7 @@ test('history loads latest 300, deduplicates older requests and stops at the end
     await window.happyDOM.close()
   }
 })
+}
 
 
 test('403 retains selected session, exposes the error and permits retry; only 404 is missing', async () => {

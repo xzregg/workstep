@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('workstepDesktop', {
+  feedback: { open: () => ipcRenderer.invoke('workstep:feedback:open') },
   projects: {
     pathForFile: (file) => webUtils.getPathForFile(file),
     resolveDirectory: (path) => ipcRenderer.invoke('workstep:sandbox:droppedDirectory', path),

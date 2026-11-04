@@ -1,0 +1,21 @@
+.problem-feedback { min-width: 0; }
+.problem-feedback .problem-feedback-report {
+  display: block;
+  width: 100%;
+  min-height: 240px;
+  max-height: 50vh;
+  resize: vertical;
+  overflow: auto;
+  padding: var(--space-3);
+  color: var(--fg);
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-caption);
+  line-height: 1.6;
+}
+@media (max-width: 1023px) {
+  .problem-feedback > .btn { min-height: var(--mobile-control-regular); }
+  .problem-feedback .problem-feedback-report { min-height: 180px; font-size: 16px; }
+}

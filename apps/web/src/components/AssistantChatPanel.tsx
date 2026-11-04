@@ -580,10 +580,13 @@ export default function AssistantChatPanel({
                 setHasUnreadMessages(false)
               }
             }
+            const scrollingUp = !programmaticEcho && list.scrollTop < lastScrollTopRef.current
             setScrolledToBottom(nearBottom)
             lastScrollTopRef.current = list.scrollTop
             lastScrollHeightRef.current = list.scrollHeight
-            if (list.scrollTop <= 40 && onLoadOlderHistory) {
+            // Start mobile history requests early, only while browsing upward.
+            const historyThreshold = compactLayout ? list.clientHeight * 3 : 40
+            if (list.scrollTop <= historyThreshold && (!compactLayout || scrollingUp) && onLoadOlderHistory) {
               void onLoadOlderHistory(() => {
                 followRef.current = false
                 prependHeightRef.current = list.scrollHeight

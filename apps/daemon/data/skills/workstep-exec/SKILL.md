@@ -57,8 +57,10 @@ Prefer native WorkStep tools. If unavailable, use the supported CLI from the bui
 
 After successful task creation, briefly report the workflow name, task name, and actual startup status, then output a localized link in this form:
 
-`[Open task details](task_detail_url)`
+```markdown
+[Open task details](<task_detail_url>)
+```
 
-Translate the link label into the user's language. Replace `task_detail_url` in parentheses with the exact real value returned by the successful tool response. WorkStep renders this link as a button that opens task details inside the application. Do not output a literal placeholder, guess task IDs, construct a host address, or claim that a button exists without including the link.
+Translate the link label into the user's language. Replace `<task_detail_url>` in parentheses with the exact real value returned by the successful tool response. WorkStep renders this link as a button that opens task details inside the application. Do not output a literal placeholder, guess task IDs, construct a host address, or claim that a button exists without including the link.
 
 If task creation succeeded but startup failed, still include the same task details button and explain the startup failure. If task creation failed, do not invent a button. Buttons in earlier replies should remain usable.

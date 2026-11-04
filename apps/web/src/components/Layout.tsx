@@ -457,7 +457,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     <SkinWorkspaceFrame onOpenSettings={section => { setSettingsSection(section); setSettingsFocus(undefined); setShowSettings(true) }}>
     <div className="app-shell" data-ui="app-shell">
       {/* Sidebar */}
-      <ResponsiveNavigation className="layout-sidebar" onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth + (compact ? 0 : WORKSPACE_TOOL_RAIL_WIDTH) }}>
+      <ResponsiveNavigation className="layout-sidebar" onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject || creatingSession} newLoading={creatingSession} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => { if (activeProject) void createSession(activeProject) }} style={{ width: sidebarWidth + (compact ? 0 : WORKSPACE_TOOL_RAIL_WIDTH) }}>
         <div className="layout-sidebar-header">
           <div className="layout-sidebar-brand">
             <BrandIcon size={18} />

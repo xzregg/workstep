@@ -915,6 +915,8 @@ class CoordinatorModule:
                     thinking_effort=thinking_effort,
                     provider_id=provider_id,
                     system_prompt=prepared["system_prompt"],
+                    # Refresh role boundaries even when native resume keeps old instructions.
+                    system_prompt_each_turn=True,
                 )
                 self._record_unstreamed_journal_events(
                     journal_ref, events, journaled_events
@@ -968,6 +970,7 @@ class CoordinatorModule:
                         thinking_effort=thinking_effort,
                         provider_id=provider_id,
                         system_prompt=prepared["system_prompt"],
+                        system_prompt_each_turn=True,
                     )
                     self._record_unstreamed_journal_events(
                         journal_ref, more_events, journaled_more_events

@@ -121,6 +121,7 @@ jobs:
             apps/desktop/tests/test_optional_engine_dependencies.py \
             apps/desktop/tests/test_public_entrypoints.py
           node --test apps/desktop/tests/sidecar.test.cjs apps/desktop/tests/managed-config.test.cjs apps/desktop/tests/windows-acceptance.test.cjs apps/desktop/tests/macos-acceptance.test.cjs apps/desktop/tests/auto-update.test.cjs apps/desktop/tests/macos-update.test.cjs
+          node --test apps/desktop/tests/diagnostics.test.cjs apps/desktop/tests/diagnostic-privacy.test.cjs apps/desktop/tests/feedback.test.cjs
       - name: Web tests and build
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn test && yarn build

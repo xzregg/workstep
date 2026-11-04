@@ -2,9 +2,8 @@ import type { FileChangesQuery } from '../utils/messageFileChanges'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { chatSessionApi, type ChatSessionDetail } from '../api/client'
 import { useI18n } from '../i18n'
+import { useCompactLayout } from './useCompactLayout'
 import { useChatSessionStore } from '../stores/chatSessionStore'
-
-const PAGE_SIZE = 300
 
 function normalizeMessages(messages: ChatSessionDetail['messages']) {
   return messages.map((message) => ({
@@ -27,13 +26,16 @@ interface Options {
 
 /** Loads a selected session and its paged event details into the shared store. */
 export function useChatSessionHistory({ sessionId, messageSessionId, projectId, onLoaded, onMissing }: Options) {
+  const compact = useCompactLayout()
+  const pageSizeRef = useRef(300)
+  pageSizeRef.current = compact ? 20 : 300
   const [historyError, setHistoryError] = useState('')
   const [historyLoading, setHistoryLoading] = useState(false)
   const [loadedScope, setLoadedScope] = useState('')
   const historyReady = Boolean(projectId && sessionId && loadedScope === `${projectId}/${sessionId}`)
   const retryRef = useRef<() => void>(() => {})
   const retryHistory = useCallback(() => retryRef.current(), [])
-  const pageRef = useRef({ key: '', offset: 0, hasOlder: false, loading: false })
+  const pageRef = useRef({ key: '', offset: 0, hasOlder: false, loading: false, limit: 300 })
   const { t } = useI18n()
   const callbacks = useRef({ onLoaded, onMissing })
   callbacks.current = { onLoaded, onMissing }
@@ -43,7 +45,8 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
     setHistoryLoading(false)
     if (!sessionId || !projectId) return
     let active = true
-    const page = { key: `${projectId}/${sessionId}`, offset: 0, hasOlder: false, loading: true }
+    // Keep one page size for this session; resizing must not reload its history.
+    const page = { limit: pageSizeRef.current, key: `${projectId}/${sessionId}`, offset: 0, hasOlder: false, loading: true }
     pageRef.current = page
     const store = useChatSessionStore.getState()
     store.newSession(sessionId)
@@ -56,11 +59,11 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
       setHistoryLoading(true)
       page.loading = true
       const unchangedMessages = useChatSessionStore.getState().sessions[sessionId]?.messages || []
-      void chatSessionApi.get(sessionId, projectId, PAGE_SIZE, 0)
+      void chatSessionApi.get(sessionId, projectId, page.limit, 0)
         .then((detail) => {
           if (!active) return
           page.offset = detail.messages?.length || 0
-          page.hasOlder = page.offset === PAGE_SIZE
+          page.hasOlder = page.offset === page.limit
           page.loading = false
           if (!refresh) callbacks.current.onLoaded(detail)
           store.newSession(detail.id)
@@ -92,7 +95,7 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
       active = false
       retryRef.current = () => {}
       window.removeEventListener('workstep:reconnected', recovered)
-      pageRef.current = { key: '', offset: 0, hasOlder: false, loading: false }
+      pageRef.current = { key: '', offset: 0, hasOlder: false, loading: false, limit: 300 }
     }
   }, [sessionId, projectId])
 
@@ -103,11 +106,11 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
       || page.loading || !page.hasOlder) return
     page.loading = true
     try {
-      const detail = await chatSessionApi.get(currentSessionId, projectId, PAGE_SIZE, page.offset)
+      const detail = await chatSessionApi.get(currentSessionId, projectId, page.limit, page.offset)
       if (pageRef.current !== page) return
       const messages = detail.messages || []
       page.offset += messages.length
-      page.hasOlder = messages.length === PAGE_SIZE
+      page.hasOlder = messages.length === page.limit
       if (messages.length) {
         beforePrepend?.()
         useChatSessionStore.getState().hydrateSession(currentSessionId, normalizeMessages(messages), false)

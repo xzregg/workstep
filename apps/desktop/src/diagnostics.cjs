@@ -4,6 +4,7 @@ const path = require('node:path')
 const { format } = require('node:util')
 const { promisify } = require('node:util')
 const gzip = promisify(require('node:zlib').gzip)
+const { redactDiagnosticText } = require('./diagnostic-privacy.mjs')
 const LOG_MAX_BYTES = 5 * 1024 * 1024
 
 function boundedRecord(value, maxBytes) {
@@ -49,15 +50,7 @@ function createDiagnostics({ directory, metadata = {}, maxBytes = LOG_MAX_BYTES,
   let maintenance = Promise.resolve()
   const logger = { directory, lastError: null }
   logger.addSecret = value => { if (typeof value === 'string' && value) secrets.add(value) }
-  logger.redact = value => {
-    let text = String(value)
-    for (const secret of [...secrets].sort((a, b) => b.length - a.length)) text = text.replaceAll(secret, '[redacted]')
-    return text
-      .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, '[redacted private key]')
-      .replace(/(\b(?:authorization|api[_-]?key|password|secret|(?:[\w-]*token))\b["']?\s*[:=]\s*["']?)(?:Bearer\s+)?[^\s"'&,}]+/gi, '$1[redacted]')
-      .replace(/([?&](?:code|state|nonce|key|signature)=)[^\s&#]+/gi, '$1[redacted]')
-      .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[redacted]@')
-  }
+  logger.redact = value => redactDiagnosticText(value, { secrets, homeDirectory: require('node:os').homedir() })
   function record(level, message) {
     return `${new Date().toISOString()} ${level} ${logger.redact(message).slice(0, 64 * 1024)}\n`
   }
@@ -133,24 +126,33 @@ function createDiagnostics({ directory, metadata = {}, maxBytes = LOG_MAX_BYTES,
       syncFs.appendFileSync(file, line, { mode: 0o600 })
     } catch (error) { logger.lastError = error }
   }
-  logger.exportReport = async (destination, sandboxLog) => {
+  logger.collectReport = async (sandboxLog, perFileBytes = maxBytes + 128 * 1024) => {
     await logger.flush()
-    const logs = {}
-    for (const name of await fs.readdir(directory)) {
+    const logs = {}, warnings = []
+    const names = await fs.readdir(directory).catch(error => {
+      warnings.push(`日志目录不可用：${logger.redact(error.message)}`)
+      return []
+    })
+    for (const name of names) {
       if (!/^(?:desktop|daemon|fatal)\.log(?:\.\d+)?$/.test(name)) continue
       const file = path.join(directory, name)
-      const stat = await fs.lstat(file)
-      if (!stat.isFile()) continue
-      const handle = await fs.open(file, 'r')
       try {
-        const buffer = Buffer.alloc(Math.min(stat.size, maxBytes + 128 * 1024))
-        const { bytesRead } = await handle.read(buffer, 0, buffer.length, Math.max(0, stat.size - buffer.length))
-        logs[name] = logger.redact(buffer.subarray(0, bytesRead).toString('utf8'))
-      } finally { await handle.close() }
+        const stat = await fs.lstat(file)
+        if (!stat.isFile()) continue
+        const handle = await fs.open(file, 'r')
+        try {
+          const buffer = Buffer.alloc(Math.min(stat.size, perFileBytes))
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, Math.max(0, stat.size - buffer.length))
+          logs[name] = (stat.size > buffer.length ? '…[已截断，仅保留近期日志]\n' : '') + logger.redact(buffer.subarray(0, bytesRead).toString('utf8').replace(/^\uFFFD+/, ''))
+        } finally { await handle.close() }
+      } catch (error) { warnings.push(`${name} 读取失败：${logger.redact(error.message)}`) }
     }
     if (typeof sandboxLog === 'string' && sandboxLog) logs['sandbox-diagnostics.log'] = logger.redact(sandboxLog).slice(-400000)
-    const report = { generatedAt: new Date().toISOString(), metadata, logs,
+    return { generatedAt: new Date().toISOString(), metadata, logs, warnings,
       note: '仅包含桌面文本日志；原生崩溃转储在日志目录的 crashes/ 中。' }
+  }
+  logger.exportReport = async (destination, sandboxLog) => {
+    const report = await logger.collectReport(sandboxLog)
     await fs.writeFile(destination, await gzip(JSON.stringify(report, null, 2)), { mode: 0o600 })
   }
   return logger

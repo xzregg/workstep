@@ -31,7 +31,11 @@ WORKSTEP_DESKTOP_PORT=43123 WorkStep
 
 ## 日志与崩溃排查
 
-桌面应用的「帮助」菜单和托盘菜单提供「打开日志目录」「导出诊断包」；本地后台启动失败的弹窗也可打开日志目录。日志位于 Electron `userData` 目录下的 `logs/`，通常为 macOS 的 `~/Library/Application Support/WorkStep/logs/`、Windows 的 `%APPDATA%/WorkStep/logs/` 或 Linux 的 `~/.config/WorkStep/logs/`，以菜单打开的实际路径为准。
+桌面应用的「帮助」菜单和托盘菜单提供「一键反馈」「打开日志目录」「导出诊断包」；设置 → 反馈问题也可打开一键反馈。本地后台启动失败的弹窗可打开日志目录。日志位于 Electron `userData` 目录下的 `logs/`，通常为 macOS 的 `~/Library/Application Support/WorkStep/logs/`、Windows 的 `%APPDATA%/WorkStep/logs/` 或 Linux 的 `~/.config/WorkStep/logs/`，以菜单打开的实际路径为准。
+
+一键反馈在独立原生窗口中自动复制诊断文字，包含版本、系统、桌面启动时间／运行时长、后台模式／状态和近期日志。每份文本日志读取最近 64 KiB，反馈正文总计最多 256 KiB，截断或读取失败会注明；缺少日志时仍复制可用信息，完整日志沿用诊断包导出。后台运行时间仅对桌面实际启动的进程／容器记录，开发模式的外部服务时间显示不可用。可信工作台页面的控制台错误（含浏览器上报的未捕获异常、未处理异步错误）写入 `desktop.log`，不采集普通控制台信息。
+
+文字复制后，可选择「附当前页面截图」，预览确认后单独复制图片；请先粘贴文字，因为复制图片会替换剪贴板文字。截图只捕获当前可信 WorkStep 主页面，不含反馈窗口、其他应用或整个屏幕；取消或关闭释放内存中的截图，不写入项目、不自动提交或上传。文字与浏览器共用 `src/diagnostic-privacy.mjs` 规则，遮蔽凭据、Cookie、邮箱、地址、绝对路径与业务标识；仍需用户检查任意错误正文中的敏感内容，截图须人工核对。浏览器／Android 的设置页也可复制前端诊断，但不读取桌面日志，截图使用系统工具手动附上。实际 Electron 离线验收：先安装本地 Electron runtime，再执行 `WORKSTEP_FEEDBACK_ACCEPTANCE=1 node --test tests/feedback-acceptance.test.cjs`（在桌面应用目录运行），测试仅使用临时演示页面与日志，不启动实际后台。
 
 - `desktop.log`：启动、主进程控制台、页面加载失败、页面／GPU 等进程退出及沙箱阶段信息。
 - `daemon.log`：普通桌面包内置后台的 stdout/stderr、退出码、退出信号和是否属于正常停止。开发模式连接外部服务，不收集外部服务日志。

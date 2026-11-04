@@ -273,7 +273,7 @@ class ChannelTaskForwarder:
             await asyncio.wait_for(adapter.update_reply(recipient, text), 5)
             return True
         except Exception:
-            logger.warning('Task channel progress failed; final delivery will retry %s', state.key, exc_info=True)
+            logger.warning('Task channel progress failed; latest body will retry %s', state.key, exc_info=True)
             return False
 
     async def _deliver(self, state, title, bot_id, group_id, step_key):
@@ -302,10 +302,11 @@ class ChannelTaskForwarder:
             streaming = supports_streaming(recipient) if supports_streaming else bool(recipient.reply_context and getattr(getattr(adapter, 'CAPABILITIES', None), 'streaming', False))
             progress_active = streaming and await self._progress(adapter, recipient, state, prefix + '正在执行…')
             interval = min(self._interval, .5) if streaming else self._interval
+            retry_interval = interval if progress_active else min(30, interval * 2)
             last_sent = asyncio.get_running_loop().time() - interval if streaming else asyncio.get_running_loop().time()
             revision = 0
             while True:
-                if not progress_active and not state.status:
+                if not streaming and not state.status:
                     # Platforms without editable replies receive only the final body.
                     # Do not repeatedly reload disk configuration for every chunk.
                     wake.clear()
@@ -313,15 +314,24 @@ class ChannelTaskForwarder:
                     continue
                 if not state.status and state.revision == revision:
                     wake.clear()
-                    await wake.wait()
+                    if state.text and state.text != sent:
+                        # A failed snapshot must be retried even if the engine
+                        # is busy with tools and produces no further text events.
+                        remaining = max(0, retry_interval - (asyncio.get_running_loop().time() - last_sent))
+                        try:
+                            await asyncio.wait_for(wake.wait(), remaining)
+                        except TimeoutError:
+                            pass
+                    else:
+                        await wake.wait()
                 if not state.status:
-                    delay = interval - (asyncio.get_running_loop().time() - last_sent)
+                    delay = retry_interval - (asyncio.get_running_loop().time() - last_sent)
                     if delay > 0 and not state.status:
                         # Coalesce snapshots until the interval elapses, unless ending.
-                        while not state.status and asyncio.get_running_loop().time() - last_sent < interval:
+                        while not state.status and asyncio.get_running_loop().time() - last_sent < retry_interval:
                             wake.clear()
                             try:
-                                await asyncio.wait_for(wake.wait(), interval - (asyncio.get_running_loop().time() - last_sent))
+                                await asyncio.wait_for(wake.wait(), retry_interval - (asyncio.get_running_loop().time() - last_sent))
                             except TimeoutError:
                                 break
                 destination = await self._recipient(state, bot_id, group_id)
@@ -341,10 +351,13 @@ class ChannelTaskForwarder:
                     return
                 text = state.text
                 revision = state.revision
-                if progress_active and text and text != sent:
+                if streaming and text and text != sent:
                     progress_active = await self._progress(adapter, recipient, state, prefix + text)
                     if progress_active:
                         sent = text
+                        retry_interval = interval
+                    else:
+                        retry_interval = min(30, retry_interval * 2)
                     last_sent = asyncio.get_running_loop().time()
 
         except asyncio.CancelledError:

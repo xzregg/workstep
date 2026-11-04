@@ -79,6 +79,7 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })
+    child.workstepStartedAt = new Date().toISOString()
     let settled = false
     let stderr = ''
     logger?.write('daemon', 'info', '后台进程已启动')

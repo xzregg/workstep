@@ -3,6 +3,8 @@ const { app, BrowserWindow, Menu, Notification, Tray, clipboard, crashReporter, 
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const { createDiagnostics, installDiagnostics, captureConsole } = require('./diagnostics.cjs')
+const { createFeedbackService, registerFeedbackIpc, captureRendererErrors } = require('./feedback.cjs')
+const { createFeedbackWindowController } = require('./feedback-window.cjs')
 const { SandboxManager } = require('./sandbox.cjs')
 const { registerSandboxIpc } = require('./sandbox-ipc.cjs')
 const { managedEnvironment, readManagedConfig } = require('./managed-config.cjs')
@@ -33,6 +35,8 @@ const {
 } = require('./security.cjs')
 
 let sandboxManager = null
+let feedbackWindow = null
+const desktopStartedAt = new Date(Date.now() - process.uptime() * 1000).toISOString()
 let backendProcess = null
 let stopping = null
 let mainWindow = null
@@ -340,6 +344,7 @@ function createWindow(url) {
   window.once('ready-to-show', () => { if (windowsVisible) window.show() })
   void window.loadURL(url)
   mainWindow = window
+  captureRendererErrors(window.webContents, diagnostics, () => rootUrl)
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     { label: 'WorkStep', submenu: [
@@ -370,9 +375,31 @@ function showDesktopWindow() {
 
 function diagnosticMenu() {
   return [
+    { label: '一键反馈', click: () => { void openFeedback() } },
     { label: '打开日志目录', click: () => { void openDiagnosticsDirectory() } },
     { label: '导出诊断包', click: () => { void exportDiagnostics() } },
   ]
+}
+
+async function openFeedback() {
+  try { await feedbackWindow?.open() }
+  catch (error) {
+    console.error('无法打开一键反馈', error)
+    await dialog.showMessageBox({ type: 'error', title: '一键反馈', message: '无法打开反馈窗口，请重试或导出诊断包。' })
+  }
+}
+
+async function feedbackRuntime() {
+  const sandbox = sandboxManager ? await sandboxManager.settings() : null
+  const sandboxed = Boolean(sandbox?.enabled)
+  const childAlive = backendProcess && backendProcess.exitCode === null && backendProcess.signalCode === null
+  const startedAt = sandboxed ? sandboxManager.startedAt : backendProcess?.workstepStartedAt
+  const alive = sandboxed ? sandboxManager.running : childAlive
+  return { startedAt: desktopStartedAt, uptimeSeconds: process.uptime(),
+    backendMode: sandboxed ? '沙箱' : app.isPackaged ? '本地内置' : '外部开发服务',
+    backendState: sandboxed ? sandboxManager.phase : childAlive ? '运行中' : backendProcess ? '已退出' : '不可用',
+    backendStartedAt: startedAt,
+    backendUptimeSeconds: startedAt && alive ? (Date.now() - Date.parse(startedAt)) / 1000 : undefined }
 }
 
 async function openDiagnosticsDirectory() {
@@ -660,6 +687,12 @@ if (diagnostics) {
   installDiagnostics({ app, crashReporter, logger: diagnostics })
   captureConsole(diagnostics)
   diagnostics.write('desktop', 'info', `桌面启动 ${JSON.stringify({ version: app.getVersion(), platform: process.platform, arch: process.arch })}`)
+  const service = createFeedbackService({ diagnostics, clipboard, runtime: feedbackRuntime,
+    getWindow: () => mainWindow, rootUrl: () => rootUrl,
+    sandboxLogs: () => sandboxManager?.readLogs() })
+  feedbackWindow = createFeedbackWindowController({ BrowserWindow, service })
+  registerFeedbackIpc({ ipcMain, service, getWindow: () => mainWindow,
+    getFeedbackWindow: feedbackWindow.getWindow, rootUrl: () => rootUrl, open: () => feedbackWindow.open() })
 }
 if (!hasSingleInstanceLock) app.quit()
 

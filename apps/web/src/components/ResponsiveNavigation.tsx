@@ -4,13 +4,14 @@ import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import { useI18n } from '../i18n'
 import Icon from './Icon'
+import Spinner from './Spinner'
 import MobileNavigationFloat from './MobileNavigationFloat'
 import { NavigationHeaderContext } from './NavigationHeaderContext'
 import { BrandIcon } from './BrandIcon'
 import { NavigationDismissContext } from './NavigationDismissContext'
 
-export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, showNew = true, headerRight, showBrandIcon = true, onVisibilityChange }: {
-  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; showNew?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean; onVisibilityChange?: (visible: boolean) => void
+export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, newLoading = false, showNew = true, headerRight, showBrandIcon = true, onVisibilityChange }: {
+  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; newLoading?: boolean; showNew?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean; onVisibilityChange?: (visible: boolean) => void
 }) {
   const { t } = useI18n()
   const compact = useCompactLayout()
@@ -42,7 +43,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
       <span className="mobile-header-title" title={displayTitle}>{showBrandIcon && displayTitle === 'WorkStep' && <BrandIcon size={18}/>}<span>{displayTitle}</span></span>
       <div className="mobile-header-actions">
         {headerRight}
-        {showNew && <button aria-label={t('mobile.newChat')} disabled={newDisabled} onClick={onNew}><Icon name="plus" size={21} /></button>}
+        {showNew && <button aria-label={t('mobile.newChat')} disabled={newDisabled} aria-busy={newLoading || undefined} onClick={onNew}>{newLoading ? <Spinner size={21} /> : <Icon name="plus" size={21} />}</button>}
       </div>
     </header>
     {compact && open && <div className="mobile-overlay-backdrop navigation-backdrop" onClick={() => setOpen(false)} />}
