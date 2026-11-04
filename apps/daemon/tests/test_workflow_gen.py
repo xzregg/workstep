@@ -1929,17 +1929,6 @@ async def test_proposals_reply_gets_a2ui_choice_ui(gen_module, monkeypatch):
     module, bus, manager, project, _ = gen_module
     queue = bus.subscribe()
     collected: list[dict] = []
-    stop = asyncio.Event()
-
-    async def collector():
-        while not stop.is_set():
-            try:
-                event = await asyncio.wait_for(queue.get(), timeout=0.05)
-            except asyncio.TimeoutError:
-                continue
-            collected.append(event)
-
-    collector_task = asyncio.create_task(collector())
 
     async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
         return json.dumps({
@@ -1969,6 +1958,13 @@ async def test_proposals_reply_gets_a2ui_choice_ui(gen_module, monkeypatch):
     accepted = module.submit_message(project.id, None, "设计一个流程", "idem-a2ui-1")
     status = await _wait_turn(module, accepted.turn_id)
     assert status == "completed"
+
+    # Completion follows publishing the final snapshot and end event. Consume
+    # afterwards deliberately: a lagging subscriber must not race the assertions.
+    while not queue.empty():
+        collected.append(queue.get_nowait())
+    bus.unsubscribe(queue)
+    assert collected[-1]["type"] == "TEXT_MESSAGE_END"
 
     snapshot = next(
         (e for e in collected if e.get("type") == "TEXT_MESSAGE_CONTENT"),
@@ -2003,9 +1999,6 @@ async def test_proposals_reply_gets_a2ui_choice_ui(gen_module, monkeypatch):
     )
     assert proposals_event is not None
     assert len(proposals_event["value"]["proposals"]) == 2
-
-    stop.set()
-    await collector_task
 
 
 @pytest.mark.anyio
