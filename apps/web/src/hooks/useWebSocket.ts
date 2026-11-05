@@ -134,7 +134,7 @@ export function useWebSocket() {
   useEffect(() => {
     flushSubscription()
     const project = useProjectStore.getState().activeProject
-    postAndroidNotification({ type: 'project', projectId: project?.id || '' })
+    postAndroidNotification({ type: 'project', projectId: project?.id || '', projectName: project?.name || '' })
     if (project) {
       void syncBrowserPush({
         projectId: project.id, projectName: project.name,

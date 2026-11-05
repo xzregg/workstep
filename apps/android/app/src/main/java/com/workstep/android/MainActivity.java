@@ -95,6 +95,8 @@ public final class MainActivity extends Activity {
     private long lastRendererFailure;
     private static volatile boolean activityVisible;
     private final HashMap<String, JSONObject> completionWatches = new HashMap<>();
+    private String notificationProjectId = "";
+    private String notificationProjectName = "";
 
     static boolean isVisibleToUser() { return activityVisible; }
 
@@ -322,6 +324,8 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView source, String url, android.graphics.Bitmap icon) {
                 if (source != webView) return;
+                notificationProjectId = "";
+                notificationProjectName = "";
                 gatewayLoginNavigation.pageStarted(server, url);
                 pageLoading = true;
                 pageHadError = false;
@@ -530,6 +534,8 @@ public final class MainActivity extends Activity {
             String type = message.optString("type");
             if ("project".equals(type)) {
                 String projectId = message.optString("projectId");
+                notificationProjectId = projectId;
+                notificationProjectName = message.optString("projectName");
                 completionWatches.entrySet().removeIf(entry ->
                         !projectId.equals(entry.getValue().optString("projectId")));
                 return;
@@ -549,7 +555,8 @@ public final class MainActivity extends Activity {
             } else if ("notify".equals(type)) {
                 String target = message.optString("url");
                 if (activityVisible && webView != null
-                        && !NotificationView.shouldNotify(webView.getUrl(), target, server)) {
+                        && NotificationView.isCurrentDestination(webView.getUrl(), server.origin() + target,
+                                server, notificationProjectId, notificationProjectName)) {
                     CrashReports.log(this, "网页主进程", "结果属于当前详情，未弹系统通知", null);
                     return;
                 }
@@ -957,6 +964,12 @@ public final class MainActivity extends Activity {
                 + "；项目=" + target.getQueryParameter("project")
                 + "；任务=" + target.getQueryParameter("task")
                 + "；会话=" + target.getQueryParameter("session"), null);
+        if (!pageHadError && NotificationView.isCurrentDestination(webView.getUrl(), page, server,
+                notificationProjectId, notificationProjectName)) {
+            if (!pageLoading)
+                webView.evaluateJavascript("window.dispatchEvent(new Event('workstep:resume'))", null);
+            return;
+        }
         pageLoading = true;
         webView.loadUrl(page);
     }

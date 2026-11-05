@@ -27,6 +27,31 @@ class Socket {
   receive(value: object) { this.onmessage?.({ data: JSON.stringify(value) }) }
 }
 
+test('Android receives the scoped project ID and name needed to reuse a gateway conversation', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.test/workspace/device/chat?project=Demo&session=s')
+  const originalSocket = globalThis.WebSocket
+  const originalState = useProjectStore.getState()
+  const sent: Record<string, unknown>[] = []
+  window.WorkStepAndroid = { postMessage: raw => sent.push(JSON.parse(raw)) }
+  useProjectStore.setState({ activeProject: { id: 'p', name: 'Demo', path: '', steps: {}, workflows: [] } })
+  globalThis.WebSocket = Socket as never
+  Socket.instances = []
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  function Harness() { useWebSocket(); return null }
+  try {
+    await act(async () => root.render(<Harness />))
+    assert.deepEqual(sent.find(message => message.type === 'project'), {
+      type: 'project', projectId: 'gateway/device/p', projectName: 'Demo',
+    })
+  } finally {
+    await act(async () => root.unmount())
+    useProjectStore.setState(originalState)
+    globalThis.WebSocket = originalSocket
+    await window.happyDOM.close()
+  }
+})
+
 test('focusing task messages probes the live socket without reconnecting or refreshing data', async (context) => {
   const { window } = installDomEnvironment()
   const originalSocket = globalThis.WebSocket

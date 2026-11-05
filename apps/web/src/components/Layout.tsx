@@ -277,12 +277,6 @@ export default function Layout({ onSelectProject, children }: Props) {
     return () => window.clearTimeout(timer)
   }, [projects, sessionsByProject, sidebarSearchOpen])
 
-  const handleSelectProject = (p: Project) => {
-    if (activeProject?.id === p.id) reloadSelectedProject()
-    setActiveProject(p)
-    onSelectProject(p)
-  }
-
   // Escape key clears multi-select
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -532,7 +526,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onClick={() => {
                   if (consumeSidebarLongPressClick()) return
                   markProjectRead(p.id)
-                  handleSelectProject(p)
+                  if (activeProject?.id === p.id) reloadSelectedProject()
                   toggleProjectExpanded(p.id)
                 }}
                 onPointerDown={(e) => startSidebarLongPress(e, (x, y) => openMoreMenuAt('project', p.id, x, y))}

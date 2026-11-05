@@ -31,9 +31,10 @@ for (const remote of [false, true]) for (const projectToggle of [false, true]) t
   }
   Object.assign(globalThis, { WebSocket: Socket, ResizeObserver: window.ResizeObserver })
   useGatewaySessionStore.setState({ session: null })
-  useProjectStore.setState({ projects, activeProject: projects[0], activeWorkflowId: null })
+  useProjectStore.setState({ projects, activeProject: projects[0], activeWorkflowId: 'current-workflow' })
   useChatListStore.setState({ sessionsByProject: {}, listLoadingByProject: {}, listErrorByProject: {} })
   let calls = 0
+  let selections = 0
   let finish!: (response: Response) => void
   globalThis.fetch = async input => {
     const path = String(input)
@@ -48,8 +49,18 @@ for (const remote of [false, true]) for (const projectToggle of [false, true]) t
   const root = createRoot(container)
   const clickHeader = () => act(async () => container.querySelector<HTMLElement>('.layout-sidebar-session-label')!.click())
   try {
-    await act(async () => root.render(<I18nProvider><MemoryRouter initialEntries={['/tasks']}><Layout onSelectProject={() => {}} /></MemoryRouter></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><MemoryRouter initialEntries={['/tasks']}><Layout onSelectProject={() => { selections++ }} /></MemoryRouter></I18nProvider>))
     assert.equal(calls, 0)
+    const projectButton = () => container.querySelector<HTMLButtonElement>('[aria-controls="sidebar-project-other"]')!
+    const initiallyExpanded = projectButton().getAttribute('aria-expanded')
+    for (let click = 0; click < 2; click++) {
+      await act(async () => projectButton().closest<HTMLElement>('.layout-project-row')!.click())
+      assert.equal(projectButton().getAttribute('aria-expanded'), click === 0 ? String(initiallyExpanded !== 'true') : initiallyExpanded)
+      assert.equal(selections, 0, 'browsing the project tree must not navigate to its default workflow')
+      assert.equal(useProjectStore.getState().activeProject?.id, 'active', 'browsing must preserve the open conversation project')
+      assert.equal(useProjectStore.getState().activeWorkflowId, 'current-workflow')
+      assert.equal(calls, 0, 'project expansion must not load the conversation list')
+    }
     if (projectToggle) {
       await act(async () => container.querySelector<HTMLButtonElement>('[aria-controls="sidebar-project-other"]')!.click())
       assert.equal(calls, 0, 'expanding the project must not load conversations')
