@@ -79,4 +79,3 @@ def test_secret_reveal_audit_lock_keeps_health_responsive(tmp_path):
                 client.portal.call(scenario)
         finally:
             event.remove(engine, 'before_cursor_execute', before_execute)
-
