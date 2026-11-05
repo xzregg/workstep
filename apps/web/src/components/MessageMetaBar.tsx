@@ -325,6 +325,7 @@ export default function MessageMetaBar({
                 type="button"
                 className="meta-link-btn chat-message-action chat-message-action--prompt"
                 title={t('meta.viewPromptTitle')}
+                aria-label={t('meta.viewPrompt')}
                 onClick={() => onViewPrompt(prompt)}
                 style={{
                   fontSize: 'calc(11px * var(--font-scale))', color: 'var(--accent)',
@@ -332,7 +333,8 @@ export default function MessageMetaBar({
                   minHeight: 24, flexShrink: 0,
                 }}
               >
-                {t('meta.viewPrompt')}
+                <span className="message-meta-prompt-full">{t('meta.viewPrompt')}</span>
+                <span className="message-meta-prompt-short">{t('flow.prompt')}</span>
               </button>
             )}
             {artifactRound && artifactRound > 0 && (

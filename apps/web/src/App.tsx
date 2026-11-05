@@ -26,12 +26,14 @@ import GatewayWorkspaceLocation from './components/GatewayWorkspaceLocation'
 import { projectSelectionPath } from './utils/projectSelectionPath'
 import { isGatewayRemoteBrowser } from './utils/gatewayRemote'
 import { useGatewaySessionStore } from './stores/gatewaySessionStore'
+import { useAndroidNotificationNavigation } from './hooks/useAndroidNotificationNavigation'
 
 const GitPrototype = import.meta.env?.DEV
   ? lazy(() => import('./pages/prototype/GitPrototype'))
   : null
 
 export function AppRoutes() {
+  useAndroidNotificationNavigation()
   const navigate = useNavigate()
   const location = useLocation()
   const { activeProject } = useProjectStore()

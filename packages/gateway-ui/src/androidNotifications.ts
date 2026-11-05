@@ -16,6 +16,16 @@ export function postAndroidCompletion(message:BridgeMessage,deviceId?:string) {
   message={...message,...(message.projectId?{projectId:scope}:{}),...(message.id?{id:message.id.replace(project+':',scope+':')}: {})}
   if(message.url) {
    const url=new URL(message.url,window.location.href)
+   const prefix=`/workspace/${encodeURIComponent(deviceId)}`
+   // New APKs enter the existing device session directly. Keep url unchanged
+   // below for shipped APKs whose background destination builder needs scoped IDs.
+   if(url.origin===window.location.origin && url.searchParams.get('project') &&
+      !url.searchParams.get('project')!.startsWith('gateway/') &&
+      url.pathname.startsWith(prefix+'/')) {
+    const route=message.type==='notify'?(message.taskId?'/tasks':'/chat')
+      :url.pathname.startsWith(prefix+'/')?url.pathname.slice(prefix.length):url.pathname
+    if(route==='/chat' || route==='/tasks')message.workspaceUrl=prefix+route+url.search
+   }
    if(message.type==='notify')url.pathname=message.taskId?'/tasks':'/chat'
    url.searchParams.set('project',scope)
    message.url=url.pathname+url.search

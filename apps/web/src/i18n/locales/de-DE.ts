@@ -597,6 +597,7 @@ export const deDE: Messages = {
   },
   gatewayPlatform: {
     ...zhCN.gatewayPlatform,
+    shortLabel: "Gateway",
     retry: "Erneut versuchen",
   },
   gatewayRemote: {

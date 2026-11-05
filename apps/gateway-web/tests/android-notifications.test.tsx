@@ -35,5 +35,21 @@ test('gateway reply completion omits a null step key in the Android bridge',()=>
  assert.equal(messages.length,1)
  assert.equal(messages[0].id,'gateway/one/p:task:reply')
  assert.equal(Object.hasOwn(messages[0],'stepKey'),false)
+ assert.equal(Object.hasOwn(messages[0],'workspaceUrl'),false,'collector project IDs are not workspace project names')
+ dom.window.close()
+})
+
+test('new APK destinations preserve workspace names while old APK links keep scoped IDs',()=>{
+ const dom=new JSDOM('',{url:'https://gateway.test/workspace/one/chat?project=Demo&session=current'})
+ Object.assign(globalThis,{window:dom.window,document:dom.window.document})
+ const messages:any[]=[]
+ Object.assign(dom.window,{WorkStepAndroid:{postMessage:(text:string)=>messages.push(JSON.parse(text))}})
+ postAndroidCompletion({type:'watch',id:'p:s:m',projectId:'p',sessionId:'s',url:'/workspace/one/chat?project=Demo&session=s'},'one')
+ postAndroidCompletion({type:'notify',id:'p:s:m',projectId:'p',sessionId:'s',url:'/workspace/one/chat?project=Demo&session=s'},'one')
+ assert.equal(messages[0].workspaceUrl,'/workspace/one/chat?project=Demo&session=s')
+ assert.equal(messages[1].workspaceUrl,messages[0].workspaceUrl)
+ assert.equal(messages[1].url,'/chat?project=gateway%2Fone%2Fp&session=s')
+ postAndroidCompletion({type:'watch',id:'p:s:m',projectId:'p',url:'/workspace/two/chat?project=Demo&session=s'},'one')
+ assert.equal(Object.hasOwn(messages[2],'workspaceUrl'),false)
  dom.window.close()
 })

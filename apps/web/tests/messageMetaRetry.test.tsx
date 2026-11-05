@@ -189,37 +189,44 @@ test('stopped execution can show restart and set-complete together', async () =>
 })
 
 
-test('mobile running messages keep captured prompt inspection visible', async () => {
-  const { window } = installDomEnvironment()
-  window.innerWidth = 390
-  const document = window.document
-  const style = document.createElement('style')
-  style.textContent = readFileSync(new URL('../src/mobile.css', import.meta.url), 'utf8')
-  document.head.appendChild(style)
-  const host = document.body.appendChild(document.createElement('div'))
-  host.className = 'chat-message-row'
-  host.setAttribute('data-thinking', 'true')
-  const root = createRoot(host)
-  const previous = useUserSettingsStore.getState().openMode
-  useUserSettingsStore.setState({ openMode: true })
-  let inspected = ''
-  try {
-    await act(async () => root.render(
-      <I18nProvider>
-        <MessageMetaBar running prompt="actual input" onViewPrompt={(value) => { inspected = value }} />
-      </I18nProvider>,
-    ))
-    const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === '查看提示词')!
-    assert.ok(button)
-    assert.notEqual(window.getComputedStyle(button).display, 'none')
-    await act(async () => button.click())
-    assert.equal(inspected, 'actual input')
-    const copy = host.appendChild(document.createElement('button'))
-    copy.className = 'chat-message-action'
-    assert.equal(window.getComputedStyle(copy).display, 'none')
-  } finally {
-    await act(async () => { useUserSettingsStore.setState({ openMode: previous }) })
-    await act(async () => root.unmount())
-    await window.happyDOM.close()
-  }
-})
+for (const width of [390, 1280]) {
+  test(`running messages keep prompt inspection visible at ${width}px`, async () => {
+    const { window } = installDomEnvironment()
+    window.happyDOM.setWindowSize({ width })
+    const document = window.document
+    const style = document.createElement('style')
+    style.textContent = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
+      + readFileSync(new URL('../src/mobile.css', import.meta.url), 'utf8')
+    document.head.appendChild(style)
+    const host = document.body.appendChild(document.createElement('div'))
+    host.className = 'chat-message-row'
+    host.setAttribute('data-thinking', 'true')
+    const root = createRoot(host)
+    const previous = useUserSettingsStore.getState().openMode
+    useUserSettingsStore.setState({ openMode: true })
+    let inspected = ''
+    try {
+      await act(async () => root.render(
+        <I18nProvider>
+          <MessageMetaBar running prompt="actual input" onViewPrompt={(value) => { inspected = value }} />
+        </I18nProvider>,
+      ))
+      const button = document.querySelector<HTMLButtonElement>('.chat-message-action--prompt')!
+      assert.ok(button)
+      assert.notEqual(window.getComputedStyle(button).display, 'none')
+      const visibleLabel = () => [...button.querySelectorAll('span')]
+        .filter((item) => window.getComputedStyle(item).display !== 'none')
+        .map((item) => item.textContent).join('')
+      assert.equal(visibleLabel(), width <= 1023 ? '提示词' : '查看提示词')
+      await act(async () => button.click())
+      assert.equal(inspected, 'actual input')
+      const copy = host.appendChild(document.createElement('button'))
+      copy.className = 'chat-message-action'
+      if (width <= 1023) assert.equal(window.getComputedStyle(copy).display, 'none')
+    } finally {
+      await act(async () => { useUserSettingsStore.setState({ openMode: previous }) })
+      await act(async () => root.unmount())
+      await window.happyDOM.close()
+    }
+  })
+}

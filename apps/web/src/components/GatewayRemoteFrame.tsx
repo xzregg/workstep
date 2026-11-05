@@ -63,13 +63,17 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
         if (next.host_project_id && useProjectStore.getState().activeProject?.id !== next.host_project_id) {
           await useProjectStore.getState().fetchProjects()
           if (useProjectStore.getState().activeProject?.id !== next.host_project_id) {
+            if (active) setReady(false)
             throw new Error('Remote project unavailable')
           }
         }
         if (active) { setReady(true); setError(false) }
       } catch {
         retryDelay = 5000
-        if (active) { setReady(false); setError(true) }
+        if (active) {
+          if (!useGatewaySessionStore.getState().session) setReady(false)
+          setError(true)
+        }
       } finally {
         refreshing = false
         const status = useGatewaySessionStore.getState().errorStatus

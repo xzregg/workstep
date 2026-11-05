@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "bd9f9146d734088d77ea13c10eddd6efa7895f9442c7a94931a221c2b53cb74f",
+  "revision": "4d9bd9532e39f8f62904dafb418623a02368b82bc80c3c27b310e468e0d8865d",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -571,6 +571,7 @@
     "sandbox.wizard.loading": "正在读取沙箱状态…",
     "sandbox.wizard.wslHelp": "Windows 需启用 WSL2 和虚拟化；准备失败时可按系统提示检查。",
     "sandbox.wizard.wslGuide": "查看 WSL2 启用说明",
+    "gatewayPlatform.shortLabel": "网关",
     "gatewayPlatform.failureTitle": "网关连接失败",
     "gatewayPlatform.keyChangedTitle": "网关签名密钥已变化",
     "gatewayPlatform.keyChanged": "此地址的网关签名密钥与旧绑定不一致，已停止连接。请先向管理员确认网关是否重建或更换密钥；确认后可清除旧绑定并重新认证。此操作将退出当前网关连接并清除续连凭据，保留设备身份和本地项目数据。",

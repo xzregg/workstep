@@ -158,7 +158,7 @@
   .assistant-chat-panel > div:first-child { padding: 8px 16px !important; gap: 8px !important; flex-wrap: wrap; }
   .assistant-chat-header-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: calc(16px * var(--font-scale)) !important; }
   .chat-history-scroll { min-height: 0; overscroll-behavior-y: contain; overflow-x: clip; }
-  .chat-history-content { max-width: 100%; padding-inline: 16px !important; }
+  .chat-history-content { max-width: 100%; padding-inline: 12px !important; }
   .chat-message-row { max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
   .chat-composer-resize-handle { display: none; }
   .chat-input-root { flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom); }
@@ -929,6 +929,21 @@
   }
 
   /* Meta 栏去底线 + 弱化：C 风格是灰色单行，不要分隔线。 */
+  .message-meta-prompt-full { display: none; }
+  .message-meta-prompt-short { display: inline; }
+  .process-trace-compact .process-trace-session-summary { gap: 2px; }
+  /* 长耗时和命令数只在左侧横向查看，不挤走右侧完整日期。 */
+  .process-trace-compact .process-trace-session-summary > span:first-child {
+    min-width: 0;
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .process-trace-compact .message-meta-details { flex-shrink: 0; }
+  .process-trace-compact .process-trace-session-summary > .process-trace-chevron {
+    margin-left: 0;
+    flex-shrink: 0;
+  }
   .message-meta-details,
   .chat-message-row > div[style*="border-bottom"] {
     border-bottom: 0 !important;

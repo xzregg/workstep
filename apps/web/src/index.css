@@ -1131,6 +1131,10 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ── Collapsible LLM process trace ── */
 
+.message-meta-prompt-short {
+  display: none;
+}
+
 .process-trace {
   display: flex;
   flex-direction: column;

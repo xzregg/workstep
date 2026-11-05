@@ -39,7 +39,7 @@ test('workspace waits for its session and project, then removes content after se
   const root = createRoot(element)
   try {
     await act(async () => root.render(<I18nProvider><GatewayRemoteFrame>
-      <div data-workspace>Full existing workspace</div>
+      <div data-workspace>Full existing workspace<input aria-label="Draft" defaultValue="unsent draft" /></div>
     </GatewayRemoteFrame></I18nProvider>))
     assert.ok(element.querySelector('[data-workspace]'))
     assert.ok(calls.includes('/api/remote/session'))
@@ -60,14 +60,18 @@ test('workspace waits for its session and project, then removes content after se
       await new Promise(resolve => setTimeout(resolve, 0))
     })
     assert.ok(element.querySelector('[data-workspace]'), 'returning to the APK retries the gateway session immediately')
+    const draft = element.querySelector<HTMLInputElement>('input')!
+    draft.value = 'still typing'
     globalThis.fetch = async input => String(input) === '/api/remote/session'
       ? Response.json({}, {status:503}) : oldFetch(input)
     await act(async () => {
       window.dispatchEvent(new window.Event('workstep:resume'))
       await new Promise(resolve => setTimeout(resolve, 0))
     })
-    assert.match(element.querySelector('.gateway-remote-loading')!.textContent!, /正在重连/)
-    assert.ok(element.querySelector('.gateway-remote-loading .spinner'))
+    assert.ok(element.querySelector('[data-workspace]'), 'a transient failure must preserve the mounted conversation')
+    assert.equal(element.querySelector('.gateway-remote-loading'), null)
+    assert.equal(element.querySelector('input'), draft, 'the conversation must not unmount')
+    assert.equal(draft.value, 'still typing')
   } finally {
     await act(async () => root.unmount())
     element.remove()

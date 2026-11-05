@@ -83,7 +83,7 @@ export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => 
       // One attempt only. A revoked platform login or scope never loops.
       return request<GatewayRemoteSession>('/remote/session', {signal: controller.signal})
     }).then(session => {
-      if (!session.device_id || !session.gateway_url ||
+      if (!session || !session.device_id || !session.gateway_url ||
           (!!session.project_id !== !!session.host_project_id) ||
           (session.project_id && !['read', 'edit'].includes(session.access_level ?? '')) ||
           (session.permissions != null && (!Array.isArray(session.permissions) || session.permissions.some((key: unknown) => typeof key !== 'string')))) {
@@ -93,7 +93,10 @@ export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => 
       set({ session, error: '', errorStatus: null })
       return session
     }).catch(reason => {
-      set({ session: null, error: reason instanceof Error ? reason.message : '远程会话已失效。',
+      const temporary = reason instanceof ApiError
+        ? reason.status >= 500 || reason.status === 408 || reason.status === 429
+        : reason instanceof TypeError || (reason instanceof Error && reason.name === 'AbortError')
+      set({ session: temporary ? get().session : null, error: reason instanceof Error ? reason.message : '远程会话已失效。',
         errorStatus: reason instanceof ApiError ? reason.status : null })
       throw reason
     }).finally(() => { window.clearTimeout(timeout); pending = null; set({ loading: false }) })

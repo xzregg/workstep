@@ -6,6 +6,15 @@ import org.junit.Test;
 
 public class NotificationDestinationTest {
     @Test
+    public void backgroundCompletionKeepsTheDirectWorkspaceDestination() {
+        assertEquals("/workspace/device/chat?project=My%20Project&session=new",
+                NotificationDestination.path("/workspace/device/chat?project=My%20Project&session=old", "new", ""));
+        assertEquals("/workspace/device/tasks?project=Demo&workflow=f&task=t",
+                NotificationDestination.path("/workspace/device/tasks?project=Demo&workflow=f&task=old", "", "t"));
+        assertEquals("/chat?project=gateway%2Fdevice%2Fp&session=new",
+                NotificationDestination.path("/workspace/device/chat?project=gateway%2Fdevice%2Fp&session=old", "new", ""));
+    }
+    @Test
     public void replayedSessionWithJsonNullTaskOpensTheSession() {
         assertEquals("/chat?project=Demo&session=session-1",
                 NotificationDestination.path("/chat?project=Demo", "session-1", "null"));

@@ -89,6 +89,8 @@ test('gateway workspace registers a device-scoped watch using the old APK bridge
   assert.equal(sent[1].id,sent[0].id)
   assert.equal(sent[2].id,'gateway/device/p:s:gateway-reply')
   assert.equal(new URL(sent[2].url,'https://gateway.test').searchParams.get('project'),'gateway/device/p')
+  assert.equal(sent[0].workspaceUrl,'/workspace/device/chat?project=Demo&session=s')
+  assert.equal(sent[2].workspaceUrl,'/workspace/device/chat?project=Demo&session=s')
  }finally{await window.happyDOM.close()}
 })
 

@@ -135,7 +135,7 @@ for (const status of [401, 403, 503]) {
     try {
       await assert.rejects(useGatewaySessionStore.getState().load(true))
       assert.equal(calls.length, status === 401 ? 2 : 1)
-      assert.equal(useGatewaySessionStore.getState().session, null)
+      assert.equal(useGatewaySessionStore.getState().session?.device_id ?? null, status === 503 ? 'one' : null)
       assert.equal(useGatewaySessionStore.getState().errorStatus, status === 401 ? 403 : status)
       assert.equal(useGatewaySessionStore.getState().loading, false)
     } finally {
@@ -145,3 +145,37 @@ for (const status of [401, 403, 503]) {
     }
   })
 }
+
+for (const reason of [new TypeError('Network failed'), new DOMException('Timeout', 'AbortError')]) {
+  test(`temporary session check failure preserves the last session: ${reason.name}`, async () => {
+    const { window } = installDomEnvironment()
+    const oldFetch = globalThis.fetch
+    const session = { device_id: 'one', gateway_url: 'https://gateway.test/', project_id: null, host_project_id: null } as any
+    useGatewaySessionStore.setState({ session, error: '', errorStatus: null, loading: false })
+    globalThis.fetch = async () => { throw reason }
+    try {
+      await assert.rejects(useGatewaySessionStore.getState().load(true))
+      assert.equal(useGatewaySessionStore.getState().session, session)
+      assert.equal(useGatewaySessionStore.getState().loading, false)
+    } finally {
+      globalThis.fetch = oldFetch
+      useGatewaySessionStore.setState({ session: null, error: '', errorStatus: null, loading: false })
+      await window.happyDOM.close()
+    }
+  })
+}
+
+test('an invalid session response still removes the previous session', async () => {
+  const { window } = installDomEnvironment()
+  const oldFetch = globalThis.fetch
+  useGatewaySessionStore.setState({ session: { device_id: 'one' } as any, error: '', errorStatus: null, loading: false })
+  globalThis.fetch = async () => Response.json(null)
+  try {
+    await assert.rejects(useGatewaySessionStore.getState().load(true))
+    assert.equal(useGatewaySessionStore.getState().session, null)
+  } finally {
+    globalThis.fetch = oldFetch
+    useGatewaySessionStore.setState({ session: null, error: '', errorStatus: null, loading: false })
+    await window.happyDOM.close()
+  }
+})

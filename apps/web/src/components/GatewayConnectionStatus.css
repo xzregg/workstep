@@ -22,6 +22,9 @@
 .gateway-connection-status:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .gateway-connection-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
 .gateway-connection-status--online { color: var(--success); }
+.gateway-connection-latency { color: var(--success); }
+.gateway-connection-latency--warning { color: var(--warn); }
+.gateway-connection-latency--slow { color: var(--danger); }
 .gateway-connection-status--notAuthenticated,
 .gateway-connection-status--unavailable { color: var(--danger); }
 .gateway-connection-spinner { animation: gateway-connection-spin 1s linear infinite; }

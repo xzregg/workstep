@@ -25,6 +25,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { completionNotice, notificationUrl, notifyCompletion, unwatchPendingCompletion, completionScopeName,
   type CompletionNotice } from '../utils/completionNotifications'
 import { clearBrowserPushWatch, syncBrowserPush } from '../utils/browserPush'
+import { useWebSocketConnectionStore } from '../stores/webSocketConnectionStore'
 
 const WS_RECONNECT_BASE_MS = 1000
 const WS_RECONNECT_MAX_MS = 30000
@@ -161,12 +162,15 @@ export function useWebSocket() {
     let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null
     let connectTimeout: ReturnType<typeof setTimeout> | null = null
     let heartbeatNonce = 0
+    let heartbeatStartedAt: number | null = null
     let disconnectedAt = 0
     const clearSocketTimers = () => {
       if (heartbeatTimer) clearInterval(heartbeatTimer)
       if (heartbeatTimeout) clearTimeout(heartbeatTimeout)
       if (connectTimeout) clearTimeout(connectTimeout)
       heartbeatTimer = heartbeatTimeout = connectTimeout = null
+      heartbeatStartedAt = null
+      useWebSocketConnectionStore.setState({ connected: false, latencyMs: null })
     }
 
     const connect = () => {
@@ -186,6 +190,7 @@ export function useWebSocket() {
       ws.onopen = () => {
         if (!active || wsRef.current !== ws) return
         clearSocketTimers()
+        useWebSocketConnectionStore.setState({ connected: true })
         console.log('[WS] connected')
         const isReconnect = hasOpened
         hasOpened = true
@@ -224,6 +229,7 @@ export function useWebSocket() {
         disconnectedAt = 0
         heartbeatTimer = setInterval(() => {
           if (document.visibilityState === 'hidden' || heartbeatTimeout) return
+          heartbeatStartedAt = window.performance.now()
           send({ type: 'ping', nonce: ++heartbeatNonce })
           heartbeatTimeout = setTimeout(restart, 10000)
         }, 20000)
@@ -234,8 +240,11 @@ export function useWebSocket() {
           const parsed = JSON.parse(event.data)
           if (parsed.type === 'pong') {
             if (parsed.nonce === heartbeatNonce && heartbeatTimeout) {
+              if (heartbeatStartedAt !== null)
+                useWebSocketConnectionStore.setState({ latencyMs: Math.max(0, Math.round(window.performance.now() - heartbeatStartedAt)) })
               clearTimeout(heartbeatTimeout)
               heartbeatTimeout = null
+              heartbeatStartedAt = null
             }
             return
           }
@@ -344,6 +353,7 @@ export function useWebSocket() {
       // Probe on focus/resume and send; a healthy connection needs no refresh.
       // Keep an outstanding probe's deadline even if focus fires repeatedly.
       if (heartbeatTimeout) return
+      heartbeatStartedAt = window.performance.now()
       send({ type: 'ping', nonce: ++heartbeatNonce })
       heartbeatTimeout = setTimeout(restart, 3000)
     }

@@ -597,6 +597,7 @@ export const frFR: Messages = {
   },
   gatewayPlatform: {
     ...zhCN.gatewayPlatform,
+    shortLabel: "Passerelle",
     retry: "Réessayer",
   },
   gatewayRemote: {

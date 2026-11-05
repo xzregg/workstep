@@ -9,6 +9,7 @@ import { useRecentActivityStore } from '../src/stores/recentActivityStore'
 import { taskApi, type Task } from '../src/api/client'
 import { useTaskStore } from '../src/stores/taskStore'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
+import { useWebSocketConnectionStore } from '../src/stores/webSocketConnectionStore'
 
 class Socket {
   static OPEN = 1
@@ -26,6 +27,56 @@ class Socket {
   open() { this.readyState = 1; this.onopen?.() }
   receive(value: object) { this.onmessage?.({ data: JSON.stringify(value) }) }
 }
+
+test('latency reuses heartbeat and resume pings, ignores stale pongs, and clears on reconnect', async (context) => {
+  const { window } = installDomEnvironment()
+  const originalSocket = globalThis.WebSocket
+  const originalProject = useProjectStore.getState()
+  useProjectStore.setState({ activeProject: null })
+  globalThis.WebSocket = Socket as never
+  Socket.instances = []
+  let now = 0
+  context.mock.method(window.performance, 'now', () => now)
+  context.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  function Harness() { useWebSocket(); return null }
+  try {
+    await act(async () => root.render(<Harness />))
+    const socket = Socket.instances[0]
+    await act(async () => socket.open())
+    assert.equal(useWebSocketConnectionStore.getState().latencyMs, null)
+    assert.equal(socket.sent.filter(frame => frame.type === 'ping').length, 0)
+    await act(async () => context.mock.timers.tick(20000))
+    const ping = socket.sent.at(-1)!
+    assert.equal(ping.type, 'ping')
+    now = 127.6
+    await act(async () => socket.receive({ type: 'pong', nonce: -1 }))
+    assert.equal(useWebSocketConnectionStore.getState().latencyMs, null)
+    await act(async () => socket.receive({ type: 'pong', nonce: ping.nonce }))
+    assert.equal(useWebSocketConnectionStore.getState().latencyMs, 128)
+    now = 1000
+    await act(async () => socket.receive({ type: 'pong', nonce: ping.nonce }))
+    assert.equal(useWebSocketConnectionStore.getState().latencyMs, 128, 'duplicate pong cannot replace a sample')
+    await act(async () => flushWsSubscriptionNow())
+    const resumePing = socket.sent.at(-1)!
+    now += 45
+    await act(async () => socket.receive({ type: 'pong', nonce: resumePing.nonce }))
+    assert.equal(useWebSocketConnectionStore.getState().latencyMs, 45)
+    assert.equal(Socket.instances.length, 1, 'measurement must not create another connection')
+    assert.equal(socket.sent.filter(frame => frame.type === 'ping').length, 2, 'only existing heartbeat and resume pings are used')
+    await act(async () => { flushWsSubscriptionNow(); context.mock.timers.tick(3000) })
+    assert.equal(Socket.instances.length, 2)
+    assert.deepEqual(useWebSocketConnectionStore.getState(), { connected: false, latencyMs: null })
+    await act(async () => socket.receive({ type: 'pong', nonce: resumePing.nonce }))
+    assert.equal(useWebSocketConnectionStore.getState().latencyMs, null)
+  } finally {
+    await act(async () => root.unmount())
+    context.mock.timers.reset()
+    globalThis.WebSocket = originalSocket
+    useProjectStore.setState(originalProject)
+    await window.happyDOM.close()
+  }
+})
 
 test('Android receives the scoped project ID and name needed to reuse a gateway conversation', async () => {
   const { window } = installDomEnvironment()

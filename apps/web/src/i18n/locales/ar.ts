@@ -597,6 +597,7 @@ export const ar: Messages = {
   },
   gatewayPlatform: {
     ...zhCN.gatewayPlatform,
+    shortLabel: "البوابة",
     retry: "إعادة المحاولة",
   },
   gatewayRemote: {

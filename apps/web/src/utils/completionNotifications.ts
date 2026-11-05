@@ -97,6 +97,8 @@ declare global {
 export function postAndroidNotification(message:{type:string;id?:string;projectId?:string;url?:string;[key:string]:unknown}):void {
  const prefix=gatewayWorkspacePath()
  const device=prefix?decodeURIComponent(prefix.split('/')[2]):undefined
+ if(prefix && message.url && /^\/(?:chat|tasks)\?/.test(message.url))
+  message={...message,url:prefix+message.url}
  postAndroidCompletion(message,device)
 }
 

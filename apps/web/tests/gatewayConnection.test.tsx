@@ -7,6 +7,49 @@ import { I18nProvider } from '../src/i18n/index.tsx'
 import GatewayConnectionStatus from '../src/components/GatewayConnectionStatus.tsx'
 import GatewayPlatformSettings from '../src/pages/GatewayPlatformSettings.tsx'
 import { useGatewayConnectionStore } from '../src/stores/gatewayConnectionStore.ts'
+import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
+import { useWebSocketConnectionStore } from '../src/stores/webSocketConnectionStore'
+
+test('remote sidebar shows WebSocket latency without adding requests and hides stale samples', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.test/workspace/device-1/chat')
+  const oldFetch = globalThis.fetch
+  const oldSession = useGatewaySessionStore.getState()
+  let calls = 0
+  globalThis.fetch = async () => { calls++; throw Error('Unexpected probe') }
+  useGatewaySessionStore.setState({ session: { device_id: 'device-1' } as never, error: '', errorStatus: null })
+  useWebSocketConnectionStore.setState({ connected: true, latencyMs: 128 })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GatewayConnectionStatus onOpenSettings={() => {}} /></I18nProvider>))
+    assert.equal(container.querySelector('[role=status]')!.textContent, '网关 · 128 ms')
+    assert.match(container.querySelector('button')!.title, /128 ms/)
+    for (const [latencyMs, warning, slow] of [[499, false, false], [500, true, false], [1000, true, false], [1001, false, true], [128, false, false]] as const) {
+      await act(async () => useWebSocketConnectionStore.setState({ latencyMs }))
+      const number = container.querySelector('.gateway-connection-latency')!
+      assert.equal(number.textContent, ` · ${latencyMs} ms`)
+      assert.equal(number.classList.contains('gateway-connection-latency--warning'), warning)
+      assert.equal(number.classList.contains('gateway-connection-latency--slow'), slow)
+      assert.equal(container.querySelector('button')!.className, 'gateway-connection-status gateway-connection-status--online')
+    }
+    await act(async () => useWebSocketConnectionStore.setState({ latencyMs: null }))
+    assert.equal(container.querySelector('[role=status]')!.textContent, '网关已连接')
+    assert.equal(container.querySelector('.gateway-connection-latency'), null)
+    await act(async () => useWebSocketConnectionStore.setState({ connected: false, latencyMs: null }))
+    assert.match(container.querySelector('[role=status]')!.textContent!, /连接中/)
+    assert.doesNotMatch(container.textContent!, /128 ms/)
+    await act(async () => useWebSocketConnectionStore.setState({ connected: true, latencyMs: 45 }))
+    assert.match(container.querySelector('[role=status]')!.textContent!, /45 ms/)
+    assert.equal(calls, 0)
+  } finally {
+    await act(async () => root.unmount())
+    useGatewaySessionStore.setState(oldSession)
+    useWebSocketConnectionStore.setState({ connected: false, latencyMs: null })
+    globalThis.fetch = oldFetch
+    await window.happyDOM.close()
+  }
+})
 
 test('header shares gateway status requests and reflects live connection changes', async () => {
   const { window } = installDomEnvironment()
@@ -22,7 +65,7 @@ test('header shares gateway status requests and reflects live connection changes
     assert.equal(opened, 1)
     online = true
     await act(async () => useGatewayConnectionStore.getState().refresh())
-    assert.match(container.querySelector('.gateway-connection-status')!.textContent!, /已连接/)
+    assert.equal(container.querySelector('.gateway-connection-status')!.textContent, '网关已连接')
     assert.match(container.querySelector('.gateway-platform-settings [role=status]')!.textContent!, /已连接/)
   } finally { await act(async () => root.unmount()); globalThis.fetch = original; container.remove(); await window.happyDOM.close() }
 })

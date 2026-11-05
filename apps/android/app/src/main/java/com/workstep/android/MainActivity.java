@@ -97,6 +97,7 @@ public final class MainActivity extends Activity {
     private final HashMap<String, JSONObject> completionWatches = new HashMap<>();
     private String notificationProjectId = "";
     private String notificationProjectName = "";
+    private int notificationNavigationGeneration;
 
     static boolean isVisibleToUser() { return activityVisible; }
 
@@ -337,7 +338,7 @@ public final class MainActivity extends Activity {
                         CrashReports.log(MainActivity.this, "网页主进程", "网页加载超时；路径=" + Uri.parse(url).getPath(), null);
                         showWebError("网页加载超时，请重新加载");
                     }
-                }, 20000);
+                }, 180000);
             }
 
             @Override
@@ -531,6 +532,10 @@ public final class MainActivity extends Activity {
     private void handleNotificationMessage(String raw) {
         try {
             JSONObject message = new JSONObject(raw);
+            String workspaceUrl = message.optString("workspaceUrl");
+            if (server != null && workspaceUrl.startsWith("/workspace/")
+                    && server.contains(server.origin() + workspaceUrl))
+                message.put("url", workspaceUrl);
             String type = message.optString("type");
             if ("project".equals(type)) {
                 String projectId = message.optString("projectId");
@@ -959,6 +964,7 @@ public final class MainActivity extends Activity {
         String page = notificationPage(intent);
         if (page == null || webView == null) return;
         clearNotificationPage(intent);
+        int generation = ++notificationNavigationGeneration;
         Uri target = Uri.parse(page);
         CrashReports.log(this, "网页主进程", "点击通知；目标=" + target.getPath()
                 + "；项目=" + target.getQueryParameter("project")
@@ -968,6 +974,22 @@ public final class MainActivity extends Activity {
                 notificationProjectId, notificationProjectName)) {
             if (!pageLoading)
                 webView.evaluateJavascript("window.dispatchEvent(new Event('workstep:resume'))", null);
+            return;
+        }
+        if (!pageHadError && !pageLoading && webView.getUrl() != null && server.contains(webView.getUrl())) {
+            WebView source = webView;
+            int loadGeneration = pageLoadGeneration;
+            source.evaluateJavascript("(()=>{const detail={url:" + JSONObject.quote(page)
+                    + ",handled:false};window.dispatchEvent(new CustomEvent('workstep:open-notification',"
+                    + "{detail}));return detail.handled===true})()", handled -> {
+                if (source != webView || generation != notificationNavigationGeneration
+                        || loadGeneration != pageLoadGeneration) return;
+                CrashReports.log(this, "网页主进程", "通知页内导航；已接收=" + "true".equals(handled), null);
+                if (!"true".equals(handled)) {
+                    pageLoading = true;
+                    source.loadUrl(page);
+                }
+            });
             return;
         }
         pageLoading = true;
