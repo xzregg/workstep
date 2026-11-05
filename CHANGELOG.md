@@ -10,6 +10,8 @@ No unreleased changes recorded.
 
 ### Highlights
 
+- Preserve the active project, workflow and conversation when expanding or collapsing sidebar project trees; open a different workflow or conversation only through its own entry.
+- Reuse an already-open Android notification destination instead of reloading it, including Gateway device-scoped project links. Include the current project name in the native bridge to match workspace URLs correctly.
 - Add a shared message-history page-size setting, with a default of 20 and a supported range of 1–300. Apply the saved value to new history requests without reloading an open conversation.
 - Add activity-aware robot avatars, clearer task failure reasons and improved artifact-round navigation. Remove archived or deleted conversations from restored chat panes while preserving failed operations and unrelated sessions.
 - Load project catalogs without workflow bodies, fetch selected workflow details on demand, and expose recoverable loading errors instead of treating unavailable definitions as empty workflows. Rename the current workflow from its task-panel title with validation, cancellation and retry.
