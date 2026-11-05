@@ -130,6 +130,15 @@ a {
   white-space: nowrap;
 }
 
+.gateway-auth-company {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #6e6e73;
+  overflow-wrap: anywhere;
+}
+
 .gateway-auth-description {
   margin-bottom: 28px;
   color: #6e6e73;
@@ -970,3 +979,9 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-table-sort:focus-visible { outline: 2px solid var(--gateway-admin-accent); outline-offset: 4px; }
 
 .gateway-account-usage > .activity-heatmap, .gateway-usage-report > .activity-heatmap { margin-bottom: 24px; }
+
+.gateway-application-secret { display: grid; gap: 6px; min-width: 0; }
+.gateway-application-secret-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gateway-application-secret-controls input { flex: 1 1 160px; min-width: 0; width: 0; }
+.gateway-application-secret-controls button { flex-shrink: 0; }
+.gateway-application-secret p { margin: 0; }

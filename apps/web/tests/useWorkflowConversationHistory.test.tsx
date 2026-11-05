@@ -104,3 +104,44 @@ test('workflow history preserves streamed changes during loading and ignores a s
     await window.happyDOM.close()
   }
 })
+
+
+test('workflow history pages by the shared size and skips temporary sessions', async () => {
+  const { window } = installDomEnvironment()
+  const original = workflowGenApi.history
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const calls: number[] = []
+  let history!: ReturnType<typeof useWorkflowConversationHistory>
+  function Harness({ workflow }: { workflow?: string }) {
+    history = useWorkflowConversationHistory('p', workflow, () => {})
+    return null
+  }
+  try {
+    useWorkflowGenStore.setState({ sessions: {} })
+    workflowGenApi.history = (async (_project, workflow, limit, offset = 0) => {
+      assert.equal(limit, 20)
+      calls.push(offset)
+      return { session_id: `wf:p:${workflow}`, messages: Array.from({ length: offset ? 2 : 20 }, (_, i) => ({
+        id: String(offset ? i : i + 2), role: 'user', content: '消息', status: 'succeeded',
+      })) }
+    }) as typeof workflowGenApi.history
+    await act(async () => root.render(<Harness />))
+    assert.deepEqual(calls, [])
+    await act(async () => window.dispatchEvent(new window.Event('workstep:reconnected')))
+    assert.deepEqual(calls, [])
+    await act(async () => root.render(<Harness workflow="one" />))
+    await act(async () => { await Promise.all([history.loadOlderHistory(), history.loadOlderHistory()]) })
+    await act(async () => { await history.loadOlderHistory() })
+    assert.deepEqual(calls, [0, 20])
+    await act(async () => history.resetPagination())
+    await act(async () => { await history.loadOlderHistory() })
+    assert.deepEqual(calls, [0, 20], 'a cleared conversation must not page through its old history')
+    assert.deepEqual(useWorkflowGenStore.getState().sessions['wf:p:one'].messages.map(m => m.id),
+      Array.from({ length: 22 }, (_, i) => String(i)))
+  } finally {
+    await act(async () => root.unmount())
+    workflowGenApi.history = original
+    useWorkflowGenStore.setState({ sessions: {} })
+    await window.happyDOM.close()
+  }
+})

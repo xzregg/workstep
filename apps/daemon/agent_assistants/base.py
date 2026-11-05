@@ -895,7 +895,7 @@ class AssistantRuntime:
             if task not in done:
                 task.cancel()
 
-    def history(self, project_id: str, scope_key: str) -> dict | None:
+    def history(self, project_id: str, scope_key: str, *, limit: int | None = None, offset: int = 0) -> dict | None:
         """Return the persisted conversation for a scoped session (or None)."""
         try:
             engine, model, fast_model = self._resolve_engine_models()
@@ -920,6 +920,9 @@ class AssistantRuntime:
             restored_engine_session_id,
             messages,
         ) = loaded
+        if limit is not None:
+            end = max(0, len(messages) - offset)
+            messages = messages[max(0, end - limit):end]
         engine = restored_engine or engine
         model = restored_model if restored_model is not None else model
         fast_model = restored_fast if restored_fast is not None else fast_model

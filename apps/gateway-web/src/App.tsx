@@ -1,3 +1,4 @@
+import { PlatformDocumentTitle } from './PlatformDocumentTitle'
 import { PasswordConfirmationRequired } from './PasswordConfirmation'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AdminLayout } from './AdminLayout'
@@ -36,8 +37,8 @@ import { LegacyCompletionDestinationPage } from './LegacyCompletionDestinationPa
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   const location = useLocation()
   if (deviceHost) return <main><h1>WorkStep 远程项目</h1><p role="alert">请从平台重新打开远程项目。</p></main>
-  if (location.pathname.startsWith('/share/')) return <Routes><Route path="/share/:token" element={<PublicSharePage />} /></Routes>
-  return <GatewayPortalApp />
+  if (location.pathname.startsWith('/share/')) return <><PlatformDocumentTitle /><Routes><Route path="/share/:token" element={<PublicSharePage />} /></Routes></>
+  return <><PlatformDocumentTitle /><GatewayPortalApp /></>
 }
 
 function GatewayPortalApp() {

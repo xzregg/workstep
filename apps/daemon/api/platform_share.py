@@ -660,17 +660,19 @@ async def _history_page(request: Request, offset: int):
     from services.share import load_shared_history
 
     def load(_project):
-        messages = load_shared_history(scope['task_id'], limit=101, offset=offset,
+        from services.config import config_store
+        limit = config_store.get_message_history_page_size()
+        messages = load_shared_history(scope['task_id'], limit=limit + 1, offset=offset,
                                        mode=scope['mode'], workstep_dir=_project.workstep_dir)
-        has_more = len(messages) > 100
+        has_more = len(messages) > limit
         # The loader returns chronological order; the extra row is oldest.
-        messages = messages[-100:]
+        messages = messages[-limit:]
         for message in messages:
             content = message.get('content') or ''
             message['content'] = content[:65536]
             message['truncated'] = len(content) > 65536
             message['events'] = message.get('events', [])[-2000:]
-        return {'messages': messages, 'next_offset': offset + 100 if has_more else None}
+        return {'messages': messages, 'next_offset': offset + limit if has_more else None, 'limit': limit}
 
     from main import project_manager
     if project_manager is None:

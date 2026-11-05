@@ -8,6 +8,7 @@ interface AssistantThinkingMessageProps {
   sender: string
   initials: ReactNode
   color?: string
+  animatedAvatar?: boolean
   /** Rendered under the placeholder (e.g. usage footer with engine * model). */
   footer?: ReactNode
   startedAt?: string | number | null
@@ -18,6 +19,7 @@ export default function AssistantThinkingMessage({
   sender,
   initials,
   color = 'var(--ai-assistant)',
+  animatedAvatar = false,
   footer,
   startedAt,
 }: AssistantThinkingMessageProps) {
@@ -25,6 +27,7 @@ export default function AssistantThinkingMessage({
   const [waitingSince] = useState(() => Date.now())
   return (
     <ChatMessageBubble
+      animatedAvatar={animatedAvatar}
       role="assistant"
       sender={sender}
       initials={initials}

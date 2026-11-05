@@ -1,8 +1,11 @@
+import { DEFAULT_MESSAGE_HISTORY_PAGE_SIZE, validMessageHistoryPageSize } from '../utils/messageHistory'
 import { create } from 'zustand'
 import { systemSettingsApi } from '../api/client'
 import { loadBrowserActor, saveBrowserActor } from '../utils/browserActor'
 
 interface UserSettingsState {
+  messageHistoryPageSize: number
+  saveMessageHistoryPageSize: (size: number) => Promise<void>
   gitScanDepth: number
   saveGitScanDepth: (depth: number) => Promise<void>
   userName: string
@@ -22,6 +25,13 @@ interface UserSettingsState {
 }
 
 export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
+  messageHistoryPageSize: DEFAULT_MESSAGE_HISTORY_PAGE_SIZE,
+  saveMessageHistoryPageSize: async (size) => {
+    if (!validMessageHistoryPageSize(size)) throw new Error('请输入 1–300 之间的整数')
+    const settings = await systemSettingsApi.updateMessageHistoryPageSize(size)
+    if (settings.message_history_page_size !== size) throw new Error('消息加载设置未保存，请重试。')
+    set({ messageHistoryPageSize: size })
+  },
   gitScanDepth: 5,
   saveGitScanDepth: async (depth) => {
     const settings = await systemSettingsApi.updateGitScanDepth(depth)
@@ -61,6 +71,8 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
       set({
         defaultProjectDirectory: settings.default_project_directory || '',
         gitScanDepth: settings.git_scan_depth ?? 5,
+        messageHistoryPageSize: validMessageHistoryPageSize(settings.message_history_page_size)
+          ? settings.message_history_page_size : DEFAULT_MESSAGE_HISTORY_PAGE_SIZE,
         userName: gatewayIdentity ? settings.user_name : restoredActor?.name || '',
         identitySource: gatewayIdentity ? 'gateway' : 'local',
         gatewayUsername: settings.gateway_username || '',
@@ -117,3 +129,23 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     }
   },
 }))
+
+/** Read at request time so changing settings does not reload an open conversation. */
+export function getMessageHistoryPageSize(): number {
+  return useUserSettingsStore.getState().messageHistoryPageSize
+}
+
+/** Wait for the shared startup load before selecting the first page size. */
+export async function loadMessageHistoryPageSize(): Promise<number> {
+  if (!useUserSettingsStore.getState().loaded && !useUserSettingsStore.getState().loading) {
+    await useUserSettingsStore.getState().load()
+  }
+  if (useUserSettingsStore.getState().loading) {
+    await new Promise<void>(resolve => {
+      const unsubscribe = useUserSettingsStore.subscribe(state => {
+        if (!state.loading) { unsubscribe(); resolve() }
+      })
+    })
+  }
+  return getMessageHistoryPageSize()
+}

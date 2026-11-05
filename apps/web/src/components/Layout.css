@@ -287,6 +287,7 @@
   .layout-recent-row[aria-current="page"] { color: var(--accent); background: var(--accent-light); }
 
 @media (max-width: 1023px) {
+  .layout-project-row.ws-row { min-height: var(--mobile-project-row-height); padding-block: 0; }
   .layout-sidebar .layout-sidebar-header { height: var(--mobile-control-touch); padding: 0 40px 0 12px; border-bottom: 0; }
   .layout-sidebar-brand { height: 100%; padding: 0; flex-wrap: nowrap; }
   .layout-sidebar-brand-name { flex-shrink: 0; }

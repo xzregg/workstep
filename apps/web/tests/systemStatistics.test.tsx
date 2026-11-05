@@ -9,6 +9,7 @@ import { statisticsApi } from '../src/api/statistics'
 import type { SystemStatisticsReport } from '../src/api/systemStatistics'
 import SystemStatisticsPanel from '../src/components/SystemStatisticsPanel'
 import StatisticsPage from '../src/pages/StatisticsPage'
+import { useManagedModeStore } from '../src/stores/managedModeStore'
 
 const process = { pid: 42, name: 'python', cpu_percent: 1.2, memory_rss: 186 * 1024 ** 2, threads: 12, descriptors: 128, uptime_seconds: 194400 }
 const report: SystemStatisticsReport = {
@@ -112,6 +113,34 @@ test('page mounts only active statistics tab and hides host metrics in remote br
   const remote = await mount(<MemoryRouter initialEntries={['/statistics?tab=system']}><StatisticsPage /></MemoryRouter>, 'https://d-device.gateway.example/statistics')
   try { assert.equal([...remote.container.querySelectorAll('[role=tab]')].some(b => b.textContent==='系统运行'), false); assert.equal(systemCalls, 2) }
   finally { await remote.close(); statisticsApi.system = originalSystem; statisticsApi.overview = originalOverview }
+})
+
+test('mobile LAN and Gateway owner workspaces can open the same system panel as desktop', async () => {
+  const originalSystem = statisticsApi.system, originalOverview = statisticsApi.overview
+  const originalManaged = useManagedModeStore.getState()
+  statisticsApi.system = async () => report
+  statisticsApi.overview = async () => { throw Error('business fixture') }
+  try {
+    for (const [url, owner] of [
+      ['http://192.168.1.20:8765/statistics', false],
+      ['https://gateway.example/workspace/device-one/statistics', true],
+    ] as const) {
+      useManagedModeStore.setState({ managed: true, canManageRemoteProjects: owner })
+      const view = await mount(<MemoryRouter initialEntries={['/statistics']}><StatisticsPage /></MemoryRouter>, url,
+        window => { window.innerWidth = 390 })
+      try {
+        await act(async () => button(view.container, '系统运行').click())
+        assert.equal(view.container.querySelector('[role=tab][aria-selected=true]')?.textContent, '系统运行')
+        assert.equal(view.container.querySelectorAll('.system-host-card').length, 4)
+        assert.match(view.container.textContent || '', /后台状态/)
+        await act(async () => button(view.container, '业务统计').click())
+        assert.equal(view.container.querySelector('.system-statistics'), null)
+      } finally { await view.close() }
+    }
+  } finally {
+    statisticsApi.system = originalSystem; statisticsApi.overview = originalOverview
+    useManagedModeStore.setState(originalManaged)
+  }
 })
 
 test('polling stops when hidden, never overlaps requests, and cannot restart after unmount', async () => {

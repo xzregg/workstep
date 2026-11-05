@@ -26,13 +26,14 @@ for (const failed of [false, true]) test(`switch account preserves local callbac
       return new Response('{}', { status: failed ? 500 : 200 })
     }
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf-current' })
-    if (url === '/api/auth/registration-policy') return Response.json({ password_login_enabled: true })
+    if (url === '/api/auth/registration-policy') return Response.json({ password_login_enabled: true, company_display_name: "示例公司" })
     if (url === '/api/auth/identity-sources') return Response.json({ sources: [] })
     throw Error(`Unexpected request: ${url}`)
   }
   render(<MemoryRouter initialEntries={['/desktop/login?' + query]}><DesktopLoginPage /></MemoryRouter>)
   assert.ok(await screen.findByRole('button', { name: '在此设备上继续' }))
   assert.ok(screen.getByText('登录后授权当前设备访问所属工作空间。'))
+  assert.equal(screen.getByRole('heading', { name: 'WorkStep 平台认证' }).nextElementSibling?.textContent, '示例公司')
   assert.equal(screen.queryByText('WORKSTEP 平台') === null, true)
   fireEvent.click(await screen.findByRole('button', { name: '登出并切换账号' }))
   if (failed) {

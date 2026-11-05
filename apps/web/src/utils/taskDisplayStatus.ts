@@ -1,3 +1,14 @@
+/** Failure labels only: keep the aggregate status used by task actions intact. */
+export function taskFailureLabelKey(displayStatus: string, reason?: string | null) {
+  if (displayStatus !== 'failed') return undefined
+  switch (reason) {
+    case 'step_failed': return 'status.step_failed' as const
+    case 'workflow_blocked': return 'status.workflow_blocked' as const
+    case 'engine_error': return 'status.engine_error' as const
+    default: return undefined
+  }
+}
+
 /** Keep task lists and detail headers consistent about review waits. */
 export function taskDisplayStatus(
   status: string | null | undefined,

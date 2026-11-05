@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { taskDisplayStatus } from '../src/utils/taskDisplayStatus'
+import { taskDisplayStatus, taskFailureLabelKey } from '../src/utils/taskDisplayStatus'
 import { useTaskStore } from '../src/stores/taskStore'
+
+test('failure labels do not change the aggregate or apply stale reasons to other states', () => {
+  for (const reason of ['step_failed', 'workflow_blocked', 'engine_error']) {
+    const result = taskDisplayStatus('failed', [{ status: 'awaiting_review' }], true, reason)
+    assert.equal(result.displayStatus, 'failed')
+    assert.equal(taskFailureLabelKey(result.displayStatus, reason), `status.${reason}`)
+    for (const status of ['running', 'stopped', 'done', 'waiting', 'queued']) {
+      assert.equal(taskFailureLabelKey(status, reason), undefined)
+    }
+  }
+})
 
 test('parallel execution stays running while retaining a manual decision', () => {
   const steps = [{ step_key: 'backend', status: 'awaiting_review' }, { step_key: 'frontend', status: 'running' }]

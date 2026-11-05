@@ -48,6 +48,7 @@ async def test_pc_http_stream_rechecks_user_and_provider_grants(monkeypatch):
 @pytest.mark.parametrize('owner,path,expected', [
     (True, '/api/project/init', True), (False, '/api/project/init', False),
     (True, '/api/managed/mode', True), (False, '/api/managed/mode', False),
+    (True, '/api/statistics/system', True), (False, '/api/statistics/system', False),
 ])
 async def test_remote_owner_capability_comes_from_persisted_device(monkeypatch, owner, path, expected):
     from contextlib import asynccontextmanager
@@ -69,6 +70,6 @@ async def test_remote_owner_capability_comes_from_persisted_device(monkeypatch, 
                        control_connections=SimpleNamespace(request_data=request_data))
     monkeypatch.setattr(remote, '_remote_identity', identity)
     monkeypatch.setattr(remote, 'compiled_provider_access', compile_access)
-    if not owner and path == '/api/project/init':
+    if not owner and path in ('/api/project/init', '/api/statistics/system'):
         with pytest.raises(GatewayError): await remote.proxy_remote_request(call)
     else: assert await remote.proxy_remote_request(call) == 'ok'

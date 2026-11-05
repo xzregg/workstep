@@ -1,3 +1,4 @@
+import { getMessageHistoryPageSize } from '../stores/userSettingsStore'
 import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { ApiError, fileDataUrl, singleFlight } from './transport'
 import type { SharedTaskApi } from './share'
@@ -49,7 +50,7 @@ export const gatewayShareApi: SharedTaskApi = {
   task: (token, csrf) => read(token, '/task', csrf),
   executionReport: (token, csrf) => read(token, '/execution-report', csrf),
   schedules: (token, csrf) => read(token, '/schedules', csrf),
-  history: async (token, csrf, limit = 100, offset = 0) => {
+  history: async (token, csrf, limit = getMessageHistoryPageSize(), offset = 0) => {
     const page = await read<{ messages: any[]; next_offset: number | null; interventions?: any[] }>(token,
       offset ? `/history/${offset}` : '/history', csrf)
     const messages = [...page.messages, ...(offset ? [] : page.interventions ?? []).map(item => ({

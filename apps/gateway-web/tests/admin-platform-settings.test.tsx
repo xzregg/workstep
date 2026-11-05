@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom'
 import { MemoryRouter } from 'react-router-dom'
 import { AdminPlatformSettingsPage } from '../src/AdminPlatformSettingsPage'
 import { AdminRegistrationPolicyDialog } from '../src/AdminRegistrationPolicyDialog'
+import { AdminCompanyNameDialog } from '../src/AdminCompanyNameDialog'
 import { AdminPlatformAddressDialog } from '../src/AdminPlatformAddressDialog'
 import { AdminLoginPolicyDialog } from '../src/AdminLoginPolicyDialog'
 
@@ -118,6 +119,10 @@ test('platform address copies the configured URL and explains deployment configu
   await screen.findByText('地址已复制')
   assert.equal(copied, 'http://localhost:8700')
   assert.ok(screen.getByRole('button', { name: '修改平台地址' }))
+  fireEvent.click(screen.getByRole('button', { name: '修改公司显示名称' }))
+  assert.ok(screen.getByRole('dialog', { name: '修改公司显示名称' }))
+  assert.equal((screen.getByLabelText('公司显示名称') as HTMLInputElement).value, '')
+  fireEvent.click(screen.getByRole('button', { name: '取消' }))
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied') } } })
   fireEvent.click(screen.getByRole('button', { name: '复制地址' }))
   await screen.findByText('复制失败，请选中地址手动复制。')
@@ -174,3 +179,28 @@ test('administrator saves a domain with step-up and retains failed edits', async
  assert.ok(screen.getByRole('button', { name: '添加钉钉应用' }))
  assert.equal(sources, 1)
  })
+
+
+test('company name editing protects changes, preserves failure and supports clearing', async () => {
+ let writes = 0; let saved = 0
+ globalThis.fetch = async (input, init) => {
+  if (String(input) === '/api/auth/step-up') return Response.json({})
+  assert.equal(String(input), '/api/admin/company-display-name')
+  assert.equal(init?.method, 'PUT')
+  assert.equal(new Headers(init?.headers).get('X-CSRF-Token'), 'csrf')
+  assert.deepEqual(JSON.parse(String(init?.body)), { company_display_name: '' })
+  return ++writes === 1 ? new Response(null, { status: 503 }) : Response.json({})
+ }
+ render(<AdminCompanyNameDialog name="示例公司" csrf="csrf" onClose={()=>{}} onSaved={()=>saved++}/>)
+ fireEvent.change(screen.getByLabelText('公司显示名称'), {target:{value:''}})
+ fireEvent.click(screen.getByRole('button', {name:'取消'}))
+ const discard = screen.getByRole('dialog', {name:'放弃公司名称修改'})
+ fireEvent.click(within(discard).getByRole('button', {name:'取消'}))
+ fireEvent.change(screen.getByLabelText('管理员密码'), {target:{value:'password'}})
+ fireEvent.click(screen.getByRole('button', {name:'保存公司名称'}))
+ await screen.findByRole('alert')
+ assert.equal((screen.getByLabelText('公司显示名称') as HTMLInputElement).value, '')
+ assert.equal(saved, 0)
+ fireEvent.click(screen.getByRole('button', {name:'保存公司名称'}))
+ await waitFor(()=>assert.equal(saved, 1))
+})

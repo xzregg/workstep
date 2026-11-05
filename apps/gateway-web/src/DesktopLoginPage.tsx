@@ -1,3 +1,4 @@
+import { CompanySubtitle } from './CompanySubtitle'
 import type { EnterpriseProvider } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -44,6 +45,7 @@ export function DesktopLoginPage() {
   const [status, setStatus] = useState<'checking' | 'login' | 'ready' | 'submitting'>('checking')
   const [csrf, setCsrf] = useState<string | null>(null)
   const [error, setError] = useState(scanFailureMessage(searchParams.get('scan_error')))
+  const [companyName, setCompanyName] = useState('')
   const [sources, setSources] = useState<IdentitySource[]>([])
   const [passwordEnabled,setPasswordEnabled]=useState(false)
 
@@ -56,7 +58,10 @@ export function DesktopLoginPage() {
     ]).then(async ([response,policy]) => {
         if(controller.signal.aborted)return
         if(!policy.ok)throw Error('登录方式加载失败，请重新发起认证。')
-        setPasswordEnabled((await policy.json()).password_login_enabled ?? true)
+        const policyData = await policy.json()
+        if (controller.signal.aborted) return
+        setPasswordEnabled(policyData.password_login_enabled ?? true)
+        setCompanyName(policyData.company_display_name ?? '')
         if (!response.ok) {
           setStatus('login')
           return
@@ -169,6 +174,7 @@ export function DesktopLoginPage() {
   return (
     <section className="gateway-auth-card gateway-device-auth-card">
       <h2 className="gateway-auth-title">WorkStep 平台认证</h2>
+      <CompanySubtitle name={companyName} />
       <p className="gateway-auth-description">登录后授权当前设备访问所属工作空间。</p>
       {status === 'checking' && <p role="status">正在检查登录状态…</p>}
       {status === 'login' && (

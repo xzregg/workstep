@@ -461,3 +461,24 @@ async def sync_history(call: GatewayCall, source_id: str):
     async with call.database.session() as session:
         row = await session.get(PlatformSetting, 'directory-history:' + source_id)
         return {'jobs': json.loads(row.value_json) if row else []}
+
+
+async def reveal_source_secret(call: GatewayCall, source_id: str):
+    from uuid import uuid4
+    from gateway.models import AuditEvent
+    from gateway.services.organization_settings import application_secret
+    _, actor = await _super_admin_request(call)
+    async with call.database.session() as session:
+        source = await session.get(IdentitySource, source_id)
+        if source is None:
+            raise GatewayError('not_found', 'Identity source not found')
+    try:
+        secret = await application_secret(call.database, call.gateway_signer, source)
+    except ValueError as exc:
+        raise GatewayError('conflict', 'Identity source secret is unavailable') from exc
+    async with call.database.session() as session:
+        async with session.begin():
+            session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
+                action='admin.identity_source_secret_revealed', result='success',
+                metadata_json=json.dumps({'source_id': source_id})))
+    return {'client_secret': secret}

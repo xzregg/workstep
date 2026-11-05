@@ -192,6 +192,7 @@ const MessageItem = memo(function MessageItem({
   )
   return (
     <ChatMessageBubble
+      animatedAvatar
       role={message.role}
       sender={message.role === 'user' ? userSender : copy.agent}
       senderTitle={
@@ -213,6 +214,7 @@ const MessageItem = memo(function MessageItem({
       a2uiMessages={a2uiEntry}
       onInteractionRespond={canEdit ? respondInteraction : undefined}
       streaming={message.status === 'running'}
+      status={message.status === 'stopped' ? 'stopped' : message.status === 'error' ? 'failed' : undefined}
       projectId={projectId}
       error={
         message.role === 'assistant'
@@ -636,6 +638,7 @@ export default function AssistantChatPanel({
           ))}
           {showThinkingReply && (
             <AssistantThinkingMessage
+              animatedAvatar
               sender={copy.agent}
               initials={copy.agentInitials}
               startedAt={engineMessages.at(-1)?.created_at}

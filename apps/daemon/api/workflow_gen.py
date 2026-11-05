@@ -30,6 +30,8 @@ class WorkflowGenChatRequest(BaseSchema):
 async def workflow_gen_history(
     project_id: str = Query("", alias="project_id"),
     workflow_id: str = Query(..., alias="workflow_id"),
+    limit: int = Query(20, ge=1, le=300),
+    offset: int = Query(0, ge=0),
 ):
     """Return the stable conversation for a workflow (empty when none yet)."""
     from main import workflow_gen_module
@@ -42,7 +44,7 @@ async def workflow_gen_history(
     from main import project_manager
     return await project_manager.run_db(
         project_id,
-        lambda _project: workflow_gen_module.history(project_id, workflow_id),
+        lambda _project: workflow_gen_module.history(project_id, workflow_id, limit=limit, offset=offset),
     )
 
 

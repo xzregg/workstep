@@ -60,6 +60,7 @@ test('selectors keep all engine-declared efforts selectable regardless of model 
               engines={[{ id: engine, config: { fields: [field], values: {}, secrets: {}, step_fields: [] } } as CoordinatorEngineSummary]}
               engine="" defaultEngine={engine} model="native" fastModel=""
               thinkingEffort="" defaultThinkingEffort="low"
+              onServiceTierChange={() => {}}
               onEngineChange={() => {}} onModelChange={() => {}} onFastModelChange={() => {}}
               onThinkingEffortChange={(value) => { selected = value }}
             />
@@ -70,7 +71,13 @@ test('selectors keep all engine-declared efforts selectable regardless of model 
         element => Array.from(element.options).some(option => option.value === 'ultra'),
       )!
       assert.ok(select)
-      assert.deepEqual(Array.from(select.options).map(option => option.value), ['', ...declared])
+      assert.deepEqual(Array.from(select.options).map(option => option.value), ['', ...declared.toReversed()])
+      if (engine !== 'example_custom') {
+        const speedSelect = Array.from(container.querySelectorAll('select')).find(
+          element => Array.from(element.options).some(option => option.value === 'ultrafast'),
+        )!
+        assert.deepEqual(Array.from(speedSelect.options).map(option => option.value), ['', 'ultrafast', 'priority', 'default'])
+      }
       assert.match(select.options[0].textContent || '', /默认（低）/)
       assert.ok(Array.from(select.options).every(option => !option.disabled))
       await act(async () => {

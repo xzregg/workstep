@@ -1,3 +1,5 @@
+import { loadPlatformStatus } from './platformBranding'
+import { CompanySubtitle } from './CompanySubtitle'
 import type { EnterpriseProvider } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -17,6 +19,7 @@ export function PortalAuthPage() {
   const next = safeNextPath(params.get('next'))
   const [stage, setStage] = useState<'checking' | 'setup' | 'login' | 'register'>('checking')
   const [mode, setMode] = useState<RegistrationMode>('closed')
+  const [companyName, setCompanyName] = useState('')
   const [sources, setSources] = useState<IdentitySource[]>([])
   const [passwordEnabled, setPasswordEnabled] = useState(true)
   const [scanLoading, setScanLoading] = useState(true)
@@ -30,9 +33,10 @@ export function PortalAuthPage() {
     const controller = new AbortController()
     async function check() {
       try {
-        const status = await fetch('/api/platform/status', { signal: controller.signal })
-        if (!status.ok) throw new Error('无法检查平台状态，请刷新重试。')
-        if (!(await status.json()).initialized) { setMode('open'); setStage('setup'); return }
+        const platform = await loadPlatformStatus()
+        if (controller.signal.aborted) return
+        setCompanyName(platform.company_display_name ?? '')
+        if (!platform.initialized) { setMode('open'); setStage('setup'); return }
         const session = await fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
         if (session.ok) { navigate(next, { replace: true }); return }
         if (session.status !== 401) throw new Error('无法检查登录状态，请稍后重试。')
@@ -99,6 +103,7 @@ export function PortalAuthPage() {
   return <section className="gateway-auth-card">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <h2>{stage === 'setup' ? '设置超级管理员' : stage === 'register' ? '注册账号' : '登录工作台'}</h2>
+    <CompanySubtitle name={companyName} />
     {stage === 'checking' && <p role="status">正在检查平台状态…</p>}
     {stage === 'checking' && error && <button type="button" onClick={() => { setError(''); setRetry(value => value + 1) }}>重试</button>}
     {stage === 'login' && <>

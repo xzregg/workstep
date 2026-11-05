@@ -17,6 +17,8 @@ import {
 } from '../utils/a2ui'
 import { isToolEvent } from '../utils/agui.ts'
 import Icon from './Icon'
+import RobotAvatar from './RobotAvatar'
+import { resolveRobotAvatarState, type MessageTerminalStatus } from '../utils/robotAvatarState'
 import MessageFileChanges, { type MessageFileChangeDetails } from './MessageFileChanges'
 import InteractionPrompt from './InteractionPrompt'
 import PlanChecklist from './PlanChecklist'
@@ -59,6 +61,9 @@ export interface ChatMessageBubbleProps {
   color: string
   content: string
   streaming?: boolean
+  status?: MessageTerminalStatus
+  /** Opt in for assistant chats; task details keep their stage identity. */
+  animatedAvatar?: boolean
   /** Project id used to resolve `.workstep/uploads/...` image paths. */
   projectId?: string
   /** Error text rendered under the bubble (assistant only). */
@@ -155,12 +160,8 @@ function MessageAvatar({
       )}
       <div
         aria-label={label}
-        style={{
-          width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-          background: color, color: 'var(--accent-fg)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, position: 'relative',
-        }}
+        className="chat-message-avatar"
+        style={{ background: color }}
       >
         {initials}
         {badge && (
@@ -188,6 +189,8 @@ export default function ChatMessageBubble({
   color,
   content,
   streaming = false,
+  status,
+  animatedAvatar = false,
   projectId,
   error,
   errorActions,
@@ -273,7 +276,10 @@ export default function ChatMessageBubble({
         <MessageAvatar
           sender={sender}
           senderTitle={senderTitle}
-          initials={initials}
+          initials={animatedAvatar && role === 'assistant' ? <RobotAvatar state={resolveRobotAvatarState({
+            streaming, status, error, content, events,
+            awaitingAnswer: asyncQuestions.length > 0 && !asyncSubmitted,
+          })} /> : initials}
           color={color}
           badge={badge}
           showTooltip={isUser}

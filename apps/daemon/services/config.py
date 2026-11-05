@@ -290,6 +290,10 @@ class ConfigStore:
     def get_open_mode(self) -> bool:
         return self.get("open_mode", False) is True
 
+    def get_message_history_page_size(self) -> int:
+        value = self.get("message_history_page_size", 20)
+        return value if type(value) is int and 1 <= value <= 300 else 20
+
     def get_git_scan_depth(self) -> int:
         """Project root is depth 0; discover repositories down to depth 5 by default."""
         value = self.get("git_scan_depth", 5)

@@ -5,7 +5,7 @@ import { isTaskCompleted, isTaskNotStarted } from '../pages/taskDetailChat'
 import { formatConversationDateTime, formatDuration, toMilliseconds } from '../utils/datetime'
 import { formatScheduledStart } from '../utils/scheduledStart'
 import { formatTokenTotal } from '../utils/statistics'
-import { taskDisplayStatus, hasActiveTaskExecution } from '../utils/taskDisplayStatus'
+import { taskDisplayStatus, hasActiveTaskExecution, taskFailureLabelKey } from '../utils/taskDisplayStatus'
 import Button from './Button'
 import Icon from './Icon'
 import MarqueeText from './MarqueeText'
@@ -144,7 +144,7 @@ export default function TaskBoardCard({
           {(displayStatus === 'running' || displayStatus === 'reviewing') && (
             <span className="task-status-spinner" aria-hidden="true" />
           )}
-          {t(STATUS_LABEL_KEYS[displayStatus] ?? (displayStatus as TKey))}
+          {t(taskFailureLabelKey(displayStatus, task.status_reason) ?? STATUS_LABEL_KEYS[displayStatus] ?? (displayStatus as TKey))}
           <TaskPendingConfirmations task={task} />
           {status === 'queued' && task.queue_position != null && task.queue_position > 0 && (
             <span className="task-board-card-queue-position">{` #${task.queue_position}`}</span>

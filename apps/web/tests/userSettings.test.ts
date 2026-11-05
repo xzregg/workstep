@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { useUserSettingsStore } from '../src/stores/userSettingsStore.ts'
+import { loadMessageHistoryPageSize, useUserSettingsStore } from '../src/stores/userSettingsStore.ts'
 import { BROWSER_ACTOR_STORAGE_KEY, loadBrowserActor } from '../src/utils/browserActor.ts'
 
 function memoryStorage() {
@@ -264,5 +264,58 @@ test('desktop reports failed config writes without claiming the name was saved',
   } finally {
     globalThis.fetch = originalFetch
     Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
+  }
+})
+
+
+test('message history size loads and saves through system settings without losing the previous value on failure', async () => {
+  resetStore()
+  const originalFetch = globalThis.fetch
+  let fail = false
+  globalThis.fetch = async (_input, init) => {
+    if (init?.method === 'PUT') {
+      assert.deepEqual(JSON.parse(String(init.body)), { message_history_page_size: 40 })
+      return fail ? Response.json({ detail: '保存失败' }, { status: 500 })
+        : Response.json({ message_history_page_size: 40 })
+    }
+    return Response.json({ message_history_page_size: 30 })
+  }
+  try {
+    await useUserSettingsStore.getState().load()
+    assert.equal(useUserSettingsStore.getState().messageHistoryPageSize, 30)
+    fail = true
+    await assert.rejects(useUserSettingsStore.getState().saveMessageHistoryPageSize(40))
+    assert.equal(useUserSettingsStore.getState().messageHistoryPageSize, 30)
+    fail = false
+    await useUserSettingsStore.getState().saveMessageHistoryPageSize(40)
+    assert.equal(useUserSettingsStore.getState().messageHistoryPageSize, 40)
+    await assert.rejects(useUserSettingsStore.getState().saveMessageHistoryPageSize(0))
+  } finally {
+    globalThis.fetch = originalFetch
+    useUserSettingsStore.setState({ messageHistoryPageSize: 20 })
+  }
+})
+
+
+test('history waits for the existing settings request and uses its saved size', async () => {
+  resetStore()
+  const originalFetch = globalThis.fetch
+  let release!: (response: Response) => void
+  let requests = 0
+  globalThis.fetch = async () => {
+    requests++
+    return new Promise<Response>(resolve => { release = resolve })
+  }
+  try {
+    const startup = useUserSettingsStore.getState().load()
+    const first = loadMessageHistoryPageSize()
+    const second = loadMessageHistoryPageSize()
+    release(Response.json({ message_history_page_size: 40 }))
+    await startup
+    assert.deepEqual(await Promise.all([first, second]), [40, 40])
+    assert.equal(requests, 1)
+  } finally {
+    globalThis.fetch = originalFetch
+    useUserSettingsStore.setState({ messageHistoryPageSize: 20 })
   }
 })

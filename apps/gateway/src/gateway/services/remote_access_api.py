@@ -127,7 +127,7 @@ async def proxy_remote_request(call: GatewayCall):
     user, device_id, auth_session, host_project_id = await _remote_identity(call)
     provider_ids, _ = await compiled_provider_access(call.database, device_id, user.id)
     provider_grant_expires_at = int(time.time()) + 300
-    owner_routes = {'/api/project/init', '/api/project/register', '/api/fs/mkdir'}
+    owner_routes = {'/api/project/init', '/api/project/register', '/api/fs/mkdir', '/api/statistics/system'}
     native_directory = call.target.path in {'/api/fs/browse', '/api/fs/search'} and not call.query_values.get('project_id')
     device_owner = False
     if not auth_session.project_id and (call.target.path in owner_routes or native_directory or call.target.path == '/api/managed/mode'):

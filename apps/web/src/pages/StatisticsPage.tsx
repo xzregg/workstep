@@ -3,6 +3,7 @@ import '@workstep/gateway-ui/ActivityHeatmap.css'
 import Select from '../components/Select'
 import SystemStatisticsPanel from '../components/SystemStatisticsPanel'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { useManagedModeStore } from '../stores/managedModeStore'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -669,9 +670,12 @@ function EngineTable({ rows, locale, currency }: { rows: StatisticsEngineRow[]; 
 export default function StatisticsPage() {
   const { t } = useI18n()
   const [searchParams, setSearchParams] = useSearchParams()
-  const hostname = window.location.hostname
-  const local = !isGatewayRemoteBrowser() && (hostname === 'localhost' || hostname === '[::1]' || hostname === '::1' || /^127\.\d+\.\d+\.\d+$/.test(hostname))
-  const system = local && searchParams.get('tab') === 'system'
+  const remote = isGatewayRemoteBrowser()
+  const owner = useManagedModeStore(state => state.canManageRemoteProjects)
+  const loadManagedMode = useManagedModeStore(state => state.load)
+  useEffect(() => { if (remote) void loadManagedMode() }, [remote, loadManagedMode])
+  const canViewSystem = !remote || owner
+  const system = canViewSystem && searchParams.get('tab') === 'system'
   const setTab = (tab: 'business' | 'system') => {
     const next = new URLSearchParams(searchParams)
     if (tab === 'system') next.set('tab', 'system')
@@ -681,12 +685,12 @@ export default function StatisticsPage() {
   return <div className="statistics-page statistics-page--tabs">
     <header className="statistics-heading"><h1>{t('statistics.title')}</h1><p>{t('systemStatistics.subtitle')}</p></header>
     <div className="statistics-tabs" role="tablist" aria-label={t('statistics.title')}>
-      {(['business', ...(local ? ['system'] : [])] as const).map(tab => {
+      {(['business', ...(canViewSystem ? ['system'] : [])] as const).map(tab => {
         const selected = (tab === 'system') === system
         return <button key={tab} id={`statistics-${tab}-tab`} role="tab" aria-selected={selected} tabIndex={selected ? 0 : -1} aria-controls="statistics-active-panel"
           onClick={() => setTab(tab as 'business' | 'system')}
           onKeyDown={event => {
-            if (!local || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+            if (!canViewSystem || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault()
             const target = event.key === 'Home' ? 'business' : event.key === 'End' ? 'system' : system ? 'business' : 'system'
             setTab(target)

@@ -2755,3 +2755,53 @@ async def test_workflow_event_details_api_replays_journal_off_loop(gen_module, m
         assert any(e["type"] == "TOOL_CALL_START" for e in events)
         assert all(e["channel"] == "flow_gen" for e in events)
         assert (await client.get(url, params={**params, "workflow_id": "other"})).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_workflow_history_api_pages_and_slow_database_keeps_health_responsive(gen_module, monkeypatch):
+    import threading
+    from httpx import ASGITransport, AsyncClient
+    from agent_assistants.session_state import AssistantSession
+    import main
+
+    module, _, manager, project, _ = gen_module
+    def seed(_project):
+        runtime = AssistantSession(session_id="paged", project_id=project.id,
+            scope="workflow", scope_key="paged", engine="claude")
+        runtime.messages = [{"id": f"message-{index}", "role": "user", "content": str(index)}
+                            for index in range(25)]
+        module._config.persistence.save(runtime)
+    await manager.run_db(project.id, seed)
+    monkeypatch.setattr(main, "workflow_gen_module", module)
+    monkeypatch.setattr(main, "project_manager", manager)
+    params = {"project_id": project.id, "workflow_id": "paged"}
+    url = "/api/workflow/generate/history"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        first = await client.get(url, params=params)
+        assert first.status_code == 200
+        assert [m['id'] for m in first.json()['messages']] == [f'message-{i}' for i in range(5, 25)]
+        older = await client.get(url, params={**params, 'limit': 4, 'offset': 20})
+        assert [m['id'] for m in older.json()['messages']] == [f'message-{i}' for i in range(1, 5)]
+        assert (await client.get(url, params={**params, 'offset': 25})).json()['messages'] == []
+        assert (await client.get(url, params={**params, 'limit': 0})).status_code == 422
+        assert (await client.get(url, params={**params, 'workflow_id': 'missing'})).json()['messages'] == []
+        entered = threading.Event()
+        release = threading.Event()
+        persistence = module._config.persistence
+        original = persistence.load_history
+        def slow_read(*args):
+            entered.set()
+            release.wait(timeout=2)
+            return original(*args)
+        monkeypatch.setattr(persistence, 'load_history', slow_read)
+        pending = asyncio.create_task(client.get(url, params=params))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            health = await asyncio.wait_for(client.get('/api/health'), timeout=0.2)
+            assert health.status_code == 200
+            assert not pending.done()
+        finally:
+            release.set()
+            response = await pending
+        assert response.status_code == 200
+        assert len(response.json()['messages']) == 20

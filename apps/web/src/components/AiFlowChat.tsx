@@ -204,7 +204,7 @@ export default function AiFlowChat({
     return () => { active = false }
   }, [projectId])
 
-  useWorkflowConversationHistory(projectId, workflowId, setSessionId)
+  const { loadOlderHistory, resetPagination } = useWorkflowConversationHistory(projectId, workflowId, setSessionId)
 
   useEffect(() => {
     lastCanvasSnapshotRef.current = null
@@ -303,6 +303,7 @@ export default function AiFlowChat({
     setSendError('')
     try {
       const result = await workflowGenApi.reset(projectId, workflowId)
+      resetPagination()
       const canonicalId = result.session_id || workflowSessionId(projectId, workflowId)
       const store = useWorkflowGenStore.getState()
       if (sessionId) store.resetSession(sessionId)
@@ -325,7 +326,7 @@ export default function AiFlowChat({
     } finally {
       setResetting(false)
     }
-  }, [assistantConfig, projectId, resetting, running, sessionId, t, workflowId, resetEnhance])
+  }, [assistantConfig, projectId, resetting, running, sessionId, t, workflowId, resetEnhance, resetPagination])
 
   // The add-workflow entry point only prepares a draft; the user sends it.
   useEffect(() => {
@@ -356,6 +357,7 @@ export default function AiFlowChat({
     <>
       <AssistantChatPanel visibilityPermission="workflow.ai_edit"
         onLoadMessageEvents={loadMessageEvents}
+        onLoadOlderHistory={workflowId ? loadOlderHistory : undefined}
         projectId={projectId}
         title={title ?? t('aiFlow.title')}
         messages={messages}

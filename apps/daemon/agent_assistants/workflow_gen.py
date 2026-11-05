@@ -174,10 +174,10 @@ class WorkflowGenModule(AssistantRuntime):
             status=accepted.status,
         )
 
-    def history(self, project_id: str, workflow_id: str) -> dict:
+    def history(self, project_id: str, workflow_id: str, *, limit: int | None = None, offset: int = 0) -> dict:
         """Return the stable workflow conversation (or an empty one)."""
         session_id = f"wf:{project_id}:{workflow_id}"
-        loaded = super().history(project_id, workflow_id)
+        loaded = super().history(project_id, workflow_id, limit=limit, offset=offset)
         if loaded is None:
             try:
                 engine, model, fast_model = self._resolve_engine_models()
