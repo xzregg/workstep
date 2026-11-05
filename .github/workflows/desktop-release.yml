@@ -62,7 +62,8 @@ jobs:
           # Refuse to ship a desktop that cannot anonymously fetch its image.
           docker buildx imagetools inspect "$repository@$digest" > /dev/null
           if [ "$IMAGE_ONLY" = true ]; then
-            python3 scripts/verify-shared-image.py "$repository@$digest"
+            # The Linux container owns its isolated HOME as root (including 0600 keys).
+            sudo python3 scripts/verify-shared-image.py "$repository@$digest"
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
             docker buildx imagetools create --tag "$repository:latest" "$repository@$digest"
             docker logout ghcr.io

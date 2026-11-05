@@ -40,6 +40,7 @@ class SharedImageTests(unittest.TestCase):
             job = workflow.split(f"\n  {name}:\n", 1)[1].split("\n  ", 1)[0]
             self.assertIn("if: ${{ !inputs.image_only }}", job)
         self.assertIn('build_tag="build-${GITHUB_SHA}"', workflow)
+        self.assertIn('sudo python3 scripts/verify-shared-image.py "$repository@$digest"', workflow)
         smoke = workflow.index('python3 scripts/verify-shared-image.py "$repository@$digest"')
         promote = workflow.index('docker buildx imagetools create --tag "$repository:latest" "$repository@$digest"')
         self.assertLess(smoke, promote)
