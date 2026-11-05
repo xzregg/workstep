@@ -65,6 +65,38 @@ test('mobile keeps the single stop button visible while stopping', () => {
   assert.match(css, /\.chat-input-send\[data-state="stopped"\]:disabled\s*\{\s*display:\s*flex\s*!important;/)
 })
 
+for (const state of [
+  { name: 'empty', value: '', visible: false },
+  { name: 'whitespace', value: '   ', visible: false },
+  { name: 'draft', value: '发送消息', visible: true },
+  { name: 'disabled', value: '发送消息', disabled: true, visible: false },
+  { name: 'running', value: '', running: true, visible: true },
+  { name: 'stopping', value: '', running: true, stopping: true, visible: true },
+]) {
+  test(`mobile toolbar reserves button space only when visible: ${state.name}`, async () => {
+    const { window, document } = installDomEnvironment()
+    window.happyDOM.setWindowSize({ width: 390 })
+    const style = document.head.appendChild(document.createElement('style'))
+    style.textContent = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
+      + readFileSync(new URL('../src/mobile.css', import.meta.url), 'utf8')
+    const root = createRoot(document.body.appendChild(document.createElement('div')))
+    try {
+      await act(async () => root.render(<I18nProvider><ChatInput
+        {...state} onChange={() => {}} onSend={() => {}} onStop={() => {}}
+      /></I18nProvider>))
+      const toolbar = document.querySelector('.chat-input-toolbar')!
+      const button = document.querySelector('.chat-input-send')!
+      assert.equal(window.getComputedStyle(button).display !== 'none', state.visible)
+      const padding = window.getComputedStyle(toolbar).paddingRight
+      if (state.visible) assert.notEqual(padding, '8px')
+      else assert.equal(padding, '8px')
+    } finally {
+      await act(async () => root.unmount())
+      await window.happyDOM.close()
+    }
+  })
+}
+
 for (const width of [320, 390, 1023]) {
   test(`coordinator composer sends a follow-up and stops without mixing actions at ${width}px`, async () => {
     const { window } = installDomEnvironment()

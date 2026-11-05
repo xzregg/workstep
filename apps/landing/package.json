@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/inline-dist.mjs",
+    "build": "tsc -b && vite build && node scripts/prerender.mjs && node scripts/inline-dist.mjs",
     "lint": "oxlint",
     "test": "vitest run",
     "preview": "vite preview",

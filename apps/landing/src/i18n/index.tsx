@@ -128,6 +128,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     document.querySelector('meta[name="description"]')?.setAttribute('content', translate(lang, 'meta.description'))
     document.querySelector('meta[property="og:title"]')?.setAttribute('content', translate(lang, 'meta.title'))
     document.querySelector('meta[property="og:description"]')?.setAttribute('content', translate(lang, 'meta.description'))
+    document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', translate(lang, 'meta.title'))
+    document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', translate(lang, 'meta.description'))
   }, [lang])
 
   const value = useMemo<I18nContextValue>(

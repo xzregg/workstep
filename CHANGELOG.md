@@ -4,6 +4,8 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Add official-site canonical metadata, social-preview cards, crawler files and a prerendered homepage that reuses the real application content while preserving browser interactivity.
+- Reclaim mobile composer toolbar space when the send button is hidden, while preserving spacing around visible send and stop controls.
 - Preserve mounted Gateway conversations and drafts through temporary connection failures while continuing to reject invalid or revoked sessions. Display business WebSocket round-trip latency using the existing heartbeat.
 - Navigate Android notification destinations inside the mounted workspace where possible, retain direct device links and keep ordinary navigation as a fallback. Extend the Android page-load deadline to three minutes.
 - Compact mobile message metadata and prompt labels while keeping full dates visible and long execution details horizontally accessible.

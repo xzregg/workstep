@@ -54,7 +54,7 @@ export function inlineDocument({ html, javascript, stylesheet, favicon, brandMar
   if (remaining.length > 0) {
     throw new Error(`构建产物仍包含无法通过 file:// 加载的外部资源：${remaining.join('、')}`)
   }
-  if (output.lastIndexOf('<script>') < output.indexOf('<div id="root"></div>')) {
+  if (output.lastIndexOf('<script>') < output.indexOf('<div id="root">')) {
     throw new Error('应用脚本必须在 React 根节点之后执行')
   }
 

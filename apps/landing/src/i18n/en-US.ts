@@ -2,8 +2,8 @@ import type { I18nDict } from './keys'
 
 export const enUS: I18nDict = {
   meta: {
-    "title": "WorkStep — AI development, step by step, with you in control",
-    "description": "Connect AI coding engines to analyze requirements, implement code, test and review in reusable workflows. Inspect results and request revisions."
+    "title": "WorkStep — Open-source AI coding workflows for Codex and Claude Code",
+    "description": "WorkStep is a local-first, open-source AI coding workflow tool for Codex and Claude Code. Connect planning, implementation, testing and human review on macOS, Windows and Linux."
   },
   privacy: {
     "title": "WorkStep privacy notice",

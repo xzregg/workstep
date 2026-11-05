@@ -831,6 +831,10 @@
     min-height: var(--mobile-control-send) !important;
     padding-right: calc(var(--mobile-control-send) + var(--mobile-control-gap));
   }
+  /* 与下方按钮隐藏条件一致；停止中按钮仍显示，继续保留防误触空间。 */
+  .chat-input-toolbar:has(> .chat-input-send:disabled:not([data-state="stopped"])) {
+    padding-right: var(--mobile-control-gap);
+  }
   .chat-input-toolbar-scroll {
     display: flex;
     align-items: center;

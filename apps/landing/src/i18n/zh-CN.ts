@@ -1,7 +1,7 @@
 export const zhCN = {
   meta: {
-    "title": "WorkStep — 让 AI 按步骤开发，关键结果由你把关",
-    "description": "连接 AI 编程引擎，按步骤分析需求、实现代码、测试和审查，查看结果并审核返工。"
+    "title": "WorkStep — 开源 AI 编程工作流，连接 Codex 与 Claude Code",
+    "description": "WorkStep 是开源、本地优先的 AI 编程工作流工具。连接 Codex、Claude Code，编排需求分析、代码实现、测试与人工审核，复用流程并检查每步结果。支持 macOS、Windows 和 Linux。"
   },
   privacy: {
     "title": "WorkStep 隐私说明",
