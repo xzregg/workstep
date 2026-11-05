@@ -4,6 +4,9 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Add a per-skin Run skin scripts switch in Appearance settings. Retain its setting across reloads and same-ID package updates; disable failed scripts without resetting the selected appearance. Enabled scripts have the current page's permissions and are not sandboxed.
+- Refresh the selected installed skin on startup without overwriting personal font preferences, and allow applying an updated revision with the same skin ID.
+- Simplify the skin studio header and creation guidance. Generate a unified skin.json package with theme.js, accepting an empty module when no scripted behavior is needed.
 - Add official-site canonical metadata, social-preview cards, crawler files and a prerendered homepage that reuses the real application content while preserving browser interactivity.
 - Reclaim mobile composer toolbar space when the send button is hidden, while preserving spacing around visible send and stop controls.
 - Preserve mounted Gateway conversations and drafts through temporary connection failures while continuing to reject invalid or revoked sessions. Display business WebSocket round-trip latency using the existing heartbeat.

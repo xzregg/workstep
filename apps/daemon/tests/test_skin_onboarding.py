@@ -24,6 +24,10 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     assert (Path(result["package_path"]).parent / "skin-contract.json").is_file()
     assert "workstep-cli" in result["prompt"]
     assert "custom-skin.md" in result["prompt"]
+    assert "Always include theme.js" in result["prompt"]
+    assert "empty file" in result["prompt"]
+    assert "Do not ask the user to choose a skin format version" in result["prompt"]
+    assert "Run skin scripts" in result["prompt"]
     assert result["workspace_path"] in result["prompt"]
     assert "No restart is required" in result["prompt"]
     assert not any('\u4e00' <= char <= '\u9fff' for char in result['prompt'])

@@ -1,0 +1,5 @@
+.skin-script-settings { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; border-top: 1px solid var(--border); font-size: calc(12px * var(--font-scale)); }
+.skin-script-settings p { margin: 5px 0 0; font-size: calc(11px * var(--font-scale)); line-height: 1.6; }
+.skin-script-settings .settings-switch { flex-shrink: 0; background: var(--border); }
+.skin-script-settings .settings-switch[aria-checked="true"] { background: var(--accent); }
+.skin-script-settings .settings-switch:disabled { cursor: not-allowed; opacity: .55; }

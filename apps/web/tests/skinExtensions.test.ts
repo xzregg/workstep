@@ -59,6 +59,16 @@ test('extension activation and disposal clean registrations, including late asyn
   assert.equal(cleaned, 1, 'disposed session must not execute a late module')
 })
 
+test('empty script activates without contributions; malformed activation still fails', async () => {
+  const skin = { ...defaultSkin(), file_base: '/api/skins/files/one' }
+  const session = new ExtensionSession(skin, 'identity-a')
+  await session.activate(() => import('data:text/javascript,'))
+  assert.deepEqual(session.snapshot(), { features: [], slots: [] })
+  session.dispose()
+  const malformed = new ExtensionSession(skin, 'identity-a')
+  await assert.rejects(() => malformed.activate(async () => ({ activate: 'invalid' } as never)), /activate/)
+})
+
 test('activation failure cleans partially registered contributions', async () => {
   const session = new ExtensionSession({ ...defaultSkin(), file_base: '/api/skins/files/one' }, 'identity-a')
   await assert.rejects(() => session.activate(async () => ({ activate(api) {

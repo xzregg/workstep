@@ -5,10 +5,9 @@ import { useI18n } from '../i18n'
 import { useOverlay } from '../hooks/useOverlay'
 import { useProjectStore } from '../stores/projectStore'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
-import { appearanceScope } from '../utils/appearanceStorage'
-import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
-import { defaultSkin, type SkinDocument, type SkinMenu } from '../skins/contract'
-import { saveSkin, useActiveSkin } from '../skins/runtime'
+import { type SkinMenu } from '../skins/contract'
+import { useActiveSkin } from '../skins/runtime'
+import { setSkinScriptsEnabled, skinScriptScope, useSkinScriptsEnabled } from '../skins/scriptPreferences'
 import { ExtensionSession, type ExtensionModule, type ExtensionSlotName, type SkinFeature } from '../skins/extensions'
 import { executeSkinAction, skinActionEnabled, skinActionRevision, subscribeSkinActions, useSkinActions } from '../skins/actions'
 import type { SettingsSection } from './SettingsNavigation'
@@ -82,17 +81,11 @@ export default function SkinWorkspaceFrame({ children, onOpenSettings, loadModul
   const navigate = useNavigate()
   const project = useProjectStore(state => state.activeProject)
   const { bound, can } = useGatewayProjectPermissions(project?.id)
-  const scope = appearanceScope() ?? `local:${gatewayWorkspacePath()}`
-  const consentKey = `workstep:skin-code:${scope}:${skin.manifest.id}:${skin.revision}`
-  const [consent, setConsent] = useState('')
-  const [confirm, setConfirm] = useState(false)
+  const scope = skinScriptScope()
+  const allowed = useSkinScriptsEnabled(skin)
   const [session, setSession] = useState<ExtensionSession | null>(null)
   const [error, setError] = useState(''), [loading, setLoading] = useState(false)
   const [openFeature, setOpenFeature] = useState<string | null>(null)
-  const lastWorking = useRef<SkinDocument>(defaultSkin())
-  let stored = false
-  try { stored = localStorage.getItem(consentKey) === 'enabled' } catch { /* Consent can be used for the current visit. */ }
-  const allowed = stored || consent === consentKey
   const snapshot = useSyncExternalStore(session?.subscribe ?? noSubscription, session?.snapshot ?? emptySnapshot, emptySnapshot)
   const currentSession = session?.skin.revision === skin.revision && session.skin.manifest.id === skin.manifest.id && session.scope === scope ? session : null
 
@@ -113,10 +106,9 @@ export default function SkinWorkspaceFrame({ children, onOpenSettings, loadModul
   })
 
   useEffect(() => {
-    setSession(null); setOpenFeature(null); setConfirm(false)
+    setSession(null); setOpenFeature(null)
     if (!skin.script || !allowed || new URLSearchParams(window.location.search).get('skin') === 'default') {
       setLoading(false)
-      if (!skin.script) lastWorking.current = skin
       return
     }
     const next = new ExtensionSession(skin, scope)
@@ -124,11 +116,11 @@ export default function SkinWorkspaceFrame({ children, onOpenSettings, loadModul
     setError(''); setLoading(true)
     void next.activate(loadModule).then(() => {
       if (disposed) return
-      setSession(next); lastWorking.current = skin
+      setSession(next)
     }).catch(reason => {
       if (disposed) return
       setError(String(reason instanceof Error ? reason.message : reason))
-      saveSkin(lastWorking.current, 'error')
+      setSkinScriptsEnabled(skin, false)
     }).finally(() => { if (!disposed) setLoading(false) })
     return () => { disposed = true; try { next.dispose() } catch { /* A faulty cleanup must not block theme recovery. */ } }
   }, [skin, scope, allowed, loadModule])
@@ -145,16 +137,12 @@ export default function SkinWorkspaceFrame({ children, onOpenSettings, loadModul
   return <RuntimeContext.Provider value={currentSession}>
     <div className="skin-workspace-frame" data-ui="workspace">
       <div className="skin-workspace-top-area">{side('top')}
-        {skin.script && !allowed && <div className="skin-extension-status" data-skin-recovery><span>{t('skinExtensions.codeDisabled')}</span><Button size="sm" onClick={() => setConfirm(true)}>{t('skinExtensions.enable')}</Button></div>}
+        {skin.script && !allowed && <div className="skin-extension-status" data-skin-recovery><span>{t('skinExtensions.codeDisabled')}</span><Button size="sm" onClick={() => onOpenSettings('appearance')}>{t('skinExtensions.scriptSettings')}</Button></div>}
         {loading && <div className="skin-extension-status" role="status"><Icon name="loader-circle" className="skin-extension-spinner" />{t('skinExtensions.loading')}</div>}
         {error && <div className="skin-extension-status" role="alert" data-skin-recovery><span>{t('skinExtensions.failed')} {error}</span><Button size="sm" onClick={() => setError('')}>{t('common.close')}</Button></div>}
       </div>
       {side('left')}{children}{side('right')}{side('bottom')}
     </div>
-    <ConfirmDialog open={confirm} title={t('skinExtensions.enable')} message={t('skinExtensions.trust')} onCancel={() => setConfirm(false)} onConfirm={() => {
-      try { localStorage.setItem(consentKey, 'enabled') } catch { /* Current visit only. */ }
-      setConsent(consentKey); setConfirm(false)
-    }} />
     {selected && currentSession && <FeatureDialog key={`${currentSession.skin.revision}:${selected.id}`} session={currentSession} feature={selected} onClose={() => setOpenFeature(null)} />}
   </RuntimeContext.Provider>
 }

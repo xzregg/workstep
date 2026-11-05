@@ -13,7 +13,7 @@ export interface FeatureProps { storage: FeatureStorage; close: () => void; onDi
 export interface SkinFeature { id: string; title: string; render: React.ComponentType<FeatureProps> }
 export interface SkinSlot extends SkinFeature { slot: ExtensionSlotName }
 type Snapshot = { features: SkinFeature[]; slots: SkinSlot[] }
-export interface ExtensionModule { activate: (api: ExtensionApi) => void | (() => void) | Promise<void | (() => void)> }
+export interface ExtensionModule { activate?: (api: ExtensionApi) => void | (() => void) | Promise<void | (() => void)> }
 export interface ExtensionApi {
   React: typeof React
   components: { Button: typeof Button; Input: typeof Input; ConfirmDialog: typeof ConfirmDialog }
@@ -67,6 +67,8 @@ export class ExtensionSession {
     try {
       const module = await loader(skinFileUrl(this.skin, this.skin.script || 'theme.js'))
       if (this.controller.signal.aborted) return
+      // An empty theme.js is a valid placeholder for skins without custom behavior.
+      if (Object.keys(module).length === 0) return
       if (typeof module.activate !== 'function') throw new Error('皮肤组件缺少 activate 入口')
       const cleanup = await module.activate({
         React, components: { Button, Input, ConfirmDialog }, signal: this.controller.signal,

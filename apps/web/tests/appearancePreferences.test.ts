@@ -6,7 +6,7 @@ import { appearanceStorageKey } from '../src/utils/appearanceStorage'
 import { saveFontSizePreference, loadFontSizePreference } from '../src/utils/fontSizePreference'
 import { saveFontFamilyPreference } from '../src/utils/fontFamilyPreference'
 import { useLocaleStore } from '../src/i18n'
-import { previewSkin, cancelSkinPreview, saveSkin, currentSkin } from '../src/skins/runtime'
+import { previewSkin, cancelSkinPreview, saveSkin, currentSkin, skinStorageKey } from '../src/skins/runtime'
 import { defaultSkin } from '../src/skins/contract'
 import { skinsApi } from '../src/api/skins'
 import { languagesApi } from '../src/api/languages'
@@ -158,4 +158,26 @@ test('unmanaged access restores the existing browser preferences without a serve
     assert.equal(useLocaleStore.getState().locale, 'ja-JP')
     assert.equal(appearanceSyncState().status, 'local')
   } finally { stopAppearancePreferences(); globalThis.fetch = oldFetch; await window.happyDOM.close() }
+})
+
+
+test('unmanaged startup refreshes a cached skin from the installed package without losing font preferences', async () => {
+  const { window } = installDomEnvironment()
+  const previousFetch = globalThis.fetch, previousGet = skinsApi.get
+  stopAppearancePreferences()
+  const oldSkin = { ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: 'starry' }, revision: 'old' }
+  const latest = { ...oldSkin, revision: 'latest', css: '[data-starry]{border:0}', layout: { fontSize: 'small' as const } }
+  localStorage.setItem(skinStorageKey(), JSON.stringify(oldSkin))
+  localStorage.setItem('workstep.fontSize', 'large')
+  globalThis.fetch = async () => Response.json({scope:null, preferences:null})
+  skinsApi.get = async id => { assert.equal(id, 'starry'); return latest }
+  try {
+    await initializeAppearancePreferences()
+    assert.equal(currentSkin().revision, 'latest')
+    assert.equal(loadFontSizePreference(), 'large')
+    assert.equal(JSON.parse(localStorage.getItem(skinStorageKey())!).revision, 'latest')
+  } finally {
+    stopAppearancePreferences(); globalThis.fetch = previousFetch; skinsApi.get = previousGet
+    await window.happyDOM.close()
+  }
 })

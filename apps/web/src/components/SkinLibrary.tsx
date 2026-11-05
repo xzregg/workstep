@@ -5,6 +5,7 @@ import Button from './Button'
 import Input from './Input'
 import Icon from './Icon'
 import SkinStudioPreview from './SkinStudioPreview'
+import SkinScriptSettings from './SkinScriptSettings'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 
 function SkinThumbnail({ skin }: { skin: SkinDocument }) {
@@ -14,8 +15,8 @@ function SkinThumbnail({ skin }: { skin: SkinDocument }) {
   return <span className="skin-thumbnail" style={style} aria-hidden="true"><span className={`skin-thumbnail-window${layout.sidebarSide === 'right' ? ' is-right' : ''}`}><span className="skin-thumbnail-nav"><i /><i /><i /><i /></span><span className="skin-thumbnail-content"><span className="skin-thumbnail-title"><i /><b /></span><span className="skin-thumbnail-bubble"><i /><i /></span><span className="skin-thumbnail-bubble"><i /></span><span className="skin-thumbnail-composer" /></span></span></span>
 }
 
-export default function SkinLibrary({ documents, activeId, preferredSkin, busy, canManage, toolbarActions, onCreate, onPreview, onApply, onExport, onDelete, onRestore }: {
-  documents: SkinDocument[]; activeId: string; busy: boolean; canManage: boolean;
+export default function SkinLibrary({ documents, activeId, activeRevision, preferredSkin, busy, canManage, toolbarActions, onCreate, onPreview, onApply, onExport, onDelete, onRestore }: {
+  documents: SkinDocument[]; activeId: string; activeRevision?: string; busy: boolean; canManage: boolean;
   preferredSkin?: SkinDocument | null; toolbarActions?: ReactNode;
   onCreate: (base?: SkinDocument) => void; onPreview: (skin: SkinDocument) => void; onApply: (skin: SkinDocument) => void;
   onExport: (id: string) => void; onDelete: (id: string) => void; onRestore: () => void;
@@ -32,6 +33,7 @@ export default function SkinLibrary({ documents, activeId, preferredSkin, busy, 
   const compact = useCompactLayout()
   const [phone, setPhone] = useState(compact), [scene, setScene] = useState<'chat' | 'tasks' | 'flow'>('chat')
   const selected = documents.find(skin => skin.manifest.id === selectedId) ?? documents[0] ?? defaultSkin()
+  const selectedApplied = activeId === selected.manifest.id && activeRevision === selected.revision
   const visible = documents.filter(skin => (filter !== 'mine' || skin.manifest.id !== 'default')
     && `${skin.manifest.name} ${skin.manifest.description ?? ''}`.toLowerCase().includes(query.trim().toLowerCase()))
   return <>
@@ -54,7 +56,8 @@ export default function SkinLibrary({ documents, activeId, preferredSkin, busy, 
         <div className="skin-settings-preview-stage"><SkinStudioPreview skin={selected} compact={phone} scene={scene} variant="center" /></div>
         <div className="skin-settings-preview-caption"><span><Icon name="check" size={12} />{t('skins.previewHint')}</span><span>{t(phone ? 'skins.mobileLayout' : 'skins.desktopLayout')}</span></div>
         <dl className="skin-settings-properties"><div><dt>{t('skins.colorScheme')}</dt><dd>{t(selected.manifest.color_scheme === 'dark' ? 'skins.dark' : 'skins.light')}</dd></div><div><dt>PC / {t('skins.studioPhone')}</dt><dd>{t('skins.independent')}</dd></div><div><dt>{t('skins.source')}</dt><dd>{t(selected.manifest.id === 'default' ? 'skins.builtIn' : 'skins.customPackage')}</dd></div><div><dt>{t('skins.version')}</dt><dd>{selected.manifest.version}</dd></div></dl>
-        <footer><div className="skin-settings-actions">{canManage && <><Button variant="ghost" size="sm" disabled={busy} onClick={() => onCreate(selected)}><Icon name="sparkles" size={14} />{t('skins.customize')}</Button><Button variant="ghost" size="sm" disabled={busy || selected.manifest.id === 'default'} onClick={() => onExport(selected.manifest.id)}>{t('skins.export')}</Button>{selected.manifest.id !== 'default' && <Button variant="icon" disabled={busy} aria-label={t('skins.delete')} onClick={() => onDelete(selected.manifest.id)}><Icon name="trash" size={14} /></Button>}</>}</div><div className="skin-settings-actions"><Button size="sm" disabled={busy} onClick={() => onPreview(selected)}>{t('skins.preview')}</Button><Button size="sm" variant="primary" disabled={busy || activeId === selected.manifest.id} onClick={() => onApply(selected)}>{t(activeId === selected.manifest.id ? 'skins.applied' : 'skins.apply')}</Button></div></footer>
+        <SkinScriptSettings skin={selected} />
+        <footer><div className="skin-settings-actions">{canManage && <><Button variant="ghost" size="sm" disabled={busy} onClick={() => onCreate(selected)}><Icon name="sparkles" size={14} />{t('skins.customize')}</Button><Button variant="ghost" size="sm" disabled={busy || selected.manifest.id === 'default'} onClick={() => onExport(selected.manifest.id)}>{t('skins.export')}</Button>{selected.manifest.id !== 'default' && <Button variant="icon" disabled={busy} aria-label={t('skins.delete')} onClick={() => onDelete(selected.manifest.id)}><Icon name="trash" size={14} /></Button>}</>}</div><div className="skin-settings-actions"><Button size="sm" disabled={busy} onClick={() => onPreview(selected)}>{t('skins.preview')}</Button><Button size="sm" variant="primary" disabled={busy || selectedApplied} onClick={() => onApply(selected)}>{t(selectedApplied ? 'skins.applied' : 'skins.apply')}</Button></div></footer>
       </section>
     </div>
     <div className="skin-settings-footer-note"><span>{t('skins.deviceHint')}</span></div>

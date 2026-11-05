@@ -8,6 +8,9 @@ export const zhCN = {
     "importDraft": "请协助我安装并注册已导入的自定义引擎包。\n本次工作目录：{workspace}\n已导入的引擎包：{package}\n通过 workstep-cli 按需阅读 references/custom-engine.md 和接口契约。使用已有包，不重新创建适配器。先检查清单与现有引擎；同 ID 已注册时先询问是否替换，不直接覆盖。导出包不包含凭据、依赖和本机验收报告；请安装包内 dependencies，通过设置完成供应商、认证及模型配置，不修改 WorkStep 的 Python 环境。完成真实连接、方法及事件测试，通过 engine validate 后才能 register。注册成功后提示我在设置的引擎页面点击“重新扫描”，无需重启。"
 },
   skinExtensions: {
+    runScripts: '运行皮肤脚本', scriptSettings: '脚本设置',
+    scriptHint: '开启后，此皮肤的脚本在加载及更新时自动运行。脚本可访问当前账号数据和浏览器存储，仅开启你信任的皮肤。关闭立即停用组件。',
+    noScript: '此皮肤未包含脚本。',
     features: '附加功能', codeDisabled: '此皮肤的自定义组件尚未启用，仅应用外观。',
     enable: '启用自定义组件', trust: '仅启用你信任的皮肤。组件与当前界面拥有相同权限，可以访问当前账号数据和浏览器存储；这不是隔离运行环境。',
     loading: '正在加载自定义组件…', failed: '自定义组件加载或运行失败。', discard: '放弃组件中未保存的修改？',

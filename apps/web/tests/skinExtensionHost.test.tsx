@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import SkinWorkspaceFrame from '../src/components/SkinExtensions'
 import { I18nProvider } from '../src/i18n'
 import { defaultSkin } from '../src/skins/contract'
@@ -12,6 +12,12 @@ import { applySkin, currentSkin, restoreDefaultSkin } from '../src/skins/runtime
 import { setAppearanceScope } from '../src/utils/appearanceStorage'
 import type { ExtensionApi, FeatureProps } from '../src/skins/extensions'
 import SkinStudioPreview from '../src/components/SkinStudioPreview'
+import { setSkinScriptsEnabled } from '../src/skins/scriptPreferences'
+
+function ConversationLink() {
+  const navigate = useNavigate()
+  return <button onClick={() => navigate('/chat?session=another')}>切换对话</button>
+}
 
 test('code requires consent, feature data persists, and switching skins preserves workspace DOM', async () => {
   const { window } = installDomEnvironment()
@@ -30,7 +36,7 @@ test('code requires consent, feature data persists, and switching skins preserve
   } } }
   const host = document.body.appendChild(document.createElement('div'))
   const root = createRoot(host)
-  const render = () => root.render(<MemoryRouter><I18nProvider><SkinWorkspaceFrame onOpenSettings={() => {}} loadModule={loader}><div className="app-shell"><textarea aria-label="draft" defaultValue="保留的草稿" /></div></SkinWorkspaceFrame></I18nProvider></MemoryRouter>)
+  const render = () => root.render(<MemoryRouter><I18nProvider><SkinWorkspaceFrame onOpenSettings={() => {}} loadModule={loader}><div className="app-shell"><ConversationLink /><textarea aria-label="draft" defaultValue="保留的草稿" /></div></SkinWorkspaceFrame></I18nProvider></MemoryRouter>)
   const click = async (label: string) => act(async () => {
     const button = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === label)
     assert.ok(button, label); button.click()
@@ -40,10 +46,14 @@ test('code requires consent, feature data persists, and switching skins preserve
     await act(async () => render())
     const draft = document.querySelector('textarea')!
     assert.equal(loads, 0)
-    await click('启用自定义组件')
-    await act(async () => document.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
+    await act(async () => setSkinScriptsEnabled(skin, true))
     await flush()
     assert.equal(loads, 1)
+    const style = document.getElementById('workstep-skin-style')
+    await click('切换对话'); await flush()
+    assert.equal(loads, 1, 'switching conversations does not reload the extension')
+    assert.equal(currentSkin().manifest.id, skin.manifest.id)
+    assert.equal(document.getElementById('workstep-skin-style'), style, 'conversation navigation preserves the active skin stylesheet')
     await click('测试组件'); await flush()
     await click('保存测试数据'); await flush()
     assert.equal(document.querySelector('[data-testid="feature-value"]')!.textContent, '已保存')
@@ -59,8 +69,14 @@ test('code requires consent, feature data persists, and switching skins preserve
     await click('测试组件'); await flush()
     assert.equal(document.querySelector('[data-testid="feature-value"]')!.textContent, '已保存')
     await act(async () => applySkin({ ...skin, revision: 'two' })); await flush()
-    assert.equal(loads, 2, 'a new code revision requires separate consent')
+    assert.equal(loads, 3, 'an enabled skin automatically activates updated packages')
+    await act(async () => setSkinScriptsEnabled(skin, false))
     assert.equal(document.querySelector('[data-testid="feature-value"]'), null)
+    await act(async () => applySkin(skin)); await flush()
+    assert.equal(loads, 3, 'disabled scripts stay disabled after reloading a package')
+    setAppearanceScope('another-user')
+    await act(async () => applySkin(skin)); await flush()
+    assert.equal(loads, 3, 'another identity does not inherit script permission')
   } finally {
     await act(async () => root.unmount())
     restoreDefaultSkin(); setAppearanceScope(null)
@@ -87,7 +103,7 @@ test('v2 thumbnail exposes layout and menu regions without executing code or esc
   } finally { await act(async () => root.unmount()); host.remove(); await window.happyDOM.close() }
 })
 
-test('a failed enabled module restores the working skin and leaves business inputs mounted', async () => {
+test('a failed script is disabled while preserving the selected skin and business inputs', async () => {
   const { window } = installDomEnvironment()
   setAppearanceScope('recovery-test')
   const skin = { ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: 'broken', schema_version: 2 }, revision: 'one', script: 'theme.js', file_base: '/api/skins/files/one' }
@@ -99,7 +115,7 @@ test('a failed enabled module restores the working skin and leaves business inpu
   const root = createRoot(host)
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinWorkspaceFrame onOpenSettings={() => {}} loadModule={loader}><div className="app-shell"><input defaultValue="草稿" /></div></SkinWorkspaceFrame></I18nProvider></MemoryRouter>))
-    assert.equal(currentSkin().manifest.id, 'default')
+    assert.equal(currentSkin().manifest.id, 'broken', 'script errors must not reset the selected appearance')
     assert.equal(host.querySelector('input')!.value, '草稿')
     assert.equal(loads, 1)
     assert.match(host.querySelector('[role="alert"]')!.textContent!, /broken module/)

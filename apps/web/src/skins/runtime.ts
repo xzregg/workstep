@@ -81,8 +81,10 @@ export function saveSkin(skin: SkinDocument, reason: SkinLifecycle = 'apply') {
   applySkin(skin, reason)
   const compact = window.matchMedia('(max-width: 1023px)').matches
   const size = resolvedSkinLayout(skin, compact).fontSize
-  if (size !== 'inherit') saveFontSizePreference(size)
-  if (Object.hasOwn(skin.tokens, 'font-body') || Object.hasOwn((compact ? skin.mobile : skin.desktop)?.tokens ?? {}, 'font-body')) saveFontFamilyPreference('system')
+  if (reason === 'apply' || reason === 'preview') {
+    if (size !== 'inherit') saveFontSizePreference(size)
+    if (Object.hasOwn(skin.tokens, 'font-body') || Object.hasOwn((compact ? skin.mobile : skin.desktop)?.tokens ?? {}, 'font-body')) saveFontFamilyPreference('system')
+  }
   committed = skin; previewing = false
   appearanceCache.setItem(skinStorageKey(), JSON.stringify(skin))
   for (const listener of listeners) listener()

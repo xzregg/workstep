@@ -5,7 +5,7 @@ import { languagesApi } from '../api/languages'
 import { useLocaleStore } from '../i18n'
 import { builtinLocales, validateLanguage, type BuiltinLocale } from '../i18n/languagePack'
 import { defaultSkin } from '../skins/contract'
-import { committedSkin, initializeSkinPreference, saveSkin, SKIN_LIFECYCLE_EVENT } from '../skins/runtime'
+import { committedSkin, currentSkin, initializeSkinPreference, saveSkin, SKIN_LIFECYCLE_EVENT } from '../skins/runtime'
 import { appearanceScope, setAppearanceScope } from './appearanceStorage'
 import { APPEARANCE_PREFERENCE_EVENT, initializeFontSizePreference, loadFontSizePreference, saveFontSizePreference, type FontSizePreference } from './fontSizePreference'
 import { initializeFontFamilyPreference, loadFontFamilyPreference, saveFontFamilyPreference, type FontFamilyPreference } from './fontFamilyPreference'
@@ -113,6 +113,15 @@ export async function initializeAppearancePreferences() {
   if (current !== generation) return
   if (!response.scope || !response.preferences) {
     initializeFontSizePreference(); initializeFontFamilyPreference(); initializeSkinPreference()
+    const cached = currentSkin()
+    if (cached.manifest.id !== 'default') {
+      try {
+        const installed = await skinsApi.get(cached.manifest.id)
+        if (current !== generation) return
+        saveSkin(installed, 'load')
+      } catch { /* Keep the working cached appearance when the device is offline. */ }
+    }
+    if (current !== generation) return
     status({status:'local', error:''})
     return
   }
