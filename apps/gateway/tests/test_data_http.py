@@ -727,3 +727,42 @@ async def test_failed_workspace_document_releases_stream_for_recovery(path, acce
         assert [chunk async for chunk in response.chunks] == []
     assert not connection._streams
     assert not connection._outbound_windows
+
+
+@pytest.mark.parametrize('method,status,declared,body,phase,broken', [
+    ('GET', 200, 8, b'complete', 'end', False),
+    ('GET', 200, 20, b'partial', 'end', True),
+    ('GET', 200, 2, b'excess', 'end', True),
+    ('GET', 200, None, b'partial', 'error', True),
+    ('HEAD', 200, 2000, b'', 'end', False),
+    ('GET', 304, 2000, b'', 'end', False),
+])
+async def test_proxy_rejects_incomplete_response(method, status, declared, body, phase, broken):
+    from gateway.contracts import GatewayCall
+
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'end':
+                headers = [] if declared is None else [['content-length', str(declared)]]
+                for payload in (
+                    {'phase': 'start', 'status': status, 'headers': headers},
+                    {'phase': 'body', 'data': base64.b64encode(body).decode()},
+                    {'phase': phase},
+                ):
+                    await connection.deliver(ProxyFrame(
+                        stream_id=frame.stream_id, type=FrameType.http_response, payload=payload))
+
+    connection = DataConnection('device-1', Socket())
+    async def payload():
+        yield b''
+    call = GatewayCall(operation=method, target=urlsplit('https://gateway.test/assets/app.js'), payload=payload)
+    response = await connection.proxy_http(call, user_id='user-1', username='alice')
+    async def read():
+        return b''.join([chunk async for chunk in response.chunks])
+    if broken:
+        with pytest.raises(ConnectionError):
+            await read()
+    else:
+        assert await read() == body
+    assert not connection._streams

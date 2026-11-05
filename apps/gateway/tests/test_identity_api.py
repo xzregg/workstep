@@ -18,10 +18,10 @@ def _setup(client: TestClient, *, mode: str = "open"):
 def test_setup_is_single_use_and_creates_recovery_admin(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
-        assert client.get("/api/platform/status").json() == {"initialized": False}
+        assert client.get("/api/platform/status").json() == {"initialized": False, "company_display_name": ""}
         response = _setup(client)
         assert response.status_code == 201
-        assert client.get("/api/platform/status").json() == {"initialized": True}
+        assert client.get("/api/platform/status").json() == {"initialized": True, "company_display_name": ""}
         assert response.json()["user"]["username"] == "owner"
         assert response.json()["csrf_token"]
         assert "Secure" in response.headers["set-cookie"]
@@ -496,7 +496,7 @@ def test_admin_can_change_registration_policy_without_restart(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
         csrf = _setup(client, mode="closed").json()["csrf_token"]
-        assert client.get("/api/auth/registration-policy").json() == {"mode": "closed", "password_login_enabled": True}
+        assert client.get("/api/auth/registration-policy").json() == {"mode": "closed", "password_login_enabled": True, "company_display_name": ""}
         assert client.put("/api/admin/registration-policy", json={"mode": "open"}, headers={
             "X-CSRF-Token": csrf,
         }).status_code == 403
@@ -506,7 +506,7 @@ def test_admin_can_change_registration_policy_without_restart(tmp_path):
         assert client.put("/api/admin/registration-policy", json={"mode": "open"}, headers={
             "X-CSRF-Token": csrf,
         }).status_code == 200
-        assert client.get("/api/auth/registration-policy").json() == {"mode": "open", "password_login_enabled": True}
+        assert client.get("/api/auth/registration-policy").json() == {"mode": "open", "password_login_enabled": True, "company_display_name": ""}
         client.cookies.clear()
         assert client.post("/api/auth/register", json={
             "username": "alice", "display_name": "Alice", "password": "AlicePassphrase-2026!",

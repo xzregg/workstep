@@ -131,3 +131,5 @@
 .desktop-update-check-setting .settings-switch[aria-checked="true"] { background: var(--accent); }
 
 .desktop-update-check-control { display: flex; align-items: center; gap: 8px; }
+
+.settings-system-history-input { width: 100px; flex: none; }

@@ -292,7 +292,7 @@ test('roles page retries a failed list and refreshes after revoke', async () => 
   fireEvent.click(screen.getByRole('button', { name: '撤销' }))
   fireEvent.change(screen.getByLabelText('输入你的密码确认'), { target: { value: 'password' } })
   fireEvent.click(screen.getByRole('button', { name: '确认撤销' }))
-  await waitFor(() => assert.ok(requests.filter(url => url.startsWith('/api/admin/roles?')).length >= 3))
+  await waitFor(() => assert.ok(requests.filter(url => url.startsWith('/api/admin/roles?')).length >= 3, JSON.stringify(requests)))
   assert.ok(requests.includes('/api/admin/roles/role-1'))
 })
 
@@ -861,9 +861,9 @@ for (const [name, Page, path] of [['users', AdminUsersPage, 'users'], ['devices'
    return <><button onClick={() => navigate(`/admin/${path}?status=disabled`)}>切换状态链接</button><Page /></>
   }
   render(<MemoryRouter initialEntries={[`/admin/${path}?status=pending`]}><Harness /></MemoryRouter>)
-  await waitFor(() => assert.ok(requests.some(url => url.startsWith(`/api/admin/${path}?`) && url.includes('status=pending'))))
+  await waitFor(() => assert.ok(requests.some(url => url.startsWith(`/api/admin/${path}?`) && url.includes('status=pending')), JSON.stringify(requests)))
   fireEvent.click(screen.getByRole('button', { name: '切换状态链接' }))
-  await waitFor(() => assert.ok(requests.some(url => url.startsWith(`/api/admin/${path}?`) && url.includes('status=disabled'))))
+  await waitFor(() => assert.ok(requests.some(url => url.startsWith(`/api/admin/${path}?`) && url.includes('status=disabled')), JSON.stringify(requests)))
  })
 }
 

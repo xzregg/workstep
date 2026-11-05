@@ -33,13 +33,26 @@ for (const mode of ['production', 'gateway-share']) test(`built lazy assets foll
         page.includes('/workspace/') ? page.replace(/(tasks|chat)$/, '') : 'https://device.test/'
       const moduleUrl = new URL(entry.fileName, base).href
       const source = entry.code.replaceAll('import.meta.url', JSON.stringify(moduleUrl)).replaceAll('import.meta.resolve', 'undefined')
-      new Function('window', 'document', 'MutationObserver', source)(window, window.document, window.MutationObserver)
+      const keys = ['window', 'document', 'MutationObserver'] as const
+      const previous = keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))
+      keys.forEach(key => Object.defineProperty(globalThis, key, {
+        configurable: true, value: key === 'window' ? window : window[key],
+      }))
+      try {
+        // The generated entry is an ES module and may legitimately export helpers.
+        await import('data:text/javascript,' + encodeURIComponent(source))
       // CSS preloads wait for load, so the dynamic import does not run here.
       void (window as any).loadDiagram()
       const link = window.document.querySelector('link[rel="stylesheet"]')!
       assert.ok(link)
       assert.equal(new URL(link.href).pathname.replace(/[^/]+$/, ''), new URL(moduleUrl).pathname.replace(/[^/]+$/, ''))
-      await window.happyDOM.close()
+      } finally {
+        keys.forEach((key, index) => {
+          if (previous[index]) Object.defineProperty(globalThis, key, previous[index]!)
+          else Reflect.deleteProperty(globalThis, key)
+        })
+        await window.happyDOM.close()
+      }
     }
   } finally { await rm(root, { recursive: true, force: true }) }
 })

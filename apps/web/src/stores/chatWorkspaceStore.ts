@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { appearanceCache } from '../utils/appearanceStorage'
+import { appearanceCache, appearanceStorageKey } from '../utils/appearanceStorage'
 
 export type ChatWorkspaceLayout = 'horizontal' | 'vertical'
 export interface ChatWorkspacePane { id: string; projectId: string; sessionId: string | null }
@@ -38,10 +38,26 @@ function readSnapshot(scope: string): ChatWorkspaceSnapshot | undefined {
 /** Account/device-scoped pane metadata survives navigation and page reloads; no chat content is copied. */
 export const useChatWorkspaceStore = create<{
   workspaces: Record<string, ChatWorkspaceSnapshot>
+  removal: { scope: string; panes: ChatWorkspacePane[] } | null
+  removeSessions: (projectId: string, sessionIds: string[]) => boolean
   restore: (scope: string) => ChatWorkspaceSnapshot | undefined
   save: (scope: string, snapshot: ChatWorkspaceSnapshot) => void
 }>((set, get) => ({
   workspaces: {},
+  removal: null,
+  removeSessions: (projectId, sessionIds) => {
+    const scope = appearanceStorageKey('chat-workspace')
+    const snapshot = get().restore(scope)
+    if (!snapshot) return false
+    const ids = new Set(sessionIds)
+    const panes = snapshot.panes.filter(pane => pane.projectId !== projectId || !pane.sessionId || !ids.has(pane.sessionId))
+    if (panes.length === snapshot.panes.length) return false
+    if (!panes.length) panes.push({ ...snapshot.panes[0], sessionId: null })
+    const next = { ...snapshot, panes, sizes: {} }
+    appearanceCache.setItem(`${scope}:v1`, JSON.stringify(next))
+    set(state => ({ workspaces: { ...state.workspaces, [scope]: next }, removal: { scope, panes } }))
+    return true
+  },
   restore: scope => get().workspaces[scope] ?? readSnapshot(scope),
   save: (scope, snapshot) => {
     appearanceCache.setItem(`${scope}:v1`, JSON.stringify(snapshot))

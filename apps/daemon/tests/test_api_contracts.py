@@ -2403,7 +2403,12 @@ async def test_default_workflow_can_be_saved_and_reloaded(api_context):
     assert saved.json()["saved"] is True
 
     listed = await client.get("/api/project/list")
-    assert listed.json()["projects"][0]["steps"] == default_workflow
+    summary = next(project for project in listed.json()["projects"] if project["id"] == project_id)
+    assert "steps" not in summary
+    workflow_id = summary["workflows"][0]["id"]
+    detail = await client.get(f"/api/workflow/{workflow_id}?project_id={project_id}")
+    assert detail.status_code == 200
+    assert detail.json()["steps"] == default_workflow
 
 
 @pytest.mark.anyio
@@ -6632,3 +6637,23 @@ async def test_dynamic_schedule_batch_api_preserves_creation_parameters_and_heal
         config = (await client.get(f'/api/task/{task["id"]}/workflow?project_id={pid}')).json()
         assert config['workflow']['nodes'][0]['review']['prompt'] == f'审核{i}'
     assert agent.run_schedule.await_count == 1
+
+
+@pytest.mark.anyio
+async def test_project_list_omits_steps_but_workflow_detail_preserves_them(api_context):
+    client, directory = api_context
+    root = directory / "lightweight-catalog"
+    root.mkdir()
+    project = (await client.post("/api/project/init", json={"path": str(root)})).json()
+    steps = {"nodes": [{"id": 1, "type": "req", "title": "需求", "prompt": "large prompt " * 1000}], "connections": []}
+    created = await client.post(f"/api/workflow/create?project_id={project['id']}", json={"name": "Lazy", "steps": steps})
+    assert created.status_code == 200, created.text
+    workflow = created.json()
+    listed = await client.get("/api/project/list")
+    assert listed.status_code == 200
+    summary = next(item for item in listed.json()["projects"] if item["id"] == project["id"])
+    assert "steps" not in summary
+    assert summary["workflows"][0]["id"] == workflow["id"]
+    detail = await client.get(f"/api/workflow/{workflow['id']}?project_id={project['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["steps"] == steps

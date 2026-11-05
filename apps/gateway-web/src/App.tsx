@@ -1,3 +1,4 @@
+import { PlatformDocumentTitle } from './PlatformDocumentTitle'
 import { PasswordConfirmationRequired } from './PasswordConfirmation'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AdminLayout } from './AdminLayout'
@@ -36,20 +37,21 @@ import { LegacyCompletionDestinationPage } from './LegacyCompletionDestinationPa
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   const location = useLocation()
   if (deviceHost) return <main><h1>WorkStep 远程项目</h1><p role="alert">请从平台重新打开远程项目。</p></main>
-  if (location.pathname.startsWith('/share/')) return <Routes><Route path="/share/:token" element={<PublicSharePage />} /></Routes>
-  return <GatewayPortalApp />
+  if (location.pathname.startsWith('/share/')) return <><PlatformDocumentTitle /><Routes><Route path="/share/:token" element={<PublicSharePage />} /></Routes></>
+  return <><PlatformDocumentTitle /><GatewayPortalApp /></>
 }
 
 function GatewayPortalApp() {
   const location = useLocation()
+  const workspaceLanding = location.pathname === '/' || location.pathname === '/devices'
   const authenticationNext = new URLSearchParams(location.search).get('next')
   const deviceAuthentication = location.pathname === '/desktop/login'
     || (['/auth', '/auth/pending'].includes(location.pathname) && authenticationNext?.startsWith('/desktop/login?'))
   const adminAccess = useAdminAccess()
   const hasAdminAccess = adminAccess.status === 'ready' && !!adminAccess.access?.roles.length
   return (
-    <PasswordConfirmationRequired.Provider value={adminAccess.access?.password_confirmation_required !== false}><main className={location.pathname === '/' ? 'gateway-workspace-portal' : undefined}>
-      {location.pathname !== '/' && !location.pathname.startsWith('/admin') && !deviceAuthentication && <PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />}
+    <PasswordConfirmationRequired.Provider value={adminAccess.access?.password_confirmation_required !== false}><main className={workspaceLanding ? 'gateway-workspace-portal' : undefined}>
+      {!workspaceLanding && !location.pathname.startsWith('/admin') && !deviceAuthentication && <PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />}
       <AdminPortalRegion admin={location.pathname.startsWith('/admin')} roles={adminAccess.access?.roles ?? []}>
       <Routes>
         <Route path="/auth/authorize" element={<ThirdPartyAuthorizePage />} />
@@ -91,7 +93,7 @@ function GatewayPortalApp() {
         <Route path="/admin/settings" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminPlatformSettingsPage /></AdminAccessGate>} />
         <Route path="/devices/empty" element={<ClientDownloadPage />} />
-        <Route path="/devices" element={<Navigate to="/" replace />} />
+        <Route path="/devices" element={<ProjectsPage key="device-selection" portalHeader={<PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />} />} />
         <Route path="/shares/new" element={<GatewayShareCreatePage />} />
         <Route path="/project-invitations" element={<ProjectInvitationsPage />} />
         <Route path="/project-invitations/:token" element={<ProjectInvitationAcceptPage />} />

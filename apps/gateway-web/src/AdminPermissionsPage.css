@@ -56,7 +56,7 @@
 .gateway-permission-empty { padding: 20px 12px; text-align: center; color: var(--gateway-admin-muted); background: var(--gateway-admin-lifted); border-radius: var(--gateway-admin-control-radius); }
 .gateway-permission-subject-rules { list-style: none; margin: 0; padding: 0; }
 .gateway-permission-subject-rules li { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--gateway-admin-separator); }
-.gateway-permission-subject-rules li > div:first-child { flex: 1; min-width: 180px; }
+.gateway-permission-subject-rules li > .gateway-permission-rule-description { flex: 1; min-width: 180px; }
 .gateway-permission-dialog select { width: 100%; margin-bottom: 12px; }
 .gateway-permission-dialog .gateway-permission-picker { margin-bottom: 16px; }
 .gateway-permission-subject-layout .gateway-permission-picker { margin-bottom: 0; }
@@ -156,4 +156,9 @@
 
 .gateway-permission-subject-rules .gateway-permission-policy-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px 12px; list-style: none; margin: 12px 0 0; padding: 0; }
 .gateway-permission-subject-rules .gateway-permission-policy-details > li { display: block; padding: 4px 0; border: 0; font-size: 13px; overflow-wrap: anywhere; }
-.gateway-permission-subject-rules > li > div:first-child { min-width: 0; }
+.gateway-permission-subject-rules > li > .gateway-permission-rule-description { min-width: 0; }
+
+.gateway-permission-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0; }
+.gateway-permission-bulk-actions span { color: var(--gateway-admin-muted); margin-right: auto; }
+.gateway-bulk-revoke-rules { margin: 16px 0; padding-left: 20px; overflow-wrap: anywhere; }
+.gateway-bulk-revoke-rules li { margin-bottom: 8px; }

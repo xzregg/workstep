@@ -23,7 +23,7 @@ def test_password_login_switch_and_private_scan_directory(tmp_path):
         assert public == {'sources': [{'id': source, 'provider': 'dingtalk'}]}
         assert client.put(url, json=body).status_code == 403
         assert client.put(url, json=body, headers=headers).status_code == 200
-        assert client.get('/api/auth/registration-policy').json() == {'mode': 'closed', 'password_login_enabled': False}
+        assert client.get('/api/auth/registration-policy').json() == {'mode': 'closed', 'password_login_enabled': False, "company_display_name": ""}
         assert client.get('/api/admin/platform-settings').json()['password_login_enabled'] is False
         # Password closure must not leave an alternate local registration route.
         assert client.post('/api/auth/register', json={'username': 'alice', 'display_name': 'Alice', 'password': 'UserPassword123'}).status_code == 403
@@ -37,7 +37,7 @@ def test_password_login_switch_and_private_scan_directory(tmp_path):
         assert client.post(f'/api/admin/identity-sources/{source}/disable', headers=headers).status_code == 409
         # Existing authenticated administrator can restore password sign-in.
         assert client.put(url, json={'password_login_enabled': True}, headers=headers).status_code == 200
-        assert client.get('/api/auth/registration-policy').json() == {'mode': 'open', 'password_login_enabled': True}
+        assert client.get('/api/auth/registration-policy').json() == {'mode': 'open', 'password_login_enabled': True, "company_display_name": ""}
         client.cookies.clear()
         assert client.post('/api/auth/login', json={'username': 'owner', 'password': 'OwnerPassword123'}).status_code == 200
 

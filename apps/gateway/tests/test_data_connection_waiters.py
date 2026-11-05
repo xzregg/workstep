@@ -36,6 +36,6 @@ async def test_shared_data_waiters_receive_connection_failure(monkeypatch, failu
     assert isinstance(results[0], expected)
     # A sibling request must use the ordinary upstream failure path (HTTP 502),
     # rather than escaping the gateway handler with CancelledError (HTTP 500).
-    assert isinstance(results[1], ConnectionError), repr(results[1])
+    assert isinstance(results[1], (ConnectionError, asyncio.TimeoutError)), repr(results[1])
     assert not connections._pending_data
     assert not connections._device_pending

@@ -55,7 +55,8 @@ export function useProjectRouteSelection() {
       workflowId
       && workflowExists
       && currentProjectId === project.id
-      && activeWorkflowId !== workflowId
+      && (activeWorkflowId !== workflowId || (activeProject?.steps === undefined
+        && !useProjectStore.getState().workflowLoadError))
     ) {
       void setActiveWorkflow(workflowId)
     }

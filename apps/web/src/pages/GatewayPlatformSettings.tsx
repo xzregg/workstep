@@ -7,6 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { useManagedModeStore } from '../stores/managedModeStore'
 import { gatewayConnectionState, useGatewayConnection, useGatewayConnectionStore, type GatewayConnection } from '../stores/gatewayConnectionStore'
 import './GatewayPlatformSettings.css'
+import { gatewayLoginFailure, GatewayLoginFailure } from '../utils/gatewayLoginError'
 
 type PlatformState = GatewayConnection
 
@@ -33,6 +34,8 @@ export default function GatewayPlatformSettings() {
  const [error, setError] = useState('')
  const [busy, setBusy] = useState(false)
  const [confirm, setConfirm] = useState(false)
+ const [failure, setFailure] = useState<{ error: GatewayLoginFailure; url: string } | null>(null)
+ const [failureOpen, setFailureOpen] = useState(false)
  const [revision, setRevision] = useState(0)
  const submitting = useRef(false)
  const refreshing = useRef(false)
@@ -54,32 +57,49 @@ export default function GatewayPlatformSettings() {
   }).catch(() => { if (!controller.signal.aborted) { refreshing.current = false; setError(t('gatewayPlatform.loadError')) } })
   return () => controller.abort()
  }, [revision, t])
- async function connect() {
+ async function connect(reset = false) {
   if (remoteReadOnly || state?.package_locked || submitting.current || !state || !validGatewayPlatformUrl(url)) return
   submitting.current = true
-  setBusy(true); setError('')
+  setBusy(true); setError(''); setFailureOpen(false)
   try {
    const origin = url.trim().replace(/\/$/, '')
+   if (reset) {
+    if (!failure || failure.url !== origin || !failure.error.fingerprint) throw new GatewayLoginFailure(t('gatewayPlatform.settingsChanged'))
+    const response = await gatewayFetch('/api/gateway-platform/reset-trust', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({url: origin, fingerprint: failure.error.fingerprint}) })
+    if (!response.ok) throw await gatewayLoginFailure(response, t)
+    setState(await response.json()); setFailure(null)
+   }
    const settingsResponse = await gatewayFetch('/api/gateway-platform/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: origin, enabled }) })
-   if (!settingsResponse.ok) throw Error(t('gatewayPlatform.saveError'))
+   if (!settingsResponse.ok) throw await gatewayLoginFailure(settingsResponse, t)
    const saved = await settingsResponse.json() as PlatformState
    setState(saved); setEnabled(saved.enabled); setUrl(saved.url)
    if (!saved.enabled || (saved.authenticated && !saved.authorization_required)) {
+    setFailure(null)
     submitting.current = false; setBusy(false)
     if (!saved.enabled) useManagedModeStore.setState({ managed: false })
     return
    }
    const response = await gatewayFetch('/api/gateway-platform/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url.trim().replace(/\/$/, '') }) })
-   if (!response.ok) throw Error(t('gatewayPlatform.connectError'))
-   const data = await response.json(); const target = new URL(data.authorization_url)
-   if (target.origin !== new URL(url.trim()).origin || target.pathname !== '/desktop/login') throw Error(t('gatewayPlatform.connectError'))
+   if (!response.ok) throw await gatewayLoginFailure(response, t)
+   const data = await response.json().catch(() => { throw new GatewayLoginFailure(t('gatewayPlatform.invalidResponse')) })
+   let target: URL
+   try { target = new URL(data.authorization_url) } catch { throw new GatewayLoginFailure(t('gatewayPlatform.invalidResponse')) }
+   if (target.origin !== new URL(url.trim()).origin || target.pathname !== '/desktop/login') throw new GatewayLoginFailure(t('gatewayPlatform.invalidResponse'))
+   setFailure(null)
    window.location.assign(target.href)
-  } catch (error) { setError(error instanceof Error ? error.message : t('gatewayPlatform.connectError')); setBusy(false); submitting.current = false }
+  } catch (error) {
+   const failed = error instanceof GatewayLoginFailure ? error : new GatewayLoginFailure(t('gatewayPlatform.unreachable'))
+   setError(failed.message); setFailure({error: failed, url: url.trim().replace(/\/$/, '')}); setFailureOpen(true)
+   setBusy(false); submitting.current = false
+  }
  }
  return <section className="gateway-platform-settings">
   <h1>{t('gatewayPlatform.title')}</h1><p>{t(remoteReadOnly ? 'gatewayPlatform.remoteReadOnlyHint' : 'gatewayPlatform.intro')}</p>
   {!state && !error && <p role="status"><Icon className="gateway-platform-spinner" name="loader-circle" size={16} /> {t('gatewayPlatform.loading')}</p>}
-  {error && <p role="alert">{error} <button type="button" onClick={() => { setError(''); setRevision(n => n+1) }}>{t('gatewayPlatform.retry')}</button></p>}
+  {error && <p role="alert">{error} <button type="button" disabled={busy} onClick={() => {
+   if (failure) { if (failure.error.code === 'gateway_key_changed') setFailureOpen(true); else void connect() }
+   else { setError(''); setRevision(n => n+1) }
+  }}>{t(failure?.error.code === 'gateway_key_changed' ? 'gatewayPlatform.resetTrust' : 'gatewayPlatform.retry')}</button></p>}
   {state && <>
    <p role="status">{gatewayConnectionState(state) === 'connecting' && <Icon name="loader-circle" size={16} className="gateway-platform-spinner" />} {t(`gatewayPlatform.${gatewayConnectionState(state)}`)}</p>
    <form className={remoteReadOnly ? 'gateway-platform-form--readonly' : undefined} aria-disabled={remoteReadOnly || undefined} onSubmit={event => { event.preventDefault(); if (remoteReadOnly || state.package_locked) return; if (state.authenticated && state.url !== url.trim().replace(/\/$/, '')) setConfirm(true); else void connect() }}>
@@ -95,6 +115,10 @@ export default function GatewayPlatformSettings() {
    </form>
   <ConfirmDialog open={confirm} title={t('gatewayPlatform.changeTitle')} message={t('gatewayPlatform.changeMessage')}
    onCancel={() => setConfirm(false)} onConfirm={() => { setConfirm(false); void connect() }} />
+  <ConfirmDialog open={failureOpen} title={t(failure?.error.code === 'gateway_key_changed' ? 'gatewayPlatform.keyChangedTitle' : 'gatewayPlatform.failureTitle')}
+   message={failure?.error.message} danger={failure?.error.code === 'gateway_key_changed'}
+   confirmText={t(failure?.error.code === 'gateway_key_changed' ? 'gatewayPlatform.resetTrust' : 'gatewayPlatform.retry')}
+   onCancel={() => setFailureOpen(false)} onConfirm={() => void connect(failure?.error.code === 'gateway_key_changed')} />
   </>}
  </section>
 }

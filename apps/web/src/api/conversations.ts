@@ -1,3 +1,4 @@
+import { getMessageHistoryPageSize } from '../stores/userSettingsStore'
 import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
 import { FULL_PAGE_LIMIT, request, singleFlight } from './transport'
 
@@ -93,11 +94,11 @@ export const workflowGenApi = {
         workflow_id: options.workflowId || undefined,
       }),
     }),
-  history: (projectId: string, workflowId: string) =>
+  history: (projectId: string, workflowId: string, limit = getMessageHistoryPageSize(), offset = 0) =>
     singleFlight(
-      `workflow-history:${projectId}/${workflowId}`,
+      `workflow-history:${projectId}/${workflowId}/${limit}/${offset}`,
       () => request<WorkflowGenHistory>(
-        `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}`,
+        `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}&limit=${limit}&offset=${offset}`,
       ),
     ),
   messageEvents: (projectId: string, workflowId: string, messageId: string, cursor = 0, query?: FileChangesQuery) =>
@@ -444,7 +445,7 @@ export const chatSessionApi = {
       clearTimeout(timeout)
     }
   },
-  get: (sessionId: string, projectId: string, limit = 300, offset = 0) =>
+  get: (sessionId: string, projectId: string, limit = getMessageHistoryPageSize(), offset = 0) =>
     request<ChatSessionDetail>(
       `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
     ),

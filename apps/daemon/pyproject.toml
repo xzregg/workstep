@@ -21,7 +21,7 @@ dependencies = [
     "pydantic-ai-harness[skills]==0.27.0",
     "wecom-aibot-python-sdk>=1.0.2",
     "dingtalk-stream>=0.24.3",
-    "workstep-gateway-protocol",
+    "workstep-gateway-protocol[http]",
     "cryptography>=43.0",
     "pywebpush>=2.5.0",
     "tinycss2>=1.4,<2",

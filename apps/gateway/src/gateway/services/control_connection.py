@@ -168,12 +168,16 @@ async def authenticate_device(ws: GatewaySocket, message: dict, nonce: str) -> t
     return device_id, user.id, config_public_key_pem
 
 
+DATA_CONNECTION_TIMEOUT = 30
+
+
 class ControlConnections:
     def __init__(self):
         self._active: dict[str, tuple[str, GatewaySocket, asyncio.Task]] = {}
         self._data_active: dict[str, DataConnection] = {}
         self._pending_data: dict[str, tuple[str, float, asyncio.Future]] = {}
         self._device_pending: dict[str, str] = {}
+        self._data_waiters: dict[asyncio.Future, int] = {}
         self._config_keys: dict[str, str] = {}
         self._daemon_health: dict[str, bool] = {}
         self._project_runtime: dict[str, tuple[float, dict[str, int]]] = {}
@@ -294,48 +298,58 @@ class ControlConnections:
                 pass
 
     async def request_data(self, device_id: str) -> "DataConnection":
+        command = None
+        pending_token = None
         async with self._lock:
             if device_id not in self._active:
                 raise ConnectionError("Device is offline")
             active = self._data_active.get(device_id)
             if active:
-                return active
-            pending_token = self._device_pending.get(device_id)
-            if pending_token:
-                future = self._pending_data[pending_token][2]
-                command = None
+                future = active.ready_future
+                if future is None:
+                    return active
+                if future.done():
+                    return future.result()
             else:
-                pending_token = secrets.token_urlsafe(32)
-                future = asyncio.get_running_loop().create_future()
-                self._pending_data[pending_token] = (device_id, time.monotonic() + 10, future)
-                self._device_pending[device_id] = pending_token
-                command = {"kind": "open_data", "version": 1, "device_id": device_id,
-                           "token": pending_token}
+                pending_token = self._device_pending.get(device_id)
+                if pending_token:
+                    future = self._pending_data[pending_token][2]
+                else:
+                    pending_token = secrets.token_urlsafe(32)
+                    future = asyncio.get_running_loop().create_future()
+                    self._pending_data[pending_token] = (
+                        device_id, time.monotonic() + DATA_CONNECTION_TIMEOUT, future)
+                    self._device_pending[device_id] = pending_token
+                    command = {"kind": "open_data", "version": 1, "device_id": device_id,
+                               "token": pending_token}
+            self._data_waiters[future] = self._data_waiters.get(future, 0) + 1
             control = self._control_senders[device_id]
-        if command:
-            try:
-                await control(command)
-            except Exception:
-                async with self._lock:
-                    self._pending_data.pop(pending_token, None)
-                    self._device_pending.pop(device_id, None)
-                if not future.done():
-                    future.set_exception(ConnectionError("Data connection unavailable"))
-                    # The initiating request may be the only waiter.
-                    future.exception()
-                raise
         try:
-            return await asyncio.wait_for(asyncio.shield(future), timeout=10)
-        finally:
-            if not future.done():
-                async with self._lock:
+            if command:
+                try:
+                    await control(command)
+                except Exception:
                     if not future.done():
-                        self._pending_data.pop(pending_token, None)
-                        self._device_pending.pop(device_id, None)
-                        # A shared cancellation escapes sibling HTTP handlers as
-                        # CancelledError instead of an ordinary upstream failure.
                         future.set_exception(ConnectionError("Data connection unavailable"))
                         future.exception()
+                    raise
+            return await asyncio.wait_for(asyncio.shield(future), timeout=DATA_CONNECTION_TIMEOUT)
+        finally:
+            async with self._lock:
+                remaining = self._data_waiters[future] - 1
+                if remaining:
+                    self._data_waiters[future] = remaining
+                else:
+                    self._data_waiters.pop(future)
+                    # A cancelled HTTP waiter must not invalidate siblings.
+                    # An attached socket owns its readiness future until its ACK.
+                    if pending_token and self._pending_data.get(pending_token, (None, None, None))[2] is future:
+                        self._pending_data.pop(pending_token, None)
+                        if self._device_pending.get(device_id) == pending_token:
+                            self._device_pending.pop(device_id, None)
+                        if not future.done():
+                            future.set_exception(ConnectionError("Data connection unavailable"))
+                            future.exception()
 
     async def request_project_catalog(self, device_id: str) -> list[dict]:
         request_id = uuid4().hex
@@ -478,6 +492,8 @@ class DataConnection:
         self.socket = socket
         self.flow_control = flow_control
         self.ready_future: asyncio.Future | None = None
+        self._asset_slots = asyncio.BoundedSemaphore(8)
+        self._asset_waiters = 0
         self._send_lock = asyncio.Lock()
         self._streams: dict[str, asyncio.Queue] = {}
         self._outbound_windows: dict[str, asyncio.BoundedSemaphore] = {}
@@ -535,7 +551,8 @@ class DataConnection:
                          hook_request: bool = False,
                          target_path: str | None = None,
                          share_body: bytes | None = None,
-                         authorization_check=None):
+                         authorization_check=None,
+                         authorization_interval: float = 0):
         if hook_request:
             from .workflow_hooks import HOOK_PATH
             if (call.operation != 'POST' or not HOOK_PATH.fullmatch(call.target.path)
@@ -608,6 +625,11 @@ class DataConnection:
             raise ValueError("Invalid project proxy scope")
         if len(self._streams) >= 32:
             raise ConnectionError("Too many managed data streams")
+        if authorization_check is not None and authorization_interval > 0:
+            from gateway.services.stream_authorization import StreamAuthorizationCheck
+            authorization_check = StreamAuthorizationCheck(
+                authorization_check, interval=authorization_interval,
+            )
         if authorization_check is not None:
             await authorization_check()
         # Authorization can yield while other requests reserve slots.
@@ -706,7 +728,20 @@ class DataConnection:
                             and pair[0].lower() == GRANT_HEADER):
                         register_preview_grant(call, pair[1])
 
+            expected_length = None
+            if call.operation != "HEAD" and status not in (204, 304) and status >= 200:
+                for pair in response_headers:
+                    if (isinstance(pair, list) and len(pair) == 2
+                            and isinstance(pair[0], str) and pair[0].lower() == "content-length"):
+                        if not isinstance(pair[1], str) or not pair[1].isascii() or not pair[1].isdigit():
+                            raise ValueError("Invalid proxy content length")
+                        length = int(pair[1])
+                        if expected_length is not None and expected_length != length:
+                            raise ValueError("Conflicting proxy content length")
+                        expected_length = length
+
             async def body():
+                received_length = 0
                 try:
                     while True:
                         frame = await checked_get(60)
@@ -715,11 +750,19 @@ class DataConnection:
                         if frame.type != FrameType.http_response:
                             raise ValueError("Invalid proxy frame")
                         phase = frame.payload.get("phase")
+                        if phase == "error":
+                            raise ConnectionError("Device response interrupted")
                         if phase == "end":
+                            if expected_length is not None and received_length != expected_length:
+                                raise ConnectionError("Device response incomplete")
                             break
                         if phase != "body":
                             raise ValueError("Invalid proxy body frame")
-                        yield base64.b64decode(frame.payload["data"], validate=True)
+                        chunk = base64.b64decode(frame.payload["data"], validate=True)
+                        received_length += len(chunk)
+                        if expected_length is not None and received_length > expected_length:
+                            raise ConnectionError("Device response exceeds content length")
+                        yield chunk
                 finally:
                     upload_task.cancel()
                     self._streams.pop(stream_id, None)

@@ -127,7 +127,7 @@ async def proxy_remote_request(call: GatewayCall):
     user, device_id, auth_session, host_project_id = await _remote_identity(call)
     provider_ids, _ = await compiled_provider_access(call.database, device_id, user.id)
     provider_grant_expires_at = int(time.time()) + 300
-    owner_routes = {'/api/project/init', '/api/project/register', '/api/fs/mkdir'}
+    owner_routes = {'/api/project/init', '/api/project/register', '/api/fs/mkdir', '/api/statistics/system'}
     native_directory = call.target.path in {'/api/fs/browse', '/api/fs/search'} and not call.query_values.get('project_id')
     device_owner = False
     if not auth_session.project_id and (call.target.path in owner_routes or native_directory or call.target.path == '/api/managed/mode'):
@@ -143,7 +143,19 @@ async def proxy_remote_request(call: GatewayCall):
         if not project_http_route_allowed(call.operation, call.target.path, list(call.query_values.multi_items()), host_project_id, access_level=auth_session.project_access_level, task_create=task_create):
             raise GatewayError('forbidden', 'Project proxy scope unavailable')
     try:
-        connection = await call.control_connections.request_data(device_id)
+        from gateway.services.workspace_assets import is_workspace_asset, proxy_workspace_asset
+
+        async def proxy(**identity):
+            # Match the existing WebSocket recheck cadence. Every HTTP attempt
+            # gets a fresh check, including retries after a broken data channel.
+            identity['authorization_interval'] = 1.0
+            async def connect():
+                return await call.control_connections.request_data(device_id)
+            if is_workspace_asset(call):
+                return await proxy_workspace_asset(call, connect, **identity)
+            connection = await connect()
+            return await connection.proxy_http(call, **identity)
+
         if auth_session.project_id:
             async def authorize_stream():
                 await _check_provider_grants(call, device_id, user.id, provider_ids)
@@ -154,12 +166,12 @@ async def proxy_remote_request(call: GatewayCall):
                     if not await _project_task_create_allowed(call, device_id, user.id, host_project_id):
                         raise GatewayError('forbidden', 'Task creation capability revoked')
 
-            return await connection.proxy_http(call, user_id=user.id, username=user.username, display_name=user.display_name, provider_ids=provider_ids, provider_grant_expires_at=provider_grant_expires_at, project_id=host_project_id, access_level=auth_session.project_access_level, task_create=task_create, authorization_check=authorize_stream)
+            return await proxy(user_id=user.id, username=user.username, display_name=user.display_name, provider_ids=provider_ids, provider_grant_expires_at=provider_grant_expires_at, project_id=host_project_id, access_level=auth_session.project_access_level, task_create=task_create, authorization_check=authorize_stream)
         async def authorize_pc_stream():
             await _check_provider_grants(call, device_id, user.id, provider_ids)
             await _active_access(call, user.id, device_id)
 
-        return await connection.proxy_http(call, device_owner=device_owner, authorization_check=authorize_pc_stream, user_id=user.id, username=user.username, display_name=user.display_name, provider_ids=provider_ids, provider_grant_expires_at=provider_grant_expires_at)
+        return await proxy(device_owner=device_owner, authorization_check=authorize_pc_stream, user_id=user.id, username=user.username, display_name=user.display_name, provider_ids=provider_ids, provider_grant_expires_at=provider_grant_expires_at)
     except (ConnectionError, SocketClosed, asyncio.TimeoutError) as exc:
         raise GatewayError('upstream_failed', 'Device data connection unavailable') from exc
 

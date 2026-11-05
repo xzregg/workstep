@@ -290,6 +290,10 @@ class ConfigStore:
     def get_open_mode(self) -> bool:
         return self.get("open_mode", False) is True
 
+    def get_message_history_page_size(self) -> int:
+        value = self.get("message_history_page_size", 20)
+        return value if type(value) is int and 1 <= value <= 300 else 20
+
     def get_git_scan_depth(self) -> int:
         """Project root is depth 0; discover repositories down to depth 5 by default."""
         value = self.get("git_scan_depth", 5)
@@ -994,11 +998,11 @@ class ConfigStore:
     def apply_managed_providers(self, gateway_id: str, revision: int,
                                 desired: list[dict[str, Any]],
                                 after_apply=None, *, user_id: str = "",
-                                default_provider_id: str = "") -> bool:
-        """Replace only this Gateway's managed entries in one config-file write."""
+                                default_provider_id: str = "", device_id: str = "") -> bool:
+        """Replace managed entries with a revision scoped to the authenticated device."""
         if (not gateway_id or self._managed_gateway_id != gateway_id
                 or type(revision) is not int or revision < 0
-                or not isinstance(user_id, str)
+                or not isinstance(user_id, str) or not isinstance(device_id, str)
                 or not isinstance(desired, list) or len(desired) > 100):
             raise ValueError("Invalid managed provider scope")
         ids: set[str] = set()
@@ -1044,7 +1048,8 @@ class ConfigStore:
         with self._lock:
             data = self._load()
             state = data.get("managed_provider_state", {})
-            if isinstance(state, dict) and state.get("gateway_id") == gateway_id:
+            if (isinstance(state, dict) and state.get("gateway_id") == gateway_id
+                    and state.get("device_id", "") == device_id):
                 current_revision = state.get("revision", -1)
                 if revision < current_revision:
                     raise ValueError("Stale managed provider revision")
@@ -1069,6 +1074,7 @@ class ConfigStore:
             data["providers"] = retained + normalized
             data["provider_models"] = cache
             data["managed_provider_state"] = {"gateway_id": gateway_id,
+                                               "device_id": device_id,
                                                "user_id": user_id,
                                                "revision": revision, "digest": digest,
                                                "default_provider_id": default_provider_id}

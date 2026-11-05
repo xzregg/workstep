@@ -1,5 +1,6 @@
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
+import { useUserSettingsStore } from '../src/stores/userSettingsStore'
 import test from 'node:test'
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -57,6 +58,7 @@ test('reconnect recovers missed conversation messages with no overlapping histor
   } finally {
     await act(async () => root.unmount())
     chatSessionApi.get = originalGet
+    useUserSettingsStore.setState({ messageHistoryPageSize: 20 })
     useChatSessionStore.setState({ sessions: {} })
     await window.happyDOM.close()
   }
@@ -105,6 +107,7 @@ test('session history loads once when a caller updates its catalog callback', as
     await act(async () => { root.unmount() })
   } finally {
     chatSessionApi.get = originalGet
+    useUserSettingsStore.setState({ messageHistoryPageSize: 20 })
     useChatSessionStore.setState({ sessions: {} })
     await window.happyDOM.close()
   }
@@ -154,7 +157,7 @@ test('event details follow the current session id after a send migrates it', asy
 })
 
 
-for (const [width, pageSize] of [[390, 20], [1023, 20], [1280, 300]]) {
+for (const [width, pageSize] of [[390, 20], [1023, 20], [1280, 20], [1280, 40]]) {
 test(`history at width ${width} loads latest ${pageSize}, deduplicates older requests and stops at the end`, async () => {
   const { window } = installDomEnvironment()
   const originalGet = chatSessionApi.get
@@ -169,6 +172,7 @@ test(`history at width ${width} loads latest ${pageSize}, deduplicates older req
   const root = createRoot(window.document.body.appendChild(window.document.createElement('div')) as never)
   try {
     useChatSessionStore.setState({ sessions: {} })
+    useUserSettingsStore.setState({ loaded: true, loading: false, messageHistoryPageSize: pageSize })
     chatSessionApi.get = (async (id, project, limit, offset) => {
       assert.equal(limit, pageSize)
       requests.push(offset)
@@ -183,12 +187,15 @@ test(`history at width ${width} loads latest ${pageSize}, deduplicates older req
     await act(async () => { await history.loadOlderHistory() })
     assert.deepEqual(requests, [0, pageSize])
     assert.equal(beforePrepend, 1)
+    await act(async () => useUserSettingsStore.setState({ messageHistoryPageSize: 10 }))
+    assert.deepEqual(requests, [0, pageSize], 'saving a size must not reload the open session')
     const messages = useChatSessionStore.getState().sessions.paged.messages
     assert.equal(messages.length, pageSize + 2)
     assert.deepEqual(messages.slice(0, 3).map(m => m.id), ['0', '1', '2'])
   } finally {
     await act(async () => root.unmount())
     chatSessionApi.get = originalGet
+    useUserSettingsStore.setState({ messageHistoryPageSize: 20 })
     useChatSessionStore.setState({ sessions: {} })
     await window.happyDOM.close()
   }

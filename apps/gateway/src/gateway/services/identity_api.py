@@ -1,6 +1,7 @@
 from datetime import timezone
 from gateway.services.errors import GatewayError
 from gateway.contracts import GatewayCall, ReplyEffects, CredentialGrant
+from gateway.services.company_display_name import company_display_name
 import hmac
 
 import re
@@ -198,7 +199,9 @@ async def setup(call: GatewayCall, response: ReplyEffects, body: SetupInput):
 
 
 async def platform_status(call: GatewayCall):
-    return {"initialized": await _identity(call).initialized()}
+    async with call.database.session() as session:
+        name = await company_display_name(session)
+    return {"initialized": await _identity(call).initialized(), "company_display_name": name}
 
 
 async def register(call: GatewayCall, response: ReplyEffects, body: AccountInput):
@@ -215,10 +218,11 @@ async def registration_policy(call: GatewayCall):
     from gateway.services.login_policy import password_login_enabled
     async with call.database.session() as session:
         enabled = await password_login_enabled(session)
+        name = await company_display_name(session)
         from gateway.services.device_approval_policy import device_approval_mode
         approval = await device_approval_mode(session)
     return {"mode": await _identity(call).registration_mode() if enabled else 'closed',
-            "password_login_enabled": enabled}
+            "password_login_enabled": enabled, "company_display_name": name}
 
 
 async def login(call: GatewayCall, response: ReplyEffects, body: LoginInput):
@@ -451,10 +455,12 @@ async def admin_platform_settings(call: GatewayCall):
     from gateway.services.login_policy import password_login_enabled
     async with call.database.session() as session:
         enabled = await password_login_enabled(session)
+        name = await company_display_name(session)
         from gateway.services.device_approval_policy import device_approval_mode
         approval = await device_approval_mode(session)
     return {
         "gateway_id": settings.gateway_id,
+        "company_display_name": name,
         "public_origin": settings.public_origin,
         "registration_mode": await identity.registration_mode(),
         "password_login_enabled": enabled,

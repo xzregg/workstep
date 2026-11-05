@@ -1,5 +1,7 @@
 """Platform settings expose operational facts without database credentials."""
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from gateway.app import create_app
@@ -81,7 +83,8 @@ def test_platform_address_saved_live_and_restored_on_restart(tmp_path):
         assert restored.state.settings.device_url('pc') == 'https://workstep.example.com/workspace/pc/'
 
 
-def test_platform_address_write_lock_keeps_health_responsive(tmp_path):
+@pytest.mark.parametrize("endpoint,body", [("platform-address", {"public_origin": "https://workstep.example.com"}), ("company-display-name", {"company_display_name": "示例公司"})])
+def test_platform_address_write_lock_keeps_health_responsive(tmp_path, endpoint, body):
     import asyncio
     import sqlite3
     import threading
@@ -101,7 +104,7 @@ def test_platform_address_write_lock_keeps_health_responsive(tmp_path):
         event.listen(engine, 'before_cursor_execute', before_execute)
         async def scenario():
             async with AsyncClient(transport=ASGITransport(app=app), base_url='https://gateway.test', cookies=client.cookies) as actor:
-                pending = asyncio.create_task(actor.put('/api/admin/platform-address', headers={'X-CSRF-Token': csrf}, json={'public_origin': 'https://workstep.example.com'}))
+                pending = asyncio.create_task(actor.put('/api/admin/' + endpoint, headers={'X-CSRF-Token': csrf}, json=body))
                 try:
                     assert await asyncio.to_thread(reached_write.wait, 2)
                     assert (await asyncio.wait_for(actor.get('/api/health'), .5)).status_code == 200
@@ -115,3 +118,30 @@ def test_platform_address_write_lock_keeps_health_responsive(tmp_path):
                 client.portal.call(scenario)
         finally:
             event.remove(engine, 'before_cursor_execute', before_execute)
+
+
+def test_company_display_name_is_public_validated_and_persisted(tmp_path):
+    from test_external_identity import _setup
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        assert client.get('/api/platform/status').json()['company_display_name'] == ''
+        assert client.put('/api/admin/company-display-name', json={'company_display_name': '示例公司'}).status_code == 401
+        headers = {'X-CSRF-Token': _setup(client)}
+        body = {'company_display_name': '  示例公司  '}
+        assert client.put('/api/admin/company-display-name', headers=headers, json=body).status_code == 403
+        client.post('/api/auth/step-up', headers=headers, json={'password': 'OwnerPassphrase-2026!'})
+        assert client.put('/api/admin/company-display-name', json=body).status_code == 403
+        response = client.put('/api/admin/company-display-name', headers=headers, json=body)
+        assert response.status_code == 200, response.text
+        assert response.json()['company_display_name'] == '示例公司'
+        assert client.get('/api/admin/platform-settings').json()['company_display_name'] == '示例公司'
+        for value in ('x' * 101, '公司\n名称'):
+            assert client.put('/api/admin/company-display-name', headers=headers, json={'company_display_name': value}).status_code == 422
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path)), base_url='https://gateway.test') as client:
+        assert client.get('/api/platform/status').json()['company_display_name'] == '示例公司'
+        assert client.get('/api/auth/registration-policy').json()['company_display_name'] == '示例公司'
+        client.post('/api/auth/login', json={'username': 'owner', 'password': 'OwnerPassphrase-2026!'})
+        headers = {'X-CSRF-Token': client.get('/api/auth/session').json()['csrf_token']}
+        client.post('/api/auth/step-up', headers=headers, json={'password': 'OwnerPassphrase-2026!'})
+        assert client.put('/api/admin/company-display-name', headers=headers, json={'company_display_name': '  '}).status_code == 200
+        assert client.get('/api/platform/status').json()['company_display_name'] == ''

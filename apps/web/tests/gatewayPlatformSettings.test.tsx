@@ -8,6 +8,72 @@ import GatewayPlatformSettings, { validGatewayPlatformUrl } from '../src/pages/G
 import RemoteAccessSettings from '../src/pages/RemoteAccessSettings'
 import { useManagedModeStore } from '../src/stores/managedModeStore'
 
+test('changed signing key explains recovery and clears trust only after confirmation', async () => {
+ const { window } = installDomEnvironment(); const original = globalThis.fetch
+ const writes: string[] = []; let reset = false
+ globalThis.fetch = async (input, init) => {
+  const url = String(input)
+  if (init?.method) writes.push(url)
+  if (url.endsWith('/reset-trust')) {
+   assert.deepEqual(JSON.parse(init!.body as string), {url:'https://gateway.example.com',fingerprint:'old-key'})
+   reset = true
+  }
+  if (url.endsWith('/login')) return reset
+   ? Response.json({authorization_url:'https://gateway.example.com/desktop/login?state=new'})
+   : Response.json({detail:{code:'gateway_key_changed',fingerprint:'old-key'}},{status:409})
+  return Response.json({url:'https://gateway.example.com',enabled:true,authenticated:false,online:false,package_locked:false})
+ }
+ const container = document.body.appendChild(document.createElement('div')); const root = createRoot(container)
+ try {
+  await act(async()=>root.render(<I18nProvider><GatewayPlatformSettings/></I18nProvider>))
+  const submit = async()=>act(async()=>container.querySelector('form')!.dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true})))
+  await submit()
+  assert.match(document.querySelector('[role=dialog]')?.textContent ?? '', /签名密钥.*变化/)
+  assert.match(document.querySelector('[role=dialog]')?.textContent ?? '', /管理员/)
+  assert.equal(reset,false)
+  await act(async()=>document.querySelector<HTMLButtonElement>('.confirm-dialog-footer .btn-ghost')!.click())
+  assert.equal(reset,false)
+  assert.match(container.querySelector('[role=alert]')?.textContent ?? '', /签名密钥/)
+  await submit()
+  await act(async()=>document.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
+  assert.equal(reset,true)
+  assert.equal(writes.filter(url=>url.endsWith('/reset-trust')).length,1)
+  assert.equal(writes.filter(url=>url.endsWith('/login')).length,3)
+ } finally {await act(async()=>root.unmount());globalThis.fetch=original;container.remove();await window.happyDOM.close()}
+})
+
+test('gateway timeout displays its reason and retry instructions', async () => {
+ const {window}=installDomEnvironment();const original=globalThis.fetch
+ globalThis.fetch=async input=>String(input).endsWith('/login')
+  ? Response.json({detail:{code:'gateway_timeout'}},{status:502})
+  : Response.json({url:'https://gateway.example.com',enabled:true,authenticated:false,online:false,package_locked:false})
+ const container=document.body.appendChild(document.createElement('div'));const root=createRoot(container)
+ try {
+  await act(async()=>root.render(<I18nProvider><GatewayPlatformSettings/></I18nProvider>))
+  await act(async()=>container.querySelector('form')!.dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true})))
+  assert.match(container.querySelector('[role=alert]')?.textContent ?? '', /超时.*网络.*重试/)
+ } finally {await act(async()=>root.unmount());globalThis.fetch=original;container.remove();await window.happyDOM.close()}
+})
+
+test('failed trust reset shows the reason and does not proceed to login', async () => {
+ const {window}=installDomEnvironment();const original=globalThis.fetch
+ let logins=0
+ globalThis.fetch=async input=>{
+  const url=String(input)
+  if(url.endsWith('/login')) { logins++;return Response.json({detail:{code:'gateway_key_changed',fingerprint:'old-key'}},{status:409}) }
+  if(url.endsWith('/reset-trust'))return Response.json({detail:{code:'gateway_settings_changed'}},{status:409})
+  return Response.json({url:'https://gateway.example.com',enabled:true,authenticated:false,online:false,package_locked:false})
+ }
+ const container=document.body.appendChild(document.createElement('div'));const root=createRoot(container)
+ try {
+  await act(async()=>root.render(<I18nProvider><GatewayPlatformSettings/></I18nProvider>))
+  await act(async()=>container.querySelector('form')!.dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true})))
+  await act(async()=>document.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
+  assert.equal(logins,1)
+  assert.match(document.querySelector('[role=dialog]')?.textContent ?? '', /配置已变化.*刷新设置/)
+ } finally {await act(async()=>root.unmount());globalThis.fetch=original;container.remove();await window.happyDOM.close()}
+})
+
 test('gateway settings accept private-network HTTP origins but reject public HTTP', () => {
  assert.equal(validGatewayPlatformUrl('http://192.168.52.156:8700'), true)
  assert.equal(validGatewayPlatformUrl('http://10.0.0.8:8700'), true)

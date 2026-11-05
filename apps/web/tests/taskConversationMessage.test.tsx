@@ -51,9 +51,34 @@ test('a coordinator step instruction uses the coordinator identity and assistant
     assert.equal(row.style.alignSelf, 'flex-start')
     assert.match(container.textContent || '', /按要求执行构建/)
     assert.match(container.querySelector('.chat-message-avatar-anchor [aria-label]')?.getAttribute('aria-label') || '', /协调|Coordinator/)
+    assert.equal(container.querySelector('.robot-avatar'), null, 'task coordinator identity stays unchanged')
   } finally {
     await act(async () => root.unmount())
     container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+test('task assistant replies retain the stage avatar while running and after completion', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    for (const run_status of ['running', 'completed']) {
+      await act(async () => root.render(<I18nProvider><TaskConversationMessage
+        message={{ id: 'reply', role: 'assistant', channel: 'execution', step_key: 'build',
+          content: '执行构建', run_status, created_at: '2026-01-01T00:00:00Z' }}
+        task={null} steps={[{ key: 'build', label: 'Build', color: '#123456', prompt: '', inputs: [], outputs: [] }]}
+        stepProgress={[]} reviews={[]} artifacts={[]}
+        latestStepMessageIds={new Map()} latestExecutionMessageIds={new Map()}
+        locale="en-US" canChat={false} onOpenArtifact={() => {}}
+        sessionIdForStep={() => null} stepLastRef={{ current: {} }}
+      /></I18nProvider>))
+      assert.equal(container.querySelector('.robot-avatar'), null)
+      assert.ok(container.querySelector('.chat-message-avatar')?.textContent?.trim())
+    }
+  } finally {
+    await act(async () => root.unmount())
     await window.happyDOM.close()
   }
 })

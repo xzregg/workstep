@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import type { Task } from '../api/client'
 import { useI18n, type TKey } from '../i18n'
 import { formatDuration, toMilliseconds } from '../utils/datetime'
-import { taskDisplayStatus, hasActiveTaskExecution } from '../utils/taskDisplayStatus'
+import { taskDisplayStatus, hasActiveTaskExecution, taskFailureLabelKey } from '../utils/taskDisplayStatus'
 import { isTaskCompleted } from '../pages/taskDetailChat'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -301,7 +301,7 @@ export default function TaskTableView({
                         <td style={{ ...cellStyle, overflow: 'visible' }}>
                           <span className="status-badge" data-s={info.displayStatus} style={info.stepStatus ? { color: info.statusColor, background: `color-mix(in oklab, ${info.statusColor}, transparent 86%)` } : undefined}>
                             {(info.displayStatus === 'running' || info.displayStatus === 'reviewing') && <span className="task-status-spinner" aria-hidden="true" />}
-                            {t(STATUS_LABEL_KEYS[info.displayStatus] ?? (info.displayStatus as TKey))}
+                            {t(taskFailureLabelKey(info.displayStatus, task.status_reason) ?? STATUS_LABEL_KEYS[info.displayStatus] ?? (info.displayStatus as TKey))}
                             <TaskPendingConfirmations task={task} />
                           </span>
                         </td>

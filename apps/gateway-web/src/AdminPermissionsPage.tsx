@@ -94,7 +94,7 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>重试规则</button></p>}
     {!loading && !error && visible.length === 0 && <p>当前条件下尚无权限规则。点击“{platform ? '分配平台权限' : '分配权限'}”，选择用户或组、权限和作用范围。</p>}
     {!!visible.length && <PermissionSubjectTable assignments={visible} name={name} projectCatalog={projectCatalog} projectSets={projectSets} canEdit={!!csrf && !!availableCatalog.length}
-      canRevoke={!!csrf} onEdit={setEdit} onRevoke={setRevoke} />}
+      canRevoke={!!csrf} csrf={csrf} onChanged={() => setRevision(value => value + 1)} onEdit={setEdit} onRevoke={setRevoke} />}
     {!loading && !error && <p className="gateway-permission-note">共 {new Set(visible.map(row => `${row.subject_type}:${row.subject_id}`)).size} 个授权对象，{visible.length} 条直接授权规则。{!platform && '个人与组的业务禁止规则优先；'}继承权限会随组成员变化更新。</p>}
     {editor && editorReady && !platform && projectCatalog.length > 0 && !legacyNew && (editor === 'new' ? !preset || preset.scope_type === 'project' : editor.id.startsWith('project:')) ?
       <ProjectPermissionDialog key={editor === 'new' ? 'new' : editor.id} catalog={projectCatalog} sets={projectSets} csrf={csrf} preset={preset}

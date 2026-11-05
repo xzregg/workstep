@@ -1,4 +1,4 @@
-"""System sampling, local-only API, and event-loop responsiveness."""
+"""System sampling, workspace access, and event-loop responsiveness."""
 import asyncio
 import threading
 from datetime import datetime, timezone
@@ -155,6 +155,68 @@ async def test_system_api_sandbox_desktop_authentication(monkeypatch, runtime, t
     assert response.status_code == expected
     if expected == 200:
         assert 'history' in response.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind,expected', [
+    ('lan', 200), ('locked', 403), ('disabled', 403),
+    ('owner', 200), ('member', 403), ('project', 403), ('share', 403),
+])
+async def test_system_api_mobile_workspace_access(kind, expected):
+    import api.statistics as api
+    app = FastAPI()
+    app.include_router(api.router)
+    app.state.remote_access_service = SimpleNamespace(
+        settings=lambda: {'enabled': kind != 'disabled'},
+        access_password_required=lambda: True,
+        verify_access_token=lambda token: kind != 'locked' and token == 'access-secret',
+    )
+    actor = ActorSnapshot('a', 'user', 'd', 'device',
+                          'managed' if kind in ('owner', 'member', 'project', 'share') else 'browser',
+                          project_id='p' if kind == 'project' else None,
+                          access_source='remote_browser')
+    @app.middleware('http')
+    async def attach_scope(request, call_next):
+        if kind in ('owner', 'member', 'project', 'share'):
+            request.scope['gateway_remote_actor'] = actor
+            request.scope['gateway_device_owner'] = kind in ('owner', 'project', 'share')
+        if kind == 'share':
+            request.scope['gateway_share_scope'] = {'share_id': 's'}
+        return await call_next(request)
+    with actor_context(actor):
+        async with AsyncClient(transport=ASGITransport(app=app, client=('192.168.1.10', 123)), base_url='http://host') as client:
+            response = await client.get('/api/statistics/system', headers={'x-workstep-access': 'access-secret'})
+    assert response.status_code == expected
+    if expected == 200:
+        assert 'history' in response.json()
+
+
+@pytest.mark.asyncio
+async def test_mobile_access_verification_does_not_block_health():
+    import api.statistics as api
+    app = FastAPI()
+    app.include_router(api.router)
+    started, release = threading.Event(), threading.Event()
+    def slow_settings():
+        started.set()
+        release.wait(2)
+        return {'enabled': True}
+    app.state.remote_access_service = SimpleNamespace(
+        settings=slow_settings, access_password_required=lambda: False,
+    )
+    @app.get('/api/health')
+    async def health():
+        return {'ok': True}
+    async with AsyncClient(transport=ASGITransport(app=app, client=('192.168.1.10', 123)), base_url='http://host') as client:
+        pending = asyncio.create_task(client.get('/api/statistics/system'))
+        try:
+            assert await asyncio.to_thread(started.wait, 1)
+            response = await asyncio.wait_for(client.get('/api/health'), .2)
+            assert response.json() == {'ok': True}
+        finally:
+            release.set()
+            response = await pending
+        assert response.status_code == 200
 
 
 class FakeProcess:

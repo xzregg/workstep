@@ -184,3 +184,54 @@ test('scan login callback uses the configured platform address for both provider
   cleanup()
  }
 })
+
+
+test('saved application secret is fetched on demand, shown, hidden and copied without changing the draft', async () => {
+ let reveals = 0; let copied = ''; let saved: Record<string, unknown> | undefined
+ Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {writeText: async (text: string) => {copied = text}} })
+ globalThis.fetch = async (input, init) => {
+  if (String(input).endsWith('/secret/reveal')) {
+   reveals++; assert.equal(init?.method, 'POST')
+   assert.equal(new Headers(init?.headers).get('X-CSRF-Token'), 'csrf')
+   return Response.json({client_secret:'stored-secret'})
+  }
+  if (init?.method === 'PUT') {saved = JSON.parse(String(init.body)); return Response.json({})}
+  return Response.json({sources:[{id:'source',provider:'wecom',tenant_id:'corp',client_id:'app',agent_id:'1001',enabled:true,secret_configured:true}]})
+ }
+ render(<OrganizationSyncSettings csrf="csrf" />)
+ fireEvent.click(await screen.findByRole('button', {name:'编辑配置'}))
+ assert.equal(reveals, 0)
+ fireEvent.click(screen.getByRole('button', {name:'显示密钥'}))
+ await waitFor(() => assert.equal((screen.getByLabelText('应用 Secret') as HTMLInputElement).value, 'stored-secret'))
+ assert.equal((screen.getByLabelText('应用 Secret') as HTMLInputElement).type, 'text')
+ fireEvent.click(screen.getByRole('button', {name:'隐藏密钥'}))
+ assert.equal((screen.getByLabelText('应用 Secret') as HTMLInputElement).type, 'password')
+ fireEvent.click(screen.getByRole('button', {name:'复制密钥'}))
+ await waitFor(() => assert.equal(copied, 'stored-secret'))
+ assert.equal(reveals, 1)
+ fireEvent.click(screen.getByRole('button', {name:'保存配置'}))
+ await waitFor(() => assert.equal(saved?.client_secret, null))
+})
+
+
+test('application list switches enabled status directly and disables synchronization when stopped', async () => {
+ let writes = 0
+ globalThis.fetch = async (input, init) => {
+  if (init?.method === 'PUT') {
+   assert.equal(String(input), '/api/admin/identity-sources/source/enabled')
+   assert.equal(new Headers(init.headers).get('X-CSRF-Token'), 'csrf')
+   assert.deepEqual(JSON.parse(String(init.body)), {enabled:writes++ > 0})
+   return Response.json({id:'source',enabled:writes>1})
+  }
+  return Response.json({sources:[{id:'source',provider:'wecom',tenant_id:'corp',client_id:'app',agent_id:'1001',enabled:true,secret_configured:true}]})
+ }
+ render(<OrganizationSyncSettings csrf="csrf" />)
+ const control = await screen.findByRole('switch', {name:'启用企业微信应用 corp'})
+ assert.equal(control.getAttribute('aria-checked'), 'true')
+ fireEvent.click(control)
+ await waitFor(()=>assert.equal(control.getAttribute('aria-checked'), 'false'))
+ assert.equal((screen.getByRole('button', {name:'同步组织与用户'}) as HTMLButtonElement).disabled, true)
+ fireEvent.click(control)
+ await waitFor(()=>assert.equal(control.getAttribute('aria-checked'), 'true'))
+ assert.equal(writes, 2)
+})

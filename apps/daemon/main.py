@@ -326,6 +326,8 @@ app.add_middleware(
     access_service=remote_access_service,
 )
 app.add_middleware(BrowserActorMiddleware)
+from api.static_asset_compression import StaticAssetCompressionMiddleware
+app.add_middleware(StaticAssetCompressionMiddleware)
 
 # Register routers
 app.include_router(project_router)

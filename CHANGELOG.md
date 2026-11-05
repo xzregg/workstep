@@ -10,6 +10,12 @@ No unreleased changes recorded.
 
 ### Highlights
 
+- Add a shared message-history page-size setting, with a default of 20 and a supported range of 1–300. Apply the saved value to new history requests without reloading an open conversation.
+- Add activity-aware robot avatars, clearer task failure reasons and improved artifact-round navigation. Remove archived or deleted conversations from restored chat panes while preserving failed operations and unrelated sessions.
+- Load project catalogs without workflow bodies, fetch selected workflow details on demand, and expose recoverable loading errors instead of treating unavailable definitions as empty workflows. Rename the current workflow from its task-panel title with validation, cancellation and retry.
+- Add Gateway company branding, explicit administrator-only application-secret reveal, application enable/disable controls and selected permission revocation. Preserve CSRF checks, audit records, non-cacheable secret responses and a valid login method.
+- Improve Gateway same-origin device entry, identity reuse across verified platform address aliases, shared data-connection recovery and bounded static-resource retries. Compress eligible static responses without buffering API event streams or double-compressing proxied assets.
+- Allow authorized host workspaces to inspect cached system statistics while continuing to exclude project-scoped and shared visitors. Add an image-only Actions mode that validates service startup and persistence before updating the sandbox image's latest tag.
 - Add local-only, one-click problem feedback in Settings. Desktop users can copy redacted diagnostic text, then explicitly preview and copy a screenshot of the current workspace. Browser users can copy bounded frontend diagnostics without reading backend files. Nothing is submitted automatically; screenshots require a separate privacy review.
 - Summarize repeated diagnostic errors into a bounded, privacy-filtered report with key stack frames; keep full diagnostic export available. Improve feedback-window recovery and screenshot controls.
 - Add a persistent automatic-update-check preference in desktop settings. Turning it off prevents background Release requests; explicit manual checks remain available.

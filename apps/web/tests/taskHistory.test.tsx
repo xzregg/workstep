@@ -12,9 +12,10 @@ test('task history loads once, pages older messages, and coalesces refresh signa
   const original = taskApi.history
   const requests: number[] = []
   taskApi.history = async (_taskId, _projectId, _limit, offset) => {
+    assert.equal(_limit, 20)
     requests.push(offset ?? 0)
     return { messages: offset ? [{ id: 'older' }]
-      : Array.from({ length: 300 }, (_, index) => ({ id: index === 0 ? 'latest' : `message-${index}` }))
+      : Array.from({ length: 20 }, (_, index) => ({ id: index === 0 ? 'latest' : `message-${index}` }))
     } as Awaited<ReturnType<typeof taskApi.history>>
   }
   const container = document.body.appendChild(document.createElement('div'))
@@ -36,11 +37,11 @@ test('task history loads once, pages older messages, and coalesces refresh signa
     assert.deepEqual(requests, [0])
     assert.match(container.textContent!, /latest/)
     await act(async () => current!.loadOlderHistory())
-    assert.deepEqual(requests, [0, 300])
+    assert.deepEqual(requests, [0, 20])
     assert.match(container.textContent!, /older/)
     await act(async () => root.render(<Harness remote={2} review="changed" />))
     await act(async () => { await new Promise(resolve => window.setTimeout(resolve, 80)) })
-    assert.deepEqual(requests, [0, 300, 0])
+    assert.deepEqual(requests, [0, 20, 0])
   } finally {
     taskApi.history = original
     await act(async () => root.unmount())

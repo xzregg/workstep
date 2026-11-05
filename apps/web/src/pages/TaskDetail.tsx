@@ -1,3 +1,4 @@
+import { getMessageHistoryPageSize } from '../stores/userSettingsStore'
 import { useTaskMessageFocus } from '../hooks/useTaskMessageFocus'
 import { useRecordRecentVisit } from '../hooks/useRecordRecentVisit'
 import { useTaskHistory } from '../hooks/useTaskHistory'
@@ -125,8 +126,6 @@ interface TaskDetailProps {
   taskId: string
   onClose: () => void
 }
-
-const TASK_HISTORY_PAGE_SIZE = 300
 
 export default function TaskDetail({ taskId, onClose, shared, project, focusMessageId }: TaskDetailProps) {
   const { t, locale } = useI18n()
@@ -343,7 +342,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
     if (!taskId || !projectId || missingLivePromptIds.length === 0) return
     let cancelled = false
     const missingIds = new Set(missingLivePromptIds)
-    taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0)
+    taskApi.history(taskId, projectId, getMessageHistoryPageSize(), 0)
       .then((response) => {
         if (cancelled) return
         const prompts = Object.fromEntries(

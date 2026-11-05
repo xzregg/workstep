@@ -6,6 +6,7 @@
   --mobile-control-regular: var(--mobile-button-height);
   --mobile-control-touch: 44px;
   --mobile-control-menu: 44px;
+  --mobile-project-row-height: 40px;
   --mobile-toolbar-control-height: var(--mobile-control-regular);
   --mobile-control-font-size: calc(13px * var(--font-scale));
   --mobile-control-icon-size: 16px;

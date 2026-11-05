@@ -22,3 +22,10 @@ test('project host renders a project workspace instead of the whole PC portal', 
   assert.doesNotMatch(project, /管理后台/)
   assert.doesNotMatch(project, /我的电脑/)
 })
+
+
+test('return-to-platform route mounts the device selection page directly', () => {
+ const html = renderToString(<MemoryRouter initialEntries={['/devices']}><App /></MemoryRouter>)
+ assert.match(html, /<h2[^>]*>我的 WorkStep/)
+ assert.equal((html.match(/class="gateway-portal-header"/g) ?? []).length, 1)
+})

@@ -8,6 +8,104 @@ from httpx import ASGITransport, AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_changed_gateway_key_requires_explicit_reset_and_preserves_device_identity(tmp_path, monkeypatch):
+    import hashlib
+    from unittest.mock import AsyncMock
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from services.gateway_client import browser_login as module
+    from api.gateway_platform import router
+    origin = 'https://gateway.example.com'
+    stored = {'url': origin, 'enabled': True, 'authorized': True, 'gateway_id': 'old', 'fingerprint': 'a'*64}
+    monkeypatch.setattr(module, 'config_store', SimpleNamespace(
+        get=lambda *args: dict(stored), set=lambda key, value: (stored.clear(), stored.update(value))))
+    monkeypatch.setattr(module.config_module, 'CONFIG_DIR', tmp_path)
+    monkeypatch.delenv('WORKSTEP_MANAGED_BUNDLE_DIR', raising=False)
+    deleted = []
+    monkeypatch.setattr(module.connection_credentials, 'delete', deleted.append)
+    key = Ed25519PrivateKey.generate().public_key()
+    pem = key.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    fingerprint = hashlib.sha256(key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)).hexdigest()
+    gateway = SimpleNamespace(close=AsyncMock(), managed_config=None, control_client=None, current_user_id=None)
+    login = module.GatewayBrowserLogin(gateway, client_factory=lambda: AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json={'gateway_id': 'new', 'public_key_pem': pem, 'fingerprint': fingerprint}))))
+    identity = module._identity(origin)
+    login.pending = {'state': 'old'}
+    login.desktop_local_session = 'old-session'
+    app = FastAPI(); app.include_router(router); app.state.gateway_browser_login = login
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://localhost:8765') as client:
+        headers = {'Origin': 'http://localhost:8765'}
+        failed = await client.post('/api/gateway-platform/login', headers=headers, json={'url': origin})
+        assert failed.status_code == 409
+        assert failed.json()['detail']['code'] == 'gateway_key_changed'
+        assert failed.json()['detail']['fingerprint'] == 'a'*64
+        assert stored['fingerprint'] == 'a'*64
+        assert not deleted
+        payload = {'url': origin, 'fingerprint': 'a'*64}
+        assert (await client.post('/api/gateway-platform/reset-trust', headers={'Origin': 'https://evil.test'}, json=payload)).status_code == 403
+        assert (await client.post('/api/gateway-platform/reset-trust', headers=headers, json={**payload, 'fingerprint': 'b'*64})).status_code == 409
+        reset = await client.post('/api/gateway-platform/reset-trust', headers=headers, json=payload)
+        assert reset.status_code == 200
+        assert stored == {'url': origin, 'enabled': True, 'authorized': False, 'pending_device': False}
+        assert login.pending is None and login.desktop_local_session is None
+        assert deleted == [origin]
+        assert module._identity(origin) == identity
+        retry = await client.post('/api/gateway-platform/login', headers=headers, json={'url': origin})
+        assert retry.status_code == 200
+        assert stored['fingerprint'] == fingerprint
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure,code', [
+    (httpx.ConnectError('connection refused'), 'gateway_unreachable'),
+    (httpx.ReadTimeout('slow'), 'gateway_timeout'),
+    (ValueError('invalid json'), 'gateway_invalid_response'),
+])
+async def test_login_api_returns_actionable_failure_codes(failure, code):
+    from unittest.mock import AsyncMock
+    from api.gateway_platform import router
+    app = FastAPI(); app.include_router(router)
+    app.state.gateway_browser_login = SimpleNamespace(begin=AsyncMock(side_effect=failure))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://localhost:8765') as client:
+        result = await client.post('/api/gateway-platform/login', headers={'Origin': 'http://localhost:8765'}, json={'url': 'https://gateway.example.com'})
+    assert result.json()['detail']['code'] == code
+
+
+@pytest.mark.asyncio
+async def test_reset_trust_slow_disk_keeps_api_health_responsive_and_locked_packages_reject_reset(monkeypatch):
+    import threading, time
+    from unittest.mock import AsyncMock
+    from services.gateway_client import browser_login as module
+    from api.gateway_platform import router
+    stored = {'url': 'https://gateway.example.com', 'enabled': True, 'fingerprint': 'a'*64}
+    monkeypatch.setattr(module, 'config_store', SimpleNamespace(
+        get=lambda *args: dict(stored), set=lambda key, value: (stored.clear(), stored.update(value))))
+    entered = threading.Event()
+    def slow_delete(origin):
+        entered.set(); time.sleep(.4)
+    monkeypatch.setattr(module.connection_credentials, 'delete', slow_delete)
+    gateway = SimpleNamespace(close=AsyncMock(), managed_config=None, control_client=None, current_user_id=None)
+    login = module.GatewayBrowserLogin(gateway)
+    app = FastAPI(); app.include_router(router); app.state.gateway_browser_login = login
+    @app.get('/api/health')
+    async def health(): return {'status': 'ok'}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://localhost:8765') as client:
+        payload = {'url': stored['url'], 'fingerprint': stored['fingerprint']}
+        headers = {'Origin': 'http://localhost:8765'}
+        monkeypatch.setenv('WORKSTEP_MANAGED_BUNDLE_DIR', '/managed')
+        rejected = await client.post('/api/gateway-platform/reset-trust', headers=headers, json=payload)
+        assert rejected.json()['detail']['code'] == 'gateway_package_locked'
+        gateway.close.assert_not_awaited()
+        monkeypatch.delenv('WORKSTEP_MANAGED_BUNDLE_DIR')
+        pending = asyncio.create_task(client.post('/api/gateway-platform/reset-trust', headers=headers, json=payload))
+        assert await asyncio.to_thread(entered.wait, 2)
+        started = time.monotonic()
+        assert (await client.get('/api/health')).status_code == 200
+        assert time.monotonic() - started < .2
+        assert (await pending).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_logout_keeps_gateway_address_and_mode_but_clears_login(monkeypatch):
     from unittest.mock import AsyncMock
     from services.gateway_client import browser_login as module
@@ -450,6 +548,8 @@ async def test_mobile_cannot_change_managed_gateway_without_device_owner_session
         headers={'Origin':'http://192.168.1.10:8765'}
         payload={'url':'https://gateway.example.com','enabled':False}
         assert (await client.put('/api/gateway-platform/settings',headers=headers,json=payload)).status_code==403
+        assert (await client.post('/api/gateway-platform/reset-trust', headers=headers,
+            json={'url': payload['url'], 'fingerprint': 'a'*64})).status_code == 403
         headers['x-workstep-local-session']='owner-session'
         assert (await client.put('/api/gateway-platform/settings',headers=headers,json=payload)).status_code==200
 
@@ -464,6 +564,8 @@ async def test_gateway_project_visitor_cannot_read_or_change_host_settings():
         return await call_next(request)
     async with AsyncClient(transport=ASGITransport(app=app,client=('127.0.0.1',1)),base_url='http://127.0.0.1') as client:
         assert (await client.get('/api/gateway-platform/settings')).status_code==403
+        assert (await client.post('/api/gateway-platform/reset-trust', headers={'Origin':'http://127.0.0.1'},
+            json={'url':'https://gateway.example.com','fingerprint':'a'*64})).status_code == 403
         assert (await client.put('/api/gateway-platform/settings',headers={'Origin':'http://127.0.0.1'},json={'url':'https://gateway.example.com','enabled':False})).status_code==403
 
 
@@ -494,3 +596,31 @@ async def test_browser_callback_cookie_allows_cross_site_top_level_return(origin
     assert cookie['httponly']
     assert bool(cookie['secure']) == origin.startswith('https:')
     assert cookie['path'] == '/'
+
+
+def test_gateway_address_alias_reuses_only_successfully_connected_signed_identity(tmp_path, monkeypatch):
+    import base64, hashlib, json
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from services.gateway_client import browser_login as module
+    from services.gateway_client.platform_identity import platform_identity
+    monkeypatch.setattr(module.config_module, 'CONFIG_DIR', tmp_path)
+    original = module._identity('https://gateway.test')
+    duplicate = module._identity('http://127.0.0.1:8700')
+    signing_key = Ed25519PrivateKey.generate()
+    public = serialization.load_pem_private_key(original['private_key'].encode(), password=None).public_key()
+    def encode(value):
+        return base64.urlsafe_b64encode(json.dumps(value).encode()).rstrip(b'=').decode()
+    header = encode({'alg':'EdDSA','typ':'JWT'})
+    payload = encode({'gateway_id':'g1','iss':'g1','app_instance_id':original['app_instance_id'],
+                     'device_public_key':public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()})
+    signature = base64.urlsafe_b64encode(signing_key.sign(f'{header}.{payload}'.encode())).rstrip(b'=').decode()
+    directory = tmp_path / 'gateway-connections'
+    directory.mkdir()
+    path = directory / (hashlib.sha256(b'https://gateway.test').hexdigest() + '.json')
+    path.write_text(json.dumps({'authorization':f'{header}.{payload}.{signature}', 'reconnect_token':'previously-connected'}))
+    assert platform_identity('g1', signing_key.public_key(), duplicate) == original
+    # Another public key, or merely matching gateway ID, cannot inherit the identity.
+    assert platform_identity('g1', Ed25519PrivateKey.generate().public_key(), duplicate) == duplicate
+    assert module._identity('https://gateway.test') == original
+    assert module._identity('http://127.0.0.1:8700') == duplicate, 'Legacy identities remain available'

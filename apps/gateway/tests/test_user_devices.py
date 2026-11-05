@@ -88,7 +88,8 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
         assert client.get(f"{remote_url}/api/remote/project-grants").status_code == 403
         class FakeData:
             async def proxy_http(self, request, *, user_id, username, display_name,
-                                 provider_ids, provider_grant_expires_at, authorization_check, device_owner=False):
+                                 provider_ids, provider_grant_expires_at, authorization_check, authorization_interval, device_owner=False):
+                assert authorization_interval == 1.0
                 await authorization_check()
                 assert provider_ids == []
                 assert provider_grant_expires_at > 0

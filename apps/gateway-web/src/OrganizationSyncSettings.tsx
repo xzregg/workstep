@@ -1,3 +1,5 @@
+import { ApplicationEnabledSwitch } from './ApplicationEnabledSwitch'
+import { ApplicationSecretField } from './ApplicationSecretField'
 import { OrganizationSyncNotice } from './OrganizationSyncNotice'
 import { useEffect, useRef, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -43,7 +45,7 @@ function ApplicationEditor({ provider, source, csrf, platformAddress, onClose, o
    {provider === 'dingtalk' && <label>App Key / Client ID<input value={draft.client} disabled={busy} onChange={event => change('client', event.target.value)} /></label>}
    {isFeishuProvider(provider) && <label>App ID<input aria-label="App ID" value={draft.client} disabled={busy || !!source} onChange={event => change('client', event.target.value)} /><small>已有应用的 App ID 保持固定；更换应用请添加新配置。</small></label>}
    {provider === 'wecom' && <label>Agent ID<input value={draft.agent} disabled={busy} onChange={event => change('agent', event.target.value)} /></label>}
-   <label>应用 Secret<input type="password" autoComplete="new-password" value={draft.secret} disabled={busy} placeholder={source ? '留空保留已保存的密钥' : '请输入应用密钥'} onChange={event => change('secret', event.target.value)} /></label>
+   <ApplicationSecretField value={draft.secret} onChange={value => change('secret', value)} sourceId={source?.id} configured={source?.secret_configured} csrf={csrf} disabled={busy} />
    <label className="gateway-check-label"><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={event => change('enabled', event.target.checked)} />启用应用</label>
    <label className="gateway-check-label"><input type="checkbox" checked={draft.sync} disabled={busy} onChange={event => change('sync', event.target.checked)} />启用组织同步</label>
    <label>自动同步频率<select value={draft.frequency} disabled={busy} onChange={event => change('frequency', event.target.value)}><option value="off">关闭</option><option value="daily">每天</option><option value="weekly">每周</option></select></label>
@@ -52,7 +54,7 @@ function ApplicationEditor({ provider, source, csrf, platformAddress, onClose, o
   </div>
   {source && draft.tenant.trim() !== source.tenant_id && <p role="status">正在更正企业标识；已有用户组和成员关联会保留。请确认仍是原企业，改为另一企业应添加新应用。</p>}
   <p>自动同步需先完成一次组织选择并确认同步；之后沿用该范围。自动同步失败五分钟后重试，有变更或失败时在管理后台显示组织同步提示。</p>
-  <p>密钥加密保存，保存后不再回显。请在企业应用后台授权通讯录读取权限，并配置本平台的登录回调域。</p>
+  <p>密钥加密保存，可按需显示或复制。请在企业应用后台授权通讯录读取权限，并配置本平台的登录回调域。</p>
   {source && <label>登录回调地址<input readOnly value={(platformAddress || window.location.origin).replace(/\/+$/, '') + '/api/auth/external/' + source.id + '/callback'} /></label>}
   {error && <p role="alert" className="gateway-auth-error">{error}</p>}
  </GatewayConfirmDialog>
@@ -81,8 +83,10 @@ export function OrganizationSyncSettings({ csrf, platformAddress }: { csrf: stri
  {loading && <p role="status"><span className="gateway-spinner" /> 正在加载企业应用…</p>}
  {error && <p role="alert" className="gateway-auth-error">{error}<button type="button" onClick={() => setRevision(value => value+1)}>重试</button></p>}
  {notice && <p role="status">{notice}</p>}
- <AdminRecordTable columns={['应用', '组织同步', '扫码登录', '最近同步', '操作']}>{sources.map(source => <tr key={source.id}>
+ <AdminRecordTable columns={['应用', '应用状态', '组织同步', '扫码登录', '最近同步', '操作']}>{sources.map(source => <tr key={source.id}>
   <td><strong>{names[source.provider]}</strong><p>{source.tenant_id}</p><small>{source.secret_configured ? '密钥已配置' : '请配置密钥'}{source.enabled ? '' : ' · 应用已停用'}</small></td>
+  <td><ApplicationEnabledSwitch sourceId={source.id} label={`${names[source.provider]}应用 ${source.tenant_id}`} enabled={source.enabled} csrf={csrf}
+    onSaved={enabled => setSources(current => current.map(row => row.id === source.id ? {...row, enabled} : row))} /></td>
   <td>{source.sync_enabled === false ? '关闭' : '启用'}<p>自动同步：{source.sync_schedule?.frequency === 'daily' ? '每天' : source.sync_schedule?.frequency === 'weekly' ? '每周' : '关闭'}</p>{source.next_sync_at && source.sync_enabled !== false && source.enabled && <small>下次：{new Date(source.next_sync_at).toLocaleString()}</small>}</td><td>{source.login_enabled === false ? '关闭' : '启用'}</td>
   <td>{source.sync_state?.last_success_at ? new Date(source.sync_state.last_success_at).toLocaleString() : '尚未同步'}{source.sync_state?.last_error_code && <p>最近同步失败</p>}</td>
   <td><div className="gateway-device-actions"><button type="button" disabled={!csrf} onClick={() => setEditor({ provider: source.provider, source })}>编辑配置</button>

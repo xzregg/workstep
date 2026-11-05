@@ -461,3 +461,51 @@ async def sync_history(call: GatewayCall, source_id: str):
     async with call.database.session() as session:
         row = await session.get(PlatformSetting, 'directory-history:' + source_id)
         return {'jobs': json.loads(row.value_json) if row else []}
+
+
+async def reveal_source_secret(call: GatewayCall, source_id: str):
+    from uuid import uuid4
+    from gateway.models import AuditEvent
+    from gateway.services.organization_settings import application_secret
+    _, actor = await _super_admin_request(call)
+    async with call.database.session() as session:
+        source = await session.get(IdentitySource, source_id)
+        if source is None:
+            raise GatewayError('not_found', 'Identity source not found')
+    try:
+        secret = await application_secret(call.database, call.gateway_signer, source)
+    except ValueError as exc:
+        raise GatewayError('conflict', 'Identity source secret is unavailable') from exc
+    async with call.database.session() as session:
+        async with session.begin():
+            session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
+                action='admin.identity_source_secret_revealed', result='success',
+                metadata_json=json.dumps({'source_id': source_id})))
+    return {'client_secret': secret}
+
+
+class SourceEnabledInput(BaseModel):
+    enabled: bool
+
+
+async def set_source_enabled(call: GatewayCall, source_id: str, body: SourceEnabledInput):
+    from uuid import uuid4
+    from sqlalchemy import update
+    from gateway.models import AuditEvent
+    from gateway.services.login_policy import ensure_login_method
+    _, actor = await _super_admin_request(call)
+    async with call.database.session() as session:
+        async with session.begin():
+            # Serialize login-policy changes so concurrent switches cannot remove every entry.
+            await session.execute(update(PlatformSetting).where(
+                PlatformSetting.key == 'platform_initialized').values(value_json='true'))
+            source = await session.get(IdentitySource, source_id)
+            if source is None:
+                raise GatewayError('not_found', 'Identity source not found')
+            source.enabled = int(body.enabled)
+            await session.flush()
+            await ensure_login_method(session)
+            session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
+                action='admin.identity_source_enabled_changed', result='success',
+                metadata_json=json.dumps({'source_id':source_id, 'enabled':body.enabled})))
+    return {'id': source_id, 'enabled': body.enabled}

@@ -29,10 +29,10 @@ export function GettingStarted() {
   return <section className="start-guide section" id="start" lang={lang} dir={languageDirection(lang)} aria-labelledby="start-heading">
     <div className="container">
       <div className="editorial-section-heading"><div><p className="section-eyebrow">02 / {t('manual.groups.getting-started')}</p><h2 className="section-title" id="start-heading">{editorialCopy[lang].startTitle}</h2></div><p className="section-lede">{t('hero.setup')}</p></div>
-      <div className="start-routes"><a href="#docs/getting-started">{t('download.title')} <ArrowRight size={16} /></a><a href="#docs/faq">Codex / Claude Code · CLI <ArrowRight size={16} /></a></div>
+      <div className="start-routes"><a href="#download">{t('download.title')} <ArrowRight size={16} /></a><a href="#engines">Codex / Claude Code · CLI <ArrowRight size={16} /></a></div>
       <div className="start-layout">
         <div className="start-sidebar"><nav className="start-step-links" aria-label={t('manual.groups.getting-started')}>
-          {steps.map((step, i) => <a className="start-step-link" href={`#docs/${step.id}`} key={step.id} data-preview={i === index ? 'true' : undefined}><span className="start-number">{String(i + 1).padStart(2, '0')}</span><span>{step.title}</span>{i === index ? <Check size={15} aria-hidden="true" /> : <ArrowRight size={15} aria-hidden="true" />}</a>)}
+          {steps.map((step, i) => <button type="button" className="start-step-link" aria-controls="start-panel" aria-pressed={i === index} key={step.id} data-preview={i === index ? 'true' : undefined} onClick={() => select(i)}><span className="start-number">{String(i + 1).padStart(2, '0')}</span><span>{step.title}</span>{i === index ? <Check size={15} aria-hidden="true" /> : <ArrowRight size={15} aria-hidden="true" />}</button>)}
         </nav><a className="start-manual" href="#docs">{t('manual.title')} ↗</a></div>
         <article className="start-panel" id="start-panel" ref={panel} aria-labelledby="start-panel-heading" tabIndex={-1}>
           <p className="start-count">0{index + 1} / 0{steps.length}</p><h3 id="start-panel-heading">{chapter.title}</h3><p className="start-summary">{chapter.summary}</p>

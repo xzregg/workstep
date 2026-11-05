@@ -130,6 +130,15 @@ a {
   white-space: nowrap;
 }
 
+.gateway-auth-company {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #6e6e73;
+  overflow-wrap: anywhere;
+}
+
 .gateway-auth-description {
   margin-bottom: 28px;
   color: #6e6e73;
@@ -970,3 +979,18 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-table-sort:focus-visible { outline: 2px solid var(--gateway-admin-accent); outline-offset: 4px; }
 
 .gateway-account-usage > .activity-heatmap, .gateway-usage-report > .activity-heatmap { margin-bottom: 24px; }
+
+.gateway-application-secret { display: grid; gap: 6px; min-width: 0; }
+.gateway-application-secret-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gateway-application-secret-controls input { flex: 1 1 160px; min-width: 0; width: 0; }
+.gateway-application-secret-controls button { flex-shrink: 0; }
+.gateway-application-secret p { margin: 0; }
+
+.gateway-application-enabled { min-width: 100px; }
+.gateway-application-enabled-control { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.gateway-organization-settings button.gateway-application-enabled-switch { position: relative; flex: none; width: 36px; height: 20px; min-height: 20px; padding: 2px; border: 0; border-radius: 999px; background: #94a3b8; }
+.gateway-organization-settings button.gateway-application-enabled-switch[aria-checked="true"] { background: var(--gateway-admin-accent); }
+.gateway-application-enabled-switch span { display: block; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.gateway-application-enabled-switch[aria-checked="true"] span { transform: translateX(16px); }
+.gateway-application-enabled-switch:disabled { opacity: .5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .gateway-application-enabled-switch span { transition: none; } }

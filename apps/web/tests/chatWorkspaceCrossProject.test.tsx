@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter, useNavigate } from 'react-router-dom'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { I18nProvider } from '../src/i18n'
 import RecentConversations from '../src/components/RecentConversations'
 import ChatWorkspace from '../src/pages/ChatWorkspace'
@@ -46,7 +46,8 @@ test('recent chats drag across projects while histories, sends, quick buttons an
     return Response.json({ providers: [], buttons: [], runs: [], active_action_ids: [], sessions: [] })
   }
   let navigate!: ReturnType<typeof useNavigate>
-  function Surface() { navigate = useNavigate(); return <><RecentConversations /><ChatWorkspace /></> }
+  let currentSearch = ''
+  function Surface() { navigate = useNavigate(); currentSearch = useLocation().search; return <><RecentConversations /><ChatWorkspace /></> }
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const dragRecent = async (title: string) => {
     const row = [...document.querySelectorAll<HTMLElement>('.layout-recent-row')].find(row => row.textContent?.includes(title))!
@@ -87,6 +88,17 @@ test('recent chats drag across projects while histories, sends, quick buttons an
     await act(async () => panes[2].dispatchEvent(new window.Event('pointerdown', { bubbles: true })))
     const selectedPane = document.querySelector('.chat-workspace-pane--active')!
     const otherPane = [...document.querySelectorAll('.chat-workspace-pane')].find(pane => pane.textContent?.includes('history-b'))!
+    const betaRecent = [...document.querySelectorAll<HTMLElement>('.layout-recent-row')].find(row => row.textContent?.includes('title-sb'))!
+    await act(async () => betaRecent.click())
+    assert.equal(document.querySelector('.chat-workspace-pane--active'), selectedPane, 'recent chat clicks keep the active pane across projects')
+    assert.ok(otherPane.querySelector('.chat-workspace-pane-reveal'))
+    assert.equal(new URLSearchParams(currentSearch).get('project'), 'Remote')
+    assert.equal(new URLSearchParams(currentSearch).get('session'), 'sc')
+    assert.equal(useProjectStore.getState().activeProject?.id, 'remote:c')
+    await act(async () => navigate('/chat?project=Alpha&session=new', { state: { revealChatPane: true } }))
+    assert.equal(document.querySelector('.chat-workspace-pane--active'), selectedPane, 'the next unopened conversation replaces the original active pane')
+    assert.match(otherPane.textContent!, /history-b/)
+    await act(async () => navigate('/chat?project=Remote&session=sc'))
     await act(async () => navigate('/chat?project=Beta&session=sb'))
     assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 3)
     assert.equal(document.querySelector('.chat-workspace-pane--active'), otherPane, 'navigation activates the pane already showing the conversation')

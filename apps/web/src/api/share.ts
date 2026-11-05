@@ -1,6 +1,7 @@
+import { getMessageHistoryPageSize } from '../stores/userSettingsStore'
 import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
 import type { TaskScheduleSummary } from './schedule'
-import { BASE, FULL_PAGE_LIMIT, fileDataUrl, request, shareRequest } from './transport'
+import { BASE, fileDataUrl, request, shareRequest } from './transport'
 import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, ReviewRun, DirectoryBrowseResult, ActionProposal, TaskArtifactInputSnapshot } from './client'
 
 // --- Public share API (no project context, session-token gated) ---
@@ -106,7 +107,7 @@ export const shareApi = {
     ),
   schedules: (token: string, sessionToken: string) =>
     shareRequest<{ schedules: TaskScheduleSummary[] }>(`/task-share/public/${encodeURIComponent(token)}/schedules`, sessionToken),
-  history: async (token: string, sessionToken: string, limit = FULL_PAGE_LIMIT, offset = 0) => {
+  history: async (token: string, sessionToken: string, limit = getMessageHistoryPageSize(), offset = 0) => {
     let messages: any[] = []
     while (messages.length < limit) {
       const pageLimit = Math.min(500, limit - messages.length)
@@ -118,7 +119,7 @@ export const shareApi = {
       messages = [...page.messages, ...messages]
       if (page.messages.length < pageLimit) break
     }
-    return { messages, limit, offset }
+    return { messages, limit, offset, next_offset: messages.length === limit ? offset + messages.length : null }
   },
   messageEvents: (token: string, sessionToken: string, messageId: string, cursor = 0, query?: FileChangesQuery) =>
     shareRequest<{ events: any[]; complete: boolean; next_cursor: number | null; last_event_seq?: number }>(

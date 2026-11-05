@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
-from services.gateway_client.browser_login import local_session_cookie_name, normalize_origin
+from services.gateway_client.browser_login import GatewayLoginError, local_session_cookie_name, normalize_origin
 from api.desktop_security import (browser_origin_allowed, local_gateway_fallback_allowed,
     gateway_workspace_access_allowed, local_gateway_workspace_active, set_local_gateway_workspace_cookie)
 
@@ -29,6 +29,29 @@ class SettingsInput(BaseModel):
     @field_validator('url')
     @classmethod
     def valid_url(cls, value): return normalize_origin(value) if value.strip() else ''
+
+
+class ResetTrustInput(LoginInput):
+    fingerprint: str = Field(min_length=64, max_length=64, pattern='^[0-9a-f]{64}$')
+
+
+def _login_error(exc):
+    detail = {}
+    if isinstance(exc, GatewayLoginError):
+        code = exc.code
+        status = 409 if code in ('gateway_key_changed', 'gateway_settings_changed') else 400
+        if exc.fingerprint:
+            detail['fingerprint'] = exc.fingerprint
+    elif isinstance(exc, httpx.TimeoutException):
+        code, status = 'gateway_timeout', 502
+    elif isinstance(exc, httpx.HTTPStatusError):
+        code, status = 'gateway_http_error', 502
+        detail['status'] = exc.response.status_code
+    elif isinstance(exc, (OSError, httpx.HTTPError)):
+        code, status = 'gateway_unreachable', 502
+    else:
+        code, status = 'gateway_invalid_response', 400
+    return HTTPException(status_code=status, detail={'code': code, **detail})
 
 
 async def _settings_service(request: Request, mutation=False, configure=False):
@@ -120,11 +143,18 @@ async def login(request: Request, body: LoginInput):
     service = await _settings_service(request, mutation=True)
     try:
         url = await service.begin(body.url, _browser_callback_origin(request), desktop=_desktop_login_handoff(request))
-    except (ValueError, KeyError) as exc:
-        raise HTTPException(status_code=400, detail='Invalid platform configuration or changed signing key') from exc
-    except (OSError, httpx.HTTPError) as exc:
-        raise HTTPException(status_code=502, detail='Gateway unavailable') from exc
+    except (ValueError, KeyError, TypeError, OSError, httpx.HTTPError) as exc:
+        raise _login_error(exc) from exc
     return {'authorization_url': url}
+
+
+@router.post('/api/gateway-platform/reset-trust')
+async def reset_trust(request: Request, body: ResetTrustInput):
+    service = await _settings_service(request, mutation=True, configure=True)
+    try:
+        return await service.reset_trust(body.url, body.fingerprint)
+    except (ValueError, OSError) as exc:
+        raise _login_error(exc) from exc
 
 
 @router.get('/gateway/login', include_in_schema=False)

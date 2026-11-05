@@ -153,7 +153,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
             async def proxy_http(self, request, *, user_id, username, display_name,
                                  project_id, access_level, task_create,
                                  authorization_check, provider_ids,
-                                 provider_grant_expires_at):
+                                 provider_grant_expires_at, authorization_interval):
+                assert authorization_interval == 1.0
                 await authorization_check()
                 assert user_id == worker_id
                 assert provider_ids == []

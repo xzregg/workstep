@@ -21,6 +21,13 @@ const MARKDOWN_IMAGE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
 const UPLOAD_RELATIVE = /^(?:[^/]+\/)?\.workstep\/uploads\/([^/?#]+)$/
 const GLOBAL_UPLOAD_RELATIVE = /^data\/uploads\/([^/?#]+)$/
 
+/** These are filesystem paths from agent output, not HTTP image endpoints. */
+export function isLocalMarkdownImage(src: string): boolean {
+  let value = src
+  try { value = decodeURIComponent(src) } catch { /* Keep malformed escapes as written. */ }
+  return /^(?:file:\/\/|[a-z]:[\\/]|\/(?:tmp|private|Users|home|var|root|mnt|Volumes)(?:\/|$))/i.test(value)
+}
+
 export function splitMarkdownImages(markdown: string): MarkdownInputSegment[] {
   const segments: MarkdownInputSegment[] = []
   let cursor = 0

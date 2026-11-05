@@ -1,7 +1,7 @@
 import { isValidElement, useCallback, useMemo, type ReactNode, type RefObject } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { resolveMarkdownImageSrc } from '../utils/markdownImages'
+import { isLocalMarkdownImage, resolveMarkdownImageSrc } from '../utils/markdownImages'
 import { convertVisualizeMarkers } from '../utils/markdownVisualize'
 import { convertFileCitations } from '../utils/markdownFileCitation'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
@@ -59,8 +59,8 @@ function splitPlainText(markdown: string): PlainSegment[] {
  * hrefs before the custom `a` component ever sees them. Preserve `file://`
  * so project file links can stay previewable.
  */
-const fileAwareUrlTransform: UrlTransform = (url) =>
-  /^file:\/\//i.test(url) || parseTaskDetailLink(url) ? url : defaultUrlTransform(url)
+const fileAwareUrlTransform: UrlTransform = (url, key) =>
+  /^file:\/\//i.test(url) || (key === 'src' && isLocalMarkdownImage(url)) || parseTaskDetailLink(url) ? url : defaultUrlTransform(url)
 
 function closeStreamingFence(markdown: string): string {
   let openFence = ''
@@ -99,6 +99,9 @@ export default function MarkdownContent({
 
   const renderImage = useCallback((src: string | undefined, alt: string) => {
     if (!src) return null
+    if (isLocalMarkdownImage(src)) {
+      return <span className="markdown-local-image">{alt && `${alt}：`}<code>{src}</code>（{t('md.localImageHint')}）</span>
+    }
     const resolved = markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)
     if (!onImageClick) {
       return <img src={resolved} alt={alt} />

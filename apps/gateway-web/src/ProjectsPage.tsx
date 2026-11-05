@@ -15,6 +15,8 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
   const [loading,setLoading]=useState(true)
   const [retry,setRetry]=useState(0)
   const [error, setError] = useState('')
+  const selectingDevice = location.pathname === '/devices'
+  const loginPath = '/auth?next=' + encodeURIComponent(selectingDevice ? '/devices' : '/')
   const recovering = new URLSearchParams(location.search).get('workspace_recovery') === '1'
   const [portalVisible, setPortalVisible] = useState(!autoEnter || recovering)
   const showPortal = useCallback(() => setPortalVisible(true), [])
@@ -25,7 +27,7 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
       .then(response => {
         if (controller.signal.aborted) return
         if (response.status === 401) {
-          navigate('/auth?next=%2F', { replace: true })
+          navigate(loginPath, { replace: true })
           return
         }
         if (!response.ok) throw Error('登录状态检查失败，请刷新重试。')
@@ -33,7 +35,7 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
       })
       .catch(reason => { if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '登录状态检查失败。') })
     return () => controller.abort()
-  }, [navigate])
+  }, [navigate, loginPath])
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -43,7 +45,7 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
     async function refresh() {
     await Promise.all(['/api/devices','/api/projects'].map(url=>fetch(url,{credentials:'same-origin',signal:controller.signal})))
       .then(async ([deviceResponse,response]) => {
-        if (response.status === 401 || deviceResponse.status === 401) { navigate('/auth?next=%2F', { replace: true }); return }
+        if (response.status === 401 || deviceResponse.status === 401) { navigate(loginPath, { replace: true }); return }
         if (!deviceResponse.ok) throw Error('设备列表加载失败，请重试。')
         if (!response.ok) throw new Error('项目列表加载失败。')
         const assigned:WorkspaceDevice[]=(await deviceResponse.json()).devices ?? []
@@ -63,7 +65,7 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
     }
     void refresh()
     return () => {controller.abort();clearTimeout(timer)}
-  }, [status, navigate, retry])
+  }, [status, navigate, retry, loginPath])
 
   return <>
     {(portalVisible || !!error) && portalHeader}
@@ -74,7 +76,7 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
     {recovering && <p className="gateway-auth-error" role="alert">设备工作台连接失败，已暂停自动跳转。请重新连接设备，或切换其他设备。</p>}
     {status === 'checking' && !error && <div className="gateway-direct-state" role="status"><span className="gateway-spinner"/>正在检查登录状态…</div>}
     {status === 'ready' && <>
-      {loading && !devices.length?<div className="gateway-direct-state" role="status"><span className="gateway-spinner"/>正在加载工作空间…</div>:!!devices.length && <DirectWorkstepWorkspace autoConnect={!recovering} devices={devices} projects={projects} hideNavigation={!portalVisible && !error} onShowNavigation={showPortal}/>}
+      {loading && !devices.length?<div className="gateway-direct-state" role="status"><span className="gateway-spinner"/>正在加载工作空间…</div>:!!devices.length && <DirectWorkstepWorkspace autoConnect={!recovering && !selectingDevice} manualEntry={selectingDevice} devices={devices} projects={projects} hideNavigation={!portalVisible && !error} onShowNavigation={showPortal}/>}
     </>}
     {error && <p className="gateway-auth-error" role="alert">{error} {status==='ready' && <button type="button" disabled={loading} onClick={()=>setRetry(value=>value+1)}>重新加载</button>}</p>}
   </section></>

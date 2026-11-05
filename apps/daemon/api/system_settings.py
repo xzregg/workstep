@@ -23,6 +23,7 @@ class SystemSettingsRequest(BaseModel):
     user_name: str | None = Field(default=None, max_length=80)
     open_mode: bool | None = None
     default_project_directory: str | None = Field(default=None, max_length=4096)
+    message_history_page_size: int | None = Field(default=None, strict=True, ge=1, le=300)
     git_scan_depth: int | None = Field(default=None, strict=True, ge=0, le=9007199254740991)
 
 
@@ -130,6 +131,7 @@ async def get_system_settings(request: Request):
             "identity_source": 'gateway' if actor or platform_identity else 'local',
             "gateway_username": actor.username if actor else '',
             "open_mode": config_store.get_open_mode(),
+            "message_history_page_size": config_store.get_message_history_page_size(),
             "git_scan_depth": config_store.get_git_scan_depth(),
             "default_project_directory": config_store.get("default_project_directory", ""),
             **config_store.get_device_identity(),
@@ -167,6 +169,8 @@ async def set_system_settings(req: SystemSettingsRequest, request: Request):
         await asyncio.to_thread(config_store.set_open_mode, req.open_mode)
     if directory is not None:
         await asyncio.to_thread(config_store.set, "default_project_directory", directory)
+    if req.message_history_page_size is not None:
+        await asyncio.to_thread(config_store.set, "message_history_page_size", req.message_history_page_size)
     if req.git_scan_depth is not None:
         await asyncio.to_thread(config_store.set, "git_scan_depth", req.git_scan_depth)
     return await get_system_settings(request)

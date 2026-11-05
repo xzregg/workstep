@@ -12,6 +12,7 @@ interface ProjectState {
   loading: boolean
   loadError: string | null
   remoteLoadErrors: Record<string, string | undefined>
+  workflowLoadError: string | null
   canvasDirty: boolean
   /** Local per-project running state, updated incrementally from WS events. */
   projectRunningState: Record<string, boolean>
@@ -50,6 +51,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loading: false,
   loadError: null,
   remoteLoadErrors: {},
+  workflowLoadError: null,
   canvasDirty: false,
   projectRunningState: {},
 
@@ -74,7 +76,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
               // overwriting with the backend's default workflow steps.
               const defaultWf = found.workflows?.find((w) => w.is_default) || found.workflows?.[0]
               const isNonDefault = state.activeWorkflowId && defaultWf && state.activeWorkflowId !== defaultWf.id
-              activeProject = isNonDefault
+              activeProject = isNonDefault || state.canvasDirty || found.steps === undefined
                 ? { ...found, steps: state.activeProject!.steps }
                 : found
             } else {
@@ -156,7 +158,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setActiveProject: (p) => {
     const prev = get().activeProject
-    set({ activeProject: p })
+    set({ activeProject: p && prev?.id === p.id && (p.steps === undefined || get().canvasDirty)
+      ? { ...p, steps: prev.steps } : p,
+      ...(p?.id !== prev?.id ? { workflowLoadError: null } : {}) })
     // Auto-select default workflow when switching projects
     if (p && p.id !== prev?.id) {
       const defaultWf = p.workflows?.find(w => w.is_default) || p.workflows?.[0]
@@ -244,17 +248,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setActiveWorkflow: async (id) => {
-    set({ activeWorkflowId: id })
+    const previous = get()
+    if (id === previous.activeWorkflowId && previous.activeProject?.steps !== undefined) return
+    set({ activeWorkflowId: id, workflowLoadError: null,
+      ...(id !== previous.activeWorkflowId && previous.activeProject
+        ? { activeProject: { ...previous.activeProject, steps: undefined } } : {}) })
     if (id) {
       const { activeProject } = get()
       if (activeProject?.id) {
         try {
           const wf = await workflowApi.get(id, activeProject.id)
           set((s) => s.activeProject?.id === activeProject.id && s.activeWorkflowId === id
+            && (!s.canvasDirty || s.activeProject.steps === undefined)
             ? { activeProject: { ...s.activeProject, steps: wf.steps } }
             : {})
         } catch (e) {
-          console.error('Failed to load workflow steps:', e)
+          if (get().activeProject?.id === activeProject.id && get().activeWorkflowId === id) {
+            set({ workflowLoadError: e instanceof Error ? e.message : zhCNT('flow.networkError') })
+          }
         }
       }
     }

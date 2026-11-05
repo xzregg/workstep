@@ -273,3 +273,63 @@ test('a newer remote event wins over an older full catalog response', async () =
     assert.equal(useProjectStore.getState().activeWorkflowId, 'remote:race-workflow')
   } finally { globalThis.fetch = originalFetch }
 })
+
+
+test('lightweight catalog refresh and reselection preserve loaded workflow steps', async () => {
+  const originalFetch = globalThis.fetch
+  const summary = project('lightweight')
+  delete summary.steps
+  const steps = { nodes: [{ id: 1, prompt: 'unsaved context' }] }
+  useProjectStore.setState({ projects: [summary], activeProject: { ...summary, steps }, activeWorkflowId: 'lightweight-workflow', canvasDirty: true })
+  globalThis.fetch = async () => Response.json({ projects: [summary] })
+  try {
+    await useProjectStore.getState().fetchProjects()
+    assert.deepEqual(useProjectStore.getState().activeProject?.steps, steps)
+    useProjectStore.getState().setActiveProject(summary)
+    assert.deepEqual(useProjectStore.getState().activeProject?.steps, steps)
+  } finally { globalThis.fetch = originalFetch; useProjectStore.setState({ canvasDirty: false }) }
+})
+
+test('default workflow loads on demand and simultaneous detail requests are shared', async () => {
+  const originalFetch = globalThis.fetch
+  const summary = project('lazy')
+  delete summary.steps
+  let calls = 0
+  let resolve!: (response: Response) => void
+  globalThis.fetch = async () => { calls++; return new Promise<Response>(done => { resolve = done }) }
+  useProjectStore.setState({ projects: [summary], activeProject: null, activeWorkflowId: null, canvasDirty: false })
+  try {
+    useProjectStore.getState().setActiveProject(summary)
+    assert.equal(calls, 0)
+    const first = useProjectStore.getState().setActiveWorkflow('lazy-workflow')
+    const second = useProjectStore.getState().setActiveWorkflow('lazy-workflow')
+    assert.equal(calls, 1)
+    resolve(Response.json({ id: 'lazy-workflow', steps: { nodes: [{ id: 7 }] } }))
+    await Promise.all([first, second])
+    assert.deepEqual(useProjectStore.getState().activeProject?.steps, { nodes: [{ id: 7 }] })
+  } finally { globalThis.fetch = originalFetch }
+})
+
+
+test('failed workflow detail can retry and a stale response cannot overwrite another workflow', async () => {
+  const { workflowApi } = await import('../src/api/client.ts')
+  const original = workflowApi.get
+  const summary = project('retry')
+  delete summary.steps
+  useProjectStore.setState({ activeProject: summary, activeWorkflowId: 'retry-workflow', canvasDirty: false, workflowLoadError: null })
+  try {
+    workflowApi.get = async () => { throw new Error('offline') }
+    await useProjectStore.getState().setActiveWorkflow('retry-workflow')
+    assert.equal(useProjectStore.getState().workflowLoadError, 'offline')
+    let finish!: (value: any) => void
+    workflowApi.get = async (id) => id === 'retry-workflow'
+      ? new Promise(resolve => { finish = resolve })
+      : { id, steps: { marker: 'new' } } as any
+    const old = useProjectStore.getState().setActiveWorkflow('retry-workflow')
+    await useProjectStore.getState().setActiveWorkflow('new-workflow')
+    finish({ id: 'retry-workflow', steps: { marker: 'old' } })
+    await old
+    assert.equal(useProjectStore.getState().workflowLoadError, null)
+    assert.deepEqual(useProjectStore.getState().activeProject?.steps, { marker: 'new' })
+  } finally { workflowApi.get = original }
+})

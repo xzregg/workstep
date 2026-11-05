@@ -480,3 +480,108 @@ async def test_overflowing_data_stream_releases_socket_and_keeps_health_responsi
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('closed_by', ['response', 'cancel'])
+@pytest.mark.parametrize('flow_control', [False, True])
+@pytest.mark.parametrize('protocol', ['http', 'websocket'])
+async def test_late_request_frames_do_not_close_other_data_streams(closed_by, flow_control, protocol):
+    first_entered = asyncio.Event()
+    first_finished = asyncio.Event()
+    second_finished = asyncio.Event()
+    incoming = asyncio.Queue()
+    late_credits = []
+    class Socket:
+        async def send(self, value):
+            message = json.loads(value)
+            if message.get('type') == FrameType.window_update and message['stream_id'] == 'first':
+                late_credits.append(message)
+            if (message.get('type') == FrameType.websocket_close
+                    or message.get('type') == FrameType.http_response and message.get('payload', {}).get('phase') == 'end'):
+                (first_finished if message['stream_id'] == 'first' else second_finished).set()
+        async def recv(self):
+            return await incoming.get()
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): return None
+    async def app(scope, receive, send):
+        if scope['path'] == '/first':
+            first_entered.set()
+            if closed_by == 'cancel': await asyncio.Event().wait()
+        if scope['type'] == 'websocket':
+            await send({'type':'websocket.accept'})
+            await send({'type':'websocket.close', 'code':1000})
+        else:
+            await send({'type':'http.response.start', 'status':200, 'headers':[]})
+            await send({'type':'http.response.body', 'body':b'ok'})
+    def frame(stream_id, kind, payload):
+        incoming.put_nowait(ProxyFrame(stream_id=stream_id, type=kind, payload=payload).model_dump_json())
+    def start(stream_id):
+        kind = FrameType.websocket_open if stream_id == 'first' and protocol == 'websocket' else FrameType.http_request
+        frame(stream_id, kind, {'phase':'start', 'method':'GET', 'path':'/'+stream_id,
+            'headers':[], 'user_id':'user-1', 'username':'alice'})
+    incoming.put_nowait(json.dumps({'kind':'data_ready', 'version':1, 'device_id':'device-1', **({'flow_control':True} if flow_control else {})}))
+    start('first')
+    client = GatewayControlClient('https://gateway.example', gateway_id='gateway-test', public_key_fingerprint='0'*64,
+        user_id='user-1', policy_cache=ManagedPolicyCache(), asgi_app=app,
+        connector=lambda *_args, **_kwargs:Socket())
+    task = asyncio.create_task(client._run_data('device-1', 'data-token'))
+    try:
+        await asyncio.wait_for(first_entered.wait(), .5)
+        if closed_by == 'response':
+            await asyncio.wait_for(first_finished.wait(), .5)
+            await asyncio.sleep(.01)
+        else:
+            frame('first', FrameType.cancel, {})
+        # An upload body/end may already be in flight when the response or cancel completes.
+        if protocol == 'http':
+            frame('first', FrameType.http_request, {'phase':'body','data':'eA=='})
+            frame('first', FrameType.http_request, {'phase':'end'})
+        else:
+            frame('first', FrameType.websocket_data, {'kind':'text', 'data':'eA=='})
+            frame('first', FrameType.websocket_close, {'code':1000})
+        start('second')
+        await asyncio.wait_for(second_finished.wait(), .5)
+        assert not task.done()
+        assert len(late_credits) == (2 if flow_control else 0)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_unknown_data_stream_is_still_rejected(caplog):
+    incoming = asyncio.Queue()
+    incoming.put_nowait(json.dumps({'kind':'data_ready','version':1,'device_id':'device-1'}))
+    incoming.put_nowait(ProxyFrame(stream_id='never-opened', type=FrameType.http_request,
+        payload={'phase':'end'}).model_dump_json())
+    class Socket:
+        async def send(self, value): pass
+        async def recv(self): return await incoming.get()
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): return None
+    client = GatewayControlClient('https://gateway.example', gateway_id='gateway-test', public_key_fingerprint='0'*64,
+        user_id='user-1', policy_cache=ManagedPolicyCache(), connector=lambda *_args, **_kwargs:Socket())
+    await asyncio.wait_for(client._run_data('device-1','data-token'), .5)
+    assert 'Invalid managed data frame' in caplog.text
+    assert 'stage=dispatch' in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_data_channel_allows_transient_network_delay_without_disabling_heartbeat():
+    options = {}
+    class Connector:
+        async def __aenter__(self):
+            raise asyncio.CancelledError()
+        async def __aexit__(self, *_):
+            pass
+    def connect(*args, **kwargs):
+        options.update(kwargs)
+        return Connector()
+    client = GatewayControlClient('https://gateway.example', gateway_id='gateway-test',
+        public_key_fingerprint='0' * 64, user_id='user-1', policy_cache=ManagedPolicyCache(),
+        connector=connect)
+    with pytest.raises(asyncio.CancelledError):
+        await client._run_data('device-1', 'data-token')
+    assert options['ping_interval'] == 20
+    assert options['ping_timeout'] == 60

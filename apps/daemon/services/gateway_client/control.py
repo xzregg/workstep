@@ -8,6 +8,7 @@ import json
 import logging
 import hashlib
 import inspect
+from collections import OrderedDict
 from urllib.parse import urlsplit
 
 import httpx
@@ -369,7 +370,9 @@ class GatewayControlClient:
                     self.policy_cache.clear()
                     self.authorization_required = True
                     return
-                logger.warning("Gateway control connection closed: %s", type(exc).__name__)
+                logger.warning("Gateway control connection closed: %s (received_code=%s, sent_code=%s)",
+                               type(exc).__name__, exc.rcvd.code if exc.rcvd else None,
+                               exc.sent.code if exc.sent else None)
             except Exception as exc:
                 logger.warning("Gateway control connection failed: %s", type(exc).__name__)
             finally:
@@ -573,17 +576,27 @@ class GatewayControlClient:
 
     async def _run_data(self, device_id: str, token: str) -> None:
         streams: dict[str, ManagedHttpBridge | ManagedWebSocketBridge] = {}
+        retired: OrderedDict[str, None] = OrderedDict()
+
+        def retire(stream_id: str) -> None:
+            retired[stream_id] = None
+            if len(retired) > 1024:
+                retired.popitem(last=False)
 
         def release_finished(stream_id: str, bridge) -> None:
             if streams.get(stream_id) is bridge:
                 streams.pop(stream_id, None)
+                retire(stream_id)
 
+        stage = "handshake"
+        frame_type = None
         try:
             async with self.connector(data_url(self.origin), origin=self.origin,
-                                      open_timeout=10, max_size=1024 * 1024) as socket:
+                                      open_timeout=30, max_size=1024 * 1024,
+                                      ping_interval=20, ping_timeout=60) as socket:
                 await socket.send(json.dumps({"kind": "data_hello", "token": token,
                                               "flow_control": True}))
-                ready = json.loads(await asyncio.wait_for(socket.recv(), timeout=10))
+                ready = json.loads(await asyncio.wait_for(socket.recv(), timeout=30))
                 legacy_ready = {"kind": "data_ready", "version": 1,
                                 "device_id": device_id}
                 if ready not in (legacy_ready, {**legacy_ready, "flow_control": True}):
@@ -594,10 +607,22 @@ class GatewayControlClient:
                     async with send_lock:
                         await socket.send(frame.model_dump_json())
                 while not self._stop.is_set():
+                    stage = "receive"
                     frame = ProxyFrame.model_validate_json(await socket.recv())
+                    stage = "dispatch"
+                    frame_type = frame.type.value
                     bridge = streams.get(frame.stream_id)
+                    if (bridge is None and frame.stream_id in retired and (
+                            frame.type == FrameType.http_request and frame.payload.get("phase") in ("body", "end")
+                            or frame.type in (FrameType.websocket_data, FrameType.websocket_close))):
+                        # Upload/close frames can already be in flight when a response
+                        # finishes or its consumer cancels. Keep other streams alive.
+                        if flow_control:
+                            await send_frame(ProxyFrame(stream_id=frame.stream_id,
+                                type=FrameType.window_update, payload={"credits": 1}))
+                        continue
                     if frame.type == FrameType.http_request and frame.payload.get("phase") == "start":
-                        if self.asgi_app is None or bridge is not None or len(streams) >= 32:
+                        if self.asgi_app is None or bridge is not None or frame.stream_id in retired or len(streams) >= 32:
                             raise ValueError("Invalid managed data stream")
                         bridge = ManagedHttpBridge(self.asgi_app, frame.stream_id,
                                                    frame.payload, send_frame, device_id,
@@ -612,7 +637,7 @@ class GatewayControlClient:
                             release_finished(stream_id, active)
                         )
                     elif frame.type == FrameType.websocket_open and frame.payload.get("phase") == "start":
-                        if self.asgi_app is None or bridge is not None or len(streams) >= 32:
+                        if self.asgi_app is None or bridge is not None or frame.stream_id in retired or len(streams) >= 32:
                             raise ValueError("Invalid managed data stream")
                         bridge = ManagedWebSocketBridge(self.asgi_app, frame.stream_id,
                                                         frame.payload, send_frame, device_id,
@@ -630,6 +655,7 @@ class GatewayControlClient:
                         if bridge:
                             bridge.cancel()
                             streams.pop(frame.stream_id, None)
+                            retire(frame.stream_id)
                     elif frame.type == FrameType.window_update:
                         if not flow_control or frame.payload != {"credits": 1}:
                             raise ValueError("Invalid managed data window update")
@@ -642,12 +668,20 @@ class GatewayControlClient:
                         await bridge.feed(frame)
                         if bridge.done:
                             streams.pop(frame.stream_id, None)
+                            retire(frame.stream_id)
                     else:
                         raise ValueError("Invalid managed data frame")
         except asyncio.CancelledError:
             raise
+        except ConnectionClosed as exc:
+            logger.warning("Gateway data connection failed: %s (stage=%s, received_code=%s, sent_code=%s)",
+                           type(exc).__name__, stage, exc.rcvd.code if exc.rcvd else None,
+                           exc.sent.code if exc.sent else None)
         except Exception as exc:
-            logger.warning("Gateway data connection failed: %s", type(exc).__name__)
+            safe_reasons = {"Invalid Gateway data connection acknowledgment", "Invalid managed data stream",
+                            "Invalid managed data window update", "Invalid managed data frame"}
+            reason = str(exc) if type(exc) is ValueError and str(exc) in safe_reasons else type(exc).__name__
+            logger.warning("Gateway data connection failed: %s (stage=%s, frame_type=%s)", reason, stage, frame_type)
         finally:
             for bridge in streams.values():
                 bridge.cancel()
@@ -662,9 +696,12 @@ class GatewayControlClient:
             raise ValueError("Missing Gateway provider bundle")
         state = await asyncio.to_thread(self.provider_store.get, "managed_provider_state", {})
         current_revision = (state.get("revision", -1)
-                            if isinstance(state, dict) and state.get("gateway_id") == self.gateway_id
+                            if (isinstance(state, dict) and state.get("gateway_id") == self.gateway_id
+                                and state.get("device_id") == device_id)
                             else -1)
-        revision = max(current_revision, 0)
+        # Until verification succeeds, never report a cached revision from another bundle.
+        revision = 0
+        stage = "verify"
         try:
             bundle = verify_provider_bundle(
                 token, gateway_key, self.public_key_fingerprint,
@@ -672,16 +709,19 @@ class GatewayControlClient:
                 current_revision=current_revision,
             )
             revision = bundle.revision
+            stage = "apply"
             from engines.core.registry import refresh_registry
             await asyncio.to_thread(
                 self.provider_store.apply_managed_providers,
                 self.gateway_id, bundle.revision, bundle.providers, refresh_registry,
                 user_id=self.user_id, default_provider_id=bundle.default_provider_id,
+                device_id=device_id,
             )
             result, error = "success", None
         except Exception as exc:
             result, error = "error", f"{type(exc).__name__}: application failed"
-            logger.warning("Gateway provider application failed: %s", type(exc).__name__)
+            logger.warning("Gateway provider application failed: %s (stage=%s, cached_revision=%s, reported_revision=%s)",
+                           type(exc).__name__, stage, current_revision, revision)
         await socket.send(json.dumps({"kind": "provider_applied", "revision": revision,
                                       "result": result, "error": error}))
         ack = await self._receive_kind(messages, "provider_applied_ack")

@@ -225,3 +225,16 @@ test('opening the home page of an empty platform redirects to administrator setu
  await screen.findByRole('heading', { name: '设置超级管理员' })
  assert.match(document.body.textContent ?? '', /首位注册用户将成为超级管理员/)
 })
+
+
+for (const name of ['示例公司', '']) test(`login company subtitle: ${name || 'unset'}`, async () => {
+ mockPortal()
+ const previousFetch = globalThis.fetch
+ globalThis.fetch = async (input, init) => String(input) === '/api/platform/status'
+  ? Response.json({ initialized: true, company_display_name: name }) : previousFetch(input, init)
+ mount()
+ await screen.findByRole('button', { name: '登录' })
+ assert.equal(document.querySelector('.gateway-auth-company')?.textContent ?? '', name)
+ if (name) assert.equal(screen.getByRole('heading', { name: '登录工作台' }).nextElementSibling?.textContent, name)
+ else assert.equal(document.querySelector('.gateway-auth-company'), null)
+})

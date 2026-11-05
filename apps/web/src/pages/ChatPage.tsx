@@ -2,7 +2,7 @@ import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
 import ProjectGitButton from '../components/git/ProjectGitButton'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
@@ -70,7 +70,7 @@ export interface EmbeddedProjectChat {
   placeholder?: string
 }
 
-export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjectChat; pane?: EmbeddedProjectChat & { active?: boolean; headerActions?: ReactNode; closeAction?: ReactNode } } = {}) {
+export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjectChat; pane?: EmbeddedProjectChat & { active?: boolean; headerActions?: (actions: { createSession: (onCreated: (id: string) => void) => Promise<void>; creating: boolean; canCreate: boolean }) => ReactNode; closeAction?: ReactNode } } = {}) {
   const controlled = embedded || pane
   const isControlled = Boolean(controlled)
   const isEmbedded = Boolean(embedded)
@@ -110,6 +110,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
   const [input, setInput] = useState('')
   const [renameOpen, setRenameOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const creatingRef = useRef(false)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const [showArchive, setShowArchive] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -385,9 +386,10 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     setSendError('')
   }, [enhanceInputChanged])
 
-  const createSession = useCallback(async () => {
+  const createSession = useCallback(async (onCreated?: (id: string) => void) => {
     if (!can('session.create')) return
-    if (!activeProject?.id || creating) return
+    if (!activeProject?.id || creatingRef.current) return
+    creatingRef.current = true
     setCreating(true)
     setSendError('')
     try {
@@ -413,6 +415,10 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
       }
       useChatListStore.getState().addSession(summary)
       useChatSessionStore.getState().newSession(detail.id)
+      if (onCreated) {
+        onCreated(detail.id)
+        return
+      }
       setSessionTitle(detail.title || '')
       navigate(`/chat?project=${encodeURIComponent(projectParam || activeProject?.name || '')}&session=${encodeURIComponent(detail.id)}`)
     } catch (reason) {
@@ -422,9 +428,10 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
           : reason instanceof Error ? reason.message : t('chatSession.createFailed'),
       )
     } finally {
+      creatingRef.current = false
       setCreating(false)
     }
-  }, [activeProject, assistantConfig, creating, projectParam, navigate, t])
+  }, [activeProject, assistantConfig, projectParam, navigate, t, can])
 
   const handleForkMessage = useCallback((messageId: string, preferSmart?: boolean) => {
     openFork(selectedEngine, messageId, preferSmart)
@@ -465,14 +472,14 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
             description={t('chatSession.noSession')}
             action={<div className="chat-session-empty-action-group">
               <div className="chat-session-empty-actions">
-                {!compact && pane?.closeAction}
                 {can('session.create') && <Button variant="primary" loading={creating} onClick={() => void createSession()}>
                   {t('chatSession.createFirst')}
                 </Button>}
-                {!compact && pane?.headerActions}
+                {!compact && pane?.headerActions?.({ createSession, creating, canCreate: can('session.create') })}
                 {can('session.manage') && <Button variant="ghost" onClick={() => setShowArchive(true)}>
                   <Icon name="archive" size={13} />{t('chatSession.viewArchive')}
                 </Button>}
+                {!compact && pane?.closeAction}
               </div>
               {sendError && <div className="chat-session-create-error" role="alert">{sendError}</div>}
             </div>}
@@ -545,7 +552,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
             >
               {t('chatSession.newSession')}
             </Button>}
-            {!compact && pane?.headerActions}
+            {!compact && pane?.headerActions?.({ createSession, creating, canCreate: can('session.create') })}
             {can('session.manage') && <Button
               variant="ghost"
               size="sm"
@@ -558,7 +565,6 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
             {can('file.read') && <OpenLocationButton activeProject={activeProject} t={t} />}
             </div>
             <div className="chat-header-persistent-actions">
-            {!compact && pane?.closeAction}
             <ProjectGitButton project={activeProject} />
             {canOpenSettings && <Button
               variant="ghost"
@@ -569,6 +575,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
               <Icon name="settings" size={13} strokeWidth={2} />
               {t('taskList.settings')}
             </Button>}
+            {!compact && pane?.closeAction}
             </div>
           </>
         )}

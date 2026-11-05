@@ -1,3 +1,4 @@
+import { getMessageHistoryPageSize } from '../stores/userSettingsStore'
 import { contentLocale } from '../utils/contentLocale'
 import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
 import { ApiError, FULL_PAGE_LIMIT, request } from './transport'
@@ -382,7 +383,7 @@ export const taskApi = {
       method: 'PATCH',
       body: JSON.stringify({ description, review_overrides: reviewOverrides }),
     }),
-  history: (taskId: string, projectId: string, limit = 50, offset = 0) =>
+  history: (taskId: string, projectId: string, limit = getMessageHistoryPageSize(), offset = 0) =>
     request<{ messages: any[]; limit: number; offset: number }>(
       `/task/${taskId}/history?project_id=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`
     ),

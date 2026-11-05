@@ -3005,7 +3005,7 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
     { name = "websockets" },
     { name = "wecom-aibot-python-sdk" },
-    { name = "workstep-gateway-protocol" },
+    { name = "workstep-gateway-protocol", extra = ["http"] },
 ]
 
 [package.dev-dependencies]
@@ -3041,7 +3041,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
     { name = "websockets", specifier = ">=15.0" },
     { name = "wecom-aibot-python-sdk", specifier = ">=1.0.2" },
-    { name = "workstep-gateway-protocol", editable = "../../packages/gateway-protocol" },
+    { name = "workstep-gateway-protocol", extras = ["http"], editable = "../../packages/gateway-protocol" },
 ]
 
 [package.metadata.requires-dev]
@@ -3060,8 +3060,17 @@ dependencies = [
     { name = "pydantic" },
 ]
 
+[package.optional-dependencies]
+http = [
+    { name = "starlette" },
+]
+
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.0" }]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "starlette", marker = "extra == 'http'", specifier = ">=0.40" },
+]
+provides-extras = ["http"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]

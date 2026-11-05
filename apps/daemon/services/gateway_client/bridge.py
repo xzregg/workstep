@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import logging
 import time
 from urllib.parse import unquote
 
@@ -10,6 +11,9 @@ from workstep_gateway_protocol import (FrameType, ProxyFrame,
 
 from .identity import ManagedActor
 from .share_ticket import verify_share_ticket
+
+
+logger = logging.getLogger(__name__)
 
 
 def _provider_scope(start: dict):
@@ -219,7 +223,9 @@ class ManagedHttpBridge:
             await self.app(scope, receive, send)
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            logger.warning("Gateway HTTP response failed: %s (started=%s)",
+                           type(exc).__name__, started)
             if not started:
                 await self.send_frame(ProxyFrame(
                     stream_id=self.stream_id, type=FrameType.http_response,
@@ -227,7 +233,7 @@ class ManagedHttpBridge:
                 ))
             await self.send_frame(ProxyFrame(
                 stream_id=self.stream_id, type=FrameType.http_response,
-                payload={"phase": "end"},
+                payload={"phase": "error" if started else "end"},
             ))
 
 

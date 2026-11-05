@@ -180,7 +180,7 @@ test('gateway device tabs and offline message preserve registered names includin
  assert.equal(screen.queryByText(/WorkStep 实例/),null)
 })
 
-test('the workspace directly opens the selected online device without an entry page',async()=>{
+test('returning to devices waits for explicit entry instead of reopening the device',async()=>{
  let access=0,submitted=0
  dom.window.HTMLFormElement.prototype.submit=function(){submitted++}
  globalThis.fetch=async input=>{
@@ -193,7 +193,10 @@ test('the workspace directly opens the selected online device without an entry p
  }
  render(<MemoryRouter initialEntries={['/devices']}><ProjectsPage/></MemoryRouter>)
  assert.ok(await screen.findByRole('tab',{name:/研发电脑/}))
- assert.equal(screen.queryByRole('button',{name:'进入设备工作台'}),null)
+ assert.ok(screen.getByRole('button',{name:'进入设备工作台'}))
+ assert.equal(access,0)
+ assert.equal(submitted,0)
+ fireEvent.click(screen.getByRole('button',{name:'进入设备工作台'}))
  await waitFor(()=>assert.equal(submitted,1))
  assert.equal(access,1)
 })
@@ -210,7 +213,7 @@ test('project-only instance switches authorized projects without requesting whol
  return Response.json({device_id:'d'})
  }
  render(<MemoryRouter><ProjectsPage/></MemoryRouter>)
- await waitFor(()=>assert.ok(calls.includes('/api/projects/p0/access')))
+ await waitFor(()=>assert.ok(calls.includes('/api/projects/p0/access'), JSON.stringify(calls)))
  fireEvent.click(screen.getByRole('tab',{name:'A2'}))
  await waitFor(()=>assert.ok(calls.includes('/api/projects/p1/access')))
  assert.equal(calls.some(url=>url.includes('/devices/d/access')),false)

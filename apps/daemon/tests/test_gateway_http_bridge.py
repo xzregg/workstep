@@ -665,3 +665,52 @@ async def test_full_bridge_queue_cannot_hold_the_shared_socket_reader(bridge_cla
         await bridge.feed(frame)
     with pytest.raises(ConnectionError, match='queue full'):
         await asyncio.wait_for(bridge.feed(frame), timeout=0.1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('flow_control',[False,True])
+async def test_static_script_stream_is_complete_through_asgi_middlewares(tmp_path, flow_control):
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import FileResponse
+    class PassThrough(BaseHTTPMiddleware):
+        async def dispatch(self,request,call_next): return await call_next(request)
+    app = FastAPI()
+    for _ in range(3): app.add_middleware(PassThrough)
+    data = b'export const value="' + b'x'*(4*1024*1024) + b'";'
+    path = tmp_path/'app.js'
+    path.write_bytes(data)
+    @app.get('/assets/app.js')
+    async def script(): return FileResponse(path)
+    frames=[]
+    async def capture(frame):
+        frames.append(frame)
+        if flow_control and frame.type == FrameType.http_response:
+            asyncio.get_running_loop().call_soon(bridge.grant_credit)
+    bridge=ManagedHttpBridge(app,'large',{'method':'GET','path':'/assets/app.js','headers':[],
+        'user_id':'user','username':'user'},capture,'device',flow_control=flow_control)
+    bridge.start_task()
+    await bridge.feed(ProxyFrame(stream_id='large',type=FrameType.http_request,payload={'phase':'end'}))
+    await asyncio.wait_for(bridge._task,3)
+    actual=b''.join(base64.b64decode(frame.payload['data']) for frame in frames if frame.payload.get('phase')=='body')
+    assert actual == data
+
+
+@pytest.mark.asyncio
+async def test_partial_response_failure_is_not_reported_as_success(caplog):
+    async def app(scope, receive, send):
+        await send({'type': 'http.response.start', 'status': 200, 'headers': []})
+        await send({'type': 'http.response.body', 'body': b'partial', 'more_body': True})
+        raise OSError('private upstream details')
+
+    frames = []
+    async def capture(frame):
+        frames.append(frame)
+
+    bridge = ManagedHttpBridge(app, 'broken-script', {
+        'method': 'GET', 'path': '/assets/app.js', 'headers': [],
+        'user_id': 'user-1', 'username': 'alice',
+    }, capture, 'device-1')
+    await bridge._run()
+    assert [frame.payload['phase'] for frame in frames] == ['start', 'body', 'error']
+    assert 'OSError' in caplog.text
+    assert 'private upstream details' not in caplog.text

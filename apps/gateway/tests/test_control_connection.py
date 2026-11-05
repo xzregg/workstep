@@ -1082,3 +1082,90 @@ def test_local_workbench_manages_gateway_task_shares_over_authenticated_control(
             listed = ws.receive_json()['result']['shares']
             assert next(item for item in listed if item['id'] == share['id'])['status'] == 'revoked'
             assert next(item for item in listed if item['id'] == unpublished['result']['id'])['status'] == 'active'
+
+
+@pytest.mark.asyncio
+async def test_cancelled_data_waiter_does_not_revoke_shared_connection_token():
+    import asyncio
+    from gateway.services.control_connection import ControlConnections
+    controls = ControlConnections()
+    commands = asyncio.Queue()
+    controls._active['device'] = ('control', None, None)
+    async def send(command):
+        await commands.put(command)
+    controls._control_senders['device'] = send
+    first = asyncio.create_task(controls.request_data('device'))
+    command = await asyncio.wait_for(commands.get(), 1)
+    second = asyncio.create_task(controls.request_data('device'))
+    await asyncio.sleep(0)
+    first.cancel()
+    await asyncio.gather(first, return_exceptions=True)
+    connection = await controls.attach_data(command['token'], None)
+    assert connection is not None, 'Cancelling one HTTP request must not revoke siblings data token'
+    controls.data_ready(connection)
+    assert await asyncio.wait_for(second, 1) is connection
+    assert commands.empty()
+
+
+@pytest.mark.asyncio
+async def test_data_waiters_wait_until_acknowledgment_is_sent():
+    import asyncio
+    from gateway.services.control_connection import ControlConnections
+    controls = ControlConnections()
+    commands = asyncio.Queue()
+    controls._active['device'] = ('control', None, None)
+    async def send(command):
+        await commands.put(command)
+    controls._control_senders['device'] = send
+    first = asyncio.create_task(controls.request_data('device'))
+    command = await asyncio.wait_for(commands.get(), 1)
+    connection = await controls.attach_data(command['token'], None)
+    second = asyncio.create_task(controls.request_data('device'))
+    await asyncio.sleep(0)
+    assert not second.done(), 'HTTP frames must wait for data_ready, including during reconnect'
+    controls.data_ready(connection)
+    assert await first is await second is connection
+
+
+@pytest.mark.asyncio
+async def test_failed_data_command_and_last_cancel_release_reservations():
+    import asyncio
+    from gateway.services.control_connection import ControlConnections
+    controls = ControlConnections()
+    controls._active['device'] = ('control', None, None)
+    async def failing(command):
+        raise ConnectionError('closed')
+    controls._control_senders['device'] = failing
+    with pytest.raises(ConnectionError):
+        await controls.request_data('device')
+    assert not controls._pending_data and not controls._device_pending and not controls._data_waiters
+    commands = asyncio.Queue()
+    async def send(command):
+        await commands.put(command)
+    controls._control_senders['device'] = send
+    pending = asyncio.create_task(controls.request_data('device'))
+    command = await commands.get()
+    pending.cancel()
+    await asyncio.gather(pending, return_exceptions=True)
+    assert not controls._pending_data and not controls._device_pending and not controls._data_waiters
+    assert await controls.attach_data(command['token'], None) is None
+
+
+@pytest.mark.asyncio
+async def test_last_cancel_after_attach_does_not_poison_readiness():
+    import asyncio
+    from gateway.services.control_connection import ControlConnections
+    controls = ControlConnections()
+    controls._active['device'] = ('control', None, None)
+    commands = asyncio.Queue()
+    async def send(command):
+        await commands.put(command)
+    controls._control_senders['device'] = send
+    pending = asyncio.create_task(controls.request_data('device'))
+    command = await commands.get()
+    connection = await controls.attach_data(command['token'], None)
+    pending.cancel()
+    await asyncio.gather(pending, return_exceptions=True)
+    controls.data_ready(connection)
+    assert await controls.request_data('device') is connection
+    assert not controls._data_waiters

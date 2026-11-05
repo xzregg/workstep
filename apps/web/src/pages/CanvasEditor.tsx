@@ -3,6 +3,7 @@ import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
+import WorkflowDetailLoadStatus from '../components/WorkflowDetailLoadStatus'
 import Icon from '../components/Icon'
 import FlowCanvas, { type FlowCanvasHandle } from '../components/FlowCanvas'
 import AiFlowEditorPanel from '../components/AiFlowEditorPanel'
@@ -52,8 +53,15 @@ function CanvasEditorInner() {
     && activeWorkflowId === onboardingWorkflowId
 
   useEffect(() => {
-    if (!projectParam) return
+    if (!projectParam) {
+      const state = useProjectStore.getState()
+      if (state.activeWorkflowId && state.activeProject?.steps === undefined && !state.workflowLoadError) {
+        void state.setActiveWorkflow(state.activeWorkflowId)
+      }
+      return
+    }
 
+    let cancelled = false
     const doLoad = async () => {
       const state = useProjectStore.getState()
       const match = await resolveCanvasProject({
@@ -63,20 +71,21 @@ function CanvasEditorInner() {
         refreshProjects: fetchProjects,
         getProjects: () => useProjectStore.getState().projects,
       })
-      if (match) {
+      if (match && !cancelled) {
         const current = useProjectStore.getState()
         const projectChanged = current.activeProject?.id !== match.id
         if (projectChanged) setActiveProject(match)
         const targetWf = wfParam
           ? match.workflows?.find(w => w.id === wfParam)
           : match.workflows?.find(w => w.is_default) || match.workflows?.[0]
-        if (targetWf && (projectChanged || current.activeWorkflowId !== targetWf.id)) {
+        if (targetWf && (projectChanged || current.activeWorkflowId !== targetWf.id || current.activeProject?.steps === undefined)) {
           await setActiveWorkflow(targetWf.id)
         }
       }
     }
     void doLoad()
-  }, [projectParam, wfParam]) // eslint-disable-line
+    return () => { cancelled = true }
+  }, [projectParam, wfParam, activeProject?.id, activeWorkflowId, fetchProjects, setActiveProject, setActiveWorkflow])
 
   const switchWorkflow = (id: string) => {
     setActiveWorkflow(id || null)
@@ -113,6 +122,10 @@ function CanvasEditorInner() {
         error: reason instanceof Error ? reason.message : t('flow.networkError'),
       }))
     }
+  }
+
+  if (activeWorkflowId && activeProject?.steps === undefined) {
+    return <WorkflowDetailLoadStatus />
   }
 
   return (

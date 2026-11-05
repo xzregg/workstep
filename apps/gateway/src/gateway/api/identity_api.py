@@ -13,6 +13,7 @@ from gateway.services.admin_user_operations import BulkUserInput, bulk_users as 
 from gateway.services.login_policy import LoginPolicyInput, set_login_policy as _handle_login_policy
 
 from gateway.services.platform_address import PlatformAddressInput, set_platform_address as _handle_platform_address
+from gateway.services.company_display_name import CompanyDisplayNameInput, set_company_display_name as _handle_company_display_name
 
 router = APIRouter(prefix="/api")
 
@@ -174,3 +175,8 @@ async def user_groups(request: Request, user_id: str):
 async def account_usage(request: Request, days: int = Query(30, ge=1, le=90)):
     from gateway.services.account_usage import account_usage as handle
     return await invoke(handle, request=request, days=days)
+
+
+@router.put('/admin/company-display-name')
+async def set_company_display_name(request: Request, body: CompanyDisplayNameInput):
+    return await invoke(_handle_company_display_name, request=request, body=body)

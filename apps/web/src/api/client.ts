@@ -16,6 +16,7 @@ export * from './conversations'
 export interface SystemSettings {
   identity_source?: 'local' | 'gateway'
   gateway_username?: string
+  message_history_page_size: number
   git_scan_depth: number
   user_name: string
   open_mode: boolean
@@ -57,6 +58,9 @@ export type ModelSetting = ModelPrice
 export type ModelSettings = ModelPricingSettings
 
 export const systemSettingsApi = {
+  updateMessageHistoryPageSize: (size: number) => request<SystemSettings>('/system-settings', {
+    method: 'PUT', body: JSON.stringify({ message_history_page_size: size }),
+  }),
   updateGitScanDepth: (depth: number) => request<SystemSettings>('/system-settings', {
     method: 'PUT',
     body: JSON.stringify({ git_scan_depth: depth }),

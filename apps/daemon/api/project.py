@@ -90,7 +90,9 @@ async def list_projects():
     ordered_ids = await asyncio.to_thread(project_service.config_store.get, "project_order", [])
     order = {project_id: index for index, project_id in enumerate(ordered_ids)}
     projects = sorted([*local, *remote], key=lambda project: order.get(project["id"], len(order)))
-    return {"projects": projects}
+    # Catalog consumers load workflow definitions from /api/workflow/{id}.
+    return {"projects": [{key: value for key, value in project.items() if key != "steps"}
+                         for project in projects]}
 
 
 @router.get("/{project_id}/summary")

@@ -6,7 +6,7 @@ import TaskRecoveredBadge from './TaskRecoveredBadge'
 import TaskDetailTitle from './TaskDetailTitle'
 import TaskPendingConfirmations from './TaskPendingConfirmations'
 import { useI18n, type TKey } from '../i18n'
-import { taskDisplayStatus } from '../utils/taskDisplayStatus'
+import { taskDisplayStatus, taskFailureLabelKey } from '../utils/taskDisplayStatus'
 import type { TaskDetailViewProps, StepData } from './TaskDetailView'
 
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
@@ -62,7 +62,7 @@ export default function TaskDetailHeader({ task, locale, activeStep, activeStepC
               className="task-detail-recovered-badge" />
             <span className="task-detail-header-badge" data-status={status}>
               {['running', 'reviewing', 'retrying', 'rework'].includes(status) && <span className="task-status-spinner" aria-hidden="true" />}
-              {t(STATUS_LABEL_KEYS[status] ?? (status as TKey))}
+              {t(taskFailureLabelKey(status, task.status_reason) ?? STATUS_LABEL_KEYS[status] ?? (status as TKey))}
               <TaskPendingConfirmations task={task} />
             </span>
           </div>

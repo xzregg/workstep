@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { TaskArtifact } from '../api/client'
 import { useI18n } from '../i18n'
 import Icon from './Icon'
@@ -110,6 +110,26 @@ function formatUpdatedAt(value: string | null | undefined, locale: string) {
   })
 }
 
+function ArtifactRoundTabs({ roundCount, label, children }: {
+  roundCount: number
+  label: string
+  children: ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const tabs = ref.current
+    if (tabs && tabs.scrollWidth > tabs.clientWidth) {
+      tabs.scrollLeft = tabs.scrollWidth - tabs.clientWidth
+    }
+  }, [roundCount])
+
+  return (
+    <div ref={ref} className="task-artifact-round-tabs" role="tablist" aria-label={label}>
+      {children}
+    </div>
+  )
+}
+
 export default function TaskArtifactBrowser({
   artifacts,
   artifactDirectory,
@@ -178,7 +198,7 @@ export default function TaskArtifactBrowser({
                   <span className="task-artifact-step-dot" style={{ background: step.color || 'var(--accent)' }} />
                   <MarqueeText text={step.label} />
                 </strong>
-                <div className="task-artifact-round-tabs" role="tablist" aria-label={`${step.label} ${t('taskDetail.artifactRoundTabsAria')}`}>
+                <ArtifactRoundTabs roundCount={step.rounds.length} label={`${step.label} ${t('taskDetail.artifactRoundTabsAria')}`}>
                   {step.rounds.map((round) => (
                     <button
                       key={round.round}
@@ -195,7 +215,7 @@ export default function TaskArtifactBrowser({
                       </span>
                     </button>
                   ))}
-                </div>
+                </ArtifactRoundTabs>
                 {stepDirectory && (
                   <button
                     type="button"

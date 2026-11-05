@@ -24,6 +24,13 @@ from . import connection_credentials
 COOKIE = 'workstep_platform_local_session'
 
 
+class GatewayLoginError(ValueError):
+    def __init__(self, code: str, *, fingerprint: str | None = None):
+        super().__init__(code)
+        self.code = code
+        self.fingerprint = fingerprint
+
+
 def local_session_cookie_name(app) -> str:
     login = getattr(app.state, 'gateway_browser_login', None)
     return getattr(login, 'cookie_name', COOKIE)
@@ -124,26 +131,51 @@ class GatewayBrowserLogin:
                 await asyncio.to_thread(connection_credentials.delete, stored['url'])
             await asyncio.to_thread(config_store.set, 'gateway_platform', stored)
 
+    async def reset_trust(self, origin: str, fingerprint: str):
+        """Forget the platform binding after confirmation; retain this device's identity."""
+        if os.environ.get('WORKSTEP_MANAGED_BUNDLE_DIR'):
+            raise GatewayLoginError('gateway_package_locked')
+        async with self.lock:
+            old = await asyncio.to_thread(config_store.get, 'gateway_platform', {})
+            if old.get('url') != origin or not fingerprint or old.get('fingerprint') != fingerprint:
+                raise GatewayLoginError('gateway_settings_changed')
+            await self.gateway.close()
+            self.gateway.managed_config = None
+            self.gateway.verifier = None
+            self.gateway.skill_sync = None
+            self.pending = None
+            self.desktop_local_session = None
+            await asyncio.to_thread(connection_credentials.delete, origin)
+            await asyncio.to_thread(config_store.set, 'gateway_platform', {
+                'url': origin, 'enabled': bool(old.get('enabled', False)),
+                'authorized': False, 'pending_device': False})
+            return await self.settings()
+
     async def begin(self, origin: str, callback_origin: str, *, desktop: bool = False) -> str:
         origin = normalize_origin(origin)
         callback_origin = validate_daemon_origin(callback_origin)
         if os.environ.get('WORKSTEP_MANAGED_BUNDLE_DIR'):
-            raise ValueError('This installation has a package-pinned Gateway')
+            raise GatewayLoginError('gateway_package_locked')
         async with self.lock:
             old = await asyncio.to_thread(config_store.get, 'gateway_platform', {})
             if not old.get('enabled', old.get('authorized', False)) or old.get('url') != origin:
-                raise ValueError('Save the Gateway address and enable Gateway mode before login')
+                raise GatewayLoginError('gateway_not_enabled')
             async with self.client_factory() as client:
                 response = await client.get(origin + '/api/platform/gateway-key')
                 response.raise_for_status()
                 data = response.json()
+            if (not isinstance(data, dict) or any(not isinstance(data.get(name), str) or not data[name]
+                    for name in ('gateway_id', 'public_key_pem', 'fingerprint'))):
+                raise GatewayLoginError('gateway_invalid_response')
             key = serialization.load_pem_public_key(data['public_key_pem'].encode())
-            if not isinstance(key, Ed25519PublicKey): raise ValueError('Invalid Gateway key')
+            if not isinstance(key, Ed25519PublicKey): raise GatewayLoginError('gateway_invalid_response')
             fingerprint = hashlib.sha256(key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)).hexdigest()
-            if not hmac.compare_digest(fingerprint, data['fingerprint']): raise ValueError('Gateway key mismatch')
+            if not hmac.compare_digest(fingerprint, data['fingerprint']): raise GatewayLoginError('gateway_invalid_response')
             if old.get('url') == origin and old.get('fingerprint') and old['fingerprint'] != fingerprint:
-                raise ValueError('Gateway key changed; verify the platform before reconnecting')
+                raise GatewayLoginError('gateway_key_changed', fingerprint=old['fingerprint'])
             identity = await asyncio.to_thread(_identity, origin)
+            from .platform_identity import platform_identity
+            identity = await asyncio.to_thread(platform_identity, data['gateway_id'], key, identity)
             verifier = secrets.token_urlsafe(48)
             state, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
             self.pending = {'url': origin, 'gateway_id': data['gateway_id'], 'fingerprint': fingerprint,

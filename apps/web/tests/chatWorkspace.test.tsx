@@ -45,10 +45,14 @@ test('desktop chat opens at most four independent panes, preserves drafts across
   const oldFetch = globalThis.fetch
   const sentTo: string[] = []
   let creates = 0
+  let finishCreation!: () => void
+  const creationPending = new Promise<void>(resolve => { finishCreation = resolve })
   globalThis.fetch = async (input, init) => {
     const url = String(input)
     if (url.includes('/chat-sessions?') && init?.method === 'POST') {
       if (++creates === 1) throw new Error('创建失败，请重试')
+      assert.equal(JSON.parse(String(init.body)).project_id, 'p')
+      await creationPending
       return Response.json({ id: 'e', project_id: 'p', title: 'e', messages: [], engine: 'pydantic_ai' })
     }
     if (url.includes('/chat-sessions?')) return Response.json({ sessions: ['a', 'b', 'c', 'd', 'e'].map(id => ({ id, project_id: 'p', title: id })) })
@@ -139,7 +143,7 @@ test('desktop chat opens at most four independent panes, preserves drafts across
       }
       const close = pane.querySelector<HTMLElement>('[aria-label="关闭对话窗口"]')!
       assert.ok(close.closest('.chat-header-persistent-actions'))
-      assert.match(close.nextElementSibling!.textContent!, /Git/)
+      assert.equal(close.parentElement!.lastElementChild, close, 'close stays at the far right of the header actions')
       const newConversationButton = secondaryActions.firstElementChild!
       assert.match(newConversationButton.textContent!, /New conversation|新建对话/)
       const windowButton = newConversationButton.nextElementSibling!
@@ -178,15 +182,29 @@ test('desktop chat opens at most four independent panes, preserves drafts across
     assert.match(document.querySelector('.chat-workspace-pane--active')!.textContent!, /history-b/)
     await act(async () => button('关闭对话窗口').click())
     assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 3)
+    assert.equal(document.querySelector('.chat-workspace-pane--active'), document.querySelector('.chat-workspace-pane'), 'closing a window activates the first remaining pane')
     assert.ok(useChatSessionStore.getState().sessions.a)
     assert.equal(useChatSessionStore.getState().sessions.a.running, true, 'closing a pane must not stop its turn')
     await act(async () => openWindows())
     await act(async () => arrangementOption('增加对话窗口').click())
-    assert.equal(document.querySelector('.chat-workspace-pane--active [aria-label="关闭对话窗口"]')?.nextElementSibling, document.querySelector('.chat-workspace-pane--active .chat-session-empty .btn-primary'))
-    const create = () => document.querySelector<HTMLButtonElement>('.chat-workspace-pane--active .chat-session-empty .btn-primary')!
-    await act(async () => create().click())
-    assert.match(document.querySelector('.chat-workspace-pane--active')!.textContent!, /创建失败，请重试/)
-    await act(async () => create().click())
+    assert.equal(creates, 1, 'adding a window creates its conversation immediately')
+    assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 3, 'a failed creation does not open an empty pane')
+    assert.equal(document.querySelector('.chat-workspace-pane .chat-session-empty'), null)
+    assert.match(document.querySelector('.chat-workspace-pane')!.textContent!, /创建失败，请重试/)
+    await act(async () => openWindows())
+    await act(async () => arrangementOption('增加对话窗口').click())
+    assert.equal(creates, 2)
+    assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 3, 'keep existing panes while creation is pending')
+    assert.equal(button('对话窗口').disabled, true)
+    assert.equal(button('对话窗口').getAttribute('aria-busy'), 'true')
+    assert.ok(button('对话窗口').querySelector('.spinner'))
+    await act(async () => button('对话窗口').click())
+    assert.equal(creates, 2, 'pending creation cannot be submitted again')
+    await act(async () => finishCreation())
+    assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 4)
+    assert.equal(button('对话窗口').disabled, false)
+    assert.equal(document.querySelector('.chat-workspace-pane .chat-session-empty'), null)
+    assert.ok(useChatListStore.getState().sessionsByProject.p.some(session => session.id === 'e'))
     assert.match(document.querySelector('.chat-workspace-pane--active')!.textContent!, /history-e/)
     assert.equal(document.querySelectorAll('.chat-workspace-pane textarea').length, 4)
     await openArrangement()
@@ -206,6 +224,14 @@ test('desktop chat opens at most four independent panes, preserves drafts across
     })
     assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 4, 'switching projects preserves the other open panes')
     assert.ok(document.querySelector('.chat-workspace-pane--active .chat-session-empty'))
+    await act(async () => { window.happyDOM.setWindowSize({ width: 1600, height: 1000 }) })
+    const emptyActions = document.querySelector('.chat-workspace-pane--active .chat-session-empty-actions')!
+    assert.equal(emptyActions.lastElementChild?.getAttribute('aria-label'), '关闭对话窗口', 'empty pane close stays at the far right')
+    const middlePane = document.querySelectorAll<HTMLElement>('.chat-workspace-pane')[1]
+    await act(async () => middlePane.dispatchEvent(new window.Event('pointerdown', { bubbles: true })))
+    await act(async () => middlePane.querySelector<HTMLButtonElement>('[aria-label="关闭对话窗口"]')!.click())
+    assert.equal(document.querySelector('.chat-workspace-pane--active'), document.querySelector('.chat-workspace-pane'), 'closing the active middle pane activates the first remaining pane')
+
   } finally {
     await act(async () => root.unmount())
     globalThis.fetch = oldFetch

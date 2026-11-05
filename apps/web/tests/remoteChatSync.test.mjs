@@ -24,8 +24,8 @@ test('task details pass remote user-message refresh signals to their history mod
 })
 
 test('task details load older history when the conversation is scrolled to the top', () => {
-  assert.match(historySource, /const PAGE_SIZE = 300/)
-  assert.match(historySource, /taskApi\.history\(taskId, projectId, PAGE_SIZE, offset\)/)
+  assert.match(historySource, /getMessageHistoryPageSize/)
+  assert.match(historySource, /taskApi\.history\(taskId, projectId, pageSize, offset\)/)
   assert.match(detailSource, /onLoadOlderHistory=\{shared\?\.loadOlderHistory \|\| loadOlderHistory\}/)
 })
 

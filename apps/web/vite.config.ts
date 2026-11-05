@@ -12,6 +12,15 @@ export default defineConfig(({ mode }) => ({
   build: {
     // DingTalk and older Android WebViews need classic max-width media queries.
     cssTarget: ['chrome80', 'safari13'],
+    rolldownOptions: {
+      output: {
+        strictExecutionOrder: true,
+        codeSplitting: {
+          // Keep startup modules together; Mermaid stays dynamically loaded.
+          groups: [{ name: 'initial', tags: ['$initial'] }],
+        },
+      },
+    },
     ...(mode === 'gateway-share' ? { outDir: 'dist-gateway-share', assetsDir: '' } : {}),
   },
   plugins: [react()],

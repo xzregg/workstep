@@ -204,7 +204,7 @@ async def test_remote_project_list_migrates_legacy_cache_without_blocking(monkey
         finally:
             await listing
     assert response.status_code == 200
-    assert response.json()["projects"][0]["steps"] == {}
+    assert "steps" not in response.json()["projects"][0]
     assert config.get("remote_projects") == [{
         "id": "remote:a", "name": "demo", "credential": "secret",
     }]

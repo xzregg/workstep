@@ -1,3 +1,5 @@
+import WorkflowDetailLoadStatus from '../components/WorkflowDetailLoadStatus'
+import WorkflowNameEditor from '../components/WorkflowNameEditor'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import ResizablePanel from '../components/ResizablePanel'
 import ProjectGitButton from '../components/git/ProjectGitButton'
@@ -338,6 +340,10 @@ export default function TaskList() {
     setDragId(null)
   }
 
+  if (activeProject && activeWorkflowId && activeProject.steps === undefined) {
+    return <WorkflowDetailLoadStatus />
+  }
+
   return (
     <>
       {/* Topbar */}
@@ -420,18 +426,14 @@ export default function TaskList() {
             {t('taskList.new')}
           </Button>
         )}
-        {activeWorkflowName && (
-          <span
-            title={activeWorkflowName}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg-2)', fontWeight: 500,
-              maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}
-          >
-            <Icon name="workflow" size={13} strokeWidth={2} style={{ flexShrink: 0 }} />
-            {activeWorkflowName}
-          </span>
+        {activeWorkflowName && activeProject && activeWorkflowId && (
+          <WorkflowNameEditor
+            key={`${activeProject.id}:${activeWorkflowId}`}
+            projectId={activeProject.id}
+            workflowId={activeWorkflowId}
+            name={activeWorkflowName}
+            canEdit={can('workflow.edit')}
+          />
         )}
         {activeProject && (
           <button

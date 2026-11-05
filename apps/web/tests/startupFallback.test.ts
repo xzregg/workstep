@@ -78,3 +78,18 @@ test('missing lazy assets trigger one fresh navigation, then expose recovery on 
     assert.ok(window.document.querySelector('[role=alert]'))
   } finally { await window.happyDOM.close() }
 })
+
+
+test('remote startup leaves time for queued asset recovery and local startup stays bounded', async () => {
+  for (const [path, expected] of [['/workspace/device/', 90000], ['/', 25000]] as const) {
+    const { window } = installDomEnvironment()
+    window.happyDOM.setURL(`https://gateway.test${path}`)
+    window.document.body.innerHTML = '<div id="root"><div class="app-loading">Loading</div></div>'
+    let delay: number | undefined
+    window.setTimeout = ((_callback: () => void, ms: number) => { delay = ms; return 1 }) as typeof window.setTimeout
+    try {
+      window.eval(html.match(/<script id="workstep-startup-guard">([\s\S]*?)<\/script>/)![1])
+      assert.equal(delay, expected)
+    } finally { await window.happyDOM.close() }
+  }
+})

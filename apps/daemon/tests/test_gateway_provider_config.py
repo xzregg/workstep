@@ -238,6 +238,7 @@ async def test_control_applies_signed_provider_bundle_and_acknowledges(tmp_path,
     await client._apply_provider_bundle(Socket(), messages, {"provider_bundle": token + "x"},
                                         pem, "device-1")
     assert sent[1]["result"] == "error"
+    assert sent[1]["revision"] == 0  # Unverified bundles never acknowledge a cached newer revision.
     assert store.get_provider("provider-1")["api_key"] == "secret-api-key"
 
 
@@ -535,3 +536,38 @@ async def test_local_provider_cleanup_preserves_authorization_and_references(tmp
             response = await client.delete("/api/provider/local")
     assert response.status_code == (200 if mode == "denied" else 400 if mode == "referenced" else 403), response.text
     assert bool(store.get_providers(include_unmanaged=True)) == (mode != "denied")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("previous_device", [None, "old-device"])
+async def test_provider_revision_is_scoped_to_device_and_legacy_state_migrates(tmp_path, monkeypatch, previous_device):
+    monkeypatch.setattr(config_module, 'CONFIG_DIR', tmp_path)
+    monkeypatch.setattr(config_module, 'CONFIG_FILE', tmp_path / 'config.json')
+    monkeypatch.setattr('engines.core.registry.refresh_registry', lambda: None)
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id('gateway-test', provider_guard=lambda _: True)
+    state = {'gateway_id':'gateway-test', 'user_id':'user-1', 'revision':1, 'digest':'old'}
+    if previous_device is not None:
+        state['device_id'] = previous_device
+    store.set('managed_provider_state', state)
+    gateway_key = Ed25519PrivateKey.generate()
+    public = gateway_key.public_key()
+    pem = public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    fingerprint = hashlib.sha256(public.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)).hexdigest()
+    recipient = X25519PrivateKey.generate()
+    client = GatewayControlClient('https://gateway.test', gateway_id='gateway-test', public_key_fingerprint=fingerprint,
+        user_id='user-1', policy_cache=ManagedPolicyCache(), provider_store=store)
+    client.config_private_key = recipient
+    messages = asyncio.Queue()
+    sent = []
+    class Socket:
+        async def send(self, value):
+            result = json.loads(value)
+            sent.append(result)
+            messages.put_nowait({'kind':'provider_applied_ack', 'version':1, 'device_id':'device-1', 'revision':result['revision']})
+    for revision in (0, 2, 1):
+        await client._apply_provider_bundle(Socket(), messages,
+            {'provider_bundle':_signed_bundle(gateway_key, recipient, revision=revision)}, pem, 'device-1')
+    assert [item['result'] for item in sent] == ['success', 'success', 'error']
+    assert store.get('managed_provider_state')['device_id'] == 'device-1'
+    assert store.get('managed_provider_state')['revision'] == 2

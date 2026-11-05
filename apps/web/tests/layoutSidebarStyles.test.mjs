@@ -13,3 +13,10 @@ test('sidebar fixed styles have named owners and project row states use attribut
   assert.match(css, /\.layout-project-row\[data-active="true"\]/)
   assert.doesNotMatch(layout, /const (sidebarStyle|sectionLabel|nestedSectionLabel|projectItemStyle|addButtonStyle)/)
 })
+
+test('mobile project rows remove desktop vertical padding and use the shared 40px project height', async () => {
+  const mobile = css.slice(css.lastIndexOf('@media (max-width: 1023px)'))
+  const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
+  assert.match(mobileCss, /--mobile-project-row-height: 40px;/)
+  assert.match(mobile, /\.layout-project-row\.ws-row\s*\{[^}]*min-height: var\(--mobile-project-row-height\);[^}]*padding-block: 0;/)
+})

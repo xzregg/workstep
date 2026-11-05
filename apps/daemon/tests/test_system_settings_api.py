@@ -164,12 +164,13 @@ async def test_git_scan_depth_rejects_invalid_values(system_settings_client, dep
     assert (await client.get('/api/system-settings')).json()['git_scan_depth'] == 5
 
 
+@pytest.mark.parametrize('field', ['git_scan_depth', 'message_history_page_size'])
 @pytest.mark.parametrize('method', ['GET', 'PUT'])
-async def test_git_settings_slow_disk_does_not_block_event_loop(system_settings_client, monkeypatch, method):
+async def test_git_settings_slow_disk_does_not_block_event_loop(system_settings_client, monkeypatch, method, field):
     client, _ = system_settings_client
     await client.get('/api/system-settings')
     store = system_settings_api.config_store
-    name = 'get_git_scan_depth' if method == 'GET' else 'set'
+    name = f'get_{field}' if method == 'GET' else 'set'
     original = getattr(store, name)
     started = threading.Event()
     release = threading.Event()
@@ -180,7 +181,7 @@ async def test_git_settings_slow_disk_does_not_block_event_loop(system_settings_
         return original(*args, **kwargs)
 
     monkeypatch.setattr(store, name, slow_io)
-    kwargs = {'json': {'git_scan_depth': 4}} if method == 'PUT' else {}
+    kwargs = {'json': {field: 4}} if method == 'PUT' else {}
     request = asyncio.create_task(client.request(method, '/api/system-settings', **kwargs))
     try:
         assert await asyncio.to_thread(started.wait, 2.0)
@@ -430,3 +431,23 @@ def test_device_identity_is_created_once_in_config_json(tmp_path, monkeypatch):
     assert first["device_id"]
     assert first["device_name"]
     assert json.loads(config_file.read_text(encoding="utf-8"))["device"] == first
+
+
+async def test_message_history_page_size_defaults_and_persists(system_settings_client):
+    client, config_file = system_settings_client
+    assert (await client.get('/api/system-settings')).json()['message_history_page_size'] == 20
+    for size in [1, 40, 300]:
+        response = await client.put('/api/system-settings', json={'message_history_page_size': size})
+        assert response.status_code == 200
+        assert response.json()['message_history_page_size'] == size
+        assert json.loads(config_file.read_text())['message_history_page_size'] == size
+        assert ConfigStore().get_message_history_page_size() == size
+    await client.put('/api/system-settings', json={'open_mode': True})
+    assert (await client.get('/api/system-settings')).json()['message_history_page_size'] == 300
+
+
+@pytest.mark.parametrize('size', [0, -1, 301, 1.5, '20', True])
+async def test_message_history_page_size_rejects_invalid_values(system_settings_client, size):
+    client, _ = system_settings_client
+    assert (await client.put('/api/system-settings', json={'message_history_page_size': size})).status_code == 422
+    assert (await client.get('/api/system-settings')).json()['message_history_page_size'] == 20

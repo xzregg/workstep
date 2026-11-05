@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { getMessageHistoryPageSize, loadMessageHistoryPageSize } from '../stores/userSettingsStore'
+import { useCallback, useEffect, useRef } from 'react'
 import { workflowGenApi } from '../api/client'
 import { useWorkflowGenStore } from '../stores/workflowGenStore'
 
@@ -13,11 +14,14 @@ export function useWorkflowConversationHistory(
   workflowId: string | undefined,
   onSession: (sessionId: string) => void,
 ) {
+  const pageRef = useRef({ key: '', offset: 0, hasOlder: false, loading: false })
   const callback = useRef(onSession)
   callback.current = onSession
   useEffect(() => {
     if (!workflowId) return
-    let sessionId = workflowSessionId(projectId, workflowId)
+    const page = { key: workflowSessionId(projectId, workflowId), offset: 0, hasOlder: false, loading: true }
+    pageRef.current = page
+    let sessionId = page.key
     callback.current(sessionId)
     useWorkflowGenStore.getState().newSession(sessionId)
     let active = true
@@ -26,10 +30,19 @@ export function useWorkflowConversationHistory(
     const load = () => {
       if (inFlight) { refreshPending = true; return }
       inFlight = true
+      page.loading = true
       const unchanged = useWorkflowGenStore.getState().sessions[sessionId]?.messages ?? []
-      void workflowGenApi.history(projectId, workflowId)
+      let pageSize = getMessageHistoryPageSize()
+      void loadMessageHistoryPageSize().then(limit => {
+        pageSize = limit
+        return active ? workflowGenApi.history(projectId, workflowId, limit, 0) : null
+      })
         .then((history) => {
-          if (!active) return
+          if (!active || !history) return
+          if (!page.offset) {
+            page.offset = history.messages.length
+            page.hasOlder = history.messages.length === pageSize
+          }
           const store = useWorkflowGenStore.getState()
           store.newSession(history.session_id)
           store.hydrateSession(history.session_id, (history.messages || []).map((message) => ({
@@ -44,6 +57,7 @@ export function useWorkflowConversationHistory(
         .catch(() => { /* Keep cached messages; a reconnect or reopening can retry. */ })
         .finally(() => {
           inFlight = false
+          page.loading = false
           if (active && refreshPending) { refreshPending = false; load() }
         })
     }
@@ -51,7 +65,34 @@ export function useWorkflowConversationHistory(
     load()
     return () => {
       active = false
+      if (pageRef.current === page) pageRef.current = { key: '', offset: 0, hasOlder: false, loading: false }
       window.removeEventListener('workstep:reconnected', load)
     }
   }, [projectId, workflowId])
+
+  const loadOlderHistory = useCallback(async (beforePrepend?: () => void) => {
+    const page = pageRef.current
+    if (!workflowId || page.key !== workflowSessionId(projectId, workflowId) || page.loading || !page.hasOlder) return
+    page.loading = true
+    try {
+      const limit = getMessageHistoryPageSize()
+      const history = await workflowGenApi.history(projectId, workflowId, limit, page.offset)
+      if (pageRef.current !== page) return
+      page.offset += history.messages.length
+      page.hasOlder = history.messages.length === limit
+      if (history.messages.length) {
+        beforePrepend?.()
+        useWorkflowGenStore.getState().hydrateSession(history.session_id, history.messages.map(message => ({
+          ...message, events: (message.events || []).map(event => ({ ...event, type: event.type || '', data: event.data || {} })),
+        })), false)
+      }
+    } catch {
+      // Retain the cursor so scrolling can retry.
+    } finally { page.loading = false }
+  }, [projectId, workflowId])
+  const resetPagination = useCallback(() => {
+    pageRef.current.offset = 0
+    pageRef.current.hasOlder = false
+  }, [])
+  return { loadOlderHistory, resetPagination }
 }

@@ -16,20 +16,37 @@ router = APIRouter(prefix="/api/statistics")
 
 @router.get("/system")
 async def system_report(request: Request):
-    """Host metrics are local-only and never collected on the request path."""
-    from api.desktop_security import desktop_runtime_authenticated
+    """Host metrics for local and authorized owner workspaces, read from cache."""
+    from api.desktop_security import (
+        desktop_runtime_authenticated, gateway_device_owner,
+    )
     from services.remote_access import _client_host, _is_loopback, authenticated_remote_dispatch
     actor = get_current_actor()
     # Container port forwarding replaces Electron's loopback peer with a bridge
     # address. Its per-launch desktop credential still identifies local access.
-    if ((not desktop_runtime_authenticated(request)
-         and not _is_loopback(_client_host(request.headers, request.client)))
-            or authenticated_remote_dispatch() is not None
-            or request.scope.get('gateway_remote_actor') is not None
-            or (actor is not None and (actor.project_id is not None
-                                      or actor.source == 'remote'
-                                      or actor.access_source == 'remote_browser'))):
-        raise HTTPException(status_code=403, detail="System statistics are local only")
+    if (authenticated_remote_dispatch() is not None
+            or request.scope.get('gateway_share_scope') is not None
+            or (actor is not None and (actor.project_id is not None or actor.source == 'remote'))):
+        raise HTTPException(status_code=403, detail="System statistics require host workspace access")
+    if request.scope.get('gateway_remote_actor') is not None:
+        allowed = gateway_device_owner(request)
+    else:
+        loopback = _is_loopback(_client_host(request.headers, request.client))
+        allowed = ((desktop_runtime_authenticated(request) or loopback)
+                   and (actor is None or actor.access_source != 'remote_browser'))
+        if not allowed and not loopback:
+            def native_access():
+                service = getattr(request.app.state, 'remote_access_service', None)
+                if service is None or not service.settings().get('enabled'):
+                    return False
+                if not service.access_password_required():
+                    return True
+                from services.remote_access import ACCESS_COOKIE_NAME
+                return service.verify_access_token(request.cookies.get(ACCESS_COOKIE_NAME)
+                                                   or request.headers.get('x-workstep-access'))
+            allowed = await asyncio.to_thread(native_access)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="System statistics require host workspace access")
     return system_statistics.snapshot()
 
 

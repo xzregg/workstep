@@ -4,11 +4,12 @@ import Button from './Button'
 import Icon from './Icon'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 
-export default function ChatWindowMenu({ layout, onChange, onAdd, canAdd }: {
+export default function ChatWindowMenu({ layout, onChange, onAdd, canAdd, creating = false }: {
   layout: 'horizontal' | 'vertical'
   onChange: (layout: 'horizontal' | 'vertical') => void
   onAdd: () => void
   canAdd: boolean
+  creating?: boolean
 }) {
   const { t } = useI18n()
   const trigger = useRef<HTMLButtonElement>(null)
@@ -16,7 +17,7 @@ export default function ChatWindowMenu({ layout, onChange, onAdd, canAdd }: {
   const [arranging, setArranging] = useState(false)
   return <>
     <Button ref={trigger} className="chat-window-trigger" variant="ghost" size="sm"
-      aria-label={t('chatWorkspace.title')} aria-haspopup="dialog" aria-expanded={Boolean(menu.anchor)}
+      loading={creating} aria-label={t('chatWorkspace.title')} aria-haspopup="dialog" aria-expanded={Boolean(menu.anchor)}
       onClick={() => {
         if (menu.anchor) menu.close()
         else { setArranging(false); menu.openFrom(trigger.current) }

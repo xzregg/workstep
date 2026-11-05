@@ -1,3 +1,4 @@
+import MessageHistorySetting from '../components/MessageHistorySetting'
 import AppearanceSettings from './AppearanceSettings'
 import SandboxSettings from '../components/SandboxSettings'
 import GatewayLogoutButton from '../components/GatewayLogoutButton'
@@ -229,6 +230,7 @@ export default function SettingsPage({
               )}
             </div>
             <ProjectDirectorySetting />
+            <MessageHistorySetting />
             <DesktopUpdateSettings />
             {typeof Notification !== 'undefined' && !window.WorkStepAndroid && !window.workstepDesktop && (
               <div className="settings-system-group">

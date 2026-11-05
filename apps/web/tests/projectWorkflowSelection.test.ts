@@ -18,7 +18,7 @@ test('a stale workflow response cannot replace the selected workflow steps', asy
       { id: 'simple', name: '简单流程', is_default: false },
     ],
   } as Project
-  useProjectStore.setState({ projects: [project], activeProject: project, activeWorkflowId: 'default' })
+  useProjectStore.setState({ projects: [project], activeProject: project, activeWorkflowId: null })
 
   try {
     const staleRequest = useProjectStore.getState().setActiveWorkflow('default')

@@ -1,0 +1,25 @@
+.workflow-name-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 200px;
+  font-size: calc(13px * var(--font-scale));
+  color: var(--fg-2);
+  font-weight: 500;
+}
+
+.workflow-name-editor > svg { flex-shrink: 0; }
+.workflow-name-editor-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-name-editor[data-editing="true"] { width: 200px; }
+.workflow-name-editor .sidebar-rename-field { position: relative; }
+.workflow-name-editor .sidebar-rename-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}

@@ -15,7 +15,7 @@ test('loads shared history within the server page limit and preserves chronologi
     assert.ok(offset === 0 || offset === 500)
     return Response.json({ messages: offset === 0 ? recent : [{ id: 0 }], limit, offset })
   }
-  const result = await shareApi.history('token', 'session')
+  const result = await shareApi.history('token', 'session', 501)
   assert.deepEqual(result.messages, [{ id: 0 }, ...recent])
 })
 
@@ -47,7 +47,7 @@ test('shared history respects an explicit limit and offset across pages', async 
   }
   const result = await shareApi.history('token', 'session', 501, 10)
   assert.deepEqual(requests, ['?limit=500&offset=10', '?limit=1&offset=510'])
-  assert.deepEqual(result, { messages: [{ id: 0 }, ...recent], limit: 501, offset: 10 })
+  assert.deepEqual(result, { messages: [{ id: 0 }, ...recent], limit: 501, offset: 10, next_offset: 511 })
 })
 
 test('share errors preserve string messages and fall back for non-JSON responses', async (t) => {
@@ -152,4 +152,20 @@ test('shared message event detail uses the share session', async (t) => {
   }
   const detail = await shareApi.messageEvents('share-token', 'share-session', 'message-one', 3)
   assert.equal(detail.events[0].type, 'TEXT_MESSAGE_CHUNK')
+})
+
+
+test('shared history defaults to twenty and returns a cursor for older messages', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let calls = 0
+  globalThis.fetch = async input => {
+    calls++
+    const url = new URL(String(input), 'http://localhost')
+    assert.equal(url.searchParams.get('limit'), '20')
+    return Response.json({ messages: Array.from({ length: 20 }, (_, id) => ({ id })) })
+  }
+  const page = await shareApi.history('token', 'session')
+  assert.equal(calls, 1)
+  assert.equal(page.next_offset, 20)
 })

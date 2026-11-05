@@ -145,6 +145,12 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
   </>
 }
 
+export async function revokePermission(assignmentId: string, csrf: string) {
+  await requireSuccess(await fetch(`/api/admin/permissions/${encodeURIComponent(assignmentId)}`, {
+    method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
+  }), '撤销权限失败，请重试。')
+}
+
 export function RevokePermissionDialog({ assignment, name, csrf, onClose, onSaved }: {
   assignment: PermissionAssignment; name: string; csrf: string; onClose: () => void; onSaved: () => void
 }) {
@@ -157,9 +163,7 @@ export function RevokePermissionDialog({ assignment, name, csrf, onClose, onSave
     try {
       const confirmation = await confirmStepUp(csrf, password, passwordRequired)
       if (!confirmation.ok) throw new Error('管理员身份验证失败，请重试。')
-      await requireSuccess(await fetch(`/api/admin/permissions/${encodeURIComponent(assignment.id)}`, {
-        method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
-      }), '撤销权限失败，请重试。'); onSaved()
+      await revokePermission(assignment.id, csrf); onSaved()
     } catch (reason) { setError(reason instanceof Error ? reason.message : '撤销权限失败，请重试。') }
     finally { setBusy(false) }
   }

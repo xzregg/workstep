@@ -6,6 +6,32 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import MarkdownMessage from '../src/components/MarkdownMessage'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
+import { MarkdownAssetUrlProvider } from '../src/contexts/MarkdownAssetUrlContext'
+
+test('local screenshot paths remain readable without image or resolver requests in Markdown and plain text', async () => {
+  const window = new Window({ url: 'http://localhost/' })
+  Object.assign(globalThis, {window, document:window.document, navigator:window.navigator,
+    HTMLElement:window.HTMLElement, IS_REACT_ACT_ENVIRONMENT:true})
+  useLocaleStore.getState().setLocale('zh-CN')
+  const container=document.body.appendChild(document.createElement('div')); const root=createRoot(container)
+  let resolved=0
+  try {
+    for (const plainText of [false,true]) {
+      for (const path of ['/tmp/workstep-local-gateway-connected.jpg', '/private/tmp/screen.jpg', '/Users/demo/screen.jpg', 'file:///tmp/screen.jpg', 'C:/Users/demo/screen.jpg', '/%74mp/screen.jpg']) {
+        await act(async()=>root.render(<I18nProvider><MarkdownAssetUrlProvider resolver={src=>{resolved++;return '/workspace/device'+src}}>
+          <MarkdownMessage content={`![连接截图](${path})`} projectId="project-1" plainText={plainText}/>
+        </MarkdownAssetUrlProvider></I18nProvider>))
+        assert.equal(container.querySelector('img'),null,path)
+        assert.equal(container.querySelector('.markdown-image-click'),null,path)
+        assert.match(container.textContent??'',/本机文件.*上传/)
+        assert.ok(container.textContent?.includes(path))
+      }
+    }
+    assert.equal(resolved,0)
+    await act(async()=>root.render(<I18nProvider><MarkdownMessage content="![远程截图](https://example.com/tmp/screen.jpg) ![接口图片](/api/fs/serve/screen.jpg)"/></I18nProvider>))
+    assert.equal(container.querySelectorAll('img').length,2)
+  } finally {await act(async()=>root.unmount());await window.happyDOM.close()}
+})
 
 test('shared Markdown images open and close the image preview by default', async () => {
   useLocaleStore.getState().setLocale('zh-CN')

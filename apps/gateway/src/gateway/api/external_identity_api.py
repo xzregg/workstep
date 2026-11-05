@@ -131,3 +131,20 @@ from gateway.services.directory_notices import NoticeRead
 async def read_directory_notice(request: Request, body: NoticeRead):
     from gateway.services.directory_notices import read_notice
     return await invoke(read_notice, request=request, body=body)
+
+
+@router.post('/admin/identity-sources/{source_id}/secret/reveal')
+async def reveal_source_secret(request: Request, source_id: str):
+    from fastapi.responses import JSONResponse
+    from gateway.services.external_identity_api import reveal_source_secret as handle
+    result = await invoke(handle, request=request, source_id=source_id)
+    return JSONResponse(result, headers={'Cache-Control': 'no-store', 'Pragma': 'no-cache'})
+
+
+from gateway.services.external_identity_api import SourceEnabledInput
+
+
+@router.put('/admin/identity-sources/{source_id}/enabled')
+async def set_source_enabled(request: Request, source_id: str, body: SourceEnabledInput):
+    from gateway.services.external_identity_api import set_source_enabled as handle
+    return await invoke(handle, request=request, source_id=source_id, body=body)

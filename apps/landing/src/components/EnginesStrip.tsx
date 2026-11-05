@@ -12,7 +12,7 @@ export function EnginesStrip() {
   const { t } = useI18n()
 
   return (
-    <section className="engines-strip">
+    <section className="engines-strip" id="engines">
       <div className="container">
         <div className="engines-label">{t('engines.label')}</div>
         <div className="engines-row">

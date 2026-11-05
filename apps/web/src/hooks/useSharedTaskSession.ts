@@ -1,3 +1,4 @@
+import { getMessageHistoryPageSize } from '../stores/userSettingsStore'
 import type { FileChangesQuery } from '../utils/messageFileChanges'
 import { gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -392,7 +393,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
     const version = scopeVersion.current
     olderInFlight.current = true; setLoadingOlder(true); setError(null)
     try {
-      const page = await api.history(token, phase.sessionToken, 100, nextOffset)
+      const page = await api.history(token, phase.sessionToken, getMessageHistoryPageSize(), nextOffset)
       if (version !== scopeVersion.current) return
       setMessages(current => {
         const known = new Set(current.map(message => message.id))

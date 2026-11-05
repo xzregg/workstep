@@ -33,6 +33,18 @@ class SharedImageTests(unittest.TestCase):
         self.assertIn('--cache-from "type=registry,ref=$repository:buildcache"', build)
         self.assertIn('--cache-to "type=registry,ref=$repository:buildcache,mode=max"', build)
 
+    def test_image_only_dispatch_skips_desktop_and_validates_before_latest(self):
+        workflow = (ROOT / ".github/workflows/desktop-release.yml").read_text()
+        self.assertIn("image_only:\n", workflow)
+        for name in ("macos", "windows", "linux", "publish-draft"):
+            job = workflow.split(f"\n  {name}:\n", 1)[1].split("\n  ", 1)[0]
+            self.assertIn("if: ${{ !inputs.image_only }}", job)
+        self.assertIn('build_tag="build-${GITHUB_SHA}"', workflow)
+        self.assertIn('sudo python3 scripts/verify-shared-image.py "$repository@$digest"', workflow)
+        smoke = workflow.index('python3 scripts/verify-shared-image.py "$repository@$digest"')
+        promote = workflow.index('docker buildx imagetools create --tag "$repository:latest" "$repository@$digest"')
+        self.assertLess(smoke, promote)
+
     def test_system_git_points_to_image_managed_git(self):
         self.assertIn("RUN ln -sf /root/.workstep/runtime/base/git/bin/git /usr/bin/git",
                       (ROOT / "Dockerfile").read_text())

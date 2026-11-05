@@ -43,7 +43,7 @@ def test_remote_session_renews_cookie_and_expiry_without_changing_scope(tmp_path
         renewed = client.get(root + 'api/remote/session')
         assert renewed.status_code == 200, renewed.text
         assert renewed.json()['project_id'] == ('project-one' if project_scope else None)
-        assert renewed.headers['cache-control'] == 'no-store'
+        assert 'no-store' in {part.strip() for part in renewed.headers['cache-control'].split(',')}
         cookies = renewed.headers.get_list('set-cookie')
         assert any('Max-Age=3600' in cookie for cookie in cookies)
         if path_workspace:

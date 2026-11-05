@@ -842,11 +842,18 @@ async def test_platform_share_history_pages_execution_and_coordinator_messages(a
                         for frame in frames if frame.payload.get("phase") == "body")
         return frames[0].payload["status"], json.loads(body) if body else None
 
+    from services.config import config_store
+    monkeypatch.setattr(config_store, "get_message_history_page_size", lambda: 20)
     status, first = await read("/api/platform-share/history")
     assert status == 200
-    assert len(first["messages"]) == 100
-    assert first["messages"][0]["content"] == "message-6"
-    assert first["next_offset"] == 100
+    assert len(first["messages"]) == 20
+    assert first["messages"][0]["content"] == "message-86"
+    assert first["next_offset"] == 20
+    monkeypatch.setattr(config_store, "get_message_history_page_size", lambda: 40)
+    status, next_page = await read("/api/platform-share/history/20")
+    assert status == 200
+    assert len(next_page["messages"]) == 40
+    assert next_page["next_offset"] == 60
     status, older = await read("/api/platform-share/history/100")
     assert status == 200
     assert [item["content"] for item in older["messages"]] == [

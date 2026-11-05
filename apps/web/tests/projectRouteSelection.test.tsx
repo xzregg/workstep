@@ -155,3 +155,22 @@ test('chat deep link restores its project before the chat page mounts', async ()
     await window.happyDOM.close()
   }
 })
+
+
+test('task route loads default workflow from a catalog without steps', async () => {
+  const window = new Window()
+  Object.assign(globalThis, { window, document: window.document, IS_REACT_ACT_ENVIRONMENT: true })
+  const original = workflowApi.get
+  const project: Project = { id: 'lazy-route', name: 'lazy-route', path: '/tmp/lazy',
+    workflows: [{ id: 'default', name: 'Default', is_default: true, nodeCount: 1 }] }
+  let calls = 0
+  workflowApi.get = async () => { calls++; return { id: 'default', steps: { nodes: [{ id: 1 }] } } as any }
+  useProjectStore.setState({ projects: [project], activeProject: null, activeWorkflowId: null, canvasDirty: false, workflowLoadError: null })
+  function Surface() { useProjectRouteSelection(); return null }
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => { root.render(<MemoryRouter initialEntries={['/tasks?project=lazy-route']}><Surface /></MemoryRouter>) })
+    assert.equal(calls, 1)
+    assert.deepEqual(useProjectStore.getState().activeProject?.steps, { nodes: [{ id: 1 }] })
+  } finally { workflowApi.get = original; await act(async () => root.unmount()); await window.happyDOM.close() }
+})

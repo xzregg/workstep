@@ -1,3 +1,4 @@
+import { getMessageHistoryPageSize, loadMessageHistoryPageSize } from '../stores/userSettingsStore'
 import type { FileChangesQuery } from '../utils/messageFileChanges'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState,
   type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react'
@@ -5,8 +6,6 @@ import { taskApi } from '../api/client'
 import { loadTaskHistoryWithRetry, mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory } from '../pages/taskHistoryModel'
 import { mergeSharedHistorySnapshot } from '../pages/sharedTaskMessages'
-
-const PAGE_SIZE = 300
 
 interface TaskHistoryOptions {
   snapshot?: any[]
@@ -66,16 +65,18 @@ export function useTaskHistory({ taskId, projectId, userMessageEvents,
     const load = async (initial: boolean) => {
       inFlight = true
       try {
+        const pageSize = initial ? await loadMessageHistoryPageSize() : getMessageHistoryPageSize()
+        if (controller.signal.aborted) return
         const response = initial
           ? await loadTaskHistoryWithRetry(
-            () => taskApi.history(taskId, projectId, PAGE_SIZE, 0), controller.signal,
+            () => taskApi.history(taskId, projectId, pageSize, 0), controller.signal,
           )
-          : await taskApi.history(taskId, projectId, PAGE_SIZE, 0)
+          : await taskApi.history(taskId, projectId, pageSize, 0)
         if (controller.signal.aborted || !response) return
         const messages = response.messages || []
         if (initial) {
           offsetRef.current = messages.length
-          hasOlderRef.current = messages.length === PAGE_SIZE
+          hasOlderRef.current = messages.length === pageSize
         }
         setHistoryMessages((current) => mergeRefreshedTaskHistory(current, messages))
       } catch {
@@ -107,10 +108,11 @@ export function useTaskHistory({ taskId, projectId, userMessageEvents,
     prependScrollHeightRef.current = container?.scrollHeight ?? null
     const offset = offsetRef.current
     try {
-      const response = await taskApi.history(taskId, projectId, PAGE_SIZE, offset)
+      const pageSize = getMessageHistoryPageSize()
+      const response = await taskApi.history(taskId, projectId, pageSize, offset)
       const olderMessages = response.messages || []
       offsetRef.current += olderMessages.length
-      hasOlderRef.current = olderMessages.length === PAGE_SIZE
+      hasOlderRef.current = olderMessages.length === pageSize
       setHistoryMessages((current) => {
         const currentIds = new Set(current.map((message) => String(message.id)))
         return [...olderMessages.filter((message: any) => !currentIds.has(String(message.id))), ...current]

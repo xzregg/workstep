@@ -1281,7 +1281,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
-    { name = "workstep-gateway-protocol" },
+    { name = "workstep-gateway-protocol", extra = ["http"] },
 ]
 
 [package.dev-dependencies]
@@ -1304,7 +1304,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
-    { name = "workstep-gateway-protocol", editable = "../../packages/gateway-protocol" },
+    { name = "workstep-gateway-protocol", extras = ["http"], editable = "../../packages/gateway-protocol" },
 ]
 
 [package.metadata.requires-dev]
@@ -1322,8 +1322,17 @@ dependencies = [
     { name = "pydantic" },
 ]
 
+[package.optional-dependencies]
+http = [
+    { name = "starlette" },
+]
+
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.0" }]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "starlette", marker = "extra == 'http'", specifier = ">=0.40" },
+]
+provides-extras = ["http"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]

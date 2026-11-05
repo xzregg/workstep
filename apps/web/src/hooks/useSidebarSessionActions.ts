@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useRecentVisitsStore } from '../stores/recentVisitsStore'
+import { useChatWorkspaceStore } from '../stores/chatWorkspaceStore'
 
 /** Owns sidebar conversation mutations and the navigation that follows removal. */
 export function useSidebarSessionActions() {
@@ -76,7 +77,8 @@ export function useSidebarSessionActions() {
       useRecentVisitsStore.getState().removeSessions(projectId, [sessionId])
       useChatListStore.getState().removeSession(sessionId)
       useChatSessionStore.getState().resetSession(sessionId)
-      if (activeSessionId === sessionId) {
+      const closedPane = useChatWorkspaceStore.getState().removeSessions(projectId, [sessionId])
+      if (!closedPane && activeSessionId === sessionId) {
         const next = useChatListStore.getState().sessionsByProject[projectId]?.find(
           (session) => (session.source === 'channel') === (deletedSession?.source === 'channel'),
         )
@@ -100,7 +102,8 @@ export function useSidebarSessionActions() {
       await chatSessionApi.setArchived(sessionId, projectId, true)
       useRecentVisitsStore.getState().removeSessions(projectId, [sessionId])
       useChatListStore.getState().removeSession(sessionId)
-      if (activeSessionId === sessionId) {
+      const closedPane = useChatWorkspaceStore.getState().removeSessions(projectId, [sessionId])
+      if (!closedPane && activeSessionId === sessionId) {
         const next = useChatListStore.getState().sessionsByProject[projectId]?.find(
           (session) => (session.source === 'channel') === (archivedSession?.source === 'channel'),
         )

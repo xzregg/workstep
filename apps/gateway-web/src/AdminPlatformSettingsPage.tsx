@@ -1,3 +1,4 @@
+import { AdminCompanyNameDialog } from './AdminCompanyNameDialog'
 import { AdminTabs } from './AdminTabs'
 import { PlatformAddress } from './PlatformAddress'
 import { AdminPlatformAddressDialog } from './AdminPlatformAddressDialog'
@@ -9,7 +10,7 @@ import { AdminRegistrationPolicyDialog, registrationLabels } from './AdminRegist
 import type { RegistrationMode } from './AdminRegistrationPolicyDialog'
 
 type PlatformSettings = {
-  gateway_id: string; public_origin: string | null; registration_mode: RegistrationMode
+  company_display_name?: string; gateway_id: string; public_origin: string | null; registration_mode: RegistrationMode
   device_approval_mode?: 'manual' | 'automatic'
   password_login_enabled?: boolean
   session_seconds: number | null; protocol_version: number; data_dir: string
@@ -26,6 +27,7 @@ export function AdminPlatformSettingsPage() {
   const [deviceEditing, setDeviceEditing] = useState(false)
   const [editing, setEditing] = useState(false)
   const [loginEditing,setLoginEditing]=useState(false)
+  const [companyEditing, setCompanyEditing] = useState(false)
   const [addressEditing, setAddressEditing] = useState(false)
 
   useEffect(() => {
@@ -56,10 +58,12 @@ export function AdminPlatformSettingsPage() {
      { id: 'platform', label: '平台信息', content: (
       <section className="gateway-project-grants"><h3>平台信息</h3>
         <dl className="gateway-account-summary">
+          <div><dt>公司显示名称</dt><dd>{settings.company_display_name || '未设置'}</dd></div>
           <div><dt>网关 ID</dt><dd>{settings.gateway_id}</dd></div>
           <div><dt>平台地址</dt><dd><PlatformAddress address={settings.public_origin}/></dd></div>
           <div><dt>会话有效期</dt><dd>{settings.session_seconds == null ? '不过期（退出或撤销后失效）' : `${settings.session_seconds / 3600} 小时`}</dd></div>
         </dl>
+        <button type="button" onClick={() => setCompanyEditing(true)}>修改公司显示名称</button>
         <button type="button" onClick={() => setAddressEditing(true)}>修改平台地址</button>
         <p>复制后粘贴到 WorkStep「设置 → 远程访问 → 网关平台」的地址栏。安装页也会显示此地址。</p>
       </section>
@@ -98,6 +102,8 @@ export function AdminPlatformSettingsPage() {
     ]} />}
     {deviceEditing && settings && <AdminRegistrationPolicyDialog devicePolicy mode={settings.device_approval_mode ?? 'manual'} csrf={csrf}
       onClose={() => setDeviceEditing(false)} onSaved={() => { setDeviceEditing(false); setRevision(value => value + 1) }} />}
+    {companyEditing && settings && <AdminCompanyNameDialog name={settings.company_display_name ?? ''} csrf={csrf}
+      onClose={() => setCompanyEditing(false)} onSaved={() => {setCompanyEditing(false); setRevision(current => current + 1)}}/>}
     {addressEditing && settings && <AdminPlatformAddressDialog address={settings.public_origin} csrf={csrf}
       onClose={() => setAddressEditing(false)} onSaved={() => {setAddressEditing(false); setRevision(current => current + 1)}}/>}
     {editing && settings && <AdminRegistrationPolicyDialog mode={settings.registration_mode} csrf={csrf}

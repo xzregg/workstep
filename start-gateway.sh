@@ -29,6 +29,6 @@ done
 echo "WORKSTEP 平台 → ${WORKSTEP_GATEWAY_PUBLIC_ORIGIN}（Ctrl+C 停止）"
 cd "$gateway_root/apps/gateway"
 if [[ "$gateway_mode" == dev ]]; then
-  exec uv run --no-sync uvicorn main:app --host 0.0.0.0 --port "$gateway_port" --reload
+  exec uv run --no-sync uvicorn main:app --host 0.0.0.0 --port "$gateway_port" --ws-ping-interval 20 --ws-ping-timeout 60 --reload
 fi
-exec uv run --no-sync uvicorn main:app --host 0.0.0.0 --port "$gateway_port"
+exec uv run --no-sync uvicorn main:app --host 0.0.0.0 --port "$gateway_port" --ws-ping-interval 20 --ws-ping-timeout 60

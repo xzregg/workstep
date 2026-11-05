@@ -21,7 +21,7 @@ export interface Project {
   id: string
   path: string
   name: string
-  steps: any
+  steps?: any
   is_default_workspace?: boolean
   workflows: WorkflowSummary[]
   /** Backend aggregate: any running workflow task OR live chat turn. */
