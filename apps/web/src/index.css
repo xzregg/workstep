@@ -1377,6 +1377,17 @@ details[open] > summary > .process-trace-chevron {
   animation: process-trace-shine 1.75s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
 }
 
+/* 状态内包含跑马灯裁剪层，使用遮罩扫光，避免透明字色继承后整段消失。 */
+.process-trace-status.process-trace-thinking-label.is-shimmer {
+  color: var(--muted);
+  -webkit-text-fill-color: var(--muted);
+  background: none;
+  -webkit-mask-image: linear-gradient(90deg, #fff 0%, #fff 30%, rgba(255, 255, 255, 0.4) 45%, rgba(255, 255, 255, 0.4) 55%, #fff 70%, #fff 100%);
+  mask-image: linear-gradient(90deg, #fff 0%, #fff 30%, rgba(255, 255, 255, 0.4) 45%, rgba(255, 255, 255, 0.4) 55%, #fff 70%, #fff 100%);
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+}
+
 @keyframes process-trace-shine {
   0%, 18% {
     background-position: 100% 0;
@@ -1890,6 +1901,10 @@ details[open] > summary > .process-trace-chevron {
     color: var(--muted);
     -webkit-text-fill-color: var(--muted);
     background: none;
+  }
+  .process-trace-status.process-trace-thinking-label.is-shimmer {
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 }
 

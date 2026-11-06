@@ -5,6 +5,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ProcessTrace from '../src/components/ProcessTrace'
 import { I18nProvider } from '../src/i18n'
+import { readFileSync } from 'node:fs'
 
 for (const { width, overflow, reduced } of [
   { width: 320, overflow: true, reduced: false },
@@ -50,6 +51,20 @@ for (const { width, overflow, reduced } of [
       assert.match(summary.textContent ?? '', /会话 ID/)
       await act(async () => summary.click())
       assert.equal(summary.getAttribute('aria-expanded'), 'true')
+      const styles = document.createElement('style')
+      styles.textContent = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
+      document.head.append(styles)
+      for (const skinColor of ['rgb(160, 180, 200)', 'rgb(60, 75, 90)']) {
+        container.style.setProperty('--muted', skinColor)
+        await act(async () => root.render(<I18nProvider key={skinColor}><ProcessTrace
+          events={[]} compact running startedAt={Date.now() - 210000}
+          summaryMeta={<span data-meta>提示词 · 今天 07:43:30</span>}
+        /></I18nProvider>))
+        const status = container.querySelector<HTMLElement>('.process-trace-status')!
+        assert.match(status.textContent ?? '', /处理中|Processing/)
+        assert.equal(getComputedStyle(status).color, skinColor, 'running text keeps the skin color instead of inheriting transparent fill')
+        assert.equal(getComputedStyle(status).backgroundImage, 'none')
+      }
     } finally {
       await act(async () => root.unmount())
       if (scrollDescriptor) Object.defineProperty(prototype, 'scrollWidth', scrollDescriptor)
