@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Dubbelklik op het bureaublad op een zijbalkgesprek of de koptitel ervan om het gedeelde dialoogvenster voor het wijzigen van de naam te openen. Voer vervolgens de naam in en bevestig deze.",
-          "Mobiel toont alleen het actieve paneel en bewaart de andere. Weggaan en terugkeren binnen dezelfde paginasessie herstelt panelen, indeling en afmetingen; na browserverversing is herstel niet gegarandeerd. Indelingen zijn per account en apparaat gescheiden, zonder gesprekken te kopiëren."
+          "Op de telefoon is alleen het actieve paneel zichtbaar; de andere behouden hun status. Na vernieuwen of terugkeren worden panelen, indeling en afmetingen hersteld; gesloten panelen gaan niet opnieuw open. Klikken op een projectrij in de zijbalk vouwt alleen de boom in of uit; klik op een specifieke conversatie om te wisselen. De indeling is gescheiden per account en apparaat en kopieert geen gesprekstekst."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Wanneer u van engine of provider met bestaande context verandert, kiest u Slimme overdracht, Volledige chatgeschiedenis of Geen in het dialoogvenster. Ga een gesprek aan voor onafhankelijk onderzoek en bevestig de contextmodus ervan."
         ],
         "tips": [
-          "Projectchat wordt afzonderlijk van workflowtaakrecords opgeslagen. Maak een taak als u faseregistratie en beoordelingen nodig heeft.",
+          "Projectgesprekken worden niet opgenomen in de taakgeschiedenis van workflows. In Codex-gesprekken kun je via het configuratiemenu «Snelheid → Standaardinstelling / Normaal / Snel / Ultrasnel» kiezen. De keuze wordt per project en conversatie opgeslagen en vervalt bij een andere engine, provider of contextoverdracht. De standaardinstelling volgt de oorspronkelijke configuratie; daadwerkelijke versnelling hangt af van je account en de dienst.",
           "Native forking is alleen beschikbaar als deze daadwerkelijk door de engine wordt ondersteund. Ga anders verder via expliciete contextoverdracht."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Open Configuratie → Vaardigheidscentrum van het huidige project, scan opnieuw en zoek op naam, beschrijving of bronpad.",
           "Lees vaardigheidsdoeleinden en schakel in wat u nodig hebt. Controleer het geselecteerde bereik voordat bulkwijzigingen plaatsvinden. Vaardigheden worden per project opgeslagen en zijn van toepassing bij de volgende run of nieuwe sessie.",
-          "Typ / in de componist om vaardigheden te selecteren die daadwerkelijk door de huidige engine worden aangeboden. Lijsten variëren per motor.",
+          "Typ / en zoek op het begin van de naam naar vaardigheden van de huidige engine. Om van bespreken naar uitvoeren te gaan, kies je «＋ → Workflowmodus» in de gewone chat van een lokaal project. Bespreek eerst het stroomdiagram; pas na expliciete bevestiging worden workflow en taak aangemaakt en gestart. Bekijk de taak via de detailknop in het antwoord. Deze ingang ontbreekt bij externe projecten en ingebedde ontwerpsessies.",
           "Gebruik het sessiemenu om de naam te wijzigen of te archiveren. Doorzoek de archieflijst en herstel de vereiste gesprekken."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Wijzig de gebruikersnaam in de systeeminstellingen. Taal, lettertypen, grootte en skins staan ​​onder Instellingen → Uiterlijk; Het scanbereik van de repository bevindt zich onder Git-instellingen."
         ],
         "tips": [
-          "Het wijzigen van de standaarduitvoeringsengine heeft invloed op nieuwe taken en stappen, niet op bestaande taak- of stapinstellingen."
+          "Een andere standaardengine geldt voor nieuwe taken en stappen en vervangt bestaande configuraties niet. «Systeeminstellingen → Berichten per laadbeurt» staat standaard op 20 en accepteert gehele getallen van 1 tot 300. Dit beïnvloedt volgende laadbeurten van de geschiedenis en herlaadt geopende conversaties niet onmiddellijk."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Kies persoonlijke weergavevoorkeuren of maak previews van skins en taalpakketten via de gewone projectchat.",
     "sections": [
       {
+        "title": "Persoonlijke verschijning kiezen en opslaan",
+        "steps": [
+          "Voor volledige toegang tot het apparaat opent u Instellingen → Weergave. Project-geautoriseerde gebruikers voeren Vormgeving en skins in via de zijbalk.",
+          "Kies lettertype, lettergrootte en taal. Zoek in de skinbibliotheek of filter op «Alle / Mijn skins». Een geselecteerde kaart toont alleen een voorbeeld. Open het voorbeeld en annuleer of bevestig in de vaste voorbeeldbalk.",
+          "De keuzes van geverifieerde Gateway-gebruikers worden per account en apparaat opgeslagen en hersteld in een andere browser op hetzelfde apparaat. Opnieuw mislukte poging tot opslaan. Lokale keuzes zonder platformaanmelding blijven in deze browser staan."
+        ],
+        "tips": [
+          "Skin- en taalpakketten worden op het apparaat gedeeld; persoonlijke keuzes blijven gescheiden. Gebruikers met alleen projecttoegang kunnen uitsluitend geïnstalleerde pakketten kiezen. Hostbeheerders kunnen ZIP importeren; bijwerken onder dezelfde naam vereist bevestiging van vervanging en opnieuw toepassen. Een geselecteerde aangepaste skin kan als ZIP worden geëxporteerd; de standaardskin kan niet worden geëxporteerd of verwijderd.",
+          "Ontbrekende of kapotte pakketten vallen terug naar het standaarduiterlijk. Voeg ?skin=default of ?lingual=default toe om de standaard skin of Vereenvoudigd Chinees te herstellen."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Werkruimte en chatinvoerveld met de sterrenhemelskin daadwerkelijk toegepast",
+          "caption": "Demowerkruimte met «星际 · 静谧星海» daadwerkelijk toegepast; de conversatie is leeg, er zijn geen berichten verzonden en de scripts staan uit. Achtergrondcredits: ESO/S. Brunier · bewerking met AI-fusie."
+        }
+      },
+      {
+        "title": "Creëer skins en talen via chat",
+        "steps": [
+          "Klik met hostbeheerrechten op «Laten we het uiterlijk bespreken», kies een beschikbare engine in het configuratiemenu van de chat en verstuur je wens, bijvoorbeeld «Gebruik «星际 · 静谧星海» als basis, behoud de sterrenhemel als achtergrond en gebruik een pijl omhoog op de verzendknop». Suggesties en vooraf ingevulde opdrachten worden niet automatisch verzonden. Je hoeft geen versie van het skinformaat te kiezen.",
+          "Links staat de chat, rechts de editor en het voorbeeld; op de telefoon wissel je met tabbladen. Pas naam, kleuren, lettertype, lettergrootte, verzendpictogram of indeling aan en klik op «Aanpassingen opslaan» om hetzelfde concept bij te werken. Ook vóór verzending wordt automatisch opgeslagen; na generatie wordt het concept opnieuw ingelezen. Tijdens uitvoering kun je niet bewerken. Lees bij versieconflicten eerst opnieuw in. Controleer in het ontwerpvenster de chatvoorbeelden voor pc en telefoon; na opslaan in de skinbibliotheek kun je ook de voorbeelden voor taakbord en workflow controleren.",
+          "Voor een taalpakket vraag je in dezelfde chat bijvoorbeeld: Voeg Spaans toe met behoud van uiterlijk. Schakel de rechterkant naar Taal. Het laadt na generatie; gebruik Lezen en valideren om de map, dekking, ontbrekende tekenreeksen en voorbeelden te controleren.",
+          "Voor skins klikt u op Vormgeving en voorbeeld opslaan; voor talen: Installeren en previewen. Bevestig of annuleer in de voorbeeldbalk. Opslaan in de bibliotheek bevestigt geen persoonlijke toepassing. Exporteer ZIP voor hergebruik en inspecteer vervangingsprompts voor importen of updates met dezelfde ID."
+        ],
+        "tips": [
+          "Bij opnieuw openen worden de oorspronkelijke ontwerpsessie en het concept hersteld. Is de sessie verwijderd of gearchiveerd, dan wordt een nieuwe gemaakt. Verzonden verzoeken gebruiken het gekozen model; welkomstinhoud, handmatige aanpassingen en lokale voorbeelden gebruiken geen model en voeren geen echte taken uit.",
+          "Je kunt systeemlettertypen kiezen of lokale lettertypen uit het skinpakket gebruiken. Het verzendpictogram biedt ingebouwde stijlen; aangepaste vectorpictogrammen moeten worden gevalideerd. Wisselen van skin of taal vertaalt eerdere berichten en gebruikersbestanden niet automatisch.",
+          "Taalpakketten zijn onafhankelijk van skins en ondersteunen momenteel talen van links naar rechts. Ontbrekende tekenreeksen en datumbesturingselementen gebruiken de opgegeven ingebouwde fallback. De berichtgeving bewijst niet de kwaliteit van de vertaling; gebruik chat om verouderde stringcatalogi bij te werken."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat- en bewerkings-/voorbeeldgebieden bij het maken van verschijningen",
+          "caption": "Het echte ontwerpvenster na het inlezen van het pakket van de sterrenhemelskin, met aanpassingen en pc-voorbeeld rechts. Het verzoek links is nog niet verzonden en er is geen model aangeroepen."
+        }
+      },
+      {
+        "title": "Aangepaste skins en functie-uitbreidingen gebruiken",
+        "steps": [
+          "Kies een skin via «Instellingen → Uiterlijk». De kaart werkt alleen een lokaal voorbeeld bij; miniaturen voeren geen scripts uit. Het voorbeeld verandert tijdelijk de hele werkruimte: bevestig om op te slaan of annuleer om het vorige uiterlijk te herstellen.",
+          "Selecteer een skin met scripts en gebruik «Skinscripts uitvoeren» om de functies te regelen, zonder extra bevestigingsvenster. Zonder scripts is de schakelaar niet beschikbaar. Voor een nog niet toegepaste skin wordt alleen je voorkeur opgeslagen; scripts starten pas in het werkruimtebrede voorbeeld of na toepassing. Menu's, notities en kalenders worden door de geïnstalleerde skin geleverd en zijn geen vooraf geïnstalleerde appfuncties.",
+          "De skin kan het invoerveld boven, onder, links of rechts plaatsen; de compacte weergave blijft verticaal. Scripts uitschakelen deactiveert de uitbreidingsfuncties en ruimt componenten en abonnementen op, maar behoudt het uiterlijk. Sommige menu’s kunnen zichtbaar maar niet beschikbaar blijven. Bekijk bij een laadfout de foutmelding, zet de schakelaar uit en weer aan om opnieuw te proberen.",
+          "Extensiegegevens zijn gescheiden op basis van browseridentiteit, apparaat, skin en functie. Als u een skin wijzigt of verwijdert, wordt deze niet gewist. Gebruik de eigen export van de extensie voor back-up. Als de interface kapot gaat, voeg dan skin=default toe aan de URL en vernieuw."
+        ],
+        "tips": [
+          "Scripts hebben dezelfde rechten als de huidige pagina. Schakel alleen vertrouwde bronnen in; een voorbeeld annuleren maakt uitgevoerde handelingen niet ongedaan. De voorkeur wordt opgeslagen per identiteit, toegangsbereik van het apparaat en skin, en blijft behouden na vernieuwen of bijwerken van dezelfde skin.",
+          "Extensiegegevens worden niet opgenomen in skin ZIP-exports of gesynchroniseerd tussen browsers/apparaten. Maak een back-up voordat u de opslag opruimt; Een mislukte besparing mag niet als succes worden beschouwd."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Scriptschakelaar van een aangepaste skin en ingangen naar uitbreidingen",
+          "caption": "Scriptschakelaar, ZIP-export, voorbeeld en toepassing van de sterrenhemelskin. De scripts staan momenteel uit; afbeeldingen van werkende uitbreidingen en het resultaat na uitschakelen ontbreken nog."
+        }
+      },
+      {
         "title": "Kies een ingebouwde taal",
         "steps": [
           "In Instellingen → Vormgeving kiest u Vereenvoudigd Chinees, Traditioneel Chinees, Engels, Japans, Frans, Duits of Arabisch en inspecteert u algemene invoer- en datumcontroles.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Ingebouwde taalkiezers in de app en website",
           "caption": "Echte screenshots van de toegevoegde taalkeuzes zijn in behandeling."
-        }
-      },
-      {
-        "title": "Gebruik v2-skinlay-outs en functie-extensies",
-        "steps": [
-          "Installeer en valideer onder Instellingen → Vormgeving een vertrouwde v2-skin, bekijk een voorbeeld en pas deze toe. Voor functies zoals notities vraagt ​​u de auteur in de chat voor het maken van het uiterlijk om componenten op te nemen.",
-          "Lees de inschakelbevestiging voor pakketten met code. Het updaten van een pakket of het wijzigen van de identiteit kan opnieuw vragen. Open panelen via de skinmenu's of functie-items, die afhankelijk zijn van het pakket. Notities of agenda's zijn geen vooraf geïnstalleerde app-functies.",
-          "Het pakket kan de componist boven, onder, links of rechts positioneren. Compacte weergaven behouden de verticale opstelling. Na het overschakelen blijven controleberichten, componist en instellingen bruikbaar.",
-          "Extensiegegevens zijn gescheiden op basis van browseridentiteit, apparaat, skin en functie. Als u een skin wijzigt of verwijdert, wordt deze niet gewist. Gebruik de eigen export van de extensie voor back-up. Als de interface kapot gaat, voeg dan skin=default toe aan de URL en vernieuw."
-        ],
-        "tips": [
-          "Componentcode heeft de rechten van de huidige pagina. Schakel alleen vertrouwde bronnen in. Als u het voorbeeld annuleert, wordt de weergave hersteld, maar wordt de reeds uitgevoerde code niet ongedaan gemaakt.",
-          "Extensiegegevens worden niet opgenomen in skin ZIP-exports of gesynchroniseerd tussen browsers/apparaten. Maak een back-up voordat u de opslag opruimt; Een mislukte besparing mag niet als succes worden beschouwd."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "Bevestiging van v2-componentinschakeling en toegang tot het functiepaneel",
-          "caption": "Een echte uitvoeringsscreenshot van een vertrouwd demonstratiepakket is in behandeling. Formaatvalidatie is geen visuele acceptatie."
-        }
-      },
-      {
-        "title": "Persoonlijke verschijning kiezen en opslaan",
-        "steps": [
-          "Voor volledige toegang tot het apparaat opent u Instellingen → Weergave. Project-geautoriseerde gebruikers voeren Vormgeving en skins in via de zijbalk.",
-          "Kies lettertype, grootte en taal. Zoek of filter geïnstalleerde skins, bekijk een voorbeeld en pas ze toe. Via de vaste voorbeeldbalk kunt u annuleren of bevestigen.",
-          "De keuzes van geverifieerde Gateway-gebruikers worden per account en apparaat opgeslagen en hersteld in een andere browser op hetzelfde apparaat. Opnieuw mislukte poging tot opslaan. Lokale keuzes zonder platformaanmelding blijven in deze browser staan."
-        ],
-        "tips": [
-          "Pakketten en aanmaakrecords worden gedeeld op het apparaat; persoonlijke selecties zijn geïsoleerd. Project-geautoriseerde gebruikers kunnen alleen geïnstalleerde pakketten kiezen.",
-          "Ontbrekende of kapotte pakketten vallen terug naar het standaarduiterlijk. Voeg ?skin=default of ?lingual=default toe om de standaard skin of Vereenvoudigd Chinees te herstellen."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Lettertypen, grootte, taal en geïnstalleerde skins in Uiterlijk",
-          "caption": "De echte instellingenpagina toont standaardinstellingen en ingebouwde voorbeelden aan de rechterkant. Er zijn geen persoonlijke voorkeuren gewijzigd."
-        }
-      },
-      {
-        "title": "Creëer skins en talen via chat",
-        "steps": [
-          "Met hostbeheerrechten klikt u op Laten we het uiterlijk bespreken, kies een geïnstalleerde, geverifieerde engine en beschrijf een doel, zoals: Maak een donkere huid, behoud de lay-out en gebruik een pijl naar boven.",
-          "Chat is aan de linkerkant, bewerken en bekijken aan de rechterkant; telefoons wisselen van tabblad. Pas de naam, kleuren, lettertype, grootte, verzendpictogram en lay-out aan en sla vervolgens de aanpassingen op in hetzelfde conceptpakket. Bewerken is uitgeschakeld terwijl de chat actief is. Bekijk pc- en telefoonvoorbeelden.",
-          "Voor een taalpakket vraag je in dezelfde chat bijvoorbeeld: Voeg Spaans toe met behoud van uiterlijk. Schakel de rechterkant naar Taal. Het laadt na generatie; gebruik Lezen en valideren om de map, dekking, ontbrekende tekenreeksen en voorbeelden te controleren.",
-          "Voor skins klikt u op Vormgeving en voorbeeld opslaan; voor talen: Installeren en previewen. Bevestig of annuleer in de voorbeeldbalk. Opslaan in de bibliotheek bevestigt geen persoonlijke toepassing. Exporteer ZIP voor hergebruik en inspecteer vervangingsprompts voor importen of updates met dezelfde ID."
-        ],
-        "tips": [
-          "Creation hergebruikt het vaste Runtime-project en de gewone chat, waarbij uw model wordt aangeroepen. Ga verder met eerder werk via de gespreksgeschiedenis boven het venster. Preview-voorbeelden zelf voeren geen taken uit.",
-          "Lettertypen gebruiken geïnstalleerde systeemlettertypen. Historische berichten en bestanden worden niet automatisch vertaald. Ingebouwde verzendpictogrammen kunnen bij aanpassingen worden geselecteerd; aangepaste vectorpictogrammen moeten worden geleverd via een gevalideerd concept.",
-          "Taalpakketten zijn onafhankelijk van skins en ondersteunen momenteel talen van links naar rechts. Ontbrekende tekenreeksen en datumbesturingselementen gebruiken de opgegeven ingebouwde fallback. De berichtgeving bewijst niet de kwaliteit van de vertaling; gebruik chat om verouderde stringcatalogi bij te werken."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Chat- en bewerkings-/voorbeeldgebieden bij het maken van verschijningen",
-          "caption": "Een geautoriseerd leeg creatie-chat- en aanpassingsformulier. De componist is vooraf ingevuld; er is geen bericht verzonden, modelrun of skin opgeslagen."
         }
       },
       {

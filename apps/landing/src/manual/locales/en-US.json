@@ -812,7 +812,7 @@
         ],
         "tips": [
           "On desktop, double-click a sidebar conversation or its header title to open the shared rename dialog, then enter and confirm the name.",
-          "Mobile shows only the active pane and preserves the others. Navigating away and back within the same page session restores panes, layout and sizes; a browser refresh is not guaranteed to restore them. Layouts are scoped to the current account and device without copying chat content."
+          "Phones show only the active pane while retaining the others. Refreshing or returning restores panes, arrangement and sizes; closed panes stay closed. Clicking a sidebar project row only expands or collapses it; click a particular conversation to switch. Layouts are isolated by account and device and do not copy conversation content."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "When changing engine or provider with existing context, choose Smart handoff, Full chat history or None in the dialog. Fork a conversation for independent exploration and confirm its context mode."
         ],
         "tips": [
-          "Project chat is stored separately from workflow task records. Create a task when you need stage tracking and reviews.",
+          "Project conversations do not write to workflow task records. In Codex chat, choose Speed → Default / Standard / Fast / Ultra-fast from the configuration menu. The choice is saved per project and conversation and reset when changing engines or providers or handing off context. Default inherits the original configuration; actual acceleration depends on account and service support.",
           "Native forking is available only when actually supported by the engine. Otherwise continue through explicit context handoff."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Open the current project's Configuration → Skill center, rescan and search by name, description or source path.",
           "Read skill purposes and enable what you need. Check the selected range before bulk changes. Skills are saved per project and apply next run or new session.",
-          "Type / in the composer to select skills actually offered by the current engine. Lists vary by engine.",
+          "Type / to find available engine skills by name prefix. To move from discussion to execution, choose Plus → Workflow mode in ordinary local-project chat. Discuss the diagram first; after explicit confirmation, create a workflow and task and start it. Open the task using the task details button in the reply. Remote projects and embedded creation chats do not offer this entry.",
           "Use the session menu to rename or archive. Search the archive list and restore required conversations."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Change the user name in system settings. Language, fonts, size and skins are under Settings → Appearance; repository scanning scope is under Git settings."
         ],
         "tips": [
-          "Changing the default execution engine affects new tasks and steps, not existing task or step settings."
+          "Changing the default execution engine affects new tasks and steps, without replacing existing configurations. System settings → Messages per load defaults to 20 and accepts integers from 1–300. It affects subsequent history requests without immediately reloading open conversations."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Choose personal display preferences or create previewable skins and language packs through ordinary project chat.",
     "sections": [
       {
+        "title": "Choose and save personal appearance",
+        "steps": [
+          "For full-device access, open Settings → Appearance. Project-authorized users enter Appearance and skins from the sidebar.",
+          "Choose a font, font size and language. Search the library or filter by All / My skins. Selecting a card only shows a sample; click Preview, then cancel or confirm in the fixed preview bar.",
+          "Authenticated Gateway users' choices are saved per account and device, restoring in another browser on the same device. Retry failed saves. Local choices without platform login remain in this browser."
+        ],
+        "tips": [
+          "Skin and language packages are shared on the device; personal selections are isolated. Project-authorized users can only choose installed packages. Host administrators can import ZIP files; confirm replacement for an existing skin and apply it again. Select a custom skin to export ZIP; the default skin cannot be exported or deleted.",
+          "Missing or broken packages fall back to default appearance. Add ?skin=default or ?language=default to restore the default skin or Simplified Chinese."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "The workspace and chat composer with the starry skin applied",
+          "caption": "The demonstration workspace with 星际 · 静谧星海 applied. The blank conversation has not sent any messages, and scripts are off. Background credit: ESO/S. Brunier · AI-blended adaptation."
+        }
+      },
+      {
+        "title": "Create skins and languages through chat",
+        "steps": [
+          "With host management permission, click Chat about appearance, choose an available engine in the chat configuration menu, then send a request such as “Use 星际 · 静谧星海 as a base, keep its starry background, and use an upward arrow for Send.” Suggestions and prefilled prompts are not sent automatically; there is no skin format version to choose.",
+          "Chat is on the left and editing with preview is on the right; use tabs on phones. Adjust the name, colors, fonts, sizes, send icon or layout and click Save adjustments to update the same draft. Changes are also saved before sending, and the package reloads after generation. Editing is disabled while running; reload first on a version conflict. Check PC / phone chat samples in the studio; after saving to the skin library, also check task board and workflow samples.",
+          "For a language pack, ask in the same chat, for example: Add Spanish while preserving appearance. Switch the right side to Language. It loads after generation; use Read and validate to check its directory, coverage, missing strings and examples.",
+          "For skins, click Save appearance and preview; for languages, Install and preview. Confirm or cancel in the preview bar. Saving to the library does not confirm personal application. Export ZIP to reuse, and inspect replacement prompts for same-ID imports or updates."
+        ],
+        "tips": [
+          "Reopen the creation entry to restore the original conversation and draft; a new one is created if that conversation was deleted or archived. Sending requests calls the selected model. Welcome content, manual adjustments and local previews neither call the model nor run real tasks.",
+          "Choose system fonts or local fonts supplied by the skin package. Select a built-in send icon; custom vector icons must pass validation. Changing skins or languages does not automatically translate past messages or user files.",
+          "Language packs are independent of skins and currently support left-to-right languages. Missing strings and date controls use the specified built-in fallback. Coverage does not prove translation quality; use chat to update outdated string catalogs."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat and editing/preview areas in appearance creation",
+          "caption": "The actual creation window after reading the starry skin package, with adjustments and a PC preview on the right. The request on the left has not been sent; no model was called."
+        }
+      },
+      {
+        "title": "Use custom skins and feature extensions",
+        "steps": [
+          "Choose a skin in Settings → Appearance. Selecting a card only updates the local sample; thumbnails do not execute scripts. Preview temporarily changes the entire workspace. Confirm to save the choice, or cancel to restore it.",
+          "For a selected skin containing scripts, use Run skin scripts; no additional confirmation dialog is required. The switch is unavailable for skins without scripts. For a skin not yet applied, it only saves your preference; scripts run during workspace preview or after applying. Menus, notes and calendars come from the installed skin, rather than being built-in app features.",
+          "The skin can position the composer at the top, bottom, left or right; compact layouts remain vertical. Turning scripts off disables extensions and cleans up components and subscriptions while keeping the visual skin. Some menu items may remain disabled. If a script fails to load, read the error, turn the switch off, then back on to retry.",
+          "Extension data is separate by browser identity, device, skin and feature. Switching or deleting a skin does not erase it. Use the extension's own export for backup. If the interface breaks, add skin=default to the URL and refresh."
+        ],
+        "tips": [
+          "Scripts have the same permissions as the current page: enable only trusted sources. Canceling a preview does not undo operations already performed. The switch is saved per identity, device access scope and skin, and persists after refreshes and updates to the same skin.",
+          "Extension data is not included in skin ZIP exports or synchronized between browsers/devices. Back up before clearing storage; failed saving must not be treated as success."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "The script switch and extension entries for a custom skin",
+          "caption": "The starry skin script switch, Export ZIP, Preview and Apply controls. Scripts are off; extension execution and shutdown results still need screenshots."
+        }
+      },
+      {
         "title": "Choose a built-in language",
         "steps": [
           "In Settings → Appearance, choose Simplified Chinese, Traditional Chinese, English, Japanese, French, German or Arabic and inspect common entries and date controls.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Built-in language selectors in the app and website",
           "caption": "Real screenshots of the added language choices are pending."
-        }
-      },
-      {
-        "title": "Use v2 skin layouts and feature extensions",
-        "steps": [
-          "Under Settings → Appearance, install and validate a trusted v2 skin, preview and apply it. For features such as notes, ask the author in appearance-creation chat to include components.",
-          "Read the enablement confirmation for packages with code. Updating a package or changing identity may ask again. Open panels through the skin's menus or feature entries, which depend on the package. Notes or calendars are not preinstalled app features.",
-          "The package can position the composer above, below, left or right. Compact views retain vertical arrangement. After switching, check messages, composer and settings remain usable.",
-          "Extension data is separate by browser identity, device, skin and feature. Switching or deleting a skin does not erase it. Use the extension's own export for backup. If the interface breaks, add skin=default to the URL and refresh."
-        ],
-        "tips": [
-          "Component code has the current page's privileges. Enable trusted sources only. Cancelling preview restores appearance but does not undo code already executed.",
-          "Extension data is not included in skin ZIP exports or synchronized between browsers/devices. Back up before clearing storage; failed saving must not be treated as success."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "v2 component enablement confirmation and feature-panel entry",
-          "caption": "Real execution screenshot of a trusted demonstration package is pending. Format validation is not visual acceptance."
-        }
-      },
-      {
-        "title": "Choose and save personal appearance",
-        "steps": [
-          "For full-device access, open Settings → Appearance. Project-authorized users enter Appearance and skins from the sidebar.",
-          "Choose font, size and language. Search or filter installed skins, preview then apply. The fixed preview bar lets you cancel or confirm.",
-          "Authenticated Gateway users' choices are saved per account and device, restoring in another browser on the same device. Retry failed saves. Local choices without platform login remain in this browser."
-        ],
-        "tips": [
-          "Packages and creation records are shared on the device; personal selections are isolated. Project-authorized users can only choose installed packages.",
-          "Missing or broken packages fall back to default appearance. Add ?skin=default or ?language=default to restore the default skin or Simplified Chinese."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Fonts, size, language and installed skins in Appearance",
-          "caption": "The real settings page shows defaults and built-in examples on the right. No personal preferences were changed."
-        }
-      },
-      {
-        "title": "Create skins and languages through chat",
-        "steps": [
-          "With host-management rights, click Let's discuss appearance, choose an installed, verified engine and describe a goal, such as: Make a dark skin, preserve layout and use an upward send arrow.",
-          "Chat is on the left, editing and preview on the right; phones switch tabs. Adjust name, colors, font, size, send icon and layout, then Save adjustments into the same draft package. Editing is disabled while chat runs. Check PC and phone previews.",
-          "For a language pack, ask in the same chat, for example: Add Spanish while preserving appearance. Switch the right side to Language. It loads after generation; use Read and validate to check its directory, coverage, missing strings and examples.",
-          "For skins, click Save appearance and preview; for languages, Install and preview. Confirm or cancel in the preview bar. Saving to the library does not confirm personal application. Export ZIP to reuse, and inspect replacement prompts for same-ID imports or updates."
-        ],
-        "tips": [
-          "Creation reuses the fixed Runtime project and ordinary chat, invoking your model. Continue earlier work through Conversation history above the window. Preview examples themselves do not run tasks.",
-          "Fonts use installed system fonts. Historical messages and files are not automatically translated. Built-in send icons can be selected in adjustments; custom vector icons must be supplied by a validated draft.",
-          "Language packs are independent of skins and currently support left-to-right languages. Missing strings and date controls use the specified built-in fallback. Coverage does not prove translation quality; use chat to update outdated string catalogs."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Chat and editing/preview areas in appearance creation",
-          "caption": "An authorized empty creation chat and adjustment form. Its composer is prefilled; no message was sent, model run or skin saved."
         }
       },
       {

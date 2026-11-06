@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Na komputerze kliknij dwukrotnie rozmowę na pasku bocznym lub jej tytuł nagłówka, aby otworzyć udostępnione okno dialogowe zmiany nazwy, a następnie wprowadź i potwierdź nazwę.",
-          "Na telefonie widać tylko aktywny panel, pozostałe są zachowane. Powrót z innego ekranu w tej samej sesji strony przywraca panele, układ i rozmiary; odświeżenie przeglądarki nie gwarantuje przywrócenia. Układ jest oddzielny dla konta i urządzenia, bez kopiowania rozmów."
+          "Telefon pokazuje tylko aktywny panel; pozostałe zachowują stan. Po odświeżeniu lub powrocie przywracane są panele, układ i rozmiary; zamknięte panele nie otwierają się ponownie. Kliknięcie wiersza projektu na pasku bocznym tylko rozwija lub zwija drzewo; rozmowę zmienia się przez jej konkretny wpis. Układ jest oddzielny dla konta i urządzenia i nie kopiuje treści rozmów."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Zmieniając silnik lub dostawcę w istniejącym kontekście, wybierz w oknie dialogowym Inteligentne przekazywanie, Pełna historia czatów lub Brak. Rozwiń rozmowę w celu niezależnej eksploracji i potwierdź jej tryb kontekstowy."
         ],
         "tips": [
-          "Czat projektowy jest przechowywany oddzielnie od rekordów zadań przepływu pracy. Utwórz zadanie, jeśli potrzebujesz śledzenia etapów i recenzji.",
+          "Rozmowy projektu nie są zapisywane w historii zadań przepływu. W rozmowach Codex menu konfiguracji udostępnia «Szybkość → Domyślna / Standardowa / Szybka / Ultraszybka». Wybór jest zapisywany dla projektu i rozmowy oraz resetowany po zmianie silnika, dostawcy lub przekazaniu kontekstu. Opcja domyślna zachowuje pierwotną konfigurację; rzeczywiste przyspieszenie zależy od konta i obsługi po stronie usługi.",
           "Natywne rozwidlanie jest dostępne tylko wtedy, gdy jest faktycznie obsługiwane przez silnik. W przeciwnym razie kontynuuj poprzez jawne przekazanie kontekstu."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Otwórz konfigurację → Centrum umiejętności bieżącego projektu, przeskanuj ponownie i wyszukaj według nazwy, opisu lub ścieżki źródłowej.",
           "Przeczytaj cele dotyczące umiejętności i włącz to, czego potrzebujesz. Sprawdź wybrany zakres przed zbiorczymi zmianami. Umiejętności są zapisywane dla każdego projektu i stosowane w następnym uruchomieniu lub nowej sesji.",
-          "Wpisz / w kompozytorze, aby wybrać umiejętności faktycznie oferowane przez bieżący silnik. Listy różnią się w zależności od silnika.",
+          "Wpisz / i wyszukaj według początku nazwy umiejętności dostępne w bieżącym silniku. Aby przejść od dyskusji do wykonania, w zwykłym czacie lokalnego projektu wybierz «＋ → Tryb przepływu». Najpierw omów schemat; dopiero po wyraźnym potwierdzeniu zostaną utworzone i uruchomione przepływ oraz zadanie. Szczegóły otworzysz przyciskiem w odpowiedzi. Projekty zdalne i osadzone rozmowy projektowe nie mają tego wejścia.",
           "Użyj menu sesji, aby zmienić nazwę lub zarchiwizować. Przeszukaj listę archiwów i przywróć wymagane rozmowy."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Zmień nazwę użytkownika w ustawieniach systemu. Język, czcionki, rozmiar i skórki znajdują się w Ustawieniach → Wygląd; zakres skanowania repozytorium znajduje się w ustawieniach Git."
         ],
         "tips": [
-          "Zmiana domyślnego mechanizmu wykonywania wpływa na nowe zadania i kroki, a nie na istniejące ustawienia zadań lub kroków."
+          "Zmiana domyślnego silnika wykonawczego dotyczy nowych zadań i kroków i nie zastępuje istniejących konfiguracji. «Ustawienia systemowe → Liczba wiadomości na wczytanie» domyślnie wynosi 20 i przyjmuje liczby całkowite 1–300. Wpływa na kolejne wczytywanie historii, bez natychmiastowego przeładowania otwartych rozmów."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Wybierz osobiste preferencje wyświetlania lub utwórz podglądalne skórki i pakiety językowe za pośrednictwem zwykłego czatu projektowego.",
     "sections": [
       {
+        "title": "Wybierz i zapisz osobisty wygląd",
+        "steps": [
+          "Aby uzyskać pełny dostęp do urządzenia, otwórz Ustawienia → Wygląd. Użytkownicy autoryzowani do projektu wprowadzają Wygląd i skórki z paska bocznego.",
+          "Wybierz czcionkę, rozmiar i język. W bibliotece wyszukaj skórkę lub użyj filtra «Wszystkie / Moje skórki». Wybranie karty pokazuje tylko przykład. Otwórz podgląd, a następnie anuluj lub potwierdź zastosowanie na stałym pasku podglądu.",
+          "Wybory uwierzytelnionych użytkowników Gateway są zapisywane dla każdego konta i urządzenia i przywracane w innej przeglądarce na tym samym urządzeniu. Ponów nieudaną próbę zapisu. Lokalne opcje bez logowania do platformy pozostają w tej przeglądarce."
+        ],
+        "tips": [
+          "Pakiety skórek i języków są wspólne na urządzeniu, lecz osobiste wybory pozostają rozdzielone. Użytkownicy z dostępem do projektu mogą wybierać tylko zainstalowane pakiety. Administrator hosta może importować ZIP; aktualizacja pakietu o tej samej nazwie wymaga potwierdzenia zastąpienia i ponownego zastosowania. Wybraną własną skórkę można wyeksportować do ZIP; domyślnej nie można eksportować ani usuwać.",
+          "Brakujące lub uszkodzone pakiety wracają do domyślnego wyglądu. Dodaj ?skin=default lub ?language=default, aby przywrócić domyślną skórkę lub chiński uproszczony."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Obszar roboczy i pole wprowadzania czatu po zastosowaniu skórki z gwiaździstym niebem",
+          "caption": "Demonstracyjny obszar roboczy z zastosowaną skórką «星际 · 静谧星海»; rozmowa jest pusta, nie wysłano wiadomości, a skrypty są wyłączone. Autorstwo tła: ESO/S. Brunier · adaptacja z wykorzystaniem łączenia obrazów przez AI."
+        }
+      },
+      {
+        "title": "Twórz skórki i języki za pośrednictwem czatu",
+        "steps": [
+          "Mając uprawnienia administratora hosta, kliknij «Porozmawiajmy o zmianie wyglądu», wybierz dostępny silnik w menu konfiguracji czatu i wyślij wymagania, np. «Użyj «星际 · 静谧星海» jako podstawy, zachowaj tło rozgwieżdżonego nieba i ustaw strzałkę w górę na przycisku wysyłania». Sugestie i wstępnie wpisane polecenia nie są wysyłane automatycznie; nie trzeba wybierać wersji formatu skórki.",
+          "Czat znajduje się po lewej, edycja i podgląd po prawej; na telefonie przełączaj karty. Dostosuj nazwę, kolory, czcionkę, rozmiar, ikonę wysyłania lub układ i kliknij «Zapisz poprawki», aby zaktualizować ten sam szkic. Zapis następuje też automatycznie przed wysłaniem, a po generowaniu szkic jest ponownie odczytywany. Podczas działania edycja jest niedostępna; przy konflikcie wersji najpierw odczytaj szkic ponownie. W oknie tworzenia sprawdź przykłady czatu dla komputera i telefonu; po zapisaniu w bibliotece skórek możesz również sprawdzić przykłady tablicy zadań i przepływu.",
+          "O pakiet językowy zapytaj na tym samym czacie, na przykład: Dodaj hiszpański, zachowując wygląd. Przełącz prawą stronę na Język. Ładuje się po wygenerowaniu; użyj opcji Przeczytaj i zatwierdź, aby sprawdzić katalog, pokrycie, brakujące ciągi i przykłady.",
+          "W przypadku skórek kliknij Zapisz wygląd i podgląd; dla języków, zainstaluj i wyświetl podgląd. Potwierdź lub anuluj na pasku podglądu. Zapisanie do biblioteki nie stanowi potwierdzenia zgłoszenia osobistego. Eksportuj ZIP do ponownego wykorzystania i sprawdzaj monity o wymianę w przypadku importów lub aktualizacji o tym samym identyfikatorze."
+        ],
+        "tips": [
+          "Ponowne otwarcie narzędzia przywraca rozmowę projektową i szkic; jeśli rozmowę usunięto lub zarchiwizowano, powstanie nowa. Wysłanie wymagań wywołuje wybrany model. Powitanie, ręczne poprawki i lokalne podglądy nie wywołują modelu ani nie wykonują rzeczywistych zadań.",
+          "Możesz wybrać czcionki systemowe lub lokalne czcionki dostarczone w pakiecie skórki. Ikona wysyłania oferuje wbudowane style; własne ikony wektorowe muszą przejść walidację. Zmiana skórki lub języka nie tłumaczy automatycznie wcześniejszych wiadomości i plików użytkownika.",
+          "Pakiety językowe są niezależne od skórek i obecnie obsługują języki pisane od lewej do prawej. Brakujące ciągi i kontrolki daty korzystają z określonej wbudowanej wartości rezerwowej. Pokrycie nie potwierdza jakości tłumaczenia; użyj czatu, aby zaktualizować nieaktualne katalogi ciągów."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Obszary czatu i edycji/podglądu w tworzeniu wyglądu",
+          "caption": "Rzeczywiste okno tworzenia po odczytaniu pakietu skórki z gwiaździstym niebem, z poprawkami i podglądem dla komputera po prawej. Wymagania po lewej nie zostały wysłane i nie wywołano modelu."
+        }
+      },
+      {
+        "title": "Korzystanie z własnych skórek i rozszerzeń",
+        "steps": [
+          "Wybierz skórkę w «Ustawienia → Wygląd». Karta aktualizuje tylko lokalny przykład, a miniatura nie uruchamia skryptów. Podgląd tymczasowo zmienia cały obszar roboczy: potwierdź, aby zapisać, lub anuluj, aby przywrócić poprzedni wygląd.",
+          "Po wybraniu skórki ze skryptami steruj funkcjami przełącznikiem «Uruchamiaj skrypty skórki», bez dodatkowego okna potwierdzenia. Bez skryptów przełącznik jest niedostępny. Dla niezastosowanej skórki zapisuje tylko preferencję; skrypty działają dopiero w podglądzie całego obszaru roboczego lub po zastosowaniu. Menu, notatki i kalendarze dostarcza zainstalowana skórka — nie są fabrycznymi funkcjami aplikacji.",
+          "Skórka może umieścić pole wprowadzania u góry, u dołu, z lewej lub prawej strony; widok kompaktowy zachowuje układ pionowy. Wyłączenie skryptów dezaktywuje funkcje rozszerzeń i usuwa ich komponenty oraz subskrypcje, zachowując wygląd. Niektóre menu mogą pozostać widoczne, ale niedostępne. Jeśli skrypt się nie załaduje, sprawdź błąd, wyłącz przełącznik i włącz go ponownie, aby ponowić próbę.",
+          "Dane rozszerzenia są oddzielone w zależności od tożsamości przeglądarki, urządzenia, skórki i funkcji. Przełączenie lub usunięcie skórki nie powoduje jej usunięcia. Użyj własnego eksportu rozszerzenia do tworzenia kopii zapasowych. Jeśli interfejs się zepsuje, dodaj skin=default do URL i odśwież."
+        ],
+        "tips": [
+          "Skrypty mają takie same uprawnienia jak bieżąca strona. Włączaj tylko zaufane źródła; anulowanie podglądu nie cofa wykonanych działań. Ustawienie jest zapisywane dla bieżącej tożsamości, zakresu dostępu do urządzenia i skórki oraz zachowywane po odświeżeniu i aktualizacji tej samej skórki.",
+          "Dane rozszerzeń nie są uwzględniane w eksporcie skórki ZIP ani synchronizowane pomiędzy przeglądarkami/urządzeniami. Utwórz kopię zapasową przed wyczyszczeniem pamięci; Nieudane oszczędzanie nie może być traktowane jako sukces."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Przełącznik skryptów własnej skórki i wejścia do rozszerzeń",
+          "caption": "Przełącznik skryptów, eksport ZIP, podgląd i zastosowanie skórki z gwiaździstym niebem. Skrypty są obecnie wyłączone; nadal brakuje zrzutów działania rozszerzeń i wyniku ich wyłączenia."
+        }
+      },
+      {
         "title": "Wybierz wbudowany język",
         "steps": [
           "W Ustawieniach → Wygląd wybierz Chiński uproszczony, Chiński tradycyjny, Angielski, Japoński, Francuski, Niemiecki lub Arabski i sprawdź popularne wpisy oraz kontrole daty.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Wbudowane selektory języków w aplikacji i na stronie internetowej",
           "caption": "Oczekujemy prawdziwych zrzutów ekranu z dodanymi opcjami językowymi."
-        }
-      },
-      {
-        "title": "Użyj układów skórek w wersji 2 i rozszerzeń funkcji",
-        "steps": [
-          "W Ustawieniach → Wygląd zainstaluj i zatwierdź zaufaną skórkę v2, wyświetl podgląd i zastosuj ją. W przypadku funkcji takich jak notatki poproś autora na czacie dotyczącym tworzenia wyglądu o dołączenie komponentów.",
-          "Przeczytaj potwierdzenie włączenia pakietów z kodem. Aktualizacja pakietu lub zmiana tożsamości może powtórzyć się. Otwórz panele poprzez menu skórki lub wpisy funkcji, które zależą od pakietu. Notatki i kalendarze nie są fabrycznie zainstalowanymi funkcjami aplikacji.",
-          "Pakiet może ustawić kompozytora powyżej, poniżej, w lewo lub w prawo. Widoki kompaktowe zachowują układ pionowy. Po przełączeniu sprawdź wiadomości, kompozytor i ustawienia pozostaną użyteczne.",
-          "Dane rozszerzenia są oddzielone w zależności od tożsamości przeglądarki, urządzenia, skórki i funkcji. Przełączenie lub usunięcie skórki nie powoduje jej usunięcia. Użyj własnego eksportu rozszerzenia do tworzenia kopii zapasowych. Jeśli interfejs się zepsuje, dodaj skin=default do URL i odśwież."
-        ],
-        "tips": [
-          "Kod komponentu ma uprawnienia bieżącej strony. Włącz tylko zaufane źródła. Anulowanie podglądu przywraca wygląd, ale nie cofa już wykonanego kodu.",
-          "Dane rozszerzeń nie są uwzględniane w eksporcie skórki ZIP ani synchronizowane pomiędzy przeglądarkami/urządzeniami. Utwórz kopię zapasową przed wyczyszczeniem pamięci; Nieudane oszczędzanie nie może być traktowane jako sukces."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "Potwierdzenie włączenia komponentu v2 i wpis w panelu funkcji",
-          "caption": "Oczekuje zrzut ekranu rzeczywistego wykonania zaufanego pakietu demonstracyjnego. Walidacja formatu nie jest akceptacją wizualną."
-        }
-      },
-      {
-        "title": "Wybierz i zapisz osobisty wygląd",
-        "steps": [
-          "Aby uzyskać pełny dostęp do urządzenia, otwórz Ustawienia → Wygląd. Użytkownicy autoryzowani do projektu wprowadzają Wygląd i skórki z paska bocznego.",
-          "Wybierz czcionkę, rozmiar i język. Wyszukaj lub filtruj zainstalowane skórki, wyświetl podgląd, a następnie zastosuj. Stały pasek podglądu umożliwia anulowanie lub potwierdzenie.",
-          "Wybory uwierzytelnionych użytkowników Gateway są zapisywane dla każdego konta i urządzenia i przywracane w innej przeglądarce na tym samym urządzeniu. Ponów nieudaną próbę zapisu. Lokalne opcje bez logowania do platformy pozostają w tej przeglądarce."
-        ],
-        "tips": [
-          "Pakiety i zapisy dotyczące tworzenia są udostępniane na urządzeniu; osobiste wybory są izolowane. Użytkownicy autoryzowani do projektu mogą wybierać tylko zainstalowane pakiety.",
-          "Brakujące lub uszkodzone pakiety wracają do domyślnego wyglądu. Dodaj ?skin=default lub ?language=default, aby przywrócić domyślną skórkę lub chiński uproszczony."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Czcionki, rozmiar, język i zainstalowane skórki w Wyglądzie",
-          "caption": "Prawdziwa strona ustawień pokazuje ustawienia domyślne i wbudowane przykłady po prawej stronie. Żadne osobiste preferencje nie uległy zmianie."
-        }
-      },
-      {
-        "title": "Twórz skórki i języki za pośrednictwem czatu",
-        "steps": [
-          "Mając uprawnienia do zarządzania hostami, kliknij Porozmawiajmy o wyglądzie, wybierz zainstalowany, zweryfikowany silnik i opisz cel, np.: Wykonaj ciemną skórkę, zachowaj układ i użyj strzałki wysyłania w górę.",
-          "Czat znajduje się po lewej stronie, edycja i podgląd po prawej; telefony przełączają karty. Dostosuj nazwę, kolory, czcionkę, rozmiar, ikonę wysyłania i układ, a następnie zapisz zmiany w tym samym pakiecie roboczym. Edycja jest wyłączona podczas działania czatu. Sprawdź podglądy na komputerze i telefonie.",
-          "O pakiet językowy zapytaj na tym samym czacie, na przykład: Dodaj hiszpański, zachowując wygląd. Przełącz prawą stronę na Język. Ładuje się po wygenerowaniu; użyj opcji Przeczytaj i zatwierdź, aby sprawdzić katalog, pokrycie, brakujące ciągi i przykłady.",
-          "W przypadku skórek kliknij Zapisz wygląd i podgląd; dla języków, zainstaluj i wyświetl podgląd. Potwierdź lub anuluj na pasku podglądu. Zapisanie do biblioteki nie stanowi potwierdzenia zgłoszenia osobistego. Eksportuj ZIP do ponownego wykorzystania i sprawdzaj monity o wymianę w przypadku importów lub aktualizacji o tym samym identyfikatorze."
-        ],
-        "tips": [
-          "Kreacja ponownie wykorzystuje ustalony projekt Runtime i zwykły czat, wywołując Twój model. Kontynuuj wcześniejszą pracę w Historii rozmów nad oknem. Same przykłady podglądu nie uruchamiają zadań.",
-          "Czcionki korzystają z zainstalowanych czcionek systemowych. Wiadomości i pliki historyczne nie są tłumaczone automatycznie. Wbudowane ikony wysyłania można wybrać w ustawieniach; niestandardowe ikony wektorowe muszą być dostarczone w formie zatwierdzonej wersji roboczej.",
-          "Pakiety językowe są niezależne od skórek i obecnie obsługują języki pisane od lewej do prawej. Brakujące ciągi i kontrolki daty korzystają z określonej wbudowanej wartości rezerwowej. Pokrycie nie potwierdza jakości tłumaczenia; użyj czatu, aby zaktualizować nieaktualne katalogi ciągów."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Obszary czatu i edycji/podglądu w tworzeniu wyglądu",
-          "caption": "Autoryzowany pusty czat tworzenia i formularz dostosowywania. Jego kompozytor jest wstępnie wypełniony; nie wysłano żadnej wiadomości, przebieg modelu lub skórka zostały zapisane."
         }
       },
       {

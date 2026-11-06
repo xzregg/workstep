@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Di desktop, klik dua kali percakapan bilah samping atau judul headernya untuk membuka dialog ganti nama bersama, lalu masukkan dan konfirmasikan namanya.",
-          "Ponsel hanya menampilkan panel aktif dan mempertahankan lainnya. Berpindah tampilan lalu kembali dalam sesi halaman yang sama memulihkan panel, tata letak dan ukuran; pemulihan setelah menyegarkan browser tidak dijamin. Tata letak dipisahkan menurut akun dan perangkat, tanpa menyalin isi percakapan."
+          "Ponsel hanya menampilkan jendela aktif dan mempertahankan keadaan jendela lain. Setelah memuat ulang atau meninggalkan halaman lalu kembali, jendela, susunan, dan ukuran dapat dipulihkan; jendela yang ditutup tidak dibuka kembali. Mengeklik baris proyek di bilah sisi hanya memperluas atau menciutkannya; chat baru berganti ketika percakapan tertentu dipilih. Tata letak dipisahkan menurut akun saat ini dan perangkat, tanpa menyalin isi percakapan."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Saat mengganti mesin atau penyedia dengan konteks yang ada, pilih Handoff cerdas, Riwayat percakapan lengkap, atau Tidak ada dalam dialog. Buatlah percakapan untuk eksplorasi independen dan konfirmasikan mode konteksnya."
         ],
         "tips": [
-          "Obrolan proyek disimpan secara terpisah dari catatan tugas alur kerja. Buat tugas saat Anda memerlukan pelacakan dan peninjauan tahapan.",
+          "Percakapan proyek tidak ditulis ke riwayat tugas alur kerja. Dalam percakapan Codex, pilih “Kecepatan → Bawaan / Standar / Cepat / Sangat cepat” dari menu konfigurasi. Pilihan disimpan per proyek dan sesi, lalu direset saat mesin atau penyedia berganti atau konteks diserahkan. Pilihan bawaan mengikuti konfigurasi awal; percepatan sebenarnya bergantung pada dukungan akun dan layanan.",
           "Forking asli hanya tersedia bila benar-benar didukung oleh mesin. Jika tidak, lanjutkan melalui penyerahan konteks eksplisit."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Buka Konfigurasi proyek saat ini → Pusat keterampilan, pindai ulang dan cari berdasarkan nama, deskripsi, atau jalur sumber.",
           "Baca tujuan keterampilan dan aktifkan apa yang Anda butuhkan. Periksa rentang yang dipilih sebelum melakukan perubahan massal. Keterampilan disimpan per proyek dan diterapkan pada proses berikutnya atau sesi baru.",
-          "Ketik / pada kolom pesan untuk memilih keterampilan yang sebenarnya ditawarkan oleh mesin saat ini. Daftar bervariasi berdasarkan mesin.",
+          "Ketik / dan cari keterampilan yang disediakan mesin saat ini berdasarkan awalan nama. Untuk beralih dari diskusi ke eksekusi, klik “＋ → Mode alur kerja” dalam chat biasa proyek lokal. Diskusikan diagram terlebih dahulu; hanya setelah konfirmasi tegas, buat alur kerja dan tugas lalu mulai eksekusi. Buka detail melalui tombol detail tugas dalam balasan. Proyek jarak jauh dan chat pembuatan yang disematkan tidak menyediakan akses ini.",
           "Gunakan menu sesi untuk mengganti nama atau mengarsipkan. Cari daftar arsip dan pulihkan percakapan yang diperlukan."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Ubah nama pengguna di pengaturan sistem. Bahasa, font, ukuran dan tema ada di Pengaturan → Penampilan; cakupan pemindaian repositori berada di bawah pengaturan Git."
         ],
         "tips": [
-          "Mengubah mesin eksekusi bawaan akan memengaruhi tugas dan langkah baru, bukan pengaturan tugas atau langkah yang sudah ada."
+          "Mengganti mesin eksekusi bawaan berlaku bagi tugas dan langkah baru, tanpa menggantikan konfigurasi yang sudah ada. “Pengaturan sistem → Pesan per pemuatan” memiliki nilai bawaan 20 dan menerima bilangan bulat 1–300. Perubahan memengaruhi pemuatan riwayat berikutnya dan tidak langsung memuat ulang percakapan yang sedang terbuka."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Pilih preferensi tampilan pribadi atau buat tema dan paket bahasa yang dapat dipratinjau melalui percakapan proyek biasa.",
     "sections": [
       {
+        "title": "Pilih dan simpan penampilan pribadi",
+        "steps": [
+          "Untuk akses penuh perangkat, buka Pengaturan → Tampilan. Pengguna yang diberi izin proyek memasuki Penampilan dan tema dari bilah samping.",
+          "Pilih font, ukuran, dan bahasa. Cari di pustaka tema atau filter menurut “Semua / Tema saya”. Memilih kartu hanya menampilkan contoh; buka pratinjau lalu batalkan atau konfirmasikan penerapan melalui bilah pratinjau tetap.",
+          "Pilihan pengguna Gateway yang diautentikasi disimpan per akun dan perangkat, dipulihkan di browser lain pada perangkat yang sama. Coba lagi penyimpanan yang gagal. Pilihan lokal tanpa login platform tetap ada di browser ini."
+        ],
+        "tips": [
+          "Paket tema dan bahasa dipakai bersama pada perangkat, sedangkan pilihan pribadi tetap terpisah. Pengguna dengan izin proyek hanya dapat memilih paket terpasang. Administrator host dapat mengimpor ZIP; pembaruan dengan nama yang sama memerlukan konfirmasi penggantian dan penerapan ulang. Tema kustom yang dipilih dapat diekspor sebagai ZIP; tema bawaan tidak dapat diekspor atau dihapus.",
+          "Paket yang hilang atau rusak kembali ke tampilan bawaan. Tambahkan ?tema=bawaan atau ?lingual=bawaan untuk mengembalikan tema bawaan atau bahasa Mandarin Sederhana."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Ruang kerja dan area masukan chat setelah tema berbintang benar-benar diterapkan",
+          "caption": "Ruang kerja demo dengan “星际 · 静谧星海” benar-benar diterapkan. Percakapan kosong, belum ada pesan dikirim, dan skrip dimatikan. Kredit latar: ESO/S. Brunier · adaptasi gabungan dengan AI."
+        }
+      },
+      {
+        "title": "Buat tema dan bahasa melalui percakapan",
+        "steps": [
+          "Dengan izin pengelolaan host, klik “Bicarakan perubahan tampilan”, pilih mesin yang tersedia pada menu konfigurasi chat, lalu kirim kebutuhan Anda, misalnya “Gunakan “星际 · 静谧星海” sebagai dasar, pertahankan latar langit berbintang, dan gunakan panah ke atas pada tombol kirim”. Saran dan instruksi yang sudah diisi tidak dikirim otomatis; Anda tidak perlu memilih versi format tema.",
+          "Chat ada di kiri, pengeditan dan pratinjau di kanan; pada ponsel, beralihlah melalui tab. Sesuaikan nama, warna, font, ukuran, ikon kirim, atau tata letak, lalu klik “Simpan penyesuaian” untuk menulis ke draf yang sama. Penyimpanan juga otomatis dilakukan sebelum pengiriman, dan paket dibaca ulang setelah pembuatan selesai. Pengeditan tidak tersedia saat berjalan; jika versi bertentangan, baca ulang terlebih dahulu. Periksa contoh chat komputer dan ponsel di jendela pembuatan. Setelah menyimpan ke pustaka tema, Anda juga dapat memeriksa contoh papan tugas dan alur kerja.",
+          "Untuk paket bahasa, tanyakan di chat yang sama, misalnya: Tambahkan bahasa Spanyol dengan tetap menjaga tampilan. Alihkan sisi kanan ke Bahasa. Itu dimuat setelah generasi; gunakan Baca dan validasi untuk memeriksa direktori, cakupan, string yang hilang, dan contohnya.",
+          "Untuk tema, klik Simpan tampilan dan pratinjau; untuk bahasa, Instal dan pratinjau. Konfirmasikan atau batalkan di bilah pratinjau. Menyimpan ke perpustakaan tidak mengkonfirmasi aplikasi pribadi. Ekspor ZIP untuk digunakan kembali, dan periksa perintah penggantian untuk impor atau pembaruan dengan ID yang sama."
+        ],
+        "tips": [
+          "Membuka kembali fitur pembuatan memulihkan sesi awal dan drafnya; sesi baru dibuat jika sesi lama dihapus atau diarsipkan. Mengirim permintaan memanggil model pilihan. Konten sambutan, penyesuaian manual, dan pratinjau lokal tidak memanggil model maupun menjalankan tugas nyata.",
+          "Anda dapat memilih font sistem atau font lokal yang disertakan dalam paket tema. Ikon kirim dapat dipilih dari gaya bawaan; ikon vektor kustom harus lolos validasi. Pesan lama dan berkas pengguna tidak diterjemahkan otomatis saat tema atau bahasa diganti.",
+          "Paket bahasa tidak bergantung pada tema dan saat ini mendukung bahasa kiri ke kanan. Kontrol string dan tanggal yang hilang menggunakan fallback bawaan yang ditentukan. Cakupan tidak membuktikan kualitas terjemahan; gunakan percakapan untuk memperbarui katalog string yang sudah ketinggalan zaman."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Area percakapan dan pengeditan/pratinjau dalam pembuatan tampilan",
+          "caption": "Jendela pembuatan sebenarnya setelah membaca paket tema berbintang, dengan penyesuaian dan pratinjau komputer di kanan. Permintaan di kiri belum dikirim dan model belum dipanggil."
+        }
+      },
+      {
+        "title": "Menggunakan tema kustom dan ekstensi fitur",
+        "steps": [
+          "Pilih tema di “Pengaturan → Tampilan”. Kartu hanya memperbarui contoh lokal; gambar mini tidak menjalankan skrip. Membuka pratinjau mengubah seluruh ruang kerja untuk sementara; konfirmasi menyimpan pilihan dan pembatalan memulihkan keadaan sebelumnya.",
+          "Setelah memilih tema yang memiliki skrip, kendalikan fiturnya melalui sakelar “Jalankan skrip tema” tanpa dialog konfirmasi tambahan. Sakelar tidak tersedia jika tidak ada skrip. Untuk tema yang belum diterapkan, sakelar hanya menyimpan preferensi; skrip baru berjalan saat pratinjau seluruh ruang kerja atau penerapan tema. Menu, catatan, atau kalender disediakan oleh tema terpasang, bukan fitur bawaan yang sudah terpasang di aplikasi.",
+          "Area masukan dapat ditempatkan di atas, bawah, kiri, atau kanan sesuai tema; antarmuka ringkas tetap tersusun vertikal. Mematikan skrip menonaktifkan fitur ekstensi dan membersihkan komponen serta langganan, tetapi mempertahankan tampilan. Sebagian menu mungkin tetap terlihat namun tidak tersedia. Jika skrip gagal dimuat, periksa kesalahannya; matikan lalu nyalakan kembali sakelar untuk mencoba lagi.",
+          "Data ekstensi dipisahkan berdasarkan identitas browser, perangkat, tema, dan fitur. Mengganti atau menghapus tema tidak menghapusnya. Gunakan ekspor ekstensi itu sendiri untuk cadangan. Jika antarmuka rusak, tambahkan tema=bawaan ke URL dan segarkan."
+        ],
+        "tips": [
+          "Skrip memiliki izin yang sama dengan halaman saat ini, jadi aktifkan hanya sumber tepercaya. Membatalkan pratinjau tidak mengurungkan tindakan yang sudah dijalankan. Sakelar disimpan menurut identitas saat ini, cakupan akses perangkat, dan tema serta dipertahankan setelah pemuatan ulang dan pembaruan tema yang sama.",
+          "Data ekstensi tidak disertakan dalam ekspor tema ZIP atau disinkronkan antar browser/perangkat. Cadangkan sebelum mengosongkan penyimpanan; tabungan yang gagal tidak boleh dianggap sebagai keberhasilan."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Sakelar skrip tema kustom dan akses ke fitur ekstensi",
+          "caption": "Sakelar skrip tema berbintang serta akses ekspor ZIP, pratinjau, dan penerapan. Skrip saat ini dimatikan; tangkapan layar ekstensi yang berjalan dan hasil penonaktifannya masih perlu ditambahkan."
+        }
+      },
+      {
         "title": "Pilih bahasa bawaan",
         "steps": [
           "Di Pengaturan → Tampilan, pilih Mandarin Sederhana, Mandarin Tradisional, Inggris, Jepang, Prancis, Jerman, atau Arab dan periksa entri umum dan kontrol tanggal.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Pemilih bahasa bawaan di aplikasi dan situs web",
           "caption": "Tangkapan layar sebenarnya dari pilihan bahasa yang ditambahkan masih menunggu keputusan."
-        }
-      },
-      {
-        "title": "Gunakan tata letak tema v2 dan ekstensi fitur",
-        "steps": [
-          "Di bawah Pengaturan → Penampilan, instal dan validasi tema v2 tepercaya, pratinjau dan terapkan. Untuk fitur seperti catatan, minta penulis di chat pembuatan tampilan untuk menyertakan komponen.",
-          "Baca konfirmasi pengaktifan untuk paket dengan kode. Memperbarui paket atau mengubah identitas mungkin bertanya lagi. Buka panel melalui menu tema atau entri fitur, yang bergantung pada paketnya. Catatan atau kalender bukanlah fitur aplikasi yang sudah diinstal sebelumnya.",
-          "Paket ini dapat memposisikan kolom pesan di atas, bawah, kiri atau kanan. Tampilan kompak mempertahankan susunan vertikal. Setelah beralih, periksa pesan, kolom pesan dan pengaturan tetap dapat digunakan.",
-          "Data ekstensi dipisahkan berdasarkan identitas browser, perangkat, tema, dan fitur. Mengganti atau menghapus tema tidak menghapusnya. Gunakan ekspor ekstensi itu sendiri untuk cadangan. Jika antarmuka rusak, tambahkan tema=bawaan ke URL dan segarkan."
-        ],
-        "tips": [
-          "Kode komponen memiliki hak istimewa halaman saat ini. Aktifkan sumber tepercaya saja. Membatalkan pratinjau akan memulihkan tampilan tetapi tidak membatalkan kode yang sudah dijalankan.",
-          "Data ekstensi tidak disertakan dalam ekspor tema ZIP atau disinkronkan antar browser/perangkat. Cadangkan sebelum mengosongkan penyimpanan; tabungan yang gagal tidak boleh dianggap sebagai keberhasilan."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "Konfirmasi pengaktifan komponen v2 dan entri panel fitur",
-          "caption": "Tangkapan layar eksekusi nyata dari paket demonstrasi tepercaya sedang menunggu keputusan. Validasi format bukanlah penerimaan visual."
-        }
-      },
-      {
-        "title": "Pilih dan simpan penampilan pribadi",
-        "steps": [
-          "Untuk akses penuh perangkat, buka Pengaturan → Tampilan. Pengguna yang diberi izin proyek memasuki Penampilan dan tema dari bilah samping.",
-          "Pilih font, ukuran dan bahasa. Cari atau filter tema yang terpasang, pratinjau lalu terapkan. Bilah pratinjau tetap memungkinkan Anda membatalkan atau mengonfirmasi.",
-          "Pilihan pengguna Gateway yang diautentikasi disimpan per akun dan perangkat, dipulihkan di browser lain pada perangkat yang sama. Coba lagi penyimpanan yang gagal. Pilihan lokal tanpa login platform tetap ada di browser ini."
-        ],
-        "tips": [
-          "Paket dan catatan pembuatan dibagikan di perangkat; pilihan pribadi terisolasi. Pengguna yang diberi izin proyek hanya dapat memilih paket yang diinstal.",
-          "Paket yang hilang atau rusak kembali ke tampilan bawaan. Tambahkan ?tema=bawaan atau ?lingual=bawaan untuk mengembalikan tema bawaan atau bahasa Mandarin Sederhana."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Font, ukuran, bahasa, dan tema yang dipasang di Appearance",
-          "caption": "Halaman pengaturan sebenarnya menunjukkan bawaan dan contoh bawaan di sebelah kanan. Tidak ada preferensi pribadi yang diubah."
-        }
-      },
-      {
-        "title": "Buat tema dan bahasa melalui percakapan",
-        "steps": [
-          "Dengan hak pengelolaan host, klik Mari kita bahas tampilannya, pilih mesin yang terinstal dan terverifikasi, lalu jelaskan tujuannya, seperti: Membuat tema menjadi gelap, mempertahankan tata letak, dan menggunakan panah kirim ke atas.",
-          "Obrolan ada di sebelah kiri, pengeditan dan pratinjau di sebelah kanan; telepon berpindah tab. Sesuaikan nama, warna, font, ukuran, ikon kirim dan tata letak, lalu Simpan penyesuaian ke dalam paket draf yang sama. Pengeditan dinonaktifkan saat percakapan berjalan. Periksa pratinjau PC dan telepon.",
-          "Untuk paket bahasa, tanyakan di chat yang sama, misalnya: Tambahkan bahasa Spanyol dengan tetap menjaga tampilan. Alihkan sisi kanan ke Bahasa. Itu dimuat setelah generasi; gunakan Baca dan validasi untuk memeriksa direktori, cakupan, string yang hilang, dan contohnya.",
-          "Untuk tema, klik Simpan tampilan dan pratinjau; untuk bahasa, Instal dan pratinjau. Konfirmasikan atau batalkan di bilah pratinjau. Menyimpan ke perpustakaan tidak mengkonfirmasi aplikasi pribadi. Ekspor ZIP untuk digunakan kembali, dan periksa perintah penggantian untuk impor atau pembaruan dengan ID yang sama."
-        ],
-        "tips": [
-          "Penciptaan menggunakan kembali proyek Runtime tetap dan percakapan biasa, memanggil model Anda. Lanjutkan pekerjaan sebelumnya melalui Riwayat percakapan di atas jendela. Contoh pratinjau sendiri tidak menjalankan tugas.",
-          "Font menggunakan font sistem yang diinstal. Pesan dan berkas historis tidak diterjemahkan secara otomatis. Ikon kirim bawaan dapat dipilih dalam penyesuaian; ikon vektor khusus harus disediakan oleh draf yang divalidasi.",
-          "Paket bahasa tidak bergantung pada tema dan saat ini mendukung bahasa kiri ke kanan. Kontrol string dan tanggal yang hilang menggunakan fallback bawaan yang ditentukan. Cakupan tidak membuktikan kualitas terjemahan; gunakan percakapan untuk memperbarui katalog string yang sudah ketinggalan zaman."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Area percakapan dan pengeditan/pratinjau dalam pembuatan tampilan",
-          "caption": "Obrolan pembuatan kosong dan formulir penyesuaian yang diotorisasi. Komposernya sudah diisi sebelumnya; tidak ada pesan yang terkirim, model dijalankan atau tema disimpan."
         }
       },
       {

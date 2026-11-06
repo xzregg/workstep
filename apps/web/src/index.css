@@ -1135,6 +1135,17 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   display: none;
 }
 
+.message-meta-compacted {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  color: var(--meta);
+  font-size: calc(11px * var(--font-scale));
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .process-trace {
   display: flex;
   flex-direction: column;

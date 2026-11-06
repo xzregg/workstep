@@ -812,7 +812,7 @@
         ],
         "tips": [
           "No desktop, clique duas vezes em uma conversa da barra lateral ou no título do cabeçalho para abrir a caixa de diálogo de renomeação compartilhada e, em seguida, insira e confirme o nome.",
-          "No celular, apenas o painel ativo aparece; os demais são preservados. Sair e voltar na mesma sessão da página restaura painéis, organização e tamanhos, sem garantia após recarregar o navegador. O layout é separado por conta e dispositivo, sem copiar conversas."
+          "No celular, apenas o painel ativo é exibido; os demais mantêm seu estado. Recarregar ou sair e voltar restaura painéis, disposição e tamanhos; painéis fechados não são reabertos. Clicar na linha de um projeto na barra lateral apenas expande ou recolhe a árvore; clique em uma conversa específica para alternar. A disposição é isolada por conta e dispositivo e não copia o conteúdo das conversas."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Ao alterar o mecanismo ou provedor com contexto existente, escolha Transferência inteligente, Histórico completo de bate-papo ou Nenhum na caixa de diálogo. Bifurque uma conversa para exploração independente e confirme seu modo de contexto."
         ],
         "tips": [
-          "O chat do projeto é armazenado separadamente dos registros de tarefas de fluxo de trabalho. Crie uma tarefa quando precisar de acompanhamento e revisões de estágio.",
+          "As conversas do projeto não são gravadas no histórico de tarefas do fluxo. Em conversas Codex, o menu de configuração oferece «Velocidade → Padrão / Normal / Rápida / Ultrarrápida». A escolha é salva por projeto e conversa e redefinida ao trocar o mecanismo ou fornecedor, ou transferir o contexto. A opção padrão mantém a configuração original; a aceleração real depende da conta e do suporte do serviço.",
           "A bifurcação nativa está disponível apenas quando realmente suportada pelo mecanismo. Caso contrário, continue através da transferência de contexto explícita."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Abra Configuração → Centro de habilidades do projeto atual, verifique novamente e pesquise por nome, descrição ou caminho de origem.",
           "Leia os propósitos das habilidades e habilite o que você precisa. Verifique o intervalo selecionado antes de alterações em massa. As habilidades são salvas por projeto e aplicadas na próxima execução ou nova sessão.",
-          "Digite / no compositor para selecionar as habilidades realmente oferecidas pelo mecanismo atual. As listas variam de acordo com o mecanismo.",
+          "Digite / e pesquise pelo início do nome entre as habilidades oferecidas pelo mecanismo atual. Para passar da discussão à execução, no chat comum de um projeto local clique em «＋ → Modo de fluxo». Discuta primeiro o diagrama; somente após confirmação explícita o fluxo e a tarefa são criados e iniciados. Use o botão de detalhes da tarefa na resposta para abrir o resultado. Projetos remotos e conversas de criação incorporadas não têm essa entrada.",
           "Use o menu de sessão para renomear ou arquivar. Pesquise a lista de arquivos e restaure as conversas necessárias."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Altere o nome de usuário nas configurações do sistema. Idioma, fontes, tamanho e skins estão em Configurações → Aparência; o escopo de verificação do repositório está nas configurações do Git."
         ],
         "tips": [
-          "A alteração do mecanismo de execução padrão afeta novas tarefas e etapas, e não configurações de tarefas ou etapas existentes."
+          "Alterar o mecanismo de execução padrão afeta novas tarefas e etapas, sem substituir configurações existentes. «Configurações do sistema → Mensagens por carregamento» tem padrão 20 e aceita inteiros de 1 a 300. A mudança afeta os próximos carregamentos do histórico, sem recarregar imediatamente conversas abertas."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Escolha preferências de exibição pessoais ou crie skins e pacotes de idiomas pré-visualizáveis por meio de bate-papo comum do projeto.",
     "sections": [
       {
+        "title": "Escolha e salve a aparência pessoal",
+        "steps": [
+          "Para acesso completo ao dispositivo, abra Configurações → Aparência. Usuários autorizados pelo projeto inserem Aparência e skins na barra lateral.",
+          "Escolha fonte, tamanho e idioma. Pesquise na biblioteca de temas ou filtre por «Todos / Meus temas». Selecionar um cartão mostra apenas uma amostra. Abra a prévia e cancele ou confirme a aplicação na barra fixa de prévia.",
+          "As escolhas dos usuários do Gateway autenticado são salvas por conta e dispositivo, restaurando em outro navegador no mesmo dispositivo. Tente novamente salvamentos com falha. As opções locais sem login na plataforma permanecem neste navegador."
+        ],
+        "tips": [
+          "Os pacotes de temas e idiomas são compartilhados no dispositivo, mas as escolhas pessoais ficam separadas. Usuários com autorização de projeto só podem selecionar pacotes instalados. Administradores do host podem importar ZIP; atualizar um pacote com o mesmo nome exige confirmar a substituição e aplicá-lo novamente. Um tema personalizado selecionado pode ser exportado em ZIP; o tema padrão não pode ser exportado nem excluído.",
+          "Pacotes ausentes ou quebrados voltam à aparência padrão. Adicione ?skin=default ou ?language=default para restaurar a capa padrão ou chinês simplificado."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Área de trabalho e campo de entrada do chat com o tema estrelado efetivamente aplicado",
+          "caption": "Área de demonstração com «星际 · 静谧星海» efetivamente aplicado; a conversa está vazia, nenhuma mensagem foi enviada e os scripts estão desativados. Créditos do fundo: ESO/S. Brunier · adaptação por fusão com IA."
+        }
+      },
+      {
+        "title": "Crie skins e idiomas através do chat",
+        "steps": [
+          "Com permissão de administração do host, clique em «Vamos conversar sobre a aparência», escolha um mecanismo disponível no menu de configuração do chat e envie sua solicitação, por exemplo: «Use «星际 · 静谧星海» como base, mantenha o fundo estrelado e use uma seta para cima no botão de envio». Sugestões e instruções preenchidas previamente não são enviadas automaticamente; não é necessário escolher a versão do formato do tema.",
+          "O chat fica à esquerda, e a edição e a prévia à direita; no celular, alterne pelas abas. Ajuste nome, cores, fonte, tamanho, ícone de envio ou disposição e clique em «Salvar ajustes» para atualizar o mesmo rascunho. Os ajustes também são salvos automaticamente antes do envio, e o rascunho é relido ao fim da geração. Não é possível editar durante a execução; em caso de conflito de versão, releia o rascunho primeiro. Na janela de criação, confira as amostras de chat para computador e celular; após salvar na biblioteca de temas, confira também as amostras do quadro de tarefas e do fluxo.",
+          "Para um pacote de idiomas, pergunte no mesmo chat, por exemplo: Adicione espanhol preservando a aparência. Mude o lado direito para Idioma. Carrega após geração; use Ler e validar para verificar seu diretório, cobertura, strings ausentes e exemplos.",
+          "Para skins, clique em Salvar aparência e visualização; para idiomas, instale e visualize. Confirme ou cancele na barra de visualização. Salvar na biblioteca não confirma a aplicação pessoal. Exporte ZIP para reutilização e inspecione solicitações de substituição para importações ou atualizações com o mesmo ID."
+        ],
+        "tips": [
+          "Reabrir a ferramenta restaura a conversa de criação e o rascunho; se a conversa foi excluída ou arquivada, uma nova é criada. Enviar uma solicitação aciona o modelo selecionado; boas-vindas, ajustes manuais e prévias locais não acionam modelos nem executam tarefas reais.",
+          "Você pode escolher fontes do sistema ou fontes locais incluídas no pacote do tema. O ícone de envio oferece estilos integrados; ícones vetoriais personalizados precisam passar pela validação. Mensagens anteriores e arquivos do usuário não são traduzidos automaticamente ao trocar o tema ou idioma.",
+          "Os pacotes de idiomas são independentes de skins e atualmente suportam idiomas da esquerda para a direita. Strings e controles de data ausentes usam o substituto integrado especificado. A cobertura não comprova a qualidade da tradução; use o chat para atualizar catálogos de strings desatualizados."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Áreas de bate-papo e edição/visualização na criação de aparência",
+          "caption": "Janela real de criação após a leitura do pacote do tema estrelado, com ajustes e prévia para computador à direita. A solicitação à esquerda ainda não foi enviada e nenhum modelo foi acionado."
+        }
+      },
+      {
+        "title": "Usar temas personalizados e extensões de funcionalidades",
+        "steps": [
+          "Em «Configurações → Aparência», escolha um tema. O cartão atualiza apenas uma amostra local, e a miniatura não executa scripts. A prévia altera temporariamente toda a área de trabalho: confirme para salvar ou cancele para restaurar a aparência anterior.",
+          "Ao selecionar um tema com scripts, controle as funcionalidades com «Executar scripts do tema», sem outra janela de confirmação. Sem scripts, a opção fica indisponível. Para um tema ainda não aplicado, ela apenas salva a preferência; os scripts só são executados na prévia global ou após a aplicação. Menus, notas e calendários dependem do tema instalado e não são recursos pré-instalados do aplicativo.",
+          "O tema pode posicionar a área de entrada em cima, embaixo, à esquerda ou à direita; a interface compacta mantém a disposição vertical. Desativar os scripts desabilita as funções das extensões e remove seus componentes e assinaturas, mas mantém a aparência. Alguns menus podem continuar visíveis, porém indisponíveis. Se um script não carregar, consulte o erro, desative a opção e ative-a novamente para tentar outra vez.",
+          "Os dados de extensão são separados por identidade do navegador, dispositivo, skin e recurso. Trocar ou excluir uma capa não a apaga. Use a exportação da própria extensão para backup. Se a interface quebrar, adicione skin=default ao URL e atualize."
+        ],
+        "tips": [
+          "Os scripts têm as mesmas permissões da página atual. Ative apenas fontes confiáveis; cancelar a prévia não desfaz operações já executadas. A opção é salva por identidade atual, escopo de acesso ao dispositivo e tema, sendo mantida após recarregar ou atualizar o mesmo tema.",
+          "Os dados de extensão não são incluídos nas exportações de skin ZIP ou sincronizados entre navegadores/dispositivos. Faça backup antes de limpar o armazenamento; a falha na poupança não deve ser tratada como sucesso."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Controle de execução de scripts do tema personalizado e acessos às extensões",
+          "caption": "Controle de scripts, exportação ZIP, prévia e aplicação do tema estrelado. Os scripts estão desativados; ainda faltam imagens das extensões em execução e do resultado da desativação."
+        }
+      },
+      {
         "title": "Escolha um idioma integrado",
         "steps": [
           "Em Configurações → Aparência, escolha Chinês Simplificado, Chinês Tradicional, Inglês, Japonês, Francês, Alemão ou Árabe e inspecione entradas comuns e controles de data.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Seletores de idioma integrados no aplicativo e no site",
           "caption": "Capturas de tela reais das opções de idioma adicionadas estão pendentes."
-        }
-      },
-      {
-        "title": "Use layouts de skin v2 e extensões de recursos",
-        "steps": [
-          "Em Configurações → Aparência, instale e valide um skin v2 confiável, visualize e aplique-o. Para recursos como notas, peça ao autor no chat de criação de aparência para incluir componentes.",
-          "Leia a confirmação de ativação para pacotes com código. Atualizar um pacote ou alterar a identidade pode perguntar novamente. Abra painéis por meio dos menus do skin ou entradas de recursos, que dependem do pacote. Notas ou calendários não são recursos de aplicativos pré-instalados.",
-          "O pacote pode posicionar o compositor acima, abaixo, esquerda ou direita. As visualizações compactas mantêm a disposição vertical. Após a troca, verifique as mensagens, o compositor e as configurações permanecem utilizáveis.",
-          "Os dados de extensão são separados por identidade do navegador, dispositivo, skin e recurso. Trocar ou excluir uma capa não a apaga. Use a exportação da própria extensão para backup. Se a interface quebrar, adicione skin=default ao URL e atualize."
-        ],
-        "tips": [
-          "O código do componente possui os privilégios da página atual. Habilite apenas fontes confiáveis. Cancelar a visualização restaura a aparência, mas não desfaz o código já executado.",
-          "Os dados de extensão não são incluídos nas exportações de skin ZIP ou sincronizados entre navegadores/dispositivos. Faça backup antes de limpar o armazenamento; a falha na poupança não deve ser tratada como sucesso."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "Confirmação de ativação do componente v2 e entrada no painel de recursos",
-          "caption": "A captura de tela de execução real de um pacote de demonstração confiável está pendente. A validação do formato não é aceitação visual."
-        }
-      },
-      {
-        "title": "Escolha e salve a aparência pessoal",
-        "steps": [
-          "Para acesso completo ao dispositivo, abra Configurações → Aparência. Usuários autorizados pelo projeto inserem Aparência e skins na barra lateral.",
-          "Escolha fonte, tamanho e idioma. Pesquise ou filtre skins instaladas, visualize e aplique. A barra de visualização fixa permite cancelar ou confirmar.",
-          "As escolhas dos usuários do Gateway autenticado são salvas por conta e dispositivo, restaurando em outro navegador no mesmo dispositivo. Tente novamente salvamentos com falha. As opções locais sem login na plataforma permanecem neste navegador."
-        ],
-        "tips": [
-          "Pacotes e registros de criação são compartilhados no dispositivo; seleções pessoais são isoladas. Usuários autorizados pelo projeto só podem escolher pacotes instalados.",
-          "Pacotes ausentes ou quebrados voltam à aparência padrão. Adicione ?skin=default ou ?language=default para restaurar a capa padrão ou chinês simplificado."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Fontes, tamanho, idioma e skins instalados em Aparência",
-          "caption": "A página de configurações reais mostra padrões e exemplos integrados à direita. Nenhuma preferência pessoal foi alterada."
-        }
-      },
-      {
-        "title": "Crie skins e idiomas através do chat",
-        "steps": [
-          "Com direitos de gerenciamento de host, clique em Vamos discutir a aparência, escolha um mecanismo instalado e verificado e descreva um objetivo, como: Criar uma aparência escura, preservar o layout e usar uma seta de envio para cima.",
-          "O bate-papo fica à esquerda, a edição e a visualização à direita; telefones trocam de guia. Ajuste o nome, as cores, a fonte, o tamanho, o ícone de envio e o layout e salve os ajustes no mesmo pacote de rascunho. A edição é desativada durante a execução do chat. Verifique as visualizações do PC e do telefone.",
-          "Para um pacote de idiomas, pergunte no mesmo chat, por exemplo: Adicione espanhol preservando a aparência. Mude o lado direito para Idioma. Carrega após geração; use Ler e validar para verificar seu diretório, cobertura, strings ausentes e exemplos.",
-          "Para skins, clique em Salvar aparência e visualização; para idiomas, instale e visualize. Confirme ou cancele na barra de visualização. Salvar na biblioteca não confirma a aplicação pessoal. Exporte ZIP para reutilização e inspecione solicitações de substituição para importações ou atualizações com o mesmo ID."
-        ],
-        "tips": [
-          "A criação reutiliza o projeto Runtime fixo e o chat comum, invocando seu modelo. Continue o trabalho anterior através do Histórico de conversas acima da janela. Os exemplos de visualização em si não executam tarefas.",
-          "As fontes usam fontes do sistema instaladas. Mensagens e arquivos históricos não são traduzidos automaticamente. Os ícones de envio integrados podem ser selecionados nos ajustes; ícones vetoriais personalizados devem ser fornecidos por um rascunho validado.",
-          "Os pacotes de idiomas são independentes de skins e atualmente suportam idiomas da esquerda para a direita. Strings e controles de data ausentes usam o substituto integrado especificado. A cobertura não comprova a qualidade da tradução; use o chat para atualizar catálogos de strings desatualizados."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Áreas de bate-papo e edição/visualização na criação de aparência",
-          "caption": "Um chat de criação vazio autorizado e formulário de ajuste. Seu compositor é pré-preenchido; nenhuma mensagem foi enviada, modelo executado ou skin salvo."
         }
       },
       {

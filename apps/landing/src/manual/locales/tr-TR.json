@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Masaüstünde, paylaşılan yeniden adlandırma iletişim kutusunu açmak için bir kenar çubuğu konuşmasını veya başlık başlığını çift tıklayın, ardından adı girin ve onaylayın.",
-          "Mobilde yalnızca etkin bölme görünür, diğerleri korunur. Aynı sayfa oturumunda başka ekrana gidip dönmek bölmeleri, düzeni ve boyutları geri getirir; tarayıcı yenilenince geri yükleme garanti edilmez. Düzenler hesap ve cihaza göre ayrılır, sohbet içeriği kopyalanmaz."
+          "Telefonda yalnızca etkin panel görünür; diğer paneller durumlarını korur. Yenileme veya ayrılıp geri dönme sonrasında paneller, düzen ve boyutlar geri yüklenir; kapatılan paneller yeniden açılmaz. Kenar çubuğundaki proje satırına tıklamak yalnızca ağacı açar veya kapatır; geçiş için belirli sohbeti seçin. Düzen hesap ve cihaz bazında ayrılır; sohbet içeriği kopyalanmaz."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Motoru veya sağlayıcıyı mevcut bağlamla değiştirirken, iletişim kutusunda Akıllı aktarım, Tam sohbet geçmişi veya Yok'u seçin. Bağımsız keşif için bir görüşme yapın ve bağlam modunu onaylayın."
         ],
         "tips": [
-          "Proje sohbeti, iş akışı görev kayıtlarından ayrı olarak depolanır. Aşama takibi ve incelemelere ihtiyaç duyduğunuzda bir görev oluşturun.",
+          "Proje sohbetleri iş akışı görev geçmişine yazılmaz. Codex sohbetlerinde yapılandırma menüsünden «Hız → Varsayılan / Standart / Hızlı / Ultra hızlı» seçebilirsiniz. Seçim proje ve sohbet bazında saklanır; motor veya sağlayıcı değişince ya da bağlam devredilince sıfırlanır. Varsayılan seçenek mevcut yapılandırmayı izler; gerçek hızlanma hesabın ve hizmetin desteğine bağlıdır.",
           "Yerel çatallama yalnızca motor tarafından gerçekten desteklendiğinde kullanılabilir. Aksi takdirde açık bağlam aktarımıyla devam edin."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Mevcut projenin Yapılandırma → Beceri merkezini açın, yeniden tarayın ve ada, açıklamaya veya kaynak yoluna göre arayın.",
           "Beceri amaçlarını okuyun ve ihtiyacınız olanı etkinleştirin. Toplu değişikliklerden önce seçilen aralığı kontrol edin. Beceriler proje başına kaydedilir ve bir sonraki çalıştırmaya veya yeni oturuma uygulanır.",
-          "Mevcut motor tarafından sunulan becerileri seçmek için besteciye / yazın. Listeler motora göre değişir.",
+          "/ yazıp geçerli motorun sunduğu becerileri adlarının başlangıcına göre arayın. Tartışmadan yürütmeye geçmek için yerel bir projenin normal sohbetinde «＋ → İş akışı modu» seçeneğine tıklayın. Önce akış şemasını tartışın; yalnızca açık onaydan sonra iş akışı ve görev oluşturulup başlatılır. Yanıttaki görev ayrıntıları düğmesiyle görüntüleyin. Uzak projelerde ve gömülü oluşturma sohbetlerinde bu giriş yoktur.",
           "Yeniden adlandırmak veya arşivlemek için oturum menüsünü kullanın. Arşiv listesinde arama yapın ve gerekli konuşmaları geri yükleyin."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Sistem ayarlarında kullanıcı adını değiştirin. Dil, yazı tipleri, boyut ve dış görünümler Ayarlar → Görünüm altındadır; depo tarama kapsamı Git ayarları altındadır."
         ],
         "tips": [
-          "Varsayılan yürütme motorunun değiştirilmesi, mevcut görev veya adım ayarlarını değil, yeni görevleri ve adımları etkiler."
+          "Varsayılan yürütme motorunu değiştirmek yeni görev ve adımlara uygulanır; mevcut yapılandırmaları değiştirmez. «Sistem ayarları → Yükleme başına mesaj sayısı» varsayılan olarak 20'dir ve 1–300 arası tam sayıları kabul eder. Sonraki geçmiş yüklemelerini etkiler; açık sohbetleri hemen yeniden yüklemez."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Sıradan proje sohbeti aracılığıyla kişisel görüntüleme tercihlerini seçin veya önizlenebilir görünümler ve dil paketleri oluşturun.",
     "sections": [
       {
+        "title": "Kişisel görünümü seçin ve kaydedin",
+        "steps": [
+          "Tam cihaz erişimi için Ayarlar → Görünüm'ü açın. Proje yetkilisi kullanıcılar kenar çubuğundan Görünüm ve görünümlere girer.",
+          "Yazı tipini, boyutunu ve dili seçin. Tema kitaplığında arayın veya «Tümü / Temalarım» filtresini kullanın. Kart seçmek yalnızca örneği gösterir. Önizlemeyi açtıktan sonra sabit önizleme çubuğundan iptal edin veya uygulamayı onaylayın.",
+          "Kimliği doğrulanmış Ağ Geçidi kullanıcılarının seçimleri, hesap ve cihaz başına kaydedilir ve aynı cihazdaki başka bir tarayıcıya geri yüklenir. Başarısız kaydetmeleri yeniden deneyin. Platforma giriş yapılmayan yerel seçenekler bu tarayıcıda kalır."
+        ],
+        "tips": [
+          "Tema ve dil paketleri cihazda paylaşılır; kişisel seçimler birbirinden ayrıdır. Proje erişimi olan kullanıcılar yalnızca kurulu paketleri seçebilir. Ana makine yöneticileri ZIP içe aktarabilir; aynı adlı paketi güncellemek, değiştirmeyi onaylamayı ve yeniden uygulamayı gerektirir. Seçili özel tema ZIP olarak dışa aktarılabilir; varsayılan tema dışa aktarılamaz veya silinemez.",
+          "Eksik veya bozuk paketler varsayılan görünüme geri döner. Varsayılan dış görünümü veya Basitleştirilmiş Çinceyi geri yüklemek için ?skin=default veya ?language=default ekleyin."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Yıldızlı gökyüzü teması gerçekten uygulandıktan sonraki çalışma alanı ve sohbet giriş bölümü",
+          "caption": "«星际 · 静谧星海» temasının gerçekten uygulandığı demo çalışma alanı; sohbet boş, mesaj gönderilmedi ve betikler kapalı. Arka plan atfı: ESO/S. Brunier · yapay zekâ ile görüntü birleştirme yoluyla uyarlama."
+        }
+      },
+      {
+        "title": "Sohbet aracılığıyla görünümler ve diller oluşturun",
+        "steps": [
+          "Ana makine yönetim izniyle «Görünümü nasıl değiştireceğimizi konuşalım» seçeneğine tıklayın, sohbet yapılandırma menüsünden kullanılabilir bir motor seçin ve örneğin ««星际 · 静谧星海» temasını temel al, yıldızlı gökyüzü arka planını koru ve gönder düğmesinde yukarı ok kullan» isteğini gönderin. Öneriler ve önceden doldurulmuş istemler otomatik gönderilmez; tema biçimi sürümü seçmeniz gerekmez.",
+          "Solda sohbet, sağda düzenleme ve önizleme bulunur; telefonda sekmelerle geçiş yapılır. Adı, renkleri, yazı tipini, boyutunu, gönder simgesini veya düzeni ayarlayıp «İnce ayarları kaydet» ile aynı taslağı güncelleyin. Göndermeden önce de otomatik kaydedilir ve üretim bitince yeniden okunur. Çalışırken düzenleme yapılamaz; sürüm çakışmasında önce taslağı yeniden okuyun. Oluşturma penceresinde bilgisayar ve telefon sohbet örneklerini kontrol edin; tema kitaplığına kaydettikten sonra görev panosu ve iş akışı örneklerini de inceleyebilirsiniz.",
+          "Bir dil paketi için aynı sohbette şunu sorun: Görünümü korurken İspanyolca ekleyin. Sağ tarafı Dil olarak değiştirin. Nesilden sonra yüklenir; Dizinini, kapsamını, eksik dizeleri ve örnekleri kontrol etmek için Okuma ve doğrulamayı kullanın.",
+          "Dış görünümler için Görünümü ve önizlemeyi kaydet'i tıklayın; diller için Kurulum ve önizleme. Önizleme çubuğunda onaylayın veya iptal edin. Kütüphaneye kaydedilmesi kişisel başvuruyu onaylamaz. Yeniden kullanmak için ZIP'yu dışa aktarın ve aynı kimlikli içe aktarmalar veya güncellemeler için değiştirme istemlerini inceleyin."
+        ],
+        "tips": [
+          "Oluşturma aracını yeniden açmak önceki oluşturma sohbetini ve taslağı geri getirir; sohbet silinmiş veya arşivlenmişse yenisi oluşturulur. İstek göndermek seçili modeli çağırır; karşılama içeriği, elle yapılan ayarlar ve yerel önizlemeler modeli çağırmaz ve gerçek görev çalıştırmaz.",
+          "Sistem yazı tiplerini veya tema paketindeki yerel yazı tiplerini seçebilirsiniz. Gönder simgesi için yerleşik stiller vardır; özel vektör simgeleri doğrulamadan geçmelidir. Tema veya dil değişimi eski mesajları ve kullanıcı dosyalarını otomatik çevirmeden bırakır.",
+          "Dil paketleri dış görünümlerden bağımsızdır ve şu anda soldan sağa yazılan dilleri desteklemektedir. Eksik dizeler ve tarih kontrolleri, belirtilen yerleşik geri dönüşü kullanır. Kapsam, çeviri kalitesini kanıtlamaz; Güncelliğini yitirmiş dize kataloglarını güncellemek için sohbeti kullanın."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Görünüm oluşturmada sohbet ve düzenleme/önizleme alanları",
+          "caption": "Yıldızlı gökyüzü tema paketi okunduktan sonraki gerçek oluşturma penceresi; sağda ince ayarlar ve bilgisayar önizlemesi bulunuyor. Soldaki istek henüz gönderilmedi ve model çağrılmadı."
+        }
+      },
+      {
+        "title": "Özel temaları ve işlev uzantılarını kullanma",
+        "steps": [
+          "«Ayarlar → Görünüm» bölümünden bir tema seçin. Kart yalnızca yerel bir örneği günceller; küçük resim betik çalıştırmaz. Önizleme tüm çalışma alanını geçici olarak değiştirir; kaydetmek için onaylayın veya önceki görünümü geri getirmek için iptal edin.",
+          "Betik içeren bir tema seçtiğinizde, ek bir onay penceresi olmadan «Tema betiklerini çalıştır» anahtarıyla işlevleri yönetin. Betik yoksa anahtar kullanılamaz. Henüz uygulanmamış bir temada yalnızca tercih kaydedilir; betikler tüm çalışma alanının önizlemesinde veya tema uygulandıktan sonra çalışır. Menüler, notlar ve takvimler kurulu temadan gelir; uygulamanın önceden yüklü özellikleri değildir.",
+          "Tema giriş alanını üstte, altta, solda veya sağda konumlandırabilir; kompakt arayüz dikey düzeni korur. Betikleri kapatmak uzantı işlevlerini devre dışı bırakır ve bileşenlerle abonelikleri temizler, ancak temanın görünümü korunur. Bazı menüler görünür kalabilir fakat kullanılamaz. Betik yüklenemezse hatayı inceleyin, anahtarı kapatıp yeniden açarak tekrar deneyin.",
+          "Uzantı verileri tarayıcı kimliğine, cihaza, dış görünüme ve özelliğe göre ayrılır. Bir görünümü değiştirmek veya silmek onu silmez. Yedekleme için uzantının kendi dışa aktarımını kullanın. Arayüz bozulursa URL'ya skin=default ekleyin ve yenileyin."
+        ],
+        "tips": [
+          "Betikler geçerli sayfayla aynı izinlere sahiptir. Yalnızca güvenilir kaynakları etkinleştirin; önizlemeyi iptal etmek yapılmış işlemleri geri almaz. Anahtar tercihi geçerli kimlik, cihaz erişim kapsamı ve tema için saklanır; sayfa yenilendiğinde veya aynı tema güncellendiğinde korunur.",
+          "Uzantı verileri, ZIP dış görünüm aktarımlarına dahil edilmez veya tarayıcılar/cihazlar arasında senkronize edilmez. Depolamayı temizlemeden önce yedekleyin; Başarısız olan tasarruf, başarı olarak değerlendirilmemelidir."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Özel temanın betik çalıştırma anahtarı ve uzantı girişleri",
+          "caption": "Yıldızlı gökyüzü temasının betik anahtarı, ZIP dışa aktarma, önizleme ve uygulama girişleri. Betikler şu anda kapalı; uzantıların çalışmasını ve devre dışı bırakma sonucunu gösteren görüntüler hâlâ eksik."
+        }
+      },
+      {
         "title": "Yerleşik bir dil seçin",
         "steps": [
           "Ayarlar → Görünüm'de Basitleştirilmiş Çince, Geleneksel Çince, İngilizce, Japonca, Fransızca, Almanca veya Arapça'yı seçin ve ortak girişleri ve tarih kontrollerini inceleyin.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Uygulamada ve web sitesinde yerleşik dil seçiciler",
           "caption": "Eklenen dil seçeneklerinin gerçek ekran görüntüleri beklemede."
-        }
-      },
-      {
-        "title": "v2 dış görünüm düzenlerini ve özellik uzantılarını kullanın",
-        "steps": [
-          "Ayarlar → Görünüm altında, güvenilir bir v2 dış görünümünü yükleyin ve doğrulayın, önizleyin ve uygulayın. Notlar gibi özellikler için, görünüm oluşturma sohbetindeki yazardan bileşenleri eklemesini isteyin.",
-          "Kodlu paketler için etkinleştirme onayını okuyun. Bir paketi güncellemek veya kimliği değiştirmek tekrar sorabilir. Pakete bağlı olarak dış görünüm menüleri veya özellik girişleri aracılığıyla panelleri açın. Notlar veya takvimler önceden yüklenmiş uygulama özellikleri değildir.",
-          "Paket, besteciyi yukarıya, aşağıya, sola veya sağa konumlandırabilir. Kompakt görünümler dikey düzenlemeyi korur. Geçişten sonra mesajların, bestecinin ve ayarların kullanılabilir durumda kaldığını kontrol edin.",
-          "Uzantı verileri tarayıcı kimliğine, cihaza, dış görünüme ve özelliğe göre ayrılır. Bir görünümü değiştirmek veya silmek onu silmez. Yedekleme için uzantının kendi dışa aktarımını kullanın. Arayüz bozulursa URL'ya skin=default ekleyin ve yenileyin."
-        ],
-        "tips": [
-          "Bileşen kodu geçerli sayfanın ayrıcalıklarına sahiptir. Yalnızca güvenilir kaynakları etkinleştirin. Önizlemeyi iptal etmek görünümü geri yükler ancak halihazırda yürütülmüş olan kodu geri almaz.",
-          "Uzantı verileri, ZIP dış görünüm aktarımlarına dahil edilmez veya tarayıcılar/cihazlar arasında senkronize edilmez. Depolamayı temizlemeden önce yedekleyin; Başarısız olan tasarruf, başarı olarak değerlendirilmemelidir."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "v2 bileşeni etkinleştirme onayı ve özellik paneli girişi",
-          "caption": "Güvenilir bir tanıtım paketinin gerçek yürütme ekran görüntüsü beklemede. Format doğrulama görsel kabul değildir."
-        }
-      },
-      {
-        "title": "Kişisel görünümü seçin ve kaydedin",
-        "steps": [
-          "Tam cihaz erişimi için Ayarlar → Görünüm'ü açın. Proje yetkilisi kullanıcılar kenar çubuğundan Görünüm ve görünümlere girer.",
-          "Yazı tipini, boyutunu ve dilini seçin. Yüklü dış görünümleri arayın veya filtreleyin, önizleyin ve uygulayın. Sabit önizleme çubuğu iptal etmenize veya onaylamanıza olanak tanır.",
-          "Kimliği doğrulanmış Ağ Geçidi kullanıcılarının seçimleri, hesap ve cihaz başına kaydedilir ve aynı cihazdaki başka bir tarayıcıya geri yüklenir. Başarısız kaydetmeleri yeniden deneyin. Platforma giriş yapılmayan yerel seçenekler bu tarayıcıda kalır."
-        ],
-        "tips": [
-          "Paketler ve oluşturma kayıtları cihazda paylaşılır; kişisel seçimler izole edilmiştir. Proje yetkilisi kullanıcılar yalnızca kurulu paketleri seçebilir.",
-          "Eksik veya bozuk paketler varsayılan görünüme geri döner. Varsayılan dış görünümü veya Basitleştirilmiş Çinceyi geri yüklemek için ?skin=default veya ?language=default ekleyin."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Görünüm'deki yazı tipleri, boyut, dil ve yüklü kaplamalar",
-          "caption": "Gerçek ayarlar sayfası sağ tarafta varsayılanları ve yerleşik örnekleri gösterir. Hiçbir kişisel tercih değiştirilmedi."
-        }
-      },
-      {
-        "title": "Sohbet aracılığıyla görünümler ve diller oluşturun",
-        "steps": [
-          "Ana bilgisayar yönetimi haklarıyla, Görünümü tartışalım'a tıklayın, yüklü, doğrulanmış bir motor seçin ve şu gibi bir hedef tanımlayın: Koyu bir dış görünüm yapın, düzeni koruyun ve yukarı gönderme oku kullanın.",
-          "Sohbet solda, düzenleme ve önizleme ise sağda; telefonlar sekmeleri değiştirir. Adı, renkleri, yazı tipini, boyutu, gönderme simgesini ve düzeni ayarlayın, ardından ayarlamaları aynı taslak paketine kaydedin. Sohbet çalışırken düzenleme devre dışı bırakılır. PC ve telefon önizlemelerini kontrol edin.",
-          "Bir dil paketi için aynı sohbette şunu sorun: Görünümü korurken İspanyolca ekleyin. Sağ tarafı Dil olarak değiştirin. Nesilden sonra yüklenir; Dizinini, kapsamını, eksik dizeleri ve örnekleri kontrol etmek için Okuma ve doğrulamayı kullanın.",
-          "Dış görünümler için Görünümü ve önizlemeyi kaydet'i tıklayın; diller için Kurulum ve önizleme. Önizleme çubuğunda onaylayın veya iptal edin. Kütüphaneye kaydedilmesi kişisel başvuruyu onaylamaz. Yeniden kullanmak için ZIP'yu dışa aktarın ve aynı kimlikli içe aktarmalar veya güncellemeler için değiştirme istemlerini inceleyin."
-        ],
-        "tips": [
-          "Creation, sabit Runtime projesini ve sıradan sohbeti yeniden kullanarak modelinizi çağırır. Pencerenin üzerindeki Konuşma geçmişi aracılığıyla önceki çalışmalara devam edin. Önizleme örneklerinin kendisi görevleri çalıştırmaz.",
-          "Yazı tipleri yüklü sistem yazı tiplerini kullanır. Geçmiş mesajlar ve dosyalar otomatik olarak çevrilmez. Yerleşik gönderme simgeleri ayarlamalarda seçilebilir; özel vektör simgelerinin doğrulanmış bir taslakla sağlanması gerekir.",
-          "Dil paketleri dış görünümlerden bağımsızdır ve şu anda soldan sağa yazılan dilleri desteklemektedir. Eksik dizeler ve tarih kontrolleri, belirtilen yerleşik geri dönüşü kullanır. Kapsam, çeviri kalitesini kanıtlamaz; Güncelliğini yitirmiş dize kataloglarını güncellemek için sohbeti kullanın."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Görünüm oluşturmada sohbet ve düzenleme/önizleme alanları",
-          "caption": "Yetkili, boş bir sohbet oluşturma ve ayarlama formu. Bestecisi önceden doldurulmuştur; hiçbir mesaj gönderilmedi, model çalıştırıldı veya dış görünüm kaydedildi."
         }
       },
       {

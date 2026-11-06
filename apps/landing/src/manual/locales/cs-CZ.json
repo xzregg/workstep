@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Na ploše poklepejte na konverzaci na postranním panelu nebo na její záhlaví, abyste otevřeli dialogové okno sdíleného přejmenování, poté zadejte a potvrďte název.",
-          "Mobil zobrazuje jen aktivní panel a ostatní zachová. Odchod a návrat ve stejné relaci stránky obnoví panely, rozložení a velikosti; po obnovení prohlížeče to není zaručeno. Rozložení je oddělené podle účtu a zařízení, bez kopírování obsahu konverzace."
+          "Telefon zobrazuje jen aktivní okno, stavy ostatních zachovává. Obnovení stránky nebo návrat po odchodu může obnovit okna, jejich uspořádání a velikost; zavřená okna se znovu neotevřou. Kliknutí na řádek projektu v postranním panelu pouze rozbalí či sbalí projekt, konverzaci přepnete až výběrem konkrétního chatu. Rozložení je oddělené podle aktuálního účtu a zařízení a nekopíruje obsah konverzací."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Při změně modulu nebo poskytovatele s existujícím kontextem vyberte v dialogovém okně Inteligentní předání, Úplná historie chatu nebo Žádný. Rozdělte konverzaci pro nezávislé prozkoumání a potvrďte její kontextový režim."
         ],
         "tips": [
-          "Projektový chat je uložen odděleně od záznamů úkolů pracovního postupu. Vytvořte úkol, když potřebujete sledování fáze a recenze.",
+          "Projektové konverzace se nezapisují do záznamů úkolů pracovního postupu. V konverzacích Codex lze v nabídce konfigurace vybrat „Rychlost → Výchozí / Standardní / Rychlá / Velmi rychlá“. Volba se ukládá podle projektu a relace a resetuje se při změně enginu, poskytovatele nebo předání kontextu. Výchozí volba zachová původní konfiguraci; skutečné zrychlení závisí na podpoře účtu a služby.",
           "Nativní vidlice je k dispozici pouze tehdy, když je motor skutečně podporován. Jinak pokračujte přes explicitní kontextové předání."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Otevřete aktuální projekt Konfigurace → Centrum dovedností, znovu naskenujte a vyhledejte podle názvu, popisu nebo zdrojové cesty.",
           "Přečtěte si účely dovedností a aktivujte to, co potřebujete. Před hromadnými změnami zkontrolujte vybraný rozsah. Dovednosti se ukládají pro každý projekt a použijí se při příštím spuštění nebo nové relaci.",
-          "Zadejte / do skladatele a vyberte dovednosti, které aktuálně nabízí aktuální engine. Seznamy se liší podle motoru.",
+          "Zadejte / a podle začátku názvu vyhledejte dovednosti poskytované aktuálním enginem. Chcete-li přejít od diskuse k provedení, v běžném chatu místního projektu klikněte na „＋ → Režim pracovního postupu“. Nejprve prodiskutujte diagram; až po výslovném potvrzení vytvořte pracovní postup a úkol a spusťte jej. Podrobnosti otevřete tlačítkem v odpovědi. Vzdálené projekty a vložené konverzace pro tvorbu tento vstup nemají.",
           "K přejmenování nebo archivaci použijte nabídku relace. Prohledejte seznam archivů a obnovte požadované konverzace."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Změňte uživatelské jméno v nastavení systému. Jazyk, písma, velikost a vzhledy jsou v Nastavení → Vzhled; Rozsah skenování úložiště je v nastavení Git."
         ],
         "tips": [
-          "Změna výchozího spouštěcího jádra ovlivní nové úlohy a kroky, nikoli stávající nastavení úlohy nebo kroku."
+          "Změna výchozího vykonávacího enginu se týká nových úkolů a kroků, stávající konfiguraci nenahradí. Nastavení „Systémová nastavení → Počet zpráv při jednom načtení“ má výchozí hodnotu 20 a přijímá celá čísla 1–300. Ovlivní další načítání historie, nikoli okamžité znovunačtení otevřených konverzací."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Vyberte si osobní předvolby zobrazení nebo vytvořte náhled vzhledů a jazykových balíčků prostřednictvím běžného projektového chatu.",
     "sections": [
       {
+        "title": "Vyberte a uložte osobní vzhled",
+        "steps": [
+          "Chcete-li získat přístup k celému zařízení, otevřete Nastavení → Vzhled. Uživatelé s oprávněním k projektu zadávají vzhled a vzhledy z postranního panelu.",
+          "Vyberte písmo, velikost a jazyk. V knihovně vzhledů hledejte nebo filtrujte podle „Vše / Moje vzhledy“. Výběr karty pouze zobrazí ukázku; klikněte na náhled a na pevném panelu jej zrušte nebo potvrďte použití.",
+          "Volby uživatelů Authenticated Gateway se ukládají pro každý účet a zařízení a obnovují se v jiném prohlížeči na stejném zařízení. Opakovat neúspěšné uložení. Místní volby bez přihlášení k platformě zůstávají v tomto prohlížeči."
+        ],
+        "tips": [
+          "Balíčky vzhledů a jazyků se sdílejí na zařízení, osobní volby jsou oddělené. Uživatelé s přístupem pouze k projektu mohou vybírat jen nainstalované balíčky. Správci hostitele mohou importovat ZIP; aktualizace stejnojmenného balíčku vyžaduje potvrzení nahrazení a nové použití. Vybraný vlastní vzhled lze exportovat jako ZIP, výchozí vzhled nelze exportovat ani odstranit.",
+          "Chybějící nebo poškozené balíčky se vrátí do výchozího vzhledu. Chcete-li obnovit výchozí vzhled nebo zjednodušenou čínštinu, přidejte ?skin=default nebo ?language=default."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Pracovní prostředí a vstup konverzace po skutečném použití hvězdného vzhledu",
+          "caption": "Demonstrační prostředí se skutečně použitým vzhledem „星际 · 静谧星海“. Konverzace je prázdná, nic nebylo odesláno a skripty jsou vypnuté. Autorství pozadí: ESO/S. Brunier · kombinovaná úprava s využitím AI."
+        }
+      },
+      {
+        "title": "Vytvářejte vzhledy a jazyky prostřednictvím chatu",
+        "steps": [
+          "S oprávněním správce hostitele klikněte na „Probrat změnu vzhledu“, v nabídce konfigurace chatu vyberte dostupný engine a odešlete požadavek, například „Použij jako základ vzhled „星际 · 静谧星海“, zachovej hvězdné pozadí a pro tlačítko odeslání použij šipku nahoru“. Návrhy ani předvyplněné pokyny se neodesílají automaticky; verzi formátu vzhledu vybírat nemusíte.",
+          "Vlevo je chat, vpravo editor a náhled; na telefonu přepínejte karty. Upravte název, barvy, písmo, velikost, ikonu odeslání nebo rozložení a klikněte na „Uložit úpravy“, čímž zapíšete změny do stejného konceptu. Ukládá se také automaticky před odesláním a po dokončení generování se balíček znovu načte. Během běhu nelze upravovat; při konfliktu verzí nejprve načtěte znovu. V okně tvorby zkontrolujte ukázky chatu pro počítač a telefon. Po uložení do knihovny vzhledů lze zkontrolovat také ukázky nástěnky úkolů a pracovního postupu.",
+          "Pro jazykový balíček se zeptejte ve stejném chatu, například: Přidejte španělštinu při zachování vzhledu. Přepněte pravou stranu na Jazyk. Načte se po generaci; pomocí Číst a ověřovat zkontrolujte jeho adresář, pokrytí, chybějící řetězce a příklady.",
+          "Pro vzhledy klepněte na Uložit vzhled a náhled; pro jazyky, Instalace a náhled. Potvrďte nebo zrušte na panelu náhledu. Uložení do knihovny nepotvrzuje osobní přihlášku. Exportujte ZIP, abyste je mohli znovu použít, a zkontrolujte výzvy k výměně, zda neobsahují importy nebo aktualizace stejného ID."
+        ],
+        "tips": [
+          "Opětovné otevření tvorby obnoví původní relaci i koncept; pokud byla relace odstraněna nebo archivována, vytvoří se nová. Odeslání požadavku volá vybraný model. Uvítání, ruční úpravy a místní náhled model nevolají ani nespouštějí skutečné úkoly.",
+          "Můžete zvolit systémová písma nebo místní písma dodaná balíčkem vzhledu. Ikonu odeslání lze vybrat z vestavěných variant; vlastní vektorová ikona musí projít validací. Změna vzhledu ani jazyka automaticky nepřekládá starší zprávy nebo soubory uživatele.",
+          "Jazykové balíčky jsou nezávislé na vzhledech a aktuálně podporují jazyky se zápisem zleva doprava. Chybějící řetězce a ovládací prvky data používají zadanou vestavěnou záložní možnost. Pokrytí neprokazuje kvalitu překladu; pomocí chatu aktualizujte zastaralé katalogy řetězců."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat a oblasti úprav/náhledu při vytváření vzhledu",
+          "caption": "Skutečné okno tvorby po načtení balíčku hvězdného vzhledu, s úpravami a náhledem pro počítač vpravo. Požadavek vlevo dosud nebyl odeslán a model nebyl volán."
+        }
+      },
+      {
+        "title": "Používání vlastních vzhledů a rozšíření",
+        "steps": [
+          "V nabídce Nastavení → Vzhled vyberte vzhled. Karta aktualizuje pouze místní ukázku a miniatury nespouštějí skripty. Kliknutí na náhled dočasně změní celé pracovní prostředí; potvrzení volbu uloží a zrušení obnoví předchozí stav.",
+          "Po výběru vzhledu se skriptem ovládejte jeho funkce přepínačem „Spouštět skripty vzhledu“; další potvrzovací dialog se nezobrazuje. Bez skriptu je přepínač nedostupný. U dosud nepoužitého vzhledu pouze ukládá předvolbu; skript se spustí až při náhledu celého prostředí nebo použití vzhledu. Nabídky, poznámky či kalendář poskytuje nainstalovaný vzhled, nejsou součástí základní aplikace.",
+          "Vstupní oblast může být podle vzhledu nahoře, dole, vlevo nebo vpravo; v kompaktním zobrazení zůstává svislé uspořádání. Vypnutí skriptu deaktivuje funkce rozšíření a vyčistí komponenty i odběry, ale zachová vzhled; některé nabídky mohou zůstat viditelné jako nedostupné. Pokud se skript nenačte, přečtěte si chybu; vypněte a znovu zapněte přepínač a zkuste to znovu.",
+          "Data rozšíření jsou oddělena podle identity prohlížeče, zařízení, vzhledu a funkce. Přepnutím nebo odstraněním vzhledu nedojde k jeho vymazání. Pro zálohování použijte vlastní export rozšíření. Pokud se rozhraní rozbije, přidejte skin=default do URL a aktualizujte."
+        ],
+        "tips": [
+          "Skripty mají stejná oprávnění jako aktuální stránka, proto povolujte jen důvěryhodné zdroje. Zrušení náhledu nevrátí již provedené operace. Nastavení přepínače se ukládá pro aktuální identitu, rozsah přístupu k zařízení a vzhled a zachovává se při obnovení stránky i aktualizaci téhož vzhledu.",
+          "Data rozšíření nejsou zahrnuta do exportů vzhledu ZIP ani nejsou synchronizována mezi prohlížeči/zařízeními. Před vymazáním úložiště zálohujte; neúspěšné ukládání nesmí být považováno za úspěch."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Přepínač spouštění skriptů vlastního vzhledu a vstupy k rozšířeným funkcím",
+          "caption": "Přepínač skriptů hvězdného vzhledu a ovládání exportu ZIP, náhledu a použití. Skripty jsou nyní vypnuté; snímky běžících rozšíření a výsledku jejich vypnutí ještě chybějí."
+        }
+      },
+      {
         "title": "Vyberte vestavěný jazyk",
         "steps": [
           "V Nastavení → Vzhled vyberte Zjednodušená čínština, Tradiční čínština, Angličtina, Japonština, Francouzština, Němčina nebo Arabština a prohlédněte si běžné položky a ovládací prvky data.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Vestavěné voliče jazyků v aplikaci a na webu",
           "caption": "Skutečné snímky obrazovky s přidanými jazyky čekají na vyřízení."
-        }
-      },
-      {
-        "title": "Použijte rozvržení vzhledu v2 a rozšíření funkcí",
-        "steps": [
-          "V části Nastavení → Vzhled nainstalujte a ověřte důvěryhodný vzhled v2, zobrazte náhled a použijte jej. V případě funkcí, jako jsou poznámky, požádejte autora v chatu o vytváření vzhledu, aby zahrnul komponenty.",
-          "Přečtěte si potvrzení aktivace pro balíčky s kódem. Aktualizace balíčku nebo změna identity může vyžadovat znovu. Otevřete panely prostřednictvím nabídek vzhledu nebo položek funkcí, které závisí na balíčku. Poznámky nebo kalendáře nejsou předinstalované funkce aplikace.",
-          "Balíček může umístit skladatele nad, pod, doleva nebo doprava. Kompaktní pohledy si zachovávají vertikální uspořádání. Po přepnutí zkontrolujte zprávy, skladatel a nastavení zůstávají použitelné.",
-          "Data rozšíření jsou oddělena podle identity prohlížeče, zařízení, vzhledu a funkce. Přepnutím nebo odstraněním vzhledu nedojde k jeho vymazání. Pro zálohování použijte vlastní export rozšíření. Pokud se rozhraní rozbije, přidejte skin=default do URL a aktualizujte."
-        ],
-        "tips": [
-          "Kód součásti má oprávnění aktuální stránky. Povolit pouze důvěryhodné zdroje. Zrušení náhledu obnoví vzhled, ale nezruší již spuštěný kód.",
-          "Data rozšíření nejsou zahrnuta do exportů vzhledu ZIP ani nejsou synchronizována mezi prohlížeči/zařízeními. Před vymazáním úložiště zálohujte; neúspěšné ukládání nesmí být považováno za úspěch."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "potvrzení aktivace komponenty v2 a zadání na panelu funkcí",
-          "caption": "Čeká se na snímek obrazovky skutečného provedení důvěryhodného demonstračního balíčku. Ověření formátu není vizuální přijetí."
-        }
-      },
-      {
-        "title": "Vyberte a uložte osobní vzhled",
-        "steps": [
-          "Chcete-li získat přístup k celému zařízení, otevřete Nastavení → Vzhled. Uživatelé s oprávněním k projektu zadávají vzhled a vzhledy z postranního panelu.",
-          "Vyberte písmo, velikost a jazyk. Vyhledejte nebo filtrujte nainstalované vzhledy, zobrazte náhled a poté použijte. Pevný pruh náhledu umožňuje zrušit nebo potvrdit.",
-          "Volby uživatelů Authenticated Gateway se ukládají pro každý účet a zařízení a obnovují se v jiném prohlížeči na stejném zařízení. Opakovat neúspěšné uložení. Místní volby bez přihlášení k platformě zůstávají v tomto prohlížeči."
-        ],
-        "tips": [
-          "Balíčky a záznamy o vytvoření jsou sdíleny na zařízení; osobní výběry jsou izolované. Uživatelé s oprávněním k projektu si mohou vybrat pouze nainstalované balíčky.",
-          "Chybějící nebo poškozené balíčky se vrátí do výchozího vzhledu. Chcete-li obnovit výchozí vzhled nebo zjednodušenou čínštinu, přidejte ?skin=default nebo ?language=default."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Písma, velikost, jazyk a nainstalované vzhledy ve vzhledu",
-          "caption": "Stránka skutečných nastavení zobrazuje výchozí hodnoty a vestavěné příklady vpravo. Žádné osobní preference nebyly změněny."
-        }
-      },
-      {
-        "title": "Vytvářejte vzhledy a jazyky prostřednictvím chatu",
-        "steps": [
-          "S právy na správu hostitele klikněte na Promluvme si o vzhledu, vyberte nainstalovaný, ověřený engine a popište cíl, například: Vytvořte tmavý vzhled, zachovejte rozložení a použijte šipku pro odeslání nahoru.",
-          "Chat je vlevo, editace a náhled vpravo; telefony přepínají karty. Upravte název, barvy, písmo, velikost, ikonu odeslání a rozvržení a poté úpravy uložte do stejného konceptu balíčku. Během běhu chatu jsou úpravy zakázány. Zkontrolujte náhledy na PC a telefonu.",
-          "Pro jazykový balíček se zeptejte ve stejném chatu, například: Přidejte španělštinu při zachování vzhledu. Přepněte pravou stranu na Jazyk. Načte se po generaci; pomocí Číst a ověřovat zkontrolujte jeho adresář, pokrytí, chybějící řetězce a příklady.",
-          "Pro vzhledy klepněte na Uložit vzhled a náhled; pro jazyky, Instalace a náhled. Potvrďte nebo zrušte na panelu náhledu. Uložení do knihovny nepotvrzuje osobní přihlášku. Exportujte ZIP, abyste je mohli znovu použít, a zkontrolujte výzvy k výměně, zda neobsahují importy nebo aktualizace stejného ID."
-        ],
-        "tips": [
-          "Creation znovu používá pevný projekt Runtime a běžný chat a vyvolává váš model. Pokračujte v dřívější práci prostřednictvím Historie konverzace nad oknem. Samotné ukázky náhledu nespouštějí úlohy.",
-          "Písma používají nainstalovaná systémová písma. Historické zprávy a soubory nejsou automaticky překládány. Vestavěné ikony odesílání lze vybrat v úpravách; vlastní vektorové ikony musí být dodány ověřeným návrhem.",
-          "Jazykové balíčky jsou nezávislé na vzhledech a aktuálně podporují jazyky se zápisem zleva doprava. Chybějící řetězce a ovládací prvky data používají zadanou vestavěnou záložní možnost. Pokrytí neprokazuje kvalitu překladu; pomocí chatu aktualizujte zastaralé katalogy řetězců."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Chat a oblasti úprav/náhledu při vytváření vzhledu",
-          "caption": "Autorizovaný prázdný chat pro vytvoření a formulář úprav. Jeho skladatel je předvyplněn; nebyla odeslána žádná zpráva, běh modelu ani uložen vzhled."
         }
       },
       {

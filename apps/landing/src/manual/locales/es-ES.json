@@ -812,7 +812,7 @@
         ],
         "tips": [
           "En el escritorio, haga doble clic en una conversación de la barra lateral o en el título de su encabezado para abrir el cuadro de diálogo de cambio de nombre compartido, luego ingrese y confirme el nombre.",
-          "En móvil solo aparece el panel activo y se conservan los demás. Salir y volver dentro de la misma sesión de página restaura paneles, distribución y tamaños; no se garantiza tras recargar el navegador. La distribución se separa por cuenta y dispositivo, sin copiar conversaciones."
+          "El móvil solo muestra la ventana activa y conserva el estado de las demás. Al recargar o salir y volver se pueden recuperar las ventanas, su disposición y tamaño; las cerradas no vuelven a abrirse. Pulsar la fila de un proyecto en la barra lateral solo lo expande o contrae; el chat cambia al elegir una conversación concreta. La disposición se aísla por cuenta actual y dispositivo, sin copiar el texto de las conversaciones."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Al cambiar de motor o proveedor con el contexto existente, elija Transferencia inteligente, Historial de chat completo o Ninguno en el cuadro de diálogo. Bifurca una conversación para una exploración independiente y confirma su modo contextual."
         ],
         "tips": [
-          "El chat del proyecto se almacena por separado de los registros de tareas del flujo de trabajo. Cree una tarea cuando necesite seguimiento y revisiones de etapas.",
+          "Las conversaciones del proyecto no se guardan en el historial de tareas del flujo. En conversaciones Codex, elija «Velocidad → Predeterminada / Estándar / Rápida / Ultrarrápida» en el menú de configuración. Se guarda por proyecto y sesión y se restablece al cambiar de motor o proveedor o al transferir el contexto. La opción predeterminada conserva la configuración original; la aceleración real depende de la cuenta y del servicio.",
           "La bifurcación nativa solo está disponible cuando el motor realmente la admite. De lo contrario, continúe mediante la transferencia de contexto explícito."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Abra Configuración → Centro de habilidades del proyecto actual, vuelva a escanear y busque por nombre, descripción o ruta de origen.",
           "Lea los propósitos de habilidades y habilite lo que necesita. Verifique el rango seleccionado antes de realizar cambios masivos. Las habilidades se guardan por proyecto y se aplican en la próxima ejecución o nueva sesión.",
-          "Escriba / en el compositor para seleccionar las habilidades que realmente ofrece el motor actual. Las listas varían según el motor.",
+          "Escriba / y busque por prefijo del nombre las habilidades del motor actual. Para pasar de la discusión a la ejecución, pulse «＋ → Modo de flujo de trabajo» en el chat normal de un proyecto local. Primero debata el diagrama; solo tras una confirmación explícita cree el flujo y la tarea e inicie la ejecución. Abra sus detalles con el botón de la tarea en la respuesta. Los proyectos remotos y los chats de creación integrados no tienen este acceso.",
           "Utilice el menú de sesión para cambiar el nombre o archivar. Busque en la lista de archivos y restaure las conversaciones necesarias."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Cambie el nombre de usuario en la configuración del sistema. El idioma, las fuentes, el tamaño y las máscaras se encuentran en Configuración → Apariencia; El alcance del escaneo del repositorio se encuentra en la configuración de Git."
         ],
         "tips": [
-          "Cambiar el motor de ejecución predeterminado afecta las nuevas tareas y pasos, no la configuración de tareas o pasos existentes."
+          "Cambiar el motor de ejecución predeterminado afecta a nuevas tareas y pasos, sin sustituir configuraciones existentes. «Configuración del sistema → Mensajes por carga» tiene un valor predeterminado de 20 y admite enteros de 1–300. Afecta a las siguientes cargas del historial, sin recargar de inmediato las conversaciones abiertas."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Elija preferencias de visualización personales o cree máscaras y paquetes de idiomas con vista previa a través del chat de proyecto normal.",
     "sections": [
       {
+        "title": "Elige y guarda la apariencia personal.",
+        "steps": [
+          "Para acceder a todo el dispositivo, abra Configuración → Apariencia. Los usuarios autorizados por el proyecto ingresan Apariencia y máscaras desde la barra lateral.",
+          "Seleccione fuente, tamaño e idioma. Busque en la biblioteca de temas o filtre por «Todos / Mis temas». Seleccionar una tarjeta solo muestra el ejemplo; abra la vista previa y cancele o confirme su aplicación en la barra fija.",
+          "Las elecciones de los usuarios autenticados de Gateway se guardan por cuenta y dispositivo y se restauran en otro navegador en el mismo dispositivo. Reintentar los guardados fallidos. Las opciones locales sin iniciar sesión en la plataforma permanecen en este navegador."
+        ],
+        "tips": [
+          "Los paquetes de temas e idiomas se comparten en el dispositivo; las preferencias personales permanecen separadas. Los usuarios con acceso al proyecto solo pueden elegir paquetes instalados. Los administradores del anfitrión pueden importar ZIP; actualizar un paquete con el mismo nombre exige confirmar la sustitución y volver a aplicarlo. Puede exportar como ZIP el tema personalizado seleccionado; el tema predeterminado no se puede exportar ni eliminar.",
+          "Los paquetes faltantes o rotos vuelven a su apariencia predeterminada. Agregue ?skin=default o ?language=default para restaurar el aspecto predeterminado o el chino simplificado."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Espacio de trabajo y entrada del chat tras aplicar realmente el tema estrellado",
+          "caption": "Espacio de demostración con «星际 · 静谧星海» realmente aplicado. La conversación está vacía, no se ha enviado nada y los scripts están desactivados. Crédito del fondo: ESO/S. Brunier · adaptación por fusión con inteligencia artificial (AI)."
+        }
+      },
+      {
+        "title": "Crea máscaras e idiomas a través del chat.",
+        "steps": [
+          "Con permisos de administración del anfitrión, pulse «Hablemos de cambiar la apariencia», elija un motor disponible en el menú de configuración del chat y envíe su petición, por ejemplo: «Usa «星际 · 静谧星海» como base, conserva el fondo estrellado y utiliza una flecha hacia arriba en el botón de envío». Las sugerencias y las instrucciones predefinidas no se envían automáticamente; no tiene que elegir una versión del formato del tema.",
+          "El chat está a la izquierda y la edición y vista previa a la derecha; en el móvil cambie de pestaña. Ajuste nombre, colores, fuente, tamaño, icono de envío o disposición y pulse «Guardar ajustes» para escribir en el mismo borrador. También se guarda automáticamente antes de enviar y se vuelve a leer al terminar la generación. No se puede editar durante la ejecución; ante conflictos de versión, vuelva a leer primero. Compruebe los ejemplos de chat para ordenador y móvil en la ventana de creación. Tras guardar en la biblioteca de temas, también puede revisar ejemplos del tablero de tareas y del flujo.",
+          "Para un paquete de idiomas, pregunta en el mismo chat, por ejemplo: Agrega español conservando la apariencia. Switch the right side to Language. It loads after generation; use Leer y validar para verificar su directorio, cobertura, cadenas faltantes y ejemplos.",
+          "For skins, click Save appearance and preview; for languages, Install and preview. Confirm or cancel in the preview bar. Guardar en la biblioteca no confirma la solicitud personal. Exporte ZIP para reutilizarlo e inspeccione los mensajes de reemplazo para importaciones o actualizaciones del mismo ID."
+        ],
+        "tips": [
+          "Al volver a abrir la creación se recuperan la sesión original y el borrador; si la sesión se eliminó o archivó, se crea otra. Enviar una petición llama al modelo seleccionado. El contenido de bienvenida, los ajustes manuales y la vista previa local no llaman al modelo ni ejecutan tareas reales.",
+          "Puede elegir fuentes del sistema o fuentes locales incluidas en el paquete del tema. El icono de envío puede ser uno de los integrados; los iconos vectoriales personalizados deben superar la validación. Los mensajes anteriores y los archivos del usuario no se traducen automáticamente al cambiar de tema o idioma.",
+          "Los paquetes de idiomas son independientes de las máscaras y actualmente admiten idiomas de izquierda a derecha. Las cadenas y los controles de fecha que faltan utilizan el respaldo integrado especificado. Coverage does not prove translation quality; use chat to update outdated string catalogs."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Áreas de chat y edición/vista previa en la creación de apariencias",
+          "caption": "Ventana real de creación tras leer el paquete del tema estrellado, con ajustes y vista previa para ordenador a la derecha. La petición de la izquierda aún no se ha enviado y no se ha llamado al modelo."
+        }
+      },
+      {
+        "title": "Usar temas personalizados y extensiones de funciones",
+        "steps": [
+          "Seleccione un tema en «Configuración → Apariencia». La tarjeta solo actualiza el ejemplo local y las miniaturas no ejecutan scripts. Abrir la vista previa cambia temporalmente todo el espacio de trabajo; confirmar guarda la elección y cancelar restaura el estado anterior.",
+          "Tras seleccionar un tema con scripts, controle sus funciones con «Ejecutar scripts del tema», sin otro diálogo de confirmación. Si no hay script, el interruptor no está disponible. Para un tema aún no aplicado, solo guarda la preferencia; se ejecuta al previsualizar todo el espacio de trabajo o aplicar el tema. Los menús, notas o calendarios los proporciona el tema instalado y no son funciones preinstaladas.",
+          "El área de entrada puede situarse arriba, abajo, a la izquierda o a la derecha según el tema; en la interfaz compacta se mantiene la disposición vertical. Desactivar los scripts inhabilita las funciones de extensión y limpia los componentes y las suscripciones, pero conserva la apariencia. Algunos menús pueden seguir visibles sin estar disponibles. Si un script no se carga, revise el error; apague el interruptor y vuelva a encenderlo para reintentar.",
+          "Los datos de extensión están separados por identidad del navegador, dispositivo, máscara y función. Cambiar o eliminar una máscara no la borra. Utilice la propia exportación de la extensión como copia de seguridad. Si la interfaz se rompe, agregue skin=default al URL y actualice."
+        ],
+        "tips": [
+          "Los scripts tienen los mismos permisos que la página actual; active solo fuentes de confianza. Cancelar la vista previa no deshace acciones ya ejecutadas. El interruptor se guarda por identidad actual, ámbito de acceso al dispositivo y tema, y se conserva al recargar y actualizar el mismo tema.",
+          "Los datos de extensión no se incluyen en las exportaciones de skin ZIP ni se sincronizan entre navegadores/dispositivos. Haga una copia de seguridad antes de borrar el almacenamiento; El ahorro fallido no debe tratarse como un éxito."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Interruptor de scripts del tema personalizado y accesos a funciones de extensión",
+          "caption": "Interruptor de scripts del tema estrellado y accesos a exportar ZIP, previsualizar y aplicar. Los scripts están desactivados; aún faltan capturas de las extensiones en ejecución y del resultado de desactivarlas."
+        }
+      },
+      {
         "title": "Elija un idioma incorporado",
         "steps": [
           "En Configuración → Apariencia, elija chino simplificado, chino tradicional, inglés, japonés, francés, alemán o árabe e inspeccione las entradas comunes y los controles de fecha.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Selectores de idioma integrados en la aplicación y el sitio web",
           "caption": "Están pendientes capturas de pantalla reales de las opciones de idioma agregadas."
-        }
-      },
-      {
-        "title": "Utilice diseños de máscara v2 y extensiones de funciones",
-        "steps": [
-          "En Configuración → Apariencia, instale y valide una máscara v2 confiable, obtenga una vista previa y aplíquela. Para funciones como notas, solicite al autor en el chat de creación de apariencia que incluya componentes.",
-          "Lea la confirmación de habilitación para paquetes con código. Es posible que se vuelva a solicitar la actualización de un paquete o el cambio de identidad. Abra paneles a través de los menús de la máscara o entradas de funciones, que dependen del paquete. Las notas o los calendarios no son funciones preinstaladas de la aplicación.",
-          "El paquete puede colocar al compositor arriba, abajo, izquierda o derecha. Las vistas compactas conservan la disposición vertical. Después de cambiar, los mensajes de verificación, el compositor y la configuración siguen siendo utilizables.",
-          "Los datos de extensión están separados por identidad del navegador, dispositivo, máscara y función. Cambiar o eliminar una máscara no la borra. Utilice la propia exportación de la extensión como copia de seguridad. Si la interfaz se rompe, agregue skin=default al URL y actualice."
-        ],
-        "tips": [
-          "El código del componente tiene los privilegios de la página actual. Habilite solo fuentes confiables. Cancelar la vista previa restaura la apariencia pero no deshace el código ya ejecutado.",
-          "Los datos de extensión no se incluyen en las exportaciones de skin ZIP ni se sincronizan entre navegadores/dispositivos. Haga una copia de seguridad antes de borrar el almacenamiento; El ahorro fallido no debe tratarse como un éxito."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "Confirmación de habilitación de componentes v2 y entrada al panel de funciones",
-          "caption": "Está pendiente una captura de pantalla de ejecución real de un paquete de demostración confiable. Format validation is not visual acceptance."
-        }
-      },
-      {
-        "title": "Elige y guarda la apariencia personal.",
-        "steps": [
-          "Para acceder a todo el dispositivo, abra Configuración → Apariencia. Los usuarios autorizados por el proyecto ingresan Apariencia y máscaras desde la barra lateral.",
-          "Choose font, size and language. Busque o filtre máscaras instaladas, obtenga una vista previa y luego aplíquelas. La barra de vista previa fija le permite cancelar o confirmar.",
-          "Las elecciones de los usuarios autenticados de Gateway se guardan por cuenta y dispositivo y se restauran en otro navegador en el mismo dispositivo. Reintentar los guardados fallidos. Las opciones locales sin iniciar sesión en la plataforma permanecen en este navegador."
-        ],
-        "tips": [
-          "Los paquetes y registros de creación se comparten en el dispositivo; personal selections are isolated. Los usuarios autorizados por el proyecto solo pueden elegir paquetes instalados.",
-          "Los paquetes faltantes o rotos vuelven a su apariencia predeterminada. Agregue ?skin=default o ?language=default para restaurar el aspecto predeterminado o el chino simplificado."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Fuentes, tamaño, idioma y máscaras instaladas en Apariencia",
-          "caption": "La página de configuración real muestra valores predeterminados y ejemplos integrados a la derecha. No se cambiaron preferencias personales."
-        }
-      },
-      {
-        "title": "Crea máscaras e idiomas a través del chat.",
-        "steps": [
-          "Con derechos de administración de host, haga clic en Discutamos la apariencia, elija un motor instalado y verificado y describa un objetivo, como por ejemplo: crear una piel oscura, preservar el diseño y usar una flecha de envío hacia arriba.",
-          "El chat está a la izquierda, la edición y la vista previa a la derecha; los teléfonos cambian de pestaña. Ajuste el nombre, los colores, la fuente, el tamaño, el ícono de envío y el diseño, luego guarde los ajustes en el mismo borrador del paquete. Editing is disabled while chat runs. Check PC and phone previews.",
-          "Para un paquete de idiomas, pregunta en el mismo chat, por ejemplo: Agrega español conservando la apariencia. Switch the right side to Language. It loads after generation; use Leer y validar para verificar su directorio, cobertura, cadenas faltantes y ejemplos.",
-          "For skins, click Save appearance and preview; for languages, Install and preview. Confirm or cancel in the preview bar. Guardar en la biblioteca no confirma la solicitud personal. Exporte ZIP para reutilizarlo e inspeccione los mensajes de reemplazo para importaciones o actualizaciones del mismo ID."
-        ],
-        "tips": [
-          "La creación reutiliza el proyecto Runtime fijo y el chat ordinario, invocando su modelo. Continúe con el trabajo anterior a través del Historial de conversaciones encima de la ventana. Preview examples themselves do not run tasks.",
-          "Fonts use installed system fonts. Historical messages and files are not automatically translated. Los íconos de envío incorporados se pueden seleccionar en los ajustes; Los iconos vectoriales personalizados deben ser proporcionados mediante un borrador validado.",
-          "Los paquetes de idiomas son independientes de las máscaras y actualmente admiten idiomas de izquierda a derecha. Las cadenas y los controles de fecha que faltan utilizan el respaldo integrado especificado. Coverage does not prove translation quality; use chat to update outdated string catalogs."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Áreas de chat y edición/vista previa en la creación de apariencias",
-          "caption": "Un formulario de ajuste y chat de creación vacío autorizado. Its composer is prefilled; no message was sent, model run or skin saved."
         }
       },
       {

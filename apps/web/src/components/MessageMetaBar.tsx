@@ -299,16 +299,10 @@ export default function MessageMetaBar({
             )}
             {hasCompactedEvent(events) && (
               <span
+                className="message-meta-compacted"
                 title={t('meta.compactedTitle')}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  height: 18, padding: '0 7px', borderRadius: 9,
-                  background: 'color-mix(in oklab, var(--meta), transparent 88%)',
-                  color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0,
-                  whiteSpace: 'nowrap',
-                }}
               >
-                <Icon name="undo-2" size={11} strokeWidth={2.2} />
+                <Icon name="minimize-2" size={12} strokeWidth={2} />
                 {t('meta.compacted')}
               </span>
             )}

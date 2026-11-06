@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "27d6cc099cf15188edf99aff9eada2e01502f47a42c1fe4ecc1fe2a5e174583e",
+  "revision": "57d286e4193c71a376706ced69b58a2b331a9bf462e47579dd0cdebfe252ec0d",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -1375,7 +1375,7 @@
     "meta.waitingInjectionTitle": "回复已完成，等待新的插入消息；超时后会话自动结束",
     "meta.waitingInjection": "等待插入消息",
     "meta.compactedTitle": "上下文接近上限时引擎已自动压缩，保留摘要继续对话",
-    "meta.compacted": "上下文已压缩",
+    "meta.compacted": "已压缩",
     "meta.copySessionAria": "复制会话 ID",
     "meta.sessionIdLabel": "会话 ID",
     "meta.messageIdLabel": "消息 ID",

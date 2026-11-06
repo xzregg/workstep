@@ -43,6 +43,7 @@ from api.templates import ensure_global_templates
 from api.templates import router as templates_router
 from api.role_center import router as role_center_router
 from services.role_center import role_center
+from services.skins import skin_manager
 from api.engine import router as engine_router
 from api.provider import router as provider_router
 from api.workflow import router as workflow_router
@@ -180,6 +181,7 @@ async def _application_lifespan(app: FastAPI):
     await completion_push.start()
     await asyncio.to_thread(config_store.migrate_legacy_config)
     await asyncio.to_thread(ensure_global_templates)
+    await skin_manager.ensure_defaults()
     await asyncio.to_thread(role_center.ensure_defaults)
     await asyncio.to_thread(project_manager._load_saved_projects)
     from services.customization_workspace import ensure_default_workspace

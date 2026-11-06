@@ -1020,7 +1020,7 @@ export const zhCN = {
     waitingInjectionTitle: '回复已完成，等待新的插入消息；超时后会话自动结束',
     waitingInjection: '等待插入消息',
     compactedTitle: '上下文接近上限时引擎已自动压缩，保留摘要继续对话',
-    compacted: '上下文已压缩',
+    compacted: '已压缩',
     copySessionAria: '复制会话 ID',
     sessionIdLabel: '会话 ID',
     messageIdLabel: '消息 ID',

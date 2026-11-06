@@ -812,7 +812,7 @@
         ],
         "tips": [
           "På skrivbordet dubbelklickar du på en konversation i sidofältet eller dess rubrik för att öppna den delade dialogrutan för att byta namn, och skriv sedan in och bekräfta namnet.",
-          "Mobilen visar bara den aktiva panelen och bevarar övriga. Att lämna och återvända inom samma sidsession återställer paneler, layout och storlekar; återställning efter webbläsaruppdatering garanteras inte. Layouten skiljs per konto och enhet utan att kopiera samtalsinnehåll."
+          "Telefonen visar bara den aktiva panelen, men övriga behåller sitt tillstånd. Paneler, layout och storlekar återställs efter omladdning eller när du kommer tillbaka; stängda paneler öppnas inte igen. Klick på en projektrad i sidofältet fäller bara ut eller ihop trädet; välj ett visst samtal för att byta. Layouten hålls åtskild per konto och enhet och kopierar inte samtalstext."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "När du byter motor eller leverantör med befintligt sammanhang, välj Smart handoff, Full chatthistorik eller Ingen i dialogrutan. Fork a conversation for independent exploration and confirm its context mode."
         ],
         "tips": [
-          "Project chat is stored separately from workflow task records. Skapa en uppgift när du behöver stegspårning och recensioner.",
+          "Projektsamtal skrivs inte till arbetsflödets uppgiftshistorik. I Codex-samtal kan du välja «Hastighet → Standardval / Normal / Snabb / Ultrasnabb» i konfigurationsmenyn. Valet sparas per projekt och samtal och återställs vid byte av motor, leverantör eller överlämning av kontext. Standardvalet följer den ursprungliga konfigurationen; faktisk acceleration beror på kontot och tjänstens stöd.",
           "Inbyggd gaffel är endast tillgänglig när den faktiskt stöds av motorn. Annars fortsätt genom explicit sammanhangsöverlämning."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Öppna det aktuella projektets konfiguration → Färdighetscenter, skanna om och sök efter namn, beskrivning eller källsökväg.",
           "Läs färdighetssyfte och aktivera det du behöver. Kontrollera det valda intervallet innan massändringar. Färdigheter sparas per projekt och tillämpas nästa körning eller nya session.",
-          "Skriv / i kompositören för att välja färdigheter som faktiskt erbjuds av den aktuella motorn. Listorna varierar beroende på motor.",
+          "Skriv / och sök efter namnens början bland färdigheterna som den aktuella motorn erbjuder. För att gå från diskussion till körning väljer du «＋ → Arbetsflödesläge» i vanlig chatt i ett lokalt projekt. Diskutera flödesschemat först; först efter uttrycklig bekräftelse skapas och startas arbetsflöde och uppgift. Öppna uppgiftsdetaljerna med knappen i svaret. Ingången finns inte i fjärrprojekt eller inbäddade designsamtal.",
           "Använd sessionsmenyn för att byta namn eller arkivera. Sök i arkivlistan och återställ nödvändiga konversationer."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Ändra användarnamnet i systeminställningarna. Språk, teckensnitt, storlek och skal finns under Inställningar → Utseende; repository scanning scope är under Git-inställningar."
         ],
         "tips": [
-          "Att ändra standardexekveringsmotorn påverkar nya uppgifter och steg, inte befintliga uppgift eller steginställningar."
+          "Ändring av standardmotorn gäller nya uppgifter och steg och ersätter inte befintliga inställningar. «Systeminställningar → Meddelanden per inläsning» har standardvärdet 20 och tillåter heltal från 1 till 300. Det påverkar senare inläsning av historiken och laddar inte om öppna samtal direkt."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Välj personliga visningsinställningar eller skapa förhandsgranskningsbara skal och språkpaket genom vanlig projektchatt.",
     "sections": [
       {
+        "title": "Välj och spara personligt utseende",
+        "steps": [
+          "För fullständig åtkomst till enheten, öppna Inställningar → Utseende. Projektauktoriserade användare anger Utseende och skal från sidofältet.",
+          "Välj teckensnitt, storlek och språk. Sök i temabiblioteket eller filtrera på «Alla / Mina teman». Att välja ett kort visar bara ett exempel. Öppna förhandsgranskningen och avbryt eller bekräfta i det fasta förhandsgranskningsfältet.",
+          "Autentiserade Gateway-användares val sparas per konto och enhet, och återställs i en annan webbläsare på samma enhet. Försök igen misslyckades med att spara. Lokala val utan plattformsinloggning finns kvar i den här webbläsaren."
+        ],
+        "tips": [
+          "Tema- och språkpaket delas på enheten, medan personliga val hålls åtskilda. Användare med projektbehörighet kan bara välja installerade paket. Värdadministratörer kan importera ZIP; uppdatering med samma namn kräver bekräftad ersättning och att temat tillämpas igen. Ett valt eget tema kan exporteras som ZIP; standardtemat kan varken exporteras eller tas bort.",
+          "Saknade eller trasiga paket faller tillbaka till standardutseendet. Lägg till ?skin=default eller ?language=default för att återställa standardskalet eller förenklad kinesiska."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Arbetsyta och chattens inmatningsfält med stjärnhimmeltemat tillämpat",
+          "caption": "Demoarbetsyta med «星际 · 静谧星海» tillämpat; samtalet är tomt, inga meddelanden har skickats och skripten är avstängda. Bakgrundens upphov: ESO/S. Brunier · bearbetning med AI-baserad sammansmältning."
+        }
+      },
+      {
+        "title": "Skapa skal och språk via chatt",
+        "steps": [
+          "Med administratörsbehörighet för värden klickar du på «Prata om att ändra utseendet», väljer en tillgänglig motor i chattens konfigurationsmeny och skickar önskemålet, till exempel «Utgå från «星际 · 静谧星海», behåll stjärnhimlen som bakgrund och använd en uppåtpil på skicka-knappen». Förslag och förifyllda instruktioner skickas inte automatiskt; du behöver inte välja version av temaformatet.",
+          "Chatten finns till vänster, redigering och förhandsgranskning till höger; på telefon växlar du med flikar. Justera namn, färger, teckensnitt, storlek, skicka-ikon eller layout och välj «Spara justeringar» för att uppdatera samma utkast. Det sparas också automatiskt före sändning och läses in på nytt efter generering. Redigering är låst under körning; vid versionskonflikt läser du först in utkastet igen. I designfönstret kontrollerar du chattexemplen för dator och telefon; efter att ha sparat i temabiblioteket kan du också kontrollera exemplen för uppgiftstavla och arbetsflöde.",
+          "För ett språkpaket, fråga i samma chatt, till exempel: Lägg till spanska samtidigt som du behåller utseendet. Byt höger sida till Språk. Den laddar efter generation; använd Läs och validera för att kontrollera dess katalog, täckning, saknade strängar och exempel.",
+          "För skal, klicka på Spara utseende och förhandsgranska; för språk, Installera och förhandsgranska. Bekräfta eller avbryt i förhandsgranskningsfältet. Att spara till biblioteket bekräftar inte personlig ansökan. Exportera ZIP för återanvändning och inspektera ersättningsuppmaningar för importer eller uppdateringar med samma ID."
+        ],
+        "tips": [
+          "När du öppnar verktyget igen återställs designsamtalet och utkastet; om samtalet har tagits bort eller arkiverats skapas ett nytt. Skickade önskemål anropar den valda modellen; välkomstinnehåll, manuella justeringar och lokala förhandsgranskningar anropar ingen modell och kör inga verkliga uppgifter.",
+          "Du kan välja systemteckensnitt eller lokala teckensnitt från temapaketet. Skicka-ikonen har inbyggda stilar; egna vektorikoner måste valideras. Tidigare meddelanden och användarfiler översätts inte automatiskt när du byter tema eller språk.",
+          "Språkpaket är oberoende av skal och stöder för närvarande språk från vänster till höger. Saknade strängar och datumkontroller använder den angivna inbyggda reservfunktionen. Täckning bevisar inte översättningens kvalitet; använd chatt för att uppdatera föråldrade strängkataloger."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chatta och redigera/förhandsgranska områden i framträdande",
+          "caption": "Det riktiga designfönstret efter inläsning av stjärnhimmeltemats paket, med justeringar och datorförhandsgranskning till höger. Önskemålet till vänster har inte skickats och ingen modell har anropats."
+        }
+      },
+      {
+        "title": "Använd egna teman och funktionstillägg",
+        "steps": [
+          "Välj ett tema under «Inställningar → Utseende». Kortet uppdaterar bara ett lokalt exempel och miniatyren kör inga skript. Förhandsgranskningen ändrar tillfälligt hela arbetsytan; bekräfta för att spara eller avbryt för att återställa föregående utseende.",
+          "När du har valt ett tema med skript styr du funktionerna med «Kör temaskript», utan ytterligare bekräftelseruta. Utan skript är reglaget inte tillgängligt. För ett tema som inte används sparas bara inställningen; skripten körs först vid förhandsgranskning av hela arbetsytan eller när temat används. Menyer, anteckningar och kalendrar kommer från det installerade temat och är inte förinstallerade appfunktioner.",
+          "Temat kan placera inmatningsområdet ovanför, nedanför, till vänster eller till höger; kompakta vyer behåller lodrät placering. När skripten stängs av inaktiveras tilläggsfunktionerna och deras komponenter och prenumerationer rensas bort, men utseendet behålls. Vissa menyer kan finnas kvar men vara otillgängliga. Om ett skript inte kan läsas in, kontrollera felet, stäng av reglaget och slå på det igen för att försöka på nytt.",
+          "Tilläggsdata är åtskilda efter webbläsaridentitet, enhet, skal och funktion. Att byta eller ta bort ett skal raderar det inte. Använd tilläggets egen export för säkerhetskopiering. Om gränssnittet går sönder, lägg till skin=default i URL och uppdatera."
+        ],
+        "tips": [
+          "Skript har samma behörigheter som den aktuella sidan. Aktivera bara betrodda källor; att avbryta förhandsgranskningen ångrar inte redan utförda åtgärder. Valet sparas per aktuell identitet, åtkomstomfattning för enheten och tema och behålls efter omladdning och uppdatering av samma tema.",
+          "Tilläggsdata ingår inte i skin ZIP-exporter eller synkroniseras mellan webbläsare/enheter. Säkerhetskopiera innan du tömmer lagring; misslyckat sparande får inte behandlas som framgång."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Skriptreglage för ett eget tema och ingångar till tillägg",
+          "caption": "Skriptreglage, ZIP-export, förhandsgranskning och tillämpning av stjärnhimmeltemat. Skripten är avstängda; bilder av tillägg som körs och resultatet efter avstängning saknas fortfarande."
+        }
+      },
+      {
         "title": "Välj ett inbyggt språk",
         "steps": [
           "I Inställningar → Utseende väljer du förenklad kinesiska, traditionell kinesiska, engelska, japanska, franska, tyska eller arabiska och inspektera vanliga poster och datumkontroller.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Inbyggda språkväljare i appen och hemsidan",
           "caption": "Verkliga skärmdumpar av de tillagda språkvalen väntar."
-        }
-      },
-      {
-        "title": "Använd v2-skallayouter och funktionstillägg",
-        "steps": [
-          "Under Inställningar → Utseende, installera och validera ett pålitligt v2-skal, förhandsgranska och tillämpa det. För funktioner som anteckningar, be författaren i chatten för att skapa utseende att inkludera komponenter.",
-          "Läs aktiveringsbekräftelsen för paket med kod. Uppdatera ett paket eller byta identitet kan fråga igen. Öppna paneler genom hudens menyer eller funktionsposter, som beror på paketet. Anteckningar eller kalendrar är inte förinstallerade appfunktioner.",
-          "Paketet kan placera kompositören ovanför, under, till vänster eller höger. Kompakta vyer bibehåller vertikalt arrangemang. Efter byte, kontrollera meddelanden, kompositör och inställningar förblir användbara.",
-          "Tilläggsdata är åtskilda efter webbläsaridentitet, enhet, skal och funktion. Att byta eller ta bort ett skal raderar det inte. Använd tilläggets egen export för säkerhetskopiering. Om gränssnittet går sönder, lägg till skin=default i URL och uppdatera."
-        ],
-        "tips": [
-          "Komponentkoden har den aktuella sidans privilegier. Aktivera endast betrodda källor. Om du avbryter förhandsgranskningen återställs utseendet men ångrar inte kod som redan körts.",
-          "Tilläggsdata ingår inte i skin ZIP-exporter eller synkroniseras mellan webbläsare/enheter. Säkerhetskopiera innan du tömmer lagring; misslyckat sparande får inte behandlas som framgång."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "v2-komponentaktiveringsbekräftelse och funktionspanelpost",
-          "caption": "Verklig skärmdump av ett pålitligt demonstrationspaket väntar. Formatvalidering är inte visuell acceptans."
-        }
-      },
-      {
-        "title": "Välj och spara personligt utseende",
-        "steps": [
-          "För fullständig åtkomst till enheten, öppna Inställningar → Utseende. Projektauktoriserade användare anger Utseende och skal från sidofältet.",
-          "Välj typsnitt, storlek och språk. Sök eller filtrera installerade skal, förhandsgranska och använd sedan. Den fasta förhandsgranskningsfältet låter dig avbryta eller bekräfta.",
-          "Autentiserade Gateway-användares val sparas per konto och enhet, och återställs i en annan webbläsare på samma enhet. Försök igen misslyckades med att spara. Lokala val utan plattformsinloggning finns kvar i den här webbläsaren."
-        ],
-        "tips": [
-          "Paket och skapande poster delas på enheten; personliga val är isolerade. Projektauktoriserade användare kan bara välja installerade paket.",
-          "Saknade eller trasiga paket faller tillbaka till standardutseendet. Lägg till ?skin=default eller ?language=default för att återställa standardskalet eller förenklad kinesiska."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Teckensnitt, storlek, språk och installerade skal i Utseende",
-          "caption": "Den verkliga inställningssidan visar standardinställningar och inbyggda exempel till höger. Inga personliga preferenser ändrades."
-        }
-      },
-      {
-        "title": "Skapa skal och språk via chatt",
-        "steps": [
-          "Med värdhanteringsrättigheter klickar du på Låt oss diskutera utseende, välj en installerad, verifierad motor och beskriv ett mål, till exempel: Gör en mörk hud, bevara layouten och använd en uppåtriktad sändningspil.",
-          "Chatten finns till vänster, redigering och förhandsgranskning till höger; telefoner byter flikar. Justera namn, färger, teckensnitt, storlek, skicka ikon och layout och spara sedan justeringar i samma utkastpaket. Redigering är inaktiverat medan chatten körs. Kontrollera PC- och telefonförhandsvisningar.",
-          "För ett språkpaket, fråga i samma chatt, till exempel: Lägg till spanska samtidigt som du behåller utseendet. Byt höger sida till Språk. Den laddar efter generation; använd Läs och validera för att kontrollera dess katalog, täckning, saknade strängar och exempel.",
-          "För skal, klicka på Spara utseende och förhandsgranska; för språk, Installera och förhandsgranska. Bekräfta eller avbryt i förhandsgranskningsfältet. Att spara till biblioteket bekräftar inte personlig ansökan. Exportera ZIP för återanvändning och inspektera ersättningsuppmaningar för importer eller uppdateringar med samma ID."
-        ],
-        "tips": [
-          "Creation återanvänder det fasta Runtime-projektet och den vanliga chatten och anropar din modell. Fortsätt tidigare arbete genom konversationshistorik ovanför fönstret. Förhandsgranskningsexempel i sig kör inte uppgifter.",
-          "Teckensnitt använder installerade systemteckensnitt. Historiska meddelanden och filer översätts inte automatiskt. Inbyggda skicka ikoner kan väljas i justeringar; anpassade vektorikoner måste tillhandahållas av ett validerat utkast.",
-          "Språkpaket är oberoende av skal och stöder för närvarande språk från vänster till höger. Saknade strängar och datumkontroller använder den angivna inbyggda reservfunktionen. Täckning bevisar inte översättningens kvalitet; använd chatt för att uppdatera föråldrade strängkataloger."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Chatta och redigera/förhandsgranska områden i framträdande",
-          "caption": "En auktoriserad tom skapande chatt och justeringsformulär. Dess kompositör är förfylld; inget meddelande skickades, modellkörning eller skal sparades."
         }
       },
       {

@@ -70,7 +70,7 @@ async def test_package_registration_export_replacement_and_inheritance(tmp_path)
     assert "input" in checked["coverage"]["inherited"]
     installed = await manager.register(str(draft))
     assert installed["revision"] == checked["skin"]["revision"]
-    assert len(await manager.list()) == 2  # immutable default + ocean
+    assert len(await manager.list()) == 2
     with pytest.raises(ValueError):
         await manager.register(str(draft))
     package(draft, version="1.0.1")
@@ -263,3 +263,74 @@ async def test_composer_send_icon_is_declarative_and_device_specific(tmp_path):
         components['layout']['composerSendIcon'] = invalid
         (root / 'components.json').write_text(json.dumps(components))
         with pytest.raises(ValueError): await manager.validate(str(root))
+
+
+@pytest.mark.asyncio
+async def test_bundled_skin_is_seeded_at_startup_and_remains_editable(tmp_path, monkeypatch):
+    from api import skins
+    from services.skins import SkinManager
+    manager = SkinManager(tmp_path / 'runtime')
+    monkeypatch.setattr(skins, 'manager', manager)
+    await manager.ensure_defaults()
+    source = manager.root / 'skin-packages/interstellar-night'
+    assert (source / 'theme.js').is_file()
+    app = FastAPI(); app.include_router(skins.router)
+    app.dependency_overrides[skins.authorize] = lambda: None
+    async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+        catalog = (await client.get('/api/skins')).json()
+        assert sum(item['manifest']['id'] == 'interstellar-night' for item in catalog) == 1
+        skin = (await client.get('/api/skins/interstellar-night')).json()
+        assert not skin.get('built_in', False)
+        assert skin['script'] == 'theme.js'
+        assert (await client.get(skin['file_base'] + '/assets/cold-blue-galaxy.webp')).status_code == 200
+        skin['manifest']['name'] = '我修改的星空'
+        saved = await client.post('/api/skins/draft', json={'path':str(source), 'expected_revision':skin['revision'], 'skin':skin})
+        assert saved.status_code == 200, saved.text
+        registered = await client.post('/api/skins/register', json={'path':str(source), 'replace':True})
+        assert registered.status_code == 200
+        assert (await client.get('/api/skins/interstellar-night')).json()['manifest']['name'] == '我修改的星空'
+        await manager.ensure_defaults()
+        assert (await client.get('/api/skins/interstellar-night')).json()['manifest']['name'] == '我修改的星空'
+        assert json.loads((source / 'skin.json').read_text())['name'] == '我修改的星空'
+        assert (await client.delete('/api/skins/interstellar-night')).status_code == 200
+        await manager.ensure_defaults()
+        assert (await client.get('/api/skins/interstellar-night')).status_code == 404, 'startup must not restore a skin the user removed'
+
+
+@pytest.mark.asyncio
+async def test_seed_preserves_an_existing_install_and_skips_future_bundled_updates(tmp_path, monkeypatch):
+    from services import skins as service
+    bundled = package(tmp_path / 'bundled', id='interstellar-night', version='1.0.0')
+    monkeypatch.setattr(service, 'BUNDLED_SKINS', {'interstellar-night':bundled})
+    manager = service.SkinManager(tmp_path / 'runtime')
+    existing = package(tmp_path / 'existing', id='interstellar-night', name='用户已安装版本', version='9.0.0')
+    installed = await manager.register(str(existing))
+    await manager.ensure_defaults()
+    source = manager.root / 'skin-packages/interstellar-night'
+    assert json.loads((source / 'skin.json').read_text())['name'] == '用户已安装版本'
+    package(bundled, id='interstellar-night', name='新随包版本', version='2.0.0')
+    await service.SkinManager(manager.root).ensure_defaults()
+    assert (await manager.get('interstellar-night'))['revision'] == installed['revision']
+    assert json.loads((source / 'skin.json').read_text())['name'] == '用户已安装版本'
+
+
+@pytest.mark.asyncio
+async def test_seed_slow_disk_does_not_block_event_loop(tmp_path, monkeypatch):
+    from api import skins
+    from services.skins import SkinManager
+    manager = SkinManager(tmp_path / 'runtime')
+    monkeypatch.setattr(skins, 'manager', manager)
+    app = FastAPI(); app.include_router(skins.router)
+    @app.get('/health')
+    async def health(): return {'ok':True}
+    original = manager._read_package
+    def slow_read(path):
+        time.sleep(.15)
+        return original(path)
+    monkeypatch.setattr(manager, '_read_package', slow_read)
+    async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+        pending = asyncio.create_task(manager.ensure_defaults())
+        await asyncio.sleep(.02)
+        assert (await asyncio.wait_for(client.get('/health'), .08)).json()['ok']
+        await pending
+        assert (await client.get('/api/skins/interstellar-night')).status_code == 200

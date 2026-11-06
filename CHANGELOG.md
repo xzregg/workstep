@@ -4,6 +4,9 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Bundle the editable Interstellar Night skin and its credited local background asset. Seed it at startup without overwriting existing packages or restoring a skin the user removed; keep the default appearance and script settings unchanged.
+- Update the appearance manual across all 26 supported languages, refresh real demonstration screenshots, and add a bilingual acceptable-use policy linked from the website and terms.
+- Improve compact execution-status overflow using the shared marquee component and simplify the context-compaction indicator.
 - Add a per-skin Run skin scripts switch in Appearance settings. Retain its setting across reloads and same-ID package updates; disable failed scripts without resetting the selected appearance. Enabled scripts have the current page's permissions and are not sandboxed.
 - Refresh the selected installed skin on startup without overwriting personal font preferences, and allow applying an updated revision with the same skin ID.
 - Simplify the skin studio header and creation guidance. Generate a unified skin.json package with theme.js, accepting an empty module when no scripted behavior is needed.

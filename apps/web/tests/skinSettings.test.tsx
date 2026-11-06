@@ -154,3 +154,27 @@ test('an updated installed skin can replace an active older revision with the sa
     restoreDefaultSkin(); await window.happyDOM.close()
   }
 })
+
+
+test('seeded starry skin behaves like an editable custom skin in the library', async () => {
+  const { window } = installDomEnvironment()
+  restoreDefaultSkin()
+  const oldList = skinsApi.list, oldGet = skinsApi.get
+  const starry = { ...ocean, manifest: { ...ocean.manifest, id: 'interstellar-night', name: '星际 · 静谧星海' }, script: 'theme.js' }
+  skinsApi.list = async () => [{ manifest: starry.manifest, revision: starry.revision }]
+  skinsApi.get = async () => starry
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<MemoryRouter><I18nProvider><SkinSettings /></I18nProvider></MemoryRouter>))
+    const card = document.querySelector<HTMLButtonElement>('.skin-settings-card[data-skin-id="interstellar-night"]')!
+    assert.match(card.textContent!, /自定义皮肤包/)
+    await act(async () => card.click())
+    assert.ok(document.querySelector('.skin-settings-detail button[aria-label="删除"]'))
+    assert.ok(document.querySelector('.skin-script-settings [role=switch]'))
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role=tab]')].find(button => button.textContent?.includes('我的皮肤'))!.click())
+    assert.ok(document.querySelector('.skin-settings-card[data-skin-id="interstellar-night"]'))
+  } finally {
+    await act(async () => root.unmount()); skinsApi.list = oldList; skinsApi.get = oldGet
+    restoreDefaultSkin(); await window.happyDOM.close()
+  }
+})

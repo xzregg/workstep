@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Trên máy tính để bàn, bấm hai lần vào cuộc hội thoại trên thanh bên hoặc tiêu đề tiêu đề của nó để mở hộp thoại đổi tên được chia sẻ, sau đó nhập và xác nhận tên.",
-          "Điện thoại chỉ hiện khung đang hoạt động và giữ các khung khác. Chuyển sang màn hình khác rồi quay lại trong cùng phiên trang sẽ khôi phục khung, bố cục và kích thước; không bảo đảm sau khi tải lại trình duyệt. Bố cục tách theo tài khoản và thiết bị, không sao chép nội dung hội thoại."
+          "Điện thoại chỉ hiển thị bảng đang hoạt động; các bảng khác giữ trạng thái. Sau khi tải lại hoặc rời trang rồi quay lại, các bảng, bố cục và kích thước được khôi phục; bảng đã đóng không mở lại. Nhấp hàng dự án ở thanh bên chỉ mở rộng hoặc thu gọn cây; nhấp cuộc trò chuyện cụ thể mới chuyển. Bố cục tách biệt theo tài khoản và thiết bị, không sao chép nội dung trò chuyện."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Khi thay đổi công cụ hoặc nhà cung cấp với bối cảnh hiện có, hãy chọn Chuyển giao thông minh, Lịch sử trò chuyện đầy đủ hoặc Không có trong hộp thoại. Phân nhánh một cuộc trò chuyện để khám phá độc lập và xác nhận chế độ ngữ cảnh của nó."
         ],
         "tips": [
-          "Trò chuyện dự án được lưu trữ riêng biệt với các bản ghi tác vụ quy trình làm việc. Tạo một nhiệm vụ khi bạn cần theo dõi và đánh giá giai đoạn.",
+          "Cuộc trò chuyện dự án không được ghi vào lịch sử tác vụ của quy trình. Trong cuộc trò chuyện Codex, bạn có thể chọn «Tốc độ → Mặc định / Tiêu chuẩn / Nhanh / Siêu nhanh» ở menu cấu hình. Lựa chọn được lưu theo dự án và cuộc trò chuyện, rồi đặt lại khi đổi bộ máy, nhà cung cấp hoặc chuyển giao ngữ cảnh. Mặc định giữ cấu hình ban đầu; mức tăng tốc thực tế tùy tài khoản và khả năng hỗ trợ của dịch vụ.",
           "Tính năng phân nhánh gốc chỉ khả dụng khi được công cụ thực sự hỗ trợ. Nếu không thì tiếp tục chuyển giao ngữ cảnh rõ ràng."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Mở Cấu hình → Trung tâm kỹ năng của dự án hiện tại, quét lại và tìm kiếm theo tên, mô tả hoặc đường dẫn nguồn.",
           "Đọc mục đích kỹ năng và kích hoạt những gì bạn cần. Kiểm tra phạm vi đã chọn trước khi thay đổi hàng loạt. Các kỹ năng được lưu cho mỗi dự án và áp dụng cho lần chạy tiếp theo hoặc phiên mới.",
-          "Nhập / vào trình soạn thảo để chọn các kỹ năng thực sự được cung cấp bởi công cụ hiện tại. Danh sách khác nhau tùy theo động cơ.",
+          "Nhập / và tìm theo phần đầu tên các kỹ năng mà bộ máy hiện tại cung cấp. Để chuyển từ thảo luận sang thực thi, trong trò chuyện thông thường của dự án cục bộ, nhấp «＋ → Chế độ quy trình». Thảo luận sơ đồ trước; chỉ sau khi xác nhận rõ ràng mới tạo quy trình, tác vụ và bắt đầu chạy. Xem qua nút chi tiết tác vụ trong câu trả lời. Dự án từ xa và cuộc trò chuyện thiết kế nhúng không có lối vào này.",
           "Sử dụng menu phiên để đổi tên hoặc lưu trữ. Tìm kiếm danh sách lưu trữ và khôi phục các cuộc hội thoại cần thiết."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Thay đổi tên người dùng trong cài đặt hệ thống. Ngôn ngữ, phông chữ, kích thước và giao diện nằm trong Cài đặt → Giao diện; phạm vi quét kho lưu trữ nằm trong cài đặt Git."
         ],
         "tips": [
-          "Việc thay đổi công cụ thực thi mặc định sẽ ảnh hưởng đến các bước và nhiệm vụ mới, chứ không ảnh hưởng đến cài đặt bước hoặc nhiệm vụ hiện có."
+          "Đổi bộ máy thực thi mặc định áp dụng cho tác vụ và bước mới, không thay thế cấu hình hiện có. «Cài đặt hệ thống → Số tin nhắn mỗi lần tải» mặc định là 20, chấp nhận số nguyên từ 1 đến 300. Thiết lập ảnh hưởng các lần tải lịch sử tiếp theo, không tải lại ngay cuộc trò chuyện đang mở."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Chọn tùy chọn hiển thị cá nhân hoặc tạo giao diện và gói ngôn ngữ có thể xem trước thông qua trò chuyện dự án thông thường.",
     "sections": [
       {
+        "title": "Chọn và lưu diện mạo cá nhân",
+        "steps": [
+          "Để truy cập toàn bộ thiết bị, hãy mở Cài đặt → Giao diện. Người dùng được ủy quyền của dự án nhập Giao diện và giao diện từ thanh bên.",
+          "Chọn phông chữ, cỡ chữ và ngôn ngữ. Tìm trong thư viện giao diện hoặc lọc theo «Tất cả / Giao diện của tôi». Chọn thẻ chỉ hiển thị mẫu. Mở bản xem trước rồi hủy hoặc xác nhận áp dụng trên thanh xem trước cố định.",
+          "Các lựa chọn của người dùng Cổng xác thực được lưu trên mỗi tài khoản và thiết bị, khôi phục trong một trình duyệt khác trên cùng một thiết bị. Thử lại lần lưu không thành công. Các lựa chọn cục bộ không cần đăng nhập nền tảng vẫn còn trong trình duyệt này."
+        ],
+        "tips": [
+          "Các gói giao diện và ngôn ngữ được dùng chung trên thiết bị, nhưng lựa chọn cá nhân được tách biệt. Người dùng chỉ có quyền dự án chỉ được chọn gói đã cài. Người quản trị máy chủ có thể nhập ZIP; cập nhật gói cùng tên cần xác nhận thay thế và áp dụng lại. Có thể xuất giao diện tùy chỉnh đã chọn thành ZIP; không thể xuất hoặc xóa giao diện mặc định.",
+          "Các gói bị thiếu hoặc bị hỏng sẽ trở về giao diện mặc định. Thêm ?skin=default hoặc ?lingu=default để khôi phục giao diện mặc định hoặc tiếng Trung giản thể."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Không gian làm việc và vùng nhập trò chuyện sau khi áp dụng thực tế giao diện bầu trời sao",
+          "caption": "Không gian làm việc minh họa đã áp dụng thực tế «星际 · 静谧星海»; cuộc trò chuyện trống, chưa gửi tin nhắn và tập lệnh đang tắt. Ghi công nền: ESO/S. Brunier · cải biên bằng kỹ thuật kết hợp hình ảnh với AI."
+        }
+      },
+      {
+        "title": "Tạo giao diện và ngôn ngữ thông qua trò chuyện",
+        "steps": [
+          "Khi có quyền quản trị máy chủ, nhấp «Trao đổi cách đổi giao diện», chọn bộ máy khả dụng trong menu cấu hình trò chuyện rồi gửi yêu cầu, ví dụ «Dựa trên «星际 · 静谧星海», giữ nền bầu trời sao và dùng mũi tên hướng lên trên nút gửi». Gợi ý và lời nhắc điền sẵn không tự gửi; bạn không cần chọn phiên bản định dạng giao diện.",
+          "Trò chuyện ở bên trái, chỉnh sửa và xem trước ở bên phải; trên điện thoại chuyển bằng thẻ. Điều chỉnh tên, màu, phông, cỡ chữ, biểu tượng gửi hoặc bố cục, rồi nhấp «Lưu tinh chỉnh» để cập nhật cùng bản nháp. Thay đổi cũng tự lưu trước khi gửi và được đọc lại sau khi tạo xong. Không thể sửa khi đang chạy; nếu xung đột phiên bản, hãy đọc lại bản nháp trước. Trong cửa sổ thiết kế, kiểm tra các mẫu trò chuyện trên máy tính và điện thoại; sau khi lưu vào thư viện giao diện, bạn có thể kiểm tra thêm mẫu bảng tác vụ và quy trình.",
+          "Đối với gói ngôn ngữ, hãy hỏi trong cùng một cuộc trò chuyện, ví dụ: Thêm tiếng Tây Ban Nha mà vẫn giữ nguyên hình thức. Chuyển bên phải sang Ngôn ngữ. Nó tải sau khi tạo; sử dụng Đọc và xác thực để kiểm tra thư mục, mức độ phù hợp, các chuỗi bị thiếu và ví dụ.",
+          "Đối với giao diện, hãy nhấp vào Lưu giao diện và xem trước; đối với ngôn ngữ, Cài đặt và xem trước. Xác nhận hoặc hủy trong thanh xem trước. Việc lưu vào thư viện không xác nhận đơn đăng ký cá nhân. Xuất ZIP để sử dụng lại và kiểm tra lời nhắc thay thế đối với các bản cập nhật hoặc nhập cùng ID."
+        ],
+        "tips": [
+          "Mở lại công cụ sẽ khôi phục cuộc trò chuyện thiết kế và bản nháp; nếu cuộc trò chuyện đã bị xóa hoặc lưu trữ, hệ thống tạo cuộc mới. Gửi yêu cầu sẽ gọi mô hình đã chọn; nội dung chào mừng, tinh chỉnh thủ công và xem trước cục bộ không gọi mô hình hay chạy tác vụ thật.",
+          "Bạn có thể chọn phông hệ thống hoặc phông cục bộ do gói giao diện cung cấp. Biểu tượng gửi có các kiểu tích hợp; biểu tượng véc-tơ tùy chỉnh phải qua kiểm tra. Đổi giao diện hoặc ngôn ngữ không tự dịch tin nhắn cũ và tệp của người dùng.",
+          "Gói ngôn ngữ độc lập với giao diện và hiện hỗ trợ các ngôn ngữ từ trái sang phải. Thiếu chuỗi và điều khiển ngày sử dụng dự phòng tích hợp được chỉ định. Nội dung không chứng minh được chất lượng bản dịch; sử dụng trò chuyện để cập nhật danh mục chuỗi lỗi thời."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Các khu vực trò chuyện và chỉnh sửa/xem trước trong quá trình tạo giao diện",
+          "caption": "Cửa sổ thiết kế thực tế sau khi đọc gói giao diện bầu trời sao, với phần tinh chỉnh và xem trước trên máy tính ở bên phải. Yêu cầu bên trái chưa được gửi và chưa gọi mô hình."
+        }
+      },
+      {
+        "title": "Dùng giao diện tùy chỉnh và tiện ích mở rộng",
+        "steps": [
+          "Trong «Cài đặt → Giao diện», chọn một giao diện. Thẻ chỉ cập nhật mẫu cục bộ; ảnh thu nhỏ không chạy tập lệnh. Xem trước sẽ tạm thời thay đổi toàn bộ không gian làm việc; xác nhận để lưu hoặc hủy để khôi phục diện mạo trước đó.",
+          "Sau khi chọn giao diện có tập lệnh, dùng công tắc «Chạy tập lệnh giao diện» để điều khiển chức năng, không cần hộp thoại xác nhận bổ sung. Nếu không có tập lệnh, công tắc không khả dụng. Với giao diện chưa áp dụng, công tắc chỉ lưu lựa chọn; tập lệnh chỉ chạy khi xem trước toàn bộ không gian làm việc hoặc sau khi áp dụng. Menu, ghi chú và lịch do giao diện đã cài cung cấp, không phải chức năng cài sẵn của ứng dụng.",
+          "Giao diện có thể đặt vùng nhập ở trên, dưới, trái hoặc phải; chế độ gọn vẫn giữ bố cục dọc. Tắt tập lệnh sẽ vô hiệu hóa chức năng tiện ích và dọn các thành phần cùng đăng ký, nhưng giữ nguyên diện mạo. Một số menu có thể vẫn hiển thị nhưng không dùng được. Nếu tập lệnh không tải được, hãy xem lỗi, tắt công tắc rồi bật lại để thử lại.",
+          "Dữ liệu tiện ích mở rộng được phân tách theo danh tính, thiết bị, giao diện và tính năng của trình duyệt. Việc chuyển đổi hoặc xóa một giao diện không xóa được giao diện đó. Sử dụng bản xuất riêng của tiện ích mở rộng để sao lưu. Nếu giao diện bị hỏng, hãy thêm skin=default vào URL và làm mới."
+        ],
+        "tips": [
+          "Tập lệnh có cùng quyền với trang hiện tại. Chỉ bật nguồn đáng tin cậy; hủy xem trước không hoàn tác thao tác đã thực hiện. Lựa chọn được lưu theo danh tính hiện tại, phạm vi truy cập thiết bị và giao diện, đồng thời được giữ sau khi tải lại trang hoặc cập nhật chính giao diện đó.",
+          "Dữ liệu mở rộng không được bao gồm trong xuất khẩu ZIP giao diện hoặc được đồng bộ hóa giữa các trình duyệt/thiết bị. Sao lưu trước khi xóa bộ nhớ; việc lưu không thành công không được coi là thành công."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Công tắc chạy tập lệnh của giao diện tùy chỉnh và lối vào tiện ích",
+          "caption": "Công tắc tập lệnh, xuất ZIP, xem trước và áp dụng giao diện bầu trời sao. Tập lệnh hiện đang tắt; vẫn chưa có ảnh tiện ích đang chạy và kết quả sau khi tắt."
+        }
+      },
+      {
         "title": "Chọn ngôn ngữ tích hợp",
         "steps": [
           "Trong Cài đặt → Giao diện, chọn Tiếng Trung giản thể, Tiếng Trung phồn thể, Tiếng Anh, Tiếng Nhật, Tiếng Pháp, Tiếng Đức hoặc Tiếng Ả Rập và kiểm tra các mục nhập phổ biến và điều khiển ngày.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Bộ chọn ngôn ngữ tích hợp trong ứng dụng và trang web",
           "caption": "Ảnh chụp màn hình thực sự của các lựa chọn ngôn ngữ được thêm đang chờ xử lý."
-        }
-      },
-      {
-        "title": "Sử dụng bố cục giao diện v2 và tiện ích mở rộng tính năng",
-        "steps": [
-          "Trong Cài đặt → Giao diện, cài đặt và xác thực giao diện v2 đáng tin cậy, xem trước và áp dụng nó. Đối với các tính năng như ghi chú, hãy yêu cầu tác giả trong cuộc trò chuyện về tạo giao diện để đưa vào các thành phần.",
-          "Đọc xác nhận kích hoạt cho các gói có mã. Cập nhật gói hoặc thay đổi danh tính có thể yêu cầu lại. Mở các bảng thông qua menu hoặc mục tính năng của giao diện, tùy thuộc vào gói. Ghi chú hoặc lịch không phải là tính năng ứng dụng được cài đặt sẵn.",
-          "Gói có thể định vị nhà soạn nhạc ở trên, dưới, trái hoặc phải. Chế độ xem nhỏ gọn giữ lại sự sắp xếp theo chiều dọc. Sau khi chuyển đổi, hãy kiểm tra tin nhắn, trình soạn thảo và cài đặt vẫn có thể sử dụng được.",
-          "Dữ liệu tiện ích mở rộng được phân tách theo danh tính, thiết bị, giao diện và tính năng của trình duyệt. Việc chuyển đổi hoặc xóa một giao diện không xóa được giao diện đó. Sử dụng bản xuất riêng của tiện ích mở rộng để sao lưu. Nếu giao diện bị hỏng, hãy thêm skin=default vào URL và làm mới."
-        ],
-        "tips": [
-          "Mã thành phần có các đặc quyền của trang hiện tại. Chỉ kích hoạt các nguồn đáng tin cậy. Việc hủy xem trước sẽ khôi phục giao diện nhưng không hoàn tác mã đã được thực thi.",
-          "Dữ liệu mở rộng không được bao gồm trong xuất khẩu ZIP giao diện hoặc được đồng bộ hóa giữa các trình duyệt/thiết bị. Sao lưu trước khi xóa bộ nhớ; việc lưu không thành công không được coi là thành công."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "Xác nhận kích hoạt thành phần v2 và mục nhập bảng tính năng",
-          "caption": "Ảnh chụp màn hình thực thi thực sự của gói trình diễn đáng tin cậy đang chờ xử lý. Xác thực định dạng không phải là sự chấp nhận trực quan."
-        }
-      },
-      {
-        "title": "Chọn và lưu diện mạo cá nhân",
-        "steps": [
-          "Để truy cập toàn bộ thiết bị, hãy mở Cài đặt → Giao diện. Người dùng được ủy quyền của dự án nhập Giao diện và giao diện từ thanh bên.",
-          "Chọn phông chữ, kích thước và ngôn ngữ. Tìm kiếm hoặc lọc giao diện đã cài đặt, xem trước rồi áp dụng. Thanh xem trước cố định cho phép bạn hủy hoặc xác nhận.",
-          "Các lựa chọn của người dùng Cổng xác thực được lưu trên mỗi tài khoản và thiết bị, khôi phục trong một trình duyệt khác trên cùng một thiết bị. Thử lại lần lưu không thành công. Các lựa chọn cục bộ không cần đăng nhập nền tảng vẫn còn trong trình duyệt này."
-        ],
-        "tips": [
-          "Các gói và bản ghi tạo được chia sẻ trên thiết bị; lựa chọn cá nhân bị cô lập. Người dùng được ủy quyền của dự án chỉ có thể chọn các gói đã cài đặt.",
-          "Các gói bị thiếu hoặc bị hỏng sẽ trở về giao diện mặc định. Thêm ?skin=default hoặc ?lingu=default để khôi phục giao diện mặc định hoặc tiếng Trung giản thể."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Phông chữ, kích thước, ngôn ngữ và giao diện được cài đặt trong Giao diện",
-          "caption": "Trang cài đặt thực hiển thị các giá trị mặc định và ví dụ tích hợp ở bên phải. Không có sở thích cá nhân nào được thay đổi."
-        }
-      },
-      {
-        "title": "Tạo giao diện và ngôn ngữ thông qua trò chuyện",
-        "steps": [
-          "Với quyền quản lý máy chủ, hãy nhấp vào Hãy thảo luận về giao diện, chọn công cụ đã cài đặt, đã xác minh và mô tả mục tiêu, chẳng hạn như: Tạo giao diện tối màu, giữ nguyên bố cục và sử dụng mũi tên gửi lên trên.",
-          "Trò chuyện ở bên trái, chỉnh sửa và xem trước ở bên phải; điện thoại chuyển tab. Điều chỉnh tên, màu sắc, phông chữ, kích thước, biểu tượng gửi và bố cục, sau đó Lưu các điều chỉnh vào cùng một gói dự thảo. Chỉnh sửa bị vô hiệu hóa trong khi trò chuyện đang chạy. Kiểm tra bản xem trước trên PC và điện thoại.",
-          "Đối với gói ngôn ngữ, hãy hỏi trong cùng một cuộc trò chuyện, ví dụ: Thêm tiếng Tây Ban Nha mà vẫn giữ nguyên hình thức. Chuyển bên phải sang Ngôn ngữ. Nó tải sau khi tạo; sử dụng Đọc và xác thực để kiểm tra thư mục, mức độ phù hợp, các chuỗi bị thiếu và ví dụ.",
-          "Đối với giao diện, hãy nhấp vào Lưu giao diện và xem trước; đối với ngôn ngữ, Cài đặt và xem trước. Xác nhận hoặc hủy trong thanh xem trước. Việc lưu vào thư viện không xác nhận đơn đăng ký cá nhân. Xuất ZIP để sử dụng lại và kiểm tra lời nhắc thay thế đối với các bản cập nhật hoặc nhập cùng ID."
-        ],
-        "tips": [
-          "Sáng tạo sử dụng lại dự án Runtime cố định và trò chuyện thông thường, gọi mô hình của bạn. Tiếp tục công việc trước đó thông qua Lịch sử hội thoại phía trên cửa sổ. Bản thân các ví dụ xem trước không chạy các tác vụ.",
-          "Phông chữ sử dụng phông chữ hệ thống được cài đặt. Các tin nhắn và tập tin lịch sử không được dịch tự động. Các biểu tượng gửi tích hợp có thể được chọn trong các điều chỉnh; các biểu tượng vectơ tùy chỉnh phải được cung cấp bởi một bản nháp đã được xác thực.",
-          "Gói ngôn ngữ độc lập với giao diện và hiện hỗ trợ các ngôn ngữ từ trái sang phải. Thiếu chuỗi và điều khiển ngày sử dụng dự phòng tích hợp được chỉ định. Nội dung không chứng minh được chất lượng bản dịch; sử dụng trò chuyện để cập nhật danh mục chuỗi lỗi thời."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Các khu vực trò chuyện và chỉnh sửa/xem trước trong quá trình tạo giao diện",
-          "caption": "Một cuộc trò chuyện tạo và điều chỉnh trống được ủy quyền. Trình soạn thảo của nó đã được điền sẵn; không có tin nhắn nào được gửi, mẫu chạy hoặc giao diện được lưu."
         }
       },
       {

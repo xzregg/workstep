@@ -1,5 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMessageClock } from '../hooks/useMessageClock'
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import MarqueeText from './MarqueeText'
 import useStreamReveal from '../hooks/useStreamReveal'
 import { MessageCopyButton } from './MessageResponseFooter'
 import SubagentTimelineItem from './SubagentTimelineItem'
@@ -294,6 +296,7 @@ export default function ProcessTrace({
   projectId,
 }: ProcessTraceProps) {
   const { t } = useI18n()
+  const compactLayout = useCompactLayout()
   const now = useMessageClock(running)
   const [open, setOpen] = useState(false)
   const [showAllItems, setShowAllItems] = useState(false)
@@ -428,12 +431,21 @@ export default function ProcessTrace({
             toggleSession()
           }}
         >
-          <span ref={titleRef} className={running ? 'process-trace-thinking-label is-shimmer' : undefined}>
-            {running ? t('trace.processing') : stopped ? '' : t('trace.processed')}
-            {!running && stopped
+          <span ref={titleRef} className={`process-trace-status${running ? ' process-trace-thinking-label is-shimmer' : ''}`}>
+            {compactLayout ? (
+              <MarqueeText
+                text={`${running ? t('trace.processing') : stopped ? '' : t('trace.processed')}${!running && stopped
+                  ? (duration ? t('trace.stoppedAfter', { duration }) : t('trace.stopped'))
+                  : (duration ? ` ${duration}` : '')}${commandCount > 0 ? t('trace.commandCount', { count: commandCount }) : ''}`}
+                forceActive
+              />
+            ) : <>
+              {running ? t('trace.processing') : stopped ? '' : t('trace.processed')}
+              {!running && stopped
               ? (duration ? t('trace.stoppedAfter', { duration }) : t('trace.stopped'))
               : (duration ? ` ${duration}` : '')}
-            {commandCount > 0 && t('trace.commandCount', { count: commandCount })}
+              {commandCount > 0 && t('trace.commandCount', { count: commandCount })}
+            </>}
           </span>
           <svg className="process-trace-chevron" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
             <path

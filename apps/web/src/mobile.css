@@ -936,12 +936,12 @@
   .message-meta-prompt-full { display: none; }
   .message-meta-prompt-short { display: inline; }
   .process-trace-compact .process-trace-session-summary { gap: 2px; }
-  /* 长耗时和命令数只在左侧横向查看，不挤走右侧完整日期。 */
-  .process-trace-compact .process-trace-session-summary > span:first-child {
+  /* 左侧状态溢出时由共享跑马灯展示全文，为右侧元信息保留空间。 */
+  .process-trace-compact .process-trace-status {
+    flex: 0 1 auto;
     min-width: 0;
     white-space: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
+    overflow: hidden;
   }
   .process-trace-compact .message-meta-details { flex-shrink: 0; }
   .process-trace-compact .process-trace-session-summary > .process-trace-chevron {

@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Sul desktop, fai doppio clic su una conversazione nella barra laterale o sul titolo dell'intestazione per aprire la finestra di dialogo di ridenominazione condivisa, quindi inserisci e conferma il nome.",
-          "Su mobile appare solo il riquadro attivo; gli altri sono conservati. Uscire e tornare nella stessa sessione della pagina ripristina riquadri, disposizione e dimensioni; il ripristino dopo un aggiornamento del browser non è garantito. I layout sono separati per account e dispositivo, senza copiare le conversazioni."
+          "Sul telefono è visibile solo il pannello attivo, gli altri mantengono il proprio stato. Dopo un ricaricamento o tornando alla pagina vengono ripristinati pannelli, disposizione e dimensioni; quelli chiusi non si riaprono. Fare clic sulla riga di un progetto nella barra laterale espande o comprime l'albero; per cambiare conversazione fai clic sulla relativa voce. La disposizione è separata per account e dispositivo e non copia il testo delle conversazioni."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Quando cambi motore o provider con il contesto esistente, scegli Handoff intelligente, Cronologia chat completa o Nessuno nella finestra di dialogo. Dividi una conversazione per l'esplorazione indipendente e conferma la sua modalità di contesto."
         ],
         "tips": [
-          "La chat del progetto viene archiviata separatamente dai record delle attività del flusso di lavoro. Crea un'attività quando hai bisogno di monitoraggio e revisioni delle fasi.",
+          "Le conversazioni del progetto non vengono inserite nei registri delle attività del flusso. Nelle conversazioni Codex puoi scegliere «Velocità → Predefinita / Standard / Veloce / Ultraveloce» dal menu di configurazione. La scelta è salvata per progetto e conversazione e viene azzerata cambiando motore, fornitore o passando il contesto. L’opzione predefinita mantiene la configurazione originale; l’accelerazione effettiva dipende dal supporto dell’account e del servizio.",
           "Il fork nativo è disponibile solo se effettivamente supportato dal motore. Altrimenti continua attraverso il trasferimento del contesto esplicito."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Apri Configurazione → Centro competenze del progetto corrente, esegui nuovamente la scansione e cerca per nome, descrizione o percorso di origine.",
           "Leggi gli scopi delle competenze e abilita ciò di cui hai bisogno. Controlla l'intervallo selezionato prima delle modifiche collettive. Le competenze vengono salvate per progetto e applicate all'esecuzione successiva o alla nuova sessione.",
-          "Digita / nel compositore per selezionare le competenze effettivamente offerte dal motore attuale. Gli elenchi variano in base al motore.",
+          "Digita / e cerca per prefisso del nome tra le competenze offerte dal motore corrente. Per passare dalla discussione all’esecuzione, nella normale chat di un progetto locale scegli «＋ → Modalità flusso». Discuti prima il diagramma; solo dopo una conferma esplicita vengono creati e avviati flusso e attività. Apri i dettagli dal pulsante nella risposta. Questa opzione non è disponibile per progetti remoti o conversazioni di creazione incorporate.",
           "Utilizza il menu della sessione per rinominare o archiviare. Cerca nell'elenco degli archivi e ripristina le conversazioni richieste."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Modificare il nome utente nelle impostazioni di sistema. Lingua, caratteri, dimensioni e skin si trovano in Impostazioni → Aspetto; l'ambito della scansione del repository si trova nelle impostazioni Git."
         ],
         "tips": [
-          "La modifica del motore di esecuzione predefinito influisce sulle nuove attività e passaggi, non sulle attività esistenti o sulle impostazioni dei passaggi."
+          "Cambiare il motore di esecuzione predefinito interessa nuove attività e nuovi passaggi, senza sostituire le configurazioni esistenti. «Impostazioni di sistema → Messaggi per caricamento» usa 20 come valore predefinito e accetta interi da 1 a 300. Influisce sui successivi caricamenti della cronologia, senza ricaricare subito le conversazioni aperte."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Scegli le preferenze di visualizzazione personali o crea skin e pacchetti linguistici visualizzabili in anteprima tramite la normale chat del progetto.",
     "sections": [
       {
+        "title": "Scegli e salva l'aspetto personale",
+        "steps": [
+          "Per l'accesso completo al dispositivo, apri Impostazioni → Aspetto. Gli utenti autorizzati al progetto accedono ad Aspetto e skin dalla barra laterale.",
+          "Scegli carattere, dimensione e lingua; nella libreria cerca una skin o filtra per «Tutte / Le mie skin». Selezionare una scheda mostra solo un esempio. Avvia l'anteprima, poi annulla o conferma nella barra di anteprima fissa.",
+          "Le scelte degli utenti del Gateway autenticato vengono salvate per account e dispositivo, ripristinandole in un altro browser sullo stesso dispositivo. Riprova i salvataggi non riusciti. Le scelte locali senza accesso alla piattaforma rimangono in questo browser."
+        ],
+        "tips": [
+          "I pacchetti di skin e lingue sono condivisi sul dispositivo, mentre le scelte personali restano separate. Gli utenti autorizzati solo a un progetto possono scegliere soltanto pacchetti installati. Chi amministra l'host può importare ZIP; un aggiornamento con lo stesso nome richiede conferma della sostituzione e una nuova applicazione. Una skin personalizzata selezionata può essere esportata in ZIP; quella predefinita non può essere esportata o eliminata.",
+          "I pacchetti mancanti o rotti tornano all'aspetto predefinito. Aggiungi ?skin=default o ?lingual=default per ripristinare la skin predefinita o il cinese semplificato."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Area di lavoro e campo di input della chat con la skin stellata effettivamente applicata",
+          "caption": "Area di lavoro dimostrativa con «星际 · 静谧星海» effettivamente applicata; la conversazione è vuota, nessun messaggio è stato inviato e gli script sono disattivati. Crediti dello sfondo: ESO/S. Brunier · rielaborazione con fusione tramite IA."
+        }
+      },
+      {
+        "title": "Crea skin e lingue tramite la chat",
+        "steps": [
+          "Con i permessi di amministrazione dell'host, fai clic su «Parliamo di come cambiare l'aspetto», scegli un motore disponibile nel menu di configurazione della chat e invia una richiesta, ad esempio «Usa come base «星际 · 静谧星海», mantieni lo sfondo stellato e usa una freccia verso l'alto sul pulsante di invio». Suggerimenti e richieste precompilate non vengono inviati automaticamente; non occorre scegliere una versione del formato della skin.",
+          "La chat è a sinistra, modifica e anteprima a destra; sul telefono si cambia scheda. Regola nome, colori, carattere, dimensione, icona di invio o disposizione, poi fai clic su «Salva modifiche» per aggiornare la stessa bozza. Le modifiche vengono salvate anche prima dell’invio e rilette al termine della generazione. Non puoi modificarle durante l’esecuzione; in caso di conflitto di versione rileggi prima la bozza. Nella finestra di creazione controlla gli esempi di chat per PC e telefono; dopo il salvataggio nella libreria delle skin puoi controllare anche gli esempi della bacheca attività e del flusso.",
+          "Per un pacchetto di lingue, chiedi nella stessa chat, ad esempio: aggiungi lo spagnolo preservando l'aspetto. Cambia il lato destro in Lingua. Si carica dopo la generazione; utilizzare Leggi e convalida per verificarne la directory, la copertura, le stringhe mancanti e gli esempi.",
+          "Per le skin, fai clic su Salva aspetto e anteprima; per le lingue, Installa e visualizza in anteprima. Conferma o annulla nella barra di anteprima. Il salvataggio nella libreria non conferma l'applicazione personale. Esporta ZIP per riutilizzarlo e controlla le richieste di sostituzione per importazioni o aggiornamenti con lo stesso ID."
+        ],
+        "tips": [
+          "Riaprire lo strumento ripristina la conversazione di creazione e la bozza; se la conversazione è stata eliminata o archiviata, ne viene creata una nuova. Inviare richieste usa il modello scelto; il benvenuto, le regolazioni manuali e le anteprime locali non usano modelli né eseguono attività reali.",
+          "Puoi scegliere caratteri di sistema o caratteri locali inclusi nel pacchetto. Per l'icona di invio sono disponibili stili integrati; le icone vettoriali personalizzate devono superare la convalida. Cambiare skin o lingua non traduce automaticamente messaggi precedenti e file utente.",
+          "I Language Pack sono indipendenti dagli skin e attualmente supportano le lingue da sinistra a destra. Le stringhe mancanti e i controlli della data utilizzano il fallback integrato specificato. La copertura non dimostra la qualità della traduzione; utilizzare la chat per aggiornare cataloghi di stringhe obsoleti."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Aree di chat e modifica/anteprima nella creazione dell'aspetto",
+          "caption": "Finestra reale di creazione dopo la lettura del pacchetto della skin stellata, con regolazioni e anteprima PC a destra. La richiesta a sinistra non è stata inviata e non è stato chiamato alcun modello."
+        }
+      },
+      {
+        "title": "Usare skin personalizzate ed estensioni",
+        "steps": [
+          "In «Impostazioni → Aspetto», scegli una skin. La scheda aggiorna solo un esempio locale e la miniatura non esegue script. L’anteprima modifica temporaneamente l’intera area di lavoro: conferma per salvare oppure annulla per ripristinare l’aspetto precedente.",
+          "Dopo aver selezionato una skin con script, usa l'interruttore «Esegui script della skin» senza ulteriori finestre di conferma; senza script l'interruttore non è disponibile. Per una skin non applicata salva solo la preferenza: gli script partono nell'anteprima globale o dopo l'applicazione. Menu, note e calendari dipendono dalla skin installata e non sono funzioni preinstallate dell'app.",
+          "La skin può collocare l’area di input sopra, sotto, a sinistra o a destra; l’interfaccia compatta mantiene la disposizione verticale. Disattivare gli script disabilita le funzioni delle estensioni e rimuove componenti e sottoscrizioni, ma conserva l’aspetto. Alcuni menu possono restare visibili ma non disponibili. Se uno script non si carica, consulta l’errore, disattiva l’interruttore e riattivalo per riprovare.",
+          "I dati dell'estensione sono separati per identità del browser, dispositivo, skin e funzionalità. Cambiare o eliminare una skin non la cancella. Utilizza l'esportazione dell'estensione per il backup. Se l'interfaccia si rompe, aggiungi skin=default a URL e aggiorna."
+        ],
+        "tips": [
+          "Gli script hanno gli stessi permessi della pagina corrente: abilita solo fonti attendibili. Annullare l'anteprima non annulla le operazioni già eseguite. La scelta viene salvata per identità corrente, ambito di accesso al dispositivo e skin, e resta valida dopo il ricaricamento o l'aggiornamento della stessa skin.",
+          "I dati dell'estensione non sono inclusi nelle esportazioni della skin ZIP o sincronizzati tra browser/dispositivi. Eseguire il backup prima di svuotare la memoria; il salvataggio fallito non deve essere considerato un successo."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Interruttore degli script della skin personalizzata e accessi alle estensioni",
+          "caption": "Interruttore degli script, esportazione ZIP, anteprima e applicazione della skin stellata. Gli script sono attualmente disattivati; mancano ancora le immagini dell’esecuzione delle estensioni e del risultato della disattivazione."
+        }
+      },
+      {
         "title": "Scegli una lingua integrata",
         "steps": [
           "In Impostazioni → Aspetto, scegli cinese semplificato, cinese tradizionale, inglese, giapponese, francese, tedesco o arabo e controlla le voci comuni e i controlli della data.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Selettori della lingua integrati nell'app e nel sito web",
           "caption": "Sono in sospeso gli screenshot reali delle scelte linguistiche aggiunte."
-        }
-      },
-      {
-        "title": "Utilizza layout skin v2 ed estensioni delle funzionalità",
-        "steps": [
-          "In Impostazioni → Aspetto, installa e convalida una skin v2 attendibile, visualizzala in anteprima e applicala. Per funzionalità come le note, chiedi all'autore nella chat per la creazione dell'aspetto di includere componenti.",
-          "Leggi la conferma di abilitazione per i pacchetti con codice. L'aggiornamento di un pacchetto o la modifica dell'identità potrebbero richiedere nuovamente. Apri i pannelli tramite i menu della skin o le voci delle funzionalità, che dipendono dal pacchetto. Le note o i calendari non sono funzionalità dell'app preinstallate.",
-          "Il pacchetto può posizionare il compositore sopra, sotto, a sinistra o a destra. Le viste compatte mantengono la disposizione verticale. Dopo il passaggio, i messaggi di controllo, il compositore e le impostazioni rimangono utilizzabili.",
-          "I dati dell'estensione sono separati per identità del browser, dispositivo, skin e funzionalità. Cambiare o eliminare una skin non la cancella. Utilizza l'esportazione dell'estensione per il backup. Se l'interfaccia si rompe, aggiungi skin=default a URL e aggiorna."
-        ],
-        "tips": [
-          "Il codice componente ha i privilegi della pagina corrente. Abilita solo fonti attendibili. L'annullamento dell'anteprima ripristina l'aspetto ma non annulla il codice già eseguito.",
-          "I dati dell'estensione non sono inclusi nelle esportazioni della skin ZIP o sincronizzati tra browser/dispositivi. Eseguire il backup prima di svuotare la memoria; il salvataggio fallito non deve essere considerato un successo."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "Conferma dell'abilitazione del componente v2 e immissione nel pannello delle funzionalità",
-          "caption": "È in sospeso lo screenshot dell'esecuzione reale di un pacchetto dimostrativo attendibile. La convalida del formato non è un'accettazione visiva."
-        }
-      },
-      {
-        "title": "Scegli e salva l'aspetto personale",
-        "steps": [
-          "Per l'accesso completo al dispositivo, apri Impostazioni → Aspetto. Gli utenti autorizzati al progetto accedono ad Aspetto e skin dalla barra laterale.",
-          "Scegli carattere, dimensione e lingua. Cerca o filtra le skin installate, visualizza l'anteprima e poi applica. La barra di anteprima fissa consente di annullare o confermare.",
-          "Le scelte degli utenti del Gateway autenticato vengono salvate per account e dispositivo, ripristinandole in un altro browser sullo stesso dispositivo. Riprova i salvataggi non riusciti. Le scelte locali senza accesso alla piattaforma rimangono in questo browser."
-        ],
-        "tips": [
-          "I pacchetti e i record di creazione sono condivisi sul dispositivo; le selezioni personali sono isolate. Gli utenti autorizzati al progetto possono scegliere solo i pacchetti installati.",
-          "I pacchetti mancanti o rotti tornano all'aspetto predefinito. Aggiungi ?skin=default o ?lingual=default per ripristinare la skin predefinita o il cinese semplificato."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Caratteri, dimensioni, lingua e skin installate in Aspetto",
-          "caption": "La pagina delle impostazioni reali mostra le impostazioni predefinite e gli esempi integrati sulla destra. Nessuna preferenza personale è stata modificata."
-        }
-      },
-      {
-        "title": "Crea skin e lingue tramite la chat",
-        "steps": [
-          "Con i diritti di gestione dell'host, fai clic su Parliamo dell'aspetto, scegli un motore installato e verificato e descrivi un obiettivo, ad esempio: crea una skin scura, preserva il layout e utilizza una freccia di invio verso l'alto.",
-          "La chat è a sinistra, la modifica e l'anteprima a destra; i telefoni cambiano scheda. Modifica nome, colori, carattere, dimensione, icona di invio e layout, quindi salva le modifiche nello stesso pacchetto di bozze. La modifica è disabilitata durante l'esecuzione della chat. Controlla le anteprime su PC e telefono.",
-          "Per un pacchetto di lingue, chiedi nella stessa chat, ad esempio: aggiungi lo spagnolo preservando l'aspetto. Cambia il lato destro in Lingua. Si carica dopo la generazione; utilizzare Leggi e convalida per verificarne la directory, la copertura, le stringhe mancanti e gli esempi.",
-          "Per le skin, fai clic su Salva aspetto e anteprima; per le lingue, Installa e visualizza in anteprima. Conferma o annulla nella barra di anteprima. Il salvataggio nella libreria non conferma l'applicazione personale. Esporta ZIP per riutilizzarlo e controlla le richieste di sostituzione per importazioni o aggiornamenti con lo stesso ID."
-        ],
-        "tips": [
-          "La creazione riutilizza il progetto Runtime fisso e la chat ordinaria, invocando il tuo modello. Continua il lavoro precedente attraverso la Cronologia conversazioni sopra la finestra. Gli stessi esempi di anteprima non eseguono attività.",
-          "I caratteri utilizzano i caratteri di sistema installati. I messaggi e i file storici non vengono tradotti automaticamente. Le icone di invio integrate possono essere selezionate nelle regolazioni; le icone vettoriali personalizzate devono essere fornite da una bozza validata.",
-          "I Language Pack sono indipendenti dagli skin e attualmente supportano le lingue da sinistra a destra. Le stringhe mancanti e i controlli della data utilizzano il fallback integrato specificato. La copertura non dimostra la qualità della traduzione; utilizzare la chat per aggiornare cataloghi di stringhe obsoleti."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Aree di chat e modifica/anteprima nella creazione dell'aspetto",
-          "caption": "Una chat di creazione vuota autorizzata e un modulo di regolazione. Il suo compositore è precompilato; nessun messaggio è stato inviato, nessun modello eseguito o skin salvato."
         }
       },
       {

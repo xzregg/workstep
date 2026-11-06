@@ -812,7 +812,7 @@
         ],
         "tips": [
           "På skrivebordet dobbeltklikker du på en sidefeltsamtale eller dens overskriftstittel for å åpne den delte endre navn-dialogboksen, og skriv inn og bekreft navnet.",
-          "Mobil viser bare det aktive panelet og bevarer de andre. Å gå bort og tilbake i samme sideøkt gjenoppretter paneler, oppsett og størrelser; dette garanteres ikke etter nettleseroppdatering. Oppsett er atskilt etter konto og enhet uten å kopiere samtaler."
+          "Telefonen viser bare det aktive panelet, men de andre beholder tilstanden. Paneler, oppsett og størrelser gjenopprettes etter oppdatering eller når du kommer tilbake; lukkede paneler åpnes ikke igjen. Klikk på en prosjektrad i sidefeltet bare utvider eller skjuler treet; velg en bestemt samtale for å bytte. Oppsettet er atskilt per konto og enhet og kopierer ikke samtaletekst."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Når du bytter motor eller leverandør med eksisterende kontekst, velg Smart overlevering, Full chatlogg eller Ingen i dialogboksen. Fordel en samtale for uavhengig utforskning og bekreft kontekstmodusen."
         ],
         "tips": [
-          "Prosjektchat lagres separat fra arbeidsflytoppgaveposter. Lag en oppgave når du trenger scenesporing og vurderinger.",
+          "Prosjektsamtaler legges ikke inn i oppgaveloggen for arbeidsflyter. I Codex-samtaler kan du velge «Hastighet → Standardvalg / Normal / Rask / Ultrarask» i konfigurasjonsmenyen. Valget lagres per prosjekt og samtale og nullstilles når du bytter motor eller leverandør eller overfører konteksten. Standardvalget følger opprinnelig konfigurasjon; faktisk hastighetsøkning avhenger av kontoen og tjenestens støtte.",
           "Native forking er kun tilgjengelig når den faktisk støttes av motoren. Ellers fortsett gjennom eksplisitt kontekstoverlevering."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Åpne det gjeldende prosjektets Konfigurasjon → Ferdighetssenter, skann på nytt og søk etter navn, beskrivelse eller kildesti.",
           "Les ferdighetsformål og aktiver det du trenger. Sjekk det valgte området før masseendringer. Ferdigheter lagres per prosjekt og gjelder neste kjøring eller ny økt.",
-          "Skriv inn / i komponisten for å velge ferdigheter som faktisk tilbys av gjeldende motor. Listene varierer etter motor.",
+          "Skriv / og søk etter navneprefiks blant ferdighetene den gjeldende motoren tilbyr. For å gå fra diskusjon til kjøring velger du «＋ → Arbeidsflytmodus» i vanlig chat i et lokalt prosjekt. Diskuter flytdiagrammet først; først etter uttrykkelig bekreftelse opprettes og startes arbeidsflyt og oppgave. Åpne oppgavedetaljene med knappen i svaret. Inngangen finnes ikke i eksterne prosjekter eller innebygde opprettingssamtaler.",
           "Bruk øktmenyen for å gi nytt navn eller arkivere. Søk i arkivlisten og gjenopprett nødvendige samtaler."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Endre brukernavnet i systeminnstillingene. Språk, fonter, størrelse og skall er under Innstillinger → Utseende; repository scanning scope er under Git-innstillinger."
         ],
         "tips": [
-          "Endring av standard utførelsesmotor påvirker nye oppgaver og trinn, ikke eksisterende oppgave- eller trinninnstillinger."
+          "Endring av standardmotor gjelder nye oppgaver og trinn og erstatter ikke eksisterende konfigurasjoner. «Systeminnstillinger → Meldinger per innlasting» har standardverdi 20 og godtar heltall fra 1 til 300. Det gjelder senere innlasting av historikk og laster ikke åpne samtaler på nytt med en gang."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Velg personlige visningspreferanser eller lag forhåndsvisningsskall og språkpakker gjennom vanlig prosjektchat.",
     "sections": [
       {
+        "title": "Velg og lagre personlig utseende",
+        "steps": [
+          "For full tilgang til enheten, åpne Innstillinger → Utseende. Prosjektautoriserte brukere går inn i Utseende og skinn fra sidefeltet.",
+          "Velg skrifttype, skriftstørrelse og språk. Søk i temabiblioteket eller filtrer etter «Alle / Mine temaer». Et valgt kort viser bare et eksempel. Start forhåndsvisningen og avbryt eller bekreft i den faste forhåndsvisningslinjen.",
+          "Autentiserte gateway-brukeres valg lagres per konto og enhet, og gjenopprettes i en annen nettleser på samme enhet. Prøv på nytt mislykkede lagringer. Lokale valg uten plattformpålogging forblir i denne nettleseren."
+        ],
+        "tips": [
+          "Tema- og språkpakker deles på enheten, men personlige valg holdes atskilt. Brukere med prosjekttilgang kan bare velge installerte pakker. Vertsadministratorer kan importere ZIP; oppdateringer med samme navn krever bekreftet erstatning og at temaet tas i bruk på nytt. Et valgt egendefinert tema kan eksporteres som ZIP; standardtemaet kan verken eksporteres eller slettes.",
+          "Manglende eller ødelagte pakker faller tilbake til standardutseendet. Legg til ?skin=default eller ?language=default for å gjenopprette standardskallet eller forenklet kinesisk."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Arbeidsområde og chatfelt med stjernehimmeltemaet tatt i bruk",
+          "caption": "Demoarbeidsområde med «星际 · 静谧星海» tatt i bruk; samtalen er tom, ingen meldinger er sendt, og skriptene er slått av. Bakgrunnskreditering: ESO/S. Brunier · bearbeidet med KI-basert sammensmelting."
+        }
+      },
+      {
+        "title": "Lag skinn og språk gjennom chat",
+        "steps": [
+          "Med administratortilgang til verten klikker du på «La oss snakke om utseendet», velger en tilgjengelig motor i chatens konfigurasjonsmeny og sender ønsket, for eksempel «Bruk «星际 · 静谧星海» som utgangspunkt, behold stjernehimmelbakgrunnen og bruk en pil opp på sendeknappen». Forslag og forhåndsutfylte instruksjoner sendes ikke automatisk. Du trenger ikke velge temaformatversjon.",
+          "Chatten er til venstre, redigering og forhåndsvisning til høyre; på telefon bytter du med faner. Juster navn, farger, skrifttype, skriftstørrelse, sendeikon eller oppsett og velg «Lagre justeringer» for å skrive til samme utkast. Det lagres også automatisk før sending og leses på nytt etter generering. Redigering er sperret under kjøring; ved versjonskonflikt leser du inn utkastet på nytt først. I opprettingsvinduet kontrollerer du chat-eksemplene for PC og telefon; etter lagring i temabiblioteket kan du også kontrollere eksemplene for oppgavetavle og arbeidsflyt.",
+          "For en språkpakke, spør i samme chat, for eksempel: Legg til spansk mens du bevarer utseendet. Bytt høyre side til Språk. Den laster etter generasjon; bruk Les og valider for å sjekke katalogen, dekningen, manglende strenger og eksempler.",
+          "For skall, klikk Lagre utseende og forhåndsvisning; for språk, Installer og forhåndsvis. Bekreft eller avbryt i forhåndsvisningslinjen. Lagring i biblioteket bekrefter ikke personlig søknad. Eksporter ZIP for å gjenbruke, og inspiser erstatningsmeldinger for import eller oppdateringer med samme ID."
+        ],
+        "tips": [
+          "Når du åpner verktøyet igjen, gjenopprettes samtalen og utkastet. Er samtalen slettet eller arkivert, opprettes en ny. Sendte ønsker bruker valgt modell; velkomstinnhold, manuelle justeringer og lokale forhåndsvisninger bruker ingen modell og kjører ingen virkelige oppgaver.",
+          "Du kan velge systemskrifter eller lokale skrifter som følger med temapakken. Sendeikonet har innebygde stiler; egendefinerte vektorikoner må valideres. Tidligere meldinger og brukerfiler oversettes ikke automatisk når du bytter tema eller språk.",
+          "Språkpakker er uavhengige av skinn og støtter for øyeblikket venstre-til-høyre-språk. Manglende strenger og datokontroller bruker den spesifiserte innebygde reserven. Dekning beviser ikke oversettelsens kvalitet; bruk chat for å oppdatere utdaterte strengkataloger."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat og redigering/forhåndsvisningsområder i oppretting av utseende",
+          "caption": "Det faktiske opprettingsvinduet etter innlesing av stjernehimmeltemaets pakke, med justeringer og PC-forhåndsvisning til høyre. Ønsket til venstre er ikke sendt, og ingen modell er kalt."
+        }
+      },
+      {
+        "title": "Bruk egendefinerte temaer og funksjonsutvidelser",
+        "steps": [
+          "Velg et tema under «Innstillinger → Utseende». Kortet oppdaterer bare et lokalt eksempel, og miniatyrbildet kjører ikke skript. Forhåndsvisning endrer hele arbeidsområdet midlertidig; bekreft for å lagre, eller avbryt for å gjenopprette forrige utseende.",
+          "Når du har valgt et tema med skript, styrer du funksjonene med «Kjør temaskript», uten et ekstra bekreftelsesvindu. Bryteren er utilgjengelig uten skript. For et tema som ikke er tatt i bruk, lagres bare innstillingen; skriptene kjøres først ved forhåndsvisning av hele arbeidsområdet eller når temaet tas i bruk. Menyer, notater og kalendere leveres av temaet og er ikke forhåndsinstallerte appfunksjoner.",
+          "Temaet kan plassere inntastingsområdet øverst, nederst, til venstre eller til høyre; kompakte visninger beholder vertikal oppstilling. Når du slår av skript, deaktiveres utvidelsesfunksjonene, og komponenter og abonnementer ryddes opp, men utseendet beholdes. Noen menyer kan fortsatt vises som utilgjengelige. Hvis innlastingen mislykkes, les feilen, slå av bryteren og slå den på igjen for å prøve på nytt.",
+          "Utvidelsesdata er atskilt etter nettleseridentitet, enhet, hud og funksjon. Bytte eller slette et skall sletter det ikke. Bruk utvidelsens egen eksport for sikkerhetskopiering. Hvis grensesnittet går i stykker, legg til skin=default i URL og oppdater."
+        ],
+        "tips": [
+          "Skript har samme tilganger som den gjeldende siden. Aktiver bare pålitelige kilder; å avbryte forhåndsvisningen angrer ikke utførte handlinger. Brytervalget lagres per identitet, tilgangsomfang for enheten og tema, og beholdes etter oppdatering av siden eller samme tema.",
+          "Utvidelsesdata er ikke inkludert i skin ZIP-eksporter eller synkronisert mellom nettlesere/enheter. Sikkerhetskopier før du rydder oppbevaring; mislykket lagring må ikke behandles som suksess."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Bryter for skript i et egendefinert tema og innganger til utvidelser",
+          "caption": "Skriptbryter, ZIP-eksport, forhåndsvisning og bruk av stjernehimmeltemaet. Skriptene er slått av; bilder av utvidelser som kjører og resultatet etter deaktivering mangler fortsatt."
+        }
+      },
+      {
         "title": "Velg et innebygd språk",
         "steps": [
           "I Innstillinger → Utseende velger du forenklet kinesisk, tradisjonell kinesisk, engelsk, japansk, fransk, tysk eller arabisk og inspiser vanlige oppføringer og datokontroller.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Innebygde språkvelgere i appen og nettsiden",
           "caption": "Ekte skjermbilder av språkvalgene som er lagt til, venter."
-        }
-      },
-      {
-        "title": "Bruk v2 hudoppsett og funksjonsutvidelser",
-        "steps": [
-          "Under Innstillinger → Utseende, installer og valider et klarert v2-skall, forhåndsvis og bruk det. For funksjoner som notater, spør forfatteren i chatten for å skape utseende om å inkludere komponenter.",
-          "Les aktiveringsbekreftelsen for pakker med kode. Oppdatering av en pakke eller endring av identitet kan spørre på nytt. Åpne paneler gjennom hudens menyer eller funksjonsoppføringer, som avhenger av pakken. Notater eller kalendere er ikke forhåndsinstallerte appfunksjoner.",
-          "Pakken kan plassere komponisten over, under, til venstre eller høyre. Kompakt utsikt beholder vertikal arrangement. Etter bytte, sjekk meldinger, komponist og innstillinger forblir brukbare.",
-          "Utvidelsesdata er atskilt etter nettleseridentitet, enhet, hud og funksjon. Bytte eller slette et skall sletter det ikke. Bruk utvidelsens egen eksport for sikkerhetskopiering. Hvis grensesnittet går i stykker, legg til skin=default i URL og oppdater."
-        ],
-        "tips": [
-          "Komponentkode har gjeldende sides privilegier. Aktiver bare pålitelige kilder. Hvis du avbryter forhåndsvisningen, gjenopprettes utseendet, men angres ikke koden som allerede er utført.",
-          "Utvidelsesdata er ikke inkludert i skin ZIP-eksporter eller synkronisert mellom nettlesere/enheter. Sikkerhetskopier før du rydder oppbevaring; mislykket lagring må ikke behandles som suksess."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "v2-komponentaktiveringsbekreftelse og funksjonspaneloppføring",
-          "caption": "Ekte utførelsesskjermbilde av en pålitelig demonstrasjonspakke venter. Formatvalidering er ikke visuell aksept."
-        }
-      },
-      {
-        "title": "Velg og lagre personlig utseende",
-        "steps": [
-          "For full tilgang til enheten, åpne Innstillinger → Utseende. Prosjektautoriserte brukere går inn i Utseende og skinn fra sidefeltet.",
-          "Velg font, størrelse og språk. Søk eller filtrer installerte skall, forhåndsvis og bruk deretter. Den faste forhåndsvisningslinjen lar deg avbryte eller bekrefte.",
-          "Autentiserte gateway-brukeres valg lagres per konto og enhet, og gjenopprettes i en annen nettleser på samme enhet. Prøv på nytt mislykkede lagringer. Lokale valg uten plattformpålogging forblir i denne nettleseren."
-        ],
-        "tips": [
-          "Pakker og opprettelsesposter deles på enheten; personlige valg er isolert. Prosjektautoriserte brukere kan bare velge installerte pakker.",
-          "Manglende eller ødelagte pakker faller tilbake til standardutseendet. Legg til ?skin=default eller ?language=default for å gjenopprette standardskallet eller forenklet kinesisk."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Skrifter, størrelse, språk og installerte skinn i Utseende",
-          "caption": "Den virkelige innstillingssiden viser standarder og innebygde eksempler til høyre. Ingen personlige preferanser ble endret."
-        }
-      },
-      {
-        "title": "Lag skinn og språk gjennom chat",
-        "steps": [
-          "Med vertsadministrasjonsrettigheter, klikk La oss diskutere utseende, velg en installert, verifisert motor og beskriv et mål, for eksempel: Lag en mørk hud, bevar layout og bruk en pil oppover.",
-          "Chat er til venstre, redigering og forhåndsvisning til høyre; telefoner bytter fane. Juster navn, farger, font, størrelse, sendeikon og layout, og lagre deretter justeringer i samme utkastpakke. Redigering er deaktivert mens chatten kjører. Sjekk forhåndsvisninger av PC og telefon.",
-          "For en språkpakke, spør i samme chat, for eksempel: Legg til spansk mens du bevarer utseendet. Bytt høyre side til Språk. Den laster etter generasjon; bruk Les og valider for å sjekke katalogen, dekningen, manglende strenger og eksempler.",
-          "For skall, klikk Lagre utseende og forhåndsvisning; for språk, Installer og forhåndsvis. Bekreft eller avbryt i forhåndsvisningslinjen. Lagring i biblioteket bekrefter ikke personlig søknad. Eksporter ZIP for å gjenbruke, og inspiser erstatningsmeldinger for import eller oppdateringer med samme ID."
-        ],
-        "tips": [
-          "Creation gjenbruker det faste Runtime-prosjektet og vanlig chat, og påkaller modellen din. Fortsett tidligere arbeid gjennom Samtalehistorikk over vinduet. Forhåndsvisningseksempler kjører ikke oppgaver i seg selv.",
-          "Fonter bruker installerte systemfonter. Historiske meldinger og filer blir ikke automatisk oversatt. Innebygde sendeikoner kan velges i justeringer; tilpassede vektorikoner må leveres av et validert utkast.",
-          "Språkpakker er uavhengige av skinn og støtter for øyeblikket venstre-til-høyre-språk. Manglende strenger og datokontroller bruker den spesifiserte innebygde reserven. Dekning beviser ikke oversettelsens kvalitet; bruk chat for å oppdatere utdaterte strengkataloger."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Chat og redigering/forhåndsvisningsområder i oppretting av utseende",
-          "caption": "Et autorisert tomt opprettingschat- og justeringsskjema. Komponisten er forhåndsutfylt; ingen melding ble sendt, modellkjøring eller skin lagret."
         }
       },
       {

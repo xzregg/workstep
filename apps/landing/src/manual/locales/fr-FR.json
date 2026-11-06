@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Sur ordinateur, double-cliquez une conversation latérale ou son titre pour ouvrir le dialogue commun de renommage, puis confirmez le nouveau nom.",
-          "Sur mobile, seul le volet actif est visible ; les autres sont conservés. Un aller-retour dans la même session de page restaure les volets, leur disposition et dimensions, sans garantie après actualisation du navigateur. La disposition est isolée par compte et appareil, sans copier les conversations."
+          "Le téléphone n’affiche que la fenêtre active, tout en conservant l’état des autres. Un rechargement ou un retour après avoir quitté la page peut restaurer les fenêtres, leur disposition et leurs dimensions ; les fenêtres fermées ne sont pas rouvertes. Cliquer sur la ligne d’un projet dans la barre latérale ne fait que le développer ou le réduire ; le chat change uniquement en sélectionnant une conversation précise. La disposition est isolée par compte actuel et appareil, sans copier le texte des conversations."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Lors d’un changement de moteur ou fournisseur avec contexte existant, choisissez transfert intelligent, historique complet ou aucun. Pour explorer séparément, bifurquez la conversation en confirmant le mode de contexte."
         ],
         "tips": [
-          "Les conversations sont séparées des tâches de flux. Créez une tâche pour progression par phases et revues.",
+          "Les conversations de projet ne sont pas enregistrées dans l’historique des tâches du flux. Dans une conversation Codex, choisissez « Vitesse → Par défaut / Standard / Rapide / Très rapide » dans le menu de configuration. Ce choix est enregistré par projet et session, puis réinitialisé lors d’un changement de moteur, de fournisseur ou d’un transfert de contexte. Le mode par défaut conserve la configuration initiale ; l’accélération réelle dépend de la prise en charge du compte et du service.",
           "La bifurcation native n’est disponible que si le moteur la prend réellement en charge ; sinon, un transfert de contexte explicite assure la suite."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Ouvrez Configuration du projet → Centre des compétences, rescanez et cherchez nom, description ou chemin source.",
           "Lisez les usages et activez les compétences utiles. Vérifiez le périmètre avant activation groupée. Le choix par projet s’applique au prochain lancement ou à une nouvelle session.",
-          "Tapez / pour choisir les compétences réellement fournies par le moteur ; les listes varient.",
+          "Saisissez / et recherchez par préfixe du nom les compétences proposées par le moteur actuel. Pour passer de la discussion à l’exécution, cliquez sur « ＋ → Mode flux de travail » dans le chat ordinaire d’un projet local. Discutez d’abord du diagramme ; ne créez le flux et la tâche et ne démarrez qu’après confirmation explicite. Ouvrez les détails avec le bouton de tâche dans la réponse. Les projets distants et les chats de création intégrés ne proposent pas cette entrée.",
           "Renommez ou archivez par le menu ; recherchez et restaurez les conversations dans les archives."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Nom utilisateur dans Système ; langues, polices, tailles et habillages dans Apparence ; portée de scan des dépôts dans Git."
         ],
         "tips": [
-          "Le moteur par défaut concerne nouvelles tâches et étapes, sans remplacer les configurations existantes."
+          "Changer le moteur d’exécution par défaut s’applique aux nouvelles tâches et étapes, sans remplacer les configurations existantes. « Paramètres système → Messages par chargement » vaut 20 par défaut et accepte les entiers de 1–300. Ce réglage affecte les chargements ultérieurs de l’historique, sans recharger immédiatement les conversations ouvertes."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Choisissez vos préférences ou créez des habillages et packs linguistiques prévisualisables par conversation.",
     "sections": [
       {
+        "title": "Choisir et conserver son apparence",
+        "steps": [
+          "Accès appareil entier : Paramètres → Apparence. Accès projet : Apparence et habillages dans la barre latérale.",
+          "Choisissez la police, la taille et la langue. Recherchez dans la bibliothèque de thèmes ou filtrez par « Tous / Mes thèmes ». Sélectionner une carte affiche uniquement l’exemple ; ouvrez l’aperçu, puis annulez ou confirmez l’application dans la barre fixe.",
+          "Pour un utilisateur Gateway authentifié, le choix suit compte et appareil, même dans un autre navigateur du même appareil. Réessayez si l’enregistrement échoue. Sans compte plateforme, le choix local reste dans ce navigateur."
+        ],
+        "tips": [
+          "Les paquets de thèmes et de langues sont partagés sur l’appareil, mais les choix personnels restent séparés. Les utilisateurs disposant d’un accès au projet ne peuvent choisir que des paquets installés. Les administrateurs de l’hôte peuvent importer des ZIP ; une mise à jour portant le même nom exige de confirmer le remplacement puis de réappliquer le thème. Le thème personnalisé sélectionné peut être exporté en ZIP ; le thème par défaut ne peut être ni exporté ni supprimé.",
+          "Paquet manquant ou endommagé : repli par défaut. ?skin=default ou ?language=default rétablit habillage initial ou chinois simplifié."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Espace de travail et zone de saisie après application réelle du thème étoilé",
+          "caption": "Espace de démonstration avec « 星际 · 静谧星海 » réellement appliqué. La conversation est vide, rien n’a été envoyé et les scripts sont désactivés. Crédit du fond : ESO/S. Brunier · fusion et adaptation par intelligence artificielle (AI)."
+        }
+      },
+      {
+        "title": "Créer habillages et langues par conversation",
+        "steps": [
+          "Avec les droits d’administration de l’hôte, cliquez sur « Parlons des changements d’apparence », choisissez un moteur disponible dans le menu de configuration du chat, puis envoyez votre demande, par exemple « Utilise « 星际 · 静谧星海 » comme base, conserve le fond étoilé et mets une flèche vers le haut sur le bouton d’envoi ». Les suggestions et les consignes préremplies ne sont pas envoyées automatiquement ; aucune version du format de thème n’est à choisir.",
+          "Le chat est à gauche, l’édition et l’aperçu à droite ; sur téléphone, changez d’onglet. Ajustez le nom, les couleurs, la police, la taille, l’icône d’envoi ou la disposition, puis cliquez sur « Enregistrer les ajustements » pour modifier le même brouillon. L’enregistrement est aussi automatique avant l’envoi, et le paquet est relu après la génération. L’édition est bloquée pendant l’exécution ; en cas de conflit de versions, relisez d’abord le paquet. Dans la fenêtre de création, vérifiez les exemples de chat pour ordinateur et téléphone. Après l’enregistrement dans la bibliothèque de thèmes, vérifiez aussi les exemples du tableau de tâches et du flux.",
+          "Demandez dans le même fil une langue, par exemple espagnol en conservant l’apparence, puis onglet Langue. Lecture automatique après génération, ou Lire et valider pour dossier, couverture, manques et exemples.",
+          "Pour l’habillage, Enregistrer et prévisualiser ; pour la langue, Installer et prévisualiser. Confirmez ou annulez ensuite : la bibliothèque ne vaut pas application personnelle. Exportez en ZIP et vérifiez toute confirmation de remplacement."
+        ],
+        "tips": [
+          "Rouvrir la création restaure la session d’origine et son brouillon ; une nouvelle session est créée si l’ancienne a été supprimée ou archivée. Envoyer une demande appelle le modèle choisi. Le contenu d’accueil, les ajustements manuels et l’aperçu local n’appellent pas le modèle et ne lancent aucune tâche réelle.",
+          "Vous pouvez choisir des polices système ou des polices locales fournies par le paquet du thème. L’icône d’envoi peut utiliser un style intégré ; les icônes vectorielles personnalisées doivent être validées. Les anciens messages et les fichiers utilisateur ne sont pas traduits automatiquement lors d’un changement de thème ou de langue.",
+          "Packs indépendants des habillages, langues de gauche à droite actuellement. Manques et dates utilisent le repli intégré choisi ; la couverture ne prouve pas la qualité, et un ancien catalogue se complète par conversation."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Conversation et prévisualisation de création d’apparence",
+          "caption": "Véritable fenêtre de création après lecture du paquet du thème étoilé, avec ajustements et aperçu pour ordinateur à droite. La demande à gauche n’a pas encore été envoyée et aucun modèle n’a été appelé."
+        }
+      },
+      {
+        "title": "Utiliser des thèmes personnalisés et des extensions de fonctions",
+        "steps": [
+          "Choisissez un thème dans « Paramètres → Apparence ». La carte ne met à jour que l’exemple local et les miniatures n’exécutent aucun script. Ouvrir l’aperçu modifie temporairement tout l’espace de travail ; confirmer enregistre le choix et annuler restaure l’état précédent.",
+          "Après avoir sélectionné un thème contenant un script, contrôlez ses fonctions avec « Exécuter les scripts du thème », sans boîte de confirmation supplémentaire. Sans script, l’interrupteur est indisponible. Pour un thème non encore appliqué, il enregistre uniquement la préférence ; le script s’exécute lors de l’aperçu global ou de l’application. Les menus, notes ou calendriers sont fournis par le thème installé, et non préinstallés dans l’application.",
+          "La zone de saisie peut se placer en haut, en bas, à gauche ou à droite selon le thème ; l’interface compacte conserve une disposition verticale. Désactiver le script arrête les fonctions d’extension et nettoie les composants et abonnements, tout en conservant l’apparence. Certains menus peuvent rester visibles mais indisponibles. En cas d’échec de chargement, consultez l’erreur ; désactivez puis réactivez l’interrupteur pour réessayer.",
+          "Les données sont séparées par identité de navigateur, appareil, habillage et fonction ; changer/supprimer l’habillage ne les efface pas. Sauvegardez via l’extension ; si l’interface bloque, ajoutez skin=default à l’URL puis actualisez."
+        ],
+        "tips": [
+          "Les scripts disposent des mêmes droits que la page actuelle : n’activez que des sources fiables. Annuler l’aperçu n’annule pas les opérations déjà effectuées. L’interrupteur est enregistré par identité actuelle, périmètre d’accès à l’appareil et thème, puis conservé au rechargement et lors des mises à jour du même thème.",
+          "Les données ne vont pas dans le ZIP et ne se synchronisent pas entre navigateurs/appareils. Sauvegardez avant nettoyage ; un échec d’écriture n’est pas un succès."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Interrupteur des scripts du thème personnalisé et accès aux fonctions d’extension",
+          "caption": "Interrupteur des scripts du thème étoilé et accès à l’export ZIP, à l’aperçu et à l’application. Les scripts sont désactivés ; les captures des extensions en cours d’exécution et du résultat de leur désactivation restent à ajouter."
+        }
+      },
+      {
         "title": "Choisir une langue intégrée",
         "steps": [
           "Dans Paramètres → Apparence, choisissez chinois simplifié/traditionnel, anglais, japonais, français, allemand ou arabe et contrôlez entrées et dates.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Sélecteurs de langues intégrées de l’application et du site",
           "caption": "Capture réelle des nouvelles options à fournir."
-        }
-      },
-      {
-        "title": "Utiliser les extensions d’habillage v2",
-        "steps": [
-          "Dans Apparence, installez et validez un paquet v2 fiable, prévisualisez puis appliquez. Pour des notes par exemple, demandez des composants inclus à son auteur via la conversation de création.",
-          "Lisez la confirmation d’activation du code ; mise à jour ou changement d’identité peut la redemander. Ouvrez les panneaux par les entrées du paquet : l’application ne préinstalle ni notes ni calendrier.",
-          "Le paquet peut placer la saisie en haut, bas, gauche ou droite ; le compact reste vertical. Vérifiez ensuite messages, saisie et réglages.",
-          "Les données sont séparées par identité de navigateur, appareil, habillage et fonction ; changer/supprimer l’habillage ne les efface pas. Sauvegardez via l’extension ; si l’interface bloque, ajoutez skin=default à l’URL puis actualisez."
-        ],
-        "tips": [
-          "Le code possède les droits de la page : sources fiables uniquement. Annuler l’aperçu rétablit l’interface sans annuler ses opérations.",
-          "Les données ne vont pas dans le ZIP et ne se synchronisent pas entre navigateurs/appareils. Sauvegardez avant nettoyage ; un échec d’écriture n’est pas un succès."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "Confirmation d’extension v2 et accès au panneau",
-          "caption": "Capture réelle d’un paquet fiable d’essai à fournir ; validation de format ne signifie pas validation visuelle."
-        }
-      },
-      {
-        "title": "Choisir et conserver son apparence",
-        "steps": [
-          "Accès appareil entier : Paramètres → Apparence. Accès projet : Apparence et habillages dans la barre latérale.",
-          "Choisissez police, taille et langue ; recherchez un habillage installé, prévisualisez puis confirmez ou annulez par la barre fixe.",
-          "Pour un utilisateur Gateway authentifié, le choix suit compte et appareil, même dans un autre navigateur du même appareil. Réessayez si l’enregistrement échoue. Sans compte plateforme, le choix local reste dans ce navigateur."
-        ],
-        "tips": [
-          "Paquets et créations sont communs sur l’appareil ; choix personnels isolés. Un utilisateur de projet ne choisit que parmi les paquets installés.",
-          "Paquet manquant ou endommagé : repli par défaut. ?skin=default ou ?language=default rétablit habillage initial ou chinois simplifié."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Police, taille, langue et habillages installés",
-          "caption": "Page réelle avec habillage initial et exemples intégrés à droite ; aucune préférence modifiée."
-        }
-      },
-      {
-        "title": "Créer habillages et langues par conversation",
-        "steps": [
-          "Avec gestion de l’hôte, cliquez sur Discuter de l’apparence, choisissez un moteur validé et demandez par exemple un thème sombre, disposition conservée et flèche d’envoi vers le haut.",
-          "Conversation à gauche, édition et aperçu à droite, onglets sur téléphone. Ajustez nom, couleurs, police, taille, icône et disposition, puis Enregistrer les ajustements dans le même brouillon. Pas d’édition pendant le traitement. Vérifiez PC et mobile.",
-          "Demandez dans le même fil une langue, par exemple espagnol en conservant l’apparence, puis onglet Langue. Lecture automatique après génération, ou Lire et valider pour dossier, couverture, manques et exemples.",
-          "Pour l’habillage, Enregistrer et prévisualiser ; pour la langue, Installer et prévisualiser. Confirmez ou annulez ensuite : la bibliothèque ne vaut pas application personnelle. Exportez en ZIP et vérifiez toute confirmation de remplacement."
-        ],
-        "tips": [
-          "La création réutilise le projet Runtime et une conversation ordinaire avec votre modèle. Historique des conversations en haut reprend le travail ; les exemples de prévisualisation n’exécutent pas de tâche.",
-          "Polices système seulement ; messages et fichiers ne se traduisent pas automatiquement. Icônes intégrées dans les ajustements, vecteurs personnalisés dans un brouillon validé.",
-          "Packs indépendants des habillages, langues de gauche à droite actuellement. Manques et dates utilisent le repli intégré choisi ; la couverture ne prouve pas la qualité, et un ancien catalogue se complète par conversation."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Conversation et prévisualisation de création d’apparence",
-          "caption": "Conversation vide autorisée et formulaire d’ajustement ; consigne préremplie, sans message envoyé, modèle exécuté ni habillage enregistré."
         }
       },
       {

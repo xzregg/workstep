@@ -1,0 +1,238 @@
+{
+  "id": "interstellar-night",
+  "name": "星际 · 静谧星海",
+  "version": "1.6.3",
+  "schema_version": 2,
+  "color_scheme": "dark",
+  "tokens": {
+    "bg": "#080c18",
+    "surface": "#101625",
+    "fg": "#e0e9f7",
+    "fg-2": "#becde3",
+    "muted": "#9aafcb",
+    "meta": "#8da3c0",
+    "border": "#303b55",
+    "border-soft": "#202a40",
+    "accent": "#a5b8f8",
+    "accent-hover": "#c0ceff",
+    "accent-2": "#b8a0eb",
+    "accent-fg": "#080c18",
+    "accent-light": "#202a48",
+    "ai-assistant": "#b8a0eb",
+    "success": "#7ed7b6",
+    "warn": "#e2c68a",
+    "danger": "#f19caa",
+    "warn-text": "#ead29e",
+    "status-ready": "#9aafcb",
+    "status-running": "#a5b8f8",
+    "status-paused": "#e2c68a",
+    "status-stopped": "#f19caa",
+    "status-done": "#7ed7b6",
+    "status-failed": "#f19caa",
+    "status-cancelled": "#dcb28d",
+    "elev-raised": "0 12px 36px rgba(0,0,0,0.32)",
+    "elev-overlay": "0 24px 72px rgba(0,0,0,0.55)",
+    "focus-ring": "0 0 0 3px rgba(165,184,248,0.3)",
+    "motion-fast": "180ms",
+    "ease": "cubic-bezier(0.22, 0.61, 0.36, 1)"
+  },
+  "styles": {
+    "app-shell": {
+      "base": {
+        "backgroundColor": "transparent"
+      }
+    },
+    "chat-message-bubble": {
+      "base": {
+        "backgroundColor": "transparent",
+        "color": "#e0e9f7",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "chat-bubble--user": {
+      "base": {
+        "backgroundColor": "transparent",
+        "color": "#e0e9f7",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "chat-input-frame": {
+      "base": {
+        "backgroundColor": "rgba(8,16,35,0.22)",
+        "color": "#e0e9f7",
+        "borderColor": "#303b55"
+      }
+    },
+    "skin-select-panel": {
+      "base": {
+        "backgroundColor": "#101625",
+        "color": "#e0e9f7"
+      }
+    },
+    "modal": {
+      "base": {
+        "backgroundColor": "#101625",
+        "color": "#e0e9f7"
+      }
+    },
+    "mobile-sheet": {
+      "base": {
+        "backgroundColor": "#101625",
+        "color": "#e0e9f7"
+      }
+    },
+    "process-trace": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "process-trace-compact": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "process-trace-session": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "process-trace-session-summary": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "action-conversation-duration": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "action-conversation-meta": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "execution-segment-usage": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "footer-usage-summary": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "message-meta-details": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "chat-bubble": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "chat-bubble--assistant": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "chat-message-content": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "markdown-message": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "user-message-markdown": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "task-conversation-message": {
+      "base": {
+        "backgroundColor": "transparent",
+        "borderColor": "transparent",
+        "boxShadow": "none"
+      }
+    },
+    "message-file-changes": {
+      "base": {
+        "backgroundColor": "transparent",
+        "boxShadow": "none",
+        "borderColor": "rgba(165,184,248,0.18)"
+      }
+    },
+    "message-file-changes-header": {
+      "base": {
+        "backgroundColor": "transparent",
+        "boxShadow": "none",
+        "borderColor": "rgba(165,184,248,0.18)"
+      }
+    },
+    "message-file-changes-toggle": {
+      "base": {
+        "backgroundColor": "transparent",
+        "boxShadow": "none",
+        "borderColor": "rgba(165,184,248,0.18)"
+      }
+    },
+    "message-file-changes-list": {
+      "base": {
+        "backgroundColor": "transparent",
+        "boxShadow": "none",
+        "borderColor": "rgba(165,184,248,0.18)"
+      }
+    },
+    "message-file-change-row": {
+      "base": {
+        "backgroundColor": "transparent",
+        "boxShadow": "none",
+        "borderColor": "rgba(165,184,248,0.18)"
+      }
+    }
+  },
+  "layout": {
+    "backgroundGlow": "none",
+    "composerSendIcon": "send"
+  },
+  "effects": {
+    "reveal": false,
+    "charsPerSecond": 140,
+    "maxDurationMs": 900
+  },
+  "desktop": {},
+  "mobile": {}
+}

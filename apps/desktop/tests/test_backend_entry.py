@@ -302,3 +302,25 @@ def test_desktop_listener_accepts_lan_connections(monkeypatch):
 
     assert server.main(["--port", "8766"]) == 2
     assert seen == {"host": "0.0.0.0", "port": 8766}
+
+
+def test_bundled_starry_skin_loads_from_staged_backend_without_user_install(tmp_path, monkeypatch):
+    repo = Path(__file__).resolve().parents[3]
+    monkeypatch.syspath_prepend(str(repo / 'apps/daemon'))
+    staged_daemon = tmp_path / 'backend/app/daemon'
+    staged_service = staged_daemon / 'services/skins.py'
+    staged_service.parent.mkdir(parents=True)
+    shutil.copyfile(repo / 'apps/daemon/services/skins.py', staged_service)
+    # Both desktop build scripts copy the whole daemon data tree to this layout.
+    shutil.copytree(repo / 'apps/daemon/data/skins', staged_daemon / 'data/skins')
+    spec = importlib.util.spec_from_file_location('staged_skin_service', staged_service)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    manager = module.SkinManager(tmp_path / 'fresh-config/runtime')
+    manager._ensure_defaults()
+    skin = manager._get('interstellar-night')
+    assert not skin.get('built_in', False)
+    assert skin['manifest']['version'] == '1.6.3'
+    source = staged_daemon / 'data/skins/bundled/interstellar-night'
+    assert manager._file(skin['revision'], 'theme.js')[0] == (source / 'theme.js').read_bytes()
+    assert manager._file(skin['revision'], 'assets/cold-blue-galaxy.webp')[0] == (source / 'assets/cold-blue-galaxy.webp').read_bytes()

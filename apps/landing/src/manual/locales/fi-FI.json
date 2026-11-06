@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Kaksoisnapsauta työpöydällä sivupalkin keskustelua tai sen otsikon otsikkoa avataksesi jaetun uudelleennimeämisikkunan, kirjoita ja vahvista nimi.",
-          "Mobiilissa näkyy vain aktiivinen paneeli, muut säilyvät. Siirtyminen muualle ja takaisin saman sivuistunnon aikana palauttaa paneelit, asettelun ja koot; selaimen päivityksen jälkeen palautusta ei taata. Asettelu erotetaan tilin ja laitteen mukaan eikä keskustelusisältöä kopioida."
+          "Puhelin näyttää vain aktiivisen ikkunan ja säilyttää muiden tilan. Uudelleenlatauksen tai sivulta poistumisen ja palaamisen jälkeen ikkunat, asettelu ja koot voidaan palauttaa; suljettuja ikkunoita ei avata uudelleen. Sivupalkin projektirivin napsautus vain laajentaa tai supistaa projektin; keskustelu vaihtuu vasta tietyn keskustelun valinnasta. Asettelu erotetaan nykyisen tilin ja laitteen mukaan, eikä keskustelujen tekstiä kopioida."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Kun vaihdat moottoria tai tarjoajaa olemassa olevan kontekstin kanssa, valitse valintaikkunassa Älykäs kanavanvaihto, Täysi keskusteluhistoria tai Ei mitään. Aloita keskustelu itsenäistä tutkimista varten ja vahvista sen kontekstitila."
         ],
         "tips": [
-          "Projektikeskustelu tallennetaan erillään työnkulun tehtävätietueista. Luo tehtävä, kun tarvitset vaiheen seurantaa ja arvosteluja.",
+          "Projektikeskusteluja ei kirjoiteta työnkulun tehtävähistoriaan. Codex-keskusteluissa voit valita asetusvalikosta ”Nopeus → Oletus / Normaali / Nopea / Erittäin nopea”. Valinta tallentuu projektin ja istunnon mukaan ja nollautuu moottorin tai palveluntarjoajan vaihdossa tai kontekstin siirrossa. Oletus käyttää alkuperäistä asetusta; todellinen nopeutuminen riippuu tilin ja palvelun tuesta.",
           "Alkuperäinen haarukka on käytettävissä vain, kun moottori todella tukee sitä. Muussa tapauksessa jatka eksplisiittisen kontekstin vaihdon kautta."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Avaa nykyisen projektin Asetukset → Osaamiskeskus, skannaa uudelleen ja hae nimen, kuvauksen tai lähdepolun perusteella.",
           "Lue taitotarkoituksia ja ota käyttöön mitä tarvitset. Tarkista valittu alue ennen joukkomuutoksia. Taidot tallennetaan projektikohtaisesti ja niitä sovelletaan seuraavaan suoritukseen tai uuteen istuntoon.",
-          "Kirjoita / sisään säveltäjä valitaksesi nykyisen moottorin tarjoamat taidot. Listat vaihtelevat moottorin mukaan.",
+          "Kirjoita / ja etsi nykyisen moottorin tarjoamia taitoja nimen alkuosan perusteella. Siirtyäksesi keskustelusta suorittamiseen valitse paikallisen projektin tavallisessa keskustelussa ”＋ → Työnkulkutila”. Keskustele ensin kaaviosta; luo työnkulku ja tehtävä ja käynnistä suoritus vasta nimenomaisen vahvistuksen jälkeen. Avaa tiedot vastauksen tehtävätietopainikkeella. Etäprojekteissa ja upotetuissa luontikeskusteluissa tätä valintaa ei ole.",
           "Käytä istuntovalikkoa nimeäksesi uudelleen tai arkistoidaksesi. Hae arkistoluettelosta ja palauta tarvittavat keskustelut."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Vaihda käyttäjänimi järjestelmäasetuksissa. Kieli, fontit, koko ja ulkoasut ovat kohdassa Asetukset → Ulkoasu; arkiston tarkistuksen laajuus on Git-asetuksissa."
         ],
         "tips": [
-          "Oletussuoritusmoottorin muuttaminen vaikuttaa uusiin tehtäviin ja vaiheisiin, ei olemassa oleviin tehtävä- tai vaiheasetuksiin."
+          "Oletussuoritusmoottorin muutos koskee uusia tehtäviä ja vaiheita eikä korvaa olemassa olevia asetuksia. ”Järjestelmäasetukset → Viestejä latauskerralla” on oletusarvoisesti 20 ja hyväksyy kokonaisluvut väliltä 1–300. Muutos vaikuttaa myöhempään historian lataukseen eikä lataa avoimia keskusteluja heti uudelleen."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Valitse henkilökohtaiset näyttöasetukset tai luo esikatseltavia skinejä ja kielipaketteja tavallisen projektikeskustelun kautta.",
     "sections": [
       {
+        "title": "Valitse ja tallenna henkilökohtainen ulkonäkö",
+        "steps": [
+          "Jos haluat käyttää koko laitetta, avaa Asetukset → Ulkoasu. Projektin valtuutetut käyttäjät syöttävät ulkoasun ja skinit sivupalkista.",
+          "Valitse fontti, koko ja kieli. Hae ulkoasukirjastosta tai suodata ”Kaikki / Omat ulkoasut”. Kortin valinta näyttää vain esimerkin. Avaa esikatselu ja peru tai vahvista käyttöönotto kiinteässä esikatselupalkissa.",
+          "Authenticated Gateway -käyttäjien valinnat tallennetaan tili- ja laitekohtaisesti, ja ne palautetaan toisessa saman laitteen selaimessa. Yritä uudelleen epäonnistuneita tallennuksia. Paikalliset valinnat ilman alustan kirjautumista säilyvät tässä selaimessa."
+        ],
+        "tips": [
+          "Ulkoasu- ja kielipaketit ovat laitteen yhteisiä, mutta henkilökohtaiset valinnat erotetaan toisistaan. Projektikohtaisen käyttöoikeuden saaneet voivat valita vain asennettuja paketteja. Isäntälaitteen ylläpitäjät voivat tuoda ZIP-paketteja; samanniminen päivitys edellyttää korvaamisen vahvistamista ja uutta käyttöönottoa. Valitun mukautetun ulkoasun voi viedä ZIP-muodossa; oletusulkoasua ei voi viedä eikä poistaa.",
+          "Puuttuvat tai rikkinäiset paketit palautuvat oletusarvoiseen ulkoasuun. Lisää ?skin=default tai ?language=default palauttaaksesi oletusulkokuvan tai yksinkertaistetun kiinan."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Työtila ja keskustelun syöttöalue tähtitaivaan ulkoasun todellisen käyttöönoton jälkeen",
+          "caption": "Esittelytyötila, jossa ”星际 · 静谧星海” on todella käytössä. Keskustelu on tyhjä, mitään ei ole lähetetty ja komentosarjat ovat pois käytöstä. Taustakuvan tekijätieto: ESO/S. Brunier · AI-avusteinen yhdistelmämuokkaus."
+        }
+      },
+      {
+        "title": "Luo skinejä ja kieliä chatin kautta",
+        "steps": [
+          "Kun sinulla on isäntälaitteen hallintaoikeudet, valitse ”Keskustellaan ulkoasun muuttamisesta”, valitse käytettävissä oleva moottori keskustelun asetusvalikosta ja lähetä pyyntö, esimerkiksi ”Käytä pohjana ulkoasua ”星际 · 静谧星海”, säilytä tähtitaustakuva ja valitse lähetyspainikkeeksi ylöspäin osoittava nuoli”. Ehdotuksia tai valmiiksi täytettyjä ohjeita ei lähetetä automaattisesti, eikä ulkoasun tiedostomuodon versiota tarvitse valita.",
+          "Keskustelu on vasemmalla ja muokkaus sekä esikatselu oikealla; puhelimessa vaihdetaan välilehtiä. Säädä nimeä, värejä, fonttia, kokoa, lähetyskuvaketta tai asettelua ja kirjoita samaan luonnokseen valitsemalla ”Tallenna säädöt”. Muutokset tallennetaan myös automaattisesti ennen lähetystä, ja paketti luetaan uudelleen luonnin päätyttyä. Muokkaus on estetty suorituksen aikana; versioristiriidassa lue ensin uudelleen. Tarkista luonti-ikkunassa tietokoneen ja puhelimen keskusteluesimerkit. Ulkoasukirjastoon tallentamisen jälkeen voit tarkistaa myös tehtävätaulun ja työnkulun esimerkit.",
+          "Kielipakettia varten kysy samassa chatissa, esimerkiksi: Lisää espanjaa ulkonäköä säilyttäen. Vaihda oikea puoli kohtaan Kieli. Se latautuu sukupolven jälkeen; Käytä Lue ja vahvista tarkistaaksesi sen hakemiston, kattavuuden, puuttuvat merkkijonot ja esimerkit.",
+          "Valitse skineille Tallenna ulkoasu ja esikatselu. kielille, Asenna ja esikatsele. Vahvista tai peruuta esikatselupalkissa. Kirjastoon tallentaminen ei vahvista henkilökohtaista hakemusta. Vie ZIP uudelleenkäyttöä varten ja tarkista saman tunnuksen tuonnin tai päivityksen korvaavat kehotteet."
+        ],
+        "tips": [
+          "Luontinäkymän avaaminen uudelleen palauttaa alkuperäisen istunnon ja luonnoksen; jos istunto on poistettu tai arkistoitu, luodaan uusi. Pyynnön lähetys kutsuu valittua mallia. Tervehdys, käsin tehtävät säädöt ja paikallinen esikatselu eivät kutsu mallia eivätkä suorita oikeita tehtäviä.",
+          "Voit valita järjestelmäfontteja tai ulkoasupaketin paikallisia fontteja. Lähetyskuvakkeeksi voi valita sisäisen vaihtoehdon; mukautetun vektorikuvakkeen on läpäistävä tarkistus. Vanhoja viestejä ja käyttäjän tiedostoja ei käännetä automaattisesti ulkoasua tai kieltä vaihdettaessa.",
+          "Kielipaketit ovat skinistä riippumattomia ja tukevat tällä hetkellä vasemmalta oikealle kirjoitettuja kieliä. Puuttuvat merkkijonot ja päivämääräsäätimet käyttävät määritettyä sisäänrakennettua varavaihtoehtoa. Kattavuus ei todista käännösten laatua; käytä chatia päivittääksesi vanhentuneet merkkijonoluettelot."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Keskustelu- ja muokkaus-/esikatselualueet ulkoasun luomisessa",
+          "caption": "Todellinen luonti-ikkuna tähtitaivaan ulkoasupaketin lukemisen jälkeen, oikealla säädöt ja tietokone-esikatselu. Vasemmalla olevaa pyyntöä ei ole lähetetty eikä mallia ole kutsuttu."
+        }
+      },
+      {
+        "title": "Mukautettujen ulkoasujen ja toimintolaajennusten käyttö",
+        "steps": [
+          "Valitse ulkoasu kohdassa Asetukset → Ulkoasu. Kortti päivittää vain paikallisen esimerkin, eivätkä pienoiskuvat suorita komentosarjoja. Esikatselu muuttaa tilapäisesti koko työtilan ulkoasua; vahvistus tallentaa valinnan ja peruminen palauttaa aiemman tilan.",
+          "Kun valitset komentosarjan sisältävän ulkoasun, hallitse toimintoja ”Suorita ulkoasun komentosarjat” -kytkimellä ilman erillistä vahvistusikkunaa. Jos komentosarjaa ei ole, kytkin ei ole käytettävissä. Vielä käyttöön ottamattoman ulkoasun kytkin tallentaa vain asetuksen; suoritus alkaa koko työtilan esikatselussa tai käyttöönotossa. Valikot, muistiinpanot ja kalenterit tulevat asennetusta ulkoasusta, eivät sovelluksen esiasennettuina toimintoina.",
+          "Syöttöalue voi ulkoasun mukaan sijaita ylhäällä, alhaalla, vasemmalla tai oikealla; tiiviissä näkymässä säilyy pystysuuntainen järjestys. Komentosarjan poistaminen käytöstä pysäyttää laajennustoiminnot ja siivoaa komponentit sekä tilaukset, mutta säilyttää ulkoasun. Osa valikoista voi jäädä näkyviin ilman käyttömahdollisuutta. Jos lataus epäonnistuu, lue virhe; sulje ja avaa kytkin uudelleen yrittääksesi uudestaan.",
+          "Laajennustiedot erotetaan selaimen identiteetin, laitteen, ulkoasun ja ominaisuuden mukaan. Skin vaihtaminen tai poistaminen ei poista sitä. Käytä laajennuksen omaa vientiä varmuuskopiointiin. Jos käyttöliittymä katkeaa, lisää URL:hen skin=default ja päivitä."
+        ],
+        "tips": [
+          "Komentosarjalla on samat oikeudet kuin nykyisellä sivulla, joten ota käyttöön vain luotettuja lähteitä. Esikatselun peruminen ei kumoa jo tehtyjä toimia. Kytkin tallennetaan nykyisen henkilöllisyyden, laitteen käyttöoikeusalueen ja ulkoasun mukaan ja säilytetään sivun uudelleenlatauksessa sekä saman ulkoasun päivityksissä.",
+          "Laajennustietoja ei sisällytetä skin ZIP -vientiin tai synkronoitu selaimien/laitteiden välillä. Varmuuskopioi ennen tallennustilan tyhjentämistä; epäonnistunutta säästämistä ei saa pitää onnistumisena."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Mukautetun ulkoasun komentosarjakytkin ja laajennustoimintojen avauskohdat",
+          "caption": "Tähtitaivaan ulkoasun komentosarjakytkin sekä ZIP-viennin, esikatselun ja käyttöönoton avauskohdat. Komentosarjat ovat nyt pois käytöstä; kuvat toimivista laajennuksista ja käytöstäpoiston tuloksesta puuttuvat vielä."
+        }
+      },
+      {
         "title": "Valitse sisäänrakennettu kieli",
         "steps": [
           "Valitse kohdassa Asetukset → Ulkoasu yksinkertaistettu kiina, perinteinen kiina, englanti, japani, ranska, saksa tai arabia ja tarkista yleiset merkinnät ja päivämääräohjaimet.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Sisäänrakennetut kielenvalitsimet sovelluksessa ja verkkosivustossa",
           "caption": "Todelliset kuvakaappaukset lisätyistä kielivaihtoehdoista odottavat."
-        }
-      },
-      {
-        "title": "Käytä v2:n ulkoasuja ja ominaisuuslaajennuksia",
-        "steps": [
-          "Asenna ja vahvista luotettu v2-ulkoasu kohdassa Asetukset → Ulkoasu, esikatsele ja ota se käyttöön. Pyydä kirjoittajaa ulkoasun luontikeskustelussa sisällyttämään osia ominaisuuksiin, kuten muistiinpanoihin.",
-          "Lue koodilla varustettujen pakettien käyttöönottovahvistus. Paketin päivittäminen tai identiteetin muuttaminen voi pyytää uudelleen. Avaa paneelit skinin valikkojen tai ominaisuusmerkintöjen kautta, jotka riippuvat paketista. Muistiinpanot tai kalenterit eivät ole esiasennettuja sovellusominaisuuksia.",
-          "Paketti voi sijoittaa säveltäjän ylä-, ala-, vasemmalle tai oikealle. Kompaktit näkymät säilyttävät pystysuoran järjestelyn. Vaihdon jälkeen tarkista viestit, säveltäjä ja asetukset ovat käytettävissä.",
-          "Laajennustiedot erotetaan selaimen identiteetin, laitteen, ulkoasun ja ominaisuuden mukaan. Skin vaihtaminen tai poistaminen ei poista sitä. Käytä laajennuksen omaa vientiä varmuuskopiointiin. Jos käyttöliittymä katkeaa, lisää URL:hen skin=default ja päivitä."
-        ],
-        "tips": [
-          "Komponenttikoodilla on nykyisen sivun oikeudet. Ota käyttöön vain luotettavat lähteet. Esikatselun peruuttaminen palauttaa ulkoasun, mutta ei kumoa jo suoritettua koodia.",
-          "Laajennustietoja ei sisällytetä skin ZIP -vientiin tai synkronoitu selaimien/laitteiden välillä. Varmuuskopioi ennen tallennustilan tyhjentämistä; epäonnistunutta säästämistä ei saa pitää onnistumisena."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "v2-komponentin käyttöönoton vahvistus ja ominaisuuspaneelin merkintä",
-          "caption": "Todellinen suoritus kuvakaappaus luotettavasta esittelypaketista odottaa. Muodin vahvistaminen ei ole visuaalista hyväksymistä."
-        }
-      },
-      {
-        "title": "Valitse ja tallenna henkilökohtainen ulkonäkö",
-        "steps": [
-          "Jos haluat käyttää koko laitetta, avaa Asetukset → Ulkoasu. Projektin valtuutetut käyttäjät syöttävät ulkoasun ja skinit sivupalkista.",
-          "Valitse fontti, koko ja kieli. Hae tai suodata asennetut skinit, esikatsele ja käytä. Kiinteän esikatselupalkin avulla voit peruuttaa tai vahvistaa.",
-          "Authenticated Gateway -käyttäjien valinnat tallennetaan tili- ja laitekohtaisesti, ja ne palautetaan toisessa saman laitteen selaimessa. Yritä uudelleen epäonnistuneita tallennuksia. Paikalliset valinnat ilman alustan kirjautumista säilyvät tässä selaimessa."
-        ],
-        "tips": [
-          "Paketit ja luontitietueet jaetaan laitteessa; henkilökohtaiset valinnat ovat erillisiä. Projektin valtuutetut käyttäjät voivat valita vain asennetut paketit.",
-          "Puuttuvat tai rikkinäiset paketit palautuvat oletusarvoiseen ulkoasuun. Lisää ?skin=default tai ?language=default palauttaaksesi oletusulkokuvan tai yksinkertaistetun kiinan."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Fontit, koko, kieli ja asennetut skinit Ulkoasussa",
-          "caption": "Oikealla asetussivulla on oletusasetukset ja sisäänrakennetut esimerkit oikealla. Henkilökohtaisia ​​mieltymyksiä ei muutettu."
-        }
-      },
-      {
-        "title": "Luo skinejä ja kieliä chatin kautta",
-        "steps": [
-          "Kun käytössäsi on isäntähallintaoikeudet, napsauta Keskustellaan ulkonäöstä, valitse asennettu, vahvistettu moottori ja kuvaile tavoite, kuten: Tee tumma pinta, säilytä asettelu ja käytä ylöspäin osoittavaa lähetysnuolta.",
-          "Chat on vasemmalla, muokkaus ja esikatselu oikealla; puhelimet vaihtavat välilehteä. Säädä nimeä, värejä, fonttia, kokoa, lähetyskuvaketta ja asettelua ja sitten Tallenna säädöt samaan luonnospakettiin. Muokkaus on poissa käytöstä chatin aikana. Tarkista tietokoneen ja puhelimen esikatselu.",
-          "Kielipakettia varten kysy samassa chatissa, esimerkiksi: Lisää espanjaa ulkonäköä säilyttäen. Vaihda oikea puoli kohtaan Kieli. Se latautuu sukupolven jälkeen; Käytä Lue ja vahvista tarkistaaksesi sen hakemiston, kattavuuden, puuttuvat merkkijonot ja esimerkit.",
-          "Valitse skineille Tallenna ulkoasu ja esikatselu. kielille, Asenna ja esikatsele. Vahvista tai peruuta esikatselupalkissa. Kirjastoon tallentaminen ei vahvista henkilökohtaista hakemusta. Vie ZIP uudelleenkäyttöä varten ja tarkista saman tunnuksen tuonnin tai päivityksen korvaavat kehotteet."
-        ],
-        "tips": [
-          "Luominen käyttää uudelleen kiinteää Runtime-projektia ja tavallista chattia kutsuen malliasi. Jatka työskentelyä ikkunan yläpuolella olevan keskusteluhistorian kautta. Esikatseluesimerkit eivät itse suorita tehtäviä.",
-          "Fontit käyttävät asennettuja järjestelmän fontteja. Historiallisia viestejä ja tiedostoja ei käännetä automaattisesti. Sisäänrakennetut lähetyskuvakkeet voidaan valita säädöissä; mukautetut vektorikuvakkeet on toimitettava vahvistetussa luonnoksessa.",
-          "Kielipaketit ovat skinistä riippumattomia ja tukevat tällä hetkellä vasemmalta oikealle kirjoitettuja kieliä. Puuttuvat merkkijonot ja päivämääräsäätimet käyttävät määritettyä sisäänrakennettua varavaihtoehtoa. Kattavuus ei todista käännösten laatua; käytä chatia päivittääksesi vanhentuneet merkkijonoluettelot."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Keskustelu- ja muokkaus-/esikatselualueet ulkoasun luomisessa",
-          "caption": "Valtuutettu tyhjä luontikeskustelu ja säätölomake. Sen säveltäjä on esitäytetty; viestiä ei lähetetty, malliajoa tai skiniä ei tallennettu."
         }
       },
       {

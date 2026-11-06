@@ -1,0 +1,464 @@
+/* AI-adapted ESO/S. Brunier panorama and generated nebula.
+   Source: https://www.eso.org/public/images/eso0932a/
+   CC BY 4.0: https://creativecommons.org/licenses/by/4.0/ */
+/* One prerecorded animated image across the entire workspace. */
+[data-ui="workspace"] {
+  position: relative;
+  isolation: isolate;
+  background-color: #080c18;
+  color: var(--fg);
+}
+[data-ui="workspace"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: #080c18;
+  background-image: linear-gradient(rgba(9,18,43,.28), rgba(10,16,38,.38)), url("assets/cold-blue-galaxy.webp");
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  transform: none;
+  animation: none;
+}
+/* One continuous sky across sidebar, conversation and composer. */
+.chat-history-wrapper {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.chat-history-wrapper::before, .chat-history-wrapper::after {
+  content: none;
+}
+[data-ui="workspace"] [data-ui="main"],
+[data-ui="workspace"] [data-ui="navigation"],
+[data-ui="workspace"] [data-ui="conversation"],
+[data-ui="workspace"] .app-main,
+[data-ui="workspace"] .layout-main,
+[data-ui="workspace"] .layout-sidebar,
+[data-ui="workspace"] .layout-sidebar-header,
+[data-ui="workspace"] .layout-sidebar-body,
+[data-ui="workspace"] .layout-sidebar-project-panel,
+[data-ui="workspace"] .layout-sidebar-projects,
+[data-ui="workspace"] .layout-sidebar-recent,
+[data-ui="workspace"] .layout-sidebar-actions,
+[data-ui="workspace"] .assistant-chat-panel,
+[data-ui="workspace"] .assistant-chat-header,
+[data-ui="workspace"] .task-conversation-header,
+[data-ui="workspace"] .task-conversation-body,
+[data-ui="workspace"] .task-conversation-content,
+[data-ui="workspace"] .skin-conversation-layout,
+[data-ui="workspace"] .chat-history-wrapper,
+[data-ui="workspace"] .chat-composer-outer,
+[data-ui="workspace"] .chat-composer-inner,
+[data-ui="workspace"] .task-detail-composer,
+[data-ui="workspace"] .chat-input,
+[data-ui="workspace"] .chat-input-root,
+[data-ui="workspace"] .chat-quick-prompts,
+[data-ui="workspace"] [data-ui="composer"]:not(.chat-input-frame) {
+  background: transparent !important;
+}
+/* Image attribution remains visible alongside the continuous background. */
+.layout-sidebar-body::after {
+  content: "ESO/S. Brunier · AI 融合改编";
+  display: block;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #becde3;
+}
+/* Keep the title row at its natural height when the message list grows. */
+.assistant-chat-header, .task-conversation-header {
+  flex-shrink: 0;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding-block: 8px;
+  align-items: center;
+}
+[data-ui="messages"], .chat-history-content, .chat-history-scroll,
+.task-detail-conversation, .task-detail-content { background-color: transparent; }
+
+/* Sender, actions and usage metadata are not message bubbles. */
+[data-ui="message"]:not(.chat-message-bubble):not(.chat-bubble), .chat-message-row,
+.chat-message-sender-mobile, .message-meta-details, .footer-usage-summary, .action-conversation-meta {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+.chat-message-bubble, .chat-bubble--assistant {
+  background-color: transparent;
+  color: #e0e9f7;
+  border-color: transparent;
+  box-shadow: none;
+}
+.chat-bubble--user {
+  background-color: transparent;
+  color: #e0e9f7;
+  border-color: transparent;
+}
+.chat-bubble--user .chat-message-bubble, .chat-bubble--assistant .chat-message-bubble,
+.chat-message-bubble .chat-bubble { background-color: transparent; box-shadow: none; }
+/* Message surfaces, including highlighted code, must expose the starfield. */
+.chat-history-wrapper .chat-bubble,
+.chat-history-wrapper .chat-message-bubble,
+.chat-history-wrapper .task-conversation-message,
+.chat-history-wrapper .markdown-message,
+.chat-history-wrapper .user-message-markdown,
+.chat-message-bubble .markdown-message,
+.chat-message-bubble pre, .chat-message-bubble code,
+.chat-history-wrapper .markdown-message pre,
+.chat-history-wrapper .markdown-message code,
+.chat-history-wrapper .user-message-markdown pre,
+.chat-history-wrapper .user-message-markdown code,
+.chat-history-wrapper .code-preview,
+.chat-history-wrapper .code-preview-scroll,
+.chat-history-wrapper .code-preview-line,
+.chat-history-wrapper .code-preview-line-content,
+.chat-history-wrapper .code-preview-language {
+  background: transparent !important;
+  box-shadow: none;
+}
+.process-trace, .process-trace-compact, .process-trace-session,
+.process-trace-session-summary, .action-conversation-duration,
+.action-conversation-meta, .execution-segment-usage,
+.footer-usage-summary, .message-meta-details {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+.process-trace-body, .process-trace-preview, .process-trace-tools,
+.process-trace-thinking, .process-trace-commentary { background-color: transparent; }
+.footer-usage-summary, .message-meta-details, .chat-message-sender-mobile {
+  color: #9aa9c3;
+  border-color: rgba(157,173,222,.12);
+}
+[data-ui="composer"]:not(.chat-input-frame), .chat-composer-outer,
+.chat-composer-inner, .chat-input-root { background-color: transparent; background-image: none; }
+.chat-input-frame {
+  background: rgba(8,16,35,.22) !important;
+  color: var(--fg);
+  border-color: #303b55;
+  box-shadow: none;
+  transition: border-color 180ms ease, box-shadow 220ms ease;
+}
+.chat-input-frame:focus-within {
+  border-color: #8c8dc4;
+  box-shadow: 0 0 0 2px rgba(165,184,248,.12), 0 0 28px rgba(128,94,196,.14);
+}
+.chat-input-frame textarea, .chat-input-editor, .chat-input-text-segment,
+.chat-input-toolbar, .chat-input-toolbar-scroll {
+  background-color: transparent;
+  color: #e0e9f7;
+  caret-color: #c0ceff;
+}
+.chat-input-frame textarea::placeholder, .chat-input-text-segment::placeholder { color: #9aa9c3; }
+.chat-input-pill { background-color: #1a2135; color: #c4cde2; border-color: #303b55; }
+.chat-input-attach, .chat-input-config-engine, .chat-message-action {
+  background-color: transparent;
+  color: #a5b3d0;
+}
+.skin-select-panel, .chat-input-menu, .chat-input-config-menu, .chat-input-attach-menu,
+.modal, .mobile-sheet, .resizable-panel, .confirm-dialog-panel, .settings-dialog-panel,
+[data-ui="settings"] {
+  background-color: #101625;
+  color: var(--fg);
+  border-color: #303b55;
+  box-shadow: 0 20px 64px rgba(0,0,0,.45);
+  animation: stellar-arrive 160ms ease-out;
+}
+.skin-select-trigger, .skin-select-search, .ws-input, .ws-select, .ws-textarea {
+  background-color: #0d1322;
+  color: var(--fg);
+  border-color: var(--border);
+}
+.skin-select-option, .layout-sidebar-nav-button, .settings-nav-button,
+.task-board-card, .task-step-progress-card, .btn, .chat-input-send, .mobile-navigation-float {
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 220ms ease;
+}
+.skin-select-option:hover, .layout-sidebar-nav-button:hover, .settings-nav-button:hover { background-color: #20273d; }
+.skin-select-option[aria-selected="true"], .skin-select-option.is-selected { background-color: #28304b; color: #e0e9f7; }
+.task-board-card, .task-step-progress-card, .react-flow__node, .react-flow__controls, .flow-canvas-toolbar {
+  background-color: #101625;
+  border-color: var(--border);
+  color: var(--fg);
+}
+.task-board-card:hover, .task-step-progress-card:hover {
+  border-color: #777ba4;
+  box-shadow: 0 6px 24px rgba(100,80,160,.16);
+}
+
+/* Nebula colors remain static so buttons do not repaint continuously. */
+.btn-primary, .chat-input-send, .mobile-navigation-float {
+  background-color: #343c65;
+  background-image: linear-gradient(125deg, #26496a, #49375f, #303d66, #26496a);
+  background-size: 240% 240%;
+  color: #edf2ff;
+  border-color: #636b98;
+  box-shadow: 0 0 18px rgba(121,99,191,.18);
+}
+.btn-primary:hover:not(:disabled):not([aria-disabled="true"]),
+.chat-input-send:hover:not(:disabled):not([aria-disabled="true"]), .mobile-navigation-float:hover {
+  border-color: #a9a7d5;
+  box-shadow: 0 0 24px rgba(139,119,214,.3);
+}
+/* Only this small decorative layer rotates; send/stop glyphs stay still. */
+.chat-input-send {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: #171c3a;
+  background-image: none;
+  color: #edf2ff;
+}
+.chat-input-send::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(circle at 24% 32%, rgba(227,239,255,.9) 0 1px, transparent 1.6px), radial-gradient(circle at 72% 68%, rgba(218,209,255,.8) 0 1px, transparent 1.6px), radial-gradient(ellipse at center, rgba(166,164,239,.25), transparent 48%), conic-gradient(from 20deg, #172440, #476193 14%, #8972ae 20%, #242640 30%, #172440 48%, #3d597f 64%, #786399 70%, #25243e 80%, #172440);
+  opacity: .85;
+  transform: rotate(0deg) scale(1.45);
+  animation: stellar-button-galaxy 18s linear infinite;
+}
+.chat-input-send:disabled::before, .chat-input-send[aria-disabled="true"]::before {
+  animation: none;
+  opacity: .15;
+}
+.chat-input-send:disabled, .chat-input-send[aria-disabled="true"],
+.btn-primary:disabled, .btn-primary[aria-disabled="true"] {
+  background-color: #20273b;
+  background-image: none;
+  color: #8290ad;
+  box-shadow: none;
+  animation: none;
+}
+.skin-settings-preview-toolbar { background-color: #0b1020; color: var(--fg); border-color: var(--border); }
+.skin-settings-preview-toolbar button:not(.btn-primary) { background-color: #1a2135; color: #c4cde2; border-color: #303b55; }
+.btn:focus-visible, .chat-input-send:focus-visible, .mobile-navigation-float:focus-visible,
+.skin-select-trigger:focus-visible, .skin-select-option:focus-visible { outline: 2px solid #b7b6ee; outline-offset: 2px; }
+.message-footer--running { color: #a5b8f8; }
+.react-flow__node[data-status="running"], .task-step-progress-card[data-status="running"] { border-color: #a5b8f8; }
+
+@keyframes stellar-button-galaxy {
+  from { transform: rotate(0deg) scale(1.45); }
+  to { transform: rotate(360deg) scale(1.45); }
+}
+@keyframes stellar-arrive {
+  from { opacity: .4; }
+  to { opacity: 1; }
+}
+@media (max-width: 1023px) {
+  [data-ui="workspace"]::before {
+    background-image: linear-gradient(rgba(9,18,43,.28), rgba(10,16,38,.38)), url("assets/cold-blue-galaxy.webp");
+    background-position: center;
+  }
+  .mobile-header::after {
+    max-width: 130px;
+    content: "ESO/S. Brunier · AI 融合改编";
+    font-size: 10px;
+    color: #becde3;
+  }
+  [data-ui="workspace"]::after { content: none; animation: none; }
+  .chat-message-bubble, .chat-bubble--assistant, .chat-bubble--user,
+  .chat-input-frame, .chat-input-frame:focus-within,
+  .btn-primary, .chat-input-send, .mobile-navigation-float { box-shadow: none; }
+  .skin-select-panel, .chat-input-menu, .chat-input-config-menu, .chat-input-attach-menu,
+  .modal, .mobile-sheet, .resizable-panel, .confirm-dialog-panel,
+  .settings-dialog-panel, [data-ui="settings"] { animation: none; }
+  .skin-select-option, .layout-sidebar-nav-button, .settings-nav-button,
+  .task-board-card, .task-step-progress-card, .btn, .chat-input-send,
+  .mobile-navigation-float, .chat-input-frame { transition: none; }
+  .mobile-header { background-color: #0b1020; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-history-wrapper::before { animation: none; will-change: auto; transform: none; }
+  .chat-input-send::before { animation: none; }
+  [data-ui="workspace"]::before { background-image: linear-gradient(rgba(9,18,43,.28), rgba(10,16,38,.38)), url("assets/cold-blue-galaxy.webp"); animation: none; will-change: auto; transform: none; }
+  [data-ui="workspace"]::after { content: none; animation: none; }
+  .skin-select-panel, .chat-input-menu, .chat-input-config-menu, .chat-input-attach-menu,
+  .modal, .mobile-sheet, .resizable-panel, .confirm-dialog-panel,
+  .settings-dialog-panel, [data-ui="settings"] { animation: none; }
+  .skin-select-option, .layout-sidebar-nav-button, .settings-nav-button,
+  .task-board-card, .task-step-progress-card, .btn, .chat-input-send,
+  .mobile-navigation-float, .chat-input-frame { transition: none; }
+}
+
+.chat-history-wrapper .message-file-changes,
+.chat-history-wrapper .message-file-changes-header,
+.chat-history-wrapper .message-file-changes-toggle,
+.chat-history-wrapper .message-file-changes-list,
+.chat-history-wrapper .message-file-change-row {
+  background: transparent !important;
+  box-shadow: none;
+  border-color: rgba(165,184,248,.18);
+}
+.chat-history-wrapper .message-file-changes-toggle:hover,
+.chat-history-wrapper .message-file-change-row:hover {
+  background: rgba(165,184,248,.1) !important;
+}
+
+
+/* Mobile navigation overlays must occlude conversation content. */
+@media (max-width: 1023px) {
+  .responsive-navigation,
+  [data-ui="workspace"] [data-ui="navigation"],
+  [data-ui="workspace"] .layout-sidebar,
+  .app-shell .responsive-navigation,
+  .app-shell .layout-sidebar,
+  .mobile-menu-options, .mobile-task-menu, .mobile-sheet {
+    background: #0b1020 !important;
+    opacity: 1;
+    backdrop-filter: none;
+  }
+  [data-ui="workspace"] .layout-sidebar-header,
+  [data-ui="workspace"] .layout-sidebar-body,
+  [data-ui="workspace"] .layout-sidebar-actions,
+  .app-shell .layout-sidebar-header,
+  .app-shell .layout-sidebar-body,
+  .app-shell .layout-sidebar-actions {
+    background: #0b1020 !important;
+  }
+  /* The static photo is painted on the actual chat panel when scripts are off.
+     It does not depend on a negative-z pseudo element surviving mobile stacking. */
+  .app-shell .assistant-chat-panel,
+  .app-shell .task-detail-conversation,
+  [data-ui="workspace"] [data-ui="conversation"] {
+    background-color: #080c18 !important;
+    background-image: linear-gradient(rgba(9,18,43,.18), rgba(10,16,38,.25)), url("assets/cold-blue-galaxy.webp") !important;
+    background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+  }
+  .mobile-header, .assistant-chat-header, .task-conversation-header {
+    border-bottom: 0 !important;
+    box-shadow: none !important;
+  }
+  .chat-history-wrapper {
+    border-top: 0 !important;
+    box-shadow: none !important;
+  }
+  .skin-settings-preview-toolbar {
+    border-bottom: 0 !important;
+    box-shadow: none !important;
+  }
+  /* Keep attribution in the navigation footer, away from the compact title. */
+  .mobile-header::after { content: none; }
+}
+
+/* Anchor the mobile send/stop control independently of scrolling tools. */
+@media (max-width: 1023px) {
+  .chat-input-frame { position: relative; }
+  .chat-input-frame .chat-input-toolbar {
+    min-height: 44px;
+    padding-right: 56px;
+    box-sizing: border-box;
+  }
+  .chat-input-frame .chat-input-toolbar-scroll {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .chat-input-frame .chat-input-send {
+    position: absolute !important;
+    inset: auto 10px 10px auto !important;
+    margin: 0 !important;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    flex: 0 0 44px;
+    transform: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* Remove the top rule in desktop conversation chrome as well as mobile. */
+.assistant-chat-panel, .assistant-chat-header,
+.task-conversation-header, .chat-history-wrapper {
+  border-top: 0 !important;
+}
+.assistant-chat-header, .task-conversation-header,
+.skin-settings-preview-toolbar {
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Blend preview chrome into the night palette, without an accent-colored rule. */
+.skin-workspace-frame, .skin-workspace-top-area,
+.skin-settings-preview-stage, .skin-studio-preview-frame,
+.skin-studio-preview-container, .skin-conversation-layout {
+  border-top: 0 !important;
+  border-color: rgba(94,113,151,.16) !important;
+  box-shadow: none !important;
+}
+.skin-workspace-top, .skin-workspace-top-area,
+.skin-extension-status, .skin-settings-preview-notice {
+  background-color: #0b1020 !important;
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+  color: #9aafcb;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-ui="workspace"]::before,
+  .app-shell .assistant-chat-panel,
+  .app-shell .task-detail-conversation,
+  [data-ui="workspace"] [data-ui="conversation"] {
+    background-image: linear-gradient(rgba(9,18,43,.18), rgba(10,16,38,.25)), url("assets/cold-blue-galaxy.webp") !important;
+  }
+}
+
+
+/* SDK workspace-top mounts one full-window background below the app content. */
+.stellar-flow-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: -1; pointer-events: none !important;
+}
+
+
+.skin-workspace-top:has(.stellar-flow-canvas) { overflow: visible; }
+[data-ui="workspace"]:has(.stellar-flow-canvas[data-ready="true"])::before { content: none; }
+.app-shell:has(.stellar-flow-canvas[data-ready="true"]) .assistant-chat-panel,
+.app-shell:has(.stellar-flow-canvas[data-ready="true"]) .task-detail-conversation,
+.skin-workspace-frame:has(.stellar-flow-canvas[data-ready="true"]) .assistant-chat-panel,
+.skin-workspace-frame:has(.stellar-flow-canvas[data-ready="true"]) .task-detail-conversation,
+[data-ui="workspace"]:has(.stellar-flow-canvas[data-ready="true"]) [data-ui="conversation"] {
+  background: transparent !important;
+}
+
+/* Isolate only the background host; retain application-owned menu stacking. */
+[data-ui="workspace"]:has(> .stellar-flow-canvas),
+.app-shell:has(> .stellar-flow-canvas),
+.skin-workspace-frame:has(> .stellar-flow-canvas) { position: relative; isolation: isolate; }
+@media (max-width: 1023px) {
+  .assistant-chat-panel, .assistant-chat-header,
+  .task-conversation-header, .chat-history-wrapper,
+  .skin-workspace-frame, .skin-workspace-top-area,
+  .skin-workspace-top, .skin-conversation-layout {
+    border-top: 0 !important;
+    border-bottom: 0 !important;
+    box-shadow: none !important;
+  }
+  .chat-composer-resize-line,
+  .task-detail-split-grip,
+  .task-detail-split-handle::before {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Keep every conversation pane transparent across session changes.
+   The starfield belongs to the workspace, not an individual conversation. */
+.chat-workspace,
+.chat-workspace-panes-scroll,
+.chat-workspace-panes,
+.chat-workspace-pane,
+.chat-workspace-pane-content {
+  background: transparent !important;
+}
+.chat-workspace-pane--active {
+  box-shadow: none !important;
+}

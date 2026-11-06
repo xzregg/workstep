@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from services.skin_extensions import CONFIG_KEYS, FILE_TYPES, compile_css, validate_extensions
 
 CONTRACT_FILE = Path(__file__).resolve().parent.parent / "data" / "skins" / "contract.json"
+BUNDLED_SKINS = {"interstellar-night": CONTRACT_FILE.parent / "bundled" / "interstellar-night"}
 MAX_FILE = 8 * 1024 * 1024
 MAX_PACKAGE = 32 * 1024 * 1024
 MAX_FILES = 256
@@ -317,6 +318,37 @@ class SkinManager:
 
     async def save_draft(self, path, expected_revision, document):
         return await asyncio.to_thread(self._save_draft, path, expected_revision, document)
+
+    def _ensure_defaults(self):
+        """Seed editable runtime packages once; existing edits and removals win."""
+        with self._lock:
+            packages = self.root / 'skin-packages'
+            for skin_id, bundled in BUNDLED_SKINS.items():
+                target = packages / skin_id
+                if target.exists():
+                    continue
+                pointer = self.root / 'skins' / skin_id
+                # Keep a previously installed package, including user modifications.
+                source = self.root / 'skin-assets' / self._get(skin_id)['revision'] if pointer.exists() else bundled
+                skin, _, files = self._read_package(source)
+                if skin['manifest']['id'] != skin_id:
+                    raise ValueError('随包皮肤 ID 与目录不匹配')
+                packages.mkdir(parents=True, exist_ok=True)
+                staging = packages / ('.skin-seed-' + uuid.uuid4().hex)
+                try:
+                    staging.mkdir()
+                    for name, content in files.items():
+                        file = staging / name
+                        file.parent.mkdir(parents=True, exist_ok=True)
+                        file.write_bytes(content)
+                    if not pointer.exists():
+                        self._register(staging)
+                    staging.rename(target)
+                finally:
+                    if staging.exists(): shutil.rmtree(staging)
+
+    async def ensure_defaults(self):
+        await asyncio.to_thread(self._ensure_defaults)
 
     def _register(self, path, replace=False):
         with self._lock:

@@ -812,7 +812,7 @@
         ],
         "tips": [
           "Doppelklicken Sie am Desktop ein Gespräch in der Seitenleiste oder dessen Kopftitel, um den gemeinsamen Umbenennungsdialog zu öffnen und den Namen zu bestätigen.",
-          "Mobil ist nur der aktive Bereich sichtbar; andere bleiben erhalten. Weg- und Zurücknavigieren innerhalb derselben Seitensitzung stellt Bereiche, Anordnung und Größen wieder her, nicht garantiert nach Browser-Neuladen. Layouts sind nach Konto und Gerät getrennt und kopieren keine Gesprächsinhalte."
+          "Auf dem Smartphone ist nur das aktive Fenster sichtbar; der Zustand der anderen bleibt erhalten. Nach dem Neuladen oder Verlassen und Zurückkehren lassen sich Fenster, Anordnung und Größen wiederherstellen; geschlossene Fenster werden nicht erneut geöffnet. Ein Klick auf die Projektzeile in der Seitenleiste klappt das Projekt nur auf oder zu; erst die Auswahl einer konkreten Unterhaltung wechselt den Chat. Das Layout ist nach aktuellem Konto und Gerät getrennt und kopiert keine Gesprächsinhalte."
         ],
         "screenshot": {
           "id": "chat-workspace",
@@ -861,7 +861,7 @@
           "Bei bestehendem Kontext und Engine-/Anbieterwechsel wählen Sie im Dialog intelligente Übergabe, vollständigen Verlauf oder nichts laden. Für unabhängige Versuche verzweigen Sie den Chat und bestätigen die Kontextart."
         ],
         "tips": [
-          "Projektchats sind unabhängige Sitzungen, keine Aufgabennachrichten. Für Phasenfortschritt und Reviews erstellen Sie eine Aufgabe.",
+          "Projektunterhaltungen werden nicht in den Workflow-Aufgabenverlauf geschrieben. In Codex-Unterhaltungen wählen Sie im Konfigurationsmenü „Geschwindigkeit → Vorgabe / Standard / Schnell / Ultraschnell“. Die Auswahl wird je Projekt und Sitzung gespeichert und bei einem Wechsel von Engine oder Anbieter sowie bei einer Kontextübergabe zurückgesetzt. „Vorgabe“ übernimmt die ursprüngliche Konfiguration; die tatsächliche Beschleunigung hängt von Konto und Dienst ab.",
           "Native Verzweigung gibt es nur bei tatsächlich unterstützenden Engines; andernfalls erfolgt eine ausdrückliche Kontextübergabe."
         ],
         "screenshot": {
@@ -875,7 +875,7 @@
         "steps": [
           "Öffnen Sie Konfiguration → Skill-Zentrum im aktuellen Projekt, scannen Sie erneut und suchen Sie nach Name, Beschreibung oder Herkunftspfad.",
           "Lesen und aktivieren Sie benötigte Skills. Prüfen Sie vor Stapelaktivierung die Auswahl. Einstellungen gelten pro Projekt ab nächstem Lauf oder neuer Sitzung.",
-          "Geben Sie / ein und wählen Sie aus den tatsächlich von der Engine angebotenen Skills; die Listen unterscheiden sich.",
+          "Geben Sie / ein und suchen Sie anhand des Namensanfangs nach Skills der aktuellen Engine. Für den Übergang von der Diskussion zur Ausführung wählen Sie im normalen Chat eines lokalen Projekts „＋ → Workflow-Modus“. Besprechen Sie zuerst das Ablaufdiagramm; erst nach ausdrücklicher Bestätigung werden Workflow und Aufgabe erstellt und gestartet. Öffnen Sie die Aufgabe über die Detailschaltfläche in der Antwort. In Remote-Projekten und eingebetteten Erstellungsunterhaltungen fehlt dieser Einstieg.",
           "Benennen oder archivieren Sie Chats über das Sitzungsmenü. Suchen und restaurieren Sie benötigte Chats im Archiv."
         ],
         "tips": [
@@ -1368,7 +1368,7 @@
           "Benutzernamen ändern Sie im System, Sprache, Schrift, Größe und Skin unter Einstellungen → Erscheinungsbild; Repository-Scanumfang unter Git."
         ],
         "tips": [
-          "Eine geänderte Standardengine gilt für neue Aufgaben und Schritte und ersetzt keine bestehenden Konfigurationen."
+          "Änderungen der Standard-Ausführungsengine gelten für neue Aufgaben und Schritte und ersetzen keine vorhandene Konfiguration. „Systemeinstellungen → Nachrichten pro Ladevorgang“ steht standardmäßig auf 20 und akzeptiert ganze Zahlen von 1–300. Die Änderung gilt für nachfolgendes Laden des Verlaufs und lädt offene Unterhaltungen nicht sofort neu."
         ],
         "screenshot": {
           "id": "concurrency-settings",
@@ -1402,6 +1402,60 @@
     "summary": "Wählen Sie persönliche Anzeigepräferenzen oder erstellen Sie Skins und Sprachpakete in normalen Projektchats mit Vorschau.",
     "sections": [
       {
+        "title": "Persönliches Erscheinungsbild wählen und speichern",
+        "steps": [
+          "Bei Gerätezugriff öffnen Sie Einstellungen → Erscheinungsbild, bei Projektberechtigung Erscheinungsbild und Skins in der Seitenleiste.",
+          "Wählen Sie Schriftart, Schriftgröße und Sprache. Suchen Sie in der Skin-Bibliothek oder filtern Sie nach „Alle / Meine Skins“. Eine ausgewählte Karte zeigt nur das Beispiel. Öffnen Sie die Vorschau und brechen Sie sie in der festen Vorschauleiste ab oder bestätigen Sie die Anwendung.",
+          "Authentifizierte Gateway-Benutzer speichern pro Konto und Gerät; derselbe Gerätezugriff in anderem Browser stellt die Wahl wieder her. Bei Fehler erneut versuchen. Ohne Plattformanmeldung bleiben lokale Präferenzen im Browser."
+        ],
+        "tips": [
+          "Skin- und Sprachpakete werden auf dem Gerät gemeinsam genutzt, persönliche Auswahlen bleiben getrennt. Benutzer mit Projektberechtigung können nur installierte Pakete auswählen. Host-Administratoren können ZIP importieren; gleichnamige Aktualisierungen erfordern eine Ersetzungsbestätigung und erneutes Anwenden. Ein ausgewählter benutzerdefinierter Skin lässt sich als ZIP exportieren; der Standard-Skin kann weder exportiert noch gelöscht werden.",
+          "Fehlende oder beschädigte Pakete fallen auf Standard zurück. ?skin=default oder ?language=default stellt Standardskin beziehungsweise vereinfachtes Chinesisch wieder her."
+        ],
+        "screenshot": {
+          "id": "appearance-personal",
+          "alt": "Arbeitsbereich und Chat-Eingabe nach tatsächlicher Anwendung des Sternenhimmel-Skins",
+          "caption": "Demo-Arbeitsbereich mit tatsächlich angewendetem Skin „星际 · 静谧星海“. Die Unterhaltung ist leer, es wurde nichts gesendet und Skripte sind ausgeschaltet. Bildnachweis des Hintergrunds: ESO/S. Brunier · mit AI kombinierte Bearbeitung."
+        }
+      },
+      {
+        "title": "Skins und Sprachen im Chat erstellen",
+        "steps": [
+          "Mit Host-Verwaltungsrechten klicken Sie auf „Über Änderungen am Erscheinungsbild sprechen“, wählen im Konfigurationsmenü des Chats eine verfügbare Engine und senden Ihren Wunsch, etwa „Verwende „星际 · 静谧星海“ als Grundlage, behalte den Sternenhintergrund bei und nutze einen Aufwärtspfeil für die Sendeschaltfläche“. Vorschläge und vorausgefüllte Anweisungen werden nicht automatisch gesendet. Eine Skin-Formatversion müssen Sie nicht auswählen.",
+          "Links befindet sich der Chat, rechts Bearbeitung und Vorschau; auf dem Smartphone wechseln Sie über Registerkarten. Passen Sie Name, Farben, Schriftart, Größe, Sendeicon oder Layout an und klicken Sie auf „Anpassungen speichern“, um denselben Entwurf zu aktualisieren. Vor dem Senden wird auch automatisch gespeichert; nach der Generierung wird das Paket neu eingelesen. Während der Ausführung ist die Bearbeitung gesperrt; lesen Sie bei Versionskonflikten zuerst neu ein. Prüfen Sie im Erstellungsfenster die Chat-Beispiele für Desktop und Smartphone. Nach dem Speichern in der Skin-Bibliothek können Sie zusätzlich Aufgabenboard- und Workflow-Beispiele prüfen.",
+          "Fordern Sie im selben Chat ein Sprachpaket an, etwa Spanisch hinzufügen, Aussehen behalten, und wählen rechts Sprache. Nach Erzeugung wird automatisch gelesen; Lesen und validieren prüft bei Bedarf Paketordner, Abdeckung, fehlende Texte und Beispiele.",
+          "Für Skins Aussehen speichern und Vorschau anzeigen, für Sprache Installieren und Vorschau anzeigen wählen und in der Vorschauleiste bestätigen oder abbrechen. Bibliotheksspeicherung ist keine persönliche Anwendung. Exportieren Sie ZIP zur Wiederverwendung; prüfen Sie vor gleichnamigem Import/Update die Ersetzung."
+        ],
+        "tips": [
+          "Beim erneuten Öffnen der Erstellung werden die ursprüngliche Sitzung und der Entwurf wiederhergestellt; bei gelöschter oder archivierter Sitzung wird eine neue erstellt. Gesendete Wünsche rufen das gewählte Modell auf. Begrüßung, manuelle Anpassungen und lokale Vorschau rufen kein Modell auf und starten keine echten Aufgaben.",
+          "Sie können Systemschriften oder lokale Schriften aus dem Skin-Paket verwenden. Für das Sendeicon stehen integrierte Varianten bereit; eigene Vektoricons müssen die Validierung bestehen. Frühere Nachrichten und Benutzerdateien werden beim Skin- oder Sprachwechsel nicht automatisch übersetzt.",
+          "Sprachpakete sind unabhängig von Skins und unterstützen derzeit Links-nach-rechts-Sprachen. Fehltexte und Datumsfelder nutzen die festgelegte integrierte Rückfallsprache. Abdeckung ist keine Qualitätsprüfung; alte Textkataloge können im Chat ergänzt werden."
+        ],
+        "screenshot": {
+          "id": "appearance-studio",
+          "alt": "Chat-, Editor- und Vorschaubereich des Designfensters",
+          "caption": "Das tatsächliche Erstellungsfenster nach dem Einlesen des Sternenhimmel-Pakets, rechts mit Anpassungen und Desktop-Vorschau. Die Anforderung links wurde noch nicht gesendet; es gab keinen Modellaufruf."
+        }
+      },
+      {
+        "title": "Benutzerdefinierte Skins und Funktionserweiterungen verwenden",
+        "steps": [
+          "Wählen Sie unter „Einstellungen → Erscheinungsbild“ einen Skin aus. Die Karte aktualisiert nur das lokale Beispiel; Vorschaubilder führen keine Skripte aus. Die Vorschau verändert vorübergehend den gesamten Arbeitsbereich. Bestätigen speichert die Auswahl, Abbrechen stellt den vorherigen Zustand wieder her.",
+          "Wählen Sie einen Skin mit Skript aus und steuern Sie seine Funktionen über „Skin-Skripte ausführen“, ohne zusätzlichen Bestätigungsdialog. Ohne Skript ist der Schalter deaktiviert. Bei einem noch nicht angewendeten Skin speichert er nur die Einstellung; das Skript läuft erst in der Vorschau des gesamten Arbeitsbereichs oder nach dem Anwenden. Menüs, Notizen oder Kalender liefert der installierte Skin; sie sind keine vorinstallierten App-Funktionen.",
+          "Der Eingabebereich kann je nach Skin oben, unten, links oder rechts liegen; in der kompakten Ansicht bleibt die vertikale Anordnung erhalten. Beim Abschalten des Skripts werden Erweiterungsfunktionen deaktiviert sowie Komponenten und Abonnements bereinigt, das Erscheinungsbild bleibt erhalten. Manche Menüs bleiben möglicherweise sichtbar, sind aber nicht verfügbar. Prüfen Sie bei Ladefehlern die Fehlermeldung; schalten Sie den Schalter aus und wieder ein, um es erneut zu versuchen.",
+          "Erweiterungsdaten werden je Browseridentität, Gerät, Skin und Funktion gespeichert und beim Skinwechsel/-löschen nicht automatisch entfernt. Nutzen Sie eigene Exportfunktionen zur Sicherung. Bei unbedienbarer Oberfläche fügen Sie skin=default zur URL hinzu und laden neu."
+        ],
+        "tips": [
+          "Skripte haben dieselben Rechte wie die aktuelle Seite. Aktivieren Sie nur vertrauenswürdige Quellen. Das Abbrechen der Vorschau macht ausgeführte Aktionen nicht rückgängig. Der Schalter wird nach aktueller Identität, Gerätezugriffsbereich und Skin gespeichert und bleibt bei Neuladen und Aktualisierungen desselben Skins erhalten.",
+          "Erweiterungsdaten sind nicht im Skin-ZIP und werden nicht zwischen Browsern oder Geräten synchronisiert. Sichern Sie vor Browserbereinigung; ein Speicherfehler ist kein Erfolg."
+        ],
+        "screenshot": {
+          "id": "skin-v2-extensions",
+          "alt": "Schalter zum Ausführen von Skin-Skripten und Einstiege zu Erweiterungsfunktionen",
+          "caption": "Skriptschalter des Sternenhimmel-Skins sowie Einstiege für ZIP-Export, Vorschau und Anwenden. Die Skripte sind derzeit ausgeschaltet; Aufnahmen laufender Erweiterungen und des Ergebnisses ihrer Deaktivierung fehlen noch."
+        }
+      },
+      {
         "title": "Integrierte Sprache wählen",
         "steps": [
           "Wählen Sie unter Einstellungen → Erscheinungsbild vereinfachtes/traditionelles Chinesisch, Englisch, Japanisch, Französisch, Deutsch oder Arabisch und prüfen Sie Navigation und Datumsfelder.",
@@ -1414,60 +1468,6 @@
           "id": "builtin-languages",
           "alt": "Integrierte Sprachwahl in App und Website",
           "caption": "Echte Aufnahme der neuen Sprachoptionen noch ausstehend."
-        }
-      },
-      {
-        "title": "Layouts und Erweiterungen mit v2-Skins",
-        "steps": [
-          "Installieren und validieren Sie vertrauenswürdige v2-Skins unter Einstellungen → Erscheinungsbild und bestätigen Sie nach Vorschau. Für Funktionen wie Notizzettel bitten Sie im Designchat um mitgelieferte Komponenten.",
-          "Lesen Sie bei Aktivierung von Komponentencode die Bestätigung. Nach Paketupdate oder Identitätswechsel kann sie erneut nötig sein. Öffnen Sie danach vom Skin bereitgestellte Menüs oder Panels; Funktionen hängen vom Paket ab, Notizen/Kalender sind nicht vorinstalliert.",
-          "Das Paket kann die Eingabe oben, unten, links oder rechts platzieren; kompakte Ansichten bleiben vertikal. Prüfen Sie nach Wechsel Chat, Eingabe und Einstellungen auf Bedienbarkeit.",
-          "Erweiterungsdaten werden je Browseridentität, Gerät, Skin und Funktion gespeichert und beim Skinwechsel/-löschen nicht automatisch entfernt. Nutzen Sie eigene Exportfunktionen zur Sicherung. Bei unbedienbarer Oberfläche fügen Sie skin=default zur URL hinzu und laden neu."
-        ],
-        "tips": [
-          "Komponentencode besitzt dieselben Rechte wie die Seite. Aktivieren Sie nur vertrauenswürdige Quellen. Vorschau abbrechen stellt nur die Anzeige zurück, nicht bereits ausgeführte Aktionen.",
-          "Erweiterungsdaten sind nicht im Skin-ZIP und werden nicht zwischen Browsern oder Geräten synchronisiert. Sichern Sie vor Browserbereinigung; ein Speicherfehler ist kein Erfolg."
-        ],
-        "screenshot": {
-          "id": "skin-v2-extensions",
-          "alt": "Aktivierungsbestätigung und Panelzugriff eines v2-Skins",
-          "caption": "Echte Ausführung eines vertrauenswürdigen Demopakets im festen Demoaufbau noch aufzunehmen. Formatprüfung ersetzt keine visuelle Abnahme."
-        }
-      },
-      {
-        "title": "Persönliches Erscheinungsbild wählen und speichern",
-        "steps": [
-          "Bei Gerätezugriff öffnen Sie Einstellungen → Erscheinungsbild, bei Projektberechtigung Erscheinungsbild und Skins in der Seitenleiste.",
-          "Wählen Sie Schrift, Größe und Sprache. Suchen/filtern Sie installierte Skins, zeigen Sie eine Vorschau und bestätigen Sie. Die feste Vorschauleiste bietet Abbrechen und Bestätigen.",
-          "Authentifizierte Gateway-Benutzer speichern pro Konto und Gerät; derselbe Gerätezugriff in anderem Browser stellt die Wahl wieder her. Bei Fehler erneut versuchen. Ohne Plattformanmeldung bleiben lokale Präferenzen im Browser."
-        ],
-        "tips": [
-          "Pakete und Herstellungshistorie werden auf dem Gerät geteilt, persönliche Auswahl bleibt getrennt. Projektberechtigte können nur installierte Pakete wählen.",
-          "Fehlende oder beschädigte Pakete fallen auf Standard zurück. ?skin=default oder ?language=default stellt Standardskin beziehungsweise vereinfachtes Chinesisch wieder her."
-        ],
-        "screenshot": {
-          "id": "appearance-personal",
-          "alt": "Schrift, Größe, Sprache und installierte Skins",
-          "caption": "Echte Einstellungsseite mit Standardskin. Rechts steht ein integriertes Muster; persönliche Präferenzen wurden nicht geändert."
-        }
-      },
-      {
-        "title": "Skins und Sprachen im Chat erstellen",
-        "steps": [
-          "Mit Hostverwaltungsrecht klicken Sie auf Über Aussehen sprechen, wählen eine installierte verifizierte Engine und beschreiben im normalen Chat etwa Dunkler Skin, Layout behalten, Sendepfeil nach oben.",
-          "Links ist Chat, rechts Bearbeitung und Vorschau; mobil wechseln Sie Reiter. Ändern Sie Name, Farben, Schrift, Größen, Sendesymbol und Layout und klicken Sie Feinanpassungen speichern für denselben Entwurf. Während Chatlauf gesperrt. Prüfen Sie PC-/Mobilvorschau.",
-          "Fordern Sie im selben Chat ein Sprachpaket an, etwa Spanisch hinzufügen, Aussehen behalten, und wählen rechts Sprache. Nach Erzeugung wird automatisch gelesen; Lesen und validieren prüft bei Bedarf Paketordner, Abdeckung, fehlende Texte und Beispiele.",
-          "Für Skins Aussehen speichern und Vorschau anzeigen, für Sprache Installieren und Vorschau anzeigen wählen und in der Vorschauleiste bestätigen oder abbrechen. Bibliotheksspeicherung ist keine persönliche Anwendung. Exportieren Sie ZIP zur Wiederverwendung; prüfen Sie vor gleichnamigem Import/Update die Ersetzung."
-        ],
-        "tips": [
-          "Die Erstellung nutzt das feste Runtime-Projekt und normale Chats und ruft das gewählte Modell auf. Über Chatverlauf oben können Sie fortsetzen. Vorschau allein führt keine Aufgabe aus.",
-          "Schriften kommen vom System; alte Nachrichten und Dateien werden nicht automatisch übersetzt. Integrierte Sendesymbole sind auswählbar, eigene Vektorsymbole müssen im Entwurf enthalten und validiert sein.",
-          "Sprachpakete sind unabhängig von Skins und unterstützen derzeit Links-nach-rechts-Sprachen. Fehltexte und Datumsfelder nutzen die festgelegte integrierte Rückfallsprache. Abdeckung ist keine Qualitätsprüfung; alte Textkataloge können im Chat ergänzt werden."
-        ],
-        "screenshot": {
-          "id": "appearance-studio",
-          "alt": "Chat-, Editor- und Vorschaubereich des Designfensters",
-          "caption": "Autorisierter leerer Designchat mit Feinanpassung. Der Prompt ist vorbefüllt, nicht gesendet; kein Modellaufruf und kein Skin gespeichert."
         }
       },
       {

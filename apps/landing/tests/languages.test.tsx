@@ -59,6 +59,20 @@ describe('builtin language selection', () => {
       expect(chapter.sections[0].tips.join(' ')).toContain('QQ')
     })
   }
+  it('explains the current skin script switch, preview boundary and reusable creation session', () => {
+    const appearance = manualChapters.find(chapter => chapter.id === 'appearance')!
+    const extensions = appearance.sections.find(section => section.screenshot?.id === 'skin-v2-extensions')!
+    expect(extensions.steps.join(' ')).toContain('运行皮肤脚本')
+    expect(extensions.steps.join(' ')).toContain('缩略图不执行脚本')
+    expect(extensions.steps.join(' ')).toContain('临时改变整个工作台')
+    expect(extensions.steps.join(' ')).toContain('部分菜单可能保留为不可用')
+    expect(extensions.steps.join(' ')).not.toContain('重新确认')
+    expect(appearance.sections.find(section => section.screenshot?.id === 'appearance-studio')!.tips?.join(' ')).toContain('重新打开制作入口')
+    expect(manualChapters.find(chapter => chapter.id === 'chat-skills')!.sections[0].tips?.join(' ')).not.toContain('刷新浏览器不保证恢复')
+    const chat = manualChapters.find(chapter => chapter.id === 'chat-skills')!
+    expect(chat.sections.find(section => section.screenshot?.id === 'project-chat')!.tips?.join(' ')).toContain('超快')
+    expect(chat.sections.find(section => section.screenshot?.id === 'project-skills')!.steps.join(' ')).toContain('流程模式')
+  })
   it('translates the homepage canvas artifact label', () => {
     vi.stubGlobal('window', { localStorage: { getItem: () => 'en-US' } })
     const html = renderToStaticMarkup(<I18nProvider><CanvasScene time={6500} /></I18nProvider>)
