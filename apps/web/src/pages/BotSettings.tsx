@@ -10,8 +10,6 @@ import { useI18n } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import './BotSettings.css'
 
-const initials: Record<BotPlatform, string> = { wecom: '企', dingtalk: '钉', feishu: '飞', lark: 'L', telegram: 'T', discord: 'D', slack: 'S', qq: 'Q' }
-
 export default function BotSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
   const { t } = useI18n()
   const fetchProjects = useProjectStore(state => state.fetchProjects)
@@ -82,7 +80,6 @@ export default function BotSettings({ onDirtyChange }: { onDirtyChange?: (dirty:
         {BOT_PLATFORMS.map(value => {
           const rows = bots.filter(bot => bot.platform === value)
           return <button key={value} type="button" className="bot-settings-platform" data-platform={value} disabled={busy || editorBusy} aria-pressed={platform === value} onClick={() => selectPlatform(value)}>
-            <span className="bot-settings-platform-icon" aria-hidden="true">{initials[value]}</span>
             <span>{t(`channelBot.${value}`)}</span>
             <span className="bot-settings-platform-count">{rows.length || ''}</span>
             {rows.some(bot => bot.status === 'connected') && <span className="bot-settings-connected-dot" aria-label={t('channelBot.status.connected')} />}

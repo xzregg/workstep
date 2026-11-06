@@ -27,6 +27,8 @@ test('channel navigation filters bots, guards dirty switches, and provides socia
   try {
     await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
     assert.equal(container.querySelectorAll('.bot-settings-platform').length, 8)
+    assert.equal(container.querySelector('.bot-settings-platform-icon'), null)
+    assert.equal(container.querySelector('.bot-settings-platform[data-platform="wecom"]')!.textContent, '企业微信1')
     await clickPlatform('qq')
     assert.match(container.querySelector('.bot-settings-form')!.textContent!, /App ID.*App Secret/)
     assert.ok(container.querySelector('a[href="https://q.qq.com/"]'))

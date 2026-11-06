@@ -51,11 +51,12 @@ mkdir -p "$output_dir/app/daemon"
 cp -R "$python_root" "$output_dir/python"
 cp "$desktop_dir/backend/main.py" "$desktop_dir/backend/server.py" "$output_dir/app/"
 cp "$daemon_dir/__init__.py" "$daemon_dir/cli.py" "$daemon_dir/main.py" "$daemon_dir/settings.py" "$daemon_dir/version.py" "$output_dir/app/daemon/"
-cp -R "$repo_dir/packages/gateway-protocol/src/workstep_gateway_protocol" "$output_dir/app/daemon/"
+"$python_bin" "$repo_dir/scripts/package_payload.py" copy "$repo_dir/packages/gateway-protocol/src/workstep_gateway_protocol" "$output_dir/app/daemon/workstep_gateway_protocol"
 for runtime_dir in agent_assistants api data engines models schemas services static streaming; do
-  cp -R "$daemon_dir/$runtime_dir" "$output_dir/app/daemon/$runtime_dir"
+  "$python_bin" "$repo_dir/scripts/package_payload.py" copy "$daemon_dir/$runtime_dir" "$output_dir/app/daemon/$runtime_dir"
 done
-cp -R "$web_dir/dist" "$output_dir/web_dist"
+"$python_bin" "$repo_dir/scripts/package_payload.py" copy "$web_dir/dist" "$output_dir/web_dist"
+"$python_bin" "$repo_dir/scripts/package_payload.py" check "$output_dir/app/daemon" "$output_dir/web_dist" "$desktop_dir/src"
 
 release_version="${WORKSTEP_BUILD_VERSION:-$(node -p "require('$desktop_dir/package.json').version")}"
 release_version="${release_version#v}"

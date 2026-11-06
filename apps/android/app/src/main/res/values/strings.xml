@@ -9,6 +9,8 @@
     <string name="connection_options">打开网页导航菜单，长按打开连接选项</string>
     <string name="reload">重新加载</string>
     <string name="clear_web_cache">清除网页缓存</string>
+    <string name="clear_cache_reload">清除缓存并重新加载</string>
+    <string name="return_to_devices">返回设备列表</string>
     <string name="view_logs">查看日志</string>
     <string name="clear_logs">清除日志</string>
     <string name="confirm_clear_logs">清除主进程、后台通知和上次崩溃记录？</string>

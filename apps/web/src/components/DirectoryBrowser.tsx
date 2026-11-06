@@ -74,7 +74,8 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
     setCreatingBusy(true)
     setCreateError(null)
     try {
-      await fsApi.mkdir(current.path, name)
+      const directory = await fsApi.mkdir(current.path, name)
+      onSelect(directory.path)
       resetCreate()
       await browse(current.path)
     } catch (e) {

@@ -67,8 +67,8 @@ export default function SidebarConversationTabs({ sessions, activeSessionId, onS
     {header ? header(open ? tabs : null, visibleTab) : tabs}
     {open && <div role={channelCount ? 'tabpanel' : undefined} id={`${id}-panel`} aria-labelledby={channelCount ? `${id}-${visibleTab}` : undefined}>
       {children(visible)}
-      {!visible.length && <div className="sidebar-conversation-empty">
-        {t(visibleTab === 'channel' ? 'chatSession.noChannelSessions' : 'chatSession.noOrdinarySessions')}
+      {!visible.length && visibleTab === 'channel' && <div className="sidebar-conversation-empty">
+        {t('chatSession.noChannelSessions')}
       </div>}
     </div>}
   </>

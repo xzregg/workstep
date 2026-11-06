@@ -10,6 +10,27 @@ import java.util.TimeZone;
 
 public class DiagnosticReportTest {
     @Test
+    public void scriptDiagnosticsSurviveReportExportWithoutConsoleSecrets() throws Exception {
+        File directory = Files.createTempDirectory("workstep-script-report").toFile();
+        File log = new File(directory, "main-log.txt");
+        try {
+            String entry = "2026-11-06T00:22:00Z 网页主进程 网页脚本错误；来源="
+                    + WebPageRecovery.sourcePath("https://gateway.example/workspace/one/assets/app.js?token=secret")
+                    + "；行=0；类型=" + WebPageRecovery.consoleSummary(
+                            "TypeError: Failed to fetch dynamically imported module: https://gateway.example/assets/app.js?token=secret");
+            Files.write(log.toPath(), entry.getBytes(StandardCharsets.UTF_8));
+            String report = DiagnosticReport.create(directory, Instant.parse("2026-11-06T00:23:00Z").toEpochMilli());
+            assertTrue(report.contains("==== 错误详情 1 ===="));
+            assertTrue(report.contains("/workspace/one/assets/app.js"));
+            assertTrue(report.contains("动态模块加载失败"));
+            assertFalse(report.contains("secret"));
+        } finally {
+            log.delete();
+            directory.delete();
+        }
+    }
+
+    @Test
     public void displaysStoredUtcEntriesInTheCurrentSystemTimeZone() throws Exception {
         TimeZone previous = TimeZone.getDefault();
         File directory = Files.createTempDirectory("workstep-report-zone").toFile();

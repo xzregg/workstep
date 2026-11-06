@@ -346,12 +346,11 @@ public final class MainActivity extends Activity {
                 if (source != webView) return;
                 pageLoading = false;
                 String currentUrl = source.getUrl();
-                String route = currentUrl == null ? "" : Uri.parse(currentUrl).getPath();
-                if (!"/chat".equals(route) && !"/tasks".equals(route)) return;
+                if (!WebPageRecovery.needsRootCheck(server, currentUrl)) return;
                 int generation = pageLoadGeneration;
                 source.postDelayed(() -> {
                     if (source != webView || generation != pageLoadGeneration || pageHadError) return;
-                    source.evaluateJavascript("(function(){var r=document.getElementById('root');return !r||r.childElementCount>0;})()", value -> {
+                    source.evaluateJavascript("(function(){var r=document.getElementById('root');return !!r&&r.childElementCount>0;})()", value -> {
                         if (source != webView || generation != pageLoadGeneration || pageHadError) return;
                         if ("false".equals(value)) {
                             CrashReports.log(MainActivity.this, "网页主进程", "网页渲染失败；根节点为空；路径=" + Uri.parse(url).getPath(), null);
@@ -437,8 +436,9 @@ public final class MainActivity extends Activity {
             public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
                 if (view == webView && message.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
                     CrashReports.log(MainActivity.this, "网页主进程", "网页脚本错误；来源="
-                            + Uri.parse(message.sourceId() == null ? "" : message.sourceId()).getPath()
-                            + "；行=" + message.lineNumber(), null);
+                            + WebPageRecovery.sourcePath(message.sourceId())
+                            + "；行=" + message.lineNumber() + "；类型="
+                            + WebPageRecovery.consoleSummary(message.message()), null);
                 }
                 return super.onConsoleMessage(message);
             }
@@ -660,13 +660,15 @@ public final class MainActivity extends Activity {
                 return true;
             });
             menu.getMenu().add(R.string.clear_web_cache).setOnMenuItemClickListener(item -> {
-                if (webView != null) {
-                    webView.clearCache(true);
-                    webView.reload();
-                    Toast.makeText(this, R.string.web_cache_cleared, Toast.LENGTH_SHORT).show();
-                }
+                reloadWithoutCache();
                 return true;
             });
+            if (webView != null && WebPageRecovery.devicePicker(server, webView.getUrl()) != null) {
+                menu.getMenu().add(R.string.return_to_devices).setOnMenuItemClickListener(item -> {
+                    returnToDevices();
+                    return true;
+                });
+            }
             menu.getMenu().add(R.string.view_logs).setOnMenuItemClickListener(item -> {
                 CrashReports.showLogs(this);
                 return true;
@@ -867,11 +869,43 @@ public final class MainActivity extends Activity {
             if (webView != null) webView.reload();
         });
         panel.addView(retry);
+        Button clearCache = new Button(this);
+        clearCache.setText(R.string.clear_cache_reload);
+        clearCache.setOnClickListener(view -> reloadWithoutCache());
+        panel.addView(clearCache);
+        if (webView != null && WebPageRecovery.devicePicker(server, webView.getUrl()) != null) {
+            Button devices = new Button(this);
+            devices.setText(R.string.return_to_devices);
+            devices.setOnClickListener(view -> returnToDevices());
+            panel.addView(devices);
+        }
+        Button logs = new Button(this);
+        logs.setText(R.string.view_logs);
+        logs.setOnClickListener(view -> CrashReports.showLogs(this));
+        panel.addView(logs);
         Button change = new Button(this);
         change.setText(R.string.change_address);
         change.setOnClickListener(view -> showAddressScreen(server.origin()));
         panel.addView(change);
         root.addView(panel, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private void reloadWithoutCache() {
+        if (webView == null) return;
+        // Keep CookieManager and WebStorage intact so recovery preserves authentication and settings.
+        webView.clearCache(true);
+        webView.reload();
+        CrashReports.log(this, "网页主进程", "网页缓存已清除并重新加载", null);
+        Toast.makeText(this, R.string.web_cache_cleared, Toast.LENGTH_SHORT).show();
+    }
+
+    private void returnToDevices() {
+        if (webView == null) return;
+        String destination = WebPageRecovery.devicePicker(server, webView.getUrl());
+        if (destination == null) return;
+        webView.stopLoading();
+        CrashReports.log(this, "网页主进程", "返回网关设备列表", null);
+        webView.loadUrl(destination);
     }
 
     private boolean isPageScript(WebResourceRequest request) {

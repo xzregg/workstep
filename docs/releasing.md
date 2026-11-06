@@ -90,6 +90,44 @@ real LLM calls, or the Podman sandbox.
 macOS 验收的失败清理增加有时限的自有子进程终止，避免启动错误对话框令任务悬挂。
 新包须重新构建并完成验收后才能正式发布；本段不是重新验收通过的声明。
 
+## Release payload hygiene
+
+Never copy the repository root into an installer or image. Keep only application
+runtime files, compiled frontend assets, required packaged data, licenses and SBOM.
+Repository `plans/`, test fixtures, temporary files, caches, logs, source maps,
+databases, local credential/configuration files and `.env*` are not release inputs.
+This excludes plans from distribution, not from Git history or the developer's
+workspace. Do not delete source files to make a package clean.
+
+Both desktop backend builders use `scripts/package_payload.py copy SOURCE NEW_DEST`
+for first-party directory copies. It excludes prohibited paths, validates file
+contents before copying, rejects symbolic links and preserves executable modes.
+The destination must not already exist. `check DIR [DIR ...]` refuses a dirty
+payload instead of silently removing files. The Electron `beforePack` hook checks
+the actual injected daemon, Web assets and desktop source again with the bundled
+Python interpreter; it fails the build on an error.
+
+Docker excludes these files from its build context through `.dockerignore` and
+checks application source and frontend artifacts inside the build. Its explicit
+`--ignore-runtime-venv` exception preserves only the top-level locked environment;
+it is not a general scan bypass for first-party directories. Do not remove Python
+dependencies, browser binaries, fonts, skill references or legal notices as though
+they were temporary files. No signing material is needed by the unsigned release.
+
+The scanner shares the repository's high-confidence secret signatures. Candidate
+values are suppressed in errors. The only documentation exception is the exact
+already-reviewed role prompt content hash, not a directory or filename whitelist.
+Unknown passwords, personal information or credentials with unrecognized formats
+still require manual inspection; scanning is not a guarantee of complete absence.
+Fix or remove the source of an unsafe payload rather than disabling the check.
+
+Local regression tests exercise clean copies, local configuration exclusions,
+ordinary-source secret candidates, symlink escapes, source preservation and real
+runtime assets. A scoped baseline-versus-patch run also executes the actual shell
+backend builder with offline downloader/version/SBOM substitutes. It is not native
+Windows, Docker-image, installer or third-party dependency validation; those
+remain release acceptance gates, and independent human review is still required.
+
 ## Windows 安装包自动验收
 
 ### v1.0.15 依赖兼容检查

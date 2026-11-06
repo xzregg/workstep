@@ -144,6 +144,9 @@ RUN command -v python && python --version \
 # 后端源码（清理字节码缓存）
 COPY apps/daemon ./
 COPY apps/gateway /app/apps/gateway
+COPY scripts/package_payload.py scripts/check_secrets.py /usr/local/lib/workstep-packaging/
+RUN python /usr/local/lib/workstep-packaging/package_payload.py check --ignore-runtime-venv \
+    /app/apps/daemon /app/apps/gateway /app/packages/gateway-protocol
 # Both services use daemon's locked environment. Gateway additions are resolved
 # against that lock; never run a second uv sync that would remove daemon packages.
 COPY scripts/container-gateway-requirements.txt /app/container-gateway-requirements.txt
@@ -158,6 +161,9 @@ COPY --from=web-build /app/apps/web/dist ../web/dist
 COPY --from=web-build /app/apps/web/dist-gateway-share ../web/dist-gateway-share
 COPY --from=web-build /app/apps/gateway-web/dist ../gateway-web/dist
 COPY --from=web-build /app/apps/landing/dist ../landing/dist
+RUN python /usr/local/lib/workstep-packaging/package_payload.py check \
+    /app/apps/web/dist /app/apps/web/dist-gateway-share \
+    /app/apps/gateway-web/dist /app/apps/landing/dist
 
 # An immutable seed remains visible when HOME is bind-mounted. First startup
 # installs it offline; a new image refreshes only base, retaining engines/data.

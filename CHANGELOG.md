@@ -4,6 +4,9 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Filter temporary files, non-runtime plans, local configuration, databases and key files from release payloads. Validate first-party content during desktop and image builds and recheck injected desktop files before packaging; stop on secret candidates without printing their values.
+- Improve Android failed-page recovery with native retry, cache reload, device-list and diagnostic actions. Summarize known console error signatures without recording arbitrary console content or URL credentials.
+- Keep sidebar conversation titles and local directory selection compact, and move skin actions above their preview without changing execution permissions.
 - Bundle the editable Interstellar Night skin and its credited local background asset. Seed it at startup without overwriting existing packages or restoring a skin the user removed; keep the default appearance and script settings unchanged.
 - Update the appearance manual across all 26 supported languages, refresh real demonstration screenshots, and add a bilingual acceptable-use policy linked from the website and terms.
 - Improve compact execution-status overflow using the shared marquee component and simplify the context-compaction indicator.
