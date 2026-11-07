@@ -12,8 +12,9 @@ function Location() {
   const location = useLocation()
   return <output>{JSON.stringify({ url: location.pathname + location.search, state: location.state })}</output>
 }
-test('project Git entry carries project context for local and remote projects', async () => {
+test('mobile project Git entry carries project context for local and remote projects', async () => {
   const { window } = installDomEnvironment()
+  window.innerWidth = 390
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const project = { id: 'project a', name: 'Project', path: '/repo', workflows: [], steps: {} } as Project
   const render = (p: Project) => <I18nProvider><MemoryRouter initialEntries={['/chat?project=Project&session=session-1#latest']}><ProjectGitButton project={p} /><Location /></MemoryRouter></I18nProvider>

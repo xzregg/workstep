@@ -17,7 +17,7 @@ function SourcePage() {
   return <output>{location.pathname + location.search + location.hash}</output>
 }
 
-test('Git page opens the selected worktree, including one outside the project root', async () => {
+for (const embedded of [false, true]) test(`Git ${embedded ? 'window' : 'page'} opens and switches worktrees, including one outside the project root`, async () => {
   const { window } = installDomEnvironment()
   const originalOpen = fsApi.openDirectory
   const originalOpeners = fsApi.directoryOpeners
@@ -38,12 +38,17 @@ test('Git page opens the selected worktree, including one outside the project ro
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   try {
-    await act(async () => root.render(<I18nProvider><MemoryRouter initialEntries={[{ pathname: '/git', search: '?project_id=p&worktree=w', state: { returnTo: '/chat?project=Project&session=s1#message' } }]}><Routes><Route path="/git" element={<GitWorkspace />} /><Route path="/chat" element={<SourcePage />} /></Routes></MemoryRouter></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><MemoryRouter initialEntries={[{ pathname: '/git', search: '?project_id=p&worktree=w', state: { returnTo: '/chat?project=Project&session=s1#message' } }]}><Routes><Route path="/git" element={<><GitWorkspace embeddedProjectId={embedded ? "p" : undefined} />{embedded && <SourcePage />}</>} /><Route path="/chat" element={<SourcePage />} /></Routes></MemoryRouter></I18nProvider>))
     await act(async () => container.querySelector<HTMLButtonElement>('.git-open-location button')!.click())
     assert.deepEqual(opened, ['/elsewhere/tree'])
     await act(async () => container.querySelectorAll<HTMLButtonElement>('.git-tree-item')[1].click())
-    await act(async () => container.querySelector<HTMLButtonElement>('.git-back-button')!.click())
-    assert.equal(container.querySelector('output')?.textContent, '/chat?project=Project&session=s1#message')
+    if (embedded) {
+      assert.equal(container.querySelector('output')?.textContent, '/git?project_id=p&worktree=w')
+      assert.equal(container.querySelector('.git-tree-item.selected')?.textContent?.includes('feature'), true)
+    } else {
+      await act(async () => container.querySelector<HTMLButtonElement>('.git-back-button')!.click())
+      assert.equal(container.querySelector('output')?.textContent, '/chat?project=Project&session=s1#message')
+    }
   } finally {
     await act(async () => root.unmount())
     fsApi.openDirectory = originalOpen
