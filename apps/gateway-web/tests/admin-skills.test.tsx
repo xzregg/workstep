@@ -73,7 +73,7 @@ test('Skill administrator creates, uploads, reviews, grants, and revokes with st
   fireEvent.change(getByLabelText(dialog, '标识'), { target: { value: 'review' } })
   fireEvent.change(getByLabelText(dialog, '管理员密码'), { target: { value: 'secret' } })
   fireEvent.click(getByRole(dialog, 'button', { name: '确认创建' }))
-  await screen.findByRole('option', { name: '审核 Skill' })
+  await screen.findByRole('option', { name: '审核 Skill' , hidden: true})
   fireEvent.change(screen.getByLabelText('Skill'), { target: { value: 'skill-1' } })
   fireEvent.click(screen.getByRole('button', { name: '上传版本' }))
   dialog = await screen.findByRole('dialog', { name: '上传版本' })

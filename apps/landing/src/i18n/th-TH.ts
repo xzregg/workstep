@@ -366,7 +366,7 @@ export const thTH: I18nDict = {
     "linux": "Linux",
     "platformHint": "ตัวติดตั้งได้รับการอัปเดตอย่างต่อเนื่อง คุณสามารถเปิดได้จากแหล่งที่มาด้านล่าง",
     "sourceTitle": "เรียกใช้จากแหล่งที่มา",
-    "sourceDesc": "ต้องใช้ Node.js 20 หรือ 22 ที่มี Corepack รวมถึง Python 3.11+:",
+    "sourceDesc": "ต้องใช้ Node.js 24 LTS ที่มี Corepack รวมถึง Python 3.11+:",
     "sourceStep1": "โคลนพื้นที่เก็บข้อมูล",
     "sourceStep2": "เริ่มทุกอย่าง",
     "sourceStep3": "เปิด http://localhost:5173"

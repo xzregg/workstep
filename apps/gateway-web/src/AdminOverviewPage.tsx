@@ -35,7 +35,7 @@ function Metric({ title, icon, value, unit, children, link }: {
 function Attention({ title, count, description, to }: { title: string; count: number; description: string; to: string }) {
   return <div className="gateway-overview-attention-row">
     <span className={count > 0 ? 'gateway-overview-count is-warning' : 'gateway-overview-count'}>{count}</span>
-    <div><Link to={to}>{title}<span aria-hidden="true"> ↗</span></Link><p>{description}</p></div>
+    <div><Link className="gateway-action-link" to={to}>{title}<span aria-hidden="true"> ↗</span></Link><p>{description}</p></div>
   </div>
 }
 const actionLabels: Record<string, string> = { 'auth.desktop.login': '桌面端登录', 'auth.device.login': '设备登录', 'auth.login': '用户登录', 'auth.logout': '用户退出' }
@@ -81,13 +81,13 @@ export function AdminOverviewPage() {
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {access === 'ready' && overview && <div aria-busy={loading}>
       <div className="gateway-overview-metrics">
-        {overview.users && <Metric title="用户" icon="users" value={overview.users.total} unit="位用户" link={<Link to="/admin/users">管理用户 <span aria-hidden="true">↗</span></Link>}>
+        {overview.users && <Metric title="用户" icon="users" value={overview.users.total} unit="位用户" link={<Link className="gateway-action-link" to="/admin/users">管理用户 <span aria-hidden="true">↗</span></Link>}>
           <span className={overview.users.pending ? 'gateway-overview-warning' : ''}>{overview.users.pending} 位待审核</span>
         </Metric>}
-        {devices && <Metric title="受管电脑" icon="devices" value={devices.online} unit="台在线" link={<Link to="/admin/devices">管理设备 <span aria-hidden="true">↗</span></Link>}>
+        {devices && <Metric title="受管电脑" icon="devices" value={devices.online} unit="台在线" link={<Link className="gateway-action-link" to="/admin/devices">管理设备 <span aria-hidden="true">↗</span></Link>}>
           共 {devices.total} 台设备 <span className="gateway-overview-divider">/</span> {devices.offline} 台离线
         </Metric>}
-        {overview.projects && <Metric title="项目" icon="projects" value={overview.projects.published} unit="个已发布" link={canManageProjects ? <Link to="/admin/projects">管理项目 <span aria-hidden="true">↗</span></Link> : <span>当前权限范围内的项目</span>}>
+        {overview.projects && <Metric title="项目" icon="projects" value={overview.projects.published} unit="个已发布" link={canManageProjects ? <Link className="gateway-action-link" to="/admin/projects">管理项目 <span aria-hidden="true">↗</span></Link> : <span>当前权限范围内的项目</span>}>
           {overview.projects.shared} 个已共享
         </Metric>}
         <Metric title="运行中任务" icon="tasks" value={overview.tasks.running ?? '—'} unit={overview.tasks.running === null ? '待上报' : '项'}>
@@ -122,7 +122,7 @@ export function AdminOverviewPage() {
         </section>
       </div>
       {overview.recent_actions && <section className="gateway-overview-panel gateway-overview-audit">
-        <div className="gateway-overview-section-heading"><div><h3>最近关键操作</h3><p>平台访问与管理操作记录</p></div><Link to="/admin/audit">查看全部审计记录 <span aria-hidden="true">↗</span></Link></div>
+        <div className="gateway-overview-section-heading"><div><h3>最近关键操作</h3><p>平台访问与管理操作记录</p></div><Link className="gateway-action-link" to="/admin/audit">查看全部审计记录 <span aria-hidden="true">↗</span></Link></div>
         {overview.recent_actions.length === 0 ? <p className="gateway-overview-empty">暂无操作记录。平台产生关键操作后将在此显示。</p> : <ul className="gateway-overview-events">{overview.recent_actions.map((action, index) =>
           <li key={`${action.created_at}-${index}`}>
             <span className="gateway-overview-event-icon"><OverviewIcon name={action.action.includes('device') ? 'devices' : 'users'} /></span>

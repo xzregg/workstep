@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useEffect, useRef, useState } from 'react'
 import { AdminRecordTable } from './AdminRecordTable'
 import { AdminPersonName, AdminSelectAll, useAdminSelection } from './AdminSelection'
@@ -60,8 +61,8 @@ export function GroupMembersManager({groupId, csrf, onChanged}: {
    <label>搜索用户<input placeholder="显示名或登录用户名" value={query} onChange={event=>setQuery(event.target.value)}/></label>
    <button type="submit" disabled={searching}>{searching && <span className="gateway-spinner"/>}查找用户</button>
   </form>
-  <div className="gateway-bulk-toolbar"><label>成员角色<select value={role} onChange={event=>setRole(event.target.value as 'member'|'leader')}>
-   <option value="member">普通成员</option><option value="leader">组长</option></select></label>
+  <div className="gateway-bulk-toolbar"><label>成员角色<Select value={role} onChange={event=>setRole(event.target.value as 'member'|'leader')}>
+   <option value="member">普通成员</option><option value="leader">组长</option></Select></label>
    <span>选中 {additions.selected.length} 位待添加用户</span>
    <button type="button" disabled={!csrf || !additions.selected.length || loading || searching} onClick={()=>change('add',additions.selected)}>批量添加成员</button>
   </div>

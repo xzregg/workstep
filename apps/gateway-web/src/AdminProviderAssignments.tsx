@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { userChoiceLabel } from './AdminSelection'
 import { AdminRecordTable } from './AdminRecordTable'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
@@ -74,22 +75,23 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
       confirmLabel={assignment ? '撤销授权' : '确认分配'} busy={busy}
       disabled={!passwordReady || (!assignment && (!targetId || loading))}
       onConfirm={() => void submit()}
-      onCancel={() => assignment || !dirty ? onClose() : setDiscard(true)}>
+      onCancel={() => assignment || !dirty ? onClose() : setDiscard(true)}
+      passwordConfirmation={<PasswordConfirmation id="provider-assignment-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       {!assignment && <>
         <label htmlFor="provider-assignment-kind">对象类型</label>
-        <select id="provider-assignment-kind" value={kind} onChange={event => {
+        <Select id="provider-assignment-kind" value={kind} onChange={event => {
           setKind(event.target.value as 'user' | 'device'); setTargetId(''); setSearch(''); setQuery(''); setPage(1)
-        }}><option value="user">用户</option><option value="device">PC</option></select>
+        }}><option value="user">用户</option><option value="device">PC</option></Select>
         <form className="gateway-admin-search" onSubmit={event => {
           event.preventDefault(); setTargetId(''); setPage(1); setSearch(query.trim())
         }}><label htmlFor="provider-assignment-search">搜索对象</label>
           <input id="provider-assignment-search" value={query} onChange={event => setQuery(event.target.value)} />
           <button type="submit">搜索</button></form>
         <label htmlFor="provider-assignment-target">授权对象</label>
-        <select id="provider-assignment-target" value={targetId} onChange={event => setTargetId(event.target.value)}>
+        <Select id="provider-assignment-target" value={targetId} onChange={event => setTargetId(event.target.value)}>
           <option value="">请选择</option>{targets.map(target => <option key={target.id} value={target.id}>{
             kind === 'user' ? userChoiceLabel(target)
-              : target.name ?? target.id}</option>)}</select>
+              : target.name ?? target.id}</option>)}</Select>
         <div className="gateway-admin-pagination"><span>共 {total} 个对象 · 第 {page}/{
           Math.max(1, Math.ceil(total / 25))} 页</span>
           <button type="button" disabled={page <= 1 || loading} onClick={() => {
@@ -99,7 +101,6 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
             onClick={() => { setTargetId(''); setPage(value => value + 1) }}>下一页</button></div>
         {loading && <p role="status">正在加载对象…</p>}
       </>}
-      <PasswordConfirmation id="provider-assignment-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {error && <p role="alert" className="gateway-auth-error">{error} {!assignment &&
         <button type="button" onClick={() => setRevision(value => value + 1)}>重试加载</button>}</p>}
     </GatewayConfirmDialog>
@@ -138,8 +139,8 @@ function DefaultProviderDialog({ providerId, csrf, assignment, onClose, onSaved 
       assignment.subject_type === 'user' ? '用户' : assignment.subject_type === 'group' ? '用户组' : 'PC'}）${
       enable ? '将优先使用此供应商。默认优先级为用户、用户组、PC。' : '将不再默认使用此供应商。'}`}
     confirmLabel={enable ? '确认设置' : '确认取消'} busy={busy} disabled={!passwordReady}
-    onConfirm={() => void submit()} onCancel={onClose}>
-    <PasswordConfirmation id="provider-default-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+    onConfirm={() => void submit()} onCancel={onClose}
+      passwordConfirmation={<PasswordConfirmation id="provider-default-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>
 }

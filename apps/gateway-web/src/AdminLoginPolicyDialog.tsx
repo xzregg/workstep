@@ -27,10 +27,10 @@ export function AdminLoginPolicyDialog({enabled, csrf, onClose, onSaved}: {
  function close(){if(selected!==enabled || password)setDiscard(true);else onClose()}
  return <>
   <GatewayConfirmDialog title="修改登录方式" message="关闭账号密码登录后，登录页仅提供已启用的企业扫码入口，自主注册也会关闭。"
-   confirmLabel="保存登录方式" busy={busy} disabled={!csrf || selected===enabled || !passwordReady} onCancel={close} onConfirm={()=>void save()}>
+   confirmLabel="保存登录方式" busy={busy} disabled={!csrf || selected===enabled || !passwordReady} onCancel={close} onConfirm={()=>void save()}
+      passwordConfirmation={<PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} disabled={busy} />}>
    <label className="gateway-check-label"><input type="checkbox" checked={selected} disabled={busy} onChange={event=>setSelected(event.target.checked)}/>启用账号密码登录</label>
    <p>企业扫码入口在下方应用配置中分别启用。现有账号和会话保留，重新启用后恢复原注册策略。</p>
-   <PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} disabled={busy} />
    {busy && <p role="status"><span className="gateway-spinner"/>正在保存登录方式…</p>}
    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>

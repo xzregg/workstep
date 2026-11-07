@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { userChoiceLabel } from './AdminSelection'
 import { useEffect, useState } from 'react'
 import { GatewayModal } from './GatewayModal'
@@ -48,7 +49,8 @@ export function AdminDeviceOwnerDialog({ device, csrf, onComplete, onClose }: {
  return <GatewayModal title="转移设备所有者" onClose={close} footer={<>
   <button type="button" disabled={busy} onClick={close}>取消</button>
   <button type="button" disabled={busy || !valid} onClick={() => void save()}>确认转移</button>
- </>}>
+ </>}
+      passwordConfirmation={<PasswordConfirmation id="owner-password" label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />}>
   <p>{device.name} · 当前所有者：{device.owner_name ?? '未确定'}</p>
   <p>新所有者将获得整台设备访问和创建项目权限。原所有者的普通访问授权保留，可在管理授权中另行撤销。</p>
   <form className="gateway-admin-search" onSubmit={event => { event.preventDefault(); setSearch(query.trim()); setUserId('') }}>
@@ -57,10 +59,9 @@ export function AdminDeviceOwnerDialog({ device, csrf, onComplete, onClose }: {
   </form>
   <div className="gateway-auth-form">
    <label htmlFor="new-device-owner">新所有者（最多显示 25 人，可搜索）</label>
-   <select id="new-device-owner" value={userId} disabled={busy || loading} onChange={event => setUserId(event.target.value)}>
+   <Select id="new-device-owner" value={userId} disabled={busy || loading} onChange={event => setUserId(event.target.value)}>
     <option value="">请选择用户</option>{users.filter(user => user.status === 'active' && user.id !== device.owner_user_id).map(user => <option key={user.id} value={user.id}>{userChoiceLabel(user)}</option>)}
-   </select>
-   <PasswordConfirmation id="owner-password" label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />
+   </Select>
   </div>
   {(busy || loading) && <p role="status"><span className="gateway-spinner" /> {busy ? '正在转移…' : '正在加载用户…'}</p>}
   {error && <p role="alert" className="gateway-auth-error">{error}</p>}

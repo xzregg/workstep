@@ -53,7 +53,7 @@ export function ProjectInvitationAcceptPage() {
   return <section className="gateway-auth-card gateway-project-invitation-accept">
     <h2>接受项目邀请</h2>
     {!valid && <p role="alert">项目邀请链接格式无效。</p>}
-    {valid && status === 'login' && <p>请先<Link to={`/auth?next=${encodeURIComponent(location.pathname)}`}>登录 / 注册</Link>，然后确认添加项目。不需要注册设备。</p>}
+    {valid && status === 'login' && <p>请先<Link className="gateway-action-link" to={`/auth?next=${encodeURIComponent(location.pathname)}`}>登录 / 注册</Link>，然后确认添加项目。不需要注册设备。</p>}
     {status === 'error' && <p role="alert">登录状态加载失败。<button onClick={retry}>重试</button></p>}
     {(status === 'loading' || loading) && <p role="status"><span className="gateway-spinner" /> 正在加载邀请…</p>}
     {preview && !loading && <>
@@ -64,13 +64,13 @@ export function ProjectInvitationAcceptPage() {
       {accepted ? <>
         <p role="status">项目已添加。你可以通过网关进入此项目，无需拥有设备。</p>
         <button type="button" disabled={busy} onClick={() => void enter()}>{busy && <span className="gateway-spinner" />}进入项目</button>
-        <Link to="/devices">查看我的项目</Link>
+        <Link className="gateway-action-link" to="/devices">查看我的项目</Link>
       </> : <>
         <p>确认后授予当前账号此项目的访问权限，管理员可以随时撤销。项目文件与执行仍在宿主设备上。</p>
         <button type="button" disabled={busy} onClick={() => void accept()}>{busy && <span className="gateway-spinner" />}{busy ? '正在添加…' : '添加项目'}</button>
       </>}
     </>}
     {error && <p role="alert" className="gateway-auth-error">{error} {!preview && <button onClick={() => setRevision(v => v + 1)}>重试加载</button>}</p>}
-    <Link to="/project-invitations">返回项目分享与添加</Link>
+    <Link className="gateway-action-link" to="/project-invitations">返回项目分享与添加</Link>
   </section>
 }

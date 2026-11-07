@@ -9,6 +9,21 @@ def test_project_ticket_can_load_existing_workspace_pages_and_assets(path):
     assert project_http_route_allowed('GET', path, [], 'project-1')
 
 
+@pytest.mark.parametrize('level', ['read', 'edit'])
+@pytest.mark.parametrize('path', ['/assets/app-Ab12.js', '/assets/styles.css', '/static/favicon.svg'])
+def test_workspace_assets_accept_gateway_revision_only(level, path):
+    allowed = project_http_route_allowed
+    revision = [('_workstep_asset', '0457af26fe899a12')]
+    assert allowed('GET', path, revision, 'project-1', access_level=level)
+    for query in ([('_workstep_asset', '')], [('_workstep_asset', 'invalid')],
+                  [*revision, *revision], [*revision, ('project_id', 'private')],
+                  [('unexpected', '1')]):
+        assert not allowed('GET', path, query, 'project-1', access_level=level)
+    for private in ('/assets/../secret.js', '/assets/.env', '/api/system/settings'):
+        assert not allowed('GET', private, revision, 'project-1', access_level=level)
+    assert not allowed('POST', path, revision, 'project-1', access_level=level)
+
+
 @pytest.mark.parametrize('method,path', [('POST', '/tasks'), ('GET', '/admin'),
     ('GET', '/assets/.env'), ('GET', '/assets/../secret.js'), ('GET', '/landing'),
     ('GET', '/api/project/list'), ('GET', '/api/system/settings')])

@@ -366,7 +366,7 @@ export const idID: I18nDict = {
     "linux": "Linux",
     "platformHint": "Pemasang terus diperbarui. Anda juga dapat menjalankan dari sumber di bawah.",
     "sourceTitle": "Jalankan dari sumber",
-    "sourceDesc": "Memerlukan Node.js 20 atau 22 dengan Corepack, serta Python 3.11+:",
+    "sourceDesc": "Memerlukan Node.js 24 LTS dengan Corepack, serta Python 3.11+:",
     "sourceStep1": "Klon repositori",
     "sourceStep2": "Jalankan semuanya",
     "sourceStep3": "Buka http://localhost:5173"

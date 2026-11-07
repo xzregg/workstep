@@ -26,10 +26,7 @@ async def company_display_name(session) -> str:
 
 async def set_company_display_name(call: GatewayCall, body: CompanyDisplayNameInput):
     from gateway.services.identity_api import _super_admin_request
-    from gateway.services.identity import COOKIE_NAME
-    identity, actor = await _super_admin_request(call)
-    _, auth = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    await identity.require_step_up(auth)
+    _, actor = await _super_admin_request(call)
     async with call.database.session() as session:
         async with session.begin():
             row = await session.get(PlatformSetting, 'company_display_name')

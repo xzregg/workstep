@@ -21,6 +21,7 @@ test('enterprise login buttons recover if navigation stays on the page',async()=
  }
  render(<MemoryRouter initialEntries={['/auth']}><PortalAuthPage/></MemoryRouter>)
  const button=await screen.findByRole('button',{name:'钉钉扫码登录'}) as HTMLButtonElement
+ assert.ok(screen.getByRole('link',{name:'返回工作台'}).classList.contains('gateway-action-link'))
  fireEvent.click(button)
  await waitFor(()=>assert.equal(button.disabled,true))
  finish(Response.json({authorization_url:'https://login.dingtalk.com/oauth2/auth?state=test'}))

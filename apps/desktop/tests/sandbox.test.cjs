@@ -6,6 +6,20 @@ const path = require('node:path')
 const { SandboxManager, validateSettings, containerArgs, windowsPath } = require('../src/sandbox.cjs')
 const { LOG_MAX_BYTES } = require('../src/diagnostics.cjs')
 
+test('packaged preload exposes the configuration picker and forwards custom imports to matching IPC channels', async () => {
+  const vm = require('node:vm')
+  let bridge
+  const calls = []
+  const electron = {
+    contextBridge: { exposeInMainWorld: (_name, value) => { bridge = value.sandbox } },
+    ipcRenderer: { invoke: async (...args) => { calls.push(args) } },
+  }
+  vm.runInNewContext(await fs.readFile(path.join(__dirname, '../src/preload.cjs'), 'utf8'), { require: () => electron, process })
+  await bridge.chooseConfigDirectory()
+  await bridge.importConfig({ source: '/demo/.qoder' })
+  assert.deepEqual(calls, [['workstep:sandbox:chooseConfigDirectory'], ['workstep:sandbox:importConfig', { source: '/demo/.qoder' }]])
+})
+
 test('sandbox lifecycle logs rotate and diagnostic snapshots remain bounded', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-log-limit-'))
   t.after(() => fs.rm(root, { recursive: true, force: true }))
@@ -173,7 +187,7 @@ test('adoption refuses unrelated contents and external Home links', async () => 
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
 
-test('import backs up old configuration and refuses symlinks out of source', async () => {
+for (const running of [false, true]) test(`import backs up old configuration and refuses symlinks out of source (running=${running})`, async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-test-'))
   try {
     const root = path.join(await fs.realpath(base), 'sandbox'), host = path.join(base, 'host')
@@ -182,14 +196,48 @@ test('import backs up old configuration and refuses symlinks out of source', asy
     await fs.writeFile(path.join(host, '.codex/auth.json'), 'new')
     await fs.writeFile(path.join(base, 'outside'), 'private'); await fs.symlink(path.join(base, 'outside'), path.join(host, '.codex/escape'))
     const manager = new SandboxManager({ stateDir: path.join(base, 'state'), hostHome: host })
-    await manager.save({ enabled: false, root, project: path.join(base, 'project'), mounts: [], id: 'test' })
+    await manager.save({ enabled: running, root, project: path.join(base, 'project'), mounts: [], id: 'test' })
+    manager.running = running
     await fs.mkdir(path.join(root, 'desktop'), { recursive: true })
     await fs.writeFile(path.join(root, 'desktop/owner.json'), JSON.stringify({ id: 'test' }))
     await manager.importConfig('codex')
+    assert.equal((await manager.status()).configSyncVersion, 1)
     assert.equal(await fs.readFile(path.join(root, 'home/.codex/auth.json'), 'utf8'), 'new')
     await assert.rejects(fs.stat(path.join(root, 'home/.codex/escape')))
-    assert.ok((await fs.readdir(path.join(root, 'desktop/backups'))).length)
+    const backups = await fs.readdir(path.join(root, 'desktop/backups'))
+    assert.equal(await fs.readFile(path.join(root, 'desktop/backups', backups[0], '.codex/auth.json'), 'utf8'), 'old')
+    assert.equal(manager.running, running)
+    assert.equal((await manager.settings()).enabled, running)
   } finally { await fs.rm(base, { recursive: true, force: true }) }
+})
+
+test('custom configuration directory imports preserve its name, back up targets, and reject unsafe sources', async t => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-custom-config-'))
+  t.after(() => fs.rm(base, { recursive: true, force: true }))
+  const root = path.join(await fs.realpath(base), 'sandbox'), host = path.join(base, 'host')
+  const source = path.join(host, '.qoder')
+  await fs.mkdir(source, { recursive: true })
+  await fs.writeFile(path.join(source, 'config.json'), 'new')
+  const manager = new SandboxManager({ stateDir: path.join(base, 'state'), hostHome: host })
+  await manager.save({ enabled: true, root, project: path.join(base, 'project'), mounts: [], id: 'test' })
+  await manager.claimRoot(await manager.settings())
+  await fs.mkdir(path.join(root, 'home/.qoder'))
+  await fs.writeFile(path.join(root, 'home/.qoder/config.json'), 'old')
+  manager.running = true
+  await manager.importConfig({ source })
+  assert.equal(await fs.readFile(path.join(root, 'home/.qoder/config.json'), 'utf8'), 'new')
+  const backups = await fs.readdir(path.join(root, 'desktop/backups'))
+  assert.equal(await fs.readFile(path.join(root, 'desktop/backups', backups[0], '.qoder/config.json'), 'utf8'), 'old')
+  assert.equal(manager.running, true)
+  await assert.rejects(manager.importConfig({ source: host }), /Home/)
+  await assert.rejects(manager.importConfig({ source: root }), /沙箱/)
+  await assert.rejects(manager.importConfig({ source: path.join(root, 'home/.qoder') }), /沙箱/)
+  await fs.mkdir(path.join(host, '.workstep'))
+  await assert.rejects(manager.importConfig({ source: path.join(host, '.workstep') }), /WorkStep/)
+  await fs.symlink(source, path.join(host, '.linked'))
+  await assert.rejects(manager.importConfig({ source: path.join(host, '.linked') }), /符号链接/)
+  await assert.rejects(manager.importConfig({ source: path.join(source, 'config.json') }), /目录/)
+  await assert.rejects(manager.importConfig({ source: '../relative' }), /绝对路径/)
 })
 
 test('runtime downloads are checked before committing archives', async () => {
@@ -227,6 +275,50 @@ test('privileged IPC refuses foreign frames, active work, and unchosen host path
   assert.equal(await handlers.get('workstep:sandbox:prepare')(event, { root: '/chosen', project: '/chosen' }), 'prepared')
   active = true
   await assert.rejects(handlers.get('workstep:sandbox:prepare')(event, { root: '/chosen', project: '/chosen' }), /任务/)
+})
+
+test('running sandbox imports require a trusted idle client and reject busy or unknown work state', async () => {
+  const { registerSandboxIpc } = require('../src/sandbox-ipc.cjs')
+  const handlers = new Map(), webContents = {}, window = { webContents }
+  let active = false, checkFails = false, imports = 0
+  const manager = { running: true, busy: false, importConfig: async kind => { imports++; return kind } }
+  registerSandboxIpc({ ipcMain: { removeHandler() {}, handle: (name, handler) => handlers.set(name, handler) },
+    manager, window: () => window, rootUrl: () => 'http://127.0.0.1:12345',
+    hasActiveWork: async () => { if (checkFails) throw new Error('状态读取失败'); return active } })
+  const event = { sender: webContents, senderFrame: { url: 'http://127.0.0.1:12345/' } }
+  const importConfig = (input = event) => handlers.get('workstep:sandbox:importConfig')(input, 'codex')
+  await assert.rejects(importConfig({ ...event, senderFrame: { url: 'https://evil.test' } }), /来源/)
+  active = true
+  await assert.rejects(importConfig(), /任务/)
+  active = false; checkFails = true
+  await assert.rejects(importConfig(), /状态读取失败/)
+  checkFails = false; manager.busy = true
+  await assert.rejects(importConfig(), /任务/)
+  assert.equal(imports, 0)
+  manager.busy = false
+  assert.equal(await importConfig(), 'codex')
+  assert.equal(imports, 1)
+  assert.equal(manager.running, true)
+})
+
+test('custom configuration IPC requires its own native directory grant and supports hidden directories and cancellation', async () => {
+  const { registerSandboxIpc } = require('../src/sandbox-ipc.cjs')
+  let canceled = true, imports = 0
+  const manager = { running: true, busy: false, importConfig: async input => { imports++; return input } }
+  const handlers = registerSandboxIpc({ ipcMain: { removeHandler() {}, handle() {} }, manager,
+    window: () => null, rootUrl: () => '', hasActiveWork: async () => false,
+    dialog: { showOpenDialog: async (_window, options) => {
+      assert.ok(options.properties.includes('showHiddenFiles'))
+      return { canceled, filePaths: canceled ? [] : ['/home/demo/.qoder'] }
+    } } })
+  await assert.rejects(handlers.importConfig({ source: '/home/demo/.qoder' }), /授权/)
+  assert.equal(await handlers.chooseConfigDirectory(), null)
+  await assert.rejects(handlers.importConfig({ source: '/home/demo/.qoder' }), /授权/)
+  canceled = false
+  assert.deepEqual(await handlers.chooseConfigDirectory(), { source: '/home/demo/.qoder', name: '.qoder' })
+  await assert.rejects(handlers.importConfig({ source: '/home/demo/.ssh' }), /授权/)
+  assert.deepEqual(await handlers.importConfig({ source: '/home/demo/.qoder' }), { source: '/home/demo/.qoder' })
+  assert.equal(imports, 1)
 })
 
 test('running sandbox can queue a scanned Docker image and restart from settings', async () => {

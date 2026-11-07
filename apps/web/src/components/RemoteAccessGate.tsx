@@ -3,7 +3,7 @@ import ResizablePanel from './ResizablePanel'
 import { useEffect, useState, type ReactNode } from 'react'
 import { remoteProjectApi } from '../api/client'
 import { useI18n } from '../i18n'
-import Button from './Button'
+import Button, { ButtonLink } from './Button'
 import Input from './Input'
 import './RemoteAccessGate.css'
 
@@ -106,9 +106,9 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
           {error && <Button variant="ghost" onClick={() => setCheckRevision(value => value + 1)}>
             {t('common.retry')}
           </Button>}
-          {gatewayAvailable && <a className="remote-access-gateway-login" href="/gateway/login">
+          {gatewayAvailable && <ButtonLink className="remote-access-gateway-login" href="/gateway/login">
             {t('remoteAccess.gatewayLogin')}
-          </a>}
+          </ButtonLink>}
           <Button variant="primary" loading={submitting} disabled={!draft.trim()} onClick={() => void submit()}>
             {t('remoteAccess.unlock')}
           </Button>

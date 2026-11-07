@@ -10,7 +10,7 @@
   "repository": "github:xzregg/workstep",
   "main": "src/main.cjs",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=24.18.0 <25"
   },
   "scripts": {
     "postversion": "node ../../scripts/sync-app-version.cjs",
@@ -31,7 +31,7 @@
     "playwright-core": "1.64.0"
   },
   "volta": {
-    "node": "22.22.2",
+    "node": "24.18.0",
     "yarn": "1.22.22"
   },
   "build": {

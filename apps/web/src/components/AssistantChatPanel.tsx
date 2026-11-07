@@ -12,7 +12,7 @@ import {
   ComposerOverlayHostContext,
   useComposerOverlayClearance,
 } from '../hooks/useComposerOverlayClearance'
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type HTMLAttributes } from 'react'
 import MobileSheet from './MobileSheet'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
@@ -116,6 +116,7 @@ export interface AssistantChatPanelProps {
   onAttachmentError?: (message: string) => void
   onClose?: () => void
   onA2uiAction?: (action: A2uiClientAction) => void
+  headerDrag?: Pick<HTMLAttributes<HTMLDivElement>, 'draggable' | 'onDragStart' | 'onDragEnd' | 'onPointerDownCapture'>
   headerContext?: ReactNode
   headerActions?: ReactNode
   /** Assistant-specific controls rendered in the button row above the composer. */
@@ -291,7 +292,7 @@ const MessageItem = memo(function MessageItem({
 export default function AssistantChatPanel({
   projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeaderStatus = false, welcome = false, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, workflowSkill, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
+  onA2uiAction, headerDrag, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, workflowSkill, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
   onLoadMessageEvents, onLoadOlderHistory, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
@@ -500,7 +501,7 @@ export default function AssistantChatPanel({
   }, { projectId, sessionId: sessionId ?? undefined, readOnly: !canEdit })
   return (
     <div className="assistant-chat-panel" ref={rootRef} data-ui="conversation">
-      <div className="assistant-chat-header" data-ui="chat-header">
+      <div className="assistant-chat-header" data-ui="chat-header" {...headerDrag}>
         <span className="assistant-chat-header-title" title={title} onDoubleClick={onTitleDoubleClick}>{title}</span>
         {running && !hideHeaderStatus && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>

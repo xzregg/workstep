@@ -20,6 +20,8 @@ import { appearanceStorageKey } from '../utils/appearanceStorage'
 import { useChatWorkspaceStore, type ChatWorkspacePane as Pane } from '../stores/chatWorkspaceStore'
 import './ChatWorkspace.css'
 
+const PANE_DRAG_TYPE = 'application/x-workstep-chat-pane'
+
 interface WorkspaceState { panes: Pane[]; activeId: string; routeKey: string; navigationKey: string; revealPaneId?: string }
 
 /** Each pane reuses the complete session UI; only selection and arrangement live here. */
@@ -58,9 +60,12 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
     return panes.length ? { ...saved, panes } : undefined
   })
   const [layout, setLayout] = useState<'horizontal' | 'vertical'>(() => initial?.layout || 'horizontal')
+  const headerControlPressed = useRef(false)
+  const draggedPane = useRef<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [dropping, setDropping] = useState(false)
   useEffect(() => {
-    const clear = () => setDropping(false)
+    const clear = () => { setDropping(false); setDropTarget(null); draggedPane.current = null }
     window.addEventListener('dragend', clear)
     window.addEventListener('drop', clear)
     return () => {
@@ -183,7 +188,32 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
         const paneProject = projects.find(p => p.id === pane.projectId)
         if (!paneProject) return null
         return <Fragment key={pane.id}><section
-        className={`chat-workspace-pane${pane.id === state.activeId ? ' chat-workspace-pane--active' : ''}`}
+        className={`chat-workspace-pane${pane.id === state.activeId ? ' chat-workspace-pane--active' : ''}${dropTarget === pane.id ? ' chat-workspace-pane--drop-target' : ''}`}
+        onDragOver={event => {
+          if (compact || !draggedPane.current || draggedPane.current === pane.id || !event.dataTransfer.types.includes(PANE_DRAG_TYPE)) return
+          event.preventDefault()
+          event.stopPropagation()
+          event.dataTransfer.dropEffect = 'move'
+          setDropTarget(pane.id)
+        }}
+        onDragLeave={event => {
+          if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) setDropTarget(null)
+        }}
+        onDrop={event => {
+          const sourceId = draggedPane.current
+          if (compact || !sourceId || !event.dataTransfer.types.includes(PANE_DRAG_TYPE)) return
+          event.preventDefault()
+          event.stopPropagation()
+          draggedPane.current = null
+          setDropTarget(null)
+          const current = latest.current
+          const source = current.panes.find(item => item.id === sourceId)
+          const targetIndex = current.panes.findIndex(item => item.id === pane.id)
+          if (!source || targetIndex < 0 || source.id === pane.id) return
+          const panes = current.panes.filter(item => item.id !== sourceId)
+          panes.splice(targetIndex, 0, source)
+          setState({ ...current, panes })
+        }}
         hidden={compact && pane.id !== state.activeId}
         aria-label={t('chatWorkspace.pane', { count: index + 1 })}
         onFocusCapture={() => { if (pane.id !== state.activeId) commit(state.panes, pane.id, true, true) }}
@@ -192,6 +222,22 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
         <div className="chat-workspace-pane-content"><ChatPage pane={{
           project: paneProject, active: pane.id === state.activeId, sessionId: pane.sessionId,
           onSessionChange: id => changeSession(pane.id, id),
+          headerDrag: !compact && state.panes.length > 1 ? {
+            draggable: true,
+            onPointerDownCapture: event => {
+              headerControlPressed.current = Boolean((event.target as Element).closest('button, input, textarea, select, a, [role="button"], [contenteditable="true"]'))
+            },
+            onDragStart: event => {
+              if (headerControlPressed.current || (event.target as Element).closest('button, input, textarea, select, a, [role="button"], [contenteditable="true"]')) {
+                event.preventDefault()
+                return
+              }
+              draggedPane.current = pane.id
+              event.dataTransfer.setData(PANE_DRAG_TYPE, pane.id)
+              event.dataTransfer.effectAllowed = 'move'
+            },
+            onDragEnd: () => { draggedPane.current = null; setDropTarget(null) },
+          } : undefined,
           headerActions: ({ createSession, creating, canCreate }) => <ChatWindowMenu layout={layout} onChange={setLayout} creating={creating} canAdd={canCreate && state.panes.length < 4} onAdd={() => {
             if (latest.current.panes.length >= 4) return
             void createSession(sessionId => {

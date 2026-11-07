@@ -11,6 +11,99 @@ import { useTaskStore } from '../src/stores/taskStore'
 import { defaultSkin } from '../src/skins/contract'
 import { saveSkin, restoreDefaultSkin } from '../src/skins/runtime'
 
+test('authorized projects expand their workflows and conversations and switch without reloading', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('http://gateway.test/workspace/one/')
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const oldFetch = globalThis.fetch, oldSocket = globalThis.WebSocket
+  const oldSubmit = window.HTMLFormElement.prototype.submit
+  const calls: string[] = [], sockets: string[] = []
+  const subscriptions: { socket: string; project_id: string }[] = []
+  let submitted = false
+  class Socket {
+    static OPEN = 1
+    static CONNECTING = 0
+    readyState = 1
+    onopen: (() => void) | null = null
+    constructor(private url: string) { sockets.push(url); queueMicrotask(() => this.onopen?.()) }
+    close() { this.readyState = 3 }
+    send(message: string) {
+      const data = JSON.parse(message)
+      if (data.type === 'subscribe') subscriptions.push({ socket: this.url, project_id: data.project_id })
+    }
+  }
+  Object.assign(globalThis, { WebSocket: Socket, ResizeObserver: window.ResizeObserver, history: window.history })
+  window.HTMLFormElement.prototype.submit = function () { submitted = true }
+  const scopes = ['1', '2'].map(id => ({ project_id: 'p' + id, host_project_id: 'host-' + id,
+    name: '项目' + id, access_level: 'read', task_create: false, share_create: false,
+    permissions: ['workflow.read', 'task.read', 'session.read'] }))
+  globalThis.fetch = async input => {
+    const url = String(input); calls.push(url)
+    if (url === '/api/devices') return Response.json({ devices: [] })
+    if (url === '/api/projects') return Response.json({ projects: scopes.map(p => ({ id: p.project_id, name: p.name, device_id: 'one', device_name: 'One', device_online: true })) })
+    const path = url.replace('/workspace/one', '')
+    if (path.startsWith('/api/remote/session')) {
+      const id = path.includes('host-2') ? 1 : 0
+      return Response.json({ user_id: 'alice', device_id: 'one', device_name: 'One', username: 'Alice',
+        gateway_url: 'http://gateway.test/', ...scopes[id], projects: scopes })
+    }
+    for (const id of ['1', '2']) {
+      if (path === '/api/project/host-' + id + '/summary') return Response.json({ id: 'host-' + id, name: '项目' + id,
+        workflows: [{ id: 'flow-' + id, name: '流程' + id, is_default: true, nodeCount: 0 }] })
+      if (path.startsWith('/api/chat-sessions?project_id=host-' + id)) return Response.json({ sessions: [
+        { id: 'chat-' + id, project_id: 'host-' + id, title: '会话' + id, status: 'idle', created_at: '2026-11-07T00:00:00Z', updated_at: '2026-11-07T00:00:00Z' },
+      ] })
+      if (path.startsWith('/api/workflow/flow-' + id)) return Response.json({ id: 'flow-' + id, name: '流程' + id, steps: { nodes: [], connections: [] } })
+    }
+    return Response.json({ tasks: [], sessions: [], events: [], unread: 0, cursor: 0, messages: [], engines: [], providers: [] })
+  }
+  useGatewaySessionStore.setState({ session: null, error: '', errorStatus: null, loading: false })
+  useProjectStore.setState({ projects: [], activeProject: null, activeWorkflowId: null, canvasDirty: false })
+  const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
+  try {
+    await act(async () => root.render(<I18nProvider><App /></I18nProvider>))
+    const initialSocketCount = sockets.length
+    const shell = element.querySelector('.app-shell')
+    const rows = () => [...element.querySelectorAll<HTMLElement>('.layout-project-row')]
+    assert.deepEqual(rows().map(row => row.querySelector('.layout-project-name')?.textContent?.trim()), ['项目1', '项目2'])
+    assert.equal(element.querySelector('.gateway-project-tabs'), null)
+    await act(async () => rows()[1].querySelector<HTMLButtonElement>('.layout-project-expand-button')!.click())
+    const second = element.querySelector<HTMLElement>('#sidebar-project-host-2')!
+    assert.ok(second, 'another authorized project uses the ordinary expandable tree')
+    assert.match(second.textContent ?? '', /流程2/)
+    const sessionLabel = second.querySelector<HTMLElement>('.layout-sidebar-session-label')!
+    await act(async () => sessionLabel.click())
+    assert.ok(calls.some(url => url.startsWith('/workspace/one/api/chat-sessions?project_id=host-2')), JSON.stringify(calls))
+    assert.match(second.textContent ?? '', /会话2/)
+    await act(async () => second.querySelector<HTMLElement>('.layout-workflow-row')!.click())
+    assert.equal(useProjectStore.getState().activeProject?.id, 'host-2')
+    assert.equal(useGatewaySessionStore.getState().session?.host_project_id, 'host-2')
+    assert.equal(element.querySelector('.app-shell'), shell)
+    assert.equal(submitted, false)
+    assert.equal(calls.some(path => path.endsWith('/access') || path.includes('/redeem')), false)
+    assert.equal(sockets.length, initialSocketCount, 'switching project keeps both scoped streams alive')
+    assert.equal(sockets.filter(url => url.includes('/ws/workspace/one?project_id=')).length, 2)
+    for (const id of ['host-1', 'host-2']) {
+      assert.ok(subscriptions.some(value => value.socket.includes('project_id=' + id) && value.project_id === id))
+    }
+    assert.ok(subscriptions.every(value => value.socket.includes('project_id=' + value.project_id)))
+    for (const width of [320, 390, 1023]) {
+      await act(async () => { window.innerWidth = width; window.dispatchEvent(new window.Event('resize')) })
+      assert.equal(rows().length, 2)
+      assert.ok(element.querySelector('#sidebar-project-host-2'))
+    }
+    await act(async () => { window.dispatchEvent(new window.Event('workstep:resume')); await new Promise(resolve => setTimeout(resolve, 0)) })
+    assert.equal(useProjectStore.getState().activeProject?.id, 'host-2', 'periodic session refresh preserves the chosen project')
+  } finally {
+    await act(async () => root.unmount()); element.remove()
+    globalThis.fetch = oldFetch; globalThis.WebSocket = oldSocket
+    window.HTMLFormElement.prototype.submit = oldSubmit
+    useGatewaySessionStore.setState({ session: null, error: '', errorStatus: null, loading: false })
+    useProjectStore.setState({ projects: [], activeProject: null, activeWorkflowId: null, canvasDirty: false })
+    await window.happyDOM.close()
+  }
+})
+
 for (const customSkin of [false, true]) for (const creator of [false, true]) test(`${customSkin ? 'custom skin' : 'default skin'}: ${creator ? 'task creator sees submission but no workflow, Git, file-write or project-chat entries' : 'the real WorkStep app opens the bound task workspace and subscribes within that project'}`, async () => {
   const { window } = installDomEnvironment()
   window.happyDOM.setURL('http://d-device-1.localhost:8700/')

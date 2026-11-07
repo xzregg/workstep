@@ -40,9 +40,9 @@ export function AccountPage() {
   finally{setBusy(false)}
  }
  return <section className="gateway-admin-page gateway-account-center">
-  <div className="gateway-center-page-heading"><div><span className="gateway-center-eyebrow">WORKSTEP</span><h2>用户中心</h2><p>查看你的使用情况，管理账号安全。</p></div><Link className="gateway-center-back" to="/">进入工作台 <span aria-hidden="true">↗</span></Link></div>
+  <div className="gateway-center-page-heading"><div><span className="gateway-center-eyebrow">WORKSTEP</span><h2>用户中心</h2><p>查看你的使用情况，管理账号安全。</p></div><Link className="gateway-action-link gateway-center-back" to="/">进入工作台 <span aria-hidden="true">↗</span></Link></div>
   {status==='checking' && <p className="gateway-center-state" role="status"><span className="gateway-spinner"/> 正在检查登录状态…</p>}
-  {status==='expired' && <p className="gateway-center-state">登录已失效。<Link to="/auth?next=%2Faccount">重新登录</Link></p>}
+  {status==='expired' && <p className="gateway-center-state">登录已失效。<Link className="gateway-action-link" to="/auth?next=%2Faccount">重新登录</Link></p>}
   {status==='error' && <p className="gateway-center-state" role="alert">无法检查登录状态。<button onClick={()=>setRevision(value=>value+1)}>重试</button></p>}
   {status==='ready' && session && <>
    <div className="gateway-center-profile"><div className="gateway-center-avatar" aria-hidden="true">{Array.from(session.user.display_name || session.user.username)[0]}</div><div className="gateway-center-profile-name"><h3>{session.user.display_name || session.user.username}</h3><p>{loginUsername(session.user) ? `登录用户名：${loginUsername(session.user)}` : '企业账号'}</p></div><span className="gateway-center-account-state">已登录</span><button type="button" className="gateway-center-logout" disabled={busy} onClick={()=>void logout()}>{busy?<><span className="gateway-spinner"/> 正在退出…</>:'退出登录'}</button></div>

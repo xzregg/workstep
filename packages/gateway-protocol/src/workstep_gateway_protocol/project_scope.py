@@ -242,9 +242,15 @@ def project_http_route_allowed(method: str, path: str,
         return False
     if path in ("/", "/tasks", "/chat", "/canvas", "/statistics", "/file-preview", "/appearance"):
         return True
-    if path == "/favicon.svg" or (_WORKSPACE_ASSET.fullmatch(path)
-            and not any(part in (".", "..") for part in path.split("/"))):
+    if path == "/favicon.svg":
         return not query_pairs
+    if (_WORKSPACE_ASSET.fullmatch(path)
+            and not any(part in (".", "..") for part in path.split("/"))):
+        # Gateway versions entry assets to escape previously cached partial
+        # transfers. This marker grants no additional project or API scope.
+        return not query_pairs or (len(query_pairs) == 1
+            and query_pairs[0][0] == '_workstep_asset'
+            and re.fullmatch(r'[a-f0-9]{16}', query_pairs[0][1]) is not None)
     if path == f"/api/project/{project_id}/summary":
         return not query_pairs
     if path == "/api/search/tasks":

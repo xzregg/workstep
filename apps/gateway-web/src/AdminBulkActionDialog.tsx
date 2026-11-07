@@ -27,8 +27,8 @@ export function AdminBulkActionDialog({action, csrf, onClose, onDone}: {
   finally {submitted.current=false; setBusy(false)}
  }
  return <GatewayConfirmDialog title={action.title} message={action.message} confirmLabel={action.label}
-  busy={busy} disabled={!csrf || (!!action.password && !passwordReady)} onCancel={onClose} onConfirm={()=>void submit()}>
-  {action.password && <PasswordConfirmation label="输入你的密码确认" value={password} onChange={setPassword} />}
+  busy={busy} disabled={!csrf || (!!action.password && !passwordReady)} onCancel={onClose} onConfirm={()=>void submit()}
+      passwordConfirmation={action.password && <PasswordConfirmation label="输入你的密码确认" value={password} onChange={setPassword} />}>
   {busy && <p role="status"><span className="gateway-spinner"/> 正在提交操作…</p>}
   {error && <p role="alert" className="gateway-auth-error">{error}</p>}
  </GatewayConfirmDialog>

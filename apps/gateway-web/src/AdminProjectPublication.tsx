@@ -128,8 +128,8 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
     {selectedProject && selectedDevice && <GatewayConfirmDialog title="发布平台项目"
       message={`从 ${selectedDevice.name} 发布「${selectedProject.name}」。提交时会再次向在线 PC 核对项目。`}
       confirmLabel="确认发布" busy={busy} disabled={!passwordReady} onConfirm={() => void publish()}
-      onCancel={() => { setSelectedProject(null); setPassword('') }}>
-      <PasswordConfirmation id="publish-project-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+      onCancel={() => { setSelectedProject(null); setPassword('') }}
+      passwordConfirmation={<PasswordConfirmation id="publish-project-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>}
   </section>
@@ -157,8 +157,8 @@ export function AdminUnpublishProjectDialog({ project, csrf, onClose, onComplete
   }
   return <GatewayConfirmDialog title="取消项目发布"
     message={`确认取消「${project.name}」的发布？只移除 Gateway 登记和访问授权，不删除宿主 PC 的项目目录或数据。`}
-    confirmLabel="取消发布" busy={busy} disabled={!passwordReady} onConfirm={() => void unpublish()} onCancel={onClose}>
-    <PasswordConfirmation id="unpublish-project-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+    confirmLabel="取消发布" busy={busy} disabled={!passwordReady} onConfirm={() => void unpublish()} onCancel={onClose}
+      passwordConfirmation={<PasswordConfirmation id="unpublish-project-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>
 }

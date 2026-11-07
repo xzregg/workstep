@@ -5,7 +5,7 @@ import ProjectGitButton from '../components/git/ProjectGitButton'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom'
-import AssistantChatPanel from '../components/AssistantChatPanel'
+import AssistantChatPanel, { type AssistantChatPanelProps } from '../components/AssistantChatPanel'
 import ChatRoleBinding from '../components/role-center/ChatRoleBinding'
 import ChannelConversationContext from '../components/ChannelConversationContext'
 import ChatSessionGoalBar from '../components/ChatSessionGoalBar'
@@ -70,7 +70,7 @@ export interface EmbeddedProjectChat {
   placeholder?: string
 }
 
-export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjectChat; pane?: EmbeddedProjectChat & { active?: boolean; headerActions?: (actions: { createSession: (onCreated: (id: string) => void) => Promise<void>; creating: boolean; canCreate: boolean }) => ReactNode; closeAction?: ReactNode } } = {}) {
+export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjectChat; pane?: EmbeddedProjectChat & { active?: boolean; headerDrag?: AssistantChatPanelProps['headerDrag']; headerActions?: (actions: { createSession: (onCreated: (id: string) => void) => Promise<void>; creating: boolean; canCreate: boolean }) => ReactNode; closeAction?: ReactNode } } = {}) {
   const controlled = embedded || pane
   const isControlled = Boolean(controlled)
   const isEmbedded = Boolean(embedded)
@@ -501,6 +501,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         sessionId={sessionId}
         headerContext={<ChannelConversationContext projectId={activeProject.id} sessionId={sessionId} />}
         title={sessionTitle || t('chatSession.title')}
+        headerDrag={pane?.headerDrag}
         onTitleDoubleClick={!compact && !isEmbedded && can('session.manage') ? () => setRenameOpen(true) : undefined}
         hideHeaderStatus={!isEmbedded}
         welcome={!isEmbedded}

@@ -1,0 +1,4 @@
+@import "../../../packages/gateway-ui/src/SearchableSelect.css";
+.gateway-admin-page .skin-select-trigger, .gateway-modal .skin-select-trigger, .gateway-confirm-dialog .skin-select-trigger { width: 100%; min-width: 0; }
+.gateway-admin-filters .skin-select-trigger { width: auto; max-width: 220px; }
+.gateway-admin-shell .gateway-admin-page .skin-select-trigger, .gateway-modal .skin-select-trigger, .gateway-confirm-dialog .skin-select-trigger { background: var(--gateway-admin-canvas, #fff); color: var(--gateway-admin-ink, #1d1d1f); border: 1px solid var(--gateway-admin-border, #d2d2d7); }

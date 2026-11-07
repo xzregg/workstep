@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { ApplicationEnabledSwitch } from './ApplicationEnabledSwitch'
 import { ApplicationSecretField } from './ApplicationSecretField'
 import { OrganizationSyncNotice } from './OrganizationSyncNotice'
@@ -39,7 +40,7 @@ function ApplicationEditor({ provider, source, csrf, platformAddress, onClose, o
   finally { submitting.current = false; setBusy(false) }
  }
  return <><GatewayConfirmDialog title={names[provider] + '应用配置'} message="配置企业应用并选择组织同步及扫码登录。" confirmLabel="保存配置" disabled={!valid} busy={busy} onConfirm={() => void save()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
-  <p><a href={enterpriseProviders[provider].console} target="_blank" rel="noopener noreferrer">打开{names[provider]}{provider === 'wecom' ? '管理' : '开发者'}后台</a><br />{isFeishuProvider(provider) ? '创建企业自建应用，在「凭证与基础信息」获取 App ID、App Secret，并填写所属企业 Tenant Key。飞书与 Lark 使用各自平台的凭证。' : provider === 'dingtalk' ? '在后台查看企业 Corp ID；进入应用的「凭证与基础信息」获取 Client ID 和 Client Secret。' : '在「我的企业 → 企业信息」获取企业 Corp ID；进入「应用管理 → 自建应用」获取 Agent ID 和 Secret。'}</p>
+  <p><a className="gateway-action-link" href={enterpriseProviders[provider].console} target="_blank" rel="noopener noreferrer">打开{names[provider]}{provider === 'wecom' ? '管理' : '开发者'}后台</a><br />{isFeishuProvider(provider) ? '创建企业自建应用，在「凭证与基础信息」获取 App ID、App Secret，并填写所属企业 Tenant Key。飞书与 Lark 使用各自平台的凭证。' : provider === 'dingtalk' ? '在后台查看企业 Corp ID；进入应用的「凭证与基础信息」获取 Client ID 和 Client Secret。' : '在「我的企业 → 企业信息」获取企业 Corp ID；进入「应用管理 → 自建应用」获取 Agent ID 和 Secret。'}</p>
   <div className="gateway-application-fields">
    <label>{isFeishuProvider(provider) ? '企业 Tenant Key' : '企业 Corp ID'}<input value={draft.tenant} disabled={busy} onChange={event => change('tenant', event.target.value)} /><small>{isFeishuProvider(provider) ? '用于核对登录成员所属企业，不是 App ID；从企业信息或开放平台获取。' : provider === 'dingtalk' ? '企业 ID（通常以 ding 开头），用于登录企业校验；不是应用 AgentId 或 App ID。' : '企业微信的企业 ID，用于获取企业凭证和扫码登录。'}</small></label>
    {provider === 'dingtalk' && <label>App Key / Client ID<input value={draft.client} disabled={busy} onChange={event => change('client', event.target.value)} /></label>}
@@ -48,8 +49,8 @@ function ApplicationEditor({ provider, source, csrf, platformAddress, onClose, o
    <ApplicationSecretField value={draft.secret} onChange={value => change('secret', value)} sourceId={source?.id} configured={source?.secret_configured} csrf={csrf} disabled={busy} />
    <label className="gateway-check-label"><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={event => change('enabled', event.target.checked)} />启用应用</label>
    <label className="gateway-check-label"><input type="checkbox" checked={draft.sync} disabled={busy} onChange={event => change('sync', event.target.checked)} />启用组织同步</label>
-   <label>自动同步频率<select value={draft.frequency} disabled={busy} onChange={event => change('frequency', event.target.value)}><option value="off">关闭</option><option value="daily">每天</option><option value="weekly">每周</option></select></label>
-   {draft.frequency !== 'off' && <><label>执行时间<input type="time" value={draft.time} disabled={busy} onChange={event => change('time', event.target.value)} /></label><label>时区<input value={draft.zone} disabled={busy} onChange={event => change('zone', event.target.value)} /></label>{draft.frequency === 'weekly' && <label>星期<select value={draft.weekday} disabled={busy} onChange={event => change('weekday', event.target.value)}>{['一','二','三','四','五','六','日'].map((day,index)=><option key={index} value={index}>星期{day}</option>)}</select></label>}</>}
+   <label>自动同步频率<Select value={draft.frequency} disabled={busy} onChange={event => change('frequency', event.target.value)}><option value="off">关闭</option><option value="daily">每天</option><option value="weekly">每周</option></Select></label>
+   {draft.frequency !== 'off' && <><label>执行时间<input type="time" value={draft.time} disabled={busy} onChange={event => change('time', event.target.value)} /></label><label>时区<input value={draft.zone} disabled={busy} onChange={event => change('zone', event.target.value)} /></label>{draft.frequency === 'weekly' && <label>星期<Select value={draft.weekday} disabled={busy} onChange={event => change('weekday', event.target.value)}>{['一','二','三','四','五','六','日'].map((day,index)=><option key={index} value={index}>星期{day}</option>)}</Select></label>}</>}
    <label className="gateway-check-label"><input type="checkbox" checked={draft.login} disabled={busy} onChange={event => change('login', event.target.checked)} />启用扫码登录</label>
   </div>
   {source && draft.tenant.trim() !== source.tenant_id && <p role="status">正在更正企业标识；已有用户组和成员关联会保留。请确认仍是原企业，改为另一企业应添加新应用。</p>}

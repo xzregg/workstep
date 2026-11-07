@@ -37,11 +37,11 @@ export function AdminPlatformAddressDialog({address, csrf, onClose, onSaved}: {
   }
   return <>
     <GatewayConfirmDialog title="修改平台地址" message="保存后立即用于安装页、设备访问及分享链接，重启后保留。"
-      confirmLabel="保存平台地址" disabled={!normalized || normalized === address || !passwordReady || !csrf} busy={busy} onCancel={close} onConfirm={() => void save()}>
+      confirmLabel="保存平台地址" disabled={!normalized || normalized === address || !passwordReady || !csrf} busy={busy} onCancel={close} onConfirm={() => void save()}
+      passwordConfirmation={<PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} disabled={busy} />}>
       <label>平台地址<input type="url" value={value} disabled={busy} placeholder="https://workstep.example.com" onChange={event => setValue(event.target.value)}/></label>
       {value && !normalized && <p className="gateway-auth-error">请输入完整的 HTTP 或 HTTPS 地址，不包含路径、参数或账号密码。</p>}
       <p>域名须已指向网关，并配置好对应的 HTTPS 服务；本机或内网可使用 HTTP 地址。其他电脑不能使用 localhost 连接此网关。</p>
-      <PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} disabled={busy} />
       {busy && <p role="status"><span className="gateway-spinner"/>正在保存平台地址…</p>}
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>

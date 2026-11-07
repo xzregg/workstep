@@ -128,7 +128,7 @@ def test_company_display_name_is_public_validated_and_persisted(tmp_path):
         assert client.put('/api/admin/company-display-name', json={'company_display_name': '示例公司'}).status_code == 401
         headers = {'X-CSRF-Token': _setup(client)}
         body = {'company_display_name': '  示例公司  '}
-        assert client.put('/api/admin/company-display-name', headers=headers, json=body).status_code == 403
+        assert client.put('/api/admin/company-display-name', headers=headers, json=body).status_code == 200
         client.post('/api/auth/step-up', headers=headers, json={'password': 'OwnerPassphrase-2026!'})
         assert client.put('/api/admin/company-display-name', json=body).status_code == 403
         response = client.put('/api/admin/company-display-name', headers=headers, json=body)

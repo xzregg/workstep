@@ -56,10 +56,10 @@ function CallbackEditor({urls,csrf,onClose,onSaved}: {urls: string[];csrf: strin
   <textarea id="third-party-callback-urls" rows={6} value={text} disabled={busy} placeholder="http://business.example.com/login/callback" onChange={event=>setText(event.target.value)}/>
   <p>每行一个完整地址，最多 100 个。清空后关闭第三方登录授权；删除地址会使对应未兑换的 code 失效。</p>
   {!valid&&<p role="alert" className="gateway-auth-error">请填写有效的 HTTP/HTTPS 回调 URL，不含片段、用户凭据或 code、state、request_id 查询参数，且不超过 100 个。</p>}
-  <PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} disabled={busy}/>
   {error&&<p role="alert" className="gateway-auth-error">{error}</p>}
   {busy&&<p role="status"><span className="gateway-spinner"/> 正在保存白名单…</p>}
   <div className="gateway-dialog-actions">
+      <div className="gateway-password-confirmation"><PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} disabled={busy}/></div>
    <button type="button" disabled={busy} onClick={()=>{if(changed||password)setDiscard(true);else onClose()}}>取消</button>
    <button type="button" disabled={busy||!valid||!changed||!passwordReady||!csrf} onClick={()=>void save()}>保存白名单</button>
   </div>

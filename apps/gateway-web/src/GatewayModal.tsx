@@ -2,8 +2,8 @@ import { useRef, useState } from 'react'
 import type { ReactNode, PointerEvent } from 'react'
 import { useGatewayModal } from './useGatewayModal'
 
-export function GatewayModal({ title, children, footer, onClose, className = '', explicitCloseOnly = false }: {
- title: string; children: ReactNode; footer: ReactNode; onClose: () => void; className?: string; explicitCloseOnly?: boolean
+export function GatewayModal({ title, children, footer, passwordConfirmation, onClose, className = '', explicitCloseOnly = false }: {
+ title: string; children: ReactNode; footer: ReactNode; passwordConfirmation?: ReactNode; onClose: () => void; className?: string; explicitCloseOnly?: boolean
 }) {
  const dialog = useGatewayModal()
  const [size, setSize] = useState<{width:number;height:number} | null>(null)
@@ -25,7 +25,7 @@ export function GatewayModal({ title, children, footer, onClose, className = '',
   onCancel={event=>{event.preventDefault();if(!explicitCloseOnly)onClose()}} onClick={event=>{if(!explicitCloseOnly && event.target===event.currentTarget)onClose()}}>
   <header className="gateway-modal-header"><h3>{title}</h3><button type="button" aria-label="关闭弹窗" onClick={onClose}>×</button></header>
   <div className="gateway-modal-body">{children}</div>
-  <footer className="gateway-modal-footer">{footer}</footer>
+  <footer className="gateway-modal-footer">{passwordConfirmation && <div className="gateway-password-confirmation">{passwordConfirmation}</div>}{footer}</footer>
   {['n','s','e','w','ne','nw','se','sw'].map(edge=><span key={edge} aria-hidden="true" className={`gateway-modal-resize gateway-modal-resize-${edge}`}
    onPointerDown={event=>start(event,edge)} onPointerMove={move} onPointerUp={()=>{drag.current=null}} onLostPointerCapture={()=>{drag.current=null}} />)}
  </dialog>

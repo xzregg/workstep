@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -67,16 +68,17 @@ export function AdminProviderTestPanel({ providerId, providerName, csrf, onClose
     <GatewayConfirmDialog title="测试供应商连接"
       message={`在目标 PC 上测试「${providerName}」连接。只返回状态和脱敏错误码。`}
       confirmLabel="发送测试命令" busy={busy} disabled={!deviceId || !passwordReady || loading || !!loadError}
-      onConfirm={() => void submit()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
+      onConfirm={() => void submit()} onCancel={() => dirty ? setDiscard(true) : onClose()}
+      passwordConfirmation={<PasswordConfirmation id="provider-test-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       <form className="gateway-admin-search" onSubmit={event => {
         event.preventDefault(); setDeviceId(''); setPage(1); setSearch(query.trim())
       }}><label htmlFor="provider-test-search">搜索在线 PC</label>
         <input id="provider-test-search" value={query} onChange={event => setQuery(event.target.value)} />
         <button type="submit">搜索</button></form>
       <label htmlFor="provider-test-device">目标 PC</label>
-      <select id="provider-test-device" value={deviceId} onChange={event => setDeviceId(event.target.value)}>
+      <Select id="provider-test-device" value={deviceId} onChange={event => setDeviceId(event.target.value)}>
         <option value="">请选择</option>{targets.map(target =>
-          <option key={target.id} value={target.id}>{target.name}</option>)}</select>
+          <option key={target.id} value={target.id}>{target.name}</option>)}</Select>
       <div className="gateway-admin-pagination"><span>共 {total} 台在线 PC · 第 {page}/
         {Math.max(1, Math.ceil(total / 25))} 页</span>
         <button type="button" disabled={page <= 1 || loading} onClick={() => {
@@ -88,7 +90,6 @@ export function AdminProviderTestPanel({ providerId, providerName, csrf, onClose
       {loading && <p role="status">正在加载在线 PC…</p>}
       {loadError && <p role="alert" className="gateway-auth-error">{loadError} <button type="button"
         onClick={() => setRevision(value => value + 1)}>重试加载</button></p>}
-      <PasswordConfirmation id="provider-test-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在测试连接…</p>}
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
       {result && <p role="status">{result.status === 'succeeded' ? '连接成功'

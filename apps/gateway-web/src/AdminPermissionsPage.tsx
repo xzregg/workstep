@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PermissionPicker } from './PermissionPicker'
@@ -82,9 +83,9 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
       }}>查看全部范围</button></p>}
     <div className="gateway-permission-filters">
       <div><label htmlFor="permission-filter-type">对象类型筛选</label>
-        <select id="permission-filter-type" value={subjectType} onChange={event => {
+        <Select id="permission-filter-type" value={subjectType} onChange={event => {
           setSubjectType(event.target.value); setSubjectId('')
-        }}><option value="">全部用户与组</option><option value="user">用户</option><option value="group">用户组</option></select></div>
+        }}><option value="">全部用户与组</option><option value="user">用户</option><option value="group">用户组</option></Select></div>
       {subjectType && <PermissionPicker key={subjectType} kind="subject" targetType={subjectType}
         label="筛选对象" value={subjectId} onChange={setSubjectId} />}
       <button type="button" onClick={() => setRevision(value => value + 1)} disabled={loading}>刷新规则</button>

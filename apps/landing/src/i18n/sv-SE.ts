@@ -366,7 +366,7 @@ export const svSE: I18nDict = {
     "linux": "Linux",
     "platformHint": "Installatörer uppdateras kontinuerligt. Du kan också starta från källan nedan.",
     "sourceTitle": "Kör från källan",
-    "sourceDesc": "Kräver Node.js 20 eller 22 med Corepack, plus Python 3.11+:",
+    "sourceDesc": "Kräver Node.js 24 LTS med Corepack, plus Python 3.11+:",
     "sourceStep1": "Klona förvaret",
     "sourceStep2": "Starta allt",
     "sourceStep3": "Öppna http://localhost:5173"

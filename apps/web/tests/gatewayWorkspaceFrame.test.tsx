@@ -253,7 +253,7 @@ test('device switching restores each user and device route with a fresh access t
   current=device;window.happyDOM.setURL(`http://gateway.test/workspace/${device}/${entry}`)
   useGatewaySessionStore.setState({session:{user_id:user,device_id:device,device_name:device,username:user,gateway_url:'http://gateway.test/',project_id:project,host_project_id:project?'host':null,access_level:project?'edit':null,task_create:true,share_create:true,can_manage_project_access:false},error:''})
   const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
-  await act(async()=>root.render(<I18nProvider><MemoryRouter initialEntries={['/'+entry]}><GatewayWorkspaceLocation/><RouteControls/><GatewayDeviceTabs currentDeviceId={device} currentProjectId={project}/></MemoryRouter></I18nProvider>))
+  await act(async()=>root.render(<I18nProvider><MemoryRouter initialEntries={['/'+entry]}><GatewayWorkspaceLocation/><RouteControls/><GatewayDeviceTabs currentDeviceId={device}/></MemoryRouter></I18nProvider>))
   return {element,close:async()=>{await act(async()=>root.unmount());element.remove()}}
  }
  try {

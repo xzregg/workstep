@@ -7,7 +7,7 @@
 .gateway-device-scope-control-row input { flex: 1; min-width: 0; }
 .gateway-device-scope-control-row button { flex-shrink: 0; }
 .gateway-device-scope-actions { grid-column: 2; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
-.gateway-device-scope-form :is(.gateway-device-scope-summary,.gateway-device-scope-help) { grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--gateway-admin-surface); color: var(--gateway-admin-secondary); font-size: 12px; }
+.gateway-device-scope-form :is(.gateway-device-scope-summary,.gateway-device-scope-help) { grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: var(--gateway-admin-control-radius, 12px); background: var(--gateway-admin-surface); color: var(--gateway-admin-secondary); font-size: 12px; }
 .gateway-device-scope-fields > button { grid-column: 2; justify-self: start; }
 @media(max-width:767px) {
  .gateway-device-scope-fields { grid-template-columns: minmax(0,1fr); gap: 8px; }

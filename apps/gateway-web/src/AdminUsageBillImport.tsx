@@ -79,7 +79,8 @@ export function AdminUsageBillImport() {
       message="录入已核对的供应商账单行。同一供应商账单行 ID 重复导入时内容必须一致。"
       confirmLabel="导入账单行" busy={busy} disabled={!csrf || !required}
       onConfirm={() => void submit()} onCancel={() => dirty && !result
-        ? setDiscard(true) : setOpen(false)}>
+        ? setDiscard(true) : setOpen(false)}
+      passwordConfirmation={<PasswordConfirmation label="管理员密码" value={form.password} onChange={value => update('password', value)} />}>
       <div className="gateway-usage-filters">
         <label>供应商 ID<input value={form.providerId} maxLength={64}
           onChange={event => update('providerId', event.target.value)} /></label>
@@ -97,7 +98,6 @@ export function AdminUsageBillImport() {
           onChange={event => update('currency', event.target.value.toUpperCase())} /></label>
         <label>账单金额<input inputMode="decimal" value={form.billedCost}
           onChange={event => update('billedCost', event.target.value)} /></label>
-        <PasswordConfirmation label="管理员密码" value={form.password} onChange={value => update('password', value)} />
       </div>
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在导入账单行…</p>}
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}

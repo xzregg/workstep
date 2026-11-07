@@ -366,7 +366,7 @@ export const esES: I18nDict = {
     "linux": "Linux",
     "platformHint": "Los instaladores se actualizan continuamente. También puede iniciar desde la fuente a continuación.",
     "sourceTitle": "Ejecutar desde la fuente",
-    "sourceDesc": "Requiere Node.js 20 o 22 con Corepack, más Python 3.11+:",
+    "sourceDesc": "Requiere Node.js 24 LTS con Corepack, más Python 3.11+:",
     "sourceStep1": "Clonar el repositorio",
     "sourceStep2": "empezar todo",
     "sourceStep3": "Abrir http://localhost:5173"

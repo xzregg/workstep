@@ -81,12 +81,27 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
     })
     child.workstepStartedAt = new Date().toISOString()
     let settled = false
-    let stderr = ''
+    let recentOutput = ''
     logger?.write('daemon', 'info', '后台进程已启动')
     const timeout = setTimeout(() => {
-      finish(new Error(`Backend did not become ready within ${timeoutMs}ms`))
-      child.kill()
+      finish(startupError(`Backend did not become ready within ${timeoutMs}ms`))
+      void stopSidecar(child).catch(error => logger?.write('daemon', 'error', String(error)))
     }, timeoutMs)
+
+    function startupError(message) {
+      const detail = recentOutput ? `\n最近后台输出：\n${recentOutput}` : '\n后台尚未输出启动日志'
+      const text = `${message}${detail}`
+      return new Error(logger?.redact ? logger.redact(text) : text)
+    }
+
+    function record(level, line) {
+      logger?.write('daemon', level, line)
+      if (!settled) {
+        // Redact before truncating, so a cut credential cannot evade matching.
+        const safeLine = logger?.redact ? logger.redact(line) : line
+        recentOutput = `${recentOutput}${safeLine}\n`.slice(-4000)
+      }
+    }
 
     function finish(error, result) {
       if (settled) return
@@ -97,21 +112,22 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
     }
 
     readline.createInterface({ input: child.stdout }).on('line', (line) => {
-      logger?.write('daemon', 'info', line)
+      record('info', line)
       const readyPort = parseReadyPort(line)
       if (readyPort !== null) finish(null, { child, port: readyPort })
     })
     readline.createInterface({ input: child.stderr }).on('line', (line) => {
-      logger?.write('daemon', 'error', line)
-      stderr = `${stderr}${line}\n`.slice(-4000)
+      const progress = /^STARTUP .+ (?:start|complete elapsed_ms=\d+)$/.test(line)
+      record(progress ? 'info' : 'error', line)
     })
     child.once('error', finish)
     child.once('exit', (code, signal) => {
       logger?.write('daemon', child.workstepStopping ? 'info' : 'error',
         `后台进程退出 ${JSON.stringify({ code, signal, expected: Boolean(child.workstepStopping) })}`)
-      finish(new Error(
-        `Backend exited before ready (code=${code}, signal=${signal})${stderr ? `\n${stderr}` : ''}`,
-      ))
+    })
+    // close follows pipe drainage, so an early exit retains its final output.
+    child.once('close', (code, signal) => {
+      finish(startupError(`Backend exited before ready (code=${code}, signal=${signal})`))
     })
   })
 }

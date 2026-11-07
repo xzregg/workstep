@@ -10,7 +10,7 @@
     "build:gateway-share": "node scripts/generate-language-catalog.mjs && tsc -b && vite build --mode gateway-share",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node --loader ./scripts/test-loader.mjs --test tests/*.test.ts tests/*.test.tsx tests/*.test.mjs"
+    "test": "node --no-experimental-global-navigator --loader ./scripts/test-loader.mjs --test tests/*.test.ts tests/*.test.tsx tests/*.test.mjs"
   },
   "dependencies": {
     "@a2ui/markdown-it": "^0.1.1",
@@ -44,7 +44,7 @@
     "vite": "^8.1.1"
   },
   "volta": {
-    "node": "20.20.2",
+    "node": "24.18.0",
     "yarn": "1.22.22"
   }
 }

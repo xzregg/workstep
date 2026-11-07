@@ -363,7 +363,7 @@ export const deDE: I18nDict = {
     "choosePlatform": "Plattform auswählen",
     "platformHint": "Installationspakete werden laufend aktualisiert. Sie können auch aus dem Quellcode starten.",
     "sourceTitle": "Aus dem Quellcode starten",
-    "sourceDesc": "Erfordert Node.js 20 oder 22 mit Corepack sowie Python 3.11 oder neuer:",
+    "sourceDesc": "Erfordert Node.js 24 LTS mit Corepack sowie Python 3.11 oder neuer:",
     "sourceStep1": "Repository klonen",
     "sourceStep2": "Alles starten",
     "sourceStep3": "http://localhost:5173 öffnen",

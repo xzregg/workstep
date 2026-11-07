@@ -18,6 +18,7 @@ test('sandbox preparation is explicit, mode switching confirms, and failures pre
   const choices = ['/sandbox', '/project']
   window.workstepDesktop = { notify() {}, sandbox: {
     status: async () => { reads++; return current },
+    chooseConfigDirectory: async () => null,
     dockerImages: async () => ({ images: [], error: null }),
     hostProjects: async () => [{ path: '/project', name: 'Existing', id: 'old' }],
     chooseDirectory: async () => choices[selected++]!,
@@ -96,9 +97,10 @@ test('prepared sandbox shows runtime health, port, phase, and log location', asy
   const current: SandboxStatus = { settings: { enabled: true, prepared: true, root: '/sandbox', project: '/project', mounts: [], dockerImage: 'sha256:old' }, phase: 'running', progress: null, error: null, running: true, health: 'healthy', hostPort: 8766, logDirectory: '/sandbox/desktop', supported: true }
   let copied = 0
   window.workstepDesktop = { notify() {}, sandbox: {
-    status: async () => current, hostProjects: async () => [], dockerImages: async () => ({ images: [], error: null }), chooseDirectory: async () => null,
+    status: async () => current, hostProjects: async () => [], dockerImages: async () => ({ images: [], error: null }), chooseDirectory: async () => null, chooseConfigDirectory: async () => null,
     prepareRuntime: async () => current, prepareImage: async () => current, prepare: async () => current,
-    migrateSettings: async () => current, switchMode: async () => {}, switchImage: async () => {}, importConfig: async () => current,
+    migrateSettings: async () => current, switchMode: async () => {}, switchImage: async () => {},
+    importConfig: async () => current,
     remove: async () => current, logs: async () => {}, readLogs: async () => '启动阶段日志\nphase=error\n容器日志\nImportError', copyLogs: async () => { copied++ },
   } }
   const root = createRoot(document.body.appendChild(document.createElement('div')))
@@ -116,6 +118,10 @@ test('prepared sandbox shows runtime health, port, phase, and log location', asy
     assert.match(document.body.textContent!, /ImportError/)
     await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === '复制日志')!.click())
     assert.equal(copied, 1)
+    const button = (text: string) => [...document.querySelectorAll('button')].find(b => b.textContent === text)!
+    for (const label of ['导入 Codex 配置', '导入 Claude 配置', '同步 .agents 目录', '同步其他目录…']) assert.equal(button(label).disabled, false)
+    assert.equal(button('管理项目目录').disabled, true)
+    assert.equal(button('重新导入配置').disabled, true)
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })
 
@@ -125,7 +131,7 @@ test('saving never switches mode, failed migration remains retryable, and initia
   let current: SandboxStatus = { settings: { enabled: false, root: '/sandbox', project: '', mounts: [] }, phase: 'imageReady', progress: null, error: null, running: false, supported: true, runtimeReady: true, imageReady: true }
   let fail = true, switches = 0, migrations = 0, dirty = true
   window.workstepDesktop = { notify() {}, sandbox: {
-    status: async () => current, hostProjects: async () => [{ path: '/project', name: 'Existing' }], dockerImages: async () => ({ images: [], error: null }), chooseDirectory: async () => null,
+    status: async () => current, hostProjects: async () => [{ path: '/project', name: 'Existing' }], dockerImages: async () => ({ images: [], error: null }), chooseDirectory: async () => null, chooseConfigDirectory: async () => null,
     prepareRuntime: async () => current, prepareImage: async () => current,
     prepare: async settings => { current = { ...current, settings: { ...settings, prepared: true } }; return current },
     migrateSettings: async () => { migrations++; if (fail) throw new Error('配置导入失败'); return current },

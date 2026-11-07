@@ -1,3 +1,4 @@
+import { ButtonLink } from '../components/Button'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
@@ -336,7 +337,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
     const next = window.location.pathname + window.location.search
     return <SharePageShell><div className="shared-task-error-panel">
       <p>{t('share.loginRequired')}</p>
-      <a href={`/auth?next=${encodeURIComponent(next)}`}>{t('share.loginAction')}</a>
+      <ButtonLink href={`/auth?next=${encodeURIComponent(next)}`}>{t('share.loginAction')}</ButtonLink>
       <Button onClick={retry}>{t('common.retry')}</Button>
     </div></SharePageShell>
   }

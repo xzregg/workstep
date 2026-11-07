@@ -2,9 +2,9 @@ import type { ReactNode } from 'react'
 import { useGatewayModal } from './useGatewayModal'
 
 export function GatewayConfirmDialog({ title, message, confirmLabel = '确认', cancelLabel = '取消', busy = false,
-  disabled = false, children, onConfirm, onCancel, className = '' }: {
+  disabled = false, children, passwordConfirmation, onConfirm, onCancel, className = '' }: {
   title: string; message: string; confirmLabel?: string; cancelLabel?: string; busy?: boolean; disabled?: boolean
-  children?: ReactNode; onConfirm: () => void; onCancel: () => void; className?: string
+  children?: ReactNode; passwordConfirmation?: ReactNode; onConfirm: () => void; onCancel: () => void; className?: string
 }) {
   const dialog = useGatewayModal()
   return <dialog ref={dialog} className="gateway-dialog-backdrop" aria-modal="true" aria-label={title}
@@ -14,6 +14,7 @@ export function GatewayConfirmDialog({ title, message, confirmLabel = '确认', 
       <p>{message}</p>
       {children}
       <div className="gateway-dialog-actions">
+        {passwordConfirmation && <div className="gateway-password-confirmation">{passwordConfirmation}</div>}
         <button type="button" className="gateway-dialog-cancel" disabled={busy} onClick={onCancel}>{cancelLabel}</button>
         <button type="button" disabled={busy || disabled} onClick={onConfirm}>{busy ? '处理中…' : confirmLabel}</button>
       </div>

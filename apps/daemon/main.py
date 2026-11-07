@@ -75,6 +75,7 @@ from services.task import TaskService
 from services.intervention import intervention_manager
 from services.workflow_runtime import WorkflowRuntime
 from services.config import config_store
+from services.startup_progress import startup_stage
 from api.desktop_security import DesktopSecurityMiddleware
 from agent_assistants.coordinator import CoordinatorModule
 from agent_assistants.workflow_gen import WorkflowGenModule
@@ -178,36 +179,44 @@ async def _application_lifespan(app: FastAPI):
     from services.resource_limits import configure_file_limit
     configure_file_limit()
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
-    await completion_push.start()
-    await asyncio.to_thread(config_store.migrate_legacy_config)
-    await asyncio.to_thread(ensure_global_templates)
-    await skin_manager.ensure_defaults()
-    await asyncio.to_thread(role_center.ensure_defaults)
-    await asyncio.to_thread(project_manager._load_saved_projects)
+    async with startup_stage("配置迁移"):
+        await completion_push.start()
+        await asyncio.to_thread(config_store.migrate_legacy_config)
+    async with startup_stage("默认资源"):
+        await asyncio.to_thread(ensure_global_templates)
+        await skin_manager.ensure_defaults()
+        await asyncio.to_thread(role_center.ensure_defaults)
+    async with startup_stage("项目恢复"):
+        await asyncio.to_thread(project_manager._load_saved_projects)
     from services.customization_workspace import ensure_default_workspace
-    await ensure_default_workspace(project_manager)
-    await notification_hooks.service.start()
+    async with startup_stage("默认工作区"):
+        await ensure_default_workspace(project_manager)
+    async with startup_stage("通知服务"):
+        await notification_hooks.service.start()
     # Load concurrency limits into the in-memory gate (global defaults +
     # every project's persisted override) before any workflow starts.
     from services.concurrency import concurrency_gate
     from services.project_settings import sync_all_project_configs
 
-    concurrency_gate.configure(
-        **await asyncio.to_thread(config_store.get_concurrency_config)
-    )
-    await sync_all_project_configs(project_manager)
+    async with startup_stage("项目配置"):
+        concurrency_gate.configure(
+            **await asyncio.to_thread(config_store.get_concurrency_config)
+        )
+        await sync_all_project_configs(project_manager)
     task_service = TaskService(event_bus)
     workflow_runtime = WorkflowRuntime(
         event_bus, project_manager, remote_client=remote_project_client,
     )
     gateway_client.workflow_runtime = workflow_runtime
-    recovered = await workflow_runtime.recover_running_workflows()
+    async with startup_stage("流程恢复"):
+        recovered = await workflow_runtime.recover_running_workflows()
     if recovered:
         logger.info(
             "Recovered %d interrupted workflow run(s) from the last completed step",
             recovered,
         )
-    requeued = await workflow_runtime.requeue_queued_tasks()
+    async with startup_stage("排队任务恢复"):
+        requeued = await workflow_runtime.requeue_queued_tasks()
     if requeued:
         logger.info("Re-queued %d task(s) waiting for a concurrency slot", requeued)
     coordinator_module = CoordinatorModule(
@@ -215,7 +224,8 @@ async def _application_lifespan(app: FastAPI):
         project_manager,
         workflow_runtime,
     )
-    recovered_coordinator = await coordinator_module.start()
+    async with startup_stage("协调助手恢复"):
+        recovered_coordinator = await coordinator_module.start()
     if recovered_coordinator:
         logger.info(
             "Recovered %d interrupted coordinator state item(s)",
@@ -238,26 +248,32 @@ async def _application_lifespan(app: FastAPI):
         workflow_runtime=workflow_runtime,
     )
     schedule_module._notification_sender = channel_bot_manager
-    await channel_bot_manager.start()
-    recovered_chats = await asyncio.to_thread(
-        chat_session_module.recover_interrupted_messages
-    )
+    async with startup_stage("渠道机器人"):
+        await channel_bot_manager.start()
+    async with startup_stage("聊天恢复"):
+        recovered_chats = await asyncio.to_thread(
+            chat_session_module.recover_interrupted_messages
+        )
     if recovered_chats:
         logger.info(
             "Recovered %d interrupted chat message(s) from event journals",
             recovered_chats,
         )
-    await schedule_module.start()
-    await gateway_client.start()
+    async with startup_stage("定时调度"):
+        await schedule_module.start()
+    async with startup_stage("网关初始化"):
+        await gateway_client.start()
     from services.project_audit_retention import ProjectAuditRetention
     audit_retention = ProjectAuditRetention(project_manager)
     audit_retention.start()
     from services.local_cli import LocalCliRuntime
     local_cli_runtime = LocalCliRuntime(os.environ['WORKSTEP_DAEMON_URL'])
-    await asyncio.to_thread(local_cli_runtime.publish)
+    async with startup_stage("本机 CLI"):
+        await asyncio.to_thread(local_cli_runtime.publish)
     app.state.local_cli_runtime = local_cli_runtime
     from services.system_statistics import system_statistics
-    await system_statistics.start()
+    async with startup_stage("系统统计"):
+        await system_statistics.start()
     try:
         yield
     finally:

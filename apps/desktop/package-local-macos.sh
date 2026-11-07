@@ -38,7 +38,7 @@ if command -v corepack >/dev/null 2>&1; then
 elif command -v yarn >/dev/null 2>&1; then
   YARN_COMMAND=(yarn)
 else
-  echo "需要 Yarn；请安装 Yarn，或使用带 Corepack 的 Node.js 22" >&2
+  echo "需要 Yarn；请安装 Yarn，或使用带 Corepack 的 Node.js 24 LTS" >&2
   exit 1
 fi
 

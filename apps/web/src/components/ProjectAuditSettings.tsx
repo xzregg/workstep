@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useEffect, useState } from 'react'
 import { projectAuditApi, type ProjectAuditPage } from '../api/projectAudit'
 import { useI18n } from '../i18n'
@@ -43,16 +44,16 @@ export default function ProjectAuditSettings({ projectId }: { projectId: string 
   return <div className="project-audit-settings">
     <p className="project-audit-hint">{t('projectAudit.hint', { days: page?.retention_days ?? 30 })}</p>
     <div className="project-audit-controls">
-      <label>{t('projectAudit.action')}<select aria-label={t('projectAudit.action')} value={filters.action}
+      <label>{t('projectAudit.action')}<Select aria-label={t('projectAudit.action')} value={filters.action}
         onChange={event => setFilters(previous => ({ ...previous, action: event.target.value, before: undefined }))}>
         <option value="">{t('projectAudit.all')}</option>
         {Object.entries(actions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select></label>
-      <label>{t('projectAudit.result')}<select aria-label={t('projectAudit.result')} value={filters.result}
+      </Select></label>
+      <label>{t('projectAudit.result')}<Select aria-label={t('projectAudit.result')} value={filters.result}
         onChange={event => setFilters(previous => ({ ...previous, result: event.target.value, before: undefined }))}>
         <option value="">{t('projectAudit.all')}</option>
         {Object.entries(results).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select></label>
+      </Select></label>
       <Button disabled={loading} onClick={() => { setFilters(previous => ({ ...previous, before: undefined })); setRevision(value => value + 1) }}>
         <Icon name="refresh" size={14} />{t('projectAudit.refresh')}
       </Button>

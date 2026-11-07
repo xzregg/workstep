@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminManagementDialog } from './AdminManagementDialog'
@@ -65,17 +66,17 @@ export function AdminProvidersPage() {
       <input id="provider-search" value={query} onChange={event => setQuery(event.target.value)} />
       <button type="submit">搜索</button></form>
     <div className="gateway-admin-filters"><label htmlFor="provider-enabled">状态</label>
-      <select id="provider-enabled" value={filters.enabled} onChange={event => setFilters(current => (
+      <Select id="provider-enabled" value={filters.enabled} onChange={event => setFilters(current => (
         { ...current, enabled: event.target.value, page: 1 }))}>
         <option value="">全部</option><option value="true">已启用</option><option value="false">已停用</option>
-      </select>
+      </Select>
       <label htmlFor="provider-sort">排序</label>
-      <select id="provider-sort" value={filters.sort} onChange={event => setFilters(current => (
+      <Select id="provider-sort" value={filters.sort} onChange={event => setFilters(current => (
         { ...current, sort: event.target.value, page: 1 }))}>
-        <option value="name">名称</option><option value="created_at">创建时间</option></select>
-      <select aria-label="供应商排序方向" value={filters.direction} onChange={event => setFilters(current => (
+        <option value="name">名称</option><option value="created_at">创建时间</option></Select>
+      <Select aria-label="供应商排序方向" value={filters.direction} onChange={event => setFilters(current => (
         { ...current, direction: event.target.value, page: 1 }))}>
-        <option value="asc">升序</option><option value="desc">降序</option></select>
+        <option value="asc">升序</option><option value="desc">降序</option></Select>
     </div>
     <AdminListStatus loading={loading} label="正在加载供应商…"/>
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"

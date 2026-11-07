@@ -42,8 +42,8 @@ export function AdminDeviceActionDialog({ device, action, csrf, onComplete, onCl
       : action === 'disable' ? '停用后将断开连接，之后可重新启用。'
       : action === 'enable' ? '重新启用后，请在桌面端再次完成网关登录。' : ''}`}
     confirmLabel={`确认${actionLabel[action]}`} busy={busy} disabled={!passwordReady}
-    onConfirm={() => void confirm()} onCancel={onClose}>
-    <PasswordConfirmation id="admin-device-step-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+    onConfirm={() => void confirm()} onCancel={onClose}
+      passwordConfirmation={<PasswordConfirmation id="admin-device-step-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在{actionLabel[action]}设备…</p>}
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
   </GatewayConfirmDialog>

@@ -82,7 +82,8 @@ export function AdminSkillActionDialog({ action, csrf, onDone, onClose }: {
       action.kind === 'revoke' ? '撤销版本后，所有使用该版本的项目分配将失效。' :
         '此操作需要 Skill 管理员二次认证。'
   } confirmLabel={confirms[action.kind]} busy={busy} disabled={!valid}
-  onConfirm={() => void submit()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
+  onConfirm={() => void submit()} onCancel={() => dirty ? setDiscard(true) : onClose()}
+      passwordConfirmation={<PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} />}>
     <div className="gateway-usage-filters">
       {action.kind === 'create' && <>
         <label>名称<input value={name} maxLength={256} onChange={event => setName(event.target.value)} /></label>
@@ -98,7 +99,6 @@ export function AdminSkillActionDialog({ action, csrf, onDone, onClose }: {
       </>}
       {action.kind === 'revoke' && <label>撤销原因<input value={reason} maxLength={512}
         onChange={event => setReason(event.target.value)} /></label>}
-      <PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} />
     </div>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在处理 Skill…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}

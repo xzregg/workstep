@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminTabs } from './AdminTabs'
@@ -79,9 +80,9 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
     <h3>创建批量作业</h3>
     <p>选择的设备会在确认时固定；后续筛选变化不会改变作业目标。最多 100 台。</p>
     <div className="gateway-admin-filters">
-      <label htmlFor="operation-action">操作</label><select id="operation-action" value={action}
+      <label htmlFor="operation-action">操作</label><Select id="operation-action" value={action}
         onChange={event => setAction(event.target.value)}>{Object.entries(actionNames).map(([value, label]) =>
-          <option key={value} value={value}>{label}</option>)}</select>
+          <option key={value} value={value}>{label}</option>)}</Select>
       <label htmlFor="operation-engine">引擎 ID</label><input id="operation-engine" value={engineId}
         onChange={event => setEngineId(event.target.value)} placeholder="例如 codex" />
       {needsVersion && <><label htmlFor="operation-version">确切版本</label><input id="operation-version"
@@ -111,9 +112,9 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
       <button type="button" onClick={() => setRevision(value => value + 1)}>重试加载</button>}</p>}
     {confirming && <GatewayConfirmDialog title="确认批量作业" message={`目标 ${selected.length} 台 · ${actionNames[action]} ${engineId}${needsVersion ? ` ${version}` : ''} · 并发 ${concurrency} 台 · 预计下载量暂无法估算。确认后目标不会随筛选变化。`}
       confirmLabel="创建作业" busy={busy} disabled={!passwordReady} onConfirm={() => void create()}
-      onCancel={() => { setConfirming(false); setPassword('') }}>
+      onCancel={() => { setConfirming(false); setPassword('') }}
+      passwordConfirmation={<PasswordConfirmation id="operation-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       <p>第三方安装条款：{termsAccepted ? '已确认' : '未确认'}。目标：{selected.map(target => target.name).join('、')}</p>
-      <PasswordConfirmation id="operation-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>}
   </section>
@@ -182,8 +183,8 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
         onClick={() => setPage(value => value + 1)}>下一页</button></div>
     {retry && <GatewayConfirmDialog title="重试失败设备" message={`只为作业 ${retry.id} 中失败或过期的设备创建新作业，共 ${retry.commands.filter(command => command.status === 'failed' || command.status === 'expired').length} 台。`}
       confirmLabel="创建重试作业" busy={busy} disabled={!passwordReady} onConfirm={() => void retryFailed(retry)}
-      onCancel={() => { setRetry(null); setPassword('') }}>
-      <PasswordConfirmation id="retry-operation-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+      onCancel={() => { setRetry(null); setPassword('') }}
+      passwordConfirmation={<PasswordConfirmation id="retry-operation-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>}
   </section>

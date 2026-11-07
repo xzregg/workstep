@@ -366,7 +366,7 @@ export const plPL: I18nDict = {
     "linux": "Linux",
     "platformHint": "Instalatorzy są stale aktualizowani. Możesz także uruchomić ze źródła poniżej.",
     "sourceTitle": "Uruchom ze źródła",
-    "sourceDesc": "Wymaga Node.js 20 lub 22 z Corepack oraz Python 3.11+:",
+    "sourceDesc": "Wymaga Node.js 24 LTS z Corepack oraz Python 3.11+:",
     "sourceStep1": "Sklonuj repozytorium",
     "sourceStep2": "Zacznij wszystko",
     "sourceStep3": "Otwórz http://localhost:5173"

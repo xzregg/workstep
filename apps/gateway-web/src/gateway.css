@@ -38,7 +38,6 @@ body {
   font: inherit;
 }
 .gateway-share-create-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.gateway-share-create-actions a { padding: 8px 0; }
 .gateway-share-create-actions button { width: auto; margin-top: 0; }
 .gateway-share-existing { margin-top: 28px; padding-top: 20px; border-top: 1px solid #e8e8ed; }
 .gateway-share-existing ul { list-style: none; padding: 0; display: grid; gap: 10px; }
@@ -265,7 +264,7 @@ a {
   font: inherit;
 }
 
-.gateway-admin-page button {
+.gateway-admin-page :is(button, .gateway-action-link) {
   min-height: 42px;
   padding: 8px 16px;
   border: 0;
@@ -302,7 +301,7 @@ a {
 .gateway-overview-activity { margin-top: 28px; }
 .gateway-overview-activity li { margin: 8px 0; }
 .gateway-org-sources { margin: 24px 0 32px; }
-.gateway-org-directory { display: grid; grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.4fr); gap: 24px; }
+.gateway-org-directory { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 4fr); gap: 24px; }
 .gateway-org-departments, .gateway-org-members { min-width: 0; }
 .gateway-org-department-list { padding: 0; margin: 16px 0; list-style: none; }
 .gateway-org-department-list li { margin-bottom: 8px; }
@@ -417,17 +416,7 @@ dialog.gateway-dialog-backdrop::backdrop { background: transparent; }
 .gateway-device-actions button:first-child { background: #f5f5f7; color: #1d1d1f; }
 .gateway-download-page > p { color: #6e6e73; line-height: 1.5; }
 .gateway-download-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
-.gateway-download-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 42px;
-  padding: 0 16px;
-  border-radius: 12px;
-  background: #0071e3;
-  color: #fff;
-  text-decoration: none;
-  white-space: nowrap;
-}
+
 .gateway-download-page code { overflow-wrap: anywhere; }
 .gateway-empty-devices { padding: 28px; border-radius: 14px; background: #f5f5f7; }
 .gateway-online { color: #16a34a; font-weight: 700; }
@@ -533,9 +522,9 @@ main > .gateway-portal-header {
 .gateway-admin-content .gateway-admin-page h2 { font-size: 24px; line-height: 1.4; letter-spacing: -.02em; margin: 0 0 20px; }
 .gateway-admin-page h3 { font-size: 16px; margin: 0 0 16px; }
 .gateway-admin-page p { line-height: 1.6; }
-.gateway-admin-page input, .gateway-admin-page select, .gateway-admin-page button { min-height: 36px; border-radius: var(--gateway-admin-control-radius); font-size: 14px; }
-.gateway-admin-page button { width: auto; padding: 6px 14px; margin-top: 0; white-space: nowrap; }
-.gateway-admin-page button:not(:disabled):hover { background: var(--gateway-admin-accent-hover); }
+.gateway-admin-page input, .gateway-admin-page select, .gateway-admin-page :is(button, .gateway-action-link) { min-height: 36px; border-radius: var(--gateway-admin-control-radius); font-size: 14px; }
+.gateway-admin-page :is(button, .gateway-action-link) { width: auto; padding: 6px 14px; margin-top: 0; white-space: nowrap; }
+.gateway-admin-page :is(button, .gateway-action-link):not(:disabled):hover { background: var(--gateway-admin-accent-hover); }
 .gateway-admin-page input, .gateway-admin-page select { max-width: 100%; padding: 6px 10px; border-color: var(--gateway-admin-border); }
 .gateway-admin-shell :is(a, button, input, select, summary, textarea):focus-visible { outline: 2px solid var(--gateway-admin-accent); outline-offset: 3px; }
 .gateway-admin-search { flex: 1; min-width: 0; gap: 8px; align-items: center; }
@@ -556,8 +545,8 @@ main > .gateway-portal-header {
 .gateway-admin-table td:last-child { width: 180px; white-space: normal; }
 .gateway-admin-table td p { margin: 5px 0; color: var(--gateway-admin-muted); }
 .gateway-admin-table td { overflow-wrap: anywhere; }
-.gateway-admin-table td button { margin: 0; border: 1px solid var(--gateway-admin-separator); background: var(--gateway-admin-canvas); color: var(--gateway-admin-secondary); }
-.gateway-admin-table td button:not(:disabled):hover { border-color: var(--gateway-admin-accent); color: var(--gateway-admin-accent); background: var(--gateway-admin-lifted); }
+.gateway-admin-table td :is(button, .gateway-action-link) { margin: 0; border: 1px solid var(--gateway-admin-separator); background: var(--gateway-admin-canvas); color: var(--gateway-admin-secondary); }
+.gateway-admin-table td :is(button, .gateway-action-link):not(:disabled):hover { border-color: var(--gateway-admin-accent); color: var(--gateway-admin-accent); background: var(--gateway-admin-lifted); }
 .gateway-admin-pagination { font-size: 13px; color: var(--gateway-admin-muted); }
 .gateway-admin-pagination button { border: 1px solid var(--gateway-admin-separator); background: var(--gateway-admin-canvas); color: var(--gateway-admin-secondary); }
 .gateway-admin-pagination button:not(:disabled):hover { background: var(--gateway-admin-surface); }
@@ -570,7 +559,7 @@ main > .gateway-portal-header {
 .gateway-admin-page .gateway-auth-form input, .gateway-admin-page .gateway-auth-form select { width: 100%; }
 .gateway-admin-page .gateway-auth-form > p, .gateway-admin-page .gateway-auth-form > div { grid-column: 2; margin: 0; }
 .gateway-admin-page .gateway-auth-form > .gateway-dialog-actions { justify-content: flex-start; }
-.gateway-users-workspace { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.gateway-users-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 4fr); gap: 20px; align-items: start; }
 .gateway-users-tree-panel { min-width: 0; padding: 16px; border: 1px solid var(--gateway-admin-separator); border-radius: var(--gateway-admin-panel-radius); background: var(--gateway-admin-lifted); }
 .gateway-users-table-panel { min-width: 0; container: gateway-admin-user-panel / inline-size; }
 .gateway-user-group-tree input { width: 100%; margin-bottom: 12px; }
@@ -619,7 +608,6 @@ main > .gateway-portal-header {
 body:has(.gateway-admin-mobile-menu[open]) { overflow: hidden; }
 body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-admin-shell .gateway-confirm-dialog { max-height: calc(100dvh - 32px); }
-@media (max-width: 1440px) { .gateway-users-workspace { grid-template-columns: 260px minmax(0, 1fr); gap: 20px; } }
 @media (max-width: 1023px) {
  .gateway-admin-shell { display: block; }
  .gateway-admin-desktop-sidebar { display: none; }
@@ -627,7 +615,7 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
  .gateway-admin-topbar { position: sticky; top: 0; z-index: 40; height: 64px; padding: 0 20px; }
  .gateway-admin-breadcrumb > span { display: none; }
  .gateway-admin-content .gateway-admin-page { margin: 12px; padding: 20px; }
- .gateway-admin-page input, .gateway-admin-page select, .gateway-admin-page button { min-height: var(--mobile-control-regular); }
+ .gateway-admin-page input, .gateway-admin-page select, .gateway-admin-page :is(button, .gateway-action-link) { min-height: var(--mobile-control-regular); }
  .gateway-admin-sidebar nav a, .gateway-admin-nav-group summary, .gateway-admin-sidebar .gateway-admin-nav-group a { min-height: var(--mobile-control-menu); }
 }
 @media (max-width: 767px) {
@@ -703,7 +691,7 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-workstep-sidebar > button.gateway-workspace-selected { background: var(--gateway-admin-canvas); color: var(--gateway-admin-accent); }
 .gateway-workspace-device-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gateway-workstep-sidebar small { flex-shrink: 0; }
-.gateway-workstep-sidebar > a { display: inline-block; margin-top: 20px; }
+.gateway-workstep-sidebar > a { margin-top: 20px; }
 .gateway-workstep-content { padding: 28px; min-width: 0; }
 .gateway-workspace-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .gateway-workspace-toolbar h3 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
@@ -865,7 +853,7 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-share-management .gateway-admin-table th:last-child { width: 220px; }
 .gateway-share-management .gateway-share-admin-actions { flex-wrap: wrap; }
 
-.gateway-sync-selection-layout { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.4fr); gap: 20px; min-height: 300px; }
+.gateway-sync-selection-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; min-height: 300px; }
 .gateway-sync-selection-layout .gateway-sync-tree { max-height: 440px; overflow: auto; }
 .gateway-sync-selection-layout h3 { margin: 0 0 12px; font-size: 15px; }
 .gateway-sync-user-options { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
@@ -886,7 +874,7 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-sync-instructions summary { cursor: pointer; }
 .gateway-sync-instructions p { margin: 8px 0 0; max-height: 96px; overflow: auto; }
 .gateway-organization-sync-dialog .gateway-sync-selection-toolbar { position: static; flex: none; margin: 0; padding: 0; gap: 8px 12px; }
-.gateway-organization-sync-dialog .gateway-sync-selection-layout { flex: 1; min-height: 0; grid-template-columns: minmax(260px, 0.8fr) minmax(320px, 1.5fr); }
+.gateway-organization-sync-dialog .gateway-sync-selection-layout { flex: 1; min-height: 0; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
 .gateway-organization-sync-dialog .gateway-sync-organizations,
 .gateway-organization-sync-dialog .gateway-sync-users { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .gateway-organization-sync-dialog .gateway-sync-selection-layout h3 { flex: none; margin-bottom: 8px; }
@@ -968,7 +956,6 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-device-auth-card .gateway-device-auth-actions .gateway-device-auth-secondary:hover { background: #eceff3; border-color: #bbc4ce; }
 .gateway-device-auth-actions button:focus-visible, .gateway-device-auth-return a:focus-visible { outline: 3px solid #91c5ff; outline-offset: 3px; }
 .gateway-device-auth-return { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid #e8e8ed; text-align: center; font-size: 14px; }
-.gateway-device-auth-return a { color: #647184; text-decoration: none; }
 .gateway-device-auth-return a:hover { color: #0071e3; text-decoration: underline; }
 .gateway-device-auth-progress { display: flex; align-items: center; gap: 8px; color: #647184; font-size: 14px; }
 
@@ -994,3 +981,25 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-application-enabled-switch[aria-checked="true"] span { transform: translateX(16px); }
 .gateway-application-enabled-switch:disabled { opacity: .5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .gateway-application-enabled-switch span { transition: none; } }
+
+/* Administrator confirmation shares the action row across management forms. */
+.gateway-password-confirmation { flex: 0 1 auto; min-width: 0; }
+.gateway-password-confirmation:empty { display: none; }
+.gateway-modal-footer .gateway-password-confirmation { order: 1; margin-left: auto; }
+.gateway-modal-footer > button { order: 2; }
+.gateway-modal-footer .gateway-project-permission-save-status { order: 3; }
+.gateway-dialog-actions:has(> .gateway-password-confirmation) { align-items: center; }
+.gateway-dialog-actions > .gateway-password-confirmation { margin-right: auto; }
+.gateway-modal-footer .gateway-password-confirmation label,
+.gateway-dialog-actions .gateway-password-confirmation label { display: flex; align-items: center; flex-wrap: nowrap; white-space: nowrap; gap: 8px 12px; margin: 0; font-size: 13px; font-weight: 400; }
+.gateway-modal-footer .gateway-password-confirmation input,
+.gateway-dialog-actions .gateway-password-confirmation input { width: 200px; max-width: 100%; min-width: 0; box-sizing: border-box; margin: 0; }
+.gateway-confirm-dialog:has(.gateway-dialog-actions > .gateway-password-confirmation:not(:empty)) { width: min(100%, 720px); }
+.gateway-confirm-dialog > .gateway-dialog-actions,
+.gateway-role-dialog .gateway-role-form > .gateway-dialog-actions { position: sticky; bottom: 0; padding: 12px 0; background: #fff; z-index: 1; }
+@media (max-width: 600px) {
+  .gateway-modal-footer .gateway-password-confirmation,
+  .gateway-dialog-actions > .gateway-password-confirmation { flex: 1 1 100%; margin: 0; }
+  .gateway-modal-footer .gateway-password-confirmation input,
+  .gateway-dialog-actions .gateway-password-confirmation input { flex: 1; }
+}

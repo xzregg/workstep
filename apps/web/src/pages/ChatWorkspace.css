@@ -94,3 +94,16 @@
   .chat-workspace-pane { flex: 1; }
   .chat-workspace-pane-content > .assistant-chat-panel { width: 100%; max-width: 900px; margin-inline: auto; }
 }
+
+.chat-workspace-pane .assistant-chat-header[draggable="true"],
+.chat-workspace-pane .assistant-chat-header[draggable="true"] .assistant-chat-header-title { cursor: grab; }
+.chat-workspace-pane .assistant-chat-header[draggable="true"]:active { cursor: grabbing; }
+.chat-workspace-pane--drop-target::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 0.5px solid var(--text-secondary);
+  background: rgb(128 128 128 / 10%);
+  pointer-events: none;
+  z-index: 5;
+}

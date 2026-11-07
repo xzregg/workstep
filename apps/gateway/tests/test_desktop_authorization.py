@@ -191,7 +191,8 @@ def test_admin_can_rename_device_without_changing_its_identity_or_relogin_name(t
         key = _public_key()
         device_id = _redeem(client, _authorize(client, csrf), key).json()['device']['id']
         path = f'/api/admin/devices/{device_id}/name'
-        assert client.put(path, headers=headers, json={'name': '钊荣的工作电脑'}).status_code == 403
+        assert client.put(path, headers=headers, json={'name': '钊荣的工作电脑'}).status_code == 204
+        assert client.post(f'/api/admin/devices/{device_id}/approve', headers=headers).status_code == 403
         assert client.post('/api/auth/step-up', headers=headers,
                            json={'password': 'OwnerPassphrase-2026!'}).status_code == 200
         assert client.put(path, headers=headers, json={'name': '  '}).status_code == 422

@@ -2,6 +2,16 @@ import { create } from 'zustand'
 import { ApiError, request } from '../api/transport'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 
+export interface GatewayProjectScope {
+  project_id: string
+  host_project_id: string
+  name: string
+  access_level: 'read' | 'edit'
+  task_create: boolean
+  share_create: boolean
+  permissions?: string[] | null
+}
+
 export interface GatewayRemoteSession {
   user_id?: string
   device_id: string
@@ -15,6 +25,7 @@ export interface GatewayRemoteSession {
   share_create: boolean
   can_manage_project_access: boolean
   permissions?: string[] | null
+  projects?: GatewayProjectScope[]
 }
 
 interface GatewaySessionState {
@@ -23,6 +34,7 @@ interface GatewaySessionState {
   errorStatus: number | null
   loading: boolean
   load: (force?: boolean) => Promise<GatewayRemoteSession>
+  selectProject: (projectId: string) => boolean
 }
 
 let pending: Promise<GatewayRemoteSession> | null = null
@@ -69,13 +81,30 @@ async function recoverSession(previous: GatewayRemoteSession | null, signal: Abo
 
 export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => ({
   session: null, error: '', errorStatus: null, loading: false,
+  selectProject: projectId => {
+    const session = get().session
+    if (!session?.host_project_id) return true
+    if (!session.projects) return session.host_project_id === projectId
+    const scope = session.projects.find(project => project.host_project_id === projectId)
+    if (!scope) return false
+    const selected = { ...session, ...scope }
+    rememberScope(selected)
+    set({ session: selected })
+    return true
+  },
   load: (force = false) => {
     if (pending) return pending
     if (!force && get().session) return Promise.resolve(get().session!)
     set({ loading: true })
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 10000)
-    pending = request<GatewayRemoteSession>('/remote/session', {signal: controller.signal}).catch(async reason => {
+    const previous = get().session
+    const sessionPath = previous?.projects && previous.host_project_id
+      ? '/remote/session?project_id=' + encodeURIComponent(previous.host_project_id) : '/remote/session'
+    pending = request<GatewayRemoteSession>(sessionPath, {signal: controller.signal}).catch(async reason => {
+      if (reason instanceof ApiError && reason.status === 403 && sessionPath !== '/remote/session') {
+        return request<GatewayRemoteSession>('/remote/session', {signal: controller.signal})
+      }
       if (!(reason instanceof ApiError) || reason.status !== 401) throw reason
       const previous = get().session
       set({ session: null })
@@ -88,6 +117,15 @@ export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => 
           (session.project_id && !['read', 'edit'].includes(session.access_level ?? '')) ||
           (session.permissions != null && (!Array.isArray(session.permissions) || session.permissions.some((key: unknown) => typeof key !== 'string')))) {
         throw new Error('远程项目会话无效，请从平台重新打开。')
+      }
+      if (session.projects && (!Array.isArray(session.projects) || session.projects.some(project =>
+        !project.project_id || !project.host_project_id || !['read', 'edit'].includes(project.access_level)))) {
+        throw new Error('远程项目目录无效。')
+      }
+      const current = get().session
+      if (session.projects && current?.device_id === session.device_id && current.user_id === session.user_id) {
+        const selected = session.projects.find(project => project.host_project_id === current.host_project_id)
+        if (selected) session = { ...session, ...selected }
       }
       rememberScope(session)
       set({ session, error: '', errorStatus: null })

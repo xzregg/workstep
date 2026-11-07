@@ -16,10 +16,10 @@ test('Docker scan is explicit and selection returns the immutable image ID', asy
   try {
     await act(async () => root.render(<I18nProvider><SandboxImagePicker value={null} online={false} disabled={false} onChange={value => { selected = value }} scan={async () => { scans++; return { images: [{ id, tags: ['workstep:latest'], size: 1024 }], error: null } }} /></I18nProvider>))
     assert.equal(scans, 0)
-    await act(async () => document.querySelector('button')!.click())
+    await act(async () => document.querySelector<HTMLButtonElement>('.sandbox-directory button.btn')!.click())
     assert.equal(scans, 1)
-    const select = document.querySelector('select')!
-    await act(async () => { select.value = id; select.dispatchEvent(new window.Event('change', { bubbles: true })) })
+    await act(async () => document.querySelector<HTMLButtonElement>('.skin-select-trigger')!.click())
+    await act(async () => document.querySelector<HTMLButtonElement>(`[role="option"][data-value="${id}"]`)!.click())
     assert.equal(selected, id)
     assert.match(document.body.textContent!, /workstep:latest/)
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }

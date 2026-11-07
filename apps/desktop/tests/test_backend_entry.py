@@ -194,7 +194,7 @@ def test_desktop_local_npm_install_update_and_restart_use_managed_directory(tmp_
         assert result.stdout.strip() == version
 
 
-def test_desktop_main_prepares_runtime_before_loading_daemon(tmp_path, monkeypatch):
+def test_desktop_main_prepares_runtime_before_loading_daemon(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
     monkeypatch.setenv("WORKSTEP_CONFIG_DIR", str(tmp_path))
     monkeypatch.delenv("WORKSTEP_ENGINE_PACKAGE_DIR", raising=False)
@@ -210,6 +210,24 @@ def test_desktop_main_prepares_runtime_before_loading_daemon(tmp_path, monkeypat
     monkeypatch.setattr(server, "_load_app", load_app)
     monkeypatch.setattr(server, "_serve", serve)
     assert server.main([]) == 0
+    output = capsys.readouterr().err
+    for stage in ('运行环境', '模块加载'):
+        assert f'STARTUP {stage} start' in output
+        assert f'STARTUP {stage} complete elapsed_ms=' in output
+
+
+def test_desktop_startup_marks_failed_import_without_logging_exception_secrets(monkeypatch, capsys):
+    monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
+
+    def fail(host, port):
+        raise RuntimeError('fixture-secret')
+
+    monkeypatch.setattr(server, '_load_app', fail)
+    with pytest.raises(RuntimeError, match='fixture-secret'):
+        server.main(['--port', '0'])
+    output = capsys.readouterr().err
+    assert 'STARTUP 模块加载 failed elapsed_ms=' in output
+    assert 'fixture-secret' not in output
 
 
 def test_occupied_port_falls_back_without_connecting_to_existing_service():

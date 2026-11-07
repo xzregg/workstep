@@ -145,10 +145,8 @@ export default function TaskConversationMessage({
           const isCoordinatorDispatch = isUser && msg.author_type === 'coordinator'
           const isSystem =
             msg.role === 'system'
-          const isReview =
-            msg.channel ===
-              'review' ||
-            msg.role === 'review'
+          // Instructions sent during review share its channel, but are not review output.
+          const isReview = !isUser && (msg.channel === 'review' || msg.role === 'review')
           const isCoordinator =
             msg.channel ===
               'coordinator'

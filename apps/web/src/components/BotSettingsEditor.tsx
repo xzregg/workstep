@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BOT_PLATFORMS, channelBotApi, type BotDraft, type BotPlatform, type ChannelBot } from '../api/channelBots'
-import Button from './Button'
+import Button, { ButtonLink } from './Button'
 import Input from './Input'
 import Select from './Select'
 import { useI18n } from '../i18n'
@@ -97,8 +97,8 @@ export default function BotSettingsEditor({ platform, bot, onPlatformChange, onS
         <p className="bot-settings-hint">{t('channelBot.reviewCardTemplateHint')}</p>
       </>}
       <div className="bot-settings-help-links">
-        <a href={consoles[platform]} target="_blank" rel="noopener noreferrer">{t(platform === 'dingtalk' ? 'channelBot.dingtalkConsole' : platform === 'feishu' ? 'channelBot.feishuConsole' : platform === 'lark' ? 'channelBot.larkConsole' : 'channelBot.openConsole')}</a>
-        {platform === 'dingtalk' && <a href="https://open.dingtalk.com/document/orgapp/create-and-deliver-cards" target="_blank" rel="noopener noreferrer">{t('channelBot.cardPermissionDocs')}</a>}
+        <ButtonLink href={consoles[platform]} target="_blank" rel="noopener noreferrer">{t(platform === 'dingtalk' ? 'channelBot.dingtalkConsole' : platform === 'feishu' ? 'channelBot.feishuConsole' : platform === 'lark' ? 'channelBot.larkConsole' : 'channelBot.openConsole')}</ButtonLink>
+        {platform === 'dingtalk' && <ButtonLink href="https://open.dingtalk.com/document/orgapp/create-and-deliver-cards" target="_blank" rel="noopener noreferrer">{t('channelBot.cardPermissionDocs')}</ButtonLink>}
       </div>
     </div>
     <p className="bot-settings-hint">{localProjects.length ? t('channelBot.defaultProjectHint') : t('channelBot.noLocalProject')}</p>

@@ -366,7 +366,7 @@ export const viVN: I18nDict = {
     "linux": "Linux",
     "platformHint": "Trình cài đặt được cập nhật liên tục. Bạn cũng có thể khởi chạy từ nguồn bên dưới.",
     "sourceTitle": "Chạy từ nguồn",
-    "sourceDesc": "Yêu cầu Node.js 20 hoặc 22 với Corepack, cộng với Python 3.11+:",
+    "sourceDesc": "Yêu cầu Node.js 24 LTS với Corepack, cộng với Python 3.11+:",
     "sourceStep1": "Sao chép kho lưu trữ",
     "sourceStep2": "Bắt đầu mọi thứ",
     "sourceStep3": "Mở http://localhost:5173"

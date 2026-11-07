@@ -114,7 +114,7 @@ async def test_event_bus_unsubscribe():
 
 
 @pytest.mark.anyio
-async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch):
+async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch, capsys):
     """Daemon shutdown drains owned workflow tasks before DB and event teardown."""
     import main
 
@@ -208,6 +208,14 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
 
     async with main.lifespan(main.app):
         events.append("serving")
+        output = capsys.readouterr().err
+        for stage in (
+            '配置迁移', '默认资源', '项目恢复', '默认工作区', '通知服务',
+            '项目配置', '流程恢复', '排队任务恢复', '协调助手恢复',
+            '渠道机器人', '聊天恢复', '定时调度', '网关初始化', '本机 CLI', '系统统计',
+        ):
+            assert f'STARTUP {stage} start' in output
+            assert f'STARTUP {stage} complete elapsed_ms=' in output
 
     assert events == [
         "projects-load",

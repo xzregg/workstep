@@ -366,7 +366,7 @@ export const daDK: I18nDict = {
     "linux": "Linux",
     "platformHint": "Installationsprogrammer opdateres løbende. Du kan også starte fra kilden nedenfor.",
     "sourceTitle": "Kør fra kilden",
-    "sourceDesc": "Kræver Node.js 20 eller 22 med Corepack plus Python 3.11+:",
+    "sourceDesc": "Kræver Node.js 24 LTS med Corepack plus Python 3.11+:",
     "sourceStep1": "Klon depotet",
     "sourceStep2": "Start alt",
     "sourceStep3": "Åbn http://localhost:5173"

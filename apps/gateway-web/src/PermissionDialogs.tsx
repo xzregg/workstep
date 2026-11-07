@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 import { GatewayModal } from './GatewayModal'
@@ -73,7 +74,8 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
       onClose={() => { if (!busy) dirty ? setDiscard(true) : onClose() }} footer={<>
         <button type="button" disabled={busy} onClick={() => dirty ? setDiscard(true) : onClose()}>取消</button>
         <button type="button" disabled={busy || !ready} onClick={() => void save()}>{busy ? '处理中…' : '保存权限'}</button>
-      </>}>
+      </>}
+      passwordConfirmation={<PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />}>
       <p className="gateway-permission-intro">选择授权对象，再勾选权限并设置作用范围。组权限由当前有效成员继承。</p>
       <section className="gateway-permission-section">
       <h4 className="gateway-permission-section-title">授权对象</h4>
@@ -81,9 +83,9 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
         <div className="gateway-permission-subject-layout">
         <div className="gateway-permission-field">
         <label htmlFor="permission-subject-type">对象类型</label>
-        <select id="permission-subject-type" value={subjectType} disabled={locked} onChange={event => {
+        <Select id="permission-subject-type" value={subjectType} disabled={locked} onChange={event => {
           setSubjectType(event.target.value as 'user' | 'group'); setSubjectId('')
-        }}><option value="user">用户</option><option value="group">用户组</option></select>
+        }}><option value="user">用户</option><option value="group">用户组</option></Select>
         </div>
         <PermissionPicker key={subjectType} kind="subject" targetType={subjectType} label="授权对象" value={subjectId} onChange={setSubjectId} disabled={locked} />
         </div>
@@ -100,26 +102,26 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
       <section className="gateway-permission-section">
       <h4 className="gateway-permission-section-title">作用范围与规则</h4>
       {assignment && <><label htmlFor="permission-name">权限</label>
-      <select id="permission-name" value={permission} disabled={busy || (!!assignment && !projectAccess)} onChange={event => {
+      <Select id="permission-name" value={permission} disabled={busy || (!!assignment && !projectAccess)} onChange={event => {
         const next = catalog.find(item => item.id === event.target.value)
         setPermission(event.target.value); setEffect('allow')
         if (next && !next.scopes.includes(scope)) { setScope(next.scopes[0]); setResource('') }
       }}><option value="">请选择权限</option>{[...new Set(catalog.map(item => item.category))].map(category =>
         <optgroup key={category} label={category}>{catalog.filter(item => item.category === category
           && (!projectAccess || item.id === 'project.read' || item.id === 'project.edit')).map(item =>
-          <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>)}</select></>}
+          <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>)}</Select></>}
       <div className="gateway-permission-rule-layout">
       <div className="gateway-permission-field">
       <label htmlFor="permission-scope">作用范围</label>
-      <select id="permission-scope" value={scope} disabled={locked || !!assignment || !definition} onChange={event => {
+      <Select id="permission-scope" value={scope} disabled={locked || !!assignment || !definition} onChange={event => {
         setScope(event.target.value); setResource('')
-      }}><option value="">请选择范围</option>{scopes.map(value => <option key={value} value={value}>{scopeNames[value]}</option>)}</select>
+      }}><option value="">请选择范围</option>{scopes.map(value => <option key={value} value={value}>{scopeNames[value]}</option>)}</Select>
       </div>
       <div className="gateway-permission-field">
       <label htmlFor="permission-effect">规则</label>
-      <select id="permission-effect" value={effect} disabled={locked || !definition} onChange={event => setEffect(event.target.value as 'allow' | 'deny')}>
+      <Select id="permission-effect" value={effect} disabled={locked || !definition} onChange={event => setEffect(event.target.value as 'allow' | 'deny')}>
         {effects.map(value => <option key={value} value={value}>{value === 'allow' ? '允许' : '禁止'}</option>)}
-      </select>
+      </Select>
       </div>
       </div>
       {definition && !noResource && scope && <PermissionPicker key={scope} kind="resource" targetType={scope} label="授权资源" value={resource}
@@ -133,7 +135,6 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
         <input type="checkbox" checked={children} disabled={locked} onChange={event => setChildren(event.target.checked)} /> 包含子部门</label>}
       </section>
       {completed.length > 0 && <p role="status">已保存 {completed.length} 项权限；重试仅保存尚未成功的项。</p>}
-      <PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在保存权限…</p>}
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayModal>
@@ -168,8 +169,8 @@ export function RevokePermissionDialog({ assignment, name, csrf, onClose, onSave
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="撤销权限" message={`撤销 ${assignment.subject_name} 的“${name}”规则（${assignment.scope_name}）？其他个人或组授权仍可能生效。`}
-    confirmLabel="撤销权限" busy={busy} disabled={!csrf || !passwordReady} onConfirm={() => void revoke()} onCancel={onClose}>
-    <PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />
+    confirmLabel="撤销权限" busy={busy} disabled={!csrf || !passwordReady} onConfirm={() => void revoke()} onCancel={onClose}
+      passwordConfirmation={<PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />}>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在撤销权限…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>

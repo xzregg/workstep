@@ -15,6 +15,38 @@ const catalog = [
 ]
 const sets = [ { id: 'creator', name: '任务创建者', description: '提交任务', permissions: ['task.read', 'task.create'] },
  { id: 'editor', name: '项目编辑者', description: '编辑项目', permissions: catalog.map(item => item.id) } ]
+
+test('multiple recipients and projects retry only unfinished recipient-project pairs', async () => {
+ const posts: string[] = []; let fail = true, saved = 0
+ globalThis.fetch = async (input, init) => {
+  const url = String(input)
+  if (url.includes('project-grant-subjects')) return Response.json({ subjects: [{ id: 'a', name: '甲' }, { id: 'b', name: '乙' }], total: 2 })
+  if (url.endsWith('/project-set')) {
+   const body = JSON.parse(String(init?.body)); const pair = body.subject_id + ':' + body.project_id; posts.push(pair)
+   return pair === 'b:p2' && fail ? Response.json({ error: { message: '暂时失败' } }, { status: 503 }) : Response.json({})
+  }
+  return Response.json({ groups: [], resources: [{ id: 'p1', name: '项目一' }, { id: 'p2', name: '项目二' }], total: 2 })
+ }
+ render(<ProjectPermissionDialog catalog={catalog} sets={sets} csrf="csrf" onClose={() => {}} onSaved={() => saved++} />)
+ fireEvent.click(await screen.findByRole('checkbox', { name: '甲' }))
+ fireEvent.click(screen.getByRole('checkbox', { name: '乙' }))
+ assert.equal((screen.getByRole('checkbox', { name: '甲' }) as HTMLInputElement).checked, true)
+ assert.equal((screen.getByRole('checkbox', { name: '乙' }) as HTMLInputElement).checked, true)
+ fireEvent.click(screen.getByRole('combobox', { name: '选择 指定项目' }))
+ fireEvent.click(screen.getByRole('option', { name: '项目一' }))
+ fireEvent.click(screen.getByRole('option', { name: '项目二' }))
+ fireEvent.keyDown(screen.getByRole('combobox', { name: '搜索选项 · 指定项目' }), { key: 'Escape' })
+ fireEvent.change(screen.getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
+ fireEvent.click(screen.getByRole('button', { name: '保存权限' }))
+ await screen.findByRole('alert')
+ assert.deepEqual(posts, ['a:p1', 'a:p2', 'b:p1', 'b:p2'])
+ assert.equal(saved, 0)
+ assert.equal((screen.getByRole('checkbox', { name: '甲' }) as HTMLInputElement).matches(':disabled'), true)
+ fail = false
+ fireEvent.click(screen.getByRole('button', { name: '保存权限' }))
+ await waitFor(() => assert.equal(saved, 1))
+ assert.deepEqual(posts, ['a:p1', 'a:p2', 'b:p1', 'b:p2', 'b:p2'])
+})
 test('merged editor assigns a group set, custom denial and retries a failed atomic save', async () => {
  let fail = true, saved = 0
  const posts: object[] = []
@@ -32,15 +64,17 @@ test('merged editor assigns a group set, custom denial and retries a failed atom
  assert.equal((screen.getByRole('button', { name: '保存权限' }) as HTMLButtonElement).disabled, true)
  fireEvent.change(screen.getByLabelText('对象类型'), { target: { value: 'group' } })
  await screen.findByRole('checkbox', { name: '协作组' })
- await screen.findByRole('checkbox', { name: '演示项目', hidden: true })
+ await screen.findByRole('option', { name: '演示项目', hidden: true })
  fireEvent.click(screen.getByRole('checkbox', { name: '协作组' }))
- fireEvent.click(screen.getByRole('checkbox', { name: '演示项目', hidden: true }))
+ fireEvent.click(screen.getByRole('combobox', { name: '选择 指定项目' }))
+ fireEvent.click(screen.getByRole('option', { name: '演示项目' }))
+ fireEvent.keyDown(screen.getByRole('combobox', { name: '搜索选项 · 指定项目' }), { key: 'Escape' })
  fireEvent.click(screen.getByRole('button', { name: /项目编辑者/ }))
  fireEvent.change(screen.getByRole('searchbox', { name: '搜索权限' }), { target: { value: 'workflow' } })
  fireEvent.change(screen.getByLabelText('正在配置的规则'), { target: { value: 'deny' } })
  fireEvent.click(screen.getByRole('checkbox', { name: '编辑流程' }))
  assert.ok(screen.getByText('自定义权限'))
- assert.ok(screen.getByRole('button', { name: '移除编辑流程' }))
+ assert.ok(screen.getByRole('complementary', { name: '本次分配' }).textContent?.includes('禁止 1 项'))
  fireEvent.change(screen.getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
  fireEvent.click(screen.getByRole('button', { name: '保存权限' }))
  await screen.findByText(/演示项目：保存失败/)
@@ -157,8 +191,10 @@ test('permission management opens the merged project editor and keeps platform g
  render(<MemoryRouter initialEntries={['/admin/permissions?scope_type=project&scope_id=project&subject_type=user&subject_id=u&subject_name=张三&assign=1']}><AdminPermissionsPage /></MemoryRouter>)
  await screen.findByRole('dialog', { name: '调整项目权限' })
  assert.equal((screen.getByRole('checkbox', { name: '创建任务' }) as HTMLInputElement).checked, false)
- assert.ok(screen.getByRole('button', { name: '移除编辑流程' }))
+ assert.ok(screen.getByRole('complementary', { name: '本次分配' }).textContent?.includes('禁止 1 项'))
  assert.equal(screen.queryByLabelText('搜索授权对象'), null)
+ assert.equal(screen.queryByText('授权对象：张三'), null)
+ assert.ok(screen.getByRole('complementary', { name: '本次分配' }).textContent?.includes('张三'))
  })
 
  test('multiple projects preserve selection through search and retry only failed grants', async () => {
@@ -171,11 +207,13 @@ test('permission management opens the merged project editor and keeps platform g
   return Response.json({subjects:[],groups:[],total:0})
  }
  render(<ProjectPermissionDialog catalog={catalog} sets={sets} csrf="csrf" subjectPreset={{type:'user',id:'u',name:'张三'}} onClose={() => {}} onSaved={() => saved++} />)
- fireEvent.click(await screen.findByRole('checkbox',{name:'第一项目',hidden:true}))
- const search = screen.getByLabelText('搜索指定项目')
+ await screen.findByRole('option', { name: '第一项目', hidden: true })
+ fireEvent.click(screen.getByRole('combobox', { name: '选择 指定项目' }))
+ fireEvent.click(screen.getByRole('option', { name: '第一项目' }))
+ const search = screen.getByRole('combobox', { name: '搜索选项 · 指定项目' })
  fireEvent.change(search,{target:{value:'second'}})
- fireEvent.submit(search.closest('form')!)
- fireEvent.click(await screen.findByRole('checkbox',{name:'第二项目',hidden:true}))
+ fireEvent.click(await screen.findByRole('option', { name: '第二项目' }))
+ fireEvent.keyDown(search, { key: 'Escape' })
  fireEvent.change(screen.getByLabelText('输入管理员密码确认'),{target:{value:'password'}})
  fireEvent.click(screen.getByRole('button',{name:'保存权限'}))
  await screen.findByText(/第二项目保存失败/)
@@ -185,4 +223,27 @@ test('permission management opens the merged project editor and keeps platform g
  fireEvent.click(screen.getByRole('button',{name:'保存权限'}))
  await waitFor(() => assert.equal(saved,1))
  assert.deepEqual(posts,['p1','p2','p2'])
+ })
+
+ test('permission summary avoids duplicate tags and keeps password confirmation beside the footer actions', () => {
+ globalThis.fetch = async () => Response.json({ subjects: [], resources: [], total: 0 })
+ render(<ProjectPermissionDialog catalog={catalog} sets={sets} csrf="csrf"
+  subjectPreset={{ type: 'user', id: 'u', name: '张三' }}
+  preset={{ scope_type: 'project', scope_id: 'p', scope_name: '演示项目' }} onClose={() => {}} onSaved={() => {}} />)
+ const dialog = screen.getByRole('dialog', { name: '分配权限' })
+ const footer = dialog.querySelector('.gateway-modal-footer')!
+ const password = screen.getByLabelText('输入管理员密码确认')
+ const body = dialog.querySelector('.gateway-modal-body')!
+ assert.equal(body.contains(password), false, 'password must stay outside the scrolling body')
+ assert.ok(footer.contains(password), 'password must be in the fixed footer')
+ assert.ok(password.compareDocumentPosition(screen.getByRole('button', { name: '取消' })) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING, 'password must precede both actions')
+ assert.ok(footer.contains(screen.getByRole('button', { name: '保存权限' })))
+ assert.equal(screen.queryByRole('button', { name: /移除.*任务/ }), null)
+ assert.ok(screen.getByText('允许 2 项 · 禁止 0 项'))
+ fireEvent.click(screen.getByRole('checkbox', { name: '创建任务' }))
+ assert.ok(screen.getByText('允许 1 项 · 禁止 0 项'))
+ fireEvent.click(screen.getByRole('button', { name: '清空选择' }))
+ assert.equal((screen.getByRole('checkbox', { name: '查看任务' }) as HTMLInputElement).checked, false)
+ assert.ok(screen.getByText('允许 0 项 · 禁止 0 项'))
+ assert.equal((screen.getByRole('button', { name: '保存权限' }) as HTMLButtonElement).disabled, true)
  })

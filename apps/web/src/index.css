@@ -361,7 +361,7 @@ body {
 
 /* ── Buttons ── */
 
-button {
+button, :where(a).btn {
   font-family: var(--font-body);
   font-size: calc(13px * var(--font-scale));
   font-weight: 500;
@@ -377,8 +377,10 @@ button {
   background: transparent;
   color: var(--fg-2);
 }
-button:hover { background: var(--surface); color: var(--fg); }
-button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+button:hover, :where(a).btn:hover { background: var(--surface); color: var(--fg); }
+button:focus-visible, :where(a).btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+a.btn { box-sizing: border-box; text-decoration: none; vertical-align: middle; }
 
 .btn-primary { background: var(--accent); color: var(--accent-fg); }
 .btn-primary:hover { background: var(--accent-hover); color: var(--accent-fg); }
@@ -3489,29 +3491,6 @@ details[open] > summary > .process-trace-chevron {
 .code-preview .hljs-function,
 .code-preview .hljs-section {
   color: var(--ai-assistant);
-}
-
-.artifact-open-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 4px 10px;
-  border-radius: 7px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: calc(12px * var(--font-scale));
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.artifact-open-link:hover {
-  background: var(--accent-hover);
-}
-
-.artifact-open-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .artifact-download-button {

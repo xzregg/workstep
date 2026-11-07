@@ -366,7 +366,7 @@ export const hiIN: I18nDict = {
     "linux": "Linux",
     "platformHint": "इंस्टॉलर लगातार अपडेट होते रहते हैं। आप नीचे दिए गए स्रोत से भी लॉन्च कर सकते हैं।",
     "sourceTitle": "स्रोत से चलाएँ",
-    "sourceDesc": "Corepack के साथ Node.js 20 या 22 की आवश्यकता है, साथ ही Python 3.11+:",
+    "sourceDesc": "Corepack के साथ Node.js 24 LTS की आवश्यकता है, साथ ही Python 3.11+:",
     "sourceStep1": "रिपॉजिटरी को क्लोन करें",
     "sourceStep2": "सब कुछ शुरू करो",
     "sourceStep3": "http://localhost:5173 खोलें"

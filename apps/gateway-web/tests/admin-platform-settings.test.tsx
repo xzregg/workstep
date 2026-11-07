@@ -196,7 +196,7 @@ test('company name editing protects changes, preserves failure and supports clea
  fireEvent.click(screen.getByRole('button', {name:'取消'}))
  const discard = screen.getByRole('dialog', {name:'放弃公司名称修改'})
  fireEvent.click(within(discard).getByRole('button', {name:'取消'}))
- fireEvent.change(screen.getByLabelText('管理员密码'), {target:{value:'password'}})
+ assert.equal(screen.queryByLabelText('管理员密码'), null)
  fireEvent.click(screen.getByRole('button', {name:'保存公司名称'}))
  await screen.findByRole('alert')
  assert.equal((screen.getByLabelText('公司显示名称') as HTMLInputElement).value, '')

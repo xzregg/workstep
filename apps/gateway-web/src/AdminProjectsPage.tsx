@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminListStatus } from './AdminListStatus'
@@ -72,12 +73,12 @@ export function AdminProjectsPage({ canConfigurePermissions = true }: { canConfi
         <input id="admin-project-search" value={query} onChange={event => setQuery(event.target.value)} />
         <button type="submit">搜索</button></form>
       <div className="gateway-admin-filters"><label htmlFor="admin-project-sort">排序</label>
-        <select id="admin-project-sort" value={filters.sort} onChange={event => setFilters(current => (
+        <Select id="admin-project-sort" value={filters.sort} onChange={event => setFilters(current => (
           { ...current, sort: event.target.value, page: 1 }))}>
-          <option value="name">项目名称</option><option value="published_at">发布时间</option></select>
-        <select aria-label="项目排序方向" value={filters.direction} onChange={event => setFilters(current => (
+          <option value="name">项目名称</option><option value="published_at">发布时间</option></Select>
+        <Select aria-label="项目排序方向" value={filters.direction} onChange={event => setFilters(current => (
           { ...current, direction: event.target.value, page: 1 }))}>
-          <option value="asc">升序</option><option value="desc">降序</option></select></div></div>
+          <option value="asc">升序</option><option value="desc">降序</option></Select></div></div>
       <AdminListStatus loading={loading} label="正在加载项目…"/>
       {!loading && !error && projects.length === 0 && <p>当前条件下没有已发布项目。</p>}
       <AdminRecordTable busy={loading} columns={['项目','宿主电脑','发布者','用户授权','用户组授权','访问级别','运行任务','操作']}>

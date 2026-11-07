@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminRecordTable } from './AdminRecordTable'
@@ -102,10 +103,10 @@ export function AdminSkillsPage() {
     <p>版本上传后需单独审核；只有已批准版本可授权用户组。撤销版本会使相关项目分配失效。</p>
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
-      <div className="gateway-admin-form-row"><label>Skill<select value={skillId} onChange={event => {
+      <div className="gateway-admin-form-row"><label>Skill<Select value={skillId} onChange={event => {
         setSkillId(event.target.value); setVersions([]); setGrantVersionId('')
       }}><option value="">选择 Skill</option>{skills.map(skill =>
-        <option key={skill.id} value={skill.id}>{skill.name}</option>)}</select></label></div>
+        <option key={skill.id} value={skill.id}>{skill.name}</option>)}</Select></label></div>
     <AdminTabs label="Skill 管理分类" items={[
      { id: 'catalog', label: 'Skill 目录', content: (
     <section className="gateway-overview-card">
@@ -131,14 +132,14 @@ export function AdminSkillsPage() {
      { id: 'grants', label: '用户组授权', content: (
     <section className="gateway-overview-card">
       <h3>用户组授权</h3>
-      <div className="gateway-admin-form-row"><label>用户组<select value={groupId} onChange={event => {
+      <div className="gateway-admin-form-row"><label>用户组<Select value={groupId} onChange={event => {
         setGroupId(event.target.value); setGrants([])
       }}><option value="">选择用户组</option>{groups.map(group =>
-        <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
-      <label>授权版本<select value={grantVersionId} disabled={!skillId}
+        <option key={group.id} value={group.id}>{group.name}</option>)}</Select></label>
+      <label>授权版本<Select value={grantVersionId} disabled={!skillId}
         onChange={event => setGrantVersionId(event.target.value)}>
         <option value="">选择已批准版本</option>{versions.filter(item => item.status === 'approved')
-          .map(version => <option key={version.id} value={version.id}>{version.version}</option>)}</select></label>
+          .map(version => <option key={version.id} value={version.id}>{version.version}</option>)}</Select></label>
       <button type="button" disabled={!csrf || !groupId || !grantVersionId}
         onClick={() => setAction({ kind: 'grant', groupId, versionId: grantVersionId })}>
         授权用户组</button></div>

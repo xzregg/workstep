@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminRecordDetails } from './AdminRecordDetails'
@@ -77,13 +78,13 @@ export function AdminSharesPage() {
       event.preventDefault(); setOffset(0); setSubmittedQuery(query.trim())
     }}>
       <label htmlFor="gateway-share-status">分享状态</label>
-      <select id="gateway-share-status" value={status} onChange={event => {
+      <Select id="gateway-share-status" value={status} onChange={event => {
         setStatus(event.target.value); setOffset(0)
       }}>
         <option value="">全部状态</option><option value="active">有效</option>
         <option value="paused">已暂停</option><option value="expired">已过期</option>
         <option value="revoked">已撤销</option>
-      </select>
+      </Select>
       <label htmlFor="gateway-share-search">分享标题</label>
       <input id="gateway-share-search" value={query} onChange={event => setQuery(event.target.value)} />
       <button type="submit">搜索</button>

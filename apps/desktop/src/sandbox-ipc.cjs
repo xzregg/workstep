@@ -5,6 +5,7 @@ const { resolveDroppedDirectory } = require('./project-drop.cjs')
 
 function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window: getWindow, rootUrl: getRootUrl, hasActiveWork, restart }) {
   const approved = new Set()
+  const configDirectories = new Set()
   function trusted(event) {
     const window = getWindow()
     if (!window || event.sender !== window.webContents || !isTrustedNavigation(event.senderFrame?.url, getRootUrl())) throw new Error('沙箱操作来源无效')
@@ -38,6 +39,14 @@ function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window
       if (result.canceled) return null
       const selected = result.filePaths[0]; approved.add(selected); return selected
     },
+    chooseConfigDirectory: async () => {
+      const result = await dialog.showOpenDialog(getWindow(), { properties: ['openDirectory', 'showHiddenFiles'] })
+      if (result.canceled) return null
+      const source = result.filePaths[0]
+      if (!source) return null
+      configDirectories.add(source)
+      return { source, name: path.basename(source) }
+    },
     prepare: async input => {
       await idle()
       const permitted = await permittedPaths()
@@ -60,7 +69,11 @@ function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window
       await manager.queueImageSwitch(image, selected.tags[0] || null)
       await restart()
     },
-    importConfig: async kind => { await idle(); return manager.importConfig(kind) },
+    importConfig: async input => {
+      await idle()
+      if (typeof input !== 'string' && !configDirectories.has(input?.source)) throw new Error('请通过目录选择按钮授权配置来源')
+      return manager.importConfig(input)
+    },
     migrateSettings: async options => { await idle(); return manager.migrateSettings(options) },
     remove: async () => { await idle(); if (manager.running || (await manager.settings()).enabled) throw new Error('请先关闭沙箱并重启，再删除数据'); return manager.remove() },
     logs: async () => {

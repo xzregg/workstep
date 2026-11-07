@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { GatewayModal } from './GatewayModal'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
-import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import type { AdminDevice } from './AdminDeviceActionDialog'
 
 export function AdminDeviceNameDialog({ device, csrf, onComplete, onClose }: {
@@ -11,9 +10,8 @@ export function AdminDeviceNameDialog({ device, csrf, onComplete, onClose }: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [discard, setDiscard] = useState(false)
-  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
-  const dirty = name !== device.name || !!password
-  const valid = !!csrf && passwordReady && !!name.trim() && name.trim() !== device.name && name.trim().length <= 256
+  const dirty = name !== device.name
+  const valid = !!csrf && !!name.trim() && name.trim() !== device.name && name.trim().length <= 256
 
   function requestClose() {
     if (busy) return
@@ -25,8 +23,6 @@ export function AdminDeviceNameDialog({ device, csrf, onComplete, onClose }: {
     if (!valid || busy) return
     setBusy(true); setError('')
     try {
-      const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('管理员密码验证失败。')
       const response = await fetch(`/api/admin/devices/${encodeURIComponent(device.id)}/name`, {
         method: 'PUT', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
@@ -52,8 +48,6 @@ export function AdminDeviceNameDialog({ device, csrf, onComplete, onClose }: {
       <label htmlFor="admin-device-name">设备名称</label>
       <input id="admin-device-name" value={name} maxLength={256} disabled={busy}
         onChange={event => setName(event.target.value)} />
-      <PasswordConfirmation id="admin-device-name-password" label="输入管理员密码确认"
-        value={password} onChange={setPassword} disabled={busy} />
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在保存名称…</p>}
       {error && <p className="gateway-auth-error" role="alert">{error}</p>}
     </form>

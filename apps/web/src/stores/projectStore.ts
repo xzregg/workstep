@@ -157,6 +157,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setActiveProject: (p) => {
+    if (p && !useGatewaySessionStore.getState().selectProject(p.id)) return
     const prev = get().activeProject
     set({ activeProject: p && prev?.id === p.id && (p.steps === undefined || get().canvasDirty)
       ? { ...p, steps: prev.steps } : p,

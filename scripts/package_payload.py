@@ -29,6 +29,10 @@ EXCLUDED_FILES = (
 
 
 def excluded(relative: Path) -> bool:
+    # This runtime module handles credentials; it is not a credential file.
+    # inventory() still checks its contents for secrets and rejects symlinks.
+    if relative.as_posix() == 'services/git/credentials.py':
+        return False
     return any(part.casefold() in EXCLUDED_DIRS for part in relative.parts) or any(
         fnmatch.fnmatchcase(relative.name.casefold(), pattern.casefold()) for pattern in EXCLUDED_FILES
     )

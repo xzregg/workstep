@@ -1,6 +1,6 @@
 import { useI18n } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
-import Button from './Button'
+import Button, { ButtonLink } from './Button'
 import { buildBrowserFeedback } from '../utils/browserDiagnostics'
 import { copyText } from '../utils/clipboard'
 import { redactDiagnosticText } from '../../../desktop/src/diagnostic-privacy.mjs'
@@ -51,11 +51,11 @@ export default function ProblemFeedbackSettings() {
           <p className="settings-system-description">{t('settings.feedbackScreenshotHint')}</p>
         </>}
       </div>
-      <a className="btn btn-ghost"
+      <ButtonLink
         href="https://github.com/xzregg/workstep/issues/new?template=bug_report.yml"
         target="_blank" rel="noopener noreferrer">
         {t('settings.feedbackGithub')}
-      </a>
+      </ButtonLink>
     </div>
   )
 }

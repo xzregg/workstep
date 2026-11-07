@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { AuditEntityFilter } from './AuditEntityFilter'
 import { AdminRecordDetails } from './AdminRecordDetails'
 import { AdminListStatus } from './AdminListStatus'
@@ -95,11 +96,11 @@ export function AdminAuditPage() {
       </details>
       <label>操作类型<input value={draft.action} maxLength={128}
         onChange={event => setDraft(current => ({ ...current, action: event.target.value }))} /></label>
-      <label>结果<select value={draft.result}
+      <label>结果<Select value={draft.result}
         onChange={event => setDraft(current => ({ ...current, result: event.target.value }))}>
         <option value="">全部</option><option value="success">成功（Gateway）</option>
         <option value="succeeded">成功（PC）</option><option value="denied">拒绝</option>
-        <option value="failed">失败</option></select></label>
+        <option value="failed">失败</option></Select></label>
       <label>关键词<input value={draft.q} maxLength={128}
         onChange={event => setDraft(current => ({ ...current, q: event.target.value }))} /></label>
       <div className="gateway-usage-filter-actions"><button type="submit">查询审计</button>

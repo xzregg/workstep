@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -45,13 +46,13 @@ export function AdminRegistrationPolicyDialog({ mode, csrf, onSaved, onClose, de
       onConfirm={() => void save()} onCancel={() => {
         if (selected !== mode || password) setDiscard(true)
         else onClose()
-      }}>
+      }}
+      passwordConfirmation={<PasswordConfirmation id="gateway-registration-password" label="管理员密码" value={password} onChange={setPassword} />}>
       <label htmlFor="gateway-registration-mode">{devicePolicy ? '设备审批策略' : '注册策略'}</label>
-      <select id="gateway-registration-mode" value={selected}
+      <Select id="gateway-registration-mode" value={selected}
         onChange={event => setSelected(event.target.value as RegistrationMode)}>
         {Object.entries(labels).map(([key, label]) =>
-          <option key={key} value={key}>{label}</option>)}</select>
-      <PasswordConfirmation id="gateway-registration-password" label="管理员密码" value={password} onChange={setPassword} />
+          <option key={key} value={key}>{label}</option>)}</Select>
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>
     {discard && <GatewayConfirmDialog title="放弃修改" message="注册策略尚未保存。"

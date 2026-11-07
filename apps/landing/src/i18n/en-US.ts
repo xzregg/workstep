@@ -324,7 +324,7 @@ export const enUS: I18nDict = {
     linux: 'Linux',
     platformHint: 'Installers are continuously updated. You can also launch from source below.',
     sourceTitle: 'Run from source',
-    sourceDesc: 'Requires Node.js 20 or 22 with Corepack, plus Python 3.11+:',
+    sourceDesc: 'Requires Node.js 24 LTS with Corepack, plus Python 3.11+:',
     sourceStep1: 'Clone the repository',
     sourceStep2: 'Start everything',
     sourceStep3: 'Open http://localhost:5173',

@@ -101,7 +101,7 @@ function GatewayPortalApp() {
         <Route path="/auth" element={<PortalAuthPage />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/auth/pending" element={<RegistrationPendingPage />} />
-        <Route path="*" element={<section><h2>页面不存在</h2><Link to="/">返回工作台</Link></section>} />
+        <Route path="*" element={<section><h2>页面不存在</h2><Link className="gateway-action-link" to="/">返回工作台</Link></section>} />
       </Routes>
       </AdminPortalRegion>
     </main></PasswordConfirmationRequired.Provider>

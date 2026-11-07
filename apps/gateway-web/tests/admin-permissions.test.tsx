@@ -60,7 +60,7 @@ test('multiple compatible permissions save together and retry only the failed ru
     { id: 'project.publish', name: '发布项目', category: '业务操作', scopes: ['global'], effects: ['allow', 'deny'] },
     { id: 'admin.super_admin', name: '超级管理员', category: '平台管理', scopes: ['platform'], effects: ['allow'] },
   ]} />)
-  await screen.findByRole('option', { name: 'Test' })
+  await screen.findByRole('option', { name: 'Test' , hidden: true})
   fireEvent.change(screen.getByLabelText('授权对象'), { target: { value: 'u1' } })
   fireEvent.click(screen.getByRole('checkbox', { name: '创建任务' }))
   fireEvent.click(screen.getByRole('checkbox', { name: '发布项目' }))
@@ -129,7 +129,7 @@ test('one permission entry assigns a group rule, preserves errors and revokes it
   const editor = screen.getByRole('dialog', { name: '分配权限' })
   assert.equal(within(editor).getByRole('button', { name: '保存权限' }).hasAttribute('disabled'), true)
   fireEvent.change(within(editor).getByLabelText('对象类型'), { target: { value: 'group' } })
-  await within(editor).findByRole('option', { name: '研发组' })
+  await within(editor).findByRole('option', { name: '研发组' , hidden: true})
   fireEvent.change(within(editor).getByLabelText('授权对象'), { target: { value: 'group-1' } })
   fireEvent.click(within(editor).getByRole('checkbox', { name: '创建任务' }))
   fireEvent.change(within(editor).getByLabelText('规则'), { target: { value: 'deny' } })
@@ -153,17 +153,18 @@ test('one permission entry assigns a group rule, preserves errors and revokes it
   await screen.findByText(/尚无权限规则/)
 })
 
- test('permission picker places one search row above its choices and applies the search', async () => {
+ test('permission picker searches inside the shared dropdown and applies remote search', async () => {
  const { PermissionPicker } = await import('../src/PermissionPicker')
  const urls: string[] = []
  globalThis.fetch = async input => { urls.push(String(input)); return Response.json({ subjects: [{ id: 'u', name: '张三' }], total: 1 }) }
  render(<PermissionPicker kind="subject" targetType="user" label="授权对象" value="" onChange={() => {}} />)
- await screen.findByRole('option', { name: '张三' })
- const search = screen.getByRole('textbox', { name: '搜索授权对象' })
- const choices = screen.getByRole('combobox', { name: '授权对象' })
- assert.ok(search.compareDocumentPosition(choices) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING)
+ await screen.findByRole('option', { name: '张三' , hidden: true})
+ const choices = screen.getByRole('combobox', { name: '选择 授权对象' })
+ fireEvent.click(choices)
+ const search = screen.getByRole('combobox', { name: '搜索选项 · 授权对象' })
+ assert.ok(search.closest('.skin-select-panel'))
+ assert.equal(screen.queryByRole('button', { name: '搜索' }), null)
  fireEvent.change(search, { target: { value: '张三' } })
- fireEvent.click(screen.getByRole('button', { name: '搜索' }))
  await waitFor(() => assert.ok(urls.some(url => new URL(url, 'https://gateway.test').searchParams.get('q') === '张三')))
  })
 

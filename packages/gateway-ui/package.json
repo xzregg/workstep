@@ -14,7 +14,9 @@
     "./TaskShareLoginToggle": "./src/TaskShareLoginToggle.tsx",
     "./TaskShareLoginToggle.css": "./src/TaskShareLoginToggle.css",
     "./ActivityHeatmap": "./src/ActivityHeatmap.tsx",
-    "./ActivityHeatmap.css": "./src/ActivityHeatmap.css"
+    "./ActivityHeatmap.css": "./src/ActivityHeatmap.css",
+    "./SearchableSelect": "./src/SearchableSelect.tsx",
+    "./SearchableSelect.css": "./src/SearchableSelect.css"
   },
   "peerDependencies": {
     "react": "^19.2.7"

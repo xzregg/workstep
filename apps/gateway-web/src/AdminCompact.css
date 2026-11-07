@@ -10,9 +10,9 @@
 .gateway-admin-shell .gateway-admin-page h2 { font-size: 23px; margin: 0 0 14px; }
 .gateway-admin-shell .gateway-admin-page h3 { font-size: 14px; margin: 0 0 12px; }
 .gateway-admin-shell .gateway-admin-page > p { color: #7d899a; font-size: 12px; margin: 0 0 16px; }
-.gateway-admin-shell .gateway-admin-page :is(input:not([type=checkbox]),select,button) { min-height: var(--gateway-admin-control-height); font-size: 13px; border-radius: 8px; }
-.gateway-admin-shell .gateway-admin-page button { border: 1px solid var(--gateway-admin-separator); background: #fff; color: var(--gateway-admin-secondary); padding: 4px 10px; }
-.gateway-admin-shell .gateway-admin-page button:not(:disabled):hover { background: #f3f7fc; border-color: #b7d4f6; color: var(--gateway-admin-accent); }
+.gateway-admin-shell .gateway-admin-page :is(input:not([type=checkbox]),select,button,.gateway-action-link) { min-height: var(--gateway-admin-control-height); font-size: 13px; border-radius: 8px; }
+.gateway-admin-shell .gateway-admin-page :is(button,.gateway-action-link) { border: 1px solid var(--gateway-admin-separator); background: #fff; color: var(--gateway-admin-secondary); padding: 4px 10px; }
+.gateway-admin-shell .gateway-admin-page :is(button,.gateway-action-link):not(:disabled):hover { background: #f3f7fc; border-color: #b7d4f6; color: var(--gateway-admin-accent); }
 .gateway-admin-shell .gateway-admin-page :is(button[type=submit],button.gateway-admin-primary) { background: var(--gateway-admin-accent); border-color: var(--gateway-admin-accent); color: #fff; }
 .gateway-admin-shell .gateway-admin-page :is(button[type=submit],button.gateway-admin-primary):not(:disabled):hover { background: var(--gateway-admin-accent-hover); color: #fff; }
 .gateway-admin-shell .gateway-admin-page button.gateway-admin-danger { color: #c24141; }
@@ -32,7 +32,7 @@
 .gateway-admin-shell .gateway-admin-table td { padding: 11px 14px; }
 .gateway-admin-shell .gateway-admin-table td p { margin: 3px 0; font-size: 11px; }
 .gateway-admin-shell .gateway-admin-table td strong { font-weight: 500; }
-.gateway-admin-shell .gateway-admin-table td button { min-height: 28px; font-size: 11px; padding: 3px 8px; }
+.gateway-admin-shell .gateway-admin-table td :is(button,.gateway-action-link) { min-height: 28px; font-size: 11px; padding: 3px 8px; }
 .gateway-admin-shell .gateway-admin-table td:last-child { width: 220px; }
 .gateway-admin-shell .gateway-admin-table-scroll[aria-busy=true] tbody { opacity: .55; }
 .gateway-admin-cell-meta { display: block; font-size: 11px; margin-top: 4px; color: #8793a3; }
@@ -53,7 +53,7 @@
 @media(max-width:1023px) {
  .gateway-admin-shell { --gateway-admin-control-height: var(--mobile-control-regular); }
  .gateway-admin-shell .gateway-admin-content .gateway-admin-page { padding: 22px; }
- .gateway-admin-shell .gateway-admin-table td button { min-height: var(--mobile-control-regular); }
+ .gateway-admin-shell .gateway-admin-table td :is(button,.gateway-action-link) { min-height: var(--mobile-control-regular); }
 }
 @media(max-width:767px) {
  .gateway-admin-shell .gateway-admin-content .gateway-admin-page { padding: 18px 12px; }
@@ -85,7 +85,7 @@
 .gateway-group-action-bar > span { flex: 1 0 auto; white-space: nowrap; }
 .gateway-admin-shell .gateway-group-action-bar > button { flex: 0 0 auto; padding-inline: 8px; }
 .gateway-admin-shell :is(.gateway-row-actions,.gateway-device-actions) { flex-wrap: nowrap; }
-.gateway-admin-shell :is(.gateway-row-actions,.gateway-device-actions) > button { flex-shrink: 0; }
+.gateway-admin-shell :is(.gateway-row-actions,.gateway-device-actions) > :is(button,.gateway-action-link) { flex-shrink: 0; }
 .gateway-admin-shell .gateway-bulk-toolbar { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
 .gateway-admin-shell .gateway-bulk-toolbar > :is(span,button) { flex-shrink: 0; white-space: nowrap; }
 .gateway-admin-shell .gateway-share-management .gateway-admin-table { table-layout: auto; }

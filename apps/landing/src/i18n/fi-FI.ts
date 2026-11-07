@@ -366,7 +366,7 @@ export const fiFI: I18nDict = {
     "linux": "Linux",
     "platformHint": "Asentajia päivitetään jatkuvasti. Voit myös käynnistää alla olevasta lähteestä.",
     "sourceTitle": "Suorita lähteestä",
-    "sourceDesc": "Vaatii Node.js 20 tai 22 ja Corepack sekä Python 3.11+:",
+    "sourceDesc": "Vaatii Node.js 24 LTS ja Corepack sekä Python 3.11+:",
     "sourceStep1": "Kloonaa arkisto",
     "sourceStep2": "Aloita kaikki",
     "sourceStep3": "Avaa http://localhost:5173"

@@ -1,3 +1,4 @@
+import { ButtonLink } from './Button'
 import GatewayDeviceTabs from './GatewayDeviceTabs'
 import GatewayWorkspaceNotifications from './GatewayWorkspaceNotifications'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
@@ -32,6 +33,7 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(false)
   const appearanceIdentity = useRef<string | null>(null)
+  const projectDirectory = useRef('')
   const disconnected = error || !!sessionError
   const requiresEntry = !!sessionError && (sessionErrorStatus === 401 || sessionErrorStatus === 403)
   const lastContext=useRef(context)
@@ -60,12 +62,14 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
           }
           appearanceIdentity.current = identity
         }
-        if (next.host_project_id && useProjectStore.getState().activeProject?.id !== next.host_project_id) {
+        const directory = JSON.stringify(next.projects?.map(project => [project.host_project_id, project.name]))
+        if (next.host_project_id && (useProjectStore.getState().activeProject?.id !== next.host_project_id || directory !== projectDirectory.current)) {
           await useProjectStore.getState().fetchProjects()
           if (useProjectStore.getState().activeProject?.id !== next.host_project_id) {
             if (active) setReady(false)
             throw new Error('Remote project unavailable')
           }
+          projectDirectory.current = directory
         }
         if (active) { setReady(true); setError(false) }
       } catch {
@@ -101,14 +105,14 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
       </button> : null
 
   if (!gatewayUrl) return <>{children}</>
-  return <div className={`gateway-remote-frame${compact && !embedded ? ' gateway-remote-frame--mobile' : ''}`}>
+  return <div key={JSON.stringify([displayContext?.user_id, displayContext?.device_id])} className={`gateway-remote-frame${compact && !embedded ? ' gateway-remote-frame--mobile' : ''}`}>
     {!embedded && <>
       {pickerOpen && <button type="button" className="gateway-mobile-picker-backdrop" aria-label={t('common.close')} onClick={() => setPickerOpen(false)}/>}
     </>}
     {!embedded && <div ref={pickerRef} id="gateway-device-picker" hidden={compact && !pickerOpen}
       className={compact ? 'gateway-mobile-picker' : 'gateway-remote-banner'} role={compact ? 'dialog' : undefined}
       aria-modal={compact && pickerOpen ? true : undefined} aria-label={t('gatewayRemote.switchDevices')}>
-      {displayContext ? <GatewayDeviceTabs currentDeviceId={displayContext.device_id} currentProjectId={displayContext.project_id}
+      {displayContext ? <GatewayDeviceTabs currentDeviceId={displayContext.device_id}
         header={<>
           {compact && <strong>{t('gatewayRemote.switchDevices')}</strong>}
           <button type="button" className="gateway-header-control gateway-return-control" aria-label={t('gatewayRemote.back')} title={t('gatewayRemote.back')} onClick={() => window.location.assign(new URL('/account', displayContext.gateway_url ?? gatewayUrl).href)}>{compact ? <><Icon name="external-link" size={18}/><span>{t('gatewayRemote.backCompact')}</span></> : t('gatewayRemote.back')}</button>
@@ -123,7 +127,7 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
       <span>{requiresEntry ? t('gatewayRemote.sessionExpired') : disconnected ? t('gatewayRemote.reconnecting') : t('gatewayRemote.loading')}</span>
       <div className="gateway-recovery-actions">
         <button type="button" className="btn-secondary" disabled={loading} onClick={() => window.dispatchEvent(new Event('workstep:resume'))}>{t('gatewayRemote.retryNow')}</button>
-        <a href={gatewayUrl}>{t('gatewayRemote.back')}</a>
+        <ButtonLink href={gatewayUrl}>{t('gatewayRemote.back')}</ButtonLink>
       </div>
     </div>}</div>
     </div>

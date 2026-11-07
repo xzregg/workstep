@@ -322,7 +322,7 @@ export const zhCN = {
     linux: 'Linux',
     platformHint: '安装包持续更新中，也可以从下方源码一键启动。',
     sourceTitle: '从源码运行',
-    sourceDesc: '需要带 Corepack 的 Node.js 20 或 22，以及 Python 3.11+：',
+    sourceDesc: '需要带 Corepack 的 Node.js 24 LTS，以及 Python 3.11+：',
     sourceStep1: '克隆仓库',
     sourceStep2: '一键启动',
     sourceStep3: '打开 http://localhost:5173',

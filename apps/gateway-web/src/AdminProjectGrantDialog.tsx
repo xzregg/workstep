@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { GrantSubjectPicker } from './GrantSubjectPicker'
 import { GatewayModal } from './GatewayModal'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
@@ -49,15 +50,16 @@ export function AdminProjectGrantDialog({ projectId, deviceId, grant, csrf, name
         <button type="button" className="gateway-dialog-cancel" disabled={busy} onClick={close}>取消</button>
         <button type="button" disabled={busy || !selectedSubjects.length || !passwordReady} onClick={() => void save()}>
           {busy ? <><span className="gateway-spinner" /> 保存中…</> : completed.length ? '重试未成功对象' : '保存授权'}</button>
-      </>}>
+      </>}
+      passwordConfirmation={<PasswordConfirmation id="project-grant-password" label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />}>
       <div className="gateway-grant-editor">
       {name && <p className="gateway-grant-target">{deviceId ? '设备' : '项目'}：<strong>{name}</strong></p>}
       <p>{deviceId ? '授权后可操作这台 WorkStep 及其中的全部项目。' : '只授权已发布项目的远程访问；授权不会开放宿主 PC 的全部项目。'}</p>
       {grant ? <p>授权对象：{grant.subject_type === 'user' ? '用户' : '用户组'} · {grant.subject_name}</p> : <>
         <label htmlFor="project-grant-type">对象类型</label>
-        <select id="project-grant-type" disabled={locked} value={subjectType} onChange={event => {
+        <Select id="project-grant-type" disabled={locked} value={subjectType} onChange={event => {
           setSubjectType(event.target.value as 'user' | 'group'); setSelectedSubjects([])
-        }}><option value="user">用户</option><option value="group">用户组</option></select>
+        }}><option value="user">用户</option><option value="group">用户组</option></Select>
         <GrantSubjectPicker key={subjectType} subjectType={subjectType} selected={selectedSubjects}
           onChange={setSelectedSubjects} disabled={locked} />
       </>}
@@ -70,7 +72,6 @@ export function AdminProjectGrantDialog({ projectId, deviceId, grant, csrf, name
       </fieldset>
       <p className="gateway-grant-summary" aria-live="polite">{selectedSubjects.length ? `已选择：${selectedSubjects.map(subject => subject.name).join('、')} · ${level === 'read' ? '只读' : '可编辑'}` : '请选择授权对象'}</p>
       {completed.length > 0 && <p role="status">已保存 {completed.length} 个对象，重试仅保存未成功的对象。</p>}
-      <PasswordConfirmation id="project-grant-password" label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
       </div>
       {discard && <GatewayConfirmDialog title="放弃项目授权修改" message={completed.length ? `已保存 ${completed.length} 个对象的授权；关闭不会撤销这些授权，确定放弃其余修改？` : "当前授权表单有未保存内容。"}
@@ -100,8 +101,8 @@ export function AdminProjectRevokeDialog({ projectId, deviceId, grant, csrf, onC
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title={deviceId ? '撤销设备授权' : '撤销项目授权'} message={`确认撤销 ${grant.subject_name} 的${deviceId ? '设备' : '项目'}访问？${deviceId ? '' : '撤销后将禁止该用户通过邀请重新加入，需管理员重新授权。'}`}
-    confirmLabel="撤销授权" busy={busy} disabled={!passwordReady} onConfirm={() => void revoke()} onCancel={onClose}>
-    <PasswordConfirmation id="project-revoke-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+    confirmLabel="撤销授权" busy={busy} disabled={!passwordReady} onConfirm={() => void revoke()} onCancel={onClose}
+      passwordConfirmation={<PasswordConfirmation id="project-revoke-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>
 }

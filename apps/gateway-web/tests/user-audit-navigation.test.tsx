@@ -18,6 +18,7 @@ test('user table exposes last login and a scoped audit destination only when all
  assert.ok(screen.getByRole('columnheader', { name: '上次登录时间' }))
  assert.ok(screen.getByRole('cell', { name: new Date(user.last_login_at).toLocaleString() }))
  assert.equal(screen.getByRole('link', { name: '张三的审计日志' }).getAttribute('href'), '/admin/audit?user_id=user-id')
+ assert.ok(screen.getByRole('link', { name: '张三的审计日志' }).classList.contains('gateway-action-link'))
  view.rerender(<AdminUserTable users={[user]} csrf="csrf" loading={false} resetKey="" onRefresh={() => {}} />)
  assert.equal(screen.queryByRole('link', { name: '张三的审计日志' }), null)
 })

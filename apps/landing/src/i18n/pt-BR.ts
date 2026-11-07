@@ -366,7 +366,7 @@ export const ptBR: I18nDict = {
     "linux": "Linux",
     "platformHint": "Os instaladores são continuamente atualizados. Você também pode iniciar a partir da fonte abaixo.",
     "sourceTitle": "Executar da fonte",
-    "sourceDesc": "Requer Node.js 20 ou 22 com Corepack, além de Python 3.11+:",
+    "sourceDesc": "Requer Node.js 24 LTS com Corepack, além de Python 3.11+:",
     "sourceStep1": "Clonar o repositório",
     "sourceStep2": "Comece tudo",
     "sourceStep3": "Abra http://localhost:5173"

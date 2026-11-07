@@ -4,6 +4,12 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Navigate between individually authorized projects on the same Gateway device without redeeming another ticket. Keep HTTP requests, WebSocket streams and sidebar actions scoped to each project's current permissions.
+- Reuse searchable selection controls across the workspace and Gateway, and standardize navigation links and routine administration dialogs. Keep authentication, CSRF and sensitive-operation verification in place.
+- Sync selected host engine configuration directories into a prepared desktop sandbox, with confirmation, backups and source-directory validation. Show compatibility guidance when the running desktop bridge needs a restart or update.
+- Add flushed startup-stage diagnostics and retain redacted backend output on startup failure. Improve application-script failure detection and Gateway asset-cache recovery.
+- Reorder desktop chat panes by dragging their headers, and distinguish user instructions from review output in task conversations.
+- Preserve the required Git credential-handling source module in filtered release payloads while continuing to reject secret candidates in its contents.
 - Filter temporary files, non-runtime plans, local configuration, databases and key files from release payloads. Validate first-party content during desktop and image builds and recheck injected desktop files before packaging; stop on secret candidates without printing their values.
 - Improve Android failed-page recovery with native retry, cache reload, device-list and diagnostic actions. Summarize known console error signatures without recording arbitrary console content or URL credentials.
 - Keep sidebar conversation titles and local directory selection compact, and move skin actions above their preview without changing execution permissions.

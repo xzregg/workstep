@@ -13,6 +13,7 @@
 logs
 *.db
 .DS_Store
+**/.DS_Store
 /examples/
 # Release context: no local configuration, plans, tests, caches or source maps.
 **/.env*
@@ -29,6 +30,8 @@ logs
 **/.netrc
 **/credentials.json
 **/credentials*
+# Runtime Git credential handling code; contents are still scanned during build.
+!apps/daemon/services/git/credentials.py
 **/secrets.*
 **/.ssh
 **/.aws

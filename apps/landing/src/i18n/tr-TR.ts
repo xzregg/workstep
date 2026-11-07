@@ -366,7 +366,7 @@ export const trTR: I18nDict = {
     "linux": "Linux",
     "platformHint": "Yükleyiciler sürekli olarak güncellenmektedir. Ayrıca aşağıdaki kaynaktan da başlatabilirsiniz.",
     "sourceTitle": "Kaynaktan çalıştır",
-    "sourceDesc": "Corepack ile Node.js 20 veya 22'nin yanı sıra Python 3.11+ gerektirir:",
+    "sourceDesc": "Corepack ile Node.js 24 LTS'nin yanı sıra Python 3.11+ gerektirir:",
     "sourceStep1": "Depoyu klonla",
     "sourceStep2": "Her şeyi başlat",
     "sourceStep3": "http://localhost:5173'yu açın"

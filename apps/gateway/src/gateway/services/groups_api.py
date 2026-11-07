@@ -81,8 +81,9 @@ async def _can_manage_group(session, service, user: User, group_id: str) -> bool
 
 async def create_group(call: GatewayCall, body: GroupInput):
     service, actor = await _super_admin_request(call)
-    _, auth_session = await service.session_user(call.tokens.get(COOKIE_NAME))
-    await service.require_step_up(auth_session)
+    if body.source_type == 'external_department':
+        _, auth_session = await service.session_user(call.tokens.get(COOKIE_NAME))
+        await service.require_step_up(auth_session)
     if (body.name != body.name.strip() or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", body.slug)):
         raise GatewayError('invalid', 'Invalid group name or slug')
     if (body.source_type == "external_department") != (body.external_department_id is not None):

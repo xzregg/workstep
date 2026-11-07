@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig(({ mode }) => ({
   ...(mode === 'gateway-share' ? {
@@ -24,7 +25,10 @@ export default defineConfig(({ mode }) => ({
     ...(mode === 'gateway-share' ? { outDir: 'dist-gateway-share', assetsDir: '' } : {}),
   },
   plugins: [react()],
-  resolve: { dedupe: ['react','react-dom','react-router-dom'] },
+  resolve: {
+    dedupe: ['react','react-dom','react-router-dom'],
+    alias: { '@workstep/gateway-ui/SearchableSelect': fileURLToPath(new URL('../../packages/gateway-ui/src/SearchableSelect.tsx', import.meta.url)) },
+  },
   server: {
     proxy: {
       // Project-relative upload URLs: {project}/.workstep/uploads/{file}

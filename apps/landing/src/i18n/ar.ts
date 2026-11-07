@@ -363,7 +363,7 @@ export const ar: I18nDict = {
     "choosePlatform": "اختر منصتك",
     "platformHint": "تُحدّث المثبتات باستمرار. يمكنك أيضًا التشغيل من المصدر أدناه.",
     "sourceTitle": "التشغيل من المصدر",
-    "sourceDesc": "يتطلب Node.js 20 أو 22 مع Corepack، إضافةً إلى Python 3.11 أو أحدث:",
+    "sourceDesc": "يتطلب Node.js 24 LTS مع Corepack، إضافةً إلى Python 3.11 أو أحدث:",
     "sourceStep1": "استنساخ المستودع",
     "sourceStep2": "تشغيل الجميع",
     "sourceStep3": "افتح http://localhost:5173",

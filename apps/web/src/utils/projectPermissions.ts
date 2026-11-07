@@ -5,9 +5,13 @@ export interface ProjectPermissionSession {
   task_create: boolean
   share_create: boolean
   permissions?: string[] | null
+  projects?: ProjectPermissionSession[]
 }
 export function resolveProjectPermissions(remote: boolean, session: ProjectPermissionSession | null, projectId?: string) {
   const bound = remote && (!session || !!session.host_project_id)
+  if (bound && session?.projects && projectId) {
+    session = session.projects.find(project => project.host_project_id === projectId) ?? null
+  }
   const matches = !!session && session.host_project_id === projectId
   const can = (permission: string) => {
     if (!bound) return true

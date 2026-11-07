@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { PlatformAddress } from './PlatformAddress'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -58,20 +59,20 @@ export function ClientDownloadPage() {
   return <section className="gateway-admin-page gateway-download-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <h2>安装 WorkStep</h2>
-    <p>没有自己的设备？<Link to="/project-invitations">添加别人分享的项目</Link>，通过浏览器即可使用已授权项目。</p>
-    <p>设备绑定并上线后，将自动进入“我的 WorkStep”。<Link to="/">返回我的 WorkStep</Link></p>
+    <p>没有自己的设备？<Link className="gateway-action-link" to="/project-invitations">添加别人分享的项目</Link>，通过浏览器即可使用已授权项目。</p>
+    <p>设备绑定并上线后，将自动进入“我的 WorkStep”。<Link className="gateway-action-link" to="/">返回我的 WorkStep</Link></p>
     <p>选择电脑的系统和架构，下载此网关统一提供的受管安装包。安装后在桌面端登录并登记这台电脑。</p>
     <div className="gateway-download-address"><span>平台地址：</span><PlatformAddress address={address}/></div>
     <p>复制地址，填入 WorkStep「设置 → 远程访问 → 网关平台」。</p>
     <div className="gateway-download-filters">
       <label htmlFor="release-os">操作系统</label>
-      <select id="release-os" value={os} onChange={(event) => setOs(event.target.value)}>
+      <Select id="release-os" value={os} onChange={(event) => setOs(event.target.value)}>
         <option value="macos">macOS</option><option value="windows">Windows</option><option value="linux">Linux</option>
-      </select>
+      </Select>
       <label htmlFor="release-arch">处理器架构</label>
-      <select id="release-arch" value={arch} onChange={(event) => setArch(event.target.value)}>
+      <Select id="release-arch" value={arch} onChange={(event) => setArch(event.target.value)}>
         <option value="arm64">ARM64</option><option value="x64">x64</option>
-      </select>
+      </Select>
     </div>
     {loading && <p role="status">正在获取安装包…</p>}
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
@@ -83,7 +84,7 @@ export function ClientDownloadPage() {
         <p>SHA-256：<code>{release.sha256}</code></p>
         <p>网关公钥指纹：<code>{release.gateway_public_key_fingerprint}</code></p>
       </div>
-      <a className="gateway-download-link" href={release.download_url} download={release.filename}>下载安装包</a>
+      <a className="gateway-action-link gateway-download-link gateway-action-link--primary" href={release.download_url} download={release.filename}>下载安装包</a>
     </li>)}</ul>
   </section>
 }

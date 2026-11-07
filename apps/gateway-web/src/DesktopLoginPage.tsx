@@ -167,7 +167,7 @@ export function DesktopLoginPage() {
     <section className="gateway-auth-card">
       <h2>登录请求无效</h2>
       <p>请从 WorkStep 设置重新发起认证。</p>
-      <Link to="/">返回工作台</Link>
+      <Link className="gateway-action-link" to="/">返回工作台</Link>
     </section>
   )
 
@@ -181,7 +181,7 @@ export function DesktopLoginPage() {
         <>
           {passwordEnabled && <GatewayLoginForm onSubmit={signIn} submitLabel="登录并继续" />}
           <EnterpriseLoginChoices sources={sources} passwordEnabled={passwordEnabled} onSelect={id=>void startExternalLogin(id)}/>
-          {!passwordEnabled && !sources.length && <p><Link to={`/auth?next=${encodeURIComponent('/desktop/login?'+searchParams.toString())}`}>进入扫码登录页</Link></p>}
+          {!passwordEnabled && !sources.length && <p><Link className="gateway-action-link" to={`/auth?next=${encodeURIComponent('/desktop/login?'+searchParams.toString())}`}>进入扫码登录页</Link></p>}
         </>
       )}
       {status === 'ready' && <div className="gateway-device-auth-confirmation">
@@ -194,8 +194,8 @@ export function DesktopLoginPage() {
       {status === 'submitting' && <p className="gateway-device-auth-progress" role="status"><span className="gateway-spinner" aria-hidden="true" />正在处理，请稍候…</p>}
       {error && <p className="gateway-auth-error" role="alert">{error}</p>}
       {request.redirect_uri
-        ? <p className="gateway-device-auth-return"><a href={new URL('/?gateway_auth=cancelled', request.redirect_uri).href}>返回本地工作台</a></p>
-        : <p className="gateway-device-auth-return"><a href="workstep://auth/cancel">返回本地工作台</a></p>}
+        ? <p className="gateway-device-auth-return"><a className="gateway-action-link" href={new URL('/?gateway_auth=cancelled', request.redirect_uri).href}>返回本地工作台</a></p>
+        : <p className="gateway-device-auth-return"><a className="gateway-action-link" href="workstep://auth/cancel">返回本地工作台</a></p>}
     </section>
   )
 }

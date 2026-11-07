@@ -22,7 +22,8 @@ export default function GatewayTaskShareLink({ taskId, projectId, taskTitle, loc
     return () => { cancelled = true }
   }, [session, projectId, local])
   const sameIdentity = session && target && session.device_id === target.source.device_id && session.user_id === target.source.user_id && session.username === target.source.username
-  const shareSession = session?.host_project_id ? session : sameIdentity && target?.projectId === projectId ? target.session : null
+  const projectScope = session?.projects?.find(scope => scope.host_project_id === projectId)
+  const shareSession = projectScope ? { ...session!, ...projectScope } : session?.host_project_id ? session : sameIdentity && target?.projectId === projectId ? target.session : null
   const [open, setOpen] = useState(false)
   const hostProject = !local && !session?.host_project_id
   const platformProjectId = local || hostProject ? projectId : shareSession?.project_id

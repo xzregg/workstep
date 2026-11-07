@@ -7,6 +7,6 @@ export function RegistrationPendingPage() {
   return <section className="gateway-auth-card">
     <h2>账号等待审核</h2>
     <p>管理员批准后，请重新登录。</p>
-    <Link to={`/auth?next=${encodeURIComponent(next)}`}>返回登录</Link>
+    <Link className="gateway-action-link" to={`/auth?next=${encodeURIComponent(next)}`}>返回登录</Link>
   </section>
 }

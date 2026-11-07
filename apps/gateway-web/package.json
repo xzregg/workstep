@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "packageManager": "yarn@1.22.22",
+  "volta": {
+    "node": "24.18.0",
+    "yarn": "1.22.22"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",

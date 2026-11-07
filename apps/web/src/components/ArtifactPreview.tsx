@@ -6,7 +6,7 @@ import {
   fsApi,
   type FilePreview,
 } from '../api/client'
-import Button from './Button'
+import Button, { ButtonLink } from './Button'
 import { useI18n } from '../i18n'
 import MarkdownMessage from './MarkdownMessage'
 import CodeFilePreview from './CodeFilePreview'
@@ -68,7 +68,7 @@ function DownloadFileButton({ href, filename }: { href: string; filename: string
   const { t } = useI18n()
 
   return (
-    <a
+    <ButtonLink variant="primary" size="sm"
       className="artifact-download-button"
       href={href}
       download={filename}
@@ -76,7 +76,7 @@ function DownloadFileButton({ href, filename }: { href: string; filename: string
       title={t('artifact.downloadFile')}
     >
       <Icon name="download" size={14} strokeWidth={2} />
-    </a>
+    </ButtonLink>
   )
 }
 
@@ -202,10 +202,10 @@ export default function ArtifactPreview({
         ))}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)', gap: 12 }}>
           {t('artifact.loadFailed', { error: previewError })}
-          <a className="artifact-open-link" href={fallbackUrl} target="_blank" rel="noopener noreferrer">
+          <ButtonLink variant="primary" size="sm" className="artifact-open-link" href={fallbackUrl} target="_blank" rel="noopener noreferrer">
             <Icon name="external-link" size={13} />
             {t('artifact.openFile')}
-          </a>
+          </ButtonLink>
           {onClose && (
             <Button variant="ghost" onClick={onClose}>
               {t('common.close')}
@@ -402,10 +402,10 @@ export default function ArtifactPreview({
           </span>
           <strong>{t('artifact.cannotPreview')}</strong>
           <span>{content_type} · {(file_size / 1024).toFixed(2)} KB</span>
-          <a className="artifact-open-link" href={rawUrl} target="_blank" rel="noopener noreferrer">
+          <ButtonLink variant="primary" size="sm" className="artifact-open-link" href={rawUrl} target="_blank" rel="noopener noreferrer">
             <Icon name="external-link" size={13} />
             {t('artifact.openFile')}
-          </a>
+          </ButtonLink>
         </div>
       </div>
     )

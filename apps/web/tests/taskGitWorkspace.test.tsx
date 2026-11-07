@@ -70,7 +70,7 @@ test('task Git tab opens its directory and shows only attached worktrees', async
     assert.deepEqual([...container.querySelectorAll('option')].map(option => option.textContent), ['选择此任务需要的仓库', 'A', 'B', 'C', 'Project root'])
     const select = container.querySelector<HTMLSelectElement>('.task-git-add select')!
     await act(async () => { select.value = 'root'; select.dispatchEvent(new window.Event('change', { bubbles: true })) })
-    const source = container.querySelector<HTMLSelectElement>('.task-git-source-branch')!
+    const source = container.querySelector<HTMLSelectElement>('.task-git-source-label select')!
     assert.deepEqual([...source.options].map(option => option.value), ['main', 'release'])
     assert.deepEqual([...container.querySelectorAll('.task-git-add > label')].map(label => label.className), ['', 'task-git-source-label'])
     assert.deepEqual([...container.querySelectorAll('.task-git-name-fields > label')].map(label => label.className), ['task-git-branch-label', 'task-git-directory-label'])
@@ -213,7 +213,7 @@ test('same repository remains addable with a new directory and branch', async ()
     await act(async () => { select.value = 'B'; select.dispatchEvent(new window.Event('change', { bubbles: true })) })
     assert.equal(container.querySelector<HTMLInputElement>('.task-git-directory')?.value, 'B-t-2')
     assert.equal(container.querySelector<HTMLInputElement>('.task-git-new-branch')?.value, 'B-t-2')
-    await act(async () => container.querySelector<HTMLButtonElement>('.task-git-add button')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.task-git-add button.btn')!.click())
     assert.deepEqual(args, ['p', 't', 'B', 'B-t-2', 'main', 'B-t-2'])
     assert.match(container.querySelector('.task-git-tree-row button.selected')?.textContent || '', /B-t-2/)
   } finally {

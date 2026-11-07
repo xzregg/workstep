@@ -41,7 +41,7 @@ WorkStep 是一个本地优先（local-first）的工作流编排工具，将多
 
 ## 快速开始
 
-要求：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 20 或 22（含 Corepack）。
+要求：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 24 LTS（含 Corepack）。
 
 方式一，仓库根目录一键启动（daemon + 前端 dev server）：
 

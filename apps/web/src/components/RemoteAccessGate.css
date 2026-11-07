@@ -2,23 +2,4 @@
 .remote-access-gate .remote-access-dialog { width: 420px; max-width: calc(100vw - 32px); }
 .remote-access-intro { margin: 0 0 16px; color: var(--muted); font-size: calc(13px * var(--font-scale)); }
 .remote-access-error { margin-top: 8px; color: var(--danger); font-size: calc(11px * var(--font-scale)); }
-.remote-access-dialog .remote-access-gateway-login {
-  display: inline-flex;
-  align-items: center;
-  margin-right: auto;
-  padding: 4px 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  font-family: inherit;
-  font-size: calc(12px * var(--font-scale));
-  line-height: 20px;
-  text-decoration: none;
-  transition: color var(--motion-fast) var(--ease);
-}
-.remote-access-dialog .remote-access-gateway-login:hover { color: var(--accent); }
-.remote-access-dialog .remote-access-gateway-login:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
-}
+.remote-access-dialog .remote-access-gateway-login { margin-right: auto; }

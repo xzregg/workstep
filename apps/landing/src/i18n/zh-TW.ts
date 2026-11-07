@@ -366,7 +366,7 @@ export const zhTW: I18nDict = {
     "linux": "Linux",
     "platformHint": "安裝包持續更新中，也可以從下方原始碼一鍵啟動。",
     "sourceTitle": "從原始碼執行",
-    "sourceDesc": "需要帶 Corepack 的 Node.js 20 或 22，以及 Python 3.11+：",
+    "sourceDesc": "需要帶 Corepack 的 Node.js 24 LTS，以及 Python 3.11+：",
     "sourceStep1": "克隆倉庫",
     "sourceStep2": "一鍵啟動",
     "sourceStep3": "開啟 http://localhost:5173"

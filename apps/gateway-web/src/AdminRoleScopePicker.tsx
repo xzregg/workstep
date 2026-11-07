@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useEffect, useState } from 'react'
 
 export const roleScopes: Record<string, { type: string; label: string }[]> = {
@@ -41,18 +42,18 @@ export function AdminRoleScopePicker({ role, scope, scopeId, disabled, onChange,
   }, [scope, search])
   return <>
     <label htmlFor="role-scope">管理范围</label>
-    <select id="role-scope" value={scope} disabled={disabled} onChange={event => onChange(event.target.value, '')}>
+    <Select id="role-scope" value={scope} disabled={disabled} onChange={event => onChange(event.target.value, '')}>
       {roleScopes[role].filter(item => !departmentOnly || item.type === 'department').map(item => <option key={item.type} value={item.type}>{item.label}</option>)}
-    </select>
+    </Select>
     {scope !== 'platform' && <>
       <label htmlFor="role-scope-query">搜索管理范围</label>
       <div className="gateway-admin-search"><input id="role-scope-query" value={query} disabled={disabled}
         onChange={event => setQuery(event.target.value)} />
         <button type="button" disabled={disabled || loading} onClick={() => setSearch(query.trim())}>查找范围</button></div>
-      <select aria-label="选择管理范围" value={scopeId} disabled={disabled || loading}
+      <Select aria-label="选择管理范围" value={scopeId} disabled={disabled || loading}
         onChange={event => onChange(scope, event.target.value)}>
         <option value="">选择管理范围</option>{choices.map(choice => <option value={choice.id} key={choice.id}>{choice.label}</option>)}
-      </select>
+      </Select>
       {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" />正在加载范围…</p>}
       {error && <p className="gateway-auth-error" role="alert">{error}</p>}
     </>}

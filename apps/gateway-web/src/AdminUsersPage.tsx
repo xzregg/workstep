@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminListStatus } from './AdminListStatus'
 import { AdminUserGroupTree } from './AdminUserGroupTree'
@@ -113,22 +114,22 @@ export function AdminUsersPage() {
       </div>
       <div className="gateway-admin-filters">
         <label htmlFor="admin-user-status">状态</label>
-        <select id="admin-user-status" value={filters.status} onChange={event => setFilters(current => (
+        <Select id="admin-user-status" value={filters.status} onChange={event => setFilters(current => (
           { ...current, status: event.target.value, page: 1 }))}>
           <option value="">全部</option><option value="active">已启用</option>
           <option value="pending">待审核</option><option value="disabled">已停用</option>
           <option value="deleted">已删除</option>
-        </select>
+        </Select>
         <label htmlFor="admin-user-sort">排序</label>
-        <select id="admin-user-sort" value={filters.sort} onChange={event => setFilters(current => (
+        <Select id="admin-user-sort" value={filters.sort} onChange={event => setFilters(current => (
           { ...current, sort: event.target.value, page: 1 }))}>
           <option value="created_at">创建时间</option><option value="username">用户名</option>
           <option value="display_name">显示名称</option><option value="last_login_at">上次登录时间</option>
-        </select>
-        <select aria-label="排序方向" value={filters.direction} onChange={event => setFilters(current => (
+        </Select>
+        <Select aria-label="排序方向" value={filters.direction} onChange={event => setFilters(current => (
           { ...current, direction: event.target.value as 'asc' | 'desc', page: 1 }))}>
           <option value="desc">降序</option><option value="asc">升序</option>
-        </select>
+        </Select>
       </div>
       <AdminListStatus loading={loading} label="正在加载用户…"/>
       {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}

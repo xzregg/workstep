@@ -6,7 +6,7 @@
 
 ## 开发命令
 
-使用 Node 22.12+（Volta 固定 22.22.2）与 Yarn 1.22.22；官网新版本构建工具不再支持 Node 20。GitHub Pages 与 CI 使用 Node 22，不影响 Web 应用自己的运行时配置。
+使用 Node 24 LTS（Volta 固定 24.18.0）与 Yarn 1.22.22；Web、网关前端、桌面构建和 GitHub CI 均使用 Node 24.18.0，Docker 使用 Node 24 系列镜像。
 
 ```bash
 corepack yarn install --frozen-lockfile

@@ -42,6 +42,10 @@ test('managed local project settings shows grants and safely changes publication
     assert.equal(container.querySelector('a')?.getAttribute('href'), 'https://gateway.test/admin/projects')
     const invite = [...container.querySelectorAll('a')].find(link => link.textContent === '分享项目（网关邀请）')
     assert.equal(invite?.getAttribute('href'), 'https://gateway.test/project-invitations?project_id=platform-1')
+    for (const link of container.querySelectorAll('a')) {
+      assert.ok(link.classList.contains('btn'))
+      assert.ok(link.classList.contains('btn-ghost'))
+    }
     const unpublish = [...container.querySelectorAll('button')].find(button => button.textContent === '取消发布')
     assert.ok(unpublish)
     await act(async () => unpublish.click())

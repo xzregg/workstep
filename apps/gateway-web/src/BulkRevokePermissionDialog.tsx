@@ -38,14 +38,14 @@ export function BulkRevokePermissionDialog({ assignments, name, csrf, onFinished
     <button type="button" disabled={busy || !csrf || !passwordReady || !assignments.length} onClick={() => void revoke()}>
       {busy ? '处理中…' : completed.length ? '重试剩余权限' : '撤销所选权限'}
     </button>
-  </>}>
+  </>}
+      passwordConfirmation={<PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />}>
     <p>将撤销所选 {assignments.length} 条直接授权规则，涉及 {new Set(assignments.map(row => `${row.subject_type}:${row.subject_id}`)).size} 个授权对象。</p>
     <p>撤销允许或禁止规则后，其他个人或组授权仍可能生效。已完成的撤销不会因取消而恢复。</p>
     <ul className="gateway-bulk-revoke-rules">{assignments.map(row => <li key={row.id}>
       <strong>{row.subject_name}</strong>（{row.subject_type === 'user' ? '用户' : '用户组'}） · {name(row.permission)} · {scopeNames[row.scope_type]} · {row.scope_name} · {row.effect === 'allow' ? '允许' : '禁止'}
       {completed.includes(row.id) && <span> · 已撤销</span>}
     </li>)}</ul>
-    <PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />
     {(busy || completed.length > 0) && <p role="status">{busy && <span className="gateway-spinner" aria-hidden="true" />} 已处理 {completed.length}/{assignments.length} 条规则；重试仅处理剩余规则。</p>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayModal>

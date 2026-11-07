@@ -366,7 +366,7 @@ export const nbNO: I18nDict = {
     "linux": "Linux",
     "platformHint": "Installasjonsprogrammer oppdateres kontinuerlig. Du kan også starte fra kilden nedenfor.",
     "sourceTitle": "Kjør fra kilden",
-    "sourceDesc": "Krever Node.js 20 eller 22 med Corepack, pluss Python 3.11+:",
+    "sourceDesc": "Krever Node.js 24 LTS med Corepack, pluss Python 3.11+:",
     "sourceStep1": "Klon depotet",
     "sourceStep2": "Start alt",
     "sourceStep3": "Åpne http://localhost:5173"

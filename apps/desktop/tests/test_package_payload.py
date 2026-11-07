@@ -14,7 +14,7 @@ def run(*args):
 def test_copy_keeps_runtime_assets_and_excludes_local_material(tmp_path):
     source, target = tmp_path / 'source', tmp_path / 'payload'
     allowed = ['main.py', 'data/skills/tool/references/guide.md', 'data/templates/default.json',
-               'data/skins/theme.js', 'assets/app.js', 'LICENSE']
+               'data/skins/theme.js', 'assets/app.js', 'LICENSE', 'services/git/credentials.py']
     excluded = ['.env', 'data/.env.production', 'services/private.key', 'services/token.pem',
                 'data/plans/draft.md', 'data/tmp/log.txt', 'services/__pycache__/a.pyc',
                 'data/tests/example.py', '.workstep/settings.json', 'data/settings.local.json',
@@ -39,6 +39,25 @@ def test_secret_in_ordinary_source_blocks_copy_without_printing_value(tmp_path):
     assert result.returncode != 0
     assert secret not in result.stdout + result.stderr
     assert not target.exists(), 'validate all files before writing the destination'
+
+
+def test_git_credentials_source_still_blocks_secrets(tmp_path):
+    source, target = tmp_path / 'source', tmp_path / 'payload'
+    module = source / 'services/git/credentials.py'
+    module.parent.mkdir(parents=True)
+    secret = 'gh' + 'p_' + 'a' * 36
+    module.write_text('credential = ' + repr(secret))
+    result = run('copy', source, target)
+    assert result.returncode != 0
+    assert secret not in result.stdout + result.stderr
+    assert not target.exists()
+
+
+def test_docker_keeps_git_credentials_runtime_source():
+    lines = (ROOT / '.dockerignore').read_text().splitlines()
+    exception = '!apps/daemon/services/git/credentials.py'
+    assert exception in lines
+    assert lines.index(exception) > lines.index('**/credentials*')
 
 
 def test_check_rejects_dirty_payload_and_symlink_escape(tmp_path):
@@ -76,7 +95,7 @@ def test_release_entrypoints_enforce_payload_checks():
 
 def test_docker_context_excludes_private_and_nonruntime_paths():
     lines = (ROOT / '.dockerignore').read_text().splitlines()
-    for pattern in ['**/.env*', '**/*.pem', '**/*.key', '**/plans', '**/tmp', '**/tests', '**/*.map']:
+    for pattern in ['**/.env*', '**/*.pem', '**/*.key', '**/plans', '**/tmp', '**/tests', '**/*.map', '**/.DS_Store']:
         assert pattern in lines
 
 

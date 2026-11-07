@@ -366,7 +366,7 @@ export const heIL: I18nDict = {
     "linux": "Linux",
     "platformHint": "מתקינים מתעדכנים כל הזמן. אתה יכול גם להפעיל מהמקור למטה.",
     "sourceTitle": "הפעל מהמקור",
-    "sourceDesc": "דורש Node.js 20 או 22 עם Corepack, בתוספת Python 3.11+:",
+    "sourceDesc": "דורש Node.js 24 LTS עם Corepack, בתוספת Python 3.11+:",
     "sourceStep1": "שכפל את המאגר",
     "sourceStep2": "תתחיל הכל",
     "sourceStep3": "פתח את http://localhost:5173"

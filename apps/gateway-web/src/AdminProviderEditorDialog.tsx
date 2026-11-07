@@ -113,7 +113,8 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
       message="配置将按授权下发到 PC，模型请求仍由 PC 直接发送给供应商。"
       className="gateway-provider-dialog"
       confirmLabel="保存供应商" busy={busy} disabled={!valid} onConfirm={() => void save()}
-      onCancel={() => dirty ? setDiscard(true) : onClose()}>
+      onCancel={() => dirty ? setDiscard(true) : onClose()}
+      passwordConfirmation={<PasswordConfirmation id="provider-admin-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       <label htmlFor="provider-name">供应商名称</label>
       <input id="provider-name" value={name} maxLength={256} onChange={event => setName(event.target.value)} />
       <label htmlFor="provider-type">供应商类型</label>
@@ -149,7 +150,6 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
       <label htmlFor="provider-api-key">{provider ? '新凭据（留空则保留当前凭据）' : '供应商凭据'}</label>
       <input id="provider-api-key" type="password" autoComplete="new-password" value={apiKey}
         onChange={event => setApiKey(event.target.value)} />
-      <PasswordConfirmation id="provider-admin-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {!protocolUrlsValid && selectedProtocols.length > 0 && <p>请填写所选协议的 HTTP 或 HTTPS 地址。</p>}
       {!modelsValid && <p>模型名称重复或超过长度限制。</p>}
       {!pricesValid && <p>已填写单价的模型需要完整的四项非负单价。</p>}
@@ -181,8 +181,8 @@ export function AdminProviderDisableDialog({ provider, csrf, onClose, onSaved }:
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="停用供应商" message={`停用「${provider.name}」后，设备将收到新的配置版本。`}
-    confirmLabel="确认停用" busy={busy} disabled={!passwordReady} onConfirm={() => void disable()} onCancel={onClose}>
-    <PasswordConfirmation id="disable-provider-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+    confirmLabel="确认停用" busy={busy} disabled={!passwordReady} onConfirm={() => void disable()} onCancel={onClose}
+      passwordConfirmation={<PasswordConfirmation id="disable-provider-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>
 }

@@ -126,6 +126,6 @@ export function PortalAuthPage() {
         onBack={() => { setError(''); setRetry(value => value + 1) }} />
     </>}
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
-    {stage !== 'checking' && <p className="gateway-auth-return"><Link to="/">返回工作台</Link></p>}
+    {stage !== 'checking' && <p className="gateway-auth-return"><Link className="gateway-action-link" to="/">返回工作台</Link></p>}
   </section>
 }

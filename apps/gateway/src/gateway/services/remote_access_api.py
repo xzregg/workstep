@@ -29,6 +29,7 @@ from gateway.models import AuthSession, Device, PlatformProject, UsedDeviceAcces
 from gateway.services.project_access_api import effective_project_access, project_grant_rows
 
 from gateway.services.platform_shares import can_create_platform_share
+from gateway.services.workspace_projects import requested_host_project, workspace_project_scopes
 
 
 """One-time, host-bound entry into a managed PC's remote workspace."""
@@ -94,7 +95,7 @@ async def _project_task_create_allowed(call: GatewayCall, device_id: str,
     return (broad or host_project_id in allowed) and host_project_id not in denied
 
 
-async def _remote_identity(call: GatewayCall):
+async def _remote_identity(call: GatewayCall, *, target_host_project_id=None, target_project_id=None):
     host = _device_host(call)
     user, auth_session = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME), allow_device_session=True)
     device_id = auth_session.device_id
@@ -102,12 +103,22 @@ async def _remote_identity(call: GatewayCall):
         raise GatewayError('forbidden', 'Device session mismatch')
     if auth_session.project_id:
         async with call.database.session() as session:
-            project = await session.get(PlatformProject, auth_session.project_id)
+            if target_host_project_id:
+                project = await session.scalar(select(PlatformProject).where(
+                    PlatformProject.device_id == device_id,
+                    PlatformProject.host_project_id == target_host_project_id,
+                ))
+            else:
+                project = await session.get(PlatformProject, target_project_id or auth_session.project_id)
         if project is None:
             raise GatewayError('forbidden', 'Project unavailable')
         current_level = await _active_project_access(call, user.id, device_id, project.id, project.host_project_id)
-        if current_level == "read":
-            auth_session.project_access_level = "read"
+        # session_user returns detached rows. This request-local scope is never
+        # persisted: concurrent tabs can access different authorized projects.
+        same_project = project.id == auth_session.project_id
+        auth_session.project_access_level = (
+            'read' if current_level == 'read' or same_project and auth_session.project_access_level == 'read' else 'edit')
+        auth_session.project_id = project.id
         host_project_id = project.host_project_id
     else:
         await _active_access(call, user.id, device_id)
@@ -124,7 +135,7 @@ async def _check_provider_grants(call, device_id: str, user_id: str, provider_id
 async def proxy_remote_request(call: GatewayCall):
     from gateway.services.html_preview_access import preview_resource_identity
     call = preview_resource_identity(call)
-    user, device_id, auth_session, host_project_id = await _remote_identity(call)
+    user, device_id, auth_session, host_project_id = await _remote_identity(call, target_host_project_id=requested_host_project(call))
     provider_ids, _ = await compiled_provider_access(call.database, device_id, user.id)
     provider_grant_expires_at = int(time.time()) + 300
     owner_routes = {'/api/project/init', '/api/project/register', '/api/fs/mkdir', '/api/statistics/system'}
@@ -250,7 +261,7 @@ async def redeem_device_ticket(call: GatewayCall):
 
 
 async def remote_session(call: GatewayCall):
-    user, device_id, auth_session, host_project_id = await _remote_identity(call)
+    user, device_id, auth_session, host_project_id = await _remote_identity(call, target_host_project_id=requested_host_project(call))
     target_host_id = call.query_values.get('project_id')
     if target_host_id and host_project_id and target_host_id != host_project_id:
         raise GatewayError('forbidden', 'Project access denied')
@@ -289,6 +300,14 @@ async def remote_session(call: GatewayCall):
             "can_manage_project_access": await IdentityService(call.database).is_super_admin(user.id),
             "online": True,
             "gateway_url": call.settings.public_origin + "/devices"}
+    if auth_session.project_id:
+        # Read the original ticket ceiling, not the selected request's scope.
+        async with call.database.session() as session:
+            entry = await session.get(AuthSession, auth_session.id)
+        if entry is None:
+            raise GatewayError('forbidden', 'Session unavailable')
+        result['projects'] = await workspace_project_scopes(
+            call, user.id, device_id, entry.project_id, entry.project_access_level)
     response = JsonValue(result, headers={"Cache-Control": "no-store"})
     now = datetime.now(timezone.utc)
     # Refresh only near expiry, after all current permissions were checked. Use
@@ -307,7 +326,7 @@ async def remote_session(call: GatewayCall):
 
 
 async def remote_project_grants(call: GatewayCall):
-    user, device_id, auth_session, _ = await _remote_identity(call)
+    user, device_id, auth_session, _ = await _remote_identity(call, target_host_project_id=requested_host_project(call))
     if auth_session.project_id is None:
         raise GatewayError('forbidden', 'Project session required')
     async with call.database.session() as session:
@@ -321,7 +340,7 @@ async def remote_project_grants(call: GatewayCall):
 
 async def proxy_remote_websocket(ws: GatewaySocket, path: str):
     try:
-        user, device_id, auth_session, host_project_id = await _remote_identity(ws)
+        user, device_id, auth_session, host_project_id = await _remote_identity(ws, target_host_project_id=requested_host_project(ws))
         provider_ids, _ = await compiled_provider_access(ws.database, device_id, user.id)
         provider_grant_expires_at = int(time.time()) + 300
         if auth_session.project_id:
@@ -333,7 +352,7 @@ async def proxy_remote_websocket(ws: GatewaySocket, path: str):
             async def authorize_stream():
                 await _check_provider_grants(ws, device_id, user.id, provider_ids)
                 current_user, current_device, current_session, current_host = (
-                    await _remote_identity(ws)
+                    await _remote_identity(ws, target_host_project_id=requested_host_project(ws))
                 )
                 if (current_user.id != user.id or current_device != device_id
                         or current_session.project_id != project_id

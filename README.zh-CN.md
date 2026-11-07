@@ -115,7 +115,7 @@ WorkStep 当前集成的引擎包括：
 
 ### 从源码启动
 
-环境要求：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 20 或 22、Yarn（可通过 Corepack 提供），以及 Bash 和 `lsof`。适用于 macOS / Linux；Windows 推荐桌面包或 Docker。
+环境要求：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 24 LTS、Yarn（可通过 Corepack 提供），以及 Bash 和 `lsof`。适用于 macOS / Linux；Windows 推荐桌面包或 Docker。
 
 ```bash
 git clone https://github.com/xzregg/workstep.git

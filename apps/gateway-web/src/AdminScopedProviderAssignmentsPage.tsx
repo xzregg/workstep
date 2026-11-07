@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useEffect, useState } from 'react'
 import { AdminProviderAssignments } from './AdminProviderAssignments'
 
@@ -33,10 +34,10 @@ export function AdminScopedProviderAssignmentsPage() {
     {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" />正在加载供应商…</p>}
     {error && <p role="alert">{error}<button type="button" onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     <label htmlFor="scoped-provider-choice">供应商</label>
-    <select id="scoped-provider-choice" value={providerId} disabled={loading}
+    <Select id="scoped-provider-choice" value={providerId} disabled={loading}
       onChange={event => setProviderId(event.target.value)}>
       {providers.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
-    </select>
+    </Select>
     {provider && csrf && !loading && !error && <AdminProviderAssignments key={provider.id}
       providerId={provider.id} enabled={provider.enabled} csrf={csrf} onChanged={() => {}} />}
   </section>

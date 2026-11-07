@@ -4,7 +4,7 @@ WorkStep 的 React + TypeScript + Vite 前端，包含任务列表与详情、�
 
 ## 开发
 
-需要 Node.js 20 和 Yarn 1。开发时先启动 `apps/daemon`，再运行：
+需要 Node.js 24 LTS（Volta 固定 24.18.0）和 Yarn 1.22.22。开发时先启动 `apps/daemon`，再运行：
 
 ```bash
 yarn install --frozen-lockfile
@@ -20,5 +20,7 @@ yarn test
 yarn lint
 yarn build
 ```
+
+`yarn test` 关闭 Node 内置的只读 `navigator`，由测试的浏览器模拟环境提供该对象。
 
 新增界面前请先阅读仓库根目录的 `AGENTS.md` 和 [`docs/frontend-design.md`](../../docs/frontend-design.md)。优先复用 `src/components/` 中的聊天、Markdown、确认框与引擎选择组件；移动端覆盖集中在 `src/mobile.css`。

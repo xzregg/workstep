@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -65,21 +66,22 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
     <GatewayConfirmDialog title={assignment ? '调整任务创建能力' : '授予任务创建能力'}
       message="项目访问还需要单独的可编辑授权；任务创建能力本身不开放项目内容。"
       confirmLabel="保存能力" busy={busy} disabled={!subjectId || !passwordReady || loading}
-      onConfirm={() => void save()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
+      onConfirm={() => void save()} onCancel={() => dirty ? setDiscard(true) : onClose()}
+      passwordConfirmation={<PasswordConfirmation id="task-create-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       {assignment ? <p>对象：{assignment.subjectType === 'user' ? '用户' : '用户组'} · {assignment.subjectName}</p> : <>
         <label htmlFor="task-create-type">对象类型</label>
-        <select id="task-create-type" value={subjectType} onChange={event => {
+        <Select id="task-create-type" value={subjectType} onChange={event => {
           setSubjectType(event.target.value as 'user' | 'group'); setSubjectId(''); setPage(1); setSearch(''); setQuery('')
-        }}><option value="user">用户</option><option value="group">用户组</option></select>
+        }}><option value="user">用户</option><option value="group">用户组</option></Select>
         <form className="gateway-admin-search" onSubmit={event => {
           event.preventDefault(); setSubjectId(''); setPage(1); setSearch(query.trim())
         }}><label htmlFor="task-create-search">搜索对象</label>
           <input id="task-create-search" value={query} onChange={event => setQuery(event.target.value)} />
           <button type="submit">搜索</button></form>
         <label htmlFor="task-create-subject">能力对象</label>
-        <select id="task-create-subject" value={subjectId} onChange={event => setSubjectId(event.target.value)}>
+        <Select id="task-create-subject" value={subjectId} onChange={event => setSubjectId(event.target.value)}>
           <option value="">请选择</option>{subjects.map(subject =>
-            <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select>
+            <option key={subject.id} value={subject.id}>{subject.name}</option>)}</Select>
         <div className="gateway-admin-pagination"><span>共 {total} 个对象 · 第 {page}/{
           Math.max(1, Math.ceil(total / 25))} 页</span>
           <button type="button" disabled={page <= 1 || loading} onClick={() => { setSubjectId(''); setPage(value => value - 1) }}>上一页</button>
@@ -88,9 +90,8 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
         {loading && <p role="status">正在加载能力对象…</p>}
       </>}
       <label htmlFor="task-create-effect">效果</label>
-      <select id="task-create-effect" value={effect} onChange={event => setEffect(event.target.value as 'allow' | 'deny')}>
-        <option value="allow">允许创建</option><option value="deny">禁止创建</option></select>
-      <PasswordConfirmation id="task-create-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+      <Select id="task-create-effect" value={effect} onChange={event => setEffect(event.target.value as 'allow' | 'deny')}>
+        <option value="allow">允许创建</option><option value="deny">禁止创建</option></Select>
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>
     {discard && <GatewayConfirmDialog title="放弃任务能力修改" message="当前表单有未保存内容。"
@@ -123,8 +124,8 @@ function RevokeCapabilityDialog({ projectId, csrf, assignment, onClose, onSaved 
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="撤销任务创建能力" message={`确认撤销 ${assignment.subjectName} 的项目任务创建规则？`}
-    confirmLabel="撤销规则" busy={busy} disabled={!passwordReady} onConfirm={() => void revoke()} onCancel={onClose}>
-    <PasswordConfirmation id="task-create-revoke-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+    confirmLabel="撤销规则" busy={busy} disabled={!passwordReady} onConfirm={() => void revoke()} onCancel={onClose}
+      passwordConfirmation={<PasswordConfirmation id="task-create-revoke-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>
 }

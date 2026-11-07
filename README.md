@@ -115,7 +115,7 @@ Local-first describes where WorkStep stores and orchestrates project data. Exter
 
 ### Run from source
 
-Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 20 or 22, Yarn (available through Corepack), Bash, and `lsof`. For macOS / Linux; on Windows, use the desktop app or Docker.
+Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 24 LTS, Yarn (available through Corepack), Bash, and `lsof`. For macOS / Linux; on Windows, use the desktop app or Docker.
 
 ```bash
 git clone https://github.com/xzregg/workstep.git

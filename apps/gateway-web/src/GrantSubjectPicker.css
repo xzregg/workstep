@@ -1,4 +1,4 @@
-.gateway-grant-picker { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; min-width: 0; }
+.gateway-grant-picker { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; min-width: 0; }
 .gateway-grant-picker:not(:has(.gateway-grant-groups)) { grid-template-columns: minmax(0, 1fr); }
 .gateway-grant-groups { margin: 0; padding: 12px; min-width: 0; border: 1px solid var(--gateway-admin-separator); border-radius: var(--gateway-admin-control-radius); }
 .gateway-grant-picker .gateway-tree-scroll { max-height: 240px; overflow-y: auto; }

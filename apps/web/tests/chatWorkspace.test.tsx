@@ -9,6 +9,7 @@ import ChatWorkspace from '../src/pages/ChatWorkspace'
 import { I18nProvider } from '../src/i18n'
 import { useProjectStore } from '../src/stores/projectStore'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
+import { useChatWorkspaceStore } from '../src/stores/chatWorkspaceStore'
 import { writeChatSessionDrag } from '../src/utils/chatSessionDrag'
 import type { Project } from '../src/api/client'
 
@@ -155,6 +156,29 @@ test('desktop chat opens at most four independent panes, preserves drafts across
       }
       assert.equal(closeStyle.justifyContent, 'center')
     }
+    const originalPanes = [...document.querySelectorAll<HTMLElement>('.chat-workspace-pane')]
+    const movePane = async (source: HTMLElement, target: HTMLElement, cancel = false) => {
+      const transfer = new window.DataTransfer()
+      const dispatch = (element: Element, type: string) => {
+        const event = new window.Event(type, { bubbles: true, cancelable: true })
+        Object.defineProperty(event, 'dataTransfer', { value: transfer })
+        return element.dispatchEvent(event)
+      }
+      assert.equal(source.querySelector('.assistant-chat-header')!.getAttribute('draggable'), 'true')
+      await act(async () => { dispatch(source.querySelector('.assistant-chat-header-title')!, 'dragstart') })
+      await act(async () => { dispatch(target, 'dragover') })
+      assert.ok(target.classList.contains('chat-workspace-pane--drop-target'))
+      await act(async () => { dispatch(cancel ? source.querySelector('.assistant-chat-header')! : target, cancel ? 'dragend' : 'drop') })
+      assert.equal(Boolean(document.querySelector('.chat-workspace-pane--drop-target')), false)
+    }
+    await movePane(originalPanes[0], originalPanes[2], true)
+    assert.deepEqual([...document.querySelectorAll('.chat-workspace-pane')].map(p => originalPanes.indexOf(p as HTMLElement)), [0, 1, 2, 3])
+    await movePane(originalPanes[0], originalPanes[2])
+    assert.deepEqual([...document.querySelectorAll('.chat-workspace-pane')].map(p => originalPanes.indexOf(p as HTMLElement)), [1, 2, 0, 3])
+    assert.match(originalPanes[0].textContent!, /history-a/)
+    assert.deepEqual(Object.values(useChatWorkspaceStore.getState().workspaces)[0].panes.map(pane => pane.sessionId), ['b', 'c', 'a', 'd'])
+    await movePane(originalPanes[0], originalPanes[1])
+    assert.deepEqual([...document.querySelectorAll('.chat-workspace-pane')].map(p => originalPanes.indexOf(p as HTMLElement)), [0, 1, 2, 3])
     await drop('e')
     assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 4)
     await drop('b')
@@ -170,6 +194,9 @@ test('desktop chat opens at most four independent panes, preserves drafts across
       arrangementOption('竖向排列').click()
     })
     assert.ok(document.querySelector('.chat-workspace-panes--vertical'))
+    await movePane(originalPanes[0], originalPanes[3])
+    assert.deepEqual([...document.querySelectorAll('.chat-workspace-pane')].map(p => originalPanes.indexOf(p as HTMLElement)), [1, 2, 3, 0])
+    await movePane(originalPanes[0], originalPanes[1])
     assert.equal(document.querySelectorAll('.chat-workspace-separator[aria-orientation="horizontal"]').length, 3)
     assert.equal(document.querySelector<HTMLTextAreaElement>('.chat-workspace-pane textarea')!.value, '独立草稿')
     assert.equal(document.querySelectorAll<HTMLTextAreaElement>('.chat-workspace-pane textarea')[1].value, '')

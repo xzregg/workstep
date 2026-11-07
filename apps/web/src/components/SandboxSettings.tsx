@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import type { SandboxSettings as Settings, SandboxStatus, HostSandboxProject, SandboxMigrationOptions } from '../utils/desktopSandbox'
-import Button from './Button'
+import Button, { ButtonLink } from './Button'
 import Input from './Input'
 import ConfirmDialog from './ConfirmDialog'
 import Spinner from './Spinner'
 import SandboxImagePicker from './SandboxImagePicker'
+import SandboxConfigSync from './SandboxConfigSync'
 import './SandboxSettings.css'
 
 const empty: Settings = { enabled: false, root: '', project: '', mounts: [] }
 const defaults: SandboxMigrationOptions = { providers: true, engines: true, preferences: true, overwrite: false }
 const steps = ['software', 'images', 'projects', 'migration', 'confirm'] as const
 const phases = ['download', 'machine', 'image', 'caching', 'starting', 'migration']
-type Confirmation = 'enable' | 'disable' | 'remove' | 'migrate' | 'discard' | 'codex' | 'claude' | 'agents'
+type Confirmation = 'enable' | 'disable' | 'remove' | 'migrate' | 'discard'
 
 export default function SandboxSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
   const { t } = useI18n()
@@ -121,7 +122,7 @@ export default function SandboxSettings({ onDirtyChange }: { onDirtyChange?: (di
             <div className="sandbox-actions"><Button variant="primary" disabled={blocked || !status.settings.prepared} onClick={() => setConfirmation(status.settings.enabled ? 'disable' : 'enable')}>{t(status.settings.enabled ? 'sandbox.disable' : 'sandbox.enable')}</Button><Button disabled={blocked} onClick={() => void perform(() => bridge.logs())}>{t('sandbox.logs')}</Button><Button disabled={blocked} onClick={() => { if (diagnosticLogs !== null) { setDiagnosticLogs(null); return } setBusy(true); setError(''); void bridge.readLogs().then(setDiagnosticLogs).catch(e => setError(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false)) }}>{t(diagnosticLogs === null ? 'sandbox.wizard.viewLogs' : 'sandbox.wizard.hideLogs')}</Button>{diagnosticLogs !== null && <Button disabled={blocked} onClick={() => void bridge.copyLogs()}>{t('sandbox.wizard.copyLogs')}</Button>}</div>
             {diagnosticLogs !== null && <pre className="sandbox-log-view" tabIndex={0}>{diagnosticLogs || t('sandbox.wizard.logEmpty')}</pre>}
             {(status.running || status.settings.enabled) && <p className="sandbox-help">{t('sandbox.wizard.workHint')}</p>}
-            <details className="sandbox-advanced"><summary>{t('sandbox.importTitle')}</summary><p>{t('sandbox.importDescription')}</p><div className="sandbox-actions">{(['codex', 'claude', 'agents'] as const).map(kind => <Button key={kind} disabled={frozen} onClick={() => setConfirmation(kind)}>{t(`sandbox.import.${kind}`)}</Button>)}</div></details>
+            <SandboxConfigSync bridge={bridge} status={status} disabled={blocked} onBusyChange={setBusy} onSynced={setStatus} />
             <details className="sandbox-advanced"><summary>{t('sandbox.wizard.advanced')}</summary><p className="sandbox-path">{status.settings.root}</p><Button variant="danger" disabled={frozen} onClick={() => setConfirmation('remove')}>{t('sandbox.delete')}</Button></details>
           </> : step === 0 ? <>
             <h2>{t('sandbox.wizard.softwareTitle')}</h2><p className="sandbox-step-intro">{t('sandbox.wizard.softwareHint')}</p>
@@ -129,7 +130,7 @@ export default function SandboxSettings({ onDirtyChange }: { onDirtyChange?: (di
             <div className="sandbox-field"><label htmlFor="sandbox-root">{t('sandbox.wizard.storage')}</label><div className="sandbox-directory"><Input id="sandbox-root" readOnly value={draft.root} /><Button disabled={frozen || runtimeReady} onClick={() => void choose('root')}>{t('sandbox.choose')}</Button></div><p className="sandbox-help">{t('sandbox.wizard.storageHint')}</p></div>
             {check(runtimeReady, t(runtimeReady ? 'sandbox.wizard.softwareReady' : 'sandbox.wizard.software'))}
             <Button variant="primary" loading={busy} disabled={frozen || runtimeReady || !status.supported || !draft.root} onClick={() => void perform(async () => { const result = await bridge.prepareRuntime({ root: draft.root }); setDraft(d => ({ ...d, root: result.settings.root })); return result })}>{t('sandbox.wizard.softwareDownload')}</Button>
-            {status.platform === 'win32' && <div className="sandbox-notice"><p>{t('sandbox.wizard.wslHelp')}</p><a href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noopener noreferrer">{t('sandbox.wizard.wslGuide')}</a></div>}
+            {status.platform === 'win32' && <div className="sandbox-notice"><p>{t('sandbox.wizard.wslHelp')}</p><ButtonLink href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noopener noreferrer">{t('sandbox.wizard.wslGuide')}</ButtonLink></div>}
           </> : step === 1 ? <>
             <h2>{t('sandbox.wizard.imageTitle')}</h2><p className="sandbox-step-intro">{t('sandbox.wizard.imageHint')}</p>
             <SandboxImagePicker value={draft.dockerImage || null} online={status.onlineImage !== false} disabled={frozen} scan={bridge.dockerImages} onChange={dockerImage => { setDraft(d => ({ ...d, dockerImage })); setAck(false) }} />
@@ -165,6 +166,6 @@ export default function SandboxSettings({ onDirtyChange }: { onDirtyChange?: (di
     <ConfirmDialog open={Boolean(confirmation)} title={t(confirmation === 'discard' ? 'sandbox.discard' : confirmation === 'remove' ? 'sandbox.delete' : confirmation === 'enable' || confirmation === 'disable' ? 'sandbox.switchTitle' : 'sandbox.importTitle')}
       message={confirmation === 'discard' ? undefined : t(confirmation === 'remove' ? 'sandbox.deleteConfirm' : confirmation === 'enable' ? 'sandbox.wizard.switchNotice' : confirmation === 'disable' ? 'sandbox.wizard.disableNotice' : confirmation === 'migrate' ? 'sandbox.wizard.migrationConfirm' : 'sandbox.importConfirm')}
       danger={confirmation === 'remove'} loading={busy} onCancel={() => { if (!busy) setConfirmation(null) }}
-      onConfirm={() => { if (confirmation === 'discard') { setDraft(status!.settings); setSelected(status!.settings.registeredProjects || catalog.map(p => p.path)); setMigration(defaults); setManagement(true); setConfirmation(null); setError('') } else if (confirmation === 'enable' && !management) void finish(true); else void perform(async () => { if (confirmation === 'remove') { const result = await bridge!.remove(); setManagement(false); setStep(0); setSelected(catalog.map(p => p.path)); return result } if (confirmation === 'enable' || confirmation === 'disable') return bridge!.switchMode(confirmation === 'enable'); if (confirmation === 'migrate') { const result = await bridge!.migrateSettings(migration); setManagement(true); return result } return bridge!.importConfig(confirmation as 'codex' | 'claude' | 'agents') }, confirmation === 'remove') }} />
+      onConfirm={() => { if (confirmation === 'discard') { setDraft(status!.settings); setSelected(status!.settings.registeredProjects || catalog.map(p => p.path)); setMigration(defaults); setManagement(true); setConfirmation(null); setError('') } else if (confirmation === 'enable' && !management) void finish(true); else void perform(async () => { if (confirmation === 'remove') { const result = await bridge!.remove(); setManagement(false); setStep(0); setSelected(catalog.map(p => p.path)); return result } if (confirmation === 'enable' || confirmation === 'disable') return bridge!.switchMode(confirmation === 'enable'); if (confirmation === 'migrate') { const result = await bridge!.migrateSettings(migration); setManagement(true); return result } }, confirmation === 'remove') }} />
   </div>
 }

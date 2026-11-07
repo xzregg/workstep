@@ -35,9 +35,10 @@ export function AdminAccessGrants({ id, name, kind = 'projects', csrf, onChanged
   function saved() { setEdit(null); setRevoke(null); setRevision(value => value + 1); onChanged() }
   return <section className="gateway-project-grants">
     <div className="gateway-admin-toolbar"><h3>{name} · 访问授权</h3>
-      <div className="gateway-device-actions">{kind === 'projects' && canConfigurePermissions && <a href={permissionUrl()}>配置项目权限</a>}
-      <button type="button" onClick={() => setEdit('new')}>新增授权</button></div></div>
-    {kind === 'projects' && canConfigurePermissions && <p>访问授权控制只读或可编辑；任务、流程、对话、文件与 Git 等操作统一在“配置项目权限”中分配。</p>}
+      <div className="gateway-device-actions">{kind === 'projects' && canConfigurePermissions
+        ? <a className="gateway-action-link" href={permissionUrl()}>新增授权</a>
+        : <button type="button" onClick={() => setEdit('new')}>新增授权</button>}</div></div>
+    {kind === 'projects' && canConfigurePermissions && <p>统一选择授权对象与任务、流程、对话、文件、Git 等操作权限，保存后同时授予项目访问。</p>}
     {loading && <p role="status"><span className="gateway-spinner"/> 正在加载授权…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
@@ -45,8 +46,9 @@ export function AdminAccessGrants({ id, name, kind = 'projects', csrf, onChanged
     <AdminRecordTable>{grants.map(grant => <AdminRecordRow key={grant.id}>
       <div><strong>{grant.subject_name}</strong><p>{grant.subject_type === 'user' ? '用户' : '用户组'} · {
         grant.access_level === 'edit' ? '可编辑' : '只读'}</p></div>
-      <div className="gateway-device-actions">{kind === 'projects' && canConfigurePermissions && <a href={permissionUrl(grant)} aria-label={`配置${grant.subject_name}的项目权限`}>项目权限</a>}
-        <button type="button" onClick={() => setEdit(grant)}>调整</button>
+      <div className="gateway-device-actions">{kind === 'projects' && canConfigurePermissions
+        ? <a className="gateway-action-link" href={permissionUrl(grant)}>编辑权限</a>
+        : <button type="button" onClick={() => setEdit(grant)}>调整</button>}
         <button type="button" onClick={() => setRevoke(grant)}>撤销</button></div>
     </AdminRecordRow>)}</AdminRecordTable>
     {kind === 'projects' && <ProjectInvitationRecords projectId={id} csrf={csrf} admin revision={revision} onChanged={saved} />}

@@ -25,5 +25,5 @@ export function PasswordConfirmation({ label, id, value, onChange, disabled = fa
   const inputId = id ?? generated
   const input = <input id={inputId} type="password" autoComplete="current-password" value={value}
       disabled={disabled} onChange={event => onChange(event.target.value)} />
-  return id ? <><label htmlFor={inputId}>{label}</label>{input}</> : <label htmlFor={inputId}>{label}{input}</label>
+  return <label htmlFor={inputId}>{label}{input}</label>
 }

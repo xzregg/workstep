@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useState } from 'react'
 import dayjs from 'dayjs'
 import { GatewayDateRange } from './GatewayDateRange'
@@ -67,13 +68,13 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
     {tab !== 'prices' && <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
       <GatewayDateRange from={draft.from_time} to={draft.to_time}
         onChange={range => setDraft(current => ({ ...current, ...range }))} />
-      <label>计量来源<select value={draft.source} onChange={event => update('source', event.target.value)}>
+      <label>计量来源<Select value={draft.source} onChange={event => update('source', event.target.value)}>
         <option value="reported_by_device">PC 回传</option>
-        <option value="provider_reconciled">供应商对账</option></select></label>
-      <label>计量状态<select value={draft.metering_status}
+        <option value="provider_reconciled">供应商对账</option></Select></label>
+      <label>计量状态<Select value={draft.metering_status}
         onChange={event => update('metering_status', event.target.value)}>
         <option value="">全部</option><option value="metered">已计量</option>
-        <option value="unmetered">未完成计量</option></select></label>
+        <option value="unmetered">未完成计量</option></Select></label>
       <div className="gateway-usage-filter-actions"><button type="submit">查询用量</button>
         <button type="button" onClick={() => { const defaults = defaultFilters(); setDraft(defaults); setFilters(query(defaults)); setError('') }}>清除筛选</button></div>
       <details className="gateway-usage-advanced"><summary>更多筛选（用户、设备、项目、供应商、模型）</summary>

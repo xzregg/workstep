@@ -66,3 +66,27 @@ test('Escape closes only a selector nested inside a dialog', async () => {
     assert.equal(document.querySelector('[role=listbox]'), null)
   } finally { await act(async () => root.unmount()); restoreDefaultSkin(); await window.happyDOM.close() }
 })
+
+test('default appearance uses the same searchable popup even with only two options', async () => {
+  const { window } = installDomEnvironment()
+  restoreDefaultSkin()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const changes: string[] = []
+  try {
+    await act(async () => root.render(<I18nProvider><label>授权资源<Select defaultValue="a" onChange={event => changes.push(event.target.value)}><option value="a">设备甲</option><option value="b">设备乙</option></Select></label></I18nProvider>))
+    const trigger = document.querySelector<HTMLButtonElement>('[role=combobox]')
+    assert.ok(trigger, 'default appearance must not open a browser-native select menu')
+    assert.equal(document.querySelector('select')?.getAttribute('aria-hidden'), 'true')
+    await act(async () => trigger.click())
+    const search = document.querySelector<HTMLInputElement>('.skin-select-search')!
+    assert.ok(search, 'search is available regardless of option count')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(search, '设备乙')
+      search.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    assert.equal(document.querySelector('[data-value=a]'), null)
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-value=b]')!.click())
+    assert.deepEqual(changes, ['b'])
+    assert.equal(document.activeElement, trigger)
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
+})

@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('workstepDesktop', {
     prepareRuntime: (input) => ipcRenderer.invoke('workstep:sandbox:prepareRuntime', input),
     prepareImage: (input) => ipcRenderer.invoke('workstep:sandbox:prepareImage', input),
     chooseDirectory: () => ipcRenderer.invoke('workstep:sandbox:chooseDirectory'),
+    chooseConfigDirectory: () => ipcRenderer.invoke('workstep:sandbox:chooseConfigDirectory'),
     prepare: (settings) => ipcRenderer.invoke('workstep:sandbox:prepare', settings),
     switchMode: (enabled) => ipcRenderer.invoke('workstep:sandbox:switchMode', enabled),
     switchImage: (image) => ipcRenderer.invoke('workstep:sandbox:switchImage', image),

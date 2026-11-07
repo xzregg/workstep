@@ -10,9 +10,11 @@ export interface SandboxSettings {
   migrationWarnings?: string[]
 }
 export interface HostSandboxProject { path: string; name: string; id?: string }
+export type SandboxConfigImport = 'codex' | 'claude' | 'agents' | { source: string }
 export interface SandboxMigrationOptions { providers: boolean; engines: boolean; preferences: boolean; overwrite?: boolean }
 export interface LocalDockerImage { id: string; tags: string[]; size: number }
 export interface SandboxStatus {
+  configSyncVersion?: number
   settings: SandboxSettings
   phase: string
   progress: { received: number; total: number | null } | null
@@ -36,10 +38,11 @@ export interface SandboxBridge {
   prepareRuntime(input: { root: string }): Promise<SandboxStatus>
   prepareImage(input: { root: string; dockerImage?: string | null }): Promise<SandboxStatus>
   chooseDirectory(): Promise<string | null>
+  chooseConfigDirectory?(): Promise<{ source: string; name: string } | null>
   prepare(settings: SandboxSettings): Promise<SandboxStatus>
   switchMode(enabled: boolean): Promise<void>
   switchImage(image: string): Promise<void>
-  importConfig(kind: 'codex' | 'claude' | 'agents'): Promise<SandboxStatus>
+  importConfig(input: SandboxConfigImport): Promise<SandboxStatus>
   migrateSettings(options: SandboxMigrationOptions): Promise<SandboxStatus>
   remove(): Promise<SandboxStatus>
   logs(): Promise<void>

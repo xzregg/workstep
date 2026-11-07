@@ -34,12 +34,12 @@ export function AdminUsagePriceDialog({ models, initialPrices, csrf, onClose, on
     <GatewayConfirmDialog title="批量设置模型价格" className="gateway-provider-dialog"
       message={`将为选中的 ${models.length} 个模型设置同一组参考价格（USD／百万 Token）。仅用于后续缺少费用的 PC 回传，历史费用不重算。`}
       confirmLabel="保存价格" busy={busy} disabled={!csrf || !valid || !passwordReady}
-      onConfirm={() => void save()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
+      onConfirm={() => void save()} onCancel={() => dirty ? setDiscard(true) : onClose()}
+      passwordConfirmation={<PasswordConfirmation id="model-price-password" label="输入管理员密码确认" value={password} onChange={setPassword}/>}>
       <details><summary>已选模型（{models.length}）</summary><ul>{models.map(model => <li key={model}>{model}</li>)}</ul></details>
       <fieldset className="gateway-provider-prices"><legend>每百万 Token 单价 · USD</legend>
         <ModelPriceFields values={prices} onChange={setPrices}/></fieldset>
       <p>请填写四项非负单价，0 表示免费；每项最多 8 位小数。</p>
-      <PasswordConfirmation id="model-price-password" label="输入管理员密码确认" value={password} onChange={setPassword}/>
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true"/> 正在保存价格…</p>}
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>

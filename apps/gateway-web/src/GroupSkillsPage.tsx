@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -91,22 +92,22 @@ export function GroupSkillsPage() {
 
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · SKILLS</span>
-    <div className="gateway-admin-toolbar"><h2>用户组 Skill 分配</h2><Link to="/">返回工作台</Link></div>
+    <div className="gateway-admin-toolbar"><h2>用户组 Skill 分配</h2><Link className="gateway-action-link" to="/">返回工作台</Link></div>
     <p>只可为本组关联项目分配已获授权的固定版本。撤销本组来源不会删除其他组仍在使用的版本。</p>
     <div className="gateway-usage-filters">
-      <label>用户组<select value={groupId} onChange={event => {
+      <label>用户组<Select value={groupId} onChange={event => {
         setGroupId(event.target.value); setProjectId(''); setVersionId('')
         setProjects([]); setAvailable([]); setAssignment(null); setError('')
       }}><option value="">选择用户组</option>{groups.map(group =>
-        <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
-      <label>项目<select value={projectId} disabled={!groupId} onChange={event => {
+        <option key={group.id} value={group.id}>{group.name}</option>)}</Select></label>
+      <label>项目<Select value={projectId} disabled={!groupId} onChange={event => {
         setProjectId(event.target.value); setAssignment(null); setError('')
       }}><option value="">选择关联项目</option>{projects.map(project =>
-        <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-      <label>可用 Skill 版本<select value={versionId} disabled={!projectId}
+        <option key={project.id} value={project.id}>{project.name}</option>)}</Select></label>
+      <label>可用 Skill 版本<Select value={versionId} disabled={!projectId}
         onChange={event => setVersionId(event.target.value)}><option value="">选择已授权版本</option>
         {available.map(skill => <option key={skill.skill_version_id} value={skill.skill_version_id}>
-          {skill.name} · {skill.version}</option>)}</select></label>
+          {skill.name} · {skill.version}</option>)}</Select></label>
       <button type="button" disabled={!csrf || !projectId || !versionId || busy}
         onClick={() => void write('POST')}>分配 Skill</button>
     </div>

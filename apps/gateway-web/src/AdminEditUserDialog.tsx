@@ -71,7 +71,8 @@ export function AdminEditUserDialog({ user, csrf, onSaved, onClose }: {
   <GatewayModal className="gateway-edit-user-dialog" title="编辑用户" onClose={close} footer={<>
    <button type="button" disabled={busy} onClick={close}>取消</button>
    <button type="button" className="gateway-admin-primary" disabled={!valid || busy || !csrf} onClick={() => void save()}>{busy ? <><span className="gateway-spinner"/> 正在保存…</> : '保存修改'}</button>
-  </>}>
+  </>}
+      passwordConfirmation={credentialsChanged && <PasswordConfirmation id="edit-user-admin-password" label="输入你的密码确认" value={password} onChange={setPassword} disabled={busy} />}>
    <div className="gateway-auth-form gateway-edit-user-form">
     <div className="gateway-edit-user-details">
     <section className="gateway-edit-user-section" aria-labelledby="edit-user-account-title">
@@ -103,7 +104,6 @@ export function AdminEditUserDialog({ user, csrf, onSaved, onClose }: {
      </div>
      <p className="gateway-edit-user-section-hint">{local ? '留空保持原密码；修改登录信息后，该用户需要重新登录。' : '首次开启账号密码登录，需同时填写用户名和新密码。企业扫码登录仍可使用；同步不会覆盖平台用户名和密码。'}</p>
      <p className="gateway-edit-user-section-hint">{passwordRequirements}</p>
-     {credentialsChanged && <div className="gateway-edit-user-field gateway-edit-user-confirm-password"><PasswordConfirmation id="edit-user-admin-password" label="输入你的密码确认" value={password} onChange={setPassword} disabled={busy} /></div>}
      {!local && <p className="gateway-edit-user-section-hint">企业同步仍管理员工状态和组织关系，可能更新显示名称。</p>}
     </section>
     </div>

@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminListStatus } from './AdminListStatus'
 import { AdminRecordTable } from './AdminRecordTable'
@@ -98,19 +99,19 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
       </div>
       <div className="gateway-admin-filters">
         <label htmlFor="admin-role-filter">角色</label>
-        <select id="admin-role-filter" value={filters.role} onChange={event => setFilters(current => (
+        <Select id="admin-role-filter" value={filters.role} onChange={event => setFilters(current => (
           { ...current, role: event.target.value, page: 1 }))}>
           <option value="">全部</option>{Object.entries(roleNames).filter(([role]) => !delegated || ['identity_admin', 'department_admin', 'audit_admin'].includes(role)).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
+        </Select>
         <label htmlFor="admin-role-sort">排序</label>
-        <select id="admin-role-sort" value={filters.sort} onChange={event => setFilters(current => (
+        <Select id="admin-role-sort" value={filters.sort} onChange={event => setFilters(current => (
           { ...current, sort: event.target.value, page: 1 }))}>
           <option value="created_at">授予时间</option><option value="username">用户名</option><option value="role">角色</option>
-        </select>
-        <select aria-label="排序方向" value={filters.direction} onChange={event => setFilters(current => (
+        </Select>
+        <Select aria-label="排序方向" value={filters.direction} onChange={event => setFilters(current => (
           { ...current, direction: event.target.value, page: 1 }))}>
           <option value="desc">降序</option><option value="asc">升序</option>
-        </select>
+        </Select>
       </div>
       <AdminListStatus loading={loading} label="正在加载管理员…"/>
       {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}

@@ -14,7 +14,7 @@ select_yarn() {
     YARN_COMMAND=(yarn)
     echo "未找到 Corepack，使用现有 Yarn $(yarn --version)"
   else
-    echo "需要 Yarn；请安装 Yarn，或使用带 Corepack 的 Node.js 20/22" >&2
+    echo "需要 Yarn；请安装 Yarn，或使用带 Corepack 的 Node.js 24 LTS" >&2
     exit 1
   fi
 }

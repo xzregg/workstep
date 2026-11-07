@@ -366,7 +366,7 @@ export const csCZ: I18nDict = {
     "linux": "Linux",
     "platformHint": "Instalátoři jsou průběžně aktualizováni. Můžete také spustit ze zdroje níže.",
     "sourceTitle": "Spustit ze zdroje",
-    "sourceDesc": "Vyžaduje Node.js 20 nebo 22 s Corepack plus Python 3.11+:",
+    "sourceDesc": "Vyžaduje Node.js 24 LTS s Corepack plus Python 3.11+:",
     "sourceStep1": "Klonujte úložiště",
     "sourceStep2": "Začněte se vším",
     "sourceStep3": "Otevřete http://localhost:5173"

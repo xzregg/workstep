@@ -363,7 +363,7 @@ export const frFR: I18nDict = {
     "choosePlatform": "Choisissez votre plateforme",
     "platformHint": "Les installateurs sont mis à jour régulièrement. Vous pouvez aussi utiliser les sources ci-dessous.",
     "sourceTitle": "Exécuter depuis les sources",
-    "sourceDesc": "Nécessite Node.js 20 ou 22 avec Corepack et Python 3.11 ou ultérieur :",
+    "sourceDesc": "Nécessite Node.js 24 LTS avec Corepack et Python 3.11 ou ultérieur :",
     "sourceStep1": "Cloner le dépôt",
     "sourceStep2": "Tout démarrer",
     "sourceStep3": "Ouvrir http://localhost:5173",

@@ -670,7 +670,20 @@ class DataConnection:
                         yield chunk
 
             headers = [[key.decode('latin1'), value.decode('latin1')] for key, value in call.wire_headers if key.lower() not in (b'host', b'cookie', b'connection', b'x-share-csrf', b'x-workstep-actor-id', b'x-workstep-actor-name', b'x-workstep-actor-device-id', b'x-workstep-actor-device-name') and (not (share_body is not None and key.lower() in (b'content-length', b'transfer-encoding')))]
-            start_payload = {'phase': 'start', 'method': call.operation, 'path': target_path or call.target.path, 'query': '' if share_ticket else call.target.query, 'headers': headers}
+            # Workspace HTML is decoded and rewritten below. Request plain bytes
+            # from the device; compressed assets and API streams stay untouched.
+            from gateway.services.workspace_paths import is_workspace_document
+            if call.workspace_path and is_workspace_document(call.operation, call.target.path, call.proofs):
+                headers = [pair for pair in headers if pair[0].lower() != 'accept-encoding']
+                headers.append(['accept-encoding', 'identity'])
+            query = '' if share_ticket else call.target.query
+            # The revision belongs to the browser/Gateway cache key. Keep it
+            # out of device requests so older project-scoped hosts can load UI.
+            if (call.workspace_path and call.operation == 'GET'
+                    and call.target.path.startswith('/assets/')
+                    and re.fullmatch(r'_workstep_asset=[a-f0-9]{16}', query)):
+                query = ''
+            start_payload = {'phase': 'start', 'method': call.operation, 'path': target_path or call.target.path, 'query': query, 'headers': headers}
             if hook_request:
                 start_payload['hook_request'] = True
                 start_payload['headers'] = [h for h in headers if h[0].lower() in ('content-type', 'content-length')]

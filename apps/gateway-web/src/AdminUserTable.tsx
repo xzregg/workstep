@@ -45,7 +45,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh, canVi
     <td>{sources[user.registration_source] ?? user.registration_source}</td>
     <td>{user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '暂无记录'}</td>
     <td><div className="gateway-row-actions">
-     {canViewAudit && <a href={`/admin/audit?user_id=${encodeURIComponent(user.id)}`} aria-label={`${user.display_name}的审计日志`}>审计日志</a>}
+     {canViewAudit && <a className="gateway-action-link" href={`/admin/audit?user_id=${encodeURIComponent(user.id)}`} aria-label={`${user.display_name}的审计日志`}>审计日志</a>}
      {user.status!=='deleted' && !user.is_recovery && <button type="button" disabled={loading} onClick={()=>{setNotice('');setEditing(user)}}>编辑</button>}
      {user.status==='pending' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>{setNotice('');setSingle({user,kind:'approve'})}}>批准</button>}
      {user.status==='deleted' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('restore',[user.id])}>恢复</button> : user.status==='disabled' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('enable',[user.id])}>启用</button>

@@ -140,7 +140,7 @@ class SandboxManager {
         installed = record.sha256 === ASSETS[`${this.platform}-${this.arch}`]?.sha256 && (await fs.stat(record.executable)).isFile()
       } catch { /* partially prepared runtimes can be retried */ }
     }
-    return { settings, onlineImage: Boolean(this.image), platform: this.platform, arch: this.arch, runtimeReady: installed || this.runtimeRoot === settings.root || Boolean(settings.prepared), imageReady: Boolean(seed) || Boolean(settings.prepared && this.compatibleImage(settings)), cachedDockerImage: seed?.source.startsWith('sha256:') ? seed.source : settings.dockerImage || null, phase: this.phase, progress: this.progress, error: this.error, running: this.running, health: this.health, hostPort: this.hostPort, logDirectory: settings.root ? path.join(settings.root, 'desktop') : null, supported: ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'].includes(`${this.platform}-${this.arch}`) }
+    return { configSyncVersion: 1, settings, onlineImage: Boolean(this.image), platform: this.platform, arch: this.arch, runtimeReady: installed || this.runtimeRoot === settings.root || Boolean(settings.prepared), imageReady: Boolean(seed) || Boolean(settings.prepared && this.compatibleImage(settings)), cachedDockerImage: seed?.source.startsWith('sha256:') ? seed.source : settings.dockerImage || null, phase: this.phase, progress: this.progress, error: this.error, running: this.running, health: this.health, hostPort: this.hostPort, logDirectory: settings.root ? path.join(settings.root, 'desktop') : null, supported: ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'].includes(`${this.platform}-${this.arch}`) }
   }
   async stageRoot(input) {
     if (this.running || (await this.settings()).enabled) throw new Error('请先关闭沙箱并重启')
@@ -500,19 +500,32 @@ class SandboxManager {
     const settings = await this.settings()
     await this.save({ ...settings, enabled: false, pendingDockerImage: dockerImage, pendingDockerImageTag: dockerTag })
   }
-  async importConfig(kind) {
+  async importConfig(input) {
     return this.exclusive(async () => {
-      if (!IMPORTS[kind]) throw new Error('不支持的配置类型')
-      if (this.running) throw new Error('请关闭沙箱后再导入配置')
+      const kind = typeof input === 'string' ? input : 'other'
+      if (kind !== 'other' && !Object.hasOwn(IMPORTS, kind)) throw new Error('不支持的配置类型')
       const settings = (await this.status()).settings
       if (!settings.root) throw new Error('请先准备沙箱')
+      let sources
+      if (kind === 'other') {
+        const source = input?.source
+        if (typeof source !== 'string' || !path.isAbsolute(source)) throw new Error('请选择配置目录的绝对路径')
+        const stat = await fs.lstat(source)
+        if (stat.isSymbolicLink()) throw new Error('配置来源不能是符号链接')
+        if (!stat.isDirectory()) throw new Error('配置来源必须是目录')
+        const real = await fs.realpath(source), root = await canonical(settings.root)
+        if (real === await canonical(this.hostHome) || real === path.parse(real).root) throw new Error('不能同步整个 Home 或磁盘根目录')
+        if (contains(root, real) || contains(real, root)) throw new Error('配置来源不能与沙箱目录重叠')
+        const name = path.basename(path.resolve(source))
+        if (name.toLowerCase() === '.workstep') throw new Error('WorkStep 配置请使用配置迁移入口')
+        sources = [{ source: real, name }]
+      } else sources = IMPORTS[kind].map(name => ({ source: path.join(this.hostHome, name), name }))
       await this.claimRoot(settings)
       const backup = path.join(settings.root, 'desktop/backups', `${Date.now()}-${kind}`)
       const stage = await fs.mkdtemp(path.join(settings.root, 'home', `.import-${kind}-`))
       const entries = [], installed = [], backedUp = []
       try {
-        for (const name of IMPORTS[kind]) {
-          const source = path.join(this.hostHome, name)
+        for (const { source, name } of sources) {
           try {
             const stat = await fs.lstat(source)
             if (stat.isSymbolicLink()) throw new Error('配置来源不能是符号链接')

@@ -17,7 +17,6 @@ test('device name validates, preserves edits on failure, and saves without chang
   let fail = true, saved = 0, closed = 0
   const writes: RequestInit[] = []
   globalThis.fetch = async (input, init) => {
-    if (String(input) === '/api/auth/step-up') return new Response(null, { status: 200 })
     assert.equal(String(input), '/api/admin/devices/pc-1/name')
     writes.push(init!)
     return new Response(null, { status: fail ? 503 : 204 })
@@ -25,7 +24,7 @@ test('device name validates, preserves edits on failure, and saves without chang
   render(<AdminDeviceNameDialog device={device} csrf="csrf" onComplete={() => saved++} onClose={() => closed++} />)
   const name = screen.getByLabelText('设备名称')
   fireEvent.change(name, { target: { value: '   ' } })
-  fireEvent.change(screen.getByLabelText('输入管理员密码确认'), { target: { value: 'test-password' } })
+  assert.equal(screen.queryByLabelText('输入管理员密码确认'), null)
   assert.equal((screen.getByRole('button', { name: '保存名称' }) as HTMLButtonElement).disabled, true)
   fireEvent.change(name, { target: { value: ' 钊荣的工作电脑 ' } })
   fireEvent.click(screen.getByRole('button', { name: '保存名称' }))
@@ -68,7 +67,6 @@ test('device name validates, preserves edits on failure, and saves without chang
  fireEvent.click(nameButton)
  const dialog = screen.getByRole('dialog', { name: '修改设备名称' })
  fireEvent.change(within(dialog).getByLabelText('设备名称'), { target: { value: '研发电脑' } })
- fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'test-password' } })
  fireEvent.click(within(dialog).getByRole('button', { name: '保存名称' }))
  await screen.findByRole('button', { name: '修改设备名称：研发电脑' })
  assert.equal(screen.queryByRole('dialog'), null)

@@ -90,6 +90,15 @@ turn before replying. Do not ask for another start message or create a new
 confirmation proposal for the authorized stage operations. This authorization
 covers the agreed operations only; do not replay operations already performed.
 
+For the task coordinator, an accepted stage operation is the default reply boundary:
+report queued/started/delivered accurately and finish the coordinator turn while
+the workflow continues independently. This also applies to code changes,
+merge/push, review and deployment instructions. Do not poll, sleep or hold the
+turn open to watch execution or review finish unless the user explicitly asks
+to wait and report the result. "Do not wait for my confirmation" authorizes the
+operation; it does not request waiting for completion. Keep the bounded
+stop-before-start state check below when a dependent operation requires it.
+
 Send a message to a running execution or automatic review:
 
 ```bash

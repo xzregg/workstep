@@ -366,7 +366,7 @@ export const elGR: I18nDict = {
     "linux": "Linux",
     "platformHint": "Οι εγκαταστάτες ενημερώνονται συνεχώς. Μπορείτε επίσης να ξεκινήσετε από την παρακάτω πηγή.",
     "sourceTitle": "Εκτέλεση από την πηγή",
-    "sourceDesc": "Απαιτεί Node.js 20 ή 22 με Corepack, συν Python 3.11+:",
+    "sourceDesc": "Απαιτεί Node.js 24 LTS με Corepack, συν Python 3.11+:",
     "sourceStep1": "Κλωνοποιήστε το αποθετήριο",
     "sourceStep2": "Ξεκινήστε τα πάντα",
     "sourceStep3": "Ανοίξτε το http://localhost:5173"

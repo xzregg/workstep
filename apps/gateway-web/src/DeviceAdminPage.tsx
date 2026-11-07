@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useSearchParams } from 'react-router-dom'
 import { DeviceHealthDetails } from './DeviceHealthDetails'
 import { AdminRowMenu } from './AdminRowMenu'
@@ -128,24 +129,24 @@ export function DeviceAdminPage() {
       <div className="gateway-admin-filters">
       <button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)}>刷新设备</button>
       <label htmlFor="device-filter">设备状态</label>
-      <select id="device-filter" value={filters.status} onChange={event => setFilters(current => (
+      <Select id="device-filter" value={filters.status} onChange={event => setFilters(current => (
         { ...current, status: event.target.value, page: 1 }))}>
         <option value="pending">待审批</option><option value="active">已启用</option>
         <option value="disabled">已停用</option><option value="revoked">已撤销</option><option value="">全部</option>
-      </select>
+      </Select>
       <label htmlFor="device-health">服务健康</label>
-      <select id="device-health" value={filters.health ?? ''} onChange={event => setFilters(current => ({ ...current, health: event.target.value, page: 1 }))}>
+      <Select id="device-health" value={filters.health ?? ''} onChange={event => setFilters(current => ({ ...current, health: event.target.value, page: 1 }))}>
         <option value="">全部</option><option value="unhealthy">异常设备</option>
-      </select>
+      </Select>
       <label htmlFor="device-sort">排序</label>
-      <select id="device-sort" value={filters.sort} onChange={event => setFilters(current => (
+      <Select id="device-sort" value={filters.sort} onChange={event => setFilters(current => (
         { ...current, sort: event.target.value, page: 1 }))}>
         <option value="created_at">注册时间</option><option value="name">电脑名称</option><option value="status">状态</option>
-      </select>
-      <select aria-label="排序方向" value={filters.direction} onChange={event => setFilters(current => (
+      </Select>
+      <Select aria-label="排序方向" value={filters.direction} onChange={event => setFilters(current => (
         { ...current, direction: event.target.value, page: 1 }))}>
         <option value="desc">降序</option><option value="asc">升序</option>
-      </select>
+      </Select>
       </div>
       <AdminListStatus loading={loading} label="正在加载设备…"/>
       <AdminRecordTable busy={loading} columns={['设备名称','连接状态','所有者','连接 IP','daemon 版本','升级检查','操作']}>

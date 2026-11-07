@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
+const { setTimeout: delay } = require('node:timers/promises')
 
 const {
   backendLaunch,
@@ -28,6 +29,73 @@ test('cold backend startup has a bounded two-minute readiness budget', async (t)
   const rejected = assert.rejects(pending, /within 120000ms/)
   t.mock.timers.tick(120_000)
   await rejected
+})
+
+test('startup timeout includes bounded redacted output and logs an expected exit', async () => {
+  const records = []
+  const logger = {
+    write: (source, level, message) => records.push({ source, level, message }),
+    redact: value => value.replaceAll('fixture-secret', '[redacted]'),
+  }
+  await assert.rejects(startSidecar({
+    executable: process.execPath,
+    args: ['-e', 'console.log("x".repeat(8000)); console.error("STARTUP 项目恢复 start"); console.error("fixture-secret"); setInterval(() => {}, 1000)', '--'],
+    port: 0, timeoutMs: 1000, logger,
+  }), error => {
+    assert.match(error.message, /within 1000ms/)
+    assert.match(error.message, /STARTUP 项目恢复 start/)
+    assert.match(error.message, /\[redacted\]/)
+    assert.doesNotMatch(error.message, /fixture-secret/)
+    assert.ok(error.message.length < 5000)
+    return true
+  })
+  for (let attempt = 0; attempt < 100 && !records.some(row => row.message.includes('后台进程退出')); attempt++) await delay(20)
+  const exit = records.find(row => row.message.includes('后台进程退出'))
+  assert.ok(exit)
+  assert.equal(exit.level, 'info')
+  assert.match(exit.message, /"expected":true/)
+  assert.equal(records.find(row => row.message === 'STARTUP 项目恢复 start').level, 'info')
+})
+
+test('an early backend exit includes stdout startup progress as well as stderr', async () => {
+  await assert.rejects(startSidecar({
+    executable: process.execPath,
+    args: ['-e', 'console.log("STARTUP 模块加载 start"); console.error("import failed"); process.exitCode = 2', '--'],
+    port: 0,
+  }), error => {
+    assert.match(error.message, /code=2/)
+    assert.match(error.message, /STARTUP 模块加载 start/)
+    assert.match(error.message, /import failed/)
+    return true
+  })
+})
+
+test('a timed out backend that ignores termination is force killed after the grace period', {
+  skip: process.platform === 'win32',
+}, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const records = []
+  const pending = startSidecar({
+    executable: process.execPath,
+    args: ['-e', 'process.on("SIGTERM", () => console.log("TERM ignored")); console.log("fixture ready"); setInterval(() => {}, 1000)', '--'],
+    port: 0, timeoutMs: 1000,
+    logger: { write: (_source, _level, message) => records.push(message) },
+  })
+  const rejected = assert.rejects(pending, /within 1000ms/)
+  t.after(() => t.mock.timers.tick(20_000))
+  async function waitFor(pattern) {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (records.some(message => pattern.test(message))) return
+      await delay(20)
+    }
+    assert.fail(`Missing child output: ${pattern}`)
+  }
+  await waitFor(/fixture ready/)
+  t.mock.timers.tick(1000)
+  await rejected
+  await waitFor(/TERM ignored/)
+  t.mock.timers.tick(10_000)
+  await waitFor(/"signal":"SIGKILL","expected":true/)
 })
 
 test('packaged desktop launches the bundled writable Python runtime', () => {

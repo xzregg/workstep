@@ -366,7 +366,7 @@ export const jaJP: I18nDict = {
     "linux": "Linux",
     "platformHint": "インストーラーは継続更新中です。下のソースからも簡単に起動できます。",
     "sourceTitle": "ソースから起動",
-    "sourceDesc": "Corepack付きNode.js 20または22とPython 3.11以上が必要です。",
+    "sourceDesc": "Corepack付きNode.js 24 LTSとPython 3.11以上が必要です。",
     "sourceStep1": "リポジトリを複製",
     "sourceStep2": "一括起動",
     "sourceStep3": "http://localhost:5173 を開く"

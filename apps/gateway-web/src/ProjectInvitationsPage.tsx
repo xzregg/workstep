@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { ProjectInvitationJoinForm } from './ProjectInvitationJoinForm'
@@ -80,7 +81,7 @@ export function ProjectInvitationsPage() {
     {tab === 'add' && <ProjectInvitationJoinForm />}
     {status === 'loading' && <p role="status"><span className="gateway-spinner" /> 正在检查登录状态…</p>}
     {status === 'error' && <p role="alert">登录状态加载失败。<button onClick={retry}>重试</button></p>}
-    {status === 'login' && <p>生成或接受邀请前，请先<Link to={`/auth?next=${encodeURIComponent(location.pathname + location.search)}`}>登录 / 注册</Link>。</p>}
+    {status === 'login' && <p>生成或接受邀请前，请先<Link className="gateway-action-link" to={`/auth?next=${encodeURIComponent(location.pathname + location.search)}`}>登录 / 注册</Link>。</p>}
     {status === 'ready' && tab !== 'add' && <section className="gateway-project-invitation-section">
       {tab === 'share' && <><h3>分享我的项目</h3>
       <p>设备主人可分享已发布项目；对方通过网关邀请链接登录并添加，无需管理员逐个授权。</p></>}
@@ -91,13 +92,13 @@ export function ProjectInvitationsPage() {
         {tab === 'share' && <>
         <form className="gateway-auth-form" onSubmit={event => void create(event)}>
           <label htmlFor="invitation-project">分享项目</label>
-          <select id="invitation-project" disabled={busy} value={projectId} onChange={event => {
+          <Select id="invitation-project" disabled={busy} value={projectId} onChange={event => {
             setProjectId(event.target.value); setCreated(null); setError(''); setCopied(false)
-          }}>{projects.map(p => <option key={p.id} value={p.id}>{p.name} · {p.device_name}</option>)}</select>
+          }}>{projects.map(p => <option key={p.id} value={p.id}>{p.name} · {p.device_name}</option>)}</Select>
           <label htmlFor="invitation-access-level">访问级别</label>
-          <select id="invitation-access-level" value={accessLevel} onChange={event => setAccessLevel(event.target.value)}>
+          <Select id="invitation-access-level" value={accessLevel} onChange={event => setAccessLevel(event.target.value)}>
             <option value="read">只读</option><option value="edit">可编辑</option>
-          </select>
+          </Select>
           <label htmlFor="invitation-expiry">邀请过期时间（可选）</label>
           <input id="invitation-expiry" type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} />
           <p>过期时间限制添加项目的时间；已加入用户的访问持续到授权被撤销。可编辑权限仍受平台任务创建和模型权限约束。</p>
@@ -117,11 +118,11 @@ export function ProjectInvitationsPage() {
         {tab === 'records' && <>
           <div className="gateway-auth-form">
             <label htmlFor="records-project">项目</label>
-            <select id="records-project" value={projectId} onChange={event => {
+            <Select id="records-project" value={projectId} onChange={event => {
               setProjectId(event.target.value); setCreated(null); setCopied(false); setError('')
             }}>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name} · {p.device_name}</option>)}
-            </select>
+            </Select>
           </div>
         {selected && session && <ProjectInvitationRecords key={projectId} projectId={projectId}
           csrf={session.csrf_token} revision={revision} onChanged={() => setCreated(null)} />}

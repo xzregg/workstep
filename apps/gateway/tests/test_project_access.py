@@ -176,7 +176,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
             return ProjectData()
 
         monkeypatch.setattr(app.state.control_connections, "request_data", project_data)
-        for path in ('/', '/tasks?project=Project', '/canvas', '/assets/app.js'):
+        for path in ('/', '/tasks?project=Project', '/canvas', '/assets/app.js',
+                     '/assets/app.js?_workstep_asset=0457af26fe899a12'):
             workspace = client.get(f'{host}{path}')
             assert workspace.status_code == 200, workspace.text
             assert 'Full WorkStep workspace' in workspace.text

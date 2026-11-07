@@ -366,7 +366,7 @@ export const koKR: I18nDict = {
     "linux": "Linux",
     "platformHint": "설치 프로그램은 지속적으로 업데이트됩니다. 아래 소스에서 시작할 수도 있습니다.",
     "sourceTitle": "소스에서 실행",
-    "sourceDesc": "Corepack와 함께 Node.js 20 또는 22와 Python 3.11 이상이 필요합니다.",
+    "sourceDesc": "Corepack와 함께 Node.js 24 LTS와 Python 3.11 이상이 필요합니다.",
     "sourceStep1": "저장소 복제",
     "sourceStep2": "모든 것을 시작하세요",
     "sourceStep3": "http://localhost:5173 열기"

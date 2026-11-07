@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { enterpriseProviderName } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -100,22 +101,22 @@ export function AdminIdentitySourcesPanel({ onSourceChange, onReconciled }: {
         placeholder="租户或应用 ID" /><button type="submit">搜索</button>
     </form>
     <div className="gateway-admin-filters">
-      <select aria-label="身份源类型" value={filters.provider} onChange={event => setFilters(current => (
+      <Select aria-label="身份源类型" value={filters.provider} onChange={event => setFilters(current => (
         { ...current, provider: event.target.value, page: 1 }))}>
         <option value="">全部类型</option><option value="dingtalk">钉钉</option><option value="wecom">企业微信</option><option value="feishu">飞书</option><option value="lark">Lark</option>
-      </select>
-      <select aria-label="身份源状态" value={filters.status} onChange={event => setFilters(current => (
+      </Select>
+      <Select aria-label="身份源状态" value={filters.status} onChange={event => setFilters(current => (
         { ...current, status: event.target.value, page: 1 }))}>
         <option value="">全部状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option>
-      </select>
-      <select aria-label="身份源排序" value={filters.sort} onChange={event => setFilters(current => (
+      </Select>
+      <Select aria-label="身份源排序" value={filters.sort} onChange={event => setFilters(current => (
         { ...current, sort: event.target.value, page: 1 }))}>
         <option value="created_at">创建时间</option><option value="tenant_id">租户 ID</option>
-      </select>
-      <select aria-label="身份源排序方向" value={filters.direction} onChange={event => setFilters(current => (
+      </Select>
+      <Select aria-label="身份源排序方向" value={filters.direction} onChange={event => setFilters(current => (
         { ...current, direction: event.target.value, page: 1 }))}>
         <option value="desc">降序</option><option value="asc">升序</option>
-      </select>
+      </Select>
     </div>
     {loading && <p role="status">正在加载身份源…</p>}
     {authError && <p role="alert" className="gateway-auth-error">{authError}</p>}

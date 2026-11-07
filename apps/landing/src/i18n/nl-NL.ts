@@ -366,7 +366,7 @@ export const nlNL: I18nDict = {
     "linux": "Linux",
     "platformHint": "Installateurs worden voortdurend bijgewerkt. Je kunt ook starten vanaf de onderstaande bron.",
     "sourceTitle": "Uitgevoerd vanaf de bron",
-    "sourceDesc": "Vereist Node.js 20 of 22 met Corepack, plus Python 3.11+:",
+    "sourceDesc": "Vereist Node.js 24 LTS met Corepack, plus Python 3.11+:",
     "sourceStep1": "Kloon de repository",
     "sourceStep2": "Begin met alles",
     "sourceStep3": "Open http://localhost:5173"

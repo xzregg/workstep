@@ -26,6 +26,6 @@ export function LegacyCompletionDestinationPage() {
  return <section className="gateway-admin-page"><h2>打开通知来源</h2>
   {error?<p role="alert">{error}</p>:<p role="status"><span className="gateway-spinner"/> 正在连接来源设备…</p>}
   {error && <button type="button" onClick={()=>setRetry(value=>value+1)}>重试</button>}
-  <Link to="/">返回我的 WorkStep</Link>
+  <Link className="gateway-action-link" to="/">返回我的 WorkStep</Link>
  </section>
 }

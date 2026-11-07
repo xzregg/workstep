@@ -15,6 +15,83 @@ from gateway.contracts import GatewaySocket
 from urllib.parse import urlsplit
 
 
+@pytest.mark.parametrize('path,workspace,expected_query', [
+    ('/assets/app.js', True, ''),
+    ('/assets/app.css', True, ''),
+    ('/assets/app.js', False, '_workstep_asset=0457af26fe899a12'),
+    ('/api/tasks', True, '_workstep_asset=0457af26fe899a12'),
+])
+async def test_workspace_asset_revision_is_not_forwarded_to_device(path, workspace, expected_query):
+    from gateway.contracts import GatewayCall
+    revision = '_workstep_asset=0457af26fe899a12'
+    starts = []
+
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'start':
+                starts.append(frame.payload)
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'end':
+                # Older hosts accept the original static asset URL only.
+                status = 403 if path.startswith('/assets/') and starts[-1]['query'] else 200
+                for payload in ({'phase': 'start', 'status': status, 'headers': []},
+                                {'phase': 'body', 'data': base64.b64encode(b'asset').decode()},
+                                {'phase': 'end'}):
+                    await connection.deliver(ProxyFrame(stream_id=frame.stream_id, type=FrameType.http_response, payload=payload))
+
+    connection = DataConnection('device-1', Socket())
+    async def payload():
+        yield b''
+    call = GatewayCall(target=urlsplit('https://gateway.test' + path + '?' + revision),
+                       workspace_path='/workspace/device-1/' if workspace else '', payload=payload)
+    response = await connection.proxy_http(call, user_id='user-1', username='test',
+                                           project_id='project-1', access_level='read')
+    assert b''.join([chunk async for chunk in response.chunks]) == b'asset'
+    assert starts[0]['query'] == expected_query
+    if workspace and path.startswith('/assets/'):
+        assert response.status == 200
+
+
+@pytest.mark.parametrize('accept_encoding', ['identity', 'gzip, deflate, br'])
+async def test_workspace_entry_survives_gateway_middlewares(tmp_path, monkeypatch, accept_encoding):
+    from gateway.app import create_app
+    from gateway.config import GatewaySettings
+
+    content = b'<html><head><script src="/assets/main.js"></script></head><body>WorkStep</body></html>'
+
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'start':
+                self.accept_encoding = dict(frame.payload['headers']).get('accept-encoding', '')
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'end':
+                import gzip
+                compressed = 'gzip' in self.accept_encoding
+                data = gzip.compress(content) if compressed else content
+                headers = [['content-type', 'text/html'], ['content-length', str(len(data))]]
+                if compressed:
+                    headers.append(['content-encoding', 'gzip'])
+                for payload in (
+                    {'phase': 'start', 'status': 200, 'headers': headers},
+                    {'phase': 'body', 'data': base64.b64encode(data).decode()},
+                    {'phase': 'end'},
+                ):
+                    await connection.deliver(ProxyFrame(stream_id=frame.stream_id, type=FrameType.http_response, payload=payload))
+
+    connection = DataConnection('device-1', Socket())
+    async def proxy(call):
+        return await connection.proxy_http(call, user_id='user-1', username='test', project_id='project-1', access_level='read')
+    monkeypatch.setattr('gateway.app.proxy_remote_request', proxy)
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='https://gateway.test') as client:
+        response = await client.get('/workspace/device-1/', headers={'Accept-Encoding': accept_encoding})
+    assert response.status_code == 200
+    assert b'<base href="/workspace/device-1/">' in response.content
+    assert b'/workspace/device-1/assets/main.js?_workstep_asset=' in response.content
+    assert b'WorkStep' in response.content
+    assert not connection._streams
+
+
 @pytest.mark.parametrize('workspace', [False, True])
 @pytest.mark.parametrize('resources', [False, True])
 async def test_preview_policy_rewritten_without_granting_system_api_access(workspace, resources):

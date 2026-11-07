@@ -91,8 +91,8 @@ export function ProjectInvitationRecords({ projectId, csrf, admin = false, revis
     </>}
     {operation && <GatewayConfirmDialog title={title} message={message}
       confirmLabel={operation.action === 'policy' && !operation.enabled ? '确认禁止' : '确认'}
-      busy={busy} disabled={admin && !passwordReady} onCancel={() => setOperation(null)} onConfirm={() => void change()}>
-      {admin && <PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} />}
+      busy={busy} disabled={admin && !passwordReady} onCancel={() => setOperation(null)} onConfirm={() => void change()}
+      passwordConfirmation={admin && <PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       {busy && <span className="gateway-spinner" />}
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>}

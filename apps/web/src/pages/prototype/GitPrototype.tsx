@@ -1,3 +1,4 @@
+import Select from '../../components/Select'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Icon from '../../components/Icon'
@@ -44,10 +45,10 @@ function DiffViewer({ file, historical = false, branchName = 'develop', baseBran
   return <section className="gp-diff" aria-label="文件差异">
     <div className="gp-diff-path"><Icon name="file" size={15} /><strong>{file.path.split('/').at(-1)}</strong><span className="gp-muted gp-ellipsis">{file.path.split('/').slice(0, -1).join('/')}</span><span className="gp-grow" /><span className="gp-add">+{file.added}</span><span className="gp-delete">−{file.removed}</span></div>
     <div className="gp-diff-tools">
-      <select aria-label="差异显示方式" value={unified ? 'unified' : 'split'} onChange={e => setUnified(e.target.value === 'unified')}><option value="split">左右对比</option><option value="unified">统一视图</option></select>
+      <Select aria-label="差异显示方式" value={unified ? 'unified' : 'split'} onChange={e => setUnified(e.target.value === 'unified')}><option value="split">左右对比</option><option value="unified">统一视图</option></Select>
       <button className={blame ? 'is-active' : ''} onClick={() => setBlame(!blame)}><Icon name="clock" size={14} />修改人</button>
       <span className="gp-grow" />
-      <select aria-label="跳转函数" value={hunk} onChange={e => jump(Number(e.target.value))}>{file.hunks.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}</select>
+      <Select aria-label="跳转函数" value={hunk} onChange={e => jump(Number(e.target.value))}>{file.hunks.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}</Select>
       <button aria-label="上一个修改" onClick={() => jump(hunk - 1)}><Icon name="chevron-down" className="gp-up" size={14} /></button>
       <span className="gp-muted">{hunk + 1}/{file.hunks.length}</span>
       <button aria-label="下一个修改" onClick={() => jump(hunk + 1)}><Icon name="chevron-down" size={14} /></button>

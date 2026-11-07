@@ -82,3 +82,43 @@ test('task assistant replies retain the stage avatar while running and after com
     await window.happyDOM.close()
   }
 })
+
+test('review-channel instructions preserve their text and do not impersonate review results', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    for (const author_type of ['coordinator', 'user']) {
+      for (const reviews of [[], [{ id: 'review', step_key: 'build', mode: 'manual',
+        status: 'approved', decision: 'approve', decision_comment: '审核结果原文' }]]) {
+        await act(async () => root.render(<I18nProvider><TaskConversationMessage
+          message={{ id: 'dispatch', role: 'user', author_type, channel: 'review', step_key: 'build',
+            content: '评审结束后合并并推送', created_at: '2026-01-01T00:00:00Z' }}
+          task={null} steps={[{ key: 'build', label: 'Build', color: '#123456', prompt: '', inputs: [], outputs: [] }]}
+          stepProgress={[]} reviews={reviews} artifacts={[]}
+          latestStepMessageIds={new Map()} latestExecutionMessageIds={new Map()}
+          locale="zh-CN" canChat={false} onOpenArtifact={() => {}}
+          sessionIdForStep={() => null} stepLastRef={{ current: {} }}
+        /></I18nProvider>))
+        assert.match(container.textContent || '', /评审结束后合并并推送/)
+        assert.doesNotMatch(container.textContent || '', /人工审核|Manual review|审核结果原文/i)
+        assert.equal(container.querySelector('[title="Review"]'), null)
+      }
+    }
+    await act(async () => root.render(<I18nProvider><TaskConversationMessage
+      message={{ id: 'review-output', role: 'assistant', channel: 'review', step_key: 'build',
+        engine: 'codex', content: '实际审核结果', created_at: '2026-01-01T00:00:00Z' }}
+      task={null} steps={[{ key: 'build', label: 'Build', color: '#123456', prompt: '', inputs: [], outputs: [] }]}
+      stepProgress={[]} reviews={[]} artifacts={[]}
+      latestStepMessageIds={new Map()} latestExecutionMessageIds={new Map()}
+      locale="zh-CN" canChat={false} onOpenArtifact={() => {}}
+      sessionIdForStep={() => null} stepLastRef={{ current: {} }}
+    /></I18nProvider>))
+    assert.match(container.textContent || '', /实际审核结果/)
+    assert.ok(container.querySelector('[title="Review"]'))
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

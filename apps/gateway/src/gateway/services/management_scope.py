@@ -30,13 +30,14 @@ async def device_scope(session, identity: IdentityService, actor_id: str, *, rol
 
 
 async def device_manager(call: GatewayCall, *, device_ids: list[str] | None = None,
-                         mutation: bool = False):
+                         mutation: bool = False, sensitive: bool = True):
     identity = IdentityService(call.database)
     token = call.tokens.get(COOKIE_NAME)
     actor, auth_session = await identity.session_user(token)
     if mutation:
         _check_csrf(call, token)
-        await identity.require_step_up(auth_session)
+        if sensitive:
+            await identity.require_step_up(auth_session)
     async with call.database.session() as session:
         allowed = await device_scope(session, identity, actor.id)
     if device_ids is not None and allowed is not None and not set(device_ids).issubset(allowed):

@@ -21,8 +21,6 @@
 .gateway-overview-metric-detail { padding: 6px 20px 18px; min-height: 43px; color: #748195; font-size: 12px; }
 .gateway-overview-divider { margin: 0 8px; color: #d1d8e2; }
 .gateway-overview-metric-footer { margin-top: auto; padding: 11px 20px; border-top: 1px solid #eef1f6; background: #fcfdff; font-size: 11px; color: #909aaa; }
-.gateway-overview-page a { color: #4676ac; text-decoration: none; }
-.gateway-overview-page a:hover { color: #215da4; text-decoration: underline; }
 .gateway-overview-metric-footer a { display: flex; justify-content: space-between; align-items: center; }
 .gateway-overview-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-bottom: 20px; }
 .gateway-overview-panels > :only-child { grid-column: 1 / -1; }
@@ -30,7 +28,6 @@
 .gateway-overview-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 22px; }
 .gateway-admin-shell .gateway-overview-section-heading h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .gateway-overview-section-heading p { margin: 6px 0 0; font-size: 11px; color: #8b96a5; }
-.gateway-overview-section-heading > a { font-size: 12px; }
 .gateway-overview-tag { display: inline-flex; align-items: center; justify-content: center; padding: 4px 9px; border-radius: 5px; background: #f2f5f9; color: #7e8b9d; font-size: 11px; white-space: nowrap; }
 .gateway-overview-tag.is-success { background: #edf7f2; color: #368263; }
 .gateway-overview-tag.is-warning, .gateway-overview-count.is-warning { background: #fff5e7; color: #ad7425; }
@@ -56,7 +53,6 @@
 .gateway-overview-attention-row { display: flex; align-items: center; gap: 13px; padding: 11px 0; }
 .gateway-overview-attention-row + .gateway-overview-attention-row { border-top: 1px solid #f0f3f7; }
 .gateway-overview-count { display: grid; place-items: center; flex: 0 0 34px; height: 34px; border-radius: 8px; background: #f1f5f9; color: #7b899b; font-weight: 600; font-variant-numeric: tabular-nums; }
-.gateway-overview-attention-row a { font-size: 12px; color: #3d4e64; font-weight: 500; }
 .gateway-overview-attention-row a span { margin-left: 5px; color: #99a6b6; }
 .gateway-overview-attention-row p { margin: 4px 0 0; color: #919baa; font-size: 11px; }
 .gateway-overview-notice { padding: 8px 11px; margin: 9px 0 0; background: #fff9ee; border-radius: 6px; color: #a27837; font-size: 11px; }

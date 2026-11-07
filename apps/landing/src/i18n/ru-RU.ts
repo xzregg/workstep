@@ -366,7 +366,7 @@ export const ruRU: I18nDict = {
     "linux": "Linux",
     "platformHint": "Установщики постоянно обновляются. Вы также можете запустить из исходного кода ниже.",
     "sourceTitle": "Запуск из исходного кода",
-    "sourceDesc": "Требуется Node.js 20 или 22 с Corepack, а также Python 3.11+:",
+    "sourceDesc": "Требуется Node.js 24 LTS с Corepack, а также Python 3.11+:",
     "sourceStep1": "Клонировать репозиторий",
     "sourceStep2": "Начать все",
     "sourceStep3": "Открыть http://localhost:5173"

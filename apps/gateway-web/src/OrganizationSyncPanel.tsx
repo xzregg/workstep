@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { enterpriseProviderName, type EnterpriseProvider } from './enterpriseProviders'
 import { OrganizationSyncUsers, type SyncUser } from './OrganizationSyncUsers'
 import { OrganizationSyncResult, type SyncResult } from './OrganizationSyncResult'
@@ -169,9 +170,9 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
   {error && <p role="alert" className="gateway-auth-error">{error}<button type="button" onClick={() => departments.length ? setError('') : setRevision(value => value + 1)}>重试</button></p>}
   {!loading && <>
    <div className="gateway-sync-maintenance-toolbar">
-    <label>维护范围<select value={mode} disabled={locked} onChange={event=>chooseMode(event.target.value as MaintenanceMode)}>
+    <label>维护范围<Select value={mode} disabled={locked} onChange={event=>chooseMode(event.target.value as MaintenanceMode)}>
      <option value="all">全量通讯录</option><option value="departments">指定部门（含下级及新成员）</option><option value="users" disabled={groupsOnly}>指定用户（不自动新增）</option>
-    </select></label>
+    </Select></label>
     <button type="button" disabled={locked || !csrf} onClick={refresh}>检查变更</button>
     <button type="button" disabled={locked || !csrf} onClick={()=>{setFocusedDepartment('');setChangesOnly(false);if(job?.status!=='preview')void start()}}>查看全部</button>
     <label title="全量或部门范围可单独更新组织结构；指定用户时会自动补齐所属组"><input type="checkbox" checked={groupsOnly} disabled={locked || mode==='users'} onChange={event=>{

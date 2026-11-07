@@ -20,7 +20,7 @@ export function MyWorkstepWorkspace({devices,projects,opening,onOpenDevice,onOpe
    {devices.map(item=><button type="button" key={item.id} className={selected===item.id?'gateway-workspace-selected':''} aria-pressed={selected===item.id} aria-label={item.name} disabled={opening!==null} onClick={()=>{setSelected(item.id); if(item.online && !item.project_only)onOpenDevice(item.id)}}>
     <span className="gateway-workspace-device-name" title={item.name}>{item.name}</span><small className={item.online?'gateway-online':'gateway-offline'}>{item.online?'在线':'离线'}</small>
    </button>)}
-   <Link to="/devices/empty">安装 WorkStep</Link>
+   <Link className="gateway-action-link" to="/devices/empty">安装 WorkStep</Link>
   </aside>
   <section className="gateway-workstep-content" aria-label="WorkStep 项目">
    <div className="gateway-workspace-toolbar"><div><h3>{device?.name ?? '全部项目'}</h3><p>{device?(device.project_only?'仅可访问已授权项目。':device.online?'正在进入设备的 WorkStep 工作台…':'设备离线，等待上线后可进入工作台。'):'选择在线设备，直接进入你的 WorkStep。'}</p></div>

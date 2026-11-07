@@ -16,7 +16,7 @@ test('startup failure and timeout replace the spinner with recovery actions, wit
       const script = html.match(/<script id="workstep-startup-guard">([\s\S]*?)<\/script>/)?.[1]
       assert.ok(script, 'guard must run independently before the module entry')
       window.eval(script)
-      if (failure === 'error') window.dispatchEvent(new window.ErrorEvent('error', { message: 'startup failure' }))
+      if (failure === 'error') window.dispatchEvent(new window.ErrorEvent('error', { message: 'startup failure', filename: 'https://gateway.test/workspace/device/assets/app.js' }))
       else timeout!()
       assert.equal(window.document.querySelector('.app-loading-spinner'), null)
       assert.ok(window.document.querySelector('[role=alert]'))
@@ -49,7 +49,7 @@ test('startup retry fetches a fresh entry while preserving workspace, query and 
   window.document.body.innerHTML = '<div id="root"><div class="app-loading">Loading</div></div>'
   try {
     window.eval(html.match(/<script id="workstep-startup-guard">([\s\S]*?)<\/script>/)![1])
-    window.dispatchEvent(new window.ErrorEvent('error', { message: 'startup failure' }))
+    window.dispatchEvent(new window.ErrorEvent('error', { message: 'startup failure', filename: 'https://gateway.test/workspace/device/assets/app.js' }))
     ;(window.document.querySelector('button') as HTMLButtonElement).click()
     const target = new URL(window.location.href)
     assert.equal(target.pathname, '/workspace/device/chat')
@@ -57,6 +57,52 @@ test('startup retry fetches a fresh entry while preserving workspace, query and 
     assert.equal(target.hash, '#message')
     assert.ok(target.searchParams.get('_workstep_reload'))
   } finally { await window.happyDOM.close() }
+})
+
+test('unrelated scripts and extension errors do not turn a slow startup into a failure', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.test/workspace/device/')
+  window.document.body.innerHTML = '<div id="root"><div class="app-loading">Loading</div></div>'
+  try {
+    window.eval(html.match(/<script id="workstep-startup-guard">([\s\S]*?)<\/script>/)![1])
+    for (const src of ['https://static.cloudflareinsights.com/beacon.min.js', 'chrome-extension://extension/content.js', 'https://gateway.test/analytics.js']) {
+      const script = window.document.createElement('script')
+      script.src = src
+      window.document.body.appendChild(script)
+      script.dispatchEvent(new window.Event('error', { bubbles: false }))
+      window.dispatchEvent(new window.ErrorEvent('error', { filename: src, message: 'unrelated failure' }))
+      const rejection = new window.Event('unhandledrejection')
+      Object.defineProperty(rejection, 'reason', { value: { stack: `Error: unrelated\n    at ${src}:1:1` } })
+      window.dispatchEvent(rejection)
+    }
+    window.dispatchEvent(new window.ErrorEvent('error', { message: 'Script error.' }))
+    assert.equal(window.document.querySelector('[role=alert]'), null)
+    assert.equal(window.document.querySelector('.app-loading')?.textContent, 'Loading')
+    window.document.getElementById('root')!.innerHTML = '<main>Ready</main>'
+    assert.equal(window.document.querySelector('main')?.textContent, 'Ready')
+  } finally { await window.happyDOM.close() }
+})
+
+test('application module resource failures and rejected startup code still expose recovery', async () => {
+  for (const failure of ['resource', 'rejection']) {
+    const { window } = installDomEnvironment()
+    window.happyDOM.setURL('https://gateway.test/workspace/device/')
+    window.document.body.innerHTML = '<div id="root"><div class="app-loading">Loading</div></div>'
+    try {
+      window.eval(html.match(/<script id="workstep-startup-guard">([\s\S]*?)<\/script>/)![1])
+      if (failure === 'resource') {
+        const script = window.document.createElement('script')
+        script.src = '/workspace/device/assets/app.js'
+        window.document.body.appendChild(script)
+        script.dispatchEvent(new window.Event('error'))
+      } else {
+        const rejection = new window.Event('unhandledrejection')
+        Object.defineProperty(rejection, 'reason', { value: { stack: 'Error: failed\n    at https://gateway.test/workspace/device/assets/app.js:1:1' } })
+        window.dispatchEvent(rejection)
+      }
+      assert.ok(window.document.querySelector('[role=alert]'), failure)
+    } finally { await window.happyDOM.close() }
+  }
 })
 
 test('missing lazy assets trigger one fresh navigation, then expose recovery on repeat failure', async () => {

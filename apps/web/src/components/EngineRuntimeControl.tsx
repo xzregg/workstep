@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { engineApi, type EngineRuntimeCatalog, type EngineRuntimeOperation } from '../api/client'
 import { useI18n } from '../i18n'
-import Button from './Button'
+import Button, { ButtonLink } from './Button'
 import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
 import Spinner from './Spinner'
@@ -185,7 +185,7 @@ export default function EngineRuntimeControl({ engineId, onChanged }: {
         {catalog?.requires_terms && <label className="engine-runtime-terms">
           <input type="checkbox" checked={acceptTerms} onChange={event => setAcceptTerms(event.target.checked)} />
           <span>{t('settings.runtimeTerms')}{' '}
-            {catalog.terms_url && <a href={catalog.terms_url} target="_blank" rel="noreferrer">{t('settings.reviewThirdPartyTerms')}</a>}
+            {catalog.terms_url && <ButtonLink href={catalog.terms_url} target="_blank" rel="noreferrer">{t('settings.reviewThirdPartyTerms')}</ButtonLink>}
           </span>
         </label>}
         {error && <p role="alert">{error}</p>}

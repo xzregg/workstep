@@ -18,7 +18,8 @@ from models import CoordinatorTurn, Message, TaskStep
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("operation", ["start", "live"])
-async def test_coordinator_dispatch_preserves_source_and_does_not_block_health(api_context, monkeypatch, operation):
+@pytest.mark.parametrize("user_request", ["启动步骤即可", "后端合并 dev 并推送，不用等我确认"])
+async def test_coordinator_dispatch_preserves_source_and_does_not_block_health(api_context, monkeypatch, operation, user_request):
     import main
     if operation == "start":
         import services.step_message_restart as persistence
@@ -81,8 +82,10 @@ async def test_coordinator_dispatch_preserves_source_and_does_not_block_health(a
     class DispatchCoordinator(CoordinatorFakeEngine):
         async def spawn(self, **kwargs):
             instructions = kwargs.get("system_prompt") or kwargs["prompt"]
-            assert "for dispatch-only requests" in instructions
-            assert "only when the user explicitly requests it" in instructions
+            assert "After step operations are accepted, finish this coordinator reply immediately" in instructions
+            assert "Do not poll, sleep or keep this turn open" in instructions
+            assert "Only wait for step completion when the user explicitly asks" in instructions
+            assert "for code delivery, wait for requested development/review" not in instructions
             result = await tools.call("workstep_start_step" if operation == "start" else "workstep_send_step_message", {
                 "project_id": project_id, "task_id": task_id, "step_key": step_key,
                 "content": "执行已授权的要求", "confirm": "yes",
@@ -96,7 +99,7 @@ async def test_coordinator_dispatch_preserves_source_and_does_not_block_health(a
     accepted = await client.post(f"/api/task/{task_id}/chat?project_id={project_id}",
                                  headers={"Idempotency-Key": "source-dispatch",
                                           "X-WorkStep-User-Name": "requester"},
-                                 json={"content": "启动步骤即可"})
+                                 json={"content": user_request})
     assert accepted.status_code == 200, accepted.text
     assert await asyncio.to_thread(entered.wait, 2)
     started = time.monotonic()

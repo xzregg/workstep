@@ -4,6 +4,8 @@ Desktop releases are built only from an existing semantic-version tag such as
 `v1.2.3`. The `release` GitHub Environment is the approval gate for creating a
 draft release.
 
+构建环境统一使用 Node 24 LTS：各应用 Volta 与 GitHub Actions 固定为 24.18.0，Docker 使用 Node 24 系列镜像；Yarn 保持 1.22.22。Electron 内嵌 Node 由 Electron 版本决定。
+
 ## 统一应用版本号
 
 桌面端是 daemon 的包装，两者使用同一应用版本。版本修改入口为 `apps/desktop/package.json` 的 `version`，不得分别维护 daemon 版本。发布前在 `apps/desktop` 执行（示例版本）：

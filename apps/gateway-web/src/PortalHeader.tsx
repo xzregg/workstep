@@ -39,7 +39,7 @@ export function PortalHeader({ hasAdminAccess, signedIn = false, checking = fals
   {signedIn && <NotificationCenter/>}
   {checking ? <span role="status">正在检查登录状态…</span> : signedIn
    ? <button className="gateway-portal-sign-in gateway-portal-sign-out" type="button" disabled={busy} onClick={() => void logout()}>{busy ? <><span className="gateway-spinner" /> 正在登出…</> : '登出'}</button>
-   : <Link className="gateway-portal-sign-in" to="/auth">登录 / 注册</Link>}
+   : <Link className="gateway-action-link gateway-portal-sign-in gateway-action-link--primary" to="/auth">登录 / 注册</Link>}
   {error && <p role="alert" className="gateway-auth-error">{error}</p>}
  </header>
 }

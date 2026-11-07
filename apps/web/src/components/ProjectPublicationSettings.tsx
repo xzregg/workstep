@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { projectApi, type ProjectPublicationStatus } from '../api/client'
 import { useI18n } from '../i18n'
-import Button from './Button'
+import Button, { ButtonLink } from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import './ProjectPublicationSettings.css'
 
@@ -66,13 +66,13 @@ export default function ProjectPublicationSettings({ projectId }: { projectId: s
           <ul>{status.grants.map(grant => <li key={`${grant.subject_type}:${grant.subject_id}`}>{
             t(`projectSettings.access.${grant.subject_type}`)} · {grant.subject_name} · {
             t(`projectSettings.access.${grant.access_level}`)}</li>)}</ul>}
-        {status.can_manage && <a href={`${status.gateway_url}/admin/projects`}>
+        {status.can_manage && <ButtonLink href={`${status.gateway_url}/admin/projects`}>
           {t('projectSettings.access.manage')}
-        </a>}
+        </ButtonLink>}
         {status.can_invite && status.project_id && <div className="project-publication-invite">
-          <a href={`${status.gateway_url.replace(/\/$/, '')}/project-invitations?project_id=${encodeURIComponent(status.project_id)}`}>
+          <ButtonLink href={`${status.gateway_url.replace(/\/$/, '')}/project-invitations?project_id=${encodeURIComponent(status.project_id)}`}>
             {t('projectSettings.access.invite')}
-          </a>
+          </ButtonLink>
           <p>{t('projectSettings.access.inviteHint')}</p>
         </div>}
       </>}

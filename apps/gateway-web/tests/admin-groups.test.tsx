@@ -16,6 +16,42 @@ const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-l
 const originalFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
 
+test('manual group creation trims pasted field edges and explains invalid identifiers', async () => {
+  let body: Record<string, unknown> | undefined
+  globalThis.fetch = async (input, init) => {
+    if (String(input) === '/api/admin/user-groups/tree') return Response.json({ groups: [] })
+    if (String(input) === '/api/auth/step-up') return Response.json({ expires_in_seconds: 300 })
+    if (String(input) === '/api/groups') {
+      body = JSON.parse(String(init?.body)); return Response.json({ id: 'new-group' }, { status: 201 })
+    }
+    throw Error('Unexpected request')
+  }
+  render(<AdminGroupCreateDialog csrf="csrf" onDone={() => {}} onClose={() => {}} />)
+  fireEvent.change(screen.getByLabelText('名称'), { target: { value: '开发组11' } })
+  fireEvent.change(screen.getByLabelText('标识'), { target: { value: 'dev' } })
+  fireEvent.change(screen.getByLabelText('说明'), { target: { value: '23' } })
+  assert.equal(screen.queryByLabelText('管理员密码'), null)
+  const submit = screen.getByRole('button', { name: '确认创建' }) as HTMLButtonElement
+  assert.equal(submit.disabled, false, 'the values shown in the screenshot should enable creation')
+  fireEvent.change(screen.getByLabelText('名称'), { target: { value: ' 开发组11　' } })
+  fireEvent.change(screen.getByLabelText('标识'), { target: { value: ' dev ' } })
+  assert.equal(submit.disabled, false, 'surrounding whitespace should not silently block creation')
+  fireEvent.change(screen.getByLabelText('标识'), { target: { value: 'Dev' } })
+  assert.equal(submit.disabled, true)
+  assert.match(screen.getByRole('alert').textContent ?? '', /小写字母/)
+  fireEvent.change(screen.getByLabelText('标识'), { target: { value: ' dev ' } })
+  fireEvent.click(submit)
+  await waitFor(() => assert.equal(body?.slug, 'dev'))
+  assert.equal(body?.name, '开发组11')
+})
+
+test('group creation explains an unavailable session instead of silently disabling submit', () => {
+  globalThis.fetch = async () => Response.json({ groups: [] })
+  render(<AdminGroupCreateDialog csrf="" onDone={() => {}} onClose={() => {}} />)
+  assert.match(screen.getByRole('alert').textContent ?? '', /登录状态/)
+  assert.equal((screen.getByRole('button', { name: '确认创建' }) as HTMLButtonElement).disabled, true)
+})
+
 test('super administrator creates a group, links a policy project and manages members', async () => {
   const writes: Array<{ url: string; method: string; body?: Record<string, unknown> }> = []
   let created = false
@@ -69,7 +105,6 @@ test('super administrator creates a group, links a policy project and manages me
   let dialog = await screen.findByRole('dialog', { name: '创建用户组' })
   fireEvent.change(getByLabelText(dialog, '名称'), { target: { value: '研发组' } })
   fireEvent.change(getByLabelText(dialog, '标识'), { target: { value: 'dev' } })
-  fireEvent.change(getByLabelText(dialog, '管理员密码'), { target: { value: 'secret' } })
   fireEvent.click(getByRole(dialog, 'button', { name: '确认创建' }))
   fireEvent.click(await screen.findByRole('button', { name: '研发组' }))
   fireEvent.change(screen.getByLabelText('搜索项目'), { target: { value: '策略' } })
@@ -121,7 +156,7 @@ test('administrator can map an external department to a user group', async () =>
   fireEvent.change(screen.getByLabelText('来源'), { target: { value: 'external_department' } })
   fireEvent.change(screen.getByLabelText('搜索部门'), { target: { value: '工程' } })
   fireEvent.click(screen.getByRole('button', { name: '查找部门' }))
-  await screen.findByRole('option', { name: '工程部 · wecom' })
+  await screen.findByRole('option', { name: '工程部 · wecom' , hidden: true})
   fireEvent.change(screen.getByLabelText('映射部门'), { target: { value: 'department-1' } })
   fireEvent.change(screen.getByLabelText('管理员密码'), { target: { value: 'secret' } })
   fireEvent.click(screen.getByRole('button', { name: '确认创建' }))
@@ -140,11 +175,10 @@ test('create group offers a parent and submits its stable ID',async()=>{
   throw Error('Unexpected fetch')
  }
  render(<AdminGroupCreateDialog csrf="csrf" onDone={()=>{}} onClose={()=>{}}/>)
- await screen.findByRole('option',{name:'研发'})
+ await screen.findByRole('option',{name:'研发', hidden: true})
  fireEvent.change(screen.getByLabelText('父组'),{target:{value:'parent'}})
  fireEvent.change(screen.getByLabelText('名称'),{target:{value:'开发'}})
  fireEvent.change(screen.getByLabelText('标识'),{target:{value:'development'}})
- fireEvent.change(screen.getByLabelText('管理员密码'),{target:{value:'secret'}})
  fireEvent.click(screen.getByRole('button',{name:'确认创建'}))
  await waitFor(()=>assert.equal(body?.parent_id,'parent'))
 })

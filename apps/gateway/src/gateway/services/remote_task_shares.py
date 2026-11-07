@@ -18,7 +18,8 @@ class CreateRemoteShareInput(platform_shares.CreateShareInput):
         return self
 
 async def _authorize(call: GatewayCall, project_id=None, host_project_id=None, *, mutation=False, create=False):
-    user, device_id, auth_session, _ = await _remote_identity(call)
+    user, device_id, auth_session, _ = await _remote_identity(
+        call, target_host_project_id=host_project_id, target_project_id=project_id)
     if bool(project_id) == bool(host_project_id):
         raise GatewayError('invalid', 'Exactly one task project is required')
     if mutation:

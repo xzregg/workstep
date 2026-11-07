@@ -29,10 +29,11 @@ class DepartmentInput(BaseModel):
     department_id: str | None = None
 
 
-async def _writer(call):
+async def _writer(call, *, sensitive=True):
     identity, actor = await _super_admin_request(call)
-    _, auth_session = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    if sensitive:
+        _, auth_session = await identity.session_user(call.tokens.get(COOKIE_NAME))
+        await identity.require_step_up(auth_session)
     return actor
 
 
@@ -53,7 +54,7 @@ async def list_groups(call: GatewayCall):
 
 
 async def create_group(call: GatewayCall, body: GroupInput):
-    actor = await _writer(call)
+    actor = await _writer(call, sensitive=False)
     name = body.name.strip()
     if not name:
         raise GatewayError('invalid', 'Group name required')

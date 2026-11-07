@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -32,8 +33,13 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId 
   const [error, setError] = useState('')
   const [discard, setDiscard] = useState(false)
   const dirty = Boolean(name || slug || description || password || departmentId || departmentQuery || parentId!==defaultParentId)
-  const valid = Boolean(csrf && passwordReady && name && name.trim() === name
-    && /^[a-z0-9][a-z0-9_-]*$/.test(slug)
+  const trimmedName = name.trim()
+  const trimmedSlug = slug.trim()
+  const slugValid = /^[a-z0-9][a-z0-9_-]*$/.test(trimmedSlug)
+  const validationError = !csrf ? '登录状态不可用，请关闭弹窗后刷新页面重试。'
+    : name && !trimmedName ? '名称不能只包含空格。'
+    : slug && !slugValid ? '标识须以小写字母或数字开头，仅支持小写字母、数字、下划线和短横线。' : ''
+  const valid = Boolean(csrf && (sourceType === 'manual' || passwordReady) && trimmedName && slugValid
     && (sourceType === 'manual' || departmentId))
 
   async function searchDepartments() {
@@ -52,10 +58,12 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId 
     setBusy(true); setError('')
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
     try {
-      const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('管理员密码验证失败。')
+      if (sourceType === 'external_department') {
+        const step = await confirmStepUp(csrf, password, passwordRequired)
+        if (!step.ok) throw new Error('管理员密码验证失败。')
+      }
       const response = await fetch('/api/groups', { method: 'POST', credentials: 'same-origin',
-        headers, body: JSON.stringify({ name, slug, description, source_type: sourceType,
+        headers, body: JSON.stringify({ name: trimmedName, slug: trimmedSlug, description, source_type: sourceType,
           external_department_id: sourceType === 'external_department' ? departmentId : null,
           ...(sourceType === 'manual' && parentId ? {parent_id:parentId} : {}) }) })
       if (!response.ok) throw new Error(response.status === 409
@@ -69,19 +77,20 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId 
 
   return <><GatewayConfirmDialog title="创建用户组" message="创建手工组或映射现有外部部门；成员和项目关联可在创建后配置。"
     confirmLabel="确认创建" busy={busy} disabled={!valid} onConfirm={() => void submit()}
-    onCancel={() => dirty ? setDiscard(true) : onClose()}>
+    onCancel={() => dirty ? setDiscard(true) : onClose()}
+      passwordConfirmation={sourceType === 'external_department' && <PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} />}>
     <div className="gateway-usage-filters">
       <label>名称<input value={name} maxLength={256} onChange={event => setName(event.target.value)} /></label>
       <label>标识<input value={slug} maxLength={128} onChange={event => setSlug(event.target.value)} /></label>
       <label>说明<input value={description} maxLength={2000}
         onChange={event => setDescription(event.target.value)} /></label>
-      <label>来源<select value={sourceType} onChange={event => {
+      <label>来源<Select value={sourceType} onChange={event => {
         setSourceType(event.target.value as 'manual' | 'external_department'); setDepartmentId('');setParentId('')
       }}><option value="manual">手工用户组</option>
-        <option value="external_department">外部部门映射</option></select></label>
-      {sourceType==='manual' && <label>父组<select value={parentId} disabled={parentsLoading} onChange={event=>setParentId(event.target.value)}>
+        <option value="external_department">外部部门映射</option></Select></label>
+      {sourceType==='manual' && <label>父组<Select value={parentId} disabled={parentsLoading} onChange={event=>setParentId(event.target.value)}>
         <option value="">无父组（顶级用户组）</option>{groups.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}
-      </select></label>}
+      </Select></label>}
       {sourceType==='external_department' && <p>父组按外部部门层级自动同步。</p>}
       {parentsLoading && sourceType==='manual' && <p role="status"><span className="gateway-spinner"/>正在加载父组…</p>}
       {parentsError && sourceType==='manual' && <p role="alert">{parentsError}<button type="button" onClick={()=>setParentsRevision(value=>value+1)}>重试父组列表</button></p>}
@@ -89,12 +98,12 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId 
         <label>搜索部门<input value={departmentQuery} maxLength={128}
           onChange={event => setDepartmentQuery(event.target.value)} /></label>
         <button type="button" onClick={() => void searchDepartments()}>查找部门</button>
-        <label>映射部门<select value={departmentId} onChange={event => setDepartmentId(event.target.value)}>
+        <label>映射部门<Select value={departmentId} onChange={event => setDepartmentId(event.target.value)}>
           <option value="">选择部门</option>{departments.map(item => <option key={item.id} value={item.id}>
-            {item.display_name} · {item.provider}</option>)}</select></label>
+            {item.display_name} · {item.provider}</option>)}</Select></label>
       </>}
-      <PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} />
     </div>
+    {validationError && <p role="alert" className="gateway-auth-error">{validationError}</p>}
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在创建用户组…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>

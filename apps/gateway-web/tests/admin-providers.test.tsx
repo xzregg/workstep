@@ -40,7 +40,7 @@ test('provider test selects an online PC and displays only a bounded result', as
   const dialog = screen.getByRole('dialog', { name: '测试供应商连接' })
   await within(dialog).findByText('在线 PC 加载失败。')
   fireEvent.click(within(dialog).getByRole('button', { name: '重试加载' }))
-  await within(dialog).findByRole('option', { name: 'Office PC' })
+  await within(dialog).findByRole('option', { name: 'Office PC' , hidden: true})
   fireEvent.change(within(dialog).getByLabelText('目标 PC'), { target: { value: 'pc-1' } })
   fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), {
     target: { value: 'password' },
@@ -223,7 +223,7 @@ test('provider assignments select a user or PC and revoke with step-up', async (
   await screen.findByText('当前条件下没有授权。')
   fireEvent.click(screen.getByRole('button', { name: '新增分配' }))
   let dialog = screen.getByRole('dialog', { name: '分配供应商' })
-  await within(dialog).findByRole('option', { name: 'Alice（alice）' })
+  await within(dialog).findByRole('option', { name: 'Alice（alice）' , hidden: true})
   fireEvent.change(within(dialog).getByLabelText('授权对象'), { target: { value: 'user-1' } })
   fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
   fireEvent.click(within(dialog).getByRole('button', { name: '确认分配' }))
@@ -252,7 +252,7 @@ test('provider assignments select a user or PC and revoke with step-up', async (
   fireEvent.click(screen.getByRole('button', { name: '新增分配' }))
   dialog = screen.getByRole('dialog', { name: '分配供应商' })
   fireEvent.change(within(dialog).getByLabelText('对象类型'), { target: { value: 'device' } })
-  await within(dialog).findByRole('option', { name: 'Office PC' })
+  await within(dialog).findByRole('option', { name: 'Office PC' , hidden: true})
   fireEvent.change(within(dialog).getByLabelText('授权对象'), { target: { value: 'pc-1' } })
   fireEvent.click(within(dialog).getByRole('button', { name: '取消' }))
   assert.ok(screen.getByRole('dialog', { name: '放弃供应商授权修改' }))

@@ -10,7 +10,7 @@ test('portal navigation marks the current page and separates sign-in from worksp
  assert.match(html, /aria-current="page"[^>]*href="\/"/)
  assert.doesNotMatch(html, /href="\/devices"/)
  assert.match(html, /管理后台/)
- assert.match(html, /class="gateway-portal-sign-in"/)
+ assert.match(html, /class="[^"]*\bgateway-portal-sign-in\b[^"]*"/)
 })
 
 test('portal navigation omits management access for a regular account', () => {

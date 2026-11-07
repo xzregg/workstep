@@ -25,6 +25,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { completionNotice, notificationUrl, notifyCompletion, unwatchPendingCompletion, completionScopeName,
   type CompletionNotice } from '../utils/completionNotifications'
 import { clearBrowserPushWatch, syncBrowserPush } from '../utils/browserPush'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 import { useWebSocketConnectionStore } from '../stores/webSocketConnectionStore'
 
 const WS_RECONNECT_BASE_MS = 1000
@@ -68,7 +69,10 @@ export function flushWsSubscriptionNow() {
 }
 
 export function useWebSocket() {
-  const wsRef = useRef<WebSocket | null>(null)
+  const sockets = useRef(new Map<string, WebSocket>())
+  const scopeKey = useGatewaySessionStore(s => JSON.stringify(
+    s.session?.projects?.map(project => project.host_project_id) ?? [''],
+  ))
   const handleEvent = useTaskStore((s) => s.handleWsEvent)
   const handleGenEvent = useWorkflowGenStore((s) => s.handleWsEvent)
   const handleTaskDraftEvent = useTaskDraftStore((s) => s.handleWsEvent)
@@ -90,8 +94,11 @@ export function useWebSocket() {
   const activeProjectId = useProjectStore((s) => s.activeProject?.id)
 
   const send = useCallback((msg: object) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg))
+    for (const [projectId, socket] of sockets.current) {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(projectId && 'type' in msg && msg.type === 'subscribe'
+          ? { ...msg, project_id: projectId } : msg))
+      }
     }
   }, [])
 
@@ -153,234 +160,251 @@ export function useWebSocket() {
   }, [flushSubscription, detailTaskIds, remoteProjectIds, chatProjectIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId, recentTargets])
 
   useEffect(() => {
-    let active = true
-    let hasOpened = false
-    let reconnectAttempt = 0
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-    let resumeTimer: ReturnType<typeof setTimeout> | null = null
-    let heartbeatTimer: ReturnType<typeof setInterval> | null = null
-    let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null
-    let connectTimeout: ReturnType<typeof setTimeout> | null = null
-    let heartbeatNonce = 0
-    let heartbeatStartedAt: number | null = null
-    let disconnectedAt = 0
-    const clearSocketTimers = () => {
-      if (heartbeatTimer) clearInterval(heartbeatTimer)
-      if (heartbeatTimeout) clearTimeout(heartbeatTimeout)
-      if (connectTimeout) clearTimeout(connectTimeout)
-      heartbeatTimer = heartbeatTimeout = connectTimeout = null
-      heartbeatStartedAt = null
-      useWebSocketConnectionStore.setState({ connected: false, latencyMs: null })
-    }
-
-    const connect = () => {
-      if (!active) return
-      if (
-        wsRef.current?.readyState === WebSocket.OPEN ||
-        wsRef.current?.readyState === WebSocket.CONNECTING
-      ) return
-
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const ws = new WebSocket(gatewayResourceUrl(`${protocol}//${window.location.host}/ws`))
-      wsRef.current = ws
-      connectTimeout = setTimeout(() => {
-        if (wsRef.current === ws && ws.readyState === WebSocket.CONNECTING) ws.close()
-      }, 10000)
-
-      ws.onopen = () => {
-        if (!active || wsRef.current !== ws) return
-        clearSocketTimers()
-        useWebSocketConnectionStore.setState({ connected: true })
-        console.log('[WS] connected')
-        const isReconnect = hasOpened
-        hasOpened = true
-        reconnectAttempt = 0
-        // Narrow the server-side fan-out to what this client renders.
-        flushSubscription()
-        // A reconnect (e.g. daemon restart) may have changed persisted task
-        // state; re-fetch so the board reflects recovered runs immediately.
-        const projectId = useProjectStore.getState().activeProject?.id
-        if (isReconnect) {
-          const project = useProjectStore.getState().activeProject
-          if (projectId && project?.type !== 'remote') {
-            useProjectStore.getState().refreshProjects()
-            void useTaskStore.getState().fetchTasks(projectId)
-            useChatListStore.getState().refreshSessions(projectId)
-          }
-          window.dispatchEvent(new Event('workstep:reconnected'))
-          if (projectId && disconnectedAt && document.visibilityState === 'hidden') {
-            const since = disconnectedAt
-            const subscription = buildSubscription()
-            void gatewayFetch(`/api/completion-notifications/recent?${new URLSearchParams({
-              project_id: projectId, since: String(since),
-            })}`).then(async (response) => {
-              if (!response.ok) return
-              const payload = await response.json() as { events: Record<string, string>[] }
-              for (const event of payload.events) {
-                const notice = completionNotice(event)
-                if (!notice || !(notice.sessionId && subscription.session_ids.includes(notice.sessionId)
-                  || notice.taskId && (subscription.task_ids.includes(notice.taskId)
-                    || subscription.status_only_task_ids.includes(notice.taskId)))) continue
-                notifyCompletion(notice, notificationUrlFor(notice))
-              }
-            }).catch(() => undefined)
-          }
-        }
-        disconnectedAt = 0
-        heartbeatTimer = setInterval(() => {
-          if (document.visibilityState === 'hidden' || heartbeatTimeout) return
-          heartbeatStartedAt = window.performance.now()
-          send({ type: 'ping', nonce: ++heartbeatNonce })
-          heartbeatTimeout = setTimeout(restart, 10000)
-        }, 20000)
+    const checks: Array<() => void> = []
+    const checkAll = () => checks.forEach(check => check())
+    verifyConnection = checkAll
+    const cleanups = (JSON.parse(scopeKey) as string[]).map(scopeId => {
+      const wsRef: { current: WebSocket | null } = { current: null }
+      const send = (message: object) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(message))
       }
-      ws.onmessage = (event) => {
-        if (!active || wsRef.current !== ws) return
-        try {
-          const parsed = JSON.parse(event.data)
-          if (parsed.type === 'pong') {
-            if (parsed.nonce === heartbeatNonce && heartbeatTimeout) {
-              if (heartbeatStartedAt !== null)
-                useWebSocketConnectionStore.setState({ latencyMs: Math.max(0, Math.round(window.performance.now() - heartbeatStartedAt)) })
-              clearTimeout(heartbeatTimeout)
-              heartbeatTimeout = null
-              heartbeatStartedAt = null
-            }
-            return
-          }
-          if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.remote_project_status') {
-            const projects = useProjectStore.getState()
-            if (parsed.value?.project) projects.applyRemoteProject(parsed.value.project)
-            const activeProjectId = projects.activeProject?.id
-            if (projects.activeProject?.type !== 'remote' && activeProjectId && activeProjectId === parsed.value?.project_id && parsed.value?.status === 'connected') {
-              void useTaskStore.getState().fetchTasks(activeProjectId)
-              useChatListStore.getState().refreshSessions(activeProjectId)
-              window.dispatchEvent(new Event('workstep:reconnected'))
-            }
-          }
-          if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.gateway_connection_changed') {
-            window.dispatchEvent(new Event('workstep:gateway-connection-changed'))
-          }
-          if (parsed.type === 'CUSTOM' && parsed.name === 'channel.session_changed') {
-            const projectId = useProjectStore.getState().activeProject?.id
-            if (projectId && parsed.project_id === projectId) {
+      let active = true
+      let hasOpened = false
+      let reconnectAttempt = 0
+      let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+      let resumeTimer: ReturnType<typeof setTimeout> | null = null
+      let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+      let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null
+      let connectTimeout: ReturnType<typeof setTimeout> | null = null
+      let heartbeatNonce = 0
+      let heartbeatStartedAt: number | null = null
+      let disconnectedAt = 0
+      const clearSocketTimers = () => {
+        if (heartbeatTimer) clearInterval(heartbeatTimer)
+        if (heartbeatTimeout) clearTimeout(heartbeatTimeout)
+        if (connectTimeout) clearTimeout(connectTimeout)
+        heartbeatTimer = heartbeatTimeout = connectTimeout = null
+        heartbeatStartedAt = null
+        useWebSocketConnectionStore.setState({ connected: [...sockets.current.values()].some(socket => socket.readyState === WebSocket.OPEN), latencyMs: null })
+      }
+
+      const connect = () => {
+        if (!active) return
+        if (
+          wsRef.current?.readyState === WebSocket.OPEN ||
+          wsRef.current?.readyState === WebSocket.CONNECTING
+        ) return
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        const ws = new WebSocket(gatewayResourceUrl(`${protocol}//${window.location.host}/ws${scopeId ? `?project_id=${encodeURIComponent(scopeId)}` : ''}`))
+        wsRef.current = ws
+        sockets.current.set(scopeId, ws)
+        connectTimeout = setTimeout(() => {
+          if (wsRef.current === ws && ws.readyState === WebSocket.CONNECTING) ws.close()
+        }, 10000)
+
+        ws.onopen = () => {
+          if (!active || wsRef.current !== ws) return
+          clearSocketTimers()
+          useWebSocketConnectionStore.setState({ connected: true })
+          console.log('[WS] connected')
+          const isReconnect = hasOpened
+          hasOpened = true
+          reconnectAttempt = 0
+          // Narrow the server-side fan-out to what this client renders.
+          flushSubscription()
+          // A reconnect (e.g. daemon restart) may have changed persisted task
+          // state; re-fetch so the board reflects recovered runs immediately.
+          const projectId = scopeId || useProjectStore.getState().activeProject?.id
+          if (isReconnect) {
+            const project = useProjectStore.getState().activeProject
+            if (projectId && project?.type !== 'remote') {
+              useProjectStore.getState().refreshProjects()
+              if (projectId === project?.id) void useTaskStore.getState().fetchTasks(projectId)
               useChatListStore.getState().refreshSessions(projectId)
             }
-          }
-          if (parsed.type === 'TEXT_MESSAGE_START' && parsed.role === 'assistant' && parsed.project_id && parsed.messageId && (parsed.session_id || parsed.task_id)) {
-            const taskId = CHAT_SESSION_CHANNELS.includes(parsed.channel || '') && parsed.session_id ? null : parsed.task_id || null
-            const watch = {
-              id: `${parsed.project_id}:${parsed.session_id || parsed.task_id}:${parsed.messageId}`,
-              projectId: parsed.project_id,
-              sessionId: parsed.session_id || null,
-              taskId,
+            window.dispatchEvent(new Event('workstep:reconnected'))
+            if (projectId && disconnectedAt && document.visibilityState === 'hidden') {
+              const since = disconnectedAt
+              const subscription = buildSubscription()
+              void gatewayFetch(`/api/completion-notifications/recent?${new URLSearchParams({
+                project_id: projectId, since: String(since),
+              })}`).then(async (response) => {
+                if (!response.ok) return
+                const payload = await response.json() as { events: Record<string, string>[] }
+                for (const event of payload.events) {
+                  const notice = completionNotice(event)
+                  if (!notice || !(notice.sessionId && subscription.session_ids.includes(notice.sessionId)
+                    || notice.taskId && (subscription.task_ids.includes(notice.taskId)
+                      || subscription.status_only_task_ids.includes(notice.taskId)))) continue
+                  notifyCompletion(notice, notificationUrlFor(notice))
+                }
+              }).catch(() => undefined)
             }
-            postAndroidNotification({
-              type: 'watch', ...watch, scopeName: completionScopeName(watch.projectId, watch),
-              url: notificationUrlFor({ ...watch, outcome: 'succeeded', title: '', body: '' }),
-            })
           }
-          if (parsed.type === 'RUN_STARTED' && parsed.project_id && parsed.task_id && parsed.step_key && parsed.step_key !== 'null') {
-            const watch = {
-              id: `${parsed.project_id}:${parsed.task_id}:step:${parsed.step_key}`,
-              projectId: parsed.project_id,
-              taskId: parsed.task_id,
-              stepKey: parsed.step_key,
+          disconnectedAt = 0
+          heartbeatTimer = setInterval(() => {
+            if (document.visibilityState === 'hidden' || heartbeatTimeout) return
+            heartbeatStartedAt = window.performance.now()
+            send({ type: 'ping', nonce: ++heartbeatNonce })
+            heartbeatTimeout = setTimeout(restart, 10000)
+          }, 20000)
+        }
+        ws.onmessage = (event) => {
+          if (!active || wsRef.current !== ws) return
+          try {
+            const parsed = JSON.parse(event.data)
+            if (parsed.type === 'pong') {
+              if (parsed.nonce === heartbeatNonce && heartbeatTimeout) {
+                if (heartbeatStartedAt !== null)
+                  useWebSocketConnectionStore.setState({ latencyMs: Math.max(0, Math.round(window.performance.now() - heartbeatStartedAt)) })
+                clearTimeout(heartbeatTimeout)
+                heartbeatTimeout = null
+                heartbeatStartedAt = null
+              }
+              return
             }
-            postAndroidNotification({
-              type: 'watch', ...watch, scopeName: completionScopeName(watch.projectId, watch),
-              url: notificationUrlFor({ ...watch, sessionId: null, outcome: 'succeeded', title: '', body: '' }),
-            })
+            if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.remote_project_status') {
+              const projects = useProjectStore.getState()
+              if (parsed.value?.project) projects.applyRemoteProject(parsed.value.project)
+              const activeProjectId = projects.activeProject?.id
+              if (projects.activeProject?.type !== 'remote' && activeProjectId && activeProjectId === parsed.value?.project_id && parsed.value?.status === 'connected') {
+                void useTaskStore.getState().fetchTasks(activeProjectId)
+                useChatListStore.getState().refreshSessions(activeProjectId)
+                window.dispatchEvent(new Event('workstep:reconnected'))
+              }
+            }
+            if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.gateway_connection_changed') {
+              window.dispatchEvent(new Event('workstep:gateway-connection-changed'))
+            }
+            if (parsed.type === 'CUSTOM' && parsed.name === 'channel.session_changed') {
+              const projectId = scopeId || useProjectStore.getState().activeProject?.id
+              if (projectId && parsed.project_id === projectId) {
+                useChatListStore.getState().refreshSessions(projectId)
+              }
+            }
+            if (parsed.type === 'TEXT_MESSAGE_START' && parsed.role === 'assistant' && parsed.project_id && parsed.messageId && (parsed.session_id || parsed.task_id)) {
+              const taskId = CHAT_SESSION_CHANNELS.includes(parsed.channel || '') && parsed.session_id ? null : parsed.task_id || null
+              const watch = {
+                id: `${parsed.project_id}:${parsed.session_id || parsed.task_id}:${parsed.messageId}`,
+                projectId: parsed.project_id,
+                sessionId: parsed.session_id || null,
+                taskId,
+              }
+              postAndroidNotification({
+                type: 'watch', ...watch, scopeName: completionScopeName(watch.projectId, watch),
+                url: notificationUrlFor({ ...watch, outcome: 'succeeded', title: '', body: '' }),
+              })
+            }
+            if (parsed.type === 'RUN_STARTED' && parsed.project_id && parsed.task_id && parsed.step_key && parsed.step_key !== 'null') {
+              const watch = {
+                id: `${parsed.project_id}:${parsed.task_id}:step:${parsed.step_key}`,
+                projectId: parsed.project_id,
+                taskId: parsed.task_id,
+                stepKey: parsed.step_key,
+              }
+              postAndroidNotification({
+                type: 'watch', ...watch, scopeName: completionScopeName(watch.projectId, watch),
+                url: notificationUrlFor({ ...watch, sessionId: null, outcome: 'succeeded', title: '', body: '' }),
+              })
+            }
+            const notice = completionNotice(parsed)
+            if (notice) {
+              notifyCompletion(notice, notificationUrlFor(notice))
+              postAndroidNotification({ type: 'unwatch', id: parsed.step_key
+                ? `${parsed.project_id}:${parsed.task_id}:step:${parsed.step_key}` : notice.id })
+              if (notice.sessionId) unwatchPendingCompletion(notice.projectId, { sessionId: notice.sessionId })
+              if (notice.taskId) unwatchPendingCompletion(notice.projectId, { taskId: notice.taskId })
+            }
+            if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)
+            if (parsed.session_id && parsed.channel === 'task_create') handleTaskDraftEvent(parsed)
+            if (parsed.session_id && CHAT_SESSION_CHANNELS.includes(parsed.channel || '')) handleChatSessionEvent(parsed)
+            void useRecentActivityStore.getState().handleWsEvent(parsed)
+            handleEvent(parsed)
+          } catch (error) {
+            console.warn('[WS] invalid message:', error)
           }
-          const notice = completionNotice(parsed)
-          if (notice) {
-            notifyCompletion(notice, notificationUrlFor(notice))
-            postAndroidNotification({ type: 'unwatch', id: parsed.step_key
-              ? `${parsed.project_id}:${parsed.task_id}:step:${parsed.step_key}` : notice.id })
-            if (notice.sessionId) unwatchPendingCompletion(notice.projectId, { sessionId: notice.sessionId })
-            if (notice.taskId) unwatchPendingCompletion(notice.projectId, { taskId: notice.taskId })
-          }
-          if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)
-          if (parsed.session_id && parsed.channel === 'task_create') handleTaskDraftEvent(parsed)
-          if (parsed.session_id && CHAT_SESSION_CHANNELS.includes(parsed.channel || '')) handleChatSessionEvent(parsed)
-          void useRecentActivityStore.getState().handleWsEvent(parsed)
-          handleEvent(parsed)
-        } catch (error) {
-          console.warn('[WS] invalid message:', error)
+        }
+        ws.onerror = () => ws.close()
+        ws.onclose = () => {
+          if (wsRef.current !== ws) return
+          disconnectedAt = Date.now() / 1000
+          wsRef.current = null
+          sockets.current.delete(scopeId)
+          clearSocketTimers()
+          if (!active || reconnectTimer) return
+          const delay = Math.min(
+            WS_RECONNECT_BASE_MS * 2 ** reconnectAttempt,
+            WS_RECONNECT_MAX_MS,
+          )
+          reconnectAttempt++
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null
+            connect()
+          }, delay)
         }
       }
-      ws.onerror = () => ws.close()
-      ws.onclose = () => {
-        if (wsRef.current !== ws) return
-        disconnectedAt = Date.now() / 1000
-        wsRef.current = null
-        clearSocketTimers()
-        if (!active || reconnectTimer) return
-        const delay = Math.min(
-          WS_RECONNECT_BASE_MS * 2 ** reconnectAttempt,
-          WS_RECONNECT_MAX_MS,
-        )
-        reconnectAttempt++
-        reconnectTimer = setTimeout(() => {
-          reconnectTimer = null
-          connect()
-        }, delay)
-      }
-    }
 
-    const restart = () => {
-      if (!active) return
-      if (reconnectTimer) clearTimeout(reconnectTimer)
-      reconnectTimer = null
-      clearSocketTimers()
-      const old = wsRef.current
-      wsRef.current = null
-      old?.close()
+      const restart = () => {
+        if (!active) return
+        if (reconnectTimer) clearTimeout(reconnectTimer)
+        reconnectTimer = null
+        sockets.current.delete(scopeId)
+        clearSocketTimers()
+        const old = wsRef.current
+        wsRef.current = null
+        old?.close()
+        connect()
+      }
+      const resume = () => {
+        if (document.visibilityState === 'hidden' || resumeTimer) return
+        resumeTimer = setTimeout(() => {
+          resumeTimer = null
+          checkConnection()
+        }, 0)
+      }
+      const checkConnection = () => {
+        const ws = wsRef.current
+        if (!ws || ws.readyState > WebSocket.OPEN) { restart(); return }
+        if (ws.readyState !== WebSocket.OPEN) return
+        // A long-idle mobile socket can still report OPEN after its network died.
+        // Probe on focus/resume and send; a healthy connection needs no refresh.
+        // Keep an outstanding probe's deadline even if focus fires repeatedly.
+        if (heartbeatTimeout) return
+        heartbeatStartedAt = window.performance.now()
+        send({ type: 'ping', nonce: ++heartbeatNonce })
+        heartbeatTimeout = setTimeout(restart, 3000)
+      }
+      checks.push(checkConnection)
+      const pageShown = (event: PageTransitionEvent) => { if (event.persisted) resume() }
+      document.addEventListener('visibilitychange', resume)
+      window.addEventListener('online', resume)
+      window.addEventListener('focus', resume)
+      window.addEventListener('pageshow', pageShown)
+      window.addEventListener('workstep:resume', resume)
       connect()
-    }
-    const resume = () => {
-      if (document.visibilityState === 'hidden' || resumeTimer) return
-      resumeTimer = setTimeout(() => {
-        resumeTimer = null
-        checkConnection()
-      }, 0)
-    }
-    const checkConnection = () => {
-      const ws = wsRef.current
-      if (!ws || ws.readyState > WebSocket.OPEN) { restart(); return }
-      if (ws.readyState !== WebSocket.OPEN) return
-      // A long-idle mobile socket can still report OPEN after its network died.
-      // Probe on focus/resume and send; a healthy connection needs no refresh.
-      // Keep an outstanding probe's deadline even if focus fires repeatedly.
-      if (heartbeatTimeout) return
-      heartbeatStartedAt = window.performance.now()
-      send({ type: 'ping', nonce: ++heartbeatNonce })
-      heartbeatTimeout = setTimeout(restart, 3000)
-    }
-    verifyConnection = checkConnection
-    const pageShown = (event: PageTransitionEvent) => { if (event.persisted) resume() }
-    document.addEventListener('visibilitychange', resume)
-    window.addEventListener('online', resume)
-    window.addEventListener('focus', resume)
-    window.addEventListener('pageshow', pageShown)
-    window.addEventListener('workstep:resume', resume)
-    connect()
+      return () => {
+        active = false
+        clearSocketTimers()
+        if (reconnectTimer) clearTimeout(reconnectTimer)
+        if (resumeTimer) clearTimeout(resumeTimer)
+        document.removeEventListener('visibilitychange', resume)
+        window.removeEventListener('online', resume)
+        window.removeEventListener('focus', resume)
+        window.removeEventListener('pageshow', pageShown)
+        window.removeEventListener('workstep:resume', resume)
+        const ws = wsRef.current
+        wsRef.current = null
+        sockets.current.delete(scopeId)
+        ws?.close()
+      }
+    })
     return () => {
-      active = false
-      if (verifyConnection === checkConnection) verifyConnection = null
-      clearSocketTimers()
-      if (reconnectTimer) clearTimeout(reconnectTimer)
-      if (resumeTimer) clearTimeout(resumeTimer)
-      document.removeEventListener('visibilitychange', resume)
-      window.removeEventListener('online', resume)
-      window.removeEventListener('focus', resume)
-      window.removeEventListener('pageshow', pageShown)
-      window.removeEventListener('workstep:resume', resume)
-      const ws = wsRef.current
-      wsRef.current = null
-      ws?.close()
+      if (verifyConnection === checkAll) verifyConnection = null
+      cleanups.forEach(cleanup => cleanup())
+      useWebSocketConnectionStore.setState({ connected: false, latencyMs: null })
     }
-  }, [handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, flushSubscription, send, buildSubscription])
+  }, [scopeKey, handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, flushSubscription, send, buildSubscription])
 
   return { send }
 }

@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { TaskShareLoginToggle } from '@workstep/gateway-ui/TaskShareLoginToggle'
@@ -120,7 +121,7 @@ export function GatewayShareCreatePage() {
     {!validTarget && <p role="alert">缺少有效的项目或任务标识，请从任务详情重新打开。</p>}
     {validTarget && auth === 'checking' && <p role="status">正在检查账户…</p>}
     {validTarget && auth === 'login' && <p>
-      请先在 Gateway 登录。<Link to={`/auth?next=${encodeURIComponent(location.pathname + location.search)}`}>前往登录</Link>
+      请先在 Gateway 登录。<Link className="gateway-action-link" to={`/auth?next=${encodeURIComponent(location.pathname + location.search)}`}>前往登录</Link>
     </p>}
     {validTarget && auth === 'ready' && !created && <form className="gateway-auth-form"
       onSubmit={event => void create(event)}>
@@ -129,11 +130,11 @@ export function GatewayShareCreatePage() {
       <input id="gateway-share-title" value={title} maxLength={256}
         onChange={event => setTitle(event.target.value)} />
       <label htmlFor="gateway-share-mode">访问方式</label>
-      <select id="gateway-share-mode" value={mode}
+      <Select id="gateway-share-mode" value={mode}
         onChange={event => setMode(event.target.value as 'read_only' | 'interactive')}>
         <option value="read_only">只读</option>
         <option value="interactive">互动</option>
-      </select>
+      </Select>
       <TaskShareLoginToggle checked={loginRequired} required={mode === 'interactive'} onChange={setRequireLogin}
         label={labels.label} hint={labels.hint} />
       {!loginRequired && <><label htmlFor="gateway-share-new-password">访问密钥</label>
@@ -157,7 +158,7 @@ export function GatewayShareCreatePage() {
         {created?.require_login && <p>{labels.required}</p>}
         {createdPassword && <><label htmlFor="gateway-created-share-key">访问密钥</label><input id="gateway-created-share-key" readOnly value={createdPassword} /></>}
         <div className="gateway-share-create-actions">
-          <a href={taskShareAccessUrl(created.url, createdPassword)} target="_blank" rel="noopener noreferrer">打开分享链接</a>
+          <a className="gateway-action-link" href={taskShareAccessUrl(created.url, createdPassword)} target="_blank" rel="noopener noreferrer">打开分享链接</a>
           <button type="button" onClick={() => void copyLink()}>{copied ? '已复制' : created.require_login ? labels.copy : '复制链接和密钥'}</button>
           <button type="button" onClick={() => setConfirmRevoke(true)}>撤销分享</button>
         </div>

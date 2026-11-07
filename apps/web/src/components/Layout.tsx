@@ -50,6 +50,8 @@ import { useSidebarProjectLoading } from '../hooks/useSidebarProjectLoading'
 import { useSidebarConversationLoading } from '../hooks/useSidebarConversationLoading'
 import SidebarLoadStatus from './SidebarLoadStatus'
 import WorkspaceSidebarSections from './WorkspaceSidebarSections'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
+import { resolveProjectPermissions } from '../utils/projectPermissions'
 import {
   engineApi,
   type Project,
@@ -94,6 +96,8 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null)
   const { projects, activeProject, activeWorkflowId, fetchProjects, setActiveProject, renameProject, deleteProject, renameWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
   const { bound, can } = useGatewayProjectPermissions(activeProject?.id)
+  const gatewaySession = useGatewaySessionStore(state => state.session)
+  const projectCan = (projectId: string) => resolveProjectPermissions(isGatewayRemoteBrowser(), gatewaySession, projectId).can
   const [showInitModal, setShowInitModal] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -191,8 +195,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   const sidebarSearchActive = sidebarSearchQuery.trim().length > 0
   const [sidebarVisible, setSidebarVisible] = useState(false)
   const [projectSectionVisible, setProjectSectionVisible] = useState(true)
-  useSidebarConversationLoading(sidebarVisible && projectSectionVisible, can('session.read') && !sidebarSearchActive
+  useSidebarConversationLoading(sidebarVisible && projectSectionVisible, !sidebarSearchActive
     ? projects.filter((p) => expandedProjectIds.includes(p.id)
+      && projectCan(p.id)('session.read')
       && (sessionSectionOpen[p.id] ?? (location.pathname === '/chat' && !!activeSessionId))
       && !['revoked', 'expired', 'invalid'].includes(p.access_status ?? '')).map((p) => p.id)
     : [])
@@ -270,12 +275,12 @@ export default function Layout({ onSelectProject, children }: Props) {
     if (!sidebarSearchOpen) return
     const timer = window.setTimeout(() => sidebarSearchInputRef.current?.focus(), 0)
     for (const project of projects) {
-      if (project.type !== 'remote' && !(project.id in sessionsByProject)) {
+      if (project.type !== 'remote' && projectCan(project.id)('session.read') && !(project.id in sessionsByProject)) {
         void useChatListStore.getState().fetchSessions(project.id)
       }
     }
     return () => window.clearTimeout(timer)
-  }, [projects, sessionsByProject, sidebarSearchOpen])
+  }, [projects, sessionsByProject, sidebarSearchOpen, gatewaySession])
 
   // Escape key clears multi-select
   useEffect(() => {
@@ -346,6 +351,8 @@ export default function Layout({ onSelectProject, children }: Props) {
   useEffect(() => cancelSidebarLongPress, [])
 
   const openMoreMenuAt = (kind: 'project' | 'workflow', id: string, x: number, y: number) => {
+    const project = projects.find(p => kind === 'project' ? p.id === id : p.workflows.some(w => w.id === id))
+    const can = projectCan(project?.id || '')
     if (kind === 'project' ? !can('project.settings') && !can('workflow.create') && !can('session.create') : !can('workflow.edit') && !can('workflow.delete')) return
     setSessionMenu(null)
     setMoreMenu({
@@ -371,7 +378,9 @@ export default function Layout({ onSelectProject, children }: Props) {
           .find(({ workflow }) => workflow.id === moreMenu.id)
     : undefined
 
-  const openAddWorkflow = (projectId: string) => { if (can('workflow.create')) setAddWfProjectId(projectId) }
+  const menuCan = projectCan(menuTarget ? ('project' in menuTarget ? menuTarget.project.id : menuTarget.id) : '')
+
+  const openAddWorkflow = (projectId: string) => { if (projectCan(projectId)('workflow.create')) setAddWfProjectId(projectId) }
 
   const openLocalProjectModal = () => setShowInitModal(true)
 
@@ -411,7 +420,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   }
 
   const openSessionMenuAt = (projectId: string, sessionId: string, title: string, x: number, y: number) => {
-    if (!can('session.manage')) return
+    if (!projectCan(projectId)('session.manage')) return
     setMoreMenu(null)
     setSessionMenu({
       x: Math.max(8, Math.min(x, window.innerWidth - 176)),
@@ -519,6 +528,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           projects={
         <div className="layout-sidebar-projects">
           {visibleProjects.map((p) => {
+            const can = projectCan(p.id)
             const searchResult = sidebarSearchResults.get(p.id)!
             return (
             <div key={p.id}>
@@ -1021,9 +1031,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             </div>
           )}
           {projects.length > 0 && visibleProjects.length === 0 && (
-            <div className="layout-sidebar-empty">
-              {t('layout.noSidebarMatches')}
-            </div>
+            <div className="layout-sidebar-empty">{t('layout.noSidebarMatches')}</div>
           )}
         </div>
 
@@ -1050,7 +1058,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         <SidebarActionMenu ref={moreMenuRef} x={moreMenu.x} y={moreMenu.y}>
           {moreMenu.kind === 'project' && menuTarget && 'path' in menuTarget && (
             <>
-              {(managedMode !== true || menuTarget.is_default_workspace) && menuTarget.type !== 'remote' && !bound && can('project.settings') && (
+              {(managedMode !== true || menuTarget.is_default_workspace) && menuTarget.type !== 'remote' && !bound && menuCan('project.settings') && (
                 <SidebarActionItem
                   icon="pencil"
                   onClick={() => { setRenameId(menuTarget.path); setMoreMenu(null) }}
@@ -1058,13 +1066,13 @@ export default function Layout({ onSelectProject, children }: Props) {
                   {t('common.rename')}
                 </SidebarActionItem>
               )}
-              {can('workflow.create') && <SidebarActionItem
+              {menuCan('workflow.create') && <SidebarActionItem
                 icon="plus"
                 onClick={() => { openAddWorkflow(menuTarget.id); setMoreMenu(null) }}
               >
                 {t('layout.addWorkflowTitle')}
               </SidebarActionItem>}
-              {can('session.create') && <SidebarActionItem
+              {menuCan('session.create') && <SidebarActionItem
                 icon="bot"
                 onClick={() => {
                   setMoreMenu(null)
@@ -1081,7 +1089,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   {t('layout.remoteShareTitle')}
                 </SidebarActionItem>
               )}
-              {!bound && !menuTarget.is_default_workspace && can('project.settings') && <SidebarActionItem
+              {!bound && !menuTarget.is_default_workspace && menuCan('project.settings') && <SidebarActionItem
                 icon="trash"
                 danger
                 onClick={() => { setDeleteProjectError(''); setDeleteProjectTarget(menuTarget); setMoreMenu(null) }}
@@ -1093,13 +1101,13 @@ export default function Layout({ onSelectProject, children }: Props) {
           {moreMenu.kind === 'workflow' && menuTarget && 'workflow' in menuTarget && (
             menuTarget.workflow.deleted ? (
               <>
-                {can('workflow.edit') && <SidebarActionItem
+                {menuCan('workflow.edit') && <SidebarActionItem
                   icon="rotate-ccw"
                   onClick={() => { void restoreWorkflow(menuTarget.workflow.id, menuTarget.project.id); setMoreMenu(null) }}
                 >
                   {t('layout.restoreFlow')}
                 </SidebarActionItem>}
-                {!menuTarget.workflow.is_default && can('workflow.delete') && (
+                {!menuTarget.workflow.is_default && menuCan('workflow.delete') && (
                   <SidebarActionItem
                     icon="trash"
                     danger
@@ -1111,13 +1119,13 @@ export default function Layout({ onSelectProject, children }: Props) {
               </>
             ) : (
               <>
-                {can('workflow.edit') && <SidebarActionItem
+                {menuCan('workflow.edit') && <SidebarActionItem
                   icon="pencil"
                   onClick={() => { setRenameWfId(menuTarget.workflow.id); setMoreMenu(null) }}
                 >
                   {t('common.rename')}
                 </SidebarActionItem>}
-                {!menuTarget.workflow.is_default && can('workflow.delete') && menuTarget.project.workflows.filter((w) => !w.deleted).length > 1 && (
+                {!menuTarget.workflow.is_default && menuCan('workflow.delete') && menuTarget.project.workflows.filter((w) => !w.deleted).length > 1 && (
                   <SidebarActionItem
                     icon="trash"
                     danger
@@ -1132,7 +1140,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         </SidebarActionMenu>
       )}
 
-      {sessionMenu && (
+      {sessionMenu && projectCan(sessionMenu.projectId)('session.manage') && (
         <SidebarActionMenu ref={sessionMenuRef} x={sessionMenu.x} y={sessionMenu.y}>
           <SidebarActionItem
             icon="archive"

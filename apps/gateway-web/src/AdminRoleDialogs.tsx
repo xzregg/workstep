@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { userChoiceLabel } from './AdminSelection'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
@@ -69,26 +70,26 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
         <button type="button" disabled={busy || !userQuery.trim()} onClick={() => void findChoices('users', userQuery)}>查找用户</button>
       </div>
       {userChoices.length > 0 && <label htmlFor="role-selected-user">选择用户</label>}
-      {userChoices.length > 0 && <select id="role-selected-user" aria-label="选择用户" value={userId} onChange={event => setUserId(event.target.value)}>
+      {userChoices.length > 0 && <Select id="role-selected-user" aria-label="选择用户" value={userId} onChange={event => setUserId(event.target.value)}>
         <option value="">选择用户</option>{userChoices.map(user => <option value={user.id} key={user.id}>
           {userChoiceLabel(user)}</option>)}
-      </select>}
+      </Select>}
       <label htmlFor="role-kind">管理员角色</label>
-      <select id="role-kind" value={role} onChange={event => {
+      <Select id="role-kind" value={role} onChange={event => {
         const next = event.target.value; setRole(next)
         setScope(delegated ? 'department' : roleScopes[next][0].type); setScopeId('')
       }}>
         <option value="identity_admin">用户与组织管理员</option>{!delegated && <option value="skill_admin">Skill 管理员</option>}
         {!delegated && <option value="org_admin">组织管理员</option>}<option value="department_admin">部门管理员</option>
         {!delegated && <option value="device_admin">设备管理员</option>}<option value="audit_admin">审计管理员</option>{!delegated && <option value="super_admin">超级管理员</option>}
-      </select>
+      </Select>
       <AdminRoleScopePicker departmentOnly={delegated} role={role} scope={scope} scopeId={scopeId} disabled={busy}
         onChange={(nextScope, id) => { setScope(nextScope); setScopeId(id) }} />
       {scope === 'department' && <label className="gateway-role-checkbox"><input type="checkbox" checked={includeChildren}
         onChange={event => setIncludeChildren(event.target.checked)} /> 包含下级部门</label>}
-      <PasswordConfirmation id="role-step-password" label="输入你的密码确认" value={password} onChange={setPassword} />
       {error && <p className="gateway-auth-error" role="alert">{error}</p>}
       <div className="gateway-dialog-actions">
+      <div className="gateway-password-confirmation"><PasswordConfirmation id="role-step-password" label="输入你的密码确认" value={password} onChange={setPassword} /></div>
         <button type="button" className="gateway-dialog-cancel" disabled={busy}
           onClick={() => dirty ? setConfirmClose(true) : onClose()}>取消</button>
         <button type="submit" disabled={busy || !canSubmit}>{busy && <span className="gateway-spinner" />}{busy ? '正在保存…' : '授予权限'}</button>
@@ -120,8 +121,8 @@ export function AdminRevokeRoleDialog({ role, csrf, onComplete, onClose }: {
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="撤销管理员权限" message={`撤销 ${role.display_name} 的 ${role.role} 权限？`}
-    confirmLabel="确认撤销" disabled={!passwordReady} busy={busy} onConfirm={() => void confirm()} onCancel={onClose}>
-    <PasswordConfirmation id="revoke-role-password" label="输入你的密码确认" value={password} onChange={setPassword} />
+    confirmLabel="确认撤销" disabled={!passwordReady} busy={busy} onConfirm={() => void confirm()} onCancel={onClose}
+      passwordConfirmation={<PasswordConfirmation id="revoke-role-password" label="输入你的密码确认" value={password} onChange={setPassword} />}>
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
   </GatewayConfirmDialog>
 }

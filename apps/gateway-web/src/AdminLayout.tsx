@@ -32,7 +32,7 @@ export function AdminLayout({ roles, children }: { roles: string[]; children: Re
       <button className="gateway-admin-menu-trigger" type="button" aria-label="打开管理菜单" aria-controls="gateway-admin-mobile-menu" aria-expanded={menuOpen} onClick={() => { menu.current?.showModal(); setMenuOpen(true) }}><span className="gateway-admin-menu-icon" aria-hidden="true" /></button>
       <div className="gateway-admin-breadcrumb"><span>管理后台</span><span aria-hidden="true">/</span><strong>{adminPageTitle(pathname)}</strong></div>
      </div>
-     <Link className="gateway-admin-account" to="/account">用户中心</Link>
+     <Link className="gateway-action-link gateway-admin-account" to="/account">用户中心</Link>
     </header>
     {children}
    </div>

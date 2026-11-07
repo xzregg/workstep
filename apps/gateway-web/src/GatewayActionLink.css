@@ -1,0 +1,36 @@
+/* Shared button presentation for links; navigation and download semantics stay native. */
+a.gateway-action-link {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--gateway-admin-control-height, 32px);
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--gateway-admin-separator, #e6eaf0);
+  border-radius: var(--gateway-admin-control-radius, 8px);
+  background: #fff;
+  color: var(--gateway-admin-secondary, #526070);
+  font: inherit;
+  font-size: 13px;
+  line-height: normal;
+  text-align: center;
+  text-decoration: none;
+  vertical-align: middle;
+  cursor: pointer;
+}
+a.gateway-action-link:hover {
+  border-color: #b7d4f6;
+  background: #f3f7fc;
+  color: var(--gateway-admin-accent, #0071e3);
+  text-decoration: none;
+}
+a.gateway-action-link:focus-visible { outline: 2px solid var(--gateway-admin-accent, #0071e3); outline-offset: 3px; }
+a.gateway-action-link--primary,
+.gateway-portal-header a.gateway-action-link--primary { border-color: var(--gateway-admin-accent, #0071e3); background: var(--gateway-admin-accent, #0071e3); color: #fff; }
+a.gateway-action-link--primary:hover,
+.gateway-portal-header a.gateway-action-link--primary:hover { border-color: var(--gateway-admin-accent-hover, #0063c7); background: var(--gateway-admin-accent-hover, #0063c7); color: #fff; }
+@media (max-width: 1023px) {
+  a.gateway-action-link { min-height: var(--mobile-control-regular, 32px); }
+}

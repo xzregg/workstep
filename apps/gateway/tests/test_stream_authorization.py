@@ -48,7 +48,8 @@ async def test_remote_service_enables_reuse_for_device_and_project_assets(monkey
     from gateway.services import remote_access_api as remote, stream_authorization
     monkeypatch.setattr(stream_authorization, 'monotonic', lambda: 0)
     checks = 0
-    async def identity(call):
+    async def identity(call, *, target_host_project_id=None):
+        assert target_host_project_id is None
         return (SimpleNamespace(id='user', username='User', display_name='User'), 'device',
                 SimpleNamespace(project_id='project' if project else None, project_access_level='read'),
                 'host-project' if project else None)

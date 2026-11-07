@@ -1,3 +1,4 @@
+import Select from './GatewaySelect'
 import { enterpriseProviderName } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -134,18 +135,18 @@ export function AdminOrganizationDirectory({ sourceId, revision, superAdmin }: {
           placeholder="部门名称或外部 ID" /><button type="submit">搜索</button>
       </form>
       <div className="gateway-admin-filters">
-        {superAdmin && <select aria-label="部门状态" value={departmentFilters.status}
+        {superAdmin && <Select aria-label="部门状态" value={departmentFilters.status}
           onChange={event => setDepartmentFilters(current => ({ ...current, status: event.target.value, page: 1 }))}>
           <option value="active">有效</option><option value="deleted">第三方已删除</option><option value="all">全部</option>
-        </select>}
-        <select aria-label="部门排序" value={departmentFilters.sort}
+        </Select>}
+        <Select aria-label="部门排序" value={departmentFilters.sort}
           onChange={event => setDepartmentFilters(current => ({ ...current, sort: event.target.value, page: 1 }))}>
           <option value="display_name">部门名称</option><option value="external_id">外部 ID</option>
-        </select>
-        <select aria-label="部门排序方向" value={departmentFilters.direction}
+        </Select>
+        <Select aria-label="部门排序方向" value={departmentFilters.direction}
           onChange={event => setDepartmentFilters(current => ({ ...current, direction: event.target.value, page: 1 }))}>
           <option value="asc">升序</option><option value="desc">降序</option>
-        </select>
+        </Select>
       </div>
       {departmentLoading && <p role="status">正在加载部门…</p>}
       {departmentError && <p role="alert" className="gateway-auth-error">{departmentError} <button type="button"
@@ -175,14 +176,14 @@ export function AdminOrganizationDirectory({ sourceId, revision, superAdmin }: {
             placeholder="用户名或显示名称" /><button type="submit">搜索</button>
         </form>
         <div className="gateway-admin-filters">
-          <select aria-label="成员排序" value={memberFilters.sort}
+          <Select aria-label="成员排序" value={memberFilters.sort}
             onChange={event => setMemberFilters(current => ({ ...current, sort: event.target.value, page: 1 }))}>
             <option value="display_name">显示名称</option><option value="username">用户名</option>
-          </select>
-          <select aria-label="成员排序方向" value={memberFilters.direction}
+          </Select>
+          <Select aria-label="成员排序方向" value={memberFilters.direction}
             onChange={event => setMemberFilters(current => ({ ...current, direction: event.target.value, page: 1 }))}>
             <option value="asc">升序</option><option value="desc">降序</option>
-          </select>
+          </Select>
         </div>
         {memberLoading && <p role="status">正在加载成员…</p>}
         {memberError && <p role="alert" className="gateway-auth-error">{memberError} <button type="button"

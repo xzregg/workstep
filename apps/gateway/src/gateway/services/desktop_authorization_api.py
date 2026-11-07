@@ -96,7 +96,7 @@ async def transfer_device_owner(call: GatewayCall, device_id: str, body: DeviceO
 
 
 async def rename_device(call: GatewayCall, device_id: str, body: DeviceNameInput):
-    _, actor, _ = await device_manager(call, device_ids=[device_id], mutation=True)
+    _, actor, _ = await device_manager(call, device_ids=[device_id], mutation=True, sensitive=False)
     await _service(call).rename_device(device_id, actor.id, body.name)
 
 

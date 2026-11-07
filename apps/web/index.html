@@ -82,9 +82,25 @@
           panel.appendChild(actions);
           root.replaceChildren(panel);
         }
+        function applicationScript(source) {
+          if (!source) return false;
+          try {
+            var url = new URL(source.replace(/:\d+(?::\d+)?$/, ''), document.baseURI);
+            return url.origin === window.location.origin &&
+              /^(?:\/workspace\/[^/]+)?\/(?:assets\/[^?#]+\.m?js|src\/[^?#]+\.[jt]sx?|node_modules\/[^?#]+)$/.test(url.pathname);
+          } catch (_) { return false; }
+        }
         function failed(event) {
-          // Ignore unrelated images/styles; resource errors matter for scripts only.
-          if (event.type === 'error' && event.target && event.target.nodeType === 1 && event.target.tagName !== 'SCRIPT') return;
+          // Analytics and browser extensions can fail while our modules are
+          // still downloading. Only an application script can fail startup.
+          if (event.type === 'error') {
+            var element = event.target && event.target.nodeType === 1;
+            if (element ? event.target.tagName !== 'SCRIPT' || !applicationScript(event.target.src) : !applicationScript(event.filename)) return;
+          } else {
+            var stack = event.reason && event.reason.stack;
+            var sources = typeof stack === 'string' ? stack.match(/(?:https?|chrome-extension):\/\/[^\s)]+/g) : null;
+            if (!sources || !sources.some(applicationScript)) return;
+          }
           showFailure('WorkStep 启动失败，请重新加载。若仍失败，可通过安卓悬浮菜单查看排查信息。');
         }
         var observer = new MutationObserver(function () { if (!waiting()) cleanup(); });

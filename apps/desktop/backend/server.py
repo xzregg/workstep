@@ -10,7 +10,22 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
+from contextlib import contextmanager
 from pathlib import Path
+
+
+@contextmanager
+def startup_stage(name: str):
+    started = time.monotonic()
+    print(f"STARTUP {name} start", file=sys.stderr, flush=True)
+    state = "failed"
+    try:
+        yield
+        state = "complete"
+    finally:
+        elapsed_ms = round((time.monotonic() - started) * 1000)
+        print(f"STARTUP {name} {state} elapsed_ms={elapsed_ms}", file=sys.stderr, flush=True)
 
 
 def valid_port(value: str) -> int:
@@ -232,8 +247,10 @@ def main(argv: list[str] | None = None) -> int:
     port = sock.getsockname()[1]
     try:
         if os.environ.get("WORKSTEP_DESKTOP_RUNTIME") == "1":
-            prepare_runtime_environment()
-        app = _load_app(host, port)
+            with startup_stage("运行环境"):
+                prepare_runtime_environment()
+        with startup_stage("模块加载"):
+            app = _load_app(host, port)
         return asyncio.run(_serve(app, sock, port))
     finally:
         sock.close()
