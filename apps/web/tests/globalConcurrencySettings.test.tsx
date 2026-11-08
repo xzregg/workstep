@@ -26,6 +26,7 @@ test('global concurrency settings load and save task and chat limits', async () 
     max_tasks: 3,
     max_chats: 5,
     schedule_exempt: false,
+    task_retry_interval_minutes: 12,
   })
   assistantApi.setConcurrencyConfig = async (config) => {
     saved.push(config)
@@ -48,6 +49,8 @@ test('global concurrency settings load and save task and chat limits', async () 
     const taskInput = container.querySelector<HTMLInputElement>('#global-max-tasks')
     const chatInput = container.querySelector<HTMLInputElement>('#global-max-chats')
     const exemptInput = container.querySelector<HTMLInputElement>('#global-schedule-exempt')
+    const retryInput = container.querySelector<HTMLInputElement>('#global-task-retry-interval')
+    assert.equal(retryInput?.value, '12')
     assert.equal(taskInput?.value, '3')
     assert.equal(chatInput?.value, '5')
     assert.equal(taskInput?.type, 'text')
@@ -62,14 +65,28 @@ test('global concurrency settings load and save task and chat limits', async () 
       setNativeValue(window, chatInput!, '4')
       chatInput!.dispatchEvent(new Event('input', { bubbles: true }))
       exemptInput!.click()
+      setNativeValue(window, retryInput!, '0')
+      retryInput!.dispatchEvent(new Event('input', { bubbles: true }))
     })
     const saveButton = [...container.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.trim() === '保存')
     assert.ok(saveButton)
     await act(async () => saveButton.click())
 
-    assert.deepEqual(saved, [{ max_tasks: 2, max_chats: 4, schedule_exempt: true }])
+    assert.deepEqual(saved, [{ max_tasks: 2, max_chats: 4, schedule_exempt: true, task_retry_interval_minutes: 0 }])
     assert.match(container.textContent || '', /已保存/)
+    for (const value of ['', '-1', '1.5', '10081']) {
+      await act(async () => {
+        setNativeValue(window, retryInput!, value)
+        retryInput!.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      assert.equal(saveButton.disabled, true)
+    }
+    await act(async () => {
+      setNativeValue(window, retryInput!, '5')
+      retryInput!.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    assert.equal(saveButton.disabled, false)
 
     await act(async () => {
       setNativeValue(window, taskInput!, 'abc')

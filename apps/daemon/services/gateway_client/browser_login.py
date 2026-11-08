@@ -4,6 +4,8 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
+import traceback
 import os
 import platform
 import secrets
@@ -20,6 +22,18 @@ from workstep_gateway_protocol.origin import validate_gateway_origin, validate_d
 from services.config import config_store
 from services import config as config_module
 from . import connection_credentials
+
+# Reuse Uvicorn's configured stderr handler so INFO lifecycle records reach
+# packaged daemon/container logs even when the root logger stays at WARNING.
+logger = logging.getLogger('uvicorn.error.' + __name__)
+
+
+async def _diagnostic(event: str, **fields):
+    # Only call with generated identifiers, enums, numbers and booleans. Never
+    # include callback URLs, state, codes, tokens, identities or exception text.
+    await asyncio.to_thread(logger.log, logging.WARNING if event == 'failed' else logging.INFO,
+                            'GATEWAY_AUTH %s %s', event, json.dumps(fields, sort_keys=True))
+
 
 COOKIE = 'workstep_platform_local_session'
 
@@ -107,6 +121,7 @@ class GatewayBrowserLogin:
             stored.update(url=origin, enabled=enabled)
             if changed or not enabled:
                 stored.update(authorized=False, pending_device=False)
+                await _diagnostic('invalidated', attempt=(self.pending or {}).get('diagnostic_id'), reason='settings_changed')
                 self.pending = None
                 self.desktop_local_session = None
             await asyncio.to_thread(config_store.set, 'gateway_platform', stored)
@@ -123,6 +138,7 @@ class GatewayBrowserLogin:
         async with self.lock:
             stored = await asyncio.to_thread(config_store.get, 'gateway_platform', {})
             stored = {**stored, 'authorized': False, 'pending_device': False}
+            await _diagnostic('invalidated', attempt=(self.pending or {}).get('diagnostic_id'), reason='binding_cleared')
             self.pending = None
             self.desktop_local_session = None
             await self.gateway.close()
@@ -143,6 +159,7 @@ class GatewayBrowserLogin:
             self.gateway.managed_config = None
             self.gateway.verifier = None
             self.gateway.skill_sync = None
+            await _diagnostic('invalidated', attempt=(self.pending or {}).get('diagnostic_id'), reason='binding_cleared')
             self.pending = None
             self.desktop_local_session = None
             await asyncio.to_thread(connection_credentials.delete, origin)
@@ -178,7 +195,8 @@ class GatewayBrowserLogin:
             identity = await asyncio.to_thread(platform_identity, data['gateway_id'], key, identity)
             verifier = secrets.token_urlsafe(48)
             state, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-            self.pending = {'url': origin, 'gateway_id': data['gateway_id'], 'fingerprint': fingerprint,
+            previous_id = (self.pending or {}).get('diagnostic_id')
+            self.pending = {'diagnostic_id': secrets.token_hex(6), 'started': time.monotonic(), 'url': origin, 'gateway_id': data['gateway_id'], 'fingerprint': fingerprint,
                 'callback_origin': callback_origin, 'desktop': desktop, 'identity': identity, 'verifier': verifier, 'state': state, 'nonce': nonce, 'expires': time.monotonic()+300}
             # Saving an address alone never enables controlled mode or grants access.
             stored = {**old, 'url': origin, 'gateway_id': data['gateway_id'], 'fingerprint': fingerprint}
@@ -187,26 +205,59 @@ class GatewayBrowserLogin:
             query = {'gateway_id': data['gateway_id'], 'app_instance_id': identity['app_instance_id'],
                 'state': state, 'nonce': nonce, 'code_challenge': _encode(hashlib.sha256(verifier.encode()).digest()),
                 **({} if desktop else {'redirect_uri': callback_origin + '/api/gateway-platform/callback'})}
+            await _diagnostic('started', attempt=self.pending['diagnostic_id'], desktop=desktop,
+                              replaced_attempt=previous_id, ttl_seconds=300)
             return origin + '/desktop/login?' + urlencode(query)
 
     async def complete(self, code: str, state: str, *, callback_origin: str | None = None):
+        diagnostic = {'stage': 'pending_check'}
+        started = time.monotonic()
+        try:
+            result = await self._complete(code, state, callback_origin=callback_origin, diagnostic=diagnostic)
+        except Exception as exc:
+            diagnostic['elapsed_ms'] = round((time.monotonic() - started) * 1000)
+            diagnostic['exception_type'] = type(exc).__name__
+            # Stack locations identify the exact failing check without exposing
+            # exception messages, source lines or local variable values.
+            diagnostic['frames'] = [f'{Path(frame.f_code.co_filename).name}:{frame.f_code.co_name}:{line}'
+                                    for frame, line in list(traceback.walk_tb(exc.__traceback__))[-5:]]
+            if isinstance(exc, httpx.HTTPStatusError):
+                diagnostic['http_status'] = exc.response.status_code
+            await _diagnostic('failed', **diagnostic)
+            raise
+        await _diagnostic('completed', **diagnostic, elapsed_ms=round((time.monotonic() - started) * 1000),
+                          pending_device=result is None)
+        return result
+
+    async def _complete(self, code: str, state: str, *, callback_origin: str | None, diagnostic: dict):
         async with self.lock:
             pending = self.pending
-            if not pending or pending['expires'] <= time.monotonic() or not hmac.compare_digest(state, pending['state']):
+            diagnostic.update(attempt=(pending or {}).get('diagnostic_id'), desktop=bool((pending or {}).get('desktop')))
+            if pending:
+                diagnostic['age_ms'] = round((time.monotonic() - pending.get('started', pending['expires'] - 300)) * 1000)
+            reason = ('missing_pending' if not pending else 'expired' if pending['expires'] <= time.monotonic()
+                      else 'state_mismatch' if not hmac.compare_digest(state, pending['state']) else None)
+            if reason:
+                diagnostic['reason'] = reason
                 raise ValueError('Gateway login expired or invalid state')
+            diagnostic['stage'] = 'callback_origin_check'
             if callback_origin is not None and validate_daemon_origin(callback_origin) != pending['callback_origin']:
+                diagnostic['reason'] = 'callback_origin_mismatch'
                 raise ValueError('Gateway callback origin mismatch')
             self.pending = None
+            diagnostic['stage'] = 'device_identity'
             identity = pending['identity']
             key = serialization.load_pem_private_key(identity['private_key'].encode(), password=None)
             public_key = key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
             async with self.client_factory() as client:
+                diagnostic['stage'] = 'token_exchange'
                 response = await client.post(pending['url']+'/api/desktop/token', json={
                     'code': code, 'state': state, 'nonce': pending['nonce'], 'code_verifier': pending['verifier'],
                     'app_instance_id': identity['app_instance_id'], 'gateway_id': pending['gateway_id'],
                     'device_public_key': public_key, 'device_name': os.environ.get('WORKSTEP_DEVICE_NAME', '').strip() or platform.node() or 'WorkStep daemon',
                     'version': __import__('version').APP_VERSION})
                 response.raise_for_status()
+                diagnostic['stage'] = 'token_response'
                 result = response.json()
             stored = {'url': pending['url'], 'gateway_id': pending['gateway_id'], 'fingerprint': pending['fingerprint'],
                 'enabled': True,
@@ -219,8 +270,10 @@ class GatewayBrowserLogin:
             authorization = result['device_authorization']
             proof = _encode(key.sign(authorization.encode()))
             verifier = ManagedAuthorizationVerifier(pending['gateway_id'], pending['url'], pending['fingerprint'], client_factory=self.client_factory)
+            diagnostic['stage'] = 'authorization_verify'
             actor = await verifier.verify(authorization, proof)
             if actor.app_instance_id != identity['app_instance_id']: raise ValueError('Installation binding mismatch')
+            diagnostic['stage'] = 'connection_setup'
             control_key = Ed25519PrivateKey.generate()
             control_public = control_key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
             # Delegate challenge signing using the existing Desktop protocol.
@@ -239,6 +292,7 @@ class GatewayBrowserLogin:
             await asyncio.to_thread(config_store.set, 'gateway_platform', stored)
             if not same_platform:
                 await self.gateway.start()
+            diagnostic['stage'] = 'bootstrap'
             result = await self.gateway.bootstrap(authorization, proof, control_private, control_public, delegation)
             if pending['desktop']:
                 self.desktop_local_session = result[0]

@@ -1,4 +1,5 @@
 import { PlatformDocumentTitle } from './PlatformDocumentTitle'
+import { UserInvitationPage } from './UserInvitationPage'
 import { PasswordConfirmationRequired } from './PasswordConfirmation'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AdminLayout } from './AdminLayout'
@@ -99,6 +100,7 @@ function GatewayPortalApp() {
         <Route path="/project-invitations/:token" element={<ProjectInvitationAcceptPage />} />
         <Route path="/desktop/login" element={<DesktopLoginPage />} />
         <Route path="/auth" element={<PortalAuthPage />} />
+        <Route path="/auth/invite" element={<UserInvitationPage />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/auth/pending" element={<RegistrationPendingPage />} />
         <Route path="*" element={<section><h2>页面不存在</h2><Link className="gateway-action-link" to="/">返回工作台</Link></section>} />

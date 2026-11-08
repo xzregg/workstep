@@ -31,6 +31,19 @@ afterEach(() => {
   globalThis.fetch = originalFetch
 })
 
+test('administrator can create an invited account with only a display name', async () => {
+  let body: any
+  globalThis.fetch = async (_input, init) => { body = JSON.parse(String(init?.body)); return Response.json({}, { status: 201 }) }
+  render(<AdminCreateUserDialog csrf="csrf" onSaved={() => {}} onClose={() => {}} />)
+  const button = screen.getByRole('button', { name: '创建用户' }) as HTMLButtonElement
+  assert.equal(button.disabled, true)
+  fireEvent.change(screen.getByLabelText('显示名称'), { target: { value: '邀请用户' } })
+  assert.equal(button.disabled, false)
+  fireEvent.click(button)
+  await waitFor(() => assert.equal(body?.display_name, '邀请用户'))
+  assert.equal(body.password, '')
+})
+
 test('creating a user protects a changed form from accidental closure', () => {
   let closed = 0
   render(<AdminCreateUserDialog csrf="csrf" onSaved={() => {}} onClose={() => { closed++ }} />)

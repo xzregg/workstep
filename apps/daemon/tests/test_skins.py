@@ -133,6 +133,7 @@ async def test_bad_package_does_not_replace_good_install_and_zip_traversal(tmp_p
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("preview_directory")
 async def test_api_slow_disk_does_not_block_health_and_authorization(tmp_path, monkeypatch):
     from services.skins import SkinManager
     from api import skins
@@ -266,6 +267,7 @@ async def test_composer_send_icon_is_declarative_and_device_specific(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("preview_directory")
 async def test_bundled_skin_is_seeded_at_startup_and_remains_editable(tmp_path, monkeypatch):
     from api import skins
     from services.skins import SkinManager

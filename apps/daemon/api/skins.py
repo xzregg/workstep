@@ -2,6 +2,8 @@
 import asyncio
 from pathlib import Path
 
+from api.fs_paths import _assert_preview_path
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -60,16 +62,19 @@ async def contract():
 
 @router.post("/validate", dependencies=[Depends(authorize)])
 async def validate(request: PackageRequest):
+    await asyncio.to_thread(_assert_preview_path, Path(request.path).expanduser())
     return await invoke(manager.validate(request.path))
 
 
 @router.post("/register", dependencies=[Depends(authorize)])
 async def register(request: PackageRequest):
+    await asyncio.to_thread(_assert_preview_path, Path(request.path).expanduser())
     return await invoke(manager.register(request.path, replace=request.replace))
 
 
 @router.post('/draft', dependencies=[Depends(authorize)])
 async def save_draft(request: DraftRequest):
+    await asyncio.to_thread(_assert_preview_path, Path(request.path).expanduser())
     return await invoke(manager.save_draft(request.path, request.expected_revision, request.skin))
 
 
@@ -87,6 +92,7 @@ async def export_to_path(request: ExportRequest):
     target = Path(request.output).expanduser()
     if not target.is_absolute() or target.suffix.lower() != ".zip":
         raise HTTPException(400, "导出路径必须是绝对路径的 ZIP 文件")
+    target = await asyncio.to_thread(_assert_preview_path, target)
     data = await invoke(manager.export(request.skin_id))
     await asyncio.to_thread(target.write_bytes, data)
     return {"ok": True, "path": str(target), "bytes": len(data)}

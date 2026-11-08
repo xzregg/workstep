@@ -70,8 +70,9 @@ function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged
     let cancelled = false
     void channelBotApi.list().then((botRows) => {
       if (cancelled) return
-      setBots(botRows)
-      setBotId((current) => current || botRows[0]?.id || '')
+      const groupBots = botRows.filter(bot => bot.platform !== 'weixin')
+      setBots(groupBots)
+      setBotId((current) => groupBots.some(bot => bot.id === current) ? current : groupBots[0]?.id || '')
     }).catch((reason) => { if (!cancelled) setError(String(reason)) })
     return () => { cancelled = true }
   }, [open, canManage])

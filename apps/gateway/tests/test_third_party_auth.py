@@ -68,7 +68,7 @@ def test_settings_permissions_and_validation(actor, tmp_path):
     assert client.post('/api/auth/login', json={'username':'owner', 'password':'OwnerPassphrase-2026!'}).status_code == 200
     csrf = client.get('/api/auth/session').json()['csrf_token']
     assert client.put(SETTINGS, headers={'X-CSRF-Token': csrf}, json={'callback_urls': []}).status_code == 403
-    assert app.state.database.head_revision == '0051_third_party_auth'
+    assert app.state.database.head_revision == '0053_reusable_invitation_links'
 
 
 def test_allowlist_persists(tmp_path):

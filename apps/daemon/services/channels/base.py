@@ -118,14 +118,14 @@ class ChannelAdapter(ABC):
         """Optional waiting indicator; callers inspect CAPABILITIES.waiting."""
 
     def supports_streaming_reply(self, message: IncomingMessage) -> bool:
-        """Whether this recipient can receive updates to one existing message."""
+        """Whether this recipient supports incremental replies (edits or blocks)."""
         return self.CAPABILITIES.streaming
 
     def release_reply(self, message: IncomingMessage) -> None:
         """Release local progress bookkeeping after completion or cancellation."""
 
     async def update_reply(self, message: IncomingMessage, text: str) -> None:
-        """Replace an in-progress reply with cumulative text when streaming is supported."""
+        """Consume cumulative text, editing or sending new blocks per platform."""
         raise ValueError(f'{self.DISPLAY_NAME}不支持流式回复')
 
     @property

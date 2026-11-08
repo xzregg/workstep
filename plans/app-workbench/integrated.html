@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WorkStep — 对话应用窗口栏</title><link rel="stylesheet" href="layouts.css"><link rel="stylesheet" href="integrated.css"><link rel="stylesheet" href="mobile.css"><script src="layouts.js" defer></script><script src="mobile.js" defer></script></head>
+<body data-layout="integrated" class="using-app">
+<div class="demo-note"><strong>现有对话 ＋ 应用窗口栏</strong><a href="project-journey.html">体验添加项目与初始化 ↗</a><span>静态原型，修改、Tag 与部署均为模拟</span></div>
+<div class="shell">
+<aside class="sidebar" aria-label="现有项目与对话列表">
+<h2>WorkStep</h2><div class="project-list-heading"><small>⌄ 项目</small><button data-action="add-project" aria-label="添加项目">＋</button></div><div class="project"><strong>⌄ 客户管理</strong><button data-action="open" aria-label="打开项目应用">打开应用</button></div>
+<details class="project-options"><summary>项目操作</summary><button data-action="initialize-app">初始化应用</button></details><details><summary>流程</summary><button data-action="test">预览与测试</button><button data-action="create">创建版本</button><button data-action="deploy">部署上线</button><button data-action="rollback">回滚版本</button></details>
+<small>对话</small><button data-action="session-main" class="session active">A 客户筛选</button><button data-action="session-other" class="session">B 客户导出</button><button data-action="session-third" class="session">C 分配负责人</button>
+<div class="recent"><small>最近聊天</small><p>A 客户筛选</p><p>B 客户导出</p></div>
+<div class="sidebar-bottom"><span>数据统计</span><span>定时任务</span><span>角色中心</span><span>外观</span><button data-action="setup">设置</button></div>
+</aside>
+<main>
+<div class="workspace">
+<section class="chat" aria-label="现有项目对话">
+<header class="existing-chat-header"><button class="mobile-nav-button" data-action="nav-open" aria-label="打开项目列表">☰</button><strong id="session-name">A 客户筛选</strong><button data-action="close-chat" aria-label="关闭当前对话">关闭对话</button><div class="existing-actions"><span>打开目录</span><span>Git</span><button data-action="setup">配置</button></div></header>
+<div id="messages" aria-live="polite"></div>
+<div id="notice" role="status"></div><div class="composer"><div class="original-shortcuts"><span>生成实现</span><span>解释代码</span><span>设计测试</span><span>代码评审</span></div><div class="shortcuts" aria-label="应用新增快捷按钮"><button data-action="test">测试</button><button data-action="create">创建版本 / Tag</button><button data-action="deploy">发布版本</button><button data-action="rollback">回滚</button></div><div class="existing-input"><label for="message">发送消息</label><textarea id="message" placeholder="描述要修改的功能…"></textarea><div class="composer-foot"><span class="input-options">＋ <label><input type="checkbox">计划</label></span><small>默认引擎</small><button class="primary" data-action="send">发送</button></div></div></div>
+</section>
+<section class="preview-pane" aria-label="应用窗口栏">
+<div class="pane-heading"><button class="mobile-nav-button" data-action="nav-open" aria-label="打开项目列表">☰</button><strong>客户管理</strong><div class="environment-switch"><button data-action="environment-draft" aria-pressed="true">草稿预览</button><button data-action="environment-production" aria-pressed="false">正式应用</button></div><span class="development-control" id="production">正式 v1.2.0</span><button class="primary development-control" data-action="deploy">发布</button><details class="app-more development-control"><summary>更多</summary><div class="app-more-menu"><span id="preview-state" class="preview-state"></span><label for="version">预览版本</label><select id="version" aria-label="选择预览版本"></select><button data-action="start">启动</button><button data-action="refresh">刷新</button><button data-action="share">分享</button><button data-action="history">版本记录</button><button data-action="setup">应用设置</button></div></details><button class="usage-control" data-action="refresh">刷新</button><button class="usage-control" data-action="share">分享</button><button data-action="toggle-workbench" aria-label="收起应用"><span class="desktop-label">收起 ›</span><span class="mobile-label">收起应用</span></button></div>
+<div id="preview"><iframe id="workbench-frame" title="应用程序预览" sandbox="allow-scripts"></iframe></div>
+</section>
+</div><section id="action-panel" hidden aria-label="操作详情"></section>
+</main></div><div id="mobile-navigation" aria-hidden="true" hidden><button class="nav-backdrop" data-action="nav-close" aria-label="关闭项目列表"></button><aside role="dialog" aria-modal="true" aria-label="项目与对话"><div class="drawer-heading"><strong>项目</strong><button data-action="nav-close">关闭</button></div><div class="project"><strong>客户管理</strong><button data-action="open">打开应用</button></div><p>对话</p><button data-action="session-main">A 客户筛选</button><button data-action="session-other">B 客户导出</button><button data-action="session-third">C 分配负责人</button><button data-action="setup">配置</button></aside></div></body></html>

@@ -47,9 +47,20 @@ async def test_user_name_round_trip_persists_to_global_config(system_settings_cl
     assert json.loads(config_file.read_text(encoding="utf-8"))["user"] == {
         "name": "小王"
     }
-
     response = await client.get("/api/system-settings")
     assert response.json()["user_name"] == "小王"
+
+
+async def test_file_root_restriction_switch_persists_and_rejects_coercion(system_settings_client):
+    client, config_file = system_settings_client
+    assert (await client.get('/api/system-settings')).json()['restrict_file_access_root'] is True
+    for enabled in (False, True):
+        response = await client.put('/api/system-settings', json={'restrict_file_access_root': enabled})
+        assert response.status_code == 200
+        assert response.json()['restrict_file_access_root'] is enabled
+        assert ConfigStore().get('restrict_file_access_root') is enabled
+    response = await client.put('/api/system-settings', json={'restrict_file_access_root': 'false'})
+    assert response.status_code == 422
 
 
 async def test_unicode_config_round_trip_with_windows_default_encoding(

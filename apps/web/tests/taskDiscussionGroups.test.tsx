@@ -45,7 +45,7 @@ test('task discussion panel binds a received group ID to the current task', asyn
     const method = init?.method || 'GET'
     calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
     const data = url === '/api/channel-bots'
-      ? [{ id: 'bot-1', name: '企业微信', platform: 'wecom', enabled: true }]
+      ? [{ id: 'clawbot', name: '微信 ClawBot', platform: 'weixin', enabled: true }, { id: 'bot-1', name: '企业微信', platform: 'wecom', enabled: true }]
       : url.endsWith('/recent-groups')
         ? [{ bot_id: 'bot-1', group_id: 'group-1', group_name: '研发群' }]
         : method === 'POST'
@@ -60,6 +60,7 @@ test('task discussion panel binds a received group ID to the current task', asyn
     const trigger = container.querySelector<HTMLButtonElement>('.task-detail-discussion-button')!
     assert.equal(trigger.textContent, '绑定BOT')
     await act(async () => trigger.click())
+    assert.equal(document.querySelector('option[value="clawbot"]'), null, 'ClawBot cannot bind groups')
     const input = document.querySelector<HTMLInputElement>('[role="dialog"] .task-discussion-groups input')!
     const select = document.querySelector<HTMLSelectElement>('[role="dialog"] select[aria-label="最近收到的群"]')!
     assert.ok(select, 'received groups must have an explicit selector')

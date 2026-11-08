@@ -43,7 +43,7 @@ def layout(tmp_path):
 
 
 @pytest.fixture
-async def client(layout, monkeypatch):
+async def client(layout, monkeypatch, preview_directory):
     root, _, _ = layout
     service = GitService(lambda: [{'id': 'p', 'name': 'Project', 'path': str(root)}], lambda: 5,
                          credential_file=root / 'git-credentials.json')
@@ -574,7 +574,7 @@ async def test_task_workspace_rejects_unrelated_or_unsafe_repository(client, lay
     assert not (root / '.workstep' / 'worktrees' / 'outside').exists()
 
 
-async def test_task_workspace_api_keeps_execution_directory(layout, monkeypatch):
+async def test_task_workspace_api_keeps_execution_directory(layout, monkeypatch, preview_directory):
     from models import Task
     from models.fields import utc_now
     from services.project import ProjectManager

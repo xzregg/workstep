@@ -16,7 +16,8 @@ class CreateBotRequest(BaseModel):
     platform: str
     name: str = Field(min_length=1)
     app_id: str = ""
-    secret: str = Field(min_length=1)
+    secret: str = ''
+    login_id: str = Field(default='', max_length=100)
     app_token: str = Field(default="", max_length=2000)
     enabled: bool = False
     default_target_type: Literal['project', 'task'] = "project"
@@ -29,10 +30,16 @@ class CreateBotRequest(BaseModel):
     def require_project(self):
         if not self.default_project_id.strip():
             raise ValueError('请选择默认项目')
+        if self.platform == 'weixin':
+            if not self.login_id:
+                raise ValueError('请先扫码授权微信 ClawBot')
+        elif not self.secret.strip():
+            raise ValueError('请填写机器人凭证')
         return self
 
 
 class UpdateBotRequest(BaseModel):
+    login_id: str | None = Field(default=None, max_length=100)
     name: str | None = None
     app_id: str | None = None
     secret: str | None = None
@@ -157,6 +164,49 @@ def _raise_error(exc: Exception):
 @router.get("")
 async def list_bots():
     return await _manager().list_bots()
+
+
+class WeixinLoginRequest(BaseModel):
+    bot_id: str = Field(default='', max_length=100)
+
+
+def _login_manager():
+    from services.remote_access import get_current_actor
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None:
+        raise HTTPException(status_code=403, detail='扫码登录需要设备设置权限')
+    return _manager()
+
+
+@router.post('/weixin/login')
+async def start_weixin_login(request: WeixinLoginRequest):
+    manager = _login_manager()
+    if request.bot_id:
+        bots = await manager.list_bots()
+        if not any(bot['id'] == request.bot_id and bot['platform'] == 'weixin' for bot in bots):
+            raise HTTPException(status_code=404, detail='微信 ClawBot 机器人不存在')
+    try:
+        return await manager.weixin_login.start(request.bot_id)
+    except ValueError as exc:
+        _raise_error(exc)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get('/weixin/login/{login_id}')
+async def poll_weixin_login(login_id: str):
+    try:
+        return await _login_manager().weixin_login.poll(login_id)
+    except ValueError as exc:
+        _raise_error(exc)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.delete('/weixin/login/{login_id}')
+async def cancel_weixin_login(login_id: str):
+    _login_manager().weixin_login.consume(login_id)
+    return {'deleted': True}
 
 
 @router.post("")

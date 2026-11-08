@@ -269,6 +269,9 @@ class IdentityService:
                 if fresh.password_hash != user.password_hash:
                     raise IdentityError("conflict", "Password changed; retry")
                 fresh.password_hash = new_hash
+                fresh.invitation_token_ciphertext = None
+                fresh.invitation_token_hash = None
+                fresh.invitation_expires_at = None
                 fresh.password_changed_at = _now()
                 fresh.must_change_password = 0
                 await session.execute(
@@ -514,6 +517,9 @@ class IdentityService:
                 if user is None:
                     raise IdentityError("not_found", "User not found")
                 user.password_hash = password_hash
+                user.invitation_token_ciphertext = None
+                user.invitation_token_hash = None
+                user.invitation_expires_at = None
                 user.password_changed_at = _now()
                 user.must_change_password = 0
                 await session.execute(update(AuthSession).where(
@@ -559,6 +565,9 @@ class IdentityService:
                 except IntegrityError as exc:
                     raise IdentityError('conflict', 'Login username already exists') from exc
                 if password_hash is not None or username_changed:
+                    user.invitation_token_ciphertext = None
+                    user.invitation_token_hash = None
+                    user.invitation_expires_at = None
                     await session.execute(update(AuthSession).where(
                         AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None),
                     ).values(revoked_at=_now()))
@@ -566,11 +575,12 @@ class IdentityService:
 
     async def admin_create_user(self, username: str, display_name: str, password: str,
                                 status: str, created_by: str) -> User:
-        validate_password(username, password)
-        password_hash = await self._hash_password(password)
+        if password:
+            validate_password(username, password)
+        password_hash = await self._hash_password(password) if password else None
         user = User(
-            id=str(uuid4()), username=username, display_name=display_name,
-            password_hash=password_hash, password_changed_at=_now(),
+            id=str(uuid4()), username=username or f'invited-{uuid4()}', display_name=display_name,
+            password_hash=password_hash, password_changed_at=_now() if password else None,
             status=status, registration_source="admin_created", created_by_user_id=created_by,
             must_change_password=0,
         )

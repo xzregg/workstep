@@ -18,7 +18,7 @@ from tests.test_remote_project import MemoryConfig
 
 
 @pytest.fixture
-async def remote_files(tmp_path, monkeypatch):
+async def remote_files(tmp_path, monkeypatch, preview_directory):
     root = tmp_path / "project"
     from services.project import ProjectManager
     manager = ProjectManager()

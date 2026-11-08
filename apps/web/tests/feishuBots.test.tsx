@@ -23,7 +23,6 @@ test('Feishu and Lark bots use App ID credentials and preserve their platform wh
   try {
    await act(async()=>root.render(<I18nProvider><BotSettingsEditor platform={platform as 'feishu' | 'lark'} onPlatformChange={()=>{}} onSaved={()=>{}} onCancel={()=>{}} onDirtyChange={()=>{}} onBusyChange={()=>{}}/><ChatSessionSourceBadge source="channel" platform={platform} conversationType="group"/></I18nProvider>))
    const selects = container.querySelectorAll<HTMLSelectElement>('select')
-   assert.ok(selects[0].querySelector(`option[value="${platform}"]`))
    assert.match(container.querySelector('.bot-settings-form')!.textContent!, /App ID/)
    assert.match(container.querySelector('.chat-session-source-badge')!.textContent!, platform==='feishu'?/飞书/:/Lark/)
    assert.ok(container.querySelector(`a[href="https://${platform==='feishu'?'open.feishu.cn':'open.larksuite.com'}/app"]`))
@@ -32,7 +31,7 @@ test('Feishu and Lark bots use App ID credentials and preserve their platform wh
     Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(fields[index],value)
     fields[index].dispatchEvent(new window.Event('input',{bubbles:true}))
    })
-   await act(async()=>{selects[1].value='p';selects[1].dispatchEvent(new window.Event('change',{bubbles:true}))})
+   await act(async()=>{selects[0].value='p';selects[0].dispatchEvent(new window.Event('change',{bubbles:true}))})
    await act(async()=>[...container.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent==='保存')!.click())
    assert.equal(saved.platform,platform);assert.equal(saved.app_id,'cli_app');assert.equal(saved.default_project_id,'p')
    assert.equal(saved.card_template_id,undefined)

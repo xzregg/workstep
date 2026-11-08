@@ -1,0 +1,45 @@
+.project-directory-setting {
+  padding-bottom: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.project-directory-setting h2 {
+  font-size: calc(14px * var(--font-scale));
+  font-weight: 650;
+  margin-bottom: 5px;
+}
+.project-directory-setting-hint {
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+.project-directory-setting-fields {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.project-directory-setting-input { flex: 1 1 240px; min-width: 0; }
+.project-directory-setting-restriction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  margin-bottom: 5px;
+  font-size: calc(13px * var(--font-scale));
+}
+.project-directory-setting-browser { margin-top: 10px; }
+.project-directory-setting-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+.project-directory-setting-restriction .settings-switch { flex-shrink: 0; }
+.project-directory-setting-error, .project-directory-setting-saved {
+  margin-top: 7px;
+  font-size: calc(12px * var(--font-scale));
+}
+.project-directory-setting-error { color: var(--danger); }
+.project-directory-setting-saved { color: var(--success); }

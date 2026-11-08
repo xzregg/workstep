@@ -38,6 +38,7 @@ class ConcurrencyConfigRequest(BaseModel):
     max_tasks: int = Field(default=0, ge=0)
     max_chats: int = Field(default=0, ge=0)
     schedule_exempt: bool = False
+    task_retry_interval_minutes: int | None = Field(default=None, ge=0, le=10080, strict=True)
 
 
 class AssistantConfigRequest(BaseModel):
@@ -175,7 +176,8 @@ async def set_enhance_config(req: EnhanceConfigRequest):
 async def get_concurrency_config():
     """Return the global task/chat concurrency defaults (0 = unlimited)."""
     config = await asyncio.to_thread(config_store.get_concurrency_config)
-    return {"saved": True, **config}
+    minutes = await asyncio.to_thread(config_store.get_task_retry_interval_minutes)
+    return {"saved": True, **config, "task_retry_interval_minutes": minutes}
 
 
 @router.put("/concurrency")
@@ -187,13 +189,16 @@ async def set_concurrency_config(req: ConcurrencyConfigRequest):
             max_chats=req.max_chats,
             schedule_exempt=req.schedule_exempt,
         )
+        if req.task_retry_interval_minutes is not None:
+            config_store.set("task_retry_interval_minutes", req.task_retry_interval_minutes)
         return config_store.get_concurrency_config()
 
     saved = await asyncio.to_thread(save)
     from services.concurrency import concurrency_gate
 
     concurrency_gate.configure(**saved)
-    return {"saved": True, **saved}
+    minutes = await asyncio.to_thread(config_store.get_task_retry_interval_minutes)
+    return {"saved": True, **saved, "task_retry_interval_minutes": minutes}
 
 
 @router.put("/{name}/config")

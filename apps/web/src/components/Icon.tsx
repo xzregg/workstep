@@ -3,7 +3,7 @@ import {
   Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Drama, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List, Monitor, Smartphone,
   Crosshair, Maximize2, Menu, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
-  Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
+  PanelLeftClose, PanelLeftOpen, Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
 } from 'lucide-react'
 
 import {composerSendGlyphs} from '../skins/composerSendGlyphs'
@@ -44,6 +44,8 @@ const glyphs = {
   'maximize-2': Maximize2,
   'minimize-2': Minimize2,
   minus: Minus,
+  'panel-left-close': PanelLeftClose,
+  'panel-left-open': PanelLeftOpen,
   paperclip: Paperclip,
   pencil: Pencil,
   play: Play,

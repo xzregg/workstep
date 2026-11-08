@@ -17,6 +17,25 @@ from gateway.services.company_display_name import CompanyDisplayNameInput, set_c
 
 router = APIRouter(prefix="/api")
 
+from gateway.services.user_invitations import (
+    InvitationInput, AcceptInvitationInput, issue_invitation, inspect_invitation, accept_invitation,
+)
+
+
+@router.post('/admin/users/{user_id}/invitation')
+async def user_invitation(request: Request, user_id: str):
+    return await invoke(issue_invitation, request=request, user_id=user_id)
+
+
+@router.post('/auth/invitation/inspect')
+async def invitation_preview(request: Request, body: InvitationInput):
+    return await invoke(inspect_invitation, request=request, body=body)
+
+
+@router.post('/auth/invitation/accept')
+async def invitation_accept(request: Request, response: Response, body: AcceptInvitationInput):
+    return await invoke(accept_invitation, request=request, response=response, body=body)
+
 
 @router.put('/admin/login-policy')
 async def set_login_policy(request: Request, body: LoginPolicyInput):

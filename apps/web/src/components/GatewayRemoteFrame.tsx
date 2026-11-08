@@ -1,7 +1,5 @@
 import { ButtonLink } from './Button'
 import GatewayDeviceTabs from './GatewayDeviceTabs'
-import GatewayWorkspaceNotifications from './GatewayWorkspaceNotifications'
-import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 import '@workstep/gateway-ui/DeviceTabs.css'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
@@ -116,7 +114,6 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
         header={<>
           {compact && <strong>{t('gatewayRemote.switchDevices')}</strong>}
           <button type="button" className="gateway-header-control gateway-return-control" aria-label={t('gatewayRemote.back')} title={t('gatewayRemote.back')} onClick={() => window.location.assign(new URL('/account', displayContext.gateway_url ?? gatewayUrl).href)}>{compact ? <><Icon name="external-link" size={18}/><span>{t('gatewayRemote.backCompact')}</span></> : t('gatewayRemote.back')}</button>
-          {gatewayWorkspacePath() && <GatewayWorkspaceNotifications/>}
           {compact && <button type="button" className="gateway-mobile-picker-close gateway-header-control gateway-header-icon-control" aria-label={t('common.close')} onClick={() => setPickerOpen(false)}><Icon name="x" size={18}/></button>}
         </>}/>: <strong>{t('gatewayRemote.loading')}</strong>}
       {disconnected && <span>{t('gatewayRemote.disconnected')}</span>}

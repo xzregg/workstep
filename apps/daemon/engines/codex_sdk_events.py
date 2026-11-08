@@ -212,6 +212,7 @@ class CodexSDKNotificationMapper:
 
     @classmethod
     def _tool_result_event(cls, root: Any) -> InternalEvent:
+        from engines.core.image_output import contains_image
         rtype = getattr(root, "type", "")
         content_parts: list[str] = []
         if rtype == "commandExecution":
@@ -244,10 +245,14 @@ class CodexSDKNotificationMapper:
             or getattr(root, "error", None) is not None
             or (isinstance(exit_code, int) and exit_code != 0)
         )
+        structured = (
+            cls._plain(getattr(root, "result", None)) if rtype == "mcpToolCall"
+            else [cls._plain(cls._root_of(part)) for part in getattr(root, "content_items", None) or []]
+        )
         return tool_call_update_event(
             tool_call_id=str(getattr(root, "id", "") or ""),
             status="failed" if bool(is_error) else "completed",
-            raw_output="\n".join(content_parts),
+            raw_output=structured if contains_image(structured) else "\n".join(content_parts),
         )
 
     def _map_notification(self, notification, state):

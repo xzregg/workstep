@@ -227,7 +227,8 @@ class QoderSDKEventMapper:
             for block in getattr(msg, "content", []) or []:
                 if self._block_type(block) == "tool_result":
                     content = getattr(block, "content", "") or ""
-                    if isinstance(content, list):
+                    from engines.core.image_output import contains_image
+                    if isinstance(content, list) and not contains_image(content):
                         content = "\n".join(str(part) for part in content if part)
                     events.append(tool_call_update_event(
                         tool_call_id=str(getattr(block, "tool_use_id", "") or ""),

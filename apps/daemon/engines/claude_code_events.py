@@ -259,10 +259,11 @@ class ClaudeCodeEventMapper:
                         ],
                     ))
                 else:
+                    from engines.core.image_output import contains_image
                     result_event = tool_call_update_event(
                         tool_call_id=tool_use_id,
                         status="failed" if is_error else "completed",
-                        raw_output=content,
+                        raw_output=block["content"] if contains_image(block.get("content")) else content,
                     )
                     structured_result = obj.get("toolUseResult")
                     if (

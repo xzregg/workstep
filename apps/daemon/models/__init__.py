@@ -3,6 +3,7 @@
 import peewee as pw
 from models.base import db_proxy, BaseModel
 from models.task import Task, TaskStep
+from models.task_auto_retry import TaskAutoRetryRecord
 from models.message import Message
 from models.action_run import ActionRun
 from models.pending_message_insert import PendingMessageInsert
@@ -31,6 +32,7 @@ ALL_MODELS = [
     SchemaVersion,
     Task,
     TaskStep,
+    TaskAutoRetryRecord,
     Message,
     ActionRun,
     PendingMessageInsert,

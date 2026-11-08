@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { installDomEnvironment } from './helpers/domEnv'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -24,6 +25,20 @@ test('channel context shows group name, stable ID, initiator and current sender'
       channel_sender_name: '小李', channel_sender_id: 'u2' }] } })
     const html = await render()
     for (const text of ['研发群', 'room-1', '小王', 'u1', '小李', 'u2', '对话发起者', '最近发送者']) assert.ok(html.includes(text))
+    const styles = document.createElement('style')
+    styles.textContent = readFileSync(new URL('../src/components/ChannelConversationContext.css', import.meta.url), 'utf8')
+    const summary = container.querySelector('summary')!
+    const summaryId = summary.querySelector('span:last-child')!
+    for (const width of [320, 390, 1023, 1280]) {
+      window.happyDOM.setWindowSize({ width, height: 844 })
+      styles.remove()
+      document.head.append(styles)
+      assert.equal(getComputedStyle(summaryId).display === 'none', width <= 1023, `summary ID visibility at ${width}px`)
+      if (width <= 1023) assert.equal(getComputedStyle(summary).whiteSpace, 'nowrap')
+      assert.ok(summary.querySelector('.chat-session-source-badge'))
+      assert.ok(container.querySelector('dl')!.textContent!.includes('room-1'))
+    }
+    styles.remove()
     await act(async () => useChatListStore.setState({ sessionsByProject: { p: [{ ...base, source: 'chat' }] } }))
     assert.equal(await render(), '')
   } finally {

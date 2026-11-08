@@ -381,3 +381,90 @@ def test_journal_summary_keeps_first_output_and_elapsed_times(tmp_path):
     summary = journal.snapshot(ref)["summary"]
     assert summary["first_output_at"] == "2026-09-17T00:00:00.500000+00:00"
     assert summary["elapsed_ms"] == 2000
+
+
+def test_journal_preserves_last_output_rate_sample_across_tools_and_finish(tmp_path):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "rate", "message")
+    try:
+        for second, kind, text in [
+            (0, "agent_message_chunk", "首段"),
+            (1, "agent_message_chunk", "中文中文"),
+            (2, "agent_thought_chunk", "abcdefgh"),
+            (3, "tool_call_update", "x" * 40000),
+            (50, "agent_message_chunk", "single batch"),
+        ]:
+            journal.record(ref, {
+                "type": kind,
+                "data": {"content": {"text": text}, "raw_output": text},
+                "timestamp": f"2026-11-08T00:00:{second:02d}+00:00",
+            })
+        journal.finish(ref)
+        assert journal.snapshot(ref)["summary"]["output_rate_sample"] == {
+            "units": 24, "elapsed_ms": 2000,
+        }
+    finally:
+        journal.close()
+
+
+@pytest.mark.parametrize("texts, expected", [
+    (["中" * 100] * 5 + ["中" * 10] * 6, {"units": 1840, "elapsed_ms": 10000}),
+    (["a"] * 11, {"units": 10, "elapsed_ms": 10000}),
+])
+def test_journal_output_sample_uses_segment_without_chunk_rounding(tmp_path, texts, expected):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "window", "message")
+    try:
+        for second, text in enumerate(texts):
+            journal.record(ref, {
+                "type": "agent_message_chunk",
+                "data": {"content": {"text": text}},
+                "timestamp": f"2026-11-08T00:00:{second:02d}+00:00",
+            })
+        assert journal.snapshot(ref)["summary"]["output_rate_sample"] == expected
+    finally:
+        journal.close()
+
+
+def test_journal_rate_includes_codex_commentary(tmp_path):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "commentary-rate", "message")
+    try:
+        for second, text in enumerate(["开始", "正在核对", "继续验证"]):
+            journal.record(ref, {
+                "type": "agent_message_chunk",
+                "data": {"content": {"text": text}, "phase": "commentary"},
+                "timestamp": f"2026-11-08T00:00:{second:02d}+00:00",
+            })
+        assert journal.snapshot(ref)["summary"]["output_rate_sample"] == {
+            "units": 32, "elapsed_ms": 2000,
+        }
+    finally:
+        journal.close()
+
+
+def test_first_output_includes_tool_call_but_not_user_or_empty_output(tmp_path):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "first-tool", "message")
+    try:
+        for second, kind, data in [
+            (0, "message_started", {}),
+            (1, "agent_message_chunk", {"content": {"text": ""}}),
+            (2, "user_message_chunk", {"content": {"text": "input"}}),
+            (3, "tool_call", {"tool_call_id": "tool", "title": "Bash", "raw_input": {"command": "ls"}}),
+            (9, "agent_thought_chunk", {"content": {"text": "thinking"}}),
+        ]:
+            journal.record(ref, {"type": kind, "data": data,
+                "timestamp": f"2026-11-08T00:00:{second:02d}+00:00"})
+        assert journal.snapshot(ref)["summary"]["first_output_at"] == "2026-11-08T00:00:03+00:00"
+    finally:
+        journal.close()
+
+
+def test_output_rate_sampler_handles_sparse_and_short_output():
+    from agent_assistants.output_rate import OutputRateSampler
+    for elapsed in (500, 3000):
+        sampler = OutputRateSampler()
+        sampler.record({"type": "agent_thought_chunk", "data": {"content": {"text": "first"}}}, 0)
+        sampler.record({"type": "agent_thought_chunk", "data": {"content": {"text": "中文"}}}, elapsed)
+        assert sampler.last_sample == {"units": 8, "elapsed_ms": elapsed}

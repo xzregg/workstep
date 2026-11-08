@@ -28,7 +28,7 @@ class MemoryConfigStore:
 
 
 @pytest.fixture
-def manager(tmp_path, monkeypatch):
+def manager(tmp_path, monkeypatch, preview_directory):
     store = MemoryConfigStore()
     monkeypatch.setattr(project_service, "config_store", store)
     pm = ProjectManager()

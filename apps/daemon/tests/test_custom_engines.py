@@ -45,7 +45,7 @@ def custom_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "_SCAN_GENERATION", registry._SCAN_GENERATION)
     monkeypatch.setattr(config, "CONFIG_DIR", tmp_path / "config")
     monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "config" / "config.json")
-    monkeypatch.setattr(config.config_store, "_cache", {})
+    monkeypatch.setattr(config.config_store, "_cache", {"default_project_directory": str(tmp_path)})
     monkeypatch.setenv("WORKSTEP_CONFIG_DIR", str(tmp_path / "config"))
     source = tmp_path / "source"
     source.mkdir()

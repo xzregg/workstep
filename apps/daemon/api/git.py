@@ -6,6 +6,27 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from services.git import git_service
 from services.git.command import GitError
 from services.git.task_workspace import TaskGitWorkspace
+from pathlib import Path
+
+
+async def file_access_scope(request: Request):
+    """Apply the file root to API worktrees without changing engine Git jobs."""
+    from api.fs_paths import _assert_preview_path
+    project_id = request.path_params.get('project_id')
+    if project_id:
+        def check_project():
+            if '/tasks/' in request.url.path:
+                _assert_preview_path(_task_project(project_id).path)
+            else:
+                for project in git_service.projects_provider():
+                    if project['id'] == project_id:
+                        _assert_preview_path(Path(project['path']))
+                        break
+        await asyncio.to_thread(check_project)
+    if '/worktrees/' in request.url.path:
+        directory = git_service.directories.get(request.path_params.get('id'))
+        if directory:
+            await asyncio.to_thread(_assert_preview_path, Path(directory['path']))
 
 async def project_scope(request: Request, scoped_project: str | None = Query(None, alias='project_id')):
     if not scoped_project:
@@ -23,7 +44,7 @@ async def project_scope(request: Request, scoped_project: str | None = Query(Non
     raise HTTPException(403, '远程项目不能修改全局 Git 设置。')
 
 
-router = APIRouter(prefix='/api/git', tags=['git'], dependencies=[Depends(project_scope)])
+router = APIRouter(prefix='/api/git', tags=['git'], dependencies=[Depends(project_scope), Depends(file_access_scope)])
 
 
 def _task_project(project_id: str):

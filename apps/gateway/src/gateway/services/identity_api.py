@@ -78,7 +78,20 @@ class ResetPasswordInput(BaseModel):
 
 
 class AdminCreateInput(AccountInput):
+    username: str = ''
+    password: str = Field(default='', max_length=128)
     status: Literal["active", "pending"] = "active"
+
+    @field_validator('username')
+    @classmethod
+    def valid_username(cls, value: str) -> str:
+        return AccountInput.valid_username(value) if value else ''
+
+    @model_validator(mode='after')
+    def password_needs_username(self):
+        if self.password and not self.username:
+            raise ValueError('Username required with password')
+        return self
 
 
 class GrantRoleInput(BaseModel):
@@ -325,6 +338,7 @@ async def admin_list_users(call: GatewayCall, q: str = '',
         rows = (await session.scalars(select(User).where(*conditions)
             .order_by(ordered, User.id).offset((page - 1) * page_size).limit(page_size))).all()
         users = [{**public_user(user), "registration_source": user.registration_source,
+                  "activation_pending": user.registration_source == 'admin_created' and not user.password_hash,
                   "login_username": user.username if user.password_hash else None,
                   "is_recovery": bool(user.is_recovery),
                   "created_at": user.created_at.isoformat(),

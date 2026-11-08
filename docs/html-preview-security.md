@@ -31,6 +31,3 @@ HTML 响应通过 CSP 响应头设置沙箱及资源范围：脚本、样式、�
 - Web：`artifactPreviewHtml.test.tsx`、`htmlPreviewCompat.test.ts`，以及原 Markdown、下载、分享与窗口尺寸测试。
 - daemon：`test_html_preview_isolation.py`、`test_remote_file_preview.py`，以及原文件接口、桌面认证、分享和网关桥接回归。
 - Gateway：`test_html_preview_access.py`、`test_data_http.py`、`test_user_devices.py`；协议范围在 `packages/gateway-protocol/tests/test_protocol.py`。
-- `test_html_preview_isolation.py` 的 Chromium 用例通过 `WORKSTEP_PLAYWRIGHT_MODULE` 和 `WORKSTEP_CHROMIUM` 显式启用。需要 Node Playwright、Chromium，以及可导入 gateway 源码与依赖的 Python 环境；测试只启动回环地址的临时服务和临时数据库，不连接真实宿主或 LLM。
-- 浏览器矩阵覆盖本地、远程、网关登录本地、网关登录远程；执行真实 Gateway 登录/兑换和 DataConnection、远程路由分发。设备网络传输使用内存 HTTP 桥；签名桥另由既有 `test_gateway_workspace_bridge.py` 覆盖。CDN 请求使用确定性夹具，不依赖公网。
-- 每条链路回放 `provider-layout.html`、其嵌套预览包装、`desktop-sidebar.html`、`task-execution-analysis.html`，并检查按钮、弹框、消息输入和正常渲染；这不是对全部历史 HTML 的兼容承诺。

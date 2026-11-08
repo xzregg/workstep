@@ -36,13 +36,15 @@ test('automatic entry keeps portal navigation and device tabs out of the first s
  let acceptSession!:(response:Response)=>void
  let acceptAccess!:(response:Response)=>void
  let submitted=0
+ let accessSignal:AbortSignal | null | undefined
  dom.window.HTMLFormElement.prototype.submit=function(){submitted++}
- globalThis.fetch=async input=>{
+ globalThis.fetch=async (input,init)=>{
   const url=String(input)
   if(url==='/api/auth/session')return new Promise(resolve=>{acceptSession=resolve})
-  if(url==='/api/devices')return Response.json({devices:[{id:'d',name:'研发电脑',online:true}]})
+  if(url==='/api/devices')return Response.json({devices:[{id:'d',name:'研发电脑',online:true},{id:'e',name:'测试电脑',online:true}]})
   if(url==='/api/projects')return Response.json({projects:[]})
-  if(url==='/api/devices/d/access')return new Promise(resolve=>{acceptAccess=resolve})
+  if(url==='/api/devices/d/access'){accessSignal=init?.signal;return new Promise(resolve=>{acceptAccess=resolve})}
+  if(url==='/api/devices/e/access')return Response.json({url:'https://gateway.test/workspace/e/',ticket:'other-ticket'})
   throw Error(url)
  }
  render(<MemoryRouter><ProjectsPage autoEnter portalHeader={<PortalHeader hasAdminAccess/>}/></MemoryRouter>)
@@ -55,8 +57,16 @@ test('automatic entry keeps portal navigation and device tabs out of the first s
  fireEvent.click(screen.getByRole('button',{name:'选择其他设备'}))
  assert.ok(screen.getByRole('navigation',{name:'工作台导航'}))
  assert.ok(screen.getByRole('tab',{name:/研发电脑/}))
+ assert.equal(accessSignal?.aborted,true)
+ assert.equal(screen.queryByText(/正在进入 研发电脑/),null)
+ assert.ok(screen.getByRole('button',{name:'重新连接设备'}))
  acceptAccess(Response.json({url:'https://gateway.test/workspace/d/',ticket:'ticket'}))
+ // Flush the stale response, even when the transport ignores cancellation.
+ await new Promise(resolve=>setTimeout(resolve,0))
+ assert.equal(submitted,0)
+ fireEvent.click(screen.getByRole('tab',{name:/测试电脑/}))
  await waitFor(()=>assert.equal(submitted,1))
+ assert.equal(screen.getByRole('tab',{name:/测试电脑/}).getAttribute('aria-selected'),'true')
 })
 
 test('automatic entry reveals the portal for offline devices and failed access',async()=>{

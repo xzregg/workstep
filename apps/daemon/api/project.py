@@ -32,6 +32,9 @@ async def _run_db(project_id, operation):
 @router.post("/init")
 async def init_project(req: InitRequest):
     """Initialize a new WorkStep project."""
+    from api.fs_paths import _assert_preview_path
+    from pathlib import Path
+    await asyncio.to_thread(_assert_preview_path, Path(req.path).expanduser())
     try:
         proj = await asyncio.to_thread(
             project_manager.init_project, req.path, name=req.name, follow_project=req.follow_project
@@ -44,6 +47,9 @@ async def init_project(req: InitRequest):
 @router.post("/register")
 async def register_project(req: RegisterRequest):
     """Register an existing project path."""
+    from api.fs_paths import _assert_preview_path
+    from pathlib import Path
+    await asyncio.to_thread(_assert_preview_path, Path(req.path).expanduser())
     try:
         proj = await asyncio.to_thread(
             project_manager.register_and_save, req.path, name=req.name

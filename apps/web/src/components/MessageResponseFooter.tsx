@@ -1,13 +1,13 @@
 import Icon from './Icon'
+import { firstOutputTimestamp } from '../utils/firstOutput'
 import { useEffect, useMemo, useState } from 'react'
 import { engineLabel } from '../engineMeta'
 import MarqueeText from './MarqueeText'
 import { useCompactLayout } from '../hooks/useCompactLayout'
-import { useMessageClock } from '../hooks/useMessageClock'
+import { useOutputRate } from '../hooks/useOutputRate'
 import { copyText } from '../utils/clipboard'
 import Button from './Button'
 import {
-  durationMilliseconds,
   formatConversationDateTime,
   toMilliseconds,
   type DateTimeValue,
@@ -16,11 +16,6 @@ import {
   estimateUsageFromEvents,
   estimateUsageFromEventSummary,
 } from '../utils/contextUsage.js'
-import {
-  buildMessageTimeline,
-  thinkingRateFromTimeline,
-  type MessageTimelineEvent,
-} from '../utils/messageTimeline'
 import { useI18n, zhCNT, type TFunction } from '../i18n'
 
 export {
@@ -160,33 +155,8 @@ export function MessageCopyButton({
 
 /** 事件时间戳：AG-UI 事件用 timestamp，旧内部事件用 created_at。 */
 function eventTimestamp(event: any): number | null {
-  return toMilliseconds(event?.created_at ?? event?.timestamp)
+  return toMilliseconds(event?.timestamp ?? event?.created_at)
 }
-
-/**
- * 进行中速率（t/s）：按已产出的 output token 除以已运行时长。
- * startedAt 缺省时回退到最早一条事件时间；时长不足 1 秒或无输出时返回 null，
- * 避免刚起步就出现夸张的速率数字。
- */
-export function tokensPerSecond(
-  outputTokens: number,
-  elapsedMs: number | null,
-): number | null {
-  if (!Number.isFinite(outputTokens) || outputTokens <= 0) return null
-  if (elapsedMs === null || elapsedMs < 1000) return null
-  return Math.max(1, Math.round(outputTokens / (elapsedMs / 1000)))
-}
-
-/** 模型「吐词」事件：正文/思考增量与首个正文事件，用于计算首 token 时延。 */
-const OUTPUT_EVENT_TYPES = new Set([
-  'TEXT_MESSAGE_START',
-  'TEXT_MESSAGE_CHUNK',
-  'TEXT_MESSAGE_CONTENT',
-  'REASONING_MESSAGE_CHUNK',
-  'agent_message_chunk',
-  'agent_thought_chunk',
-  'thinking_delta',
-])
 
 /**
  * 首次吐词时延（秒）：消息开始时刻到第一条输出事件的时间差。
@@ -199,7 +169,7 @@ export function firstTokenDelaySeconds(
   eventSummary?: Record<string, unknown> | null,
 ): number | null {
   const summaryFirstOutputAt = eventSummary?.first_output_at
-  if (typeof summaryFirstOutputAt === 'string' && startedAt) {
+  if ((typeof summaryFirstOutputAt === 'string' || typeof summaryFirstOutputAt === 'number') && startedAt != null) {
     const start = toMilliseconds(startedAt)
     const firstOutput = toMilliseconds(summaryFirstOutputAt)
     if (start !== null && firstOutput !== null && firstOutput >= start) {
@@ -213,8 +183,8 @@ export function firstTokenDelaySeconds(
     const timestamp = eventTimestamp(event)
     if (timestamp === null) continue
     if (earliest === null || timestamp < earliest) earliest = timestamp
-    if (!event?.type || !OUTPUT_EVENT_TYPES.has(event.type)) continue
-    if (firstOutput === null || timestamp < firstOutput) firstOutput = timestamp
+    const outputAt = firstOutputTimestamp(event)
+    if (outputAt !== null && (firstOutput === null || outputAt < firstOutput)) firstOutput = outputAt
   }
   const start = toMilliseconds(startedAt) ?? earliest
   if (start === null || firstOutput === null) return null
@@ -241,7 +211,7 @@ export interface MessageResponseFooterProps {
   engine?: string | null
   model?: string | null
   executionModel?: string | null
-  /** 消息开始时刻：进行中计算 t/s 速率；缺省时回退到最早事件时间。 */
+  /** 消息开始时刻：计算首 token 时延。 */
   startedAt?: DateTimeValue
   endedAt?: string | number | null
   running?: boolean
@@ -287,36 +257,7 @@ export default function MessageResponseFooter({
       ? ''
       : formatTokenUsage(usage, t, locale, engine)
 
-  // 进行中每秒刷新一次时钟，让 t/s 与耗时保持流动；结束后停止计时器。
-  const now = useMessageClock(running)
-
-  // 最早事件时间：单趟扫描 + memo（替代 events.map().filter() 建两个数组再
-  // Math.min(...) 展开——后者每 token 重算且大数组展开有爆栈风险）。
-  const earliestEventMs = useMemo(() => {
-    let min: number | null = null
-    for (const raw of events ?? []) {
-      const ts = eventTimestamp(raw)
-      if (ts !== null && (min === null || ts < min)) min = ts
-    }
-    return min
-  }, [events])
-  const elapsedMs = running
-    ? durationMilliseconds(toMilliseconds(startedAt) ?? earliestEventMs, now)
-    : null
-  const thinkingRate = useMemo(
-    () => running ? thinkingRateFromTimeline(buildMessageTimeline((events ?? []) as MessageTimelineEvent[]), now) : null,
-    [running, events, now],
-  )
-  const outputTokens = usageValue(effectiveUsage, 'output_tokens', 'completion_tokens')
-  const summaryOutputTokens = outputTokens > 0
-    ? outputTokens
-    : usageValue(effectiveUsage, 'reasoning_output_tokens', 'thought_tokens')
-  const rateElapsedMs = running
-    ? elapsedMs
-    : typeof eventSummary?.elapsed_ms === 'number'
-      ? eventSummary.elapsed_ms
-      : null
-  const rate = thinkingRate ?? tokensPerSecond(summaryOutputTokens, rateElapsedMs)
+  const rate = useOutputRate(events, startedAt, eventSummary, running)
   // 首 token 时延：开始 → 第一条吐词事件；进行中与结束后都展示。memo 同上。
   const ttftSeconds = useMemo(
     () => firstTokenDelaySeconds(events, startedAt, eventSummary),

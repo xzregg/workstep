@@ -1,6 +1,6 @@
 [project]
 name = "workstep-daemon"
-version = "1.0.18"
+version = "1.0.19"
 description = "WorkStep local-first workflow orchestration daemon"
 requires-python = ">=3.11"
 dependencies = [
@@ -26,6 +26,7 @@ dependencies = [
     "pywebpush>=2.5.0",
     "tinycss2>=1.4,<2",
     "lark-oapi>=1.7.5,<1.8",
+    "pillow>=11.3,<13",
 ]
 
 [tool.uv.sources]

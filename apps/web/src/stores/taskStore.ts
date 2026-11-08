@@ -1,3 +1,4 @@
+import { preserveFirstOutput } from '../utils/firstOutput'
 import { create } from 'zustand'
 import { taskApi, type EngineInputItem, type Task, type TaskStepState } from '../api/client.ts'
 import { useProjectStore } from './projectStore.ts'
@@ -73,6 +74,7 @@ export interface TaskEvent {
 }
 
 export interface LiveMessage {
+  event_summary?: Record<string, unknown>
   schedule_run_id?: string | null
   id: string
   channel: 'coordinator' | 'execution' | 'review' | 'archive_experience'
@@ -533,6 +535,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
                 author_device_id: current.author_device_id || event.actor?.device_id,
                 author_device_name: current.author_device_name || event.actor?.device_name,
                 proposals: nextProposals,
+                event_summary: preserveFirstOutput(current.event_summary, [timedEvent]),
                 events: appendCappedEvent(current.events, timedEvent),
               },
             },

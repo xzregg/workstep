@@ -13,10 +13,12 @@ export const WORKSPACE_TOOL_RAIL_WIDTH = 48
 interface Props {
   onOpenSettings: (section: SettingsSection) => void
   activeSettingsSection?: SettingsSection
+  sidebarCollapsed?: boolean
+  onToggleSidebar?: () => void
 }
 
 /** One set of actions: desktop tool rail and compact mobile footer. */
-export default function WorkspaceNavigationActions({ onOpenSettings, activeSettingsSection }: Props) {
+export default function WorkspaceNavigationActions({ onOpenSettings, activeSettingsSection, sidebarCollapsed = false, onToggleSidebar }: Props) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -29,6 +31,12 @@ export default function WorkspaceNavigationActions({ onOpenSettings, activeSetti
     </Button>
   )
   return <nav className="layout-sidebar-actions" aria-label={t('mobile.navigation')}>
+    {onToggleSidebar && <Button variant="ghost" className="layout-sidebar-nav-button layout-sidebar-toggle"
+      aria-label={t(sidebarCollapsed ? 'layout.expandConversationList' : 'layout.collapseConversationList')}
+      aria-expanded={!sidebarCollapsed} onClick={onToggleSidebar}>
+      <Icon name={sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'} size={17} strokeWidth={2} />
+      <span className="layout-sidebar-action-label">{t(sidebarCollapsed ? 'layout.expandConversationList' : 'layout.collapseConversationList')}</span>
+    </Button>}
     {can('statistics.read') && action(t('nav.statistics'), 'bar-chart', () => navigate('/statistics'), pathname === '/statistics')}
     <ScheduleCenter />
     {!bound && action(t('roleCenter.title'), 'drama', () => onOpenSettings('roles'), activeSettingsSection === 'roles', 'layout-sidebar-external-only')}

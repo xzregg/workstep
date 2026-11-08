@@ -21,7 +21,7 @@ test('saving the default directory opens project browsing there; clearing restor
     if (url.pathname === '/api/managed/mode') return Response.json({ managed: false })
     if (url.pathname === '/api/system-settings') {
       if (init?.method === 'PUT') savedDirectory = JSON.parse(String(init.body)).default_project_directory
-      return Response.json({ user_name: '测试', open_mode: false, default_project_directory: savedDirectory })
+      return Response.json({ user_name: '测试', open_mode: false, default_project_directory: savedDirectory, restrict_file_access_root: true })
     }
     assert.equal(url.pathname, '/api/fs/browse')
     browsed.push(url.searchParams.get('path'))

@@ -1,4 +1,5 @@
 import { AdminEditUserDialog } from './AdminEditUserDialog'
+import { UserInvitationButton } from './UserInvitationButton'
 import { useState } from 'react'
 import { AdminRecordTable } from './AdminRecordTable'
 import { AdminSelectAll, loginUsername, useAdminSelection } from './AdminSelection'
@@ -40,11 +41,12 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh, canVi
    {users.map(user=><tr key={user.id}>
     <td><input type="checkbox" className="gateway-table-checkbox" aria-label={`选择${user.display_name}`} checked={selected.includes(user.id)} disabled={loading || user.is_recovery} onChange={event=>toggle(user.id,event.target.checked)}/></td>
     <td><strong>{user.display_name}</strong></td>
-    <td><span className="gateway-login-name" title={loginUsername(user) ?? '使用企业身份登录'}>{loginUsername(user) ?? '扫码登录'}</span></td>
-    <td>{user.status==='pending'?'待审核':user.status==='disabled'?'已停用':user.status==='deleted'?'已删除':'已启用'}</td>
+    <td><span className="gateway-login-name" title={loginUsername(user) ?? (user.activation_pending ? '等待用户设置登录名' : '使用企业身份登录')}>{loginUsername(user) ?? (user.activation_pending ? '待设置' : '扫码登录')}</span></td>
+    <td>{user.status==='pending'?'待审核':user.status==='disabled'?'已停用':user.status==='deleted'?'已删除':user.activation_pending?'待激活':'已启用'}</td>
     <td>{sources[user.registration_source] ?? user.registration_source}</td>
     <td>{user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '暂无记录'}</td>
     <td><div className="gateway-row-actions">
+     {['active','pending'].includes(user.status) && !user.is_recovery && <UserInvitationButton userId={user.id} csrf={csrf} disabled={loading} />}
      {canViewAudit && <a className="gateway-action-link" href={`/admin/audit?user_id=${encodeURIComponent(user.id)}`} aria-label={`${user.display_name}的审计日志`}>审计日志</a>}
      {user.status!=='deleted' && !user.is_recovery && <button type="button" disabled={loading} onClick={()=>{setNotice('');setEditing(user)}}>编辑</button>}
      {user.status==='pending' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>{setNotice('');setSingle({user,kind:'approve'})}}>批准</button>}

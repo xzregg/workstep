@@ -1,6 +1,6 @@
 import { request } from './transport'
 
-export const BOT_PLATFORMS = ['wecom', 'dingtalk', 'feishu', 'lark', 'telegram', 'discord', 'slack', 'qq'] as const
+export const BOT_PLATFORMS = ['wecom', 'weixin', 'dingtalk', 'feishu', 'lark', 'telegram', 'discord', 'slack', 'qq'] as const
 export type BotPlatform = typeof BOT_PLATFORMS[number]
 export type BotTargetType = '' | 'project' | 'task'
 
@@ -28,6 +28,7 @@ export interface ChannelBot {
 }
 
 export interface BotDraft {
+  login_id?: string
   app_token?: string
   card_template_id?: string
   review_card_template_id?: string
@@ -42,6 +43,7 @@ export interface BotDraft {
 }
 
 export interface PrivateWhitelistUser { sender_id: string; sender_name: string }
+export interface WeixinLogin { login_id: string; status: 'wait' | 'scaned' | 'confirmed' | 'expired'; qr_content: string; account_id: string }
 export interface PrivateWhitelist { enabled: boolean; users: PrivateWhitelistUser[]; candidates: PrivateWhitelistUser[] }
 
 export interface DiscussionGroup {
@@ -56,6 +58,9 @@ const json = (body: unknown, method: string) => ({ method, body: JSON.stringify(
 const taskPath = (taskId: string) => `/task/${encodeURIComponent(taskId)}/discussion-groups`
 
 export const channelBotApi = {
+  startWeixinLogin: (botId?: string) => request<WeixinLogin>('/channel-bots/weixin/login', json({ bot_id: botId || '' }, 'POST')),
+  pollWeixinLogin: (id: string, signal?: AbortSignal) => request<WeixinLogin>(`/channel-bots/weixin/login/${encodeURIComponent(id)}`, { signal }),
+  cancelWeixinLogin: (id: string) => request(`/channel-bots/weixin/login/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   groupWhitelist: async (id: string): Promise<PrivateWhitelist> => {
     const value = await request<{ enabled: boolean; groups: { group_id: string; group_name: string }[]; candidates: { group_id: string; group_name: string }[] }>(`/channel-bots/${encodeURIComponent(id)}/group-whitelist`)
     const map = (row: { group_id: string; group_name: string }) => ({ sender_id: row.group_id, sender_name: row.group_name })

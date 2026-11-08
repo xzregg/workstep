@@ -33,6 +33,8 @@ async def api_client(tmp_path, monkeypatch):
 
     store = _config_store(tmp_path, monkeypatch)
     monkeypatch.setattr(main, "config_store", store)
+    import api.assistant
+    monkeypatch.setattr(api.assistant, "config_store", store)
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project-a")
     monkeypatch.setattr(main, "project_manager", manager)
@@ -55,6 +57,7 @@ async def test_global_concurrency_round_trip(api_client):
     assert body["max_tasks"] == 0
     assert body["max_chats"] == 0
     assert body["schedule_exempt"] is False
+    assert body["task_retry_interval_minutes"] == 5
 
     resp = await client.put(
         "/api/assistant/concurrency",
@@ -77,6 +80,23 @@ async def test_global_concurrency_round_trip(api_client):
         json={"max_tasks": -1, "max_chats": 2, "schedule_exempt": False},
     )
     assert resp.status_code == 422
+
+
+async def test_task_retry_interval_round_trip_and_legacy_save(api_client):
+    client, store, _, _ = api_client
+    for value in (12, 0):
+        response = await client.put('/api/assistant/concurrency', json={
+            'task_retry_interval_minutes': value,
+        })
+        assert response.status_code == 200
+        assert response.json()['task_retry_interval_minutes'] == value
+        assert store.get_task_retry_interval_minutes() == value
+        # Old clients updating concurrency must not re-enable retries.
+        response = await client.put('/api/assistant/concurrency', json={'max_tasks': 2})
+        assert response.json()['task_retry_interval_minutes'] == value
+    for value in (-1, 1.5, True, 10081):
+        response = await client.put('/api/assistant/concurrency', json={'task_retry_interval_minutes': value})
+        assert response.status_code == 422
 
 
 # ── project-level API ─────────────────────────────────────────────────

@@ -1,155 +1,36 @@
 import assert from 'node:assert/strict'
-import { afterEach,test } from 'node:test'
+import { afterEach, test } from 'node:test'
 import { JSDOM } from 'jsdom'
 import { MemoryRouter } from 'react-router-dom'
 import { PortalHeader } from '../src/PortalHeader'
-import { ProjectsPage } from '../src/ProjectsPage'
-import { NotificationCenterView } from '@workstep/gateway-ui/NotificationCenterView'
 
-const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'https://gateway.test/'})
-Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,
-  MutationObserver:dom.window.MutationObserver,Event:dom.window.Event,CustomEvent:dom.window.CustomEvent})
-Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator})
-const {render,screen,fireEvent,waitFor,cleanup}=await import('@testing-library/react')
-const originalFetch=globalThis.fetch
-const originalSocket=globalThis.WebSocket
-const originalSubmit=dom.window.HTMLFormElement.prototype.submit
-afterEach(()=>{cleanup();globalThis.fetch=originalFetch;globalThis.WebSocket=originalSocket;dom.window.HTMLFormElement.prototype.submit=originalSubmit})
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://gateway.test/' })
+Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement,
+  MutationObserver: dom.window.MutationObserver, Event: dom.window.Event })
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
+const { render, screen, cleanup } = await import('@testing-library/react')
+const originalFetch = globalThis.fetch
+const originalSocket = globalThis.WebSocket
+afterEach(() => { cleanup(); globalThis.fetch = originalFetch; globalThis.WebSocket = originalSocket; delete (window as any).WorkStepAndroid })
 
-test('notification opens the source workspace directly and never creates iframe',async()=>{
-  const sockets:FakeSocket[]=[]
-  class FakeSocket {
-    readyState=1;onopen:any;onclose:any;onmessage:any;onerror:any
-    constructor(public url:string){sockets.push(this)}
-    close(){this.readyState=3}
-    send(){}
-  }
-  globalThis.WebSocket=FakeSocket as unknown as typeof WebSocket
-  const submissions:{target:string;next:string}[]=[]
-  dom.window.HTMLFormElement.prototype.submit=function(){submissions.push({target:this.target,next:new dom.window.FormData(this).get('next')?.toString()??''})}
-  const snapshot={events:[{id:'event',sequence:7,device_id:'b',device_name:'B设备',host_project_id:'project',
-    project_name:'演示项目',scope_name:'完成测试',task_id:'task',status:'succeeded',occurred_at:Date.now()/1000,read:false}],unread:1,cursor:7,more:false}
-  let reads=0
-  globalThis.fetch=async(input,init)=>{
-    const url=String(input)
-    if(url==='/api/auth/session')return Response.json({user:{id:'u'},csrf_token:'csrf'})
-    if(url==='/api/devices')return Response.json({devices:[{id:'a',name:'A设备',online:true},{id:'b',name:'B设备',online:true}]})
-    if(url==='/api/projects')return Response.json({projects:[]})
-    if(url==='/api/notifications')return Response.json(snapshot)
-    if(url==='/api/notifications/read'){reads++;assert.equal(new Headers(init?.headers).get('X-CSRF-Token'),'csrf');assert.equal(init?.body,'{"through":7}');return Response.json({ok:true})}
-    if(url==='/api/notifications/7/access')return Response.json({url:'https://gateway.test/workspace/b/',ticket:'ticket',next:'tasks?project=Demo&task=task'})
-    if(url.endsWith('/access'))return Response.json({url:'https://gateway.test/workspace/'+url.split('/')[3]+'/',ticket:'ticket'})
-    throw Error('Unexpected '+url)
-  }
-  render(<MemoryRouter><PortalHeader signedIn hasAdminAccess={false}/><ProjectsPage/></MemoryRouter>)
-  await waitFor(()=>assert.equal(submissions.length,1))
-  assert.equal(sockets.length,1)
-  assert.ok(sockets[0].url.endsWith('/ws/notifications'))
-  fireEvent.click(screen.getByRole('tab',{name:/B设备/}))
-  await waitFor(()=>assert.equal(submissions.length,2))
-  fireEvent.click(screen.getByRole('tab',{name:/A设备/}))
-  await waitFor(()=>assert.equal(submissions.length,3))
-  assert.equal(sockets.length,1)
-  fireEvent.click(screen.getByRole('button',{name:'通知，1 条未读'}))
-  assert.ok(screen.getByText('B设备 · 演示项目'))
-  fireEvent.click(screen.getByRole('button',{name:/完成测试 · 回复完成/}))
-  await waitFor(()=>assert.equal(submissions.length,4))
-  assert.equal(submissions[3].next,'tasks?project=Demo&task=task')
-  assert.equal(submissions[3].target,'')
-  assert.equal(document.querySelector('iframe'),null)
-  assert.equal(sockets.length,1)
-  fireEvent.click(screen.getByRole('button',{name:'通知，1 条未读'}))
-  fireEvent.click(screen.getByRole('button',{name:'全部已读'}))
-  await waitFor(()=>assert.equal(reads,1))
-  await screen.findByRole('button',{name:'通知，0 条未读'})
-})
-
-test('offline notification remains visible and retryable instead of navigating',async()=>{
-  const snapshot={events:[{id:'event',sequence:1,device_id:'b',device_name:'B设备',project_name:'Demo',task_id:'task',status:'failed',occurred_at:1,read:false}],unread:1,cursor:1,more:false}
-  globalThis.fetch=async input=>String(input)==='/api/notifications'?Response.json(snapshot):new Response(null,{status:409})
-  render(<MemoryRouter><PortalHeader signedIn hasAdminAccess={false}/></MemoryRouter>)
-  await screen.findByRole('button',{name:'通知，1 条未读'})
-  fireEvent.click(screen.getByRole('button',{name:'通知，1 条未读'}))
-  fireEvent.click(screen.getByRole('button',{name:/任务 task · 回复失败/}))
-  await screen.findByText('设备离线，通知已保留，上线后可重试。')
-  assert.equal(screen.getByRole('button',{name:'通知，1 条未读'}).getAttribute('aria-expanded'),'true')
-})
-
-test('notifications distinguish replies from steps and paginate from the last chronological item',async()=>{
-  const base={device_id:'b',device_name:'B设备',host_project_id:'project',project_name:'Demo',
-    task_id:'task',scope_name:'测试任务',read:false}
-  const events=[{...base,id:'newest',sequence:2,status:'succeeded',occurred_at:30},
-    {...base,id:'step',sequence:4,step_key:'start',status:'failed',occurred_at:20}]
-  const requests:string[]=[]
-  globalThis.fetch=async input=>{
-    const url=String(input);requests.push(url)
-    if(url==='/api/notifications')return Response.json({events,unread:4,cursor:4,more:true})
-    assert.equal(url,'/api/notifications?before=4')
-    return Response.json({events:[{...base,id:'older',sequence:3,status:'failed',occurred_at:20},
-      {...base,id:'oldest',sequence:1,session_id:'s',task_id:undefined,scope_name:'会话',status:'error',occurred_at:10}],unread:4,cursor:4,more:false})
-  }
-  render(<NotificationCenterView onOpen={()=>{}}/>)
-  fireEvent.click(await screen.findByRole('button',{name:'通知，4 条未读'}))
-  assert.ok(screen.getByRole('button',{name:/测试任务 · 回复完成/}))
-  assert.ok(screen.getByRole('button',{name:/测试任务 · 步骤失败.*步骤 start/}))
-  fireEvent.click(screen.getByRole('button',{name:'加载更早通知'}))
-  await screen.findByRole('button',{name:/会话 · 回复失败/})
-  assert.deepEqual(requests,['/api/notifications','/api/notifications?before=4'])
-  assert.equal(document.querySelectorAll('.gateway-notification-panel li').length,3)
-  fireEvent.click(screen.getByRole('button',{name:'展开全部事件'}))
-  assert.deepEqual([...document.querySelectorAll('.gateway-notification-panel li strong')].map(node=>node.textContent),
-    ['测试任务 · 回复完成','测试任务 · 步骤失败','测试任务 · 回复失败','会话 · 回复失败'])
-})
-
-test('gateway completion calls the shipped Android notify bridge once and does not replay old history',async()=>{
- const sockets:any[]=[],messages:any[]=[]
- class Socket {
-  readyState=1;onopen:any;onclose:any;onmessage:any;onerror:any
-  constructor(){sockets.push(this)} close(){this.readyState=3} send(){}
- }
- globalThis.WebSocket=Socket as unknown as typeof WebSocket
- Object.assign(window,{WorkStepAndroid:{postMessage:(raw:string)=>messages.push(JSON.parse(raw))}})
- const event={id:'e',sequence:1,device_id:'b',device_name:'B设备',host_project_id:'p',project_name:'Demo',
-  task_id:'t',messageId:'m',status:'succeeded',occurred_at:1,read:false}
- globalThis.fetch=async()=>Response.json({events:[],unread:0,cursor:0,more:false})
- try {
-  render(<MemoryRouter><PortalHeader signedIn hasAdminAccess={false}/></MemoryRouter>)
-  const initial={type:'notifications',events:[event],unread:1,cursor:1,more:false}
-  sockets[0].onmessage({data:JSON.stringify(initial)})
-  assert.equal(messages.length,0)
-  sockets[0].onmessage({data:JSON.stringify({...initial,events:[{...event,sequence:2,messageId:'new',occurred_at:Date.now()/1000}],cursor:2})})
-  await waitFor(()=>assert.equal(messages.length,1))
-  assert.equal(messages[0].type,'notify')
-  assert.equal(messages[0].id,'gateway/b/p:t:new')
-  assert.equal(messages[0].outcome,'succeeded')
-  assert.equal(new URL(messages[0].url,'https://gateway.test').searchParams.get('project'),'gateway/b/p')
-  sockets[0].onmessage({data:JSON.stringify({...initial,cursor:2})})
-  assert.equal(messages.length,1)
- }finally{delete (window as any).WorkStepAndroid}
-})
-
-
-test('repeated replies collapse by device, project and conversation while retaining unread and failure history',async()=>{
-  const base={device_id:'b',device_name:'B设备',host_project_id:'p',project_name:'Demo',
-    session_id:'e93a35cf-4ae3-4c20-b1c1-de6137e4a479',status:'succeeded',read:true}
-  const events=[{...base,id:'latest',sequence:5,occurred_at:50},
-    {...base,id:'other-device',device_id:'c',sequence:4,occurred_at:40},
-    {...base,id:'other-project',host_project_id:'q',sequence:3,occurred_at:30},
-    {...base,id:'failed',sequence:2,occurred_at:20,status:'error',read:false},
-    {...base,id:'old',sequence:1,occurred_at:10}]
-  const opened:number[]=[]
-  globalThis.fetch=async input=>String(input)==='/api/notifications'
-    ?Response.json({events,unread:1,cursor:5,more:false})
-    :Response.json({url:'/workspace/b/',ticket:'ticket'})
-  render(<NotificationCenterView onOpen={target=>opened.push(target.sequence)}/>)
-  fireEvent.click(await screen.findByRole('button',{name:'通知，1 条未读'}))
-  const rows=document.querySelectorAll('.gateway-notification-panel li')
-  assert.equal(rows.length,3)
-  assert.ok(rows[0].classList.contains('gateway-notification-unread'))
-  assert.ok(rows[0].textContent?.includes('共 3 条事件，其中 1 条失败'))
-  fireEvent.click(screen.getByRole('button',{name:'展开全部事件'}))
-  assert.equal(document.querySelectorAll('.gateway-notification-panel li').length,5)
-  fireEvent.click(screen.getByRole('button',{name:'合并重复事件'}))
-  fireEvent.click(document.querySelector('.gateway-notification-panel li > button')!)
-  await waitFor(()=>assert.deepEqual(opened,[5]))
-})
+for (const android of [false, true]) {
+  test(`portal has no notification badge, history request or aggregate socket (Android=${android})`, async () => {
+    const requests: string[] = [], sockets: string[] = []
+    globalThis.fetch = async input => { requests.push(String(input)); return Response.json({ events: [], unread: 999, cursor: 999, more: true }) }
+    class Socket {
+      constructor(url: string) { sockets.push(url) }
+      close() {}
+      send() {}
+    }
+    globalThis.WebSocket = Socket as unknown as typeof WebSocket
+    if (android) Object.assign(window, { WorkStepAndroid: { postMessage: () => {} } })
+    render(<MemoryRouter><PortalHeader signedIn hasAdminAccess={false}/></MemoryRouter>)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    assert.ok(screen.getByRole('navigation', { name: '工作台导航' }))
+    assert.ok(screen.getByRole('button', { name: '登出' }))
+    assert.equal(screen.queryByRole('button', { name: /通知/ }), null)
+    assert.equal(document.querySelector('.gateway-notifications'), null)
+    assert.deepEqual(requests, [])
+    assert.deepEqual(sockets, [])
+  })
+}

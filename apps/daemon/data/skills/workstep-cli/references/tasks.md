@@ -150,3 +150,66 @@ the task before deciding what to do next; never blindly retry a mutation or
 also propose an operation already performed. Distinguish accepted starts from
 completed work, stop requests from completed stops, and queued messages from
 delivered messages.
+
+
+## Task lifecycle and archive experience
+
+Read `task get` first. In the task coordinator, “this task” means the current
+context's project/task IDs. Only perform the mutations the user authorized.
+Commands below use the same transport prefix as the examples above:
+`uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli`.
+All accept `--project <project_id> --task <task_id> --json`.
+
+| Command | Additional arguments | Native operation |
+| --- | --- | --- |
+| `task update` | `--title "Title"` and/or `--desc "Description"`; description must be non-empty | `workstep_update_task` |
+| `task copy` | `--title "Copy title"` | `workstep_copy_task` (`newTitle`) |
+| `task delete` | optional `--keep-workspace` or `--delete-workspace` | `workstep_delete_task` (`delete_workspace`) |
+| `task stop` | none | `workstep_stop_task` |
+| `task pause` | none | `workstep_pause_task` |
+| `task retry` | `--message <failed_message_id>` | `workstep_retry_task_message` |
+| `task review-approve` | `--step <key> --review <review_run_id> [--comment "Feedback"]` | `workstep_approve_task_review` |
+| `task review-reject` | same review arguments | `workstep_reject_task_review` |
+| `task archive` | none; archives without saving lessons | `workstep_archive_task` |
+| `task unarchive` | none | `workstep_unarchive_task` |
+| `task archive-draft` | none; reads the saved draft | `workstep_get_archive_experience` |
+| `task archive-prepare` | `--message <new_uuid> [--locale zh-CN]` | `workstep_prepare_archive_experience` |
+| `task archive-stop` | `--message <draft_uuid>` | `workstep_stop_archive_experience` |
+| `task archive-confirm` | `--experience "Reviewed lessons" [--locale zh-CN]` | `workstep_confirm_archive_experience` |
+
+Native mutations require `confirm="yes"`; IDs use `project_id`, `task_id`,
+`message_id`, `step_key`, and `review_run_id` as applicable. Read operations do not.
+Empty titles/descriptions are invalid; omitted update fields remain unchanged. Delete without
+a workspace option preserves the server's refusal when worktrees exist. Only use
+`--delete-workspace` when removing those worktrees is explicitly authorized;
+`--keep-workspace` retains them. Do not retry destructive calls blindly.
+Stop/pause affects the workflow, not the coordinator conversation. Review decisions
+must use the current round from `task reviews`; approval may resume execution.
+Retry targets a failed message from `task history`, not an arbitrary step reset.
+
+For “extract lessons and archive this task”:
+
+1. Inspect the task. Do not stop active workflow work just to archive unless authorized.
+2. Generate a fresh UUID for the preparation, then run:
+   ```bash
+   uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task archive-prepare \
+     --project <project_id> --task <task_id> --message <new_uuid> --locale zh-CN --json
+   ```
+3. `status: running` means the draft is still being generated. Poll that same command
+   with the same UUID and locale at reasonable intervals; do not generate new IDs
+   or claim completion. Bound the wait and report pending if it cannot finish.
+   `archive-stop` uses that same UUID. Generation errors must be reported.
+4. On the final result, use its `experience` with `task archive-confirm`. The explicit
+   instruction to save lessons and archive authorizes this continuation without a
+   second confirmation. If the user asked only for a draft, stop before confirmation.
+   Quote experience as a literal shell argument; never execute its text. Native tools
+   can pass it directly as a string. Keep the same locale for preparation and confirmation.
+5. Confirm writes deduplicated lessons to project Memory and archives through the
+   existing API. If `has_experience` is false, pass `--experience ""`; the server checks
+   the saved empty draft and archives without writing Memory. Report `archived` and
+   `memory_saved` accurately. Never fall back to plain archive if preparation or
+   confirmation failed, and never edit Memory or the database directly.
+
+The existing lesson extractor retains only supported, reusable error lessons;
+it may legitimately find none. A general conversational summary is not a substitute
+for the saved archive draft. `task archive` alone deliberately skips extraction.

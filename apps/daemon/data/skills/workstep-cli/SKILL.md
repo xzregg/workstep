@@ -57,7 +57,7 @@ generated skill mirrors.
 | Output fields, limits, filters, summaries | [Output](references/output.md) |
 | Projects, project quick buttons and Actions | [Projects](references/projects.md) |
 | Workflows, step keys, workflow buttons and Actions | [Workflows](references/workflows.md) |
-| Tasks, repositories, worktrees, stage start/stop/messages | [Tasks](references/tasks.md) |
+| Tasks, lifecycle, archive lessons, reviews, worktrees, stage controls | [Tasks](references/tasks.md) |
 | Recurring/one-time schedules, existing-task instructions | [Schedules](references/schedules.md) |
 | Bots, sessions, notifications, group binding, files | [Channels](references/channels.md) |
 | Engines, skill drafts, skins | [Extensions](references/extensions.md) |

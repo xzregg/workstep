@@ -29,6 +29,7 @@ for (const exit of ['close', 'escape', 'backdrop', 'section']) {
     const draft = () => container.querySelector<HTMLInputElement>('.bot-settings-form input')!
     try {
       await act(async () => root.render(<MemoryRouter><I18nProvider><SettingsPage initialSection="channels" onClose={() => { closed++ }} /></I18nProvider></MemoryRouter>))
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '添加机器人')!.click())
       await act(async () => {
         Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(draft(), '尚未保存的机器人')
         draft().dispatchEvent(new window.Event('input', { bubbles: true }))
@@ -46,6 +47,7 @@ for (const exit of ['close', 'escape', 'backdrop', 'section']) {
         assert.equal(container.querySelector('.bot-settings-form'), null)
         assert.equal(closed, 0)
         await act(async () => [...container.querySelectorAll<HTMLButtonElement>('.settings-nav-button')].find(button => button.textContent === '渠道机器人')!.click())
+        await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '添加机器人')!.click())
         assert.equal(draft().value, '')
         await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="关闭设置"]')!.click())
       }

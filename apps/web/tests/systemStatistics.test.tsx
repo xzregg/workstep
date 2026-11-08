@@ -46,7 +46,7 @@ test('system panel matches prototype structure and switches trends, pauses, and 
   const view = await mount(<SystemStatisticsPanel />)
   try {
     const text = view.container.textContent || ''
-    for (const label of ['整机资源', 'WorkStep 运行', '资源趋势', '后台状态', '子进程明细', 'codex', '128 / 4,096']) assert.ok(text.includes(label), label)
+    for (const label of ['整机资源', 'WorkStep 运行', '资源趋势', 'Daemon 状态', '子进程明细', 'codex', '128 / 4,096']) assert.ok(text.includes(label), label)
     assert.equal(view.container.querySelectorAll('.system-host-card').length, 4)
     assert.equal(view.container.querySelectorAll('.system-strip-item').length, 5)
     await act(async () => button(view.container, '内存').click())
@@ -132,7 +132,7 @@ test('mobile LAN and Gateway owner workspaces can open the same system panel as 
         await act(async () => button(view.container, '系统运行').click())
         assert.equal(view.container.querySelector('[role=tab][aria-selected=true]')?.textContent, '系统运行')
         assert.equal(view.container.querySelectorAll('.system-host-card').length, 4)
-        assert.match(view.container.textContent || '', /后台状态/)
+        assert.match(view.container.textContent || '', /Daemon 状态/)
         await act(async () => button(view.container, '业务统计').click())
         assert.equal(view.container.querySelector('.system-statistics'), null)
       } finally { await view.close() }

@@ -26,6 +26,7 @@ def _parameters(encoded: str) -> dict:
 
 def _workspace_file(root: Path, virtual: str) -> Path:
     from api.platform_share import _safe_git_path
+    from api.fs_paths import _assert_preview_path
     if not virtual.startswith('workspace:'):
         raise HTTPException(404, 'File unavailable')
     relative = virtual[len('workspace:'):]
@@ -35,7 +36,7 @@ def _workspace_file(root: Path, virtual: str) -> Path:
     target = (resolved_root / relative).resolve()
     if not target.is_relative_to(resolved_root):
         raise HTTPException(404, 'File unavailable')
-    return target
+    return _assert_preview_path(target)
 
 
 def _browse(root: Path, virtual: str) -> dict:

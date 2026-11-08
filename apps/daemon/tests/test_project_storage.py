@@ -55,6 +55,11 @@ async def test_storage_api_migrates_without_blocking_health(api_context, monkeyp
     assert await main.project_manager.run_db(project_id, lambda p: Task.get_by_id("preserved").title) == "saved"
     snapshot = await main.project_manager.run_db(project_id, lambda p: json.loads(StepRun.get_by_id("prior-step").input_snapshot_json))
     assert snapshot["ports"][0]["sources"][0]["path"] == str(project.workstep_dir / "artifacts/prior/result.md")
+    # Detached storage is not an exemption from the configured preview boundary.
+    denied = await client.get("/api/fs/preview", params={"project_id": project_id, "path": ".workstep/MEMORY.md"})
+    assert denied.status_code == 403
+    from services.config import config_store
+    monkeypatch.setitem(config_store._cache, 'default_project_directory', str(project.workstep_dir))
     from api.fs_paths import _resolve_project_file
     assert _resolve_project_file(".workstep/uploads/image.png", project_id).read_bytes() == b"image"
     preview = await client.get("/api/fs/preview", params={"project_id": project_id, "path": ".workstep/MEMORY.md"})

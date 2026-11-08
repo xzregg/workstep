@@ -15,7 +15,7 @@ from api.remote_access_guard import RemoteAccessGuardMiddleware
 
 
 @pytest.fixture
-def filesystem_app(tmp_path, monkeypatch):
+def filesystem_app(tmp_path, monkeypatch, preview_directory):
     import main
     root = tmp_path / "project"
     data = root / ".workstep"

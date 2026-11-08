@@ -18,7 +18,9 @@ export function AdminCreateUserDialog({ csrf, onSaved, onClose }: {
   const [confirmClose, setConfirmClose] = useState(false)
   const dirty = !!(username || displayName || password || passwordConfirmation || status !== 'active')
   const passwordMismatch = !!passwordConfirmation && passwordConfirmation !== password
-  const canSubmit = validPortalAccount(username, displayName, password) && passwordConfirmation === password
+  const canSubmit = (password ? validPortalAccount(username, displayName, password)
+    : !!displayName.trim() && displayName.length <= 256 && (!username || /^[a-z][a-z0-9_-]{2,63}$/.test(username)))
+    && passwordConfirmation === password
 
   function requestClose() {
     if (dirty) setConfirmClose(true)
@@ -44,18 +46,18 @@ export function AdminCreateUserDialog({ csrf, onSaved, onClose }: {
   return <div className="gateway-dialog-backdrop">
     <section className="gateway-confirm-dialog gateway-create-user-dialog" role="dialog" aria-modal="true" aria-label="创建用户">
       <h3>创建用户</h3>
-      <p>创建后，用户可使用初始密码登录，并在用户中心的安全设置中自行修改密码。</p>
+      <p>登录名和密码可暂时留空。未设置密码的用户不能登录，可通过“获取邀请链接”交给本人设置登录名和密码。</p>
       <form className="gateway-auth-form" onSubmit={event => void submit(event)}>
         <label htmlFor="admin-user-username">用户名</label>
-        <input id="admin-user-username" autoComplete="off" value={username} onChange={event => setUsername(event.target.value)} required />
+        <input id="admin-user-username" autoComplete="off" value={username} onChange={event => setUsername(event.target.value)} required={!!password} />
         <label htmlFor="admin-user-display-name">显示名称</label>
         <input id="admin-user-display-name" value={displayName} onChange={event => setDisplayName(event.target.value)} required />
         <p>{passwordRequirements}</p>
         <label htmlFor="admin-user-password">初始密码（至少 8 位）</label>
-        <input id="admin-user-password" type="password" autoComplete="new-password" minLength={8} required value={password}
+        <input id="admin-user-password" type="password" autoComplete="new-password" minLength={8} value={password}
           onChange={event => setPassword(event.target.value)} />
         <label htmlFor="admin-user-password-confirmation">确认初始密码</label>
-        <input id="admin-user-password-confirmation" type="password" autoComplete="new-password" required value={passwordConfirmation}
+        <input id="admin-user-password-confirmation" type="password" autoComplete="new-password" required={!!password} value={passwordConfirmation}
           aria-invalid={passwordMismatch || undefined} aria-describedby={passwordMismatch ? 'admin-user-password-mismatch' : undefined}
           onChange={event => setPasswordConfirmation(event.target.value)} />
         {passwordMismatch && <p id="admin-user-password-mismatch" className="gateway-auth-error" role="alert">两次输入的密码不一致。</p>}

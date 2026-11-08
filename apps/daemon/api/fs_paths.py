@@ -7,6 +7,32 @@ from settings import settings
 from services.remote_access import get_current_actor
 
 
+def _file_access_root() -> Path | None:
+    """Configured root for user-facing file operations; call in an I/O worker."""
+    from services.config import config_store
+    if not config_store.get('restrict_file_access_root', True):
+        return None
+    configured = config_store.get('default_project_directory', '').strip()
+    return (Path(configured).expanduser() if configured else Path.home()).resolve()
+
+
+def _assert_preview_path(path: Path) -> Path:
+    """Enforce the configured file boundary in an I/O worker, for every actor."""
+    from services.project_scope import projects_root
+
+    try:
+        root = _file_access_root()
+        target = path.resolve()
+        container_root = projects_root()
+        if (root is not None and not target.is_relative_to(root)) or (
+            container_root is not None and not target.is_relative_to(container_root)
+        ):
+            raise ValueError('outside preview directory')
+    except (ValueError, OSError, RuntimeError):
+        raise HTTPException(status_code=403, detail='File is outside the allowed preview directory')
+    return target
+
+
 def _require_actor_project(project_id: str | None) -> None:
     actor = get_current_actor()
     if actor is not None and actor.project_id is not None and actor.project_id != project_id:
@@ -47,14 +73,14 @@ def _resolve_project_file(
     *,
     allow_absolute: bool = False,
 ) -> Path:
-    """Resolve a file link, allowing project escape only for explicit absolute paths."""
+    """Resolve file links; absolute paths never bypass the global read boundary."""
     _require_actor_project(project_id)
     actor = get_current_actor()
     if actor is not None and actor.project_id is not None:
         allow_absolute = False
     candidate = Path(path).expanduser()
     if not project_id:
-        return candidate.resolve()
+        return _assert_preview_path(candidate)
 
     project = _project(project_id)
     project_root = project.path.resolve()
@@ -68,7 +94,7 @@ def _resolve_project_file(
         target = candidate.resolve() if candidate.is_absolute() else (project_root / candidate).resolve()
     if not (allow_absolute and candidate.is_absolute()):
         _assert_project_path(target, project_id)
-    return target
+    return _assert_preview_path(target)
 
 
 def _project_relative_path(path: Path, project_id: str | None) -> str | None:

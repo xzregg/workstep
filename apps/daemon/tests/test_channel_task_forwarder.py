@@ -178,6 +178,29 @@ async def test_origin_stream_receives_one_final_and_other_group_receives_broadca
     assert ('@协调\n协调回复') in [c.args[1] for c in adapter.update_reply.await_args_list]
 
 
+async def test_task_file_link_streams_completed_link_before_turn_end(setup, monkeypatch):
+    import services.channels.file_links as links
+    monkeypatch.setattr(links, 'base_addresses', lambda: [
+        {'kind': 'external', 'task_base_url': 'https://direct.test'},
+    ])
+    forwarder, bus, event, adapter, _, _, project = setup
+    adapter.update_reply = AsyncMock()
+    adapter.CAPABILITIES = SimpleNamespace(streaming=True)
+    origin = IncomingMessage('bot', 'incoming', 'group', 'one', 'u', '问题', reply_context={'request': 'id'})
+    forwarder.register_origin(project.id, 'task', 'coord', origin)
+    await bus.publish(event('coord', 'TEXT_MESSAGE_START'))
+    await bus.publish(event('coord', 'TEXT_MESSAGE_CHUNK', delta=f'已完成 [文件]({project.path}/a'))
+    await until(lambda: any(c.args[1] == '@协调\n已完成 ' for c in adapter.update_reply.await_args_list))
+    await bus.publish(event('coord', 'TEXT_MESSAGE_CHUNK', delta='.txt)'))
+    await until(lambda: any('direct.test/file-preview?' in c.args[1] for c in adapter.update_reply.await_args_list))
+    assert not adapter.send_text.await_count
+    await bus.publish(event('coord', 'TEXT_MESSAGE_END', status='succeeded', content=f'已完成 [文件]({project.path}/a.txt)'))
+    await until(lambda: not forwarder._messages)
+    assert len(adapter.send_text.await_args_list) == 2
+    for call in adapter.send_text.await_args_list + adapter.update_reply.await_args_list:
+        assert str(project.path) not in call.args[1]
+
+
 @pytest.mark.parametrize('message_id,channel,title', [('a','execution','编写'), ('review','review','编写 · 审核')])
 async def test_completed_status_from_real_message_translation_is_success(setup, message_id, channel, title):
     from engines.core.agui import to_agui_events, AGUIContext

@@ -2,6 +2,7 @@
 @import '@workstep/gateway-ui/TaskShareLoginToggle.css';
 @import './AdminUsagePage.css';
 @import './AdminDeviceGroupsPage.css';
+@import './UserInvitationButton.css';
 :root {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', sans-serif;
   color: #1d1d1f;

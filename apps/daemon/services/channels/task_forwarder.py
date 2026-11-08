@@ -256,21 +256,27 @@ class ChannelTaskForwarder:
             return message.content if message else state.text
         return await self._projects.run_db(state.key[0], read)
 
-    async def _send(self, adapter, recipient, project_id, text, *, full_text=None):
+    async def _send(self, adapter, recipient, project_id, text, *, full_text=None, file_links=None):
+        from services.channels.file_links import ChannelFileLinks
+        file_links = file_links or ChannelFileLinks(self._projects.get_project_by_id(project_id))
         if not isinstance(adapter, ChannelAdapter):
-            await adapter.send_text(recipient, text)
+            await adapter.send_text(recipient, await file_links.convert(text))
             return
         outgoing = OutgoingMessage(text=text)
         if full_text:
             from services.channels.media import outgoing_content
             project = self._projects.get_project_by_id(project_id)
-            prepared = await outgoing_content(project, adapter, full_text)
+            prepared = await outgoing_content(project, adapter, full_text, file_links=file_links)
             outgoing = replace(outgoing, text=text.replace(full_text, prepared.text, 1), attachments=prepared.attachments)
+        else:
+            outgoing = replace(outgoing, text=await file_links.convert(text))
         await adapter.send(recipient, outgoing)
 
-    async def _progress(self, adapter, recipient, state, text):
+    async def _progress(self, adapter, recipient, state, text, file_links):
         try:
-            await asyncio.wait_for(adapter.update_reply(recipient, text), 5)
+            await asyncio.wait_for(file_links.send_progress(
+                lambda converted: adapter.update_reply(recipient, converted), text,
+            ), 5)
             return True
         except Exception:
             logger.warning('Task channel progress failed; latest body will retry %s', state.key, exc_info=True)
@@ -282,6 +288,8 @@ class ChannelTaskForwarder:
         sent = ''
         adapter = recipient = scope = None
         prefix = '@' + title + '\n'
+        from services.channels.file_links import ChannelFileLinks
+        file_links = ChannelFileLinks(self._projects.get_project_by_id(state.key[0]))
         try:
             destination = await self._recipient(state, bot_id, group_id)
             if destination is None:
@@ -300,7 +308,7 @@ class ChannelTaskForwarder:
                     broadcast=bool(stage_control and not is_origin))
             supports_streaming = getattr(adapter, 'supports_streaming_reply', None)
             streaming = supports_streaming(recipient) if supports_streaming else bool(recipient.reply_context and getattr(getattr(adapter, 'CAPABILITIES', None), 'streaming', False))
-            progress_active = streaming and await self._progress(adapter, recipient, state, prefix + '正在执行…')
+            progress_active = streaming and await self._progress(adapter, recipient, state, prefix + '正在执行…', file_links)
             interval = min(self._interval, .5) if streaming else self._interval
             retry_interval = interval if progress_active else min(30, interval * 2)
             last_sent = asyncio.get_running_loop().time() - interval if streaming else asyncio.get_running_loop().time()
@@ -347,12 +355,12 @@ class ChannelTaskForwarder:
                         text = '已中止'
                     suffix = {'succeeded':'', 'completed':'', 'stopped':'', 'cancelled':''}.get(state.status, '执行失败' + ('：' + state.error if state.error else ''))
                     final = prefix + text + ('\n\n' + suffix if text and suffix else suffix)
-                    await asyncio.wait_for(self._send(adapter, recipient, state.key[0], final, full_text=text), 30)
+                    await asyncio.wait_for(self._send(adapter, recipient, state.key[0], final, full_text=text, file_links=file_links), 30)
                     return
                 text = state.text
                 revision = state.revision
                 if streaming and text and text != sent:
-                    progress_active = await self._progress(adapter, recipient, state, prefix + text)
+                    progress_active = await self._progress(adapter, recipient, state, prefix + text, file_links)
                     if progress_active:
                         sent = text
                         retry_interval = interval

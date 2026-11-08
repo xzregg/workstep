@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { NotificationCenter } from './NotificationCenter'
 
 export function PortalHeader({ hasAdminAccess, signedIn = false, checking = false }: { hasAdminAccess: boolean; signedIn?: boolean; checking?: boolean }) {
  const navigate = useNavigate()
@@ -36,7 +35,6 @@ export function PortalHeader({ hasAdminAccess, signedIn = false, checking = fals
    <NavLink className="gateway-portal-account" to="/account">用户中心</NavLink>
    {hasAdminAccess && <NavLink to="/admin">管理后台</NavLink>}
   </nav>
-  {signedIn && <NotificationCenter/>}
   {checking ? <span role="status">正在检查登录状态…</span> : signedIn
    ? <button className="gateway-portal-sign-in gateway-portal-sign-out" type="button" disabled={busy} onClick={() => void logout()}>{busy ? <><span className="gateway-spinner" /> 正在登出…</> : '登出'}</button>
    : <Link className="gateway-action-link gateway-portal-sign-in gateway-action-link--primary" to="/auth">登录 / 注册</Link>}

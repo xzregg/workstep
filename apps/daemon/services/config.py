@@ -951,6 +951,11 @@ class ConfigStore:
 
     # ── concurrency limits (global defaults, per-project overrides live in DB) ──
 
+    def get_task_retry_interval_minutes(self) -> int:
+        """Task-only recovery interval; kept separate from concurrency gate config."""
+        value = self.get("task_retry_interval_minutes", 5)
+        return value if type(value) is int and 0 <= value <= 10080 else 5
+
     def get_concurrency_config(self) -> dict:
         """Global task/chat concurrency defaults.
 

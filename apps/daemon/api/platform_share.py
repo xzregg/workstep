@@ -208,8 +208,10 @@ async def _share_artifact_path(scope: dict, artifact_id: str, *, allow_directory
         raise HTTPException(status_code=503, detail="Service not initialized")
 
     def find(project):
-        return next((str(path) for public, path in _task_artifacts(project, scope["task_id"])
+        from api.fs_paths import _assert_preview_path
+        path = next((path for public, path in _task_artifacts(project, scope["task_id"])
                      if public["id"] == artifact_id and (allow_directory or not public["is_dir"])), None)
+        return str(_assert_preview_path(path)) if path is not None else None
 
     path = await project_manager.run_db(scope["host_project_id"], find)
     if path is None:
@@ -249,6 +251,8 @@ def _safe_git_path(value: object) -> bool:
 
 
 def _persist_share_upload(workstep_dir: Path, filename: str, content: bytes) -> None:
+    from api.fs_paths import _assert_preview_path
+    _assert_preview_path(workstep_dir / 'uploads' / filename)
     root = workstep_dir.resolve()
     upload_dir = workstep_dir / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -333,6 +337,8 @@ async def _share_git_workspace(scope: dict) -> dict:
     from api import git as git_api
     try:
         project = git_api._task_project(scope["host_project_id"])
+        from api.fs_paths import _assert_preview_path
+        await asyncio.to_thread(_assert_preview_path, project.path)
         task = await git_api._task_exists(scope["host_project_id"], scope["task_id"])
         return await git_api.result(git_api.TaskGitWorkspace(
             git_api.git_service, task["workflow_id"],

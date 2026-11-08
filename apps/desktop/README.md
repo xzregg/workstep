@@ -52,6 +52,8 @@ WORKSTEP_DESKTOP_PORT=43123 WorkStep
 
 沙箱 `desktop/sandbox.log` 同样按 5 MiB、三份备份轮转；`desktop/daemon.log` 为覆盖写入的快照，最多 5 MiB。新启动的 Podman 容器显式使用 `k8s-file` 日志驱动和 `max-size=10mb` 限制，避免仅限制导出的快照、却让容器底层日志无限累积，参数见 [Podman 文档](https://docs.podman.io/en/stable/markdown/podman-run.1.html)。用户自行保存的诊断包不会被自动删除。
 
+网关登录排查：复现后导出诊断包，搜索 `GATEWAY_AUTH`。用 `attempt` 关联 `started`、`invalidated`、`failed` 和 `completed`；`missing_pending` 表示本机已无待认证请求，`expired` 表示超过有效期，`state_mismatch` 表示请求不匹配，`callback_origin_mismatch` 表示回调地址不一致。其它失败看 `stage`（`token_exchange`、`authorization_verify`、`connection_setup`、`bootstrap`）、`http_status`、`exception_type` 和 `frames` 定位。记录不包含凭据或原始异常正文。沙箱采集带时间的最近 5000 行，导出除普通日志尾部外额外保留最近 100 条认证记录（最多 50000 字符）；仍应在复现后及时导出，轮转与采集范围之外的旧记录无法恢复。此能力需要同时更新 daemon/沙箱镜像和桌面包。
+
 导出生成 `.json.gz` 压缩诊断包，包含版本、操作系统／架构信息、桌面文本日志，以及可读取的沙箱诊断快照。运行时桌面令牌、已知本机会话凭据及常见认证字段在写入和导出时脱敏；不主动读取项目数据库、聊天记录、配置文件或原生转储。文本错误仍可能包含业务路径或第三方输出，分享前可解压检查。需要原生转储时，从 `crashes/` 单独取出。
 
 实现位于 `src/diagnostics.cjs`，桌面生命周期接入位于 `src/main.cjs`，普通后台输出由 `src/sidecar.cjs` 接入；回归覆盖日志轮转／脱敏、导出白名单、磁盘错误、慢磁盘响应、真实后台退出、真实致命异常以及菜单操作。

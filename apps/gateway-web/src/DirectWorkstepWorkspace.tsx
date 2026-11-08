@@ -30,6 +30,10 @@ export function DirectWorkstepWorkspace({ devices, projects, hideNavigation = fa
     setSelected(id); setProjectId(''); setConnectRequested(!manualEntry)
     try { localStorage.setItem('workstep-device', id) } catch { /* Optional preference. */ }
   }
+  function chooseOtherDevice() {
+    setConnectRequested(false)
+    onShowNavigation?.()
+  }
   return <div className="gateway-direct-workspace">
     {!hideNavigation && <DeviceTabs devices={devices} currentDeviceId={device.id} onSelect={choose}
       onRefresh={()=>setRefresh(value=>value+1)}/>}
@@ -37,7 +41,7 @@ export function DirectWorkstepWorkspace({ devices, projects, hideNavigation = fa
       <div role="tablist" aria-label="切换授权项目">{available.map(item => <button type="button" role="tab" key={item.id}
         aria-selected={item.id === project?.id} onClick={() => {setProjectId(item.id)}}>{item.name}</button>)}</div>
     </div>}
-    {device.online && !connectRequested ? <div className="gateway-direct-state"><button type="button" onClick={() => setConnectRequested(true)}>{manualEntry ? '进入设备工作台' : '重新连接设备'}</button></div> : device.online ? <DirectConnection key={key} device={device} project={device.project_only ? project : undefined} resumeNext={resumeNext} onError={onShowNavigation} onChooseDevice={hideNavigation ? onShowNavigation : undefined}/> :
+    {device.online && !connectRequested ? <div className="gateway-direct-state"><button type="button" onClick={() => setConnectRequested(true)}>{manualEntry ? '进入设备工作台' : '重新连接设备'}</button></div> : device.online ? <DirectConnection key={key} device={device} project={device.project_only ? project : undefined} resumeNext={resumeNext} onError={onShowNavigation} onChooseDevice={hideNavigation ? chooseOtherDevice : undefined}/> :
       <div className="gateway-offline-workspace" role="status"><span aria-hidden="true">▣</span><h3>{device.name || device.id} 当前离线</h3><p>{manualEntry ? '正在等待设备上线，上线后可进入工作台。' : '正在等待设备上线，上线后会自动连接。'}<br/>也可以切换到其他在线设备。</p></div>}
   </div>
 }

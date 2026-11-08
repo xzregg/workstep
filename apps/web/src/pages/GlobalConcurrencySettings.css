@@ -1,0 +1,20 @@
+.global-concurrency-task-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.global-concurrency-retry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: calc(13px * var(--font-scale));
+  font-weight: 600;
+}
+
+.global-concurrency-retry-field small {
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 400;
+  line-height: 1.5;
+}

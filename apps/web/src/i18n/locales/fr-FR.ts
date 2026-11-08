@@ -327,6 +327,8 @@ export const frFR: Messages = {
     remoteProject: "Projet distant",
     remoteLabel: "Distant",
     projects: "Projets",
+    collapseConversationList: '收起对话列表',
+    expandConversationList: '展开对话列表',
     searchSidebar: "Rechercher dans la barre latérale",
     searchSidebarPlaceholder: "Rechercher des projets, workflows et conversations",
     noSidebarMatches: "Aucun projet, workflow ou conversation correspondant",

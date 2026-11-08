@@ -15,6 +15,7 @@ export default function BotSettings({ onDirtyChange }: { onDirtyChange?: (dirty:
   const fetchProjects = useProjectStore(state => state.fetchProjects)
   const [bots, setBots] = useState<ChannelBot[]>([])
   const [platform, setPlatform] = useState<BotPlatform>('wecom')
+  const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editorVersion, setEditorVersion] = useState(0)
   const [dirty, setDirty] = useState(false)
@@ -52,7 +53,7 @@ export default function BotSettings({ onDirtyChange }: { onDirtyChange?: (dirty:
     return () => { active = false; window.clearInterval(timer) }
   }, [fetchProjects])
 
-  const reset = () => { setEditingId(null); setDirty(false); setEditorVersion(value => value + 1) }
+  const reset = () => { setAdding(false); setEditingId(null); setDirty(false); setEditorVersion(value => value + 1) }
   const change = (action: () => void) => { if (dirty) setPending(() => action); else action() }
   const selectPlatform = (value: BotPlatform) => {
     if (value !== platform) change(() => { setPlatform(value); reset() })
@@ -97,16 +98,18 @@ export default function BotSettings({ onDirtyChange }: { onDirtyChange?: (dirty:
             </div>
             <div className="bot-settings-card-actions">
               <BotPrivateWhitelist botId={bot.id} />
-              <BotPrivateWhitelist botId={bot.id} scope="group" />
-              <BotTaskBindings bindings={bot.task_bindings} onChanged={reload} />
-              <Button disabled={busy || editorBusy} onClick={() => { if (bot.id !== editingId) change(() => { setEditingId(bot.id); setDirty(false) }) }}>{t('common.edit')}</Button>
+              {bot.platform !== 'weixin' && <>
+                <BotPrivateWhitelist botId={bot.id} scope="group" />
+                <BotTaskBindings bindings={bot.task_bindings} onChanged={reload} />
+              </>}
+              <Button disabled={busy || editorBusy} onClick={() => { if (bot.id !== editingId) change(() => { setAdding(false); setEditingId(bot.id); setDirty(false) }) }}>{t('common.edit')}</Button>
               <Button disabled={busy || editorBusy} onClick={() => setDeleteId(bot.id)}>{t('common.delete')}</Button>
             </div>
           </div>)}
           {!loading && !error && !platformBots.length && <p className="bot-settings-empty">{t('channelBot.empty')}</p>}
         </div>
-        {editingId && <div className="bot-settings-actions"><Button disabled={busy || editorBusy} onClick={() => change(reset)}>{t('channelBot.add')}</Button></div>}
-        <BotSettingsEditor key={`${platform}:${editingId || 'new'}:${editorVersion}`} platform={platform} bot={bots.find(bot => bot.id === editingId)} onPlatformChange={selectPlatform} onSaved={saved} onCancel={() => change(reset)} onDirtyChange={setDirty} onBusyChange={setEditorBusy} />
+        {!adding && <div className="bot-settings-actions"><Button disabled={busy || editorBusy} onClick={() => change(() => { reset(); setAdding(true) })}>{t('channelBot.add')}</Button></div>}
+        {(adding || editingId) && <BotSettingsEditor key={`${platform}:${editingId || 'new'}:${editorVersion}`} platform={platform} bot={bots.find(bot => bot.id === editingId)} onSaved={saved} onCancel={() => change(reset)} onDirtyChange={setDirty} onBusyChange={setEditorBusy} />}
       </div>
     </div>
     <ConfirmDialog open={!!deleteId} title={t('channelBot.deleteTitle')} message={t('channelBot.deleteHint')} danger loading={busy} onCancel={() => setDeleteId(null)} onConfirm={() => void remove()} />

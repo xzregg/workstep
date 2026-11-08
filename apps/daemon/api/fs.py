@@ -15,7 +15,7 @@ from services.config import CONFIG_DIR
 from services.project_memory import read_memory_bytes, write_memory_bytes
 from api.fs_browser import router as browser_router
 from api.fs_paths import (
-    _assert_project_path, _path_error_detail, _project, _project_relative_path,
+    _assert_preview_path, _assert_project_path, _path_error_detail, _project, _project_relative_path,
     _require_actor_project, _resolve_project_file,
 )
 
@@ -207,6 +207,7 @@ async def read_memory(pid: str = Query(..., alias="project_id")):
         raise HTTPException(status_code=404, detail=str(e))
     memory_path = project.workstep_dir / "MEMORY.md"
     def load_memory() -> str:
+        _assert_preview_path(memory_path)
         try:
             content = read_memory_bytes(project.workstep_dir)
         except PermissionError as exc:
@@ -234,6 +235,7 @@ async def write_memory(
         raise HTTPException(status_code=400, detail="记忆内容超过 500KB 上限")
     memory_path = project.workstep_dir / "MEMORY.md"
     def persist_memory() -> None:
+        _assert_preview_path(memory_path)
         try:
             write_memory_bytes(project.workstep_dir, req.content.encode("utf-8"))
         except PermissionError as exc:
@@ -315,6 +317,7 @@ async def upload_image(
         rel_path = f"data/uploads/{filename}"
     filepath = upload_dir / filename
     def persist_upload() -> None:
+        _assert_preview_path(filepath)
         if project is not None:
             _project_upload_dir(Path(project.workstep_dir))
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -376,6 +379,7 @@ async def upload_file(
         upload_dir = CONFIG_DIR / "data" / "uploads"
         rel_path = f"data/uploads/{filename}"
     def persist_upload() -> None:
+        _assert_preview_path(upload_dir / filename)
         if project is not None:
             _project_upload_dir(Path(project.workstep_dir))
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -396,6 +400,7 @@ def _serve_upload_file(upload_dir: Path, filename: str) -> FileResponse:
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
 
+    filepath = _assert_preview_path(filepath)
     if not filepath.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -466,6 +471,7 @@ async def serve_raw_file(full_path: str, project_id: str | None = Query(None)):
     def response() -> FileResponse:
         file_path = Path("/" + full_path).expanduser().resolve()
         _assert_project_path(file_path, project_id)
+        file_path = _assert_preview_path(file_path)
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=_path_error_detail("File not found", file_path))
         if not file_path.is_file():
@@ -541,6 +547,7 @@ async def html_preview_resource(request: Request, project_ref: str, token: str,
             target = resource_file(token, effective_project, resource_path)
         except HtmlPreviewError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        target = _assert_preview_path(target)
         media, _ = mimetypes.guess_type(str(target))
         if media == 'text/html':
             response = HTMLResponse(prepare_html(target.read_text(encoding='utf-8')))
@@ -638,6 +645,7 @@ async def open_directory(req: OpenDirectoryRequest):
     """Open the directory containing a local artifact."""
     def resolve_directory() -> Path:
         target = Path(req.path).expanduser().resolve()
+        _assert_preview_path(target)
         if not target.exists():
             raise HTTPException(status_code=404, detail=f"Path not found: {target}")
         return target if target.is_dir() else target.parent
@@ -687,6 +695,7 @@ async def open_session_journal(req: OpenSessionJournalRequest):
 
     project = _project(req.project_id)
     event_logs = project.workstep_dir / "event_logs"
+    await asyncio.to_thread(_assert_preview_path, event_logs)
     directory: Path | None = None
     message_id = (req.message_id or "").strip()
     if message_id and _SAFE_SEGMENT.fullmatch(message_id):
@@ -702,6 +711,7 @@ async def open_session_journal(req: OpenSessionJournalRequest):
             directory = candidate
     if directory is None:
         raise HTTPException(status_code=404, detail="Session journal not found")
+    await asyncio.to_thread(_assert_preview_path, directory)
     await _open_directory(directory)
     return {"opened": True, "path": str(directory)}
 

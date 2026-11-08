@@ -4,6 +4,7 @@ import Button from '../components/Button'
 import ConcurrencyLimitInput from '../components/ConcurrencyLimitInput'
 import Input from '../components/Input'
 import { useI18n } from '../i18n'
+import './GlobalConcurrencySettings.css'
 
 const fieldStyle = {
   display: 'flex',
@@ -18,6 +19,7 @@ function parseLimit(value: string): number | null {
 export default function GlobalConcurrencySettings() {
   const { t } = useI18n()
   const [maxTasks, setMaxTasks] = useState('0')
+  const [retryMinutes, setRetryMinutes] = useState('5')
   const [maxChats, setMaxChats] = useState('0')
   const [scheduleExempt, setScheduleExempt] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -31,6 +33,7 @@ export default function GlobalConcurrencySettings() {
       .then((config) => {
         if (!active) return
         setMaxTasks(String(config.max_tasks))
+        setRetryMinutes(String(config.task_retry_interval_minutes ?? 5))
         setMaxChats(String(config.max_chats))
         setScheduleExempt(config.schedule_exempt)
       })
@@ -45,7 +48,10 @@ export default function GlobalConcurrencySettings() {
 
   const taskLimit = parseLimit(maxTasks)
   const chatLimit = parseLimit(maxChats)
+  const retryInterval = parseLimit(retryMinutes)
+  const invalidRetry = retryInterval === null || !Number.isSafeInteger(retryInterval) || retryInterval > 10080
   const invalid = taskLimit === null || chatLimit === null
+    || invalidRetry
     || (maxTasks !== '0' && taskLimit < 1)
     || (maxChats !== '0' && chatLimit < 1)
 
@@ -59,8 +65,10 @@ export default function GlobalConcurrencySettings() {
         max_tasks: taskLimit,
         max_chats: chatLimit,
         schedule_exempt: scheduleExempt,
+        task_retry_interval_minutes: retryInterval!,
       })
       setMaxTasks(String(config.max_tasks))
+      setRetryMinutes(String(config.task_retry_interval_minutes ?? 5))
       setMaxChats(String(config.max_chats))
       setScheduleExempt(config.schedule_exempt)
       setSaved(true)
@@ -85,17 +93,26 @@ export default function GlobalConcurrencySettings() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-            <label style={fieldStyle} htmlFor="global-max-tasks">
-              <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
-                {t('projectSettings.concurrency.maxTasks')}
-              </span>
-              <ConcurrencyLimitInput
-                id="global-max-tasks"
-                value={maxTasks}
-                unlimitedLabel={t('projectSettings.concurrency.unlimited')}
-                onValueChange={(value) => { setMaxTasks(value); setSaved(false) }}
-              />
-            </label>
+            <div className="global-concurrency-task-fields">
+              <label style={fieldStyle} htmlFor="global-max-tasks">
+                <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
+                  {t('projectSettings.concurrency.maxTasks')}
+                </span>
+                <ConcurrencyLimitInput
+                  id="global-max-tasks"
+                  value={maxTasks}
+                  unlimitedLabel={t('projectSettings.concurrency.unlimited')}
+                  onValueChange={(value) => { setMaxTasks(value); setSaved(false) }}
+                />
+              </label>
+              <label className="global-concurrency-retry-field" htmlFor="global-task-retry-interval">
+                <span>{t('projectSettings.concurrency.taskRetryInterval')}</span>
+                <Input id="global-task-retry-interval" type="number" min={0} max={10080} step={1}
+                  value={retryMinutes} aria-describedby="global-task-retry-hint"
+                  onChange={(event) => { setRetryMinutes(event.target.value); setSaved(false) }} />
+                <small id="global-task-retry-hint">{t('projectSettings.concurrency.taskRetryHint')}</small>
+              </label>
+            </div>
             <label style={fieldStyle} htmlFor="global-max-chats">
               <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
                 {t('projectSettings.concurrency.maxChats')}
@@ -129,7 +146,7 @@ export default function GlobalConcurrencySettings() {
           </label>
           {invalid && (
             <div role="alert" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>
-              {t('projectSettings.concurrency.positiveInteger')}
+              {t(invalidRetry ? 'projectSettings.concurrency.taskRetryInvalid' : 'projectSettings.concurrency.positiveInteger')}
             </div>
           )}
           {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}

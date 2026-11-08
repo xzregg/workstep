@@ -9,6 +9,8 @@ import pytest
 from fastapi import FastAPI
 from api import fs, fs_paths
 
+pytestmark = pytest.mark.usefixtures("preview_directory")
+
 
 @pytest.mark.asyncio
 async def test_open_file_preserves_file_and_enforces_project_boundary(tmp_path, monkeypatch):

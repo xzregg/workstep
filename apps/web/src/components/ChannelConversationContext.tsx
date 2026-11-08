@@ -11,7 +11,7 @@ export default function ChannelConversationContext({ projectId, sessionId }: { p
   return <details className="channel-conversation-context">
     <summary><ChatSessionSourceBadge source={session.source} platform={session.channel_platform}
       botName={session.channel_name} conversationType={session.channel_conversation_type} peerName={session.channel_peer_name} />
-      <span>{session.channel_conversation_id}</span></summary>
+      <span className="channel-conversation-context-id">{session.channel_conversation_id}</span></summary>
     <dl>
       <dt>{t('channelBot.robot')}</dt><dd>{session.channel_name}</dd>
       {session.channel_conversation_type === 'group' && <><dt>{t('channelBot.groupName')}</dt><dd>{session.channel_group_name || t('channelBot.unknownGroup')}</dd></>}

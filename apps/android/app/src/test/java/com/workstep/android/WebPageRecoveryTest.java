@@ -37,4 +37,22 @@ public class WebPageRecoveryTest {
         assertEquals("[非网页来源]", WebPageRecovery.sourcePath("data:text/javascript,private"));
         assertEquals("[未知来源]", WebPageRecovery.sourcePath(null));
     }
+
+    @Test public void cspSummaryIdentifiesDirectiveAndRedactsResourceSecrets() {
+        assertEquals("内容安全策略拦截；规则=connect-src；操作=网络连接；资源来源=wss://example.com:8443",
+                WebPageRecovery.consoleSummary("Refused to connect to 'wss://user:secret@example.com:8443/private?token=secret#secret' because it violates the following Content Security Policy directive: \"connect-src 'self' https://private\"."));
+        assertEquals("内容安全策略拦截；规则=script-src；操作=内联脚本",
+                WebPageRecovery.consoleSummary("Refused to execute inline script because it violates the following Content Security Policy directive: \"script-src 'nonce-secret'\"."));
+        assertEquals("内容安全策略拦截；规则=img-src；操作=图片加载；资源来源=data:[内容已省略]",
+                WebPageRecovery.consoleSummary("Refused to load the image 'data:image/png;base64,secret' because it violates the following Content Security Policy directive: \"img-src 'self'\"."));
+    }
+
+    @Test public void cspSummarySupportsModernMessagesAndSafeFallbacks() {
+        assertEquals("内容安全策略拦截；规则=script-src-elem；操作=脚本加载；资源来源=https://cdn.example.com",
+                WebPageRecovery.consoleSummary("Loading the script 'https://cdn.example.com/private.js?secret' violates the following Content Security Policy directive: \"script-src-elem 'self'\". The action has been blocked."));
+        assertEquals("内容安全策略报告（未强制拦截）；规则=default-src；操作=网络连接；资源来源=[未知资源]",
+                WebPageRecovery.consoleSummary("[Report Only] Refused to connect to 'not a url secret' because it violates the following Content Security Policy directive: \"default-src 'none'\"."));
+        assertEquals("内容安全策略拦截；规则=未知", WebPageRecovery.consoleSummary("Content Security Policy private secret"));
+        assertEquals("内容安全策略拦截；规则=未知", WebPageRecovery.consoleSummary("Content Security Policy directive: \"private-secret value\""));
+    }
 }

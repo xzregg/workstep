@@ -13,6 +13,7 @@ export type AdminUser = {
   id: string; username: string; display_name: string; status: 'active' | 'pending' | 'disabled' | 'deleted'
   registration_source: string; must_change_password: boolean; created_at: string
   last_login_at?: string | null; login_username?: string | null; is_recovery?: boolean
+  activation_pending?: boolean
 }
 
 type Filters = { q: string; status: string; sort: string; direction: 'asc' | 'desc'; page: number; pageSize: number; groupId?: string }

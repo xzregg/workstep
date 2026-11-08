@@ -274,9 +274,13 @@ async def _application_lifespan(app: FastAPI):
     from services.system_statistics import system_statistics
     async with startup_stage("系统统计"):
         await system_statistics.start()
+    from services.task_auto_retry import TaskAutoRetry
+    task_auto_retry = TaskAutoRetry(project_manager, workflow_runtime, config_store)
+    task_auto_retry.start()
     try:
         yield
     finally:
+        await task_auto_retry.close()
         await system_statistics.close()
         app.state.local_cli_runtime = None
         await asyncio.to_thread(local_cli_runtime.close)

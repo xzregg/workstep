@@ -19,7 +19,7 @@ from gateway.config import GatewaySettings
 from gateway.models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0051_third_party_auth"
+HEAD_REVISION = "0053_reusable_invitation_links"
 
 
 def safe_database_location(url: str) -> tuple[str, str]:

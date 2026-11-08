@@ -533,3 +533,21 @@ test('staging software and images does not require host work to stop but protect
   manager.running = true
   await assert.rejects(handlers.prepareImage({ root: '/chosen' }), /关闭沙箱/)
 })
+
+
+test('sandbox diagnostics retain gateway failures before a busy request tail', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-gateway-log-'))
+  t.after(() => fs.rm(root, { recursive: true, force: true }))
+  await fs.mkdir(path.join(root, 'desktop'))
+  const manager = new SandboxManager({ stateDir: root })
+  manager.activeConfig = { root, id: 'test' }
+  const auth = 'WARNING GATEWAY_AUTH failed {"reason":"callback_origin_mismatch"}'
+  manager.session = { command: async args => {
+    assert.ok(args.includes('--tail=5000'))
+    assert.ok(args.includes('--timestamps'))
+    return auth + '\n' + ('GET routine-request '.repeat(40) + '\n').repeat(1000)
+  } }
+  const report = await manager.readLogs()
+  assert.ok(report.includes(auth))
+  assert.ok(report.length < 400000)
+})

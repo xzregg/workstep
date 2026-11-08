@@ -327,6 +327,8 @@ export const ar: Messages = {
     remoteProject: "مشروع بعيد",
     remoteLabel: "بعيد",
     projects: "المشاريع",
+    collapseConversationList: '收起对话列表',
+    expandConversationList: '展开对话列表',
     searchSidebar: "البحث في الشريط الجانبي",
     searchSidebarPlaceholder: "البحث عن مشاريع وسير عمل ومحادثات",
     noSidebarMatches: "لا توجد مشاريع أو مسارات عمل أو محادثات مطابقة",

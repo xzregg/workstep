@@ -7,6 +7,8 @@ import pytest
 from fastapi import FastAPI
 from api import fs, fs_paths
 
+pytestmark = pytest.mark.usefixtures("preview_directory")
+
 
 @pytest.mark.asyncio
 async def test_large_video_preview_is_metadata_and_raw_supports_ranges(tmp_path, monkeypatch):

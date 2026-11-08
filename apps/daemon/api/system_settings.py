@@ -23,6 +23,7 @@ class SystemSettingsRequest(BaseModel):
     user_name: str | None = Field(default=None, max_length=80)
     open_mode: bool | None = None
     default_project_directory: str | None = Field(default=None, max_length=4096)
+    restrict_file_access_root: bool | None = Field(default=None, strict=True)
     message_history_page_size: int | None = Field(default=None, strict=True, ge=1, le=300)
     git_scan_depth: int | None = Field(default=None, strict=True, ge=0, le=9007199254740991)
 
@@ -134,6 +135,7 @@ async def get_system_settings(request: Request):
             "message_history_page_size": config_store.get_message_history_page_size(),
             "git_scan_depth": config_store.get_git_scan_depth(),
             "default_project_directory": config_store.get("default_project_directory", ""),
+            "restrict_file_access_root": config_store.get("restrict_file_access_root", True),
             **config_store.get_device_identity(),
         }
 
@@ -169,6 +171,8 @@ async def set_system_settings(req: SystemSettingsRequest, request: Request):
         await asyncio.to_thread(config_store.set_open_mode, req.open_mode)
     if directory is not None:
         await asyncio.to_thread(config_store.set, "default_project_directory", directory)
+    if req.restrict_file_access_root is not None:
+        await asyncio.to_thread(config_store.set, "restrict_file_access_root", req.restrict_file_access_root)
     if req.message_history_page_size is not None:
         await asyncio.to_thread(config_store.set, "message_history_page_size", req.message_history_page_size)
     if req.git_scan_depth is not None:

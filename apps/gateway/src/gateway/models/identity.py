@@ -33,6 +33,9 @@ class User(Base):
     updated_at: Mapped[datetime] = timestamp()
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    invitation_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    invitation_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invitation_token_ciphertext: Mapped[str | None] = mapped_column(Text)
 
 
 class AuthSession(Base):

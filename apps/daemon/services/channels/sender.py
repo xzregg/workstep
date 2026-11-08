@@ -99,7 +99,9 @@ class ChannelMessageSender:
         elif attachments:
             raise ValueError('渠道不支持附件')
         else:
-            await adapter.send_text(recipient, text)
+            from services.channels.file_links import ChannelFileLinks
+            project = self._projects.get_project_by_id(project_id)
+            await adapter.send_text(recipient, await ChannelFileLinks(project).convert(text))
         return {'ok': True, 'sent': True, 'message_id': message_id, 'bot_id': bot_id,
                 'platform': bot['platform'], 'conversation_type': conversation_type,
                 'conversation_id': conversation_id}

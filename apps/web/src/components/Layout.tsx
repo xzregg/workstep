@@ -104,7 +104,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('providers')
   const [settingsFocus, setSettingsFocus] = useState<SettingsFocusTarget | undefined>()
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
-  const { width: sidebarWidth, begin: startSidebarDrag, nudge: nudgeSidebar } = useSkinSidebar()
+  const { width: sidebarWidth, collapsed: sidebarCollapsed, toggleCollapsed: toggleSidebarCollapsed, begin: startSidebarDrag, nudge: nudgeSidebar } = useSkinSidebar()
   const [renameWfId, setRenameWfId] = useState<string | null>(null)
   const [deleteWf, setDeleteWf] = useState<{ id: string; projectId: string; name: string; soft: boolean } | null>(null)
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null)
@@ -195,7 +195,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const sidebarSearchActive = sidebarSearchQuery.trim().length > 0
   const [sidebarVisible, setSidebarVisible] = useState(false)
   const [projectSectionVisible, setProjectSectionVisible] = useState(true)
-  useSidebarConversationLoading(sidebarVisible && projectSectionVisible, !sidebarSearchActive
+  useSidebarConversationLoading(sidebarVisible && !sidebarCollapsed && projectSectionVisible, !sidebarSearchActive
     ? projects.filter((p) => expandedProjectIds.includes(p.id)
       && projectCan(p.id)('session.read')
       && (sessionSectionOpen[p.id] ?? (location.pathname === '/chat' && !!activeSessionId))
@@ -460,7 +460,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     <SkinWorkspaceFrame onOpenSettings={section => { setSettingsSection(section); setSettingsFocus(undefined); setShowSettings(true) }}>
     <div className="app-shell" data-ui="app-shell">
       {/* Sidebar */}
-      <ResponsiveNavigation className="layout-sidebar" onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject || creatingSession} newLoading={creatingSession} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => { if (activeProject) void createSession(activeProject) }} style={{ width: sidebarWidth + (compact ? 0 : WORKSPACE_TOOL_RAIL_WIDTH) }}>
+      <ResponsiveNavigation className={`layout-sidebar${sidebarCollapsed ? ' layout-sidebar--collapsed' : ''}`} onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject || creatingSession} newLoading={creatingSession} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => { if (activeProject) void createSession(activeProject) }} style={{ width: (sidebarCollapsed ? 0 : sidebarWidth) + (compact ? 0 : WORKSPACE_TOOL_RAIL_WIDTH) }}>
         <div className="layout-sidebar-header">
           <div className="layout-sidebar-brand">
             <BrandIcon size={18} />
@@ -1037,11 +1037,11 @@ export default function Layout({ onSelectProject, children }: Props) {
 
           }
         />
-        <WorkspaceNavigationActions activeSettingsSection={showSettings ? settingsSection : undefined}
+        <WorkspaceNavigationActions sidebarCollapsed={sidebarCollapsed} onToggleSidebar={toggleSidebarCollapsed} activeSettingsSection={showSettings ? settingsSection : undefined}
           onOpenSettings={section => { setSettingsSection(section); setSettingsFocus(undefined); setShowSettings(true) }} />
       </ResponsiveNavigation>
 
-      <div
+      {!sidebarCollapsed && <div
         className="task-detail-split-handle"
         role="separator"
         aria-orientation="vertical"
@@ -1052,7 +1052,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           e.preventDefault()
           nudgeSidebar(e.key === 'ArrowLeft' ? -16 : 16)
         }}
-      />
+      />}
 
       {moreMenu && (
         <SidebarActionMenu ref={moreMenuRef} x={moreMenu.x} y={moreMenu.y}>

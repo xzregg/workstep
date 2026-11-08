@@ -13,7 +13,8 @@ interface UserSettingsState {
   gatewayUsername: string
   openMode: boolean
   defaultProjectDirectory: string
-  saveDefaultProjectDirectory: (directory: string) => Promise<void>
+  restrictFileAccessRoot: boolean
+  saveDefaultProjectDirectory: (directory: string, restrictFileAccessRoot?: boolean) => Promise<void>
   deviceId: string
   deviceName: string
   loaded: boolean
@@ -43,9 +44,13 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   gatewayUsername: '',
   openMode: false,
   defaultProjectDirectory: '',
-  saveDefaultProjectDirectory: async (directory) => {
-    const settings = await systemSettingsApi.updateDefaultProjectDirectory(directory.trim())
-    set({ defaultProjectDirectory: settings.default_project_directory || '' })
+  restrictFileAccessRoot: true,
+  saveDefaultProjectDirectory: async (directory, restrictFileAccessRoot) => {
+    const settings = await systemSettingsApi.updateDefaultProjectDirectory(directory.trim(), restrictFileAccessRoot)
+    if (restrictFileAccessRoot !== undefined && settings.restrict_file_access_root !== restrictFileAccessRoot) {
+      throw new Error('文件访问限制未保存，请更新并重启后台服务后重试。')
+    }
+    set({ defaultProjectDirectory: settings.default_project_directory || '', restrictFileAccessRoot: settings.restrict_file_access_root ?? true })
   },
   deviceId: '',
   deviceName: '',
@@ -70,6 +75,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
       }
       set({
         defaultProjectDirectory: settings.default_project_directory || '',
+        restrictFileAccessRoot: settings.restrict_file_access_root ?? true,
         gitScanDepth: settings.git_scan_depth ?? 5,
         messageHistoryPageSize: validMessageHistoryPageSize(settings.message_history_page_size)
           ? settings.message_history_page_size : DEFAULT_MESSAGE_HISTORY_PAGE_SIZE,

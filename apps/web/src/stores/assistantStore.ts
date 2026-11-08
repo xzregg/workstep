@@ -1,3 +1,4 @@
+import { preserveFirstOutput } from '../utils/firstOutput'
 /**
  * assistantStore — generic chat store for any LLM assistant conversation.
  *
@@ -87,6 +88,7 @@ export interface AssistantChatMessage {
   /** Process events (thinking/usage/…), consumed by ProcessTrace + footer. */
   events?: AssistantChatEvent[]
   event_summary?: {
+    first_output_at?: string
     event_count?: number
     last_event_seq?: number
     thought_characters?: number
@@ -238,9 +240,11 @@ function appendCappedA2uiPayload(
 
 /** 历史消息进 store 前同样封顶：条数可达数万，全量常驻会随会话缓存叠加撑爆内存。 */
 function capHistoryEvents(message: AssistantChatMessage): AssistantChatMessage {
-  return message.events && message.events.length > MAX_LIVE_EVENTS_PER_MESSAGE
-    ? { ...message, events: message.events.slice(-MAX_LIVE_EVENTS_PER_MESSAGE) }
-    : message
+  const summary = preserveFirstOutput(message.event_summary, message.events ?? [])
+  const events = message.events && message.events.length > MAX_LIVE_EVENTS_PER_MESSAGE
+    ? message.events.slice(-MAX_LIVE_EVENTS_PER_MESSAGE) : message.events
+  return summary !== message.event_summary || events !== message.events
+    ? { ...message, event_summary: summary, events } : message
 }
 
 /** History owns persisted order; omitted cached rows keep their next shared anchor. */
@@ -843,6 +847,14 @@ export function createAssistantStore(
           pushEvent(mid)
         }
 
+        if (mid) {
+          const outputIndex = messages.findIndex((message) => message.id === mid)
+          if (outputIndex >= 0) {
+            const message = messages[outputIndex]
+            const summary = preserveFirstOutput(message.event_summary, [event])
+            if (summary !== message.event_summary) messages[outputIndex] = { ...message, event_summary: summary }
+          }
+        }
         return {
           sessions: upsertSession(s.sessions, sessionId, {
             ...session,

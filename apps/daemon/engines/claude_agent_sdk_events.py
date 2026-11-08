@@ -291,10 +291,9 @@ class ClaudeAgentSDKEventMapper:
             for block in self._content_blocks(msg):
                 if self._block_type(block) == "tool_result":
                     content = getattr(block, "content", "") or ""
-                    if isinstance(content, list):
-                        content = "\n".join(
-                            str(part) for part in content if part
-                        )
+                    from engines.core.image_output import contains_image
+                    if isinstance(content, list) and not contains_image(content):
+                        content = "\n".join(str(part) for part in content if part)
                     events.append(tool_call_update_event(
                         tool_call_id=str(getattr(block, "tool_use_id", "") or ""),
                         status="failed" if bool(getattr(block, "is_error", False)) else "completed",

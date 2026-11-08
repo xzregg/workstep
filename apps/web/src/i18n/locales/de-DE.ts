@@ -327,6 +327,8 @@ export const deDE: Messages = {
     remoteProject: "Remote-Projekt",
     remoteLabel: "Remote",
     projects: "Projekte",
+    collapseConversationList: '收起对话列表',
+    expandConversationList: '展开对话列表',
     searchSidebar: "Seitenleiste durchsuchen",
     searchSidebarPlaceholder: "Projekte, Workflows und Unterhaltungen suchen",
     noSidebarMatches: "Keine passenden Projekte, Workflows oder Unterhaltungen",

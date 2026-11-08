@@ -1,0 +1,52 @@
+/* Desktop: existing navigation 12%, existing conversation 18%, new workbench 70% of viewport. */
+.demo-note{height:36px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px;background:var(--surface);border-bottom:.5px solid var(--line);font-size:12px;color:var(--muted)}
+[data-layout=integrated] .shell{grid-template-columns:12% minmax(0,1fr);height:calc(100dvh - 36px);min-height:0}
+[data-layout=integrated] .sidebar{padding:14px 8px;gap:10px;overflow:auto;background:var(--bg)}
+[data-layout=integrated] .sidebar h2{font-size:16px;margin:6px 4px 20px}
+[data-layout=integrated] .project{flex-wrap:wrap;padding:8px 4px;background:var(--surface);font-size:12px}
+[data-layout=integrated] .project button{padding:3px 6px}
+[data-layout=integrated] .sidebar .session{font-size:12px;padding:8px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;margin:0}
+[data-layout=integrated] .sidebar details{font-size:12px;padding:6px 4px}
+[data-layout=integrated] .sidebar-bottom{font-size:12px;padding:12px 4px;color:var(--muted)}
+.recent{border-top:.5px solid var(--line);margin-top:18px;padding-top:14px;font-size:12px;color:var(--muted)}
+[data-layout=integrated] .workspace{display:grid;grid-template-columns:minmax(0,18fr) minmax(0,70fr);overflow:hidden}
+[data-layout=integrated] .chat{max-width:none;min-height:0;border-right:.5px solid var(--line)}
+.existing-chat-header{flex-direction:column;gap:12px;padding:14px 12px;font-size:12px}
+.existing-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;color:var(--muted)}
+.existing-actions button{font-size:12px;padding:4px 6px}
+[data-layout=integrated] #messages{padding:20px 12px;font-size:14px;overflow-wrap:anywhere}
+[data-layout=integrated] .message{margin-bottom:22px}
+[data-layout=integrated] .message.user{padding:10px}
+[data-layout=integrated] .composer{padding:10px;max-height:50%;overflow:auto}
+.original-shortcuts{display:flex;flex-wrap:wrap;gap:8px;font-size:12px;color:var(--muted);margin-bottom:12px}
+[data-layout=integrated] .shortcuts{gap:5px;margin-bottom:10px}
+[data-layout=integrated] .shortcuts button{padding:5px 7px}
+.existing-input{border:.5px solid var(--line);border-radius:10px;padding:9px;background:var(--bg)}
+[data-layout=integrated] textarea{border:0;background:var(--bg);padding:2px;min-height:90px}
+[data-layout=integrated] .composer-foot{gap:8px;flex-wrap:wrap;font-size:12px}
+.input-options{display:flex;gap:8px;align-items:center}
+[data-layout=integrated] .input-options label{display:flex;align-items:center;gap:4px;margin:0}
+.input-options input{width:16px;height:16px;margin:0}
+[data-layout=integrated] .preview-pane{min-height:0}
+[data-layout=integrated] .pane-heading{min-height:64px;flex-wrap:wrap;gap:12px;padding:12px 18px;background:var(--bg)}
+[data-layout=integrated] .pane-heading label{margin-left:auto;font-size:12px;color:var(--muted)}
+[data-layout=integrated] .pane-heading select{margin-left:0;max-width:220px}
+[data-layout=integrated] #production{font-size:12px;color:var(--green)}
+[data-layout=integrated] #preview{margin:20px;border-radius:8px}
+[data-layout=integrated] .app-content{padding:32px}
+[data-layout=integrated] .app-nav{padding:20px 32px}
+[data-layout=integrated] .metrics{gap:80px;padding:12px 0 24px}
+[data-layout=integrated] #action-panel{top:70px}
+[data-layout=integrated].workbench-closed .workspace{grid-template-columns:minmax(0,1fr)}
+[data-layout=integrated].workbench-closed .preview-pane{display:none}
+[data-layout=integrated].workbench-closed .composer,[data-layout=integrated].workbench-closed #messages{width:100%;max-width:1000px;margin:0 auto}
+[data-layout=integrated].workbench-closed .existing-chat-header{flex-direction:row;justify-content:space-between}
+@media(max-width:1023px){[data-layout=integrated] .shell{grid-template-columns:180px minmax(0,1fr)}[data-layout=integrated] .workspace{grid-template-columns:minmax(0,1fr)}[data-layout=integrated] .chat{display:none}[data-layout=integrated].workbench-closed .chat{display:flex}[data-layout=integrated] .preview-pane{display:flex}[data-layout=integrated] .pane-heading label{margin-left:0}.demo-note span{display:none}[data-layout=integrated] .metrics{gap:24px}[data-layout=integrated] .app-content{padding:18px}[data-layout=integrated] .app-nav{padding:16px}[data-layout=integrated] .preview-footer{gap:10px}}
+@media(max-width:600px){[data-layout=integrated] .shell{grid-template-columns:minmax(0,1fr)}[data-layout=integrated] .sidebar{display:none}[data-layout=integrated] #preview{margin:10px}[data-layout=integrated] .pane-heading{padding:12px}[data-layout=integrated] .preview-footer small{max-width:60%}}
+
+/* Workbench chrome lives only above the embedded application. */
+[data-layout=integrated] #preview{margin:0;border:0;border-radius:0;display:flex;min-height:0;overflow:hidden;background:var(--bg)}
+#workbench-frame{display:block;width:100%;height:100%;flex:1;min-height:0;border:0;background:var(--bg)}
+[data-layout=integrated] .pane-heading .preview-state{border:0;padding:0;font-size:12px;color:var(--muted)}
+[data-layout=integrated] .chat #notice{flex-shrink:0;font-size:12px;padding:0 12px;overflow-wrap:anywhere}
+[data-layout=integrated] .chat #notice:not(:empty){padding:8px 12px;border-top:.5px solid var(--line)}

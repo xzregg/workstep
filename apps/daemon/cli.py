@@ -164,6 +164,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     task = subparsers.add_parser("task", help="manage tasks")
     task_sub = task.add_subparsers(dest="subcommand", required=True)
+    from task_management_cli import add_task_management_parsers
+    add_task_management_parsers(task_sub, add_json)
     task_list = task_sub.add_parser("list", help="list tasks of a project")
     task_list.add_argument("--project", required=True, dest="project_id", help="project id")
     task_list.add_argument("--archived", action="store_true", help="list archived tasks only")
@@ -540,6 +542,9 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 return await _create_project_action_on_existing_daemon(args, client, script_content)
             return result
     if command == "task":
+        from task_management_cli import OPERATIONS, dispatch_task_management
+        if args.subcommand in OPERATIONS:
+            return await dispatch_task_management(args, client)
         step_operations = {
             "step-message": "workstep_send_step_message",
             "step-stop": "workstep_stop_step",

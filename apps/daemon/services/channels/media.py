@@ -1,5 +1,6 @@
 """Bounded, async media I/O and project-relative chat references."""
 import asyncio
+import io
 import mimetypes
 from pathlib import Path
 import re
@@ -49,18 +50,49 @@ def safe_name(name: str, kind: str) -> str:
 async def load_outgoing_attachment(project, kind: str, path: str, limit: int) -> ChannelAttachment:
     def read():
         root = Path(project.path).resolve()
-        file = (root / path).resolve()
+        candidate = Path(path)
+        if candidate.parts[:1] == ('.workstep',):
+            root = Path(getattr(project, 'workstep_dir', root/'.workstep')).resolve()
+            candidate = Path(*candidate.parts[1:])
+        file = (root / candidate).resolve()
         if not file.is_relative_to(root) or not file.is_file():
             raise ValueError('附件必须是项目内的文件')
+        from engines.core.image_output import MAX_IMAGE_BYTES
+        read_limit = max(limit, MAX_IMAGE_BYTES) if kind == 'image' else limit
         with file.open('rb') as stream:
-            data = stream.read(limit + 1)
-        if not data or len(data) > limit:
+            data = stream.read(read_limit + 1)
+        if not data or len(data) > read_limit:
             raise ValueError('附件为空或超过渠道大小限制')
         mime = mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
         if kind == 'image' and not mime.startswith('image/'):
             raise ValueError('图片附件必须使用图片格式')
-        return ChannelAttachment(kind=kind, name=file.name, mime_type=mime, path=str(file), data=data)
+        name = file.name
+        if kind == 'image' and len(data) > limit:
+            data = _fit_channel_image(data, limit)
+            name = file.stem + '.jpg'
+            mime = 'image/jpeg'
+        return ChannelAttachment(kind=kind, name=name, mime_type=mime, path=str(file), data=data)
     return await asyncio.to_thread(read)
+
+
+def _fit_channel_image(data: bytes, limit: int) -> bytes:
+    """Encode a delivery copy; the project's full resolution original is untouched."""
+    from PIL import Image
+    from engines.core.image_output import checked_image
+
+    with checked_image(data) as source:
+        # Flatten transparency onto white for channels' broadly supported JPEG.
+        rgba = source.convert('RGBA')
+        image = Image.new('RGB', rgba.size, 'white')
+        image.paste(rgba, mask=rgba.getchannel('A'))
+    for _ in range(9):
+        for quality in (88, 72, 55):
+            output = io.BytesIO()
+            image.save(output, 'JPEG', quality=quality, optimize=True)
+            if output.tell() <= limit:
+                return output.getvalue()
+        image = image.resize((max(1, image.width * 3 // 4), max(1, image.height * 3 // 4)))
+    raise ValueError('图片压缩后仍超过渠道大小限制')
 
 
 async def _incoming_parts(project, adapter, text, attachments) -> str:
@@ -97,7 +129,7 @@ async def incoming_content(project, adapter, message) -> str:
     return f'引用消息：\n{quoted}\n\n本次消息：\n{current}'
 
 
-async def outgoing_content(project, adapter, text: str, attachments=()):
+async def outgoing_content(project, adapter, text: str, attachments=(), *, file_links=None):
     """Prepare project attachments; keep public links as text."""
     from services.channels.base import OutgoingMessage
     media = []
@@ -118,6 +150,8 @@ async def outgoing_content(project, adapter, text: str, attachments=()):
         replacements.append((match.start(), match.end(), match.group(2) or attachment.name))
     for start,end,label in reversed(replacements):
         text = text[:start] + label + text[end:]
+    from services.channels.file_links import ChannelFileLinks
+    text = await (file_links or ChannelFileLinks(project)).convert(text)
     message = OutgoingMessage(text=text, attachments=tuple(media))
     adapter.validate_outgoing(message)
     return message

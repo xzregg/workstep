@@ -18,9 +18,9 @@ import { useI18n } from '../i18n'
 import {
   buildMessageTimeline,
   estimateTokens,
-  thinkingRateFromTimeline,
   type MessageTimelineItem,
 } from '../utils/messageTimeline'
+import { useOutputRate } from '../hooks/useOutputRate'
 import { isToolEvent, toolCallId } from '../utils/agui.ts'
 import {
   conversationBottomScrollTop,
@@ -324,7 +324,7 @@ export default function ProcessTrace({
     [processItems],
   )
   const lastThinkingItem = thinkingItems[thinkingItems.length - 1]
-  const thinkingRate = thinkingRateFromTimeline(timeline, now)
+  const thinkingRate = useOutputRate(events, startedAt, eventSummary, running)
   const subagentItems = useMemo(
     () => processItems.filter(
       (item): item is Extract<MessageTimelineItem, { type: 'subagent' }> => item.type === 'subagent',
@@ -498,7 +498,7 @@ export default function ProcessTrace({
               content={item.content}
               active={running && item === lastProcessItem}
               lastThinking={item === lastThinkingItem}
-              rate={item === lastThinkingItem ? thinkingRate : thinkingRateFromTimeline([item], now)}
+              rate={item === lastProcessItem ? thinkingRate : null}
               duration={formatDuration(
                 durationMilliseconds(
                   item.startedAt,

@@ -26,7 +26,7 @@ test('social credentials require the platform fields and failed saves retain the
     input.dispatchEvent(new window.Event('input', { bubbles: true }))
   })
   try {
-    await act(async () => root.render(<I18nProvider><BotSettingsEditor platform={platform} onPlatformChange={() => {}} onSaved={() => { saved++ }} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={busy => busyStates.push(busy)} /></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><BotSettingsEditor platform={platform} onSaved={() => { saved++ }} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={busy => busyStates.push(busy)} /></I18nProvider>))
     const fields = container.querySelectorAll<HTMLInputElement>('input:not([type="checkbox"])')
     await enter(fields[0], '助手')
     if (platform !== 'telegram') await enter(fields[1], 'application-id')
@@ -65,9 +65,11 @@ test('editing Slack keeps both stored tokens without resending empty values', as
   globalThis.fetch = async (_input, init) => { payload = JSON.parse(String(init?.body)); return Response.json({}) }
   const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
   try {
-    await act(async () => root.render(<I18nProvider><BotSettingsEditor platform="slack" bot={{ id: 'b', platform: 'slack', name: '助手', app_id: 'A1', has_secret: true, has_app_token: true, default_project_id: 'p' } as any} onPlatformChange={() => {}} onSaved={() => {}} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={() => {}} /></I18nProvider>))
-    assert.equal(container.querySelector<HTMLSelectElement>('select')!.disabled, true)
+    await act(async () => root.render(<I18nProvider><BotSettingsEditor platform="slack" bot={{ id: 'b', platform: 'slack', enabled: false, name: '助手', app_id: 'A1', has_secret: true, has_app_token: true, default_project_id: 'p' } as any} onSaved={() => {}} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={() => {}} /></I18nProvider>))
+    assert.equal(container.querySelector('select:not([required])'), null)
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '保存')!.click())
+    assert.equal(payload.enabled, false)
+    assert.equal(payload.default_project_id, 'p')
     assert.equal('secret' in payload, false)
     assert.equal('app_token' in payload, false)
   } finally {
@@ -96,7 +98,7 @@ test('bot settings requires credentials and sends the selected platform fields',
     input.dispatchEvent(new window.Event('input', { bubbles: true }))
   })
   try {
-    await act(async () => root.render(<I18nProvider><BotSettingsEditor platform="wecom" onPlatformChange={() => {}} onSaved={() => {}} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={() => {}} /></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><BotSettingsEditor platform="wecom" onSaved={() => {}} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={() => {}} /></I18nProvider>))
     assert.equal(container.querySelector('option[value="task"]'), null, 'task binding belongs to task details')
     const fields = container.querySelectorAll<HTMLInputElement>('.bot-settings-form input:not([type="checkbox"])')
     const save = [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '保存')!
@@ -106,13 +108,13 @@ test('bot settings requires credentials and sends the selected platform fields',
     await enter(fields[2], 'secret-value')
     assert.equal(save.disabled, true, 'default project is required after credentials are filled')
     assert.equal(container.querySelector('option[value="remote"]'), null)
-    const project = container.querySelectorAll<HTMLSelectElement>('.bot-settings-form select')[1]
+    const project = container.querySelector<HTMLSelectElement>('select[required]')!
     await act(async () => { project.value = 'p1'; project.dispatchEvent(new window.Event('change', { bubbles: true })) })
     assert.equal(save.disabled, false)
     await act(async () => save.click())
     assert.deepEqual(posted, [{
       platform: 'wecom', name: '研发助手', app_id: 'bot-id', secret: 'secret-value',
-      enabled: false, default_target_type: 'project', default_project_id: 'p1', default_task_id: '',
+      enabled: true, default_target_type: 'project', default_project_id: 'p1', default_task_id: '',
     }])
   } finally {
     await act(async () => root.unmount())
@@ -138,7 +140,7 @@ test('DingTalk can save an optional custom button card template', async () => {
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   try {
-    await act(async () => root.render(<I18nProvider><BotSettingsEditor platform="dingtalk" onPlatformChange={() => {}} onSaved={() => {}} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={() => {}} /></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><BotSettingsEditor platform="dingtalk" onSaved={() => {}} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={() => {}} /></I18nProvider>))
     const consoleLink = container.querySelector<HTMLAnchorElement>('a[href="https://open-dev.dingtalk.com/"]')!
     assert.ok(consoleLink)
     assert.equal(consoleLink.target, '_blank')
@@ -146,7 +148,7 @@ test('DingTalk can save an optional custom button card template', async () => {
     assert.ok(container.querySelector('a[href="https://open.dingtalk.com/document/orgapp/create-and-deliver-cards"]'))
     assert.match(container.textContent!, /开发配置.*权限管理/)
     assert.match(container.textContent!, /Card.Instance.Write/)
-    const project = container.querySelectorAll<HTMLSelectElement>('.bot-settings-form select')[1]
+    const project = container.querySelector<HTMLSelectElement>('select[required]')!
     await act(async () => { project.value = 'p1'; project.dispatchEvent(new window.Event('change', { bubbles: true })) })
     const fields = [...container.querySelectorAll<HTMLInputElement>('.bot-settings-form input:not([type="checkbox"])')]
     assert.equal(fields.length, 5)

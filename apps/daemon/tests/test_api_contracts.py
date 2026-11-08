@@ -773,7 +773,7 @@ class MemoryConfigStore:
 
 
 @pytest.fixture
-async def api_context(tmp_path, monkeypatch):
+async def api_context(tmp_path, monkeypatch, preview_directory):
     """Run the real FastAPI routes against isolated project databases."""
     import api.history as history_api
     import api.engine as engine_api
@@ -4197,7 +4197,7 @@ async def test_sandbox_project_root_limits_picker_creation_and_project_init(
     rejected = await client.post(
         "/api/project/init", json={"path": str(outside)},
     )
-    assert rejected.status_code == 400
+    assert rejected.status_code == 403
     accepted = await client.post(
         "/api/project/init", json={"path": str(projects_root / "created")},
     )
@@ -6657,3 +6657,56 @@ async def test_project_list_omits_steps_but_workflow_detail_preserves_them(api_c
     detail = await client.get(f"/api/workflow/{workflow['id']}?project_id={project['id']}")
     assert detail.status_code == 200
     assert detail.json()["steps"] == steps
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("experience", ["- 反复失败时应先验证输入，再重试。", ""])
+async def test_cli_task_lifecycle_uses_real_api_and_archive_memory(api_context, monkeypatch, experience):
+    import main
+    from cli import build_parser, dispatch
+    from services.tool_registry import WorkstepClient
+
+    client, directory = api_context
+    project_dir = directory / "cli-lifecycle"
+    project_dir.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(project_dir)})).json()["id"]
+    await _create_test_workflow(client, pid)
+    task = (await client.post(f"/api/task/create?project_id={pid}", json={
+        "title": "原任务", "description": "旧描述", "cwd": str(project_dir), "auto_start": False,
+    })).json()
+    tools = WorkstepClient(base_url="http://test", transport=ASGITransport(app=main.app))
+    parser = build_parser()
+    async def call(action, *extra, task_id=None):
+        return await dispatch(parser.parse_args(["task", action, "--project", pid,
+                              "--task", task_id or task["id"], *extra]), tools)
+
+    updated = await call("update", "--title", "已修改", "--desc", "新描述")
+    assert updated.get("ok") is not False, updated
+    current = await call("get")
+    assert current["title"] == "已修改" and current["description"] == "新描述"
+    copied = await call("copy", "--title", "副本")
+    assert copied["id"] != task["id"]
+    assert (await call("delete", "--keep-workspace", task_id=copied["id"]))["deleted"]
+
+    draft = AsyncMock(return_value=experience)
+    monkeypatch.setattr(main.coordinator_module, "draft_archive_experience", draft)
+    message_id = str(uuid.uuid4())
+    result = await call("archive-prepare", "--message", message_id)
+    assert result["status"] == "running"
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        result = await call("archive-prepare", "--message", message_id)
+        if result.get("status") != "running":
+            break
+    assert result["experience"] == experience, result
+    draft.assert_awaited_once()
+    assert (await call("get"))["archived"] is False
+    saved = await call("archive-draft")
+    assert saved["experience"] == experience
+    result = await call("archive-confirm", "--experience", experience)
+    assert result == {"archived": True, "memory_saved": bool(experience)}
+    memory = (await client.get(f"/api/fs/memory?project_id={pid}")).json()["content"]
+    assert (experience in memory) if experience else not memory
+    assert (await call("get"))["archived"] is True
+    assert (await call("unarchive"))["unarchived"] is True
+    assert (await call("archive"))["archived"] is True

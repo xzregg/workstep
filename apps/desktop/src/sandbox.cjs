@@ -442,7 +442,7 @@ class SandboxManager {
   }
   async captureLogs() {
     if (!this.session || !this.activeConfig) return
-    let logs = await this.session.command(['logs', '--tail=200', `workstep-${this.activeConfig.id}`], { captureCombined: true, timeout: 10000 })
+    let logs = await this.session.command(['logs', '--timestamps', '--tail=5000', `workstep-${this.activeConfig.id}`], { captureCombined: true, timeout: 10000 })
     for (const secret of this.redactions || []) logs = logs.replaceAll(secret, '[redacted]')
     await fs.writeFile(path.join(this.activeConfig.root, 'desktop/daemon.log'), Buffer.from(logs).subarray(-LOG_MAX_BYTES), { mode: 0o600 })
   }
@@ -457,7 +457,9 @@ class SandboxManager {
         if (error.code === 'ENOENT') return ''
         throw error
       })
-      let tail = content.slice(-200000)
+      // Preserve bounded authentication evidence even after a busy API tail.
+      const auth = name === 'daemon.log' ? content.split('\n').filter(line => line.includes('GATEWAY_AUTH ')).slice(-100).join('\n').slice(-50000) : ''
+      let tail = content.slice(-200000) + (auth ? `\n=== 网关认证诊断 ===\n${auth}\n` : '')
       for (const secret of this.redactions || []) tail = tail.replaceAll(secret, '[redacted]')
       return tail
     }

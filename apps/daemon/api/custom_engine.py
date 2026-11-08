@@ -2,6 +2,8 @@
 import asyncio
 from pathlib import Path
 
+from api.fs_paths import _assert_preview_path
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -67,17 +69,20 @@ async def invoke(awaitable):
 
 @router.post("/inspect")
 async def inspect_package(request: PackageRequest):
+    await asyncio.to_thread(_assert_preview_path, Path(request.path).expanduser())
     return await invoke(manager.inspect(request.path))
 
 
 @router.post("/configure")
 async def configure_package(request: ConfigureRequest):
+    await asyncio.to_thread(_assert_preview_path, Path(request.path).expanduser())
     return await invoke(manager.configure(request.path, request.values, request.clear, request.confirmed,
                                           request.provider_id, request.model))
 
 
 @router.post("/operations", status_code=202)
 async def start_operation(request: OperationRequest):
+    await asyncio.to_thread(_assert_preview_path, Path(request.path).expanduser())
     return await invoke(manager.start_operation(request.action, request.path))
 
 
@@ -93,6 +98,7 @@ async def stop_operation(operation_id: str):
 
 @router.post("/register")
 async def register_package(request: RegisterRequest):
+    await asyncio.to_thread(_assert_preview_path, Path(request.path).expanduser())
     return await invoke(manager.register(request.path, replace=request.replace))
 
 
@@ -123,6 +129,7 @@ async def export_to_path(request: ExportRequest):
     file = Path(request.output).expanduser()
     if not file.is_absolute() or file.suffix.lower() != ".zip":
         raise HTTPException(400, "导出路径必须是绝对路径的 ZIP 文件")
+    file = await asyncio.to_thread(_assert_preview_path, file)
     data = await invoke(manager.export(request.engine_id))
     await asyncio.to_thread(file.write_bytes, data)
     return {"ok": True, "path": str(file), "bytes": len(data)}

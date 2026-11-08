@@ -228,6 +228,8 @@ async def public_share_workspace_browse(
         root = git_api.TaskGitWorkspace.root(project.path, ctx["task_id"], task["workflow_id"]).resolve()
         candidate = Path(path).expanduser() if path else root
         target = (candidate if candidate.is_absolute() else project.path / candidate).resolve()
+        from api.fs_paths import _assert_preview_path
+        _assert_preview_path(target)
         if not target.is_relative_to(root):
             raise HTTPException(status_code=403, detail="Directory is outside the shared task workspace")
         if not target.is_dir():
@@ -271,6 +273,8 @@ async def public_share_git(token: str, git_path: str, request: Request):
 
     project_id, task_id = ctx["project_id"], ctx["task_id"]
     project = git_api._task_project(project_id)
+    from api.fs_paths import _assert_preview_path
+    await asyncio.to_thread(_assert_preview_path, project.path)
     task = await git_api._task_exists(project_id, task_id)
     repositories = await git_api.project_repositories(project_id)
     if git_path == "repositories" and request.method == "GET":

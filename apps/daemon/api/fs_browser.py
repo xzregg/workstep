@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from api.fs_paths import (
-    _assert_project_path, _path_error_detail, _project, _require_actor_project,
+    _assert_preview_path, _assert_project_path, _file_access_root, _path_error_detail, _project, _require_actor_project,
 )
 from services.remote_access import get_current_actor
 from services.project_scope import assert_within_projects_root, projects_root
@@ -91,8 +91,11 @@ def _resolve_browse_directory(path: str | None, project_id: str | None) -> tuple
         )
     else:
         scoped_root = projects_root()
+        default_root = _file_access_root() or scoped_root or Path.home()
+        if scoped_root is not None and scoped_root.is_relative_to(default_root):
+            default_root = scoped_root
         if scoped_root is not None:
-            candidate = Path(path).expanduser() if path is not None else scoped_root
+            candidate = Path(path).expanduser() if path is not None else default_root
             target = (
                 candidate.resolve()
                 if candidate.is_absolute()
@@ -103,8 +106,9 @@ def _resolve_browse_directory(path: str | None, project_id: str | None) -> tuple
             except ValueError as exc:
                 raise HTTPException(status_code=403, detail=str(exc)) from exc
         else:
-            target = Path.home() if path is None else Path(path).expanduser().resolve()
+            target = default_root if path is None else Path(path).expanduser().resolve()
     _assert_project_path(target, project_id)
+    _assert_preview_path(target)
     if not target.exists():
         raise HTTPException(status_code=404, detail=_path_error_detail("Directory not found", target))
     if not target.is_dir():
@@ -146,6 +150,11 @@ async def browse_directory(
             for item in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
                 if not include_hidden and item.name.startswith('.'):
                     continue
+                if item.is_symlink():
+                    try:
+                        _assert_preview_path(item)
+                    except HTTPException:
+                        continue
                 entries.append({
                     "name": item.name,
                     "type": "directory" if item.is_dir() else "file",
@@ -161,6 +170,9 @@ async def browse_directory(
         parent = target.parent if target.parent != target else None
         scoped_root = projects_root() if project_root is None else None
         if scoped_root is not None and target == scoped_root:
+            parent = None
+        access_root = _file_access_root()
+        if access_root is not None and target == access_root:
             parent = None
         if project_root is not None and target == project_root:
             parent = None
@@ -257,6 +269,7 @@ async def mkdir_directory(req: MkdirRequest):
         )
     def create_directory() -> Path:
         parent = Path(req.parent).expanduser().resolve()
+        _assert_preview_path(parent)
         try:
             assert_within_projects_root(parent)
         except ValueError as exc:
@@ -266,6 +279,7 @@ async def mkdir_directory(req: MkdirRequest):
         if not parent.is_dir():
             raise HTTPException(status_code=400, detail=f"Not a directory: {parent}")
         target = parent / name
+        _assert_preview_path(target)
         if target.exists():
             raise HTTPException(status_code=409, detail=f"Already exists: {target}")
         try:

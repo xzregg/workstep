@@ -31,6 +31,7 @@ export default function GatewayPlatformSettings() {
  const setState = (status: PlatformState) => useGatewayConnectionStore.setState({ status })
  const [url, setUrl] = useState('')
  const [enabled, setEnabled] = useState(false)
+ const validSettings = url.trim() ? validGatewayPlatformUrl(url) : !enabled
  const [error, setError] = useState('')
  const [busy, setBusy] = useState(false)
  const [confirm, setConfirm] = useState(false)
@@ -58,7 +59,7 @@ export default function GatewayPlatformSettings() {
   return () => controller.abort()
  }, [revision, t])
  async function connect(reset = false) {
-  if (remoteReadOnly || state?.package_locked || submitting.current || !state || !validGatewayPlatformUrl(url)) return
+  if (remoteReadOnly || state?.package_locked || submitting.current || !state || !validSettings) return
   submitting.current = true
   setBusy(true); setError(''); setFailureOpen(false)
   try {
@@ -102,7 +103,7 @@ export default function GatewayPlatformSettings() {
   }}>{t(failure?.error.code === 'gateway_key_changed' ? 'gatewayPlatform.resetTrust' : 'gatewayPlatform.retry')}</button></p>}
   {state && <>
    <p role="status">{gatewayConnectionState(state) === 'connecting' && <Icon name="loader-circle" size={16} className="gateway-platform-spinner" />} {t(`gatewayPlatform.${gatewayConnectionState(state)}`)}</p>
-   <form className={remoteReadOnly ? 'gateway-platform-form--readonly' : undefined} aria-disabled={remoteReadOnly || undefined} onSubmit={event => { event.preventDefault(); if (remoteReadOnly || state.package_locked) return; if (state.authenticated && state.url !== url.trim().replace(/\/$/, '')) setConfirm(true); else void connect() }}>
+   <form className={remoteReadOnly ? 'gateway-platform-form--readonly' : undefined} aria-disabled={remoteReadOnly || undefined} onSubmit={event => { event.preventDefault(); if (remoteReadOnly || state.package_locked || !validSettings) return; if (enabled && state.authenticated && state.url !== url.trim().replace(/\/$/, '')) setConfirm(true); else void connect() }}>
     <label htmlFor="gateway-platform-url">{t('gatewayPlatform.address')}</label>
     <input id="gateway-platform-url" type="url" value={url} disabled={remoteReadOnly || busy || state.package_locked} placeholder="http://localhost:8700" onChange={event => setUrl(event.target.value)} />
     <p className="gateway-platform-hint">{t('gatewayPlatform.addressHint')}</p>
@@ -111,7 +112,7 @@ export default function GatewayPlatformSettings() {
      {t('gatewayPlatform.enable')}
     </label>
     <p className="gateway-platform-hint">{t('gatewayPlatform.modeHint')}</p>
-    <button type="submit" disabled={remoteReadOnly || busy || state.package_locked || !validGatewayPlatformUrl(url)}>{busy && <Icon name="loader-circle" size={16} className="gateway-platform-spinner" />}{busy ? t('gatewayPlatform.saving') : t('gatewayPlatform.save')}</button>
+    <button type="submit" disabled={remoteReadOnly || busy || state.package_locked || !validSettings}>{busy && <Icon name="loader-circle" size={16} className="gateway-platform-spinner" />}{busy ? t('gatewayPlatform.saving') : t('gatewayPlatform.save')}</button>
    </form>
   <ConfirmDialog open={confirm} title={t('gatewayPlatform.changeTitle')} message={t('gatewayPlatform.changeMessage')}
    onCancel={() => setConfirm(false)} onConfirm={() => { setConfirm(false); void connect() }} />

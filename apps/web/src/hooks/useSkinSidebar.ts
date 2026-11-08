@@ -5,9 +5,19 @@ import { SKIN_EVENT, useActiveSkin } from '../skins/runtime'
 
 const clamp = (width: number) => Math.min(480, Math.max(180, width))
 const KEY = 'workstep.sidebar-width'
+const COLLAPSED_KEY = 'workstep.sidebar-collapsed'
 export function useSkinSidebar() {
   const compact = useCompactLayout()
   const skin = useActiveSkin(), layout = resolvedSkinLayout(skin, compact)
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return sessionStorage.getItem(COLLAPSED_KEY) === 'true' } catch { return false }
+  })
+  const toggleCollapsed = () => {
+    cleanup.current?.()
+    const next = !collapsed
+    setCollapsed(next)
+    try { sessionStorage.setItem(COLLAPSED_KEY, String(next)) } catch { /* Optional preference. */ }
+  }
   const manual = useRef(false), cleanup = useRef<(() => void) | null>(null)
   const [width, setWidth] = useState(() => {
     try { const stored = Number(sessionStorage.getItem(KEY)); if (stored >= 180 && stored <= 480) { manual.current = true; return stored } } catch { /* Optional preference. */ }
@@ -36,5 +46,5 @@ export function useSkinSidebar() {
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop); window.addEventListener('pointercancel', stop)
     document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'
   }
-  return { width, begin, nudge: (delta: number) => update(width + delta * (layout.sidebarSide === 'right' ? -1 : 1)) }
+  return { width, collapsed: !compact && collapsed, toggleCollapsed, begin, nudge: (delta: number) => update(width + delta * (layout.sidebarSide === 'right' ? -1 : 1)) }
 }

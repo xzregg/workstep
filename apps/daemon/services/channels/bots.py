@@ -88,6 +88,8 @@ class BotManager:
                                                   forwarder=self._task_forwarder)
         self._card_answer_tasks = set()
         self._private_users: dict[str, dict[str, dict]] = {}
+        from services.channels.weixin_login import WeixinLogin
+        self.weixin_login = WeixinLogin()
 
     async def _ensure_factories(self) -> None:
         if self._registered_channels is None:
@@ -113,7 +115,7 @@ class BotManager:
     @staticmethod
     def _public(bot: dict, status: dict | None = None) -> dict:
         return {
-            **{key: value for key, value in bot.items() if key not in {"secret", "app_token"}},
+            **{key: value for key, value in bot.items() if key not in {"secret", "app_token", "weixin_user_id", "weixin_base_url"}},
             "has_secret": bool(bot.get("secret")),
             "has_app_token": bool(bot.get("app_token")),
             "protocol_version": 1,
@@ -222,6 +224,9 @@ class BotManager:
     async def create_bot(self, values: dict) -> dict:
         await self._ensure_factories()
         platform = str(values.get("platform") or "")
+        login_id = str(values.get('login_id') or '')
+        if platform == 'weixin':
+            values = {**values, **self.weixin_login.credentials(login_id)}
         name = str(values.get("name") or "").strip()
         app_id = str(values.get("app_id") or "").strip()
         secret = str(values.get("secret") or "").strip()
@@ -241,6 +246,7 @@ class BotManager:
         bot = {
             "id": str(uuid.uuid4()), "platform": platform, "name": name,
             "app_id": app_id, "secret": secret,
+            **({key: values[key] for key in ('weixin_user_id', 'weixin_base_url')} if platform == 'weixin' else {}),
             **({"app_token": app_token} if platform == "slack" else {}),
             "card_template_id": str(values.get("card_template_id") or "").strip(),
             "review_card_template_id": str(values.get("review_card_template_id") or "").strip(),
@@ -255,6 +261,8 @@ class BotManager:
                 raise ValueError("该平台机器人已经添加")
             data["bots"].append(bot)
             await self._save(data)
+            if platform == 'weixin':
+                self.weixin_login.consume(login_id)
         if bot["enabled"]:
             await self._start_bot(bot)
         return self._public(bot, self._statuses.get(bot["id"]))
@@ -266,6 +274,15 @@ class BotManager:
             if bot is None:
                 raise LookupError("机器人不存在")
             updated = dict(bot)
+            login_id = str(values.get('login_id') or '')
+            if bot['platform'] == 'weixin':
+                if login_id:
+                    credentials = self.weixin_login.credentials(login_id, bot_id)
+                    if credentials['weixin_user_id'] != bot.get('weixin_user_id'):
+                        raise ValueError('请使用原绑定微信重新扫码；其他微信请新增机器人')
+                    updated.update(credentials)
+                # Weixin credentials can only come from a completed server-side QR receipt.
+                values = {key: value for key, value in values.items() if key not in {'app_id', 'secret'}}
             for key in ("name", "app_id", "default_target_type", "default_project_id", "default_task_id", "enabled", "card_template_id", "review_card_template_id"):
                 if key in values:
                     updated[key] = values[key]
@@ -302,7 +319,12 @@ class BotManager:
                 raise ValueError("该平台机器人已经添加")
             data["bots"] = [updated if row["id"] == bot_id else row for row in data["bots"]]
             await self._save(data)
+            if bot['platform'] == 'weixin' and login_id:
+                self.weixin_login.consume(login_id)
         await self._stop_bot(bot_id)
+        if bot['platform'] == 'weixin' and bot['app_id'] != updated['app_id']:
+            from services.channels.weixin_state import WeixinState
+            await WeixinState(bot).delete()
         if updated["enabled"]:
             await self._start_bot(updated)
         return self._public(updated, self._statuses.get(bot_id))
@@ -312,11 +334,15 @@ class BotManager:
             data = await self._load()
             if not any(row["id"] == bot_id for row in data["bots"]):
                 raise LookupError("机器人不存在")
+            removed = next(row for row in data['bots'] if row['id'] == bot_id)
             data["bots"] = [row for row in data["bots"] if row["id"] != bot_id]
             data["groups"] = [row for row in data["groups"] if row["bot_id"] != bot_id]
             data["sessions"] = {key: value for key, value in data["sessions"].items() if not key.startswith(f"{bot_id}:")}
             await self._save(data)
         await self._stop_bot(bot_id)
+        if removed['platform'] == 'weixin':
+            from services.channels.weixin_state import WeixinState
+            await WeixinState(removed).delete()
         self._statuses.pop(bot_id, None)
         self._private_users.pop(bot_id, None)
 
@@ -349,6 +375,8 @@ class BotManager:
                     raise ValueError("渠道机器人已改绑项目")
             if not any(bot["id"] == bot_id for bot in data["bots"]):
                 raise ValueError("机器人不存在")
+            if any(bot['id'] == bot_id and bot['platform'] == 'weixin' for bot in data['bots']):
+                raise ValueError('微信 ClawBot 仅支持私聊，不能绑定群聊')
             conflict = next((row for row in data["groups"] if row["bot_id"] == bot_id and row["group_id"] == group_id), None)
             if conflict and (conflict["project_id"], conflict["task_id"]) != (project_id, task_id):
                 raise ValueError("该机器人群已绑定其它任务")
@@ -422,6 +450,7 @@ class BotManager:
                 await self._start_bot(bot)
 
     async def shutdown(self) -> None:
+        await self.weixin_login.close()
         await self._task_controls.shutdown()
         await self._task_forwarder.shutdown()
         await self._reply_forwarder.shutdown()
@@ -540,7 +569,11 @@ class BotManager:
             except Exception:
                 logger.warning("Failed to start channel waiting reply", exc_info=True)
         from services.channels.reply_stream import ChannelReplyStream
-        stream = ChannelReplyStream(lambda text: adapter.update_reply(message, text)) if (
+        from services.channels.file_links import ChannelFileLinks
+        file_links = ChannelFileLinks(self._project_manager.get_project_by_id(project_id))
+        stream = ChannelReplyStream(lambda text: file_links.send_progress(
+            lambda converted: adapter.update_reply(message, converted), text,
+        )) if (
             isinstance(adapter, ChannelAdapter) and adapter.supports_streaming_reply(message)
             and (kind != "task" or not self._task_forwarder.running)
         ) else None
@@ -621,9 +654,9 @@ class BotManager:
                     if isinstance(adapter, ChannelAdapter):
                         from services.channels.media import outgoing_content
                         project = self._project_manager.get_project_by_id(project_id)
-                        await adapter.send(message, await outgoing_content(project, adapter, text))
+                        await adapter.send(message, await outgoing_content(project, adapter, text, file_links=file_links))
                     else:
-                        await adapter.send_text(message, text)
+                        await adapter.send_text(message, await file_links.convert(text))
         except Exception:
             logger.exception("Failed to handle channel bot message %s", message.message_id)
             if stream:

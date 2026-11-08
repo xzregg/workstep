@@ -214,6 +214,146 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         required=("project_id", "task_id"), path_params=("task_id",), query_params=("project_id",),
     ),
     WorkstepTool(
+        name="workstep_update_task",
+        description='Update task title or description; omitted fields remain unchanged, description must be non-empty.',
+        method='PATCH', path='/api/task/{task_id}',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'title': {'type': 'string'}, 'description': {'type': 'string'}},
+        required=('project_id', 'task_id'), read_only=False,
+        side_effect='Update task title or description; omitted fields remain unchanged, description must be non-empty.',
+        path_params=('task_id',), query_params=('project_id',),
+        body_params=('title', 'description'),
+    ),
+    WorkstepTool(
+        name="workstep_copy_task",
+        description='Copy a task with a new title using the existing task copy behavior.',
+        method='POST', path='/api/task/copy',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'newTitle': {'type': 'string'}},
+        required=('project_id', 'task_id', 'newTitle'), read_only=False,
+        side_effect='Copy a task with a new title using the existing task copy behavior.',
+        path_params=(), query_params=('project_id',),
+        body_params=('task_id', 'newTitle'),
+    ),
+    WorkstepTool(
+        name="workstep_delete_task",
+        description='Delete a task. Set delete_workspace only with explicit authorization to remove or retain its worktrees; omitted preserves server safeguards.',
+        method='DELETE', path='/api/task/delete',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'delete_workspace': {'type': 'boolean'}},
+        required=('project_id', 'task_id'), read_only=False,
+        side_effect='Delete a task. Set delete_workspace only with explicit authorization to remove or retain its worktrees; omitted preserves server safeguards.',
+        path_params=(), query_params=('project_id',),
+        body_params=('task_id', 'delete_workspace'),
+    ),
+    WorkstepTool(
+        name="workstep_stop_task",
+        description='Request cancellation of the task workflow, not the coordinator conversation.',
+        method='POST', path='/api/task/cancel',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}},
+        required=('project_id', 'task_id'), read_only=False,
+        side_effect='Request cancellation of the task workflow, not the coordinator conversation.',
+        path_params=(), query_params=('project_id',),
+        body_params=('task_id',),
+    ),
+    WorkstepTool(
+        name="workstep_pause_task",
+        description='Pause the task workflow.',
+        method='POST', path='/api/task/pause',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}},
+        required=('project_id', 'task_id'), read_only=False,
+        side_effect='Pause the task workflow.',
+        path_params=(), query_params=('project_id',),
+        body_params=('task_id',),
+    ),
+    WorkstepTool(
+        name="workstep_archive_task",
+        description='Archive a non-running task without saving experience. Use archive experience tools when lessons are requested.',
+        method='POST', path='/api/task/archive',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}},
+        required=('project_id', 'task_id'), read_only=False,
+        side_effect='Archive a non-running task without saving experience. Use archive experience tools when lessons are requested.',
+        path_params=(), query_params=('project_id',),
+        body_params=('task_id',),
+    ),
+    WorkstepTool(
+        name="workstep_unarchive_task",
+        description='Restore an archived task.',
+        method='POST', path='/api/task/unarchive',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}},
+        required=('project_id', 'task_id'), read_only=False,
+        side_effect='Restore an archived task.',
+        path_params=(), query_params=('project_id',),
+        body_params=('task_id',),
+    ),
+    WorkstepTool(
+        name="workstep_retry_task_message",
+        description='Retry a specific failed task message after inspecting history; does not reset an arbitrary step.',
+        method='POST', path='/api/task/{task_id}/messages/{message_id}/retry',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'message_id': {'type': 'string'}},
+        required=('project_id', 'task_id', 'message_id'), read_only=False,
+        side_effect='Retry a specific failed task message after inspecting history; does not reset an arbitrary step.',
+        path_params=('task_id', 'message_id'), query_params=('project_id',),
+        body_params=(),
+    ),
+    WorkstepTool(
+        name="workstep_approve_task_review",
+        description='Approve the current review round; may resume downstream execution.',
+        method='POST', path='/api/task/{task_id}/steps/{step_key}/review/approve',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'step_key': {'type': 'string'}, 'review_run_id': {'type': 'string'}, 'comment': {'type': 'string'}},
+        required=('project_id', 'task_id', 'step_key', 'review_run_id'), read_only=False,
+        side_effect='Approve the current review round; may resume downstream execution.',
+        path_params=('task_id', 'step_key'), query_params=('project_id',),
+        body_params=('review_run_id', 'comment'),
+    ),
+    WorkstepTool(
+        name="workstep_reject_task_review",
+        description='Reject the current review round with optional feedback.',
+        method='POST', path='/api/task/{task_id}/steps/{step_key}/review/reject',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'step_key': {'type': 'string'}, 'review_run_id': {'type': 'string'}, 'comment': {'type': 'string'}},
+        required=('project_id', 'task_id', 'step_key', 'review_run_id'), read_only=False,
+        side_effect='Reject the current review round with optional feedback.',
+        path_params=('task_id', 'step_key'), query_params=('project_id',),
+        body_params=('review_run_id', 'comment'),
+    ),
+    WorkstepTool(
+        name="workstep_get_archive_experience",
+        description='Read the saved archive experience draft; does not generate or archive.',
+        method='GET', path='/api/task/{task_id}/archive-experience/draft',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}},
+        required=('project_id', 'task_id'), read_only=True,
+        side_effect='Read the saved archive experience draft; does not generate or archive.',
+        path_params=('task_id',), query_params=('project_id',),
+        body_params=(),
+    ),
+    WorkstepTool(
+        name="workstep_prepare_archive_experience",
+        description='Generate an experience draft in background. Supply a fresh UUID message_id and reuse it to poll this operation until a final result; running is not completed. Does not save Memory or archive.',
+        method='POST', path='/api/task/{task_id}/archive-experience/prepare',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'message_id': {'type': 'string'}, 'locale': {'type': 'string'}},
+        required=('project_id', 'task_id', 'message_id'), read_only=False,
+        side_effect='Generate an experience draft in background. Supply a fresh UUID message_id and reuse it to poll this operation until a final result; running is not completed. Does not save Memory or archive.',
+        path_params=('task_id',), query_params=('project_id', 'message_id', 'background'),
+        body_params=('locale',),
+    ),
+    WorkstepTool(
+        name="workstep_stop_archive_experience",
+        description='Stop the specified archive experience preparation.',
+        method='POST', path='/api/task/{task_id}/archive-experience/stop',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'message_id': {'type': 'string'}},
+        required=('project_id', 'task_id', 'message_id'), read_only=False,
+        side_effect='Stop the specified archive experience preparation.',
+        path_params=('task_id',), query_params=('project_id', 'message_id'),
+        body_params=(),
+    ),
+    WorkstepTool(
+        name="workstep_confirm_archive_experience",
+        description='Save supplied experience to project Memory and archive. experience must be supplied; empty is allowed only for a saved no-experience draft. Requires authorization for both saving and archiving.',
+        method='POST', path='/api/task/{task_id}/archive-experience/confirm',
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'experience': {'type': 'string'}, 'locale': {'type': 'string'}},
+        required=('project_id', 'task_id', 'experience'), read_only=False,
+        side_effect='Save supplied experience to project Memory and archive. experience must be supplied; empty is allowed only for a saved no-experience draft. Requires authorization for both saving and archiving.',
+        path_params=('task_id',), query_params=('project_id',),
+        body_params=('experience', 'locale'),
+    ),
+    WorkstepTool(
         name="workstep_send_step_message",
         description="Queue a message for a running step or automatic review. Requires an engine supporting live step messages; queued does not mean delivered. Do not stop/restart as an automatic fallback.",
         method="POST",
@@ -666,7 +806,9 @@ class WorkstepClient:
         args = dict(arguments or {})
         missing = [
             key for key in tool.required
-            if not args.get(key) or str(args[key]).strip() == ""
+            if (not args.get(key) or str(args[key]).strip() == "")
+            and not (tool.name == "workstep_confirm_archive_experience"
+                     and key == "experience" and isinstance(args.get(key), str))
         ]
         if missing:
             return {
@@ -713,6 +855,20 @@ class WorkstepClient:
             if "reset_session" in args:
                 args["reset_step"] = args.pop("reset_session")
 
+        if tool.name == "workstep_update_task":
+            if not any(key in args for key in ("title", "description")):
+                return {"ok": False, "error": "至少提供标题或描述"}
+            if "description" in args and (not isinstance(args["description"], str) or not args["description"].strip()):
+                return {"ok": False, "error": "任务描述不能为空"}
+        title_key = "newTitle" if tool.name == "workstep_copy_task" else "title"
+        if tool.name in {"workstep_update_task", "workstep_copy_task"} and title_key in args:
+            if not isinstance(args[title_key], str) or not args[title_key].strip():
+                return {"ok": False, "error": "任务标题不能为空"}
+        if tool.name == "workstep_confirm_archive_experience" and not isinstance(args.get("experience"), str):
+            return {"ok": False, "error": "必须提供 experience；无经验草稿可传空字符串"}
+        if tool.name == "workstep_prepare_archive_experience":
+            args["background"] = True
+
         project_id = args.get("project_id")
 
         url = tool.path
@@ -728,6 +884,9 @@ class WorkstepClient:
             for key in tool.body_params
             if key in args and args[key] not in (None, "")
         }
+        # An empty experience confirms a saved no-experience draft.
+        if tool.name == "workstep_confirm_archive_experience" and arguments.get("experience") == "":
+            body["experience"] = ""
         if tool.name == "workstep_run_task":
             body.setdefault("prompt", "")
         headers = await asyncio.to_thread(local_cli_headers, self.base_url)

@@ -82,10 +82,10 @@ test('workspace waits for its session and project, then removes content after se
   }
 })
 
-test('direct workspace has device Tabs and one aggregate feed, notification opens another device without iframe',async()=>{
+test('direct workspace keeps device switching without notification badges, history requests or aggregate feed',async()=>{
  const {window}=installDomEnvironment()
  window.happyDOM.setURL('http://gateway.test/workspace/one/')
- const oldFetch=globalThis.fetch,oldSocket=globalThis.WebSocket,oldSubmit=window.HTMLFormElement.prototype.submit
+ const oldFetch=globalThis.fetch,oldSocket=globalThis.WebSocket
  const sockets:any[]=[]
  class Socket {
   readyState=1;onopen:any;onmessage:any;onclose:any;onerror:any
@@ -93,15 +93,14 @@ test('direct workspace has device Tabs and one aggregate feed, notification open
   close(){this.readyState=3} send(){}
  }
  globalThis.WebSocket=Socket as unknown as typeof WebSocket
- let destination='',next='',manyDevices=false,onlyOne=false
- window.HTMLFormElement.prototype.submit=function(){destination=this.action;next=this.querySelector('input[name=next]')?.getAttribute('value') ?? (this.querySelector('input[name=next]') as HTMLInputElement)?.value ?? ''}
+ let manyDevices=false,onlyOne=false
+ const calls:string[]=[]
  globalThis.fetch=async input=>{
   const path=String(input)
   if(path==='/workspace/one/api/remote/session')return Response.json({device_id:'one',device_name:'One',username:'Owner',gateway_url:'http://gateway.test/',project_id:null,host_project_id:null})
   if(path==='/api/devices')return Response.json({devices:onlyOne?[{id:'one',name:'One',online:true}]:manyDevices?Array.from({length:100},(_,i)=>({id:i===0?'one':'device-'+i,name:'Device '+i,online:true})):[{id:'one',name:'One',online:true},{id:'two',name:'Two',online:true}]})
   if(path==='/api/projects')return Response.json({projects:[]})
-  if(path==='/api/notifications')return Response.json({events:[{id:'e',sequence:1,device_id:'two',device_name:'Two',project_name:'Demo',task_id:'t',status:'succeeded',occurred_at:1,read:false}],unread:1,cursor:1,more:false})
-  if(path==='/api/notifications/1/access')return Response.json({url:'http://gateway.test/workspace/two/',ticket:'ticket',next:'tasks?project=Demo&task=t'})
+  calls.push(path)
   throw Error(path)
  }
  useGatewaySessionStore.setState({session:null,error:'',loading:false})
@@ -115,12 +114,9 @@ test('direct workspace has device Tabs and one aggregate feed, notification open
   assert.equal(element.querySelector('.gateway-desktop-device-trigger'),null)
   assert.equal(element.querySelector<HTMLButtonElement>('.gateway-remote-banner .gateway-header-control')?.textContent,'Back to Gateway')
   assert.equal(element.querySelector('iframe'),null)
-  assert.equal(sockets.length,1)
-  await act(async()=>element.querySelector<HTMLButtonElement>('.gateway-notification-trigger')!.click())
-  await act(async()=>element.querySelector<HTMLButtonElement>('.gateway-notification-panel li button')!.click())
-  assert.equal(destination,'http://gateway.test/workspace/two/api/remote/redeem')
-  assert.equal(next,'tasks?project=Demo&task=t')
-  assert.equal(sockets.length,1)
+  assert.equal(sockets.length,0)
+  assert.deepEqual(calls,[])
+  assert.equal(element.querySelector('.gateway-notification-trigger'),null)
   await act(async()=>{window.innerWidth=390;window.dispatchEvent(new window.Event('resize'))})
   const trigger=element.querySelector<HTMLButtonElement>('.gateway-mobile-device-trigger')
   assert.ok(trigger)
@@ -129,10 +125,12 @@ test('direct workspace has device Tabs and one aggregate feed, notification open
   await act(async()=>trigger.click())
   assert.equal(trigger.getAttribute('aria-expanded'),'true')
   assert.ok(element.querySelector('[role=dialog]'))
-  assert.ok(element.querySelector('.gateway-mobile-picker-header .gateway-notifications'))
+  assert.equal(element.querySelector('.gateway-mobile-picker-header .gateway-notifications'),null)
   assert.equal(element.querySelectorAll('.gateway-tab-refresh').length,1)
   assert.ok(element.querySelector('.gateway-mobile-picker-header .gateway-tab-refresh'))
-  assert.equal(element.querySelectorAll('.gateway-notifications').length,1)
+  assert.equal(element.querySelectorAll('.gateway-notifications').length,0)
+  assert.equal(sockets.length,0)
+  assert.deepEqual(calls,[])
   manyDevices=true
   await act(async()=>element.querySelector<HTMLButtonElement>('.gateway-mobile-picker-header .gateway-tab-refresh')!.click())
   assert.equal(element.querySelectorAll('[role=tab]').length,100)
@@ -155,7 +153,7 @@ test('direct workspace has device Tabs and one aggregate feed, notification open
   assert.equal(element.querySelectorAll('.gateway-remote-banner [role=tab]').length,1)
   assert.equal(element.querySelector('.gateway-desktop-device-trigger'),null)
  }finally{
-  await act(async()=>root.unmount());element.remove();globalThis.fetch=oldFetch;globalThis.WebSocket=oldSocket;window.HTMLFormElement.prototype.submit=oldSubmit
+  await act(async()=>root.unmount());element.remove();globalThis.fetch=oldFetch;globalThis.WebSocket=oldSocket
   useGatewaySessionStore.setState({session:null,error:'',loading:false});await window.happyDOM.close()
  }
 })
@@ -296,7 +294,7 @@ test('device switching restores each user and device route with a fresh access t
   await view.close()
 
  }finally{
-  globalThis.fetch=oldFetch;window.HTMLFormElement.prototype.submit=oldSubmit
+  globalThis.fetch=oldFetch
   useGatewaySessionStore.setState({session:null,error:'',loading:false});await window.happyDOM.close()
  }
 })

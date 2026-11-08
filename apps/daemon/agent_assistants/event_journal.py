@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from engines.core.tool_inputs import edited_file_paths
+from agent_assistants.output_rate import OutputRateSampler
 from agent_assistants.file_change_index import IndexBuilder, build_index, read_changes, save_index
 
 
@@ -366,12 +367,14 @@ class TurnEventJournal:
         summary_events: list[dict[str, Any]] = []
         latest_usage: dict[str, Any] | None = None
         first_event_ms: int | None = None
+        output_rate = OutputRateSampler()
         first_output_at: str | None = None
         last_event_ms: int | None = None
         for event in events:
             event_type = event.get("type")
             data = event.get("data") or {}
             event_ms = _event_time_ms(event.get("timestamp"))
+            output_rate.record(event, event_ms)
             if event_ms is not None:
                 if first_event_ms is None or event_ms < first_event_ms:
                     first_event_ms = event_ms
@@ -391,6 +394,9 @@ class TurnEventJournal:
                     first_output_at = event.get("timestamp")
                 thought_characters += len(text)
             elif event_type in {"tool_call", "tool_call_update"}:
+                if (event_type == "tool_call" and (data.get("title") or data.get("raw_input"))
+                        and first_output_at is None and event_ms is not None):
+                    first_output_at = event.get("timestamp")
                 tool_id = str(data.get("tool_call_id") or data.get("id") or "")
                 if tool_id:
                     tool_ids.add(tool_id)
@@ -416,6 +422,8 @@ class TurnEventJournal:
             "tool_count": len(tool_ids),
             "edited_files": edited_file_paths(events),
         }
+        if output_rate.last_sample is not None:
+            summary["output_rate_sample"] = output_rate.last_sample
         if first_output_at is not None:
             summary["first_output_at"] = first_output_at
         if first_event_ms is not None and last_event_ms is not None:

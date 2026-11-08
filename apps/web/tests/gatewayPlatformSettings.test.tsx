@@ -274,3 +274,23 @@ for (const address of ['http://192.168.52.156:8700/workspace/device-one/settings
   } finally {await act(async()=>root.unmount());globalThis.fetch=original;container.remove();await window.happyDOM.close()}
  })
 }
+
+
+test('empty gateway address can be saved only with gateway mode disabled', async () => {
+ const {window}=installDomEnvironment(); const original=globalThis.fetch
+ const writes: unknown[]=[]
+ globalThis.fetch=async (_input,init)=>{
+  if(init?.method === 'PUT') { const body=JSON.parse(init.body as string); writes.push(body); return Response.json({...body,authenticated:false,online:false,package_locked:false}) }
+  return Response.json({url:'',enabled:true,authenticated:false,online:false,package_locked:false})
+ }
+ const container=document.body.appendChild(document.createElement('div')); const root=createRoot(container)
+ try {
+  await act(async()=>root.render(<I18nProvider><GatewayPlatformSettings/></I18nProvider>))
+  const submit=container.querySelector<HTMLButtonElement>('button[type=submit]')!
+  assert.equal(submit.disabled,true)
+  await act(async()=>container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click())
+  assert.equal(submit.disabled,false)
+  await act(async()=>container.querySelector('form')!.dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true})))
+  assert.deepEqual(writes,[{url:'',enabled:false}])
+ } finally {await act(async()=>root.unmount());globalThis.fetch=original;container.remove();await window.happyDOM.close()}
+})

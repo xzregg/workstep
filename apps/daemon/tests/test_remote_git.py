@@ -92,7 +92,7 @@ async def test_remote_git_slow_scan_keeps_event_loop_responsive(client, monkeypa
         await dispatcher.aclose()
 
 
-async def test_remote_task_workspace_lifecycle_uses_bound_project(layout, monkeypatch):
+async def test_remote_task_workspace_lifecycle_uses_bound_project(layout, monkeypatch, preview_directory):
     from models import Task
     from models.fields import utc_now
     from services.project import ProjectManager

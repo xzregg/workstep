@@ -21,6 +21,7 @@ export interface SystemSettings {
   user_name: string
   open_mode: boolean
   default_project_directory: string
+  restrict_file_access_root?: boolean
   device_id?: string
   device_name?: string
 }
@@ -66,9 +67,9 @@ export const systemSettingsApi = {
     body: JSON.stringify({ git_scan_depth: depth }),
   }),
   get: () => request<SystemSettings>('/system-settings'),
-  updateDefaultProjectDirectory: (directory: string) => request<SystemSettings>('/system-settings', {
+  updateDefaultProjectDirectory: (directory: string, restrictFileAccessRoot?: boolean) => request<SystemSettings>('/system-settings', {
     method: 'PUT',
-    body: JSON.stringify({ default_project_directory: directory }),
+    body: JSON.stringify({ default_project_directory: directory, restrict_file_access_root: restrictFileAccessRoot }),
   }),
   updateUserName: (userName: string) => request<SystemSettings>('/system-settings', {
     method: 'PUT',
@@ -181,6 +182,10 @@ export interface ConcurrencyConfig {
   schedule_exempt: boolean
 }
 
+export interface GlobalConcurrencyConfig extends ConcurrencyConfig {
+  task_retry_interval_minutes?: number
+}
+
 export interface ProjectConcurrencyResult {
   global: ConcurrencyConfig
   project: {
@@ -224,9 +229,9 @@ export const assistantApi = {
       },
     ),
   concurrencyConfig: () =>
-    request<ConcurrencyConfig & { saved: boolean }>('/assistant/concurrency'),
-  setConcurrencyConfig: (config: ConcurrencyConfig) =>
-    request<ConcurrencyConfig & { saved: boolean }>('/assistant/concurrency', {
+    request<GlobalConcurrencyConfig & { saved: boolean }>('/assistant/concurrency'),
+  setConcurrencyConfig: (config: GlobalConcurrencyConfig) =>
+    request<GlobalConcurrencyConfig & { saved: boolean }>('/assistant/concurrency', {
       method: 'PUT',
       body: JSON.stringify(config),
     }),

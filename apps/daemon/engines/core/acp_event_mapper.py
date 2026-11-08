@@ -29,6 +29,10 @@ class ACPEventMapper:
             text = self._content_text(update.content)
             if text is not None:
                 return agent_message_chunk(text)
+            if isinstance(update.content, schema.ImageContentBlock):
+                return InternalEvent(type="agent_message_chunk", data={
+                    "content": self._json_value(update.content),
+                })
         if isinstance(update, schema.AgentThoughtChunk):
             text = self._content_text(update.content)
             if text is not None:

@@ -86,6 +86,7 @@ async def test_zip_paths_and_duplicate_json_keys_are_rejected(tmp_path):
     with pytest.raises(ValueError): await manager.validate(str(root))
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("preview_directory")
 async def test_language_api_permissions_and_slow_disk_canary(tmp_path, monkeypatch):
     from api import languages
     from services.languages import LanguageManager

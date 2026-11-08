@@ -150,10 +150,13 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         restart such a thread if it failed before producing any turn events.
         """
         cwd = kwargs.get("cwd")
+        image_output = None
         if cwd:
+            from engines.core.image_output import ImageOutputNormalizer
             from services.project_storage import data_directory
             from pathlib import Path
             storage_root = await asyncio.to_thread(data_directory, cwd)
+            image_output = ImageOutputNormalizer(storage_root, cwd)
             code_root = Path(cwd)
             if not storage_root.is_relative_to(code_root):
                 kwargs["add_dirs"] = list(dict.fromkeys([*(kwargs.get("add_dirs") or []), str(storage_root)]))
@@ -198,7 +201,11 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                         with suppress(Exception):
                             await iterator.aclose()
                         break
-                    yield event
+                    if image_output is None:
+                        yield event
+                    else:
+                        for output_event in await image_output.normalize(event):
+                            yield output_event
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

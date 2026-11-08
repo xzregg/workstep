@@ -9,6 +9,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pytest
 
 
+@pytest.fixture
+def preview_directory(tmp_path, monkeypatch):
+    """File API tests explicitly authorize their isolated filesystem workspace."""
+    from services.config import config_store
+    monkeypatch.setattr(config_store, '_cache', {
+        **config_store._load(), 'default_project_directory': str(tmp_path),
+    })
+    return tmp_path
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _isolate_workstep_config(tmp_path_factory):
     """Point the shared config store at a temp file for the whole session.

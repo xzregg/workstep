@@ -51,13 +51,22 @@ class FakeAdapter:
 
 @pytest.mark.parametrize('target', ['project', 'task'])
 @pytest.mark.parametrize('conversation_type', ['single', 'group'])
-async def test_wecom_streams_before_turn_completion_without_blocking_health(bots, target, conversation_type):
+@pytest.mark.parametrize('file_link', [False, True])
+async def test_wecom_streams_before_turn_completion_without_blocking_health(bots, target, conversation_type, file_link, monkeypatch):
     from unittest.mock import AsyncMock
     from engines.codex_sdk import CodexSDKEngine
     from engines.core.agui import to_agui_events
     from services.channels.wecom import WeComAdapter
 
     manager, project, _, _, _, _ = bots
+    from services.channels.file_links import ChannelFileLinks
+    import services.channels.file_links as file_links
+    monkeypatch.setattr(file_links, 'base_addresses', lambda: [
+        {'kind': 'gateway', 'task_base_url': 'https://gateway.test/workspace/device'},
+    ])
+    partial = f'部分正文 [报告]({project.path}/report' if file_link else '部分正文'
+    final = f'完整正文 [报告]({project.path}/report.md)' if file_link else '完整正文'
+    expected = ChannelFileLinks(project, base_url='https://gateway.test/workspace/device')
     bot = await manager.create_bot({
         'platform': 'wecom', 'name': '流式机器人', 'app_id': 'bot', 'secret': 'secret',
         'enabled': True, 'default_target_type': target, 'default_project_id': project.id,
@@ -90,14 +99,14 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
                 root=SimpleNamespace(type='agentMessage', id='sdk-answer'),
             ))),
             SimpleNamespace(method='item/agentMessage/delta', payload=SimpleNamespace(
-                item_id='sdk-answer', delta='部分正文',
+                item_id='sdk-answer', delta=partial,
             )),
         ):
             for event in engine._map_notification(notification, state):
                 for translated in to_agui_events(event.to_dict()):
                     await manager._event_bus.publish({**translated, **scope})
         await finish_turn.wait()
-        await manager._event_bus.publish({**scope, 'type': 'TEXT_MESSAGE_END', 'status': 'succeeded', 'content': '完整正文'})
+        await manager._event_bus.publish({**scope, 'type': 'TEXT_MESSAGE_END', 'status': 'succeeded', 'content': final})
 
     if target == 'task':
         async def submit(*args, **kwargs):
@@ -128,9 +137,12 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
         await asyncio.wait_for(pending, 2)
     assert [(text, finish) for _, text, finish in calls] == [
         ('' if conversation_type == 'single' else '正在处理…', False),
-        ('部分正文', False),
-        ('完整正文' + ('\n\n<@user>' if conversation_type == 'group' else ''), True),
+        (expected.render(partial, streaming=True), False),
+        (expected.render(final) + ('\n\n<@user>' if conversation_type == 'group' else ''), True),
     ]
+    if file_link:
+        assert all(str(project.path) not in text for _, text, _ in calls)
+        assert 'gateway.test/workspace/device/file-preview?' in calls[-1][1]
     assert len({stream_id for stream_id, _, _ in calls}) == 1
 
 
