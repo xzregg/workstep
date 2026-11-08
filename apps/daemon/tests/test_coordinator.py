@@ -308,7 +308,7 @@ def test_default_coordinator_engine_follows_global_execution_default(monkeypatch
 
 
 @pytest.fixture
-async def api_context(tmp_path, monkeypatch):
+async def api_context(tmp_path, monkeypatch, preview_directory):
     import api.history as history_api
     import api.project as project_api
     import api.search as search_api
@@ -624,6 +624,7 @@ async def _create_task(client, tmp_path, headers=None):
         "/api/project/init",
         json={"path": str(project_dir)},
     )
+    assert initialized.status_code == 200, initialized.text
     project_id = initialized.json()["id"]
     from services.project import DEFAULT_STEPS
     import main
