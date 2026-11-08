@@ -5,7 +5,7 @@ const root = path.resolve(__dirname, '..')
 const version = JSON.parse(fs.readFileSync(path.join(root, 'apps/desktop/package.json'), 'utf8')).version
 for (const [file, pattern] of [
   ['apps/daemon/pyproject.toml', /^(version = ")[^"]+("$)/m],
-  ['apps/daemon/uv.lock', /(name = "workstep-daemon"\nversion = ")[^"]+("$)/m],
+  ['apps/daemon/uv.lock', /(name = "workstep-daemon"\r?\nversion = ")[^"]+("$)/m],
 ]) {
   const target = path.join(root, file)
   const source = fs.readFileSync(target, 'utf8')

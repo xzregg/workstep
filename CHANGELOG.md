@@ -4,7 +4,7 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
-## 1.0.20
+## 1.0.21
 
 - Add a Weixin channel with QR-code authorization, image delivery and channel configuration controls.
 - Support generated image attachments, task retry settings and task management through the local CLI.
