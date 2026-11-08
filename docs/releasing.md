@@ -132,6 +132,12 @@ remain release acceptance gates, and independent human review is still required.
 
 ## Windows 安装包自动验收
 
+The Windows acceptance workflows keep their isolated project fixtures under the
+runner's user profile, within the default file-access boundary. Downloaded upgrade
+baselines and acceptance reports retain their original runner artifact paths.
+This also allows an updated workflow to verify an existing application tag without
+moving the tag or relaxing the application's directory restrictions.
+
 ### v1.0.15 依赖兼容检查
 
 首轮 Windows 在独立 CLI ACL 测试中缺少 daemon 的 Python 模块路径，导入 `services.config` 失败，尚未进入安装包验收。发布和试打包流程仅为该测试步骤设置 `PYTHONPATH=apps/daemon`；跨进程回归验证独立加载 CLI 后可解析隔离配置目录。应用标签源码不变，从更新后的 main 工作流调度已有 v1.0.15 标签重新构建；原标签不移动。只有 Windows 原生 ACL 测试与完整安装包验收都通过后才能发布。

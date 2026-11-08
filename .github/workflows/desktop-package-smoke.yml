@@ -151,15 +151,19 @@ jobs:
           PREVIOUS_TAG: ${{ inputs.previous_tag }}
           ACCEPTANCE_RUN: ${{ inputs.acceptance_run }}
         run: |
+          $runnerTemp = $env:RUNNER_TEMP
+          $env:WORKSTEP_ACCEPTANCE_REPORT_DIR = "$runnerTemp/windows-acceptance-report"
+          $env:RUNNER_TEMP = Join-Path $env:USERPROFILE 'workstep-acceptance-temp'
+          New-Item -ItemType Directory -Force $env:RUNNER_TEMP | Out-Null
           $version = $env:ACCEPTANCE_TAG
-          $checksumArgs = @('--checksums', "$env:RUNNER_TEMP/current/SHA256SUMS.txt")
+          $checksumArgs = @('--checksums', "$runnerTemp/current/SHA256SUMS.txt")
           if ($env:ACCEPTANCE_RUN) {
             $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
             $checksumArgs = @()
           }
-          node scripts/windows-desktop-acceptance.cjs --installer "$env:RUNNER_TEMP/current/WorkStep-windows-x64.exe" --version $version @checksumArgs --previous-installer "$env:RUNNER_TEMP/previous/WorkStep-windows-x64.exe" --previous-version $env:PREVIOUS_TAG --previous-checksums "$env:RUNNER_TEMP/previous/SHA256SUMS.txt"
+          node scripts/windows-desktop-acceptance.cjs --installer "$runnerTemp/current/WorkStep-windows-x64.exe" --version $version @checksumArgs --previous-installer "$runnerTemp/previous/WorkStep-windows-x64.exe" --previous-version $env:PREVIOUS_TAG --previous-checksums "$runnerTemp/previous/SHA256SUMS.txt"
           if ($LASTEXITCODE -ne 0) { throw "Windows acceptance failed" }
-          $report = Get-Content "$env:RUNNER_TEMP/windows-acceptance-report/report.json" -Raw | ConvertFrom-Json
+          $report = Get-Content "$env:WORKSTEP_ACCEPTANCE_REPORT_DIR/report.json" -Raw | ConvertFrom-Json
           if ($report.success -ne $true) { throw "Windows acceptance did not complete" }
       - name: Upload Windows acceptance evidence
         if: always()
@@ -278,10 +282,14 @@ jobs:
         env:
           PREVIOUS_TAG: ${{ inputs.previous_tag }}
         run: |
+          $runnerTemp = $env:RUNNER_TEMP
+          $env:WORKSTEP_ACCEPTANCE_REPORT_DIR = "$runnerTemp/windows-acceptance-report"
+          $env:RUNNER_TEMP = Join-Path $env:USERPROFILE 'workstep-acceptance-temp'
+          New-Item -ItemType Directory -Force $env:RUNNER_TEMP | Out-Null
           $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
-          node scripts/windows-desktop-acceptance.cjs --installer apps/desktop/dist/WorkStep-windows-x64.exe --version $version --previous-installer "$env:RUNNER_TEMP/previous/WorkStep-windows-x64.exe" --previous-version $env:PREVIOUS_TAG --previous-checksums "$env:RUNNER_TEMP/previous/SHA256SUMS.txt"
+          node scripts/windows-desktop-acceptance.cjs --installer apps/desktop/dist/WorkStep-windows-x64.exe --version $version --previous-installer "$runnerTemp/previous/WorkStep-windows-x64.exe" --previous-version $env:PREVIOUS_TAG --previous-checksums "$runnerTemp/previous/SHA256SUMS.txt"
           if ($LASTEXITCODE -ne 0) { throw "Windows acceptance failed" }
-          $report = Get-Content "$env:RUNNER_TEMP/windows-acceptance-report/report.json" -Raw | ConvertFrom-Json
+          $report = Get-Content "$env:WORKSTEP_ACCEPTANCE_REPORT_DIR/report.json" -Raw | ConvertFrom-Json
           if ($report.success -ne $true) { throw "Windows acceptance did not complete" }
       - name: Upload Windows acceptance evidence
         if: always()
