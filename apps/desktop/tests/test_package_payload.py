@@ -53,6 +53,29 @@ def test_git_credentials_source_still_blocks_secrets(tmp_path):
     assert not target.exists()
 
 
+def test_copy_services_root_keeps_git_credentials_source(tmp_path):
+    source, target = tmp_path / 'source/services', tmp_path / 'payload/services'
+    module = source / 'git/credentials.py'
+    module.parent.mkdir(parents=True)
+    module.write_text('def load_credentials(): pass\n')
+    target.parent.mkdir()
+    assert run('copy', source, target).returncode == 0
+    assert (target / 'git/credentials.py').read_bytes() == module.read_bytes()
+
+
+def test_copy_services_root_rejects_secret_in_git_credentials_source(tmp_path):
+    source, target = tmp_path / 'source/services', tmp_path / 'payload/services'
+    module = source / 'git/credentials.py'
+    module.parent.mkdir(parents=True)
+    target.parent.mkdir()
+    secret = 'gh' + 'p_' + 'a' * 36
+    module.write_text('credential = ' + repr(secret))
+    result = run('copy', source, target)
+    assert result.returncode != 0
+    assert secret not in result.stdout + result.stderr
+    assert not target.exists()
+
+
 def test_docker_keeps_git_credentials_runtime_source():
     lines = (ROOT / '.dockerignore').read_text().splitlines()
     exception = '!apps/daemon/services/git/credentials.py'
@@ -102,3 +125,10 @@ def test_docker_context_excludes_private_and_nonruntime_paths():
 def test_reviewed_runtime_role_example_and_real_sources_pass():
     for source in [ROOT / 'apps/daemon/data', ROOT / 'apps/desktop/src']:
         assert run('check', source).returncode == 0
+
+
+def test_reviewed_role_preserves_lf_on_windows_checkout():
+    role = 'apps/daemon/data/role-center/roles/agency-367eccc119495783b1e97dc108c4b3ea.json'
+    result = subprocess.run(['git', 'check-attr', 'eol', '--', role], cwd=ROOT,
+                            capture_output=True, text=True, check=True)
+    assert result.stdout.strip().endswith(': eol: lf')

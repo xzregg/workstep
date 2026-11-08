@@ -28,10 +28,11 @@ EXCLUDED_FILES = (
 )
 
 
-def excluded(relative: Path) -> bool:
+def excluded(relative: Path, root: Path) -> bool:
     # This runtime module handles credentials; it is not a credential file.
     # inventory() still checks its contents for secrets and rejects symlinks.
-    if relative.as_posix() == 'services/git/credentials.py':
+    if (relative.as_posix() == 'services/git/credentials.py'
+            or root.name == 'services' and relative.as_posix() == 'git/credentials.py'):
         return False
     return any(part.casefold() in EXCLUDED_DIRS for part in relative.parts) or any(
         fnmatch.fnmatchcase(relative.name.casefold(), pattern.casefold()) for pattern in EXCLUDED_FILES
@@ -48,7 +49,7 @@ def inventory(root: Path, *, copying: bool, ignore_runtime_venv: bool = False) -
             relative = file.relative_to(root)
             if ignore_runtime_venv and relative == Path('.venv') and file.is_dir() and not file.is_symlink():
                 continue  # Docker's locked installed runtime, not first-party source.
-            if excluded(relative):
+            if excluded(relative, root):
                 if copying:
                     continue
                 raise ValueError(f'Forbidden release path: {relative.as_posix()}')
