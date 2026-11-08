@@ -169,7 +169,8 @@ async def test_remote_service_recovers_assets_and_does_not_replay_api_requests(m
     from types import SimpleNamespace
     from gateway.services import remote_access_api as remote
     from gateway.services.errors import GatewayError
-    async def identity(call):
+    async def identity(call, *, target_host_project_id=None):
+        assert target_host_project_id is None
         return (SimpleNamespace(id='user', username='alice', display_name='Alice'),
                 'device', SimpleNamespace(project_id=None), None)
     async def provider_access(*args):

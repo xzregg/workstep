@@ -24,7 +24,8 @@ async def test_stream_checks_current_user_supplier_grants(monkeypatch):
 @pytest.mark.asyncio
 async def test_pc_http_stream_rechecks_user_and_provider_grants(monkeypatch):
     current = ['supplier']
-    async def identity(request):
+    async def identity(request, *, target_host_project_id=None):
+        assert target_host_project_id is None
         return SimpleNamespace(id='remote-user', username='remote', display_name='Remote'), 'pc', SimpleNamespace(project_id=None), None
     async def compile_access(*args): return current.copy(), []
     async def active_access(*args): return None
@@ -58,7 +59,8 @@ async def test_remote_owner_capability_comes_from_persisted_device(monkeypatch, 
             return SimpleNamespace(owner_user_id='a' if owner else 'b')
     @asynccontextmanager
     async def session(): yield Session()
-    async def identity(call):
+    async def identity(call, *, target_host_project_id=None):
+        assert target_host_project_id is None
         return SimpleNamespace(id='a', username='alice', display_name='Alice'), 'pc', SimpleNamespace(project_id=None), None
     async def compile_access(*args): return [], []
     class Connection:
