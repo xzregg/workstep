@@ -658,24 +658,36 @@ async def test_recovery_preserves_direct_entry_and_boundary_inputs(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_online_reconciler_recovers_own_running_run_without_runner(tmp_path):
+@pytest.mark.parametrize("finalization_delay", [0, 0.05])
+async def test_online_reconciler_recovers_own_running_run_without_runner(tmp_path, monkeypatch, finalization_delay):
     """进程仍存活但 runner 丢失时，在线巡检接管本实例的孤儿运行。"""
+    from services.task_runner import TaskRunner
+
+    run_db = TaskRunner._run_db
+
+    async def delayed_finalization(self, operation):
+        if operation.__name__ == "finalize_run":
+            await asyncio.sleep(finalization_delay)
+        return await run_db(self, operation)
+
+    monkeypatch.setattr(TaskRunner, "_run_db", delayed_finalization)
     original, pm, project, run_id = _project_with_run(tmp_path)
     runtime = WorkflowRuntime(EventBus(), pm)
     try:
-        with pm.activate_project(project.path):
+        def claim(_project):
             WorkflowRun.update(
                 owner_id=runtime._leases.instance_id,
                 heartbeat_at=utc_now(),
             ).where(WorkflowRun.id == run_id).execute()
 
+        await pm.run_db(project.id, claim)
         assert await runtime.reconcile_orphaned_workflows() == 1
 
-        with pm.activate_project(project.path):
-            await _wait_until(
-                lambda: Task.get_by_id("task-rec").status == "completed"
-            )
-            assert WorkflowRun.get_by_id(run_id).status == "succeeded"
+        # Task completion precedes the separately persisted workflow finalizer.
+        # Runner retirement is the completion signal for both, even on slow I/O.
+        await _wait_until(lambda: "task-rec" not in runtime._runners)
+
+        def snapshot(_project):
             attempts = list(
                 StepRun.select()
                 .where(
@@ -684,10 +696,15 @@ async def test_online_reconciler_recovers_own_running_run_without_runner(tmp_pat
                 )
                 .order_by(StepRun.attempt)
             )
-            assert [attempt.status for attempt in attempts] == [
-                "failed",
-                "succeeded",
-            ]
+            return (
+                Task.get_by_id("task-rec").status,
+                WorkflowRun.get_by_id(run_id).status,
+                [attempt.status for attempt in attempts],
+            )
+
+        assert await pm.run_db(project.id, snapshot) == (
+            "completed", "succeeded", ["failed", "succeeded"],
+        )
     finally:
         await runtime.shutdown()
         from engines.core.registry import ENGINE_REGISTRY
