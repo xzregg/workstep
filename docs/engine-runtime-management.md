@@ -4,11 +4,11 @@
 
 ## 版本来源与约束
 
-每个引擎在自己的适配器文件中声明 `RUNTIME_PACKAGE`（`engines/core/packages.py: RuntimePackage`），包括包名、PyPI/npm 来源、最低版本及可选默认版本。无需在前端维护包名或支持列表；引擎列表中的 `runtime_manageable` 控制入口。
+每个引擎在自己的适配器文件中声明 `RUNTIME_PACKAGE`（`engines/core/packages.py: RuntimePackage`），只配置包名和 PyPI/npm 来源。无需在前端维护包名或支持列表；引擎列表中的 `runtime_manageable` 控制入口。
 
 - PyPI 仅列出满足本机 Python、平台 wheel 标签和最低版本要求的非撤回安装包；不自动构建源码包。
 - npm 从官方 registry 读取版本和发布标签；Node 兼容性和依赖安装由 npm 最终校验。
-- Codex SDK 最低 `0.147.0`、Claude SDK 最低 `0.1.0`、Qoder SDK 最低 `1.0.11`。DeepSeek Harness 最低及首次默认版本为 `0.1.0rc6`，可以显式选择更新版本。
+- 所有受管理引擎不在代码中固定业务版本；首次安装和更新默认采用包仓库的 `latest`，也可以显式选择仓库返回的兼容版本。
 - 列表标记预发布版本；可选版本表示包可获取，不代表每个版本都经过 WorkStep 兼容性验证。
 - 使用自定义可执行文件路径时禁用版本切换，避免更新其他位置的程序。清除路径配置后才能使用包管理。
 
@@ -21,6 +21,8 @@
 下载安装包会校验仓库提供的 SHA-256（PyPI）或 SRI/SHA 摘要（npm），失败时不运行安装命令。实现依据：[PyPI JSON API](https://docs.pypi.org/api/json/)、[npm 本地压缩包安装](https://docs.npmjs.com/cli/v11/commands/npm-install/)。
 
 ## 安装与恢复
+
+引擎安装、更新、回退及配置管理属于宿主能力，不要求 Gateway 的 `engine.install` 权限，也不依赖网关策略快照。接口仍需通过原有身份认证和宿主访问检查；仅获得单个项目访问权的账号不能修改整机引擎。
 
 安装使用下载后的本地 wheel/tarball，确保主包版本固定。Python SDK 按需安装到 `~/.workstep/runtime/python-packages`（可用 `WORKSTEP_ENGINE_PACKAGE_DIR` 覆盖），不进入 uv 管理的虚拟环境，也不写入 `uv.lock`。安装时先复制共享包目录到临时目录，通过 pip 或 uv 安装并清理被替换的旧版本元数据；临时目录版本校验通过后才切换正式目录，安装失败保留原目录。
 

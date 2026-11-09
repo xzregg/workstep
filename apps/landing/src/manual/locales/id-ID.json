@@ -802,6 +802,21 @@
     "summary": "Berkolaborasi secara langsung dalam konteks proyek dan pilih keterampilan lokal mana yang dapat digunakan oleh proyek.",
     "sections": [
       {
+        "title": "Mengisi draf pesan dengan suara",
+        "steps": [
+          "Buka Pengaturan → Input suara, aktifkan, unduh model dan runtime, pilih bahasa, lalu uji mikrofon. Instalasi berada di host WorkStep yang terhubung, bukan ponsel. Mendukung Mandarin, Kanton, dan Inggris.",
+          "Tekan mikrofon di obrolan yang dapat diedit, atau tekan lama tombol suara di ponsel. Bicara, akhiri rekaman, periksa teks yang disisipkan, lalu kirim manual. Maksimal dua menit; membatalkan tidak mengirim apa pun."
+        ],
+        "tips": [
+          "Audio dikenali di host terhubung dan tidak disimpan. Izinkan mikrofon melalui HTTPS atau alamat lokal. Jika gagal, periksa izin situs dan sistem; mulai ulang backend lama. Teks yang sudah dikenali dapat dipertahankan secara eksplisit."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Mengisi draf pesan dengan suara",
+          "caption": "Audio dikenali di host terhubung dan tidak disimpan. Izinkan mikrofon melalui HTTPS atau alamat lokal. Jika gagal, periksa izin situs dan sistem; mulai ulang backend lama. Teks yang sudah dikenali dapat dipertahankan secara eksplisit."
+        }
+      },
+      {
         "title": "Bekerja dengan beberapa percakapan proyek",
         "steps": [
           "Pada lebar desktop, buka percakapan proyek biasa dan pilih Jendela percakapan (对话窗口) → Tambahkan jendela percakapan (增加对话窗口), di sebelah kanan Percakapan baru.",
@@ -932,6 +947,18 @@
     "title": "Tugas terjadwal",
     "summary": "Buat tugas baru sesuai jadwal, atau kirimkan instruksi koordinator berjangka waktu ke tugas yang ada, dan lacak eksekusi dan pemberitahuan.",
     "sections": [
+      {
+        "title": "Jalankan sekarang dan periksa hasil",
+        "steps": [
+          "Pada jadwal tersimpan untuk membuat tugas proyek, klik Jalankan sekarang di daftar atau editor. Hanya konfigurasi tersimpan yang dipakai; perubahan belum tersimpan dan waktu berikutnya tetap. Tunggu proses aktif selesai.",
+          "Buka JSON tugas yang dihasilkan dalam riwayat dan bandingkan draf dengan tugas yang dibuat. Riwayat lama atau kegagalan sebelum pembuatan mungkin tidak memiliki JSON. Periksa tugas yang sudah dibuat sebelum mencoba ulang kegagalan sebagian."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Jalankan sekarang dan periksa hasil",
+          "caption": "Buka JSON tugas yang dihasilkan dalam riwayat dan bandingkan draf dengan tugas yang dibuat. Riwayat lama atau kegagalan sebelum pembuatan mungkin tidak memiliki JSON. Periksa tugas yang sudah dibuat sebelum mencoba ulang kegagalan sebagian."
+        }
+      },
       {
         "title": "Hasilkan banyak tugas dari satu jadwal",
         "steps": [

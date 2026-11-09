@@ -66,6 +66,7 @@ export interface ScheduleRun {
   notification_error?: string | null
   reason?: string | null
   task_id?: string | null
+  generated_tasks?: Array<Record<string, unknown>> | null
   created_tasks?: Array<{ id: string; title: string; workflow_id?: string | null; scheduled_start_at?: string | null; workflow_run_id?: string | null }>
   user_message_id?: string | null
   assistant_message_id?: string | null
@@ -110,6 +111,10 @@ export const scheduleApi = {
   update: (projectId: string, id: string, payload: Partial<SchedulePayload>) => request<ProjectSchedule>(
     `/schedule/${encodeURIComponent(id)}?project_id=${encodeURIComponent(projectId)}`,
     { method: 'PATCH', body: JSON.stringify(payload) },
+  ),
+  runNow: (projectId: string, id: string) => request<ScheduleRun>(
+    `/schedule/${encodeURIComponent(id)}/run-now?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'POST' },
   ),
   pause: (projectId: string, id: string) => request<ProjectSchedule>(
     `/schedule/${encodeURIComponent(id)}/pause?project_id=${encodeURIComponent(projectId)}`,

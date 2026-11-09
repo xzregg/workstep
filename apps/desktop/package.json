@@ -1,6 +1,6 @@
 {
   "name": "workstep-desktop",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "packageManager": "yarn@1.22.22",
   "private": true,
   "description": "Electron shell for the WorkStep FastAPI sidecar",
@@ -76,6 +76,11 @@
       "repo": "workstep"
     },
     "mac": {
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "WorkStep 使用麦克风将语音转换为消息草稿。"
+      },
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",
       "hardenedRuntime": true,

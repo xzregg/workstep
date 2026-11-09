@@ -86,7 +86,7 @@ test('directory context menu creates, renames and deletes a file; edit mode save
     const downloadButton = document.querySelector('.project-directory-preview .artifact-download-button')
     assert.ok(editButton)
     assert.equal(downloadButton?.previousElementSibling, editButton)
-    assert.equal(editButton.style.justifyContent, 'center')
+    assert.ok(editButton.classList.contains('artifact-toolbar-icon-button'))
     await click(editButton)
     const editor = document.querySelector<HTMLTextAreaElement>('.project-directory-editor-textarea')
     assert.ok(editor)

@@ -802,6 +802,21 @@
     "summary": "Samarbeta direkt i projektsammanhang och välj vilka lokala färdigheter ett projekt kan använda.",
     "sections": [
       {
+        "title": "Fyll ett meddelandeutkast med rösten",
+        "steps": [
+          "Öppna Inställningar → Röstinmatning, aktivera, hämta modell och körmiljö, välj språk och testa mikrofonen. Installationen sker på ansluten WorkStep-värd; telefonen behöver ingen modell. Mandarin, kantonesiska och engelska stöds.",
+          "Tryck på mikrofonen i en redigerbar chatt eller håll röstknappen på telefonen. Tala, avsluta, granska den infogade texten och skicka manuellt. Högst två minuter; avbryt skickar inget."
+        ],
+        "tips": [
+          "Ljud känns igen på ansluten värd och sparas inte. Tillåt mikrofon via HTTPS eller lokal adress. Kontrollera webbplatsens och systemets behörigheter vid fel; starta om en gammal backend. Igenkänd text kan uttryckligen behållas."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Fyll ett meddelandeutkast med rösten",
+          "caption": "Ljud känns igen på ansluten värd och sparas inte. Tillåt mikrofon via HTTPS eller lokal adress. Kontrollera webbplatsens och systemets behörigheter vid fel; starta om en gammal backend. Igenkänd text kan uttryckligen behållas."
+        }
+      },
+      {
         "title": "Arbeta med flera projektsamtal",
         "steps": [
           "På skrivbordets bredd, öppna en vanlig projektkonversation och välj Konversationsfönster (对话窗口) → Lägg till konversationsfönster (增加对话窗口), till höger om Ny konversation.",
@@ -932,6 +947,18 @@
     "title": "Schemalagda uppgifter",
     "summary": "Skapa nya uppgifter enligt ett schema, eller skicka tidsinställda koordinatorinstruktioner till befintliga uppgifter, och spåra exekvering och aviseringar.",
     "sections": [
+      {
+        "title": "Kör nu och granska resultat",
+        "steps": [
+          "För ett sparat schema som skapar projektuppgifter, välj Kör nu i listan eller redigeraren. Endast sparade inställningar används; osparade ändringar och nästa tid påverkas inte. Vänta på aktiva körningar.",
+          "Fäll ut JSON för genererade uppgifter i historiken och jämför utkast med skapade uppgifter. Äldre körningar eller fel före generering kan sakna JSON. Kontrollera skapade uppgifter innan ett delvis misslyckat försök upprepas."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Kör nu och granska resultat",
+          "caption": "Fäll ut JSON för genererade uppgifter i historiken och jämför utkast med skapade uppgifter. Äldre körningar eller fel före generering kan sakna JSON. Kontrollera skapade uppgifter innan ett delvis misslyckat försök upprepas."
+        }
+      },
       {
         "title": "Generera flera uppgifter från ett schema",
         "steps": [

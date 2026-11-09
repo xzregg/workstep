@@ -11,7 +11,7 @@ import pytest
 
 from engines.core.base import BaseLLMEngine
 from engines.core.acp_base import AcpEngineBase
-from engines.core.registry import ENGINE_REGISTRY
+from engines.core.registry import ENGINE_REGISTRY, list_all_engines
 
 
 class CustomFunctionsOnly(BaseLLMEngine):
@@ -37,6 +37,15 @@ def test_acp_base_inherits_base_llm_engine():
 def test_every_registered_engine_inherits_acp_base():
     for engine_id, engine_cls in ENGINE_REGISTRY.items():
         assert issubclass(engine_cls, AcpEngineBase), engine_id
+
+
+def test_runtime_managed_engines_follow_registry_latest():
+    for engine_id, engine_cls in list_all_engines().items():
+        package = engine_cls.RUNTIME_PACKAGE
+        if package is None:
+            continue
+        assert package.minimum == "0", engine_id
+        assert package.default_version is None, engine_id
 
 
 def test_base_llm_engine_exposes_custom_functions():

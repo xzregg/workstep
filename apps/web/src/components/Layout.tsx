@@ -403,6 +403,12 @@ export default function Layout({ onSelectProject, children }: Props) {
     setShowSettings(true)
   }
 
+  useEffect(() => {
+    const open = () => { setSettingsSection('speech'); setSettingsFocus(undefined); setShowSettings(true) }
+    window.addEventListener('workstep:open-speech-settings', open)
+    return () => window.removeEventListener('workstep:open-speech-settings', open)
+  }, [])
+
   const handleDeleteProject = async () => {
     if (!deleteProjectTarget) return
     const wasActive = activeProject?.id === deleteProjectTarget.id

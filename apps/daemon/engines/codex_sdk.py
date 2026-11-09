@@ -40,6 +40,7 @@ from engines.core.packages import RuntimePackage
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from services import providers as provider_service
 from services.config import config_store
+from services.engine_packages import managed_package_version
 from engines._config.codex import (
     codex_model_efforts,
     resolve_codex_thinking_effort,
@@ -79,7 +80,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
     ENGINE_ID = "codex_sdk"
     SYSTEM_PROMPT_MODE = "developer"
-    RUNTIME_PACKAGE = RuntimePackage('openai-codex', 'pypi', '0.147.0', None)
+    RUNTIME_PACKAGE = RuntimePackage('openai-codex', 'pypi')
     UPDATE_PACKAGE = "openai-codex"
     QUOTA_TIMEOUT_SECONDS = 5
 
@@ -171,7 +172,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     @staticmethod
     def get_version() -> str | None:
         try:
-            return importlib.metadata.version("openai-codex")
+            return managed_package_version("openai-codex")
         except importlib.metadata.PackageNotFoundError:
             return None
 
@@ -549,6 +550,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 event_queue,
                 asyncio.get_running_loop(),
                 session_id or "",
+                approval_mode=sdk_config["approval_mode"],
             )
             client = AsyncCodex(config=client_config)
             self._install_approval_handler(client, approval_handler)
@@ -978,6 +980,8 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         event_queue: asyncio.Queue[InternalEvent | None],
         loop: asyncio.AbstractEventLoop,
         session_id: str,
+        *,
+        approval_mode: str = "",
     ) -> Any:
         """Build the synchronous approval callback handed to ``AsyncCodex``.
 
@@ -991,6 +995,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             "item/commandExecution/requestApproval",
             "item/fileChange/requestApproval",
         }
+        self.configure_interaction_policy({"approval_mode": approval_mode})
 
         def handler(method: str, params: Any) -> dict:
             user_input = method in {

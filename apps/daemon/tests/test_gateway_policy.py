@@ -66,6 +66,27 @@ def test_policy_cache_refuses_older_revision_and_expires(monkeypatch):
     assert cache.allows("task.create") is False
 
 
+@pytest.mark.parametrize("action", ["task.create", "task.share", "project.publish", "provider.local", "engine.install"])
+def test_authenticated_whole_device_access_has_device_capabilities(monkeypatch, action):
+    import main
+
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(
+        managed_config=object(), policy_cache=ManagedPolicyCache(),
+    ))
+    actor = ActorSnapshot("guest", "Guest", "device-1", "PC", "managed",
+                          access_source="gateway")
+    with actor_context(actor):
+        require_managed_capability(action, project_id="host-1")
+    from dataclasses import replace
+    for restricted in (replace(actor, project_id="host-1"),
+                       replace(actor, access_source="gateway_share"),
+                       replace(actor, source="browser"),
+                       replace(actor, access_source=None)):
+        with actor_context(restricted):
+            with pytest.raises(PermissionError):
+                require_managed_capability(action, project_id="host-1")
+
+
 def test_managed_task_creation_requires_matching_live_capability(monkeypatch):
     import main
 

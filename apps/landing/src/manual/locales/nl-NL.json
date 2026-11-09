@@ -802,6 +802,21 @@
     "summary": "Werk direct samen in projectcontext en kies welke lokale vaardigheden een project mag gebruiken.",
     "sections": [
       {
+        "title": "Een berichtconcept inspreken",
+        "steps": [
+          "Open Instellingen → Spraakinvoer, schakel dit in, download model en runtime, kies een taal en test de microfoon. Installatie gebeurt op de verbonden WorkStep-host, niet op de telefoon. Mandarijn, Kantonees en Engels worden ondersteund.",
+          "Tik op de microfoon in een bewerkbare chat of houd de spraakknop op een telefoon ingedrukt. Spreek, voltooi de opname, controleer de ingevoegde tekst en verzend handmatig. Maximaal twee minuten; annuleren verstuurt niets."
+        ],
+        "tips": [
+          "Herkenning gebeurt op de verbonden host; audio wordt niet opgeslagen. Sta de microfoon toe via HTTPS of een lokaal adres. Controleer bij fouten site- en systeemrechten en herstart een verouderde backend. Herkende tekst kan expliciet worden behouden."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Een berichtconcept inspreken",
+          "caption": "Herkenning gebeurt op de verbonden host; audio wordt niet opgeslagen. Sta de microfoon toe via HTTPS of een lokaal adres. Controleer bij fouten site- en systeemrechten en herstart een verouderde backend. Herkende tekst kan expliciet worden behouden."
+        }
+      },
+      {
         "title": "Werk met meerdere projectgesprekken",
         "steps": [
           "Open op bureaubladbreedte een gewoon projectgesprek en kies Gespreksvensters (对话窗口) → Gespreksvenster toevoegen (增加对话窗口), rechts van Nieuw gesprek.",
@@ -932,6 +947,18 @@
     "title": "Geplande taken",
     "summary": "Maak nieuwe taken volgens een schema, of stuur getimede coördinatorinstructies naar bestaande taken, en volg de uitvoering en meldingen.",
     "sections": [
+      {
+        "title": "Nu uitvoeren en gegenereerde taken controleren",
+        "steps": [
+          "Klik in de lijst of editor op Nu uitvoeren voor een opgeslagen planning die projecttaken maakt. Alleen opgeslagen instellingen tellen; onopgeslagen wijzigingen en het volgende tijdstip blijven ongewijzigd. Wacht op actieve uitvoeringen.",
+          "Klap de JSON met gegenereerde taken in de historie open en vergelijk concepten met aangemaakte taken. Oude uitvoeringen of fouten vóór generatie hebben mogelijk geen JSON. Controleer bestaande taken voordat u een gedeeltelijke fout opnieuw probeert."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Nu uitvoeren en gegenereerde taken controleren",
+          "caption": "Klap de JSON met gegenereerde taken in de historie open en vergelijk concepten met aangemaakte taken. Oude uitvoeringen of fouten vóór generatie hebben mogelijk geen JSON. Controleer bestaande taken voordat u een gedeeltelijke fout opnieuw probeert."
+        }
+      },
       {
         "title": "Genereer meerdere taken vanuit één schema",
         "steps": [

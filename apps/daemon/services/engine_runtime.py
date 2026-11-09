@@ -30,6 +30,7 @@ from engines.core.packages import RuntimePackage
 from engines.core.base import _has_pip, install_python_package, install_with_command
 from engines.core.registry import list_all_engines
 from services.config import CONFIG_DIR, config_store
+from services.engine_packages import managed_package_version
 
 
 @asynccontextmanager
@@ -60,7 +61,7 @@ class EngineRuntimeManager:
     def installed_version(self, spec: RuntimePackage) -> str | None:
         if spec.kind == "pypi":
             try:
-                return importlib.metadata.version(spec.name)
+                return managed_package_version(spec.name)
             except importlib.metadata.PackageNotFoundError:
                 return None
         cls = next(c for c in list_all_engines().values() if c.RUNTIME_PACKAGE == spec)

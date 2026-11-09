@@ -3493,11 +3493,15 @@ details[open] > summary > .process-trace-chevron {
   color: var(--ai-assistant);
 }
 
-.artifact-download-button {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
+.artifact-toolbar-icon-button {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
   padding: 0;
+  justify-content: center;
+}
+
+.artifact-download-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;

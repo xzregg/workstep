@@ -802,6 +802,21 @@
     "summary": "Collabora direttamente nel contesto del progetto e scegli quali competenze locali può utilizzare un progetto.",
     "sections": [
       {
+        "title": "Dettare una bozza di messaggio",
+        "steps": [
+          "Apri Impostazioni → Input vocale, attivalo, scarica modello e runtime, scegli la lingua e prova il microfono. L’installazione avviene sull’host WorkStep collegato, non sul telefono. Sono supportati mandarino, cantonese e inglese.",
+          "Premi il microfono in una chat modificabile; sul telefono puoi tenere premuto l’accesso vocale. Detta, termina, controlla il testo inserito e invialo manualmente. Massimo due minuti; annullare non invia nulla."
+        ],
+        "tips": [
+          "L’audio viene riconosciuto sull’host collegato e non salvato. Consenti il microfono tramite HTTPS o indirizzo locale. In caso di errore controlla permessi del sito e del sistema e riavvia un backend obsoleto. Puoi conservare esplicitamente il testo già riconosciuto."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Dettare una bozza di messaggio",
+          "caption": "L’audio viene riconosciuto sull’host collegato e non salvato. Consenti il microfono tramite HTTPS o indirizzo locale. In caso di errore controlla permessi del sito e del sistema e riavvia un backend obsoleto. Puoi conservare esplicitamente il testo già riconosciuto."
+        }
+      },
+      {
         "title": "Lavora con più conversazioni di progetto",
         "steps": [
           "Alla larghezza del desktop, apri una normale conversazione di progetto e scegli Finestre di conversazione (对话窗口) → Aggiungi finestra di conversazione (增加对话窗口), a destra di Nuova conversazione.",
@@ -932,6 +947,18 @@
     "title": "Attività pianificate",
     "summary": "Crea nuove attività in base a una pianificazione o invia istruzioni del coordinatore temporizzato alle attività esistenti e monitora l'esecuzione e le notifiche.",
     "sections": [
+      {
+        "title": "Eseguire subito e controllare i risultati",
+        "steps": [
+          "Per una pianificazione salvata che crea attività di progetto, premi Esegui ora nell’elenco o nell’editor. Usa solo la configurazione salvata, senza applicare modifiche non salvate o cambiare il prossimo orario. Attendi eventuali esecuzioni attive.",
+          "Espandi il JSON delle attività generate nel registro e confronta bozze e attività create. Esecuzioni vecchie o errori prima della generazione possono non avere JSON. Controlla le attività già create prima di ripetere un’esecuzione parziale."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Eseguire subito e controllare i risultati",
+          "caption": "Espandi il JSON delle attività generate nel registro e confronta bozze e attività create. Esecuzioni vecchie o errori prima della generazione possono non avere JSON. Controlla le attività già create prima di ripetere un’esecuzione parziale."
+        }
+      },
       {
         "title": "Genera più attività da una pianificazione",
         "steps": [

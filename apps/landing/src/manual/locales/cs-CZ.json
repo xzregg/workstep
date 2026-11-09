@@ -802,6 +802,21 @@
     "summary": "Spolupracujte přímo v kontextu projektu a vyberte si, které místní dovednosti může projekt využít.",
     "sections": [
       {
+        "title": "Vyplnění konceptu zprávy hlasem",
+        "steps": [
+          "Otevřete Nastavení → Hlasový vstup, zapněte jej, stáhněte model a prostředí, vyberte jazyk a otestujte mikrofon. Instalace probíhá na připojeném hostiteli WorkStep, ne v telefonu. Podporována je mandarínština, kantonština a angličtina.",
+          "Stiskněte mikrofon v upravitelném chatu nebo podržte hlasové tlačítko v telefonu. Mluvte, ukončete nahrávání, ověřte vložený text a odešlete ručně. Nejvýše dvě minuty; zrušení nic neodesílá."
+        ],
+        "tips": [
+          "Zvuk se rozpoznává na připojeném hostiteli a neukládá se. Povolte mikrofon přes HTTPS nebo místní adresu. Při chybě zkontrolujte oprávnění webu a systému a restartujte starý backend. Rozpoznaný text lze výslovně zachovat."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Vyplnění konceptu zprávy hlasem",
+          "caption": "Zvuk se rozpoznává na připojeném hostiteli a neukládá se. Povolte mikrofon přes HTTPS nebo místní adresu. Při chybě zkontrolujte oprávnění webu a systému a restartujte starý backend. Rozpoznaný text lze výslovně zachovat."
+        }
+      },
+      {
         "title": "Práce s více projektovými konverzacemi",
         "steps": [
           "Na šířku pracovní plochy otevřete běžnou projektovou konverzaci a zvolte Okna konverzace (对话窗口) → Přidat okno konverzace (增加对话窗口), vpravo od položky Nová konverzace.",
@@ -932,6 +947,18 @@
     "title": "Naplánované úkoly",
     "summary": "Vytvářejte nové úkoly podle plánu nebo posílejte načasované pokyny koordinátorovi ke stávajícím úkolům a sledujte provádění a upozornění.",
     "sections": [
+      {
+        "title": "Spustit nyní a ověřit výsledek",
+        "steps": [
+          "U uloženého plánu vytvářejícího projektové úkoly klikněte v seznamu nebo editoru na Spustit nyní. Použijí se jen uložená nastavení; neuložené změny ani příští čas se nemění. Vyčkejte na aktivní běh.",
+          "Rozbalte JSON vygenerovaných úkolů v historii a porovnejte návrhy s vytvořenými úkoly. Starší běhy nebo chyby před generováním nemusí mít JSON. Před opakováním částečného selhání ověřte již vytvořené úkoly."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Spustit nyní a ověřit výsledek",
+          "caption": "Rozbalte JSON vygenerovaných úkolů v historii a porovnejte návrhy s vytvořenými úkoly. Starší běhy nebo chyby před generováním nemusí mít JSON. Před opakováním částečného selhání ověřte již vytvořené úkoly."
+        }
+      },
       {
         "title": "Generujte více úkolů z jednoho plánu",
         "steps": [

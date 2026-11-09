@@ -46,6 +46,7 @@ class ScheduleRun(BaseModel):
     reason = pw.TextField(null=True)
     task_id = pw.TextField(null=True)
     created_tasks_json = pw.TextField(null=True)
+    generated_tasks_json = pw.TextField(null=True)
     notification_json = pw.TextField(null=True)
     notification_status = pw.TextField(default="pending")
     notification_error = pw.TextField(null=True)

@@ -28,6 +28,19 @@ class ProbeEngine(AcpEngineBase):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("mode,action", [("auto", "accept"), ("bypassPermissions", "accept"), ("read-only", "decline")])
+async def test_acp_empty_consent_uses_backend_policy(mode, action):
+    handler = ACPStreamingClient(mode)
+    form = schema.ElicitationFormSessionMode(
+        sessionId="session", requestedSchema={"type": "object", "properties": {}},
+    )
+    result = await asyncio.wait_for(handler.create_elicitation("Allow Chrome?", form), 1)
+    assert result.action == action
+    assert handler.updates.empty()
+    assert not handler._elicitation_futures
+
+
+@pytest.mark.anyio
 async def test_native_acp_multi_select_keeps_json_schema_aliases_and_returns_arrays():
     handler = ACPStreamingClient()
     requested_schema = {"type": "object", "properties": {

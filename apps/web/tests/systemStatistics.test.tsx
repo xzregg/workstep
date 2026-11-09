@@ -8,6 +8,7 @@ import { I18nProvider } from '../src/i18n'
 import { statisticsApi } from '../src/api/statistics'
 import type { SystemStatisticsReport } from '../src/api/systemStatistics'
 import SystemStatisticsPanel from '../src/components/SystemStatisticsPanel'
+import SystemResourceTrend from '../src/components/SystemResourceTrend'
 import StatisticsPage from '../src/pages/StatisticsPage'
 import { useManagedModeStore } from '../src/stores/managedModeStore'
 
@@ -197,4 +198,31 @@ test('unknown and failed trend samples create gaps, not false zero values or con
     await act(async () => chart.dispatchEvent(new view.window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })))
     assert.match(view.container.querySelector('.system-chart-tooltip')?.textContent || '', /不可用/)
   } finally { await view.close(); statisticsApi.system = original }
+})
+
+
+test('trend pointer coordinates and tooltip follow samples across the full chart width', async () => {
+  const trend = { ...report, history: [0, 0.7, 0.85, 1].map((fraction, index) => ({
+    ...report.history[0], sampled_at: new Date(1700000000000 + fraction * 1800000).toISOString(), host_cpu_percent: index * 20,
+  })) }
+  const view = await mount(<SystemResourceTrend report={trend} descriptorLabel="文件描述符" />)
+  try {
+    const chart = view.container.querySelector<SVGSVGElement>('.system-chart')!
+    // A wide, fixed-height chart must use the same scale as pointer hit testing.
+    assert.equal(chart.getAttribute('preserveAspectRatio'), 'none')
+    chart.getBoundingClientRect = () => ({ left: 100, top: 0, width: 1000, height: 182, right: 1100, bottom: 182, x: 100, y: 0, toJSON() {} })
+    let previousLeft = 0
+    for (const [fraction, expected] of [[0.7, 20], [0.85, 40], [1, 60]]) {
+      const coordinate = 38 + fraction * 618
+      await act(async () => chart.dispatchEvent(new view.window.PointerEvent('pointermove', { bubbles: true, clientX: 100 + coordinate / 680 * 1000 })))
+      assert.match(view.container.querySelector('.system-chart-tooltip')!.textContent!, new RegExp(`整机 ${expected}%`))
+      assert.equal(Number(view.container.querySelector('.system-chart-guide')!.getAttribute('x1')), coordinate)
+      const tooltip = view.container.querySelector<HTMLElement>('.system-chart-tooltip')!
+      const left = parseFloat(tooltip.style.left)
+      assert.ok(left > previousLeft, 'tooltip keeps moving through the right side of the chart')
+      previousLeft = left
+    }
+    await act(async () => chart.dispatchEvent(new view.window.PointerEvent('pointerout', { bubbles: true })))
+    assert.equal(view.container.querySelector('.system-chart-tooltip'), null)
+  } finally { await view.close() }
 })

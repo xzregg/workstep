@@ -20,6 +20,19 @@ Python daemon 直接访问 `https://ilinkai.weixin.qq.com`，无需另启中转�
 
 当前能力：绑定微信用户的私聊文字、图片、文件收发，引用内容、平台已有语音转写，以及「正在输入」提示；视频入站作为文件接收。所有消息复用默认项目会话、私聊白名单、发送者归属及去重。文字支持生成中分块发送（新增正文至少 200 字符，并优先在完整句子或换行处分块；不足阈值或句子未结束时继续积累，短回答在结束后一次发送，超长无标点正文按 3500 UTF-16 单位拆分），最终仅发送已确认块之外的剩余正文；图片和文件链接及后续正文延迟到最终附件解析后发送。若最终正文改写了已发送前缀，则发送完整修订正文；网络请求结果不明确时无法承诺恰好一次投递。仅允许向扫码绑定用户发送，主动通知是否可投递仍受微信会话状态及频控约束。没有群聊、任务群绑定、按钮卡片、原生语音发送或单条消息流式更新；停止和审批请在 WorkStep 操作。同一 ClawBot 不应同时交给多个程序轮询。
 
+音频回复使用普通文件附件：保留 MP3、WAV 等文件的原始内容与扩展名，单个上限 20 MiB，接收端按音频文件打开播放（具体格式兼容性取决于客户端）。不使用原生 `VOICE` 请求，也不自动执行文字转语音。已有音频可以通过 `POST /api/channel-bots/send` 发送，例如：
+
+```json
+{
+  "project_id": "项目ID",
+  "bot_id": "机器人ID",
+  "user_id": "扫码绑定用户ID",
+  "attachments": [{"kind": "file", "path": ".workstep/artifacts/reply.mp3"}]
+}
+```
+
+也可使用 `session_id` 指定已建立的渠道会话，替代 `bot_id` 和 `user_id`。助手最终回复中的音频链接（例如目标为 `.workstep/artifacts/reply.mp3`）沿用附件发送路径。文件必须已存在于项目允许的目录，不能仅修改后缀伪造音频。`test_weixin_audio_file_send_api_preserves_playable_wav_and_stays_responsive` 使用有效 WAV 验证真实 API 路由、加密上传、文件消息、文件名和字节完整性，并以慢上传验证健康检查仍响应；微信上实际播放需另做真机验证。
+
 实现参考 [Hermes 的 iLink 适配器](https://github.com/NousResearch/hermes-agent/blob/a8b0bc15053c1d71fb2bfea39007847c9e1c5673/plugins/platforms/weixin/adapter.py)，HTTP 协议客户端、扫码会话、私有状态和媒体处理分别位于 `services/channels/weixin_api.py`、`weixin_login.py`、`weixin_state.py`、`weixin_media.py`，由 `weixin.py::WeixinAdapter` 接入统一渠道。未引入社区 SDK 或额外运行进程。
 
 `tests/test_weixin_channel.py` 覆盖模拟 iLink 扫码、凭据不回传、同用户重新授权、消息路由、白名单、重启游标与上下文、媒体加解密及 URL 校验、取消连接和慢网络／慢盘健康检查；Web 的 `weixinLogin.test.tsx` 覆盖扫码保存及关闭后的迟到响应。分块回复测试覆盖生成结束前投递、慢发送健康检查、最终尾段去重、短片段合并与句子边界、失败重试及媒体链接延迟。自动化使用模拟微信接口，尚未完成真实微信扫码、客户端收发和重连验收。

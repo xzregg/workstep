@@ -128,7 +128,7 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
         onChange={setResource} disabled={locked || !!assignment} seed={resource ? { id: resource,
           name: assignment?.scope_name ?? preset?.scope_name ?? resource } : undefined} />}
       {definition?.effects.includes('deny') && <p className="gateway-permission-note">个人与组规则共同生效；显式禁止优先于允许。</p>}
-      {definitions.some(item => item.id === 'device.access') && <p className="gateway-permission-note">此权限开放整台设备的工作区。只开放一个项目时请选择项目查看或编辑权限。</p>}
+      {definitions.some(item => item.id === 'device.access') && <p className="gateway-permission-note">此权限授予该设备工作区的全部操作权限，包括项目、任务、文件、引擎及本机设置，无需另配设备业务权限。网关平台管理和平台模型供应商仍单独授权。只开放一个项目时请选择项目权限。</p>}
       {definitions.some(item => item.id === 'project.read' || item.id === 'project.edit' || (scope === 'project' && item.id === 'task.create'))
         && <p className="gateway-permission-note">项目访问与任务创建分别控制。普通用户创建任务需要项目编辑和创建任务两项权限。</p>}
       {scope === 'department' && definitions.some(item => item.id.startsWith('admin.')) && <label className="gateway-permission-checkbox">

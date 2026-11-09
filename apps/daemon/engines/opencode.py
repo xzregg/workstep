@@ -137,9 +137,7 @@ class OpencodeEngine(AcpEngineBase):
     #: ACP 原生全量词汇 + 子代理提升（`task` 委托工具 → `subagent`）。
     acp_events: ClassVar[frozenset] = frozenset(AcpEngineBase.acp_events)
 
-    RUNTIME_PACKAGE: ClassVar[RuntimePackage] = RuntimePackage(
-        "opencode-ai", "npm", "0", None
-    )
+    RUNTIME_PACKAGE: ClassVar[RuntimePackage] = RuntimePackage("opencode-ai", "npm")
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -363,6 +361,7 @@ class OpencodeEngine(AcpEngineBase):
         )["permission_mode"]
         if effective not in OPENCODE_PERMISSION_MODES:
             effective = "ask"
+        self.configure_interaction_policy({"permission_mode": effective})
         runtime_map = {"allow": "auto", "deny": "read-only", "ask": "ask"}
         previous = self.runtime_permission_mode()
         # 单次 overrides 优先于会话级 runtime：临时提升 runtime，

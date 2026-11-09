@@ -992,6 +992,7 @@ async def test_dynamic_schedule_creates_five_tasks_with_independent_start_times(
     await module.wait_idle()
     run = module.list_runs(project.id, schedule["id"])[0]
     assert run["status"] == "created", run
+    assert run["generated_tasks"] == drafts
     assert len(run["created_tasks"]) == 5
     tasks = await manager.run_db(project.id, lambda _: [
         (t.id, t.title, t.scheduled_start_at, t.scheduled_start_state, t.engine) for t in Task.select()
@@ -1049,6 +1050,7 @@ async def test_dynamic_batch_keeps_partial_results_and_does_not_repeat_creations
     await module.wait_idle()
     run = module.list_runs(project.id, schedule["id"])[0]
     assert run["status"] == "failed"
+    assert run["generated_tasks"] == drafts
     assert len(run["created_tasks"]) == (0 if invalid_batch else 1)
     assert len(calls) == (0 if invalid_batch else 2)
     await module.tick(datetime(2099, 1, 2, 3, 5, 1, tzinfo=timezone.utc))
@@ -1150,14 +1152,17 @@ async def test_empty_agent_batch_is_skipped_without_retry(tmp_path, monkeypatch)
     module = ScheduleModule(manager, None, None, task_agent=agent)
     storing = threading.Event()
     release_store = threading.Event()
-    original_store = module._store_task_results
+    original_store = module._store_generated_tasks
 
     def slow_store(*args, **kwargs):
         storing.set()
         release_store.wait(timeout=2)
         return original_store(*args, **kwargs)
 
-    monkeypatch.setattr(module, '_store_task_results', slow_store)
+    monkeypatch.setattr(module, '_store_generated_tasks', slow_store)
+    import main
+    monkeypatch.setattr(main, 'project_manager', manager)
+    monkeypatch.setattr(main, 'schedule_module', module)
     try:
         schedule = _agent_schedule(module, project)
         tick = asyncio.create_task(module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc)))
@@ -1165,7 +1170,8 @@ async def test_empty_agent_batch_is_skipped_without_retry(tmp_path, monkeypatch)
             while not storing.is_set():
                 await asyncio.sleep(.001)
         await asyncio.wait_for(wait_for_store(), timeout=2)
-        await asyncio.wait_for(asyncio.sleep(.01), timeout=.1)
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+            assert (await asyncio.wait_for(client.get("/api/health"), .2)).status_code == 200
         assert any(not worker.done() for worker in module._workers)
         release_store.set()
         await tick
@@ -1173,6 +1179,11 @@ async def test_empty_agent_batch_is_skipped_without_retry(tmp_path, monkeypatch)
         run = module.list_runs(project.id, schedule['id'])[0]
         assert run['status'] == 'skipped'
         assert run['reason'] == '本次未生成任务'
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+            response = await client.get(f"/api/schedule/{schedule['id']}/runs?project_id={project.id}")
+            assert response.status_code == 200
+            assert response.json()['runs'][0]['generated_tasks'] == []
+        assert run['generated_tasks'] == []
         assert run['created_tasks'] == []
         assert run['task_id'] is None
         assert run['ended_at'] is not None
@@ -1309,3 +1320,61 @@ async def test_restart_terminates_interrupted_generation_without_blocking_future
     await module.wait_idle()
     assert len(agent.calls) == 1
     assert len(module.list_runs(project.id, schedule['id'])) == 2
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("paused", [False, True])
+async def test_run_now_api_uses_saved_config_without_advancing_schedule_and_keeps_health_responsive(tmp_path, monkeypatch, paused):
+    import main
+    from services.project import ProjectManager, DEFAULT_STEPS
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+
+    manager = ProjectManager()
+    def prepare():
+        project = manager.init_project(tmp_path / "project")
+        manager.create_workflow(project, "Test flow", DEFAULT_STEPS)
+        module = ScheduleModule(manager, TaskService(EventBus()), None)
+        created = module.create(project.id, name="Test", workflow_id=project.default_workflow()["id"],
+            task_template={"title": "Saved title"}, execution_mode="manual",
+            rule={"kind": "once", "run_at": "2099-01-02T03:04:00", "timezone": "UTC"})
+        if paused:
+            created = module.pause(project.id, created["id"])
+        return project, module, created
+    project, module, created = await asyncio.to_thread(prepare)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "schedule_module", module)
+    started = threading.Event()
+    original = project.db.execute_sql
+    def slow_insert(sql, *args, **kwargs):
+        if sql.upper().startswith("INSERT") and "schedule_runs" in sql and not started.is_set():
+            started.set()
+            time.sleep(0.35)
+        return original(sql, *args, **kwargs)
+    monkeypatch.setattr(project.db, "execute_sql", slow_insert)
+    release = asyncio.Event()
+    execute_run = module._execute_run
+    async def held_execution(*args, **kwargs):
+        await release.wait()
+        await execute_run(*args, **kwargs)
+    monkeypatch.setattr(module, "_execute_run", held_execution)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        request = asyncio.create_task(client.post(f"/api/schedule/{created['id']}/run-now?project_id={project.id}"))
+        assert await asyncio.to_thread(started.wait, 1)
+        assert (await asyncio.wait_for(client.get("/api/health"), 0.2)).status_code == 200
+        response = await request
+        assert response.status_code == 200
+        duplicate = await client.post(f"/api/schedule/{created['id']}/run-now?project_id={project.id}")
+        assert duplicate.status_code == 422
+        release.set()
+        await module.wait_idle()
+        runs = (await client.get(f"/api/schedule/{created['id']}/runs?project_id={project.id}")).json()["runs"]
+        assert len(runs) == 1
+        assert runs[0]["status"] == "created"
+        assert runs[0]["created_tasks"][0]["title"] == "Saved title"
+        saved = (await client.get(f"/api/schedule/{created['id']}?project_id={project.id}")).json()
+        assert saved["next_run_at"] == (created["next_run_at"].isoformat() if created["next_run_at"] else None)
+        assert saved["status"] == created["status"]
+        assert (await client.post(f"/api/schedule/missing/run-now?project_id={project.id}")).status_code == 404
+    await module.shutdown()

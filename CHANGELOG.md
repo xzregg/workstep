@@ -4,6 +4,15 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+## 1.0.22
+
+- Add opt-in voice input with on-demand model and runtime downloads, streaming recognition and microphone tests. Recognize Mandarin, Cantonese and English on the connected WorkStep host; insert text into a draft for explicit sending without saving recordings.
+- Add native microphone permission handling for desktop and Android while retaining page, origin and project authorization checks.
+- Run saved project schedules immediately without consuming their next scheduled occurrence, and retain generated task JSON for inspecting successful and partially failed runs.
+- Align engine interactions with the effective permission configuration, improve engine package installation and visibility, and keep project-scoped access checks in place.
+- Preserve access to the built-in customization workspace within configured file boundaries, refine file-preview toolbar controls and workflow step configuration, and support Weixin audio delivery through existing file attachments.
+- Update voice-input and schedule operation instructions in all website languages. Real-device speech recognition and the remaining manual screenshot gaps are not covered by automated release acceptance.
+
 ## 1.0.21
 
 - Add a Weixin channel with QR-code authorization, image delivery and channel configuration controls.

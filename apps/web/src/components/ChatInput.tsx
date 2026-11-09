@@ -4,6 +4,8 @@ import Icon from './Icon'
 import SkinnedComposerSendIcon from './ComposerSendIcon'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useChatInputDraft } from '../hooks/useChatInputDraft'
+import { useVoiceInput } from '../hooks/useVoiceInput'
+import VoiceInputControls, { VoiceMicrophone } from './VoiceInputControls'
 import { useChatInputAttachments } from '../hooks/useChatInputAttachments'
 import {
   useEffect,
@@ -352,7 +354,29 @@ export default function ChatInput({
   const attachInputRef = useRef<HTMLInputElement>(null)
   const attachFileInputRef = useRef<HTMLInputElement>(null)
   const valueRef = useChatInputDraft({ sessionId, taskId, value, onChange })
+  const voiceAllowed = can('task.edit') && (typeof window === 'undefined' || !window.location.pathname.startsWith('/share/'))
+  const voiceDisabled = disabled || stopping || (running && !allowSendWhileRunning) || !voiceAllowed
+  const inputPlaceholder = isCompact && voiceAllowed
+    ? placeholder
+      ? t('speech.holdPlaceholder', { placeholder: placeholder.replace(/[.…]+$/u, '') })
+      : t('speech.holdHint')
+    : placeholder
+  const voice = useVoiceInput({
+    ownerKey: `${projectId || imageAttach?.projectId || ''}:${taskId || sessionId || ''}`,
+    projectId: projectId || imageAttach?.projectId, disabled: voiceDisabled, compact: isCompact,
+    value, cursor: slashCursor,
+    onInsert: (text, cursor) => {
+      if (!text) return
+      const before = valueRef.current
+      const position = Math.min(cursor, before.length)
+      const next = before.slice(0, position) + text + before.slice(position)
+      undoSnapshotRef.current = { before, after: next }
+      valueRef.current = next; onChange(next); setSlashCursor(position + text.length)
+      requestAnimationFrame(() => focusMarkdownCursor(next, position + text.length))
+    },
+  })
   const canSend = !disabled
+    && !voice.active
     && !roleBinding?.loading
     && !workflowSkill?.loading
     && (!running || allowSendWhileRunning)
@@ -856,6 +880,8 @@ export default function ChatInput({
         )}
         <div
           className="chat-input-editor"
+          {...(voiceAllowed ? voice.pointer : {})}
+          data-voice-mode={voice.mode || undefined}
           data-all-selected={allSelected || undefined}
           style={{ minHeight, maxHeight }}
           onCopy={handleCopy}
@@ -941,8 +967,8 @@ export default function ChatInput({
                 <ChatInputTextSegment
                   key={`text:${segmentIndex}`}
                   markdown={segment.markdown}
-                  placeholder={inputSegments.length === 1 ? placeholder : undefined}
-                  disabled={disabled}
+                  placeholder={inputSegments.length === 1 ? inputPlaceholder : undefined}
+                  disabled={disabled || voice.active}
                   rows={rows}
                   inlineWithImage={inlineWithImage}
                   externalRef={isLastText ? inputRef : undefined}
@@ -976,6 +1002,7 @@ export default function ChatInput({
             })
           })()}
         </div>
+        {voiceAllowed && <VoiceInputControls voice={voice} />}
         <div className="chat-input-toolbar">
           <div className="chat-input-toolbar-scroll">
             {left}
@@ -1313,6 +1340,7 @@ export default function ChatInput({
               )
             )}
           </div>
+          {voiceAllowed && !isCompact && <VoiceMicrophone voice={voice} disabled={voiceDisabled} />}
           <button
             type="button"
             className="chat-input-send"

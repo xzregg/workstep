@@ -1,0 +1,25 @@
+.voice-microphone { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: 0 0 auto; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--fg-2); }
+.voice-microphone:hover:not(:disabled), .voice-microphone[aria-pressed="true"] { background: var(--bg-2); color: var(--accent); }
+.voice-input { padding: 12px; font-size: var(--text-body); border-top: 0.5px solid var(--border); }
+.voice-input-status { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.voice-input-status meter { width: 64px; height: 12px; }
+.voice-input-status time { margin-left: auto; color: var(--fg-2); font-size: 12px; }
+.voice-input-transcript { max-height: 160px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 0; }
+.voice-input-error { color: var(--danger); overflow-wrap: anywhere; }
+.voice-input-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.voice-input-actions button { min-height: 32px; padding: 4px 12px; }
+.voice-input-secondary-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-inline-start: auto; }
+.chat-input-editor[data-voice-mode="true"] { display: none; }
+.speech-settings { max-width: 720px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.speech-settings h1 { font-size: 20px; margin: 0; }
+.speech-settings p { margin: 0; color: var(--fg-2); font-size: var(--text-body); }
+.speech-settings label { display: flex; align-items: center; gap: 8px; }
+.speech-model { padding: 16px 0; border-block: 0.5px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.speech-model-heading { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.speech-model progress { width: 100%; }
+.speech-model-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.speech-test-result { display: flex; flex-direction: column; gap: 8px; padding-block: 12px; border-top: 0.5px solid var(--border); }
+@media (max-width: 1023px) {
+  .voice-input-actions button { min-height: var(--mobile-control-touch); }
+  .speech-settings { padding: 12px; }
+}

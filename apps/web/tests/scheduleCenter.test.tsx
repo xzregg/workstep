@@ -414,3 +414,67 @@ test('batch run history lists every created task including partial failures', as
     assert.match(document.querySelector('.schedule-page')!.textContent!, /disk full/)
   } finally { await app.cleanup() }
 })
+
+
+test('run now appears only for saved schedules, prevents duplicate clicks and refreshes logs', async () => {
+  const app = await setup()
+  let finish!: (value: any) => void
+  const calls: string[][] = []
+  scheduleApi.runNow = (projectId, id) => { calls.push([projectId, id]); return new Promise(resolve => { finish = resolve }) }
+  try {
+    await app.render(); await app.click('定时任务'); await app.click('新建定时任务')
+    assert.ok(![...document.querySelectorAll('button')].some(b => b.textContent === '立即执行'))
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    const row = document.querySelector('.schedule-save-row')!
+    assert.deepEqual([...row.querySelectorAll('button')].map(b => b.textContent), ['立即执行', '保存'])
+    await app.click('立即执行')
+    assert.equal(app.button('立即执行').disabled, true)
+    await app.click('立即执行')
+    assert.deepEqual(calls, [['a', 'schedule-a']])
+    scheduleApi.runs = async () => ({ runs: [{ id: 'run-test', schedule_id: 'schedule-a', scheduled_for: '', status: 'failed', reason: '测试执行结果' }] })
+    await act(async () => finish({ id: 'run-test', status: 'queued' }))
+    assert.match(document.querySelector('.schedule-runs')!.textContent!, /测试执行结果/)
+    scheduleApi.runNow = async () => { throw new Error('执行失败，请重试') }
+    await app.click('立即执行')
+    assert.match(row.textContent!, /执行失败，请重试/)
+    assert.equal(app.button('立即执行').disabled, false)
+  } finally { await app.cleanup() }
+})
+
+
+test('schedule logs show generated task JSON, empty batches and unavailable legacy results', async () => {
+  const app = await setup()
+  scheduleApi.list = async id => ({ schedules: [{ ...schedule(id), task_template: { mode: 'agent', instruction: '生成任务' } }] })
+  const drafts = [{ title: '生成的标题', description: '完整任务内容', workflow_id: 'flow-a' }]
+  scheduleApi.runs = async () => ({ runs: [
+    { id: 'generated', schedule_id: 'schedule-a', scheduled_for: '', status: 'failed', generated_tasks: drafts },
+    { id: 'empty', schedule_id: 'schedule-a', scheduled_for: '', status: 'skipped', generated_tasks: [] },
+    { id: 'legacy', schedule_id: 'schedule-a', scheduled_for: '', status: 'failed' },
+  ] })
+  try {
+    await app.render(); await app.click('定时任务')
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    const details = [...document.querySelectorAll<HTMLDetailsElement>('.schedule-run-json')]
+    assert.equal(details.length, 3)
+    assert.equal(details[0].open, false)
+    assert.equal(details[0].querySelector('summary')?.textContent, '生成的任务 JSON')
+    assert.deepEqual(JSON.parse(details[0].querySelector('pre')!.textContent!), drafts)
+    assert.equal(details[1].querySelector('pre')?.textContent, '[]')
+    assert.equal(details[2].querySelector('pre'), null)
+    assert.match(details[2].textContent!, /未记录生成结果/)
+  } finally { await app.cleanup() }
+})
+
+
+test('fixed schedule logs do not show generated JSON or its unavailable placeholder', async () => {
+  const app = await setup()
+  scheduleApi.runs = async () => ({ runs: [
+    { id: 'fixed', schedule_id: 'schedule-a', scheduled_for: '', status: 'created' },
+  ] })
+  try {
+    await app.render(); await app.click('定时任务')
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    assert.equal(document.querySelector('.schedule-run-json'), null)
+    assert.doesNotMatch(document.querySelector('.schedule-runs')!.textContent!, /生成的任务 JSON|未记录生成结果/)
+  } finally { await app.cleanup() }
+})

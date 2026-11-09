@@ -802,6 +802,21 @@
     "summary": "Samarbejd direkte i projektsammenhæng og vælg, hvilke lokale kompetencer et projekt kan bruge.",
     "sections": [
       {
+        "title": "Udfyld en beskedkladde med stemmen",
+        "steps": [
+          "Åbn Indstillinger → Stemmeinput, aktivér, hent model og kørselsmiljø, vælg sprog og test mikrofonen. Installationen sker på den tilsluttede WorkStep-vært; telefonen behøver ingen model. Mandarin, kantonesisk og engelsk understøttes.",
+          "Tryk på mikrofonen i en redigerbar chat, eller hold stemmeknappen på telefonen inde. Tal, afslut, kontrollér den indsatte tekst og send manuelt. Højst to minutter; annullering sender intet."
+        ],
+        "tips": [
+          "Lyd genkendes på den tilsluttede vært og gemmes ikke. Tillad mikrofon via HTTPS eller lokal adresse. Kontrollér webstedets og systemets tilladelser ved fejl; genstart en gammel backend. Genkendt tekst kan udtrykkeligt beholdes."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Udfyld en beskedkladde med stemmen",
+          "caption": "Lyd genkendes på den tilsluttede vært og gemmes ikke. Tillad mikrofon via HTTPS eller lokal adresse. Kontrollér webstedets og systemets tilladelser ved fejl; genstart en gammel backend. Genkendt tekst kan udtrykkeligt beholdes."
+        }
+      },
+      {
         "title": "Arbejd med flere projektsamtaler",
         "steps": [
           "På skrivebordsbredde skal du åbne en almindelig projektsamtale og vælge Samtalevinduer (对话窗口) → Tilføj samtalevindue (增加对话窗口), til højre for Ny samtale.",
@@ -932,6 +947,18 @@
     "title": "Planlagte opgaver",
     "summary": "Opret nye opgaver efter en tidsplan, eller send tidsbestemte koordinatorinstruktioner til eksisterende opgaver, og spor udførelse og meddelelser.",
     "sections": [
+      {
+        "title": "Kør nu og kontrollér resultatet",
+        "steps": [
+          "Vælg Kør nu i listen eller editoren for en gemt plan, der opretter projektopgaver. Kun gemte indstillinger bruges; ugemte ændringer og næste tidspunkt ændres ikke. Vent på aktive kørsler.",
+          "Udvid JSON for genererede opgaver i historikken, og sammenlign kladder med oprettede opgaver. Ældre kørsler eller fejl før generering kan mangle JSON. Kontrollér oprettede opgaver før gentagelse af en delvis fejl."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Kør nu og kontrollér resultatet",
+          "caption": "Udvid JSON for genererede opgaver i historikken, og sammenlign kladder med oprettede opgaver. Ældre kørsler eller fejl før generering kan mangle JSON. Kontrollér oprettede opgaver før gentagelse af en delvis fejl."
+        }
+      },
       {
         "title": "Generer flere opgaver fra én tidsplan",
         "steps": [

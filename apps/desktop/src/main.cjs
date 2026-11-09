@@ -1,5 +1,5 @@
 const { createPrivateKey, randomBytes, sign } = require('node:crypto')
-const { app, BrowserWindow, Menu, Notification, Tray, clipboard, crashReporter, dialog, ipcMain, nativeImage, net, safeStorage, session, shell } = require('electron')
+const { app, BrowserWindow, Menu, Notification, Tray, clipboard, crashReporter, dialog, ipcMain, nativeImage, net, safeStorage, session, shell, systemPreferences } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const { createDiagnostics, installDiagnostics, captureConsole } = require('./diagnostics.cjs')
@@ -537,6 +537,7 @@ async function announceDesktopRuntime(url) {
 }
 
 function configureAuthenticatedRequests(url) {
+  require('./speech-permissions.cjs').configureSpeechPermissions(session.defaultSession, url, { systemPreferences })
   if (!desktopToken) return
   const parsed = new URL(url)
   const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -550,9 +551,6 @@ function configureAuthenticatedRequests(url) {
     details.requestHeaders['X-WorkStep-Desktop-Token'] = desktopToken
     if (localSession) details.requestHeaders['X-WorkStep-Local-Session'] = localSession
     callback({ requestHeaders: details.requestHeaders })
-  })
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
-    callback(false)
   })
 }
 

@@ -27,18 +27,9 @@ from services.config import (
 from services import providers as provider_service
 from services import engine_runtime
 from services.engine_actions import probe_engine
-from services.gateway_client.policy import require_managed_capability
 from services.project import project_manager
 
 router = APIRouter(prefix="/api/engine")
-
-
-def _require_managed_engine_permission() -> None:
-    require_catalog_project("")
-    try:
-        require_managed_capability("engine.install")
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 class EngineTestRequest(BaseModel):
@@ -142,7 +133,7 @@ class EngineVisibilityRequest(BaseModel):
 
 @router.put("/{engine_id}/visibility")
 async def set_engine_visibility(engine_id: str, request: EngineVisibilityRequest):
-    _require_managed_engine_permission()
+    require_catalog_project("")
 
     def update():
         if engine_id not in list_all_engines():
@@ -156,7 +147,7 @@ async def set_engine_visibility(engine_id: str, request: EngineVisibilityRequest
 @router.post("/refresh")
 async def refresh_engines():
     """Re-scan the host for supported execution engines."""
-    _require_managed_engine_permission()
+    require_catalog_project("")
     engines = await asyncio.to_thread(_refresh_and_summaries)
     return {"engines": engines}
 
@@ -196,7 +187,7 @@ async def get_execution_default_config(project_id: str = ""):
 
 @router.put("/execution/config")
 async def set_execution_default_config(req: DefaultEngineRequest):
-    _require_managed_engine_permission()
+    require_catalog_project("")
     engine_id = req.engine.strip()
     if engine_id:
         await asyncio.to_thread(_validate_engine, engine_id)
@@ -227,7 +218,7 @@ async def get_coordinator_default_config(project_id: str = ""):
 
 @router.put("/coordinator/config")
 async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
-    _require_managed_engine_permission()
+    require_catalog_project("")
     engine_id = req.engine.strip()
     model = req.model.strip()
     fast_model = req.fast_model.strip()
@@ -260,7 +251,7 @@ async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
 @router.post("/test")
 async def test_engine(req: EngineTestRequest):
     """Delegate the connectivity test to the selected engine adapter."""
-    _require_managed_engine_permission()
+    require_catalog_project("")
     result = await probe_engine(
         req.engine_id, timeout_seconds=req.timeout_seconds, model=req.model,
         values=req.values, clear=req.clear, store=config_store,
@@ -292,7 +283,7 @@ async def engine_runtime_operation(engine_id: str):
 
 @router.post("/{engine_id}/runtime/operation", status_code=202)
 async def start_engine_runtime_operation(engine_id: str, req: EngineRuntimeRequest):
-    _require_managed_engine_permission()
+    require_catalog_project("")
     try:
         return await engine_runtime.runtime_manager.start(
             engine_id, req.version, rollback=req.rollback,
@@ -306,7 +297,7 @@ async def start_engine_runtime_operation(engine_id: str, req: EngineRuntimeReque
 
 @router.post("/{engine_id}/install")
 async def install_engine(engine_id: str, req: EngineInstallRequest | None = None):
-    _require_managed_engine_permission()
+    require_catalog_project("")
     try:
         async with engine_runtime.runtime_manager.legacy_operation():
             return await _install_engine(engine_id, req)
@@ -358,7 +349,7 @@ async def _install_engine(engine_id: str, req: EngineInstallRequest | None):
 
 @router.post("/{engine_id}/update")
 async def update_engine(engine_id: str):
-    _require_managed_engine_permission()
+    require_catalog_project("")
     try:
         async with engine_runtime.runtime_manager.legacy_operation():
             return await _update_engine(engine_id)
@@ -544,7 +535,7 @@ async def list_engine_models(
 @router.put("/{engine_id}/default-model")
 async def set_default_model(engine_id: str, req: DefaultModelRequest):
     """Persist the model inherited by steps without an explicit model."""
-    _require_managed_engine_permission()
+    require_catalog_project("")
     engine = await asyncio.to_thread(
         lambda: (refresh_registry(), create_engine(engine_id))[1]
     )
@@ -567,7 +558,7 @@ async def set_default_model(engine_id: str, req: DefaultModelRequest):
 @router.put("/{engine_id}/binary-path")
 async def set_binary_path(engine_id: str, req: BinaryPathRequest):
     """Persist or clear a backend's executable path override."""
-    _require_managed_engine_permission()
+    require_catalog_project("")
     supported = await asyncio.to_thread(
         lambda: {engine["id"] for engine in get_available_engines()}
     )
@@ -630,7 +621,7 @@ async def get_engine_config(engine_id: str):
 @router.put("/{engine_id}/config")
 async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
     """Persist engine config driven by the engine's config schema."""
-    _require_managed_engine_permission()
+    require_catalog_project("")
     engine_id = engine_id.replace("-", "_")
     cls = list_all_engines().get(engine_id)
     if cls is None:
@@ -674,7 +665,7 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
 @router.post("/{engine_id}/config/reveal")
 async def reveal_engine_config(engine_id: str, req: EngineConfigRevealRequest):
     """Return a stored secret after an explicit reveal action."""
-    _require_managed_engine_permission()
+    require_catalog_project("")
     engine_id = engine_id.replace("-", "_")
     cls = list_all_engines().get(engine_id)
     if cls is None:

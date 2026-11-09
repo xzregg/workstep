@@ -1,0 +1,4 @@
+.schedule-run-json { margin-top: 8px; min-width: 0; }
+.schedule-run-json summary { cursor: pointer; color: var(--accent); padding: 4px 0; }
+.schedule-run-json pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; padding: 10px; border: 1px solid var(--border-soft); border-radius: 6px; user-select: text; }
+.schedule-run-json p { margin: 8px 0 0; color: var(--meta); }

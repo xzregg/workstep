@@ -174,6 +174,11 @@ async def browse_directory(
         access_root = _file_access_root()
         if access_root is not None and target == access_root:
             parent = None
+        if parent is not None:
+            try:
+                _assert_preview_path(parent)
+            except HTTPException:
+                parent = None
         if project_root is not None and target == project_root:
             parent = None
         return {

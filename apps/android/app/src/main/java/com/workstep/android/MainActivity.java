@@ -19,6 +19,7 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
+import android.webkit.PermissionRequest;
 import android.webkit.SslErrorHandler;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
@@ -88,6 +89,7 @@ public final class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCallback;
     private PendingDownload pendingDownload;
     private ApkInstaller apkInstaller;
+    private MicrophonePermissions microphonePermissions;
     private boolean checking;
     private boolean pageLoading;
     private boolean pageHadError;
@@ -153,6 +155,7 @@ public final class MainActivity extends Activity {
         CrashReports.log(this, "网页主进程", "应用启动；" + CrashReports.version(this), null);
         root = new FrameLayout(this);
         apkInstaller = new ApkInstaller(this, executor, foregroundRefresh::externalPickerStarted);
+        microphonePermissions = new MicrophonePermissions(this, () -> webView, () -> server);
         CompletionNotifications.createChannels(this);
         setContentView(root);
         String saved = getPreferences(MODE_PRIVATE).getString(SERVER_KEY, "");
@@ -173,6 +176,7 @@ public final class MainActivity extends Activity {
     }
 
     private void clearPage() {
+        if (microphonePermissions != null) microphonePermissions.clear();
         if (webView != null) rememberPage(webView.getUrl());
         root.removeAllViews();
         if (webView != null) {
@@ -325,6 +329,7 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView source, String url, android.graphics.Bitmap icon) {
                 if (source != webView) return;
+                microphonePermissions.clear();
                 notificationProjectId = "";
                 notificationProjectName = "";
                 gatewayLoginNavigation.pageStarted(server, url);
@@ -419,6 +424,7 @@ public final class MainActivity extends Activity {
                 boolean repeated = now - lastRendererFailure < 10000;
                 lastRendererFailure = now;
                 root.removeAllViews();
+                microphonePermissions.clear();
                 source.destroy();
                 webView = null;
                 if (fileCallback != null) {
@@ -432,6 +438,16 @@ public final class MainActivity extends Activity {
             }
         });
         view.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                microphonePermissions.request(view, request);
+            }
+
+            @Override
+            public void onPermissionRequestCanceled(PermissionRequest request) {
+                microphonePermissions.cancelled(request);
+            }
+
             @Override
             public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
                 if (view == webView && message.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
@@ -522,6 +538,12 @@ public final class MainActivity extends Activity {
         } catch (RuntimeException error) {
             android.util.Log.e("WorkStep", "Cannot request notification permission", error);
         }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (microphonePermissions != null) microphonePermissions.result(requestCode, permissions, grantResults);
     }
 
     private void rememberPage(String url) {
@@ -951,6 +973,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onStop() {
+        microphonePermissions.clear();
         CrashReports.log(this, "网页主进程", "页面停止；监听数量=" + completionWatches.size(), null);
         if (webView != null) rememberPage(webView.getUrl());
         foregroundRefresh.onStop(SystemClock.elapsedRealtime());

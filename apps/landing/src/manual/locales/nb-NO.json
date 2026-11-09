@@ -802,6 +802,21 @@
     "summary": "Samarbeid direkte i prosjektsammenheng og velg hvilke lokale ferdigheter et prosjekt kan bruke.",
     "sections": [
       {
+        "title": "Fyll et meldingsutkast med stemmen",
+        "steps": [
+          "Åpne Innstillinger → Taleinndata, aktiver, last ned modell og kjøremiljø, velg språk og test mikrofonen. Installasjonen skjer på tilkoblet WorkStep-vert; telefonen trenger ingen modell. Mandarin, kantonesisk og engelsk støttes.",
+          "Trykk på mikrofonen i en redigerbar samtale, eller hold taleknappen på telefonen. Snakk, avslutt, kontroller teksten og send manuelt. Maksimalt to minutter; avbryt sender ingenting."
+        ],
+        "tips": [
+          "Lyd gjenkjennes på tilkoblet vert og lagres ikke. Tillat mikrofon via HTTPS eller lokal adresse. Kontroller nettstedets og systemets tillatelser ved feil; start en gammel backend på nytt. Gjenkjent tekst kan uttrykkelig beholdes."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Fyll et meldingsutkast med stemmen",
+          "caption": "Lyd gjenkjennes på tilkoblet vert og lagres ikke. Tillat mikrofon via HTTPS eller lokal adresse. Kontroller nettstedets og systemets tillatelser ved feil; start en gammel backend på nytt. Gjenkjent tekst kan uttrykkelig beholdes."
+        }
+      },
+      {
         "title": "Arbeid med flere prosjektsamtaler",
         "steps": [
           "På skrivebordsbredde åpner du en vanlig prosjektsamtale og velger Samtalevinduer (对话窗口) → Legg til samtalevindu (增加对话窗口), til høyre for Ny samtale.",
@@ -932,6 +947,18 @@
     "title": "Planlagte oppgaver",
     "summary": "Lag nye oppgaver etter en tidsplan, eller send tidsbestemte koordinatorinstruksjoner til eksisterende oppgaver, og spor utførelse og varsler.",
     "sections": [
+      {
+        "title": "Kjør nå og kontroller resultatet",
+        "steps": [
+          "Velg Kjør nå i listen eller redigereren for en lagret plan som oppretter prosjektoppgaver. Bare lagrede innstillinger brukes; ulagrede endringer og neste tidspunkt påvirkes ikke. Vent på aktive kjøringer.",
+          "Utvid JSON for genererte oppgaver i historikken, og sammenlign utkast med opprettede oppgaver. Eldre kjøringer eller feil før generering kan mangle JSON. Kontroller opprettede oppgaver før en delvis feil prøves på nytt."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Kjør nå og kontroller resultatet",
+          "caption": "Utvid JSON for genererte oppgaver i historikken, og sammenlign utkast med opprettede oppgaver. Eldre kjøringer eller feil før generering kan mangle JSON. Kontroller opprettede oppgaver før en delvis feil prøves på nytt."
+        }
+      },
       {
         "title": "Generer flere oppgaver fra én tidsplan",
         "steps": [

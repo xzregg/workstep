@@ -11,7 +11,7 @@ test('step editor places engine selection and config before step review', () => 
   const promptIndex = flowCanvasSource.indexOf("t('flow.prompt')")
   const inputEditorIndex = flowCanvasSource.indexOf('<InputEditor')
   const engineIndex = flowCanvasSource.indexOf("t('flow.engine')")
-  const stepConfigIndex = flowCanvasSource.indexOf("t('flow.stepConfig')")
+  const stepConfigIndex = flowCanvasSource.indexOf('<StepConfigFields')
   const reviewIndex = flowCanvasSource.indexOf("t('flow.stepReview')")
 
   assert.ok(promptIndex >= 0)

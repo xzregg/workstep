@@ -74,6 +74,10 @@ _WORKSPACE_ASSET = re.compile(
 # Project workspace services share the same project identity; route-specific
 # resource ownership is checked by their existing project/database handlers.
 _PROJECT_SERVICES = [
+    (r"/api/speech", {'GET'}, set()),
+    (r"/api/speech/sessions", {'POST'}, set()),
+    (r"/api/speech/sessions/[a-f0-9]{32}/audio", {'POST'}, set()),
+    (r"/api/speech/sessions/[a-f0-9]{32}", {'DELETE'}, set()),
     (r"/api/completion-notifications/recent", {'GET'}, {'since'}),
     (r"/api/skills", {'GET'}, set()),
     (r"/api/skills/rescan", {'POST'}, set()),
@@ -97,7 +101,7 @@ _PROJECT_SERVICES = [
     (r"/api/schedule/list", {'GET'}, set()),
     (r"/api/schedule/(?:create|preview)", {'POST'}, set()),
     (r"/api/schedule/[A-Za-z0-9_-]{1,128}", {'GET','PATCH','DELETE'}, set()),
-    (r"/api/schedule/[A-Za-z0-9_-]{1,128}/(?:pause|resume)", {'POST'}, set()),
+    (r"/api/schedule/[A-Za-z0-9_-]{1,128}/(?:pause|resume|run-now)", {'POST'}, set()),
     (r"/api/schedule/[A-Za-z0-9_-]{1,128}/runs", {'GET'}, {'limit','offset'}),
     (r"/api/pending-message-inserts", {'GET','POST','DELETE'}, {'target_message_id'}),
     (r"/api/pending-message-inserts/reorder", {'PUT'}, set()),

@@ -119,6 +119,8 @@ def test_static_shell_is_available_but_receives_security_headers(monkeypatch):
     assert response.status_code == 200
     assert "frame-ancestors *" in response.headers['content-security-policy']
     assert 'x-frame-options' not in {k.lower() for k in response.headers}
+    assert 'microphone=(self)' in response.headers['permissions-policy']
+    assert 'camera=()' in response.headers['permissions-policy']
 
 
 def test_project_raw_allows_same_origin_iframe(monkeypatch):
@@ -134,6 +136,46 @@ def test_project_raw_allows_same_origin_iframe(monkeypatch):
     assert response.status_code == 200
     assert 'x-frame-options' not in {k.lower() for k in response.headers}
     assert "frame-ancestors *" in response.headers['content-security-policy']
+    assert 'microphone=()' in response.headers['permissions-policy']
+
+
+@pytest.mark.parametrize('path', ['/chat', '/tasks', '/canvas', '/schedules', '/appearance', '/git'])
+def test_application_documents_allow_same_origin_microphone(monkeypatch, path):
+    from fastapi.responses import HTMLResponse
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    app = _app()
+    app.add_api_route(path, lambda: HTMLResponse('<html>WorkStep</html>'), methods=['GET'])
+    with TestClient(app) as client:
+        response = client.get(path)
+    assert response.status_code == 200
+    assert 'microphone=(self)' in response.headers['permissions-policy']
+    assert 'camera=()' in response.headers['permissions-policy']
+
+
+@pytest.mark.parametrize('path', ['/share/token', '/landing', '/api/fs/serve/untrusted.html'])
+def test_other_documents_do_not_receive_microphone_permission(monkeypatch, path):
+    from fastapi.responses import HTMLResponse
+    monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
+    monkeypatch.delenv('WORKSTEP_DESKTOP_TOKEN', raising=False)
+    app = _app()
+    app.add_api_route(path, lambda: HTMLResponse('<html>Other content</html>'), methods=['GET'])
+    with TestClient(app) as client:
+        response = client.get(path)
+    assert 'microphone=()' in response.headers['permissions-policy']
+
+
+def test_explicit_document_microphone_restriction_is_preserved(monkeypatch):
+    from fastapi.responses import HTMLResponse
+    monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
+    monkeypatch.delenv('WORKSTEP_DESKTOP_TOKEN', raising=False)
+    app = FastAPI()
+    app.add_middleware(DesktopSecurityMiddleware)
+    @app.get('/chat')
+    def page():
+        return HTMLResponse('<html>Restricted</html>', headers={'Permissions-Policy': 'microphone=()'})
+    with TestClient(app) as client:
+        assert client.get('/chat').headers['permissions-policy'] == 'microphone=()'
 
 
 def test_desktop_websocket_requires_runtime_token(monkeypatch):

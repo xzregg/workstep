@@ -9,7 +9,8 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 from services.gateway_client.browser_login import GatewayLoginError, local_session_cookie_name, normalize_origin
 from api.desktop_security import (browser_origin_allowed, local_gateway_fallback_allowed,
-    gateway_workspace_access_allowed, local_gateway_workspace_active, set_local_gateway_workspace_cookie)
+    gateway_workspace_access_allowed, local_gateway_workspace_active, set_local_gateway_workspace_cookie,
+    gateway_device_owner)
 
 router = APIRouter()
 
@@ -62,7 +63,7 @@ async def _settings_service(request: Request, mutation=False, configure=False):
         raise HTTPException(status_code=403, detail='Same-origin request required')
     gateway = getattr(request.app.state, 'gateway_client', None)
     local = actor is None and request.client and request.client.host in ('127.0.0.1', '::1', 'localhost') and request.url.hostname in ('127.0.0.1', '::1', 'localhost')
-    if configure and gateway is not None and gateway.managed_config is not None and not local and not _desktop(request):
+    if configure and gateway is not None and gateway.managed_config is not None and not local and not _desktop(request) and not gateway_device_owner(request):
         actor = actor or gateway.local_sessions.resolve(request.headers.get('x-workstep-local-session') or request.cookies.get(local_session_cookie_name(request.app)))
         access = getattr(request.app.state, 'remote_access_service', None)
         def native_access_allowed():

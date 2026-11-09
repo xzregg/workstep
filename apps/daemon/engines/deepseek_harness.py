@@ -89,10 +89,8 @@ class DeepSeekHarnessEngine(AcpEngineBase):
     """Run the official local DeepSeek Harness composition through its SDK."""
 
     ENGINE_ID = "deepseek_harness"
-    # 安装与更新统一固定到已验证版本；禁止新安装缺少原生恢复入口的旧版。
-    SDK_VERSION = "0.2.1rc2"
-    SDK_PACKAGE = f"deepseek-harness-sdk=={SDK_VERSION}"
-    RUNTIME_PACKAGE = RuntimePackage("deepseek-harness-sdk", "pypi", SDK_VERSION, SDK_VERSION)
+    SDK_PACKAGE = "deepseek-harness-sdk"
+    RUNTIME_PACKAGE = RuntimePackage("deepseek-harness-sdk", "pypi")
     UPDATE_PACKAGE = SDK_PACKAGE
 
     @classmethod

@@ -4485,6 +4485,7 @@ async def test_codex_sdk_approval_handler_round_trip():
     import threading
 
     engine = CodexSDKEngine()
+    await engine.set_permission_mode("ask")
     event_queue: asyncio.Queue = asyncio.Queue()
     handler = engine._build_approval_handler(
         event_queue, asyncio.get_running_loop(), "session-1"

@@ -802,6 +802,21 @@
     "summary": "Doğrudan proje bağlamında işbirliği yapın ve bir projenin hangi yerel becerileri kullanabileceğini seçin.",
     "sections": [
       {
+        "title": "Mesaj taslağını sesle doldurma",
+        "steps": [
+          "Ayarlar → Ses girişi bölümünü açıp etkinleştirin; modeli ve çalışma ortamını indirin, dili seçip mikrofonu deneyin. Kurulum bağlı WorkStep sunucusundadır, telefona model gerekmez. Mandarin, Kantonca ve İngilizce desteklenir.",
+          "Düzenlenebilir sohbette mikrofona dokunun veya telefonda ses girişini basılı tutun. Konuşup kaydı bitirin, eklenen metni kontrol ederek elle gönderin. En fazla iki dakika; iptal hiçbir şey göndermez."
+        ],
+        "tips": [
+          "Ses bağlı sunucuda tanınır ve kaydedilmez. HTTPS veya yerel adres üzerinden mikrofona izin verin. Hatalarda site ve sistem izinlerini kontrol edin; eski arka ucu yeniden başlatın. Tanınan metni açıkça koruyabilirsiniz."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Mesaj taslağını sesle doldurma",
+          "caption": "Ses bağlı sunucuda tanınır ve kaydedilmez. HTTPS veya yerel adres üzerinden mikrofona izin verin. Hatalarda site ve sistem izinlerini kontrol edin; eski arka ucu yeniden başlatın. Tanınan metni açıkça koruyabilirsiniz."
+        }
+      },
+      {
         "title": "Birden fazla proje görüşmesiyle çalışın",
         "steps": [
           "Masaüstü genişliğinde sıradan bir proje görüşmesini açın ve Yeni konuşma'nın sağındaki Konuşma pencereleri (对话窗口) → Konuşma penceresi ekle (增加对话窗口) öğesini seçin.",
@@ -932,6 +947,18 @@
     "title": "Zamanlanmış görevler",
     "summary": "Bir zamanlamaya göre yeni görevler oluşturun veya mevcut görevlere zamanlı koordinatör talimatları gönderin ve yürütmeyi ve bildirimleri izleyin.",
     "sections": [
+      {
+        "title": "Hemen çalıştırma ve sonucu inceleme",
+        "steps": [
+          "Kaydedilmiş proje görevi oluşturma zamanlamasında listeden veya düzenleyiciden Hemen çalıştır seçin. Yalnız kaydedilmiş ayarlar kullanılır; kaydedilmemiş değişiklikler ve sonraki zaman etkilenmez. Etkin çalışmanın bitmesini bekleyin.",
+          "Çalışma kaydında üretilen görev JSON’unu açıp taslakları oluşturulan görevlerle karşılaştırın. Eski kayıtlarda veya üretim öncesi hatalarda JSON olmayabilir. Kısmi hatayı yeniden denemeden önce oluşturulan görevleri kontrol edin."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Hemen çalıştırma ve sonucu inceleme",
+          "caption": "Çalışma kaydında üretilen görev JSON’unu açıp taslakları oluşturulan görevlerle karşılaştırın. Eski kayıtlarda veya üretim öncesi hatalarda JSON olmayabilir. Kısmi hatayı yeniden denemeden önce oluşturulan görevleri kontrol edin."
+        }
+      },
       {
         "title": "Tek bir programdan birden fazla görev oluşturun",
         "steps": [

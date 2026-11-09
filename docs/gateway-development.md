@@ -1,5 +1,11 @@
 # Gateway 开发与部署
 
+## 整机访问权限
+
+“访问整台设备”授予该设备工作区的全部操作权限，包括项目初始化、文件管理、任务、分享、引擎、本地供应商和本机设置；无需再分配设备业务权限，也不要求访问者是设备所有者。网关在建立和持续使用整机数据通道时核对用户状态、设备状态及个人／用户组授权，撤权或移出授权组后拒绝继续访问。daemon 仅对已认证网关通道产生的整机身份使用此语义，浏览器自报身份、项目及分享会话不能获得整机权限。
+
+此授权不包含网关平台管理、设备授权分配或平台模型供应商资源；这些继续单独核权。协议中的 `device_owner` 字段为兼容既有通道格式保留，整机数据代理用它传递宿主操作能力，不修改数据库的设备所有者。实现入口为 Gateway `services/remote_access_api.py::proxy_remote_request`、daemon `services/gateway_client/policy.py::require_managed_capability` 和 `api/gateway_platform.py::_settings_service`；回归覆盖 `test_remote_provider_scope.py`、`test_user_devices.py`、`test_gateway_policy.py`、`test_gateway_platform_settings.py` 和 `test_desktop_security.py`。
+
 ## 飞书与 Lark 企业身份
 
 管理后台「平台设置 → 组织同步与扫码登录」支持添加飞书／Lark 企业自建应用。填写企业 `Tenant Key`（开放平台返回的 `tenant_key`）、`App ID` 和 `App Secret`，分别控制应用、扫码登录和组织同步的启用状态。密钥沿用网关加密存储，列表不回显。`provider` 分别为 `feishu`、`lark`；登录、同步及管理 API 沿用现有 `/api/admin/identity-sources` 和 `/api/auth/external/{source_id}/…` 路径。
@@ -112,7 +118,7 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 0.0.0.0 -
 
 ## 普通 daemon 的平台设置
 
-桌面和移动端均可打开 WorkStep 设置 → 网关平台，填写地址并选择“保存设置”。网关地址支持 HTTPS 和本机回环 HTTP；仅保存地址不会认证或开启网关模式，主动勾选“开启网关模式”并保存后才前往平台认证。关闭模式会取消待认证并断开网关连接，重启后仍保持关闭。移动浏览器通过现有远程访问密钥校验后可读取和保存配置；受管连接的远程修改要求设备所有者会话，项目及分享会话不能修改主机网关。
+桌面和移动端均可打开 WorkStep 设置 → 网关平台，填写地址并选择“保存设置”。网关地址支持 HTTPS 和本机回环 HTTP；仅保存地址不会认证或开启网关模式，主动勾选“开启网关模式”并保存后才前往平台认证。关闭模式会取消待认证并断开网关连接，重启后仍保持关闭。移动浏览器通过现有远程访问密钥校验后可读取和保存配置；通过网关授权的整机会话也可修改本机网关设置，项目及分享会话不能修改主机网关。
 
 服务读取平台公钥并固定指纹，发起 PKCE 登录；认证回到发起请求的浏览器入口下的固定 `/api/gateway-platform/callback` 路径，支持手机访问的 HTTP/LAN 和 HTTPS 地址，并校验回跳入口、状态码、验证码、安装身份和签名。首次认证的电脑可能待审批，管理员批准后重新认证；批准后连接现有控制/数据隧道。认证在平台页面完成，daemon 不收集平台账号密码。普通桌面会在返回窗口时刷新认证结果并重载工作台；待审批设备可在管理员批准后重新认证。开发时 Vite 代理保留浏览器 Host，保证回跳与 Cookie 同源检查一致。
 

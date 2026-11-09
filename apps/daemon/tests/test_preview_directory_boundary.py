@@ -273,3 +273,31 @@ async def test_project_and_git_entries_reject_outside_root(preview_scope, monkey
             assert response.status_code == 403, response.text
         response = await client.get('/api/git/projects/p1/tasks/task/workspace')
         assert response.status_code == 403, response.text
+
+
+@pytest.mark.asyncio
+async def test_default_workspace_is_allowed_without_its_parent(preview_scope, monkeypatch):
+    from services import customization_workspace
+    app, configured, outside = preview_scope
+    workspace = outside.parent / 'runtime' / 'workspace'
+    workspace.mkdir(parents=True)
+    (workspace / 'ok.txt').write_text('workspace allowed')
+    secret = workspace.parent / 'private.txt'
+    secret.write_text('not shared')
+    (workspace / 'escape.txt').symlink_to(secret)
+    sibling = workspace.parent / 'workspace-other'
+    sibling.mkdir()
+    (sibling / 'file.txt').write_text('not shared')
+    monkeypatch.setattr(customization_workspace, 'workspace_root', lambda: workspace)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://local') as client:
+        for endpoint in ('preview', 'file'):
+            assert (await client.get('/api/fs/' + endpoint, params={'path': str(workspace / 'ok.txt')})).status_code == 200
+            for path in (workspace / '../private.txt', workspace / 'escape.txt', sibling / 'file.txt'):
+                assert (await client.get('/api/fs/' + endpoint, params={'path': str(path), 'absolute': 'true'})).status_code == 403
+        browse = await client.get('/api/fs/browse', params={'path': str(workspace)})
+        assert browse.status_code == 200
+        assert browse.json()['parent'] is None
+        assert 'escape.txt' not in {entry['name'] for entry in browse.json()['entries']}
+        assert (await client.get('/api/fs/browse', params={'path': str(workspace.parent)})).status_code == 403
+        # Adding the default workspace does not grant it to another project.
+        assert (await client.get('/api/fs/preview', params={'project_id': 'p1', 'path': str(workspace / 'ok.txt')})).status_code == 403

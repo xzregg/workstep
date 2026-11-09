@@ -802,6 +802,21 @@
     "summary": "Colabore diretamente no contexto do projeto e escolha quais habilidades locais um projeto pode utilizar.",
     "sections": [
       {
+        "title": "Preencher um rascunho por voz",
+        "steps": [
+          "Abra Configurações → Entrada de voz, ative, baixe o modelo e o ambiente, escolha o idioma e teste o microfone. A instalação ocorre no host WorkStep conectado; o celular não precisa do modelo. Suporta mandarim, cantonês e inglês.",
+          "Toque no microfone de uma conversa editável ou mantenha pressionado o botão de voz no celular. Fale, finalize, confira o texto inserido e envie manualmente. Máximo de dois minutos; cancelar não envia nada."
+        ],
+        "tips": [
+          "O áudio é reconhecido no host conectado e não é salvo. Permita o microfone por HTTPS ou endereço local. Se falhar, confira permissões do site e do sistema e reinicie um backend antigo. É possível manter explicitamente o texto reconhecido."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Preencher um rascunho por voz",
+          "caption": "O áudio é reconhecido no host conectado e não é salvo. Permita o microfone por HTTPS ou endereço local. Se falhar, confira permissões do site e do sistema e reinicie um backend antigo. É possível manter explicitamente o texto reconhecido."
+        }
+      },
+      {
         "title": "Trabalhe com várias conversas de projeto",
         "steps": [
           "Na largura da área de trabalho, abra uma conversa de projeto comum e escolha Janelas de conversa (对话窗口) → Adicionar janela de conversa (增加对话窗口), à direita de Nova conversa.",
@@ -932,6 +947,18 @@
     "title": "Tarefas agendadas",
     "summary": "Crie novas tarefas de acordo com um cronograma ou envie instruções cronometradas ao coordenador para tarefas existentes e acompanhe a execução e as notificações.",
     "sections": [
+      {
+        "title": "Executar agora e conferir resultados",
+        "steps": [
+          "Em um agendamento salvo que cria tarefas de projeto, clique em Executar agora na lista ou editor. Usa apenas configurações salvas; ignora mudanças pendentes e preserva o próximo horário. Aguarde execuções ativas.",
+          "Expanda o JSON das tarefas geradas no histórico e compare rascunhos e tarefas criadas. Registros antigos ou falhas antes da geração podem não ter JSON. Confira tarefas já criadas antes de repetir uma falha parcial."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Executar agora e conferir resultados",
+          "caption": "Expanda o JSON das tarefas geradas no histórico e compare rascunhos e tarefas criadas. Registros antigos ou falhas antes da geração podem não ter JSON. Confira tarefas já criadas antes de repetir uma falha parcial."
+        }
+      },
       {
         "title": "Gere várias tarefas a partir de um agendamento",
         "steps": [

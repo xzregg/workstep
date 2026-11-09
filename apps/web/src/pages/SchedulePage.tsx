@@ -3,10 +3,12 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 
+import ScheduleRunNowButton from '../components/ScheduleRunNowButton'
 import ScheduleRuleEditor from '../components/ScheduleRuleEditor'
 import TaskScheduleEditor from '../components/TaskScheduleEditor'
 import type { BoundScheduleTask } from '../components/TaskScheduleEditor'
 import ScheduleNotificationEditor, {type NotificationEditorState} from '../components/ScheduleNotificationEditor'
+import ScheduleRunJson from '../components/ScheduleRunJson'
 import ScheduleRunNotification from '../components/ScheduleRunNotification'
 import AiTaskCreateChat from '../components/AiTaskCreateChat'
 import Button from '../components/Button'
@@ -80,6 +82,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
   const [listType, setListType] = useState<'once' | 'recurring'>('recurring')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [runsRevision, refreshRuns] = useReducer((value: number) => value + 1, 0)
   const [runs, setRuns] = useState<ScheduleRun[]>([])
   const [runFilter, setRunFilter] = useState('all')
   const [loading, setLoading] = useState(false)
@@ -151,8 +154,19 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
 
   useEffect(() => {
     if (!projectId || !selectedId) { setRuns([]); return }
-    scheduleApi.runs(projectId, selectedId).then((result) => setRuns(result.runs)).catch((cause) => setError((cause as Error).message))
-  }, [projectId, selectedId])
+    let active = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const refresh = async () => {
+      try {
+        const result = await scheduleApi.runs(projectId, selectedId)
+        if (!active) return
+        setRuns(result.runs)
+        if (result.runs.some(run => run.status === 'queued' || run.status === 'running')) timer = setTimeout(() => void refresh(), 1500)
+      } catch (cause) { if (active) setError((cause as Error).message) }
+    }
+    void refresh()
+    return () => { active = false; clearTimeout(timer) }
+  }, [projectId, selectedId, runsRevision])
 
   useEffect(() => {
     if (!projectId || !workflowId) { setSteps([]); return }
@@ -535,7 +549,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
 
           <ScheduleNotificationEditor key={`${projectId}:${selectedId || 'new'}`} projectId={projectId} initialValue={selected?.notification}
             onChange={(state, automatic) => { if (automatic) acceptDefaults('notification', state.value); setNotification(state) }} />
-          {canManage && <div className="schedule-save-row" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}><Button variant="primary" loading={saving} disabled={!notification.valid || preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : !workflowId)} onClick={() => void save()}>{t('common.save')}</Button></div>}
+          {canManage && <div className="schedule-save-row">{selected && <ScheduleRunNowButton key={`${projectId}:${selected.id}`} projectId={projectId} scheduleId={selected.id} disabled={saving || selected.status === 'invalid'} running={runs.some(run => run.schedule_id === selected.id && (run.status === 'queued' || run.status === 'running'))} onStarted={refreshRuns} />}<Button variant="primary" loading={saving} disabled={!notification.valid || preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : !workflowId)} onClick={() => void save()}>{t('common.save')}</Button></div>}
           </>}
           </fieldset>)}
         </main>
@@ -565,7 +579,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.runs')}</strong><div style={{ flex: 1 }} /><Select value={runFilter} onChange={(event) => setRunFilter(event.target.value)} style={{ width: 130 }}><option value="all">{t('schedules.all')}</option>{['queued', 'running', 'created', 'succeeded', 'failed', 'skipped', 'stopped'].map((status) => <option key={status} value={status}>{t(`schedules.status_${status}` as any)}</option>)}</Select></div>
               {filteredRuns.length === 0 && <div style={{ color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', padding: 16 }}>{t('schedules.noRuns')}</div>}
-              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}<ScheduleRunNotification canRetry={canManage} projectId={projectId} scheduleId={selectedId || ''} run={run} onRetried={async () => { if (selectedId) setRuns((await scheduleApi.runs(projectId, selectedId)).runs) }} />{(run.created_tasks?.length ? run.created_tasks : run.task_id ? [{ id: run.task_id, title: '' }] : []).map(task => <Button key={task.id} className="schedule-run-task-link" size="sm" onClick={async () => { if (!project) await fetchTasks(projectId, task.workflow_id || selected?.workflow_id); setFocusMessageId(run.assistant_message_id || undefined); setTaskId(task.id) }}>{task.title || t('schedules.openTask')}</Button>)}</div>)}
+              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}{selected?.task_template.mode === 'agent' && <ScheduleRunJson run={run} />}<ScheduleRunNotification canRetry={canManage} projectId={projectId} scheduleId={selectedId || ''} run={run} onRetried={async () => { if (selectedId) setRuns((await scheduleApi.runs(projectId, selectedId)).runs) }} />{(run.created_tasks?.length ? run.created_tasks : run.task_id ? [{ id: run.task_id, title: '' }] : []).map(task => <Button key={task.id} className="schedule-run-task-link" size="sm" onClick={async () => { if (!project) await fetchTasks(projectId, task.workflow_id || selected?.workflow_id); setFocusMessageId(run.assistant_message_id || undefined); setTaskId(task.id) }}>{task.title || t('schedules.openTask')}</Button>)}</div>)}
             </>
           ))}
         </section>

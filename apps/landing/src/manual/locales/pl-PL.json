@@ -802,6 +802,21 @@
     "summary": "Współpracuj bezpośrednio w kontekście projektu i wybieraj, które lokalne umiejętności mogą zostać wykorzystane w projekcie.",
     "sections": [
       {
+        "title": "Wprowadzanie szkicu głosem",
+        "steps": [
+          "Otwórz Ustawienia → Wprowadzanie głosowe, włącz je, pobierz model i środowisko, wybierz język i przetestuj mikrofon. Instalacja odbywa się na połączonym hoście WorkStep, nie na telefonie. Obsługiwane są mandaryński, kantoński i angielski.",
+          "Naciśnij mikrofon w edytowalnym czacie albo przytrzymaj przycisk głosowy w telefonie. Podyktuj tekst, zakończ, sprawdź wstawiony szkic i wyślij ręcznie. Maksymalnie dwie minuty; anulowanie niczego nie wysyła."
+        ],
+        "tips": [
+          "Dźwięk jest rozpoznawany na połączonym hoście i nie jest zapisywany. Zezwól na mikrofon przez HTTPS lub adres lokalny. Przy błędach sprawdź uprawnienia witryny i systemu, uruchom ponownie stary backend. Rozpoznany tekst można jawnie zachować."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Wprowadzanie szkicu głosem",
+          "caption": "Dźwięk jest rozpoznawany na połączonym hoście i nie jest zapisywany. Zezwól na mikrofon przez HTTPS lub adres lokalny. Przy błędach sprawdź uprawnienia witryny i systemu, uruchom ponownie stary backend. Rozpoznany tekst można jawnie zachować."
+        }
+      },
+      {
         "title": "Pracuj z wieloma rozmowami projektowymi",
         "steps": [
           "Na szerokości pulpitu otwórz zwykłą konwersację projektową i wybierz Okna konwersacji (对话窗口) → Dodaj okno konwersacji (增加对话窗口), po prawej stronie Nowa konwersacja.",
@@ -932,6 +947,18 @@
     "title": "Zaplanowane zadania",
     "summary": "Twórz nowe zadania zgodnie z harmonogramem lub wysyłaj instrukcje koordynatora w określonym czasie do istniejących zadań, śledź wykonanie i powiadomienia.",
     "sections": [
+      {
+        "title": "Uruchamianie teraz i kontrola wyniku",
+        "steps": [
+          "Dla zapisanego harmonogramu tworzenia zadań projektu kliknij Uruchom teraz na liście lub w edytorze. Używane są wyłącznie zapisane ustawienia; niezapisane zmiany i kolejny termin nie zmieniają się. Poczekaj na aktywne wykonanie.",
+          "Rozwiń JSON wygenerowanych zadań w historii i porównaj szkice z utworzonymi zadaniami. Starsze wykonania lub błędy przed generowaniem mogą nie mieć JSON. Przed ponowieniem częściowego błędu sprawdź istniejące zadania."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Uruchamianie teraz i kontrola wyniku",
+          "caption": "Rozwiń JSON wygenerowanych zadań w historii i porównaj szkice z utworzonymi zadaniami. Starsze wykonania lub błędy przed generowaniem mogą nie mieć JSON. Przed ponowieniem częściowego błędu sprawdź istniejące zadania."
+        }
+      },
       {
         "title": "Generuj wiele zadań z jednego harmonogramu",
         "steps": [

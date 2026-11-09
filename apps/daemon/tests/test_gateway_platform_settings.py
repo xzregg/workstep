@@ -555,6 +555,32 @@ async def test_mobile_cannot_change_managed_gateway_without_device_owner_session
 
 
 @pytest.mark.asyncio
+async def test_whole_device_gateway_guest_can_configure_host_gateway():
+    from api.gateway_platform import router
+
+    class Login:
+        async def save_settings(self, url, enabled):
+            return {'url': url, 'enabled': enabled}
+
+    app = FastAPI()
+    app.include_router(router)
+    app.state.gateway_browser_login = Login()
+    app.state.gateway_client = SimpleNamespace(managed_config=object(), current_user_id='owner')
+
+    @app.middleware('http')
+    async def attach_guest(request, call_next):
+        request.scope['gateway_remote_actor'] = SimpleNamespace(user_id='guest', project_id=None)
+        request.scope['gateway_device_owner'] = True
+        return await call_next(request)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='https://device.test') as client:
+        response = await client.put('/api/gateway-platform/settings',
+                                    headers={'Origin': 'https://device.test'},
+                                    json={'url': 'https://gateway.example.com', 'enabled': False})
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_gateway_project_visitor_cannot_read_or_change_host_settings():
     from api.gateway_platform import router
     app=FastAPI();app.include_router(router)

@@ -565,3 +565,69 @@ async def test_weixin_stream_coalesces_two_character_prefix_and_holds_incomplete
     await channel.send_text(recipient, sentence + '接下来还有一点。')
     assert channel._api.request.await_args.kwargs['payload']['msg']['item_list'][0]['text_item']['text'] == '接下来还有一点。'
     await channel.stop()
+
+
+async def test_weixin_audio_file_send_api_preserves_playable_wav_and_stays_responsive(bots):
+    import io
+    import wave
+    import main
+    from services.channels.weixin import WeixinAdapter
+    from services.channels.weixin_media import decrypt
+    manager, project, *_ = bots
+    audio = io.BytesIO()
+    with wave.open(audio, 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b'\0\0' * 1600)
+    original = audio.getvalue()
+    path = project.path / 'reply.wav'
+    await asyncio.to_thread(path.write_bytes, original)
+    manager.weixin_login.api.request = AsyncMock(side_effect=[
+        {'qrcode': 'qr', 'qrcode_img_content': 'scan'},
+        {'status': 'confirmed', 'bot_token': 'token', 'ilink_bot_id': 'account', 'ilink_user_id': 'owner'},
+    ])
+    receipt = await manager.weixin_login.start()
+    await manager.weixin_login.poll(receipt['login_id'])
+    def factory(bot, on_message, on_state):
+        channel = WeixinAdapter(bot, on_message, on_state)
+        channel.start = AsyncMock()
+        return channel
+    manager._factories['weixin'] = factory
+    bot = await manager.create_bot({'platform': 'weixin', 'name': '音频', 'enabled': True,
+        'login_id': receipt['login_id'], 'default_project_id': project.id, 'default_target_type': 'project'})
+    channel = manager._adapters[bot['id']]
+    requests = []
+    async def api(endpoint, **kwargs):
+        requests.append((endpoint, kwargs['payload']))
+        return {'upload_param': 'audio-upload'} if endpoint == 'getuploadurl' else {}
+    channel._api.request = api
+    entered, release = asyncio.Event(), asyncio.Event()
+    async def upload(request):
+        metadata = requests[-1][1]
+        assert metadata['media_type'] == 3  # FILE, never silently dropped VOICE.
+        assert decrypt(request.content, bytes.fromhex(metadata['aeskey'])) == original
+        entered.set()
+        await release.wait()
+        return httpx.Response(200, headers={'x-encrypted-param': 'audio-download'})
+    channel._api.http = httpx.AsyncClient(transport=httpx.MockTransport(upload))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url='http://test') as client:
+        pending = asyncio.create_task(client.post('/api/channel-bots/send', json={
+            'project_id': project.id, 'bot_id': bot['id'], 'user_id': 'owner',
+            'attachments': [{'kind': 'file', 'path': 'reply.wav'}],
+        }))
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
+        finally:
+            release.set()
+        response = await asyncio.wait_for(pending, 1)
+        assert response.status_code == 200, response.text
+        assert response.json()['sent'] is True
+    message = requests[-1][1]['msg']
+    assert message['to_user_id'] == 'owner'
+    item = message['item_list'][0]
+    assert item['type'] == 4
+    assert item['file_item']['file_name'] == 'reply.wav'
+    assert item['file_item']['len'] == str(len(original))
+    assert all('voice_item' not in item for item in message['item_list'])

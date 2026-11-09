@@ -8,6 +8,7 @@ from acp import schema
 
 from engines.core.events import InternalEvent, acp_raw_event
 from engines.core.interactions import elicitation_request, permission_request
+from engines.core.interaction_policy import automatic_response, mode_decision
 
 
 class ACPStreamingClient:
@@ -62,6 +63,16 @@ class ACPStreamingClient:
         elicitation_id = getattr(mode, "elicitation_id", None)
         if requested_schema is None and url is None:
             return schema.DeclineElicitationResponse(action="decline")
+        if url is None:
+            dump = getattr(requested_schema, "model_dump", None)
+            schema_data = dump(by_alias=True, exclude_none=True) if callable(dump) else requested_schema
+            response = automatic_response({
+                "method": "elicitation/create", "requested_schema": schema_data,
+            }, mode_decision(self.permission_mode))
+            if response is not None:
+                if response["action"] == "accept":
+                    return schema.AcceptElicitationResponse(action="accept", content={})
+                return schema.DeclineElicitationResponse(action="decline")
         interaction_id = str(elicitation_id or uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
         self._elicitation_futures[interaction_id] = future

@@ -87,3 +87,6 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+.schedule-save-row { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.schedule-run-now-error { color: var(--danger); font-size: calc(12px * var(--font-scale)); }

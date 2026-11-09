@@ -802,6 +802,21 @@
     "summary": "Arbeiten Sie direkt im Projektkontext und wählen Sie verfügbare lokale Skills.",
     "sections": [
       {
+        "title": "Nachrichtenentwurf per Sprache ausfüllen",
+        "steps": [
+          "Öffnen Sie Einstellungen → Spracheingabe, aktivieren Sie sie, laden Sie Modell und Laufzeit herunter, wählen Sie die Sprache und testen Sie das Mikrofon. Installiert wird auf dem verbundenen WorkStep-Host, nicht auf dem Telefon. Unterstützt werden Mandarin, Kantonesisch und Englisch.",
+          "Tippen Sie im bearbeitbaren Chat auf das Mikrofon; am Telefon geht auch langes Drücken. Sprechen Sie, beenden Sie die Aufnahme, prüfen Sie den eingefügten Text und senden Sie ihn selbst. Maximal zwei Minuten; Abbrechen sendet nichts."
+        ],
+        "tips": [
+          "Die Erkennung erfolgt auf dem verbundenen Host, Audio wird nicht gespeichert. Erlauben Sie das Mikrofon über HTTPS oder eine lokale Adresse. Prüfen Sie bei Fehlern Website- und Systemrechte; starten Sie ein veraltetes Backend neu. Erkannter Text kann ausdrücklich behalten werden."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Nachrichtenentwurf per Sprache ausfüllen",
+          "caption": "Die Erkennung erfolgt auf dem verbundenen Host, Audio wird nicht gespeichert. Erlauben Sie das Mikrofon über HTTPS oder eine lokale Adresse. Prüfen Sie bei Fehlern Website- und Systemrechte; starten Sie ein veraltetes Backend neu. Erkannter Text kann ausdrücklich behalten werden."
+        }
+      },
+      {
         "title": "Mehrere Projektgespräche gleichzeitig bearbeiten",
         "steps": [
           "Öffnen Sie bei Desktopbreite ein normales Projektgespräch und wählen Sie rechts neben Neues Gespräch das Menü Gesprächsfenster (对话窗口) → Fenster hinzufügen (增加对话窗口).",
@@ -932,6 +947,18 @@
     "title": "Zeitpläne",
     "summary": "Erstellen Sie Aufgaben zeitgesteuert oder senden Sie Koordinatoranweisungen an vorhandene Aufgaben und verfolgen Sie Ausführung und Zustellung.",
     "sections": [
+      {
+        "title": "Sofort ausführen und erzeugte Aufgaben prüfen",
+        "steps": [
+          "Klicken Sie bei einem gespeicherten Projekt-Aufgabenplan in Liste oder Editor auf Jetzt ausführen. Nur gespeicherte Einstellungen zählen; ungespeicherte Änderungen und der nächste Termin bleiben unberührt. Warten Sie auf laufende Ausführungen.",
+          "Klappen Sie das JSON erzeugter Aufgaben im Verlauf auf und vergleichen Sie Entwürfe mit erstellten Aufgaben. Alte Läufe oder Fehler vor der Erzeugung können ohne JSON sein. Prüfen Sie vor einem erneuten Versuch bereits erstellte Aufgaben."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Sofort ausführen und erzeugte Aufgaben prüfen",
+          "caption": "Klappen Sie das JSON erzeugter Aufgaben im Verlauf auf und vergleichen Sie Entwürfe mit erstellten Aufgaben. Alte Läufe oder Fehler vor der Erzeugung können ohne JSON sein. Prüfen Sie vor einem erneuten Versuch bereits erstellte Aufgaben."
+        }
+      },
       {
         "title": "Mehrere Aufgaben aus einem Plan erzeugen",
         "steps": [

@@ -38,6 +38,7 @@ from api.action import task_router as action_task_router, run_router as action_r
 from api.history import router as history_router
 from api.fs import router as fs_router
 from api.fs import uploads_router
+from api.speech import router as speech_router
 from api.search import router as search_router
 from api.templates import ensure_global_templates
 from api.templates import router as templates_router
@@ -282,6 +283,8 @@ async def _application_lifespan(app: FastAPI):
     finally:
         await task_auto_retry.close()
         await system_statistics.close()
+        from services.speech import service as speech_service
+        await speech_service.close()
         app.state.local_cli_runtime = None
         await asyncio.to_thread(local_cli_runtime.close)
         await completion_push.shutdown()
@@ -364,6 +367,7 @@ app.include_router(action_session_router)
 app.include_router(history_router)
 app.include_router(fs_router)
 app.include_router(uploads_router)
+app.include_router(speech_router)
 app.include_router(search_router)
 app.include_router(templates_router)
 app.include_router(role_center_router)

@@ -88,9 +88,7 @@ def deepseek_provider():
 def test_deepseek_harness_declares_sdk_install_and_safe_capabilities(monkeypatch):
     monkeypatch.setattr(DeepSeekHarnessEngine, "is_configured", staticmethod(lambda: True))
 
-    assert DeepSeekHarnessEngine.install_command() == (
-        "pip install deepseek-harness-sdk==0.2.1rc2"
-    )
+    assert DeepSeekHarnessEngine.install_command() == "pip install deepseek-harness-sdk"
     assert DeepSeekHarnessEngine().capabilities == EngineCapabilities(
         supports_coordinator=True,
         supports_resume=True,
@@ -679,17 +677,17 @@ def test_build_harness_unknown_generation_raises(monkeypatch, tmp_path):
         _build(monkeypatch, tmp_path, UnknownConfig)
 
 
-def test_install_surface_pins_latest_sdk():
-    assert DeepSeekHarnessEngine.SDK_PACKAGE == "deepseek-harness-sdk==0.2.1rc2"
+def test_install_surface_follows_latest_sdk():
+    assert DeepSeekHarnessEngine.SDK_PACKAGE == "deepseek-harness-sdk"
     assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.kind == "pypi"
-    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.default_version == "0.2.1rc2"
-    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.minimum == "0.2.1rc2"
+    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.default_version is None
+    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.minimum == "0"
     assert DeepSeekHarnessEngine.install_command() == f"pip install {DeepSeekHarnessEngine.SDK_PACKAGE}"
     assert DeepSeekHarnessEngine.update_command() == f"pip install --upgrade {DeepSeekHarnessEngine.SDK_PACKAGE}"
 
 
 @pytest.mark.parametrize("action", ["install", "update"])
-async def test_install_and_update_use_exact_validated_sdk(monkeypatch, action):
+async def test_install_and_update_use_latest_sdk(monkeypatch, action):
     calls = []
 
     async def install(package, *, upgrade=False):
@@ -699,10 +697,10 @@ async def test_install_and_update_use_exact_validated_sdk(monkeypatch, action):
     monkeypatch.setattr("engines.deepseek_harness.install_python_package", install)
     monkeypatch.setattr("engines.core.base.install_python_package", install)
     assert (await getattr(DeepSeekHarnessEngine(), action)()).success
-    assert calls == [("deepseek-harness-sdk==0.2.1rc2", action == "update")]
+    assert calls == [("deepseek-harness-sdk", action == "update")]
 
 
-async def test_runtime_catalog_excludes_sdk_before_persisted_resume(tmp_path):
+async def test_runtime_catalog_includes_all_compatible_sdk_releases(tmp_path):
     import httpx
     from services.engine_runtime import EngineRuntimeManager
 
@@ -715,8 +713,14 @@ async def test_runtime_catalog_excludes_sdk_before_persisted_resume(tmp_path):
         lambda _: httpx.Response(200, json={"info": {"version": "0.2.2"}, "releases": releases}),
     ))
     entries, default = await manager.releases(DeepSeekHarnessEngine.RUNTIME_PACKAGE)
-    assert [entry["version"] for entry in entries] == ["0.2.2", "0.2.1rc2"]
-    assert default == "0.2.1rc2"
+    assert [entry["version"] for entry in entries] == [
+        "0.2.2",
+        "0.2.1rc2",
+        "0.2.1rc1",
+        "0.1.5rc1",
+        "0.1.0rc7",
+    ]
+    assert default == "0.2.2"
 
 
 def test_preset_templates_ship():

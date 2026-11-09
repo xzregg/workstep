@@ -65,6 +65,13 @@ CONTENT_SECURITY_POLICY = "; ".join(
     )
 )
 
+# Only first-party application documents need capture. Uploaded/project HTML,
+# shares, API responses and the landing site retain the deny-all policy.
+_MICROPHONE_DOCUMENTS = frozenset({
+    '/', '/index.html', '/chat', '/tasks', '/canvas', '/statistics',
+    '/schedules', '/appearance', '/git', '/file-preview',
+})
+
 REMOTE_NATIVE_PATHS = frozenset({
     "/api/fs/open-directory", "/api/fs/open-session-journal", "/api/fs/directory-openers",
     "/api/project/init", "/api/project/register",
@@ -414,7 +421,10 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault(
             "Permissions-Policy",
-            "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+            "camera=(), microphone="
+            + ("(self)" if request.method in ('GET', 'HEAD')
+               and response.status_code == 200 and request.url.path in _MICROPHONE_DOCUMENTS else "()")
+            + ", geolocation=(), payment=(), usb=()",
         )
 
         # 取消 iframe 嵌入限制：任何响应都不带 X-Frame-Options，CSP 允许任意祖先 frame。

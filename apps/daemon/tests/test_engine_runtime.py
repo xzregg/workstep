@@ -55,9 +55,6 @@ async def test_slow_download_file_open_keeps_event_loop_responsive(tmp_path, mon
 
 @pytest.fixture
 async def runtime_client(tmp_path, monkeypatch):
-    # This isolated app has no managed-mode lifecycle. Avoid importing main
-    # through its policy guard and changing the install directory mid-test.
-    monkeypatch.setattr("api.engine.require_managed_capability", lambda _action: None)
     monkeypatch.delenv("WORKSTEP_ENGINE_PACKAGE_DIR", raising=False)
     monkeypatch.setattr(engine_runtime.config_store, "set_engine_verified", lambda *args: None)
     async def unexpected_install(*args, **kwargs):
@@ -123,7 +120,7 @@ async def test_version_install_uses_uv_for_user_runtime_without_pip(tmp_path, mo
     archive.write_bytes(b"wheel")
 
     result = await manager._install_python_archive(
-        RuntimePackage("openai-codex", "pypi", "0.147.0"), archive, "0.157.1"
+        RuntimePackage("openai-codex", "pypi"), archive, "0.157.1"
     )
 
     assert result.success

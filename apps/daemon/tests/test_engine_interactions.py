@@ -55,6 +55,79 @@ class InteractionEngine(AcpEngineBase):
         return {}
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine_id,config", [
+    ("codex_sdk", {"approval_mode": "auto_review"}),
+    ("codex_sdk", {"approval_mode": ""}),
+    ("codex", {"approval_policy": "full-auto"}),
+    ("claude", {"permission_mode": "bypassPermissions"}),
+    ("claude_agent_sdk", {"permission_mode": "auto"}),
+    ("qoder_sdk", {"permission_mode": "bypassPermissions"}),
+    ("opencode", {"permission_mode": "allow"}),
+])
+async def test_shared_backend_approval_uses_effective_engine_config(engine_id, config):
+    engine = InteractionEngine()
+    engine.ENGINE_ID = engine_id
+    engine.configure_interaction_policy(config)
+    published = []
+    event = elicitation_request(
+        interaction_id="consent", message="Allow browser?",
+        requested_schema={"type": "object", "properties": {}},
+    )
+    assert await engine.request_interaction(event, published.append) == {
+        "action": "accept", "content": {},
+    }
+    permission = permission_request(
+        interaction_id="tool", session_id="session", tool_call={},
+        options=[{"option_id": "custom-allow", "kind": "allow_once", "name": "允许"}],
+    )
+    assert await engine.request_interaction(permission, published.append) == {
+        "outcome": {"outcome": "selected", "option_id": "custom-allow"},
+    }
+    assert published == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("runtime,config", [
+    ("ask", {"approval_mode": "auto_review"}),
+    (None, {"approval_mode": "unknown"}),
+])
+async def test_assistant_ask_overrides_engine_auto(runtime, config):
+    engine = InteractionEngine()
+    engine.ENGINE_ID = "codex_sdk"
+    engine._runtime_permission_mode = runtime
+    engine.configure_interaction_policy(config)
+    queue = asyncio.Queue()
+    event = elicitation_request(
+        interaction_id="consent", message="Allow browser?",
+        requested_schema={"type": "object", "properties": {}},
+    )
+    pending = asyncio.create_task(engine.request_interaction(event, queue.put))
+    await asyncio.wait_for(queue.get(), 1)
+    assert not pending.done()
+    await engine.respond_interaction(event.data, {"action": "decline"})
+    assert await pending == {"action": "decline"}
+
+
+@pytest.mark.anyio
+async def test_assistant_auto_overrides_engine_manual_but_keeps_questions():
+    engine = InteractionEngine()
+    engine.ENGINE_ID = "qoder_sdk"
+    engine._runtime_permission_mode = "auto"
+    engine.configure_interaction_policy({"permission_mode": "default"})
+    assert engine.runtime_permission_decision() is True
+    queue = asyncio.Queue()
+    event = elicitation_request(
+        interaction_id="question", message="Choose account",
+        requested_schema={"type": "object", "properties": {"account": {"type": "string"}}},
+    )
+    pending = asyncio.create_task(engine.request_interaction(event, queue.put))
+    await asyncio.wait_for(queue.get(), 1)
+    assert not pending.done()
+    await engine.respond_interaction(event.data, {"action": "accept", "content": {"account": "demo"}})
+    assert (await pending)["content"] == {"account": "demo"}
+
+
 def test_permission_request_keeps_acp_option_ids_and_labels():
     event = permission_request(
         interaction_id="permission-1",

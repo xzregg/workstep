@@ -511,6 +511,7 @@ def test_migrate_database_adds_hot_query_indexes_to_existing_tables(tmp_path):
 
     migrate_database(db)
     migrate_database(db)  # second pass must stay idempotent
+    assert 'generated_tasks_json' in {column.name for column in db.get_columns('schedule_runs')}
 
     assert db.execute_sql(
         'SELECT initiated_by_username FROM "workflow_runs" WHERE id = ?',

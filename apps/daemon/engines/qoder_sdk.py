@@ -73,7 +73,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
 
     ENGINE_ID = "qoder_sdk"
     SYSTEM_PROMPT_MODE = "system"
-    RUNTIME_PACKAGE = RuntimePackage('qoder-agent-sdk', 'pypi', '1.0.11', None)
+    RUNTIME_PACKAGE = RuntimePackage('qoder-agent-sdk', 'pypi')
     UPDATE_PACKAGE = "qoder-agent-sdk"
 
     def __init__(self):
@@ -397,6 +397,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
             await asyncio.to_thread(config_store.get_qoder_sdk_config),
             config_overrides,
         )
+        self.configure_interaction_policy(config)
         token = str(config.get("personal_access_token") or "").strip()
         if token:
             auth = access_token(token)

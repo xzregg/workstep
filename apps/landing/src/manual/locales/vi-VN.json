@@ -802,6 +802,21 @@
     "summary": "Cộng tác trực tiếp trong bối cảnh dự án và chọn những kỹ năng địa phương mà dự án có thể sử dụng.",
     "sections": [
       {
+        "title": "Nhập bản nháp bằng giọng nói",
+        "steps": [
+          "Mở Cài đặt → Nhập giọng nói, bật, tải mô hình và môi trường chạy, chọn ngôn ngữ rồi thử micrô. Cài đặt nằm trên máy chủ WorkStep đang kết nối; điện thoại không cần tải mô hình. Hỗ trợ tiếng Quan thoại, Quảng Đông và Anh.",
+          "Nhấn micrô trong cuộc trò chuyện có thể chỉnh sửa, hoặc nhấn giữ nút giọng nói trên điện thoại. Nói, kết thúc, kiểm tra văn bản được chèn rồi gửi thủ công. Tối đa hai phút; hủy không gửi gì."
+        ],
+        "tips": [
+          "Âm thanh được nhận dạng trên máy chủ kết nối và không lưu lại. Cho phép micrô qua HTTPS hoặc địa chỉ cục bộ. Khi lỗi, kiểm tra quyền hệ thống và trang; khởi động lại backend cũ. Có thể chủ động giữ văn bản đã nhận dạng."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Nhập bản nháp bằng giọng nói",
+          "caption": "Âm thanh được nhận dạng trên máy chủ kết nối và không lưu lại. Cho phép micrô qua HTTPS hoặc địa chỉ cục bộ. Khi lỗi, kiểm tra quyền hệ thống và trang; khởi động lại backend cũ. Có thể chủ động giữ văn bản đã nhận dạng."
+        }
+      },
+      {
         "title": "Làm việc với nhiều cuộc hội thoại dự án",
         "steps": [
           "Ở chiều rộng màn hình, mở một cuộc hội thoại dự án thông thường và chọn Cửa sổ hội thoại (对话窗口) → Thêm cửa sổ hội thoại (增加对话窗口), ở bên phải Cuộc hội thoại mới.",
@@ -932,6 +947,18 @@
     "title": "Nhiệm vụ theo lịch trình",
     "summary": "Tạo các nhiệm vụ mới theo lịch trình hoặc gửi hướng dẫn điều phối viên theo thời gian cho các nhiệm vụ hiện có, đồng thời theo dõi việc thực hiện và thông báo.",
     "sections": [
+      {
+        "title": "Chạy ngay và kiểm tra kết quả",
+        "steps": [
+          "Với lịch tạo tác vụ dự án đã lưu, chọn Chạy ngay trong danh sách hoặc trình sửa. Chỉ dùng cấu hình đã lưu, không áp dụng sửa đổi chưa lưu hay thay đổi lần chạy kế tiếp. Chờ lượt chạy hiện tại hoàn tất.",
+          "Mở JSON tác vụ đã tạo trong lịch sử và so sánh bản nháp với tác vụ thực tế. Lượt cũ hoặc lỗi trước khi sinh có thể không có JSON. Kiểm tra tác vụ đã tạo trước khi thử lại lỗi một phần."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Chạy ngay và kiểm tra kết quả",
+          "caption": "Mở JSON tác vụ đã tạo trong lịch sử và so sánh bản nháp với tác vụ thực tế. Lượt cũ hoặc lỗi trước khi sinh có thể không có JSON. Kiểm tra tác vụ đã tạo trước khi thử lại lỗi một phần."
+        }
+      },
       {
         "title": "Tạo nhiều nhiệm vụ từ một lịch trình",
         "steps": [

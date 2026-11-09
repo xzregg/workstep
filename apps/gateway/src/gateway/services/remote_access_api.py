@@ -140,13 +140,9 @@ async def proxy_remote_request(call: GatewayCall):
     provider_grant_expires_at = int(time.time()) + 300
     owner_routes = {'/api/project/init', '/api/project/register', '/api/fs/mkdir', '/api/statistics/system'}
     native_directory = call.target.path in {'/api/fs/browse', '/api/fs/search'} and not call.query_values.get('project_id')
-    device_owner = False
-    if not auth_session.project_id and (call.target.path in owner_routes or native_directory or call.target.path == '/api/managed/mode'):
-        async with call.database.session() as session:
-            device = await session.get(Device, device_id)
-            device_owner = device is not None and device.owner_user_id == user.id
+    device_owner = not auth_session.project_id
     if (call.target.path in owner_routes or native_directory) and not device_owner:
-        raise GatewayError('forbidden', 'Device ownership required')
+        raise GatewayError('forbidden', 'Whole-device access required')
     task_create = False
     if auth_session.project_id:
         if call.operation == 'POST' and call.target.path in ('/api/task/create', '/api/task/copy'):

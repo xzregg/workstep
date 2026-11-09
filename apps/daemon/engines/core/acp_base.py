@@ -38,6 +38,7 @@ from engines.core.interactions import (
     permission_signature,
 )
 from engines.core.plans import NativePlanTracker
+from engines.core.interaction_policy import automatic_response, engine_decision, mode_decision
 
 logger = logging.getLogger(__name__)
 
@@ -121,11 +122,13 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
     def runtime_permission_decision(self) -> bool | None:
         """Resolve modes that WorkStep can enforce at its approval bridge."""
         mode = self.runtime_permission_mode()
-        if mode in {"auto", "workspace-write", "danger-full-access"}:
-            return True
-        if mode == "read-only":
-            return False
-        return None
+        if mode:
+            return mode_decision(mode)
+        return getattr(self, "_interaction_policy_decision", None)
+
+    def configure_interaction_policy(self, effective_config: dict) -> None:
+        """Receive the same merged config passed to this engine invocation."""
+        self._interaction_policy_decision = engine_decision(self.ENGINE_ID, effective_config)
 
     def _execution_retry_delays(self, message: str) -> tuple[float, ...]:
         """Delays before each retry; adapters may specialize transient failures."""
@@ -1252,6 +1255,9 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         CLI/SDK adapters can expose their native pause. In-process engines use
         this broker so their tool coroutine blocks until ``respond_interaction``.
         """
+        response = automatic_response(event.data, self.runtime_permission_decision())
+        if response is not None:
+            return response
         interaction_id = str(event.data.get("interaction_id") or "")
         if not interaction_id:
             raise ValueError("interaction_request 缺少 interaction_id")
@@ -1317,6 +1323,9 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 "answers": answers,
             }
 
+        decision = self.runtime_permission_decision()
+        if decision is not None:
+            return decision, tool_input
         signature = permission_signature(tool_name, tool_input)
         session_allow = getattr(self, "_permission_session_allow", None)
         if session_allow is None:

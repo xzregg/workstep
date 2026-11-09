@@ -65,7 +65,7 @@ def _escalate_sandbox(mode: str) -> str:
 
 class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
     ENGINE_ID = "codex"
-    RUNTIME_PACKAGE = RuntimePackage('@openai/codex', 'npm', '0', None)
+    RUNTIME_PACKAGE = RuntimePackage('@openai/codex', 'npm')
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -296,6 +296,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
         codex_config = self.merge_config_overrides(
             await asyncio.to_thread(config_store.get_codex_config), config_overrides
         )
+        self.configure_interaction_policy(codex_config)
         compaction_args = self._compaction_config_args(codex_config)
         provider_runtime = await asyncio.to_thread(
             self.resolve_provider_runtime,

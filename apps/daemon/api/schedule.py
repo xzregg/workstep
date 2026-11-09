@@ -110,3 +110,13 @@ async def list_schedule_runs(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.post("/{schedule_id}/run-now")
+async def run_schedule_now(schedule_id: str, project_id: str = Query(...)):
+    try:
+        return await _module().run_now(project_id, schedule_id)
+    except ScheduleValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

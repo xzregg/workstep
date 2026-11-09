@@ -60,7 +60,7 @@ SETTINGS_WRITES = [
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method,path,body", SETTINGS_WRITES)
-@pytest.mark.parametrize("mode", ["denied", "allowed", "project", "unmanaged", "other-user", "expired"])
+@pytest.mark.parametrize("mode", ["denied", "allowed", "project", "unmanaged", "other-user", "expired", "missing"])
 async def test_settings_require_matching_host_permission(settings_app, method, path, body, mode):
     app, gateway = settings_app
     allowed = mode in ("allowed", "project", "other-user", "expired")
@@ -72,11 +72,50 @@ async def test_settings_require_matching_host_permission(settings_app, method, p
         gateway.policy_cache.current = replace(gateway.policy_cache.current, expires_at=0)
     if mode == "unmanaged":
         gateway.managed_config = None
+    if mode == "missing":
+        gateway.policy_cache.clear()
     actor = ActorSnapshot("user-2" if mode == "other-user" else "user-1", "Alice", "device-1", "PC", "managed",
                           project_id="project" if mode == "project" else None,
                           access_level="edit" if mode == "project" else None)
     with actor_context(actor):
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
             response = await client.request(method, path, **({"json": body} if body is not None else {}))
-    expected = 200 if mode in ("allowed", "unmanaged") else 403
+    if path.startswith("/api/engine/"):
+        expected = 403 if mode == "project" else 200
+    else:
+        expected = 200 if mode in ("allowed", "unmanaged") else 403
     assert response.status_code == expected, response.text
+
+
+@pytest.mark.parametrize("project_scoped", [False, True])
+@pytest.mark.parametrize("rollback", [False, True])
+@pytest.mark.parametrize("policy_state", ["missing", "expired", "denied"])
+async def test_engine_version_changes_without_gateway_permission(
+    settings_app, monkeypatch, project_scoped, rollback, policy_state,
+):
+    from api import engine
+
+    app, gateway = settings_app
+    calls = []
+
+    async def start(engine_id, version, **kwargs):
+        calls.append((engine_id, version, kwargs["rollback"]))
+        return {"status": "running"}
+
+    monkeypatch.setattr(engine.engine_runtime.runtime_manager, "start", start)
+    actor = ActorSnapshot("user-1", "Alice", "device-1", "PC", "managed",
+                          project_id="project" if project_scoped else None)
+    if policy_state != "missing":
+        from dataclasses import replace
+        token, pem, fingerprint = _signed_policy(engine_install=False)
+        gateway.policy_cache.apply(verify_policy_snapshot(
+            token, pem, fingerprint, "gateway-test", "device-1", "user-1"))
+        if policy_state == "expired":
+            gateway.policy_cache.current = replace(gateway.policy_cache.current, expires_at=0)
+    body = {"rollback": True} if rollback else {"version": "1.2.3"}
+    with actor_context(actor):
+        async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+            response = await client.post("/api/engine/demo/runtime/operation",
+                                         json=body)
+    assert response.status_code == (403 if project_scoped else 202)
+    assert calls == ([] if project_scoped else [("demo", None if rollback else "1.2.3", rollback)])

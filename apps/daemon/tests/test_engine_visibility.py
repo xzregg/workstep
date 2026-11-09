@@ -27,7 +27,6 @@ async def test_visibility_api_and_slow_save_canary(monkeypatch, tmp_path):
 
     monkeypatch.setattr(api, "config_store", store)
     monkeypatch.setattr(store, "set_engine_enabled", slow_save)
-    monkeypatch.setattr(api, "_require_managed_engine_permission", lambda: None)
     monkeypatch.setattr(api, "list_all_engines", lambda: {"codex": object})
     monkeypatch.setattr(api, "_refresh_and_summaries", lambda: [{"id": "codex", "enabled": store.is_engine_enabled("codex")}])
     app = FastAPI()

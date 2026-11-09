@@ -19,12 +19,14 @@ def _file_access_root() -> Path | None:
 def _assert_preview_path(path: Path) -> Path:
     """Enforce the configured file boundary in an I/O worker, for every actor."""
     from services.project_scope import projects_root
+    from services.customization_workspace import workspace_root
 
     try:
         root = _file_access_root()
         target = path.resolve()
         container_root = projects_root()
-        if (root is not None and not target.is_relative_to(root)) or (
+        if (root is not None and not target.is_relative_to(root)
+                and not target.is_relative_to(workspace_root().resolve())) or (
             container_root is not None and not target.is_relative_to(container_root)
         ):
             raise ValueError('outside preview directory')

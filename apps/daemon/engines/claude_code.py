@@ -102,7 +102,7 @@ _PERMISSION_REJECT_FOR_SESSION_CONTENT = (
 )
 class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
     ENGINE_ID = "claude"
-    RUNTIME_PACKAGE = RuntimePackage('@anthropic-ai/claude-code', 'npm', '0', None)
+    RUNTIME_PACKAGE = RuntimePackage('@anthropic-ai/claude-code', 'npm')
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -360,6 +360,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
             },
             config_overrides,
         )["permission_mode"]
+        self.configure_interaction_policy({"permission_mode": permission_mode})
         provider_runtime = await asyncio.to_thread(
             self.resolve_provider_runtime,
             provider_id=str((config_overrides or {}).get("provider_id") or ""),

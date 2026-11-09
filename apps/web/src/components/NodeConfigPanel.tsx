@@ -16,14 +16,7 @@ import StepConfigFields from './StepConfigFields'
 import StepPromptVariablesHint from './StepPromptVariablesHint'
 import WorkflowQuickButtonsSection from './WorkflowQuickButtonsSection'
 import './NodeExecutionSettings.css'
-
-/* ══════════════════════════════════════════
-   Section title style
-   ══════════════════════════════════════════ */
-const sectionTitle: React.CSSProperties = {
-  fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
-  textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8,
-}
+import './NodeConfigPanel.css'
 
 /* ══════════════════════════════════════════
    Input editor with sub-outputs
@@ -41,7 +34,7 @@ function InputEditor({ inputs, onChange, sourceInputs, allowAppendOutputs = true
 
   return (
     <div>
-      <div style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div className="flow-node-config-section-title flow-node-config-section-title--artifacts">
         <span style={{ color: 'var(--accent)' }}>●</span> {t('flow.inputArtifacts')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -264,8 +257,8 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ width: 28, height: 28, borderRadius: 6, background: `${draft.color}20`, color: draft.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{draft.label.charAt(0)}</div><span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{draft.label}</span></div>
           <div style={{ display: 'flex', gap: 6 }}><Button variant="primary" style={{ fontSize: 'calc(13px * var(--font-scale))', padding: '4px 12px' }} disabled={Boolean(keyError) || !dispatchConfig.targetProjectId || !dispatchConfig.targetWorkflowId || !dispatchConfig.targetStartStepKey} onClick={() => onSave({ ...draft, key: normalizedKey })}>{t('flow.stash')}</Button><Button variant="icon" onClick={onClose}>✕</Button></div>
         </div>
-        <div><div style={sectionTitle}>{t('flow.basicInfo')}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.name')}<Input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} style={{ marginTop: 4 }} /></label><label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.stepKey')}<Input value={draft.key} onChange={(e) => updateDraft('key', e.target.value)} style={{ marginTop: 4 }} /></label></div></div>
-        <div><div style={sectionTitle}>{t('flow.dispatchTarget')}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="flow-node-config-section"><div className="flow-node-config-section-title">{t('flow.basicInfo')}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.name')}<Input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} style={{ marginTop: 4 }} /></label><label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.stepKey')}<Input value={draft.key} onChange={(e) => updateDraft('key', e.target.value)} style={{ marginTop: 4 }} /></label></div></div>
+        <div className="flow-node-config-section"><div className="flow-node-config-section-title">{t('flow.dispatchTarget')}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.targetProject')}<Select value={dispatchConfig.targetProjectId} onChange={(e) => { updateDraft('dispatch', { ...dispatchConfig, targetProjectId: e.target.value, targetWorkflowId: '', targetStartStepKey: '' }) }} style={{ marginTop: 4 }}><option value="">{t('flow.selectTarget')}</option>{dispatchProjects.map((project) => <option key={project.id} value={project.id}>{project.name}{project.type === 'remote' ? ' · 远程' : ''}</option>)}</Select></label>
           <label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.targetWorkflow')}<Select value={dispatchConfig.targetWorkflowId} onChange={(e) => updateDraft('dispatch', { ...dispatchConfig, targetWorkflowId: e.target.value, targetStartStepKey: '' })} style={{ marginTop: 4 }} disabled={!dispatchConfig.targetProjectId}><option value="">{t('flow.selectTarget')}</option>{dispatchWorkflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</Select></label>
           <label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.targetStartStep')}<Select value={dispatchConfig.targetStartStepKey} onChange={(e) => updateDispatch('targetStartStepKey', e.target.value)} style={{ marginTop: 4 }} disabled={!dispatchConfig.targetWorkflowId}><option value="">{t('flow.selectTarget')}</option>{dispatchSteps.map((step) => <option key={step.key} value={step.key}>{step.label}（{step.key}）</option>)}</Select></label>
@@ -302,8 +295,9 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
         </div>
       </div>
 
-      <div>
-        <div style={sectionTitle}>{t('flow.basicInfo')}</div>
+      <div className="flow-node-config-sections">
+        <div className="flow-node-config-section">
+        <div className="flow-node-config-section-title">{t('flow.basicInfo')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
@@ -377,8 +371,10 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
               {keyError || t('flow.keyHelp')}
             </div>
           </div>
-          <div>
-            <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.prompt')}</label>
+        </div>
+        </div>
+          <div className="flow-node-config-section">
+            <div className="flow-node-config-section-title">{t('flow.prompt')}</div>
             <MarkdownEditor
               value={draft.prompt}
               onChange={(v) => updateDraft('prompt', v)}
@@ -389,6 +385,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
             />
             <StepPromptVariablesHint />
           </div>
+          <div className="flow-node-config-section">
           <InputEditor
             inputs={draft.inputs}
             sourceInputs={lockedSource?.inputs}
@@ -398,6 +395,9 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
           {lockedSource && (!lockedSource.inputs.length || JSON.stringify(lockedSource.inputs.flatMap((input) => input.outputs)) !== JSON.stringify(lockedSource.outputs)) &&
             <ArtifactOutputsEditor outputs={draft.outputs} protectedCount={lockedSource.outputs.length}
               onChange={(outputs) => updateDraft('outputs', outputs)} />}
+          </div>
+          <div className="flow-node-config-section flow-node-config-section--engine">
+            <div className="flow-node-config-section-title">{t('flow.stepConfig')}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.engine')}</label>
@@ -465,9 +465,6 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
           </div>
           {stepFields.length > 0 && (
             <div>
-              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
-                {t('flow.stepConfig')}
-              </label>
               <StepConfigFields
                 engineId={draft.engine}
                 fields={stepFields}
@@ -476,8 +473,9 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
               />
             </div>
           )}
-          <div>
-            <div style={sectionTitle}>{t('flow.returnRouting')}</div>
+          </div>
+          <div className="flow-node-config-section">
+            <div className="flow-node-config-section-title">{t('flow.returnRouting')}</div>
             <label
               htmlFor={`step-max-return-rounds-${draft.nodeId}`}
               style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}
@@ -505,8 +503,8 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
               })}
             </div>
           </div>
-          <div>
-            <div style={sectionTitle}>{t('flow.stepReview')}</div>
+          <div className="flow-node-config-section">
+            <div className="flow-node-config-section-title">{t('flow.stepReview')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -631,13 +629,12 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
               )}
             </div>
           </div>
-        </div>
-        {projectId && workflowId && <WorkflowQuickButtonsSection
+        {projectId && workflowId && <div className="flow-node-config-section"><WorkflowQuickButtonsSection
           projectId={projectId}
           workflowId={workflowId}
           buttons={draft.quickButtons || []}
           onChange={(buttons) => updateDraft('quickButtons', buttons)}
-        />}
+        /></div>}
       </div>
 
 

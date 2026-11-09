@@ -802,6 +802,21 @@
     "summary": "Colabore directamente en el contexto del proyecto y elija qué habilidades locales puede utilizar un proyecto.",
     "sections": [
       {
+        "title": "Dictar un borrador de mensaje",
+        "steps": [
+          "Abre Ajustes → Entrada de voz, actívala, descarga el modelo y el entorno, elige el idioma y prueba el micrófono. Se instala en el host WorkStep conectado; el teléfono no necesita el modelo. Admite mandarín, cantonés e inglés.",
+          "Pulsa el micrófono en un chat editable o mantén pulsado el acceso de voz en el teléfono. Habla, termina, revisa el texto insertado y envíalo manualmente. Máximo dos minutos; cancelar no envía nada."
+        ],
+        "tips": [
+          "El audio se reconoce en el host conectado y no se guarda. Autoriza el micrófono por HTTPS o dirección local. Si falla, revisa permisos del sitio y del sistema y reinicia un backend antiguo. Puedes conservar explícitamente el texto reconocido."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Dictar un borrador de mensaje",
+          "caption": "El audio se reconoce en el host conectado y no se guarda. Autoriza el micrófono por HTTPS o dirección local. Si falla, revisa permisos del sitio y del sistema y reinicia un backend antiguo. Puedes conservar explícitamente el texto reconocido."
+        }
+      },
+      {
         "title": "Trabajar con múltiples conversaciones de proyectos",
         "steps": [
           "En el ancho del escritorio, abra una conversación de proyecto normal y elija Ventanas de conversación (对话窗口) → Agregar ventana de conversación (增加对话窗口), a la derecha de Nueva conversación.",
@@ -932,6 +947,18 @@
     "title": "Tareas programadas",
     "summary": "Cree nuevas tareas según una programación o envíe instrucciones del coordinador cronometradas a tareas existentes y realice un seguimiento de la ejecución y las notificaciones.",
     "sections": [
+      {
+        "title": "Ejecutar ahora y revisar resultados",
+        "steps": [
+          "En un horario guardado que crea tareas de proyecto, pulsa Ejecutar ahora en la lista o editor. Solo usa ajustes guardados; no aplica cambios pendientes ni altera la próxima hora. Espera si hay una ejecución activa.",
+          "Despliega el JSON de tareas generadas en el historial y compara borradores y tareas creadas. Los registros antiguos o fallos anteriores a la generación pueden no tener JSON. Revisa las tareas ya creadas antes de repetir un fallo parcial."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Ejecutar ahora y revisar resultados",
+          "caption": "Despliega el JSON de tareas generadas en el historial y compara borradores y tareas creadas. Los registros antiguos o fallos anteriores a la generación pueden no tener JSON. Revisa las tareas ya creadas antes de repetir un fallo parcial."
+        }
+      },
       {
         "title": "Genere múltiples tareas a partir de un cronograma",
         "steps": [

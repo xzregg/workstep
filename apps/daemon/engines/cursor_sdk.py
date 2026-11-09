@@ -32,9 +32,7 @@ class CursorSdkEngine(AcpEngineBase):
     ENGINE_ID = "cursor"
 
     #: 按需安装：默认不随 daemon 打包，设置页安装按钮执行 pip install cursor-sdk。
-    RUNTIME_PACKAGE: ClassVar[RuntimePackage] = RuntimePackage(
-        "cursor-sdk", "pypi", "1.0.32", None
-    )
+    RUNTIME_PACKAGE: ClassVar[RuntimePackage] = RuntimePackage("cursor-sdk", "pypi")
 
     # 非 ACP 原生：无 COMMAND，基类 _is_acp_native 为 False。
     # 安装态 = Python 包可导入（运行时随包自带），配置态 = 有 API key。

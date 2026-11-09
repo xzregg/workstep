@@ -802,6 +802,21 @@
     "summary": "Collaborez dans le contexte du projet et choisissez ses compétences locales autorisées.",
     "sections": [
       {
+        "title": "Dicter un brouillon de message",
+        "steps": [
+          "Ouvrez Paramètres → Saisie vocale, activez-la, téléchargez le modèle et le moteur, choisissez la langue puis testez le microphone. L’installation se fait sur l’hôte WorkStep connecté, pas sur le téléphone. Le mandarin, le cantonais et l’anglais sont pris en charge.",
+          "Dans un chat modifiable, appuyez sur le microphone ; sur téléphone, un appui long est aussi possible. Dictez, terminez, vérifiez le texte inséré puis envoyez-le manuellement. Limite : deux minutes. Annuler ne soumet rien."
+        ],
+        "tips": [
+          "L’hôte connecté reconnaît le son sans le conserver. Autorisez le microphone via HTTPS ou une adresse locale. En cas d’échec, vérifiez les permissions du site et du système ; redémarrez un serveur obsolète. Vous pouvez conserver explicitement le texte déjà reconnu."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Dicter un brouillon de message",
+          "caption": "L’hôte connecté reconnaît le son sans le conserver. Autorisez le microphone via HTTPS ou une adresse locale. En cas d’échec, vérifiez les permissions du site et du système ; redémarrez un serveur obsolète. Vous pouvez conserver explicitement le texte déjà reconnu."
+        }
+      },
+      {
         "title": "Travailler dans plusieurs conversations de projet",
         "steps": [
           "Sur ordinateur, ouvrez une conversation ordinaire et choisissez Fenêtres de conversation (对话窗口) → Ajouter une fenêtre (增加对话窗口), à droite de Nouvelle conversation.",
@@ -932,6 +947,18 @@
     "title": "Tâches planifiées",
     "summary": "Créez des tâches selon un horaire ou envoyez des instructions à une tâche existante, avec suivi des exécutions et notifications.",
     "sections": [
+      {
+        "title": "Exécuter maintenant et vérifier les tâches",
+        "steps": [
+          "Pour une planification enregistrée de création de tâches de projet, cliquez sur Exécuter maintenant dans la liste ou l’éditeur. Seuls les réglages enregistrés sont utilisés ; les modifications non enregistrées et la prochaine échéance restent inchangées. Attendez toute exécution active.",
+          "Dépliez le JSON des tâches générées dans l’historique et comparez les brouillons aux tâches créées. Les anciennes exécutions ou les échecs avant génération peuvent ne pas avoir de JSON. Vérifiez les tâches déjà créées avant de relancer un échec partiel."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Exécuter maintenant et vérifier les tâches",
+          "caption": "Dépliez le JSON des tâches générées dans l’historique et comparez les brouillons aux tâches créées. Les anciennes exécutions ou les échecs avant génération peuvent ne pas avoir de JSON. Vérifiez les tâches déjà créées avant de relancer un échec partiel."
+        }
+      },
       {
         "title": "Créer plusieurs tâches avec un plan",
         "steps": [

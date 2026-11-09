@@ -1,8 +1,33 @@
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
 from engines.codex_sdk import CodexSDKEngine
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("approval_mode,action", [
+    ("", "accept"), ("auto_review", "accept"), ("deny_all", "decline"),
+])
+async def test_codex_empty_permission_form_obeys_approval_mode(approval_mode, action):
+    engine = CodexSDKEngine()
+    queue = asyncio.Queue()
+    handler = engine._build_approval_handler(
+        queue, asyncio.get_running_loop(), "session", approval_mode=approval_mode,
+    )
+    result = await asyncio.wait_for(asyncio.to_thread(
+        handler, "mcpServer/elicitation/request", {
+            "threadId": "session", "serverName": "computer-use",
+            "message": 'Allow Computer Use to use "Google Chrome"?',
+            "requestedSchema": {"type": "object", "properties": {}},
+        },
+    ), 2)
+    assert result == {
+        "action": action, "content": {} if action == "accept" else None, "_meta": None,
+    }
+    assert queue.empty()
+    assert not getattr(engine, "_pending_interaction_responses", {})
 
 
 @pytest.mark.anyio
@@ -65,3 +90,61 @@ async def test_codex_native_question_preserves_ids_and_uses_native_answer_envelo
     finally:
         waiting.cancel()
         await asyncio.gather(waiting, return_exceptions=True)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode,override,action", [
+    ("", None, "accept"), ("auto_review", None, "accept"),
+    ("deny_all", None, "decline"),
+    ("auto_review", "deny_all", "decline"),
+    ("deny_all", "auto_review", "accept"),
+])
+async def test_spawn_installs_effective_permission_policy(tmp_path, monkeypatch, mode, override, action):
+    import openai_codex
+
+    responses = []
+
+    class FakeTurn:
+        async def stream(self):
+            if False:
+                yield None
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self._client = SimpleNamespace(_sync=SimpleNamespace(_approval_handler=None))
+
+        async def thread_start(self, **kwargs):
+            return self
+
+        id = "thread"
+
+        async def turn(self, prompt, model=None):
+            responses.append(await asyncio.to_thread(
+                self._client._sync._approval_handler, "mcpServer/elicitation/request", {
+                    "message": 'Allow Computer Use to use "Google Chrome"?',
+                    "requestedSchema": {"type": "object", "properties": {}},
+                },
+            ))
+            return FakeTurn()
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(openai_codex, "AsyncCodex", FakeClient)
+    monkeypatch.setattr(CodexSDKEngine, "_binary_override", None, raising=False)
+    monkeypatch.setattr("engines.codex_sdk.config_store.get_codex_sdk_config", lambda: {
+        "approval_mode": mode, "sandbox": "danger-full-access", "model_reasoning_effort": "",
+    })
+    engine = CodexSDKEngine()
+
+    async def collect():
+        return [event async for event in engine.spawn(
+            prompt="hi", cwd=str(tmp_path),
+            config_overrides={"approval_mode": override} if override else None,
+        )]
+
+    events = await asyncio.wait_for(collect(), 5)
+    assert responses == [{
+        "action": action, "content": {} if action == "accept" else None, "_meta": None,
+    }]
+    assert not any(event.type in {"interaction_request", "error"} for event in events)

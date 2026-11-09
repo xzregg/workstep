@@ -32,6 +32,11 @@ test('step execution settings save reuse success explicitly, with direct-trigger
       unavailableKeys={[]} engines={[]} enginesLoading={false} enginesError="" defaultExecutionEngine=""
       onValidationChange={noop} onDraftChange={noop} onDirtyChange={noop}
       onSave={(value) => saved.push(value)} onRequestDelete={noop} onClose={noop} /></I18nProvider>))
+    const sections = [...container.querySelectorAll('.flow-node-config-section')]
+    assert.equal(sections.length, 6, 'basic info, prompt, artifacts, engine, return routing and review have separate sections')
+    for (const [index, label] of ['基本信息', '提示词', '输入产物', '引擎', '返回线', '步骤审核'].entries()) {
+      assert.ok(sections[index]?.querySelector('.flow-node-config-section-title')?.textContent?.includes(label), `${label} has a prominent section title`)
+    }
     const checkbox = container.querySelector<HTMLInputElement>('#step-reuse-success')
     assert.ok(checkbox)
     const keyRow = container.querySelector('#step-type')?.parentElement

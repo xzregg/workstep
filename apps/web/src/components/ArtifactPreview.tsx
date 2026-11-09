@@ -42,12 +42,11 @@ function CopyTextButton({ content }: { content: string }) {
   return (
     <Button
       variant="ghost"
+      className="artifact-toolbar-icon-button"
       aria-label={state === 'copied' ? t('artifact.textCopied') : t('artifact.copyText')}
       title={state === 'copied' ? t('common.copied') : state === 'failed' ? t('meta.copyFailed') : t('artifact.copyText')}
       onClick={() => void copy()}
       style={{
-        width: 28, height: 28, minWidth: 28, padding: 0,
-        justifyContent: 'center',
         color: state === 'failed'
           ? 'var(--danger)'
           : state === 'copied'
@@ -56,9 +55,9 @@ function CopyTextButton({ content }: { content: string }) {
       }}
     >
       {state === 'copied' ? (
-        <Icon name="check" size={14} strokeWidth={2.4} />
+        <Icon name="check" size={16} strokeWidth={2.4} />
       ) : (
-        <Icon name="copy" size={13} strokeWidth={2} />
+        <Icon name="copy" size={16} strokeWidth={2} />
       )}
     </Button>
   )
@@ -68,14 +67,14 @@ function DownloadFileButton({ href, filename }: { href: string; filename: string
   const { t } = useI18n()
 
   return (
-    <ButtonLink variant="primary" size="sm"
-      className="artifact-download-button"
+    <ButtonLink variant="ghost" size="sm"
+      className="artifact-download-button artifact-toolbar-icon-button"
       href={href}
       download={filename}
       aria-label={t('artifact.downloadFile')}
       title={t('artifact.downloadFile')}
     >
-      <Icon name="download" size={14} strokeWidth={2} />
+      <Icon name="download" size={16} strokeWidth={2} />
     </ButtonLink>
   )
 }
@@ -239,12 +238,12 @@ export default function ArtifactPreview({
   const editButton = isText && onEdit ? (
     <Button
       variant="ghost"
+      className="artifact-toolbar-icon-button"
       aria-label={t('browser.editMode')}
       title={t('browser.editMode')}
       onClick={onEdit}
-      style={{ width: 28, height: 28, minWidth: 28, padding: 0, justifyContent: 'center' }}
     >
-      <Icon name="pencil" size={14} strokeWidth={2} />
+      <Icon name="pencil" size={16} strokeWidth={2} />
     </Button>
   ) : null
   const openWindowButton = projectId || taskFilePreview ? (

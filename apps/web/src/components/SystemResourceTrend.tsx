@@ -48,7 +48,7 @@ export default function SystemResourceTrend({ report, descriptorLabel }: { repor
     </div>
     <div className="system-legend"><span><i />{firstLabel}</span><span><i className="system-purple" />{secondLabel}</span></div>
     <div className="system-chart-wrap">
-      <svg className="system-chart" viewBox="0 0 680 180" role="img" tabIndex={0} aria-label={`${t('systemStatistics.recentMinutes', { minutes: report.retention_seconds / 60 })} ${title}`} aria-describedby="system-trend-description"
+      <svg className="system-chart" viewBox="0 0 680 180" preserveAspectRatio="none" role="img" tabIndex={0} aria-label={`${t('systemStatistics.recentMinutes', { minutes: report.retention_seconds / 60 })} ${title}`} aria-describedby="system-trend-description"
         onFocus={() => setActive(data.length ? data.length - 1 : null)} onBlur={() => setActive(null)}
         onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setActive(index => Math.max(0, Math.min(data.length - 1, (index ?? data.length - 1) + (event.key === 'ArrowLeft' ? -1 : 1)))) } }}
         onPointerLeave={() => setActive(null)} onPointerMove={event => {
@@ -65,7 +65,7 @@ export default function SystemResourceTrend({ report, descriptorLabel }: { repor
         </g>))}
         {selected && <line className="system-chart-guide" x1={x(selected)} x2={x(selected)} y1="9" y2="154" />}
       </svg>
-      {selected && <div className="system-chart-tooltip" style={{ left: `${Math.max(2, Math.min(65, x(selected) / 680 * 100))}%` }}><strong>{new Date(selected.sampled_at).toLocaleTimeString(locale)}</strong><span>{firstLabel} {number(value(selected, keyA))}</span><span>{secondLabel} {number(value(selected, keyB))}</span></div>}
+      {selected && <div className={`system-chart-tooltip${x(selected) > 340 ? ' system-chart-tooltip--left' : ''}`} style={{ left: `${x(selected) / 680 * 100}%` }}><strong>{new Date(selected.sampled_at).toLocaleTimeString(locale)}</strong><span>{firstLabel} {number(value(selected, keyA))}</span><span>{secondLabel} {number(value(selected, keyB))}</span></div>}
       {!data.length && <span className="system-chart-empty">{t('systemStatistics.collecting')}</span>}
     </div>
     <div id="system-trend-description" className="system-sr-only" aria-live="polite">{accessibleText}</div>

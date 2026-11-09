@@ -55,7 +55,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
 
     ENGINE_ID = "claude_agent_sdk"
     SYSTEM_PROMPT_MODE = "system"
-    RUNTIME_PACKAGE = RuntimePackage('claude-agent-sdk', 'pypi', '0.1.0', None)
+    RUNTIME_PACKAGE = RuntimePackage('claude-agent-sdk', 'pypi')
     UPDATE_PACKAGE = "claude-agent-sdk"
 
     async def set_permission_mode(self, mode: str) -> None:
@@ -362,6 +362,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
             await asyncio.to_thread(config_store.get_claude_agent_sdk_config),
             config_overrides,
         )
+        self.configure_interaction_policy(sdk_config)
         provider_runtime = await asyncio.to_thread(
             self.resolve_provider_runtime,
             provider_id=str((config_overrides or {}).get("provider_id") or ""),

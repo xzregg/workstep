@@ -155,6 +155,12 @@ def require_managed_capability(action: str, *, creator_fields: dict | None = Non
         return
     actor = get_current_actor()
     principal = authenticated_remote_dispatch()
+    if (actor is not None and actor.source == "managed"
+            and actor.access_source == "gateway" and actor.project_id is None
+            and principal is None
+            and action in ("task.create", "task.share", "project.publish",
+                           "provider.local", "engine.install")):
+        return
     # User-configured Gateway connections retain an explicitly authenticated
     # native workspace. Browser identity headers alone never establish this.
     if (native_workspace_active() and principal is None

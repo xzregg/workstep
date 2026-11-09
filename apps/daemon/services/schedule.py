@@ -444,6 +444,7 @@ class ScheduleModule:
             "reason": None if task_created else row.reason,
             "task_id": row.task_id,
             "created_tasks": json.loads(row.created_tasks_json) if row.created_tasks_json else [],
+            "generated_tasks": json.loads(row.generated_tasks_json) if row.generated_tasks_json is not None else None,
             "workflow_run_id": row.workflow_run_id,
             "notification_status": row.notification_status if row.notification_json else "disabled",
             "notification_error": row.notification_error,
@@ -477,6 +478,34 @@ class ScheduleModule:
             return None
         preview = preview_rule(rule, now=current, count=1)
         return _as_utc(preview["next_runs"][0] if preview["next_runs"] else None)
+
+    async def run_now(self, project_id: str, schedule_id: str) -> dict:
+        """Dispatch saved project configuration without consuming a timed occurrence."""
+        def claim():
+            with db_proxy.atomic("IMMEDIATE"):
+                row = self._get_row(project_id, schedule_id)
+                if row.status == "deleted":
+                    raise ValueError("Schedule was deleted")
+                if row.target_type != "project" or row.status == "invalid":
+                    raise ScheduleValidationError("该定时任务不支持立即执行")
+                if ScheduleRun.select().where(
+                    (ScheduleRun.schedule == row)
+                    & ScheduleRun.status.in_(("queued", "running"))
+                ).exists():
+                    raise ScheduleValidationError("已有执行正在进行，请等待完成后重试")
+                current = utc_now()
+                run = ScheduleRun.create(
+                    id=str(uuid.uuid4()), schedule=row, scheduled_for=current,
+                    status="queued", created_at=current,
+                )
+                return self._run_to_dict(run)
+
+        run = await self._run_db(project_id, claim)
+        self._spawn(
+            self._execute_run(project_id, run["id"], manual=True),
+            name=f"schedule-run:{run['id']}",
+        )
+        return run
 
     async def tick(self, now: datetime | None = None, *, startup: bool = False) -> None:
         """Claim due occurrences across every registered project."""
@@ -704,7 +733,7 @@ class ScheduleModule:
             name=f"schedule-run:{run_id}",
         )
 
-    async def _execute_run(self, project_id: str, run_id: str) -> None:
+    async def _execute_run(self, project_id: str, run_id: str, *, manual: bool = False) -> None:
         schedule_id = ""
         try:
             def start_run():
@@ -713,7 +742,7 @@ class ScheduleModule:
                     if run.status != "queued":
                         return None
                     schedule = Schedule.get_by_id(run.schedule_id)
-                    if schedule.status in {"deleted", "invalid", "paused"}:
+                    if schedule.status in {"deleted", "invalid"} or (schedule.status == "paused" and not manual):
                         run.status, run.reason, run.ended_at = "stopped", "规则已关闭", utc_now()
                         run.save()
                         return None
@@ -849,6 +878,8 @@ class ScheduleModule:
         from schemas.task import ScheduledTaskDraft
 
         raw_drafts = result if isinstance(result, list) else [result]
+        if run_id is not None:
+            await self._run_db(project_id, lambda: self._store_generated_tasks(run_id, raw_drafts))
         if not raw_drafts:
             return []
         # Validate the complete batch before the first write, including when the
@@ -906,6 +937,13 @@ class ScheduleModule:
                 # failures are not retried as AI generation attempts.
                 await self._record_task_results(project_id, run_id, results)
         return results
+
+    @staticmethod
+    def _store_generated_tasks(run_id, drafts):
+        """Retain generated drafts even when later validation or task creation fails."""
+        ScheduleRun.update(generated_tasks_json=json.dumps(
+            drafts, ensure_ascii=False,
+        )).where(ScheduleRun.id == run_id).execute()
 
     @staticmethod
     def _store_task_results(run_id, results, *, complete=False):

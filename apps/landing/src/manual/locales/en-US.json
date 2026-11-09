@@ -802,6 +802,21 @@
     "summary": "Collaborate directly in project context and choose which local skills a project may use.",
     "sections": [
       {
+        "title": "Fill a message draft by voice",
+        "steps": [
+          "Open Settings → Voice input, enable it, download the model and runtime, choose a language and test the microphone. Installation is on the connected WorkStep host; phones need no model download. The model supports Mandarin, Cantonese and English.",
+          "Use the microphone in an editable chat, or press and hold the voice entry on a phone. Say “check project progress”, finish, review the inserted text and send it manually. Recordings last at most two minutes; cancelling sends nothing."
+        ],
+        "tips": [
+          "Audio is recognized on the connected host and is not saved. Allow microphone access over HTTPS or a local address. Check site and system permissions on failure; restart an outdated backend. Recognized text can be kept explicitly after an error."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Fill a message draft by voice",
+          "caption": "Audio is recognized on the connected host and is not saved. Allow microphone access over HTTPS or a local address. Check site and system permissions on failure; restart an outdated backend. Recognized text can be kept explicitly after an error."
+        }
+      },
+      {
         "title": "Work with multiple project conversations",
         "steps": [
           "At desktop width, open an ordinary project conversation and choose Conversation windows (对话窗口) → Add conversation window (增加对话窗口), to the right of New conversation.",
@@ -932,6 +947,18 @@
     "title": "Scheduled tasks",
     "summary": "Create new tasks on a schedule, or send timed coordinator instructions to existing tasks, and track execution and notifications.",
     "sections": [
+      {
+        "title": "Run now and inspect generated tasks",
+        "steps": [
+          "For a saved project-task schedule, click Run now in the list or editor. It uses saved settings, ignores unsaved edits and preserves the next scheduled time. Wait if another run is active.",
+          "Expand Generated task JSON in the run record and compare drafts with created tasks. Older runs or failures before generation may have no JSON. Check already-created tasks before retrying a partial failure."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Run now and inspect generated tasks",
+          "caption": "Expand Generated task JSON in the run record and compare drafts with created tasks. Older runs or failures before generation may have no JSON. Check already-created tasks before retrying a partial failure."
+        }
+      },
       {
         "title": "Generate multiple tasks from one schedule",
         "steps": [

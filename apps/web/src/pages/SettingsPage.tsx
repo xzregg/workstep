@@ -1,5 +1,6 @@
 import MessageHistorySetting from '../components/MessageHistorySetting'
 import AppearanceSettings from './AppearanceSettings'
+import VoiceInputSettings from './VoiceInputSettings'
 import SandboxSettings from '../components/SandboxSettings'
 import GatewayLogoutButton from '../components/GatewayLogoutButton'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -163,6 +164,8 @@ export default function SettingsPage({
           />
         ) : activeSection === 'pricing' ? (
           <ModelPricingSettings />
+        ) : activeSection === 'speech' ? (
+          <VoiceInputSettings />
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
         ) : activeSection === 'roles' ? (

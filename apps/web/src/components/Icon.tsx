@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import {
   Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Drama, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List, Monitor, Smartphone,
-  Crosshair, Maximize2, Menu, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
+  Crosshair, Maximize2, Menu, Mic, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
   PanelLeftClose, PanelLeftOpen, Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
 } from 'lucide-react'
 
@@ -11,6 +11,7 @@ import {composerSendGlyphs} from '../skins/composerSendGlyphs'
 /** 统一 Icon 库：lucide 图标 + 少量自定义字形（保留既有固定规格） */
 const glyphs = {
   menu: Menu,
+  mic: Mic,
   monitor: Monitor,
   smartphone: Smartphone,
   archive: Archive,

@@ -802,6 +802,21 @@
     "summary": "Tee yhteistyötä suoraan projektin yhteydessä ja valitse, mitä paikallisia taitoja projekti voi käyttää.",
     "sections": [
       {
+        "title": "Täytä viestiluonnos puheella",
+        "steps": [
+          "Avaa Asetukset → Puheensyöttö, ota käyttöön, lataa malli ja ajonaikainen ympäristö, valitse kieli ja testaa mikrofoni. Asennus tehdään yhdistetylle WorkStep-palvelimelle, ei puhelimeen. Tuetut kielet ovat mandariinikiina, kantoninkiina ja englanti.",
+          "Paina mikrofonia muokattavassa keskustelussa tai pidä puhepainiketta pohjassa puhelimessa. Puhu, lopeta, tarkista lisätty teksti ja lähetä itse. Enintään kaksi minuuttia; peruutus ei lähetä mitään."
+        ],
+        "tips": [
+          "Ääni tunnistetaan yhdistetyllä palvelimella eikä sitä tallenneta. Salli mikrofoni HTTPS- tai paikallisosoitteessa. Tarkista virheissä sivuston ja järjestelmän oikeudet ja käynnistä vanha taustapalvelu uudelleen. Tunnistetun tekstin voi erikseen säilyttää."
+        ],
+        "screenshot": {
+          "id": "voice-input",
+          "alt": "Täytä viestiluonnos puheella",
+          "caption": "Ääni tunnistetaan yhdistetyllä palvelimella eikä sitä tallenneta. Salli mikrofoni HTTPS- tai paikallisosoitteessa. Tarkista virheissä sivuston ja järjestelmän oikeudet ja käynnistä vanha taustapalvelu uudelleen. Tunnistetun tekstin voi erikseen säilyttää."
+        }
+      },
+      {
         "title": "Työskentele useiden projektikeskustelujen kanssa",
         "steps": [
           "Avaa työpöydän leveydellä tavallinen projektikeskustelu ja valitse Uusi keskustelu -kohdan oikealta puolelta Keskusteluikkunat (对话窗口) → Lisää keskusteluikkuna (增加对话窗口).",
@@ -932,6 +947,18 @@
     "title": "Aikataulutetut tehtävät",
     "summary": "Luo uusia tehtäviä aikataulun mukaan tai lähetä ajoitettuja koordinaattorin ohjeita olemassa oleviin tehtäviin ja seuraa suoritusta ja ilmoituksia.",
     "sections": [
+      {
+        "title": "Suorita nyt ja tarkista tulokset",
+        "steps": [
+          "Valitse tallennetun projektitehtäviä luovan ajastuksen luettelosta tai editorista Suorita nyt. Vain tallennetut asetukset käytetään; tallentamattomat muutokset ja seuraava aika eivät muutu. Odota aktiivisen suorituksen päättymistä.",
+          "Avaa luotujen tehtävien JSON historiassa ja vertaa luonnoksia tehtäviin. Vanhoilta suorituksilta tai ennen luontia tapahtuneilta virheiltä voi puuttua JSON. Tarkista jo luodut tehtävät ennen osittaisen virheen uusintaa."
+        ],
+        "screenshot": {
+          "id": "schedule-run-now",
+          "alt": "Suorita nyt ja tarkista tulokset",
+          "caption": "Avaa luotujen tehtävien JSON historiassa ja vertaa luonnoksia tehtäviin. Vanhoilta suorituksilta tai ennen luontia tapahtuneilta virheiltä voi puuttua JSON. Tarkista jo luodut tehtävät ennen osittaisen virheen uusintaa."
+        }
+      },
       {
         "title": "Luo useita tehtäviä yhdestä aikataulusta",
         "steps": [

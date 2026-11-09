@@ -1,6 +1,8 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const enUS: Messages = {
+  speech: {"backendUpdateRequired": "当前后台仍是旧版语音服务，请重启 WorkStep 后台并重新打开页面后重试。仅刷新页面或重装 Android 包无法更新后台。", "downloadPunctuation": "下载标点模型（72 MiB）", "requesting": "正在启动麦克风，请留意系统授权提示…", "microphoneTimeout": "麦克风启动超时，请检查系统授权提示后重试。", "serviceTimeout": "语音服务响应超时，请检查连接后重试。", "responseMismatch": "录音返回与当前会话不匹配，本次结果已丢弃，请重试。", "testComplete": "录音测试已完成", "testNoSpeech": "未识别到语音，请靠近麦克风说一句话后再次测试。", "holdPlaceholder": "{placeholder} or hold to dictate", "holdHint": "Hold to dictate", "audioSourceUnavailable": "无法启动麦克风。请停止通话、录音或语音输入，检查系统麦克风总开关，再重新打开 WorkStep 重试；仍失败时请更新 Android System WebView。", "microphoneNotFound": "未检测到可用麦克风，请检查麦克风或蓝牙设备连接后重试", "pageMicrophoneBlocked": "当前页面的麦克风被站点安全策略禁止，请更新并重启 WorkStep 后台；使用网关或反向代理时也需允许同源麦克风访问", "permissionDenied": "麦克风权限被拒绝，请在浏览器或系统设置中允许 WorkStep 使用麦克风", "title": "语音输入", "settings": "语音设置", "start": "开始录音", "finish": "完成录音", "cancel": "取消录音", "keyboard": "切回键盘", "recover": "保留已识别文字", "idle": "点击开始录音", "preparing": "正在连接录音会话…", "recording": "正在录音", "finishing": "正在完成识别…", "error": "录音未完成", "failed": "语音输入失败，请重试", "secureRequired": "当前页面无法使用麦克风，请通过 HTTPS 或本机地址访问", "draftChanged": "草稿已变化，本次转写未写入，请取消后重试", "tooSlow": "识别未能跟上录音速度，已停止采集，可保留已识别文字", "deviceLost": "麦克风已断开，录音已停止", "volume": "麦克风音量", "hostHint": "音频在连接的 WorkStep 主机上识别，手机无需下载模型。录音不会保存，识别结果需手动发送。", "enable": "启用语音输入", "language": "识别语言", "lang_auto": "自动识别", "lang_zh": "普通话", "lang_yue": "粤语", "lang_en": "英语", "lang_ja": "日语", "lang_ko": "韩语", "service": "语音服务", "service_busy": "使用中", "service_ready": "已加载", "service_stopped": "按需启动", "models": "语音模型", "installed": "当前模型，已安装", "modelHint": "原生流式识别，支持普通话、粤语和英语混合输入；录音中持续显示文字，松手后完成识别。停顿分句和最终定稿时自动补充标点，标点模型支持中文与英文。首次下载包含运行库和约 72 MiB 标点模型；已安装的语音模型只需补充标点资源。正常完成后服务保留 5 分钟，后续录音自动复用。", "retry": "重试", "download": "下载模型与运行库", "cancelDownload": "取消下载", "delete": "删除语音模型", "deleteConfirm": "删除模型和对应运行库？再次使用时需要重新下载。", "test": "测试麦克风", "stage_resolving": "正在检查平台和运行库…", "stage_downloading": "正在下载…", "stage_installing": "正在校验并加载模型…"},
+
   builtinContent: {
     "skillTitle": "Custom skill creation",
     "engineTitle": "Custom engine setup",
@@ -1728,7 +1730,7 @@ export const enUS: Messages = {
     defaultProjectDirectory: '创建项目默认目录',
     defaultProjectDirectoryHint: '创建项目时，目录选择器从此目录打开。开启下方限制后，此目录也是文件预览和读写的访问根目录；留空使用用户主目录。',
     restrictFileAccessRoot: '限制文件访问根目录',
-    fileAccessRootHint: '开启并保存后，后端文件接口（含预览、下载、分享、浏览、上传和编辑）只能访问以上目录及其子目录；../、绝对路径和符号链接不能绕过。目录外的已有项目或独立数据目录也会受限。关闭只取消此项限制，项目和分享权限仍然生效。',
+    fileAccessRootHint: '开启并保存后，后端文件接口（含预览、下载、分享、浏览、上传和编辑）只能访问以上目录、默认工作区及各自子目录；默认工作区不会额外放行其上级目录。../、绝对路径和符号链接不能绕过。目录外的已有项目或独立数据目录也会受限。关闭只取消此项限制，项目和分享权限仍然生效。',
     defaultProjectDirectoryPlaceholder: '输入绝对路径或 ~/Projects',
     browseProjectDirectory: '浏览目录',
     defaultProjectDirectorySaved: '默认目录已保存',
@@ -1977,6 +1979,10 @@ export const enUS: Messages = {
     importErrors: '{count} 个导入失败',
   },
   schedules: {
+    generatedJson: '生成的任务 JSON',
+    generatedJsonUnavailable: '未记录生成结果：可能是历史记录，或生成完成前已失败。',
+    runNow: '立即执行',
+    runNowHelp: '按已保存的配置执行一次，未保存的修改不会生效；不改变原定执行时间。',
     taskEmpty: '当前任务暂无待执行的定时任务',
     intervalMinutes: '间隔（分钟）',
     intervalHours: '间隔（小时）',

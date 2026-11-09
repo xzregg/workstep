@@ -13,10 +13,8 @@ from services.custom_engines import custom_engine_manager as manager
 
 
 def authorize():
-    from api.engine import _require_managed_engine_permission
     try:
         require_catalog_project("")
-        _require_managed_engine_permission()
     except PermissionError as exc:
         raise HTTPException(403, str(exc)) from exc
 
