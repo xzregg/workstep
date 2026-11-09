@@ -30,6 +30,7 @@ async def test_host_can_customize_appearance_without_engine_install(monkeypatch,
         return {"ok": True}
 
     monkeypatch.setattr(skin_onboarding, "create_onboarding", onboarding)
+    monkeypatch.setattr(engine, "_refresh_and_summaries", lambda: [])
     monkeypatch.setattr(skins, "manager", SimpleNamespace(validate=validate))
     monkeypatch.setattr(languages, "manager", SimpleNamespace(validate=validate))
     app = FastAPI()
@@ -38,7 +39,7 @@ async def test_host_can_customize_appearance_without_engine_install(monkeypatch,
     actor = ActorSnapshot("user-1", "alice", "device-1", "PC", source) if source else None
     with actor_context(actor):
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
-            assert (await client.post("/api/engine/refresh")).status_code == 403
+            assert (await client.post("/api/engine/refresh")).status_code == 200
             response = await client.post("/api/skins/onboarding")
             assert response.status_code == 200, response.text
             assert response.json()["session_id"] == "design-session"

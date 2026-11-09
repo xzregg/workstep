@@ -3,11 +3,13 @@ import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
 type Access = { roles: string[]; must_change_password: boolean; password_confirmation_required?: boolean }
-type State = { path: string; status: 'checking' | 'ready' | 'anonymous' | 'error'; access: Access | null }
+type State = { scope: string; status: 'checking' | 'ready' | 'anonymous' | 'error'; access: Access | null }
 
 export function useAdminAccess(): State {
   const location = useLocation()
-  const [state, setState] = useState<State>({ path: location.pathname, status: 'checking', access: null })
+  // Management pages share one permission snapshot until authentication changes or the user leaves.
+  const scope = location.pathname === '/admin' || location.pathname.startsWith('/admin/') ? '/admin' : location.pathname
+  const [state, setState] = useState<State>({ scope, status: 'checking', access: null })
   const [revision, setRevision] = useState(0)
 
   useEffect(() => {
@@ -18,25 +20,25 @@ export function useAdminAccess(): State {
 
   useEffect(() => {
     const controller = new AbortController()
-    setState({ path: location.pathname, status: 'checking', access: null })
+    setState({ scope, status: 'checking', access: null })
     void fetch('/api/auth/admin-access', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (controller.signal.aborted) return
         if (response.status === 401) {
-          setState({ path: location.pathname, status: 'anonymous', access: null }); return
+          setState({ scope, status: 'anonymous', access: null }); return
         }
         if (!response.ok) throw new Error('管理权限检查失败')
         const access = await response.json() as Access
-        if (!controller.signal.aborted) setState({ path: location.pathname, status: 'ready', access })
+        if (!controller.signal.aborted) setState({ scope, status: 'ready', access })
       }).catch(reason => {
         if (!controller.signal.aborted && reason?.name !== 'AbortError') {
-          setState({ path: location.pathname, status: 'error', access: null })
+          setState({ scope, status: 'error', access: null })
         }
       })
     return () => controller.abort()
-  }, [location.pathname, revision])
+  }, [scope, revision])
 
-  return state.path === location.pathname ? state : { path: location.pathname, status: 'checking', access: null }
+  return state.scope === scope ? state : { scope, status: 'checking', access: null }
 }
 
 export function AdminAccessGate({ state, allow, children }: {

@@ -83,6 +83,8 @@ corepack yarn test
 corepack yarn build
 ```
 
+前端 `yarn test` 默认最多并行运行 4 个测试文件，避免测试进程同时编译 TypeScript、加载 DOM 和组件依赖时挤占桌面资源。仅验证局部改动时，在 `apps/web` 使用 `yarn node --no-experimental-global-navigator --loader ./scripts/test-loader.mjs --test --test-concurrency=4 tests/<文件名>.test.tsx` 运行对应测试；需要调整并发时，在该命令中修改 `--test-concurrency`。
+
 官网在 `apps/landing`，也使用 Yarn。仓库检查可运行 `python scripts/check_repository_health.py`。行为变更先写失败回归，再实现和验证；跨层变更还需运行相关 API、组件和端到端检查。不要提交构建产物、数据库、日志、密钥或个人配置。
 
 从设置页安装的可选引擎 SDK 位于 `~/.workstep/runtime/python-packages`（或 `WORKSTEP_ENGINE_PACKAGE_DIR`），不在 uv 管理的环境和 `uv.lock` 中；daemon 启动时将该目录加入导入路径。重新同步锁定依赖可运行 `uv sync --dev`，所选 SDK 版本不会因此被覆盖。

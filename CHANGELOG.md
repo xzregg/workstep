@@ -10,6 +10,7 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 - Add native microphone permission handling for desktop and Android while retaining page, origin and project authorization checks.
 - Run saved project schedules immediately without consuming their next scheduled occurrence, and retain generated task JSON for inspecting successful and partially failed runs.
 - Align engine interactions with the effective permission configuration, improve engine package installation and visibility, and keep project-scoped access checks in place.
+- Preserve Gateway administration navigation while switching pages, refresh access after authentication changes, and align system-resource chart tooltips with the full chart width.
 - Preserve access to the built-in customization workspace within configured file boundaries, refine file-preview toolbar controls and workflow step configuration, and support Weixin audio delivery through existing file attachments.
 - Update voice-input and schedule operation instructions in all website languages. Real-device speech recognition and the remaining manual screenshot gaps are not covered by automated release acceptance.
 

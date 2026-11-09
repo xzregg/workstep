@@ -164,20 +164,21 @@ async def test_project_scoped_actors_cannot_manage_global_role_assets(center, so
 async def test_host_role_assets_do_not_require_engine_install(center, monkeypatch, source):
     import main
     from types import SimpleNamespace
-    from api.engine import router as engine_router
+    from api import engine as engine_api
     from services.gateway_client.policy import ManagedPolicyCache
     from services.remote_access import ActorSnapshot, actor_context
 
     _, app = center
     app.dependency_overrides.clear()
-    app.include_router(engine_router)
+    app.include_router(engine_api.router)
+    monkeypatch.setattr(engine_api, "_refresh_and_summaries", lambda: [])
     monkeypatch.setattr(main, "gateway_client", SimpleNamespace(
         managed_config=object(), policy_cache=ManagedPolicyCache(),
     ))
     actor = ActorSnapshot("user-1", "alice", "device-1", "PC", source) if source else None
     with actor_context(actor):
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
-            assert (await client.post("/api/engine/refresh")).status_code == 403
+            assert (await client.post("/api/engine/refresh")).status_code == 200
             assert (await client.get("/api/role-center")).status_code == 200
             result = await create_role(client)
             assert result.status_code == 201

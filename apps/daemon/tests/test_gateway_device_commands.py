@@ -310,22 +310,33 @@ async def test_slow_command_receipt_disk_does_not_block_control_loop(tmp_path, m
 
 
 @pytest.mark.asyncio
-async def test_managed_local_engine_actions_require_policy(monkeypatch):
-    def deny(_action):
-        raise PermissionError("Managed capability denied")
+@pytest.mark.parametrize("source", ["remote", "managed"])
+@pytest.mark.parametrize("access_level", ["read", "edit"])
+async def test_project_scoped_engine_actions_are_denied_before_execution(monkeypatch, source, access_level):
+    from services.remote_access import ActorSnapshot, actor_context
 
-    monkeypatch.setattr(engine_api, "require_managed_capability", deny)
+    def forbidden(*args, **kwargs):
+        pytest.fail("Project-scoped actor reached host engine execution")
+
+    monkeypatch.setattr(engine_api, "_refresh_and_summaries", forbidden)
+    monkeypatch.setattr(engine_api, "probe_engine", forbidden)
+    monkeypatch.setattr(engine_api.engine_runtime.runtime_manager, "start", forbidden)
+    monkeypatch.setattr(engine_api, "_install_engine", forbidden)
+    monkeypatch.setattr(engine_api, "_update_engine", forbidden)
     app = FastAPI()
     app.include_router(engine_api.router)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
-                                 base_url="http://127.0.0.1") as client:
-        assert (await client.post("/api/engine/refresh")).status_code == 403
-        assert (await client.post("/api/engine/test", json={"engine_id": "codex"})).status_code == 403
-        assert (await client.post("/api/engine/codex/runtime/operation", json={
-            "version": "1.2.3",
-        })).status_code == 403
-        assert (await client.post("/api/engine/codex/install")).status_code == 403
-        assert (await client.post("/api/engine/codex/update")).status_code == 403
+    actor = ActorSnapshot("user-1", "alice", "device-1", "PC", source,
+                          project_id="project", access_level=access_level)
+    with actor_context(actor):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="http://127.0.0.1") as client:
+            assert (await client.post("/api/engine/refresh")).status_code == 403
+            assert (await client.post("/api/engine/test", json={"engine_id": "codex"})).status_code == 403
+            assert (await client.post("/api/engine/codex/runtime/operation", json={
+                "version": "1.2.3",
+            })).status_code == 403
+            assert (await client.post("/api/engine/codex/install")).status_code == 403
+            assert (await client.post("/api/engine/codex/update")).status_code == 403
 
 
 @pytest.mark.asyncio
