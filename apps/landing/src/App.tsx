@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useI18n } from './i18n'
 import { ManualPage } from './manual/ManualPage'
 import { getManualChapterId, isManualHash } from './manual/content'
 import { Compare } from './components/Compare'
@@ -29,7 +28,6 @@ function scrollToDemos() {
 }
 
 export default function App() {
-  const { t } = useI18n()
   const [hash, setHash] = useState(() => typeof window === 'undefined' ? '' : window.location.hash)
   useEffect(() => {
     const update = () => setHash(window.location.hash)
@@ -57,7 +55,7 @@ export default function App() {
         <Channels />
         <RemoteShare />
         <Demos onOpen={setOpenDemo} />
-        <div className="container recorded-section"><details className="homepage-details"><summary>{t('walkthrough.eyebrow')}</summary><GuidedWalkthrough /></details></div>
+        <div className="container recorded-section"><GuidedWalkthrough /></div>
         <GettingStarted />
         <Compare />
         <FinalCta experienceHref={experienceHref} />

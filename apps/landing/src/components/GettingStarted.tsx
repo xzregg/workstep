@@ -30,7 +30,6 @@ export function GettingStarted() {
     <div className="container">
       <div className="editorial-section-heading"><div><p className="section-eyebrow">02 / {t('manual.groups.getting-started')}</p><h2 className="section-title" id="start-heading">{editorialCopy[lang].startTitle}</h2></div><p className="section-lede">{t('hero.setup')}</p></div>
       <div className="start-routes"><a href="#download">{t('download.title')} <ArrowRight size={16} /></a><a href="#engines">{t('engines.extension')} <ArrowRight size={16} /></a></div>
-      <details className="homepage-details"><summary>{t('hero.setupGuide')}</summary>
       <div className="start-layout">
         <div className="start-sidebar"><nav className="start-step-links" aria-label={t('manual.groups.getting-started')}>
           {steps.map((step, i) => <button type="button" className="start-step-link" aria-controls="start-panel" aria-pressed={i === index} key={step.id} data-preview={i === index ? 'true' : undefined} onClick={() => select(i)}><span className="start-number">{String(i + 1).padStart(2, '0')}</span><span>{step.title}</span>{i === index ? <Check size={15} aria-hidden="true" /> : <ArrowRight size={15} aria-hidden="true" />}</button>)}
@@ -40,11 +39,10 @@ export function GettingStarted() {
           <h4>{section.title}</h4><ol className="start-instructions">{section.steps.map(step => <li key={step}>{step}</li>)}</ol>
           {screenshot && <figure className="start-screenshot"><button type="button" aria-label={`${t('manual.enlarge')}: ${screenshot.alt}`} onClick={() => { setImage(screenshot); dialog.current?.showModal() }}><img src={screenshotUrl(screenshot.id)} alt={screenshot.alt} loading="lazy" /><span><Maximize2 size={14} />{t('manual.enlarge')}</span></button><figcaption>{screenshot.caption}{lang !== 'zh-CN' && <> {t('manual.screenshotNotice')}</>}</figcaption></figure>}
           {section.tips?.map(tip => <p className="start-tip" key={tip}>{tip}</p>)}
-          {chapter.sections.filter((_, i) => i !== sectionIndex).map(extra => <details className="start-extra" key={`${lang}-${chapter.id}-${extra.title}`}><summary>{extra.title}</summary><ol className="start-instructions">{extra.steps.map(step => <li key={step}>{step}</li>)}</ol>{extra.tips?.map(tip => <p className="start-tip" key={tip}>{tip}</p>)}</details>)}
+          {chapter.sections.filter((_, i) => i !== sectionIndex).map(extra => <section className="start-extra" key={`${lang}-${chapter.id}-${extra.title}`}><h4>{extra.title}</h4><ol className="start-instructions">{extra.steps.map(step => <li key={step}>{step}</li>)}</ol>{extra.tips?.map(tip => <p className="start-tip" key={tip}>{tip}</p>)}</section>)}
           <div className="start-footer"><a href={`#docs/${chapter.id}`}>{t('manual.title')} ↗</a><div>{index > 0 && <button type="button" className="btn btn-ghost start-previous" aria-label={steps[index - 1].title} onClick={() => select(index - 1, true)}><ChevronLeft size={18} /></button>}{index < steps.length - 1 ? <button type="button" className="btn btn-primary" onClick={() => select(index + 1, true)}>0{index + 2} / 0{steps.length}<ArrowRight size={16} /></button> : <a className="btn btn-primary" href="#download">{t('common.download')}<ArrowRight size={16} /></a>}</div></div>
         </article>
       </div>
-      </details>
     </div>
     <dialog className="start-image-dialog" ref={dialog} onClose={() => setImage(null)} onClick={event => {
       const bounds = event.currentTarget.getBoundingClientRect()

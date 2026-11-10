@@ -34,14 +34,8 @@ export function Workflow() {
         <p className="section-lede">{t('workflow.lede')}</p>
 
         <div className="workflow-templates">
-          <WorkflowCard template="rd" />
+          {TEMPLATES.map(({ key }) => <WorkflowCard key={key} template={key} />)}
         </div>
-        <details className="homepage-details">
-          <summary>{t('workflow.eyebrow')}</summary>
-          <div className="workflow-templates">
-            {TEMPLATES.slice(1).map(({ key }) => <WorkflowCard key={key} template={key} />)}
-          </div>
-        </details>
       </div>
     </section>
   )
