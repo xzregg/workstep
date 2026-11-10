@@ -115,7 +115,9 @@ async def execute_session_schedule(module, project_id, run_id):
                 user = ChatMessage.select(ChatMessage.id).where((ChatMessage.session == sid) & (ChatMessage.role == "user")).order_by(ChatMessage.created_at.desc()).first()
                 run.session_user_message_id, run.session_assistant_message_id = (user.id if user else None), result.assistant_message_id
                 if user:
-                    label = '定时任务：' + schedule.name
+                    source_label = '定时任务：' + schedule.name
+                    creator_name = str(creator.get('name') or '').strip() or str(creator.get('username') or '').strip()
+                    label = f'{creator_name}（{source_label}）' if creator_name else source_label
                     ChatMessage.update(author_name=label, author_type='scheduler').where(ChatMessage.id == user.id).execute()
                     state = getattr(selected_runtime, '_turn_states', {}).get(result.turn_id, {})
                     memory = getattr(selected_runtime, '_sessions', {}).get(state.get('memory_key'))

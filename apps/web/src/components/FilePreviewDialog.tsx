@@ -1,3 +1,4 @@
+import CopyablePath from './CopyablePath'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import { useRef } from 'react'
@@ -52,7 +53,7 @@ export default function FilePreviewDialog({
           </span>
           <div className="file-preview-dialog-heading">
             <strong id="file-preview-title" data-dialog-selectable-text>{name}</strong>
-            <span title={path} data-dialog-selectable-text>{path}</span>
+            <CopyablePath path={path} />
           </div>
           <Button
             ref={closeRef}

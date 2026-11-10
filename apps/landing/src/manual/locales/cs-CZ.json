@@ -737,7 +737,8 @@
           "Porovnejte správná kola při opakování. Stejné jako kolo… znamená identický obsah, ne že k provedení nedošlo."
         ],
         "tips": [
-          "Pokud artefakt chybí, zkontrolujte, zda byl soubor vygenerován, zda odpovídá jeho výstupní deklarace a zprávy o provedení."
+          "Pokud artefakt chybí, zkontrolujte, zda byl soubor vygenerován, zda odpovídá jeho výstupní deklarace a zprávy o provedení.",
+          "Kliknutím na cestu v záhlaví náhledu ji zkopírujete a ověříte oznámení úspěchu nebo chyby."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Na ploše poklepejte na konverzaci na postranním panelu nebo na její záhlaví, abyste otevřeli dialogové okno sdíleného přejmenování, poté zadejte a potvrďte název.",
-          "Telefon zobrazuje jen aktivní okno, stavy ostatních zachovává. Obnovení stránky nebo návrat po odchodu může obnovit okna, jejich uspořádání a velikost; zavřená okna se znovu neotevřou. Kliknutí na řádek projektu v postranním panelu pouze rozbalí či sbalí projekt, konverzaci přepnete až výběrem konkrétního chatu. Rozložení je oddělené podle aktuálního účtu a zařízení a nekopíruje obsah konverzací."
+          "Telefon zobrazuje jen aktivní okno, stavy ostatních zachovává. Obnovení stránky nebo návrat po odchodu může obnovit okna, jejich uspořádání a velikost; zavřená okna se znovu neotevřou. Kliknutí na řádek projektu v postranním panelu pouze rozbalí či sbalí projekt, konverzaci přepnete až výběrem konkrétního chatu. Rozložení je oddělené podle aktuálního účtu a zařízení a nekopíruje obsah konverzací.",
+          "Smazání či archivace konverzace zachová panel a pokud možno vybere jinou povolenou konverzaci. Jinak vytvoří novou jen s oprávněním; chyba ponechá prázdný panel pro další pokus."
         ],
         "screenshot": {
           "id": "chat-workspace",

@@ -7,7 +7,9 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 - Schedule messages in existing local or channel conversations, with one-shot relative delays, idempotent creation and cleanup when a conversation is archived or deleted. Deliver channel results through their original conversation.
 - Add optional in-memory directories for DingTalk, WeCom and Feishu bots, with explicit refresh, project-scoped search and unambiguous name/contact selection for notifications. Verify WeCom recipient identities through interactions with the same bot.
 - Improve mobile press-and-hold dictation, bounded audio buffering, final-frame flushing and interrupted-recording recovery without automatically sending transcripts.
-- Establish an iOS planning directory; no Xcode project, installable app or iOS background-notification support is included yet.
+- Add a Swift/UIKit/WKWebView iPhone and iPad client, native bridge and simulator build checks. Signed IPA distribution, real-device acceptance and background APNs notifications remain unavailable.
+- Preserve chat panes and their layout when conversations are removed, select another authorized conversation where possible, and retain retry paths when creating a replacement fails.
+- Add shared copyable paths to file and artifact previews, refine mobile navigation and skin-library layout, and retain the creator's display name on scheduled conversation messages.
 
 ## 1.0.22
 

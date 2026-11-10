@@ -84,7 +84,8 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
   // Reconcile external navigation before children render, so a sidebar click never
   // briefly hydrates the previous pane with another session's history.
   if (state.routeKey !== routeKey || state.navigationKey !== location.key) {
-    const existing = sessionId ? state.panes.find(p => p.projectId === project.id && p.sessionId === sessionId) : undefined
+    const matchesRoute = (pane: Pane) => pane.projectId === project.id && pane.sessionId === sessionId
+    const existing = sessionId ? state.panes.find(p => p.id === state.activeId && matchesRoute(p)) || state.panes.find(matchesRoute) : undefined
     setState({
       panes: existing ? state.panes : state.panes.map(p => p.id === state.activeId ? { ...p, projectId: project.id, sessionId } : p),
       activeId: !compact && location.state?.revealChatPane ? state.activeId : existing?.id || state.activeId,
@@ -128,7 +129,7 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
   useEffect(() => useChatWorkspaceStore.subscribe((next, previous) => {
     if (!next.removal || next.removal === previous.removal || next.removal.scope !== workspaceScope) return
     const { panes } = next.removal
-    commit(panes, panes[0].id, true)
+    commit(panes, latest.current.activeId, true)
   }), [workspaceScope, commit])
   const resize = useChatPaneResize(state.panes.map(p => p.id), layout, compact, initial?.sizes)
   useEffect(() => {

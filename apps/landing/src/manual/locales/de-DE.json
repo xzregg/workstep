@@ -737,7 +737,8 @@
           "Vergleichen Sie bei mehreren Runden die Ergebnisse. Identisch mit Runde … bedeutet gleicher Inhalt, nicht dass diese Runde nicht lief."
         ],
         "tips": [
-          "Fehlende Artefakte: Prüfen Sie tatsächliche Dateierzeugung, passende Ausgabedeklarationen und Ausführungsnachrichten."
+          "Fehlende Artefakte: Prüfen Sie tatsächliche Dateierzeugung, passende Ausgabedeklarationen und Ausführungsnachrichten.",
+          "Klicken Sie zum Kopieren auf den Pfad im Vorschautitel; anschließend erscheint eine Erfolgs- oder Fehlermeldung."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Doppelklicken Sie am Desktop ein Gespräch in der Seitenleiste oder dessen Kopftitel, um den gemeinsamen Umbenennungsdialog zu öffnen und den Namen zu bestätigen.",
-          "Auf dem Smartphone ist nur das aktive Fenster sichtbar; der Zustand der anderen bleibt erhalten. Nach dem Neuladen oder Verlassen und Zurückkehren lassen sich Fenster, Anordnung und Größen wiederherstellen; geschlossene Fenster werden nicht erneut geöffnet. Ein Klick auf die Projektzeile in der Seitenleiste klappt das Projekt nur auf oder zu; erst die Auswahl einer konkreten Unterhaltung wechselt den Chat. Das Layout ist nach aktuellem Konto und Gerät getrennt und kopiert keine Gesprächsinhalte."
+          "Auf dem Smartphone ist nur das aktive Fenster sichtbar; der Zustand der anderen bleibt erhalten. Nach dem Neuladen oder Verlassen und Zurückkehren lassen sich Fenster, Anordnung und Größen wiederherstellen; geschlossene Fenster werden nicht erneut geöffnet. Ein Klick auf die Projektzeile in der Seitenleiste klappt das Projekt nur auf oder zu; erst die Auswahl einer konkreten Unterhaltung wechselt den Chat. Das Layout ist nach aktuellem Konto und Gerät getrennt und kopiert keine Gesprächsinhalte.",
+          "Löschen oder Archivieren einer Unterhaltung behält das Fenster bei und wählt möglichst eine andere erlaubte Unterhaltung. Ohne Alternative wird nur mit Berechtigung eine neue erstellt; bei Fehlern bleibt das leere Fenster zum Wiederholen."
         ],
         "screenshot": {
           "id": "chat-workspace",

@@ -132,8 +132,10 @@ test('markdown file preview renders Mermaid diagrams like chat messages', async 
   }
 })
 
-test('file preview opens the standalone preview route with toolbar state', async () => {
+for (const pathname of ['/', '/workspace/device-one/chat', '/workspace/device-two/file-preview']) {
+test(`file preview opens the standalone preview route from ${pathname} with toolbar state`, async () => {
   const { window, document } = installDomEnvironment()
+  window.happyDOM.setURL(`https://gateway.test${pathname}`)
   const originalFetch = globalThis.fetch
   const originalOpen = window.open
   let openedUrl = ''
@@ -169,7 +171,8 @@ test('file preview opens the standalone preview route with toolbar state', async
 
     assert.equal(
       openedUrl,
-      '/file-preview?path=docs%2Fguide.md&name=guide.md&project_id=project%3Aone&line=3',
+      (pathname === '/' ? '' : pathname.substring(0, pathname.lastIndexOf('/')))
+        + '/file-preview?path=docs%2Fguide.md&name=guide.md&project_id=project%3Aone&line=3',
     )
   } finally {
     await act(async () => root.unmount())
@@ -178,6 +181,8 @@ test('file preview opens the standalone preview route with toolbar state', async
     await window.happyDOM.close()
   }
 })
+
+}
 
 test('standalone preview page keeps the file toolbar buttons', async () => {
   const { window, document } = installDomEnvironment()

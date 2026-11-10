@@ -70,3 +70,12 @@ logs
 build-artifacts
 apps/desktop/resources-placeholder
 apps/desktop/.nuitka-venv
+# iOS local build products, caches and signing configuration.
+apps/ios/build
+apps/ios/.build
+apps/ios/DerivedData*
+apps/ios/**/*.ipa
+apps/ios/**/*.xcarchive
+apps/ios/**/xcuserdata
+apps/ios/**/*.xcuserstate
+apps/ios/Signing.xcconfig

@@ -1,3 +1,4 @@
+import CopyablePath from './CopyablePath'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -225,7 +226,7 @@ export default function ProjectDirectoryBrowserDialog({
           </span>
           <div className="project-directory-dialog-heading">
             <strong id="project-directory-dialog-title">{title}</strong>
-            <span title={displayPath}>{displayPath || t('browser.projectRoot')}</span>
+            {displayPath ? <CopyablePath path={displayPath} /> : <span>{t('browser.projectRoot')}</span>}
           </div>
           {headerActions}
           <Button

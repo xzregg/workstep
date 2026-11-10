@@ -19,9 +19,22 @@ for (const width of [320, 390, 1023, 1280]) test(`appearance cards and device pr
   const root = createRoot(host)
   const noop = () => {}
   try {
-    await act(async () => root.render(<I18nProvider><div className="settings-content"><div className="settings-appearance-page skin-settings"><SkinLibrary documents={[defaultSkin()]} activeId="default" busy={false} canManage={false} onCreate={noop} onPreview={noop} onApply={noop} onExport={noop} onDelete={noop} onRestore={noop} /></div></div></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><div className="settings-content"><div className="settings-appearance-page skin-settings"><SkinLibrary documents={[defaultSkin(), ...Array.from({ length: 20 }, (_, index) => ({ ...defaultSkin(), manifest: { ...defaultSkin().manifest, id: `skin-${index}`, name: `自定义皮肤 ${index}` } }))]} activeId="default" busy={false} canManage={false} onCreate={noop} onPreview={noop} onApply={noop} onExport={noop} onDelete={noop} onRestore={noop} /></div></div></I18nProvider>))
     const card = host.querySelector<HTMLElement>('.skin-settings-card')!
-    assert.notEqual(window.getComputedStyle(card).height, '32px', 'skin cards must retain their thumbnail and name instead of a regular button height')
+    assert.notEqual(window.getComputedStyle(card).height, '32px', 'skin rows must leave room for name and metadata')
+    assert.equal(host.querySelectorAll('.skin-settings-card').length, 21)
+    assert.equal(host.querySelector('.skin-thumbnail'), null, 'library uses compact rows without repeated mock previews')
+    const customMeta = host.querySelector('[data-skin-id="skin-0"] .skin-settings-card-meta')!
+    assert.doesNotMatch(customMeta.textContent!, /自定义皮肤包/)
+    assert.ok(customMeta.querySelector('[role="img"][aria-label="自定义皮肤包"][title="自定义皮肤包"] svg'))
+    const listStyle = window.getComputedStyle(host.querySelector('.skin-settings-list')!)
+    assert.equal(listStyle.gridTemplateColumns, 'repeat(2, minmax(0, 1fr))', 'compact library shows two skins per row')
+    assert.equal(listStyle.overflowY, 'auto', 'large libraries scroll independently')
+    assert.notEqual(listStyle.maxHeight, 'none')
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-skin-id="skin-19"]')!.click())
+    assert.equal(host.querySelector('[data-skin-id="skin-19"]')!.getAttribute('aria-pressed'), 'true')
+    assert.match(host.querySelector('.skin-settings-detail h2')!.textContent!, /自定义皮肤 19/)
+    assert.match(host.querySelector('[data-skin-id="default"]')!.textContent!, /使用中/)
     const phone = host.querySelector<HTMLButtonElement>('.skin-settings-device-tabs button:last-child')!
     assert.equal(phone.getAttribute('aria-pressed'), String(width <= 1023))
     await act(async () => phone.click())

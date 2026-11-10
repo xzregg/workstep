@@ -1,6 +1,7 @@
 import './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { Window } from 'happy-dom'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -47,6 +48,8 @@ test('shared Markdown images open and close the image preview by default', async
   const root = createRoot(container)
 
   try {
+    const styles = document.head.appendChild(document.createElement('style'))
+    styles.textContent = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
     await act(async () => root.render(
       <I18nProvider>
         <MarkdownMessage content={'![界面截图](.workstep/uploads/screen.png)'} projectId="project-1" />
@@ -54,6 +57,12 @@ test('shared Markdown images open and close the image preview by default', async
     ))
     const thumbnail = container.querySelector<HTMLButtonElement>('.markdown-image-click')
     assert.ok(thumbnail)
+    const thumbnailStyle = window.getComputedStyle(thumbnail.querySelector('img')!)
+    assert.equal(thumbnailStyle.maxWidth, 'min(100%, 320px)')
+    assert.equal(thumbnailStyle.maxHeight, '240px')
+    assert.equal(thumbnailStyle.width, 'auto')
+    assert.equal(thumbnailStyle.height, 'auto')
+    assert.equal(window.getComputedStyle(thumbnail).maxWidth, '100%')
     await act(async () => thumbnail.click())
     const preview = document.querySelector<HTMLElement>('.image-preview')
     assert.ok(preview)

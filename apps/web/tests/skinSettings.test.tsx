@@ -172,7 +172,7 @@ test('seeded starry skin behaves like an editable custom skin in the library', a
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><SkinSettings /></I18nProvider></MemoryRouter>))
     const card = document.querySelector<HTMLButtonElement>('.skin-settings-card[data-skin-id="interstellar-night"]')!
-    assert.match(card.textContent!, /自定义皮肤包/)
+    assert.ok(card.querySelector('[role="img"][aria-label="自定义皮肤包"]'))
     await act(async () => card.click())
     assert.ok(document.querySelector('.skin-settings-detail button[aria-label="删除"]'))
     assert.ok(document.querySelector('.skin-script-settings [role=switch]'))

@@ -23,13 +23,7 @@
 .task-artifact-preview-header.dialog-header { padding: 12px 16px; }
 .task-artifact-preview-heading { flex: 1; min-width: 0; }
 .task-artifact-preview-title { font-size: calc(13px * var(--font-scale)); font-weight: 600; }
-.task-artifact-preview-path {
-  font-size: calc(11px * var(--font-scale));
-  color: var(--meta);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+
 .task-artifact-preview-body { flex: 1; min-height: 0; }
 
 @media (max-width: 1023px) {

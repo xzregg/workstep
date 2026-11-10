@@ -119,7 +119,10 @@ from tests.test_chat_session import chat_module
 
 
 @pytest.mark.anyio
-async def test_real_chat_runtime_preserves_context_and_marks_scheduled_message(chat_module, monkeypatch):
+@pytest.mark.parametrize(('creator', 'expected_author'), [
+    ({'id': 'user-1', 'name': '张三', 'username': 'zhangsan'}, '张三（定时任务：稍后检查）'),
+])
+async def test_real_chat_runtime_preserves_context_and_marks_scheduled_message(chat_module, monkeypatch, creator, expected_author):
     from services.schedule import ScheduleModule
     from models import ChatMessage, ScheduleRun
     from models.fields import utc_now
@@ -137,6 +140,9 @@ async def test_real_chat_runtime_preserves_context_and_marks_scheduled_message(c
         ChatMessage.create(id='earlier', session=session['id'], role='user', content='检查订单服务', created_at=utc_now())
         rule = scheduler.create(project.id, name='稍后检查', target_type='session', target_session_id=session['id'],
             instruction='看看情况怎么样', rule={'kind':'after', 'delay':'2h'})
+        import json
+        from models import Schedule
+        Schedule.update(task_template_json=json.dumps({'_creator': creator})).where(Schedule.id == rule['id']).execute()
         ScheduleRun.create(id='real-run', schedule=rule['id'], scheduled_for=utc_now(), created_at=utc_now())
         return session, rule
     session, rule = await manager.run_db(project.id, seed)
@@ -146,11 +152,11 @@ async def test_real_chat_runtime_preserves_context_and_marks_scheduled_message(c
         messages = list(ChatMessage.select().where(ChatMessage.session == session['id']).dicts())
         return run, messages
     run, messages = await manager.run_db(project.id, inspect)
-    assert run['status'] == 'succeeded'
+    assert run['status'] == 'succeeded', run.get('reason')
     assert run['notification_status'] == 'disabled'
     assert '检查订单服务' in observed[0] and '看看情况怎么样' in observed[0]
     assert session['id'] in observed[0] and project.id in observed[0]
-    assert any(m['content'] == '看看情况怎么样' and m['author_name'] == '定时任务：稍后检查' for m in messages)
+    assert any(m['content'] == '看看情况怎么样' and m['author_name'] == expected_author and m['author_type'] == 'scheduler' for m in messages)
     assert any(m['content'] == '当前工作正常' for m in messages)
 
 

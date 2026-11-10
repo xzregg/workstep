@@ -11,6 +11,7 @@ import { useI18n } from '../i18n'
 import MarkdownMessage from './MarkdownMessage'
 import CodeFilePreview from './CodeFilePreview'
 import { copyText } from '../utils/clipboard'
+import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 import ProjectDirectoryBrowser from './ProjectDirectoryBrowser'
 import { HTML_PREVIEW_SANDBOX, isolatedHtmlDocument, prepareFrame } from '../utils/htmlPreviewCompat'
 import { useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
@@ -86,7 +87,7 @@ function filenameFromPath(path: string) {
 function previewWindowUrl(path: string, name: string, projectId: string, line?: number) {
   const params = new URLSearchParams({ path, name, project_id: projectId })
   if (line !== undefined) params.set('line', String(line))
-  return `/file-preview?${params.toString()}`
+  return `${gatewayWorkspacePath()}/file-preview?${params.toString()}`
 }
 
 export default function ArtifactPreview({

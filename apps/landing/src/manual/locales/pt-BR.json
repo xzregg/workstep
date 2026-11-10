@@ -737,7 +737,8 @@
           "Compare as rodadas certas ao repetir. O mesmo que round… significa conteúdo idêntico, não que a execução não tenha ocorrido."
         ],
         "tips": [
-          "Se um artefato estiver faltando, verifique se um arquivo foi gerado, se sua declaração de saída corresponde e as mensagens de execução."
+          "Se um artefato estiver faltando, verifique se um arquivo foi gerado, se sua declaração de saída corresponde e as mensagens de execução.",
+          "Clique no caminho no título da prévia para copiá-lo e confira o aviso de sucesso ou falha."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "No desktop, clique duas vezes em uma conversa da barra lateral ou no título do cabeçalho para abrir a caixa de diálogo de renomeação compartilhada e, em seguida, insira e confirme o nome.",
-          "No celular, apenas o painel ativo é exibido; os demais mantêm seu estado. Recarregar ou sair e voltar restaura painéis, disposição e tamanhos; painéis fechados não são reabertos. Clicar na linha de um projeto na barra lateral apenas expande ou recolhe a árvore; clique em uma conversa específica para alternar. A disposição é isolada por conta e dispositivo e não copia o conteúdo das conversas."
+          "No celular, apenas o painel ativo é exibido; os demais mantêm seu estado. Recarregar ou sair e voltar restaura painéis, disposição e tamanhos; painéis fechados não são reabertos. Clicar na linha de um projeto na barra lateral apenas expande ou recolhe a árvore; clique em uma conversa específica para alternar. A disposição é isolada por conta e dispositivo e não copia o conteúdo das conversas.",
+          "Excluir ou arquivar uma conversa mantém o painel e seleciona outra autorizada quando possível. Sem alternativa, uma nova só é criada com permissão; falhas deixam o painel vazio para tentar novamente."
         ],
         "screenshot": {
           "id": "chat-workspace",

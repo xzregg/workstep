@@ -47,7 +47,7 @@ for (const hostname of ['192.168.1.20', '127.0.0.1']) {
       } else {
         assert.equal(nativeOpenCount, 0)
         assert.equal(
-          document.querySelector('.project-directory-dialog-heading span')?.getAttribute('title'),
+          document.querySelector('.project-directory-dialog-heading .copyable-path')?.getAttribute('title'),
           '/project/.workstep/artifacts/task/intake/1',
         )
       }

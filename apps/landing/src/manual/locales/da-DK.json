@@ -737,7 +737,8 @@
           "Sammenlign de rigtige runder, når du kører igen. Samme som rund... betyder identisk indhold, ikke at udførelse ikke fandt sted."
         ],
         "tips": [
-          "Hvis en artefakt mangler, skal du kontrollere, om en fil blev genereret, om dens outputerklæring matcher, og udførelsesmeddelelserne."
+          "Hvis en artefakt mangler, skal du kontrollere, om en fil blev genereret, om dens outputerklæring matcher, og udførelsesmeddelelserne.",
+          "Klik på stien i forhåndsvisningens overskrift for at kopiere den, og kontrollér beskeden om resultatet."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "På skrivebordet skal du dobbeltklikke på en sidebjælkesamtale eller dens overskriftstitel for at åbne den delte omdøbningsdialog, og indtast derefter og bekræft navnet.",
-          "På telefonen vises kun det aktive vindue, mens de øvriges tilstand bevares. Efter genindlæsning eller når du forlader siden og vender tilbage, kan vinduer, rækkefølge og størrelser gendannes; lukkede vinduer åbnes ikke igen. Klik på en projektrække i sidebjælken udvider eller sammenfolder kun projektet; først klik på en konkret samtale skifter chat. Layoutet er adskilt efter aktuel konto og enhed og kopierer ikke samtalernes tekst."
+          "På telefonen vises kun det aktive vindue, mens de øvriges tilstand bevares. Efter genindlæsning eller når du forlader siden og vender tilbage, kan vinduer, rækkefølge og størrelser gendannes; lukkede vinduer åbnes ikke igen. Klik på en projektrække i sidebjælken udvider eller sammenfolder kun projektet; først klik på en konkret samtale skifter chat. Layoutet er adskilt efter aktuel konto og enhed og kopierer ikke samtalernes tekst.",
+          "Sletning eller arkivering af en samtale bevarer panelet og vælger om muligt en anden tilladt samtale. Ellers oprettes en ny kun med tilladelse; fejl efterlader et tomt panel til et nyt forsøg."
         ],
         "screenshot": {
           "id": "chat-workspace",

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
-import { defaultSkin, effectiveSkinTokens, resolvedSkinLayout, type SkinDocument } from '../skins/contract'
+import { defaultSkin, effectiveSkinTokens, type SkinDocument } from '../skins/contract'
 import { useI18n } from '../i18n'
 import Button from './Button'
 import Input from './Input'
@@ -7,13 +7,6 @@ import Icon from './Icon'
 import SkinStudioPreview from './SkinStudioPreview'
 import SkinScriptSettings from './SkinScriptSettings'
 import { useCompactLayout } from '../hooks/useCompactLayout'
-
-function SkinThumbnail({ skin }: { skin: SkinDocument }) {
-  const tokens = effectiveSkinTokens(skin)
-  const layout = resolvedSkinLayout(skin)
-  const style = Object.fromEntries(['bg', 'surface', 'fg', 'border', 'accent'].map(key => [`--thumb-${key}`, tokens[key]])) as CSSProperties
-  return <span className="skin-thumbnail" style={style} aria-hidden="true"><span className={`skin-thumbnail-window${layout.sidebarSide === 'right' ? ' is-right' : ''}`}><span className="skin-thumbnail-nav"><i /><i /><i /><i /></span><span className="skin-thumbnail-content"><span className="skin-thumbnail-title"><i /><b /></span><span className="skin-thumbnail-bubble"><i /><i /></span><span className="skin-thumbnail-bubble"><i /></span><span className="skin-thumbnail-composer" /></span></span></span>
-}
 
 export default function SkinLibrary({ documents, activeId, activeRevision, preferredSkin, busy, canManage, toolbarActions, onCreate, onPreview, onApply, onExport, onDelete, onRestore }: {
   documents: SkinDocument[]; activeId: string; activeRevision?: string; busy: boolean; canManage: boolean;
@@ -44,7 +37,7 @@ export default function SkinLibrary({ documents, activeId, activeRevision, prefe
         </div>{toolbarActions}</div>
         <label className="skin-settings-search"><Icon name="search" size={15} /><Input value={query} onChange={event => setQuery(event.target.value)} aria-label={t('skins.librarySearch')} placeholder={t('skins.librarySearch')} /></label>
         <div className="skin-settings-list">{visible.map(skin => <button type="button" key={skin.manifest.id} className="skin-settings-card" data-skin-id={skin.manifest.id} data-selected={selected.manifest.id === skin.manifest.id} aria-pressed={selected.manifest.id === skin.manifest.id} onClick={() => setSelectedId(skin.manifest.id)}>
-          <SkinThumbnail skin={skin} /><span className="skin-settings-card-info"><span className="skin-settings-card-title"><strong>{skin.manifest.id === 'default' ? t('skins.default') : skin.manifest.name}</strong>{activeId === skin.manifest.id && <span className="skin-settings-pill">{t('skins.using')}</span>}</span><span className="skin-settings-card-meta">{t(skin.manifest.id === 'default' ? 'skins.builtIn' : 'skins.customPackage')} · {skin.manifest.version}</span><span className="skin-settings-swatches">{['bg', 'surface', 'accent', 'fg'].map(key => <i key={key} style={{ '--swatch-color': effectiveSkinTokens(skin)[key] } as CSSProperties} />)}</span></span>
+          <span className="skin-settings-card-info"><span className="skin-settings-card-title"><strong title={skin.manifest.name}>{skin.manifest.id === 'default' ? t('skins.default') : skin.manifest.name}</strong>{activeId === skin.manifest.id && <span className="skin-settings-pill">{t('skins.using')}</span>}</span><span className="skin-settings-card-meta">{skin.manifest.id === 'default' ? <span>{t('skins.builtIn')}</span> : <span className="skin-settings-package-icon" role="img" aria-label={t('skins.customPackage')} title={t('skins.customPackage')}><Icon name="pencil" size={13} /></span>}<span>{skin.manifest.version}</span></span><span className="skin-settings-swatches" aria-hidden="true">{['bg', 'surface', 'accent', 'fg'].map(key => <i key={key} style={{ '--swatch-color': effectiveSkinTokens(skin)[key] } as CSSProperties} />)}</span></span>
         </button>)}
         </div>
         {visible.length === 0 && <p className="skin-settings-empty" role="status">{t('skins.empty')}</p>}

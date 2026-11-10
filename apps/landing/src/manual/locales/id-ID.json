@@ -737,7 +737,8 @@
           "Bandingkan putaran yang tepat saat berlari ulang. Sama dengan bulat… berarti isinya identik, bukan berarti eksekusi tidak terjadi."
         ],
         "tips": [
-          "Jika artefak hilang, periksa apakah berkas telah dibuat, apakah deklarasi outputnya cocok, dan pesan eksekusinya."
+          "Jika artefak hilang, periksa apakah berkas telah dibuat, apakah deklarasi outputnya cocok, dan pesan eksekusinya.",
+          "Klik jalur pada judul pratinjau untuk menyalinnya, lalu periksa pemberitahuan berhasil atau gagal."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Di desktop, klik dua kali percakapan bilah samping atau judul headernya untuk membuka dialog ganti nama bersama, lalu masukkan dan konfirmasikan namanya.",
-          "Ponsel hanya menampilkan jendela aktif dan mempertahankan keadaan jendela lain. Setelah memuat ulang atau meninggalkan halaman lalu kembali, jendela, susunan, dan ukuran dapat dipulihkan; jendela yang ditutup tidak dibuka kembali. Mengeklik baris proyek di bilah sisi hanya memperluas atau menciutkannya; chat baru berganti ketika percakapan tertentu dipilih. Tata letak dipisahkan menurut akun saat ini dan perangkat, tanpa menyalin isi percakapan."
+          "Ponsel hanya menampilkan jendela aktif dan mempertahankan keadaan jendela lain. Setelah memuat ulang atau meninggalkan halaman lalu kembali, jendela, susunan, dan ukuran dapat dipulihkan; jendela yang ditutup tidak dibuka kembali. Mengeklik baris proyek di bilah sisi hanya memperluas atau menciutkannya; chat baru berganti ketika percakapan tertentu dipilih. Tata letak dipisahkan menurut akun saat ini dan perangkat, tanpa menyalin isi percakapan.",
+          "Menghapus atau mengarsipkan percakapan mempertahankan panel dan memilih percakapan lain yang diizinkan jika tersedia. Jika tidak ada, percakapan baru dibuat hanya dengan izin; kegagalan menyisakan panel kosong untuk mencoba lagi."
         ],
         "screenshot": {
           "id": "chat-workspace",

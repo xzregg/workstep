@@ -50,13 +50,11 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         statusPanel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.numberOfLines = 0; statusLabel.textAlignment = .center; statusLabel.font = .preferredFont(forTextStyle: .body)
         retry.setTitle("重试", for: .normal); retry.addTarget(self, action: #selector(reload), for: .touchUpInside)
-        let settings = UIButton(type: .system); settings.setTitle("修改服务地址", for: .normal)
-        settings.addTarget(self, action: #selector(showSetup), for: .touchUpInside)
         let devices = UIButton(type: .system); devices.setTitle("返回设备列表", for: .normal)
         devices.addTarget(self, action: #selector(openDevices), for: .touchUpInside)
         let logs = UIButton(type: .system); logs.setTitle("查看日志", for: .normal); logs.addTarget(self, action: #selector(showDiagnostics), for: .touchUpInside)
-        for item in [spinner, statusLabel, retry, settings, devices, logs] { statusPanel.addArrangedSubview(item) }
-        for button in [retry, settings, devices, logs] { button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true }
+        for item in [spinner, statusLabel, retry, devices, logs] { statusPanel.addArrangedSubview(item) }
+        for button in [retry, devices, logs] { button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true }
         view.addSubview(statusPanel)
         NSLayoutConstraint.activate([
             statusPanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),

@@ -737,7 +737,8 @@
           "Vertaa oikeita kierroksia, kun suoritat uudelleen. Sama kuin pyöreä… tarkoittaa identtistä sisältöä, ei sitä, että toteutusta ei tapahtunut."
         ],
         "tips": [
-          "Jos artefakti puuttuu, tarkista, onko tiedosto luotu, vastaako sen tulosilmoitus ja suoritusviestit."
+          "Jos artefakti puuttuu, tarkista, onko tiedosto luotu, vastaako sen tulosilmoitus ja suoritusviestit.",
+          "Kopioi polku napsauttamalla sitä esikatselun otsikossa ja tarkista onnistumis- tai virheilmoitus."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Kaksoisnapsauta työpöydällä sivupalkin keskustelua tai sen otsikon otsikkoa avataksesi jaetun uudelleennimeämisikkunan, kirjoita ja vahvista nimi.",
-          "Puhelin näyttää vain aktiivisen ikkunan ja säilyttää muiden tilan. Uudelleenlatauksen tai sivulta poistumisen ja palaamisen jälkeen ikkunat, asettelu ja koot voidaan palauttaa; suljettuja ikkunoita ei avata uudelleen. Sivupalkin projektirivin napsautus vain laajentaa tai supistaa projektin; keskustelu vaihtuu vasta tietyn keskustelun valinnasta. Asettelu erotetaan nykyisen tilin ja laitteen mukaan, eikä keskustelujen tekstiä kopioida."
+          "Puhelin näyttää vain aktiivisen ikkunan ja säilyttää muiden tilan. Uudelleenlatauksen tai sivulta poistumisen ja palaamisen jälkeen ikkunat, asettelu ja koot voidaan palauttaa; suljettuja ikkunoita ei avata uudelleen. Sivupalkin projektirivin napsautus vain laajentaa tai supistaa projektin; keskustelu vaihtuu vasta tietyn keskustelun valinnasta. Asettelu erotetaan nykyisen tilin ja laitteen mukaan, eikä keskustelujen tekstiä kopioida.",
+          "Keskustelun poistaminen tai arkistointi säilyttää paneelin ja valitsee mahdollisuuksien mukaan toisen sallitun keskustelun. Muuten uusi luodaan vain oikeuksien salliessa; virhe jättää tyhjän paneelin uutta yritystä varten."
         ],
         "screenshot": {
           "id": "chat-workspace",

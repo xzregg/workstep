@@ -217,7 +217,7 @@ for (const { interactive, standalone } of [
     assert.ok(document.querySelector('[role="treeitem"][title=".workstep/artifacts/flow/task/build"]'))
     await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     await act(async () => (element.querySelector('.task-artifact-open-directory--step') as HTMLElement).click())
-    assert.equal(document.querySelector('.project-directory-dialog-heading span')?.getAttribute('title'), '.workstep/artifacts/flow/task/build')
+    assert.equal(document.querySelector('.project-directory-dialog-heading .copyable-path')?.getAttribute('title'), '.workstep/artifacts/flow/task/build')
     await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     const directoryOutput = [...element.querySelectorAll<HTMLElement>('.task-artifact-file-row')]
       .find(row => row.textContent?.includes('code'))!

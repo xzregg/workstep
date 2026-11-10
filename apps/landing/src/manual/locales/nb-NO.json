@@ -737,7 +737,8 @@
           "Sammenlign de riktige rundene ved omkjøring. Samme som rund... betyr identisk innhold, ikke at utførelse ikke skjedde."
         ],
         "tips": [
-          "Hvis en artefakt mangler, sjekk om en fil ble generert, om utdataerklæringen samsvarer, og utførelsesmeldingene."
+          "Hvis en artefakt mangler, sjekk om en fil ble generert, om utdataerklæringen samsvarer, og utførelsesmeldingene.",
+          "Klikk på stien i forhåndsvisningens overskrift for å kopiere den, og kontroller meldingen om resultatet."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "På skrivebordet dobbeltklikker du på en sidefeltsamtale eller dens overskriftstittel for å åpne den delte endre navn-dialogboksen, og skriv inn og bekreft navnet.",
-          "Telefonen viser bare det aktive panelet, men de andre beholder tilstanden. Paneler, oppsett og størrelser gjenopprettes etter oppdatering eller når du kommer tilbake; lukkede paneler åpnes ikke igjen. Klikk på en prosjektrad i sidefeltet bare utvider eller skjuler treet; velg en bestemt samtale for å bytte. Oppsettet er atskilt per konto og enhet og kopierer ikke samtaletekst."
+          "Telefonen viser bare det aktive panelet, men de andre beholder tilstanden. Paneler, oppsett og størrelser gjenopprettes etter oppdatering eller når du kommer tilbake; lukkede paneler åpnes ikke igjen. Klikk på en prosjektrad i sidefeltet bare utvider eller skjuler treet; velg en bestemt samtale for å bytte. Oppsettet er atskilt per konto og enhet og kopierer ikke samtaletekst.",
+          "Sletting eller arkivering av en samtale beholder panelet og velger om mulig en annen tillatt samtale. Ellers opprettes en ny bare med tillatelse; feil lar det tomme panelet stå for nytt forsøk."
         ],
         "screenshot": {
           "id": "chat-workspace",

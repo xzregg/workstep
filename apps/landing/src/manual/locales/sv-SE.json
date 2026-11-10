@@ -737,7 +737,8 @@
           "Jämför rätt omgångar vid omkörning. Samma som rund... betyder identiskt innehåll, inte att exekvering inte inträffade."
         ],
         "tips": [
-          "Om en artefakt saknas, kontrollera om en fil genererades, om dess utdatadeklaration matchar och exekveringsmeddelandena."
+          "Om en artefakt saknas, kontrollera om en fil genererades, om dess utdatadeklaration matchar och exekveringsmeddelandena.",
+          "Klicka på sökvägen i förhandsvisningens rubrik för att kopiera den och kontrollera meddelandet om resultatet."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "På skrivbordet dubbelklickar du på en konversation i sidofältet eller dess rubrik för att öppna den delade dialogrutan för att byta namn, och skriv sedan in och bekräfta namnet.",
-          "Telefonen visar bara den aktiva panelen, men övriga behåller sitt tillstånd. Paneler, layout och storlekar återställs efter omladdning eller när du kommer tillbaka; stängda paneler öppnas inte igen. Klick på en projektrad i sidofältet fäller bara ut eller ihop trädet; välj ett visst samtal för att byta. Layouten hålls åtskild per konto och enhet och kopierar inte samtalstext."
+          "Telefonen visar bara den aktiva panelen, men övriga behåller sitt tillstånd. Paneler, layout och storlekar återställs efter omladdning eller när du kommer tillbaka; stängda paneler öppnas inte igen. Klick på en projektrad i sidofältet fäller bara ut eller ihop trädet; välj ett visst samtal för att byta. Layouten hålls åtskild per konto och enhet och kopierar inte samtalstext.",
+          "Att ta bort eller arkivera en konversation behåller panelen och väljer om möjligt en annan tillåten konversation. Annars skapas en ny endast med behörighet; fel lämnar den tomma panelen för nytt försök."
         ],
         "screenshot": {
           "id": "chat-workspace",

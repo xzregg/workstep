@@ -737,7 +737,8 @@
           "So sánh các vòng bên phải khi chạy lại. Giống như vòng… có nghĩa là nội dung giống hệt nhau, không phải việc thực thi không xảy ra."
         ],
         "tips": [
-          "Nếu thiếu thành phần lạ, hãy kiểm tra xem tệp có được tạo hay không, khai báo đầu ra của nó có khớp hay không và thông báo thực thi có khớp hay không."
+          "Nếu thiếu thành phần lạ, hãy kiểm tra xem tệp có được tạo hay không, khai báo đầu ra của nó có khớp hay không và thông báo thực thi có khớp hay không.",
+          "Nhấn đường dẫn trong tiêu đề xem trước để sao chép, rồi kiểm tra thông báo thành công hoặc thất bại."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Trên máy tính để bàn, bấm hai lần vào cuộc hội thoại trên thanh bên hoặc tiêu đề tiêu đề của nó để mở hộp thoại đổi tên được chia sẻ, sau đó nhập và xác nhận tên.",
-          "Điện thoại chỉ hiển thị bảng đang hoạt động; các bảng khác giữ trạng thái. Sau khi tải lại hoặc rời trang rồi quay lại, các bảng, bố cục và kích thước được khôi phục; bảng đã đóng không mở lại. Nhấp hàng dự án ở thanh bên chỉ mở rộng hoặc thu gọn cây; nhấp cuộc trò chuyện cụ thể mới chuyển. Bố cục tách biệt theo tài khoản và thiết bị, không sao chép nội dung trò chuyện."
+          "Điện thoại chỉ hiển thị bảng đang hoạt động; các bảng khác giữ trạng thái. Sau khi tải lại hoặc rời trang rồi quay lại, các bảng, bố cục và kích thước được khôi phục; bảng đã đóng không mở lại. Nhấp hàng dự án ở thanh bên chỉ mở rộng hoặc thu gọn cây; nhấp cuộc trò chuyện cụ thể mới chuyển. Bố cục tách biệt theo tài khoản và thiết bị, không sao chép nội dung trò chuyện.",
+          "Xóa hoặc lưu trữ cuộc trò chuyện vẫn giữ khung và chọn cuộc trò chuyện được phép khác nếu có. Nếu không, chỉ tạo mới khi có quyền; lỗi sẽ giữ khung trống để thử lại."
         ],
         "screenshot": {
           "id": "chat-workspace",

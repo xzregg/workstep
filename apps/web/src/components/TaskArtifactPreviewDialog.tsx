@@ -1,3 +1,4 @@
+import CopyablePath from './CopyablePath'
 import type { DirectoryBrowseResult, DirectoryEntry, Project, TaskArtifact } from '../api/client'
 import { useI18n } from '../i18n'
 import { useMemo, useState } from 'react'
@@ -85,9 +86,7 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, project
           <div className="task-artifact-preview-title">
             {artifact.logical_name || artifact.name}
           </div>
-          <div className="task-artifact-preview-path" title={artifact.path}>
-            {artifact.path}
-          </div>
+          <CopyablePath path={artifact.path} />
         </div>
         {(onOpenDirectory || webDirectoryMode) && <Button
           variant="ghost"

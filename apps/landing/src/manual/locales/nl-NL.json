@@ -737,7 +737,8 @@
           "Vergelijk de juiste rondes bij het herhalen. Hetzelfde als rond… betekent identieke inhoud, niet dat de uitvoering niet heeft plaatsgevonden."
         ],
         "tips": [
-          "Als een artefact ontbreekt, controleer dan of er een bestand is gegenereerd, of de uitvoerdeclaratie overeenkomt en of er uitvoeringsberichten zijn."
+          "Als een artefact ontbreekt, controleer dan of er een bestand is gegenereerd, of de uitvoerdeclaratie overeenkomt en of er uitvoeringsberichten zijn.",
+          "Klik op het pad in de voorbeeldkop om het te kopiëren en controleer de melding van succes of mislukking."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Dubbelklik op het bureaublad op een zijbalkgesprek of de koptitel ervan om het gedeelde dialoogvenster voor het wijzigen van de naam te openen. Voer vervolgens de naam in en bevestig deze.",
-          "Op de telefoon is alleen het actieve paneel zichtbaar; de andere behouden hun status. Na vernieuwen of terugkeren worden panelen, indeling en afmetingen hersteld; gesloten panelen gaan niet opnieuw open. Klikken op een projectrij in de zijbalk vouwt alleen de boom in of uit; klik op een specifieke conversatie om te wisselen. De indeling is gescheiden per account en apparaat en kopieert geen gesprekstekst."
+          "Op de telefoon is alleen het actieve paneel zichtbaar; de andere behouden hun status. Na vernieuwen of terugkeren worden panelen, indeling en afmetingen hersteld; gesloten panelen gaan niet opnieuw open. Klikken op een projectrij in de zijbalk vouwt alleen de boom in of uit; klik op een specifieke conversatie om te wisselen. De indeling is gescheiden per account en apparaat en kopieert geen gesprekstekst.",
+          "Een conversatie verwijderen of archiveren behoudt het paneel en kiest waar mogelijk een andere toegestane conversatie. Anders wordt alleen met toestemming een nieuwe gemaakt; bij fouten blijft het lege paneel beschikbaar om opnieuw te proberen."
         ],
         "screenshot": {
           "id": "chat-workspace",

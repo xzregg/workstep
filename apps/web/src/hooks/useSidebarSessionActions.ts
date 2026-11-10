@@ -77,8 +77,8 @@ export function useSidebarSessionActions() {
       useRecentVisitsStore.getState().removeSessions(projectId, [sessionId])
       useChatListStore.getState().removeSession(sessionId)
       useChatSessionStore.getState().resetSession(sessionId)
-      const closedPane = useChatWorkspaceStore.getState().removeSessions(projectId, [sessionId])
-      if (!closedPane && activeSessionId === sessionId) {
+      const replacedPane = await useChatWorkspaceStore.getState().removeSessions(projectId, [sessionId])
+      if (!replacedPane && activeSessionId === sessionId) {
         const next = useChatListStore.getState().sessionsByProject[projectId]?.find(
           (session) => (session.source === 'channel') === (deletedSession?.source === 'channel'),
         )
@@ -102,8 +102,8 @@ export function useSidebarSessionActions() {
       await chatSessionApi.setArchived(sessionId, projectId, true)
       useRecentVisitsStore.getState().removeSessions(projectId, [sessionId])
       useChatListStore.getState().removeSession(sessionId)
-      const closedPane = useChatWorkspaceStore.getState().removeSessions(projectId, [sessionId])
-      if (!closedPane && activeSessionId === sessionId) {
+      const replacedPane = await useChatWorkspaceStore.getState().removeSessions(projectId, [sessionId])
+      if (!replacedPane && activeSessionId === sessionId) {
         const next = useChatListStore.getState().sessionsByProject[projectId]?.find(
           (session) => (session.source === 'channel') === (archivedSession?.source === 'channel'),
         )

@@ -278,7 +278,6 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     try {
       const result = await chatSessionApi.bulkDelete(projectId, ids)
       useRecentVisitsStore.getState().removeSessions(projectId, result.deleted)
-      useChatWorkspaceStore.getState().removeSessions(projectId, result.deleted)
       // Remove deleted sessions from local state
       const deletedSet = new Set(result.deleted)
       set((state) => ({
@@ -296,6 +295,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       for (const sid of result.deleted) {
         useChatSessionStore.getState().resetSession(sid)
       }
+      await useChatWorkspaceStore.getState().removeSessions(projectId, result.deleted)
       return { deleted: result.deleted.length, skipped: result.skipped.length }
     } catch {
       set({ selectedIds: new Set(), selectionProjectId: null, selectAnchor: null })

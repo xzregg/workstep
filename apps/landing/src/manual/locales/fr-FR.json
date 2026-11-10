@@ -737,7 +737,8 @@
           "Comparez les bons tours. Identique au tour… signifie contenu identique, pas absence d’exécution."
         ],
         "tips": [
-          "Si un livrable manque, vérifiez génération du fichier, correspondance de sa déclaration et messages d’exécution."
+          "Si un livrable manque, vérifiez génération du fichier, correspondance de sa déclaration et messages d’exécution.",
+          "Cliquez sur le chemin dans l’en-tête de l’aperçu pour le copier, puis vérifiez le message de réussite ou d’échec."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Sur ordinateur, double-cliquez une conversation latérale ou son titre pour ouvrir le dialogue commun de renommage, puis confirmez le nouveau nom.",
-          "Le téléphone n’affiche que la fenêtre active, tout en conservant l’état des autres. Un rechargement ou un retour après avoir quitté la page peut restaurer les fenêtres, leur disposition et leurs dimensions ; les fenêtres fermées ne sont pas rouvertes. Cliquer sur la ligne d’un projet dans la barre latérale ne fait que le développer ou le réduire ; le chat change uniquement en sélectionnant une conversation précise. La disposition est isolée par compte actuel et appareil, sans copier le texte des conversations."
+          "Le téléphone n’affiche que la fenêtre active, tout en conservant l’état des autres. Un rechargement ou un retour après avoir quitté la page peut restaurer les fenêtres, leur disposition et leurs dimensions ; les fenêtres fermées ne sont pas rouvertes. Cliquer sur la ligne d’un projet dans la barre latérale ne fait que le développer ou le réduire ; le chat change uniquement en sélectionnant une conversation précise. La disposition est isolée par compte actuel et appareil, sans copier le texte des conversations.",
+          "Supprimer ou archiver une conversation conserve son panneau et choisit si possible une autre conversation autorisée. Sinon, une nouvelle conversation est créée avec les permissions requises ; un échec laisse le panneau vide pour réessayer."
         ],
         "screenshot": {
           "id": "chat-workspace",

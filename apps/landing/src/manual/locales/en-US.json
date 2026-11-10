@@ -737,7 +737,8 @@
           "Compare the right rounds when rerunning. Same as round… means identical content, not that execution did not occur."
         ],
         "tips": [
-          "If an artifact is missing, check whether a file was generated, whether its output declaration matches, and the execution messages."
+          "If an artifact is missing, check whether a file was generated, whether its output declaration matches, and the execution messages.",
+          "Click the path in a preview heading to copy it, then check the success or failure notice."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "On desktop, double-click a sidebar conversation or its header title to open the shared rename dialog, then enter and confirm the name.",
-          "Phones show only the active pane while retaining the others. Refreshing or returning restores panes, arrangement and sizes; closed panes stay closed. Clicking a sidebar project row only expands or collapses it; click a particular conversation to switch. Layouts are isolated by account and device and do not copy conversation content."
+          "Phones show only the active pane while retaining the others. Refreshing or returning restores panes, arrangement and sizes; closed panes stay closed. Clicking a sidebar project row only expands or collapses it; click a particular conversation to switch. Layouts are isolated by account and device and do not copy conversation content.",
+          "Deleting or archiving a conversation keeps its pane and selects another authorized conversation where possible. With none available, a new conversation is created only with permission; failures leave the empty pane available for retry."
         ],
         "screenshot": {
           "id": "chat-workspace",

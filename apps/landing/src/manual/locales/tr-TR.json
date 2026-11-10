@@ -737,7 +737,8 @@
           "Tekrar çalıştırırken doğru turları karşılaştırın. Yuvarlak ile aynı… aynı içerik anlamına gelir, yürütmenin gerçekleşmediği anlamına gelmez."
         ],
         "tips": [
-          "Bir yapı eksikse, bir dosyanın oluşturulup oluşturulmadığını, çıktı bildiriminin eşleşip eşleşmediğini ve yürütme mesajlarını kontrol edin."
+          "Bir yapı eksikse, bir dosyanın oluşturulup oluşturulmadığını, çıktı bildiriminin eşleşip eşleşmediğini ve yürütme mesajlarını kontrol edin.",
+          "Kopyalamak için önizleme başlığındaki yola tıklayın ve başarı veya hata bildirimini kontrol edin."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Masaüstünde, paylaşılan yeniden adlandırma iletişim kutusunu açmak için bir kenar çubuğu konuşmasını veya başlık başlığını çift tıklayın, ardından adı girin ve onaylayın.",
-          "Telefonda yalnızca etkin panel görünür; diğer paneller durumlarını korur. Yenileme veya ayrılıp geri dönme sonrasında paneller, düzen ve boyutlar geri yüklenir; kapatılan paneller yeniden açılmaz. Kenar çubuğundaki proje satırına tıklamak yalnızca ağacı açar veya kapatır; geçiş için belirli sohbeti seçin. Düzen hesap ve cihaz bazında ayrılır; sohbet içeriği kopyalanmaz."
+          "Telefonda yalnızca etkin panel görünür; diğer paneller durumlarını korur. Yenileme veya ayrılıp geri dönme sonrasında paneller, düzen ve boyutlar geri yüklenir; kapatılan paneller yeniden açılmaz. Kenar çubuğundaki proje satırına tıklamak yalnızca ağacı açar veya kapatır; geçiş için belirli sohbeti seçin. Düzen hesap ve cihaz bazında ayrılır; sohbet içeriği kopyalanmaz.",
+          "Konuşmayı silmek veya arşivlemek paneli korur ve mümkünse başka yetkili konuşmayı seçer. Yoksa yalnız izin varsa yeni konuşma oluşturulur; hatada boş panel yeniden deneme için kalır."
         ],
         "screenshot": {
           "id": "chat-workspace",

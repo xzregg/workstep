@@ -9,7 +9,7 @@ import ResponsiveNavigation from '../src/components/ResponsiveNavigation'
 import { I18nProvider } from '../src/i18n'
 import { installDomEnvironment } from './helpers/domEnv'
 
-for (const [width, android, visible, ios] of [[390, false, true], [320, false, true], [1023, false, true], [1280, false, false], [390, true, false, false], [390, false, false, true]] as const) {
+for (const [width, android, visible, ios] of [[390, false, true], [320, false, true], [1023, false, true], [1280, false, false], [390, true, false, false], [390, false, true, true], [320, false, true, true], [1023, false, true, true], [1280, false, false, true]] as const) {
   test(`navigation float at ${width}px, Android=${android}, iOS=${!!ios}`, async () => {
     const { window, document } = installDomEnvironment()
     window.innerWidth = width
@@ -25,7 +25,7 @@ for (const [width, android, visible, ios] of [[390, false, true], [320, false, t
       await act(async () => root.render(<I18nProvider><MemoryRouter><ResponsiveNavigation title="WorkStep" onNew={() => {}}><button>项目</button></ResponsiveNavigation></MemoryRouter></I18nProvider>))
       const button = document.querySelector<HTMLButtonElement>('.mobile-navigation-float')
       assert.equal(!!button, visible)
-      if (android || ios) {
+      if ((android || ios) && width <= 1023) {
         // MainActivity's native circle uses these selectors to toggle the drawer.
         const nativeCircleTap = () => {
           if (ios) {

@@ -737,7 +737,8 @@
           "Confronta i round giusti durante la ripetizione. Uguale a round... significa contenuto identico, non che l'esecuzione non sia avvenuta."
         ],
         "tips": [
-          "Se manca un artefatto, controlla se è stato generato un file, se la sua dichiarazione di output corrisponde e i messaggi di esecuzione."
+          "Se manca un artefatto, controlla se è stato generato un file, se la sua dichiarazione di output corrisponde e i messaggi di esecuzione.",
+          "Premi il percorso nel titolo dell’anteprima per copiarlo, poi verifica l’avviso di successo o errore."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Sul desktop, fai doppio clic su una conversazione nella barra laterale o sul titolo dell'intestazione per aprire la finestra di dialogo di ridenominazione condivisa, quindi inserisci e conferma il nome.",
-          "Sul telefono è visibile solo il pannello attivo, gli altri mantengono il proprio stato. Dopo un ricaricamento o tornando alla pagina vengono ripristinati pannelli, disposizione e dimensioni; quelli chiusi non si riaprono. Fare clic sulla riga di un progetto nella barra laterale espande o comprime l'albero; per cambiare conversazione fai clic sulla relativa voce. La disposizione è separata per account e dispositivo e non copia il testo delle conversazioni."
+          "Sul telefono è visibile solo il pannello attivo, gli altri mantengono il proprio stato. Dopo un ricaricamento o tornando alla pagina vengono ripristinati pannelli, disposizione e dimensioni; quelli chiusi non si riaprono. Fare clic sulla riga di un progetto nella barra laterale espande o comprime l'albero; per cambiare conversazione fai clic sulla relativa voce. La disposizione è separata per account e dispositivo e non copia il testo delle conversazioni.",
+          "Eliminare o archiviare una conversazione conserva il pannello e sceglie, se possibile, un’altra conversazione autorizzata. In assenza, ne crea una nuova solo con i permessi necessari; in caso di errore resta il pannello vuoto per riprovare."
         ],
         "screenshot": {
           "id": "chat-workspace",

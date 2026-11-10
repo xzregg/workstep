@@ -71,7 +71,7 @@ xcodebuild -project WorkStep.xcodeproj -scheme WorkStep \
 - iOS 首次连接局域网可能要求系统权限；拒绝后到系统设置允许 WorkStep 访问局域网。
 - 为兼容用户自建 HTTP 服务，Info.plist 明确允许 HTTP 网络请求；HTTPS 仍沿用系统证书验证，不绕过证书错误。语音输入要求 HTTPS。
 - 普通外部 HTTP/HTTPS 链接由系统浏览器打开；外部授权页没有 WorkStep 原生桥接权限。
-- iOS 使用 `window.WorkStepIOS`，不伪装为 Android。共享通知传输保持原 APK 协议，网页依据原生标识隐藏重复悬浮导航和浏览器推送入口。
+- iOS 使用 `window.WorkStepIOS`，不伪装为 Android。共享通知传输保持原 APK 协议，iOS 保留网页移动端悬浮导航，浏览器推送入口仍由原生标识隐藏。
 
 ## 检查与验收
 

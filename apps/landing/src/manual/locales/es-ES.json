@@ -737,7 +737,8 @@
           "Compare las rondas correctas cuando vuelva a ejecutar. Igual que redondo... significa contenido idéntico, no que la ejecución no haya ocurrido."
         ],
         "tips": [
-          "Si falta un artefacto, verifique si se generó un archivo, si su declaración de salida coincide y los mensajes de ejecución."
+          "Si falta un artefacto, verifique si se generó un archivo, si su declaración de salida coincide y los mensajes de ejecución.",
+          "Pulsa la ruta del encabezado de la vista previa para copiarla y comprueba el aviso de éxito o fallo."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "En el escritorio, haga doble clic en una conversación de la barra lateral o en el título de su encabezado para abrir el cuadro de diálogo de cambio de nombre compartido, luego ingrese y confirme el nombre.",
-          "El móvil solo muestra la ventana activa y conserva el estado de las demás. Al recargar o salir y volver se pueden recuperar las ventanas, su disposición y tamaño; las cerradas no vuelven a abrirse. Pulsar la fila de un proyecto en la barra lateral solo lo expande o contrae; el chat cambia al elegir una conversación concreta. La disposición se aísla por cuenta actual y dispositivo, sin copiar el texto de las conversaciones."
+          "El móvil solo muestra la ventana activa y conserva el estado de las demás. Al recargar o salir y volver se pueden recuperar las ventanas, su disposición y tamaño; las cerradas no vuelven a abrirse. Pulsar la fila de un proyecto en la barra lateral solo lo expande o contrae; el chat cambia al elegir una conversación concreta. La disposición se aísla por cuenta actual y dispositivo, sin copiar el texto de las conversaciones.",
+          "Eliminar o archivar una conversación conserva su panel y selecciona otra autorizada si existe. Si no, solo crea una nueva con permiso; los fallos dejan el panel vacío para reintentar."
         ],
         "screenshot": {
           "id": "chat-workspace",

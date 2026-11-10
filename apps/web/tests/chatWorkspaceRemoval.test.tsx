@@ -14,7 +14,7 @@ import { chatSessionApi } from '../src/api/client'
 import { appearanceStorageKey } from '../src/utils/appearanceStorage'
 
 for (const action of ['archiveSession', 'deleteSession', 'bulkRemove'] as const) {
-  test(`${action} closes matching panes only after success and persists the remaining workspace`, async () => {
+  test(`${action} preserves panes after success and reuses remaining conversations`, async () => {
     const { window } = installDomEnvironment()
     window.happyDOM.setWindowSize({ width: 1600, height: 1000 })
     const projects = [
@@ -31,6 +31,9 @@ for (const action of ['archiveSession', 'deleteSession', 'bulkRemove'] as const)
       { id: 'third', projectId: 'q', sessionId: 'b' },
     ], layout: 'horizontal', sizes: {} })
     const oldFetch = globalThis.fetch
+    const oldCreate = chatSessionApi.create
+    let created = 0
+    chatSessionApi.create = async ({ project_id }) => ({ id: `new-${++created}`, project_id, title: 'new' } as never)
     const oldRemove = chatSessionApi.remove, oldArchive = chatSessionApi.setArchived, oldBulk = chatSessionApi.bulkDelete
     let fail = true
     const remove = async () => { if (fail) throw new Error('failed'); return {} as never }
@@ -66,22 +69,26 @@ for (const action of ['archiveSession', 'deleteSession', 'bulkRemove'] as const)
       assert.equal(document.querySelector('.chat-workspace-pane--active'), third)
       fail = false
       await act(async () => { await perform('b', 'p') })
-      assert.deepEqual(panes(), [first, third], 'matching pane closes without touching another project')
-      assert.equal(document.querySelector('.chat-workspace-pane--active'), first, 'closing even an inactive pane activates the first remaining pane')
-      assert.equal(new URLSearchParams(search).get('session'), 'a')
-      await act(async () => { await perform('a', 'p') })
-      assert.deepEqual(panes(), [third], 'removing the active pane activates a remaining pane')
+      assert.equal(panes().length, 3)
+      assert.equal(panes()[0], first)
+      assert.equal(panes()[2], third)
+      assert.equal(document.querySelector('.chat-workspace-pane--active'), third)
       assert.equal(new URLSearchParams(search).get('project'), 'Beta')
-      assert.equal(new URLSearchParams(search).get('session'), 'b')
-      useChatWorkspaceStore.setState({ workspaces: {} })
-      assert.deepEqual(useChatWorkspaceStore.getState().restore(scope)?.panes.map(pane => pane.projectId), ['q'], 'closed panes stay removed from persistent storage')
+      assert.equal(created, 0, 'existing conversations avoid creation')
+      assert.equal(useChatWorkspaceStore.getState().restore(scope)?.panes[1].sessionId, 'a')
+      await act(async () => { await perform('a', 'p') })
+      assert.equal(panes().length, 3)
+      assert.equal(created, 0, 'reuse an open conversation when history is exhausted')
       await act(async () => { await perform('b', 'q') })
-      assert.equal(panes().length, 1, 'the last pane becomes an empty workspace')
-      assert.ok(panes()[0].querySelector('.chat-session-empty'))
-      assert.equal(new URLSearchParams(search).has('session'), false)
+      assert.equal(panes().length, 3)
+      assert.equal(created, 1, 'create only one conversation when none remain')
+      assert.ok(document.querySelector('.chat-workspace-pane--active') === third, 'duplicate fallback sessions preserve the active window')
+      useChatWorkspaceStore.setState({ workspaces: {} })
+      assert.equal(useChatWorkspaceStore.getState().restore(scope)?.panes.length, 3)
     } finally {
       await act(async () => root.unmount())
       globalThis.fetch = oldFetch
+      chatSessionApi.create = oldCreate
       chatSessionApi.remove = oldRemove
       chatSessionApi.setArchived = oldArchive
       chatSessionApi.bulkDelete = oldBulk

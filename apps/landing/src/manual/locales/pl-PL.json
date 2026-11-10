@@ -737,7 +737,8 @@
           "Porównaj odpowiednie rundy podczas powtarzania. Taki sam jak okrągły… oznacza identyczną treść, a nie to, że wykonanie nie nastąpiło."
         ],
         "tips": [
-          "Jeśli brakuje artefaktu, sprawdź, czy plik został wygenerowany, czy jego deklaracja wyjściowa jest zgodna i jakie są komunikaty wykonania."
+          "Jeśli brakuje artefaktu, sprawdź, czy plik został wygenerowany, czy jego deklaracja wyjściowa jest zgodna i jakie są komunikaty wykonania.",
+          "Kliknij ścieżkę w nagłówku podglądu, aby ją skopiować, i sprawdź komunikat o powodzeniu lub błędzie."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -827,7 +828,8 @@
         ],
         "tips": [
           "Na komputerze kliknij dwukrotnie rozmowę na pasku bocznym lub jej tytuł nagłówka, aby otworzyć udostępnione okno dialogowe zmiany nazwy, a następnie wprowadź i potwierdź nazwę.",
-          "Telefon pokazuje tylko aktywny panel; pozostałe zachowują stan. Po odświeżeniu lub powrocie przywracane są panele, układ i rozmiary; zamknięte panele nie otwierają się ponownie. Kliknięcie wiersza projektu na pasku bocznym tylko rozwija lub zwija drzewo; rozmowę zmienia się przez jej konkretny wpis. Układ jest oddzielny dla konta i urządzenia i nie kopiuje treści rozmów."
+          "Telefon pokazuje tylko aktywny panel; pozostałe zachowują stan. Po odświeżeniu lub powrocie przywracane są panele, układ i rozmiary; zamknięte panele nie otwierają się ponownie. Kliknięcie wiersza projektu na pasku bocznym tylko rozwija lub zwija drzewo; rozmowę zmienia się przez jej konkretny wpis. Układ jest oddzielny dla konta i urządzenia i nie kopiuje treści rozmów.",
+          "Usunięcie lub archiwizacja rozmowy zachowuje panel i w miarę możliwości wybiera inną dozwoloną rozmowę. Gdy jej brak, nowa powstaje tylko z odpowiednimi uprawnieniami; błąd pozostawia pusty panel do ponowienia."
         ],
         "screenshot": {
           "id": "chat-workspace",

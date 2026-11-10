@@ -371,7 +371,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                   aria-describedby="step-reuse-success-help" />
                 {t('flow.reuseSuccess')}
               </label>
-            <div id="step-reuse-success-help" className="node-step-reuse-help">{t('flow.reuseSuccessHint')}</div>
+            <div id="step-reuse-success-help" className="node-step-reuse-help">（{t('flow.reuseSuccessHint')}）</div>
           </div>
         </div>
         </div>

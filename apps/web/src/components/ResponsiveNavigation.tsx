@@ -34,7 +34,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
   }, [location.key, navigationType, preserveNavigationDrawer])
   useEffect(() => { setOpen(false) }, [compact, dismissSignal])
   return <>
-    {compact && !window.WorkStepAndroid && !window.WorkStepIOS && !window.workstepDesktop && <MobileNavigationFloat open={open} onToggle={() => setOpen(value => !value)}/>}
+    {compact && !window.WorkStepAndroid && !window.workstepDesktop && <MobileNavigationFloat open={open} onToggle={() => setOpen(value => !value)}/>}
     <header className={`mobile-header${headerLeft ? ' mobile-header--device' : ''}`} >
       <div className="mobile-header-left">
       <button aria-label={t('mobile.openNavigation')} aria-expanded={open} aria-controls="workstep-navigation" onClick={() => setOpen(true)}><Icon name="menu" size={21} /></button>

@@ -22,8 +22,20 @@
 
 .node-step-reuse-setting {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.node-step-reuse-setting > .node-execution-settings-toggle {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1023px) {
+  .node-step-reuse-setting {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
 }
 
 .node-step-reuse-help {
