@@ -79,7 +79,7 @@ export function buildBrowserFeedback({ window: target = window, diagnostics = br
   return limitFeedbackText([
     'WorkStep 问题反馈', '问题描述：', '复现步骤：', '',
     `生成时间：${new Date().toISOString()}（${Intl.DateTimeFormat().resolvedOptions().timeZone}）`,
-    `前端版本：${version}`, `客户端：${target.WorkStepAndroid ? 'Android' : /Android|iPhone|iPad|Mobile/i.test(target.navigator.userAgent) ? '移动浏览器' : '浏览器'}`,
+    `前端版本：${version}`, `客户端：${target.WorkStepIOS ? 'iOS' : target.WorkStepAndroid ? 'Android' : /Android|iPhone|iPad|Mobile/i.test(target.navigator.userAgent) ? '移动浏览器' : '浏览器'}`,
     `浏览器与系统：${browserInfo(target.navigator.userAgent)}`, `当前页面：${diagnosticRoute(target.location.pathname)}`,
     `页面运行时长：${Math.floor(uptime / 3600)}小时${Math.floor(uptime / 60) % 60}分${uptime % 60}秒`,
     `网络状态：${target.navigator.onLine ? '在线' : '离线'}`, '后台文件日志与桌面进程信息：不可用（当前客户端未读取）', '',

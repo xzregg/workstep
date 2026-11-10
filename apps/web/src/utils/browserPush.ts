@@ -10,7 +10,7 @@ let lastWatch = ''
 let latestWatch: PushWatch | null = null
 
 function available(): boolean {
-  return !window.WorkStepAndroid && !window.workstepDesktop
+  return !window.WorkStepAndroid && !window.WorkStepIOS && !window.workstepDesktop
     && 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
 }
 

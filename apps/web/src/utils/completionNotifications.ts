@@ -90,6 +90,7 @@ type DesktopBridge = {
 declare global {
   interface Window {
     WorkStepAndroid?: NativeBridge
+    WorkStepIOS?: NativeBridge
     workstepDesktop?: DesktopBridge
   }
 }
@@ -156,7 +157,7 @@ export function notifyCompletion(notice: CompletionNotice, url: string): void {
       ? `任务「${name}」：步骤 ${notice.stepKey} ${success ? '已通过' : '执行失败'}`
       : `${notice.taskId ? '任务' : '会话'}「${name}」的回复${success ? '已完成' : '失败'}`,
   }
-  if (window.WorkStepAndroid) {
+  if (window.WorkStepAndroid || window.WorkStepIOS) {
     postAndroidNotification({ type: 'notify', ...notice, scopeName: name, url })
     return
   }

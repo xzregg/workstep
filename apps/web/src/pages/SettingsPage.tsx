@@ -235,7 +235,7 @@ export default function SettingsPage({
             <ProjectDirectorySetting />
             <MessageHistorySetting />
             <DesktopUpdateSettings />
-            {typeof Notification !== 'undefined' && !window.WorkStepAndroid && !window.workstepDesktop && (
+            {typeof Notification !== 'undefined' && !window.WorkStepAndroid && !window.WorkStepIOS && !window.workstepDesktop && (
               <div className="settings-system-group">
                 <h2 className="settings-system-heading">{t('settings.browserNotifications')}</h2>
                 <p className="settings-system-description">{t('settings.browserNotificationsIntro')}</p>

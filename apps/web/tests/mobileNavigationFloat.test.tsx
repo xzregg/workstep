@@ -9,8 +9,8 @@ import ResponsiveNavigation from '../src/components/ResponsiveNavigation'
 import { I18nProvider } from '../src/i18n'
 import { installDomEnvironment } from './helpers/domEnv'
 
-for (const [width, android, visible] of [[390, false, true], [320, false, true], [1023, false, true], [1280, false, false], [390, true, false]] as const) {
-  test(`navigation float at ${width}px, Android=${android}`, async () => {
+for (const [width, android, visible, ios] of [[390, false, true], [320, false, true], [1023, false, true], [1280, false, false], [390, true, false, false], [390, false, false, true]] as const) {
+  test(`navigation float at ${width}px, Android=${android}, iOS=${!!ios}`, async () => {
     const { window, document } = installDomEnvironment()
     window.innerWidth = width
     const styles = document.head.appendChild(document.createElement('style'))
@@ -18,15 +18,20 @@ for (const [width, android, visible] of [[390, false, true], [320, false, true],
     const oldHistory = globalThis.history
     globalThis.history = window.history as unknown as History
     if (android) Object.defineProperty(window, 'WorkStepAndroid', { value: {}, configurable: true })
+    if (ios) Object.defineProperty(window, 'WorkStepIOS', { value: {}, configurable: true })
     const container = document.body.appendChild(document.createElement('div'))
     const root = createRoot(container)
     try {
       await act(async () => root.render(<I18nProvider><MemoryRouter><ResponsiveNavigation title="WorkStep" onNew={() => {}}><button>项目</button></ResponsiveNavigation></MemoryRouter></I18nProvider>))
       const button = document.querySelector<HTMLButtonElement>('.mobile-navigation-float')
       assert.equal(!!button, visible)
-      if (android) {
+      if (android || ios) {
         // MainActivity's native circle uses these selectors to toggle the drawer.
         const nativeCircleTap = () => {
+          if (ios) {
+            window.eval(readFileSync(new URL('../../ios/WorkStep/Resources/navigation.js', import.meta.url), 'utf8'))
+            return
+          }
           const open = document.querySelector<HTMLButtonElement>('button[aria-controls="workstep-navigation"]')!
           const close = document.getElementById('workstep-navigation')!.querySelector<HTMLButtonElement>('button.navigation-close')!
           if (open.getAttribute('aria-expanded') === 'true') close.click()

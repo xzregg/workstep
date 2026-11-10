@@ -1,9 +1,11 @@
 type BridgeMessage = {type:string;id?:string;projectId?:string;url?:string;[key:string]:unknown}
-type AndroidWindow = Window & {WorkStepAndroid?:{postMessage:(message:string)=>void}}
+type NativeBridge = {postMessage:(message:string)=>void}
+type AndroidWindow = Window & {WorkStepAndroid?:NativeBridge; WorkStepIOS?:NativeBridge}
 
 /** Preserve the shipped APK's bridge protocol; only opaque IDs and destinations are scoped. */
 export function postAndroidCompletion(message:BridgeMessage,deviceId?:string) {
- const bridge=(window as AndroidWindow).WorkStepAndroid
+ const nativeWindow=window as AndroidWindow
+ const bridge=nativeWindow.WorkStepIOS || nativeWindow.WorkStepAndroid
  if(!bridge)return
  if(message.type==='notify' && deviceId && document.visibilityState==='visible' &&
     window.location.pathname.startsWith(`/workspace/${encodeURIComponent(deviceId)}/`)) {
