@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Vælg udførelsestrin med @trin",
+        "steps": [
+          "Åbn opgavedetaljerne, og skriv @ først i inputfeltet eller efter et mellemrum. Skriv trinnets navn for at filtrere, og vælg målet på listen. Du kan også klikke på trinmodtageren nær inputfeltet.",
+          "Kontrollér, at modtageren er skiftet til trinnet. Den @tekst, der blev brugt til søgning, fjernes automatisk efter valget. Valget alene sender ikke en besked eller starter udførelse; hver besked sendes kun til den ene aktuelle modtager.",
+          "Skriv konkrete instruktioner, og send dem. Vælg eksempelvis „Kravsanalyse“, og send „Tilføj acceptkriterier for mislykket login, og opdatér kravdokumentet“. Vælg et andet trin igen, før du sender til det.",
+          "Hvis måltrinnet kører, lægges beskeden i dets kø „Indsæt besked“. Hvis trinnet kan køres igen, genudfører afsendelsen af instruktioner trinnet. Hvis andre aktive trin påvirkes, skal du først kontrollere omfanget af stop og genkørsel i bekræftelsesdialogen.",
+          "Kontrollér det faktiske resultat i trinfremdrift, udførelseshistorik og leverancer. Vælg @Koordinering til overordnet koordinering eller spørgsmål frem for at sende til et forkert trin."
+        ],
+        "tips": [
+          "Listen indeholder kun trin, der kører eller kan genudføres. Trin, som aldrig er kørt og stadig afventer behandling, vises ikke; første kørsel følger stadig opgavestart og arbejdsgangens afhængigheder.",
+          "Du skal vælge målet på listen og kontrollere modtageren. At lade @navn stå i teksten angiver ikke målet. Genudførelse kan ændre filer og kalde modellen igen og fortryder ikke automatisk tidligere ændringer."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Trinliste efter indtastning af @ i opgavedetaljer og den valgte modtager",
+          "caption": "Afventer skærmbilleder i det faste demoprojekt af @trin-listen og kladden efter valg. Valg er ikke det samme som afsendelse eller udførelse."
+        }
+      },
+      {
         "title": "Find opgaver på tavlen eller bordet",
         "steps": [
           "Skift mellem baner og tabel på opgavesiden, inspicer opgaver efter trin og søg efter titel.",

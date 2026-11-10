@@ -47,3 +47,22 @@ public struct ServerAddress: Equatable {
         public var errorDescription: String? { "请输入 HTTP 或 HTTPS 服务根地址，不包含账号、路径或查询参数。" }
     }
 }
+
+public struct ServerAddressBook {
+    public private(set) var origins: [String] = []
+
+    public init(stored: [String], active: String?) {
+        for input in [active].compactMap({ $0 }) + stored {
+            if let origin = try? ServerAddress(input).origin, !origins.contains(origin) { origins.append(origin) }
+        }
+    }
+
+    @discardableResult public mutating func add(_ input: String) throws -> Bool {
+        let origin = try ServerAddress(input).origin
+        guard !origins.contains(origin) else { return false }
+        origins.append(origin)
+        return true
+    }
+
+    public mutating func remove(_ origin: String) { origins.removeAll { $0 == origin } }
+}

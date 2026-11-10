@@ -6,6 +6,7 @@ import { useI18n } from '../i18n'
 import './GatewayRemoteFrame.css'
 import { gatewayRemotePortalUrl } from '../utils/gatewayRemote'
 import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
+import { useManagedModeStore } from '../stores/managedModeStore'
 import { useProjectStore } from '../stores/projectStore'
 import Spinner from './Spinner'
 import Icon from './Icon'
@@ -49,8 +50,15 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
       let retryDelay = 20000
       window.clearTimeout(timer)
       try {
+        const previous = useGatewaySessionStore.getState().session
         const next = await load(true)
         if (!active) return
+        if (previous && !!previous.host_project_id !== !!next.host_project_id) {
+          useManagedModeStore.setState({ managed: null, canManageRemoteProjects: false })
+          await useManagedModeStore.getState().load()
+          if (!next.host_project_id) await useProjectStore.getState().fetchProjects()
+          if (!active) return
+        }
         if (next.user_id) {
           const identity = `${next.device_id}:${next.user_id}`
           if (appearanceIdentity.current && appearanceIdentity.current !== identity) {

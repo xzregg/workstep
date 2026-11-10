@@ -404,7 +404,7 @@ async def _proxy_share_request(call: GatewayCall, token: str, target_path: str,
 async def public_share_websocket(ws: GatewaySocket, token: str):
     try:
         origin = ws.proofs.get('origin')
-        if not origin or origin.rstrip('/') != (ws.settings.public_origin or '').rstrip('/'):
+        if not origin or origin.rstrip('/') not in ws.settings.platform_origins:
             raise GatewayError('forbidden', 'Share WebSocket origin rejected')
         share, project = await _authorized_visitor(ws, token)
 

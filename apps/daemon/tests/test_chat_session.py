@@ -795,7 +795,7 @@ async def test_unsent_handoffs_return_to_original_engine_session(
     module.start_queued_turn(accepted.turn_id)
     assert await _wait_turn(module, accepted.turn_id) == "completed"
     assert (calls[-1][0], calls[-1][2], calls[-1][3]) == ("claude", "original-thread", {"history": ["original-state"]})
-    assert calls[-1][1].endswith("\n\n切回原配置")
+    assert calls[-1][1] == "切回原配置"
     detail = await manager.run_db(project.id, lambda _: module.get_session(project.id, source["id"]))
     assert (detail["provider_id"] or "") == original_provider
 
@@ -950,6 +950,8 @@ async def test_chat_global_prompt_is_separate_and_view_records_actual_input(
         engine_id, model, cwd, prompt, session_id, on_event=None,
         message_history=None, system_prompt=None,
     ):
+        from services.conversation_context import current_conversation
+        assert current_conversation() == {"project_id": project.id, "session_id": session["id"]}
         sent_prompts.append(prompt)
         sent_instructions.append(system_prompt)
         await on_event(InternalEvent(type="prompt_input", data={
@@ -966,7 +968,7 @@ async def test_chat_global_prompt_is_separate_and_view_records_actual_input(
     assert await _wait_turn(module, second.turn_id) == "completed"
 
     assert [prompt.rsplit("\n\n", 1)[-1] for prompt in sent_prompts] == ["第一次", "第二次"]
-    assert all(session["id"] in prompt and "--after 2h" in prompt for prompt in sent_prompts)
+    assert sent_prompts == ["第一次", "第二次"]
     assert sent_instructions == [custom_system, custom_system]
     visible_prompt = module.get_session(project.id, session["id"])["messages"][-1]["prompt"]
     assert custom_system in visible_prompt

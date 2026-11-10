@@ -2,6 +2,7 @@
 
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from fastapi.testclient import TestClient
 
 from gateway.app import create_app
@@ -570,3 +571,45 @@ def test_directory_import_reuses_unique_local_display_name(tmp_path):
         with __import__("sqlite3").connect(tmp_path / "workstep_platform.db") as connection:
             assert connection.execute("SELECT user_id FROM external_identities WHERE source_id=?", (source_id,)).fetchone()[0] == owner_id
             assert connection.execute("SELECT count(*) FROM users WHERE display_name='Owner'").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize('provider', ['dingtalk', 'wecom', 'feishu', 'lark'])
+def test_oauth_multiple_entry_origins_keep_callback_and_session(tmp_path, provider):
+    from urllib.parse import urlencode
+    class Connector(FakeConnector):
+        supports_redirect_uri = True
+        exchanged = []
+        def authorization_url(self, source, state, nonce, redirect_uri):
+            return 'https://identity.test/authorize?' + urlencode({'state': state, 'redirect_uri': redirect_uri})
+        async def exchange_code(self, source, code, nonce, *, redirect_uri):
+            self.exchanged.append(redirect_uri)
+            return self.profile
+    connector = Connector()
+    app = create_app(GatewaySettings(data_dir=tmp_path, public_origin='https://gateway.test'))
+    app.state.identity_connectors = {provider: connector}
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client)
+        source_response = client.post('/api/admin/identity-sources', headers={'X-CSRF-Token': csrf}, json={
+            'provider': provider, 'tenant_id': 'tenant-a', 'client_id': 'app',
+            'secret_env': 'WORKSTEP_TEST_SECRET', 'agent_id': '1001' if provider == 'wecom' else None})
+        assert source_response.status_code == 201
+        source = source_response.json()['id']
+        headers = {'X-CSRF-Token': csrf}
+        client.post('/api/auth/step-up', headers=headers, json={'password': 'OwnerPassphrase-2026!'})
+        result = client.put('/api/admin/platform-address', headers=headers, json={
+            'public_origin': 'https://gateway.test', 'allowed_origins': ['https://a.test', 'https://b.test', 'http://127.0.0.1:8700']})
+        assert result.status_code == 200
+        for origin in ('https://a.test', 'https://b.test', 'http://127.0.0.1:8700'):
+            client.cookies.clear()
+            start = client.post(origin + f'/api/auth/external/{source}/start', json={'return_to': '/'})
+            params = parse_qs(urlparse(start.json()['authorization_url']).query)
+            callback = params['redirect_uri'][0]
+            assert callback == origin + f'/api/auth/external/{source}/callback'
+            response = client.get(callback, params={'state': params['state'][0], 'code': 'valid-code'}, follow_redirects=False)
+            assert response.status_code == 303
+            assert response.headers['location'] == '/'
+            assert ('Secure' in response.headers['set-cookie']) == origin.startswith('https:')
+            assert connector.exchanged[-1] == callback
+            assert client.get(origin + '/api/auth/session').status_code == 200
+        result = client.post('https://untrusted.test' + f'/api/auth/external/{source}/start')
+        assert parse_qs(urlparse(result.json()['authorization_url']).query)['redirect_uri'][0].startswith('https://gateway.test/')

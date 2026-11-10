@@ -21,6 +21,10 @@
 - [助手提示词传输与查看](assistant-prompt-transport.md) — 已接入各入口，保留适配器恢复、指令更新及输入持久化边界。
 - [会话分叉与跨引擎交接](session-forking.md) — 首版已实现，保留交接约束和任意历史消息分叉的后续范围。
 
+## 设计参考
+
+供应商布局设计参考统一存放于 `prototypes/`：[原型片段](prototypes/provider-layout.html)和[独立预览](prototypes/provider-layout-preview.html)。仅用于设计讨论，不代表当前应用已实现或通过验收。
+
 ## 已实现功能的文档入口
 
 - [架构](../docs/architecture.md)：项目数据、并发、普通会话、定时助手与脚本 Action。

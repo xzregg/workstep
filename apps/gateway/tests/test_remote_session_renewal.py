@@ -42,7 +42,9 @@ def test_remote_session_renews_cookie_and_expiry_without_changing_scope(tmp_path
         auth_id = client.portal.call(partial(change_session, expires_at=now + timedelta(seconds=30)))
         renewed = client.get(root + 'api/remote/session')
         assert renewed.status_code == 200, renewed.text
-        assert renewed.json()['project_id'] == ('project-one' if project_scope else None)
+        # The setup account has whole-device administrator access, even with a project ticket.
+        assert renewed.json()['project_id'] is None
+        assert renewed.json()['workspace_scope'] == 'device'
         assert 'no-store' in {part.strip() for part in renewed.headers['cache-control'].split(',')}
         cookies = renewed.headers.get_list('set-cookie')
         assert any('Max-Age=3600' in cookie for cookie in cookies)

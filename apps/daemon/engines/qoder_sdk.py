@@ -412,6 +412,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
             lambda: prepare_qoder_plugin(self.project_skills(cwd))
         )
         from services.coordinator_source import coordinator_source_env
+        from services.conversation_context import execution_env
 
         options = QoderAgentOptions(
             auth=auth,
@@ -425,7 +426,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
             plugins=[{"type": "local", "path": str(plugin_dir)}],
             skills=skill_names,
             setting_sources=[],
-            env=coordinator_source_env(),
+            env=execution_env({**os.environ, **coordinator_source_env()}),
         )
         if add_dirs:
             options.add_dirs = list(add_dirs)

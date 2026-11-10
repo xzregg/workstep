@@ -1,3 +1,4 @@
+import { classifyProjectFileLink } from './markdownFilePreview'
 import { gatewayResourceUrl } from './gatewayWorkspacePath'
 export interface MarkdownTextSegment {
   type: 'text'
@@ -25,7 +26,7 @@ const GLOBAL_UPLOAD_RELATIVE = /^data\/uploads\/([^/?#]+)$/
 export function isLocalMarkdownImage(src: string): boolean {
   let value = src
   try { value = decodeURIComponent(src) } catch { /* Keep malformed escapes as written. */ }
-  return /^(?:file:\/\/|[a-z]:[\\/]|\/(?:tmp|private|Users|home|var|root|mnt|Volumes)(?:\/|$))/i.test(value)
+  return /^(?:file:\/\/|[a-z]:[\\/]|\/(?:tmp|private|Users|home|var|root|mnt|Volumes|data|opt|srv)(?:\/|$))/i.test(value)
 }
 
 export function splitMarkdownImages(markdown: string): MarkdownInputSegment[] {
@@ -82,5 +83,14 @@ export function resolveMarkdownImageSrc(src: string, projectId?: string): string
   }
   const globalMatch = src.match(GLOBAL_UPLOAD_RELATIVE)
   if (globalMatch) return gatewayResourceUrl(`/api/fs/serve/${encodeURIComponent(globalMatch[1])}`)
+  // Agent-generated file paths need project-bound delivery, not a website URL.
+  // Existing resource endpoints and external URLs keep their original meaning.
+  if (!/^\/(?:api|assets|static|workspace)(?:\/|$)/.test(src)) {
+    const file = classifyProjectFileLink(src, projectId)
+    if (file) {
+      const query = new URLSearchParams({ path: file.path, project_id: projectId! })
+      return gatewayResourceUrl(`/api/fs/file?${query}`)
+    }
+  }
   return src
 }

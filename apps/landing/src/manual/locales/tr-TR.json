@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Yürütülecek adımı @ ile seçme",
+        "steps": [
+          "Görev ayrıntılarını açın; giriş alanının başında veya bir boşluktan sonra @ yazın. Filtrelemek için adım adını yazıp listeden hedefi seçin. Giriş alanının yanındaki adım alıcısına da tıklayabilirsiniz.",
+          "Alıcının seçilen adıma geçtiğini kontrol edin. Seçimden sonra aramada kullanılan @ metni otomatik kaldırılır. Yalnızca seçim yapmak mesaj göndermez veya yürütmeyi başlatmaz; her mesaj yalnızca geçerli tek alıcıya gider.",
+          "Somut bir talimat yazıp gönderin. Örneğin önce «Gereksinim analizi» adımını seçin, ardından «Başarısız oturum açma için kabul ölçütlerini ekle ve gereksinim belgesini güncelle» yazın. Başka bir adıma iş vermek için göndermeden önce o adımı yeniden seçin.",
+          "Hedef adım çalışıyorsa mesaj, adımın «Araya eklenecek mesajlar» kuyruğuna girer. Adım yeniden çalıştırılabiliyorsa talimatı göndermek adımı yeniden yürütür. Diğer etkin adımlar etkileniyorsa önce onay penceresinde durdurulacak ve yeniden çalıştırılacak kapsamı kontrol edin.",
+          "Gerçek sonucu adım ilerlemesinde, yürütme kayıtlarında ve çıktılarda kontrol edin. Genel koordinasyon veya soru için mesajı yanlış adıma göndermek yerine @Koordinatör seçin."
+        ],
+        "tips": [
+          "Liste yalnızca çalışan veya yeniden yürütülebilen adımları içerir. Hiç çalışmamış ve hâlâ bekleyen adımlar gösterilmez; ilk yürütme yine görev başlatma ve iş akışı bağımlılıklarına göre yapılır.",
+          "Hedefi listeden seçip alıcıyı kontrol etmelisiniz. Metinde yalnızca @ad bırakmak hedef belirtmez. Yeniden yürütme dosyaları tekrar değiştirebilir ve modeli çağırabilir; önceki değişiklikleri otomatik geri almaz."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Görev ayrıntılarında @ yazıldıktan sonraki adım adayları ve seçili alıcı",
+          "caption": "Sabit demo projesinde @adım adayları ve seçim sonrası taslağın ekran görüntüleri eksik. Seçim, gönderme veya yürütme anlamına gelmez."
+        }
+      },
+      {
         "title": "Tahtada veya masada görevleri bulun",
         "steps": [
           "Görev sayfasında Şeritler ve Tablo arasında geçiş yapın, görevleri aşamaya göre inceleyin ve başlığa göre arayın.",

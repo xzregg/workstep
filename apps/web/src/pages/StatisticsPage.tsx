@@ -3,6 +3,7 @@ import '@workstep/gateway-ui/ActivityHeatmap.css'
 import Select from '../components/Select'
 import SystemStatisticsPanel from '../components/SystemStatisticsPanel'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 import { useManagedModeStore } from '../stores/managedModeStore'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -274,7 +275,9 @@ function BusinessStatistics() {
   const [customEnd, setCustomEnd] = useState(searchParams.get('end') || localDate())
   const taskStatusEvents = useTaskStore((state) => state.taskStatusEvents)
 
-  const projectId = searchParams.get('project_id') || undefined
+  const session = useGatewaySessionStore(state => state.session)
+  const sharedProjectId = isGatewayRemoteBrowser() ? session?.host_project_id : null
+  const projectId = sharedProjectId || searchParams.get('project_id') || undefined
   const workflowId = searchParams.get('workflow_id') || undefined
   const rawRange = searchParams.get('range')
   const range: RangeKey = ['7d', '30d', '90d', 'all', 'custom'].includes(rawRange || '')
@@ -388,10 +391,10 @@ function BusinessStatistics() {
     <div className="statistics-business">
       <header className="statistics-business-toolbar">
           <nav className="statistics-breadcrumbs statistics-scope" aria-label={t('statistics.title')}>
-            {projectId ? <button onClick={() => setScope()}>{t('statistics.global')}</button> : <h2 className="statistics-scope-current">{t('statistics.global')}</h2>}
+            {!sharedProjectId && (projectId ? <button onClick={() => setScope()}>{t('statistics.global')}</button> : <h2 className="statistics-scope-current">{t('statistics.global')}</h2>)}
             {report?.scope.project_name && (
               <>
-                <span>/</span>
+                {!sharedProjectId && <span>/</span>}
                 {workflowId ? <button onClick={() => setScope(report.scope.project_id || undefined)}>{report.scope.project_name}</button> : <strong className="statistics-scope-current">{report.scope.project_name}</strong>}
               </>
             )}

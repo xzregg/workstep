@@ -131,6 +131,8 @@ async def test_real_chat_runtime_preserves_context_and_marks_scheduled_message(c
     monkeypatch.setattr(session_schedule_runtime, 'config_store', config)
     observed = []
     async def invoke(*args, **kwargs):
+        from services.conversation_context import current_conversation
+        assert current_conversation() == {"project_id": project.id, "session_id": session["id"]}
         observed.append(args[3])
         return '当前工作正常', [], 'engine-thread'
     monkeypatch.setattr(chat, '_invoke', invoke)
@@ -155,7 +157,7 @@ async def test_real_chat_runtime_preserves_context_and_marks_scheduled_message(c
     assert run['status'] == 'succeeded', run.get('reason')
     assert run['notification_status'] == 'disabled'
     assert '检查订单服务' in observed[0] and '看看情况怎么样' in observed[0]
-    assert session['id'] in observed[0] and project.id in observed[0]
+    assert session['id'] not in observed[0] and project.id not in observed[0]
     assert any(m['content'] == '看看情况怎么样' and m['author_name'] == expected_author and m['author_type'] == 'scheduler' for m in messages)
     assert any(m['content'] == '当前工作正常' for m in messages)
 

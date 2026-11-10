@@ -427,3 +427,112 @@ async def test_catchup_batch_is_negotiated_and_bounded_through_http(service, mon
         assert response.status_code == 200
         assert received == [SAMPLE_RATE * 6 * 2]
     await service.close()
+
+
+@pytest.mark.asyncio
+async def test_two_native_streaming_models_and_selection_are_persisted(service, monkeypatch):
+    from services.speech import ZIPFORMER_ID, MODEL_ID
+    snapshot = await service.snapshot()
+    assert len(snapshot['models']) == 2
+    assert all(m['streaming'] == 'native' for m in snapshot['models'])
+    with pytest.raises(ValueError):
+        await service.configure(True, 'auto', ZIPFORMER_ID)
+    monkeypatch.setattr(service, 'model_installed', lambda mid: True)
+    await service.configure(True, 'auto', ZIPFORMER_ID)
+    assert service.bundle.name == ZIPFORMER_ID
+    reopened = SpeechService(service.root)
+    assert (await reopened.snapshot())['model_id'] == ZIPFORMER_ID
+    await service.configure(False, 'auto')
+    assert service.model_id == ZIPFORMER_ID
+    with pytest.raises(ValueError):
+        await service.download('../invalid')
+    await service.close()
+    await reopened.close()
+
+
+@pytest.mark.asyncio
+async def test_switching_model_during_recording_is_rejected_and_preserves_current(service, monkeypatch):
+    from services.speech import ZIPFORMER_ID, MODEL_ID
+    service.settings = {'enabled': True, 'language': 'auto'}
+    monkeypatch.setattr(service, 'installed', lambda: True)
+    monkeypatch.setattr(service, 'model_installed', lambda mid: True)
+    await service.start('p', 'owner')
+    with pytest.raises(ValueError, match='录音'):
+        await service.configure(True, 'auto', ZIPFORMER_ID)
+    assert service.model_id == MODEL_ID
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_model_download_http_targets_secondary_and_delete_preserves_primary(service, monkeypatch):
+    from services.speech import ZIPFORMER_ID, MODEL_ID
+    entered, wait = asyncio.Event(), asyncio.Event()
+    targets = []
+    async def download_resource(resource):
+        targets.append(resource.model_id)
+        resource.install_state['stage'] = 'downloading'
+        entered.set()
+        try:
+            await wait.wait()
+        finally:
+            resource.install_state['stage'] = 'cancelled'
+    monkeypatch.setattr(SpeechService, '_download', download_resource)
+    app = FastAPI()
+    app.include_router(speech.router)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        result = await client.post('/api/speech/models/download', params={'model_id': ZIPFORMER_ID})
+        assert result.status_code == 200
+        await entered.wait()
+        snapshot = (await client.get('/api/speech')).json()
+        assert targets == [ZIPFORMER_ID]
+        assert snapshot['model_id'] == MODEL_ID
+        assert snapshot['models'][0]['install']['stage'] == 'idle'
+        assert snapshot['models'][1]['install']['stage'] == 'downloading'
+        assert (await client.post('/api/speech/models/download', params={'model_id': MODEL_ID})).status_code == 409
+        assert (await client.put('/api/speech/settings', json={'enabled': True, 'model_id': ZIPFORMER_ID})).status_code == 409
+        await client.post('/api/speech/models/cancel')
+        service.bundle.mkdir(parents=True, exist_ok=True)
+        (service.bundle / 'keep').write_text('primary')
+        other = service.root / ZIPFORMER_ID
+        other.mkdir()
+        (other / 'remove').write_text('secondary')
+        assert (await client.delete('/api/speech/models/current', params={'model_id': ZIPFORMER_ID})).status_code == 200
+        assert not other.exists()
+        assert (service.bundle / 'keep').read_text() == 'primary'
+        assert (await client.post('/api/speech/models/download', params={'model_id': '../bad'})).status_code == 409
+    await service.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('project_access', [None, 'read', 'edit'])
+@pytest.mark.parametrize('method,path,body', [
+    ('PUT', '/api/speech/settings', {'enabled': True, 'language': 'auto'}),
+    ('POST', '/api/speech/models/download', None),
+    ('POST', '/api/speech/models/cancel', None),
+    ('DELETE', '/api/speech/models/current', None),
+])
+async def test_speech_management_matches_host_scope_without_retired_engine_install(
+        monkeypatch, project_access, method, path, body):
+    import main
+    from types import SimpleNamespace
+    from services.gateway_client.policy import ManagedPolicyCache
+    from services.remote_access import ActorSnapshot, actor_context
+    # Missing managed policy used to deny all four actions through engine.install.
+    monkeypatch.setattr(main, 'gateway_client', SimpleNamespace(managed_config=object(), policy_cache=ManagedPolicyCache()))
+    calls = []
+    async def operation(*args):
+        calls.append(args)
+        return {'ok': True}
+    async def snapshot():
+        return {'ok': True}
+    monkeypatch.setattr(speech, 'service', SimpleNamespace(configure=operation, download=operation,
+        cancel_download=operation, delete=operation, snapshot=snapshot))
+    app = FastAPI()
+    app.include_router(speech.router)
+    actor = ActorSnapshot('user', 'User', 'device', 'Device', 'managed',
+        project_id='p' if project_access else None, access_level=project_access)
+    with actor_context(actor):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+            result = await client.request(method, path, **({'json': body} if body else {}))
+    assert result.status_code == (403 if project_access else 200), result.text
+    assert len(calls) == (0 if project_access else 1)

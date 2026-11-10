@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Välj körningssteg med @",
+        "steps": [
+          "Öppna uppgiftsdetaljerna och skriv @ först i inmatningsfältet eller efter ett blanksteg. Skriv stegets namn för att filtrera och välj målet i listan. Du kan också klicka på stegmottagaren intill inmatningsfältet.",
+          "Kontrollera att mottagaren har ändrats till rätt steg. Efter valet tas @-texten som användes för sökning bort automatiskt. Att bara välja skickar inget meddelande och startar ingen körning; varje meddelande går till en enda aktuell mottagare.",
+          "Skriv en konkret instruktion och skicka den. Välj till exempel «Kravanalys» och skicka «Lägg till acceptanskriterier för misslyckad inloggning och uppdatera kravdokumentet». Välj ett annat steg innan du skickar ett nytt meddelande dit.",
+          "Om målsteget körs läggs meddelandet i stegets kö för «Infogningsmeddelanden». Om steget kan köras igen startar den skickade instruktionen en ny körning. Om andra aktiva steg påverkas ska du först kontrollera vilka som stoppas och körs om i bekräftelserutan.",
+          "Kontrollera det verkliga resultatet i stegens förlopp, körningshistorik och leveranser. För frågor eller övergripande samordning väljer du @Samordnare i stället för att skicka till fel steg."
+        ],
+        "tips": [
+          "Listan innehåller bara steg som körs eller kan köras på nytt. Väntande steg som aldrig har körts visas inte; deras första körning följer fortfarande uppgiftens start och arbetsflödets beroenden.",
+          "Du måste välja målet i listan och kontrollera mottagaren. Att bara lämna @namn i texten anger inget mål. Omkörning kan ändra filer och anropa modellen igen och ångrar inte tidigare ändringar automatiskt."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Stegkandidater efter @ i uppgiftsdetaljerna och vald mottagare",
+          "caption": "Skärmbilder från det fasta demoprojektet med @steg-kandidater och utkast efter valet saknas. Ett val innebär inte att något har skickats eller körts."
+        }
+      },
+      {
         "title": "Hitta uppgifter på tavlan eller bordet",
         "steps": [
           "Växla mellan banor och tabell på uppgiftssidan, inspektera uppgifter per steg och sök efter titel.",

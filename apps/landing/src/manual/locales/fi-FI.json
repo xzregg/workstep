@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Kohdevaiheen valitseminen merkinnällä @vaihe",
+        "steps": [
+          "Avaa tehtävän tiedot ja kirjoita @ syöttökentän alkuun tai välilyönnin jälkeen. Suodata vaiheen nimellä ja valitse kohde luettelosta. Voit myös napsauttaa kentän lähellä olevaa vaiheen vastaanottajaa.",
+          "Tarkista, että vastaanottajaksi on vaihtunut kyseinen vaihe. Haussa käytetty @teksti poistuu automaattisesti valinnan jälkeen. Pelkkä valinta ei lähetä viestiä eikä käynnistä suoritusta; kukin viesti menee vain yhdelle nykyiselle vastaanottajalle.",
+          "Kirjoita täsmällinen ohje ja lähetä se. Valitse esimerkiksi ”Vaatimusanalyysi” ja lähetä ”Lisää epäonnistuneen kirjautumisen hyväksymiskriteerit ja päivitä vaatimusasiakirja”. Valitse toinen vaihe uudelleen ennen sille lähettämistä.",
+          "Jos kohdevaihe on käynnissä, viesti menee sen ”Lisää viesti” -jonoon. Jos vaihe voidaan suorittaa uudelleen, ohjeiden lähetys käynnistää sen uudestaan. Jos tämä vaikuttaa muihin aktiivisiin vaiheisiin, tarkista ensin vahvistusikkunasta pysäytyksen ja uudelleensuorituksen laajuus.",
+          "Tarkista todellinen tulos vaiheen etenemisestä, suoritushistoriasta ja tuotoksista. Valitse yleiseen koordinointiin tai kysymykseen @Koordinointi sen sijaan, että lähettäisit kysymyksen väärälle vaiheelle."
+        ],
+        "tips": [
+          "Luettelossa ovat vain käynnissä olevat tai uudelleen suoritettavat vaiheet. Koskaan suorittamattomia odottavia vaiheita ei näytetä; niiden ensimmäinen suoritus seuraa edelleen tehtävän käynnistystä ja työnkulun riippuvuuksia.",
+          "Kohde on valittava luettelosta ja vastaanottaja tarkistettava. Pelkkä @nimi viestin tekstissä ei määritä kohdetta. Uudelleensuoritus voi muuttaa tiedostoja ja kutsua mallia uudestaan eikä peru aiempia muutoksia automaattisesti."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Vaihelista @-merkin kirjoittamisen jälkeen tehtävän tiedoissa ja valittu vastaanottaja",
+          "caption": "Kiinteän esittelyprojektin @vaihe-luettelon ja valinnan jälkeisen luonnoksen kuvat puuttuvat vielä. Valinta ei tarkoita lähetystä tai suoritusta."
+        }
+      },
+      {
         "title": "Etsi tehtäviä taululta tai pöydältä",
         "steps": [
           "Vaihda kaistan ja taulukon välillä tehtäväsivulla, tarkasta tehtävät vaiheittain ja hae otsikon mukaan.",

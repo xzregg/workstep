@@ -170,15 +170,16 @@ test('history owns loading and shows stored status changes',async()=>{
 
 
 test('scan login callback uses the configured platform address for both providers and follows address changes', async () => {
- for (const provider of ['dingtalk', 'wecom']) {
+ for (const provider of ['dingtalk', 'wecom', 'feishu', 'lark']) {
   globalThis.fetch = async () => Response.json({sources:[{id:'source-1',provider,tenant_id:'corp',client_id:'app',enabled:true}]})
   const view = render(<OrganizationSyncSettings csrf="csrf" platformAddress="https://public.example.com/" />)
   fireEvent.click(await screen.findByRole('button',{name:'编辑配置'}))
   const callback = screen.getByLabelText('登录回调地址') as HTMLInputElement
   assert.equal(callback.value,'https://public.example.com/api/auth/external/source-1/callback')
   assert.equal(callback.readOnly,true)
-  view.rerender(<OrganizationSyncSettings csrf="csrf" platformAddress="https://updated.example.com" />)
+  view.rerender(<OrganizationSyncSettings csrf="csrf" platformAddress="https://updated.example.com" allowedOrigins={["https://a.test"]} />)
   assert.equal(callback.value,'https://updated.example.com/api/auth/external/source-1/callback')
+  assert.equal((screen.getByLabelText('其他入口登录回调地址') as HTMLInputElement).value, 'https://a.test/api/auth/external/source-1/callback')
   view.rerender(<OrganizationSyncSettings csrf="csrf" platformAddress={null} />)
   assert.equal(callback.value,'https://gateway.test/api/auth/external/source-1/callback')
   cleanup()

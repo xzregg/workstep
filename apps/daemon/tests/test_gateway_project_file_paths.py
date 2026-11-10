@@ -151,3 +151,44 @@ async def test_project_file_routes_hide_host_paths_and_reject_direct_scope_escap
     )
     assert status == 200, uploaded
     assert (visible_dir / ".workstep" / "uploads" / uploaded["filename"]).read_bytes() == b"hello"
+
+
+@pytest.mark.anyio
+async def test_markdown_absolute_project_image_delivery(api_context, monkeypatch):
+    from urllib.parse import urlencode
+    import main
+    client, tmp_path = api_context
+    directory = tmp_path / "三国塔防小程序"
+    directory.mkdir()
+    project_id = (await client.post('/api/project/init', json={'path': str(directory)})).json()['id']
+    image = directory / 'research' / 'Thronefall' / '1.png'
+    image.parent.mkdir(parents=True)
+    content = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ioAAAAASUVORK5CYII=')
+    image.write_bytes(content)
+    private = tmp_path / 'private.png'
+    private.write_bytes(content)
+    (directory / 'escape.png').symlink_to(private)
+    query = {'project_id': project_id, 'path': str(image)}
+    local = await client.get('/api/fs/file', params=query)
+    assert local.status_code == 200
+    assert local.content == content
+    assert local.headers['content-type'].startswith('image/png')
+    monkeypatch.setattr(main.gateway_client, 'managed_config', object())
+    async def request(path):
+        frames = []
+        async def capture(frame): frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, 'image', {
+            'method':'GET', 'path':'/api/fs/file',
+            'query':urlencode({'project_id':project_id, 'path':str(path)}),
+            'headers':[], 'user_id':'viewer', 'username':'viewer',
+            'project_id':project_id, 'access_level':'read',
+        }, capture, 'device')
+        bridge.start_task()
+        await bridge.feed(ProxyFrame(stream_id='image', type=FrameType.http_request, payload={'phase':'end'}))
+        await asyncio.wait_for(bridge._task, 3)
+        raw = b''.join(base64.b64decode(frame.payload['data']) for frame in frames if frame.payload.get('phase') == 'body')
+        return frames[0].payload['status'], raw
+    for path in (image, 'research/Thronefall/1.png'):
+        assert await request(path) == (200, content)
+    for path in (private, directory / 'escape.png', '../private.png'):
+        assert (await request(path))[0] == 403

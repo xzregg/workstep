@@ -1,12 +1,13 @@
 ---
 name: workstep-cli
-description: Inspect and manage WorkStep projects, workflows, tasks, quick buttons, engines, and schedules through the local daemon CLI or native WorkStep tools.
+description: Inspect and manage WorkStep projects, workflows, tasks, quick buttons, engines, and schedules through the local daemon CLI or native WorkStep tools. Use when asked to check, remind, or act later in this conversation.
 ---
 
 # WorkStep CLI
 
 Use this skill when the user asks to inspect or manage WorkStep itself: projects,
-workflows, tasks, quick buttons, LLM engines, or schedules.
+workflows, tasks, quick buttons, LLM engines, or schedules. Also use when asked
+to check, remind, or act later in this conversation (for example, “两小时后检查”).
 
 Use this skill to inspect or manage WorkStep. Read only the relevant topic below
 before its operations; do not load all references.
@@ -34,6 +35,14 @@ See [transport](references/transport.md) for PowerShell/cmd syntax and first-run
 repair rules. Never persist runtime URLs, tokens or resource IDs, and never edit
 generated skill mirrors.
 
+## Current conversation
+
+Use `context get --json` with the CLI transport above to read the current
+WorkStep project and conversation IDs from the execution environment. Only
+`WORKSTEP_PROJECT_ID` and `WORKSTEP_SESSION_ID` are provided; no message ID is
+needed. Do not confuse these with engine thread IDs or dump the full environment.
+Outside a conversation the command returns an error; do not guess a target.
+
 ## Safety rules
 
 - List or get resources before using their IDs. Never invent project, workflow,
@@ -58,7 +67,7 @@ generated skill mirrors.
 | Projects, project quick buttons and Actions | [Projects](references/projects.md) |
 | Workflows, step keys, workflow buttons and Actions | [Workflows](references/workflows.md) |
 | Tasks, lifecycle, archive lessons, reviews, worktrees, stage controls | [Tasks](references/tasks.md) |
-| Recurring/one-time schedules, existing-task instructions | [Schedules](references/schedules.md) |
+| Act later in this conversation, recurring/one-time schedules, existing-task instructions | [Schedules](references/schedules.md) |
 | Bots, sessions, notifications, group binding, files | [Channels](references/channels.md) |
 | Engines, skill drafts, skins | [Extensions](references/extensions.md) |
 | Custom language creation | [Languages](references/custom-language.md) |

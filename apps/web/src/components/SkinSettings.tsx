@@ -85,7 +85,7 @@ export default function SkinSettings({ preferences, onRefresh }: { preferences?:
     }} />
     {error && <p role="alert" className="skin-settings-error">{error}</p>}
     {previewing && <div role="status" className="skin-settings-preview-notice"><span>{t('skins.previewing')}</span><Button onClick={() => saveSkin(active)}>{t('skins.apply')}</Button><Button onClick={cancelSkinPreview}>{t('skins.cancelPreview')}</Button></div>}
-    <SkinLibrary toolbarActions={!remote && <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="upload" size={15} />{t('skins.import')}</Button>} documents={documents} activeId={active.manifest.id} activeRevision={active.revision} preferredSkin={checked} busy={busy} canManage={!remote}
+    <SkinLibrary toolbarActions={!remote && <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="download" size={15} />{t('skins.import')}</Button>} documents={documents} activeId={active.manifest.id} activeRevision={active.revision} preferredSkin={checked} busy={busy} canManage={!remote}
       onCreate={base => void start(base)} onPreview={previewSkin} onApply={saveSkin}
       onExport={id => void exportSkin(id)} onDelete={setDeleting} onRestore={restoreDefaultSkin} />
     <details className="skin-settings-advanced"><summary>{t('skins.advanced')}</summary>

@@ -5,6 +5,8 @@ Sessions are created explicitly and survive daemon restarts through the
 global WebSocket keyed by ``session_id`` on the ``session_chat`` channel.
 """
 
+from typing import Literal
+
 from fastapi import APIRouter, Body, Header, HTTPException, Query
 from pydantic import Field
 
@@ -15,6 +17,7 @@ router = APIRouter(prefix="/api/chat-sessions", tags=["会话聊天"])
 
 class ChatSessionCreateRequest(BaseSchema):
     project_id: str
+    group_id: str | None = None
     workflow_id: str | None = None
     title: str | None = None
     engine: str | None = None
@@ -153,6 +156,32 @@ async def _run_db(project_id: str, operation):
     )
 
 
+class ChatSessionGroupRequest(BaseSchema):
+    target_group_id: str | None = None
+    before: bool = True
+    delete_sessions: bool = False
+    action: Literal["create", "move", "archive", "delete", "dissolve", "reorder"]
+    name: str = ""
+    source: Literal["chat", "channel"] = "chat"
+    group_id: str | None = None
+    session_id: str | None = None
+
+
+@router.get("/groups")
+async def get_session_groups(project_id: str = Query(...)):
+    from services.chat_session_groups import list_groups
+    return {"groups": await _run_db(project_id, list_groups)}
+
+
+@router.post("/groups")
+async def update_session_groups(req: ChatSessionGroupRequest, project_id: str = Query(...)):
+    from services.chat_session_groups import mutate_group
+    try:
+        return await _run_db(project_id, lambda: mutate_group(project_id, req, _module()))
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
+
+
 @router.get("/quick-buttons")
 async def get_quick_buttons(project_id: str = Query(..., alias="project_id")):
     """Return the per-project chat quick buttons (defaults when unset)."""
@@ -250,11 +279,13 @@ async def archive_session(session_id: str, req: ChatSessionArchiveRequest):
 @router.post("")
 async def create_session(req: ChatSessionCreateRequest):
     """Create one chat session for a project."""
+    from services.chat_session_groups import create_group_session
+
     _enforce_project_scope(req.project_id)
     try:
         session = await _run_db(
             req.project_id,
-            lambda: _module().create_session(
+            lambda: create_group_session(req.project_id, req.group_id, lambda: _module().create_session(
                 req.project_id,
                 req.workflow_id,
                 title=req.title,
@@ -264,7 +295,7 @@ async def create_session(req: ChatSessionCreateRequest):
                 vision_model=req.vision_model,
                 provider_id=req.provider_id,
                 permission_mode=req.permission_mode,
-            ),
+            )),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

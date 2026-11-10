@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Určení cílového kroku pomocí @krok",
+        "steps": [
+          "Otevřete podrobnosti úkolu a na začátku vstupu nebo za mezerou napište @. Zadejte název kroku pro filtrování a vyberte cíl ze seznamu. Můžete také kliknout na příjemce kroku u vstupního pole.",
+          "Ověřte, že příjemcem je zvolený krok. Text @ použitý k hledání se po výběru automaticky odstraní. Samotný výběr neodešle zprávu ani nespustí provádění; každá zpráva má pouze jednoho aktuálního příjemce.",
+          "Napište konkrétní pokyny a odešlete je. Například vyberte „Analýza požadavků“ a pošlete „Doplň kritéria přijetí pro neúspěšné přihlášení a aktualizuj dokument požadavků“. Pro jiný krok nejprve znovu vyberte příjemce.",
+          "Pokud cílový krok běží, zpráva se zařadí do jeho fronty „Vložit zprávu“. Pokud lze krok spustit znovu, odeslání pokynů jej znovu vykoná. Ovlivní-li to jiné aktivní kroky, nejprve zkontrolujte rozsah zastavení a opakování v potvrzovacím dialogu.",
+          "Skutečný výsledek ověřte v průběhu kroku, záznamech provádění a výstupech. Pro celkovou koordinaci nebo dotaz vyberte @Koordinace místo zaslání otázky nesprávnému kroku."
+        ],
+        "tips": [
+          "Seznam obsahuje pouze právě běžící kroky nebo kroky, které lze znovu spustit. Dosud nikdy nespuštěné čekající kroky se nenabízejí; jejich první spuštění stále řídí start úkolu a závislosti pracovního postupu.",
+          "Cíl musíte vybrat ze seznamu a ověřit příjemce. Pouhé ponechání @názvu v textu cíl neurčuje. Opětovné provedení může znovu měnit soubory a volat model a automaticky nevrací starší změny."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Seznam kroků po zadání @ v podrobnostech úkolu a vybraný příjemce",
+          "caption": "Čeká se na snímky nabídky @krok a konceptu po výběru ve stálém demonstračním projektu. Výběr neznamená odeslání ani provedení."
+        }
+      },
+      {
         "title": "Najděte úkoly na tabuli nebo stole",
         "steps": [
           "Přepínejte mezi pruhy a stolem na stránce úkolu, prohlížejte úkoly podle fáze a hledejte podle názvu.",

@@ -6,7 +6,7 @@ WorkStep 的 iPhone / iPad 客户端，使用 Swift、UIKit 和 WKWebView 加载
 
 已建立 `WorkStep.xcodeproj`、原生外壳、共享网页桥接和核心行为检查。2026-11-10 使用 Xcode 27.2（27B52）及 iOS 27.2 SDK 完成模拟器版、未签名 iPhone 设备版和界面测试目标编译。**尚未完成真机验收，也没有生成签名可安装 IPA。** 以下“已接入”不代表已经过真机验证。
 
-在 iPhone 18 Pro / iOS 27.2 模拟器完成两项 XCTest 界面测试（零失败）：空地址禁用与非法地址提示；连接回环测试服务、WKWebView 加载、悬浮导航开关、长按菜单、日志页打开和返回。模拟器首次运行发现的旧窗口生命周期启动崩溃已修复，窗口及前后台恢复现由 `SceneDelegate` 管理。测试使用独立假数据服务，不涉及真实项目。结果保存在本机 `build/SimulatorTests-Final.xcresult`，不纳入源码。
+在 iPhone 18 Pro / iOS 27.2 模拟器完成原有两项 XCTest 界面测试（零失败）：空地址禁用与非法地址提示；连接回环测试服务、WKWebView 加载、悬浮导航开关、长按菜单、日志页打开和返回。本次新增的“新增地址 → 切换连接 → 删除当前地址”界面测试也已通过。模拟器首次运行发现的旧窗口生命周期启动崩溃已修复，窗口及前后台恢复现由 `SceneDelegate` 管理。测试使用独立假数据服务，不涉及真实项目。结果保存在本机 `DerivedData/Logs/Test/`，不纳入源码。
 
 本机构建产物：`DerivedData/Build/Products/Debug-iphonesimulator/WorkStep.app`（模拟器），`DerivedData-device/Build/Products/Debug-iphoneos/WorkStep.app`（未签名设备版）；两者都不是可直接分发安装的 IPA。
 
@@ -14,7 +14,7 @@ WorkStep 的 iPhone / iPad 客户端，使用 Swift、UIKit 和 WKWebView 加载
 
 | 功能 | iOS 实现与状态 |
 | --- | --- |
-| 服务地址 | 已接入 HTTP/HTTPS 根地址校验、异步 `/api/health` 验证和本机保存；拒绝健康检查重定向 |
+| 服务地址 | 已接入 HTTP/HTTPS 根地址校验、异步 `/api/health` 验证和本机保存；拒绝健康检查重定向；可保存多个地址、新增、选择切换和删除 |
 | 会话、任务、流程 | 复用现有网页和接口；需部署本分支的 Web 构建以启用 iOS 桥接 |
 | 登录与 Cookie | 使用持久 WKWebsiteDataStore；同源页面、指定企业授权页和已校验回调的 HTTPS 网关登录链保留在应用内 |
 | 详情恢复 | 按服务记忆最近会话或任务详情，包含网关工作区；不记忆授权页和设备门户 |
@@ -33,6 +33,8 @@ WorkStep 的 iPhone / iPad 客户端，使用 Swift、UIKit 和 WKWebView 加载
 | 崩溃堆栈 | 当前仅网页进程退出和受控错误日志；完整原生崩溃报告仍通过 Xcode / 系统诊断获取 |
 
 前台通知不是后台推送；应用被挂起后不会继续接收 WebSocket 结果。返回前台时由现有网页连接恢复逻辑补回当前会话内容，不保证补发后台期间的系统通知。
+
+长按悬浮按钮选择“修改服务地址”可管理地址。输入地址后点“新增地址”只保存，不立即切换；选中列表项后点“切换到所选地址”会先验证健康接口再连接，也可以直接输入并点“连接”。“删除所选地址”会移除列表项；删除当前地址会断开网页并清除启动地址。旧版保存的单个服务地址会自动进入列表。
 
 ## 打开与构建
 

@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Usar @ para escolher a etapa de execução",
+        "steps": [
+          "Abra os detalhes da tarefa e digite @ no início do campo ou após um espaço. Digite o nome da etapa para filtrar e escolha o destino na lista. Você também pode clicar no destinatário de etapa perto do campo de entrada.",
+          "Confira se o destinatário mudou para a etapa desejada. Após a seleção, o texto @ usado na busca é removido automaticamente. Apenas selecionar não envia mensagens nem inicia a execução; cada mensagem vai somente para um destinatário atual.",
+          "Escreva uma instrução específica e envie. Por exemplo, escolha «Análise de requisitos» e envie «Acrescente os critérios de aceitação para falhas de login e atualize o documento de requisitos». Para encaminhar a outra etapa, selecione-a antes de enviar novamente.",
+          "Se a etapa de destino estiver em execução, a mensagem entra na fila de «Mensagens de inserção» dessa etapa. Se ela puder ser reexecutada, enviar a instrução inicia uma nova execução. Se outras etapas ativas forem afetadas, confira antes na confirmação quais serão interrompidas e reexecutadas.",
+          "Confira o resultado real no progresso das etapas, nos registros de execução e nos artefatos. Para perguntas ou coordenação geral, escolha @Coordenador em vez de enviar à etapa errada."
+        ],
+        "tips": [
+          "A lista contém apenas etapas em execução ou que podem ser reexecutadas. Etapas pendentes que nunca foram executadas não aparecem; a primeira execução ainda segue o início da tarefa e as dependências do fluxo.",
+          "É necessário selecionar o destino na lista e conferir o destinatário. Apenas deixar @nome no texto não define o destino. Reexecutar pode alterar arquivos e chamar o modelo novamente; não desfaz automaticamente as alterações anteriores."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Lista de etapas após digitar @ nos detalhes da tarefa e destinatário selecionado",
+          "caption": "Faltam capturas do projeto fixo de demonstração com candidatos @etapa e o rascunho após selecionar. Selecionar não significa enviar ou executar."
+        }
+      },
+      {
         "title": "Encontre tarefas no quadro ou mesa",
         "steps": [
           "Alterne entre pistas e tabela na página de tarefas, inspecione as tarefas por estágio e pesquise por título.",

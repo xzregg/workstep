@@ -20,7 +20,7 @@ test('local screenshot paths remain readable without image or resolver requests 
     for (const plainText of [false,true]) {
       for (const path of ['/tmp/workstep-local-gateway-connected.jpg', '/private/tmp/screen.jpg', '/Users/demo/screen.jpg', 'file:///tmp/screen.jpg', 'C:/Users/demo/screen.jpg', '/%74mp/screen.jpg']) {
         await act(async()=>root.render(<I18nProvider><MarkdownAssetUrlProvider resolver={src=>{resolved++;return '/workspace/device'+src}}>
-          <MarkdownMessage content={`![连接截图](${path})`} projectId="project-1" plainText={plainText}/>
+          <MarkdownMessage content={`![连接截图](${path})`} plainText={plainText}/>
         </MarkdownAssetUrlProvider></I18nProvider>))
         assert.equal(container.querySelector('img'),null,path)
         assert.equal(container.querySelector('.markdown-image-click'),null,path)
@@ -73,4 +73,32 @@ test('shared Markdown images open and close the image preview by default', async
     await act(async () => root.unmount())
     await window.happyDOM.close()
   }
+})
+
+
+test('project filesystem images use scoped file delivery locally and through the gateway', async () => {
+  const window = new Window({ url: 'http://localhost/' })
+  Object.assign(globalThis, {window, document:window.document, navigator:window.navigator,
+    HTMLElement:window.HTMLElement, IS_REACT_ACT_ENVIRONMENT:true})
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    for (const gateway of [false, true]) {
+      window.happyDOM.setURL(gateway ? 'https://gateway.test/workspace/device/chat' : 'http://localhost/chat')
+      for (const plainText of [false, true]) {
+        for (const path of ['/data/projects/三国塔防小程序/research/game-screenshots/Thronefall/1.png', '/Users/demo/project/screen.png', 'research/Peglin/1.jpg']) {
+          await act(async () => root.render(<I18nProvider><MarkdownMessage content={`![实机截图](${path})`} projectId="project-1" plainText={plainText}/></I18nProvider>))
+          const img = container.querySelector('img')
+          assert.ok(img, path)
+          const url = new URL(img.getAttribute('src')!, window.location.origin)
+          assert.equal(url.pathname, (gateway ? '/workspace/device' : '') + '/api/fs/file')
+          assert.equal(url.searchParams.get('project_id'), 'project-1')
+          assert.equal(url.searchParams.get('path'), path)
+          await act(async () => container.querySelector<HTMLButtonElement>('.markdown-image-click')!.click())
+          assert.equal(document.querySelector('.image-preview img')?.getAttribute('src'), img.getAttribute('src'))
+          await act(async () => window.dispatchEvent(new window.KeyboardEvent('keydown', {key:'Escape'})))
+        }
+      }
+    }
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })

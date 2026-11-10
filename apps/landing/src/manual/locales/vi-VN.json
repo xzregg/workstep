@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Dùng @ để chọn bước thực thi",
+        "steps": [
+          "Mở chi tiết tác vụ, nhập @ ở đầu ô nhập hoặc sau khoảng trắng. Nhập tên bước để lọc rồi chọn mục tiêu trong danh sách. Bạn cũng có thể nhấp người nhận là bước ở gần ô nhập.",
+          "Kiểm tra người nhận đã chuyển sang đúng bước. Sau khi chọn, phần chữ @ dùng để tìm sẽ tự xóa. Chỉ chọn không gửi tin nhắn hay bắt đầu thực thi; mỗi tin nhắn chỉ gửi tới một người nhận hiện tại.",
+          "Viết chỉ dẫn cụ thể rồi gửi. Ví dụ, chọn «Phân tích yêu cầu», sau đó gửi «Bổ sung tiêu chí nghiệm thu cho trường hợp đăng nhập thất bại và cập nhật tài liệu yêu cầu». Muốn giao cho bước khác, hãy chọn lại bước trước khi gửi tiếp.",
+          "Nếu bước đích đang chạy, tin nhắn vào hàng đợi «Tin nhắn chèn» của bước đó. Nếu bước có thể chạy lại, gửi chỉ dẫn sẽ thực thi lại bước. Khi ảnh hưởng các bước khác đang hoạt động, trước hết kiểm tra phạm vi dừng và chạy lại trong hộp xác nhận.",
+          "Kiểm tra kết quả thực tế trong tiến độ bước, nhật ký thực thi và sản phẩm đầu ra. Khi cần điều phối tổng thể hoặc đặt câu hỏi, chọn @Điều phối viên thay vì gửi nhầm bước."
+        ],
+        "tips": [
+          "Danh sách chỉ gồm bước đang chạy hoặc có thể thực thi lại. Bước chưa từng chạy và còn chờ sẽ không xuất hiện; lần chạy đầu vẫn tuân theo việc khởi chạy tác vụ và các quan hệ phụ thuộc của quy trình.",
+          "Phải chọn mục tiêu trong danh sách và kiểm tra người nhận; chỉ để @tên trong nội dung không có nghĩa đã chỉ định. Chạy lại có thể sửa tệp và gọi mô hình lần nữa, không tự hoàn tác thay đổi cũ."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Danh sách bước sau khi nhập @ trong chi tiết tác vụ và người nhận đã chọn",
+          "caption": "Chưa có ảnh các ứng viên @bước và bản nháp sau khi chọn trong dự án minh họa cố định; chọn không có nghĩa đã gửi hoặc thực thi."
+        }
+      },
+      {
         "title": "Tìm nhiệm vụ trên bảng hoặc trên bàn",
         "steps": [
           "Chuyển đổi giữa Làn đường và Bảng trên trang nhiệm vụ, kiểm tra nhiệm vụ theo giai đoạn và tìm kiếm theo tiêu đề.",

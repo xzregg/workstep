@@ -587,3 +587,33 @@ def test_daily_activity_keeps_daily_resolution_and_counts_unmetered_calls(statis
     assert all(len(day["date"]) == 10 for day in days)
     assert sum(day["count"] for day in days) == report["data_quality"]["eligible_token_calls"]
     assert sum(day["tokens"] or 0 for day in days) == report["summary"]["total_tokens"]
+
+
+def test_self_statistics_filters_all_metrics_and_comparison(statistics_fixture):
+    manager, project, _, base = statistics_fixture
+    with manager.activate_project_by_id(project.id):
+        Task.update(creator_id="self").where(Task.id == "task-success").execute()
+        Message.update(author_type="assistant", initiated_by_user_id="self").where(
+            Message.id == "message-execution").execute()
+        session = ChatSession.create(id="self-chat", project_id=project.id, workflow_id="", engine="codex",
+                                     title="Chat", created_at=base, updated_at=base)
+        for user, tokens in (("self", 50), ("other", 900), (None, 800)):
+            ChatMessage.create(id=f"chat-{user}", session=session, role="assistant",
+                content="done", status="succeeded", author_type="assistant",
+                initiated_by_user_id=user, usage_json=json.dumps({"total_tokens": tokens}),
+                created_at=base)
+    report = StatisticsModule(manager).overview(StatisticsQuery(
+        project_id=project.id, actor_id="self", range_key="custom",
+        start=base, end=base + timedelta(days=1)))
+    assert report["summary"]["task_count"] == 1
+    assert report["summary"]["run_count"] == 1
+    assert report["summary"]["failed_runs"] == 0
+    assert report["summary"]["total_tokens"] == 170
+    assert {row["author_id"] for row in report["users"]} == {"self"}
+    assert sum(row["count"] for row in report["activity"]) == 2
+    assert report["quality"]["step_failed"] == 0
+    empty = StatisticsModule(manager).overview(StatisticsQuery(
+        project_id=project.id, actor_id="nobody", range_key="custom",
+        start=base + timedelta(days=1), end=base + timedelta(days=2)))
+    assert empty["summary"]["total_tokens"] == 0
+    assert empty["comparison"]["summary"]["total_tokens"] == 0

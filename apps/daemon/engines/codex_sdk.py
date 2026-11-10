@@ -537,7 +537,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             codex_bin=override or None,
             cwd=cwd or None,
             config_overrides=provider_runtime.engine_config + (skill_override,),
-            env=(provider_runtime.child_env() if provider_runtime.provider_id or provider_runtime.has_coordinator_source else None),
+            env=(provider_runtime.child_env() if provider_runtime.provider_id or provider_runtime.has_execution_context else None),
         )
 
         self._running = True
@@ -1239,7 +1239,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             codex_bin=override or None,
             cwd=cwd or None,
             config_overrides=provider_runtime.engine_config,
-            env=(provider_runtime.child_env() if provider_runtime.provider_id or provider_runtime.has_coordinator_source else None),
+            env=(provider_runtime.child_env() if provider_runtime.provider_id or provider_runtime.has_execution_context else None),
         ))
         try:
             thread = await client.thread_fork(

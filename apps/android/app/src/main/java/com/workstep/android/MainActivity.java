@@ -38,6 +38,9 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -61,6 +64,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final String SERVER_KEY = "server_origin";
+    private static final String SERVER_LIST_KEY = "server_origins";
     private static final String PAGE_KEY = "last_page_url";
     private static final String MENU_X_KEY = "connection_menu_x";
     private static final String MENU_Y_KEY = "connection_menu_y";
@@ -192,10 +196,13 @@ public final class MainActivity extends Activity {
 
     private void showAddressScreen(String current) {
         clearPage();
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(24), dp(40), dp(24), dp(24));
-        root.addView(page, new FrameLayout.LayoutParams(-1, -1));
+        scroll.addView(page);
 
         TextView title = new TextView(this);
         title.setText(R.string.connect_title);
@@ -223,6 +230,39 @@ public final class MainActivity extends Activity {
         Button connect = new Button(this);
         connect.setText(R.string.connect);
         page.addView(connect);
+        Button addAddress = new Button(this);
+        addAddress.setText(R.string.add_address);
+        page.addView(addAddress);
+
+        String active = server == null ? "" : server.origin();
+        java.util.List<String> saved = SavedServerAddresses.load(
+                getPreferences(MODE_PRIVATE).getString(SERVER_LIST_KEY, ""), active);
+        RadioGroup choices = new RadioGroup(this);
+        choices.setOrientation(RadioGroup.VERTICAL);
+        if (!saved.isEmpty()) {
+            TextView savedTitle = new TextView(this);
+            savedTitle.setText(R.string.saved_addresses);
+            LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-1, -2);
+            titleParams.topMargin = dp(24);
+            page.addView(savedTitle, titleParams);
+            page.addView(choices);
+        }
+        for (String origin : saved) {
+            RadioButton option = new RadioButton(this);
+            option.setId(View.generateViewId());
+            option.setText(origin);
+            option.setTag(origin);
+            option.setMinHeight(dp(48));
+            choices.addView(option);
+            if (origin.equals(current)) option.setChecked(true);
+        }
+        Button switchAddress = new Button(this);
+        switchAddress.setText(R.string.switch_address);
+        switchAddress.setEnabled(!saved.isEmpty());
+        if (!saved.isEmpty()) page.addView(switchAddress);
+        Button deleteAddress = new Button(this);
+        deleteAddress.setText(R.string.delete_address);
+        if (!saved.isEmpty()) page.addView(deleteAddress);
 
         ProgressBar progress = new ProgressBar(this);
         progress.setVisibility(View.GONE);
@@ -235,6 +275,16 @@ public final class MainActivity extends Activity {
         page.addView(error);
 
         connect.setOnClickListener(view -> {
+            ServerAddress candidate;
+            try {
+                candidate = ServerAddress.parse(address.getText().toString());
+            } catch (IllegalArgumentException reason) {
+                error.setText(reason.getMessage());
+                return;
+            }
+            connectToServer(candidate, scroll, connect, switchAddress, progress, error);
+        });
+        addAddress.setOnClickListener(view -> {
             if (checking) return;
             ServerAddress candidate;
             try {
@@ -243,29 +293,78 @@ public final class MainActivity extends Activity {
                 error.setText(reason.getMessage());
                 return;
             }
-            checking = true;
-            connect.setEnabled(false);
-            progress.setVisibility(View.VISIBLE);
-            error.setText("");
-            executor.execute(() -> {
-                String failure = checkServer(candidate);
-                runOnUiThread(() -> {
-                    checking = false;
-                    if (isFinishing() || isDestroyed()) return;
-                    connect.setEnabled(true);
-                    progress.setVisibility(View.GONE);
-                    if (failure != null) {
-                        error.setText(failure);
-                        return;
-                    }
-                    if (server == null || !server.origin().equals(candidate.origin())) {
-                        completionWatches.clear();
-                        stopCompletionWatchService();
-                    }
-                    server = candidate;
-                    getPreferences(MODE_PRIVATE).edit().putString(SERVER_KEY, candidate.origin()).apply();
-                    showWebView();
-                });
+            if (saved.contains(candidate.origin())) {
+                error.setText(R.string.address_already_saved);
+                return;
+            }
+            getPreferences(MODE_PRIVATE).edit().putString(SERVER_LIST_KEY,
+                    SavedServerAddresses.store(SavedServerAddresses.add(saved, candidate.origin()))).apply();
+            showAddressScreen(candidate.origin());
+        });
+        switchAddress.setOnClickListener(view -> {
+            View selected = choices.findViewById(choices.getCheckedRadioButtonId());
+            if (selected == null) {
+                error.setText(R.string.select_address);
+                return;
+            }
+            connectToServer(ServerAddress.parse((String) selected.getTag()),
+                    scroll, connect, switchAddress, progress, error);
+        });
+        deleteAddress.setOnClickListener(view -> {
+            if (checking) return;
+            View selected = choices.findViewById(choices.getCheckedRadioButtonId());
+            if (selected == null) {
+                error.setText(R.string.select_address);
+                return;
+            }
+            String selectedOrigin = (String) selected.getTag();
+            java.util.List<String> remaining = SavedServerAddresses.remove(saved, selectedOrigin);
+            boolean deletingActive = selectedOrigin.equals(active);
+            if (deletingActive) {
+                completionWatches.clear();
+                stopCompletionWatchService();
+                server = null;
+            }
+            getPreferences(MODE_PRIVATE).edit()
+                    .putString(SERVER_LIST_KEY, SavedServerAddresses.store(remaining))
+                    .putString(SERVER_KEY, deletingActive ? "" : active).apply();
+            showAddressScreen(deletingActive ? "" : active);
+        });
+    }
+
+    private void connectToServer(ServerAddress candidate, View screen, Button connect,
+                                 Button switchAddress, ProgressBar progress, TextView error) {
+        if (checking) return;
+        checking = true;
+        connect.setEnabled(false);
+        switchAddress.setEnabled(false);
+        progress.setVisibility(View.VISIBLE);
+        error.setText("");
+        executor.execute(() -> {
+            String failure = checkServer(candidate);
+            runOnUiThread(() -> {
+                checking = false;
+                if (isFinishing() || isDestroyed() || root.getChildAt(0) != screen) return;
+                connect.setEnabled(true);
+                switchAddress.setEnabled(true);
+                progress.setVisibility(View.GONE);
+                if (failure != null) {
+                    error.setText(failure);
+                    return;
+                }
+                if (server == null || !server.origin().equals(candidate.origin())) {
+                    completionWatches.clear();
+                    stopCompletionWatchService();
+                }
+                server = candidate;
+                java.util.List<String> saved = SavedServerAddresses.load(
+                        getPreferences(MODE_PRIVATE).getString(SERVER_LIST_KEY, ""),
+                        getPreferences(MODE_PRIVATE).getString(SERVER_KEY, ""));
+                getPreferences(MODE_PRIVATE).edit()
+                        .putString(SERVER_KEY, candidate.origin())
+                        .putString(SERVER_LIST_KEY, SavedServerAddresses.store(
+                                SavedServerAddresses.add(saved, candidate.origin()))).apply();
+                showWebView();
             });
         });
     }

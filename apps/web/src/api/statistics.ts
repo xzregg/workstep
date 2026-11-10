@@ -1,3 +1,4 @@
+import { workspaceCatalogPath } from './workspaceScope'
 import { request } from './transport'
 import type { SystemStatisticsReport } from './systemStatistics'
 
@@ -166,7 +167,7 @@ export interface StatisticsParams {
 
 export const statisticsApi = {
   system: () => request<SystemStatisticsReport>('/statistics/system'),
-  overview: (params: StatisticsParams = {}) => {
+  overview: async (params: StatisticsParams = {}) => {
     const query = new URLSearchParams()
     if (params.projectId) query.set('project_id', params.projectId)
     if (params.workflowId) query.set('workflow_id', params.workflowId)
@@ -174,6 +175,6 @@ export const statisticsApi = {
     if (params.start) query.set('start', params.start)
     if (params.end) query.set('end', params.end)
     if (params.timezone) query.set('timezone', params.timezone)
-    return request<StatisticsReport>(`/statistics/overview?${query.toString()}`)
+    return request<StatisticsReport>(await workspaceCatalogPath(`/statistics/overview?${query.toString()}`))
   },
 }

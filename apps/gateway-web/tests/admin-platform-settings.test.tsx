@@ -204,3 +204,19 @@ test('company name editing protects changes, preserves failure and supports clea
  fireEvent.click(screen.getByRole('button', {name:'保存公司名称'}))
  await waitFor(()=>assert.equal(saved, 1))
 })
+
+
+test('administrator can save additional origins without changing default address', async () => {
+  let saved = false
+  globalThis.fetch = async (input, init) => {
+    if (String(input) === '/api/admin/platform-address') {
+      assert.deepEqual(JSON.parse(String(init?.body)), {public_origin: 'https://gateway.test', allowed_origins: ['https://a.test', 'https://b.test']})
+    }
+    return Response.json({})
+  }
+  render(<AdminPlatformAddressDialog address="https://gateway.test" csrf="csrf" onClose={()=>{}} onSaved={()=>{saved=true}} />)
+  fireEvent.change(screen.getByLabelText('其他入口地址（每行一个）'), {target: {value: 'https://a.test/\nhttps://b.test'}})
+  fireEvent.change(screen.getByLabelText('管理员密码'), {target: {value: 'password'}})
+  fireEvent.click(screen.getByRole('button', {name: '保存平台地址'}))
+  await waitFor(()=>assert.equal(saved, true))
+})

@@ -216,6 +216,13 @@ class ProviderRuntimeConfig:
 
         return bool(coordinator_source_env())
 
+    @property
+    def has_execution_context(self) -> bool:
+        from services.conversation_context import PROJECT_ENV, SESSION_ENV, conversation_env
+
+        return bool(self.has_coordinator_source or conversation_env()
+                    or PROJECT_ENV in os.environ or SESSION_ENV in os.environ)
+
     def child_env(self) -> dict[str, str]:
         from services.coordinator_source import COORDINATOR_TURN_ENV, coordinator_source_env
 
@@ -225,7 +232,9 @@ class ProviderRuntimeConfig:
         env.update(self.env)
         env.pop(COORDINATOR_TURN_ENV, None)
         env.update(coordinator_source_env())
-        return env
+        from services.conversation_context import execution_env
+
+        return execution_env(env)
 
 
 async def run_install_command(

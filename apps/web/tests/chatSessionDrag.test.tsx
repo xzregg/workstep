@@ -41,6 +41,7 @@ test('dragging a real sidebar row opens its conversation in another pane and kee
       reordered = true
       return Response.json({})
     }
+    if (url.includes('/chat-sessions/groups?')) return Response.json({ groups: [] })
     if (url.includes('/chat-sessions?')) return Response.json({ sessions })
     const id = url.match(/chat-sessions\/([abc])\?/)?.[1]
     if (id) return Response.json({ id, project_id: 'p', title: id, messages: [{ id: `m-${id}`, role: 'user', content: `history-${id}` }], engine: 'pydantic_ai' })
@@ -58,6 +59,13 @@ test('dragging a real sidebar row opens its conversation in another pane and kee
   try {
     await act(async () => root.render(<I18nProvider><MemoryRouter initialEntries={['/chat?project=demo&session=a']}><Layout onSelectProject={() => {}}><ChatWorkspace /></Layout></MemoryRouter></I18nProvider>))
     assert.equal(rows().length, 3)
+    await act(async () => rows()[1].dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
+    const createGroup = [...document.querySelectorAll<HTMLButtonElement>('.sidebar-action-item')].find(button => button.textContent?.includes('创建分组'))!
+    assert.ok(createGroup, 'conversation context menu includes create group')
+    assert.ok(createGroup.querySelector('svg'))
+    await act(async () => createGroup.click())
+    assert.ok(document.querySelector('[aria-label="分组名"]'), 'opens the shared group name dialog')
+    await act(async () => document.querySelector<HTMLButtonElement>('.confirm-dialog-footer .btn-ghost')!.click())
     await act(async () => rows()[1].dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
     const renameInput = document.querySelector<HTMLInputElement>('.chat-session-rename-input')!
     assert.ok(renameInput, 'sidebar titles must open the shared rename dialog')
@@ -71,6 +79,13 @@ test('dragging a real sidebar row opens its conversation in another pane and kee
     await act(async () => drag(rows()[1], 'dragstart'))
     assert.deepEqual(readChatSessionDrag(transfer as unknown as DataTransfer), { projectId: 'p', sessionId: 'b' })
     assert.equal(transfer.effectAllowed, 'copyMove')
+    await act(async () => drag(rows()[0], 'dragover'))
+    assert.equal(document.querySelector('.sidebar-session-group-ungrouped')?.getAttribute('data-drop-target'), 'false', 'hovering one row must not highlight the entire sidebar list')
+    await act(async () => drag(document.querySelector('.sidebar-session-group-ungrouped')!, 'dragover'))
+    await act(async () => drag(document.querySelector('.chat-workspace-pane textarea')!, 'dragover'))
+    assert.equal(transfer.dropEffect, 'copy', 'workspace owns the new-window drop')
+    assert.equal(document.querySelector('.sidebar-session-group-ungrouped')?.getAttribute('data-drop-target'), 'false', 'leaving the sidebar clears its group drop highlight')
+
     await act(async () => drag(document.querySelector('.chat-workspace-pane textarea')!, 'drop'))
     assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 2)
     assert.match(document.querySelector('.chat-workspace-pane--active')!.textContent!, /history-b/)
@@ -97,8 +112,10 @@ test('dragging a real sidebar row opens its conversation in another pane and kee
     assert.notEqual(firstPane.querySelector('.chat-workspace-pane-reveal'), pointerReveal, 'switching back replays feedback without remounting the pane')
     assert.deepEqual(highlightedRows(), [rows()[0]], 'switching panes clears the previous sidebar click selection')
     await act(async () => rows()[1].click())
-    assert.equal(document.querySelector('.chat-workspace-pane--active'), firstPane, 'clicking an already open conversation keeps the active pane')
+    assert.equal(document.querySelector('.chat-workspace-pane--active'), existingPane, 'clicking an already open conversation activates its pane')
+    assert.deepEqual(highlightedRows(), [rows()[1]], 'sidebar selection follows the activated conversation')
     assert.ok(existingPane.querySelector('.chat-workspace-pane-reveal'))
+    await act(async () => rows()[0].click())
     await act(async () => rows()[2].click())
     assert.equal(document.querySelector('.chat-workspace-pane--active'), firstPane, 'the next unopened conversation replaces the original active pane')
     assert.match(firstPane.textContent!, /history-c/)
@@ -108,8 +125,8 @@ test('dragging a real sidebar row opens its conversation in another pane and kee
     await act(async () => rows()[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true, ctrlKey: true })))
     assert.deepEqual([...useChatListStore.getState().selectedIds].sort(), ['a', 'c'], 'modifier clicks retain deliberate multi-selection')
     await act(async () => rows()[1].click())
-    assert.deepEqual(highlightedRows(), [rows()[2]], 'sidebar clicks clear multi-selection and retain the active conversation')
-    assert.equal(document.querySelector('.chat-workspace-pane--active'), firstPane, 'sidebar clicks preserve the active pane')
+    assert.deepEqual(highlightedRows(), [rows()[1]], 'sidebar clicks clear multi-selection and select the clicked conversation')
+    assert.equal(document.querySelector('.chat-workspace-pane--active'), existingPane, 'sidebar clicks activate the matching pane')
     assert.ok(existingPane.querySelector('.chat-workspace-pane-reveal'))
     assert.match(firstPane.textContent!, /history-c/, 'activating an existing pane leaves the previous pane unchanged')
     await act(async () => rows()[2].click())

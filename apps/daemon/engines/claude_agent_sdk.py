@@ -385,7 +385,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
             "skillOverrides": {name: "on" for name in skill_names},
         }
         sandbox_env = claude_sandbox_env(sdk_config["permission_mode"])
-        if provider_runtime.provider_id or provider_runtime.has_coordinator_source or provider_runtime.env or sandbox_env or custom_env:
+        if provider_runtime.provider_id or provider_runtime.has_execution_context or provider_runtime.env or sandbox_env or custom_env:
             child_env = {**provider_runtime.child_env(), **custom_env, **sandbox_env}
         else:
             child_env = {}

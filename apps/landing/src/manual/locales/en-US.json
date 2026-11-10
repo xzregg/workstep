@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Use @step to choose an execution target",
+        "steps": [
+          "Open task details. Type @ at the beginning of the composer or after whitespace, then type a step name to filter the candidates and select a target. You can also click a step recipient near the composer.",
+          "Check that the recipient has switched to the step. The @ search text is removed after selection. Selecting alone neither sends a message nor starts execution; each message goes to only the current recipient.",
+          "Write a specific instruction, then send it. For example, select Requirements analysis and send “Add acceptance conditions for failed sign-in and update the requirements document.” To involve another step, select that step before sending another message.",
+          "If the target is running, the message enters that step’s Insert messages queue. If the target can be rerun, sending instructions executes the step again. If other active steps are affected, check the stop and rerun scope in the confirmation dialog first.",
+          "Check actual results in step progress, execution records and artifacts. For overall coordination or questions, select @Coordinator instead of addressing the wrong step."
+        ],
+        "tips": [
+          "Candidates include only steps currently running or eligible for re-execution. A step that has never run and is still pending is not listed; its first execution still follows task startup and workflow dependencies.",
+          "Select a candidate and check the recipient. Leaving @name in the message body alone does not establish a target. Reruns may modify files and call the model again; they do not automatically undo earlier edits."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Step candidates after typing @ in task details, with the selected recipient",
+          "caption": "A real screenshot of @step candidates and the draft after selection in the fixed demonstration project is still needed. Selection does not mean a message was sent or execution started."
+        }
+      },
+      {
         "title": "Find tasks on the board or table",
         "steps": [
           "Switch between Lanes and Table on the task page, inspect tasks by stage and search by title.",

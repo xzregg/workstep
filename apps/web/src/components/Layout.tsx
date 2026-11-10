@@ -14,6 +14,7 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
 import SessionRowActions from './SessionRowActions'
+import SidebarSessionGroups, { SessionGroupCreationArea } from './SidebarSessionGroups'
 import ChatSessionRenameDialog from './ChatSessionRenameDialog'
 import { useTaskStore } from '../stores/taskStore'
 import { useChatListStore } from '../stores/chatSessionStore'
@@ -25,7 +26,7 @@ import { useWebSocket } from '../hooks/useWebSocket'
 import { taskListPath } from '../hooks/useTaskRoute'
 import { useProjectRouteSelection } from '../hooks/useProjectRouteSelection'
 import { useManagedMode } from '../hooks/useManagedMode'
-import Button, { type ButtonProps } from './Button'
+import Button from './Button'
 import MarqueeText from './MarqueeText'
 import Input from './Input'
 import SettingsPage from '../pages/SettingsPage'
@@ -57,14 +58,7 @@ import {
   type Project,
 } from '../api/client'
 import './Layout.css'
-
-function SidebarAddButton(props: ButtonProps) {
-  return (
-    <Button {...props} variant="icon" size="sm" className="sidebar-add-button">
-      <Icon name="plus" size={9.6} strokeWidth={2} />
-    </Button>
-  )
-}
+import SidebarAddButton from './SidebarAddButton'
 
 const SIDEBAR_LONG_PRESS_MS = 500
 const SIDEBAR_LONG_PRESS_MOVE_PX = 10
@@ -165,7 +159,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     timer: number
   } | null>(null)
   const suppressSidebarClickUntilRef = useRef(0)
-  const [sessionMenu, setSessionMenu] = useState<{ x: number; y: number; sessionId: string; projectId: string; title: string } | null>(null)
+  const [sessionMenu, setSessionMenu] = useState<{ x: number; y: number; sessionId: string; projectId: string; title: string; createGroup?: () => void } | null>(null)
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
   const [renameSessionProjectId, setRenameSessionProjectId] = useState<string | null>(null)
   const [renameSessionValue, setRenameSessionValue] = useState('')
@@ -425,19 +419,20 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }
 
-  const openSessionMenuAt = (projectId: string, sessionId: string, title: string, x: number, y: number) => {
+  const openSessionMenuAt = (projectId: string, sessionId: string, title: string, x: number, y: number, createGroup?: () => void) => {
     if (!projectCan(projectId)('session.manage')) return
     setMoreMenu(null)
     setSessionMenu({
       x: Math.max(8, Math.min(x, window.innerWidth - 176)),
-      y: Math.max(8, Math.min(y, window.innerHeight - 148)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 184)),
       sessionId,
       projectId,
       title,
+      createGroup,
     })
   }
 
-  const openSessionMenu = (e: React.MouseEvent, projectId: string, sessionId: string, title: string) => {
+  const openSessionMenu = (e: React.MouseEvent, projectId: string, sessionId: string, title: string, createGroup?: () => void) => {
     e.preventDefault()
     e.stopPropagation()
     const rect = e.currentTarget.getBoundingClientRect()
@@ -448,6 +443,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       title,
       atCursor ? e.clientX : rect.left,
       atCursor ? e.clientY : rect.bottom + 4,
+      createGroup,
     )
   }
 
@@ -852,6 +848,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   : sessionSectionOpen[p.id]
                     ?? (location.pathname === '/chat' && !!activeSessionId)
                 return can('session.read') && (
+                  <SessionGroupCreationArea canManage={can('session.manage')} onOpen={() => setSessionSectionOpen(prev => ({ ...prev, [p.id]: true }))}>
                   <SidebarConversationTabs sessions={searchResult.sessions} activeSessionId={activeSessionId} onSwitch={clearSelection} open={open} header={(tabs, tab) => (
                     <div
                       className="layout-sidebar-nested-label layout-sidebar-session-label"
@@ -880,7 +877,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       )}
                     </div>
                     )}>
-                      {visibleSessions => <div className="layout-session-list">
+                      {(visibleSessions, source) => <div className="layout-session-list">
                       <SidebarLoadStatus loading={sessionLoading[p.id] && !(p.id in sessionsByProject)} error={sessionLoadErrors[p.id]}
                         label={t(p.access_status === 'invalid' ? 'layout.remoteAccessInvalidHint' : 'layout.sessionLoadFailed')}
                         onRetry={p.access_status === 'invalid' ? undefined : () => useChatListStore.getState().refreshSessions(p.id)} />
@@ -910,7 +907,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           </Button>
                         </div>
                       )}
-                      {visibleSessions.map(session => {
+                      <SidebarSessionGroups key={`${p.id}:${source}`} projectId={p.id} source={source} sessions={visibleSessions} canManage={can('session.manage')} onCreateSession={can('session.create') && can('session.manage') ? groupId => createSession(p, groupId) : undefined} creatingSession={creatingSession} runningSessions={runningChatSessions} renderSession={(session, createGroup) => {
                         const isDragSource = dragSessionId === session.id
                         const isDropTarget = dropSessionId === session.id
                         const sessionRunning = Boolean(runningChatSessions[session.id])
@@ -939,7 +936,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             setRenameSessionProjectId(p.id)
                             setRenameSessionValue(session.title)
                           }}
-                          onPointerDown={(e) => startSidebarLongPress(e, (x, y) => openSessionMenuAt(p.id, session.id, session.title, x, y))}
+                          onPointerDown={(e) => startSidebarLongPress(e, (x, y) => openSessionMenuAt(p.id, session.id, session.title, x, y, createGroup))}
                           onPointerMove={moveSidebarLongPress}
                           onPointerUp={cancelSidebarLongPress}
                           onPointerCancel={cancelSidebarLongPress}
@@ -947,7 +944,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             cancelSidebarLongPress()
                             if (e.pointerType === 'mouse') setHoveredSessionId(null)
                           }}
-                          onContextMenu={(e) => openSessionMenu(e, p.id, session.id, session.title)}
+                          onContextMenu={(e) => openSessionMenu(e, p.id, session.id, session.title, createGroup)}
                           onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoveredSessionId(session.id) }}
                           className="layout-session-row ws-row"
                           data-selected={isSelected}
@@ -963,6 +960,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           onDragOver={(e) => {
                             if (isMultiSelect || !can('session.manage')) return
                             e.preventDefault()
+                            e.stopPropagation()
                             e.dataTransfer.dropEffect = 'move'
                             if (dropSessionId !== session.id) setDropSessionId(session.id)
                           }}
@@ -1015,13 +1013,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                             hovered={hoveredSessionId === session.id}
                             now={sidebarNow}
                             onArchive={() => { void handleArchiveSession(session.id, p.id) }}
-                            onMore={(e) => openSessionMenu(e, p.id, session.id, session.title)}
+                            onMore={(e) => openSessionMenu(e, p.id, session.id, session.title, createGroup)}
                           />}
                         </div>
                         )
-                      })}
+                      }} />
                       </div>}
                   </SidebarConversationTabs>
+                  </SessionGroupCreationArea>
                 )
               })()}
                 </div>
@@ -1148,6 +1147,10 @@ export default function Layout({ onSelectProject, children }: Props) {
 
       {sessionMenu && projectCan(sessionMenu.projectId)('session.manage') && (
         <SidebarActionMenu ref={sessionMenuRef} x={sessionMenu.x} y={sessionMenu.y}>
+          {sessionMenu.createGroup && <SidebarActionItem icon="layers" onClick={() => {
+            sessionMenu.createGroup?.()
+            setSessionMenu(null)
+          }}>{t('sessionGroups.create')}</SidebarActionItem>}
           <SidebarActionItem
             icon="archive"
             onClick={() => { void handleArchiveSession(sessionMenu.sessionId, sessionMenu.projectId) }}

@@ -1,5 +1,42 @@
 ## Schedules
 
+### Act later in the current conversation
+
+When the user explicitly asks to check, remind, or act later in this conversation,
+create a session schedule only after the target WorkStep project and conversation
+are known. First run `context get --json` using the CLI transport below. It reads
+`WORKSTEP_PROJECT_ID` and `WORKSTEP_SESSION_ID` from this execution environment,
+returning `project_id` and `session_id` without adding metadata to chat prompts.
+These are WorkStep IDs, not engine thread IDs. Do not dump the full environment.
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli context get --json
+```
+
+Use the returned IDs for the current conversation. For a different target, resolve
+that target explicitly. If context is unavailable, ask the user to identify the
+target or use the conversation selector in the schedule page. Never guess from
+the newest conversation or its title. Never claim creation without tool success.
+
+Using the applicable transport from SKILL.md:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule create \
+  --project <project_id> --target session --session <session_id> \
+  --name "Follow-up" --instruction "Action to perform at that time" \
+  --after 2h --idempotency-key <request_key> --json
+```
+
+Replace the example delay with the user's requested delay. `--after` is one-shot,
+not `--every-minutes`. Use `--at` for an exact datetime with an explicit timezone.
+Choose one request key per authorized creation and reuse it on retries to avoid
+duplicates. No message ID is required.
+Report success only after the CLI succeeds, including the returned execution time.
+A channel conversation automatically sends the final reply to its original channel;
+do not also send the same reply with `channel send`.
+At execution time perform the requested action, do not schedule it again.
+
+
 ```bash
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule list --project <project_id> --json
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule get --project <project_id> --schedule <schedule_id> --json

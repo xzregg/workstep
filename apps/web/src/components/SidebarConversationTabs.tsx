@@ -11,7 +11,7 @@ export default function SidebarConversationTabs({ sessions, activeSessionId, onS
   onSwitch: () => void
   header?: (tabs: ReactNode, tab: ConversationTab) => ReactNode
   open?: boolean
-  children: (sessions: ChatSessionSummary[]) => ReactNode
+  children: (sessions: ChatSessionSummary[], tab: ConversationTab) => ReactNode
 }) {
   const { t } = useI18n()
   const id = useId()
@@ -66,7 +66,7 @@ export default function SidebarConversationTabs({ sessions, activeSessionId, onS
   return <>
     {header ? header(open ? tabs : null, visibleTab) : tabs}
     {open && <div role={channelCount ? 'tabpanel' : undefined} id={`${id}-panel`} aria-labelledby={channelCount ? `${id}-${visibleTab}` : undefined}>
-      {children(visible)}
+      {children(visible, visibleTab)}
       {!visible.length && visibleTab === 'channel' && <div className="sidebar-conversation-empty">
         {t('chatSession.noChannelSessions')}
       </div>}

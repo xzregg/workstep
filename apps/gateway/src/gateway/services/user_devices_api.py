@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+from gateway.services.platform_address import request_platform_origin
 from gateway.services.errors import GatewayError
 from gateway.contracts import GatewayCall
 from uuid import uuid4
@@ -67,7 +69,7 @@ async def device_access_for_user(call: GatewayCall, device_id: str, user_id: str
         raise GatewayError('forbidden', 'Session user mismatch')
     login_method = auth_session.authentication_provider or auth_session.authentication_method
     ticket = call.gateway_signer.sign_device_access_ticket(gateway_id=call.settings.gateway_id, device_id=device_id, user_id=user_id, audience=host, login_method=login_method)
-    return {"url": call.settings.device_url(device_id), "ticket": ticket, "expires_in": 60}
+    return {"url": request_platform_origin(call) + urlsplit(call.settings.device_url(device_id)).path, "ticket": ticket, "expires_in": 60}
 
 
 async def assign_device_user(call: GatewayCall, device_id: str, body: AssignUserInput):

@@ -10,7 +10,7 @@ import { AdminRegistrationPolicyDialog, registrationLabels } from './AdminRegist
 import type { RegistrationMode } from './AdminRegistrationPolicyDialog'
 
 type PlatformSettings = {
-  company_display_name?: string; gateway_id: string; public_origin: string | null; registration_mode: RegistrationMode
+  company_display_name?: string; gateway_id: string; public_origin: string | null; allowed_origins?: string[]; registration_mode: RegistrationMode
   device_approval_mode?: 'manual' | 'automatic'
   password_login_enabled?: boolean
   session_seconds: number | null; protocol_version: number; data_dir: string
@@ -61,6 +61,7 @@ export function AdminPlatformSettingsPage() {
           <div><dt>公司显示名称</dt><dd>{settings.company_display_name || '未设置'}</dd></div>
           <div><dt>网关 ID</dt><dd>{settings.gateway_id}</dd></div>
           <div><dt>平台地址</dt><dd><PlatformAddress address={settings.public_origin}/></dd></div>
+          {!!settings.allowed_origins?.length && <div><dt>其他入口地址</dt><dd>{settings.allowed_origins.map(origin => <div key={origin}>{origin}</div>)}</dd></div>}
           <div><dt>会话有效期</dt><dd>{settings.session_seconds == null ? '不过期（退出或撤销后失效）' : `${settings.session_seconds / 3600} 小时`}</dd></div>
         </dl>
         <button type="button" onClick={() => setCompanyEditing(true)}>修改公司显示名称</button>
@@ -85,7 +86,7 @@ export function AdminPlatformSettingsPage() {
         <button type="button" onClick={() => setDeviceEditing(true)}>修改设备审批策略</button>
       </section>
      ) },
-     { id: 'organization', label: '组织同步与扫码登录', content: <OrganizationSyncSettings csrf={csrf} platformAddress={settings.public_origin} /> },
+     { id: 'organization', label: '组织同步与扫码登录', content: <OrganizationSyncSettings csrf={csrf} platformAddress={settings.public_origin} allowedOrigins={settings.allowed_origins} /> },
      { id: 'third-party', label: '第三方登录授权', content: <ThirdPartyAuthSettings csrf={csrf} /> },
      { id: 'data', label: '客户端与数据', content: (
       <section className="gateway-project-grants"><h3>客户端与数据</h3>
@@ -104,7 +105,7 @@ export function AdminPlatformSettingsPage() {
       onClose={() => setDeviceEditing(false)} onSaved={() => { setDeviceEditing(false); setRevision(value => value + 1) }} />}
     {companyEditing && settings && <AdminCompanyNameDialog name={settings.company_display_name ?? ''} csrf={csrf}
       onClose={() => setCompanyEditing(false)} onSaved={() => {setCompanyEditing(false); setRevision(current => current + 1)}}/>}
-    {addressEditing && settings && <AdminPlatformAddressDialog address={settings.public_origin} csrf={csrf}
+    {addressEditing && settings && <AdminPlatformAddressDialog address={settings.public_origin} allowedOrigins={settings.allowed_origins} csrf={csrf}
       onClose={() => setAddressEditing(false)} onSaved={() => {setAddressEditing(false); setRevision(current => current + 1)}}/>}
     {editing && settings && <AdminRegistrationPolicyDialog mode={settings.registration_mode} csrf={csrf}
       onClose={() => setEditing(false)} onSaved={() => {

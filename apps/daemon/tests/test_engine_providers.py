@@ -375,6 +375,8 @@ async def test_claude_code_spawn_keeps_parent_env_without_map_or_provider(
     provider_store, monkeypatch, tmp_path
 ):
     """既没绑供应商也没配映射时保持原有行为：不显式传 env。"""
+    monkeypatch.delenv("WORKSTEP_PROJECT_ID", raising=False)
+    monkeypatch.delenv("WORKSTEP_SESSION_ID", raising=False)
     provider_store.set_claude_permission_mode("acceptEdits")
     captured: dict[str, object] = {}
 
@@ -730,3 +732,22 @@ def test_workflow_step_rejects_incompatible_provider(provider_store):
             }],
         })
     assert "供应商协议与引擎不兼容" in exc_info.value.detail
+
+
+@pytest.mark.anyio
+async def test_claude_code_spawn_passes_conversation_identity_without_provider(provider_store, monkeypatch, tmp_path):
+    from services.conversation_context import conversation_context
+    provider_store.set_claude_permission_mode("acceptEdits")
+    captured = {}
+
+    async def fake_exec(*args, **kwargs):
+        captured.update(kwargs)
+        return _FakeProcess()
+
+    monkeypatch.setattr(ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude"))
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    with conversation_context("project-current", "session-current"):
+        async for _ in ClaudeCodeEngine().spawn(prompt="hello", cwd=str(tmp_path)):
+            pass
+    assert captured["env"]["WORKSTEP_PROJECT_ID"] == "project-current"
+    assert captured["env"]["WORKSTEP_SESSION_ID"] == "session-current"

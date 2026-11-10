@@ -52,6 +52,6 @@ corepack yarn build      # tsc -b + vite build，产物在 dist/
 
 ## 旧版备份与发布
 
-[旧版官网备份](../../ui/DESIGN/landing-legacy-2026-10-28.zip) 基于 `09377f50`，包含可打开的 `site/index.html`、视频和截图资源，以及 `source/` 可重建源码。保留改版前布局，但按本次要求同步清除免费宣传并采用匿名多语言条款。解压后须保留 `site/assets/`。
+旧版官网基于 `09377f50`，历史压缩备份不再随源码维护。本机已有备份保存在 Git 忽略的 `build-artifacts/archives/landing-legacy-2026-10-28.zip`，不随克隆或发布分发。需要历史备份时，可从 Git 历史 `76539da4` 中提取 `ui/DESIGN/landing-legacy-2026-10-28.zip`；其中包含可打开的 `site/index.html`、视频和截图资源，以及 `source/` 可重建源码。解压后须保留 `site/assets/`。
 
 新版源码继续维护在本目录。推送 `main` 后，`.github/workflows/pages.yml` 构建并部署到 [GitHub Pages](https://xzregg.github.io/workstep/)；发布使用 `LANDING_BASE=/workstep/`。

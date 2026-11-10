@@ -226,3 +226,22 @@ test('trend pointer coordinates and tooltip follow samples across the full chart
     assert.equal(view.container.querySelector('.system-chart-tooltip'), null)
   } finally { await view.close() }
 })
+
+
+test('shared project statistics always requests the authorized project', async () => {
+  const { useGatewaySessionStore } = await import('../src/stores/gatewaySessionStore')
+  const previous = useGatewaySessionStore.getState()
+  const original = statisticsApi.overview
+  const calls: Array<string | undefined> = []
+  useGatewaySessionStore.setState({ session: { device_id: 'device', device_name: 'Device', username: 'self', gateway_url: 'https://gateway.example', project_id: 'published', host_project_id: 'shared', access_level: 'read', task_create: false, share_create: false, can_manage_project_access: false } })
+  statisticsApi.overview = async options => { calls.push(options.projectId); throw Error('fixture') }
+  try {
+    for (const route of ['/statistics', '/statistics?project_id=private']) {
+      const view = await mount(<MemoryRouter initialEntries={[route]}><StatisticsPage /></MemoryRouter>, 'https://gateway.example/workspace/device/statistics')
+      try {
+        assert.equal(calls.at(-1), 'shared')
+        assert.doesNotMatch(view.container.textContent || '', /全部项目/)
+      } finally { await view.close() }
+    }
+  } finally { statisticsApi.overview = original; useGatewaySessionStore.setState(previous) }
+})

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "174a00004299cb67cc58c8df3312c99ad8c7a993bf9b354e9c15f98094db23bd",
+  "revision": "e1bc3f2d42751453ba65d7f977458bc96f9a912128ba41e58143c3a0593bc0f1",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -9,6 +9,19 @@
     "interaction.deny"
   ],
   "messages": {
+    "sessionGroups.create": "创建分组",
+    "sessionGroups.name": "分组名",
+    "sessionGroups.actions": "分组操作",
+    "sessionGroups.archive": "归档分组",
+    "sessionGroups.delete": "删除分组",
+    "sessionGroups.ungrouped": "未分组",
+    "sessionGroups.archiveConfirm": "归档「{name}」及其中的 {count} 个对话？对话和消息会保留，可在已归档对话中查看、恢复。运行中的对话将保留在当前列表。",
+    "sessionGroups.deleteConfirm": "删除分组「{name}」？其中的 {count} 个对话和消息会保留，对话移回普通列表。",
+    "sessionGroups.skipped": "{count} 个对话未能处理，已保留在分组中，请稍后重试。",
+    "sessionGroups.failed": "分组操作失败，请重试",
+    "sessionGroups.discard": "放弃填写分组名？",
+    "sessionGroups.deleteSessions": "同时删除组内对话和消息",
+    "sessionGroups.deleteWithSessionsConfirm": "永久删除「{name}」及其中的 {count} 个对话和消息？此操作无法撤销，运行中的对话将保留。",
     "channelDirectory.title": "通讯录",
     "channelDirectory.enabled": "读取企业通讯录",
     "channelDirectory.memoryHint": "通讯录仅缓存在内存中，重启后重新获取；日常查询不请求平台，人员变化后请手动更新。",
@@ -30,6 +43,10 @@
     "channelDirectory.empty": "没有匹配的联系人",
     "channelDirectory.previous": "上一页",
     "channelDirectory.next": "下一页",
+    "speech.currentModel": "当前模型，已安装",
+    "speech.installedModel": "已安装",
+    "speech.selectModel": "使用此模型",
+    "speech.zipformerHint": "原生流式识别，支持普通话和英语混合输入，不支持粤语。录音中持续出字，松手后定稿；模型与运行库单独下载。",
     "speech.interrupted": "麦克风已中断，正在整理已录音频…",
     "speech.catchingUp": "正在录音，文字稍有延迟…",
     "speech.backendUpdateRequired": "当前后台仍是旧版语音服务，请重启 WorkStep 后台并重新打开页面后重试。仅刷新页面或重装 Android 包无法更新后台。",

@@ -55,3 +55,36 @@ test('remote Git page loads only its project repositories and scopes worktree re
     await window.happyDOM.close()
   }
 })
+
+
+test('failed project repository scan does not claim no repository or offer initialization', async () => {
+  const { window } = installDomEnvironment()
+  const previousFetch = globalThis.fetch
+  const previousProjects = useProjectStore.getState()
+  const previousGit = useGitStore.getState()
+  useProjectStore.setState({ projects: [{ id: 'remote:p', name: 'Remote', path: '/remote', type: 'remote', steps: {}, workflows: [] }] })
+  useGitStore.setState({ data: null, scan: async () => {} })
+  let failed = true
+  globalThis.fetch = async () => failed
+    ? Response.json({ detail: 'File is outside the allowed preview directory' }, { status: 403 })
+    : Response.json({ projects: [], repositories: [], errors: [], depth: 5 })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><MemoryRouter initialEntries={['/git?project_id=remote%3Ap']}><GitWorkspace /></MemoryRouter></I18nProvider>))
+    assert.match(container.textContent || '', /File is outside/)
+    assert.doesNotMatch(container.textContent || '', /尚未发现 Git 仓库|检查扫描层级/)
+    assert.equal(container.querySelector('.git-empty-actions'), null)
+    failed = false
+    await act(async () => container.querySelector<HTMLButtonElement>('.git-error button')!.click())
+    assert.equal(container.querySelector('.git-error'), null)
+    assert.match(container.textContent || '', /尚未发现 Git 仓库/)
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.fetch = previousFetch
+    useProjectStore.setState(previousProjects)
+    useGitStore.setState(previousGit)
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

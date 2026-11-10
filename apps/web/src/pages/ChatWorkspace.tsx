@@ -88,10 +88,10 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
     const existing = sessionId ? state.panes.find(p => p.id === state.activeId && matchesRoute(p)) || state.panes.find(matchesRoute) : undefined
     setState({
       panes: existing ? state.panes : state.panes.map(p => p.id === state.activeId ? { ...p, projectId: project.id, sessionId } : p),
-      activeId: !compact && location.state?.revealChatPane ? state.activeId : existing?.id || state.activeId,
+      activeId: existing?.id || state.activeId,
       routeKey,
       navigationKey: location.key,
-      revealPaneId: location.state?.revealedChatPaneId || (location.state?.revealChatPane && state.panes.length > 1 ? existing?.id : undefined),
+      revealPaneId: location.state?.revealChatPane && state.panes.length > 1 ? existing?.id : undefined,
     })
   }
   const commit = useCallback((panes: Pane[], activeId: string, replace = false, reveal = false) => {
@@ -109,21 +109,6 @@ function ProjectChatWorkspace({ project, workspaceScope }: { project: NonNullabl
       setParams(next, { replace, state: reveal ? { revealChatPane: true } : undefined })
     })
   }, [params, projects, setParams, location.key])
-  // Sidebar reveals must not change the pane used by the next conversation.
-  // Keep the URL (and sidebar selection) aligned with the active pane as well.
-  useEffect(() => {
-    if (compact || !location.state?.revealChatPane) return
-    const active = state.panes.find(pane => pane.id === state.activeId)
-    if (!active || (active.projectId === project.id && active.sessionId === sessionId)) return
-    const activeProject = projects.find(project => project.id === active.projectId)
-    if (!activeProject) return
-    const next = new URLSearchParams(params)
-    if (next.get('project') !== activeProject.name) next.delete('workflow')
-    next.set('project', activeProject.name)
-    if (active.sessionId) next.set('session', active.sessionId)
-    else next.delete('session')
-    setParams(next, { replace: true, state: { revealedChatPaneId: state.revealPaneId } })
-  }, [compact, location.state, state, project.id, sessionId, projects, params, setParams])
   const latest = useRef(state)
   latest.current = state
   useEffect(() => useChatWorkspaceStore.subscribe((next, previous) => {

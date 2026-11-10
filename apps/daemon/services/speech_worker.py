@@ -54,11 +54,21 @@ def main():
     import numpy as np
     import sherpa_onnx
 
-    recognizer = sherpa_onnx.OnlineRecognizer.from_paraformer(
-        tokens=str(bundle / 'tokens.txt'), encoder=str(bundle / 'encoder.int8.onnx'),
-        decoder=str(bundle / 'decoder.int8.onnx'), num_threads=2, provider='cpu',
-        enable_endpoint_detection=True,
-    )
+    kind = sys.argv[sys.argv.index('--model-type') + 1] if '--model-type' in sys.argv else 'paraformer'
+    if kind == 'zipformer':
+        recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
+            tokens=str(bundle / 'tokens.txt'),
+            encoder=str(bundle / 'encoder-epoch-99-avg-1.int8.onnx'),
+            decoder=str(bundle / 'decoder-epoch-99-avg-1.int8.onnx'),
+            joiner=str(bundle / 'joiner-epoch-99-avg-1.int8.onnx'),
+            num_threads=2, provider='cpu', enable_endpoint_detection=True,
+        )
+    else:
+        recognizer = sherpa_onnx.OnlineRecognizer.from_paraformer(
+            tokens=str(bundle / 'tokens.txt'), encoder=str(bundle / 'encoder.int8.onnx'),
+            decoder=str(bundle / 'decoder.int8.onnx'), num_threads=2, provider='cpu',
+            enable_endpoint_detection=True,
+        )
     punctuator = None
     punctuation_path = bundle / 'punctuation.int8.onnx'
     if punctuation_path.is_file():

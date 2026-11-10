@@ -301,3 +301,22 @@ async def test_default_workspace_is_allowed_without_its_parent(preview_scope, mo
         assert (await client.get('/api/fs/browse', params={'path': str(workspace.parent)})).status_code == 403
         # Adding the default workspace does not grant it to another project.
         assert (await client.get('/api/fs/preview', params={'project_id': 'p1', 'path': str(workspace / 'ok.txt')})).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_unset_directory_uses_container_root_for_browsing_and_files(preview_scope, monkeypatch):
+    from services.config import config_store
+    app, root, outside = preview_scope
+    monkeypatch.setitem(config_store._cache, 'default_project_directory', '')
+    monkeypatch.setenv('WORKSTEP_PROJECTS_ROOT', str(root))
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: outside.parent / 'home'))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://local') as client:
+        response = await client.get('/api/fs/browse')
+        assert response.status_code == 200, response.text
+        assert response.json()['path'] == str(root)
+        assert response.json()['parent'] is None
+        assert (await client.get('/api/fs/preview', params={'path': str(root / 'ok.txt')})).status_code == 200
+        for path in (outside, root / 'escape.txt'):
+            assert (await client.get('/api/fs/preview', params={'path': str(path)})).status_code == 403
+        monkeypatch.setitem(config_store._cache, 'default_project_directory', str(root / 'narrower'))
+        assert (await client.get('/api/fs/preview', params={'path': str(root / 'ok.txt')})).status_code == 403

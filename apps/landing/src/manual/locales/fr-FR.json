@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Choisir l’étape destinataire avec @étape",
+        "steps": [
+          "Ouvrez les détails de la tâche et saisissez @ au début du champ ou après une espace. Tapez le nom de l’étape pour filtrer, puis choisissez la cible dans la liste. Vous pouvez aussi cliquer sur le destinataire d’étape près du champ.",
+          "Vérifiez que le destinataire est bien l’étape choisie. Le @texte utilisé pour la recherche est retiré automatiquement après la sélection. Choisir seul n’envoie aucun message et ne lance rien ; chaque message ne va qu’à l’unique destinataire actuel.",
+          "Rédigez une consigne précise et envoyez-la. Par exemple, choisissez « Analyse des exigences » puis envoyez « Ajoute les critères d’acceptation des échecs de connexion et mets à jour le document des exigences ». Pour une autre étape, sélectionnez-la à nouveau avant d’envoyer.",
+          "Si l’étape cible s’exécute, le message rejoint sa file « Insérer un message ». Si elle peut être relancée, envoyer les consignes exécute cette étape à nouveau. Si d’autres étapes actives sont affectées, vérifiez d’abord la portée des arrêts et relances dans la confirmation.",
+          "Vérifiez le résultat réel dans la progression de l’étape, l’historique d’exécution et les livrables. Pour la coordination globale ou une question, choisissez @Coordination au lieu d’envoyer à la mauvaise étape."
+        ],
+        "tips": [
+          "La liste ne contient que les étapes en cours ou pouvant être relancées. Les étapes encore en attente et jamais exécutées n’apparaissent pas ; leur première exécution suit toujours le démarrage de la tâche et les dépendances du flux.",
+          "Il faut choisir la cible dans la liste et vérifier le destinataire. Laisser simplement @nom dans le texte ne définit pas la cible. Une relance peut modifier à nouveau des fichiers et appeler le modèle ; elle n’annule pas automatiquement les modifications précédentes."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Liste des étapes après saisie de @ dans les détails de la tâche et destinataire choisi",
+          "caption": "Captures de la liste @étape et du brouillon après sélection à ajouter dans le projet de démonstration fixe. Sélectionner ne signifie ni envoyer ni exécuter."
+        }
+      },
+      {
         "title": "Trouver une tâche dans le tableau",
         "steps": [
           "Alternez Couloirs et Tableau, examinez les phases et cherchez par titre.",

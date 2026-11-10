@@ -62,6 +62,8 @@ test('skin library filters and searches packages while leaving the active appear
     assert.doesNotMatch(document.querySelector('.skin-settings-tabs')!.textContent!, /当前使用/)
     assert.equal(document.querySelector('.skin-settings-create-card'), null)
     assert.match(document.querySelector('.skin-settings-library-toolbar')?.textContent ?? '', /导入 ZIP/)
+    assert.ok(document.querySelector('.skin-settings-library-toolbar .lucide-download'))
+    assert.ok(document.querySelector('.skin-settings-detail-action-bar .lucide-upload'))
     assert.match(document.querySelector('.skin-settings-card[data-skin-id="default"]')!.textContent!, /使用中/)
     const input = document.querySelector<HTMLInputElement>('.skin-settings-search input')!
     await act(async () => {

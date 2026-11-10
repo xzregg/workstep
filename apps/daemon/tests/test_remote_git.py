@@ -143,3 +143,23 @@ async def test_remote_task_workspace_lifecycle_uses_bound_project(layout, monkey
         await dispatcher.aclose()
         await service.close()
         await asyncio.to_thread(manager.close_all)
+
+
+async def test_container_shared_git_discovery_and_initialization(client, layout, monkeypatch):
+    from services.config import config_store
+    from services.remote_access import actor_context
+    root, _, _ = layout
+    http, _ = client
+    monkeypatch.setitem(config_store._cache, 'default_project_directory', '')
+    monkeypatch.setenv('WORKSTEP_PROJECTS_ROOT', str(root))
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: root.parent / 'home'))
+    monkeypatch.setattr(git_api, '_task_project', lambda project_id: None)
+    actor = ActorSnapshot('viewer', 'Viewer', 'device', 'Device', 'managed', project_id='p', access_level='edit')
+    with actor_context(actor):
+        response = await http.get('/api/git/projects/p/repositories?project_id=p')
+        assert response.status_code == 200, response.text
+        assert response.json()['repositories']
+        response = await http.post('/api/git/projects/p/initialize?project_id=p')
+        assert response.status_code == 200, response.text
+        assert (root / '.git').exists()
+        assert (await http.get('/api/git/projects/p/repositories?project_id=other')).status_code == 403

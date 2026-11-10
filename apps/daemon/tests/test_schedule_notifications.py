@@ -9,6 +9,7 @@ def setup_notifications(tmp_path, monkeypatch):
     from services.project import ProjectManager
     from services.config import config_store
     from services.schedule import ScheduleModule
+    from services import schedule_notifications, session_schedule_runtime
     from models import Task, ChatSession
     from models.fields import utc_now
     manager = ProjectManager()
@@ -19,6 +20,9 @@ def setup_notifications(tmp_path, monkeypatch):
             'groups': [{'bot_id':'bot','group_id':'group','group_name':'绑定群','project_id':project.id,'task_id':'bound'}],
             'sessions': {'bot:group:session-group':'session'}, 'session_sources': {}}
     original = config_store.get
+    # These lazily imported modules may have captured a temporary provider-test store.
+    monkeypatch.setattr(schedule_notifications, 'config_store', config_store)
+    monkeypatch.setattr(session_schedule_runtime, 'config_store', config_store)
     monkeypatch.setattr(config_store, 'get', lambda key, default=None: data if key=='channel_bots' else original(key, default))
     with manager.activate_project_by_id(project.id):
         for tid in ['bound','unbound']:

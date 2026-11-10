@@ -54,7 +54,7 @@ export function AdminProjectGrantDialog({ projectId, deviceId, grant, csrf, name
       passwordConfirmation={<PasswordConfirmation id="project-grant-password" label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />}>
       <div className="gateway-grant-editor">
       {name && <p className="gateway-grant-target">{deviceId ? '设备' : '项目'}：<strong>{name}</strong></p>}
-      <p>{deviceId ? '授权后可操作这台 WorkStep 及其中的全部项目。' : '只授权已发布项目的远程访问；授权不会开放宿主 PC 的全部项目。'}</p>
+      <p>{deviceId ? '授权后可新建项目，并操作这台 WorkStep 及其中的全部项目。设备授权优先于已有项目授权，无需删除项目授权。' : '只授权已发布项目的远程访问。若对象同时拥有设备授权，以整台设备权限为准；撤销设备授权后，本项目授权仍有效。'}</p>
       {grant ? <p>授权对象：{grant.subject_type === 'user' ? '用户' : '用户组'} · {grant.subject_name}</p> : <>
         <label htmlFor="project-grant-type">对象类型</label>
         <Select id="project-grant-type" disabled={locked} value={subjectType} onChange={event => {

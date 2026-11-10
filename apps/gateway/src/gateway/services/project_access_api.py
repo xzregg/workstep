@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+from gateway.services.platform_address import request_platform_origin
 from gateway.services.errors import GatewayError
 from gateway.contracts import GatewayCall
 from datetime import datetime, timezone
@@ -182,7 +184,7 @@ async def project_access(call: GatewayCall, project_id: str):
     host = call.settings.device_authority(device_id)
     ticket = call.gateway_signer.sign_project_access_ticket(gateway_id=call.settings.gateway_id, device_id=device_id, user_id=user.id, audience=host, project_id=project_id, host_project_id=host_project_id, access_level=level,
         login_method=auth_session.authentication_provider or auth_session.authentication_method)
-    return {"url": call.settings.device_url(device_id), "ticket": ticket, "expires_in": 60,
+    return {"url": request_platform_origin(call) + urlsplit(call.settings.device_url(device_id)).path, "ticket": ticket, "expires_in": 60,
             "project_id": project_id, "access_level": level}
 
 

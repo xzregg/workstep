@@ -456,7 +456,7 @@ class OpencodeEngine(AcpEngineBase):
         try:
             process_env = (
                 provider_runtime.child_env()
-                if provider_runtime.provider_id or provider_runtime.has_coordinator_source or provider_runtime.env
+                if provider_runtime.provider_id or provider_runtime.has_execution_context or provider_runtime.env
                 else dict(os.environ)
             )
             process_env.update(skill_env)

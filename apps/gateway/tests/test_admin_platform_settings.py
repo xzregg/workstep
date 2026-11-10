@@ -64,11 +64,12 @@ def test_platform_address_saved_live_and_restored_on_restart(tmp_path):
         headers = {"X-CSRF-Token": _setup(client)}
         assert client.put('/api/admin/platform-address', headers=headers, json={'public_origin':'https://workstep.example.com'}).status_code == 403
         assert client.post('/api/auth/step-up', headers=headers, json={'password':'OwnerPassphrase-2026!'}).status_code == 200
-        body = {"public_origin": "https://workstep.example.com/"}
+        body = {"public_origin": "https://workstep.example.com/", "allowed_origins": ["https://secondary.example.com/"]}
         assert client.put('/api/admin/platform-address', json=body).status_code == 403
         response = client.put('/api/admin/platform-address', headers=headers, json=body)
         assert response.status_code == 200, response.text
         assert settings.public_origin == "https://workstep.example.com"
+        assert settings.allowed_origins == ["https://secondary.example.com"]
         assert client.get('/api/client-releases').json()['public_origin'] == settings.public_origin
         for origin in ('https://example.com/path', 'javascript:bad', 'http://public.example.com', 'https://user:pass@example.com'):
             assert client.put('/api/admin/platform-address', headers=headers, json={'public_origin': origin}).status_code == 422
@@ -80,6 +81,7 @@ def test_platform_address_saved_live_and_restored_on_restart(tmp_path):
     restored = create_app(GatewaySettings(data_dir=tmp_path, public_origin='http://localhost:8700'))
     with TestClient(restored) as client:
         assert client.get('/api/client-releases').json()['public_origin'] == 'https://workstep.example.com'
+        assert restored.state.settings.allowed_origins == ['https://secondary.example.com']
         assert restored.state.settings.device_url('pc') == 'https://workstep.example.com/workspace/pc/'
 
 
@@ -145,3 +147,26 @@ def test_company_display_name_is_public_validated_and_persisted(tmp_path):
         client.post('/api/auth/step-up', headers=headers, json={'password': 'OwnerPassphrase-2026!'})
         assert client.put('/api/admin/company-display-name', headers=headers, json={'company_display_name': '  '}).status_code == 200
         assert client.get('/api/platform/status').json()['company_display_name'] == ''
+
+
+@pytest.mark.parametrize('target,expected', [
+    ('http://a.test/path', 'https://a.test'),
+    ('https://a.test/path', 'https://a.test'),
+    ('https://evil.test/path', 'https://gateway.test'),
+    ('http://127.0.0.1:8700/path', 'http://127.0.0.1:8700'),
+])
+def test_request_origin_matches_allowlist_not_forwarded_headers(target, expected):
+    from urllib.parse import urlsplit
+    from gateway.contracts import GatewayCall, ProofHeaders
+    from gateway.services.platform_address import request_platform_origin
+    settings = GatewaySettings(public_origin='https://gateway.test', allowed_origins=['https://a.test', 'http://127.0.0.1:8700'])
+    call = GatewayCall(settings=settings, target=urlsplit(target), proofs=ProofHeaders({'Origin': 'https://evil.test', 'X-Forwarded-Host': 'evil.test'}))
+    assert request_platform_origin(call) == expected
+
+
+@pytest.mark.parametrize('origins', [['https://example.com/path'], ['http://public.example.com'], ['https://user:password@example.com'], ['https://a.test'] * 33])
+def test_additional_origins_are_validated(origins):
+    from pydantic import ValidationError
+    from gateway.services.platform_address import PlatformAddressInput
+    with pytest.raises(ValidationError):
+        PlatformAddressInput(public_origin='https://gateway.test', allowed_origins=origins)

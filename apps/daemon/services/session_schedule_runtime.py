@@ -162,21 +162,3 @@ async def execute_session_schedule(module, project_id, run_id):
         if runtime and accepted:
             await runtime.stop_current(session_id, project_id=project_id, expected_message_id=accepted.assistant_message_id)
         raise
-
-
-def conversation_schedule_context(session):
-    user = next((item for item in reversed(session.messages) if item.get('role') == 'user'), {})
-    context = json.dumps({'project_id':session.project_id, 'session_id':session.session_id,
-                          'source_message_id':user.get('id')}, ensure_ascii=False)
-    return (
-        '[WorkStep conversation scheduling] ' + context + '\n'
-        'When the user explicitly asks to check or act later in this conversation, use '
-        'workstep schedule create --target session --project <project_id> --session <session_id> '
-        '--name <name> --instruction <action to perform at that time> --after 2h --json. '
-        'Use --at for an exact datetime. --after is one-shot, not --every-minutes. '
-        'Use --idempotency-key <source_message_id> to avoid duplicates on retry. '
-        'These are WorkStep IDs, not engine thread IDs or external group IDs. '
-        'A channel conversation automatically sends the final reply to its original channel. '
-        'Report success only after the CLI succeeds, including the returned execution time. '
-        'At execution time perform the requested action, do not schedule it again.'
-    )

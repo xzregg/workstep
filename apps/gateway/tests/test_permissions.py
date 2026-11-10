@@ -140,8 +140,11 @@ def test_existing_and_new_project_permissions_share_one_assignment_entry(tmp_pat
             assert client.post(f"{host}/api/remote/redeem", data={"ticket": issued.json()["ticket"]},
                                follow_redirects=False).status_code == 303
             remote = client.get(f"{host}/api/remote/session").json()
-            assert remote["task_create"] is True
-            assert remote["share_create"] is True
+            # A device owner now retains whole-device scope even after redeeming
+            # a project ticket; project-only flags no longer describe this session.
+            assert remote["workspace_scope"] == "device"
+            assert remote["host_project_id"] is None
+            assert remote["permissions"] is None
             client.cookies.clear()
             recovery = client.post("/api/auth/login", json={
                 "username": "recovery", "password": "RecoveryPassphrase-2026!",

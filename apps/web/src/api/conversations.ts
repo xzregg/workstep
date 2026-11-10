@@ -372,6 +372,7 @@ export interface ChatMessageEventsPage {
 }
 
 export interface ChatSessionCreateInput {
+  group_id?: string
   project_id: string
   workflow_id?: string
   title?: string

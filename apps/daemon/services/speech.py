@@ -45,6 +45,29 @@ MAX_FRAME = SAMPLE_RATE * 2 * 8
 RESOURCE_VERSION = '1'
 
 
+ZIPFORMER_ID = 'streaming-zipformer-zh-en-int8'
+MODELS = {
+    MODEL_ID: dict(name='Streaming Paraformer 三语版 INT8', kind='paraformer', base=MODEL_BASE,
+                   languages=['zh', 'yue', 'en'],
+                   license_url='https://modelscope.cn/models/dengcunqin/speech_paraformer-large_asr_nat-zh-cantonese-en-16k-vocab8501-online/summary'),
+    ZIPFORMER_ID: dict(name='Streaming Zipformer 中英版 INT8', kind='zipformer',
+        base='https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/resolve/98590b7ed6443e77b714204da2757d75e1a642f4',
+        languages=['zh', 'en'], license_url='https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20',
+        files=[
+            ('encoder-epoch-99-avg-1.int8.onnx', 181895032, '8fa764187a261844f859d7143ebaa563af5d10adfece4c18a8f414c88cba2a9b'),
+            ('decoder-epoch-99-avg-1.int8.onnx', 13091040, '1a70c593d71e53f023f5f55b0b4cfff5055abb786ee3992e5f63dc2e273cc4fa'),
+            ('joiner-epoch-99-avg-1.int8.onnx', 3228404, '1ed689c5ed19dbaa725d9d191bb4822b5f4855a39e1ffd28cbc1f340d25b2ee0'),
+            ('tokens.txt', 56317, 'a8e0e4ec53810e433789b54a5c0134a7eaa2ffca595a6334d54c00da858841d3'),
+            ('README.md', 296, 'b6f9458f4208ae821beaaf11dc983486916a4089a2f3677b40f9ff06ec4e6440'),
+        ]),
+}
+
+def model_spec(model_id):
+    if model_id not in MODELS:
+        raise ValueError('不支持的语音模型')
+    return MODELS[model_id]
+
+
 def unpack_wheel(path: Path, target: Path):
     """Only unpack verified binary wheels; no setup scripts or executable .pth."""
     with zipfile.ZipFile(path) as archive:
@@ -59,17 +82,32 @@ def unpack_wheel(path: Path, target: Path):
 
 
 class SpeechService:
-    def __init__(self, root: Path | None = None):
+    def __init__(self, root: Path | None = None, model_id: str = MODEL_ID):
         self.root = root or CONFIG_DIR / 'speech'
-        self.bundle = self.root / MODEL_ID
+        self._use_model(model_id)
         self.settings: dict | None = None
         self.install_state: dict = {'stage': 'idle', 'downloaded_bytes': 0, 'total_bytes': None, 'error': ''}
+        self.install_states = {model_id: self.install_state}
+        self.install_target = model_id
         self.download_task: asyncio.Task | None = None
         self.sessions: dict[str, dict] = {}
         self.workers: list[SpeechRuntime] = []
         self.session_lock = asyncio.Lock()
         self.last_used = time.monotonic()
         self.reaper: asyncio.Task | None = None
+
+    def _use_model(self, model_id):
+        self.model = model_spec(model_id)
+        self.model_id = model_id
+        self.bundle = self.root / model_id
+
+    @property
+    def files(self):
+        return MODEL_FILES if self.model_id == MODEL_ID else self.model['files']
+
+    def model_installed(self, model_id):
+        model_spec(model_id)
+        return self.installed() if model_id == self.model_id else SpeechService(self.root, model_id).installed()
 
     async def get_settings(self):
         if self.settings is None:
@@ -79,20 +117,29 @@ class SpeechService:
                 except (OSError, ValueError):
                     return {}
             saved = await asyncio.to_thread(load)
+            self._use_model(saved.get('model_id') if saved.get('model_id') in MODELS else MODEL_ID)
             self.settings = {'enabled': bool(saved.get('enabled', False)),
+                             'model_id': self.model_id,
                              'language': saved.get('language', 'auto') if saved.get('language', 'auto') in LANGUAGES else 'auto'}
         return dict(self.settings)
 
-    async def configure(self, enabled: bool, language: str):
+    async def configure(self, enabled: bool, language: str, model_id: str | None = None):
         async with self.session_lock:
-            return await self._configure(enabled, language)
+            return await self._configure(enabled, language, model_id)
 
-    async def _configure(self, enabled: bool, language: str):
+    async def _configure(self, enabled: bool, language: str, model_id: str | None = None):
         if self.sessions:
             raise ValueError('录音期间不能修改语音设置')
         if language not in LANGUAGES:
             raise ValueError('不支持的识别语言')
-        value = {'enabled': enabled, 'language': language}
+        await self.get_settings()
+        target = model_id or self.model_id
+        model_spec(target)
+        if self.download_task and not self.download_task.done():
+            raise ValueError('安装期间不能切换语音设置')
+        if target != self.model_id and not await asyncio.to_thread(self.model_installed, target):
+            raise ValueError('请先下载所选语音模型')
+        value = {'enabled': enabled, 'language': language, 'model_id': target}
         def save():
             self.root.mkdir(parents=True, exist_ok=True)
             stage = self.root / 'settings.tmp'
@@ -100,6 +147,9 @@ class SpeechService:
             stage.replace(self.root / 'settings.json')
         await asyncio.to_thread(save)
         self.settings = value
+        if target != self.model_id:
+            await self.stop_worker()
+            self._use_model(target)
         if not enabled:
             await self.stop_worker()
         return value
@@ -109,7 +159,7 @@ class SpeechService:
             marker = json.loads((self.bundle / 'installed.json').read_text())
             return (marker['version'] == RESOURCE_VERSION
                     and marker['python'] == f'{sys.version_info.major}.{sys.version_info.minor}'
-                    and all((self.bundle / name).stat().st_size == size for name, size, _ in MODEL_FILES)
+                    and all((self.bundle / name).stat().st_size == size for name, size, _ in self.files)
                     and (self.bundle / 'runtime' / 'sherpa_onnx').is_dir())
         except (OSError, ValueError, KeyError):
             return False
@@ -122,31 +172,44 @@ class SpeechService:
 
     async def snapshot(self):
         settings = await self.get_settings()
-        installed, punctuation = await asyncio.gather(asyncio.to_thread(self.installed),
-                                                       asyncio.to_thread(self.punctuation_installed))
-        return {**settings, 'model_id': MODEL_ID, 'languages': list(LANGUAGES),
+        def models():
+            rows = []
+            for mid, spec in MODELS.items():
+                resource = self if mid == self.model_id else SpeechService(self.root, mid)
+                rows.append(dict(id=mid, name=spec['name'], license='模型来源与使用说明',
+                    license_url=spec['license_url'], languages=spec['languages'],
+                    model_bytes=sum(f[1] for f in resource.files) + PUNCTUATION_FILE[1],
+                    installed=resource.installed(), punctuation=resource.punctuation_installed(),
+                    streaming='native', install=dict(self.install_states.get(mid, {'stage': 'idle', 'downloaded_bytes': 0, 'total_bytes': None, 'error': ''}))))
+            return rows
+        return {**settings, 'model_id': self.model_id, 'languages': list(LANGUAGES),
                 'service': 'busy' if self.sessions else 'ready' if any(w.process and w.process.returncode is None for w in self.workers) else 'stopped',
                 'active_sessions': len(self.sessions), 'max_sessions': MAX_SESSIONS,
-                'models': [{'id': MODEL_ID, 'name': 'Streaming Paraformer 三语版 INT8', 'license': '模型来源与使用说明',
-                            'license_url': 'https://modelscope.cn/models/dengcunqin/speech_paraformer-large_asr_nat-zh-cantonese-en-16k-vocab8501-online/summary',
-                            'languages': list(MODEL_LANGUAGES), 'model_bytes': sum(f[1] for f in MODEL_FILES) + PUNCTUATION_FILE[1],
-                            'installed': installed, 'punctuation': punctuation, 'streaming': 'native',
-                            'install': dict(self.install_state)}]}
+                'models': await asyncio.to_thread(models)}
 
-    async def download(self):
+    async def download(self, model_id: str | None = None):
         async with self.session_lock:
-            await self._begin_download()
+            await self._begin_download(model_id)
 
-    async def _begin_download(self):
+    async def _begin_download(self, model_id: str | None = None):
+        await self.get_settings()
+        target = model_id or self.model_id
+        model_spec(target)
         if self.sessions:
             raise ValueError('录音期间不能安装模型')
         if self.download_task and not self.download_task.done():
+            if target != self.install_target:
+                raise ValueError('请等待当前模型下载完成或取消下载')
             return
-        if await asyncio.to_thread(self.installed) and await asyncio.to_thread(self.punctuation_installed):
+        resource = self if target == self.model_id else SpeechService(self.root, target)
+        if await asyncio.to_thread(resource.installed) and await asyncio.to_thread(resource.punctuation_installed):
             return
         await self.stop_worker()
         self.install_state = {'stage': 'resolving', 'downloaded_bytes': 0, 'total_bytes': None, 'error': ''}
-        self.download_task = asyncio.create_task(self._download())
+        self.install_target = target
+        self.install_states[target] = self.install_state
+        resource.install_state = self.install_state
+        self.download_task = asyncio.create_task(resource._download())
 
     async def _download(self):
         stage = self.root / ('.install-' + uuid.uuid4().hex)
@@ -189,7 +252,7 @@ class SpeechService:
         # Existing ASR remains usable on failure; upgrade only the missing model.
         if await asyncio.to_thread(self.installed):
             def copy_verified():
-                for name, _, digest in MODEL_FILES:
+                for name, _, digest in self.files:
                     with (self.bundle / name).open('rb') as source:
                         if hashlib.file_digest(source, 'sha256').hexdigest() != digest:
                             raise ValueError('已有语音模型校验失败，请删除后重新下载')
@@ -223,7 +286,7 @@ class SpeechService:
                 if not choices:
                     raise ValueError('当前 Python 或系统没有兼容语音运行库')
                 wheels.append(min(choices, key=lambda item: item[0])[1])
-            entries = [(f'{MODEL_BASE}/{name}', name, size, digest) for name, size, digest in MODEL_FILES]
+            entries = [(f"{self.model['base']}/{name}", name, size, digest) for name, size, digest in self.files]
             entries.append((PUNCTUATION_URL, *PUNCTUATION_FILE))
             entries += [(w['url'], w['filename'], w['size'], w['digests']['sha256']) for w in wheels]
             self.install_state['total_bytes'] = sum(e[2] for e in entries)
@@ -270,9 +333,19 @@ class SpeechService:
             self.download_task.cancel()
             await asyncio.gather(self.download_task, return_exceptions=True)
 
-    async def delete(self):
+    async def delete(self, model_id: str | None = None):
         async with self.session_lock:
-            await self._delete()
+            target = model_id or self.model_id
+            model_spec(target)
+            if target == self.model_id:
+                await self._delete()
+            else:
+                if self.sessions:
+                    raise ValueError('录音期间不能删除模型')
+                if target == self.install_target:
+                    await self.cancel_download()
+                await asyncio.to_thread(shutil.rmtree, self.root / target, True)
+            self.install_states.setdefault(target, {})['stage'] = 'idle'
 
     async def _delete(self):
         if self.sessions:
@@ -280,10 +353,10 @@ class SpeechService:
         await self.cancel_download()
         await self.stop_worker()
         await asyncio.to_thread(shutil.rmtree, self.bundle, True)
-        self.install_state['stage'] = 'idle'
+        self.install_states.setdefault(self.model_id, {})['stage'] = 'idle'
 
     def worker_command(self, bundle=None):
-        return [sys.executable, '-I', str(Path(__file__).with_name('speech_worker.py')), str(bundle or self.bundle)]
+        return [sys.executable, '-I', str(Path(__file__).with_name('speech_worker.py')), str(bundle or self.bundle), '--model-type', self.model['kind']]
 
     async def infer(self, pcm: bytes, session_id: str, final: bool):
         session = self.sessions.get(session_id)

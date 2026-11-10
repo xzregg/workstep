@@ -259,6 +259,8 @@ class WorkStepCoder(Coder):
         for index, capability in enumerate(self.capabilities):
             if not isinstance(capability, Shell):
                 continue
+            from services.conversation_context import execution_env
+
             replacement = WorkStepShell(
                 cwd=capability.cwd,
                 allowed_commands=capability.allowed_commands,
@@ -268,7 +270,7 @@ class WorkStepCoder(Coder):
                 max_output_chars=capability.max_output_chars,
                 persist_cwd=capability.persist_cwd,
                 allow_interactive=capability.allow_interactive,
-                env=capability.env,
+                env=execution_env(dict(capability.env or {})),
                 denied_env_patterns=capability.denied_env_patterns,
             )
             self.capabilities[index] = replacement

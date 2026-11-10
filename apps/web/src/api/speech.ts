@@ -17,10 +17,10 @@ function checkCancelled(signal?: AbortSignal) {
 }
 export const speechApi = {
   status: async (projectId = '') => request<SpeechStatus>(await workspaceCatalogPath('/speech', projectId)),
-  configure: (enabled: boolean, language: string) => request('/speech/settings', options('PUT', { enabled, language })),
-  download: () => request<SpeechStatus>('/speech/models/download', options('POST')),
+  configure: (enabled: boolean, language: string, model_id?: string) => request('/speech/settings', options('PUT', { enabled, language, model_id })),
+  download: (modelId?: string) => request<SpeechStatus>('/speech/models/download' + (modelId ? `?model_id=${encodeURIComponent(modelId)}` : ''), options('POST')),
   cancelDownload: () => request<SpeechStatus>('/speech/models/cancel', options('POST')),
-  deleteModel: () => request<SpeechStatus>('/speech/models/current', options('DELETE')),
+  deleteModel: (modelId?: string) => request<SpeechStatus>('/speech/models/current' + (modelId ? `?model_id=${encodeURIComponent(modelId)}` : ''), options('DELETE')),
   start: async (projectId: string, signal?: AbortSignal) => {
     checkCancelled(signal)
     const path = await workspaceCatalogPath('/speech/sessions', projectId)

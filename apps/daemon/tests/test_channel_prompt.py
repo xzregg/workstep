@@ -23,7 +23,10 @@ def test_channel_background_on_normal_and_rebuilt_turns(monkeypatch, resumed, su
     )
     for prompt in (module._build_prompt(session), module._build_rebuild_prompt(session)):
         assert prompt.count("Current sender: Alice") == 1
-        assert "workstep-session" in prompt and "--after 2h" in prompt
+        assert "workstep-session" not in prompt
+        assert "[WorkStep conversation context]" not in prompt
+        assert "--after 2h" not in prompt
+        assert "When the user explicitly asks" not in prompt
         assert "Hello" in prompt
         assert SYSTEM_PROMPT not in prompt
         assert "Project rules" not in prompt
@@ -54,3 +57,22 @@ async def test_channel_codex_resume_keeps_saved_rules_and_new_background(monkeyp
 def test_channel_compact_remains_native_command(monkeypatch):
     module = ChannelChatModule(EventBus(), None, register=False)
     assert module._with_channel_background(None, "/compact") == "/compact"
+
+
+@pytest.mark.parametrize("resumed", [False, True])
+@pytest.mark.parametrize("supports_resume", [False, True])
+def test_chat_normal_and_rebuilt_prompts_do_not_inject_identity(monkeypatch, resumed, supports_resume):
+    from agent_assistants.chat_session import ChatSessionModule
+
+    module = ChatSessionModule(EventBus(), None)
+    monkeypatch.setattr("agent_assistants.chat_session.create_engine", lambda _: SimpleNamespace(supports_resume=supports_resume))
+    session = SimpleNamespace(
+        project_id="internal-project", session_id="internal-session", engine="codex",
+        resolved_session_id="native" if resumed else None, extra={},
+        messages=[{"role": "user", "content": "Hello", "id": "internal-message"}],
+    )
+    for prompt in (module._build_prompt(session), module._build_rebuild_prompt(session)):
+        assert "Hello" in prompt
+        assert "internal-" not in prompt
+        assert "[WorkStep conversation" not in prompt
+        assert "--after" not in prompt

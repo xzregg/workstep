@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Indicare il passaggio da eseguire con @",
+        "steps": [
+          "Apri i dettagli dell’attività e digita @ all’inizio del campo di input o dopo uno spazio. Inserisci il nome del passaggio per filtrare e scegli il destinatario dall’elenco; puoi anche fare clic sul destinatario del passaggio vicino al campo.",
+          "Verifica che il destinatario sia diventato quel passaggio. Dopo la selezione, il testo @ usato per la ricerca viene rimosso automaticamente. La sola selezione non invia messaggi né avvia l’esecuzione; ogni messaggio va a un solo destinatario corrente.",
+          "Scrivi un’istruzione precisa e inviala. Ad esempio, scegli «Analisi dei requisiti» e invia «Aggiungi i criteri di accettazione per gli accessi non riusciti e aggiorna il documento dei requisiti». Per affidare il lavoro a un altro passaggio, selezionalo prima di inviare un nuovo messaggio.",
+          "Se il destinatario è in esecuzione, il messaggio entra nella coda «Messaggi da inserire» del passaggio. Se può essere rieseguito, inviare l’istruzione ne avvia una nuova esecuzione. Se sono coinvolti altri passaggi attivi, controlla prima nella finestra di conferma quali verranno arrestati e rieseguiti.",
+          "Controlla il risultato reale nell’avanzamento dei passaggi, nei registri di esecuzione e nei risultati prodotti. Per domande o coordinamento complessivo, scegli @Coordinatore invece di inviare il messaggio al passaggio sbagliato."
+        ],
+        "tips": [
+          "L’elenco contiene solo passaggi in esecuzione o rieseguibili. I passaggi mai eseguiti e ancora in attesa non compaiono; la prima esecuzione segue comunque l’avvio dell’attività e le dipendenze del flusso.",
+          "Devi selezionare un destinatario dall’elenco e controllarlo: lasciare semplicemente @nome nel testo non lo imposta. Una riesecuzione può modificare nuovamente file e chiamare il modello; non annulla automaticamente le modifiche precedenti."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Elenco dei passaggi dopo aver digitato @ nei dettagli dell’attività e destinatario selezionato",
+          "caption": "Mancano screenshot del progetto dimostrativo fisso con i candidati @passaggio e la bozza dopo la selezione; selezionare non equivale a inviare o eseguire."
+        }
+      },
+      {
         "title": "Trova le attività sulla lavagna o sul tavolo",
         "steps": [
           "Passa tra le corsie e la tabella nella pagina delle attività, esamina le attività per fase e cerca per titolo.",

@@ -904,17 +904,16 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         # No preview assembled from config: wait for actual prepared inputs.
         return ""
 
-    def _build_prompt(self, session) -> str:
-        prompt = self._build_chat_prompt(session)
-        if prompt.strip() == "/compact" or self._config.name not in {"chat_session", "channel_chat"}:
-            return prompt
-        return self._with_schedule_context(session, prompt)
+    async def _run_turn_guarded(self, session, turn_id, assistant_message_id):
+        from services.conversation_context import conversation_context
 
-    def _with_schedule_context(self, session, prompt):
-        if self._config.name not in {"chat_session", "channel_chat"} or not getattr(session, "session_id", None):
-            return prompt
-        from services.session_schedule_runtime import conversation_schedule_context
-        return conversation_schedule_context(session) + "\n\n" + prompt
+        if self._config.name not in {"chat_session", "channel_chat"}:
+            return await super()._run_turn_guarded(session, turn_id, assistant_message_id)
+        with conversation_context(session.project_id, session.session_id):
+            return await super()._run_turn_guarded(session, turn_id, assistant_message_id)
+
+    def _build_prompt(self, session) -> str:
+        return self._build_chat_prompt(session)
 
     def _build_chat_prompt(self, session) -> str:
         """Build user/context input; configured chat rules travel independently."""
@@ -987,7 +986,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 if self._prompt_system_instruction(session)
                 else tail
             )
-        return self._with_schedule_context(session, prompt)
+        return prompt
 
     def _system_prompt_for_display(self, session) -> str:
         """Show the project-specific instruction, including on resumed turns."""

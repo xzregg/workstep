@@ -19,6 +19,17 @@ class GatewaySettings(BaseSettings):
     gateway_id: str = Field(default="local-development", min_length=1)
     public_origin: str | None = None
 
+    allowed_origins: list[str] = Field(default_factory=list, max_length=32)
+
+    @field_validator('allowed_origins')
+    @classmethod
+    def valid_allowed_origins(cls, values: list[str]) -> list[str]:
+        return list(dict.fromkeys(validate_gateway_origin(value.strip().removesuffix('/')) for value in values))
+
+    @property
+    def platform_origins(self) -> list[str]:
+        return list(dict.fromkeys(([self.public_origin] if self.public_origin else []) + self.allowed_origins))
+
     @field_validator("public_origin")
     @classmethod
     def valid_public_origin(cls, value: str | None) -> str | None:

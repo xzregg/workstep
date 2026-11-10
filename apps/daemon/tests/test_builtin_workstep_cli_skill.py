@@ -64,6 +64,13 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert "Send only when explicitly requested" in text
     assert "python -m cli schedule create" in text
     assert "--mode agent" in text
+    assert "--target session --session <session_id>" in text
+    assert "--idempotency-key <request_key>" in text
+    assert "--after 2h" in text
+    assert "context get --json" in text
+    assert "WORKSTEP_PROJECT_ID" in text
+    assert "WORKSTEP_SESSION_ID" in text
+    assert "[WorkStep conversation context]" not in text
     assert "WORKSTEP_CLI_PYTHON" in text
     assert "WORKSTEP_DAEMON_DIR" in text
     assert "uv run --no-sync --directory apps/daemon python -m cli" in text

@@ -1,3 +1,4 @@
+from gateway.services.platform_address import request_platform_origin
 from gateway.services.errors import GatewayError
 from gateway.contracts import GatewayCall, GatewaySocket, SocketClosed, CredentialGrant, RedirectTarget, JsonValue
 import hashlib
@@ -101,6 +102,15 @@ async def _remote_identity(call: GatewayCall, *, target_host_project_id=None, ta
     device_id = auth_session.device_id
     if not device_id or host != call.settings.device_authority(device_id):
         raise GatewayError('forbidden', 'Device session mismatch')
+    if auth_session.project_id:
+        from gateway.services.device_grants import has_device_access
+        async with call.database.session() as session:
+            whole_device = await has_device_access(session, user.id, device_id)
+        if whole_device:
+            # Resolve current grants, not the older project's ticket ceiling.
+            # Keep the stored scope so revocation restores the original grant.
+            auth_session.project_id = None
+            auth_session.project_access_level = None
     if auth_session.project_id:
         async with call.database.session() as session:
             if target_host_project_id:
@@ -285,7 +295,8 @@ async def remote_session(call: GatewayCall):
             permissions = [key for key in permissions if key not in ('task.create', 'task.copy', 'task.ai_create', 'task.start_on_create')]
         if not share_create:
             permissions = [key for key in permissions if not key.startswith('share.')]
-    result = {"user_id": user.id, "username": user.display_name,
+    result = {"workspace_scope": "project" if auth_session.project_id else "device",
+            "user_id": user.id, "username": user.display_name,
             "device_id": device_id, "device_name": device.name,
             "project_id": project.id if project else None,
             "host_project_id": project.host_project_id if project else target_host_id,
@@ -295,7 +306,7 @@ async def remote_session(call: GatewayCall):
             "permissions": permissions,
             "can_manage_project_access": await IdentityService(call.database).is_super_admin(user.id),
             "online": True,
-            "gateway_url": call.settings.public_origin + "/devices"}
+            "gateway_url": request_platform_origin(call) + "/devices"}
     if auth_session.project_id:
         # Read the original ticket ceiling, not the selected request's scope.
         async with call.database.session() as session:
@@ -323,10 +334,21 @@ async def remote_session(call: GatewayCall):
 
 async def remote_project_grants(call: GatewayCall):
     user, device_id, auth_session, _ = await _remote_identity(call, target_host_project_id=requested_host_project(call))
-    if auth_session.project_id is None:
-        raise GatewayError('forbidden', 'Project session required')
     async with call.database.session() as session:
-        rows = await project_grant_rows(session, auth_session.project_id)
+        project_id = auth_session.project_id
+        if project_id is None:
+            target = requested_host_project(call)
+            if target:
+                project = await session.scalar(select(PlatformProject).where(
+                    PlatformProject.device_id == device_id,
+                    PlatformProject.host_project_id == target))
+                project_id = project.id if project else None
+            else:
+                entry = await session.get(AuthSession, auth_session.id)
+                project_id = entry.project_id if entry else None
+        if project_id is None:
+            raise GatewayError('forbidden', 'Project session required')
+        rows = await project_grant_rows(session, project_id)
         device = await session.get(Device, device_id)
         can_invite = bool(device and device.owner_user_id == user.id)
     return {"can_invite": can_invite, "grants": [{key: row[key] for key in (

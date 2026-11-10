@@ -179,3 +179,24 @@ test('an invalid session response still removes the previous session', async () 
     await window.happyDOM.close()
   }
 })
+
+
+test('whole-device scope replaces cached project scope even for a contextual session lookup', async () => {
+  const { window } = installDomEnvironment()
+  const previousFetch = globalThis.fetch
+  const previous = useGatewaySessionStore.getState()
+  useGatewaySessionStore.setState({ session: { device_id: 'one', host_project_id: 'host', project_id: 'published', projects: [{host_project_id:'host'}] } as any })
+  globalThis.fetch = async () => Response.json({ workspace_scope: 'device', device_id: 'one', gateway_url: 'https://gateway.test', project_id: 'published', host_project_id: 'host', access_level: null })
+  try {
+    const current = await useGatewaySessionStore.getState().load(true)
+    assert.equal(current.host_project_id, null)
+    assert.equal(current.project_id, null)
+    assert.equal(current.projects, undefined)
+    const { resolveProjectPermissions } = await import('../src/utils/projectPermissions')
+    assert.equal(resolveProjectPermissions(true, current).bound, false)
+  } finally {
+    globalThis.fetch = previousFetch
+    useGatewaySessionStore.setState(previous)
+    await window.happyDOM.close()
+  }
+})

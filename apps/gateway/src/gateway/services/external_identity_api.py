@@ -1,4 +1,5 @@
 from gateway.services.errors import GatewayError
+from gateway.services.platform_address import request_platform_origin
 from gateway.contracts import GatewayCall, ReplyEffects, RedirectTarget
 import json
 
@@ -148,9 +149,7 @@ async def _begin(call: GatewayCall, source_id: str, binding: bool, return_to: st
         user_id, session_id = user.id, auth_session.id
     source, state, nonce = await _service(call).begin(source_id, user_id, session_id, return_to)
     redirect_uri = str(call.callback_url('external_callback', source_id=source_id))
-    if call.settings.public_origin:
-        from urllib.parse import urlsplit
-        redirect_uri = call.settings.public_origin + urlsplit(redirect_uri).path
+    redirect_uri = request_platform_origin(call) + urlsplit(redirect_uri).path
     return {"authorization_url": _connector(call, source.provider).authorization_url(source, state, nonce, redirect_uri)}
 
 
@@ -341,8 +340,7 @@ async def external_callback(call: GatewayCall, response: ReplyEffects, source_id
             pass
     try:
         redirect_uri = str(call.callback_url('external_callback', source_id=source_id))
-        if call.settings.public_origin:
-            redirect_uri = call.settings.public_origin + urlsplit(redirect_uri).path
+        redirect_uri = request_platform_origin(call) + urlsplit(redirect_uri).path
         user, new_token, return_to = await _service(call).complete(source_id, state, authorization_code, _connector(call, source.provider), browser_session_id, redirect_uri=redirect_uri)
     except GatewayError as exc:
         from gateway.services.login_audit import record_login_failure

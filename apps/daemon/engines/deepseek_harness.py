@@ -469,6 +469,9 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         override = self.get_binary_override()
         if override:
             kwargs[binary_key] = override
+        if "env" in params:
+            from services.conversation_context import execution_env
+            kwargs["env"] = execution_env({**os.environ, **kwargs.get("env", {})})
         return DeepSeekHarness(**kwargs)
 
     @staticmethod

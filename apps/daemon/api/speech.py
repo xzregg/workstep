@@ -17,12 +17,8 @@ def authorize(project_id: str, manage=False):
     actor = get_current_actor()
     if actor and actor.project_id is not None and actor.access_level != 'edit':
         raise HTTPException(403, '语音输入需要编辑权限')
-    if manage:
-        from services.gateway_client.policy import require_managed_capability
-        try:
-            require_managed_capability("engine.install")
-        except PermissionError as exc:
-            raise HTTPException(403, str(exc)) from exc
+    # Speech resources follow the same host scope as engine/appearance assets.
+    # The retired engine.install capability must not gate speech settings.
 
 
 def owner():
@@ -37,6 +33,7 @@ def translate(exc):
 class Settings(BaseModel):
     enabled: bool
     language: str = Field(default='auto', max_length=8)
+    model_id: str | None = Field(default=None, max_length=80)
 
 
 class Audio(BaseModel):
@@ -55,16 +52,16 @@ async def status(project_id: str = ''):
 async def settings(body: Settings):
     authorize('', manage=True)
     try:
-        return await service.configure(body.enabled, body.language)
+        return await service.configure(body.enabled, body.language, body.model_id)
     except ValueError as exc:
         raise translate(exc) from exc
 
 
 @router.post('/models/download')
-async def download():
+async def download(model_id: str | None = None):
     authorize('', manage=True)
     try:
-        await service.download()
+        await service.download(model_id)
     except ValueError as exc:
         raise translate(exc) from exc
     return await service.snapshot()
@@ -78,10 +75,10 @@ async def cancel_download():
 
 
 @router.delete('/models/current')
-async def delete():
+async def delete(model_id: str | None = None):
     authorize('', manage=True)
     try:
-        await service.delete()
+        await service.delete(model_id)
     except ValueError as exc:
         raise translate(exc) from exc
     return await service.snapshot()

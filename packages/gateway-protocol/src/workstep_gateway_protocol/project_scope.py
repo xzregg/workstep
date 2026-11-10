@@ -224,7 +224,7 @@ def project_http_route_allowed(method: str, path: str,
             return True
         if path == "/api/chat-sessions" or _CHAT_SESSION_CHAT.fullmatch(path):
             return True
-        if path in ("/api/chat-sessions/reorder", "/api/chat-sessions/bulk-delete"):
+        if path in ("/api/chat-sessions/reorder", "/api/chat-sessions/bulk-delete", "/api/chat-sessions/groups"):
             return True
         if path == "/api/chat-sessions/enhance-prompt":
             return True
@@ -268,6 +268,9 @@ def project_http_route_allowed(method: str, path: str,
                 and query_pairs in ([], [('project_id', project_id)]))
     if values != [project_id]:
         return False
+    if (path in ("/api/language-packs", "/api/language-packs/contract")
+            or re.fullmatch(r"/api/language-packs/(?!validate$|register$|import$|export$)[a-z][a-z0-9_-]{0,63}", path)):
+        return query_pairs == [("project_id", project_id)]
     if (path in ("/api/skins", "/api/skins/contract")
             or re.fullmatch(r"/api/skins/(?!validate$|register$|import$|export$|onboarding$)[a-z][a-z0-9_-]{0,63}", path)
             or re.fullmatch(r"/api/skins/assets/[a-f0-9]{64}/[A-Za-z0-9_./-]+\.(?:png|jpe?g|webp)", path)

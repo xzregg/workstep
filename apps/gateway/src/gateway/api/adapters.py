@@ -1,5 +1,6 @@
 """The single ASGI boundary for service inputs, outputs and socket ports."""
 
+from gateway.services.platform_address import request_platform_origin
 from dataclasses import fields
 from urllib.parse import urlsplit
 
@@ -107,7 +108,7 @@ def render_result(result, call: GatewayCall, response: Response | None = None, e
         for name, value in getattr(headers, "extra", ()):
             output.headers.append(name, value)
         for grant in grants:
-            options = dict(path=grant.path, secure=call.settings.cookie_secure, httponly=True, samesite="lax")
+            options = dict(path=grant.path, secure=(request_platform_origin(call).startswith('https://') if call.settings.platform_origins else call.settings.cookie_secure), httponly=True, samesite="lax")
             if grant.token is None:
                 output.delete_cookie(grant.key, **options)
             else:

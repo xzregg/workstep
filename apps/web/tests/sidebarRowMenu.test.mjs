@@ -38,7 +38,7 @@ test('touch long press opens the existing project and session more menus', () =>
   assert.match(source, /pointerType !== 'touch'/)
   assert.match(source, /SIDEBAR_LONG_PRESS_MS/)
   assert.match(source, /startSidebarLongPress\(e, \(x, y\) => openMoreMenuAt\('project', p\.id, x, y\)\)/)
-  assert.match(source, /startSidebarLongPress\(e, \(x, y\) => openSessionMenuAt\(p\.id, session\.id, session\.title, x, y\)\)/)
+  assert.match(source, /startSidebarLongPress\(e, \(x, y\) => openSessionMenuAt\(p\.id, session\.id, session\.title, x, y, createGroup\)\)/)
   assert.match(source, /onPointerMove=\{moveSidebarLongPress\}/)
   assert.match(source, /consumeSidebarLongPressClick\(\)/)
 })

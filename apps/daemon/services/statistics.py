@@ -32,6 +32,7 @@ class StatisticsQuery:
     end: datetime | None = None
     timezone: str = "UTC"
     now: datetime | None = None
+    actor_id: str | None = None
 
 
 @dataclass
@@ -165,6 +166,7 @@ class StatisticsModule:
                     task.id: task
                     for task in tasks
                     if self._workflow_matches(task.workflow_id, query.workflow_id)
+                    and (query.actor_id is None or task.creator_id == query.actor_id)
                 }
 
                 for task in scoped_tasks.values():
@@ -258,10 +260,13 @@ class StatisticsModule:
 
                 messages = list(
                     Message.select()
-                    .where(Message.task.in_(tuple(scoped_tasks) or ("",)))
+                    .where(Message.task.in_(tuple(
+                        task.id for task in tasks
+                        if self._workflow_matches(task.workflow_id, query.workflow_id)
+                    ) or ("",)))
                 )
                 for message in messages:
-                    if not self._eligible_message(message, period):
+                    if not self._eligible_message(message, period) or not self._actor_matches(message, query):
                         continue
                     task = task_by_id[message.task_id]
                     timestamp = message.started_at or message.created_at
@@ -323,6 +328,8 @@ class StatisticsModule:
                         ChatSession.workflow_id == query.workflow_id
                     )
                 for message in chat_query:
+                    if not self._actor_matches(message, query):
+                        continue
                     timestamp = message.created_at
                     if not (
                         message.role == "assistant"
@@ -442,6 +449,7 @@ class StatisticsModule:
         duration = period.end - period.start
         previous = self.overview(StatisticsQuery(
             project_id=query.project_id,
+            actor_id=query.actor_id,
             workflow_id=query.workflow_id,
             range_key="custom",
             start=period.start - duration,
@@ -467,6 +475,14 @@ class StatisticsModule:
             "summary": previous["summary"],
             "changes": changes,
         }
+
+    @staticmethod
+    def _actor_matches(message, query: StatisticsQuery) -> bool:
+        if query.actor_id is None:
+            return True
+        author_id = (message.initiated_by_user_id if message.author_type in
+                     {"assistant", "system", "scheduler"} else message.author_id)
+        return author_id == query.actor_id
 
     def _resolve_projects(self, query: StatisticsQuery) -> list[Any]:
         if query.workflow_id and not query.project_id:

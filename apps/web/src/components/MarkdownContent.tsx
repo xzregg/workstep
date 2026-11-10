@@ -99,7 +99,7 @@ export default function MarkdownContent({
 
   const renderImage = useCallback((src: string | undefined, alt: string) => {
     if (!src) return null
-    if (isLocalMarkdownImage(src)) {
+    if (isLocalMarkdownImage(src) && !projectId) {
       return <span className="markdown-local-image">{alt && `${alt}：`}<code>{src}</code>（{t('md.localImageHint')}）</span>
     }
     const resolved = markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)

@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Wskazywanie kroku do wykonania za pomocą @",
+        "steps": [
+          "Otwórz szczegóły zadania i wpisz @ na początku pola lub po spacji. Wpisz nazwę kroku, aby przefiltrować listę, i wybierz cel. Możesz też kliknąć odbiorcę kroku obok pola wprowadzania.",
+          "Sprawdź, czy odbiorcą został wybrany krok. Tekst @ użyty do wyszukania znika automatycznie po wyborze. Sam wybór nie wysyła wiadomości ani nie uruchamia wykonania; każda wiadomość trafia tylko do jednego bieżącego odbiorcy.",
+          "Wpisz konkretne polecenie i wyślij je. Na przykład wybierz «Analiza wymagań», a następnie wyślij «Dodaj kryteria akceptacji dla nieudanego logowania i zaktualizuj dokument wymagań». Aby przekazać pracę innemu krokowi, wybierz go przed kolejną wiadomością.",
+          "Jeśli docelowy krok działa, wiadomość trafia do jego kolejki «Wiadomości do wstawienia». Jeśli można go uruchomić ponownie, wysłanie instrukcji rozpocznie ponowne wykonanie. Gdy wpływa to na inne aktywne kroki, najpierw sprawdź w oknie potwierdzenia zakres zatrzymania i ponownego wykonania.",
+          "Sprawdź rzeczywisty wynik w postępie kroków, historii wykonania i rezultatach. W sprawach ogólnej koordynacji lub pytań wybierz @Koordynator zamiast wysyłać wiadomość do niewłaściwego kroku."
+        ],
+        "tips": [
+          "Lista zawiera tylko kroki aktywne lub możliwe do ponownego wykonania. Nigdy nieuruchomione kroki oczekujące nie są wyświetlane; ich pierwsze wykonanie nadal zależy od uruchomienia zadania i zależności przepływu.",
+          "Musisz wybrać cel z listy i sprawdzić odbiorcę. Samo pozostawienie @nazwa w treści nie wskazuje celu. Ponowne wykonanie może znów zmieniać pliki i wywoływać model; nie cofa automatycznie wcześniejszych zmian."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Lista kroków po wpisaniu @ w szczegółach zadania i wybrany odbiorca",
+          "caption": "Brakuje zrzutów ze stałego projektu demonstracyjnego z kandydatami @krok i szkicem po wyborze. Wybór nie oznacza wysłania ani wykonania."
+        }
+      },
+      {
         "title": "Znajdź zadania na tablicy lub stole",
         "steps": [
           "Przełączaj się między ścieżkami i tabelą na stronie zadania, przeglądaj zadania według etapów i wyszukuj według tytułu.",

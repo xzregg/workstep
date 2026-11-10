@@ -4,6 +4,9 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Organize ordinary and channel conversations into project-local groups, with drag-and-drop assignment, group creation, archiving and explicit deletion choices.
+- Support selectable local speech models, saved server-address lists on Android and iOS, and configured Gateway entry aliases that preserve the validated entry origin through authentication.
+- Carry conversation identifiers through engine execution context instead of injecting scheduling instructions into each user prompt, and refine project-scoped statistics, language access and device-grant precedence.
 - Schedule messages in existing local or channel conversations, with one-shot relative delays, idempotent creation and cleanup when a conversation is archived or deleted. Deliver channel results through their original conversation.
 - Add optional in-memory directories for DingTalk, WeCom and Feishu bots, with explicit refresh, project-scoped search and unambiguous name/contact selection for notifications. Verify WeCom recipient identities through interactions with the same bot.
 - Improve mobile press-and-hold dictation, bounded audio buffering, final-frame flushing and interrupted-recording recovery without automatically sending transcripts.

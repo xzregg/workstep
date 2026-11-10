@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Mit @Schritt den Empfänger festlegen",
+        "steps": [
+          "Öffnen Sie die Aufgabendetails und geben Sie am Anfang des Eingabefelds oder nach einem Leerzeichen @ ein. Filtern Sie mit dem Schrittnamen und wählen Sie das Ziel aus der Liste. Alternativ klicken Sie auf den Schrittempfänger neben dem Eingabefeld.",
+          "Prüfen Sie, dass der Empfänger auf diesen Schritt gewechselt ist. Der für die Suche verwendete @Text wird nach der Auswahl automatisch entfernt. Die Auswahl allein sendet keine Nachricht und startet keine Ausführung; jede Nachricht geht nur an den einen aktuellen Empfänger.",
+          "Geben Sie konkrete Anweisungen ein und senden Sie sie. Wählen Sie etwa „Anforderungsanalyse“ und senden „Ergänze Akzeptanzkriterien für fehlgeschlagene Anmeldungen und aktualisiere das Anforderungsdokument“. Für einen anderen Schritt wählen Sie vor dem Senden erneut das Ziel.",
+          "Läuft der Zielschritt, wird die Nachricht in seine Warteschlange „Nachricht einfügen“ aufgenommen. Kann er erneut ausgeführt werden, startet das Senden der Anweisung diesen Schritt neu. Werden andere aktive Schritte betroffen, prüfen Sie zuerst im Bestätigungsdialog den Umfang von Stoppen und Wiederholen.",
+          "Kontrollieren Sie das tatsächliche Ergebnis in Schrittfortschritt, Ausführungsverlauf und Ergebnissen. Für übergreifende Koordination oder Fragen wählen Sie @Koordination, statt die Frage an den falschen Schritt zu senden."
+        ],
+        "tips": [
+          "Die Liste enthält nur aktuell laufende oder erneut ausführbare Schritte. Noch nie ausgeführte, weiterhin ausstehende Schritte fehlen; ihre erste Ausführung folgt weiterhin dem Aufgabenstart und den Workflow-Abhängigkeiten.",
+          "Wählen Sie das Ziel aus der Liste und prüfen Sie den Empfänger. Ein bloßes @Name im Nachrichtentext legt kein Ziel fest. Die erneute Ausführung kann wieder Dateien ändern und das Modell aufrufen; alte Änderungen werden nicht automatisch rückgängig gemacht."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Schrittauswahl nach Eingabe von @ in den Aufgabendetails und ausgewählter Empfänger",
+          "caption": "Aufnahmen der @Schritt-Auswahl und des Entwurfs danach im festen Demoprojekt fehlen noch. Auswahl bedeutet weder Versand noch Ausführung."
+        }
+      },
+      {
         "title": "Aufgaben auf Kanban und in Tabellen finden",
         "steps": [
           "Wechseln Sie zwischen Bahnen und Tabelle, sehen Sie Aufgaben nach Phase und suchen Sie nach Titeln.",

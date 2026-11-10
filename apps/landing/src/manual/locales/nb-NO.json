@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Velg kjøretrinn med @",
+        "steps": [
+          "Åpne oppgavedetaljene og skriv @ først i inntastingsfeltet eller etter et mellomrom. Skriv trinnnavnet for å filtrere og velg målet fra listen. Du kan også klikke på trinnmottakeren ved inntastingsfeltet.",
+          "Kontroller at mottakeren er endret til ønsket trinn. Etter valget fjernes @-teksten som ble brukt til søk automatisk. Valget alene sender ingen melding og starter ingen kjøring; hver melding går bare til én gjeldende mottaker.",
+          "Skriv en konkret instruksjon og send den. Velg for eksempel «Kravsanalyse» og send «Legg til akseptansekriterier for mislykket innlogging og oppdater kravdokumentet». Skal et annet trinn håndtere noe, velg det på nytt før du sender.",
+          "Hvis måltrinnet kjører, legges meldingen i trinnets kø for «Innsettingsmeldinger». Hvis trinnet kan kjøres på nytt, starter den sendte instruksjonen en ny kjøring. Dersom andre aktive trinn påvirkes, kontroller først hvilke som stoppes og kjøres på nytt i bekreftelsesdialogen.",
+          "Kontroller det faktiske resultatet i trinnfremdrift, kjørelogg og leveranser. For spørsmål eller overordnet koordinering velger du @Koordinator i stedet for å sende til feil trinn."
+        ],
+        "tips": [
+          "Listen inneholder bare trinn som kjører eller kan kjøres på nytt. Trinn som aldri har kjørt og fortsatt venter, vises ikke. Første kjøring følger fortsatt oppgavestart og arbeidsflytens avhengigheter.",
+          "Du må velge målet fra listen og kontrollere mottakeren; @navn i meldingsteksten alene angir ikke et mål. Ny kjøring kan endre filer og kalle modellen igjen og angrer ikke tidligere endringer automatisk."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Trinnkandidater etter @ i oppgavedetaljene og valgt mottaker",
+          "caption": "Skjermbilder fra det faste demoprosjektet med @trinn-kandidater og utkast etter valg mangler. Valg betyr ikke at noe er sendt eller kjørt."
+        }
+      },
+      {
         "title": "Finn oppgaver på tavlen eller bordet",
         "steps": [
           "Bytt mellom baner og tabell på oppgavesiden, inspiser oppgaver etter trinn og søk etter tittel.",

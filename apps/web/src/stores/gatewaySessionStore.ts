@@ -13,6 +13,7 @@ export interface GatewayProjectScope {
 }
 
 export interface GatewayRemoteSession {
+  workspace_scope?: 'device' | 'project'
   user_id?: string
   device_id: string
   device_name: string
@@ -112,6 +113,11 @@ export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => 
       // One attempt only. A revoked platform login or scope never loops.
       return request<GatewayRemoteSession>('/remote/session', {signal: controller.signal})
     }).then(session => {
+      // A contextual project lookup must not narrow a whole-device session.
+      if (session?.workspace_scope === 'device') {
+        session = { ...session, project_id: null, host_project_id: null,
+          access_level: null, permissions: null, projects: undefined }
+      }
       if (!session || !session.device_id || !session.gateway_url ||
           (!!session.project_id !== !!session.host_project_id) ||
           (session.project_id && !['read', 'edit'].includes(session.access_level ?? '')) ||

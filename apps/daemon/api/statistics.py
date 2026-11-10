@@ -64,17 +64,20 @@ async def overview(
     if actor is not None and actor.project_id is not None and project_id != actor.project_id:
         raise HTTPException(status_code=403, detail="Project scope denied")
     try:
-        return await asyncio.to_thread(
-            StatisticsModule(project_manager).overview,
-            StatisticsQuery(
-                project_id=project_id,
-                workflow_id=workflow_id,
-                range_key=range_key,
-                start=start,
-                end=end,
-                timezone=timezone,
-            ),
+        query = StatisticsQuery(
+            project_id=project_id,
+            workflow_id=workflow_id,
+            range_key=range_key,
+            start=start,
+            end=end,
+            timezone=timezone,
+            actor_id=(actor.actor_id if actor is not None
+                      and actor.source == "managed" and actor.project_id is not None else None),
         )
+        module = StatisticsModule(project_manager)
+        if project_id:
+            return await project_manager.run_db(project_id, lambda _: module.overview(query))
+        return await asyncio.to_thread(module.overview, query)
     except ValueError as exc:
         detail = str(exc)
         status_code = 404 if "not found" in detail.lower() else 422

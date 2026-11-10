@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Usar @paso para elegir el destinatario de la ejecución",
+        "steps": [
+          "Abra los detalles de la tarea y escriba @ al principio del campo de entrada o después de un espacio. Escriba el nombre del paso para filtrar y elija el destino de la lista. También puede pulsar el destinatario de paso junto al campo.",
+          "Compruebe que el destinatario ha cambiado al paso elegido. El @texto de búsqueda se elimina automáticamente al seleccionarlo. Seleccionar no envía mensajes ni inicia la ejecución; cada mensaje se envía solo al único destinatario actual.",
+          "Escriba instrucciones concretas y envíelas. Por ejemplo, seleccione «Análisis de requisitos» y envíe «Añade criterios de aceptación para errores de inicio de sesión y actualiza el documento de requisitos». Para otro paso, vuelva a seleccionarlo antes de enviar.",
+          "Si el paso está ejecutándose, el mensaje entra en su cola «Insertar mensaje». Si puede repetirse, enviar las instrucciones vuelve a ejecutar ese paso. Si afecta a otros pasos activos, compruebe primero en el diálogo de confirmación cuáles se detendrán y repetirán.",
+          "Revise el resultado real en el progreso del paso, el historial de ejecución y los entregables. Para coordinación general o preguntas, elija @Coordinación en vez de enviar la pregunta a un paso incorrecto."
+        ],
+        "tips": [
+          "La lista solo incluye pasos en ejecución o que se pueden repetir. Los pasos nunca ejecutados que siguen pendientes no aparecen; su primera ejecución sigue dependiendo del inicio de la tarea y las dependencias del flujo.",
+          "Debe seleccionar el destino de la lista y comprobar el destinatario. Dejar simplemente @nombre en el texto no fija el destino. Repetir la ejecución puede modificar archivos y llamar al modelo otra vez; no revierte automáticamente cambios anteriores."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Lista de pasos tras escribir @ en los detalles de la tarea y destinatario seleccionado",
+          "caption": "Faltan capturas de la lista @paso y del borrador tras seleccionar en el proyecto de demostración fijo. Seleccionar no significa enviar ni ejecutar."
+        }
+      },
+      {
         "title": "Encuentra tareas en el tablero o mesa.",
         "steps": [
           "Cambie entre carriles y tabla en la página de tareas, inspeccione las tareas por etapa y busque por título.",

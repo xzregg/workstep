@@ -141,6 +141,10 @@ def build_parser() -> argparse.ArgumentParser:
                 help="include full data instead of list summaries",
             )
 
+    context = subparsers.add_parser("context", help="read current execution context")
+    context_sub = context.add_subparsers(dest="subcommand", required=True)
+    add_json(context_sub.add_parser("get", help="get the current WorkStep project and session IDs"))
+
     project = subparsers.add_parser("project", help="manage projects")
     project_sub = project.add_subparsers(dest="subcommand", required=True)
     project_list = project_sub.add_parser("list", help="list registered project summaries")
@@ -485,6 +489,10 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     """Resolve a parsed command to one tool call and return its JSON result."""
     client = client or WorkstepClient(base_url=args.url)
     command = args.command
+    if command == "context":
+        from services.conversation_context import current_conversation
+        return current_conversation()
+
     if command == "channel":
         if args.subcommand == "list":
             return await client.call("workstep_list_channel_bots", {})

@@ -111,6 +111,9 @@ class OpenClawEngine(AcpEngineBase):
         process_env = dict(os.environ)
         from services.coordinator_source import coordinator_source_env
 
+        from services.conversation_context import execution_env
+
+        process_env = execution_env(process_env)
         process_env.update(coordinator_source_env())
         process_env["OPENCLAW_CONFIG_PATH"] = str(openclaw_config)
         self._process = await asyncio.create_subprocess_exec(

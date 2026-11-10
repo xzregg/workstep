@@ -54,7 +54,8 @@ async def test_stream_adapter_is_lazy_and_preserves_repeated_headers():
 
 def test_cookie_attributes_are_owned_by_api_adapter():
     value = JsonValue({"ok": True}, grants=[CredentialGrant("session", "secret", 120)])
-    response = render_result(value, GatewayCall(settings=SimpleNamespace(cookie_secure=True)))
+    from gateway.config import GatewaySettings
+    response = render_result(value, GatewayCall(settings=GatewaySettings()))
     cookie = response.headers["set-cookie"]
     assert "session=secret" in cookie
     for attribute in ("Secure", "HttpOnly", "SameSite=lax", "Max-Age=120", "Path=/"):

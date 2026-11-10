@@ -322,7 +322,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                     codex_bin=binary,
                     cwd=cwd,
                     config_overrides=provider_runtime.engine_config + (skill_override,),
-                    env=(provider_runtime.child_env() if provider_runtime.provider_id or provider_runtime.has_coordinator_source else None),
+                    env=(provider_runtime.child_env() if provider_runtime.provider_id or provider_runtime.has_execution_context else None),
                 ))
                 try:
                     thread = await client.thread_resume(session_id, cwd=cwd, model=model)
@@ -430,7 +430,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 "cwd": cwd,
                 "limit": 1024 * 256,
             }
-            if provider_runtime.provider_id or provider_runtime.has_coordinator_source:
+            if provider_runtime.provider_id or provider_runtime.has_execution_context:
                 process_kwargs["env"] = provider_runtime.child_env()
             self._process = await asyncio.create_subprocess_exec(*cmd, **process_kwargs)
             self._running = True

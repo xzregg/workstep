@@ -56,6 +56,39 @@ final class WorkStepUITests: XCTestCase {
         app.buttons["完成"].tap()
         XCTAssertTrue(home.exists)
     }
+
+    func testAddSwitchAndDeleteServiceAddress() throws {
+        let fixture = try WebFixture()
+        defer { fixture.stop() }
+        let ready = expectation(description: "fixture listening")
+        fixture.start { ready.fulfill() }
+        wait(for: [ready], timeout: 5)
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-server", "", "-servers", ""]
+        addUIInterruptionMonitor(withDescription: "notification permission") { alert in
+            for title in ["Don’t Allow", "Don't Allow", "不允许"] where alert.buttons[title].exists {
+                alert.buttons[title].tap(); return true
+            }
+            return false
+        }
+        app.launch()
+        let address = app.textFields["serverAddress"]
+        XCTAssertTrue(address.waitForExistence(timeout: 5))
+        address.tap(); address.typeText("http://127.0.0.1:\(fixture.port)")
+        app.buttons["addServer"].tap()
+        XCTAssertTrue(app.buttons["savedServer-0"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.webViews.staticTexts["WorkStep 测试工作台"].exists)
+        app.buttons["switchServer"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["WorkStep 测试工作台"].waitForExistence(timeout: 15))
+
+        app.buttons["navigationFloat"].press(forDuration: 1)
+        XCTAssertTrue(app.buttons["修改服务地址"].waitForExistence(timeout: 3))
+        app.buttons["修改服务地址"].tap()
+        XCTAssertTrue(app.buttons["savedServer-0"].waitForExistence(timeout: 3))
+        app.buttons["deleteServer"].tap()
+        XCTAssertFalse(app.buttons["savedServer-0"].exists)
+    }
 }
 
 /// A loopback-only fixture in the test runner; no real projects, credentials or daemon.

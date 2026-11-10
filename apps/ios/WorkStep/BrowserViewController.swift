@@ -116,7 +116,19 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         guard presentedViewController == nil else { return }
         let setup = ServiceSetupViewController(initial: server?.origin ?? "")
         setup.onConnect = { [weak self] server in self?.connect(server) }
+        setup.onDeleteActive = { [weak self] in self?.disconnect() }
         present(UINavigationController(rootViewController: setup), animated: true)
+    }
+    private func disconnect() {
+        navigationDeadline?.cancel(); renderCheck?.cancel(); downloads.cancel()
+        checkingPage = false
+        webView?.navigationDelegate = nil; webView?.uiDelegate = nil
+        webView?.stopLoading(); webView?.configuration.userContentController.removeScriptMessageHandler(forName: "workstep")
+        webView?.removeFromSuperview(); webView = nil; urlObservation = nil
+        pendingNotification = nil; openingNotification = false
+        server = nil; policy = nil; notifications.server = nil; downloads.server = nil
+        defaults.removeObject(forKey: "server")
+        setStatus("连接你的 WorkStep 服务", loading: false)
     }
     private func connect(_ server: ServerAddress) {
         navigationDeadline?.cancel(); renderCheck?.cancel(); downloads.cancel()
@@ -127,7 +139,11 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         pendingNotification = nil; openingNotification = false
         self.server = server; policy = NavigationPolicy(server: server)
         notifications.server = server; downloads.server = server
-        defaults.set(server.origin, forKey: "server"); recoveredCrash = false
+        defaults.set(server.origin, forKey: "server")
+        var book = ServerAddressBook(stored: defaults.stringArray(forKey: "servers") ?? [], active: nil)
+        _ = try? book.add(server.origin)
+        defaults.set(book.origins, forKey: "servers")
+        recoveredCrash = false
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default(); configuration.allowsInlineMediaPlayback = true
         configuration.applicationNameForUserAgent = "WorkStep/iOS"

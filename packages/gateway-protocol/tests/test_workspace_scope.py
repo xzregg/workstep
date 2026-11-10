@@ -173,3 +173,14 @@ def test_file_change_index_reads_keep_project_scope(path, extra):
     assert not project_http_route_allowed('GET', path, query, 'other', access_level='read')
     assert not project_http_route_allowed('GET', path, [*query, ('unexpected', 'x')], 'p')
     assert not project_http_route_allowed('GET', path, [*query, ('file_path', 'b.py')], 'p')
+
+
+def test_conversation_groups_respect_project_read_and_edit_scope():
+    path = '/api/chat-sessions/groups'
+    query = [('project_id', 'visible')]
+    allowed = project_http_route_allowed
+    assert allowed('GET', path, query, 'visible', access_level='read')
+    assert not allowed('POST', path, query, 'visible', access_level='read')
+    assert allowed('POST', path, query, 'visible', access_level='edit')
+    assert not allowed('POST', path, query, 'private', access_level='edit')
+    assert not allowed('POST', path, query + query, 'visible', access_level='edit')

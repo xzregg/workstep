@@ -21,6 +21,14 @@ describe('operation manual', () => {
     const prose = JSON.stringify(chapter)
     for (const phrase of ['自定义接入', '导入引擎', '重新扫描', '停用运行', '下拉显示', '回退版本', '真实验收', '不执行包代码']) expect(prose).toContain(phrase)
   })
+  it('documents direct step mentions in task management with their execution boundaries', () => {
+    const tasks = manualChapters.find(chapter => chapter.id === 'tasks')!
+    const section = tasks.sections.find(section => section.screenshot?.id === 'task-step-mention')
+    expect(section).toBeDefined()
+    const prose = JSON.stringify(section)
+    for (const phrase of ['@', '候选', '接收对象', '插入消息', '重新执行', '从未执行']) expect(prose).toContain(phrase)
+    expect(getManualGroups('@').flatMap(group => group.chapters).map(chapter => chapter.id)).toContain('tasks')
+  })
   it('searches chapter content across categories without empty groups', () => {
     const groups = getManualGroups('  SDK  ')
     expect(groups.length).toBeGreaterThan(1)

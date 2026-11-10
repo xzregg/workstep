@@ -107,3 +107,33 @@ test('installed speech model offers punctuation-only download without disabling 
     await act(async () => root.unmount()); await window.happyDOM.close(); Object.assign(speechApi, original)
   }
 })
+
+
+test('two streaming models download by id and selection uses the installed current model', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...speechApi }
+  const downloads: string[] = [], selections: string[] = []
+  let status: SpeechStatus = {
+    enabled: true, language: 'auto', model_id: 'first', service: 'stopped', languages: ['auto'],
+    models: ['first', 'second'].map(id => ({ id, name: id === 'first' ? 'Paraformer' : 'Zipformer',
+      license: '来源', license_url: 'https://example.com', model_bytes: 100, installed: id === 'first',
+      streaming: 'native', punctuation: true, install: { stage: 'idle', downloaded_bytes: 0, total_bytes: null, error: '' } })),
+  }
+  speechApi.status = async () => structuredClone(status)
+  speechApi.download = async id => { downloads.push(id!); status.models[1].installed = true; return structuredClone(status) }
+  speechApi.configure = async (enabled, language, modelId) => { selections.push(modelId!); status.model_id = modelId!; return status }
+  try {
+    await act(async () => root.render(<I18nProvider><VoiceInputSettings /></I18nProvider>))
+    assert.equal(document.querySelectorAll('.speech-model').length, 2)
+    const second = document.querySelectorAll('.speech-model')[1]
+    await act(async () => Array.from(second.querySelectorAll('button')).find(b => b.textContent === '下载模型与运行库')!.click())
+    assert.deepEqual(downloads, ['second'])
+    await act(async () => Array.from(second.querySelectorAll('button')).find(b => b.textContent === '使用此模型')!.click())
+    assert.deepEqual(selections, ['second'])
+    assert.equal(status.model_id, 'second')
+    assert.equal(Array.from(document.querySelectorAll('button')).filter(b => b.textContent === '测试麦克风').length, 1)
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close(); Object.assign(speechApi, original)
+  }
+})

@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Met @ de uit te voeren stap kiezen",
+        "steps": [
+          "Open de taakdetails en typ @ aan het begin van het invoerveld of na een spatie. Typ de stapnaam om te filteren en kies het doel uit de lijst. Je kunt ook op de stapontvanger bij het invoerveld klikken.",
+          "Controleer of de ontvanger op de bedoelde stap staat. Na selectie wordt de @-zoektekst automatisch verwijderd. Alleen selecteren verzendt geen bericht en start geen uitvoering; elk bericht gaat naar één huidige ontvanger.",
+          "Schrijf een concrete instructie en verstuur die. Kies bijvoorbeeld «Vereistenanalyse» en stuur «Voeg acceptatiecriteria voor mislukte aanmeldingen toe en werk het vereistendocument bij». Selecteer een andere stap voordat je daar een volgend bericht naartoe stuurt.",
+          "Als de doelstap draait, komt het bericht in de wachtrij «Invoegberichten» van die stap. Als de stap opnieuw kan worden uitgevoerd, start de verzonden instructie een nieuwe uitvoering. Controleer bij gevolgen voor andere actieve stappen eerst in het bevestigingsvenster welke worden gestopt en opnieuw uitgevoerd.",
+          "Controleer het werkelijke resultaat in de stapvoortgang, uitvoeringsgeschiedenis en opgeleverde bestanden. Kies voor vragen of algemene coördinatie @Coördinator in plaats van het bericht naar de verkeerde stap te sturen."
+        ],
+        "tips": [
+          "De lijst bevat alleen actieve stappen of stappen die opnieuw kunnen worden uitgevoerd. Stappen die nog nooit zijn uitgevoerd en nog wachten, worden niet getoond. De eerste uitvoering volgt nog steeds het starten van de taak en de workflowafhankelijkheden.",
+          "Je moet het doel uit de lijst selecteren en de ontvanger controleren. Alleen @naam in de berichttekst laten staan wijst geen doel toe. Opnieuw uitvoeren kan bestanden opnieuw wijzigen en het model aanroepen en maakt eerdere wijzigingen niet automatisch ongedaan."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Stapkandidaten na het typen van @ in de taakdetails en de geselecteerde ontvanger",
+          "caption": "Schermafbeeldingen uit het vaste demoproject van @stapkandidaten en het concept na selectie ontbreken nog. Selecteren betekent niet dat er is verzonden of uitgevoerd."
+        }
+      },
+      {
         "title": "Zoek taken op het bord of de tafel",
         "steps": [
           "Schakel tussen rijstroken en tabel op de taakpagina, bekijk taken per fase en zoek op titel.",

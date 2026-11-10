@@ -537,6 +537,25 @@
         }
       },
       {
+        "title": "Memilih langkah tujuan dengan @langkah",
+        "steps": [
+          "Buka detail tugas dan ketik @ di awal kolom masukan atau setelah spasi. Ketik nama langkah untuk memfilter, lalu pilih tujuan dari daftar. Anda juga dapat mengeklik penerima langkah di dekat kolom masukan.",
+          "Pastikan penerima sudah berubah ke langkah tersebut. @teks untuk pencarian dihapus otomatis setelah dipilih. Memilih saja tidak mengirim pesan atau memulai eksekusi; setiap pesan hanya dikirim ke satu penerima saat ini.",
+          "Tulis instruksi spesifik lalu kirim. Misalnya, pilih “Analisis kebutuhan”, lalu kirim “Tambahkan kriteria penerimaan untuk kegagalan login dan perbarui dokumen kebutuhan”. Untuk langkah lain, pilih kembali langkah tujuan sebelum mengirim.",
+          "Jika langkah tujuan sedang berjalan, pesan masuk ke antrean “Sisipkan pesan” langkah itu. Jika langkah dapat diulang, mengirim instruksi mengeksekusinya kembali. Jika langkah aktif lain terpengaruh, periksa dahulu cakupan penghentian dan pengulangan pada dialog konfirmasi.",
+          "Periksa hasil sebenarnya pada progres langkah, riwayat eksekusi, dan keluaran. Untuk koordinasi menyeluruh atau pertanyaan, pilih @Koordinasi alih-alih mengirim ke langkah yang salah."
+        ],
+        "tips": [
+          "Daftar hanya memuat langkah yang sedang berjalan atau dapat dieksekusi ulang. Langkah yang belum pernah dijalankan dan masih tertunda tidak muncul; eksekusi pertamanya tetap mengikuti mulai tugas dan dependensi alur kerja.",
+          "Tujuan harus dipilih dari daftar dan penerimanya diperiksa. Menyisakan @nama di isi pesan saja tidak menetapkan tujuan. Eksekusi ulang dapat kembali mengubah berkas dan memanggil model, tanpa otomatis membatalkan perubahan lama."
+        ],
+        "screenshot": {
+          "id": "task-step-mention",
+          "alt": "Daftar langkah setelah mengetik @ dalam detail tugas dan penerima terpilih",
+          "caption": "Tangkapan layar daftar @langkah dan draf setelah pemilihan di proyek demo tetap masih diperlukan. Memilih bukan berarti pesan telah dikirim atau langkah telah dijalankan."
+        }
+      },
+      {
         "title": "Temukan tugas di papan atau meja",
         "steps": [
           "Beralih antara Jalur dan Tabel di halaman tugas, periksa tugas berdasarkan tahap dan cari berdasarkan judul.",

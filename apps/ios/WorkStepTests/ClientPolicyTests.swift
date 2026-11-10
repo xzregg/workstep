@@ -15,6 +15,19 @@ final class ClientPolicyTests {
         XCTAssertEqual(try ServerAddress("http://[::1]:8765").origin, "http://[::1]:8765")
     }
 
+    func testSavedServiceAddressesMigrateAddSelectAndDelete() throws {
+        var book = ServerAddressBook(stored: ["https://one.example.com/", "invalid", "https://one.example.com"],
+                                     active: "http://two.example.com:8765")
+        XCTAssertEqual(book.origins, ["http://two.example.com:8765", "https://one.example.com"])
+        XCTAssertTrue(try book.add("https://three.example.com/"))
+        XCTAssertFalse(try book.add("https://three.example.com"))
+        XCTAssertThrowsError(try book.add("https://three.example.com/path"), "invalid address")
+        XCTAssertEqual(book.origins, ["http://two.example.com:8765", "https://one.example.com", "https://three.example.com"])
+        book.remove("http://two.example.com:8765")
+        XCTAssertEqual(ServerAddressBook(stored: book.origins, active: nil).origins,
+                       ["https://one.example.com", "https://three.example.com"])
+    }
+
     func testRememberOnlyUsefulDetailsAndNotificationScope() throws {
         let server = try ServerAddress("https://host")
         let page = URL(string: "https://host/workspace/device/chat?project=p&session=s")!
@@ -79,11 +92,12 @@ enum CheckFailure: Error { case missing }
     static func main() throws {
         let tests = ClientPolicyTests()
         try tests.testServiceAddressAndExactOrigin()
+        try tests.testSavedServiceAddressesMigrateAddSelectAndDelete()
         try tests.testRememberOnlyUsefulDetailsAndNotificationScope()
         try tests.testLoginSessionOnlyStartsWithValidatedCallbackAndResets()
         tests.testResumeAndBoundedLedger()
         try tests.testNotificationValidationAndSanitizedDiagnostics()
         try checkHealthResponses()
-        print("PASS: 5 core behavior groups")
+        print("PASS: 6 core behavior groups")
     }
 }

@@ -39,6 +39,7 @@ export function AdminAccessGrants({ id, name, kind = 'projects', csrf, onChanged
         ? <a className="gateway-action-link" href={permissionUrl()}>新增授权</a>
         : <button type="button" onClick={() => setEdit('new')}>新增授权</button>}</div></div>
     {kind === 'projects' && canConfigurePermissions && <p>统一选择授权对象与任务、流程、对话、文件、Git 等操作权限，保存后同时授予项目访问。</p>}
+    <p>设备授权优先于项目授权。拥有整台设备访问时，可新建项目并访问设备内全部项目；撤销设备授权后，仍有效的项目授权继续生效。</p>
     {loading && <p role="status"><span className="gateway-spinner"/> 正在加载授权…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}

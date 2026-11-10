@@ -27,13 +27,13 @@ export function useSidebarSessionActions() {
     return () => window.clearTimeout(timer)
   }, [sessionError])
 
-  const createSession = async (project: Project) => {
+  const createSession = async (project: Project, groupId?: string) => {
     if (creatingRef.current) return
     creatingRef.current = true
     setCreatingSession(true)
     setSessionError('')
     try {
-      const detail = await chatSessionApi.create({ project_id: project.id })
+      const detail = await chatSessionApi.create({ project_id: project.id, ...(groupId ? { group_id: groupId } : {}) })
       useChatListStore.getState().addSession({
         id: detail.id,
         project_id: detail.project_id,
@@ -46,6 +46,7 @@ export function useSidebarSessionActions() {
         updated_at: detail.updated_at,
       })
       navigate(`/chat?project=${encodeURIComponent(project.name)}&session=${encodeURIComponent(detail.id)}`)
+      return detail.id
     } catch (reason) {
       setSessionError(
         reason instanceof Error && reason.name === 'TimeoutError'

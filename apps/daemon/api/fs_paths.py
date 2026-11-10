@@ -10,10 +10,11 @@ from services.remote_access import get_current_actor
 def _file_access_root() -> Path | None:
     """Configured root for user-facing file operations; call in an I/O worker."""
     from services.config import config_store
+    from services.project_scope import projects_root
     if not config_store.get('restrict_file_access_root', True):
         return None
     configured = config_store.get('default_project_directory', '').strip()
-    return (Path(configured).expanduser() if configured else Path.home()).resolve()
+    return (Path(configured).expanduser() if configured else projects_root() or Path.home()).resolve()
 
 
 def _assert_preview_path(path: Path) -> Path:
