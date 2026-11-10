@@ -805,7 +805,7 @@
         "title": "Nhập bản nháp bằng giọng nói",
         "steps": [
           "Mở Cài đặt → Nhập giọng nói, bật, tải mô hình và môi trường chạy, chọn ngôn ngữ rồi thử micrô. Cài đặt nằm trên máy chủ WorkStep đang kết nối; điện thoại không cần tải mô hình. Hỗ trợ tiếng Quan thoại, Quảng Đông và Anh.",
-          "Nhấn micrô trong cuộc trò chuyện có thể chỉnh sửa, hoặc nhấn giữ nút giọng nói trên điện thoại. Nói, kết thúc, kiểm tra văn bản được chèn rồi gửi thủ công. Tối đa hai phút; hủy không gửi gì."
+          "Trên máy tính bấm micrô. Trên điện thoại giữ vùng nhập chữ 500 ms; không hiện biểu tượng micrô. Thả tay, kiểm tra chữ được chèn rồi gửi thủ công. Tối đa hai phút; hủy không gửi gì."
         ],
         "tips": [
           "Âm thanh được nhận dạng trên máy chủ kết nối và không lưu lại. Cho phép micrô qua HTTPS hoặc địa chỉ cục bộ. Khi lỗi, kiểm tra quyền hệ thống và trang; khởi động lại backend cũ. Có thể chủ động giữ văn bản đã nhận dạng."
@@ -947,6 +947,18 @@
     "title": "Nhiệm vụ theo lịch trình",
     "summary": "Tạo các nhiệm vụ mới theo lịch trình hoặc gửi hướng dẫn điều phối viên theo thời gian cho các nhiệm vụ hiện có, đồng thời theo dõi việc thực hiện và thông báo.",
     "sections": [
+      {
+        "title": "Hẹn gửi tin trong cuộc trò chuyện có sẵn",
+        "steps": [
+          "Mở Lịch, chọn dự án và đích Cuộc trò chuyện. Chọn cuộc trò chuyện có sẵn, nhập tiêu đề và tin như kiểm tra tiến độ dự án, đặt thời gian hoặc tần suất, xem lần chạy kế tiếp rồi lưu.",
+          "Backend phải hoạt động. Cuộc trò chuyện bận sẽ chờ; câu trả lời kênh trở về kênh gốc. Xóa hoặc lưu trữ cuộc trò chuyện sẽ xóa quy tắc, khôi phục không lấy lại quy tắc. Nhóm gắn tác vụ dùng điều phối tác vụ."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Hẹn gửi tin trong cuộc trò chuyện có sẵn",
+          "caption": "Backend phải hoạt động. Cuộc trò chuyện bận sẽ chờ; câu trả lời kênh trở về kênh gốc. Xóa hoặc lưu trữ cuộc trò chuyện sẽ xóa quy tắc, khôi phục không lấy lại quy tắc. Nhóm gắn tác vụ dùng điều phối tác vụ."
+        }
+      },
       {
         "title": "Chạy ngay và kiểm tra kết quả",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Định cấu hình WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack hoặc QQ, phân biệt trò chuyện với thông báo Webhook.",
     "sections": [
       {
+        "title": "Dùng danh bạ bot",
+        "steps": [
+          "Lưu bot DingTalk, WeCom hoặc Feishu rồi bật đọc trong Chỉnh sửa → Danh bạ. Cấp quyền đọc thành viên; WeCom cần thêm ID doanh nghiệp, Agent ID và Secret. Lưu, tìm trong bộ nhớ đệm và làm mới khi nhân sự thay đổi.",
+          "Danh bạ chỉ nằm trong bộ nhớ, tải lại khi khởi động. Qua CLI hoặc trợ lý, gửi bằng tên chính xác duy nhất hoặc ID liên hệ; tên trùng phải chọn rõ. Người nhận WeCom phải từng nhắn với cùng bot và ID người dùng khớp; nếu không hãy dùng cuộc trò chuyện kênh có sẵn."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Dùng danh bạ bot",
+          "caption": "Danh bạ chỉ nằm trong bộ nhớ, tải lại khi khởi động. Qua CLI hoặc trợ lý, gửi bằng tên chính xác duy nhất hoặc ID liên hệ; tên trùng phải chọn rõ. Người nhận WeCom phải từng nhắn với cùng bot và ID người dùng khớp; nếu không hãy dùng cuộc trò chuyện kênh có sẵn."
+        }
+      },
+      {
         "title": "Chọn một kênh và kết nối một nền tảng mới",
         "steps": [
           "Mở Cài đặt → Kênh bot, chọn một nền tảng ở bên trái và nhập tên, thông tin xác thực và dự án cục bộ mặc định ở bên phải. Kích hoạt và lưu. Các bí mật trống sẽ giữ lại các giá trị hiện có khi chỉnh sửa; kiểm tra các thay đổi chưa được lưu trước khi chuyển đổi. Đóng cài đặt, nhấn Escape hoặc chuyển đổi phần cài đặt sẽ yêu cầu xác nhận khi các thay đổi chưa được lưu; việc hủy bỏ sẽ giữ nguyên bản nháp.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Lỗi trình diễn do mô hình không tồn tại",
           "caption": "Lỗi cho biết mô hình đã chọn không được hỗ trợ. Sửa cấu hình mô hình của bước trước khi chạy lại; nó không được sửa chữa trong hình ảnh này."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Bộ máy tùy chỉnh",
+    "summary": "Tích hợp bộ máy SDK, CLI hoặc ACP mới qua trò chuyện thông thường, hoặc nhập gói có sẵn. Chỉ sử dụng sau khi kiểm thử thực tế và đăng ký xong.",
+    "sections": [
+      {
+        "title": "Tạo bộ máy qua trò chuyện",
+        "steps": [
+          "Nếu các bộ máy hiện có không đáp ứng nhu cầu, dùng quyền quản trị máy chủ để mở «Cài đặt → Bộ máy thực thi» và nhấp «Tích hợp tùy chỉnh». Lần đầu sử dụng vẫn nên cấu hình SDK tích hợp sẵn trước.",
+          "Trong cuộc trò chuyện thông thường của không gian làm việc mặc định, chọn bộ máy đã cấu hình, cung cấp tên, tài liệu chính thức, cách xác thực và khả năng cần có. Ví dụ: «Tích hợp SDK chính thức của nhà cung cấp, hỗ trợ trò chuyện văn bản và dừng tạo nội dung».",
+          "Kiểm tra bản nháp điền sẵn trước khi gửi. Chỉ mở cuộc trò chuyện tích hợp không tạo hay cài bộ máy. Yêu cầu cuộc trò chuyện làm theo quy chuẩn tích hợp, kiểm tra tên trùng, tạo bộ điều hợp và cài các thành phần phụ thuộc vào thư mục riêng.",
+          "Làm theo hướng dẫn trong cuộc trò chuyện để xác thực, kiểm thử thực tế và đăng ký. Tạo mã hoặc cài đặt xong không đồng nghĩa tích hợp thành công. Lưu khóa qua cài đặt, không ghi vào trò chuyện, mã nguồn hay ảnh chụp."
+        ],
+        "tips": [
+          "Kiểm thử thực tế gọi dịch vụ mô hình và có thể phát sinh chi phí. Mã tùy chỉnh có quyền trên máy cục bộ; cách ly tiến trình con không phải vùng cách ly tệp hay mạng. Chỉ tích hợp nguồn đáng tin cậy."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Lối vào tích hợp tùy chỉnh và nhập bộ máy trong phần cài đặt bộ máy",
+          "caption": "Chưa có ảnh lối vào tích hợp và bản nháp chưa gửi trong môi trường minh họa cố định."
+        }
+      },
+      {
+        "title": "Nhập gói bộ máy có sẵn",
+        "steps": [
+          "Trong «Cài đặt → Bộ máy thực thi», nhấp «Nhập bộ máy» rồi chọn gói ZIP được xuất từ nguồn đáng tin cậy.",
+          "Thao tác nhập kiểm tra nội dung gói và tạo cuộc trò chuyện tích hợp thông thường cùng bản nháp. Không chạy mã trong gói và không ghi đè bộ máy đã đăng ký. Nhập thành công không có nghĩa cài đặt hoặc kiểm thử đạt yêu cầu.",
+          "Kiểm tra thư mục gói và yêu cầu tích hợp trong cuộc trò chuyện. Cài lại các thành phần phụ thuộc phù hợp hệ thống cục bộ, cấu hình xác thực, hoàn tất kiểm thử thực tế rồi đăng ký. Nếu cần thay bộ máy hiện có, trước hết kiểm tra ID và xác nhận ý định thay thế."
+        ],
+        "tips": [
+          "ZIP không chứa thành phần phụ thuộc đã cài hoặc cấu hình xác thực cục bộ; người nhận vẫn phải tự cấu hình và kiểm thử. Nếu nhập thất bại, xem lỗi ngay tại trang cài đặt rồi chọn đúng gói để thử lại."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Cuộc trò chuyện tích hợp và bản nháp được tạo sau khi nhập gói bộ máy",
+          "caption": "Chưa có ảnh nhập ZIP và bản nháp chờ cấu hình trong môi trường minh họa cố định; không xem nhập gói là đăng ký thành công."
+        }
+      },
+      {
+        "title": "Sử dụng, xuất, vô hiệu hóa và quay lại phiên bản trước",
+        "steps": [
+          "Sau khi cuộc trò chuyện báo đăng ký thành công, quay lại «Cài đặt → Bộ máy thực thi» và nhấp «Quét lại». Bộ máy mới sẽ xuất hiện trong danh sách; riêng thao tác đăng ký không yêu cầu khởi động lại ứng dụng.",
+          "Kiểm tra cấu hình bộ máy, nhà cung cấp và mô hình, rồi chọn trong cuộc trò chuyện thông thường hoặc bước quy trình. Chạy thử một tác vụ nhỏ trước để kiểm tra kết quả thực tế.",
+          "Thẻ bộ máy tùy chỉnh có «Xuất ZIP», «Vô hiệu hóa thực thi» và «Khôi phục thực thi». Công tắc «Bật / Tắt» trên thẻ chỉ điều khiển việc hiển thị trong danh sách thả xuống; tác vụ hiện có vẫn dùng được bộ máy. Vô hiệu hóa thực thi sẽ đóng các kết nối đang hoạt động của bộ máy; hãy dừng tác vụ hoặc cuộc trò chuyện liên quan trước.",
+          "Nếu cập nhật gặp lỗi và có phiên bản trước, hãy kết thúc các lượt chạy liên quan rồi nhấp «Quay lại phiên bản trước». Kiểm thử và đăng ký lại, sau đó khởi động lại theo hướng dẫn giao diện. Không có phiên bản trước thì không thể quay lại."
+        ],
+        "tips": [
+          "Thay đổi mã, thành phần phụ thuộc hoặc cấu hình có thể làm kết quả kiểm thử cũ mất hiệu lực; cần kiểm thử lại trước khi đăng ký. Nếu chỉ đổi địa chỉ dịch vụ mô hình hoặc xác thực, ưu tiên cấu hình nhà cung cấp, không cần tạo lại bộ máy."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Các nút xuất, vô hiệu hóa và quay lại phiên bản trước của bộ máy tùy chỉnh đã đăng ký",
+          "caption": "Chưa có ảnh thẻ bộ máy đã đăng ký trong môi trường minh họa cố định; không dùng thẻ bộ máy tích hợp sẵn để thay thế."
         }
       }
     ]

@@ -312,7 +312,9 @@ for line in sys.stdin:
         assert (await slow).status_code in (404, 409)
         assert service.sessions[b]['worker'].process.pid == b_pid
         final = await call('bob', 'POST', path_b, json={'sequence': 1, 'audio': '', 'final': True})
-        assert final.json() == {'id': b, 'sequence': 1, 'text': b, 'final': True}
+        result = final.json()
+        assert result.pop('processing_ms') >= 0
+        assert result == {'id': b, 'sequence': 1, 'text': b, 'final': True}
     await service.close()
 
 
@@ -399,4 +401,29 @@ async def test_queued_final_is_bounded_and_cancellation_releases_waiter(service,
     await service.cancel(sid, 'p', 'owner')
     with pytest.raises(LookupError):
         await asyncio.wait_for(final, .1)
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_catchup_batch_is_negotiated_and_bounded_through_http(service, monkeypatch):
+    from services.speech import SAMPLE_RATE
+    service.settings = {'enabled': True, 'language': 'auto'}
+    monkeypatch.setattr(service, 'installed', lambda: True)
+    received = []
+    async def infer(pcm, sid, final):
+        received.append(len(pcm))
+        return '追赶完成。'
+    monkeypatch.setattr(service, 'infer', infer)
+    app = FastAPI()
+    app.include_router(speech.router)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        session = (await client.post('/api/speech/sessions?project_id=p')).json()
+        assert session['max_frame_samples'] == SAMPLE_RATE * 8
+        path = f"/api/speech/sessions/{session['id']}/audio?project_id=p"
+        too_large = base64.b64encode(b'\0\0' * (SAMPLE_RATE * 8 + 1)).decode()
+        assert (await client.post(path, json={'sequence': 0, 'audio': too_large})).status_code in (409, 422)
+        pcm = base64.b64encode(b'\0\0' * SAMPLE_RATE * 6).decode()
+        response = await client.post(path, json={'sequence': 0, 'audio': pcm, 'final': True})
+        assert response.status_code == 200
+        assert received == [SAMPLE_RATE * 6 * 2]
     await service.close()

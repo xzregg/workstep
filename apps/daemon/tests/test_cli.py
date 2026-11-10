@@ -621,6 +621,8 @@ def test_main_surfaces_errors_with_nonzero_exit(capsys):
     (['--session', 's1'], {'session_id': 's1'}),
     (['--bot', 'b1', '--user', 'u1'], {'bot_id': 'b1', 'user_id': 'u1'}),
     (['--bot', 'b1', '--group', 'g1'], {'bot_id': 'b1', 'group_id': 'g1'}),
+    (['--bot', 'b1', '--user-name', '张三'], {'bot_id': 'b1', 'user_name': '张三'}),
+    (['--bot', 'b1', '--contact', 'u2'], {'bot_id': 'b1', 'contact_id': 'u2'}),
 ])
 async def test_cli_channel_send_routes_target_without_triggering_llm(target, body):
     def handler(request):
@@ -746,3 +748,15 @@ async def test_cli_schedule_notification_discovery_retry_and_update_preserves_ta
     await dispatch(parser.parse_args(['schedule','retry-notification','--project','p','--schedule','rule','--run','run']),client)
     await dispatch(parser.parse_args(['schedule','update','--project','p','--schedule','rule','--notify']),client)
     assert ('POST','/api/schedule/rule/runs/run/notification/retry') in calls
+
+
+async def test_cli_channel_contacts_uses_cached_search_tool():
+    def handler(request):
+        assert request.method == 'GET'
+        assert request.url.path == '/api/channel-bots/b1/contacts'
+        assert request.url.params['project_id'] == 'p1'
+        assert request.url.params['query'] == '张三'
+        return httpx.Response(200, json={'contacts': [], 'total': 0})
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    args = build_parser().parse_args(['channel','contacts','--project','p1','--bot','b1','--query','张三'])
+    assert await dispatch(args, client) == {'contacts': [], 'total': 0}

@@ -56,7 +56,7 @@ async def test_notification_delivers_once_and_retry_does_not_rerun_task(setup_no
     from services.schedule_notifications import deliver_notification
     s=setup_notifications;rule=s.create();calls=[]
     class Sender:
-        async def send_message(self, **kwargs):
+        async def send_schedule_notification(self, **kwargs):
             calls.append(kwargs)
             await asyncio.sleep(.03)
             if len(calls)==1: raise RuntimeError('发送失败')
@@ -93,7 +93,7 @@ async def test_real_project_creation_sends_immediately_without_workflow_completi
         async def send_text(self, recipient, text): sent.append((recipient,text))
     async def load(): return s.data
     sender=ChannelMessageSender(s.manager,load,{'bot':Adapter()})
-    s.module._notification_sender=SimpleNamespace(send_message=sender.send)
+    s.module._notification_sender=SimpleNamespace(send_schedule_notification=sender.send_schedule_notification)
     s.module._tasks=TaskService(None)
     rule=s.module.create(s.project.id,name='创建后立即通知',workflow_id=s.workflow['id'],task_template={'title':'通知测试任务'},
         execution_mode='manual',rule={'kind':'daily','time':'09:00','timezone':'UTC'},notification={'enabled':True,'target':{'session_id':'session'}})
@@ -108,7 +108,8 @@ async def test_real_project_creation_sends_immediately_without_workflow_completi
 
 
 @pytest.mark.anyio
-async def test_notification_api_defaults_validation_and_slow_sql_canary(setup_notifications,monkeypatch):
+@pytest.mark.parametrize('foreign', [False, True])
+async def test_notification_api_defaults_validation_and_slow_sql_canary(setup_notifications,monkeypatch,foreign):
     import main, threading, time
     from fastapi import FastAPI
     from httpx import AsyncClient,ASGITransport
@@ -126,10 +127,11 @@ async def test_notification_api_defaults_validation_and_slow_sql_canary(setup_no
         return real(sql,*args,**kwargs)
     monkeypatch.setattr(s.project.db,'execute_sql',slow)
     async with AsyncClient(transport=ASGITransport(app=app),base_url='http://test') as client:
-        request=asyncio.create_task(client.get('/api/schedule/notification-options',params={'project_id':s.project.id,'task_id':'bound'}))
+        request=asyncio.create_task(client.get('/api/schedule/notification-options',params={'project_id':s.other.id if foreign else s.project.id,'task_id':'bound'}))
         assert await asyncio.to_thread(started.wait,1)
         assert (await asyncio.wait_for(client.get('/health'),timeout=.15)).status_code==200
-        options=(await request).json();assert options['default']['enabled'] is True
+        options=(await request).json();assert options['default']['enabled'] is (not foreign)
+        assert {'session_id': 'session'} in [choice['target'] for choice in options['choices']]
         payload={'name':'默认通知','target_type':'task','target_task_id':'bound','instruction':'汇报','rule':{'kind':'minutes','every':10,'timezone':'UTC'}}
         created=await client.post('/api/schedule/create',params={'project_id':s.project.id},json=payload)
         assert created.status_code==200 and created.json()['notification']['enabled'] is True
@@ -179,7 +181,7 @@ async def test_batch_notification_waits_for_completion_and_lists_all_created_tas
     calls = []
 
     class Sender:
-        async def send_message(self, **kwargs):
+        async def send_schedule_notification(self, **kwargs):
             calls.append(kwargs)
             return {'sent': True}
 
@@ -198,3 +200,77 @@ async def test_batch_notification_waits_for_completion_and_lists_all_created_tas
     await asyncio.gather(deliver_notification(s.module, s.project.id, 'batch'), deliver_notification(s.module, s.project.id, 'batch'))
     assert len(calls) == 1
     assert '任务一' in calls[0]['text'] and '任务二' in calls[0]['text']
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('conversation_type', ['group', 'single'])
+async def test_cross_project_schedule_options_delivery_and_route_preservation(setup_notifications, monkeypatch, conversation_type):
+    import copy
+    import main
+    from fastapi import FastAPI
+    from httpx import AsyncClient, ASGITransport
+    from api.schedule import router
+    from models import ScheduleRun, ChatSession, ChatMessage
+    from models.fields import utc_now
+    from services.channels.sender import ChannelMessageSender
+    from services.schedule_notifications import deliver_notification
+
+    s = setup_notifications
+    s.data['bots'][0]['default_project_id'] = s.project.id
+    s.data['session_sources']['session'] = {'project_id': s.project.id}
+    s.data['sessions'] = {f'bot:{conversation_type}:session-group': 'session'}
+    await s.manager.run_db(s.project.id, lambda _: ChatMessage.create(
+        id='channel-user', session='session', role='user', content='你好', author_id='channel:dingtalk:user',
+        author_device_id='channel:bot', created_at=utc_now()))
+    s.data['recent_groups'] = [{'bot_id': 'bot', 'group_id': 'recent', 'group_name': '最近群'}]
+    workflow = s.manager.create_workflow(s.other, name='另一流程', steps={'nodes': []})
+    sent = []
+    class Adapter:
+        async def send_text(self, recipient, text):
+            sent.append((recipient.conversation_id, text))
+    async def load(): return s.data
+    sender = ChannelMessageSender(s.manager, load, {'bot': Adapter()})
+    s.module._notification_sender = SimpleNamespace(send_schedule_notification=sender.send_schedule_notification)
+    monkeypatch.setattr(main, 'project_manager', s.manager)
+    monkeypatch.setattr(main, 'schedule_module', s.module)
+    app = FastAPI(); app.include_router(router)
+    snapshot = copy.deepcopy(s.data)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        response = await client.get('/api/schedule/notification-options', params={'project_id': s.other.id})
+        assert response.status_code == 200
+        options = response.json()
+        assert options['default'] == {'enabled': False}
+        targets = [choice['target'] for choice in options['choices']]
+        for target in [{'session_id': 'session'}, {'bot_id': 'bot', 'group_id': 'group'}, {'bot_id': 'bot', 'group_id': 'recent'}]:
+            assert target in targets
+            response = await client.post('/api/schedule/create', params={'project_id': s.other.id}, json={
+                'name': '跨项目通知', 'workflow_id': workflow['id'], 'task_template': {'title': '新任务'},
+                'rule': {'kind': 'minutes', 'every': 10, 'timezone': 'UTC'},
+                'notification': {'enabled': True, 'target': target},
+            })
+            assert response.status_code == 200, response.text
+            rule = response.json()
+            def seed(_):
+                from models import Task
+                Task.get_or_create(id='other-task', defaults={'title': 'B任务', 'cwd': str(s.other.path), 'created_at': utc_now(), 'updated_at': utc_now()})
+                ScheduleRun.create(id=rule['id'], schedule=rule['id'], status='created', task_id='other-task',
+                                   notification_json=json.dumps(rule['notification']), scheduled_for=utc_now(), created_at=utc_now())
+            await s.manager.run_db(s.other.id, seed)
+            await deliver_notification(s.module, s.other.id, rule['id'])
+            assert await s.manager.run_db(s.other.id, lambda _: ScheduleRun.get_by_id(rule['id']).notification_status) == 'sent'
+    assert [item[0] for item in sent] == ['session-group', 'group', 'recent']
+    assert all(s.other.name in text for _, text in sent)
+    assert s.data == snapshot
+    with pytest.raises(PermissionError):
+        await sender.send(project_id=s.other.id, bot_id='bot', group_id='group', text='普通发送仍受限制')
+    await s.manager.run_db(s.project.id, lambda _: ChatSession.update(archived=True).where(ChatSession.id == 'session').execute())
+    with pytest.raises(RuntimeError, match='归档'):
+        await sender.send_schedule_notification(project_id=s.other.id, session_id='session', text='不可发送')
+    await s.manager.run_db(s.project.id, lambda _: ChatSession.get_by_id('session').delete_instance(recursive=True))
+    with pytest.raises(LookupError):
+        await sender.send_schedule_notification(project_id=s.other.id, session_id='session', text='不可发送')
+    with pytest.raises((LookupError, ValueError)):
+        await sender.send_schedule_notification(project_id=s.other.id, bot_id='bot', group_id='unknown', text='不可发送')
+    s.data['bots'][0]['enabled'] = False
+    with pytest.raises(RuntimeError):
+        await sender.send_schedule_notification(project_id=s.other.id, bot_id='bot', group_id='group', text='不可发送')

@@ -7,3 +7,5 @@
 
 .task-schedule-identification { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 .task-schedule-editor .field { min-width: 0; }
+
+.conversation-schedule-lifecycle { color: var(--meta); font-size: calc(12px * var(--font-scale)); }

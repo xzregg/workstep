@@ -161,6 +161,9 @@ export const trTR: I18nDict = {
     "statusReviewing": "İnceleniyor"
   },
   "engines": {
+    extension: "Kendi Agent motorunuzu bağlayın",
+    description: "CLI, SDK ve ACP motorlarını bağlayın veya özel adaptör geliştirin. Her adım için motor seçin. Motor ayarlarında özel entegrasyonu başlatın; adaptörü kurun, doğrulayın ve kaydedin.",
+    guide: "Özel motor entegrasyon rehberi",
     "label": "Bir AI kodlama aracı seçin. Başlamak için birini yapılandırın.",
     "codex": "Kodeks CLI",
     "claude": "Claude Code",

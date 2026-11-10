@@ -1,6 +1,8 @@
 """HTTP adapters for DingTalk and WeCom QR authorization."""
 
 import os
+import asyncio
+import logging
 from copy import deepcopy
 from collections import deque
 from urllib.parse import urlencode
@@ -150,25 +152,47 @@ class WeComConnector:
 
     async def exchange_code(self, source: IdentitySource, code: str, nonce: str) -> ExternalProfile:
         async with self.client_factory() as client:
-            token_response = await client.get("https://qyapi.weixin.qq.com/cgi-bin/gettoken", params={
-                "corpid": source.tenant_id, "corpsecret": await _secret(source, self.secret_resolver),
-            })
-            token_response.raise_for_status()
-            token = token_response.json()
-            if token.get("errcode") != 0 or not token.get("access_token"):
-                raise ValueError("WeCom token exchange failed")
-            profile_response = await client.get("https://qyapi.weixin.qq.com/cgi-bin/user/getuserinfo", params={
-                "access_token": token["access_token"], "code": code,
-            })
-            profile_response.raise_for_status()
-            profile = profile_response.json()
-            if profile.get("errcode") != 0 or not profile.get("UserId"):
-                raise ValueError("WeCom member identity missing")
+            stage = "secret"
+            payload = {}
+            try:
+                secret = await _secret(source, self.secret_resolver)
+                stage = "gettoken"
+                token_response = await client.get("https://qyapi.weixin.qq.com/cgi-bin/gettoken", params={
+                    "corpid": source.tenant_id, "corpsecret": secret,
+                })
+                token_response.raise_for_status()
+                payload = token_response.json()
+                if payload.get("errcode") != 0 or not payload.get("access_token"):
+                    raise ValueError("WeCom token exchange failed")
+                access_token = payload["access_token"]
+                stage = "getuserinfo"
+                payload = {}
+                profile_response = await client.get("https://qyapi.weixin.qq.com/cgi-bin/user/getuserinfo", params={
+                    "access_token": access_token, "code": code,
+                })
+                profile_response.raise_for_status()
+                payload = profile_response.json()
+                if payload.get("errcode") != 0 or not payload.get("UserId"):
+                    raise ValueError("WeCom member identity missing")
+                profile = payload
+            except Exception as exc:
+                # Never log exception text/tracebacks, URLs, or provider errmsg:
+                # they can contain credentials, authorization codes, or member data.
+                errcode = payload.get("errcode") if isinstance(payload, dict) else None
+                if type(errcode) is not int or not -1_000_000 <= errcode <= 1_000_000:
+                    errcode = "unknown"
+                status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else "unknown"
+                await asyncio.to_thread(
+                    logging.getLogger(__name__).warning,
+                    "WeCom login exchange failed: stage=%s errcode=%s http_status=%s error_type=%s",
+                    stage, errcode, status, type(exc).__name__,
+                )
+                raise
             subject = profile["UserId"]
             display_name = subject
             try:
                 member = _checked(await client.get("https://qyapi.weixin.qq.com/cgi-bin/user/get", params={
-                    "access_token": token["access_token"], "userid": subject,
+                    "access_token": access_token, "userid": subject,
                 }))
                 display_name = member.get("name") or subject
             except (httpx.HTTPError, ValueError):

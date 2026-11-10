@@ -246,3 +246,81 @@ async def test_wecom_name_permission_failure_keeps_verified_identity(monkeypatch
     connector = WeComConnector(lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     profile = await connector.exchange_code(source, "code", "nonce")
     assert profile.subject == profile.display_name == "employee-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure, stage, detail", [
+    ("secret", "secret", "error_type=ValueError"),
+    ("token", "gettoken", "errcode=40001"),
+    ("identity", "getuserinfo", "errcode=40029"),
+    ("outsider", "getuserinfo", "errcode=0"),
+    ("timeout", "gettoken", "error_type=ReadTimeout"),
+    ("http", "gettoken", "http_status=502"),
+    ("json", "gettoken", "error_type=JSONDecodeError"),
+    ("unsafe_code", "gettoken", "errcode=unknown"),
+])
+async def test_wecom_login_failure_logs_safe_diagnostics(monkeypatch, caplog, failure, stage, detail):
+    monkeypatch.setenv("WECOM_DIAGNOSTIC_SECRET", "private-secret")
+    source = IdentitySource(id="source", provider="wecom", tenant_id="corp", client_id="corp",
+                            agent_id="1001", secret_env="WECOM_DIAGNOSTIC_SECRET")
+    if failure == "secret":
+        monkeypatch.delenv("WECOM_DIAGNOSTIC_SECRET")
+
+    def handler(request):
+        if request.url.path.endswith("gettoken"):
+            if failure == "timeout":
+                raise httpx.ReadTimeout("private-secret private-code", request=request)
+            if failure == "http":
+                return httpx.Response(502, text="private-secret")
+            if failure == "json":
+                return httpx.Response(200, text="private-secret")
+            if failure in ("token", "unsafe_code"):
+                return httpx.Response(200, json={"errcode": 40001 if failure == "token" else "private-secret",
+                                                 "errmsg": "private-secret private-code"})
+            return httpx.Response(200, json={"errcode": 0, "access_token": "private-token"})
+        if failure == "outsider":
+            return httpx.Response(200, json={"errcode": 0, "OpenId": "private-member"})
+        return httpx.Response(200, json={"errcode": 40029, "errmsg": "private-token private-code"})
+
+    connector = WeComConnector(lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(Exception):
+        await connector.exchange_code(source, "private-code", "private-nonce")
+    records = [record for record in caplog.records if record.name == "gateway.services.identity_connectors"]
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert "WeCom login exchange failed" in message
+    assert f"stage={stage}" in message and detail in message
+    assert records[0].exc_info is None
+    for value in ("private-secret", "private-token", "private-code", "private-nonce", "private-member"):
+        assert value not in message
+
+
+@pytest.mark.asyncio
+async def test_wecom_failure_logging_does_not_block_event_loop(monkeypatch):
+    import asyncio
+    import logging
+    import threading
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_log(*args):
+        entered.set()
+        assert release.wait(2)
+
+    monkeypatch.setattr(logging.getLogger("gateway.services.identity_connectors"), "warning", slow_log)
+    monkeypatch.delenv("MISSING_WECOM_SECRET", raising=False)
+    source = IdentitySource(secret_env="MISSING_WECOM_SECRET")
+    connector = WeComConnector(lambda: httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json={})
+    )))
+    task = asyncio.create_task(connector.exchange_code(source, "code", "nonce"))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        # The loop must keep running while the log handler is still blocked.
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
+        assert not task.done()
+    finally:
+        release.set()
+        with pytest.raises(ValueError, match="secret"):
+            await task

@@ -56,3 +56,12 @@ test('copied browser feedback summarizes the latest five distinct errors instead
   assert.ok(report.split('\n').length < 40)
   await window.happyDOM.close()
 })
+
+
+test('speech timing diagnostics contain bounded durations without audio or transcript', () => {
+  const diagnostics = createBrowserDiagnostics()
+  diagnostics.recordSpeechTiming({ requestMs: 1500.2, processingMs: 20.8, queuedMs: 2500 })
+  const [record] = diagnostics.snapshot()
+  assert.equal(record.kind, 'request')
+  assert.match(record.detail, /request=1500ms inference=21ms queued=2500ms/)
+})

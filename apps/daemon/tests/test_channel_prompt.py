@@ -18,11 +18,12 @@ def test_channel_background_on_normal_and_rebuilt_turns(monkeypatch, resumed, su
     monkeypatch.setattr("agent_assistants.channel_chat.build_channel_background", lambda _: "Current sender: Alice")
     monkeypatch.setattr("agent_assistants.chat_session.create_engine", lambda _: SimpleNamespace(supports_resume=supports_resume))
     session = SimpleNamespace(
-        project_id="project", engine="codex", resolved_session_id="native" if resumed else None,
+        project_id="project", session_id="workstep-session", engine="codex", resolved_session_id="native" if resumed else None,
         extra={}, messages=[{"role": "user", "content": "Hello"}],
     )
     for prompt in (module._build_prompt(session), module._build_rebuild_prompt(session)):
         assert prompt.count("Current sender: Alice") == 1
+        assert "workstep-session" in prompt and "--after 2h" in prompt
         assert "Hello" in prompt
         assert SYSTEM_PROMPT not in prompt
         assert "Project rules" not in prompt

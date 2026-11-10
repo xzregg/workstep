@@ -63,7 +63,7 @@ export const manualGroups = [
   { id: 'getting-started', title: '快速入门', chapterIds: onboardingChapters.map(chapter => chapter.id) },
   { id: 'automation', title: '流程与自动化', chapterIds: ['workflow', 'templates-ai-flow', 'workflow-hooks', 'quick-actions', 'schedules'] },
   { id: 'delivery', title: '任务与交付', chapterIds: ['tasks', 'execution', 'results', 'git'] },
-  { id: 'personalization', title: '对话与个性化', chapterIds: ['chat-skills', 'appearance'] },
+  { id: 'personalization', title: '对话与个性化', chapterIds: ['chat-skills', 'custom-engines', 'appearance'] },
   { id: 'collaboration', title: '共享与协作', chapterIds: ['sharing-remote', 'gateway-workspace', 'bots', 'project-audit'] },
   { id: 'help', title: '设置与帮助', chapterIds: ['sandbox', 'settings-troubleshooting', 'faq'] },
 ]

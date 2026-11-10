@@ -1,5 +1,6 @@
 export const zhCN = {
-  speech: {"backendUpdateRequired": "当前后台仍是旧版语音服务，请重启 WorkStep 后台并重新打开页面后重试。仅刷新页面或重装 Android 包无法更新后台。", "downloadPunctuation": "下载标点模型（72 MiB）", "requesting": "正在启动麦克风，请留意系统授权提示…", "microphoneTimeout": "麦克风启动超时，请检查系统授权提示后重试。", "serviceTimeout": "语音服务响应超时，请检查连接后重试。", "responseMismatch": "录音返回与当前会话不匹配，本次结果已丢弃，请重试。", "testComplete": "录音测试已完成", "testNoSpeech": "未识别到语音，请靠近麦克风说一句话后再次测试。", "holdPlaceholder": "{placeholder}或长按语音输入", "holdHint": "长按语音输入", "audioSourceUnavailable": "无法启动麦克风。请停止通话、录音或语音输入，检查系统麦克风总开关，再重新打开 WorkStep 重试；仍失败时请更新 Android System WebView。", "microphoneNotFound": "未检测到可用麦克风，请检查麦克风或蓝牙设备连接后重试", "pageMicrophoneBlocked": "当前页面的麦克风被站点安全策略禁止，请更新并重启 WorkStep 后台；使用网关或反向代理时也需允许同源麦克风访问", "permissionDenied": "麦克风权限被拒绝，请在浏览器或系统设置中允许 WorkStep 使用麦克风", "title": "语音输入", "settings": "语音设置", "start": "开始录音", "finish": "完成录音", "cancel": "取消录音", "keyboard": "切回键盘", "recover": "保留已识别文字", "idle": "点击开始录音", "preparing": "正在连接录音会话…", "recording": "正在录音", "finishing": "正在完成识别…", "error": "录音未完成", "failed": "语音输入失败，请重试", "secureRequired": "当前页面无法使用麦克风，请通过 HTTPS 或本机地址访问", "draftChanged": "草稿已变化，本次转写未写入，请取消后重试", "tooSlow": "识别未能跟上录音速度，已停止采集，可保留已识别文字", "deviceLost": "麦克风已断开，录音已停止", "volume": "麦克风音量", "hostHint": "音频在连接的 WorkStep 主机上识别，手机无需下载模型。录音不会保存，识别结果需手动发送。", "enable": "启用语音输入", "language": "识别语言", "lang_auto": "自动识别", "lang_zh": "普通话", "lang_yue": "粤语", "lang_en": "英语", "lang_ja": "日语", "lang_ko": "韩语", "service": "语音服务", "service_busy": "使用中", "service_ready": "已加载", "service_stopped": "按需启动", "models": "语音模型", "installed": "当前模型，已安装", "modelHint": "原生流式识别，支持普通话、粤语和英语混合输入；录音中持续显示文字，松手后完成识别。停顿分句和最终定稿时自动补充标点，标点模型支持中文与英文。首次下载包含运行库和约 72 MiB 标点模型；已安装的语音模型只需补充标点资源。正常完成后服务保留 5 分钟，后续录音自动复用。", "retry": "重试", "download": "下载模型与运行库", "cancelDownload": "取消下载", "delete": "删除语音模型", "deleteConfirm": "删除模型和对应运行库？再次使用时需要重新下载。", "test": "测试麦克风", "stage_resolving": "正在检查平台和运行库…", "stage_downloading": "正在下载…", "stage_installing": "正在校验并加载模型…"},
+  channelDirectory: {"title": "通讯录", "enabled": "读取企业通讯录", "memoryHint": "通讯录仅缓存在内存中，重启后重新获取；日常查询不请求平台，人员变化后请手动更新。", "directory_corp_id": "企业 ID", "directory_agent_id": "通讯录应用 Agent ID", "directory_secret": "通讯录应用 Secret", "identityHint": "请使用机器人所属企业的应用凭证。企微成员需先与此机器人交互，且消息中的用户 ID 与目录 ID 完全一致，才能按姓名发送；ID 不一致时请使用已有会话发送。", "save": "保存通讯录配置", "botDisabled": "请先启用机器人", "loading": "正在获取通讯录…", "count": "已缓存 {count} 位成员", "refresh": "更新通讯录", "updated": "上次更新：", "search": "搜索姓名、部门或用户 ID", "name": "姓名", "department": "部门", "userId": "用户 ID", "unverified": "发送身份未验证", "empty": "没有匹配的联系人", "previous": "上一页", "next": "下一页"},
+  speech: {"interrupted": "麦克风已中断，正在整理已录音频…", "catchingUp": "正在录音，文字稍有延迟…", "backendUpdateRequired": "当前后台仍是旧版语音服务，请重启 WorkStep 后台并重新打开页面后重试。仅刷新页面或重装 Android 包无法更新后台。", "downloadPunctuation": "下载标点模型（72 MiB）", "requesting": "正在启动麦克风，请留意系统授权提示…", "microphoneTimeout": "麦克风启动超时，请检查系统授权提示后重试。", "serviceTimeout": "语音服务响应超时，请检查连接后重试。", "responseMismatch": "录音返回与当前会话不匹配，本次结果已丢弃，请重试。", "testComplete": "录音测试已完成", "testNoSpeech": "未识别到语音，请靠近麦克风说一句话后再次测试。", "holdPlaceholder": "{placeholder}或长按语音输入", "holdHint": "长按语音输入", "audioSourceUnavailable": "无法启动麦克风。请停止通话、录音或语音输入，检查系统麦克风总开关，再重新打开 WorkStep 重试；仍失败时请更新 Android System WebView。", "microphoneNotFound": "未检测到可用麦克风，请检查麦克风或蓝牙设备连接后重试", "pageMicrophoneBlocked": "当前页面的麦克风被站点安全策略禁止，请更新并重启 WorkStep 后台；使用网关或反向代理时也需允许同源麦克风访问", "permissionDenied": "麦克风权限被拒绝，请在浏览器或系统设置中允许 WorkStep 使用麦克风", "title": "语音输入", "settings": "语音设置", "start": "开始录音", "finish": "完成录音", "cancel": "取消录音", "keyboard": "切回键盘", "recover": "保留已识别文字", "idle": "点击开始录音", "preparing": "正在连接录音会话…", "recording": "正在录音", "finishing": "正在完成识别…", "error": "录音未完成", "failed": "语音输入失败，请重试", "secureRequired": "当前页面无法使用麦克风，请通过 HTTPS 或本机地址访问", "draftChanged": "草稿已变化，本次转写未写入，请取消后重试", "tooSlow": "识别未能跟上录音速度，已停止采集，可保留已识别文字", "deviceLost": "麦克风已断开，录音已停止", "volume": "麦克风音量", "hostHint": "音频在连接的 WorkStep 主机上识别，手机无需下载模型。录音不会保存，识别结果需手动发送。", "enable": "启用语音输入", "language": "识别语言", "lang_auto": "自动识别", "lang_zh": "普通话", "lang_yue": "粤语", "lang_en": "英语", "lang_ja": "日语", "lang_ko": "韩语", "service": "语音服务", "service_busy": "使用中", "service_ready": "已加载", "service_stopped": "按需启动", "models": "语音模型", "installed": "当前模型，已安装", "modelHint": "原生流式识别，支持普通话、粤语和英语混合输入；录音中持续显示文字，松手后完成识别。停顿分句和最终定稿时自动补充标点，标点模型支持中文与英文。首次下载包含运行库和约 72 MiB 标点模型；已安装的语音模型只需补充标点资源。正常完成后服务保留 5 分钟，后续录音自动复用。", "retry": "重试", "download": "下载模型与运行库", "cancelDownload": "取消下载", "delete": "删除语音模型", "deleteConfirm": "删除模型和对应运行库？再次使用时需要重新下载。", "test": "测试麦克风", "stage_resolving": "正在检查平台和运行库…", "stage_downloading": "正在下载…", "stage_installing": "正在校验并加载模型…"},
 
 
   builtinContent: {
@@ -1426,7 +1427,7 @@ export const zhCN = {
     random: '随机',
     stepKey: '步骤标识（type）',
     autoStart: '创建后自动开始',
-    keyHelp: '用于步骤状态和依赖引用，当前流程内必须唯一',
+    keyHelp: '步骤 key，用于状态和依赖引用，流程内唯一',
     prompt: '提示词',
     promptPlaceholder: '描述这个步骤要做什么...',
     promptVariablesHint: '执行时自动替换：{name}（本次步骤触发者，未单独触发时为任务创建者）、{creator_name}（任务创建者）、{task_title}（任务标题）、{task_description}（任务描述）、{step_name}（步骤名称）、{step_key}（步骤标识）、{worktrees}（任务Git工作区目录）。也支持全角花括号。',
@@ -1446,7 +1447,7 @@ export const zhCN = {
     returnRouting: '返回线',
     executionSettings: "执行设置",
     reuseSuccess: "成功后复用",
-    reuseSuccessHint: "正常流转时沿用已有成功产物；直接返工、手动 @ 或协调助手触发时重新执行。",
+    reuseSuccessHint: "同一任务中复用成功产物，适合确定分支名等一次性步骤。直接返工、手动 @ 或协调助手指定执行时仍会重跑。",
     maxReturnRounds: '最大返回次数',
     maxReturnRoundsHint: '仅作用于该步骤发出的虚线返回连接。默认 {default} 次，可设置 1–{max} 次；与审核重试次数无关。',
     reviewConfig: '审核引擎配置',
@@ -2147,8 +2148,18 @@ export const zhCN = {
     notificationRetry: '重试通知',
     notificationReload: '重新加载会话',
 
-    projectTarget: '项目创建任务',
-    taskTarget: '任务协调指令',
+    sessionTarget: '对话',
+    targetSession: '关联对话',
+    selectSession: '请选择对话',
+    sessionInstruction: '消息内容',
+    channelConversation: '渠道对话',
+    localConversation: '普通对话',
+    sessionChannelReply: '助手回复自动回传原渠道',
+    sessionLocalReply: '消息与回复保留在所选对话',
+    sessionLifecycle: '删除或归档所选对话时，关联定时任务一并清除；恢复对话不会恢复规则。',
+    openSession: '打开对话',
+    projectTarget: '创建任务',
+    taskTarget: '协调任务',
     targetFilter: '筛选定时目标',
     taskIdFilter: '按任务 ID 筛选',
     ruleName: '标题',

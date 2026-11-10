@@ -2,8 +2,8 @@ import type { I18nDict } from './keys'
 
 export const zhTW: I18nDict = {
   "meta": {
-    "title": "WorkStep — 讓 AI 按步驟開發，關鍵結果由你把關",
-    "description": "連線 AI 程式設計引擎，按步驟分析需求、實現程式碼、測試和審查，檢視結果並審核返工。"
+    "title": "WorkStep — 開源 AI 程式開發流程，支援自訂 Agent 引擎",
+    "description": "WorkStep 是開源、本地優先的 AI 程式開發流程工具。接入 CLI、SDK、ACP 或自訂 Agent 引擎，串聯需求、開發、測試與人工審核。複用流程，分享專案與任務，共同交付。"
   },
   "privacy": {
     "title": "WorkStep 隱私說明",
@@ -56,11 +56,11 @@ export const zhTW: I18nDict = {
     "themeLight": "切換到白天模式"
   },
   "hero": {
-    "eyebrow": "面向個人開發者與小團隊的 AI 開發工作台",
+    "eyebrow": "開源 AI Agent 工作流程 · 本地優先",
     "titleA": "讓 AI 按步驟開發，",
     "titleB": "關鍵結果由你把關",
     "promise": "需求分析 · 程式碼實現 · 測試 · 審查",
-    "lede": "把 Codex、Claude Code 等 AI 程式設計工具連線成一套流程。上一步的結果交給下一步，你可以檢視過程、審核結果，不滿意就退回重做。設定好的流程，下個任務繼續用。",
+    "lede": "用你選擇的 Agent 引擎，把需求、開發、測試連成可複用的流程。每步結果自動交接，關鍵產物由你審核，也能分享專案與任務一起推進。",
     "ctaPrimary": "下載桌面版",
     "ctaSecondary": "看一段真實操作",
     "setup": "首次使用需安裝一個執行引擎並完成認證；模型服務費用按所選服務規則計算。",
@@ -161,6 +161,9 @@ export const zhTW: I18nDict = {
     "statusReviewing": "審核中"
   },
   "engines": {
+    extension: "內建與自訂 Agent 引擎，按需接入",
+    description: "支援 CLI、SDK 與 ACP 引擎，也可自訂接入。內建引擎只是起點，每個步驟都能選擇合適的引擎。從「設定 → 執行引擎 → 自訂接入」開始，安裝、驗證通過後註冊使用。",
+    guide: "自訂引擎接入指南",
     "label": "選擇適合你的 AI 程式設計工具，先設定一個即可開始",
     "codex": "Codex CLI",
     "claude": "Claude Code",
@@ -191,8 +194,8 @@ export const zhTW: I18nDict = {
     "lede": "把經常重複的開發步驟儲存下來，減少在多個 AI 對話之間轉述背景、搬運結果和確認進度。",
     "item1Title": "用對話擬定流程，在畫布確認調整",
     "item1Desc": "告訴助手你想怎樣開發，先檢視它提出的步驟和設定，確認應用後再調整。流程由你決定，執行前先核對。",
-    "item2Title": "先接入一個 AI 工具就能開始",
-    "item2Desc": "先安裝並驗證一個執行引擎，例如 Codex SDK 或 Claude Agent SDK。多個步驟可以使用同一個引擎，也可以按需要分別選擇。",
+    "item2Title": "內建或自訂引擎，按步驟選擇",
+    "item2Desc": "接入 CLI、SDK、ACP 或自訂 Agent 引擎；多個步驟可共用引擎，也可分別選擇。",
     "item3Title": "上一步的結果，交給下一步",
     "item3Desc": "設定步驟的輸入、輸出和連線，讓需求分析產生的計劃傳給實現步驟，再把程式碼改動交給測試與審查步驟。",
     "item4Title": "看過程、查結果，需要時退回重做",

@@ -7,10 +7,12 @@ from schemas.base import BaseSchema
 
 
 class CreateScheduleRequest(BaseSchema):
+    idempotency_key: str | None = None
     notification: dict | None = None
     name: str
-    target_type: Literal["project", "task"] = "project"
+    target_type: Literal["project", "task", "session"] = "project"
     target_task_id: str | None = None
+    target_session_id: str | None = None
     instruction: str | None = None
     stop_condition: Literal["manual", "task_terminal"] = "manual"
     workflow_id: str = ""
@@ -22,8 +24,9 @@ class CreateScheduleRequest(BaseSchema):
 
 class UpdateScheduleRequest(BaseSchema):
     notification: dict | None = None
-    target_type: Literal["project", "task"] | None = None
+    target_type: Literal["project", "task", "session"] | None = None
     target_task_id: str | None = None
+    target_session_id: str | None = None
     instruction: str | None = None
     stop_condition: Literal["manual", "task_terminal"] | None = None
     name: str | None = None

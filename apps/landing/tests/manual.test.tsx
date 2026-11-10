@@ -12,6 +12,15 @@ describe('operation manual', () => {
     expect([...ids].sort()).toEqual(manualChapters.map(chapter => chapter.id).sort())
     expect(manualGroups.find(group => group.id === 'getting-started')?.chapterIds).toContain('sdk-installation')
   })
+  it('makes custom engine onboarding discoverable and explains import and runtime controls', () => {
+    const groups = getManualGroups('自定义引擎')
+    expect(groups.flatMap(group => group.chapters).map(chapter => chapter.id)).toContain('custom-engines')
+    expect(getManualChapterId('#docs/custom-engines')).toBe('custom-engines')
+    const chapter = manualChapters.find(chapter => chapter.id === 'custom-engines')!
+    expect(chapter.sections.map(section => section.screenshot?.id)).toEqual(['custom-engine-onboarding', 'custom-engine-import', 'custom-engine-management'])
+    const prose = JSON.stringify(chapter)
+    for (const phrase of ['自定义接入', '导入引擎', '重新扫描', '停用运行', '下拉显示', '回退版本', '真实验收', '不执行包代码']) expect(prose).toContain(phrase)
+  })
   it('searches chapter content across categories without empty groups', () => {
     const groups = getManualGroups('  SDK  ')
     expect(groups.length).toBeGreaterThan(1)

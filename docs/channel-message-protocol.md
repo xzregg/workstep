@@ -130,3 +130,10 @@ Codex SDK 收到消息开始帧后，正文增量不等待可选的 `phase` 标�
 钉钉应用须同时开通 `Card.Instance.Write` 与 `Card.Streaming.Write`。实例更新使用 `updateCardDataByKey=true`；原生流式与按钮回调回归见 `tests/test_dingtalk_native_stream.py`。
 
 钉钉图片与文件下载共用 `dingtalk.py::download`：可信平台域名的旧 HTTP 地址在请求前升级为 HTTPS，签名查询原样保留，每次重定向均重新校验域名、协议和端口。不支持的地址仅记录协议及域名，不记录下载签名；行为回归见 `tests/test_dingtalk_media_download.py`，慢网络与大小上限见 `tests/test_channel_protocol.py`。
+
+
+## 可选通讯录能力
+
+渠道适配器以 `DIRECTORY_PROVIDER` 注册 `ChannelDirectoryProvider`，并声明 `ChannelCapabilities.directory`。提供者仅实现异步 `fetch_snapshot()` 和额外凭证字段元数据；返回 contact_id、name、departments、user_id（身份未验证时为空）。统一服务负责内存快照、姓名消歧、同步任务和查询，不持久化目录，也不改变已有发送协议。
+
+发送 API 的 session_id / user_id / group_id / user_name / contact_id 互斥；除 session_id 外必须指定 bot_id。目录目标解析后复用原发送器，重名、未就绪和身份未验证返回结构化 409 错误（code/message/candidates）。目录查询不进行隐式同步；首次启用与用户显式刷新之外不调用平台目录接口。

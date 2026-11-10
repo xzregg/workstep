@@ -161,6 +161,9 @@ export const nbNO: I18nDict = {
     "statusReviewing": "Gjennomgang"
   },
   "engines": {
+    extension: "Koble til din egen Agent-motor",
+    description: "Koble til CLI-, SDK- og ACP-motorer eller bygg en adapter. Velg motor for hvert steg. Start en tilpasset integrasjon i motorinnstillingene, og installer, valider og registrer adapteren.",
+    guide: "Veiledning for egne motorer",
     "label": "Velg et AI-kodingsverktøy. Konfigurer en for å komme i gang.",
     "codex": "Codex CLI",
     "claude": "Claude Code",

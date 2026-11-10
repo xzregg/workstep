@@ -26,8 +26,10 @@ export interface ProjectSchedule {
   name: string
   creator_name?: string | null
   creator_username?: string | null
-  target_type?: 'project' | 'task'
+  target_type?: 'project' | 'task' | 'session'
   target_task_id?: string | null
+  target_session_id?: string | null
+  target_session_title?: string | null
   target_task_title?: string | null
   instruction?: string | null
   notification?: ScheduleNotification
@@ -66,6 +68,7 @@ export interface ScheduleRun {
   notification_error?: string | null
   reason?: string | null
   task_id?: string | null
+  session_id?: string | null
   generated_tasks?: Array<Record<string, unknown>> | null
   created_tasks?: Array<{ id: string; title: string; workflow_id?: string | null; scheduled_start_at?: string | null; workflow_run_id?: string | null }>
   user_message_id?: string | null
@@ -82,8 +85,10 @@ export type TaskScheduleSummary = Pick<ProjectSchedule,
 
 export interface SchedulePayload {
   name: string
-  target_type?: 'project' | 'task'
+  target_type?: 'project' | 'task' | 'session'
   target_task_id?: string | null
+  target_session_id?: string | null
+  target_session_title?: string | null
   instruction?: string | null
   notification?: ScheduleNotification
   stop_condition?: 'manual' | 'task_terminal'

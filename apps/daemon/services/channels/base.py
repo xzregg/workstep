@@ -16,6 +16,7 @@ class ChannelCapabilities:
     waiting: bool = False
     streaming: bool = False
     cards: bool = False
+    directory: bool = False
     file_extensions: frozenset[str] | None = None
     max_image_bytes: int = 2 * 1024 * 1024
     max_file_bytes: int = 20 * 1024 * 1024
@@ -94,6 +95,7 @@ class ChannelAction:
 class ChannelAdapter(ABC):
     CHANNEL_ID: str = ''
     DISPLAY_NAME: str = ''
+    DIRECTORY_PROVIDER = None
     CAPABILITIES = ChannelCapabilities()
 
     def __init__(self, bot: dict, on_message, on_state):

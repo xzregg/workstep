@@ -47,6 +47,7 @@ export interface ChatInputTextSegmentProps {
   markdown: string
   placeholder?: string
   disabled?: boolean
+  readOnly?: boolean
   rows?: number
   /** Keep short text beside an adjacent image instead of forcing a full row. */
   inlineWithImage?: boolean
@@ -68,6 +69,7 @@ export default function ChatInputTextSegment({
   markdown,
   placeholder,
   disabled = false,
+  readOnly = false,
   rows = 1,
   inlineWithImage = false,
   externalRef,
@@ -139,6 +141,7 @@ export default function ChatInputTextSegment({
   }, [syncHeight])
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    if (readOnly) return
     const element = event.currentTarget
     const next = element.value
     if (composingRef.current) {
@@ -184,10 +187,11 @@ export default function ChatInputTextSegment({
       onChange={handleChange}
       onCompositionStart={handleCompositionStart}
       onCompositionEnd={handleCompositionEnd}
-      onPaste={onPaste}
-      onKeyDown={onKeyDown}
+      onPaste={readOnly ? undefined : onPaste}
+      onKeyDown={readOnly ? undefined : onKeyDown}
       placeholder={placeholder}
       disabled={disabled}
+      readOnly={readOnly}
       rows={rows}
       onFocus={(event: FocusEvent<HTMLTextAreaElement>) => onFocusElement(event.currentTarget)}
       onBlur={(event: FocusEvent<HTMLTextAreaElement>) =>

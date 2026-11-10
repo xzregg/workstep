@@ -805,7 +805,7 @@
         "title": "Dettare una bozza di messaggio",
         "steps": [
           "Apri Impostazioni → Input vocale, attivalo, scarica modello e runtime, scegli la lingua e prova il microfono. L’installazione avviene sull’host WorkStep collegato, non sul telefono. Sono supportati mandarino, cantonese e inglese.",
-          "Premi il microfono in una chat modificabile; sul telefono puoi tenere premuto l’accesso vocale. Detta, termina, controlla il testo inserito e invialo manualmente. Massimo due minuti; annullare non invia nulla."
+          "Sul PC premi il microfono. Sul telefono tieni premuta l’area di testo per 500 ms; non compare un’icona microfono. Rilascia, verifica il testo inserito e invia manualmente. Massimo due minuti; annullare non invia nulla."
         ],
         "tips": [
           "L’audio viene riconosciuto sull’host collegato e non salvato. Consenti il microfono tramite HTTPS o indirizzo locale. In caso di errore controlla permessi del sito e del sistema e riavvia un backend obsoleto. Puoi conservare esplicitamente il testo già riconosciuto."
@@ -947,6 +947,18 @@
     "title": "Attività pianificate",
     "summary": "Crea nuove attività in base a una pianificazione o invia istruzioni del coordinatore temporizzato alle attività esistenti e monitora l'esecuzione e le notifiche.",
     "sections": [
+      {
+        "title": "Programmare messaggi in una conversazione",
+        "steps": [
+          "Apri Pianificazioni, scegli progetto e destinazione Conversazione. Seleziona una conversazione esistente, inserisci titolo e messaggio, per esempio controllare i progressi, imposta orario o frequenza, verifica la prossima esecuzione e salva.",
+          "Il backend deve restare attivo. Le conversazioni occupate attendono; le risposte di canale tornano al canale originale. Eliminare o archiviare rimuove le regole, che non tornano ripristinando la conversazione. I gruppi legati a un’attività usano il coordinamento attività."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Programmare messaggi in una conversazione",
+          "caption": "Il backend deve restare attivo. Le conversazioni occupate attendono; le risposte di canale tornano al canale originale. Eliminare o archiviare rimuove le regole, che non tornano ripristinando la conversazione. I gruppi legati a un’attività usano il coordinamento attività."
+        }
+      },
       {
         "title": "Eseguire subito e controllare i risultati",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Configura WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack o QQ, distinguendo la chat dalle notifiche Webhook.",
     "sections": [
       {
+        "title": "Usare la rubrica di un bot",
+        "steps": [
+          "Salva un bot DingTalk, WeCom o Feishu, poi abilita l’accesso in Modifica → Rubrica. Concedi i permessi di lettura membri; WeCom richiede anche ID azienda, Agent ID e Secret. Salva, cerca nella cache e aggiorna dopo cambi di personale.",
+          "La rubrica resta in memoria e si ricarica al riavvio. Con CLI o assistente invia usando un nome esatto univoco o ID contatto; scegli esplicitamente gli omonimi. In WeCom il destinatario deve aver già parlato con lo stesso bot e avere lo stesso ID utente; altrimenti usa una conversazione di canale esistente."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Usare la rubrica di un bot",
+          "caption": "La rubrica resta in memoria e si ricarica al riavvio. Con CLI o assistente invia usando un nome esatto univoco o ID contatto; scegli esplicitamente gli omonimi. In WeCom il destinatario deve aver già parlato con lo stesso bot e avere lo stesso ID utente; altrimenti usa una conversazione di canale esistente."
+        }
+      },
+      {
         "title": "Scegli un canale e collega una nuova piattaforma",
         "steps": [
           "Apri Impostazioni → Bot dei canali, seleziona una piattaforma a sinistra e inserisci un nome, credenziali e un progetto locale predefinito a destra. Abilita e salva. I segreti vuoti mantengono i valori esistenti durante la modifica; controllare le modifiche non salvate prima di cambiare. Chiudendo le impostazioni, premendo Esci o cambiando sezione delle impostazioni viene richiesta conferma quando le modifiche non vengono salvate; l'annullamento conserva la bozza.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Errore nella dimostrazione causato da un modello inesistente",
           "caption": "L'errore dice che il modello scelto non è supportato. Riparare la configurazione del modello del passaggio prima di eseguirlo nuovamente; non è riparato in questa immagine."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Motori personalizzati",
+    "summary": "Integra nuovi motori SDK, CLI o ACP tramite una normale conversazione, oppure importa un pacchetto esistente. Usali solo dopo la verifica reale e la registrazione.",
+    "sections": [
+      {
+        "title": "Creare un motore tramite conversazione",
+        "steps": [
+          "Se i motori esistenti non bastano, con i permessi di amministrazione dell’host apri «Impostazioni → Motori di esecuzione» e fai clic su «Integrazione personalizzata». Per iniziare resta consigliato configurare prima un SDK integrato.",
+          "Nella normale conversazione dell’area di lavoro predefinita, scegli un motore già configurato e specifica nome, documentazione ufficiale, autenticazione e capacità richieste. Ad esempio: «Integra l’SDK ufficiale di un fornitore, con chat testuale e arresto della generazione».",
+          "Controlla la bozza precompilata prima di inviarla; aprire la conversazione non genera né installa un motore. Chiedi di seguire le specifiche d’integrazione, verificare eventuali motori omonimi, creare l’adattatore e installare le dipendenze in una cartella separata.",
+          "Segui le indicazioni della conversazione per autenticazione, verifica reale e registrazione. Codice generato o installazione completata non significano integrazione riuscita. Salva le chiavi nelle impostazioni, mai in chat, codice sorgente o screenshot."
+        ],
+        "tips": [
+          "La verifica reale chiama servizi di modelli e può comportare costi. Il codice personalizzato ha accesso al computer; isolare un sottoprocesso non crea una sandbox per file o rete. Integra solo fonti attendibili."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Accessi all’integrazione personalizzata e all’importazione nelle impostazioni dei motori",
+          "caption": "Mancano screenshot dell’ambiente dimostrativo fisso con l’accesso all’integrazione e la bozza non inviata."
+        }
+      },
+      {
+        "title": "Importare un pacchetto motore esistente",
+        "steps": [
+          "In «Impostazioni → Motori di esecuzione», fai clic su «Importa motore» e scegli un pacchetto motore ZIP esportato da una fonte attendibile.",
+          "L’importazione controlla il contenuto e crea una normale conversazione d’integrazione con una bozza. Non esegue il codice del pacchetto né sovrascrive motori registrati. Un’importazione riuscita non equivale a installazione o verifica superata.",
+          "Controlla nella conversazione la cartella del pacchetto e i requisiti; reinstalla le dipendenze per il sistema locale, configura l’autenticazione, completa la verifica reale e poi registra il motore. Per sostituire un motore esistente, verifica prima l’ID e l’intenzione di sostituirlo."
+        ],
+        "tips": [
+          "Lo ZIP non include dipendenze installate o autenticazione locale; il destinatario deve comunque completare configurazione e verifica. Se l’importazione fallisce, leggi l’errore nella pagina delle impostazioni e riprova con il pacchetto corretto."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Conversazione d’integrazione e bozza create dopo l’importazione di un pacchetto motore",
+          "caption": "Mancano screenshot dell’ambiente dimostrativo fisso con importazione ZIP e bozza da configurare. L’importazione non va presentata come registrazione riuscita."
+        }
+      },
+      {
+        "title": "Usare, esportare, disattivare e ripristinare",
+        "steps": [
+          "Dopo che la conversazione conferma la registrazione riuscita, torna a «Impostazioni → Motori di esecuzione» e fai clic su «Ripeti scansione». Il nuovo motore appare nell’elenco; la registrazione in sé non richiede il riavvio.",
+          "Verifica configurazione del motore, fornitore e modello, poi selezionalo in una normale conversazione o in un passaggio del flusso. Esegui prima una piccola attività per controllare il risultato reale.",
+          "La scheda di un motore personalizzato offre «Esporta ZIP», «Disattiva esecuzione» e «Riattiva esecuzione». L’interruttore «Attiva / Disattiva» della scheda controlla solo la visibilità nei menu a discesa; le attività esistenti possono ancora usare il motore. Disattivare l’esecuzione chiude invece le connessioni attive del motore: arresta prima le attività o le conversazioni interessate.",
+          "Se un aggiornamento dà problemi ed esiste una versione precedente, termina le esecuzioni interessate e fai clic su «Ripristina versione». Ripeti verifica e registrazione, poi riavvia se richiesto dall’interfaccia. Senza una versione precedente il ripristino non è disponibile."
+        ],
+        "tips": [
+          "Modifiche a codice, dipendenze o configurazione possono invalidare la verifica precedente: ripetila prima della registrazione. Per cambiare solo indirizzo del servizio o autenticazione, preferisci la configurazione del fornitore senza ricreare il motore."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Controlli di esportazione, disattivazione e ripristino di un motore personalizzato registrato",
+          "caption": "Manca una scheda reale di un motore registrato nell’ambiente dimostrativo fisso; una scheda di un motore integrato non può sostituirla."
         }
       }
     ]

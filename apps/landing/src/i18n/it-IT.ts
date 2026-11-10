@@ -161,6 +161,9 @@ export const itIT: I18nDict = {
     "statusReviewing": "Revisione"
   },
   "engines": {
+    extension: "Collega il tuo motore Agent",
+    description: "Collega motori CLI, SDK e ACP o crea un adattatore. Scegli il motore per ogni passaggio. Avvia l’integrazione personalizzata nelle impostazioni dei motori, poi installa, verifica e registra l’adattatore.",
+    guide: "Guida ai motori personalizzati",
     "label": "Scegli uno strumento di codifica AI. Configurane uno per iniziare.",
     "codex": "Codice CLI",
     "claude": "Claude Code",

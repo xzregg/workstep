@@ -161,6 +161,9 @@ export const deDE: I18nDict = {
     "workflowId": "ID: default"
   },
   "engines": {
+    extension: "Eigene Agent-Engines anbinden",
+    description: "CLI-, SDK- und ACP-Engines anbinden oder eigene Adapter erstellen. Pro Schritt eine Engine wählen. Die eigene Integration in den Engine-Einstellungen starten, danach installieren, prüfen und registrieren.",
+    guide: "Anleitung für eigene Engines",
     "label": "Wählen Sie ein KI-Coding-Werkzeug. Richten Sie eines ein, um zu beginnen.",
     "codex": "Codex CLI",
     "claude": "Claude Code",

@@ -805,7 +805,7 @@
         "title": "Udfyld en beskedkladde med stemmen",
         "steps": [
           "Åbn Indstillinger → Stemmeinput, aktivér, hent model og kørselsmiljø, vælg sprog og test mikrofonen. Installationen sker på den tilsluttede WorkStep-vært; telefonen behøver ingen model. Mandarin, kantonesisk og engelsk understøttes.",
-          "Tryk på mikrofonen i en redigerbar chat, eller hold stemmeknappen på telefonen inde. Tal, afslut, kontrollér den indsatte tekst og send manuelt. Højst to minutter; annullering sender intet."
+          "På computeren klikker du på mikrofonen. På telefonen holder du tekstfeltet i 500 ms; der vises intet mikrofonikon. Slip, kontrollér teksten og send manuelt. Højst to minutter; annullering sender intet."
         ],
         "tips": [
           "Lyd genkendes på den tilsluttede vært og gemmes ikke. Tillad mikrofon via HTTPS eller lokal adresse. Kontrollér webstedets og systemets tilladelser ved fejl; genstart en gammel backend. Genkendt tekst kan udtrykkeligt beholdes."
@@ -947,6 +947,18 @@
     "title": "Planlagte opgaver",
     "summary": "Opret nye opgaver efter en tidsplan, eller send tidsbestemte koordinatorinstruktioner til eksisterende opgaver, og spor udførelse og meddelelser.",
     "sections": [
+      {
+        "title": "Planlæg beskeder i en samtale",
+        "steps": [
+          "Åbn Planer, vælg projekt og målet Samtale. Vælg en eksisterende samtale, angiv titel og besked, f.eks. kontrollér fremdrift, vælg tid eller frekvens, kontrollér næste kørsel og gem.",
+          "Backend skal køre. Optagede samtaler venter; kanalsvar returneres til oprindelsen. Sletning eller arkivering fjerner reglerne; gendannelse bringer dem ikke tilbage. Grupper knyttet til opgaver bruger opgavekoordinering."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Planlæg beskeder i en samtale",
+          "caption": "Backend skal køre. Optagede samtaler venter; kanalsvar returneres til oprindelsen. Sletning eller arkivering fjerner reglerne; gendannelse bringer dem ikke tilbage. Grupper knyttet til opgaver bruger opgavekoordinering."
+        }
+      },
       {
         "title": "Kør nu og kontrollér resultatet",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Konfigurer WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack eller QQ, og adskille chat fra Webhook-meddelelser.",
     "sections": [
       {
+        "title": "Brug bottens kontaktregister",
+        "steps": [
+          "Gem en DingTalk-, WeCom- eller Feishu-bot og aktivér læsning under Rediger → Register. Giv medlemslæserettigheder; WeCom kræver også virksomheds-ID, Agent ID og Secret. Gem, søg i cachen og opdatér ved personaleændringer.",
+          "Registret ligger kun i hukommelsen og indlæses efter genstart. Send via CLI eller assistent med præcist entydigt navn eller kontakt-ID; vælg navnesammenfald udtrykkeligt. WeCom-modtageren skal først have kontaktet samme bot med matchende bruger-ID; brug ellers en eksisterende kanalsamtale."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Brug bottens kontaktregister",
+          "caption": "Registret ligger kun i hukommelsen og indlæses efter genstart. Send via CLI eller assistent med præcist entydigt navn eller kontakt-ID; vælg navnesammenfald udtrykkeligt. WeCom-modtageren skal først have kontaktet samme bot med matchende bruger-ID; brug ellers en eksisterende kanalsamtale."
+        }
+      },
+      {
         "title": "Vælg en kanal og tilslut en ny platform",
         "steps": [
           "Åbn Indstillinger → Kanalbots, vælg en platform til venstre, og indtast et navn, legitimationsoplysninger og standard lokalt projekt til højre. Aktiver og gem. Tomme hemmeligheder bevarer eksisterende værdier ved redigering; kontroller ikke-gemte ændringer, før du skifter. Lukning af indstillinger, tryk på Escape eller skift af indstillingssektioner beder om bekræftelse, når ændringer ikke er gemt; annullering bevarer kladden.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Demonstrationsfejl forårsaget af en ikke-eksisterende model",
           "caption": "Fejlen siger, at den valgte model ikke understøttes. Reparer trinets modelkonfiguration, før du kører igen; det er ikke repareret på dette billede."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Brugerdefinerede motorer",
+    "summary": "Tilslut en ny SDK-, CLI- eller ACP-motor gennem en almindelig samtale, eller importér en eksisterende motorpakke. Brug den først efter reel afprøvning og registrering.",
+    "sections": [
+      {
+        "title": "Opret en motor gennem en samtale",
+        "steps": [
+          "Hvis de eksisterende motorer ikke opfylder behovet, skal du med værtsadministratorrettigheder åbne „Indstillinger → Udførelsesmotorer“ og klikke på „Brugerdefineret integration“. Ved første brug anbefales det stadig at konfigurere et indbygget SDK først.",
+          "Åbn en almindelig samtale i standardarbejdsområdet, vælg en konfigureret motor, og angiv navn, officiel dokumentation, godkendelsesmetode og ønskede funktioner. For eksempel: „Tilslut en udbyders officielle SDK med tekstsamtaler og stop af generering.“",
+          "Kontrollér den forudfyldte kladde før afsendelse. Det opretter eller installerer ikke en motor blot at åbne samtalen. Bed samtalen følge integrationskravene, kontrollere om navnet allerede findes, lave adapteren og installere afhængigheder i en særskilt mappe.",
+          "Følg samtalens anvisninger for godkendelse, reel afprøvning og registrering. Genereret kode eller færdig installation betyder ikke, at integrationen virker. Gem nøgler i indstillingerne, ikke i chat, kildekode eller skærmbilleder."
+        ],
+        "tips": [
+          "Reel afprøvning kalder modeltjenesten og kan koste penge. Brugerdefineret kode har lokale rettigheder; isolering i en underproces er ikke en fil- eller netværkssandkasse. Tilslut kun betroede kilder."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Brugerdefineret integration og motorimport i indstillingerne for udførelsesmotorer",
+          "caption": "Afventer skærmbilleder fra det faste demomiljø af integrationsindgangen og en usendt kladde."
+        }
+      },
+      {
+        "title": "Importér en eksisterende motorpakke",
+        "steps": [
+          "Klik på „Importér motor“ under „Indstillinger → Udførelsesmotorer“, og vælg en ZIP-motorpakke eksporteret fra en betroet kilde.",
+          "Importen kontrollerer pakkens indhold og opretter en almindelig integrationssamtale med en kladde. Den kører ikke pakkens kode og overskriver ikke registrerede motorer. En vellykket import er ikke en fuldført installation eller bestået afprøvning.",
+          "Kontrollér pakkemappen og integrationskravene i samtalen. Geninstallér afhængigheder til dit lokale system, konfigurér godkendelse, gennemfør reel afprøvning og registrér derefter motoren. Kontrollér ID og hensigten om erstatning, før du erstatter en eksisterende motor."
+        ],
+        "tips": [
+          "ZIP indeholder hverken installerede afhængigheder eller lokal godkendelseskonfiguration. Modtageren skal selv konfigurere og afprøve. Hvis importen fejler, så bliv på indstillingssiden, læs fejlen, og prøv igen med den rigtige pakke."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Integrationssamtale og kladde oprettet efter import af en motorpakke",
+          "caption": "Afventer skærmbilleder fra det faste demomiljø af ZIP-import og en kladde, der mangler konfiguration. Import vises ikke som vellykket registrering."
+        }
+      },
+      {
+        "title": "Brug, eksport, deaktivering og tilbagerulning",
+        "steps": [
+          "Når samtalen har meldt registreringen gennemført, skal du vende tilbage til „Indstillinger → Udførelsesmotorer“ og klikke på „Scan igen“. Den nye motor vises på listen; selve registreringen kræver ikke genstart.",
+          "Kontrollér motorens konfiguration, udbyder og model. Vælg den derefter i en almindelig samtale eller et arbejdsgangstrin, og kør først en lille opgave for at kontrollere det faktiske resultat.",
+          "Kortet for en brugerdefineret motor tilbyder „Eksportér ZIP“, „Deaktivér kørsel“ og „Genoptag kørsel“. Kortets „Til / Fra“-kontakt styrer kun visning i rullemenuen; eksisterende opgaver kan stadig bruge motoren. Deaktivering af kørsel lukker motorens aktive forbindelser, så stop først relevante opgaver eller samtaler.",
+          "Hvis en opdatering giver problemer, og en tidligere version findes, skal du først afslutte relevante kørsler og derefter klikke på „Rul version tilbage“. Afprøv og registrér igen efter tilbagerulningen, og genstart efter grænsefladens anvisninger. Uden en tidligere version er tilbagerulning ikke mulig."
+        ],
+        "tips": [
+          "Ændringer af kode, afhængigheder eller konfiguration kan ugyldiggøre den gamle afprøvning; afprøv igen før registrering. Hvis du kun ændrer modeltjenestens adresse eller godkendelse, så brug først udbyderindstillingerne uden at oprette motoren på ny."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Eksport-, deaktiverings- og tilbagerulningskontroller for en registreret brugerdefineret motor",
+          "caption": "Afventer et skærmbillede af et registreret motorkort fra det faste demomiljø; et indbygget motorkort bruges ikke som erstatning."
         }
       }
     ]

@@ -161,6 +161,9 @@ export const frFR: I18nDict = {
     "workflowId": "ID: default"
   },
   "engines": {
+    extension: "Connectez votre moteur Agent",
+    description: "Connectez des moteurs CLI, SDK et ACP ou créez un adaptateur. Choisissez un moteur par étape. Lancez une intégration personnalisée dans les paramètres des moteurs, puis installez, validez et enregistrez l’adaptateur.",
+    guide: "Guide des moteurs personnalisés",
     "label": "Choisissez un outil de développement IA. Configurez-en un pour commencer.",
     "codex": "Codex CLI",
     "claude": "Claude Code",

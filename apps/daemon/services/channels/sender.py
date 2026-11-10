@@ -6,6 +6,15 @@ import uuid
 from models.chat_session import ChatMessage, ChatSession
 
 
+def session_project_id(data, session_id):
+    source = data.get('session_sources', {}).get(session_id, {})
+    if source.get('project_id'):
+        return source['project_id']
+    route = next((key for key, sid in data.get('sessions', {}).items() if sid == session_id), '')
+    bot = next((bot for bot in data.get('bots', []) if bot['id'] == route.split(':', 1)[0]), {})
+    return bot.get('default_project_id')
+
+
 class ChannelMessageSender:
     def __init__(self, projects, load_config, adapters):
         self._projects = projects
@@ -49,23 +58,30 @@ class ChannelMessageSender:
         return {'sessions': await self._projects.run_db(project_id, read)}
 
     async def send(self, project_id, text, session_id=None, bot_id=None, user_id=None, group_id=None, attachments=None):
+        return await self._send(project_id, text, session_id, bot_id, user_id, group_id, attachments)
+
+    async def send_schedule_notification(self, project_id, text, session_id=None, bot_id=None, group_id=None):
+        return await self._send(project_id, text, session_id, bot_id, None, group_id, None, schedule=True)
+
+    async def _send(self, project_id, text, session_id, bot_id, user_id, group_id, attachments, *, schedule=False):
         from services.channels.bots import IncomingMessage
 
         if self._projects.get_project_by_id(project_id) is None:
             raise LookupError("项目不存在")
         data = await self._load()
         if session_id:
+            owner_id = (session_project_id(data, session_id) or project_id) if schedule else project_id
             route = next((route for route, value in data['sessions'].items() if value == session_id), None)
             if route is None:
                 raise LookupError('渠道会话已重置或不存在')
             def read(_project):
-                session = ChatSession.get_or_none((ChatSession.id == session_id) & (ChatSession.project_id == project_id))
+                session = ChatSession.get_or_none((ChatSession.id == session_id) & (ChatSession.project_id == owner_id))
                 if session is None:
                     raise LookupError('渠道会话不属于此项目')
                 if session.archived:
                     raise RuntimeError('渠道会话已归档')
                 return self._recipient(session, route, data)
-            recipient = await self._projects.run_db(project_id, read)
+            recipient = await self._projects.run_db(owner_id, read)
             if recipient is None:
                 raise LookupError('机器人不存在')
             bot_id = recipient['bot_id']
@@ -76,7 +92,12 @@ class ChannelMessageSender:
         bot = next((bot for bot in data['bots'] if bot['id'] == bot_id), None)
         if bot is None:
             raise LookupError('机器人不存在')
-        if not session_id and not (
+        if schedule and not session_id and not any(
+            row['bot_id'] == bot_id and row['group_id'] == group_id
+            for row in [*data.get('groups', []), *data.get('recent_groups', [])]
+        ):
+            raise LookupError('通知群聊不存在')
+        if not schedule and not session_id and not (
             bot['default_project_id'] == project_id
             or (group_id and any(binding['bot_id'] == bot_id and binding['group_id'] == group_id
                                  and binding['project_id'] == project_id for binding in data['groups']))

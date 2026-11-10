@@ -282,6 +282,10 @@ class ChatRowPersistence(PersistenceAdapter):
         row = ChatSession.get_or_none(ChatSession.id == scope_key)
         if row is None:
             return False
-        ChatMessage.delete().where(ChatMessage.session == row).execute()
-        row.delete_instance()
+        from models.base import db_proxy
+        from services.session_schedule_runtime import clear_session_schedules
+        with db_proxy.atomic():
+            clear_session_schedules(scope_key)
+            ChatMessage.delete().where(ChatMessage.session == row).execute()
+            row.delete_instance()
         return True

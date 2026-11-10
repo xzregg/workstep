@@ -1,0 +1,9 @@
+.bot-directory { border-top: 1px solid var(--border-soft); padding-top: 16px; margin-top: 16px; display: grid; gap: 12px; }
+.bot-directory h3 { margin: 0; font-size: 14px; }
+.bot-directory-toolbar, .bot-directory-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bot-directory-toolbar [role="status"] { display: flex; align-items: center; gap: 8px; }
+.bot-directory-table { overflow-x: auto; max-height: 320px; }
+.bot-directory table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.bot-directory th, .bot-directory td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border-soft); overflow-wrap: anywhere; }
+.bot-directory th { font-weight: 500; }
+.bot-directory td small { display: block; color: var(--text-secondary); }

@@ -41,7 +41,7 @@ class Settings(BaseModel):
 
 class Audio(BaseModel):
     sequence: int = Field(ge=0, le=240)
-    audio: str = Field(default='', max_length=86000)
+    audio: str = Field(default='', max_length=342000)
     final: bool = False
 
 

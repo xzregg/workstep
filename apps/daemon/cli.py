@@ -271,6 +271,13 @@ def build_parser() -> argparse.ArgumentParser:
     channel_bind.add_argument("--project", dest="project_id", required=True)
     channel_bind.add_argument("--task", dest="task_id", required=True)
     add_json(channel_bind)
+    channel_contacts = channel_sub.add_parser("contacts", help="search the bot's cached directory")
+    channel_contacts.add_argument("--project", dest="project_id", required=True)
+    channel_contacts.add_argument("--bot", dest="bot_id", required=True)
+    channel_contacts.add_argument("--query", default="")
+    channel_contacts.add_argument("--offset", type=int, default=0)
+    channel_contacts.add_argument("--limit", type=int, default=50)
+    add_json(channel_contacts)
     channel_send = channel_sub.add_parser("send", help="send a notification without starting an LLM turn")
     channel_send.add_argument("--project", dest="project_id", required=True)
     channel_send.add_argument("--text", default="")
@@ -280,6 +287,8 @@ def build_parser() -> argparse.ArgumentParser:
     recipients = channel_send.add_mutually_exclusive_group(required=True)
     recipients.add_argument("--session", dest="session_id")
     recipients.add_argument("--user", dest="user_id")
+    recipients.add_argument("--user-name", dest="user_name")
+    recipients.add_argument("--contact", dest="contact_id")
     recipients.add_argument("--group", dest="group_id")
     add_json(channel_send)
 
@@ -347,8 +356,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     schedule_list = schedule_sub.add_parser("list", help="list schedules")
     schedule_list.add_argument("--project", required=True, dest="project_id")
-    schedule_list.add_argument("--target", choices=("project", "task"), dest="target_type")
+    schedule_list.add_argument("--target", choices=("project", "task", "session"), dest="target_type")
     schedule_list.add_argument("--task", dest="target_task_id")
+    schedule_list.add_argument("--session", dest="target_session_id")
     add_json(schedule_list, list_output=True)
     schedule_get = schedule_sub.add_parser("get", help="get one schedule")
     schedule_get.add_argument("--project", required=True, dest="project_id")
@@ -369,8 +379,11 @@ def build_parser() -> argparse.ArgumentParser:
         target.add_argument("--project", required=True, dest="project_id")
         if not creating:
             target.add_argument("--schedule", required=True, dest="schedule_id")
-        target.add_argument("--target", choices=("project", "task"), dest="target_type")
+        target.add_argument("--target", choices=("project", "task", "session"), dest="target_type")
         target.add_argument("--task", dest="target_task_id")
+        target.add_argument("--session", dest="target_session_id")
+        if creating:
+            target.add_argument("--idempotency-key", help="stable source message or request key")
         target.add_argument("--notify", action=argparse.BooleanOptionalAction, default=None, help="notify channel when this occurrence finishes")
         target.add_argument("--notify-session", help="project channel session id")
         target.add_argument("--notify-bot", help="bot id for a task-bound group")
@@ -402,6 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
             default="skip" if creating else None,
         )
         rule = target.add_mutually_exclusive_group(required=creating)
+        rule.add_argument("--after", help="one-time relative delay, e.g. 30m or 2h")
         rule.add_argument("--at", help="one-time ISO date/time")
         rule.add_argument("--cron", help="five-field cron expression")
         rule.add_argument("--every-minutes", type=int)
@@ -474,6 +488,9 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     if command == "channel":
         if args.subcommand == "list":
             return await client.call("workstep_list_channel_bots", {})
+        if args.subcommand == "contacts":
+            return await client.call("workstep_search_channel_contacts", {
+                key: getattr(args, key) for key in ("bot_id", "project_id", "query", "offset", "limit")})
         if args.subcommand == "sessions":
             return await client.call("workstep_list_channel_sessions", {"project_id": args.project_id})
         if args.subcommand == "bind":
@@ -484,7 +501,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
         if (args.session_id and args.bot_id) or (not args.session_id and not args.bot_id):
             raise ValueError("按会话发送只需 --session；指定 --user 或 --group 时必须同时指定 --bot")
         arguments = {"project_id": args.project_id, "text": args.text, "confirm": "yes"}
-        arguments.update({key: getattr(args, key) for key in ("session_id", "bot_id", "user_id", "group_id") if getattr(args, key)})
+        arguments.update({key: getattr(args, key) for key in ("session_id", "bot_id", "user_id", "group_id", "user_name", "contact_id") if getattr(args, key)})
         if not args.text.strip() and not args.image and not args.file:
             raise ValueError("至少提供 --text、--image 或 --file")
         if len(args.image) + len(args.file) > 10:
@@ -741,7 +758,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     if command == "schedule":
         base = {"project_id": args.project_id}
         if args.subcommand == "list":
-            return await client.call("workstep_list_schedules", {**base, **({"target_type":args.target_type} if args.target_type else {}), **({"task_id":args.target_task_id} if args.target_task_id else {})})
+            return await client.call("workstep_list_schedules", {**base, **({"target_type":args.target_type} if args.target_type else {}), **({"task_id":args.target_task_id} if args.target_task_id else {}), **({"session_id":args.target_session_id} if args.target_session_id else {})})
         if args.subcommand == "get":
             return await client.call(
                 "workstep_get_schedule", {**base, "schedule_id": args.schedule_id}
@@ -791,7 +808,16 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 arguments["target_type"] = args.target_type
             if target_type == "project" and (args.target_task_id or args.stop_condition):
                 raise ValueError("--task and --stop-condition require --target task")
-            if target_type == "task":
+            if args.target_session_id and target_type != "session":
+                raise ValueError("--session requires --target session")
+            if target_type == "session":
+                if args.target_task_id or args.stop_condition or args.notify or destination:
+                    raise ValueError("Conversation schedules use their own session and channel")
+                if args.target_session_id is not None:
+                    arguments["target_session_id"] = args.target_session_id
+            if getattr(args, "idempotency_key", None):
+                arguments["idempotency_key"] = args.idempotency_key
+            if target_type in {"task", "session"}:
                 arguments["target_type"] = target_type
                 if args.target_task_id is not None:
                     arguments["target_task_id"] = args.target_task_id
@@ -800,7 +826,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 if args.stop_condition is not None:
                     arguments["stop_condition"] = args.stop_condition.replace("-", "_")
             mode = getattr(args, "mode", "static") or "static"
-            if args.subcommand == "create" and target_type != "task" and mode != "agent" and not args.workflow_id:
+            if args.subcommand == "create" and target_type == "project" and mode != "agent" and not args.workflow_id:
                 raise ValueError(
                     "--workflow is required when --mode is static (default)"
                 )
@@ -813,7 +839,9 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                     arguments[target] = value
             if mode == "agent" and args.workflow_id is None:
                 arguments["workflow_id"] = ""
-            if args.every_minutes is not None:
+            if args.after:
+                arguments["rule"] = {"kind":"after", "delay":args.after, "timezone":args.timezone or "UTC"}
+            elif args.every_minutes is not None:
                 arguments["rule"] = {"kind":"minutes", "every": args.every_minutes, "timezone":args.timezone or "UTC"}
             elif args.at or args.cron:
                 arguments["rule"] = {
@@ -849,9 +877,9 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 ]
             if args.retry_count is not None:
                 template["retry_count"] = args.retry_count
-            if target_type == "task":
-                if args.subcommand == "create" and (not args.target_task_id or not args.instruction):
-                    raise ValueError("--task and --instruction are required for task schedules")
+            if target_type in {"task", "session"}:
+                if args.subcommand == "create" and (not (args.target_session_id if target_type == "session" else args.target_task_id) or not args.instruction):
+                    raise ValueError("A --task/--session target and --instruction are required")
                 if args.workflow_id or args.title or args.description or args.start_step or args.review_overrides or args.candidates or args.retry_count is not None or mode != "static":
                     raise ValueError("Task schedules cannot contain project task creation options")
                 template = {}

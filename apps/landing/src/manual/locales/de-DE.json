@@ -805,7 +805,7 @@
         "title": "Nachrichtenentwurf per Sprache ausfüllen",
         "steps": [
           "Öffnen Sie Einstellungen → Spracheingabe, aktivieren Sie sie, laden Sie Modell und Laufzeit herunter, wählen Sie die Sprache und testen Sie das Mikrofon. Installiert wird auf dem verbundenen WorkStep-Host, nicht auf dem Telefon. Unterstützt werden Mandarin, Kantonesisch und Englisch.",
-          "Tippen Sie im bearbeitbaren Chat auf das Mikrofon; am Telefon geht auch langes Drücken. Sprechen Sie, beenden Sie die Aufnahme, prüfen Sie den eingefügten Text und senden Sie ihn selbst. Maximal zwei Minuten; Abbrechen sendet nichts."
+          "Am PC klicken Sie das Mikrofon. Am Telefon halten Sie das Texteingabefeld 500 ms; ein Mikrofonsymbol gibt es dort nicht. Loslassen beendet die Aufnahme; prüfen Sie den Text und senden Sie selbst. Maximal zwei Minuten; Abbrechen sendet nichts."
         ],
         "tips": [
           "Die Erkennung erfolgt auf dem verbundenen Host, Audio wird nicht gespeichert. Erlauben Sie das Mikrofon über HTTPS oder eine lokale Adresse. Prüfen Sie bei Fehlern Website- und Systemrechte; starten Sie ein veraltetes Backend neu. Erkannter Text kann ausdrücklich behalten werden."
@@ -947,6 +947,18 @@
     "title": "Zeitpläne",
     "summary": "Erstellen Sie Aufgaben zeitgesteuert oder senden Sie Koordinatoranweisungen an vorhandene Aufgaben und verfolgen Sie Ausführung und Zustellung.",
     "sections": [
+      {
+        "title": "Nachrichten in einer bestehenden Unterhaltung planen",
+        "steps": [
+          "Öffnen Sie Zeitpläne, wählen Sie Projekt und Ziel Unterhaltung. Wählen Sie eine bestehende Unterhaltung, geben Sie Titel und Nachricht, etwa Fortschritt prüfen, sowie Zeit oder Intervall ein. Prüfen Sie den nächsten Lauf und speichern Sie.",
+          "Das Backend muss laufen. Belegte Unterhaltungen warten; Kanalantworten gehen in den Ursprungskanal. Löschen oder Archivieren entfernt die Zeitpläne, Wiederherstellen bringt sie nicht zurück. Aufgabenverknüpfte Gruppen verwenden die Aufgabenkoordination."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Nachrichten in einer bestehenden Unterhaltung planen",
+          "caption": "Das Backend muss laufen. Belegte Unterhaltungen warten; Kanalantworten gehen in den Ursprungskanal. Löschen oder Archivieren entfernt die Zeitpläne, Wiederherstellen bringt sie nicht zurück. Aufgabenverknüpfte Gruppen verwenden die Aufgabenkoordination."
+        }
+      },
       {
         "title": "Sofort ausführen und erzeugte Aufgaben prüfen",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Konfigurieren Sie WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack oder QQ und trennen Sie Chat von Webhook-Benachrichtigungen.",
     "sections": [
       {
+        "title": "Bot-Verzeichnis verwenden",
+        "steps": [
+          "Speichern Sie einen DingTalk-, WeCom- oder Feishu-Bot und aktivieren Sie unter Bearbeiten → Verzeichnis den Zugriff. Erteilen Sie Leserechte für Mitglieder; WeCom benötigt außerdem Unternehmens-ID, Agent ID und Secret. Speichern Sie, durchsuchen Sie den Cache und aktualisieren Sie bei Personaländerungen.",
+          "Das Verzeichnis bleibt im Arbeitsspeicher und wird nach Neustart neu geladen. CLI oder Assistent senden an einen exakten eindeutigen Namen oder eine Kontakt-ID; Namensgleichheiten müssen Sie auflösen. WeCom-Empfänger müssen zuvor mit demselben Bot und identischer Benutzer-ID kommuniziert haben; sonst nutzen Sie eine bestehende Kanalunterhaltung."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Bot-Verzeichnis verwenden",
+          "caption": "Das Verzeichnis bleibt im Arbeitsspeicher und wird nach Neustart neu geladen. CLI oder Assistent senden an einen exakten eindeutigen Namen oder eine Kontakt-ID; Namensgleichheiten müssen Sie auflösen. WeCom-Empfänger müssen zuvor mit demselben Bot und identischer Benutzer-ID kommuniziert haben; sonst nutzen Sie eine bestehende Kanalunterhaltung."
+        }
+      },
+      {
         "title": "Kanal wählen und neue Plattform anbinden",
         "steps": [
           "Öffnen Sie Einstellungen → Kanalbots, wählen Sie links die Plattform und rechts Name, Zugangsdaten und lokales Standardprojekt. Aktivieren und speichern Sie. Leere Schlüsselfelder behalten beim Bearbeiten alte Werte; prüfen Sie ungespeicherte Änderungen vor Wechsel. Beim Schließen, mit Escape oder beim Wechsel des Einstellungsbereichs werden ungespeicherte Änderungen bestätigt; Abbrechen bewahrt den Entwurf.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Demoaufgabe mit ungültigem Modell fehlgeschlagen",
           "caption": "Die Meldung nennt ein nicht unterstütztes Modell. Prüfen Sie den Schritt vor erneutem Start; der Fehler wurde hier noch nicht behoben."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Benutzerdefinierte Engines",
+    "summary": "Binden Sie neue SDK-, CLI- oder ACP-Engines über eine normale Unterhaltung ein oder importieren Sie vorhandene Engine-Pakete. Verwenden Sie sie erst nach einer echten Funktionsprüfung und Registrierung.",
+    "sections": [
+      {
+        "title": "Eine Engine im Gespräch erstellen",
+        "steps": [
+          "Wenn vorhandene Engines nicht ausreichen, öffnen Sie mit Host-Verwaltungsrechten „Einstellungen → Ausführungsengines“ und wählen „Benutzerdefinierte Anbindung“. Für den Einstieg empfiehlt sich weiterhin zuerst ein integriertes SDK.",
+          "Öffnen Sie eine normale Unterhaltung im Standardarbeitsbereich, wählen Sie eine konfigurierte Engine und ergänzen Sie Name, offizielle Dokumentation, Authentifizierung und benötigte Fähigkeiten. Beispiel: „Binde das offizielle SDK eines Anbieters mit Textchat und Abbrechen der Generierung ein.“",
+          "Prüfen Sie den vorausgefüllten Entwurf vor dem Senden. Das Öffnen der Anbindungsunterhaltung allein erstellt oder installiert keine Engine. Lassen Sie gemäß Anbindungsvorgaben auf gleichnamige Engines prüfen, einen Adapter erstellen und Abhängigkeiten in einem separaten Verzeichnis installieren.",
+          "Folgen Sie den Anweisungen für Authentifizierung, echte Funktionsprüfung und Registrierung. Generierter Code oder eine abgeschlossene Installation bedeuten noch keine erfolgreiche Anbindung. Speichern Sie Schlüssel in den Einstellungen, nicht in Chat, Quellcode oder Screenshots."
+        ],
+        "tips": [
+          "Die echte Funktionsprüfung ruft den Modelldienst auf und kann Kosten verursachen. Benutzerdefinierter Code besitzt lokale Rechte; Unterprozessisolierung ist keine Datei- oder Netzwerk-Sandbox. Binden Sie nur vertrauenswürdige Quellen ein."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Einstiege zur benutzerdefinierten Anbindung und zum Engine-Import in den Engine-Einstellungen",
+          "caption": "Aufnahmen des Anbindungseinstiegs und des ungesendeten Entwurfs aus der festen Demoumgebung fehlen noch."
+        }
+      },
+      {
+        "title": "Ein vorhandenes Engine-Paket importieren",
+        "steps": [
+          "Wählen Sie unter „Einstellungen → Ausführungsengines“ die Option „Engine importieren“ und ein aus vertrauenswürdiger Quelle exportiertes ZIP-Engine-Paket.",
+          "Der Import prüft den Paketinhalt und erstellt eine normale Anbindungsunterhaltung mit Entwurf. Er führt keinen Paketcode aus und überschreibt keine registrierten Engines. Ein erfolgreicher Import ist weder eine abgeschlossene Installation noch eine bestandene Funktionsprüfung.",
+          "Prüfen Sie Paketverzeichnis und Anbindungsanforderungen in der Unterhaltung. Installieren Sie die Abhängigkeiten passend zum lokalen System neu, konfigurieren Sie die Authentifizierung und registrieren Sie erst nach einer echten Funktionsprüfung. Prüfen Sie vor dem Ersetzen einer Engine ihre ID und die Ersetzungsabsicht."
+        ],
+        "tips": [
+          "ZIP enthält weder installierte Abhängigkeiten noch lokale Authentifizierungseinstellungen. Empfänger müssen Konfiguration und Prüfung selbst abschließen. Bleiben Sie bei Importfehlern auf der Einstellungsseite, lesen Sie die Fehlermeldung und versuchen Sie es mit dem richtigen Paket erneut."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Nach dem Engine-Paketimport erstellte Anbindungsunterhaltung mit Entwurf",
+          "caption": "Aufnahmen von ZIP-Import und noch zu konfigurierendem Entwurf aus der festen Demoumgebung fehlen noch. Import wird nicht als erfolgreiche Registrierung dargestellt."
+        }
+      },
+      {
+        "title": "Verwenden, exportieren, deaktivieren und zurücksetzen",
+        "steps": [
+          "Wenn die Unterhaltung die erfolgreiche Registrierung bestätigt, öffnen Sie wieder „Einstellungen → Ausführungsengines“ und klicken auf „Neu scannen“. Die neue Engine erscheint in der Liste; allein für die Registrierung ist kein Neustart nötig.",
+          "Prüfen Sie Engine-Konfiguration, Anbieter und Modell. Wählen Sie die Engine dann in einer normalen Unterhaltung oder einem Workflow-Schritt und testen Sie das tatsächliche Ergebnis zuerst mit einer kleinen Aufgabe.",
+          "Die Karte einer benutzerdefinierten Engine bietet „ZIP exportieren“, „Ausführung deaktivieren“ und „Ausführung fortsetzen“. Der Schalter „Ein / Aus“ auf der Karte steuert nur die Anzeige in der Auswahlliste; bestehende Aufgaben können die Engine weiterhin verwenden. Deaktivieren der Ausführung schließt ihre aktiven Verbindungen. Stoppen Sie zuerst zugehörige Aufgaben oder Unterhaltungen.",
+          "Bei Problemen nach einem Update und vorhandener Vorversion beenden Sie zuerst zugehörige Ausführungen und wählen dann „Version zurücksetzen“. Prüfen und registrieren Sie danach erneut und starten Sie gemäß Oberflächenhinweis neu. Ohne Vorversion ist kein Zurücksetzen möglich."
+        ],
+        "tips": [
+          "Nach Änderungen an Code, Abhängigkeiten oder Konfiguration kann die alte Prüfung ungültig werden. Prüfen Sie vor der Registrierung erneut. Ändern Sie nur Modelldienstadresse oder Authentifizierung, verwenden Sie bevorzugt die Anbieterkonfiguration, ohne die Engine neu zu erstellen."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Export-, Deaktivierungs- und Rücksetzfunktionen einer registrierten benutzerdefinierten Engine",
+          "caption": "Die Aufnahme einer registrierten Engine-Karte aus der festen Demoumgebung fehlt noch; eine integrierte Engine-Karte wird nicht als Ersatz verwendet."
         }
       }
     ]

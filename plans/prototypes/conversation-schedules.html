@@ -1,0 +1,111 @@
+<style>
+#schedule-types-prototype{--s-bg:light-dark(#fff,#202124);--s-soft:light-dark(#f5f5f7,#292a2d);--s-fg:light-dark(#1d1d1f,#eeeef0);--s-muted:light-dark(#6e6e73,#b0b0b8);--s-line:light-dark(#e1e1e7,#44444c);--s-blue:light-dark(#0071e3,#74b3ff);--s-pale:light-dark(#edf5ff,#293b50);font:14px/1.5 system-ui,-apple-system,"PingFang SC",sans-serif;color:var(--s-fg)}
+#schedule-types-prototype *{box-sizing:border-box}#schedule-types-prototype [hidden]{display:none!important}#schedule-types-prototype h2,#schedule-types-prototype h3,#schedule-types-prototype p{margin:0}#schedule-types-prototype h2{font-size:18px;font-weight:500}#schedule-types-prototype h3{font-size:14px;font-weight:500}#schedule-types-prototype .muted{font-size:12px;color:var(--s-muted)}#schedule-types-prototype button,#schedule-types-prototype input,#schedule-types-prototype textarea,#schedule-types-prototype select{font:inherit;color:inherit}#schedule-types-prototype button{border:.5px solid var(--s-line);background:var(--s-bg);padding:7px 12px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}#schedule-types-prototype button:hover{background:var(--s-soft)}#schedule-types-prototype button:disabled{opacity:.45;cursor:default}#schedule-types-prototype button.primary{background:var(--s-blue);color:light-dark(#fff,#15263c);border-color:transparent}#schedule-types-prototype button.ghost{background:transparent;border-color:transparent}#schedule-types-prototype button[aria-pressed=true]{background:var(--s-pale);color:var(--s-blue);border-color:var(--s-blue)}#schedule-types-prototype svg{width:16px;height:16px}#schedule-types-prototype .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}#schedule-types-prototype .spread{justify-content:space-between}#schedule-types-prototype .preview{margin-bottom:12px;padding-right:92px}#schedule-types-prototype .window{border:.5px solid var(--s-line);border-radius:14px;background:var(--s-bg);overflow:hidden}#schedule-types-prototype header{padding:18px 22px;border-bottom:.5px solid var(--s-line)}#schedule-types-prototype .projects{padding:0 22px;display:flex;gap:22px;border-bottom:.5px solid var(--s-line)}#schedule-types-prototype .projects button{padding:12px 0;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent}#schedule-types-prototype .projects button[aria-pressed=true]{border-bottom-color:var(--s-blue)}#schedule-types-prototype .body{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:580px}#schedule-types-prototype aside{border-right:.5px solid var(--s-line);padding:18px 14px;background:var(--s-soft)}#schedule-types-prototype .list{margin-top:16px}#schedule-types-prototype .list button{display:block;width:100%;text-align:left;border:0;background:transparent;margin-bottom:6px;padding:12px;border-radius:8px}#schedule-types-prototype .list button[aria-pressed=true]{background:var(--s-bg);color:var(--s-fg)}#schedule-types-prototype .list .row{margin-bottom:6px}#schedule-types-prototype .list .muted{margin-top:5px}#schedule-types-prototype .list strong{font-weight:500}#schedule-types-prototype main{padding:22px 26px;min-width:0}#schedule-types-prototype .typebar{margin:18px 0 22px;display:flex;gap:8px}#schedule-types-prototype .typebar button{flex:1}#schedule-types-prototype .fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}#schedule-types-prototype label{display:flex;flex-direction:column;gap:7px}#schedule-types-prototype input,#schedule-types-prototype select,#schedule-types-prototype textarea{width:100%;min-width:0;padding:9px 10px;background:var(--s-bg);border:.5px solid var(--s-line);border-radius:7px}#schedule-types-prototype textarea{min-height:100px;resize:vertical}#schedule-types-prototype .block{margin-top:16px}#schedule-types-prototype .notice{padding:12px 14px;background:var(--s-soft);border-radius:8px;display:flex;align-items:flex-start;gap:10px;margin-top:18px}#schedule-types-prototype .notice svg{margin-top:3px;flex-shrink:0}#schedule-types-prototype .notice .muted{margin-top:3px}#schedule-types-prototype .lifecycle{margin-top:12px}#schedule-types-prototype .footer{margin-top:22px;padding-top:16px;border-top:.5px solid var(--s-line)}#schedule-types-prototype .toast{padding:12px 22px;background:var(--s-pale);color:var(--s-blue)}#schedule-types-prototype .badge{font-size:12px;color:var(--s-muted)}#schedule-types-prototype .status{font-size:12px;color:var(--s-blue)}#schedule-types-prototype .record{margin-top:14px;padding-top:12px;border-top:.5px solid var(--s-line)}
+@media(max-width:700px){#schedule-types-prototype .body{grid-template-columns:180px minmax(0,1fr)}#schedule-types-prototype main{padding:18px 16px}#schedule-types-prototype .fields{grid-template-columns:1fr}#schedule-types-prototype .typebar{gap:5px}#schedule-types-prototype .typebar button{padding:7px}}@media(max-width:500px){#schedule-types-prototype .body{display:block}#schedule-types-prototype aside{border-right:0;border-bottom:.5px solid var(--s-line)}#schedule-types-prototype .list{display:flex;overflow-x:auto}#schedule-types-prototype .list button{min-width:175px}#schedule-types-prototype .preview{padding-right:0}#schedule-types-prototype .footer{gap:14px}#schedule-types-prototype header{padding:16px}#schedule-types-prototype button{min-height:36px}}
+
+/* Match SchedulePage / ScheduleCenter and ScheduleRuleEditor geometry. */
+#schedule-types-prototype{font-size:13px}
+#schedule-types-prototype h2{font-size:14px}
+#schedule-types-prototype header{height:52px;padding:0 18px}
+#schedule-types-prototype .body{grid-template-columns:220px 5px minmax(0,1fr) 5px 260px;min-height:680px}
+#schedule-types-prototype aside{padding:10px;background:var(--s-bg);border:0}
+#schedule-types-prototype main{padding:18px}
+#schedule-types-prototype .split{background:var(--s-line);cursor:col-resize;touch-action:none}
+#schedule-types-prototype .split:hover{background:var(--s-blue)}
+#schedule-types-prototype .typebar,#schedule-types-prototype .frequency-tabs,#schedule-types-prototype .list-tabs{display:inline-flex;padding:3px;border-radius:10px;background:var(--s-soft);gap:0}
+#schedule-types-prototype .typebar{margin:14px 0}
+#schedule-types-prototype .typebar button,#schedule-types-prototype .frequency-tabs button,#schedule-types-prototype .list-tabs button{min-width:70px;padding:8px 13px;border:0;border-radius:8px;background:transparent;color:var(--s-muted)}
+#schedule-types-prototype .typebar button[aria-pressed=true],#schedule-types-prototype .frequency-tabs button[aria-pressed=true],#schedule-types-prototype .list-tabs button[aria-pressed=true]{background:var(--s-bg);color:var(--s-fg);box-shadow:0 1px 4px light-dark(#1d1d1f24,#0006);font-weight:500}
+#schedule-types-prototype .list-tabs{display:flex;margin-bottom:10px}
+#schedule-types-prototype .list-tabs button{flex:1;min-width:0;font-size:12px}
+#schedule-types-prototype .list{margin-top:8px}
+#schedule-types-prototype .list button[aria-pressed=true]{background:var(--s-pale)}
+#schedule-types-prototype .fields{grid-template-columns:minmax(0,1fr);gap:14px}
+#schedule-types-prototype input,#schedule-types-prototype select{height:32px;padding:4px 10px}
+#schedule-types-prototype .markdown{margin-top:14px;border:.5px solid var(--s-line);border-radius:8px;overflow:hidden}
+#schedule-types-prototype .markdown .tools{padding:7px 10px;border-bottom:.5px solid var(--s-line);background:var(--s-soft);display:flex;gap:16px;color:var(--s-muted)}
+#schedule-types-prototype .markdown textarea{border:0;border-radius:0;min-height:132px;display:block}
+#schedule-types-prototype .notice{background:transparent;padding:0;margin-top:16px}
+#schedule-types-prototype .footer{border:0;padding:0;display:block}
+#schedule-types-prototype #st-next{display:block;padding:12px;background:var(--s-soft);border-radius:8px;margin-bottom:14px}
+#schedule-types-prototype .footer>.row{justify-content:flex-start}
+#schedule-types-prototype .runs{padding:18px;min-width:0}
+#schedule-types-prototype .runs select{width:110px}
+#schedule-types-prototype .record{border:0;margin:0;padding:0}
+#schedule-types-prototype #st-run-status{padding:16px 0}
+#schedule-types-prototype .rule-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+#schedule-types-prototype .dates{display:flex;gap:8px;align-items:center;margin-top:8px}
+#schedule-types-prototype .dates input{min-width:0;flex:1}
+@media(max-width:850px){#schedule-types-prototype .body{grid-template-columns:170px 4px minmax(0,1fr)}#schedule-types-prototype .runs{grid-column:1/-1;border-top:.5px solid var(--s-line)}#schedule-types-prototype .split-right{display:none}}
+@media(max-width:550px){#schedule-types-prototype .body{display:block}#schedule-types-prototype .split{display:none}#schedule-types-prototype aside{border-bottom:.5px solid var(--s-line)}#schedule-types-prototype .list{display:block}#schedule-types-prototype .list button{min-width:0}#schedule-types-prototype .typebar button{min-width:0;padding:8px 12px}}
+</style>
+<div id="schedule-types-prototype">
+ <div class="row preview"><span class="muted">原型入口</span><button data-entry="global" aria-pressed="true">外层定时任务</button><button data-entry="project" aria-pressed="false">项目内定时任务</button></div>
+ <section class="window" aria-label="统一定时任务配置">
+  <header class="row spread"><div class="row"><i data-lucide="clock-3" aria-hidden="true"></i><h2>定时任务</h2><span class="muted" id="st-project-label" hidden>操作手册演示</span></div><button id="st-new"><i data-lucide="plus" aria-hidden="true"></i>新建</button></header>
+  <nav class="projects" id="st-projects" aria-label="项目"><button data-project="demo" aria-pressed="true">操作手册演示</button><button data-project="website" aria-pressed="false">官网项目</button></nav>
+  <div class="body">
+   <aside><div class="list-tabs"><button data-list="recurring" aria-pressed="true">周期性</button><button data-list="once" aria-pressed="false">一次性</button></div><select id="st-filter" aria-label="类型筛选"><option value="all">全部</option><option value="project">创建任务</option><option value="task">协调任务</option><option value="session">对话</option></select><div class="list" id="st-list"></div></aside><div class="split" data-resize="left" role="separator" aria-label="调整列表宽度"></div>
+   <main>
+    <div class="row spread"><h3 id="st-editor-title">新建定时任务</h3><span class="muted" id="st-edit-state">选择执行类型</span></div>
+    <div class="typebar" role="group" aria-label="执行类型"><button data-type="project" aria-pressed="false">创建任务</button><button data-type="task" aria-pressed="false">协调任务</button><button data-type="session" aria-pressed="true">对话</button></div>
+    <form id="st-form">
+     <div class="fields"><label>名称<input id="st-name" value="每日进度汇总" required></label><label><span id="st-target-label">会话</span><select id="st-target" required></select></label></div>
+     <div class="block"><label for="st-content" id="st-content-label">消息内容 *</label><div class="markdown"><div class="tools" aria-hidden="true"><span>B</span><span><em>I</em></span><span>H</span><i data-lucide="list"></i><i data-lucide="link"></i><i data-lucide="image"></i><i data-lucide="code"></i></div><textarea id="st-content" required>总结这个项目今天的进展、未完成事项和明日计划。</textarea></div></div>
+     <div class="block"><div class="muted">执行频率</div><div class="frequency-tabs block"><button type="button" data-frequency="cycle" aria-pressed="true">周期</button><button type="button" data-frequency="interval" aria-pressed="false">按间隔</button><button type="button" data-frequency="once" aria-pressed="false">单次</button></div><div class="rule-row" id="st-rule-row"><select id="st-repeat" aria-label="执行频率"><option>分钟间隔</option><option selected>每天</option><option>每周</option><option>每月</option><option>Cron</option><option hidden>按间隔</option><option hidden>仅一次</option></select><input type="time" id="st-time" value="18:00" required aria-label="时间"><input id="st-every" type="number" min="1" value="2" hidden aria-label="间隔数值"><input id="st-cron" value="0 9 * * *" hidden aria-label="Cron 表达式"></div></div>
+     <label class="block" id="st-week-wrap" hidden>星期<select id="st-week"><option>周一</option><option>周二</option><option>周三</option><option>周四</option><option>周五</option><option>周六</option><option>周日</option></select></label>
+     <label class="block" id="st-date-wrap" hidden>日期<input type="date" id="st-date" value="2026-11-10"></label>
+     <div class="block" id="st-effective"><div class="muted">生效范围　留空表示不限制</div><div class="dates"><input type="date" aria-label="开始日期"><span>—</span><input type="date" aria-label="结束日期"></div></div>
+     <div class="notice"><i data-lucide="send" aria-hidden="true"></i><div><div id="st-destination">回复自动回传原渠道</div><div class="muted" id="st-channel">钉钉 / 研发机器人 / 研发日报群</div></div></div>
+     <div class="muted lifecycle" id="st-lifecycle">删除或归档所选会话时，此定时任务自动清除；恢复会话不恢复规则。</div>
+     <div class="row spread footer"><span class="muted" id="st-next">每天 18:00 发送到所选会话</span><div class="row"><button id="st-pause" type="button" hidden>暂停</button><button class="primary" type="submit" id="st-save">创建</button></div></div>
+    </form>
+   </main>
+   <div class="split split-right" data-resize="right" role="separator" aria-label="调整运行记录宽度"></div>
+   <section class="runs"><div class="record" id="st-record"><div class="row spread"><h3>运行记录</h3><select aria-label="运行状态"><option>全部</option><option>成功</option><option>失败</option></select></div><p class="muted block" id="st-run-status">暂无运行记录</p><button class="ghost" id="st-simulate" hidden>模拟一次执行</button></div></section>
+  </div>
+  <div class="toast" id="st-toast" role="status" hidden></div>
+ </section>
+</div>
+<script>
+(()=>{
+const root=document.getElementById('schedule-types-prototype'),$=id=>root.querySelector('#st-'+id);
+const types={project:'创建任务',task:'协调任务',session:'对话'};
+const sessions={demo:[['group','研发日报群（钉钉）'],['private','产品讨论（飞书私聊）'],['local','项目进度整理（普通对话）']],website:[['site','官网内容整理（普通对话）']]};
+let entry='global',project='demo',type='session',selected=null,listType='recurring';
+let rules=[{id:1,project:'demo',type:'project',name:'每日创建检查任务',target:'flow',content:'检查项目构建与测试结果。',repeat:'每天',time:'08:00',enabled:true},{id:2,project:'demo',type:'task',name:'定期检查发布进度',target:'task',content:'检查发布任务的剩余事项。',repeat:'工作日',time:'17:00',enabled:true}];
+const icons=()=>{if(globalThis.lucide)lucide.createIcons({attrs:{width:16,height:16}})};
+function remember(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{prototype:'统一定时任务三种类型',entry,project,type,rules},privateContent:{selected,listType}}).catch(()=>{});}
+function restore(v){if(v?.modelContent?.prototype==='统一定时任务三种类型'){({entry,project,type,rules}=v.modelContent);selected=v.privateContent?.selected||null;listType=v.privateContent?.listType||'recurring';}}
+restore(window.openai?.widgetState);window.addEventListener('openai:set_globals',e=>{if(e.detail?.globals?.widgetState){restore(e.detail.globals.widgetState);load(rules.find(r=>r.id===selected));}});
+function toast(text){$('toast').textContent=text;$('toast').hidden=false;}
+function options(value){$('target').replaceChildren();const items=type==='session'?sessions[project]:type==='task'?[['task','发布前检查']]:[['flow','研发工作流']];for(const [id,label] of items){const o=document.createElement('option');o.value=id;o.textContent=label;$('target').append(o);}if(items.some(i=>i[0]===value))$('target').value=value;}
+function details(){
+ const session=type==='session',value=$('target').value;
+ $('target-label').textContent=session?'会话':type==='task'?'目标任务':'工作流';$('content-label').textContent=session?'消息内容':type==='task'?'协调指令':'任务内容';
+ $('destination').textContent=session?(value==='group'||value==='private'?'助手回复自动回传原渠道':'消息与助手回复保留在当前对话'):type==='task'?'发送给所选任务的协调助手':'按配置创建工作流任务';
+ $('channel').textContent=session?(value==='group'?'钉钉 / 研发机器人 / 研发日报群':value==='private'?'飞书 / 产品机器人 / 原私聊':'沿用所选会话的上下文和执行配置'):'沿用现有配置方式，本次仅新增“对话”类型';
+ $('lifecycle').hidden=!session;$('week-wrap').hidden=$('repeat').value!=='每周';$('date-wrap').hidden=$('repeat').value!=='仅一次';$('date').required=$('repeat').value==='仅一次';
+ const mode=$('repeat').value;root.querySelectorAll('[data-frequency]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.frequency===(mode==='仅一次'?'once':mode==='按间隔'?'interval':'cycle'))));
+ $('effective').hidden=mode==='仅一次';$('rule-row').hidden=mode==='仅一次';$('repeat').hidden=mode==='按间隔';$('time').hidden=['按间隔','分钟间隔','Cron'].includes(mode);$('every').hidden=!['按间隔','分钟间隔'].includes(mode);$('cron').hidden=mode!=='Cron';
+ $('next').textContent='后续执行：'+($('repeat').value==='仅一次'?$('date').value:$('repeat').value==='每周'?'每周'+$('week').value:$('repeat').value)+' '+$('time').value+(session?' 发送到所选会话':' 执行');
+ $('save').disabled=!$('name').value.trim()||!$('content').value.trim()||!$('target').value||!$('time').value||($('date').required&&!$('date').value);
+}
+function render(){
+ root.querySelectorAll('[data-entry]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.entry===entry)));$('projects').hidden=entry!=='global';$('project-label').hidden=entry==='global';$('project-label').textContent=project==='demo'?'操作手册演示':'官网项目';
+ root.querySelectorAll('[data-project]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.project===project)));root.querySelectorAll('[data-type]').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.type===type));b.disabled=selected!==null;});root.querySelectorAll('[data-list]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.list===listType)));
+ $('editor-title').textContent=selected?'编辑定时任务':'新建定时任务';$('edit-state').textContent=selected?types[type]:'选择执行类型';$('save').textContent='保存';$('pause').hidden=!selected;$('record').hidden=false;$('simulate').hidden=!selected;const current=rules.find(r=>r.id===selected);$('pause').textContent=current?.enabled?'暂停':'恢复';
+ $('list').replaceChildren();const filtered=rules.filter(r=>r.project===project&&($('filter').value==='all'||$('filter').value===r.type)&&(r.repeat==='仅一次')===(listType==='once'));
+ for(const r of filtered){const b=document.createElement('button');b.type='button';b.setAttribute('aria-pressed',String(r.id===selected));const heading=document.createElement('div');heading.className='row spread';const title=document.createElement('strong');title.textContent=r.name;heading.append(title);const desc=document.createElement('div');desc.className='muted';desc.textContent=types[r.type]+' / '+(r.enabled?'已启用':'已暂停');const time=document.createElement('div');time.className='muted';time.textContent=r.repeat+' '+r.time;b.append(heading,desc,time);b.onclick=()=>load(r);$('list').append(b);}
+ if(!filtered.length){const p=document.createElement('p');p.className='muted';p.textContent='暂无定时任务';$('list').append(p);}details();icons();
+}
+function load(rule){selected=rule?.id||null;if(rule)type=rule.type;options(rule?.target);$('name').value=rule?.name||'每日进度汇总';$('content').value=rule?.content||'总结这个项目今天的进展、未完成事项和明日计划。';$('repeat').value=rule?.repeat||(listType==='once'?'仅一次':'每天');$('time').value=rule?.time||'18:00';$('week').value=rule?.week||'周一';$('date').value=rule?.date||'2026-11-10';$('run-status').textContent='暂无执行记录';render();}
+root.querySelectorAll('[data-entry]').forEach(b=>b.onclick=()=>{entry=b.dataset.entry;render();remember();});root.querySelectorAll('[data-project]').forEach(b=>b.onclick=()=>{project=b.dataset.project;load();remember();});root.querySelectorAll('[data-type]').forEach(b=>b.onclick=()=>{type=b.dataset.type;options();render();remember();});root.querySelectorAll('[data-list]').forEach(b=>b.onclick=()=>{listType=b.dataset.list;render();});
+$('filter').onchange=render;$('new').onclick=()=>load();root.querySelectorAll('[data-frequency]').forEach(b=>b.onclick=()=>{$('repeat').value=b.dataset.frequency==='once'?'仅一次':b.dataset.frequency==='interval'?'按间隔':'每天';details();});
+ root.querySelectorAll('[data-resize]').forEach(handle=>handle.onpointerdown=e=>{if(root.clientWidth<850)return;const body=root.querySelector('.body'),width=body.clientWidth;const cols=getComputedStyle(body).gridTemplateColumns.split(' ').map(parseFloat);handle.setPointerCapture(e.pointerId);const initial=e.clientX;handle.onpointermove=event=>{const delta=event.clientX-initial;const left=handle.dataset.resize==='left'?Math.max(150,Math.min(width-530,cols[0]+delta)):cols[0];const right=handle.dataset.resize==='right'?Math.max(190,Math.min(width-left-300,cols[4]-delta)):cols[4];body.style.gridTemplateColumns=left+'px 5px minmax(0,1fr) 5px '+right+'px';};handle.onpointerup=()=>{handle.onpointermove=null;};});['name','content','time','date'].forEach(id=>$(id).oninput=details);['target','repeat','week'].forEach(id=>$(id).onchange=details);
+$('form').onsubmit=e=>{e.preventDefault();details();if($('save').disabled)return;const old=rules.find(r=>r.id===selected),r={id:selected||Date.now(),project,type,enabled:old?.enabled??true};for(const key of ['name','content','target','repeat','time','week','date'])r[key]=$(key).value.trim();if(old)rules[rules.indexOf(old)]=r;else rules.push(r);listType=r.repeat==='仅一次'?'once':'recurring';load(r);toast('已保存到统一定时任务列表 / '+types[type]);remember();};
+$('pause').onclick=()=>{const r=rules.find(r=>r.id===selected);if(r){r.enabled=!r.enabled;render();toast(r.enabled?'已恢复定时任务':'已暂停后续触发');remember();}};
+$('simulate').onclick=()=>{const r=rules.find(r=>r.id===selected);if(!r?.enabled){toast('请先恢复定时任务');return;}$('run-status').textContent=type==='session'?(r.target==='group'||r.target==='private'?'执行成功：消息已进入所选会话，助手回复已回传原渠道。':'执行成功：消息及助手回复已保存在所选会话。'):'示例执行成功';};
+load(rules.find(r=>r.id===selected));
+})();
+</script>

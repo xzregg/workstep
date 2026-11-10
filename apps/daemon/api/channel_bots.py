@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 import logging
 
+from services.channels.directory import DirectoryError
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,6 +21,10 @@ class CreateBotRequest(BaseModel):
     secret: str = ''
     login_id: str = Field(default='', max_length=100)
     app_token: str = Field(default="", max_length=2000)
+    directory_enabled: bool = False
+    directory_corp_id: str = Field(default="", max_length=200)
+    directory_agent_id: str = Field(default="", max_length=200)
+    directory_secret: str = Field(default="", max_length=2000)
     enabled: bool = False
     default_target_type: Literal['project', 'task'] = "project"
     default_project_id: str = Field(min_length=1)
@@ -44,6 +50,10 @@ class UpdateBotRequest(BaseModel):
     app_id: str | None = None
     secret: str | None = None
     app_token: str | None = Field(default=None, max_length=2000)
+    directory_enabled: bool | None = None
+    directory_corp_id: str | None = Field(default=None, max_length=200)
+    directory_agent_id: str | None = Field(default=None, max_length=200)
+    directory_secret: str | None = Field(default=None, max_length=2000)
     enabled: bool | None = None
     default_target_type: str | None = None
     default_project_id: str | None = None
@@ -83,6 +93,8 @@ class SendChannelMessageRequest(BaseModel):
     attachments: list[ChannelAttachmentRequest] = Field(default_factory=list, max_length=10)
     session_id: str | None = None
     bot_id: str | None = None
+    user_name: str | None = Field(default=None, max_length=200)
+    contact_id: str | None = Field(default=None, max_length=500)
     user_id: str | None = None
     group_id: str | None = None
 
@@ -90,13 +102,13 @@ class SendChannelMessageRequest(BaseModel):
     def validate_recipient(self):
         if (not self.text.strip() and not self.attachments) or not self.project_id.strip():
             raise ValueError("消息和项目不能为空")
-        for value in (self.session_id, self.bot_id, self.user_id, self.group_id):
+        for value in (self.session_id, self.bot_id, self.user_id, self.group_id, self.user_name, self.contact_id):
             if value is not None and not value.strip():
                 raise ValueError("目标标识不能为空")
         if self.session_id:
-            if any((self.bot_id, self.user_id, self.group_id)):
+            if any((self.bot_id, self.user_id, self.group_id, self.user_name, self.contact_id)):
                 raise ValueError("会话目标不能同时指定机器人或收件人")
-        elif not self.bot_id or bool(self.user_id) == bool(self.group_id):
+        elif not self.bot_id or sum(bool(value) for value in (self.user_id, self.group_id, self.user_name, self.contact_id)) != 1:
             raise ValueError("必须指定会话，或者机器人和唯一的用户/群")
         return self
 
@@ -106,6 +118,63 @@ def _enforce_project_scope(project_id):
     actor = get_current_actor()
     if actor is not None and actor.project_id is not None and actor.project_id != project_id:
         raise HTTPException(status_code=403, detail="Project scope denied")
+
+
+@router.get('/capabilities')
+async def channel_capabilities():
+    manager = _manager()
+    await manager._ensure_factories()
+    return {key: {'directory': bool(adapter.DIRECTORY_PROVIDER),
+                  'directory_fields': list(adapter.DIRECTORY_PROVIDER.fields) if adapter.DIRECTORY_PROVIDER else []}
+            for key, adapter in manager._registered_channels.items()}
+
+
+def _directory_admin():
+    from services.remote_access import get_current_actor
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None:
+        raise HTTPException(status_code=403, detail='通讯录配置需要设备设置权限')
+
+
+async def _directory_bot(bot_id, project_id=None):
+    if project_id is None:
+        _directory_admin()
+    else:
+        _enforce_project_scope(project_id)
+    try:
+        return await _manager().directory_bot(bot_id, project_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DirectoryError as exc:
+        raise HTTPException(status_code=409, detail=exc.detail()) from exc
+
+
+@router.get('/{bot_id}/contacts')
+async def directory_contacts(bot_id: str, project_id: str | None = None,
+                             query: str = Query('', max_length=200), offset: int = Query(0, ge=0),
+                             limit: int = Query(50, ge=1, le=100)):
+    bot = await _directory_bot(bot_id, project_id)
+    try:
+        return await _manager().directory.contacts(bot, query, offset, limit)
+    except DirectoryError as exc:
+        raise HTTPException(status_code=409, detail=exc.detail()) from exc
+
+
+@router.get('/{bot_id}/directory')
+async def directory_status(bot_id: str):
+    await _directory_bot(bot_id)
+    return _manager().directory.status(bot_id)
+
+
+@router.post('/{bot_id}/directory/refresh', status_code=202)
+async def refresh_directory(bot_id: str):
+    bot = await _directory_bot(bot_id)
+    try:
+        return _manager().directory.refresh(bot)
+    except DirectoryError as exc:
+        raise HTTPException(status_code=409, detail=exc.detail()) from exc
 
 
 @router.get("/sessions")
@@ -131,6 +200,8 @@ async def send_channel_message(request: SendChannelMessageRequest):
     _enforce_project_scope(request.project_id)
     try:
         return await _manager().send_message(**request.model_dump())
+    except DirectoryError as exc:
+        raise HTTPException(status_code=409, detail=exc.detail()) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except LookupError as exc:
@@ -211,6 +282,7 @@ async def cancel_weixin_login(login_id: str):
 
 @router.post("")
 async def create_bot(request: CreateBotRequest):
+    _directory_admin()
     try:
         return await _manager().create_bot(request.model_dump())
     except (ValueError, LookupError) as exc:
@@ -219,6 +291,7 @@ async def create_bot(request: CreateBotRequest):
 
 @router.patch("/{bot_id}")
 async def update_bot(bot_id: str, request: UpdateBotRequest):
+    _directory_admin()
     try:
         return await _manager().update_bot(bot_id, request.model_dump(exclude_unset=True))
     except (ValueError, LookupError) as exc:

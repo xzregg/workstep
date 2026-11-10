@@ -2,8 +2,8 @@ import type { I18nDict } from './keys'
 
 export const enUS: I18nDict = {
   meta: {
-    "title": "WorkStep — Open-source AI coding workflows for Codex and Claude Code",
-    "description": "WorkStep is a local-first, open-source AI coding workflow tool for Codex and Claude Code. Connect planning, implementation, testing and human review on macOS, Windows and Linux."
+    "title": "WorkStep — Open-source AI workflows with custom Agent engines",
+    "description": "Local-first, open-source AI development workflows. Connect CLI, SDK, ACP or custom Agent engines. Reuse steps, review deliverables, and share projects and tasks."
   },
   privacy: {
     "title": "WorkStep privacy notice",
@@ -56,11 +56,11 @@ export const enUS: I18nDict = {
     themeLight: 'Switch to light mode',
   },
   hero: {
-    eyebrow: "AN AI DEVELOPMENT WORKSPACE FOR INDIVIDUALS AND SMALL TEAMS",
+    eyebrow: "Open-source AI Agent workflows · Local-first",
     titleA: "Let AI develop in steps.",
     titleB: "Keep key decisions in your hands.",
     promise: "Plan · Implement · Test · Review",
-    lede: "Connect AI coding tools like Codex and Claude Code into a reusable workflow. Pass results to the next step, follow progress, review outputs, and request rework when needed. Use the same workflow for your next task.",
+    lede: "Connect your choice of Agent engines into reusable development workflows. Pass results between steps, review key deliverables, and share projects and tasks to build together.",
     ctaPrimary: "Download desktop app",
     ctaSecondary: "Watch real operations",
     setup: "First-time setup requires installing one execution engine and configuring authentication. Model service fees follow your chosen provider’s terms.",
@@ -119,6 +119,9 @@ export const enUS: I18nDict = {
     statusReviewing: 'Reviewing',
   },
   engines: {
+    extension: "Built-in and custom Agent engines",
+    description: "Connect CLI, SDK and ACP engines, or build a custom adapter. Choose an engine for each step. Start custom integration in Settings → Execution engines → Custom integration; install, validate and register the adapter before use.",
+    guide: "Custom engine integration guide",
     label: 'Choose an AI coding tool. Configure one to get started.',
     codex: 'Codex CLI',
     claude: 'Claude Code',
@@ -149,8 +152,8 @@ export const enUS: I18nDict = {
     lede: "Save recurring development steps to reduce repeated context sharing, manual handoffs, and progress checks across AI conversations.",
     item1Title: "Propose a workflow in chat, confirm it on the canvas",
     item1Desc: "Describe how you want the work done. Inspect the proposed steps and settings, apply them, and refine the workflow. Check the configuration before running it.",
-    item2Title: "Start with one AI tool",
-    item2Desc: "Install and verify one execution engine, such as Codex SDK or Claude Agent SDK. Steps can share the same engine or use different engines as needed.",
+    item2Title: "Built-in or custom engines, chosen per step",
+    item2Desc: "Connect CLI, SDK, ACP or custom Agent engines. Share one engine across steps or choose a different engine for each.",
     item3Title: "Pass each result to the next step",
     item3Desc: "Configure inputs, outputs, and connections so the analysis plan reaches implementation and code changes reach testing and review.",
     item4Title: "Follow progress, inspect results, and request rework",

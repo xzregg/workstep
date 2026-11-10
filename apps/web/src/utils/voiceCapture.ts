@@ -34,7 +34,7 @@ export function pcmBase64(samples: Int16Array) {
   return btoa(binary)
 }
 
-export interface VoiceCapture { stop: () => void; flush: () => void }
+export interface VoiceCapture { stop: () => void; flush: () => void | Promise<void> }
 export async function captureVoice(onChunk: (pcm: Int16Array, level: number) => void, signal: AbortSignal): Promise<VoiceCapture> {
   const checkCancelled = () => { if (signal.aborted) throw new DOMException('Cancelled', 'AbortError') }
   checkCancelled()
@@ -56,14 +56,30 @@ export async function captureVoice(onChunk: (pcm: Int16Array, level: number) => 
   let pending: number[] = []
   let level = 0
   let closed = false
-  const flush = () => {
+  let finishFlush: (() => void) | undefined
+  let flushing: Promise<void> | undefined
+  const flushPending = () => {
     if (pending.length) { const samples = Int16Array.from(pending); pending = []; onChunk(samples, level) }
+  }
+  const flush = () => {
+    if (closed || !node?.port.postMessage) { flushPending(); return }
+    if (flushing) return flushing
+    flushing = new Promise<void>(resolve => {
+      // The acknowledgement follows all audio messages already posted by the
+      // render thread. Bound the wait if a WebView suspends that thread.
+      const complete = () => { clearTimeout(timer); finishFlush = undefined; flushPending(); resolve() }
+      const timer = setTimeout(complete, 150)
+      finishFlush = complete
+      node!.port.postMessage({ type: 'flush' })
+    })
+    return flushing
   }
   const stop = () => {
     stream?.getTracks().forEach(track => { track.onended = null; track.stop() })
     stream = undefined
     if (closed) return
     closed = true
+    finishFlush?.()
     source?.disconnect(); node?.disconnect()
     if (node) node.port.onmessage = null
     void context.close().catch(() => {})
@@ -92,8 +108,12 @@ export async function captureVoice(onChunk: (pcm: Int16Array, level: number) => 
     // The processor leaves output silent; connecting it keeps the audio graph
     // rendering on browsers that suspend disconnected worklets.
     node.connect(context.destination)
-    node.port.onmessage = (event: MessageEvent<Float32Array>) => {
-      if (signal.aborted) return
+    node.port.onmessage = (event: MessageEvent<Float32Array | { type: string }>) => {
+      if (signal.aborted || closed) return
+      if (!(event.data instanceof Float32Array)) {
+        if (event.data?.type === 'flushed') finishFlush?.()
+        return
+      }
       const samples = resampler.push(event.data)
       for (const sample of samples) pending.push(sample)
       level = Math.min(1, Math.sqrt(event.data.reduce((sum, v) => sum + v*v, 0) / event.data.length) * 5)

@@ -805,7 +805,7 @@
         "title": "Fyll ett meddelandeutkast med rösten",
         "steps": [
           "Öppna Inställningar → Röstinmatning, aktivera, hämta modell och körmiljö, välj språk och testa mikrofonen. Installationen sker på ansluten WorkStep-värd; telefonen behöver ingen modell. Mandarin, kantonesiska och engelska stöds.",
-          "Tryck på mikrofonen i en redigerbar chatt eller håll röstknappen på telefonen. Tala, avsluta, granska den infogade texten och skicka manuellt. Högst två minuter; avbryt skickar inget."
+          "På datorn klickar du på mikrofonen. På telefonen håller du textfältet 500 ms; ingen mikrofonikon visas. Släpp, granska texten och skicka manuellt. Högst två minuter; avbryt skickar inget."
         ],
         "tips": [
           "Ljud känns igen på ansluten värd och sparas inte. Tillåt mikrofon via HTTPS eller lokal adress. Kontrollera webbplatsens och systemets behörigheter vid fel; starta om en gammal backend. Igenkänd text kan uttryckligen behållas."
@@ -947,6 +947,18 @@
     "title": "Schemalagda uppgifter",
     "summary": "Skapa nya uppgifter enligt ett schema, eller skicka tidsinställda koordinatorinstruktioner till befintliga uppgifter, och spåra exekvering och aviseringar.",
     "sections": [
+      {
+        "title": "Schemalägg meddelanden i en konversation",
+        "steps": [
+          "Öppna Scheman, välj projekt och målet Konversation. Välj en befintlig konversation, ange titel och meddelande, till exempel kontrollera framsteg, välj tid eller intervall, granska nästa körning och spara.",
+          "Backend måste vara igång. Upptagna konversationer väntar; kanalsvar går tillbaka till ursprungskanalen. Borttagning eller arkivering tar bort reglerna, återställning återskapar dem inte. Uppgiftsbundna grupper använder uppgiftskoordinering."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Schemalägg meddelanden i en konversation",
+          "caption": "Backend måste vara igång. Upptagna konversationer väntar; kanalsvar går tillbaka till ursprungskanalen. Borttagning eller arkivering tar bort reglerna, återställning återskapar dem inte. Uppgiftsbundna grupper använder uppgiftskoordinering."
+        }
+      },
       {
         "title": "Kör nu och granska resultat",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Konfigurera WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack eller QQ, särskilj chatt från Webhook-meddelanden.",
     "sections": [
       {
+        "title": "Använd botens katalog",
+        "steps": [
+          "Spara en DingTalk-, WeCom- eller Feishu-bot och aktivera läsning under Redigera → Katalog. Ge medlemsläsbehörighet; WeCom kräver också företags-ID, Agent ID och Secret. Spara, sök i cachen och uppdatera vid personaländringar.",
+          "Katalogen finns bara i minnet och laddas efter omstart. Skicka via CLI eller assistent med exakt unikt namn eller kontakt-ID; välj namnlikheter uttryckligen. WeCom-mottagaren måste först ha kontaktat samma bot med matchande användar-ID; använd annars en befintlig kanalkonversation."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Använd botens katalog",
+          "caption": "Katalogen finns bara i minnet och laddas efter omstart. Skicka via CLI eller assistent med exakt unikt namn eller kontakt-ID; välj namnlikheter uttryckligen. WeCom-mottagaren måste först ha kontaktat samma bot med matchande användar-ID; använd annars en befintlig kanalkonversation."
+        }
+      },
+      {
         "title": "Välj en kanal och anslut en ny plattform",
         "steps": [
           "Öppna Inställningar → Kanalbotar, välj en plattform till vänster och ange ett namn, autentiseringsuppgifter och lokalt standardprojekt till höger. Aktivera och spara. Tomma hemligheter behåller befintliga värden vid redigering; kontrollera osparade ändringar innan du byter. Att stänga inställningar, trycka på Escape eller byta inställningssektioner ber om bekräftelse när ändringarna inte sparas; om du avbryter bevaras utkastet.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Demonstrationsfel orsakat av en obefintlig modell",
           "caption": "Felet säger att den valda modellen inte stöds. Reparera stegets modellkonfiguration innan du kör igen; det är inte reparerat i denna bild."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Egna motorer",
+    "summary": "Anslut nya SDK-, CLI- eller ACP-motorer genom ett vanligt samtal, eller importera ett befintligt motorpaket. Använd dem först efter verklig verifiering och registrering.",
+    "sections": [
+      {
+        "title": "Skapa en motor genom samtal",
+        "steps": [
+          "Om befintliga motorer inte räcker öppnar du «Inställningar → Körmotorer» med administratörsbehörighet för värden och väljer «Egen integration». För nybörjare rekommenderas fortfarande att först konfigurera en inbyggd SDK.",
+          "I ett vanligt samtal i standardarbetsytan väljer du en redan konfigurerad motor och anger namn, officiell dokumentation, autentisering och önskade funktioner. Exempel: «Integrera leverantörens officiella SDK med textchatt och möjlighet att stoppa generering».",
+          "Kontrollera det förifyllda utkastet innan du skickar. Att bara öppna integrationssamtalet skapar eller installerar ingen motor. Be samtalet följa integrationskraven, kontrollera om namnet redan finns, skapa adaptern och installera beroenden i en separat katalog.",
+          "Följ samtalets instruktioner för autentisering, verklig verifiering och registrering. Genererad kod eller slutförd installation innebär inte att integrationen fungerar. Spara nycklar i inställningarna, inte i chatt, källkod eller skärmbilder."
+        ],
+        "tips": [
+          "Verklig verifiering anropar modelltjänster och kan kosta pengar. Egen kod har lokala behörigheter; en isolerad underprocess är ingen sandlåda för filer eller nätverk. Använd bara betrodda källor."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Ingångar för egen integration och motorimport i motorinställningarna",
+          "caption": "Skärmbilder från den fasta demomiljön av integrationsingången och ett oskickat utkast saknas."
+        }
+      },
+      {
+        "title": "Importera ett befintligt motorpaket",
+        "steps": [
+          "Välj «Importera motor» under «Inställningar → Körmotorer» och välj ett ZIP-motorpaket exporterat från en betrodd källa.",
+          "Importen kontrollerar innehållet och skapar ett vanligt integrationssamtal med ett utkast. Den kör inte paketets kod och skriver inte över registrerade motorer. Lyckad import betyder inte slutförd installation eller godkänd verifiering.",
+          "Kontrollera paketkatalogen och integrationskraven i samtalet. Installera om beroenden för det lokala systemet, konfigurera autentisering, genomför verklig verifiering och registrera sedan motorn. Vid ersättning av en befintlig motor ska du först kontrollera ID och att ersättning är avsikten."
+        ],
+        "tips": [
+          "ZIP innehåller varken installerade beroenden eller lokal autentiseringskonfiguration. Mottagaren måste själv slutföra konfigurering och verifiering. Om importen misslyckas läser du felet på inställningssidan och försöker igen med rätt paket."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Integrationssamtal och utkast som skapas efter import av ett motorpaket",
+          "caption": "Skärmbilder av ZIP-import och utkast som väntar på konfigurering i den fasta demomiljön saknas. Import ska inte framställas som lyckad registrering."
+        }
+      },
+      {
+        "title": "Använda, exportera, inaktivera och återställa",
+        "steps": [
+          "När samtalet bekräftar lyckad registrering går du tillbaka till «Inställningar → Körmotorer» och väljer «Skanna igen». Den nya motorn visas i listan; själva registreringen kräver ingen omstart.",
+          "Kontrollera motorkonfiguration, leverantör och modell och välj motorn i ett vanligt samtal eller ett arbetsflödessteg. Kör först en liten uppgift för att kontrollera det verkliga resultatet.",
+          "Kortet för en egen motor erbjuder «Exportera ZIP», «Inaktivera körning» och «Återuppta körning». Kortets reglage «På / Av» styr bara synligheten i vallistorna; befintliga uppgifter kan fortfarande använda motorn. Inaktivering av körning stänger däremot motorns aktiva anslutningar; stoppa berörda uppgifter eller samtal först.",
+          "Om en uppdatering ger problem och en tidigare version finns avslutar du berörda körningar och väljer «Återställ version». Verifiera och registrera på nytt och starta om när gränssnittet ber om det. Utan en tidigare version går det inte att återställa."
+        ],
+        "tips": [
+          "Ändringar i kod, beroenden eller konfiguration kan göra tidigare verifiering ogiltig. Verifiera på nytt före registrering. Om du bara ändrar tjänsteadress eller autentisering bör du använda leverantörskonfigurationen utan att skapa motorn igen."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Export-, inaktiverings- och återställningskontroller för en registrerad egen motor",
+          "caption": "Ett riktigt kort för en registrerad motor i den fasta demomiljön saknas. Ett inbyggt motorkort får inte användas som ersättning."
         }
       }
     ]

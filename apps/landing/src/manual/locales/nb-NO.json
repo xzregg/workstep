@@ -805,7 +805,7 @@
         "title": "Fyll et meldingsutkast med stemmen",
         "steps": [
           "Åpne Innstillinger → Taleinndata, aktiver, last ned modell og kjøremiljø, velg språk og test mikrofonen. Installasjonen skjer på tilkoblet WorkStep-vert; telefonen trenger ingen modell. Mandarin, kantonesisk og engelsk støttes.",
-          "Trykk på mikrofonen i en redigerbar samtale, eller hold taleknappen på telefonen. Snakk, avslutt, kontroller teksten og send manuelt. Maksimalt to minutter; avbryt sender ingenting."
+          "På datamaskinen klikker du mikrofonen. På telefonen holder du tekstfeltet i 500 ms; ingen mikrofonikon vises. Slipp, kontroller teksten og send manuelt. Høyst to minutter; avbryt sender ingenting."
         ],
         "tips": [
           "Lyd gjenkjennes på tilkoblet vert og lagres ikke. Tillat mikrofon via HTTPS eller lokal adresse. Kontroller nettstedets og systemets tillatelser ved feil; start en gammel backend på nytt. Gjenkjent tekst kan uttrykkelig beholdes."
@@ -947,6 +947,18 @@
     "title": "Planlagte oppgaver",
     "summary": "Lag nye oppgaver etter en tidsplan, eller send tidsbestemte koordinatorinstruksjoner til eksisterende oppgaver, og spor utførelse og varsler.",
     "sections": [
+      {
+        "title": "Planlegg meldinger i en samtale",
+        "steps": [
+          "Åpne Planer, velg prosjekt og målet Samtale. Velg en eksisterende samtale, skriv tittel og melding, for eksempel kontroller fremdrift, sett tid eller intervall, kontroller neste kjøring og lagre.",
+          "Backend må kjøre. Opptatte samtaler venter; kanalsvar går tilbake til opprinnelsen. Sletting eller arkivering fjerner reglene; gjenoppretting henter dem ikke tilbake. Oppgavekoblede grupper bruker oppgavekoordinering."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Planlegg meldinger i en samtale",
+          "caption": "Backend må kjøre. Opptatte samtaler venter; kanalsvar går tilbake til opprinnelsen. Sletting eller arkivering fjerner reglene; gjenoppretting henter dem ikke tilbake. Oppgavekoblede grupper bruker oppgavekoordinering."
+        }
+      },
       {
         "title": "Kjør nå og kontroller resultatet",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Konfigurer WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack eller QQ, og skille chat fra Webhook-varsler.",
     "sections": [
       {
+        "title": "Bruk botens kontaktkatalog",
+        "steps": [
+          "Lagre en DingTalk-, WeCom- eller Feishu-bot og aktiver lesing under Rediger → Katalog. Gi medlemslesetilgang; WeCom krever også bedrifts-ID, Agent ID og Secret. Lagre, søk i hurtigbufferen og oppdater ved personalendringer.",
+          "Katalogen ligger bare i minnet og lastes etter omstart. Send via CLI eller assistent med nøyaktig entydig navn eller kontakt-ID; velg navnelikheter uttrykkelig. WeCom-mottakeren må først ha kontaktet samme bot med samsvarende bruker-ID; bruk ellers en eksisterende kanalsamtale."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Bruk botens kontaktkatalog",
+          "caption": "Katalogen ligger bare i minnet og lastes etter omstart. Send via CLI eller assistent med nøyaktig entydig navn eller kontakt-ID; velg navnelikheter uttrykkelig. WeCom-mottakeren må først ha kontaktet samme bot med samsvarende bruker-ID; bruk ellers en eksisterende kanalsamtale."
+        }
+      },
+      {
         "title": "Velg en kanal og koble til en ny plattform",
         "steps": [
           "Åpne Innstillinger → Kanalroboter, velg en plattform til venstre, og skriv inn et navn, legitimasjon og standard lokalt prosjekt til høyre. Aktiver og lagre. Tomme hemmeligheter beholder eksisterende verdier ved redigering; sjekk ulagrede endringer før du bytter. Å lukke innstillinger, trykke på Escape eller bytte innstillingsseksjoner ber om bekreftelse når endringer ikke er lagret; kansellering bevarer utkastet.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Demonstrasjonsfeil forårsaket av en ikke-eksisterende modell",
           "caption": "Feilen sier at den valgte modellen ikke støttes. Reparer trinnets modellkonfigurasjon før du kjører igjen; det er ikke reparert på dette bildet."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Egendefinerte motorer",
+    "summary": "Koble til nye SDK-, CLI- eller ACP-motorer gjennom en vanlig samtale, eller importer en eksisterende motorpakke. Bruk dem først etter reell verifisering og registrering.",
+    "sections": [
+      {
+        "title": "Lag en motor gjennom samtale",
+        "steps": [
+          "Hvis eksisterende motorer ikke dekker behovet, åpner du «Innstillinger → Kjøremotorer» med administratortilgang til verten og velger «Egendefinert integrasjon». Ved førstegangsbruk anbefales fortsatt en innebygd SDK først.",
+          "I en vanlig samtale i standardarbeidsområdet velger du en allerede konfigurert motor og oppgir navn, offisiell dokumentasjon, autentisering og ønskede egenskaper. For eksempel: «Integrer leverandørens offisielle SDK med tekstsamtaler og stopp av generering».",
+          "Kontroller det forhåndsutfylte utkastet før du sender. Å bare åpne integrasjonssamtalen lager eller installerer ingen motor. Be samtalen følge integrasjonskravene, kontrollere om navnet allerede finnes, lage adapteren og installere avhengigheter i en egen mappe.",
+          "Følg samtalens veiledning for autentisering, reell verifisering og registrering. Generert kode eller fullført installasjon betyr ikke at integrasjonen virker. Lagre nøkler i innstillingene, ikke i chat, kildekode eller skjermbilder."
+        ],
+        "tips": [
+          "Reell verifisering kaller modelltjenester og kan koste penger. Egendefinert kode har lokale rettigheter; en isolert underprosess er ikke en sandkasse for filer eller nettverk. Bruk bare pålitelige kilder."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Innganger for egendefinert integrasjon og motorimport i motorinnstillingene",
+          "caption": "Skjermbilder av integrasjonsinngangen og et usendt utkast i det faste demomiljøet mangler."
+        }
+      },
+      {
+        "title": "Importer en eksisterende motorpakke",
+        "steps": [
+          "Velg «Importer motor» under «Innstillinger → Kjøremotorer», og velg en ZIP-motorpakke eksportert fra en pålitelig kilde.",
+          "Importen kontrollerer pakkeinnholdet og oppretter en vanlig integrasjonssamtale med et utkast. Den kjører ikke pakkekode og overskriver ikke registrerte motorer. Vellykket import betyr ikke at installasjon eller verifisering er fullført.",
+          "Kontroller pakkemappen og integrasjonskravene i samtalen. Installer avhengigheter på nytt for ditt lokale system, konfigurer autentisering, fullfør reell verifisering og registrer deretter motoren. Ved erstatning av en eksisterende motor må du først kontrollere ID og at erstatning er tilsiktet."
+        ],
+        "tips": [
+          "ZIP inneholder verken installerte avhengigheter eller lokal autentisering. Mottakeren må selv fullføre oppsett og verifisering. Hvis importen feiler, les feilen på innstillingssiden og prøv igjen med riktig pakke."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Integrasjonssamtale og utkast opprettet etter import av en motorpakke",
+          "caption": "Skjermbilder av ZIP-import og utkast som venter på oppsett i det faste demomiljøet mangler. Import skal ikke fremstilles som vellykket registrering."
+        }
+      },
+      {
+        "title": "Bruk, eksporter, deaktiver og rull tilbake",
+        "steps": [
+          "Når samtalen bekrefter vellykket registrering, går du tilbake til «Innstillinger → Kjøremotorer» og velger «Skann på nytt». Den nye motoren vises i listen; selve registreringen krever ikke omstart.",
+          "Kontroller motoroppsett, leverandør og modell, og velg motoren i en vanlig samtale eller et arbeidsflyttrinn. Kjør først en liten oppgave for å kontrollere det faktiske resultatet.",
+          "Kortet for en egendefinert motor har «Eksporter ZIP», «Deaktiver kjøring» og «Gjenoppta kjøring». Kortets «På / Av»-bryter styrer bare synlighet i nedtrekkslistene; eksisterende oppgaver kan fortsatt bruke motoren. Deaktivering av kjøring lukker motorens aktive forbindelser; stopp berørte oppgaver eller samtaler først.",
+          "Hvis en oppdatering gir problemer og en tidligere versjon finnes, avslutter du berørte kjøringer og velger «Rull tilbake versjon». Verifiser og registrer på nytt, og start om hvis grensesnittet ber om det. Uten tidligere versjon er tilbakeføring ikke mulig."
+        ],
+        "tips": [
+          "Endringer i kode, avhengigheter eller konfigurasjon kan gjøre tidligere verifisering ugyldig. Verifiser på nytt før registrering. Hvis du bare endrer tjenesteadresse eller autentisering, bruk helst leverandøroppsettet uten å lage motoren på nytt."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Eksport-, deaktiverings- og tilbakeføringskontroller for en registrert egendefinert motor",
+          "caption": "Et ekte motorkort fra det faste demomiljøet mangler. Et kort for en innebygd motor skal ikke brukes som erstatning."
         }
       }
     ]

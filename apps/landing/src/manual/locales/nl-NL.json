@@ -805,7 +805,7 @@
         "title": "Een berichtconcept inspreken",
         "steps": [
           "Open Instellingen → Spraakinvoer, schakel dit in, download model en runtime, kies een taal en test de microfoon. Installatie gebeurt op de verbonden WorkStep-host, niet op de telefoon. Mandarijn, Kantonees en Engels worden ondersteund.",
-          "Tik op de microfoon in een bewerkbare chat of houd de spraakknop op een telefoon ingedrukt. Spreek, voltooi de opname, controleer de ingevoegde tekst en verzend handmatig. Maximaal twee minuten; annuleren verstuurt niets."
+          "Klik op de pc op de microfoon. Houd op de telefoon het tekstvak 500 ms vast; daar staat geen microfoonpictogram. Laat los, controleer de ingevoegde tekst en verzend handmatig. Maximaal twee minuten; annuleren verstuurt niets."
         ],
         "tips": [
           "Herkenning gebeurt op de verbonden host; audio wordt niet opgeslagen. Sta de microfoon toe via HTTPS of een lokaal adres. Controleer bij fouten site- en systeemrechten en herstart een verouderde backend. Herkende tekst kan expliciet worden behouden."
@@ -947,6 +947,18 @@
     "title": "Geplande taken",
     "summary": "Maak nieuwe taken volgens een schema, of stuur getimede coördinatorinstructies naar bestaande taken, en volg de uitvoering en meldingen.",
     "sections": [
+      {
+        "title": "Berichten in een bestaande conversatie plannen",
+        "steps": [
+          "Open Planningen, kies het project en het doel Conversatie. Selecteer een bestaande conversatie, vul titel en bericht in, bijvoorbeeld voortgang controleren, kies tijd of frequentie, controleer de volgende uitvoering en sla op.",
+          "De backend moet actief blijven. Bezette gesprekken wachten; kanaalreacties gaan naar het oorspronkelijke kanaal. Verwijderen of archiveren verwijdert de regels; herstellen brengt ze niet terug. Groepen gekoppeld aan taken gebruiken taakcoördinatie."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Berichten in een bestaande conversatie plannen",
+          "caption": "De backend moet actief blijven. Bezette gesprekken wachten; kanaalreacties gaan naar het oorspronkelijke kanaal. Verwijderen of archiveren verwijdert de regels; herstellen brengt ze niet terug. Groepen gekoppeld aan taken gebruiken taakcoördinatie."
+        }
+      },
       {
         "title": "Nu uitvoeren en gegenereerde taken controleren",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Configureer WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack of QQ, waarbij u onderscheid maakt tussen chat- en Webhook-meldingen.",
     "sections": [
       {
+        "title": "Een botadresboek gebruiken",
+        "steps": [
+          "Sla een DingTalk-, WeCom- of Feishu-bot op en schakel lezen in via Bewerken → Adresboek. Geef leesrechten voor leden; WeCom vraagt ook bedrijfs-ID, Agent ID en Secret. Sla op, zoek in de cache en vernieuw na personeelswijzigingen.",
+          "Het adresboek blijft in het geheugen en wordt na herstart opnieuw geladen. Gebruik via CLI of assistent een exacte unieke naam of contact-ID; kies naamgenoten expliciet. WeCom-ontvangers moeten eerder met dezelfde bot en hetzelfde gebruikers-ID hebben gecommuniceerd; gebruik anders een bestaande kanaalconversatie."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Een botadresboek gebruiken",
+          "caption": "Het adresboek blijft in het geheugen en wordt na herstart opnieuw geladen. Gebruik via CLI of assistent een exacte unieke naam of contact-ID; kies naamgenoten expliciet. WeCom-ontvangers moeten eerder met dezelfde bot en hetzelfde gebruikers-ID hebben gecommuniceerd; gebruik anders een bestaande kanaalconversatie."
+        }
+      },
+      {
         "title": "Kies een kanaal en sluit een nieuw platform aan",
         "steps": [
           "Open Instellingen → Kanaalbots, selecteer een platform aan de linkerkant en voer aan de rechterkant een naam, inloggegevens en standaard lokaal project in. Inschakelen en opslaan. Lege geheimen behouden bestaande waarden tijdens het bewerken; controleer niet-opgeslagen wijzigingen voordat u overschakelt. Bij het sluiten van instellingen, het indrukken van Escape of het wisselen van instellingensecties wordt om bevestiging gevraagd wanneer de wijzigingen niet zijn opgeslagen; Als u annuleert, blijft het concept behouden.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Demonstratie mislukt veroorzaakt door een niet-bestaand model",
           "caption": "De foutmelding geeft aan dat het gekozen model niet wordt ondersteund. Herstel de modelconfiguratie van de stap voordat u deze opnieuw uitvoert; op deze afbeelding is het niet gerepareerd."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Aangepaste engines",
+    "summary": "Integreer nieuwe SDK-, CLI- of ACP-engines via een gewone conversatie, of importeer een bestaand enginepakket. Gebruik ze pas na echte verificatie en registratie.",
+    "sections": [
+      {
+        "title": "Een engine maken via een conversatie",
+        "steps": [
+          "Als bestaande engines niet voldoen, open je met hostbeheerrechten «Instellingen → Uitvoeringsengines» en klik je op «Aangepaste integratie». Voor beginners blijft het aanbevolen eerst een ingebouwde SDK te configureren.",
+          "Kies in een gewone conversatie in de standaardwerkruimte een reeds geconfigureerde engine en vermeld naam, officiële documentatie, authenticatie en gewenste mogelijkheden. Bijvoorbeeld: «Integreer de officiële SDK van een provider met tekstchat en het stoppen van generatie».",
+          "Controleer het vooraf ingevulde concept voordat je het verzendt. Alleen de integratiechat openen maakt of installeert geen engine. Laat de chat de integratiespecificaties volgen, controleren of de naam al bestaat, een adapter maken en afhankelijkheden in een aparte map installeren.",
+          "Volg de aanwijzingen voor authenticatie, echte verificatie en registratie. Gegenereerde code of een voltooide installatie betekent niet dat de integratie is geslaagd. Bewaar sleutels in de instellingen, niet in chat, broncode of schermafbeeldingen."
+        ],
+        "tips": [
+          "Echte verificatie roept modeldiensten aan en kan kosten veroorzaken. Aangepaste code heeft lokale rechten; een geïsoleerd subproces is geen bestands- of netwerksandbox. Gebruik alleen vertrouwde bronnen."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Ingangen voor aangepaste integratie en engine-import in de engine-instellingen",
+          "caption": "Schermafbeeldingen uit de vaste demo-omgeving van de integratie-ingang en een niet-verzonden concept ontbreken nog."
+        }
+      },
+      {
+        "title": "Een bestaand enginepakket importeren",
+        "steps": [
+          "Klik via «Instellingen → Uitvoeringsengines» op «Engine importeren» en kies een ZIP-enginepakket dat door een vertrouwde bron is geëxporteerd.",
+          "De import controleert de pakketinhoud en maakt een gewone integratiechat met concept. Pakketcode wordt niet uitgevoerd en geregistreerde engines worden niet overschreven. Een geslaagde import betekent niet dat installatie of verificatie is afgerond.",
+          "Controleer de pakketmap en integratievereisten in de chat. Installeer afhankelijkheden opnieuw voor het lokale systeem, configureer authenticatie, voer echte verificatie uit en registreer daarna de engine. Controleer bij vervanging eerst de ID en of vervanging daadwerkelijk de bedoeling is."
+        ],
+        "tips": [
+          "De ZIP bevat geen geïnstalleerde afhankelijkheden of lokale authenticatieconfiguratie; de ontvanger moet configuratie en verificatie zelf afronden. Lees bij een mislukte import de fout op de instellingenpagina en probeer opnieuw met het juiste pakket."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Integratiechat en concept na het importeren van een enginepakket",
+          "caption": "Schermafbeeldingen uit de vaste demo-omgeving van ZIP-import en een nog te configureren concept ontbreken. Import mag niet worden voorgesteld als geslaagde registratie."
+        }
+      },
+      {
+        "title": "Gebruiken, exporteren, uitschakelen en terugdraaien",
+        "steps": [
+          "Als de chat een geslaagde registratie meldt, ga je terug naar «Instellingen → Uitvoeringsengines» en klik je op «Opnieuw scannen». De nieuwe engine verschijnt in de lijst; registratie op zichzelf vereist geen herstart.",
+          "Controleer engineconfiguratie, provider en model en selecteer de engine in een gewone conversatie of workflowstap. Voer eerst een kleine taak uit om het werkelijke resultaat te controleren.",
+          "De kaart van een aangepaste engine biedt «ZIP exporteren», «Uitvoering uitschakelen» en «Uitvoering hervatten». De schakelaar «Aan / Uit» op de kaart bepaalt alleen de zichtbaarheid in keuzelijsten; bestaande taken kunnen de engine nog gebruiken. Uitvoering uitschakelen sluit daarentegen de actieve verbindingen van de engine; stop betrokken taken of conversaties eerst.",
+          "Als een update problemen geeft en er een vorige versie is, beëindig je betrokken uitvoeringen en klik je op «Versie terugdraaien». Verifieer en registreer opnieuw en herstart als de interface dat vraagt. Zonder vorige versie is terugdraaien niet mogelijk."
+        ],
+        "tips": [
+          "Wijzigingen aan code, afhankelijkheden of configuratie kunnen eerdere verificatie ongeldig maken. Verifieer opnieuw vóór registratie. Wijzig je alleen het dienstadres of de authenticatie, gebruik dan bij voorkeur de providerconfiguratie zonder de engine opnieuw te maken."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Export-, uitschakel- en terugdraaiknoppen van een geregistreerde aangepaste engine",
+          "caption": "Een echte geregistreerde enginekaart uit de vaste demo-omgeving ontbreekt nog; een ingebouwde enginekaart mag die niet vervangen."
         }
       }
     ]

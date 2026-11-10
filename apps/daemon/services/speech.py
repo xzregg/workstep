@@ -41,7 +41,7 @@ MODEL_LANGUAGES = ('zh', 'yue', 'en')
 SAMPLE_RATE = 16000
 MAX_SESSIONS = 4
 MAX_BYTES = SAMPLE_RATE * 2 * 120
-MAX_FRAME = SAMPLE_RATE * 2 * 2
+MAX_FRAME = SAMPLE_RATE * 2 * 8
 RESOURCE_VERSION = '1'
 
 
@@ -342,7 +342,7 @@ class SpeechService:
                                  'touched': time.monotonic(), 'started': time.monotonic(),
                                  'lock': asyncio.Lock(), 'advanced': asyncio.Event()}
             self._maintain()
-            return {'id': sid, 'sample_rate': SAMPLE_RATE, 'max_seconds': 120}
+            return {'id': sid, 'sample_rate': SAMPLE_RATE, 'max_seconds': 120, 'max_frame_samples': MAX_FRAME // 2}
 
     def _session(self, sid, project, owner):
         s = self.sessions.get(sid)
@@ -394,7 +394,9 @@ class SpeechService:
             try:
                 # Only new samples enter the persistent decoder. The worker owns
                 # encoder/decoder caches and returns the complete hypothesis.
+                inference_started = time.monotonic()
                 text = (await self.infer(pcm, sid, final)).strip()
+                processing_ms = round((time.monotonic() - inference_started) * 1000, 1)
                 self._session(sid, project, owner)
             except BaseException:
                 await self._release(s, terminate=True)
@@ -402,7 +404,7 @@ class SpeechService:
             self.last_used = s['touched'] = time.monotonic()
             if final:
                 await self._release(s)
-            return {'id': sid, 'sequence': sequence, 'text': text, 'final': final}
+            return {'id': sid, 'sequence': sequence, 'text': text, 'final': final, 'processing_ms': processing_ms}
 
     async def cancel(self, sid, project, owner):
         session = self._session(sid, project, owner)

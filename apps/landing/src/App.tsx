@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useI18n } from './i18n'
 import { ManualPage } from './manual/ManualPage'
 import { getManualChapterId, isManualHash } from './manual/content'
 import { Compare } from './components/Compare'
@@ -24,10 +25,11 @@ import { GettingStarted } from './components/GettingStarted'
 import { ProductIntro } from './components/ProductIntro'
 
 function scrollToDemos() {
-  document.getElementById('demos')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  document.getElementById('intro-video')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
 }
 
 export default function App() {
+  const { t } = useI18n()
   const [hash, setHash] = useState(() => typeof window === 'undefined' ? '' : window.location.hash)
   useEffect(() => {
     const update = () => setHash(window.location.hash)
@@ -48,16 +50,16 @@ export default function App() {
         <FlowBackdrop />
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
         <ProductIntro />
-        <div className="container recorded-section"><GuidedWalkthrough /></div>
         <Philosophy />
-        <Demos onOpen={setOpenDemo} />
-        <GettingStarted />
-        <Features />
         <EnginesStrip />
+        <Features />
         <Workflow />
-        <Compare />
         <Channels />
         <RemoteShare />
+        <Demos onOpen={setOpenDemo} />
+        <div className="container recorded-section"><details className="homepage-details"><summary>{t('walkthrough.eyebrow')}</summary><GuidedWalkthrough /></details></div>
+        <GettingStarted />
+        <div className="container"><details className="homepage-details"><summary>{t('compare.title')}</summary><Compare /></details></div>
         <FinalCta experienceHref={experienceHref} />
       </main>}
       <Footer />

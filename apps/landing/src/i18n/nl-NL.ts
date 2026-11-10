@@ -161,6 +161,9 @@ export const nlNL: I18nDict = {
     "statusReviewing": "Beoordelen"
   },
   "engines": {
+    extension: "Koppel je eigen Agent-engine",
+    description: "Koppel CLI-, SDK- en ACP-engines of bouw een adapter. Kies per stap een engine. Start een aangepaste integratie bij de engine-instellingen en installeer, valideer en registreer de adapter.",
+    guide: "Handleiding voor eigen engines",
     "label": "Kies een AI-coderingstool. Configureer er een om aan de slag te gaan.",
     "codex": "CodexCLI",
     "claude": "Claude Code",

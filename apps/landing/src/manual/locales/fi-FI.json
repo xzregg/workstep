@@ -805,7 +805,7 @@
         "title": "Täytä viestiluonnos puheella",
         "steps": [
           "Avaa Asetukset → Puheensyöttö, ota käyttöön, lataa malli ja ajonaikainen ympäristö, valitse kieli ja testaa mikrofoni. Asennus tehdään yhdistetylle WorkStep-palvelimelle, ei puhelimeen. Tuetut kielet ovat mandariinikiina, kantoninkiina ja englanti.",
-          "Paina mikrofonia muokattavassa keskustelussa tai pidä puhepainiketta pohjassa puhelimessa. Puhu, lopeta, tarkista lisätty teksti ja lähetä itse. Enintään kaksi minuuttia; peruutus ei lähetä mitään."
+          "Tietokoneella napsauta mikrofonia. Puhelimella paina tekstikenttää 500 ms; mikrofonikuvaketta ei näy. Vapauta, tarkista lisätty teksti ja lähetä itse. Enintään kaksi minuuttia; peruutus ei lähetä mitään."
         ],
         "tips": [
           "Ääni tunnistetaan yhdistetyllä palvelimella eikä sitä tallenneta. Salli mikrofoni HTTPS- tai paikallisosoitteessa. Tarkista virheissä sivuston ja järjestelmän oikeudet ja käynnistä vanha taustapalvelu uudelleen. Tunnistetun tekstin voi erikseen säilyttää."
@@ -947,6 +947,18 @@
     "title": "Aikataulutetut tehtävät",
     "summary": "Luo uusia tehtäviä aikataulun mukaan tai lähetä ajoitettuja koordinaattorin ohjeita olemassa oleviin tehtäviin ja seuraa suoritusta ja ilmoituksia.",
     "sections": [
+      {
+        "title": "Ajasta viestejä olemassa olevaan keskusteluun",
+        "steps": [
+          "Avaa Ajastukset, valitse projekti ja kohteeksi Keskustelu. Valitse olemassa oleva keskustelu, anna otsikko ja viesti, esimerkiksi tarkista eteneminen, aseta aika tai toistuvuus, tarkista seuraava suoritus ja tallenna.",
+          "Taustapalvelun pitää toimia. Varattu keskustelu odottaa; kanavavastaukset palaavat alkuperäiseen kanavaan. Keskustelun poistaminen tai arkistointi poistaa säännöt eikä palautus tuo niitä takaisin. Tehtäväryhmät käyttävät tehtävän koordinointia."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Ajasta viestejä olemassa olevaan keskusteluun",
+          "caption": "Taustapalvelun pitää toimia. Varattu keskustelu odottaa; kanavavastaukset palaavat alkuperäiseen kanavaan. Keskustelun poistaminen tai arkistointi poistaa säännöt eikä palautus tuo niitä takaisin. Tehtäväryhmät käyttävät tehtävän koordinointia."
+        }
+      },
       {
         "title": "Suorita nyt ja tarkista tulokset",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Määritä WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack tai QQ erottamalla chat Webhook-ilmoituksista.",
     "sections": [
       {
+        "title": "Käytä botin hakemistoa",
+        "steps": [
+          "Tallenna DingTalk-, WeCom- tai Feishu-botti ja ota luku käyttöön kohdassa Muokkaa → Hakemisto. Anna jäsenten lukuoikeus; WeCom tarvitsee myös yritystunnuksen, Agent ID:n ja Secretin. Tallenna, hae välimuistista ja päivitä henkilöstömuutoksissa.",
+          "Hakemisto on vain muistissa ja ladataan uudelleenkäynnistyksessä. Lähetä CLI:n tai avustajan kautta täsmällisellä yksilöllisellä nimellä tai yhteystunnuksella; valitse kaimat erikseen. WeCom-vastaanottajan on ensin keskusteltava saman botin kanssa samalla käyttäjätunnuksella; muuten käytä olemassa olevaa kanavakeskustelua."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Käytä botin hakemistoa",
+          "caption": "Hakemisto on vain muistissa ja ladataan uudelleenkäynnistyksessä. Lähetä CLI:n tai avustajan kautta täsmällisellä yksilöllisellä nimellä tai yhteystunnuksella; valitse kaimat erikseen. WeCom-vastaanottajan on ensin keskusteltava saman botin kanssa samalla käyttäjätunnuksella; muuten käytä olemassa olevaa kanavakeskustelua."
+        }
+      },
+      {
         "title": "Valitse kanava ja yhdistä uusi alusta",
         "steps": [
           "Avaa Asetukset → Kanavabotit, valitse alusta vasemmalta ja anna oikealle nimi, tunnistetiedot ja oletusarvoinen paikallinen projekti. Ota käyttöön ja tallenna. Tyhjät salaisuudet säilyttävät olemassa olevat arvot muokattaessa; tarkista tallentamattomat muutokset ennen vaihtamista. Asetusten sulkeminen, Esc-näppäimen painaminen tai asetusosien vaihtaminen pyytää vahvistusta, kun muutoksia ei ole tallennettu. peruuttaminen säilyttää luonnoksen.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Demonstraatiovirhe, joka johtuu olemattomasta mallista",
           "caption": "Virhe kertoo, että valittua mallia ei tueta. Korjaa vaiheen mallikokoonpano ennen kuin suoritat sen uudelleen; sitä ei ole korjattu tässä kuvassa."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Mukautetut moottorit",
+    "summary": "Liitä uusi SDK-, CLI- tai ACP-moottori tavallisessa keskustelussa tai tuo olemassa oleva moottoripaketti. Käytä sitä vasta todellisen hyväksymistestauksen ja rekisteröinnin jälkeen.",
+    "sections": [
+      {
+        "title": "Moottorin luominen keskustelussa",
+        "steps": [
+          "Jos nykyiset moottorit eivät riitä, avaa isäntälaitteen hallintaoikeuksilla ”Asetukset → Suoritusmoottorit” ja valitse ”Mukautettu liitäntä”. Ensimmäisellä käyttökerralla suositellaan edelleen sisäisen SDK:n määrittämistä ensin.",
+          "Avaa oletustyötilan tavallinen keskustelu, valitse määritetty moottori ja anna nimi, virallinen dokumentaatio, tunnistautumistapa ja tarvittavat ominaisuudet. Esimerkiksi: ”Liitä palveluntarjoajan virallinen SDK, joka tukee tekstikeskustelua ja generoinnin pysäyttämistä.”",
+          "Tarkista esitäytetty luonnos ennen lähettämistä. Liitäntäkeskustelun avaaminen ei yksin luo tai asenna moottoria. Pyydä tarkistamaan liitäntäohjeiden mukaan, onko samanniminen moottori jo olemassa, luomaan sovitin ja asentamaan riippuvuudet erilliseen hakemistoon.",
+          "Noudata keskustelun ohjeita tunnistautumisen, todellisen hyväksymistestauksen ja rekisteröinnin suorittamiseksi. Luotu koodi tai valmis asennus ei tarkoita onnistunutta liitäntää. Tallenna avaimet asetuksissa, älä keskusteluun, lähdekoodiin tai kuvakaappauksiin."
+        ],
+        "tips": [
+          "Todellinen hyväksymistestaus kutsuu mallipalvelua ja voi aiheuttaa kustannuksia. Mukautetulla koodilla on paikalliset oikeudet; aliprosessieristys ei ole tiedostojen tai verkon hiekkalaatikko. Liitä vain luotettuja lähteitä."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Mukautetun liitännän ja moottorin tuonnin avauskohdat suoritusmoottorien asetuksissa",
+          "caption": "Liitännän avauskohdan ja lähettämättömän luonnoksen kuvat kiinteästä esittely-ympäristöstä puuttuvat vielä."
+        }
+      },
+      {
+        "title": "Olemassa olevan moottoripaketin tuominen",
+        "steps": [
+          "Valitse kohdassa ”Asetukset → Suoritusmoottorit” ”Tuo moottori” ja valitse luotetusta lähteestä viety ZIP-moottoripaketti.",
+          "Tuonti tarkistaa sisällön ja luo tavallisen liitäntäkeskustelun sekä luonnoksen. Se ei suorita paketin koodia eikä korvaa rekisteröityjä moottoreita. Onnistunut tuonti ei tarkoita valmista asennusta tai hyväksyttyä testausta.",
+          "Tarkista keskustelusta pakettihakemisto ja liitäntävaatimukset. Asenna riippuvuudet uudelleen paikallista järjestelmää varten, määritä tunnistautuminen, suorita todellinen hyväksymistestaus ja rekisteröi vasta sitten. Tarkista ID ja korvaamistarkoitus ennen olemassa olevan moottorin korvaamista."
+        ],
+        "tips": [
+          "ZIP ei sisällä asennettuja riippuvuuksia tai paikallisia tunnistautumisasetuksia. Vastaanottajan on määritettävä ja testattava itse. Jos tuonti epäonnistuu, pysy asetussivulla, lue virhe ja yritä oikealla paketilla uudelleen."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Moottoripaketin tuonnin luoma liitäntäkeskustelu ja luonnos",
+          "caption": "Kiinteän esittely-ympäristön ZIP-tuonnin ja määrittämistä odottavan luonnoksen kuvat puuttuvat vielä. Tuontia ei esitetä onnistuneena rekisteröintinä."
+        }
+      },
+      {
+        "title": "Käyttö, vienti, käytöstäpoisto ja version palautus",
+        "steps": [
+          "Kun keskustelu vahvistaa onnistuneen rekisteröinnin, palaa kohtaan ”Asetukset → Suoritusmoottorit” ja valitse ”Etsi uudelleen”. Uusi moottori tulee luetteloon; rekisteröinti itsessään ei vaadi sovelluksen uudelleenkäynnistystä.",
+          "Tarkista moottorin asetukset, palveluntarjoaja ja malli. Valitse moottori tavallisessa keskustelussa tai työnkulun vaiheessa ja varmista todellinen tulos ensin pienellä tehtävällä.",
+          "Mukautetun moottorin kortissa ovat ”Vie ZIP”, ”Poista suoritus käytöstä” ja ”Palauta suoritus”. Kortin ”Päällä / Pois” -kytkin ohjaa vain näkyvyyttä valintalistassa; olemassa olevat tehtävät voivat edelleen käyttää moottoria. Suorituksen poistaminen käytöstä sulkee moottorin aktiiviset yhteydet, joten pysäytä ensin siihen liittyvät tehtävät tai keskustelut.",
+          "Jos päivityksessä on ongelma ja aiempi versio on saatavilla, lopeta ensin siihen liittyvät suoritukset ja valitse ”Palauta versio”. Testaa ja rekisteröi uudelleen palautuksen jälkeen ja käynnistä uudelleen käyttöliittymän ohjeen mukaan. Ilman aiempaa versiota palautus ei onnistu."
+        ],
+        "tips": [
+          "Koodin, riippuvuuksien tai asetusten muutos voi mitätöidä vanhan testauksen; testaa uudelleen ennen rekisteröintiä. Jos muutat vain mallipalvelun osoitetta tai tunnistautumista, käytä ensisijaisesti palveluntarjoajan asetuksia luomatta moottoria uudelleen."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Rekisteröidyn mukautetun moottorin vienti-, käytöstäpoisto- ja palautussäätimet",
+          "caption": "Rekisteröidyn moottorin kortin kuva kiinteästä esittely-ympäristöstä puuttuu vielä; sisäisen moottorin korttia ei käytetä sen korvikkeena."
         }
       }
     ]

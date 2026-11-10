@@ -805,7 +805,7 @@
         "title": "Dicter un brouillon de message",
         "steps": [
           "Ouvrez Paramètres → Saisie vocale, activez-la, téléchargez le modèle et le moteur, choisissez la langue puis testez le microphone. L’installation se fait sur l’hôte WorkStep connecté, pas sur le téléphone. Le mandarin, le cantonais et l’anglais sont pris en charge.",
-          "Dans un chat modifiable, appuyez sur le microphone ; sur téléphone, un appui long est aussi possible. Dictez, terminez, vérifiez le texte inséré puis envoyez-le manuellement. Limite : deux minutes. Annuler ne soumet rien."
+          "Sur ordinateur, cliquez sur le microphone. Sur téléphone, maintenez la zone de texte 500 ms ; aucune icône de microphone n’apparaît. Relâchez, vérifiez le texte inséré et envoyez manuellement. Maximum deux minutes ; annuler n’envoie rien."
         ],
         "tips": [
           "L’hôte connecté reconnaît le son sans le conserver. Autorisez le microphone via HTTPS ou une adresse locale. En cas d’échec, vérifiez les permissions du site et du système ; redémarrez un serveur obsolète. Vous pouvez conserver explicitement le texte déjà reconnu."
@@ -947,6 +947,18 @@
     "title": "Tâches planifiées",
     "summary": "Créez des tâches selon un horaire ou envoyez des instructions à une tâche existante, avec suivi des exécutions et notifications.",
     "sections": [
+      {
+        "title": "Programmer un message dans une conversation",
+        "steps": [
+          "Ouvrez Planifications, choisissez le projet puis la cible Conversation. Sélectionnez une conversation existante, saisissez un titre et un message, par exemple vérifier l’avancement, puis l’heure ou la fréquence. Vérifiez la prochaine exécution et enregistrez.",
+          "Le serveur doit rester actif. Une conversation occupée attend ; les réponses de canal reviennent au canal d’origine. Supprimer ou archiver la conversation supprime ses règles, sans restauration automatique. Un groupe lié à une tâche utilise la coordination de tâche."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Programmer un message dans une conversation",
+          "caption": "Le serveur doit rester actif. Une conversation occupée attend ; les réponses de canal reviennent au canal d’origine. Supprimer ou archiver la conversation supprime ses règles, sans restauration automatique. Un groupe lié à une tâche utilise la coordination de tâche."
+        }
+      },
       {
         "title": "Exécuter maintenant et vérifier les tâches",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Configurez WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack ou QQ en distinguant conversation et notification Webhook.",
     "sections": [
       {
+        "title": "Utiliser l’annuaire d’un bot",
+        "steps": [
+          "Enregistrez un bot DingTalk, WeCom ou Feishu, puis activez la lecture dans Modifier → Annuaire. Accordez les droits de lecture des membres ; WeCom demande aussi l’ID d’entreprise, l’Agent ID et le Secret. Enregistrez, recherchez le cache et actualisez après les changements de personnel.",
+          "L’annuaire reste en mémoire et se recharge au redémarrage. Avec le CLI ou l’assistant, utilisez un nom exact unique ou un ID de contact ; choisissez explicitement les homonymes. Sur WeCom, le destinataire doit avoir déjà parlé au même bot avec un ID utilisateur identique ; sinon, utilisez une conversation existante."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Utiliser l’annuaire d’un bot",
+          "caption": "L’annuaire reste en mémoire et se recharge au redémarrage. Avec le CLI ou l’assistant, utilisez un nom exact unique ou un ID de contact ; choisissez explicitement les homonymes. Sur WeCom, le destinataire doit avoir déjà parlé au même bot avec un ID utilisateur identique ; sinon, utilisez une conversation existante."
+        }
+      },
+      {
         "title": "Choisir un canal et connecter une plateforme",
         "steps": [
           "Dans Paramètres → Robots de canal, choisissez à gauche, puis nom, identifiants et projet local par défaut à droite. Activez et enregistrez. Une clé vide conserve l’ancienne en modification ; vérifiez les brouillons avant changement. Fermer les paramètres, appuyer sur Échap ou changer de rubrique demande confirmation si des modifications ne sont pas enregistrées ; annuler conserve le brouillon.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Échec fictif causé par un modèle inexistant",
           "caption": "L’erreur indique un modèle non pris en charge. Corrigez sa configuration avant reprise ; ce n’est pas encore fait sur l’image."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Moteurs personnalisés",
+    "summary": "Intégrez un nouveau moteur SDK, CLI ou ACP dans une conversation ordinaire, ou importez un paquet existant. Utilisez-le après une validation réelle et son enregistrement.",
+    "sections": [
+      {
+        "title": "Créer un moteur par conversation",
+        "steps": [
+          "Si les moteurs existants ne répondent pas au besoin, ouvrez « Paramètres → Moteurs d’exécution » avec les droits d’administration de l’hôte et cliquez sur « Intégration personnalisée ». Pour débuter, il reste recommandé de configurer d’abord un SDK intégré.",
+          "Ouvrez une conversation ordinaire de l’espace de travail par défaut, choisissez un moteur configuré et précisez le nom, la documentation officielle, l’authentification et les capacités requises. Par exemple : « Intègre le SDK officiel d’un fournisseur avec chat textuel et arrêt de la génération. »",
+          "Vérifiez le brouillon prérempli avant de l’envoyer. Ouvrir la conversation d’intégration ne crée ni n’installe de moteur. Demandez, conformément aux spécifications, de vérifier les moteurs homonymes, de créer l’adaptateur et d’installer les dépendances dans un dossier indépendant.",
+          "Suivez la conversation pour terminer l’authentification, la validation réelle et l’enregistrement. Générer du code ou terminer l’installation ne garantit pas une intégration fonctionnelle. Enregistrez les clés dans les paramètres, jamais dans le chat, le code source ou les captures."
+        ],
+        "tips": [
+          "La validation réelle appelle le service du modèle et peut entraîner des frais. Le code personnalisé dispose de droits locaux ; isoler un sous-processus ne constitue pas un bac à sable pour les fichiers ou le réseau. Intégrez uniquement des sources fiables."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Accès à l’intégration personnalisée et à l’import de moteurs dans les paramètres des moteurs",
+          "caption": "Captures de l’accès à l’intégration et du brouillon non envoyé à ajouter depuis l’environnement de démonstration fixe."
+        }
+      },
+      {
+        "title": "Importer un paquet de moteur existant",
+        "steps": [
+          "Dans « Paramètres → Moteurs d’exécution », cliquez sur « Importer un moteur » et sélectionnez un paquet de moteur ZIP exporté depuis une source fiable.",
+          "L’import vérifie le contenu et crée une conversation ordinaire d’intégration avec un brouillon. Il n’exécute pas le code du paquet et ne remplace pas les moteurs enregistrés. Un import réussi ne signifie ni installation terminée ni validation réussie.",
+          "Vérifiez dans la conversation le dossier du paquet et les exigences d’intégration. Réinstallez les dépendances pour le système local, configurez l’authentification, effectuez la validation réelle puis enregistrez. Avant de remplacer un moteur, vérifiez son ID et l’intention de remplacement."
+        ],
+        "tips": [
+          "Le ZIP ne contient ni les dépendances installées ni la configuration d’authentification locale. Le destinataire doit configurer et valider lui-même. Si l’import échoue, restez dans les paramètres pour lire l’erreur, puis réessayez avec le bon paquet."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Conversation d’intégration et brouillon créés après l’import d’un paquet de moteur",
+          "caption": "Captures de l’import ZIP et du brouillon à configurer à ajouter depuis l’environnement fixe. L’import n’est pas présenté comme un enregistrement réussi."
+        }
+      },
+      {
+        "title": "Utiliser, exporter, désactiver et revenir à une version",
+        "steps": [
+          "Après confirmation de l’enregistrement dans la conversation, revenez dans « Paramètres → Moteurs d’exécution » et cliquez sur « Relancer l’analyse ». Le nouveau moteur apparaît dans la liste ; l’enregistrement seul ne nécessite pas de redémarrer l’application.",
+          "Vérifiez la configuration du moteur, le fournisseur et le modèle. Sélectionnez-le dans une conversation ordinaire ou une étape de flux, puis exécutez d’abord une petite tâche pour contrôler le résultat réel.",
+          "La carte du moteur personnalisé propose « Exporter ZIP », « Désactiver l’exécution » et « Reprendre l’exécution ». Son interrupteur « Activé / Désactivé » contrôle uniquement l’affichage dans le sélecteur ; les tâches existantes peuvent continuer à utiliser le moteur. Désactiver l’exécution ferme ses connexions actives ; arrêtez d’abord les tâches ou conversations concernées.",
+          "Si une mise à jour pose problème et qu’une version précédente existe, terminez d’abord les exécutions concernées puis cliquez sur « Revenir à la version précédente ». Validez et enregistrez à nouveau, puis redémarrez selon les indications de l’interface. Sans version précédente, aucun retour n’est possible."
+        ],
+        "tips": [
+          "Une modification du code, des dépendances ou de la configuration peut invalider l’ancienne validation : recommencez-la avant l’enregistrement. Pour changer seulement l’adresse du service ou l’authentification, privilégiez la configuration du fournisseur sans recréer le moteur."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Commandes d’export, de désactivation et de retour de version d’un moteur personnalisé enregistré",
+          "caption": "Capture d’une carte de moteur enregistré à ajouter depuis l’environnement fixe ; aucune carte de moteur intégré ne la remplace."
         }
       }
     ]

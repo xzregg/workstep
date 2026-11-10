@@ -161,6 +161,9 @@ export const jaJP: I18nDict = {
     "statusReviewing": "レビュー中"
   },
   "engines": {
+    extension: "使いたい Agent エンジンを接続",
+    description: "CLI・SDK・ACP エンジンに対応し、独自アダプターも追加できます。ステップごとにエンジンを選択。設定の実行エンジンからカスタム接続を開始し、インストール・検証・登録後に利用します。",
+    guide: "カスタムエンジン接続ガイド",
     "label": "自分に合うAI開発ツールを一つ設定して始めましょう",
     "codex": "Codex CLI",
     "claude": "Claude Code",

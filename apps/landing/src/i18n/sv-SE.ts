@@ -161,6 +161,9 @@ export const svSE: I18nDict = {
     "statusReviewing": "Granskning"
   },
   "engines": {
+    extension: "Anslut din egen Agent-motor",
+    description: "Anslut CLI-, SDK- och ACP-motorer eller bygg en adapter. Välj motor per steg. Starta en anpassad integration i motorinställningarna och installera, validera och registrera adaptern.",
+    guide: "Guide för egna motorer",
     "label": "Välj ett AI-kodningsverktyg. Konfigurera en för att komma igång.",
     "codex": "Codex CLI",
     "claude": "Claude Code",

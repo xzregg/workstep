@@ -249,6 +249,8 @@ async def _application_lifespan(app: FastAPI):
         workflow_runtime=workflow_runtime,
     )
     schedule_module._notification_sender = channel_bot_manager
+    schedule_module._chat_sessions = chat_session_module
+    schedule_module._channel_sessions = channel_chat_module
     async with startup_stage("渠道机器人"):
         await channel_bot_manager.start()
     async with startup_stage("聊天恢复"):

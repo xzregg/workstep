@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import ScheduleRunNowButton from '../components/ScheduleRunNowButton'
 import ScheduleRuleEditor from '../components/ScheduleRuleEditor'
 import TaskScheduleEditor from '../components/TaskScheduleEditor'
+import ConversationScheduleEditor from '../components/ConversationScheduleEditor'
 import type { BoundScheduleTask } from '../components/TaskScheduleEditor'
 import ScheduleNotificationEditor, {type NotificationEditorState} from '../components/ScheduleNotificationEditor'
 import ScheduleRunJson from '../components/ScheduleRunJson'
@@ -93,7 +94,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
   const [focusMessageId, setFocusMessageId] = useState<string | undefined>()
   const [taskId, setTaskId] = useState<string | null>(null)
   const [taskConfigTab, setTaskConfigTab] = useState<'content' | 'review'>('content')
-  const [targetType, setTargetType] = useState<'project' | 'task'>('project')
+  const [targetType, setTargetType] = useState<'project' | 'task' | 'session'>('project')
   const [targetFilter, setTargetFilter] = useState('all')
   const [taskFilter, setTaskFilter] = useState('')
   const [generation, setGeneration] = useState<'static' | 'agent'>('static')
@@ -396,7 +397,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
             ))}
           </div>
           {!boundTask && <div className="schedule-target-filter">
-            <Select aria-label={t('schedules.targetFilter')} value={targetFilter} onChange={e => { setTargetFilter(e.target.value); setTaskFilter('') }}><option value="all">{t('schedules.all')}</option><option value="project">{t('schedules.projectTarget')}</option><option value="task">{t('schedules.taskTarget')}</option></Select>
+            <Select aria-label={t('schedules.targetFilter')} value={targetFilter} onChange={e => { setTargetFilter(e.target.value); setTaskFilter('') }}><option value="all">{t('schedules.all')}</option><option value="project">{t('schedules.projectTarget')}</option><option value="task">{t('schedules.taskTarget')}</option><option value="session">{t('schedules.sessionTarget')}</option></Select>
             {targetFilter === 'task' && <Input aria-label={t('schedules.taskIdFilter')} placeholder={t('schedules.taskIdFilter')} value={taskFilter} onChange={e => setTaskFilter(e.target.value)} />}
           </div>}
           <div role="tabpanel" id={`schedule-type-list-${projectId}`} aria-labelledby={`schedule-type-${projectId}-${listType}`}>
@@ -406,7 +407,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
             <button className="schedule-list-item" key={item.id} onClick={() => { setCreating(false); setSelectedId(item.id) }} style={{ display: 'block', width: '100%', minWidth: 0, border: 0, borderRadius: 8, padding: 12, marginBottom: 6, textAlign: 'left', cursor: 'pointer', background: selectedId === item.id ? 'var(--accent-light)' : 'transparent', color: 'var(--fg)' }}>
               <div className="schedule-list-title-row" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                 <MarqueeText
-                  text={item.target_type === 'task' ? item.name : item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}
+                  text={item.target_type === 'task' || item.target_type === 'session' ? item.name : item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}
                   style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}
                 />
                 <span className="schedule-list-status" style={{ flexShrink: 0, color: statusColors[item.status], fontSize: 'calc(11px * var(--font-scale))' }}>{t(`schedules.status_${item.status}` as any)}</span>
@@ -420,6 +421,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
               {(item.creator_name?.trim() || item.creator_username?.trim()) && <div className="schedule-list-creator" title={item.creator_name?.trim() || item.creator_username?.trim()}>
                 {item.creator_name?.trim() || item.creator_username?.trim()}
               </div>}
+              {item.target_type === 'session' && item.target_session_title && <div className="schedule-task-target">{item.target_session_title}</div>}
               {item.target_type === 'task' && item.target_task_title && <div className="schedule-task-target" title={item.target_task_title}>{item.target_task_title}</div>}
               {item.task_template.mode === 'agent' && <div style={{ color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 4 }}>{item.task_template.candidate_workflow_ids?.length ? t('schedules.agentCandidates', { count: item.task_template.candidate_workflow_ids.length }) : t('schedules.allWorkflows')}</div>}
             </button>
@@ -437,8 +439,8 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
             {canManage && selected && selected.status !== 'active' && <Button onClick={() => void changeStatus('resume')}>{t('schedules.resume')}</Button>}
             {canManage && selected && <Button variant="danger" onClick={() => setDeleteId(selected.id)}>{t('common.delete')}</Button>}
           </div>
-          {creating && !boundTask && <div className="schedule-frequency-tabs"><button type="button" className={targetType === 'project' ? 'active' : ''} onClick={() => setTargetType('project')}>{t('schedules.projectTarget')}</button><button type="button" className={targetType === 'task' ? 'active' : ''} onClick={() => { setTargetType('task'); closeTest() }}>{t('schedules.taskTarget')}</button></div>}
-          {targetType === 'task' ? <TaskScheduleEditor key={`${projectId}:${selectedId || 'new'}`} projectId={projectId} schedule={selected} workflows={workflows} boundTask={boundTask} onEditorStateChange={onEditorStateChange} onSaved={saved => { setTargetFilter('all'); setTaskFilter(''); void load(); setCreating(false); setSelectedId(saved.id); setListType(saved.rule.kind === 'once' ? 'once' : 'recurring') }} /> : <>
+          {creating && !boundTask && <div className="schedule-frequency-tabs"><button type="button" className={targetType === 'project' ? 'active' : ''} onClick={() => setTargetType('project')}>{t('schedules.projectTarget')}</button><button type="button" className={targetType === 'task' ? 'active' : ''} onClick={() => { setTargetType('task'); closeTest() }}>{t('schedules.taskTarget')}</button><button type="button" className={targetType === 'session' ? 'active' : ''} onClick={() => { setTargetType('session'); closeTest() }}>{t('schedules.sessionTarget')}</button></div>}
+          {targetType === 'session' ? <ConversationScheduleEditor key={`${projectId}:${selectedId || 'new'}`} projectId={projectId} schedule={selected} onEditorStateChange={onEditorStateChange} onSaved={saved => { setTargetFilter('all'); setTaskFilter(''); void load(); setCreating(false); setSelectedId(saved.id); setListType(saved.rule.kind === 'once' ? 'once' : 'recurring') }} /> : targetType === 'task' ? <TaskScheduleEditor key={`${projectId}:${selectedId || 'new'}`} projectId={projectId} schedule={selected} workflows={workflows} boundTask={boundTask} onEditorStateChange={onEditorStateChange} onSaved={saved => { setTargetFilter('all'); setTaskFilter(''); void load(); setCreating(false); setSelectedId(saved.id); setListType(saved.rule.kind === 'once' ? 'once' : 'recurring') }} /> : <>
           <div className="schedule-frequency-label">{t('schedules.generation')}</div>
           <div className="schedule-frequency-tabs">
             <button type="button" className={generation === 'static' ? 'active' : ''} onClick={() => { setGeneration('static'); closeTest() }}>{t('schedules.generationStatic')}</button>
@@ -579,7 +581,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.runs')}</strong><div style={{ flex: 1 }} /><Select value={runFilter} onChange={(event) => setRunFilter(event.target.value)} style={{ width: 130 }}><option value="all">{t('schedules.all')}</option>{['queued', 'running', 'created', 'succeeded', 'failed', 'skipped', 'stopped'].map((status) => <option key={status} value={status}>{t(`schedules.status_${status}` as any)}</option>)}</Select></div>
               {filteredRuns.length === 0 && <div style={{ color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', padding: 16 }}>{t('schedules.noRuns')}</div>}
-              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}{selected?.task_template.mode === 'agent' && <ScheduleRunJson run={run} />}<ScheduleRunNotification canRetry={canManage} projectId={projectId} scheduleId={selectedId || ''} run={run} onRetried={async () => { if (selectedId) setRuns((await scheduleApi.runs(projectId, selectedId)).runs) }} />{(run.created_tasks?.length ? run.created_tasks : run.task_id ? [{ id: run.task_id, title: '' }] : []).map(task => <Button key={task.id} className="schedule-run-task-link" size="sm" onClick={async () => { if (!project) await fetchTasks(projectId, task.workflow_id || selected?.workflow_id); setFocusMessageId(run.assistant_message_id || undefined); setTaskId(task.id) }}>{task.title || t('schedules.openTask')}</Button>)}</div>)}
+              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}{selected?.task_template.mode === 'agent' && <ScheduleRunJson run={run} />}{run.session_id && <Button size="sm" className="schedule-run-task-link" onClick={() => { navigate(`/chat?project=${encodeURIComponent(activeProject?.name || '')}&session=${encodeURIComponent(run.session_id!)}`); onClose?.() }}>{t('schedules.openSession')}</Button>}<ScheduleRunNotification canRetry={canManage} projectId={projectId} scheduleId={selectedId || ''} run={run} onRetried={async () => { if (selectedId) setRuns((await scheduleApi.runs(projectId, selectedId)).runs) }} />{(run.created_tasks?.length ? run.created_tasks : run.task_id ? [{ id: run.task_id, title: '' }] : []).map(task => <Button key={task.id} className="schedule-run-task-link" size="sm" onClick={async () => { if (!project) await fetchTasks(projectId, task.workflow_id || selected?.workflow_id); setFocusMessageId(run.assistant_message_id || undefined); setTaskId(task.id) }}>{task.title || t('schedules.openTask')}</Button>)}</div>)}
             </>
           ))}
         </section>

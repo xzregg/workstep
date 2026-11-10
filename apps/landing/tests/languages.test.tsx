@@ -52,11 +52,12 @@ describe('builtin language selection', () => {
     it(`documents QQ setup and OpenID binding in ${lang}`, () => {
       const chapter = getManualChapters(lang).find(chapter => chapter.id === 'bots')!
       expect(chapter.summary).toContain('QQ')
-      const setup = chapter.sections[0].steps.find(step => step.includes('QQ'))!
+      const section = chapter.sections.find(section => section.screenshot?.id === 'bot-channels')!
+      const setup = section.steps.find(step => step.includes('QQ'))!
       expect(setup).toContain('App ID')
       expect(setup).toContain('App Secret')
       expect(setup).toContain('group_openid')
-      expect(chapter.sections[0].tips.join(' ')).toContain('QQ')
+      expect(section.tips?.join(' ')).toContain('QQ')
     })
   }
   it('explains the current skin script switch, preview boundary and reusable creation session', () => {
