@@ -162,7 +162,7 @@ export const ptBR: I18nDict = {
   },
   "engines": {
     extension: "Conecte seu mecanismo Agent",
-    description: "Conecte mecanismos CLI, SDK e ACP ou crie um adaptador. Escolha um mecanismo por etapa. Inicie a integração personalizada nas configurações de mecanismos, depois instale, valide e registre o adaptador.",
+    description: "Conecte motores CLI, SDK e ACP pelo chat. Abra a integração personalizada nas configurações de motores, envie o nome do motor e a documentação oficial e siga a conversa para instalar, validar e registrar.",
     guide: "Guia de mecanismos personalizados",
     "label": "Escolha uma ferramenta de codificação de IA. Configure um para começar.",
     "codex": "Códice CLI",

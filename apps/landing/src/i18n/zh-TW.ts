@@ -162,7 +162,7 @@ export const zhTW: I18nDict = {
   },
   "engines": {
     extension: "內建與自訂 Agent 引擎，按需接入",
-    description: "支援 CLI、SDK 與 ACP 引擎，也可自訂接入。內建引擎只是起點，每個步驟都能選擇合適的引擎。從「設定 → 執行引擎 → 自訂接入」開始，安裝、驗證通過後註冊使用。",
+    description: "支援 CLI、SDK 與 ACP 引擎，也可透過聊天自訂接入。在「設定 → 執行引擎 → 自訂接入」開啟聊天框，傳送引擎名稱和官方文件，依對話指引完成安裝、驗證與註冊。",
     guide: "自訂引擎接入指南",
     "label": "選擇適合你的 AI 程式設計工具，先設定一個即可開始",
     "codex": "Codex CLI",

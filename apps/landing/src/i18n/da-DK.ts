@@ -162,7 +162,7 @@ export const daDK: I18nDict = {
   },
   "engines": {
     extension: "Tilslut din egen Agent-motor",
-    description: "Tilslut CLI-, SDK- og ACP-motorer eller byg en adapter. Vælg motor for hvert trin. Start en tilpasset integration i motorindstillingerne, og installér, validér og registrér adapteren.",
+    description: "Tilslut CLI-, SDK- og ACP-motorer via chat. Åbn tilpasset integration i motorindstillingerne, send motorens navn og officielle dokumentation, og følg samtalen for at installere, validere og registrere den.",
     guide: "Guide til egne motorer",
     "label": "Vælg et AI-kodningsværktøj. Konfigurer en for at komme i gang.",
     "codex": "Codex CLI",

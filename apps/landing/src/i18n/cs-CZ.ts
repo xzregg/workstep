@@ -162,7 +162,7 @@ export const csCZ: I18nDict = {
   },
   "engines": {
     extension: "Připojte vlastní engine Agent",
-    description: "Připojte enginy CLI, SDK a ACP nebo vytvořte adaptér. Pro každý krok zvolte engine. V nastavení enginů spusťte vlastní integraci, pak adaptér nainstalujte, ověřte a zaregistrujte.",
+    description: "Připojte enginy CLI, SDK a ACP přes chat. V nastavení enginů otevřete vlastní integraci, odešlete název enginu a oficiální dokumentaci a podle pokynů v konverzaci proveďte instalaci, ověření a registraci.",
     guide: "Průvodce vlastními enginy",
     "label": "Vyberte nástroj pro kódování AI. Chcete-li začít, nakonfigurujte jeden.",
     "codex": "Kodex CLI",

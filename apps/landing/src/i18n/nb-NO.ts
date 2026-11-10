@@ -162,7 +162,7 @@ export const nbNO: I18nDict = {
   },
   "engines": {
     extension: "Koble til din egen Agent-motor",
-    description: "Koble til CLI-, SDK- og ACP-motorer eller bygg en adapter. Velg motor for hvert steg. Start en tilpasset integrasjon i motorinnstillingene, og installer, valider og registrer adapteren.",
+    description: "Koble til CLI-, SDK- og ACP-motorer via chat. Åpne egendefinert integrasjon i motorinnstillingene, send motorens navn og offisielle dokumentasjon, og følg samtalen for installasjon, validering og registrering.",
     guide: "Veiledning for egne motorer",
     "label": "Velg et AI-kodingsverktøy. Konfigurer en for å komme i gang.",
     "codex": "Codex CLI",

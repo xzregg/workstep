@@ -162,7 +162,7 @@ export const plPL: I18nDict = {
   },
   "engines": {
     extension: "Podłącz własny silnik Agent",
-    description: "Podłącz silniki CLI, SDK i ACP lub zbuduj adapter. Wybieraj silnik dla każdego kroku. Rozpocznij własną integrację w ustawieniach silników, a następnie zainstaluj, zweryfikuj i zarejestruj adapter.",
+    description: "Podłączaj silniki CLI, SDK i ACP przez czat. W ustawieniach silników otwórz własną integrację, wyślij nazwę silnika i oficjalną dokumentację, a następnie wykonaj wskazówki dotyczące instalacji, weryfikacji i rejestracji.",
     guide: "Poradnik własnych silników",
     "label": "Choose an AI coding tool. Skonfiguruj jeden, aby rozpocząć.",
     "codex": "Kodeks CLI",

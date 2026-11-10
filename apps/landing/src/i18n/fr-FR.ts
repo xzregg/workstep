@@ -162,7 +162,7 @@ export const frFR: I18nDict = {
   },
   "engines": {
     extension: "Connectez votre moteur Agent",
-    description: "Connectez des moteurs CLI, SDK et ACP ou créez un adaptateur. Choisissez un moteur par étape. Lancez une intégration personnalisée dans les paramètres des moteurs, puis installez, validez et enregistrez l’adaptateur.",
+    description: "Intégrez des moteurs CLI, SDK et ACP par discussion. Dans les paramètres des moteurs, ouvrez l’intégration personnalisée, envoyez le nom du moteur et sa documentation officielle, puis suivez les instructions pour l’installer, le vérifier et l’enregistrer.",
     guide: "Guide des moteurs personnalisés",
     "label": "Choisissez un outil de développement IA. Configurez-en un pour commencer.",
     "codex": "Codex CLI",

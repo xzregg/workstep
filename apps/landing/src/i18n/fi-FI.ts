@@ -162,7 +162,7 @@ export const fiFI: I18nDict = {
   },
   "engines": {
     extension: "Yhdistä oma Agent-moottorisi",
-    description: "Yhdistä CLI-, SDK- ja ACP-moottoreita tai rakenna sovitin. Valitse moottori vaiheittain. Aloita mukautettu integraatio moottoriasetuksista, asenna, tarkista ja rekisteröi sovitin.",
+    description: "Liitä CLI-, SDK- ja ACP-moottoreita keskustelun kautta. Avaa mukautettu integraatio moottoriasetuksista, lähetä moottorin nimi ja virallinen dokumentaatio ja seuraa keskustelun ohjeita asennukseen, tarkistukseen ja rekisteröintiin.",
     guide: "Omien moottorien liitäntäohje",
     "label": "Valitse AI-koodaustyökalu. Määritä yksi aloittaaksesi.",
     "codex": "Codex CLI",

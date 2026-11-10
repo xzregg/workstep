@@ -162,7 +162,7 @@ export const esES: I18nDict = {
   },
   "engines": {
     extension: "Conecta tu motor Agent",
-    description: "Conecta motores CLI, SDK y ACP o crea un adaptador. Elige un motor por paso. Inicia la integración personalizada en los ajustes de motores; instala, valida y registra el adaptador antes de usarlo.",
+    description: "Integra motores CLI, SDK y ACP mediante chat. Abre la integración personalizada en los ajustes de motores, envía el nombre del motor y su documentación oficial y sigue la conversación para instalarlo, validarlo y registrarlo.",
     guide: "Guía de motores personalizados",
     "label": "Elija una herramienta de codificación de IA. Configure uno para comenzar.",
     "codex": "Códice CLI",

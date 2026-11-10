@@ -162,7 +162,7 @@ export const deDE: I18nDict = {
   },
   "engines": {
     extension: "Eigene Agent-Engines anbinden",
-    description: "CLI-, SDK- und ACP-Engines anbinden oder eigene Adapter erstellen. Pro Schritt eine Engine wählen. Die eigene Integration in den Engine-Einstellungen starten, danach installieren, prüfen und registrieren.",
+    description: "Binden Sie CLI-, SDK- und ACP-Engines per Chat ein. Öffnen Sie die benutzerdefinierte Integration in den Engine-Einstellungen, senden Sie den Engine-Namen und die offizielle Dokumentation und folgen Sie dem Dialog zur Installation, Prüfung und Registrierung.",
     guide: "Anleitung für eigene Engines",
     "label": "Wählen Sie ein KI-Coding-Werkzeug. Richten Sie eines ein, um zu beginnen.",
     "codex": "Codex CLI",

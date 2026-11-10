@@ -120,7 +120,7 @@ export const enUS: I18nDict = {
   },
   engines: {
     extension: "Built-in and custom Agent engines",
-    description: "Connect CLI, SDK and ACP engines, or build a custom adapter. Choose an engine for each step. Start custom integration in Settings → Execution engines → Custom integration; install, validate and register the adapter before use.",
+    description: "Connect CLI, SDK and ACP engines through chat. Open Settings → Execution engines → Custom integration, send the engine name and official documentation, then follow the conversation to install, validate and register it.",
     guide: "Custom engine integration guide",
     label: 'Choose an AI coding tool. Configure one to get started.',
     codex: 'Codex CLI',

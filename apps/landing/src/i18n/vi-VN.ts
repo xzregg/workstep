@@ -162,7 +162,7 @@ export const viVN: I18nDict = {
   },
   "engines": {
     extension: "Kết nối công cụ Agent của bạn",
-    description: "Kết nối công cụ CLI, SDK và ACP hoặc tạo bộ điều hợp riêng. Chọn công cụ cho từng bước. Bắt đầu tích hợp tùy chỉnh trong cài đặt công cụ, rồi cài đặt, xác minh và đăng ký bộ điều hợp.",
+    description: "Kết nối các bộ máy CLI, SDK và ACP qua trò chuyện. Mở tích hợp tùy chỉnh trong cài đặt bộ máy, gửi tên và tài liệu chính thức, rồi làm theo hướng dẫn để cài đặt, xác minh và đăng ký.",
     guide: "Hướng dẫn tích hợp công cụ tùy chỉnh",
     "label": "Chọn một công cụ mã hóa AI. Cấu hình một để bắt đầu.",
     "codex": "Codex CLI",

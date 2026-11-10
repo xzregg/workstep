@@ -162,7 +162,7 @@ export const svSE: I18nDict = {
   },
   "engines": {
     extension: "Anslut din egen Agent-motor",
-    description: "Anslut CLI-, SDK- och ACP-motorer eller bygg en adapter. Välj motor per steg. Starta en anpassad integration i motorinställningarna och installera, validera och registrera adaptern.",
+    description: "Anslut CLI-, SDK- och ACP-motorer via chatt. Öppna anpassad integration i motorinställningarna, skicka motorns namn och officiella dokumentation och följ samtalet för installation, verifiering och registrering.",
     guide: "Guide för egna motorer",
     "label": "Välj ett AI-kodningsverktyg. Konfigurera en för att komma igång.",
     "codex": "Codex CLI",

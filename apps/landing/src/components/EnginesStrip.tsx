@@ -24,7 +24,7 @@ export function EnginesStrip() {
             </span>
           ))}
         </div>
-        <a className="engine-guide" href="https://github.com/xzregg/workstep/blob/main/docs/llm-engine-development-guide.md#用户自定义引擎接口-v1" target="_blank" rel="noreferrer">{t('engines.guide')} ↗</a>
+        <a className="engine-guide" href="#docs/custom-engines">{t('engines.guide')} →</a>
       </div>
     </section>
   )
