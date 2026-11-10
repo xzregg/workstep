@@ -55,19 +55,19 @@ describe('landing positioning', () => {
     expect(html).not.toContain('小周创建了“实现登录页”任务')
   })
 
-  it('leads with a recorded walkthrough and retains three optional mechanism demos', () => {
+  it('keeps the recorded walkthrough and three mechanism demos available after the product explanation', () => {
     const html = renderLanding()
 
     expect(html).toContain('class="guided-walkthrough"')
     expect(html).toContain('<video')
     expect(html).not.toContain('class="hero-preview"')
-    expect(html.indexOf('class="guided-walkthrough"')).toBeLessThan(html.indexOf('例如：给项目加一个搜索功能'))
+    expect(html.indexOf('class="guided-walkthrough"')).toBeGreaterThan(html.indexOf('例如：给项目加一个搜索功能'))
     expect(DEMOS.map((demo) => demo.id)).toEqual(['canvas', 'stream', 'parallel'])
     expect(html.match(/id="mechanism-tab-\d"/g)).toHaveLength(3)
     expect(html).toContain('id="start"')
   })
 
-  it('places the example and demos before advanced capabilities and collaboration', () => {
+  it('explains the example and capabilities before optional demos and onboarding', () => {
     const html = renderLanding()
     const exampleIndex = html.indexOf('例如：给项目加一个搜索功能')
     const featuresIndex = html.indexOf('少一点来回交代，多一点过程掌控')
@@ -79,7 +79,8 @@ describe('landing positioning', () => {
     expect(featuresIndex).toBeGreaterThan(-1)
     expect(html).not.toContain('像看视频一样')
     expect(demosIndex).toBeGreaterThan(exampleIndex)
-    expect(featuresIndex).toBeGreaterThan(demosIndex)
+    expect(featuresIndex).toBeGreaterThan(exampleIndex)
+    expect(demosIndex).toBeGreaterThan(remoteShareIndex)
     expect(workflowIndex).toBeGreaterThan(featuresIndex)
     expect(remoteShareIndex).toBeGreaterThan(workflowIndex)
     expect(finalCtaIndex).toBeGreaterThan(remoteShareIndex)

@@ -108,10 +108,14 @@ class _MessageHandler(ChatbotHandler):
         return AckMessage.STATUS_OK, "OK"
 
 
+from services.channels.directory_providers.dingtalk import DingTalkDirectory
+
+
 class DingTalkAdapter(ChannelAdapter):
+    DIRECTORY_PROVIDER = DingTalkDirectory
     CHANNEL_ID = 'dingtalk'
     DISPLAY_NAME = '钉钉'
-    CAPABILITIES = ChannelCapabilities(receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}),
+    CAPABILITIES = ChannelCapabilities(directory=True,receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}),
         file_extensions=frozenset({'xlsx','pdf','zip','rar','doc','docx'}), cards=True, streaming=True)
 
     def __init__(self, bot: dict, on_message, on_state):

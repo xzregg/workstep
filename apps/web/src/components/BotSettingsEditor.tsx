@@ -6,6 +6,7 @@ import Select from './Select'
 import { useI18n } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import WeixinLoginPanel from './WeixinLoginPanel'
+import BotDirectorySettings from './BotDirectorySettings'
 
 const consoles: Partial<Record<BotPlatform, string>> = {
   wecom: 'https://work.weixin.qq.com/', dingtalk: 'https://open-dev.dingtalk.com/',
@@ -38,14 +39,16 @@ export default function BotSettingsEditor({ platform, bot, onSaved, onCancel, on
     ? localProjects.find(project => project.is_default_workspace)?.id || draft.default_project_id
     : draft.default_project_id
   const [busy, setBusy] = useState(false)
+  const [directoryDirty, setDirectoryDirty] = useState(false)
+  const [directoryBusy, setDirectoryBusy] = useState(false)
   const [error, setError] = useState('')
   const [loginActive, setLoginActive] = useState(false)
   const authorized = useCallback((loginId: string, accountId: string) => {
     setDraft(current => ({ ...current, login_id: loginId, app_id: accountId || bot?.app_id || '' }))
   }, [bot?.app_id])
   const dirty = loginActive || JSON.stringify(draft) !== JSON.stringify(initial)
-  useEffect(() => { onDirtyChange(dirty) }, [dirty, onDirtyChange])
-  useEffect(() => { onBusyChange(busy); return () => onBusyChange(false) }, [busy, onBusyChange])
+  useEffect(() => { onDirtyChange(dirty || directoryDirty) }, [dirty, directoryDirty, onDirtyChange])
+  useEffect(() => { onBusyChange(busy || directoryBusy); return () => onBusyChange(false) }, [busy, directoryBusy, onBusyChange])
   const setField = <K extends keyof BotDraft>(key: K, value: BotDraft[K]) => setDraft(current => ({ ...current, [key]: value }))
   const valid = !!(draft.name.trim()
     && (platform === 'weixin' ? (loginActive ? draft.login_id : bot?.has_secret || draft.login_id) :
@@ -100,6 +103,7 @@ export default function BotSettingsEditor({ platform, bot, onSaved, onCancel, on
       </div>
     </fieldset>
     {platform === 'weixin' && <WeixinLoginPanel botId={bot?.id} disabled={busy} onAuthorized={authorized} onActiveChange={setLoginActive} />}
+    {bot?.capabilities?.directory && <BotDirectorySettings bot={bot} onDirtyChange={setDirectoryDirty} onBusyChange={setDirectoryBusy} />}
     <div className="bot-settings-guidance">
       <p className="bot-settings-hint">{t(`channelBot.${hintKey}Hint`)}</p>
       {['telegram', 'discord', 'slack', 'qq'].includes(platform) && <p className="bot-settings-hint">{t('channelBot.textOnlyHint')}</p>}
@@ -115,6 +119,6 @@ export default function BotSettingsEditor({ platform, bot, onSaved, onCancel, on
     <p className="bot-settings-hint">{localProjects.length ? t(platform === 'weixin' ? 'channelBot.weixinProjectHint' : 'channelBot.defaultProjectHint') : t('channelBot.noLocalProject')}</p>
     {platform !== 'weixin' && <p className="bot-settings-hint">{t('channelBot.taskBindingHint')}</p>}
     {error && <p className="bot-settings-error" role="alert">{error}</p>}
-    <div className="bot-settings-actions"><Button variant="primary" loading={busy} disabled={!valid} onClick={() => void save()}>{t('common.save')}</Button><Button disabled={busy} onClick={onCancel}>{t('common.cancel')}</Button></div>
+    <div className="bot-settings-actions"><Button variant="primary" loading={busy} disabled={!valid || directoryDirty || directoryBusy} onClick={() => void save()}>{t('common.save')}</Button><Button disabled={busy || directoryBusy} onClick={onCancel}>{t('common.cancel')}</Button></div>
   </section>
 }

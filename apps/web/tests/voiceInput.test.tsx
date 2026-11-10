@@ -157,6 +157,9 @@ for (const width of [320, 390, 1023]) {
       assert.ok(document.querySelector('.voice-input'))
       assert.equal(document.querySelector('.chat-input-editor')?.getAttribute('data-voice-mode'), 'true')
       assert.equal(changes, 0)
+      assert.equal(document.querySelector('textarea'), input)
+      assert.equal(input.disabled, false, 'the touch target must remain enabled')
+      assert.equal(input.readOnly, true, 'freeze editing without disabling the touch target')
       await act(async () => window.dispatchEvent(new window.PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' })))
       assert.equal(captures, 1)
       assert.equal(document.querySelector('.chat-input-editor')?.getAttribute('data-voice-mode'), null)
@@ -397,5 +400,148 @@ test('release submits final audio without waiting for the preview response round
   } finally {
     await act(async () => root.unmount()); await window.happyDOM.close()
     voiceCapture.start = original.capture; speechApi.start = original.start; speechApi.audio = original.audio; speechApi.cancel = original.cancel
+  }
+})
+
+
+test('six seconds of transient backlog preserves audio and catches up in one negotiated batch', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...speechApi, capture: voiceCapture.start }
+  let chunk!: (pcm: Int16Array, level: number) => void
+  let reply!: (value: Awaited<ReturnType<typeof speechApi.audio>>) => void
+  const frames: number[] = [], inserted: string[] = []
+  let cancelled = 0
+  voiceCapture.start = async callback => { chunk = callback; return { stop() {}, flush() {} } }
+  speechApi.start = async () => ({ id: 'backlog', sample_rate: 16000, max_seconds: 120, max_frame_samples: 128000 })
+  speechApi.cancel = async () => { cancelled++; return { cancelled: true } }
+  speechApi.audio = async (id, project, sequence, audio, final) => {
+    frames.push(atob(audio).length / 2)
+    if (sequence === 0) return new Promise(done => { reply = done })
+    return { id, sequence, text: final ? '所有音频均已处理。' : '正在追赶', final }
+  }
+  let state!: ReturnType<typeof useVoiceInput>
+  function Harness() {
+    state = useVoiceInput({ ownerKey: 'backlog', disabled: false, compact: false, value: '', cursor: 0, onInsert: text => inserted.push(text) })
+    return null
+  }
+  try {
+    await act(async () => root.render(<Harness />))
+    await act(async () => state.start())
+    await act(async () => { for (let i = 0; i < 13; i++) chunk(new Int16Array(8000), .4) })
+    assert.equal(state.phase, 'recording')
+    assert.equal(state.catchingUp, true)
+    assert.equal(cancelled, 0)
+    await act(async () => reply({ id: 'backlog', sequence: 0, text: '开头', final: false }))
+    assert.deepEqual(frames, [8000, 96000])
+    assert.equal(state.catchingUp, false)
+    await act(async () => state.finish())
+    assert.deepEqual(frames, [8000, 96000, 0])
+    assert.deepEqual(inserted, ['所有音频均已处理。'])
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+    Object.assign(speechApi, { start: original.start, audio: original.audio, cancel: original.cancel }); voiceCapture.start = original.capture
+  }
+})
+
+test('system touch interruption finalizes captured speech instead of silently discarding it', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...speechApi, capture: voiceCapture.start }
+  let cancelled = 0
+  const inserted: string[] = []
+  voiceCapture.start = async callback => ({ stop() {}, flush() { callback(new Int16Array(4000), .3) } })
+  speechApi.start = async () => ({ id: 'interrupted', sample_rate: 16000, max_seconds: 120 })
+  speechApi.audio = async (id, project, sequence, audio, final) => ({ id, sequence, text: '中断前的录音。', final })
+  speechApi.cancel = async () => { cancelled++; return { cancelled: true } }
+  let state!: ReturnType<typeof useVoiceInput>
+  function Harness() {
+    state = useVoiceInput({ ownerKey: 'interrupted', disabled: false, compact: true, value: '', cursor: 0, onInsert: text => inserted.push(text) })
+    return null
+  }
+  try {
+    await act(async () => root.render(<Harness />))
+    await act(async () => {
+      state.pointer.onPointerDown({ pointerType: 'touch', pointerId: 42, clientX: 0, clientY: 0 } as Parameters<typeof state.pointer.onPointerDown>[0])
+      await new Promise(done => setTimeout(done, 530))
+    })
+    await act(async () => window.dispatchEvent(new window.PointerEvent('pointerup', { pointerId: 99 })))
+    assert.equal(state.phase, 'recording', 'another finger must not finish this hold')
+    await act(async () => window.dispatchEvent(new window.Event('touchcancel')))
+    assert.deepEqual(inserted, ['中断前的录音。'])
+    assert.equal(cancelled, 0)
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+    Object.assign(speechApi, { start: original.start, audio: original.audio, cancel: original.cancel }); voiceCapture.start = original.capture
+  }
+})
+
+
+test('finish waits for the audio thread tail before sending a single final result', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...speechApi, capture: voiceCapture.start }
+  let tail!: () => void, stopped = 0
+  const frames: number[] = [], inserted: string[] = []
+  voiceCapture.start = async callback => ({ stop() { stopped++ }, flush: () => new Promise<void>(done => {
+    tail = () => { callback(new Int16Array(3000), .4); done() }
+  }) })
+  speechApi.start = async () => ({ id: 'tail', sample_rate: 16000, max_seconds: 120 })
+  speechApi.audio = async (id, project, sequence, audio, final) => {
+    assert.equal(final, true)
+    frames.push(atob(audio).length / 2)
+    return { id, sequence, text: '保留末尾。', final }
+  }
+  speechApi.cancel = async () => ({ cancelled: true })
+  let state!: ReturnType<typeof useVoiceInput>
+  function Harness() {
+    state = useVoiceInput({ ownerKey: 'tail', disabled: false, compact: false, value: '', cursor: 0, onInsert: text => inserted.push(text) })
+    return null
+  }
+  try {
+    await act(async () => root.render(<Harness />))
+    await act(async () => state.start())
+    await act(async () => { void state.finish() })
+    assert.equal(stopped, 0)
+    assert.deepEqual(frames, [])
+    await act(async () => tail())
+    assert.deepEqual(frames, [3000])
+    assert.deepEqual(inserted, ['保留末尾。'])
+    assert.ok(stopped > 0)
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+    Object.assign(speechApi, { start: original.start, audio: original.audio, cancel: original.cancel }); voiceCapture.start = original.capture
+  }
+})
+
+
+test('microphone loss settles already captured audio rather than deleting the recording', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...speechApi, capture: voiceCapture.start }
+  const OriginalController = globalThis.AbortController
+  globalThis.AbortController = window.AbortController as unknown as typeof AbortController
+  let signal!: AbortSignal, chunk!: (pcm: Int16Array, level: number) => void, cancelled = 0
+  const inserted: string[] = []
+  voiceCapture.start = async (callback, token) => { signal = token; chunk = callback; return { stop() {}, flush() {} } }
+  speechApi.start = async () => ({ id: 'lost', sample_rate: 16000, max_seconds: 120 })
+  speechApi.audio = async (id, project, sequence, audio, final) => ({ id, sequence, text: '中断前的内容。', final })
+  speechApi.cancel = async () => { cancelled++; return { cancelled: true } }
+  let state!: ReturnType<typeof useVoiceInput>
+  function Harness() {
+    state = useVoiceInput({ ownerKey: 'lost', disabled: false, compact: false, value: '', cursor: 0, onInsert: text => inserted.push(text) })
+    return null
+  }
+  try {
+    await act(async () => root.render(<Harness />))
+    await act(async () => state.start())
+    await act(async () => chunk(new Int16Array(8000), .4))
+    await act(async () => signal.dispatchEvent(new Event('error')))
+    assert.deepEqual(inserted, ['中断前的内容。'])
+    assert.equal(cancelled, 0)
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+    Object.assign(speechApi, { start: original.start, audio: original.audio, cancel: original.cancel }); voiceCapture.start = original.capture
+    globalThis.AbortController = OriginalController
   }
 })

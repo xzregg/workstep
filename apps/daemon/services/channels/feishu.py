@@ -51,11 +51,15 @@ class _Dispatcher:
             self.adapter._spawn(self.adapter._handle_event(data))
 
 
+from services.channels.directory_providers.feishu import FeishuDirectory
+
+
 class FeishuAdapter(ChannelAdapter):
+    DIRECTORY_PROVIDER = FeishuDirectory
     CHANNEL_ID = 'feishu'
     DISPLAY_NAME = '飞书'
     DOMAIN = 'https://open.feishu.cn'
-    CAPABILITIES = ChannelCapabilities(
+    CAPABILITIES = ChannelCapabilities(directory=True,
         receive=frozenset({'text', 'image', 'file'}), send=frozenset({'text', 'image', 'file'}),
         waiting=True, streaming=True, cards=True,
     )
@@ -486,6 +490,8 @@ class FeishuAdapter(ChannelAdapter):
 
 
 class LarkAdapter(FeishuAdapter):
+    DIRECTORY_PROVIDER = None
+    CAPABILITIES = replace(FeishuAdapter.CAPABILITIES, directory=False)
     CHANNEL_ID = 'lark'
     DISPLAY_NAME = 'Lark'
     DOMAIN = 'https://open.larksuite.com'

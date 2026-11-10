@@ -968,7 +968,8 @@ export default function ChatInput({
                   key={`text:${segmentIndex}`}
                   markdown={segment.markdown}
                   placeholder={inputSegments.length === 1 ? inputPlaceholder : undefined}
-                  disabled={disabled || voice.active}
+                  disabled={disabled}
+                  readOnly={voice.active}
                   rows={rows}
                   inlineWithImage={inlineWithImage}
                   externalRef={isLastText ? inputRef : undefined}

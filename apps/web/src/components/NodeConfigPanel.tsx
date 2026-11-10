@@ -355,6 +355,15 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                 />
                 {t('flow.autoStart')}
               </label>
+            </div>
+            <div
+              id={keyError ? 'step-type-error' : 'step-type-help'}
+              style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: keyError ? 'var(--danger)' : 'var(--fg-3)', lineHeight: 1.4 }}
+            >
+              {keyError || t('flow.keyHelp')}
+            </div>
+          </div>
+          <div className="node-step-reuse-setting">
               <label className="node-execution-settings-toggle" htmlFor="step-reuse-success" title={t('flow.reuseSuccessHint')}>
                 <input id="step-reuse-success" type="checkbox"
                   checked={draft.reuseSuccess === true}
@@ -362,14 +371,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                   aria-describedby="step-reuse-success-help" />
                 {t('flow.reuseSuccess')}
               </label>
-            </div>
-            <span id="step-reuse-success-help" hidden>{t('flow.reuseSuccessHint')}</span>
-            <div
-              id={keyError ? 'step-type-error' : 'step-type-help'}
-              style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: keyError ? 'var(--danger)' : 'var(--fg-3)', lineHeight: 1.4 }}
-            >
-              {keyError || t('flow.keyHelp')}
-            </div>
+            <div id="step-reuse-success-help" className="node-step-reuse-help">{t('flow.reuseSuccessHint')}</div>
           </div>
         </div>
         </div>

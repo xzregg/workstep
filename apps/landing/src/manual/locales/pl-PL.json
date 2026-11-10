@@ -805,7 +805,7 @@
         "title": "Wprowadzanie szkicu głosem",
         "steps": [
           "Otwórz Ustawienia → Wprowadzanie głosowe, włącz je, pobierz model i środowisko, wybierz język i przetestuj mikrofon. Instalacja odbywa się na połączonym hoście WorkStep, nie na telefonie. Obsługiwane są mandaryński, kantoński i angielski.",
-          "Naciśnij mikrofon w edytowalnym czacie albo przytrzymaj przycisk głosowy w telefonie. Podyktuj tekst, zakończ, sprawdź wstawiony szkic i wyślij ręcznie. Maksymalnie dwie minuty; anulowanie niczego nie wysyła."
+          "Na komputerze naciśnij mikrofon. W telefonie przytrzymaj pole tekstowe 500 ms; nie ma tam ikony mikrofonu. Puść, sprawdź wstawiony tekst i wyślij ręcznie. Maksymalnie dwie minuty; anulowanie niczego nie wysyła."
         ],
         "tips": [
           "Dźwięk jest rozpoznawany na połączonym hoście i nie jest zapisywany. Zezwól na mikrofon przez HTTPS lub adres lokalny. Przy błędach sprawdź uprawnienia witryny i systemu, uruchom ponownie stary backend. Rozpoznany tekst można jawnie zachować."
@@ -947,6 +947,18 @@
     "title": "Zaplanowane zadania",
     "summary": "Twórz nowe zadania zgodnie z harmonogramem lub wysyłaj instrukcje koordynatora w określonym czasie do istniejących zadań, śledź wykonanie i powiadomienia.",
     "sections": [
+      {
+        "title": "Planowanie wiadomości w istniejącej rozmowie",
+        "steps": [
+          "Otwórz Harmonogramy, wybierz projekt i cel Rozmowa. Wskaż istniejącą rozmowę, wpisz tytuł i wiadomość, np. sprawdzenie postępów, ustaw czas lub częstotliwość, sprawdź następne wykonanie i zapisz.",
+          "Backend musi działać. Zajęta rozmowa czeka; odpowiedzi kanałowe wracają do źródła. Usunięcie lub archiwizacja rozmowy usuwa reguły, a przywrócenie ich nie odtwarza. Grupy powiązane z zadaniem używają koordynacji zadania."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Planowanie wiadomości w istniejącej rozmowie",
+          "caption": "Backend musi działać. Zajęta rozmowa czeka; odpowiedzi kanałowe wracają do źródła. Usunięcie lub archiwizacja rozmowy usuwa reguły, a przywrócenie ich nie odtwarza. Grupy powiązane z zadaniem używają koordynacji zadania."
+        }
+      },
       {
         "title": "Uruchamianie teraz i kontrola wyniku",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Skonfiguruj WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack lub QQ, odróżniając czat od powiadomień Webhook.",
     "sections": [
       {
+        "title": "Korzystanie z katalogu bota",
+        "steps": [
+          "Zapisz bota DingTalk, WeCom lub Feishu, potem włącz odczyt w Edytuj → Katalog. Nadaj prawa odczytu członków; WeCom wymaga też ID firmy, Agent ID i Secret. Zapisz, przeszukuj pamięć podręczną i odświeżaj po zmianach personelu.",
+          "Katalog pozostaje w pamięci i ładuje się po restarcie. Przez CLI lub asystenta wysyłaj według dokładnej unikalnej nazwy lub ID kontaktu; osoby o tych samych nazwach wybierz jawnie. Odbiorca WeCom musi wcześniej rozmawiać z tym botem i mieć zgodne ID użytkownika; inaczej użyj istniejącej rozmowy kanałowej."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Korzystanie z katalogu bota",
+          "caption": "Katalog pozostaje w pamięci i ładuje się po restarcie. Przez CLI lub asystenta wysyłaj według dokładnej unikalnej nazwy lub ID kontaktu; osoby o tych samych nazwach wybierz jawnie. Odbiorca WeCom musi wcześniej rozmawiać z tym botem i mieć zgodne ID użytkownika; inaczej użyj istniejącej rozmowy kanałowej."
+        }
+      },
+      {
         "title": "Wybierz kanał i podłącz nową platformę",
         "steps": [
           "Otwórz Ustawienia → Boty kanałowe, po lewej stronie wybierz platformę, a po prawej stronie wprowadź nazwę, dane uwierzytelniające i domyślny projekt lokalny. Włącz i zapisz. Puste sekrety zachowują istniejące wartości podczas edycji; sprawdź niezapisane zmiany przed przełączeniem. Zamykanie ustawień, naciśnięcie Escape lub przełączenie sekcji ustawień wymaga potwierdzenia, gdy zmiany nie zostaną zapisane; anulowanie powoduje zachowanie wersji roboczej.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Błąd demonstracyjny spowodowany nieistniejącym modelem",
           "caption": "Błąd informuje, że wybrany model nie jest obsługiwany. Napraw konfigurację modelu kroku przed ponownym uruchomieniem; na tym obrazie nie jest on naprawiony."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Własne silniki",
+    "summary": "Dodawaj silniki SDK, CLI lub ACP przez zwykłą rozmowę albo importuj istniejące pakiety. Używaj ich dopiero po rzeczywistej weryfikacji i rejestracji.",
+    "sections": [
+      {
+        "title": "Tworzenie silnika przez rozmowę",
+        "steps": [
+          "Jeśli istniejące silniki nie spełniają wymagań, z uprawnieniami administratora hosta otwórz «Ustawienia → Silniki wykonawcze» i kliknij «Własna integracja». Na początek nadal zaleca się konfigurację wbudowanego SDK.",
+          "W zwykłej rozmowie domyślnego obszaru roboczego wybierz skonfigurowany silnik i podaj nazwę, oficjalną dokumentację, sposób uwierzytelniania oraz wymagane możliwości. Na przykład: «Zintegruj oficjalny SDK dostawcy z obsługą rozmowy tekstowej i zatrzymywania generowania».",
+          "Sprawdź wstępnie wypełniony szkic przed wysłaniem. Samo otwarcie rozmowy nie tworzy ani nie instaluje silnika. Poproś o przestrzeganie specyfikacji integracji, sprawdzenie, czy nazwa już istnieje, utworzenie adaptera i instalację zależności w osobnym katalogu.",
+          "Zgodnie ze wskazówkami rozmowy skonfiguruj uwierzytelnianie, przeprowadź rzeczywistą weryfikację i rejestrację. Wygenerowany kod ani zakończona instalacja nie oznaczają udanej integracji. Klucze zapisuj w ustawieniach, nie w czacie, kodzie źródłowym ani na zrzutach."
+        ],
+        "tips": [
+          "Rzeczywista weryfikacja wywołuje usługi modeli i może wiązać się z kosztami. Własny kod ma uprawnienia lokalne; izolacja podprocesu nie jest piaskownicą plików ani sieci. Korzystaj tylko z zaufanych źródeł."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Wejścia do własnej integracji i importu silników w ustawieniach",
+          "caption": "Brakuje zrzutów ze stałego środowiska demonstracyjnego przedstawiających wejście do integracji i niewysłany szkic."
+        }
+      },
+      {
+        "title": "Import istniejącego pakietu silnika",
+        "steps": [
+          "W «Ustawienia → Silniki wykonawcze» kliknij «Importuj silnik» i wybierz pakiet ZIP wyeksportowany z zaufanego źródła.",
+          "Import sprawdza zawartość pakietu i tworzy zwykłą rozmowę integracyjną ze szkicem. Nie wykonuje kodu pakietu i nie nadpisuje zarejestrowanych silników. Udany import nie oznacza zakończonej instalacji ani pozytywnej weryfikacji.",
+          "Sprawdź katalog pakietu i wymagania w rozmowie. Zainstaluj ponownie zależności dla lokalnego systemu, skonfiguruj uwierzytelnianie, przeprowadź rzeczywistą weryfikację, a następnie zarejestruj silnik. Przed zastąpieniem istniejącego silnika sprawdź ID i potwierdź zamiar zastąpienia."
+        ],
+        "tips": [
+          "ZIP nie zawiera zainstalowanych zależności ani lokalnych danych uwierzytelniania. Odbiorca musi samodzielnie dokończyć konfigurację i weryfikację. Po błędzie importu odczytaj komunikat w ustawieniach i spróbuj ponownie z właściwym pakietem."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Rozmowa integracyjna i szkic utworzone po imporcie pakietu silnika",
+          "caption": "Brakuje zrzutów importu ZIP i szkicu oczekującego na konfigurację ze stałego środowiska demonstracyjnego. Importu nie należy przedstawiać jako udanej rejestracji."
+        }
+      },
+      {
+        "title": "Używanie, eksport, wyłączanie i przywracanie wersji",
+        "steps": [
+          "Gdy rozmowa potwierdzi udaną rejestrację, wróć do «Ustawienia → Silniki wykonawcze» i kliknij «Skanuj ponownie». Nowy silnik pojawi się na liście; sama rejestracja nie wymaga ponownego uruchomienia programu.",
+          "Sprawdź konfigurację silnika, dostawcę i model, a następnie wybierz go w zwykłej rozmowie lub kroku przepływu. Najpierw uruchom małe zadanie i sprawdź rzeczywisty wynik.",
+          "Karta własnego silnika udostępnia «Eksportuj ZIP», «Wyłącz wykonywanie» i «Wznów wykonywanie». Przełącznik «Włącz / Wyłącz» na karcie steruje tylko widocznością na listach rozwijanych; istniejące zadania nadal mogą korzystać z silnika. Wyłączenie wykonywania zamyka aktywne połączenia silnika; najpierw zatrzymaj powiązane zadania lub rozmowy.",
+          "Jeśli aktualizacja powoduje problemy i istnieje poprzednia wersja, zakończ powiązane uruchomienia i kliknij «Przywróć wersję». Ponownie przeprowadź weryfikację i rejestrację, a następnie uruchom program ponownie, jeśli poprosi o to interfejs. Bez poprzedniej wersji przywrócenie jest niemożliwe."
+        ],
+        "tips": [
+          "Zmiany kodu, zależności lub konfiguracji mogą unieważnić wcześniejszą weryfikację. Powtórz ją przed rejestracją. Jeśli zmieniasz tylko adres usługi lub uwierzytelnianie, użyj przede wszystkim konfiguracji dostawcy, bez ponownego tworzenia silnika."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Kontrolki eksportu, wyłączenia i przywracania wersji zarejestrowanego własnego silnika",
+          "caption": "Brakuje rzeczywistej karty zarejestrowanego silnika ze stałego środowiska demonstracyjnego; karta wbudowanego silnika nie może jej zastępować."
         }
       }
     ]

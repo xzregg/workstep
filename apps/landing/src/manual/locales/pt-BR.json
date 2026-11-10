@@ -805,7 +805,7 @@
         "title": "Preencher um rascunho por voz",
         "steps": [
           "Abra Configurações → Entrada de voz, ative, baixe o modelo e o ambiente, escolha o idioma e teste o microfone. A instalação ocorre no host WorkStep conectado; o celular não precisa do modelo. Suporta mandarim, cantonês e inglês.",
-          "Toque no microfone de uma conversa editável ou mantenha pressionado o botão de voz no celular. Fale, finalize, confira o texto inserido e envie manualmente. Máximo de dois minutos; cancelar não envia nada."
+          "No computador clique no microfone. No celular segure a área de texto por 500 ms; não há ícone de microfone. Solte, confira o texto inserido e envie manualmente. Máximo dois minutos; cancelar não envia nada."
         ],
         "tips": [
           "O áudio é reconhecido no host conectado e não é salvo. Permita o microfone por HTTPS ou endereço local. Se falhar, confira permissões do site e do sistema e reinicie um backend antigo. É possível manter explicitamente o texto reconhecido."
@@ -947,6 +947,18 @@
     "title": "Tarefas agendadas",
     "summary": "Crie novas tarefas de acordo com um cronograma ou envie instruções cronometradas ao coordenador para tarefas existentes e acompanhe a execução e as notificações.",
     "sections": [
+      {
+        "title": "Agendar mensagens em uma conversa",
+        "steps": [
+          "Abra Agendamentos, escolha o projeto e o destino Conversa. Selecione uma conversa existente, informe título e mensagem, como verificar o progresso, defina horário ou frequência, confira a próxima execução e salve.",
+          "O backend deve estar ativo. Conversas ocupadas aguardam; respostas de canal voltam à origem. Excluir ou arquivar a conversa remove as regras; restaurar não as recupera. Grupos ligados a tarefas usam coordenação de tarefas."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Agendar mensagens em uma conversa",
+          "caption": "O backend deve estar ativo. Conversas ocupadas aguardam; respostas de canal voltam à origem. Excluir ou arquivar a conversa remove as regras; restaurar não as recupera. Grupos ligados a tarefas usam coordenação de tarefas."
+        }
+      },
       {
         "title": "Executar agora e conferir resultados",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Configure WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack ou QQ, distinguindo chat de notificações de Webhook.",
     "sections": [
       {
+        "title": "Usar o diretório do bot",
+        "steps": [
+          "Salve um bot DingTalk, WeCom ou Feishu e habilite a leitura em Editar → Diretório. Conceda acesso aos membros; WeCom também exige ID da empresa, Agent ID e Secret. Salve, pesquise o cache e atualize após mudanças de pessoal.",
+          "O diretório fica só na memória e recarrega ao reiniciar. Envie por CLI ou assistente com nome exato único ou ID do contato; escolha homônimos explicitamente. O destinatário WeCom deve ter conversado com o mesmo bot e ter ID de usuário correspondente; caso contrário use uma conversa de canal existente."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Usar o diretório do bot",
+          "caption": "O diretório fica só na memória e recarrega ao reiniciar. Envie por CLI ou assistente com nome exato único ou ID do contato; escolha homônimos explicitamente. O destinatário WeCom deve ter conversado com o mesmo bot e ter ID de usuário correspondente; caso contrário use uma conversa de canal existente."
+        }
+      },
+      {
         "title": "Escolha um canal e conecte uma nova plataforma",
         "steps": [
           "Abra Configurações → Bots de canal, selecione uma plataforma à esquerda e insira um nome, credenciais e projeto local padrão à direita. Habilite e salve. Os segredos vazios retêm os valores existentes durante a edição; verifique as alterações não salvas antes de mudar. Fechar as configurações, pressionar Escape ou alternar as seções de configurações solicita confirmação quando as alterações não são salvas; o cancelamento preserva o rascunho.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Falha na demonstração causada por um modelo inexistente",
           "caption": "O erro diz que o modelo escolhido não é compatível. Repare a configuração do modelo da etapa antes de executar novamente; não é reparado nesta imagem."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Mecanismos personalizados",
+    "summary": "Integre novos mecanismos SDK, CLI ou ACP por uma conversa comum ou importe um pacote existente. Use-os somente após a validação real e o registro.",
+    "sections": [
+      {
+        "title": "Criar um mecanismo por conversa",
+        "steps": [
+          "Se os mecanismos existentes não atenderem às necessidades, com permissão de administração do host abra «Configurações → Mecanismos de execução» e clique em «Integração personalizada». Para começar, ainda recomendamos configurar primeiro um SDK integrado.",
+          "Na conversa comum do espaço de trabalho padrão, escolha um mecanismo já configurado e informe nome, documentação oficial, autenticação e capacidades desejadas. Por exemplo: «Integre o SDK oficial de um fornecedor com conversa por texto e interrupção da geração».",
+          "Confira o rascunho preenchido antes de enviar. Apenas abrir a conversa de integração não gera nem instala um mecanismo. Peça que a conversa siga as especificações, verifique se já existe um mecanismo com o mesmo nome, crie o adaptador e instale as dependências em um diretório separado.",
+          "Siga as orientações da conversa para autenticação, validação real e registro. Código gerado ou instalação concluída não significam integração bem-sucedida. Salve chaves nas configurações, nunca no chat, no código-fonte ou em capturas de tela."
+        ],
+        "tips": [
+          "A validação real chama serviços de modelos e pode gerar custos. Código personalizado tem permissões locais; isolar um subprocesso não cria uma área restrita para arquivos ou rede. Use apenas fontes confiáveis."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Entradas de integração personalizada e importação nas configurações dos mecanismos",
+          "caption": "Faltam capturas do ambiente fixo de demonstração com a entrada de integração e o rascunho não enviado."
+        }
+      },
+      {
+        "title": "Importar um pacote de mecanismo existente",
+        "steps": [
+          "Em «Configurações → Mecanismos de execução», clique em «Importar mecanismo» e selecione um pacote ZIP exportado por uma fonte confiável.",
+          "A importação verifica o conteúdo e cria uma conversa comum de integração com um rascunho. Não executa o código do pacote nem substitui mecanismos registrados. Uma importação bem-sucedida não significa instalação concluída ou validação aprovada.",
+          "Confira o diretório do pacote e os requisitos na conversa. Reinstale dependências para o sistema local, configure a autenticação, conclua a validação real e registre o mecanismo. Para substituir um existente, confira antes o ID e a intenção de substituição."
+        ],
+        "tips": [
+          "O ZIP não contém dependências instaladas nem configurações locais de autenticação. O destinatário ainda precisa concluir a configuração e a validação. Se a importação falhar, leia o erro na página de configurações e tente novamente com o pacote correto."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Conversa de integração e rascunho criados após importar um pacote de mecanismo",
+          "caption": "Faltam capturas do ambiente fixo de demonstração com importação ZIP e rascunho pendente de configuração. Importação não deve ser apresentada como registro bem-sucedido."
+        }
+      },
+      {
+        "title": "Usar, exportar, desativar e reverter",
+        "steps": [
+          "Após a conversa informar o registro bem-sucedido, volte a «Configurações → Mecanismos de execução» e clique em «Verificar novamente». O novo mecanismo aparecerá na lista; o registro em si não exige reiniciar o programa.",
+          "Confira a configuração do mecanismo, o fornecedor e o modelo; selecione-o em uma conversa comum ou etapa de fluxo. Execute primeiro uma tarefa pequena para verificar o resultado real.",
+          "O cartão de um mecanismo personalizado oferece «Exportar ZIP», «Desativar execução» e «Retomar execução». O interruptor «Ativar / Desativar» do cartão controla apenas a visibilidade nas listas de seleção; tarefas existentes ainda podem usar o mecanismo. Já desativar a execução fecha as conexões ativas do mecanismo; pare antes as tarefas ou conversas relacionadas.",
+          "Se uma atualização apresentar problemas e houver uma versão anterior, encerre as execuções relacionadas e clique em «Reverter versão». Repita a validação e o registro e reinicie conforme solicitado pela interface. Sem versão anterior, não é possível reverter."
+        ],
+        "tips": [
+          "Alterações no código, nas dependências ou na configuração podem invalidar a validação anterior. Valide novamente antes de registrar. Para alterar apenas o endereço do serviço ou a autenticação, prefira a configuração do fornecedor, sem recriar o mecanismo."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Controles de exportação, desativação e reversão de um mecanismo personalizado registrado",
+          "caption": "Falta um cartão real de mecanismo registrado no ambiente fixo de demonstração; não se deve substituí-lo por um cartão de mecanismo integrado."
         }
       }
     ]

@@ -52,6 +52,15 @@ section[id], .recorded-section { scroll-margin-top: 110px; }
 .intro-actions .btn-ghost { border: 0; padding-inline: 0; }
 .intro-setup { margin: 20px 0 0; color: var(--muted); font-size: 12px; line-height: 1.9; }
 .intro-setup a { display: inline-block; text-decoration: underline; text-underline-offset: 4px; }
+.intro-engines, .engine-guide { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); text-decoration: underline; text-underline-offset: 4px; overflow-wrap: anywhere; }
+.intro-engines { margin-bottom: 24px; font-size: 15px; }
+.intro-engines svg { flex-shrink: 0; }
+.engine-guide { margin-top: 24px; font-size: 15px; }
+.engines-strip .section-title { margin-top: 0; }
+.homepage-details { border-top: 1px solid var(--border); padding-block: 20px; text-align: start; }
+.homepage-details > summary { cursor: pointer; color: var(--fg-2); font-size: 15px; line-height: 1.8; padding-block: 8px; }
+.homepage-details[open] > summary { margin-bottom: 24px; }
+.homepage-details > .section > .container { padding-inline: 0; }
 .recorded-section { padding-top: 20px; padding-bottom: 32px; }
 .guided-walkthrough { --walkthrough-bg: var(--surface-2); --walkthrough-fg: var(--fg); --walkthrough-muted: var(--muted); --walkthrough-accent: var(--accent); --walkthrough-line: var(--border-soft); }
 .walkthrough-player { border-radius: 8px; }

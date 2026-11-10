@@ -805,7 +805,7 @@
         "title": "Vyplnění konceptu zprávy hlasem",
         "steps": [
           "Otevřete Nastavení → Hlasový vstup, zapněte jej, stáhněte model a prostředí, vyberte jazyk a otestujte mikrofon. Instalace probíhá na připojeném hostiteli WorkStep, ne v telefonu. Podporována je mandarínština, kantonština a angličtina.",
-          "Stiskněte mikrofon v upravitelném chatu nebo podržte hlasové tlačítko v telefonu. Mluvte, ukončete nahrávání, ověřte vložený text a odešlete ručně. Nejvýše dvě minuty; zrušení nic neodesílá."
+          "Na počítači klikněte na mikrofon. V telefonu podržte textové pole 500 ms; ikona mikrofonu se nezobrazuje. Pusťte, ověřte vložený text a odešlete ručně. Nejvýše dvě minuty; zrušení nic neodesílá."
         ],
         "tips": [
           "Zvuk se rozpoznává na připojeném hostiteli a neukládá se. Povolte mikrofon přes HTTPS nebo místní adresu. Při chybě zkontrolujte oprávnění webu a systému a restartujte starý backend. Rozpoznaný text lze výslovně zachovat."
@@ -947,6 +947,18 @@
     "title": "Naplánované úkoly",
     "summary": "Vytvářejte nové úkoly podle plánu nebo posílejte načasované pokyny koordinátorovi ke stávajícím úkolům a sledujte provádění a upozornění.",
     "sections": [
+      {
+        "title": "Plánování zpráv v existující konverzaci",
+        "steps": [
+          "Otevřete Plány, vyberte projekt a cíl Konverzace. Vyberte existující konverzaci, zadejte název a zprávu, například kontrolu postupu, čas nebo frekvenci, ověřte příští běh a uložte.",
+          "Backend musí běžet. Obsazená konverzace čeká; odpovědi kanálu se vracejí do původního kanálu. Smazání nebo archivace odstraní pravidla, obnovení je nevrátí. Skupiny spojené s úkolem používají koordinaci úkolu."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Plánování zpráv v existující konverzaci",
+          "caption": "Backend musí běžet. Obsazená konverzace čeká; odpovědi kanálu se vracejí do původního kanálu. Smazání nebo archivace odstraní pravidla, obnovení je nevrátí. Skupiny spojené s úkolem používají koordinaci úkolu."
+        }
+      },
       {
         "title": "Spustit nyní a ověřit výsledek",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Nakonfigurujte WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack nebo QQ, čímž odlišíte chat od oznámení Webhooku.",
     "sections": [
       {
+        "title": "Použití adresáře bota",
+        "steps": [
+          "Uložte bota DingTalk, WeCom nebo Feishu a zapněte čtení v Upravit → Adresář. Udělte práva čtení členů; WeCom potřebuje také ID firmy, Agent ID a Secret. Uložte, hledejte v mezipaměti a aktualizujte po personálních změnách.",
+          "Adresář je pouze v paměti a znovu se načte po restartu. Z CLI nebo asistenta posílejte podle přesného jedinečného jména či ID kontaktu; shodná jména vybírejte výslovně. Příjemce WeCom musí nejprve komunikovat se stejným botem a mít stejné ID uživatele; jinak použijte existující konverzaci kanálu."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Použití adresáře bota",
+          "caption": "Adresář je pouze v paměti a znovu se načte po restartu. Z CLI nebo asistenta posílejte podle přesného jedinečného jména či ID kontaktu; shodná jména vybírejte výslovně. Příjemce WeCom musí nejprve komunikovat se stejným botem a mít stejné ID uživatele; jinak použijte existující konverzaci kanálu."
+        }
+      },
+      {
         "title": "Vyberte kanál a připojte novou platformu",
         "steps": [
           "Otevřete Nastavení → Roboti kanálu, vlevo vyberte platformu a vpravo zadejte název, přihlašovací údaje a výchozí místní projekt. Povolit a uložit. Prázdná tajemství si při úpravách zachovávají stávající hodnoty; před přepnutím zkontrolujte neuložené změny. Zavření nastavení, stisknutí klávesy Escape nebo přepnutí částí nastavení vyžaduje potvrzení, když změny nejsou uloženy; zrušení zachová koncept.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Selhání demonstrace způsobené neexistujícím modelem",
           "caption": "Chyba říká, že vybraný model není podporován. Před opětovným spuštěním opravte konfiguraci modelu kroku; na tomto obrázku to není opraveno."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Vlastní enginy",
+    "summary": "Připojte nový engine SDK, CLI nebo ACP prostřednictvím běžné konverzace nebo importujte existující balíček enginu. Používejte jej až po skutečném ověření a registraci.",
+    "sections": [
+      {
+        "title": "Vytvoření enginu prostřednictvím konverzace",
+        "steps": [
+          "Pokud stávající enginy nestačí, otevřete s oprávněním správce hostitele „Nastavení → Vykonávací enginy“ a klikněte na „Vlastní integrace“. Při prvním použití se stále doporučuje nejprve nastavit vestavěné SDK.",
+          "Přejděte do běžné konverzace výchozího pracovního prostoru, vyberte již nakonfigurovaný engine a doplňte název, oficiální dokumentaci, způsob ověřování a požadované schopnosti. Například: „Připoj oficiální SDK poskytovatele s podporou textové konverzace a zastavení generování.“",
+          "Před odesláním zkontrolujte předvyplněný koncept. Samotné otevření integrační konverzace engine nevytvoří ani nenainstaluje. Požádejte o kontrolu stejnojmenného enginu podle integrační specifikace, vytvoření adaptéru a instalaci závislostí do samostatného adresáře.",
+          "Podle pokynů v konverzaci dokončete ověřování, skutečné ověření funkčnosti a registraci. Vygenerovaný kód ani dokončená instalace neznamenají úspěšné připojení. Klíče ukládejte v nastavení, nikoli do chatu, zdrojového kódu nebo snímků obrazovky."
+        ],
+        "tips": [
+          "Skutečné ověření volá službu modelu a může být zpoplatněno. Vlastní kód má oprávnění místního počítače; izolace podprocesu není izolací souborů ani sítě. Připojujte pouze důvěryhodné zdroje."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Vlastní integrace a import enginu v nastavení vykonávacích enginů",
+          "caption": "Čeká se na snímky vstupu integrace a neodeslaného konceptu ze stálého demonstračního prostředí."
+        }
+      },
+      {
+        "title": "Import existujícího balíčku enginu",
+        "steps": [
+          "V „Nastavení → Vykonávací enginy“ klikněte na „Importovat engine“ a vyberte balíček enginu ZIP exportovaný z důvěryhodného zdroje.",
+          "Import zkontroluje obsah balíčku a vytvoří běžnou integrační konverzaci s konceptem. Nespouští kód balíčku ani nepřepisuje registrované enginy. Úspěšný import neznamená dokončenou instalaci ani úspěšné ověření.",
+          "V konverzaci zkontrolujte adresář balíčku a integrační požadavky. Znovu nainstalujte závislosti pro místní systém, nastavte ověřování, proveďte skutečné ověření a pak engine zaregistrujte. Před nahrazením existujícího enginu ověřte ID i záměr nahrazení."
+        ],
+        "tips": [
+          "ZIP neobsahuje nainstalované závislosti ani místní nastavení ověřování. Příjemce musí konfiguraci a ověření dokončit sám. Při neúspěšném importu zůstaňte v nastavení, přečtěte si chybu a zkuste znovu správný balíček."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Integrační konverzace a koncept vytvořené po importu balíčku enginu",
+          "caption": "Čeká se na snímky importu ZIP a konceptu čekajícího na konfiguraci ze stálého demonstračního prostředí. Import se nevydává za úspěšnou registraci."
+        }
+      },
+      {
+        "title": "Použití, export, deaktivace a návrat verze",
+        "steps": [
+          "Jakmile konverzace potvrdí úspěšnou registraci, vraťte se do „Nastavení → Vykonávací enginy“ a klikněte na „Znovu prohledat“. Nový engine se objeví v seznamu; samotná registrace nevyžaduje restart aplikace.",
+          "Zkontrolujte konfiguraci enginu, poskytovatele a model. Poté jej vyberte v běžné konverzaci nebo kroku pracovního postupu a nejprve ověřte výsledek na malém úkolu.",
+          "Karta vlastního enginu nabízí „Exportovat ZIP“, „Zakázat běh“ a „Obnovit běh“. Přepínač „Zapnuto / Vypnuto“ na kartě ovládá pouze zobrazení v rozbalovací nabídce; existující úkoly mohou engine nadále používat. Zakázání běhu zavře aktivní spojení enginu, proto nejprve zastavte související úkoly a konverzace.",
+          "Při problémech po aktualizaci a dostupné předchozí verzi nejprve ukončete související běhy, pak klikněte na „Vrátit verzi“. Poté znovu proveďte ověření a registraci a restartujte podle pokynů rozhraní. Bez předchozí verze návrat není možný."
+        ],
+        "tips": [
+          "Po změně kódu, závislostí nebo konfigurace může původní ověření pozbýt platnosti; před registrací jej zopakujte. Měníte-li pouze adresu služby modelu nebo přihlašovací údaje, použijte přednostně nastavení poskytovatele, nikoli nové vytváření enginu."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Ovládání exportu, deaktivace a návratu verze registrovaného vlastního enginu",
+          "caption": "Čeká se na snímek karty registrovaného enginu ze stálého demonstračního prostředí; karta vestavěného enginu ji nenahrazuje."
         }
       }
     ]

@@ -805,7 +805,7 @@
         "title": "Fill a message draft by voice",
         "steps": [
           "Open Settings → Voice input, enable it, download the model and runtime, choose a language and test the microphone. Installation is on the connected WorkStep host; phones need no model download. The model supports Mandarin, Cantonese and English.",
-          "Use the microphone in an editable chat, or press and hold the voice entry on a phone. Say “check project progress”, finish, review the inserted text and send it manually. Recordings last at most two minutes; cancelling sends nothing."
+          "On desktop click the microphone. On a phone hold the text-input area for 500 ms; no microphone icon is shown. Release to finish, review the inserted text and send manually. Recordings last at most two minutes; cancel sends nothing."
         ],
         "tips": [
           "Audio is recognized on the connected host and is not saved. Allow microphone access over HTTPS or a local address. Check site and system permissions on failure; restart an outdated backend. Recognized text can be kept explicitly after an error."
@@ -947,6 +947,18 @@
     "title": "Scheduled tasks",
     "summary": "Create new tasks on a schedule, or send timed coordinator instructions to existing tasks, and track execution and notifications.",
     "sections": [
+      {
+        "title": "Schedule messages in an existing conversation",
+        "steps": [
+          "Open Schedules, select the project and the Conversation target. Choose an existing conversation, enter a title and message such as “check project progress”, set the time or frequency, review the next run and save.",
+          "The backend must be online. Busy conversations wait; channel replies return to the original channel. Deleting or archiving the conversation removes its schedules; restoring it does not restore them. A group bound to a task must use task coordination instead."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Schedule messages in an existing conversation",
+          "caption": "The backend must be online. Busy conversations wait; channel replies return to the original channel. Deleting or archiving the conversation removes its schedules; restoring it does not restore them. A group bound to a task must use task coordination instead."
+        }
+      },
       {
         "title": "Run now and inspect generated tasks",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Configure WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack or QQ, distinguishing chat from Webhook notifications.",
     "sections": [
       {
+        "title": "Use a bot directory",
+        "steps": [
+          "Save a DingTalk, WeCom or Feishu bot, then open Edit → Directory and enable directory access. Grant the provider’s member-reading permissions; WeCom also needs the enterprise ID, application Agent ID and Secret. Save, then search cached contacts or refresh after personnel changes.",
+          "The directory stays in memory and reloads after restart. Through the CLI or assistant, send using an exact unique name or contact ID; resolve duplicate names explicitly. WeCom recipients must first interact with this bot and have matching user IDs. Otherwise use an existing channel conversation."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Use a bot directory",
+          "caption": "The directory stays in memory and reloads after restart. Through the CLI or assistant, send using an exact unique name or contact ID; resolve duplicate names explicitly. WeCom recipients must first interact with this bot and have matching user IDs. Otherwise use an existing channel conversation."
+        }
+      },
+      {
         "title": "Choose a channel and connect a new platform",
         "steps": [
           "Open Settings → Channel bots, select a platform on the left, and enter a name, credentials and default local project on the right. Enable and save. Empty secrets retain existing values when editing; check unsaved changes before switching. Closing settings, pressing Escape or switching settings sections asks for confirmation when changes are unsaved; canceling preserves the draft.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Demonstration failure caused by a nonexistent model",
           "caption": "The error says the chosen model is unsupported. Repair the step's model configuration before running again; it is not repaired in this image."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Custom engines",
+    "summary": "Connect a new SDK, CLI or ACP engine through ordinary chat, or import an existing engine package. Complete real acceptance checks and registration before use.",
+    "sections": [
+      {
+        "title": "Create an engine through chat",
+        "steps": [
+          "If existing engines do not meet your needs, open Settings → Execution engines with host management permission and click Custom integration. For first use, configure a built-in SDK first.",
+          "In the ordinary conversation opened in the default workspace, choose a configured engine and provide the name, official documentation, authentication method and required capabilities. For example: “Integrate a provider’s official SDK with text chat and generation cancellation.”",
+          "Review the prefilled draft before sending. Opening the conversation alone does not generate or install an engine. Ask the conversation to follow the integration guide, check for an existing engine with the same name, create an adapter and install dependencies in an isolated directory.",
+          "Follow the conversation to configure authentication, run real acceptance checks and register the engine. Generated code or a completed installation does not mean integration succeeded. Save secrets through settings, never in chat, source code or screenshots."
+        ],
+        "tips": [
+          "Real acceptance checks call the model service and may incur charges. Custom code has local machine permissions; a separate process is not a file or network sandbox. Integrate only trusted sources."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Custom integration and Import engine entries in execution engine settings",
+          "caption": "A real screenshot of the integration entry and unsent draft in the fixed demonstration environment is still needed."
+        }
+      },
+      {
+        "title": "Import an existing engine package",
+        "steps": [
+          "In Settings → Execution engines, click Import engine and select a ZIP engine package exported from a trusted source.",
+          "Import checks the package and creates an ordinary integration conversation and draft. It does not execute package code or overwrite registered engines; successful import does not mean installation or acceptance checks passed.",
+          "Check the package directory and integration requirements in the conversation. Reinstall dependencies for your system, configure authentication, complete real acceptance checks and register. Confirm the ID and replacement intent before replacing an existing engine."
+        ],
+        "tips": [
+          "The ZIP excludes installed dependencies and local authentication configuration. Recipients must configure and validate for themselves. If import fails, read the settings-page error, select the correct package and retry."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Integration conversation and draft created after importing an engine package",
+          "caption": "Real screenshots of ZIP import and the draft awaiting configuration in the fixed demonstration environment are still needed; import is not successful registration."
+        }
+      },
+      {
+        "title": "Use, export, disable and roll back",
+        "steps": [
+          "After the conversation reports successful registration, return to Settings → Execution engines and click Rescan. The new engine appears in the list; registration itself does not require restarting WorkStep.",
+          "Check the engine configuration, provider and model. Select it in ordinary chat or a workflow step, then run a small task to check actual results.",
+          "The custom engine card provides Export ZIP, Disable execution and Enable execution. The card’s On / Off switch only controls dropdown visibility; existing tasks can still use the engine. Disabling execution closes its active connections, so stop related tasks or conversations first.",
+          "If an update fails and a previous version exists, end related runs and click Roll back version. Then repeat acceptance checks and registration, and restart when prompted. Rollback is unavailable without a previous version."
+        ],
+        "tips": [
+          "Code, dependency or configuration changes may invalidate earlier acceptance results; validate again before registering. To change only service addresses or authentication, prefer provider settings rather than creating another engine."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Export, disable and rollback controls for a registered custom engine",
+          "caption": "A screenshot of a registered custom engine card in the fixed demonstration environment is still needed. A built-in engine card is not a substitute."
         }
       }
     ]

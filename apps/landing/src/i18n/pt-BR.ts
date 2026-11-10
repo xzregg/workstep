@@ -161,6 +161,9 @@ export const ptBR: I18nDict = {
     "statusReviewing": "Revendo"
   },
   "engines": {
+    extension: "Conecte seu mecanismo Agent",
+    description: "Conecte mecanismos CLI, SDK e ACP ou crie um adaptador. Escolha um mecanismo por etapa. Inicie a integração personalizada nas configurações de mecanismos, depois instale, valide e registre o adaptador.",
+    guide: "Guia de mecanismos personalizados",
     "label": "Escolha uma ferramenta de codificação de IA. Configure um para começar.",
     "codex": "Códice CLI",
     "claude": "Claude Code",

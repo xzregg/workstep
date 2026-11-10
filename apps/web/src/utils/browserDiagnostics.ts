@@ -39,6 +39,11 @@ export function createBrowserDiagnostics(privacy: PrivacyContext = () => ({})) {
       if (reason && typeof reason === 'object') requestErrors.set(reason, detail)
       record('request', detail)
     },
+    recordSpeechTiming({ requestMs, processingMs, queuedMs }: { requestMs: number; processingMs?: number; queuedMs: number }) {
+      const ms = (value: number | undefined) => typeof value === 'number' && Number.isFinite(value)
+        ? Math.round(Math.max(0, Math.min(120000, value))) : 'unknown'
+      record('request', `SPEECH request=${ms(requestMs)}ms inference=${ms(processingMs)}ms queued=${ms(queuedMs)}ms`)
+    },
     snapshot() { return records.map(item => ({ ...item, detail: item.kind === 'request' ? item.detail : bounded(redactDiagnosticText(item.detail, context())) })) },
     clear() { records.length = 0 },
   }

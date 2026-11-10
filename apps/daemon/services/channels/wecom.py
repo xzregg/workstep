@@ -38,10 +38,14 @@ def _message_parts(body: dict) -> tuple[str, tuple[ChannelAttachment, ...]]:
     return '\n'.join(texts), tuple(attachments)
 
 
+from services.channels.directory_providers.wecom import WeComDirectory
+
+
 class WeComAdapter(ChannelAdapter):
+    DIRECTORY_PROVIDER = WeComDirectory
     CHANNEL_ID = 'wecom'
     DISPLAY_NAME = '企业微信'
-    CAPABILITIES = ChannelCapabilities(receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}), waiting=True, streaming=True, cards=True)
+    CAPABILITIES = ChannelCapabilities(directory=True,receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}), waiting=True, streaming=True, cards=True)
 
     def __init__(self, bot: dict, on_message, on_state):
         super().__init__(bot, on_message, on_state)

@@ -794,7 +794,8 @@ async def test_unsent_handoffs_return_to_original_engine_session(
     ))
     module.start_queued_turn(accepted.turn_id)
     assert await _wait_turn(module, accepted.turn_id) == "completed"
-    assert calls[-1] == ("claude", "切回原配置", "original-thread", {"history": ["original-state"]})
+    assert (calls[-1][0], calls[-1][2], calls[-1][3]) == ("claude", "original-thread", {"history": ["original-state"]})
+    assert calls[-1][1].endswith("\n\n切回原配置")
     detail = await manager.run_db(project.id, lambda _: module.get_session(project.id, source["id"]))
     assert (detail["provider_id"] or "") == original_provider
 
@@ -964,7 +965,8 @@ async def test_chat_global_prompt_is_separate_and_view_records_actual_input(
     second = module.submit_message(project.id, session["id"], "第二次", "chat-display-2")
     assert await _wait_turn(module, second.turn_id) == "completed"
 
-    assert sent_prompts == ["第一次", "第二次"]
+    assert [prompt.rsplit("\n\n", 1)[-1] for prompt in sent_prompts] == ["第一次", "第二次"]
+    assert all(session["id"] in prompt and "--after 2h" in prompt for prompt in sent_prompts)
     assert sent_instructions == [custom_system, custom_system]
     visible_prompt = module.get_session(project.id, session["id"])["messages"][-1]["prompt"]
     assert custom_system in visible_prompt
@@ -4585,11 +4587,12 @@ async def test_chat_global_rules_transport_and_slow_read_keep_api_responsive(
     assert [item["content"] for item in detail["messages"] if item["role"] == "user"] == ["第一次", "第二次"]
     assert [call[1] for call in calls] == [None, "thread"]
     if transport == "body":
-        assert [call[0] for call in calls] == ["固定全局规则\n\n第一次", "第二次"]
+        assert calls[0][0].startswith("固定全局规则\n\n")
+        assert [call[0].rsplit("\n\n", 1)[-1] for call in calls] == ["第一次", "第二次"]
         assert all("system_prompt" not in call[2] for call in calls)
         assert "固定全局规则" not in detail["messages"][-1]["prompt"]
     else:
-        assert [call[0] for call in calls] == ["第一次", "第二次"]
+        assert [call[0].rsplit("\n\n", 1)[-1] for call in calls] == ["第一次", "第二次"]
         assert [call[2]["system_prompt"] for call in calls] == ["固定全局规则", "固定全局规则"]
         assert "固定全局规则" in detail["messages"][-1]["prompt"]
     assert "原始调用记录" not in detail["messages"][-1]["prompt"]

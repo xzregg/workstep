@@ -4,6 +4,11 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Schedule messages in existing local or channel conversations, with one-shot relative delays, idempotent creation and cleanup when a conversation is archived or deleted. Deliver channel results through their original conversation.
+- Add optional in-memory directories for DingTalk, WeCom and Feishu bots, with explicit refresh, project-scoped search and unambiguous name/contact selection for notifications. Verify WeCom recipient identities through interactions with the same bot.
+- Improve mobile press-and-hold dictation, bounded audio buffering, final-frame flushing and interrupted-recording recovery without automatically sending transcripts.
+- Establish an iOS planning directory; no Xcode project, installable app or iOS background-notification support is included yet.
+
 ## 1.0.22
 
 - Add opt-in voice input with on-demand model and runtime downloads, streaming recognition and microphone tests. Recognize Mandarin, Cantonese and English on the connected WorkStep host; insert text into a draft for explicit sending without saving recordings.

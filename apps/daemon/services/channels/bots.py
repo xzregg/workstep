@@ -78,6 +78,8 @@ class BotManager:
         from services.channels.task_forwarder import ChannelTaskForwarder
         from services.channels.sender import ChannelMessageSender
         self._message_sender = ChannelMessageSender(project_manager, self._load, self._adapters)
+        from services.channels.directory import ChannelDirectoryService
+        self.directory = ChannelDirectoryService(self._directory_provider)
         self._config_lock = asyncio.Lock()
         self._chat_locks: WeakValueDictionary[tuple[str, str], asyncio.Lock] = WeakValueDictionary()
         from services.channels.controls import ChannelControls
@@ -115,9 +117,10 @@ class BotManager:
     @staticmethod
     def _public(bot: dict, status: dict | None = None) -> dict:
         return {
-            **{key: value for key, value in bot.items() if key not in {"secret", "app_token", "weixin_user_id", "weixin_base_url"}},
+            **{key: value for key, value in bot.items() if key not in {"secret", "app_token", "weixin_user_id", "weixin_base_url", "directory_secret"}},
             "has_secret": bool(bot.get("secret")),
             "has_app_token": bool(bot.get("app_token")),
+            "has_directory_secret": bool(bot.get("directory_secret")),
             "protocol_version": 1,
             "capabilities": {
                 "receive": sorted(discover_channels()[bot["platform"]].CAPABILITIES.receive),
@@ -125,6 +128,8 @@ class BotManager:
                 "waiting": discover_channels()[bot["platform"]].CAPABILITIES.waiting,
                 "streaming": discover_channels()[bot["platform"]].CAPABILITIES.streaming,
                 "cards": discover_channels()[bot["platform"]].CAPABILITIES.cards,
+                "directory": discover_channels()[bot["platform"]].CAPABILITIES.directory,
+                "directory_fields": list(discover_channels()[bot["platform"]].DIRECTORY_PROVIDER.fields) if discover_channels()[bot["platform"]].DIRECTORY_PROVIDER else [],
                 "max_image_bytes": discover_channels()[bot["platform"]].CAPABILITIES.max_image_bytes,
                 "max_file_bytes": discover_channels()[bot["platform"]].CAPABILITIES.max_file_bytes,
                 "file_extensions": sorted(discover_channels()[bot["platform"]].CAPABILITIES.file_extensions or []),
@@ -136,8 +141,40 @@ class BotManager:
     async def list_channel_sessions(self, project_id: str) -> dict:
         return await self._message_sender.sessions(project_id)
 
+    def _directory_provider(self, bot):
+        provider = self._registered_channels[bot['platform']].DIRECTORY_PROVIDER
+        return provider(bot, self.directory.work).fetch_snapshot if provider else None
+
+    async def directory_bot(self, bot_id, project_id=None):
+        from services.channels.directory import DirectoryError
+        data = await self._load()
+        bot = next((row for row in data['bots'] if row['id'] == bot_id), None)
+        if bot is None:
+            raise LookupError('机器人不存在')
+        if project_id is not None and bot['default_project_id'] != project_id:
+            raise PermissionError('机器人不属于此项目')
+        if not self._registered_channels[bot['platform']].DIRECTORY_PROVIDER:
+            raise DirectoryError('directory_unsupported', '该渠道不支持通讯录')
+        return bot
+
+    def _validate_directory(self, bot):
+        if not bot.get('directory_enabled'):
+            return
+        provider = self._registered_channels[bot['platform']].DIRECTORY_PROVIDER
+        if provider is None:
+            raise ValueError('该渠道不支持通讯录')
+        if not all(str(bot.get(key) or '').strip() for key in provider.fields):
+            raise ValueError('请填写完整的通讯录应用凭证')
+
     async def send_message(self, **values) -> dict:
+        user_name, contact_id = values.pop('user_name', None), values.pop('contact_id', None)
+        if user_name or contact_id:
+            bot = await self.directory_bot(values.get('bot_id'), values['project_id'])
+            values['user_id'] = await self.directory.resolve(bot, user_name=user_name, contact_id=contact_id)
         return await self._message_sender.send(**values)
+
+    async def send_schedule_notification(self, **values) -> dict:
+        return await self._message_sender.send_schedule_notification(**values)
 
     async def list_bots(self) -> list[dict]:
         data = await self._load()
@@ -250,11 +287,14 @@ class BotManager:
             **({"app_token": app_token} if platform == "slack" else {}),
             "card_template_id": str(values.get("card_template_id") or "").strip(),
             "review_card_template_id": str(values.get("review_card_template_id") or "").strip(),
+            "directory_enabled": bool(values.get("directory_enabled", False)),
+            **{key: str(values.get(key) or "").strip() for key in ("directory_corp_id", "directory_agent_id", "directory_secret")},
             "enabled": bool(values.get("enabled", False)),
             "default_target_type": kind,
             "default_project_id": project_id if kind else "",
             "default_task_id": task_id if kind == "task" else "",
         }
+        self._validate_directory(bot)
         async with self._config_lock:
             data = await self._load()
             if any(row["platform"] == platform and row["app_id"] == app_id for row in data["bots"]):
@@ -283,9 +323,11 @@ class BotManager:
                     updated.update(credentials)
                 # Weixin credentials can only come from a completed server-side QR receipt.
                 values = {key: value for key, value in values.items() if key not in {'app_id', 'secret'}}
-            for key in ("name", "app_id", "default_target_type", "default_project_id", "default_task_id", "enabled", "card_template_id", "review_card_template_id"):
+            for key in ("name", "app_id", "default_target_type", "default_project_id", "default_task_id", "enabled", "card_template_id", "review_card_template_id", "directory_enabled", "directory_corp_id", "directory_agent_id"):
                 if key in values:
                     updated[key] = values[key]
+            if str(values.get("directory_secret") or "").strip():
+                updated["directory_secret"] = str(values["directory_secret"]).strip()
             if str(values.get("secret") or "").strip():
                 updated["secret"] = str(values["secret"]).strip()
             if bot["platform"] == "slack":
@@ -303,6 +345,8 @@ class BotManager:
             updated["default_project_id"] = str(updated["default_project_id"] or "")
             updated["default_task_id"] = str(updated["default_task_id"] or "")
             updated["enabled"] = bool(updated["enabled"])
+            for key in ("directory_corp_id", "directory_agent_id"):
+                updated[key] = str(updated.get(key) or "").strip()
             updated["card_template_id"] = str(updated.get("card_template_id") or "").strip()
             updated["review_card_template_id"] = str(updated.get("review_card_template_id") or "").strip()
             if not updated["default_target_type"]:
@@ -317,11 +361,13 @@ class BotManager:
             )
             if any(row["id"] != bot_id and row["platform"] == bot["platform"] and row["app_id"] == updated["app_id"] for row in data["bots"]):
                 raise ValueError("该平台机器人已经添加")
+            self._validate_directory(updated)
             data["bots"] = [updated if row["id"] == bot_id else row for row in data["bots"]]
             await self._save(data)
             if bot['platform'] == 'weixin' and login_id:
                 self.weixin_login.consume(login_id)
         await self._stop_bot(bot_id)
+        self.directory.configure(updated)
         if bot['platform'] == 'weixin' and bot['app_id'] != updated['app_id']:
             from services.channels.weixin_state import WeixinState
             await WeixinState(bot).delete()
@@ -340,6 +386,7 @@ class BotManager:
             data["sessions"] = {key: value for key, value in data["sessions"].items() if not key.startswith(f"{bot_id}:")}
             await self._save(data)
         await self._stop_bot(bot_id)
+        self.directory.remove(bot_id)
         if removed['platform'] == 'weixin':
             from services.channels.weixin_state import WeixinState
             await WeixinState(removed).delete()
@@ -450,6 +497,7 @@ class BotManager:
                 await self._start_bot(bot)
 
     async def shutdown(self) -> None:
+        await self.directory.close()
         await self.weixin_login.close()
         await self._task_controls.shutdown()
         await self._task_forwarder.shutdown()
@@ -465,6 +513,7 @@ class BotManager:
             await shutdown()
 
     async def _start_bot(self, bot: dict) -> None:
+        self.directory.configure(bot)
         bot_id = bot["id"]
         factory = self._factories[bot["platform"]]
         adapter = factory(
@@ -546,6 +595,7 @@ class BotManager:
             dedupe_key = f"{message.bot_id}:{message.message_id}"
             if dedupe_key in data["processed"]:
                 return
+            self.directory.observe_sender(message.bot_id, message.sender_id)
             data["processed"].append(dedupe_key)
             data["processed"] = data["processed"][-1000:]
             await self._save(data)

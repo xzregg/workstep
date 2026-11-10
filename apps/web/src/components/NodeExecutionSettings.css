@@ -19,3 +19,15 @@
   font-size: calc(13px * var(--font-scale));
   white-space: nowrap;
 }
+
+.node-step-reuse-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.node-step-reuse-help {
+  font-size: calc(11px * var(--font-scale));
+  color: var(--fg-3);
+  line-height: 1.5;
+}

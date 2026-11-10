@@ -19,12 +19,13 @@ export default function VoiceInputControls({ voice, variant = 'composer' }: { vo
   const error = voice.error.startsWith('speech.') ? t(voice.error as Parameters<typeof t>[0]) : voice.error
   return <section className="voice-input" aria-label={t('speech.title')}>
     <div className="voice-input-status" role="status">
-      {(['requesting', 'preparing', 'finishing'].includes(voice.phase)) && <span className="task-status-spinner" />}
+      {(['requesting', 'preparing', 'finishing'].includes(voice.phase) || (voice.phase === 'recording' && voice.catchingUp)) && <span className="task-status-spinner" />}
       {voice.phase === 'recording' && <meter min={0} max={1} value={voice.level} aria-label={t('speech.volume')} />}
-      <span>{t(`speech.${voice.phase}`)}</span>
+      <span>{t(voice.phase === 'recording' && voice.catchingUp ? 'speech.catchingUp' : `speech.${voice.phase}`)}</span>
       {voice.phase === 'recording' && <time>{voice.seconds}s / 120s</time>}
     </div>
     {voice.text && <div className="voice-input-transcript" aria-live="polite">{voice.text}</div>}
+    {voice.notice && <p role="status">{t(voice.notice as Parameters<typeof t>[0])}</p>}
     {error && <p className="voice-input-error" role="alert">{error}</p>}
     <div className="voice-input-actions">
       {voice.phase === 'idle' && <button type="button" onClick={() => void voice.start()}>{t('speech.start')}</button>}

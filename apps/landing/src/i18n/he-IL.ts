@@ -161,6 +161,9 @@ export const heIL: I18nDict = {
     "statusReviewing": "ביקורת"
   },
   "engines": {
+    extension: "חברו מנוע Agent לבחירתכם",
+    description: "חברו מנועי CLI, SDK ו־ACP או פתחו מתאם משלכם. בחרו מנוע לכל שלב. התחילו שילוב מותאם בהגדרות המנועים, ואז התקינו, אמתו ורשמו את המתאם לפני השימוש.",
+    guide: "מדריך לשילוב מנועים מותאמים",
     "label": "בחר כלי קידוד AI. הגדר אחד כדי להתחיל.",
     "codex": "קודקס CLI",
     "claude": "Claude Code",

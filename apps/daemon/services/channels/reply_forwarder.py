@@ -71,6 +71,9 @@ class ChannelReplyForwarder:
             session = ChatSession.get_or_none((ChatSession.id == session_id) & (ChatSession.project_id == project_id))
             if message is None or session is None or session.archived or message.role != 'assistant':
                 return None
+            from models import ScheduleRun
+            if ScheduleRun.select().where(ScheduleRun.session_assistant_message_id == message_id).exists():
+                return None  # Scheduled replies own delivery status and retry.
             # Inbound turns already reply through their callback, including the first turn.
             if (message.author_device_id or '').startswith('channel:'):
                 return None

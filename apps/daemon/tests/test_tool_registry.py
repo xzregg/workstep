@@ -77,6 +77,7 @@ def test_registry_defines_expected_tool_set():
         "workstep_custom_engine_disable",
         "workstep_custom_engine_rollback",
         "workstep_list_channel_bots",
+        "workstep_search_channel_contacts",
         "workstep_list_channel_sessions",
         "workstep_bind_channel_group",
         "workstep_send_channel_message",

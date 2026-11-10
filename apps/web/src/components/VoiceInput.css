@@ -9,7 +9,6 @@
 .voice-input-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .voice-input-actions button { min-height: 32px; padding: 4px 12px; }
 .voice-input-secondary-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-inline-start: auto; }
-.chat-input-editor[data-voice-mode="true"] { display: none; }
 .speech-settings { max-width: 720px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .speech-settings h1 { font-size: 20px; margin: 0; }
 .speech-settings p { margin: 0; color: var(--fg-2); font-size: var(--text-body); }

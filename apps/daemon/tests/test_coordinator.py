@@ -4610,7 +4610,7 @@ async def test_task_schedule_notification_default_delivery_and_api_retry(api_con
     from types import SimpleNamespace
     sender=ChannelMessageSender(main.project_manager,load,{'bot':Adapter()})
     module=ScheduleModule(main.project_manager,main.task_service,main.workflow_runtime,coordinator=main.coordinator_module,
-                          notification_sender=SimpleNamespace(send_message=sender.send))
+                          notification_sender=SimpleNamespace(send_schedule_notification=sender.send_schedule_notification))
     monkeypatch.setattr(main,'schedule_module',module)
     response=await client.post(f'/api/schedule/create?project_id={project_id}',json={'name':'通知','target_type':'task','target_task_id':task_id,'instruction':'汇报','rule':{'kind':'minutes','every':10,'timezone':'UTC'}})
     assert response.status_code==200,response.text

@@ -161,6 +161,9 @@ export const koKR: I18nDict = {
     "statusReviewing": "검토 중"
   },
   "engines": {
+    extension: "원하는 Agent 엔진 연결",
+    description: "CLI, SDK, ACP 엔진을 연결하거나 사용자 정의 어댑터를 추가하세요. 단계마다 엔진을 선택할 수 있습니다. 설정의 실행 엔진에서 사용자 정의 연결을 시작하고 설치, 검증, 등록 후 사용하세요.",
+    guide: "사용자 정의 엔진 연결 안내",
     "label": "AI 코딩 도구를 선택하세요. 시작하려면 하나를 구성하세요.",
     "codex": "코덱스 CLI",
     "claude": "Claude Code",

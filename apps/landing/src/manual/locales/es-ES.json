@@ -805,7 +805,7 @@
         "title": "Dictar un borrador de mensaje",
         "steps": [
           "Abre Ajustes → Entrada de voz, actívala, descarga el modelo y el entorno, elige el idioma y prueba el micrófono. Se instala en el host WorkStep conectado; el teléfono no necesita el modelo. Admite mandarín, cantonés e inglés.",
-          "Pulsa el micrófono en un chat editable o mantén pulsado el acceso de voz en el teléfono. Habla, termina, revisa el texto insertado y envíalo manualmente. Máximo dos minutos; cancelar no envía nada."
+          "En el ordenador pulsa el micrófono. En el teléfono mantén el campo de texto 500 ms; no hay icono de micrófono. Suelta, revisa el texto insertado y envía manualmente. Máximo dos minutos; cancelar no envía nada."
         ],
         "tips": [
           "El audio se reconoce en el host conectado y no se guarda. Autoriza el micrófono por HTTPS o dirección local. Si falla, revisa permisos del sitio y del sistema y reinicia un backend antiguo. Puedes conservar explícitamente el texto reconocido."
@@ -947,6 +947,18 @@
     "title": "Tareas programadas",
     "summary": "Cree nuevas tareas según una programación o envíe instrucciones del coordinador cronometradas a tareas existentes y realice un seguimiento de la ejecución y las notificaciones.",
     "sections": [
+      {
+        "title": "Programar mensajes en una conversación",
+        "steps": [
+          "Abre Horarios, elige el proyecto y el destino Conversación. Selecciona una existente, introduce título y mensaje, por ejemplo revisar el progreso, fija hora o frecuencia, comprueba la siguiente ejecución y guarda.",
+          "El backend debe estar activo. Una conversación ocupada espera; las respuestas de canal vuelven al canal original. Eliminar o archivar la conversación elimina sus reglas; restaurarla no las recupera. Los grupos ligados a tareas usan coordinación de tareas."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Programar mensajes en una conversación",
+          "caption": "El backend debe estar activo. Una conversación ocupada espera; las respuestas de canal vuelven al canal original. Eliminar o archivar la conversación elimina sus reglas; restaurarla no las recupera. Los grupos ligados a tareas usan coordinación de tareas."
+        }
+      },
       {
         "title": "Ejecutar ahora y revisar resultados",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Configura WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack o QQ, distinguiendo el chat de las notificaciones de Webhook.",
     "sections": [
       {
+        "title": "Usar el directorio del bot",
+        "steps": [
+          "Guarda un bot DingTalk, WeCom o Feishu y activa la lectura en Editar → Directorio. Concede permisos de lectura de miembros; WeCom necesita también ID de empresa, Agent ID y Secret. Guarda, busca en la caché y actualiza tras cambios de personal.",
+          "El directorio solo reside en memoria y se recarga al reiniciar. Envía por CLI o asistente con nombre exacto único o ID de contacto; elige explícitamente los homónimos. El destinatario WeCom debe haber hablado con el mismo bot y tener ID de usuario coincidente; si no, usa una conversación de canal existente."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Usar el directorio del bot",
+          "caption": "El directorio solo reside en memoria y se recarga al reiniciar. Envía por CLI o asistente con nombre exacto único o ID de contacto; elige explícitamente los homónimos. El destinatario WeCom debe haber hablado con el mismo bot y tener ID de usuario coincidente; si no, usa una conversación de canal existente."
+        }
+      },
+      {
         "title": "Elige un canal y conecta una nueva plataforma",
         "steps": [
           "Abra Configuración → Bots de canal, seleccione una plataforma a la izquierda e ingrese un nombre, credenciales y un proyecto local predeterminado a la derecha. Habilitar y guardar. Los secretos vacíos conservan los valores existentes al editarlos; verifique los cambios no guardados antes de cambiar. Al cerrar la configuración, presionar Escape o cambiar las secciones de configuración se solicita confirmación cuando los cambios no se guardan; cancelar conserva el borrador.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Fallo de demostración causado por un modelo inexistente.",
           "caption": "El error dice que el modelo elegido no es compatible. Repare la configuración del modelo del paso antes de volver a ejecutarlo; no está reparado en esta imagen."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Motores personalizados",
+    "summary": "Conecte un nuevo motor SDK, CLI o ACP mediante una conversación normal o importe un paquete existente. Úselo solo después de una validación real y su registro.",
+    "sections": [
+      {
+        "title": "Crear un motor mediante una conversación",
+        "steps": [
+          "Si los motores existentes no cubren sus necesidades, abra «Configuración → Motores de ejecución» con permisos de administración del anfitrión y pulse «Integración personalizada». Para empezar, se sigue recomendando configurar primero un SDK integrado.",
+          "Abra una conversación normal del espacio de trabajo predeterminado, seleccione un motor configurado e indique nombre, documentación oficial, autenticación y capacidades necesarias. Por ejemplo: «Integra el SDK oficial de un proveedor con conversación de texto y detención de la generación».",
+          "Revise el borrador predefinido antes de enviarlo. Abrir la conversación de integración no crea ni instala un motor. Pida que, conforme a la especificación, se comprueben motores con el mismo nombre, se cree el adaptador y se instalen las dependencias en un directorio independiente.",
+          "Siga las indicaciones de la conversación para completar autenticación, validación real y registro. Generar código o terminar la instalación no significa que la integración funcione. Guarde las claves en la configuración, nunca en el chat, el código fuente o las capturas."
+        ],
+        "tips": [
+          "La validación real llama al servicio del modelo y puede generar costes. El código personalizado tiene permisos locales; aislar un subproceso no crea un entorno aislado para archivos o red. Integre solo fuentes de confianza."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Accesos a la integración personalizada y a importar motores en la configuración de motores",
+          "caption": "Faltan capturas del acceso de integración y del borrador sin enviar en el entorno de demostración fijo."
+        }
+      },
+      {
+        "title": "Importar un paquete de motor existente",
+        "steps": [
+          "Pulse «Importar motor» en «Configuración → Motores de ejecución» y seleccione un paquete de motor ZIP exportado desde una fuente de confianza.",
+          "La importación comprueba el contenido y crea una conversación normal de integración con un borrador. No ejecuta código del paquete ni sobrescribe motores registrados. Importar correctamente no significa terminar la instalación ni superar la validación.",
+          "Revise en la conversación el directorio del paquete y los requisitos. Reinstale dependencias para el sistema local, configure la autenticación y registre el motor después de validarlo realmente. Antes de sustituir uno existente, compruebe su ID y la intención de reemplazarlo."
+        ],
+        "tips": [
+          "ZIP no incluye dependencias instaladas ni autenticación local; el destinatario debe configurar y validar por su cuenta. Si la importación falla, permanezca en la configuración, revise el error y vuelva a intentarlo con el paquete correcto."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Conversación de integración y borrador creados tras importar el paquete de motor",
+          "caption": "Faltan capturas de la importación ZIP y del borrador pendiente de configuración en el entorno fijo. La importación no se presenta como un registro correcto."
+        }
+      },
+      {
+        "title": "Usar, exportar, desactivar y revertir",
+        "steps": [
+          "Cuando la conversación confirme el registro correcto, vuelva a «Configuración → Motores de ejecución» y pulse «Volver a explorar». El motor aparece en la lista; el registro en sí no exige reiniciar la aplicación.",
+          "Compruebe la configuración del motor, el proveedor y el modelo. Selecciónelo después en una conversación normal o un paso del flujo y ejecute primero una tarea pequeña para revisar el resultado real.",
+          "La tarjeta del motor personalizado permite «Exportar ZIP», «Desactivar ejecución» o «Reanudar ejecución». El interruptor «Activado / Desactivado» de la tarjeta solo controla la visibilidad en el selector; las tareas existentes pueden seguir usando el motor. Desactivar la ejecución cierra sus conexiones activas, por lo que debe detener primero las tareas o conversaciones relacionadas.",
+          "Si una actualización falla y existe una versión anterior, termine las ejecuciones relacionadas y pulse «Revertir versión». Después, vuelva a validar y registrar y reinicie según las indicaciones de la interfaz. Sin una versión anterior no es posible revertir."
+        ],
+        "tips": [
+          "Los cambios de código, dependencias o configuración pueden invalidar la validación anterior; vuelva a validar antes de registrar. Si solo cambia la dirección del servicio o la autenticación, utilice preferentemente la configuración del proveedor sin recrear el motor."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Controles de exportación, desactivación y reversión de un motor personalizado registrado",
+          "caption": "Falta una captura de la tarjeta de un motor registrado en el entorno fijo; no se sustituye por la tarjeta de un motor integrado."
         }
       }
     ]

@@ -805,7 +805,7 @@
         "title": "Mesaj taslağını sesle doldurma",
         "steps": [
           "Ayarlar → Ses girişi bölümünü açıp etkinleştirin; modeli ve çalışma ortamını indirin, dili seçip mikrofonu deneyin. Kurulum bağlı WorkStep sunucusundadır, telefona model gerekmez. Mandarin, Kantonca ve İngilizce desteklenir.",
-          "Düzenlenebilir sohbette mikrofona dokunun veya telefonda ses girişini basılı tutun. Konuşup kaydı bitirin, eklenen metni kontrol ederek elle gönderin. En fazla iki dakika; iptal hiçbir şey göndermez."
+          "Bilgisayarda mikrofona tıklayın. Telefonda metin alanını 500 ms basılı tutun; mikrofon simgesi gösterilmez. Bırakın, eklenen metni kontrol edip elle gönderin. En fazla iki dakika; iptal hiçbir şey göndermez."
         ],
         "tips": [
           "Ses bağlı sunucuda tanınır ve kaydedilmez. HTTPS veya yerel adres üzerinden mikrofona izin verin. Hatalarda site ve sistem izinlerini kontrol edin; eski arka ucu yeniden başlatın. Tanınan metni açıkça koruyabilirsiniz."
@@ -947,6 +947,18 @@
     "title": "Zamanlanmış görevler",
     "summary": "Bir zamanlamaya göre yeni görevler oluşturun veya mevcut görevlere zamanlı koordinatör talimatları gönderin ve yürütmeyi ve bildirimleri izleyin.",
     "sections": [
+      {
+        "title": "Mevcut konuşmaya zamanlanmış mesaj",
+        "steps": [
+          "Zamanlamalar bölümünde projeyi ve Konuşma hedefini seçin. Mevcut konuşma, başlık ve ilerlemeyi kontrol et gibi bir mesaj girin; zamanı veya sıklığı ayarlayıp sonraki çalışmayı inceleyerek kaydedin.",
+          "Arka uç açık olmalıdır. Meşgul konuşmalar bekler; kanal yanıtları özgün kanala döner. Konuşmayı silmek veya arşivlemek kuralları kaldırır; geri yüklemek geri getirmez. Göreve bağlı gruplar görev koordinasyonunu kullanır."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Mevcut konuşmaya zamanlanmış mesaj",
+          "caption": "Arka uç açık olmalıdır. Meşgul konuşmalar bekler; kanal yanıtları özgün kanala döner. Konuşmayı silmek veya arşivlemek kuralları kaldırır; geri yüklemek geri getirmez. Göreve bağlı gruplar görev koordinasyonunu kullanır."
+        }
+      },
       {
         "title": "Hemen çalıştırma ve sonucu inceleme",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Sohbeti Webhook bildirimlerinden ayırarak WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack veya QQ'yu yapılandırın.",
     "sections": [
       {
+        "title": "Bot kişi dizinini kullanma",
+        "steps": [
+          "DingTalk, WeCom veya Feishu botunu kaydedip Düzenle → Dizin altında okumayı açın. Üye okuma izinlerini verin; WeCom ayrıca şirket ID, Agent ID ve Secret ister. Kaydedip önbellekte arayın, personel değişince yenileyin.",
+          "Dizin bellekte kalır ve yeniden başlatmada yüklenir. CLI veya asistanla tam ve benzersiz ad ya da kişi ID kullanın; aynı adları açıkça seçin. WeCom alıcısı önceden aynı botla iletişim kurmuş ve kullanıcı ID eşleşmiş olmalıdır; yoksa mevcut kanal konuşmasını kullanın."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Bot kişi dizinini kullanma",
+          "caption": "Dizin bellekte kalır ve yeniden başlatmada yüklenir. CLI veya asistanla tam ve benzersiz ad ya da kişi ID kullanın; aynı adları açıkça seçin. WeCom alıcısı önceden aynı botla iletişim kurmuş ve kullanıcı ID eşleşmiş olmalıdır; yoksa mevcut kanal konuşmasını kullanın."
+        }
+      },
+      {
         "title": "Bir kanal seçin ve yeni bir platforma bağlanın",
         "steps": [
           "Ayarlar → Kanal botları'nı açın, soldan bir platform seçin ve sağ tarafa bir ad, kimlik bilgileri ve varsayılan yerel proje girin. Etkinleştirin ve kaydedin. Boş gizli diziler, düzenleme sırasında mevcut değerleri korur; geçiş yapmadan önce kaydedilmemiş değişiklikleri kontrol edin. Ayarları kapatmak, Escape tuşuna basmak veya ayarlar bölümlerini değiştirmek, değişiklikler kaydedilmediğinde onay ister; iptal etme taslağı korur.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Var olmayan bir modelin neden olduğu gösteri başarısızlığı",
           "caption": "Hata, seçilen modelin desteklenmediğini söylüyor. Tekrar çalıştırmadan önce adımın model yapılandırmasını onarın; bu görüntüde onarılmamıştır."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Özel motorlar",
+    "summary": "Normal bir sohbetle yeni SDK, CLI veya ACP motorları ekleyin ya da mevcut bir motor paketini içe aktarın. Gerçek doğrulama ve kayıt tamamlandıktan sonra kullanın.",
+    "sections": [
+      {
+        "title": "Sohbetle motor oluşturma",
+        "steps": [
+          "Mevcut motorlar ihtiyacınızı karşılamıyorsa ana makine yönetim izniyle «Ayarlar → Yürütme motorları» bölümünü açıp «Özel entegrasyon» seçeneğine tıklayın. İlk kullanımda yine önce yerleşik bir SDK yapılandırmanız önerilir.",
+          "Varsayılan çalışma alanının normal sohbetinde yapılandırılmış bir motor seçin; adı, resmî belgeleri, kimlik doğrulama yöntemini ve gereken yetenekleri belirtin. Örneğin: «Bir sağlayıcının resmî SDK’sını metin sohbeti ve üretimi durdurma desteğiyle entegre et».",
+          "Önceden doldurulmuş taslağı göndermeden önce kontrol edin. Yalnızca entegrasyon sohbetini açmak motor oluşturmaz veya kurmaz. Sohbetten entegrasyon kurallarına uymasını, aynı adlı motor olup olmadığını denetlemesini, bağdaştırıcı oluşturmasını ve bağımlılıkları ayrı bir dizine kurmasını isteyin.",
+          "Sohbetin yönlendirmesiyle kimlik doğrulamayı, gerçek doğrulamayı ve kaydı tamamlayın. Kod üretilmesi veya kurulumun bitmesi entegrasyonun başarılı olduğu anlamına gelmez. Anahtarları ayarlarda saklayın; sohbete, kaynak koda veya ekran görüntülerine yazmayın."
+        ],
+        "tips": [
+          "Gerçek doğrulama model hizmetlerini çağırır ve ücret doğurabilir. Özel kod yerel izinlere sahiptir; alt süreç yalıtımı dosya veya ağ korumalı alanı değildir. Yalnızca güvenilir kaynakları entegre edin."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Motor ayarlarındaki özel entegrasyon ve motor içe aktarma girişleri",
+          "caption": "Sabit demo ortamındaki entegrasyon girişi ve gönderilmemiş taslağın ekran görüntüleri eksik."
+        }
+      },
+      {
+        "title": "Mevcut motor paketini içe aktarma",
+        "steps": [
+          "«Ayarlar → Yürütme motorları» bölümünde «Motor içe aktar» seçeneğine tıklayıp güvenilir bir kaynaktan dışa aktarılmış ZIP motor paketini seçin.",
+          "İçe aktarma paket içeriğini denetler, normal bir entegrasyon sohbeti ve taslak oluşturur. Paket kodunu çalıştırmaz ve kayıtlı motorların üzerine yazmaz. Başarılı içe aktarma, kurulumun veya doğrulamanın tamamlandığı anlamına gelmez.",
+          "Sohbetteki paket dizinini ve entegrasyon gereklerini kontrol edin. Yerel sisteme uygun bağımlılıkları yeniden kurun, kimlik doğrulamayı yapılandırın, gerçek doğrulamayı tamamlayıp kaydedin. Mevcut motoru değiştirecekseniz önce ID ve değiştirme niyetini kontrol edin."
+        ],
+        "tips": [
+          "ZIP kurulu bağımlılıkları ve yerel kimlik doğrulama ayarlarını içermez; alıcı yapılandırma ve doğrulamayı kendisi tamamlamalıdır. İçe aktarma başarısızsa ayarlar sayfasında hatayı inceleyin ve doğru paketle yeniden deneyin."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Motor paketi içe aktarıldıktan sonra oluşturulan entegrasyon sohbeti ve taslak",
+          "caption": "Sabit demo ortamındaki ZIP içe aktarma ve yapılandırılmayı bekleyen taslak görüntüleri eksik. İçe aktarma başarılı kayıt olarak sunulmamalıdır."
+        }
+      },
+      {
+        "title": "Kullanma, dışa aktarma, devre dışı bırakma ve geri alma",
+        "steps": [
+          "Sohbet başarılı kaydı bildirdikten sonra «Ayarlar → Yürütme motorları» bölümüne dönüp «Yeniden tara» seçeneğine tıklayın. Yeni motor listeye eklenir; kayıt işleminin kendisi için programı yeniden başlatmak gerekmez.",
+          "Motor yapılandırmasını, sağlayıcıyı ve modeli kontrol edin; ardından normal bir sohbette veya iş akışı adımında motoru seçin. Gerçek sonucu denetlemek için önce küçük bir görev çalıştırın.",
+          "Özel motor kartında «ZIP dışa aktar», «Çalıştırmayı devre dışı bırak» ve «Çalıştırmayı sürdür» bulunur. Karttaki «Açık / Kapalı» anahtarı yalnızca açılır listelerdeki görünürlüğü yönetir; mevcut görevler motoru kullanmaya devam edebilir. Çalıştırmayı devre dışı bırakmak motorun etkin bağlantılarını kapatır; önce ilgili görevleri veya sohbetleri durdurun.",
+          "Güncellemede sorun varsa ve önceki sürüm mevcutsa ilgili çalışmaları bitirip «Sürümü geri al» seçeneğine tıklayın. Yeniden doğrulayıp kaydedin ve arayüzün yönlendirmesine göre yeniden başlatın. Önceki sürüm yoksa geri alınamaz."
+        ],
+        "tips": [
+          "Kod, bağımlılık veya yapılandırma değişiklikleri önceki doğrulamayı geçersiz kılabilir. Kaydetmeden önce yeniden doğrulayın. Yalnızca model hizmet adresini veya kimlik doğrulamayı değiştirecekseniz motoru yeniden oluşturmak yerine sağlayıcı yapılandırmasını tercih edin."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Kayıtlı özel motorun dışa aktarma, devre dışı bırakma ve geri alma kontrolleri",
+          "caption": "Sabit demo ortamında kayıtlı özel motorun gerçek kartı eksik; yerleşik bir motor kartı onun yerine kullanılmamalıdır."
         }
       }
     ]

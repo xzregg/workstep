@@ -9,7 +9,14 @@ export interface BotTaskBinding extends DiscussionGroup {
   project_name: string
 }
 
+export interface DirectoryContact { contact_id: string; name: string; departments: string[]; user_id: string }
+export interface DirectoryStatus { status: string; count: number; updated_at: string | null; error: string }
 export interface ChannelBot {
+  capabilities?: { directory?: boolean; directory_fields?: string[] }
+  directory_enabled?: boolean
+  directory_corp_id?: string
+  directory_agent_id?: string
+  has_directory_secret?: boolean
   id: string
   platform: BotPlatform
   name: string
@@ -28,6 +35,10 @@ export interface ChannelBot {
 }
 
 export interface BotDraft {
+  directory_enabled?: boolean
+  directory_corp_id?: string
+  directory_agent_id?: string
+  directory_secret?: string
   login_id?: string
   app_token?: string
   card_template_id?: string
@@ -58,6 +69,9 @@ const json = (body: unknown, method: string) => ({ method, body: JSON.stringify(
 const taskPath = (taskId: string) => `/task/${encodeURIComponent(taskId)}/discussion-groups`
 
 export const channelBotApi = {
+  directoryStatus: (id: string, signal?: AbortSignal) => request<DirectoryStatus>(`/channel-bots/${encodeURIComponent(id)}/directory`, { signal }),
+  refreshDirectory: (id: string) => request<DirectoryStatus>(`/channel-bots/${encodeURIComponent(id)}/directory/refresh`, { method: 'POST' }),
+  contacts: (id: string, query: string, offset: number, signal?: AbortSignal) => request<DirectoryStatus & { contacts: DirectoryContact[]; total: number }>(`/channel-bots/${encodeURIComponent(id)}/contacts?${new URLSearchParams({ query, offset: String(offset) })}`, { signal }),
   startWeixinLogin: (botId?: string) => request<WeixinLogin>('/channel-bots/weixin/login', json({ bot_id: botId || '' }, 'POST')),
   pollWeixinLogin: (id: string, signal?: AbortSignal) => request<WeixinLogin>(`/channel-bots/weixin/login/${encodeURIComponent(id)}`, { signal }),
   cancelWeixinLogin: (id: string) => request(`/channel-bots/weixin/login/${encodeURIComponent(id)}`, { method: 'DELETE' }),

@@ -161,6 +161,9 @@ export const idID: I18nDict = {
     "statusReviewing": "Ditinjau"
   },
   "engines": {
+    extension: "Hubungkan mesin Agent pilihan Anda",
+    description: "Hubungkan mesin CLI, SDK dan ACP atau buat adaptor sendiri. Pilih mesin untuk tiap langkah. Mulai integrasi khusus di pengaturan mesin, lalu instal, validasi dan daftarkan adaptor.",
+    guide: "Panduan integrasi mesin khusus",
     "label": "Pilih alat pemrograman AI. Siapkan satu untuk memulai.",
     "codex": "Codex CLI",
     "claude": "Claude Code",

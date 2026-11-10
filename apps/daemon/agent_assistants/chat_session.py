@@ -27,6 +27,7 @@ from engines.codex_visualize import (
     convert_visualize_markers,
 )
 from engines.core.registry import COORDINATOR_FALLBACK_ORDER, create_engine
+from models.base import db_proxy
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
 from models.fields import utc_now
 from agent_assistants.base import (
@@ -293,8 +294,12 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 ChatMessage.session == row, ChatMessage.status == "running"
             ).exists():
                 raise ValueError("Chat session is running")
-            row.archived = archived
-            row.save()
+            from services.session_schedule_runtime import clear_session_schedules
+            with db_proxy.atomic():
+                row.archived = archived
+                row.save()
+                if archived:
+                    clear_session_schedules(session_id)
             return self._session_summary(row, project_id)
 
     def create_session(
@@ -900,7 +905,16 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         return ""
 
     def _build_prompt(self, session) -> str:
-        return self._build_chat_prompt(session)
+        prompt = self._build_chat_prompt(session)
+        if prompt.strip() == "/compact" or self._config.name not in {"chat_session", "channel_chat"}:
+            return prompt
+        return self._with_schedule_context(session, prompt)
+
+    def _with_schedule_context(self, session, prompt):
+        if self._config.name not in {"chat_session", "channel_chat"} or not getattr(session, "session_id", None):
+            return prompt
+        from services.session_schedule_runtime import conversation_schedule_context
+        return conversation_schedule_context(session) + "\n\n" + prompt
 
     def _build_chat_prompt(self, session) -> str:
         """Build user/context input; configured chat rules travel independently."""
@@ -973,7 +987,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 if self._prompt_system_instruction(session)
                 else tail
             )
-        return prompt
+        return self._with_schedule_context(session, prompt)
 
     def _system_prompt_for_display(self, session) -> str:
         """Show the project-specific instruction, including on resumed turns."""

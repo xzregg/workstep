@@ -805,7 +805,7 @@
         "title": "Mengisi draf pesan dengan suara",
         "steps": [
           "Buka Pengaturan → Input suara, aktifkan, unduh model dan runtime, pilih bahasa, lalu uji mikrofon. Instalasi berada di host WorkStep yang terhubung, bukan ponsel. Mendukung Mandarin, Kanton, dan Inggris.",
-          "Tekan mikrofon di obrolan yang dapat diedit, atau tekan lama tombol suara di ponsel. Bicara, akhiri rekaman, periksa teks yang disisipkan, lalu kirim manual. Maksimal dua menit; membatalkan tidak mengirim apa pun."
+          "Di komputer klik mikrofon. Di ponsel tahan area teks selama 500 ms; ikon mikrofon tidak ditampilkan. Lepaskan, periksa teks yang disisipkan dan kirim manual. Maksimal dua menit; batal tidak mengirim apa pun."
         ],
         "tips": [
           "Audio dikenali di host terhubung dan tidak disimpan. Izinkan mikrofon melalui HTTPS atau alamat lokal. Jika gagal, periksa izin situs dan sistem; mulai ulang backend lama. Teks yang sudah dikenali dapat dipertahankan secara eksplisit."
@@ -947,6 +947,18 @@
     "title": "Tugas terjadwal",
     "summary": "Buat tugas baru sesuai jadwal, atau kirimkan instruksi koordinator berjangka waktu ke tugas yang ada, dan lacak eksekusi dan pemberitahuan.",
     "sections": [
+      {
+        "title": "Jadwalkan pesan di percakapan yang ada",
+        "steps": [
+          "Buka Jadwal, pilih proyek dan target Percakapan. Pilih percakapan yang ada, isi judul dan pesan seperti periksa kemajuan proyek, atur waktu atau frekuensi, periksa jadwal berikutnya, lalu simpan.",
+          "Backend harus aktif. Percakapan sibuk menunggu; balasan kanal kembali ke kanal asal. Menghapus atau mengarsipkan percakapan menghapus aturannya; memulihkan tidak mengembalikannya. Grup terkait tugas memakai koordinasi tugas."
+        ],
+        "screenshot": {
+          "id": "conversation-schedule",
+          "alt": "Jadwalkan pesan di percakapan yang ada",
+          "caption": "Backend harus aktif. Percakapan sibuk menunggu; balasan kanal kembali ke kanal asal. Menghapus atau mengarsipkan percakapan menghapus aturannya; memulihkan tidak mengembalikannya. Grup terkait tugas memakai koordinasi tugas."
+        }
+      },
       {
         "title": "Jalankan sekarang dan periksa hasil",
         "steps": [
@@ -1252,6 +1264,18 @@
     "summary": "Konfigurasikan WeCom, DingTalk, Feishu, Lark, Telegram, Discord, Slack atau QQ, yang membedakan percakapan dari notifikasi Webhook.",
     "sections": [
       {
+        "title": "Gunakan direktori bot",
+        "steps": [
+          "Simpan bot DingTalk, WeCom atau Feishu, lalu aktifkan pembacaan di Edit → Direktori. Berikan izin membaca anggota; WeCom juga memerlukan ID perusahaan, Agent ID dan Secret. Simpan, cari cache, dan segarkan setelah perubahan staf.",
+          "Direktori hanya di memori dan dimuat ulang saat mulai ulang. Dengan CLI atau asisten, kirim melalui nama persis yang unik atau ID kontak; pilih nama ganda secara eksplisit. Penerima WeCom harus sudah berinteraksi dengan bot yang sama dan ID pengguna cocok; jika tidak, gunakan percakapan kanal yang ada."
+        ],
+        "screenshot": {
+          "id": "bot-directory",
+          "alt": "Gunakan direktori bot",
+          "caption": "Direktori hanya di memori dan dimuat ulang saat mulai ulang. Dengan CLI atau asisten, kirim melalui nama persis yang unik atau ID kontak; pilih nama ganda secara eksplisit. Penerima WeCom harus sudah berinteraksi dengan bot yang sama dan ID pengguna cocok; jika tidak, gunakan percakapan kanal yang ada."
+        }
+      },
+      {
         "title": "Pilih saluran dan sambungkan platform baru",
         "steps": [
           "Buka Pengaturan → Bot saluran, pilih platform di sebelah kiri, dan masukkan nama, kredensial, dan proyek lokal bawaan di sebelah kanan. Aktifkan dan simpan. Rahasia kosong mempertahankan nilai yang ada saat diedit; periksa perubahan yang belum disimpan sebelum beralih. Menutup pengaturan, menekan Escape atau berpindah bagian pengaturan meminta konfirmasi ketika perubahan belum disimpan; pembatalan akan mempertahankan draf tersebut.",
@@ -1419,6 +1443,63 @@
           "id": "task-error",
           "alt": "Kegagalan demonstrasi disebabkan oleh tidak adanya model",
           "caption": "Kesalahannya mengatakan model yang dipilih tidak didukung. Perbaiki konfigurasi model langkah sebelum dijalankan kembali; itu tidak diperbaiki pada gambar ini."
+        }
+      }
+    ]
+  },
+  {
+    "id": "custom-engines",
+    "title": "Mesin kustom",
+    "summary": "Hubungkan mesin SDK, CLI, atau ACP baru melalui percakapan biasa, atau impor paket mesin yang sudah ada. Gunakan setelah pengujian penerimaan nyata dan registrasi selesai.",
+    "sections": [
+      {
+        "title": "Membuat mesin melalui percakapan",
+        "steps": [
+          "Jika mesin yang tersedia belum memenuhi kebutuhan, buka “Pengaturan → Mesin eksekusi” dengan izin pengelolaan host, lalu klik “Integrasi kustom”. Untuk pemakaian pertama, tetap disarankan mengonfigurasi SDK bawaan terlebih dahulu.",
+          "Buka percakapan biasa di ruang kerja bawaan, pilih mesin yang sudah dikonfigurasi, lalu berikan nama, dokumentasi resmi, metode autentikasi, dan kemampuan yang dibutuhkan. Contohnya: “Integrasikan SDK resmi suatu penyedia dengan percakapan teks dan penghentian pembuatan respons.”",
+          "Periksa draf yang telah diisi sebelum mengirimnya. Membuka percakapan integrasi saja tidak membuat atau memasang mesin. Minta percakapan mengikuti spesifikasi integrasi untuk memeriksa mesin bernama sama, membuat adaptor, dan memasang dependensi di direktori terpisah.",
+          "Ikuti petunjuk percakapan untuk menyelesaikan autentikasi, pengujian penerimaan nyata, dan registrasi. Kode yang dibuat atau pemasangan yang selesai belum berarti integrasi berhasil. Simpan kunci melalui pengaturan, bukan dalam chat, kode sumber, atau tangkapan layar."
+        ],
+        "tips": [
+          "Pengujian nyata memanggil layanan model dan dapat menimbulkan biaya. Kode kustom memiliki izin lokal; isolasi subproses bukan kotak pasir berkas atau jaringan. Hubungkan hanya sumber tepercaya."
+        ],
+        "screenshot": {
+          "id": "custom-engine-onboarding",
+          "alt": "Akses integrasi kustom dan impor mesin dalam pengaturan mesin eksekusi",
+          "caption": "Tangkapan layar akses integrasi dan draf yang belum dikirim dari lingkungan demo tetap masih perlu ditambahkan."
+        }
+      },
+      {
+        "title": "Mengimpor paket mesin yang sudah ada",
+        "steps": [
+          "Klik “Impor mesin” pada “Pengaturan → Mesin eksekusi”, lalu pilih paket mesin ZIP yang diekspor dari sumber tepercaya.",
+          "Impor memeriksa isi paket dan membuat percakapan integrasi biasa beserta draf. Impor tidak menjalankan kode paket atau menimpa mesin terdaftar. Impor yang berhasil bukan berarti pemasangan selesai atau pengujian penerimaan lulus.",
+          "Periksa direktori paket dan persyaratan integrasi dalam percakapan. Pasang ulang dependensi sesuai sistem lokal, konfigurasi autentikasi, selesaikan pengujian nyata, lalu registrasikan. Jika ingin mengganti mesin yang sudah ada, periksa ID dan pastikan penggantian memang dimaksudkan."
+        ],
+        "tips": [
+          "ZIP tidak menyertakan dependensi terpasang atau konfigurasi autentikasi lokal; penerima tetap harus mengonfigurasi dan menguji sendiri. Jika impor gagal, tetap di halaman pengaturan untuk memeriksa kesalahan, lalu coba lagi dengan paket yang benar."
+        ],
+        "screenshot": {
+          "id": "custom-engine-import",
+          "alt": "Percakapan integrasi dan draf yang dibuat setelah impor paket mesin",
+          "caption": "Tangkapan layar impor ZIP dan draf yang menunggu konfigurasi dari lingkungan demo tetap masih diperlukan. Impor tidak digambarkan sebagai registrasi yang berhasil."
+        }
+      },
+      {
+        "title": "Penggunaan, ekspor, penonaktifan, dan pemulihan versi",
+        "steps": [
+          "Setelah percakapan melaporkan registrasi berhasil, kembali ke “Pengaturan → Mesin eksekusi” dan klik “Pindai ulang”. Mesin baru masuk ke daftar; registrasi itu sendiri tidak memerlukan mulai ulang aplikasi.",
+          "Periksa konfigurasi mesin, penyedia, dan model. Pilih mesin dalam percakapan biasa atau langkah alur kerja, lalu jalankan tugas kecil terlebih dahulu untuk memeriksa hasil sebenarnya.",
+          "Kartu mesin kustom menyediakan “Ekspor ZIP”, “Nonaktifkan eksekusi”, dan “Pulihkan eksekusi”. Sakelar “Aktif / Nonaktif” pada kartu hanya mengatur tampilan di daftar pilihan; tugas yang sudah ada tetap dapat memakai mesin. Penonaktifan eksekusi menutup koneksi aktif mesin, jadi hentikan dulu tugas atau percakapan terkait.",
+          "Jika pembaruan bermasalah dan versi sebelumnya tersedia, akhiri eksekusi terkait terlebih dahulu lalu klik “Kembalikan versi”. Setelah itu, lakukan pengujian dan registrasi ulang, lalu mulai ulang sesuai petunjuk antarmuka. Tanpa versi sebelumnya, pemulihan tidak dapat dilakukan."
+        ],
+        "tips": [
+          "Perubahan kode, dependensi, atau konfigurasi dapat membatalkan hasil pengujian lama; uji ulang sebelum registrasi. Jika hanya mengubah alamat layanan model atau autentikasi, utamakan pengaturan penyedia tanpa membuat ulang mesin."
+        ],
+        "screenshot": {
+          "id": "custom-engine-management",
+          "alt": "Kontrol ekspor, penonaktifan, dan pemulihan versi mesin kustom terdaftar",
+          "caption": "Tangkapan layar kartu mesin terdaftar dari lingkungan demo tetap masih perlu ditambahkan; kartu mesin bawaan tidak digunakan sebagai pengganti."
         }
       }
     ]

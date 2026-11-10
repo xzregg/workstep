@@ -471,14 +471,23 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         path_params=("session_id",), body_params=("project_id", "task_id"),
     ),
     WorkstepTool(
-        name="workstep_send_channel_message", description="Send a notification via a channel session, or bot plus user/group, only when authorized.",
+        name="workstep_search_channel_contacts", description="Search a bot's in-memory directory by name, department or ID. Never refreshes the platform directory. Resolve duplicate names by asking the user to choose a contact_id.",
+        method="GET", path="/api/channel-bots/{bot_id}/contacts",
+        parameters={"bot_id":{"type":"string"}, "project_id":{"type":"string"},
+                    "query":{"type":"string"}, "offset":{"type":"integer"}, "limit":{"type":"integer"}},
+        required=("bot_id", "project_id"), read_only=True,
+        path_params=("bot_id",), query_params=("project_id", "query", "offset", "limit"),
+    ),
+    WorkstepTool(
+        name="workstep_send_channel_message", description="Send a notification via a channel session, or bot plus user/group, only when authorized. A unique exact user_name or a searched contact_id can replace user_id; never guess between duplicate names.",
         method="POST", path="/api/channel-bots/send",
         parameters={key: {"type": "string", "description": description} for key, description in {
             "project_id": "project id", "text": "message text", "session_id": "existing channel session id",
             "bot_id": "bot id for explicit recipient", "user_id": "platform user id", "group_id": "platform group id",
+            "user_name": "exact directory name", "contact_id": "selected directory contact id",
         }.items()} | {"attachments": {"type": "array", "description": "image/file attachments with project-relative path and kind"}},
         required=("project_id",), read_only=False, side_effect="send an external channel message",
-        body_params=("project_id", "text", "session_id", "bot_id", "user_id", "group_id", "attachments"),
+        body_params=("project_id", "text", "session_id", "bot_id", "user_id", "group_id", "user_name", "contact_id", "attachments"),
     ),
     WorkstepTool(
         name="workstep_upload_channel_attachment", description="Upload a user-authorized local attachment into a project for channel delivery.",
@@ -549,8 +558,8 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         name="workstep_list_schedules",
         description="List project schedules with status and next run time.",
         method="GET", path="/api/schedule/list",
-        parameters={"project_id": {"type": "string", "description": "project id"}, "target_type": {"type":"string", "enum":["project","task"]}, "task_id":{"type":"string"}},
-        required=("project_id",), query_params=("project_id", "target_type", "task_id"),
+        parameters={"project_id": {"type": "string", "description": "project id"}, "target_type": {"type":"string", "enum":["project","task","session"]}, "task_id":{"type":"string"}, "session_id":{"type":"string"}},
+        required=("project_id",), query_params=("project_id", "target_type", "task_id", "session_id"),
     ),
     WorkstepTool(
         name="workstep_get_schedule",
@@ -580,12 +589,16 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         name="workstep_create_schedule",
         description=(
             "Create a schedule. rule supports once/daily/weekly/monthly/interval/minutes/cron; "
-            "project target uses workflow_id and task_template; task target requires target_task_id and instruction, uses a fresh coordinator session and skip overlap."
+            "project target uses workflow_id and task_template; task target requires target_task_id and instruction. "
+            "session target requires target_session_id and instruction, sends in the existing conversation and automatically forwards channel replies. "
+            "Use rule {kind: after, delay: 2h, timezone: Asia/Shanghai} for a one-time delay; do not use recurring minutes for this."
         ),
         method="POST", path="/api/schedule/create",
         parameters={
-            "target_type": {"type":"string", "enum":["project","task"]},
+            "idempotency_key": {"type":"string", "description":"Stable originating user message/request ID; reuse on retry"},
+            "target_type": {"type":"string", "enum":["project","task","session"]},
             "target_task_id": {"type":"string"},
+            "target_session_id": {"type":"string", "description":"WorkStep conversation ID from current context, not engine thread or external group ID"},
             "instruction": {"type":"string", "description":"Free-form instruction for task coordinator"},
             "stop_condition": {"type":"string", "enum":["manual","task_terminal"]},
             "notification": {"type":"object", "description":"enabled boolean; target: session_id OR bot_id and group_id. Defaults on only for task with bound group."},
@@ -600,15 +613,16 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         required=("project_id", "name", "rule"),
         read_only=False, side_effect="create and enable a project schedule",
         query_params=("project_id",),
-        body_params=("target_type", "target_task_id", "instruction", "stop_condition", "notification", "workflow_id", "name", "task_template", "rule", "execution_mode", "overlap_policy"),
+        body_params=("idempotency_key", "target_type", "target_task_id", "target_session_id", "instruction", "stop_condition", "notification", "workflow_id", "name", "task_template", "rule", "execution_mode", "overlap_policy"),
     ),
     WorkstepTool(
         name="workstep_update_schedule",
         description="Update an existing project schedule and recalculate its next run.",
         method="PATCH", path="/api/schedule/{schedule_id}",
         parameters={
-            "target_type": {"type":"string", "enum":["project","task"]},
+            "target_type": {"type":"string", "enum":["project","task","session"]},
             "target_task_id": {"type":"string"},
+            "target_session_id": {"type":"string", "description":"WorkStep conversation ID from current context, not engine thread or external group ID"},
             "instruction": {"type":"string", "description":"Free-form instruction for task coordinator"},
             "stop_condition": {"type":"string", "enum":["manual","task_terminal"]},
             "notification": {"type":"object", "description":"enabled boolean; target: session_id OR bot_id and group_id. Defaults on only for task with bound group."},
@@ -624,7 +638,7 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         required=("project_id", "schedule_id"), read_only=False,
         side_effect="update and recalculate a project schedule",
         path_params=("schedule_id",), query_params=("project_id",),
-        body_params=("target_type", "target_task_id", "instruction", "stop_condition", "notification", "name", "workflow_id", "task_template", "rule", "execution_mode", "overlap_policy"),
+        body_params=("target_type", "target_task_id", "target_session_id", "instruction", "stop_condition", "notification", "name", "workflow_id", "task_template", "rule", "execution_mode", "overlap_policy"),
     ),
     *[
         WorkstepTool(

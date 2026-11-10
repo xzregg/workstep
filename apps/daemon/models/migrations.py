@@ -35,6 +35,7 @@ _EXTRA_INDEXES = (
     "CREATE INDEX IF NOT EXISTS chatsession_project_id_sort_order ON chat_sessions(project_id, sort_order)",
     "CREATE INDEX IF NOT EXISTS workflowrun_status ON workflow_runs(status)",
     "CREATE INDEX IF NOT EXISTS schedule_status_next_run_at ON schedules(status, next_run_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS schedule_idempotency_key ON schedules(idempotency_key)",
     "CREATE INDEX IF NOT EXISTS schedulerun_status ON schedule_runs(status)",
     "CREATE INDEX IF NOT EXISTS task_scheduled_start_state_at ON tasks(scheduled_start_state, scheduled_start_at)",
     "CREATE INDEX IF NOT EXISTS projectauditevent_upload_status_created_at "
@@ -116,13 +117,15 @@ _ADDITIVE_COLUMNS = {
         "vision_model": "TEXT",
     },
     "schedules": {
+        "target_session_id": "TEXT",
+        "idempotency_key": "TEXT",
         "target_type": "TEXT NOT NULL DEFAULT 'project'",
         "target_task_id": "TEXT",
         "instruction": "TEXT",
         "stop_condition": "TEXT NOT NULL DEFAULT 'manual'",
         "notification_json": 'TEXT NOT NULL DEFAULT \'{"enabled": false}\'',
     },
-    "schedule_runs": {"generated_tasks_json": "TEXT", "created_tasks_json": "TEXT", "coordinator_turn_id": "TEXT", "instruction": "TEXT", "notification_json": "TEXT", "notification_status": "TEXT NOT NULL DEFAULT 'pending'", "notification_error": "TEXT"},
+    "schedule_runs": {"session_id": "TEXT", "session_turn_id": "TEXT", "session_user_message_id": "TEXT", "session_assistant_message_id": "TEXT", "generated_tasks_json": "TEXT", "created_tasks_json": "TEXT", "coordinator_turn_id": "TEXT", "instruction": "TEXT", "notification_json": "TEXT", "notification_status": "TEXT NOT NULL DEFAULT 'pending'", "notification_error": "TEXT"},
     "coordinator_turns": {
         "execution_scope": "TEXT NOT NULL DEFAULT 'main'",
         "schedule_run_id": "TEXT",

@@ -38,14 +38,18 @@ async def preview_schedule(rule: dict = Body(...)):
 
 
 @router.get("/list")
-async def list_schedules(project_id: str = Query(...), target_type: str | None = None, task_id: str | None = None):
-    return {"schedules": await _call(project_id, _module().list, target_type=target_type, task_id=task_id)}
+async def list_schedules(project_id: str = Query(...), target_type: str | None = None, task_id: str | None = None, session_id: str | None = None):
+    return {"schedules": await _call(project_id, _module().list, target_type=target_type, task_id=task_id, session_id=session_id)}
 
 
 @router.get("/notification-options")
 async def schedule_notification_options(project_id: str = Query(...), task_id: str | None = None):
-    from services.schedule_notifications import notification_options
-    return await _call(project_id, notification_options, task_id)
+    from main import project_manager
+    from services.schedule_notifications import all_notification_options
+    try:
+        return await all_notification_options(project_manager, project_id, task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/{schedule_id}/runs/{run_id}/notification/retry")

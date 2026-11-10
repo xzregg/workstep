@@ -12,6 +12,7 @@ export function Hero({ onOpenDemos, experienceHref }: HeroProps) {
       </div>
       <div className="intro-copy">
         <p className="intro-description">{t('hero.lede')}</p>
+        <a className="intro-engines" href="#engines">{t('engines.extension')} <ArrowRight size={15} aria-hidden="true" /></a>
         <div className="intro-actions"><a href={experienceHref} className="btn btn-primary">{t(experienceHref === '/' ? 'common.openWorkspace' : 'hero.ctaPrimary')}<ArrowRight size={17} /></a><button type="button" className="btn btn-ghost" onClick={onOpenDemos}><Play size={15} />{t('hero.ctaSecondary')}</button></div>
         <p className="intro-setup">{t('hero.setup')} <a href="#start">{t('hero.setupGuide')} ↗</a></p>
       </div>

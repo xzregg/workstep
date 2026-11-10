@@ -161,6 +161,9 @@ export const daDK: I18nDict = {
     "statusReviewing": "Gennemgang"
   },
   "engines": {
+    extension: "Tilslut din egen Agent-motor",
+    description: "Tilslut CLI-, SDK- og ACP-motorer eller byg en adapter. Vælg motor for hvert trin. Start en tilpasset integration i motorindstillingerne, og installér, validér og registrér adapteren.",
+    guide: "Guide til egne motorer",
     "label": "Vælg et AI-kodningsværktøj. Konfigurer en for at komme i gang.",
     "codex": "Codex CLI",
     "claude": "Claude Code",
