@@ -207,8 +207,8 @@ export const itIT: I18nDict = {
   },
   "compare": {
     "eyebrow": "Trova il tuo modo di lavorare",
-    "title": "Flussi di lavoro diversi, punti di forza diversi",
-    "lede": "Queste sono le tipiche priorità di progettazione, con funzionalità che variano in base all'implementazione e alla configurazione. WorkStep è adatto a progetti che riutilizzano gli strumenti di intelligenza artificiale esistenti, forniscono risultati graduali e coinvolgono le persone nella revisione.",
+    "title": "Oltre i workflow: collaborazione",
+    "lede": "Come un team: ogni fase produce un risultato e lo passa alla successiva. Le persone discutono, verificano e richiedono revisioni fino al completamento. Confronto tra approcci comuni; le capacità dipendono da implementazione e configurazione.",
     "colWorkStep": "WorkStep",
     "colApi": "Orchestrazione del modello API",
     "colCode": "Orchestrazione guidata dal codice",

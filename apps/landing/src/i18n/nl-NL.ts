@@ -207,8 +207,8 @@ export const nlNL: I18nDict = {
   },
   "compare": {
     "eyebrow": "Vind jouw manier van werken",
-    "title": "Verschillende workflows, verschillende sterke punten",
-    "lede": "Dit zijn typische ontwerpprioriteiten, waarbij de mogelijkheden variëren afhankelijk van de implementatie en configuratie. WorkStep is geschikt voor projecten die bestaande AI-tools hergebruiken, in stappen opleveren en mensen bij de beoordeling betrekken.",
+    "title": "Voorbij workflows: samenwerken",
+    "lede": "Werk als een team: elke stap levert een resultaat en draagt het over aan de volgende. Mensen bespreken, beoordelen en laten werk aanpassen tot de taak klaar is. Vergelijking van gangbare benaderingen; mogelijkheden hangen af van implementatie en configuratie.",
     "colWorkStep": "WorkStep",
     "colApi": "Model API-orkestratie",
     "colCode": "Codegestuurde orkestratie",

@@ -36,7 +36,9 @@ describe('landing positioning', () => {
   it('compares tool approaches without naming competing products or absolute claims', () => {
     const html = renderLanding()
 
-    expect(html).toContain('不同工作流，各有侧重')
+    expect(html).toContain('不是工作流，是协作流')
+    expect(html).toContain('交付产物、交接下一步')
+    expect(html).toContain('直到任务完成')
     expect(html).toContain('模型 API 编排')
     expect(html).toContain('代码驱动编排')
     expect(html).toContain('托管任务助手')

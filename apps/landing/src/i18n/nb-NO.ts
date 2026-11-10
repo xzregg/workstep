@@ -207,8 +207,8 @@ export const nbNO: I18nDict = {
   },
   "compare": {
     "eyebrow": "Finn din måte å arbeide på",
-    "title": "Ulike arbeidsflyter, ulike styrker",
-    "lede": "Dette er typiske designprioriteter, med evner som varierer etter implementering og konfigurasjon. WorkStep passer til prosjekter som gjenbruker eksisterende AI-verktøy, leverer i trinn og involverer folk i vurdering.",
+    "title": "Utover arbeidsflyt: samarbeid",
+    "lede": "Som et team: hvert trinn leverer et resultat og overfører det til neste. Mennesker diskuterer, vurderer og ber om endringer til oppgaven er ferdig. Sammenligning av vanlige tilnærminger; funksjoner avhenger av implementering og konfigurasjon.",
     "colWorkStep": "WorkStep",
     "colApi": "Modell API orkestrering",
     "colCode": "Kodedrevet orkestrering",

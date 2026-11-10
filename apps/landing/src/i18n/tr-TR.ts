@@ -207,8 +207,8 @@ export const trTR: I18nDict = {
   },
   "compare": {
     "eyebrow": "Çalışma biçiminizi bulun",
-    "title": "Farklı iş akışları, farklı güçler",
-    "lede": "Bunlar, uygulamaya ve konfigürasyona göre değişen yeteneklere sahip tipik tasarım öncelikleridir. WorkStep, mevcut yapay zeka araçlarını yeniden kullanan, adım adım teslim eden ve insanları incelemeye dahil eden projelere uygundur.",
+    "title": "İş akışının ötesinde: iş birliği",
+    "lede": "Bir ekip gibi: her adım bir çıktı üretir ve sonraki adıma devreder. İnsanlar görev tamamlanana kadar tartışır, inceler ve düzeltme ister. Yaygın yaklaşımların karşılaştırması; yetenekler uygulama ve yapılandırmaya bağlıdır.",
     "colWorkStep": "WorkStep",
     "colApi": "Model API orkestrasyonu",
     "colCode": "Kod odaklı orkestrasyon",

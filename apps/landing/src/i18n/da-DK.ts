@@ -207,8 +207,8 @@ export const daDK: I18nDict = {
   },
   "compare": {
     "eyebrow": "Find din måde at arbejde på",
-    "title": "Forskellige arbejdsgange, forskellige styrker",
-    "lede": "Disse er typiske designprioriteter, med kapaciteter, der varierer efter implementering og konfiguration. WorkStep passer til projekter, der genbruger eksisterende AI-værktøjer, leverer i trin og involverer folk i gennemgang.",
+    "title": "Ud over arbejdsgange: samarbejde",
+    "lede": "Som et team: hvert trin leverer et resultat og overdrager det til det næste. Mennesker diskuterer, gennemgår og beder om rettelser, indtil opgaven er færdig. Sammenligning af almindelige tilgange; funktioner afhænger af implementering og konfiguration.",
     "colWorkStep": "WorkStep",
     "colApi": "Model API orkestrering",
     "colCode": "Kodedrevet orkestrering",

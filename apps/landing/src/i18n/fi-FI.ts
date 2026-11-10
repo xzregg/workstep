@@ -207,8 +207,8 @@ export const fiFI: I18nDict = {
   },
   "compare": {
     "eyebrow": "Löydä oma tapasi työskennellä",
-    "title": "Erilaisia työnkulkuja, erilaisia vahvuuksia",
-    "lede": "Nämä ovat tyypillisiä suunnittelun prioriteetteja, joiden ominaisuudet vaihtelevat toteutuksen ja konfiguroinnin mukaan. WorkStep sopii projekteihin, joissa käytetään uudelleen olemassa olevia tekoälytyökaluja, toimitetaan vaiheittain ja osallistuu ihmisiä arvioimiseen.",
+    "title": "Työnkuluista yhteistyöhön",
+    "lede": "Kuten tiimi: jokainen vaihe tuottaa tuloksen ja luovuttaa sen seuraavalle. Ihmiset keskustelevat, tarkistavat ja pyytävät korjauksia tehtävän valmistumiseen asti. Yleisten lähestymistapojen vertailu; ominaisuudet riippuvat toteutuksesta ja asetuksista.",
     "colWorkStep": "WorkStep",
     "colApi": "Mallin API orkestrointi",
     "colCode": "Koodiohjattu orkestrointi",

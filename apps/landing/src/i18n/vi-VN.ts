@@ -207,8 +207,8 @@ export const viVN: I18nDict = {
   },
   "compare": {
     "eyebrow": "Tìm cách làm việc phù hợp",
-    "title": "Quy trình công việc khác nhau, sức mạnh khác nhau",
-    "lede": "Đây là những ưu tiên thiết kế điển hình, với các khả năng khác nhau tùy theo cách triển khai và cấu hình. WorkStep phù hợp với các dự án sử dụng lại các công cụ AI hiện có, thực hiện theo từng bước và thu hút mọi người tham gia đánh giá.",
+    "title": "Từ luồng công việc đến luồng cộng tác",
+    "lede": "Như một nhóm: mỗi bước bàn giao sản phẩm cho bước tiếp theo. Con người thảo luận, duyệt và yêu cầu chỉnh sửa cho đến khi hoàn thành nhiệm vụ. So sánh các cách tiếp cận phổ biến; khả năng tùy thuộc triển khai và cấu hình.",
     "colWorkStep": "WorkStep",
     "colApi": "Dàn nhạc mẫu API",
     "colCode": "Điều phối theo mã",

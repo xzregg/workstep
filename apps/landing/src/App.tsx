@@ -59,7 +59,7 @@ export default function App() {
         <Demos onOpen={setOpenDemo} />
         <div className="container recorded-section"><details className="homepage-details"><summary>{t('walkthrough.eyebrow')}</summary><GuidedWalkthrough /></details></div>
         <GettingStarted />
-        <div className="container"><details className="homepage-details"><summary>{t('compare.title')}</summary><Compare /></details></div>
+        <Compare />
         <FinalCta experienceHref={experienceHref} />
       </main>}
       <Footer />

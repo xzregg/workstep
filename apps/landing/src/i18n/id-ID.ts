@@ -207,8 +207,8 @@ export const idID: I18nDict = {
   },
   "compare": {
     "eyebrow": "TEMUKAN CARA KERJA ANDA",
-    "title": "Alur berbeda, keunggulan berbeda",
-    "lede": "Ini adalah fokus desain umum; kemampuan bergantung pada implementasi dan konfigurasi. WorkStep cocok untuk proyek yang memakai ulang alat AI, menyerahkan hasil bertahap, dan melibatkan manusia dalam tinjauan.",
+    "title": "Melampaui alur kerja: alur kolaborasi",
+    "lede": "Seperti tim: setiap langkah menghasilkan keluaran dan menyerahkannya ke langkah berikutnya. Manusia berdiskusi, meninjau dan meminta perbaikan hingga tugas selesai. Perbandingan pendekatan umum; kemampuan bergantung pada implementasi dan konfigurasi.",
     "colWorkStep": "WorkStep",
     "colApi": "Orkestrasi API model",
     "colCode": "Orkestrasi berbasis kode",

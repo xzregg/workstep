@@ -207,8 +207,8 @@ export const deDE: I18nDict = {
   },
   "compare": {
     "eyebrow": "FINDEN SIE IHRE ARBEITSWEISE",
-    "title": "Verschiedene Workflows, verschiedene Stärken",
-    "lede": "Dies sind typische Schwerpunkte; Fähigkeiten hängen von Umsetzung und Konfiguration ab. WorkStep eignet sich für Projekte, die vorhandene KI-Werkzeuge nutzen, schrittweise liefern und Menschen in die Prüfung einbeziehen.",
+    "title": "Über Workflows hinaus: Zusammenarbeit",
+    "lede": "Wie ein Team: Jeder Schritt liefert ein Ergebnis und übergibt es an den nächsten. Menschen diskutieren, prüfen und veranlassen Nacharbeit bis zum Abschluss. Vergleich gängiger Ansätze; Fähigkeiten hängen von Implementierung und Konfiguration ab.",
     "colWorkStep": "WorkStep",
     "colApi": "Modell-API-Orchestrierung",
     "colCode": "Codegesteuerte Orchestrierung",

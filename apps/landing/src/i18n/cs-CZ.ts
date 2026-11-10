@@ -207,8 +207,8 @@ export const csCZ: I18nDict = {
   },
   "compare": {
     "eyebrow": "Najděte svůj způsob práce",
-    "title": "Různé pracovní postupy, různé silné stránky",
-    "lede": "Toto jsou typické priority návrhu, přičemž možnosti se liší podle implementace a konfigurace. WorkStep vyhovuje projektům, které opakovaně využívají stávající nástroje AI, poskytují postupné kroky a zapojují lidi do kontroly.",
+    "title": "Od pracovních postupů ke spolupráci",
+    "lede": "Jako tým: každý krok dodá výstup a předá ho dalšímu. Lidé diskutují, kontrolují a žádají opravy až do dokončení úkolu. Srovnání běžných přístupů; schopnosti závisí na implementaci a konfiguraci.",
     "colWorkStep": "WorkStep",
     "colApi": "Orchestrace modelu API",
     "colCode": "Kódem řízená orchestrace",

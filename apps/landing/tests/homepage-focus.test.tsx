@@ -26,12 +26,14 @@ describe('focused homepage and extensible engines', () => {
     const html = renderToStaticMarkup(<I18nProvider><App /></I18nProvider>)
     expect(html.indexOf('id="philosophy"')).toBeLessThan(html.indexOf('id="engines"'))
     expect(html.indexOf('id="engines"')).toBeLessThan(html.indexOf('id="start"'))
-    for (const content of ['class="guided-walkthrough"', 'class="start-layout"', 'class="compare-table"']) {
+    for (const content of ['class="guided-walkthrough"', 'class="start-layout"']) {
       const pos = html.indexOf(content)
       expect(pos, content).toBeGreaterThan(-1)
       const prefix = html.slice(0, pos)
       expect(prefix.lastIndexOf('<details class="homepage-details"')).toBeGreaterThan(prefix.lastIndexOf('</details>'))
     }
+    const beforeCompare = html.slice(0, html.indexOf('id="compare"'))
+    expect(beforeCompare.lastIndexOf('</details>')).toBeGreaterThan(beforeCompare.lastIndexOf('<details'))
     expect(html).not.toContain('<details class="homepage-details" open')
   })
 

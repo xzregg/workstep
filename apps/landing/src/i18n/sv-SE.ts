@@ -207,8 +207,8 @@ export const svSE: I18nDict = {
   },
   "compare": {
     "eyebrow": "Hitta ditt sätt att arbeta",
-    "title": "Olika arbetsflöden, olika styrkor",
-    "lede": "Dessa är typiska designprioriteringar, med kapacitet som varierar beroende på implementering och konfiguration. WorkStep passar projekt som återanvänder befintliga AI-verktyg, levererar i steg och involverar människor i granskning.",
+    "title": "Bortom arbetsflöden: samarbete",
+    "lede": "Som ett team: varje steg levererar ett resultat och lämnar över till nästa. Människor diskuterar, granskar och begär omarbete tills uppgiften är klar. Jämförelse av vanliga angreppssätt; funktioner beror på implementation och konfiguration.",
     "colWorkStep": "WorkStep",
     "colApi": "Modell API orkestrering",
     "colCode": "Koddriven orkestrering",

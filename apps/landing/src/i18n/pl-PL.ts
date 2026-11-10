@@ -207,8 +207,8 @@ export const plPL: I18nDict = {
   },
   "compare": {
     "eyebrow": "Znajdź swój sposób pracy",
-    "title": "Różne przepływy pracy, różne mocne strony",
-    "lede": "Są to typowe priorytety projektowe, których możliwości różnią się w zależności od implementacji i konfiguracji. WorkStep pasuje do projektów, które ponownie wykorzystują istniejące narzędzia AI, są realizowane etapowo i angażują ludzi w przegląd.",
+    "title": "Od przepływu zadań do współpracy",
+    "lede": "Jak w zespole: każdy etap dostarcza wynik i przekazuje go dalej. Ludzie dyskutują, oceniają i zlecają poprawki aż do ukończenia zadania. Porównanie typowych podejść; możliwości zależą od implementacji i konfiguracji.",
     "colWorkStep": "WorkStep",
     "colApi": "Model orkiestracji API",
     "colCode": "Orkiestracja oparta na kodzie",

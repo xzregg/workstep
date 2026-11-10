@@ -207,8 +207,8 @@ export const ptBR: I18nDict = {
   },
   "compare": {
     "eyebrow": "Encontre sua forma de trabalhar",
-    "title": "Diferentes fluxos de trabalho, diferentes pontos fortes",
-    "lede": "Estas são prioridades típicas de design, com capacidades que variam de acordo com a implementação e configuração. O WorkStep é adequado para projetos que reutilizam ferramentas de IA existentes, são entregues em etapas e envolvem pessoas na revisão.",
+    "title": "Além do workflow: colaboração",
+    "lede": "Como uma equipe: cada etapa entrega um resultado à próxima. As pessoas discutem, revisam e solicitam ajustes até concluir a tarefa. Comparação de abordagens comuns; os recursos dependem da implementação e configuração.",
     "colWorkStep": "WorkStep",
     "colApi": "Orquestração do modelo API",
     "colCode": "Orquestração baseada em código",
