@@ -1259,8 +1259,9 @@ async def test_review_skip_mode_passes_without_review(tmp_path):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("failure_mode", ["engine_error", "invalid_report"])
+@pytest.mark.parametrize("fallback_to_manual", [True, False])
 async def test_review_engine_error_waits_for_manual_review_without_rerunning_step(
-    tmp_path, failure_mode,
+    tmp_path, failure_mode, fallback_to_manual,
 ):
     db = init_db(str(tmp_path / "workstep.db"))
     task = Task.create(
@@ -1281,7 +1282,7 @@ async def test_review_engine_error_waits_for_manual_review_without_rerunning_ste
             {"steps": [{
                 "key": "build", "label": "构建", "engine": "review-test",
                 "prompt": "完成构建", "dependsOn": [],
-                "review": {"mode": "auto", "auto": True, "maxRetries": 2},
+                "review": {"mode": "auto", "auto": True, "maxRetries": 2, "fallbackToManual": fallback_to_manual},
             }]},
             tmp_path / "artifacts", workflow_run=workflow_run,
         )
@@ -1291,9 +1292,10 @@ async def test_review_engine_error_waits_for_manual_review_without_rerunning_ste
         reviews = list(ReviewRun.select().where(
             ReviewRun.workflow_run == workflow_run,
         ).order_by(ReviewRun.attempt))
-        assert [(review.mode, review.status) for review in reviews] == [
-            ("auto", "failed"), ("manual", "pending"),
-        ]
+        expected_reviews = [("auto", "failed")]
+        if fallback_to_manual:
+            expected_reviews.append(("manual", "pending"))
+        assert [(review.mode, review.status) for review in reviews] == expected_reviews
         assert reviews[0].error == (
             "Review engine request failed: invalid_id_prefix"
             if failure_mode == "engine_error" else "Review agent returned invalid JSON"
@@ -1301,7 +1303,8 @@ async def test_review_engine_error_waits_for_manual_review_without_rerunning_ste
         task_step = TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "build")
         )
-        assert task_step.status == "awaiting_review"
+        assert task_step.status == ("awaiting_review" if fallback_to_manual else "failed")
+        assert Task.get_by_id(task.id).status == ("waiting" if fallback_to_manual else "failed")
         assert task_step.review_session_id is None
         review_message = Message.get(
             (Message.task == task) & (Message.channel == "review")
@@ -1317,7 +1320,8 @@ async def test_review_engine_error_waits_for_manual_review_without_rerunning_ste
 
 
 @pytest.mark.anyio
-async def test_auto_review_exhaustion_falls_back_to_manual(tmp_path):
+@pytest.mark.parametrize("fallback_to_manual", [True, False])
+async def test_auto_review_exhaustion_falls_back_to_manual(tmp_path, fallback_to_manual):
     """自动审核次数耗尽后转入人工审核（awaiting_review），不再继续自动重跑。"""
     db = init_db(str(tmp_path / "workstep.db"))
     task = Task.create(
@@ -1349,7 +1353,7 @@ async def test_auto_review_exhaustion_falls_back_to_manual(tmp_path):
                     "engine": "review-test",
                     "prompt": "完成构建",
                     "dependsOn": [],
-                    "review": {"mode": "auto", "auto": True, "maxRetries": 0},
+                    "review": {"mode": "auto", "auto": True, "maxRetries": 0, "fallbackToManual": fallback_to_manual},
                 }]
             },
             tmp_path / "artifacts",
@@ -1357,19 +1361,19 @@ async def test_auto_review_exhaustion_falls_back_to_manual(tmp_path):
         )
         # 阶段执行 + 一次自动审核；重试次数为 0，不重跑阶段、不再启动审核 Agent
         assert len(calls) == 2
-        assert Task.get_by_id(task.id).status == "waiting"
+        assert Task.get_by_id(task.id).status == ("waiting" if fallback_to_manual else "failed")
         reviews = list(
             ReviewRun.select()
             .where(ReviewRun.workflow_run == workflow_run)
             .order_by(ReviewRun.started_at, ReviewRun.id)
         )
-        assert [review.mode for review in reviews] == ["auto", "manual"]
-        assert [review.status for review in reviews] == ["rejected", "pending"]
+        assert [review.mode for review in reviews] == (["auto", "manual"] if fallback_to_manual else ["auto"])
+        assert [review.status for review in reviews] == (["rejected", "pending"] if fallback_to_manual else ["rejected"])
         task_step = TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "build")
         )
-        assert task_step.status == "awaiting_review"
-        assert task_step.ended_at is None
+        assert task_step.status == ("awaiting_review" if fallback_to_manual else "failed")
+        assert (task_step.ended_at is None) == fallback_to_manual
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

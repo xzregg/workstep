@@ -206,3 +206,8 @@ Web 的 11 个失败与 dev 定向重跑的失败名称集合完全相同，仍�
 Web、分享 Web、网关 Web 和官网构建／类型检查均通过，`git diff --check` 通过。Qoder SDK 使用已有本机 wheel 缓存中的 1.0.11 模块作为测试导入路径，未联网下载、未修改共享虚拟环境，也没有把该临时路径写入生产配置。全量结果为修复后重新启动的完整测试进程，原失败和中间重跑记录仍保留在 `/tmp/workstep-main-validation.6dYrO9/`，daemon／网关同时保留 JUnit XML。
 
 明确保留的验证缺口：Android `testDebugUnitTest` 因找不到 Android SDK 无法启动，不删除有效安卓测试、不计为通过；手册静态检查为 58/61 张，仍缺原有的网关通知、桌面沙箱引导、桌面更新三张图。本批任务独立流程手册文字和 `task-workflow-overrides.jpg` 已同步，截图来自固定 8777「操作手册演示」环境，没有启动引擎或修改模拟任务配置；临时演示服务已关闭。没有改动日常任务数据库。
+
+
+### 自动审核的人工兜底
+
+步骤 `review` 配置可设置 `fallbackToManual: false`，使自动审核驳回且返工耗尽、或审核引擎失败时将步骤保留为 `failed`，不创建人工待审记录。默认仍为 `true`，保留既有流程的人工兜底。正常执行与审核恢复共用 `TaskRunner._apply_review_result`；`tests/test_review_gate.py` 覆盖两种配置下的驳回耗尽、引擎错误和无效报告，`tests/test_recovery.py` 覆盖恢复路径。

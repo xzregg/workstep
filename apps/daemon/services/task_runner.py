@@ -624,6 +624,12 @@ class TaskRunner:
                         "max_retries": review_config.get("maxRetries", 1),
                     },
                 })
+        elif review_config.get("fallbackToManual", True) is False:
+            # Fully automatic workflows retain the failed verdict without a human gate.
+            ts = await self._persist_step_status(
+                task.id, step_key, "failed", outcome.feedback, utc_now()
+            )
+            failed.add(step_key)
         else:
             # 审核失败或驳回次数耗尽：转人工，不重跑执行步骤。
             outcome = await gate.evaluate(
