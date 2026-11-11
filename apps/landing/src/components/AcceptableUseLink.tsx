@@ -1,3 +1,7 @@
+import { useI18n } from '../i18n'
+import { acceptableUseCopy } from '../i18n/acceptableUse'
+
 export function AcceptableUseLink() {
-  return <a href="./acceptable-use.html">Acceptable Use / 可接受使用政策 (EN / 简体中文)</a>
+  const { lang } = useI18n()
+  return <a href="#acceptable-use">{acceptableUseCopy[lang].title}</a>
 }

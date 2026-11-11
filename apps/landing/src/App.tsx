@@ -16,6 +16,7 @@ import { RemoteShare } from './components/RemoteShare'
 import { Workflow } from './components/Workflow'
 import type { DemoDef } from './demo/demos'
 import { getExperienceHref } from './config/entryPoints'
+import { AcceptableUsePage } from './components/AcceptableUsePage'
 import { TermsPage } from './components/TermsPage'
 import { PrivacyPage } from './components/PrivacyPage'
 import { GuidedWalkthrough } from './components/GuidedWalkthrough'
@@ -35,7 +36,7 @@ export default function App() {
     return () => window.removeEventListener('hashchange', update)
   }, [])
   useEffect(() => {
-    if (isManualHash(hash) || hash === '#privacy' || hash === '#terms') window.scrollTo(0, 0)
+    if (isManualHash(hash) || hash === '#privacy' || hash === '#terms' || hash === '#acceptable-use') window.scrollTo(0, 0)
     else if (hash) document.getElementById(hash.slice(1))?.scrollIntoView()
   }, [hash])
   const [openDemo, setOpenDemo] = useState<DemoDef | null>(null)
@@ -44,7 +45,7 @@ export default function App() {
   return (
     <>
       <Nav />
-      {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : <main className="landing-home">
+      {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : hash === '#acceptable-use' ? <AcceptableUsePage /> : <main className="landing-home">
         <FlowBackdrop />
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
         <ProductIntro />
