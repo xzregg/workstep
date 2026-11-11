@@ -65,6 +65,7 @@ def _escalate_sandbox(mode: str) -> str:
 
 class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
     ENGINE_ID = "codex"
+    supports_mcp = True
     RUNTIME_PACKAGE = RuntimePackage('@openai/codex', 'npm')
 
     @classmethod
@@ -421,6 +422,9 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 managed_keys.add(key)
                 cmd.extend(["-c", f"{key}={value}"])
 
+            from services.connectors.runtime import codex_settings
+            for setting in codex_settings(config_overrides):
+                cmd.extend(["-c", setting])
             logger.info("Spawning: %s", " ".join(cmd))
 
             process_kwargs = {

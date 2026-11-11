@@ -1032,3 +1032,15 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 每条执行消息在现有 `prompt_json.context_hashes` 保存完整比较状态的 SHA-256 摘要（不是提示词全文副本），避免第二轮省略正文后第三轮误判缺少背景；ACP 捕获时保留摘要，`prompt`／`input_prompt` 继续记录本轮实际输入。恢复只采用同会话已成功执行的基线，以 JSONL 路径的会话目录核对身份；重置、交接和端点切换重新完整提供。旧完整原始输入可以恢复基线，格式不明的旧查看内容不用于推断。
 
 任务标题／描述可含自己的 Markdown 二级标题，新摘要在合并正文前对助手拥有的完整内容计算，避免将用户章节误切分成任务边界。回归见 `test_pipeline.py` 的普通启动增量、追问／重试变更与慢摘要保存健康检查，以及 `test_task_step_start.py`。
+
+## MCP 连接器能力与自定义引擎
+
+`BaseLLMEngine.supports_mcp` 默认为 `False`，同时投影到 `EngineCapabilities`、引擎目录和项目范围目录。连接器选择与运行时按能力判断，不维护引擎 ID 白名单。当前内置 Claude Code、Claude Agent SDK、Codex CLI/SDK、Qoder SDK、Hermes、OpenCode 和 Pydantic AI 已接入；没有可靠原生配置入口的引擎保持不支持，界面置灰，运行时明确拒绝，不忽略已选择的连接器。
+
+支持的引擎通过 `async configure_mcp_servers(servers, config_overrides=None) -> dict` 接收每轮 stdio 桥接描述（`name/command/args/env`）。默认实现深复制并合并 `mcp_servers`、保留原配置且拒绝名称冲突；适配器可转换为 SDK 私有字段，但必须让真实 `spawn`／恢复流程消费返回配置。此接口不处理上游密钥，不改写用户全局 MCP 文件，不改变审批、沙箱或只读协调流程。没有选择连接器时，不调用该接口并保持原 kwargs。
+
+自定义包声明支持时必须显式实现上述异步方法；`custom_worker.describe` 核对属性／能力一致、方法覆盖与签名，`CustomEngineProxy` 通过既有工作进程协议调用，避免在 daemon 导入用户源码。没有声明的旧包按不支持兼容。创建和导入聊天的提示词，以及内置 `workstep-cli` 技能的创建指南／接口规范均要求这一约定。
+
+公共 `engine validate` 使用 `engines/core/mcp_validation.py` 的 `mcp_connector_roundtrip`：启动隔离测试服务，验证服务端收到了随机 nonce，声明恢复能力时在原生会话恢复后重复验证。只允许专用探测工具的单次审批；失败则不能注册。不依赖适配器自己声称成功，也不调用用户连接器。专属映射测试仍需覆盖空配置、模型／审批／原生 MCP 保留、冲突、实际原生参数消费、拒绝和清理。
+
+回归入口：`test_engine_mcp_contract.py`、`test_mcp_validation.py`、`test_custom_engines.py`、`test_custom_engine_onboarding.py`；本地无账户的端到端测试服务见 [connector-demo.md](connector-demo.md)。

@@ -29,6 +29,7 @@ import { useManagedMode } from '../hooks/useManagedMode'
 import Button from './Button'
 import MarqueeText from './MarqueeText'
 import Input from './Input'
+import ProjectSettingsPanel from './ProjectSettingsPanel'
 import SettingsPage from '../pages/SettingsPage'
 import type { SettingsFocusTarget, SettingsSection } from '../pages/SettingsPage'
 import ConfirmDialog from './ConfirmDialog'
@@ -94,6 +95,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const projectCan = (projectId: string) => resolveProjectPermissions(isGatewayRemoteBrowser(), gatewaySession, projectId).can
   const [showInitModal, setShowInitModal] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
+  const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('providers')
   const [settingsFocus, setSettingsFocus] = useState<SettingsFocusTarget | undefined>()
@@ -257,6 +259,8 @@ export default function Layout({ onSelectProject, children }: Props) {
     return Boolean(result && (result.workflows.length > 0 || result.sessions.length > 0))
   }
 
+  const allProjectsExpanded = projects.length > 0 && projects.every(project => expandedProjectIds.includes(project.id))
+
   const toggleProjectExpanded = (projectId: string) => {
     setExpandedProjectIds((current) => (
       current.includes(projectId)
@@ -353,7 +357,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       kind,
       id,
       x: Math.max(8, Math.min(x, window.innerWidth - 176)),
-      y: Math.max(8, Math.min(y, window.innerHeight - (kind === 'project' ? 236 : 104))),
+      y: Math.max(8, Math.min(y, window.innerHeight - (kind === 'project' ? 272 : 104))),
     })
   }
 
@@ -399,8 +403,10 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   useEffect(() => {
     const open = () => { setSettingsSection('speech'); setSettingsFocus(undefined); setShowSettings(true) }
+    const openConnectors = () => { setSettingsSection('connectors'); setShowSettings(true) }
+    window.addEventListener('workstep:open-connector-settings', openConnectors)
     window.addEventListener('workstep:open-speech-settings', open)
-    return () => window.removeEventListener('workstep:open-speech-settings', open)
+    return () => { window.removeEventListener('workstep:open-speech-settings', open); window.removeEventListener('workstep:open-connector-settings', openConnectors) }
   }, [])
 
   const handleDeleteProject = async () => {
@@ -480,6 +486,17 @@ export default function Layout({ onSelectProject, children }: Props) {
 
         <WorkspaceSidebarSections now={sidebarNow} onProjectVisibilityChange={setProjectSectionVisible}
           projectActions={<>
+          <Button
+            variant="icon"
+            className="layout-sidebar-search-button layout-sidebar-tree-toggle"
+            aria-label={t(allProjectsExpanded ? 'layout.collapseAllProjects' : 'layout.expandAllProjects')}
+            title={t(allProjectsExpanded ? 'layout.collapseAllProjects' : 'layout.expandAllProjects')}
+            aria-expanded={allProjectsExpanded}
+            disabled={projects.length === 0 || sidebarSearchActive}
+            onClick={() => setExpandedProjectIds(allProjectsExpanded ? [] : projects.map(project => project.id))}
+          >
+            <Icon name={allProjectsExpanded ? 'chevron-down' : 'chevron-right'} size={14} strokeWidth={2} />
+          </Button>
           <Button
             variant="icon"
             aria-label={t('layout.searchSidebar')}
@@ -1059,10 +1076,21 @@ export default function Layout({ onSelectProject, children }: Props) {
         }}
       />}
 
+      {settingsProjectId && <ProjectSettingsPanel
+        project={projects.find(project => project.id === settingsProjectId) ?? null}
+        onClose={() => setSettingsProjectId(null)}
+      />}
+
       {moreMenu && (
         <SidebarActionMenu ref={moreMenuRef} x={moreMenu.x} y={moreMenu.y}>
           {moreMenu.kind === 'project' && menuTarget && 'path' in menuTarget && (
             <>
+              {menuCan('project.settings') && <SidebarActionItem
+                icon="settings"
+                onClick={() => { setSettingsProjectId(menuTarget.id); setMoreMenu(null) }}
+              >
+                {t('taskList.settingsTitle')}
+              </SidebarActionItem>}
               {(managedMode !== true || menuTarget.is_default_workspace) && menuTarget.type !== 'remote' && !bound && menuCan('project.settings') && (
                 <SidebarActionItem
                   icon="pencil"

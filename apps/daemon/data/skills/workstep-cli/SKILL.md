@@ -83,3 +83,7 @@ output controls. Existing command defaults and error responses stay intact.
 `task list` supports `--archived`, `--status` and `--workflow` filters.
 `--fields` also works on `get`; missing fields are omitted. Read full task and
 workflow state before stage controls. See Output for exact semantics and examples.
+
+## Custom-engine MCP connector contract
+
+When creating or importing an execution engine, read the MCP section in `references/custom-engine-contract.md`. Require an honest `supports_mcp` declaration and, when true, an explicit async `configure_mcp_servers(servers, config_overrides=None)` implementation consumed by real SDK/CLI/ACP execution and resume. Preserve native MCP configuration, approval and secret boundaries. `engine validate` must pass `mcp_connector_roundtrip`, which verifies real calls to an isolated MCP service; text claims or a capability flag alone are insufficient.

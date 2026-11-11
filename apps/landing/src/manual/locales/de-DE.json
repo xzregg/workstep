@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Fehlende Artefakte: Prüfen Sie tatsächliche Dateierzeugung, passende Ausgabedeklarationen und Ausführungsnachrichten.",
-          "Klicken Sie zum Kopieren auf den Pfad im Vorschautitel; anschließend erscheint eine Erfolgs- oder Fehlermeldung."
+          "Klicken Sie zum Kopieren auf den Pfad im Vorschautitel; anschließend erscheint eine Erfolgs- oder Fehlermeldung.",
+          "Bilder öffnen, um das Bild oder seine Adresse zu kopieren oder es herunterzuladen. Kopieren benötigt die Zwischenablageberechtigung des Browsers; bei Fehlern herunterladen."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Keine Treffer für manual-demo im Skill-Zentrum",
           "caption": "Such- und Quellenfilter sind sichtbar, aber kein passender Skill und deshalb kein Aktivierungsschalter."
+        }
+      },
+      {
+        "title": "Konnektoren einrichten und verwenden",
+        "steps": [
+          "Einstellungen → Konnektoren → Hinzufügen öffnen. Für lokales MCP Befehl und Argumente getrennt, für entferntes MCP eine URL oder für CLI die Programmdatei angeben. Erlaubte Projekte auswählen.",
+          "Unter Test → Verbindung erkennen Werkzeuge ermitteln. Werkzeugaufrufe werden tatsächlich ausgeführt: Argumente vorher prüfen. Der Test ruft kein LLM auf; anschließend speichern.",
+          "Im Gespräch über + → Konnektoren für die nächste Nachricht aktivieren. MCP benötigt eine kompatible Engine; CLI-Anmeldung erfolgt mit dem offiziellen Befehl im Host-Terminal. Bei 401 unterstütztes Bearer-Token oder Authentifizierungsheader konfigurieren. Browser-OAuth fehlt noch."
+        ],
+        "tips": [
+          "Beispiel: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Konnektoren einrichten und verwenden",
+          "caption": "Echte Bildschirmaufnahme ausstehend: Einrichtung, Test und Gesprächsauswahl."
         }
       }
     ]

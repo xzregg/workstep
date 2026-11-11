@@ -184,3 +184,16 @@ def test_conversation_groups_respect_project_read_and_edit_scope():
     assert allowed('POST', path, query, 'visible', access_level='edit')
     assert not allowed('POST', path, query, 'private', access_level='edit')
     assert not allowed('POST', path, query + query, 'visible', access_level='edit')
+
+
+def test_connectors_expose_only_project_catalog_and_edit_selection():
+    allowed = project_http_route_allowed
+    query = [('project_id', 'p'), ('session_id', 's'), ('engine_id', 'codex')]
+    assert allowed('GET', '/api/connectors/available', query, 'p', access_level='read')
+    assert not allowed('GET', '/api/connectors/available', query, 'other', access_level='read')
+    assert not allowed('GET', '/api/connectors/available', query + [('project_id', 'p')], 'p')
+    assert allowed('PUT', '/api/connectors/selection', [('project_id', 'p')], 'p', access_level='edit')
+    assert not allowed('PUT', '/api/connectors/selection', [('project_id', 'p')], 'p', access_level='read')
+    for path in ['/api/connectors', '/api/connectors/scan', '/api/connectors/id/test']:
+        for method in ['GET', 'POST', 'PUT', 'DELETE']:
+            assert not allowed(method, path, [('project_id', 'p')], 'p', access_level='edit')

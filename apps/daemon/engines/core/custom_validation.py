@@ -213,6 +213,13 @@ async def validate_adapter(engine, root, manifest):
                 if capability == "supports_native_schema":
                     assert isinstance(json.loads("".join(chunks)), dict)
 
+        async def mcp_connector():
+            from engines.core.mcp_validation import validate_mcp_connector
+            def observe(event):
+                check_event(event, declared_events(engine))
+                observed.add(event.type)
+            await validate_mcp_connector(engine, cwd, observe)
+
         await check("environment", environment)
         await check("idle_lifecycle_and_fallback", idle_methods)
         await check("adapter_unit_tests", dedicated_tests)
@@ -222,6 +229,7 @@ async def validate_adapter(engine, root, manifest):
         await check("resume", resume, applicable=caps.supports_resume)
         await check("sessions", sessions, applicable=caps.supports_sessions)
         await check("fork", fork, applicable=caps.supports_session_fork)
+        await check("mcp_connector_roundtrip", mcp_connector, applicable=caps.supports_mcp)
         await check("declared_capability_scenarios", capability_scenarios)
         await check("stop_and_idempotency", cancellation)
     await engine.stop()

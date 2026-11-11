@@ -158,13 +158,58 @@ def test_project_audit_query_pages_and_filters_task(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_project_audit_rejects_gateway_remote_reader():
+@pytest.mark.parametrize("source", ["gateway", "gateway_share", "remote_project", "task_share"])
+async def test_project_audit_rejects_gateway_remote_reader(monkeypatch, source):
     from api.project_audit import get_project_audit
+    from fastapi import FastAPI
+
+    monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+    monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-test-token")
 
     request = Request({
         "type": "http", "method": "GET", "path": "/api/project-audit",
-        "headers": [], "gateway_remote_actor": object(),
+        "headers": [(b"x-workstep-desktop-token", b"desktop-test-token")],
+        "app": FastAPI(), "client": ("127.0.0.1", 1234),
+        **({"gateway_remote_actor": object()} if source.startswith("gateway") else {}),
     })
-    with pytest.raises(HTTPException) as denied:
+    actor = ActorSnapshot(actor_id="remote-user", user_name="Remote", device_id="remote-device",
+                          device_name="Remote", source="remote", access_source=source)
+    with actor_context(actor), pytest.raises(HTTPException) as denied:
         await get_project_audit(request, project_id="guessed-project")
     assert denied.value.status_code == 403
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("token, expected", [("desktop-test-token", 200), ("invalid", 403), (None, 403)])
+async def test_project_audit_desktop_through_container_network(tmp_path, monkeypatch, token, expected):
+    from fastapi import FastAPI
+    from api.project_audit import router
+    from api.remote_access_guard import BrowserActorMiddleware
+    import main
+    from services.project import ProjectManager
+
+    monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+    monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-test-token")
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    monkeypatch.setattr(main, "project_manager", manager)
+    app = FastAPI()
+    app.include_router(router)
+    app.add_middleware(BrowserActorMiddleware)
+    headers = {
+        "X-WorkStep-Actor-Id": "desktop-user",
+        "X-WorkStep-Actor-Name": "Desktop",
+        "X-WorkStep-Actor-Device-Id": "desktop-device",
+        "X-WorkStep-Actor-Device-Name": "Desktop",
+    }
+    if token:
+        headers["X-WorkStep-Desktop-Token"] = token
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app, client=("192.168.127.1", 1234)),
+                               base_url="http://test") as client:
+            response = await client.get("/api/project-audit", params={"project_id": project.id}, headers=headers)
+        assert response.status_code == expected
+        if expected == 200:
+            assert response.json()["items"] == []
+    finally:
+        manager.close_all()

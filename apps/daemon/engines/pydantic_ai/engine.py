@@ -74,6 +74,7 @@ PYDANTIC_PLANNING_TOOL_NAMES = frozenset({
 
 class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
     ENGINE_ID = "pydantic_ai"
+    supports_mcp = True
     SYSTEM_PROMPT_MODE = "system"
 
     @classmethod
@@ -758,6 +759,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         session_id: str | None = None,
         sandbox: str = "workspace-write",
         system_prompt: str | None = None,
+        connectors_enabled: bool = False,
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
@@ -894,6 +896,11 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
 
         agent.tool_plain(update_plan)
 
+        from services.connectors.pydantic_tools import ConnectorTools
+        connectors = ConnectorTools(self, cwd, on_event)
+        if connectors_enabled and await connectors.items():
+            agent.tool_plain(connectors.list_tools)
+            agent.tool_plain(guard_async(dict)(connectors.call_tool))
         total_usage = None
         receipt_scope = self._open_receipt_scope(harness_capabilities)
         try:
@@ -1187,6 +1194,9 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                 "session_id": session_uuid,
                 "sandbox": str(config.get("sandbox") or "workspace-write"),
             }
+            if any(isinstance(server, dict) and str(server.get("name", "")).startswith("workstep_")
+                   for server in (config_overrides or {}).get("mcp_servers", [])):
+                run_kwargs["connectors_enabled"] = True
             if thinking_effort:
                 run_kwargs["thinking_effort"] = thinking_effort
             if system_prompt is not None:

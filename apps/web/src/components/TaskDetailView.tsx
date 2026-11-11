@@ -897,6 +897,7 @@ export default function TaskDetailView({
 
             <SkinExtensionSlot name="composer-before" />
             <ChatInput
+              connectorsEnabled={Boolean(onSendPrompt) && chatTarget !== 'coordinator'}
               projectId={projectId}
               taskId={task?.id}
               left={onSendPrompt && compact ? <TaskActionButtons actionsAllowed={canRunActions} state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} compact /> : undefined}

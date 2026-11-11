@@ -27,7 +27,7 @@ ALLOWED_METHODS = frozenset({
     "respond_interaction", "create_session", "load_session", "list_sessions", "resume_session",
     "fork_session", "close_session", "cancel_session", "set_config_option", "set_session_mode",
     "reset_options", "send_live_stage_message", "send_live_step_message", "list_models",
-    "inspect_capabilities", "set_permission_mode", "test_connection", "install",
+    "inspect_capabilities", "set_permission_mode", "test_connection", "install", "configure_mcp_servers",
 })
 EXTRA_PROPERTIES = ("supports_message_history", "supports_interactive", "supports_resume",
                     "supports_sessions", "supports_tool_approval", "supports_live_stage_message")
@@ -93,6 +93,19 @@ def describe(engine, manifest):
     if not extensions <= EXTENSION_EVENTS:
         raise ValueError("WorkStep 扩展事件声明无效")
     caps = asdict(engine.capabilities)
+    if bool(caps.get('supports_mcp')) != bool(engine.supports_mcp):
+        raise ValueError('supports_mcp 能力与属性声明不一致')
+    if caps.get('supports_mcp'):
+        from engines.core.base import BaseLLMEngine
+        if type(engine).configure_mcp_servers is BaseLLMEngine.configure_mcp_servers:
+            raise ValueError('声明 MCP 支持必须实现 configure_mcp_servers')
+        method = engine.configure_mcp_servers
+        if not inspect.iscoroutinefunction(method):
+            raise ValueError('configure_mcp_servers 必须是 async 方法')
+        try:
+            inspect.signature(method).bind(servers=[], config_overrides={})
+        except TypeError as exc:
+            raise ValueError('configure_mcp_servers 必须接收 servers 与 config_overrides') from exc
     if caps.get("supports_tool_approval") and "interaction_request" not in events:
         raise ValueError("审批能力必须声明 interaction_request")
     return {

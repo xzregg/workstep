@@ -6,6 +6,30 @@ import { createRoot } from 'react-dom/client'
 import { I18nProvider } from '../src/i18n'
 import ProjectAuditSettings from '../src/components/ProjectAuditSettings'
 import { projectAuditApi, type ProjectAuditPage } from '../src/api/projectAudit'
+import { ApiError } from '../src/api/transport'
+
+test('audit explains forbidden access without offering ineffective retries and recovers on project change', async () => {
+  const { document } = installDomEnvironment()
+  const original = projectAuditApi.list
+  let calls = 0
+  projectAuditApi.list = async (id) => {
+    calls += 1
+    if (id === 'restricted') throw new ApiError('操作审计仅限项目所在设备查看', 403)
+    return { items: [], next_before: null, retention_days: 30 }
+  }
+  const host = document.createElement('div'); const root = createRoot(host)
+  try {
+    await act(async () => root.render(<I18nProvider><ProjectAuditSettings projectId="restricted" /></I18nProvider>))
+    assert.ok(host.querySelector('[role="alert"]')?.textContent?.includes('操作审计仅限项目所在设备查看'))
+    assert.equal(host.querySelector('button'), null)
+    assert.equal(host.querySelector('select'), null)
+    assert.equal(calls, 1)
+    await act(async () => root.render(<I18nProvider><ProjectAuditSettings projectId="local" /></I18nProvider>))
+    assert.equal(host.querySelector('[role="alert"]'), null)
+    assert.ok(host.querySelector('select'))
+    assert.ok(host.textContent?.includes('暂无远程操作记录'))
+  } finally { await act(async () => root.unmount()); projectAuditApi.list = original }
+})
 
 test('audit renders escaped identities, filters, pagination and retry with one request per change', async () => {
   const { document, window } = installDomEnvironment()

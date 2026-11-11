@@ -1,0 +1,56 @@
+.composer-context-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+  align-self: flex-start;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  border-radius: var(--radius-sm);
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.5;
+  cursor: default;
+}
+.composer-context-chip .composer-context-chip-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.composer-context-chip-name > svg,
+.composer-context-chip-name > .task-status-spinner { flex-shrink: 0; }
+.composer-context-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-context-chip .composer-context-chip-remove {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.composer-context-chip button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.composer-context-chip button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.composer-context-chip[data-unavailable] { color: var(--muted); }
+.chat-input-editor > .connector-tags { display: contents; }
+.chat-input-editor .connector-error { flex-basis: 100%; }
+.chat-input-editor[data-context-chips] { gap: 4px 6px; }
+.chat-input-text-segment.chat-input-text-segment--context { flex: 1 1 10ch; width: auto; min-width: min(10ch, 100%); padding-top: 3px; }
+@media (max-width: 1023px) {
+  .chat-input-editor[data-context-chips] { max-height: min(240px, 36dvh) !important; }
+  .composer-context-chip .composer-context-chip-name { min-height: var(--mobile-control-regular); }
+  .composer-context-chip .composer-context-chip-remove { width: var(--mobile-control-regular); height: var(--mobile-control-regular); min-height: var(--mobile-control-regular); }
+  .chat-input-text-segment.chat-input-text-segment--context { padding-top: 7px; }
+}

@@ -79,6 +79,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     """
 
     ENGINE_ID = "codex_sdk"
+    supports_mcp = True
     SYSTEM_PROMPT_MODE = "developer"
     RUNTIME_PACKAGE = RuntimePackage('openai-codex', 'pypi')
     UPDATE_PACKAGE = "openai-codex"
@@ -511,6 +512,13 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             thread_config.setdefault(key, value)
         # Codex 0.160 requires opting in to the TODO/checklist tool.
         thread_config.setdefault("tools.update_plan.enabled", True)
+        from services.connectors.runtime import native_servers, codex_settings
+        connector_servers = native_servers(config_overrides)
+        if connector_servers:
+            existing = dict(thread_config.get("mcp_servers") or {})
+            if existing.keys() & connector_servers.keys():
+                raise ValueError("连接器 MCP 名称冲突")
+            thread_config["mcp_servers"] = {**existing, **connector_servers}
         thread_kwargs: dict[str, Any] = {
             "cwd": cwd,
             "model": model or None,
@@ -536,7 +544,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         client_config = CodexConfig(
             codex_bin=override or None,
             cwd=cwd or None,
-            config_overrides=provider_runtime.engine_config + (skill_override,),
+            config_overrides=provider_runtime.engine_config + (skill_override,) + tuple(codex_settings(config_overrides)),
             env=(provider_runtime.child_env() if provider_runtime.provider_id or provider_runtime.has_execution_context else None),
         )
 

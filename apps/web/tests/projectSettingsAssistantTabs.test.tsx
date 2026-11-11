@@ -9,6 +9,7 @@ import { chatSessionApi, projectApi, skillApi, type Project } from '../src/api/c
 import { projectAuditApi } from '../src/api/projectAudit'
 import ProjectSettingsPanel from '../src/components/ProjectSettingsPanel'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
+import { useProjectStore } from '../src/stores/projectStore'
 import { useChatListStore } from '../src/stores/chatSessionStore'
 
 function setNativeValue(
@@ -29,6 +30,11 @@ const project: Project = {
 
 test('system prompt and reorderable quick buttons use separate settings tabs', async () => {
   const { window } = installDomEnvironment()
+  const originalRename = projectApi.rename
+  const projectState = useProjectStore.getState()
+  useProjectStore.setState({ projects: [project], activeProject: project })
+  const renames: string[] = []
+  projectApi.rename = async (_path, name) => { renames.push(name); return { ...project, name } }
   const originalAudit = projectAuditApi.list
   projectAuditApi.list = async () => ({ items: [], next_before: null, retention_days: 30 })
   const originalSettings = projectApi.settings
@@ -92,6 +98,17 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
       )
     })
     await act(async () => { await Promise.resolve() })
+
+    const nameInput = container.querySelector<HTMLInputElement>('input')!
+    await act(async () => {
+      setNativeValue(window, nameInput, '新项目名')
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const nameSave = [...container.querySelectorAll('button')].find(button => button.textContent?.trim() === '保存')!
+    await act(async () => nameSave.click())
+    assert.deepEqual(renames, ['新项目名'])
+    assert.equal(useProjectStore.getState().projects[0].name, '新项目名')
+    assert.equal(useProjectStore.getState().activeProject?.name, '新项目名')
 
     const auditNav = [...container.querySelectorAll('button')].find(button => button.textContent?.trim() === '操作审计')
     assert.ok(auditNav)
@@ -191,6 +208,8 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
     assert.deepEqual(skillListCalls, [project.id])
     assert.match(container.textContent || '', /选择当前项目允许使用的本地技能/)
   } finally {
+    projectApi.rename = originalRename
+    useProjectStore.setState(projectState, true)
     projectAuditApi.list = originalAudit
     projectApi.settings = originalSettings
     projectApi.setConcurrency = originalSetConcurrency

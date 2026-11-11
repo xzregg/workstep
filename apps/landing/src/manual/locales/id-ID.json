@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Jika artefak hilang, periksa apakah berkas telah dibuat, apakah deklarasi outputnya cocok, dan pesan eksekusinya.",
-          "Klik jalur pada judul pratinjau untuk menyalinnya, lalu periksa pemberitahuan berhasil atau gagal."
+          "Klik jalur pada judul pratinjau untuk menyalinnya, lalu periksa pemberitahuan berhasil atau gagal.",
+          "Buka gambar untuk menyalin gambar, menyalin alamatnya, atau mengunduhnya. Penyalinan memerlukan izin papan klip browser; jika gagal, gunakan unduhan."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Tidak ada hasil setelah mencari demo manual di pusat Keterampilan",
           "caption": "Pusat keterampilan menawarkan pencarian nama dan pemfilteran sumber. Tidak ada keterampilan yang cocok atau tombol pengaktifan yang ditampilkan."
+        }
+      },
+      {
+        "title": "Mengatur dan menggunakan konektor",
+        "steps": [
+          "Buka Pengaturan → Konektor → Tambah. Untuk MCP lokal isi perintah dan argumen terpisah, MCP jarak jauh isi URL, atau CLI isi berkas eksekusi. Pilih proyek yang diizinkan.",
+          "Pada Uji → Deteksi koneksi, temukan alat. Menjalankan alat melakukan panggilan nyata: periksa argumennya. Uji tidak memanggil LLM; simpan setelahnya.",
+          "Dalam percakapan aktifkan + → Konektor untuk pesan berikutnya. MCP memerlukan mesin kompatibel; login CLI memakai perintah resmi di terminal host. Untuk 401 atur token Bearer atau header autentikasi yang didukung. OAuth browser belum tersedia."
+        ],
+        "tips": [
+          "Contoh: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Mengatur dan menggunakan konektor",
+          "caption": "Tangkapan layar nyata belum tersedia: pengaturan, pengujian, dan pilihan percakapan."
         }
       }
     ]

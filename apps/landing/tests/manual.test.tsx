@@ -7,6 +7,14 @@ import { Nav } from '../src/components/Nav'
 import { I18nProvider } from '../src/i18n'
 
 describe('operation manual', () => {
+  it('explains connector configuration, real tool testing and session scope without claiming OAuth support', () => {
+    const chapter = manualChapters.find(chapter => chapter.id === 'chat-skills')!
+    const section = chapter.sections.find(section => section.screenshot?.id === 'connector-settings')
+    expect(section).toBeDefined()
+    const prose = JSON.stringify(section)
+    for (const phrase of ['连接器', '可用项目', '真实调用', '不调用 LLM', '下一条消息', 'Bearer Token', '暂不支持网页 OAuth']) expect(prose).toContain(phrase)
+    expect(getManualGroups('连接器').flatMap(group => group.chapters).map(chapter => chapter.id)).toContain('chat-skills')
+  })
   it('categorizes every chapter exactly once, keeping SDK setup in quick start', () => {
     const ids = manualGroups.flatMap(group => group.chapterIds)
     expect([...ids].sort()).toEqual(manualChapters.map(chapter => chapter.id).sort())

@@ -491,3 +491,79 @@ async def test_refresh_discovers_new_custom_engine_without_restart(custom_enviro
         events = [event async for event in engine.spawn("hello", str(custom_environment))]
         assert any(event.type == "agent_message_chunk" for event in events)
         await engine.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('implementation', ['', '\n    def configure_mcp_servers(self, servers, config_overrides=None): return {}\n', '\n    async def configure_mcp_servers(self, unsupported): return {}\n'])
+async def test_mcp_claim_requires_adapter_method(custom_environment, implementation):
+    from services.custom_engines import custom_engine_manager as manager
+    source = custom_environment / 'engine.py'
+    source.write_text(ADAPTER.replace('    ENGINE_ID =', '    supports_mcp = True\n    ENGINE_ID =') + implementation)
+    with pytest.raises(RuntimeError, match='describe.*ValueError'):
+        await manager.inspect(str(custom_environment))
+
+
+@pytest.mark.asyncio
+async def test_custom_mcp_config_method_is_exposed_through_worker(custom_environment):
+    from services.custom_engines import custom_engine_manager as manager
+    from engines.core.custom_proxy import make_custom_engine
+    source = custom_environment / 'engine.py'
+    source.write_text(ADAPTER + '''
+    supports_mcp = True
+    async def configure_mcp_servers(self, servers, config_overrides=None):
+        return {**(config_overrides or {}), "sdk_mcp_servers": servers}
+''')
+    info = (await manager.inspect(str(custom_environment)))['engine']
+    assert info['capabilities']['supports_mcp'] is True
+    engine = make_custom_engine(custom_environment, info)()
+    try:
+        servers = [{'name': 'test', 'command': '/python', 'args': ['bridge.py'], 'env': {'ID': 'demo'}}]
+        result = await engine.configure_mcp_servers(servers, {'model': 'saved'})
+        assert result == {'model': 'saved', 'sdk_mcp_servers': servers}
+        assert engine.supports_mcp and engine.capabilities.supports_mcp
+    finally:
+        await engine.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('consumes_mcp', [True, False])
+async def test_custom_mcp_acceptance_requires_real_worker_tool_call(custom_environment, consumes_mcp):
+    from services.custom_engines import custom_engine_manager as manager
+    code = ADAPTER
+    if consumes_mcp:
+        code = code.replace('"session_started", "error"', '"session_started", "error", "tool_call"')
+        code = code.replace('        yield agent_message_chunk("WORKSTEP_ENGINE_OK")', '''        servers = (kwargs.get("config_overrides") or {}).get("mcp_servers", [])
+        if servers:
+            import re
+            from services.connectors.transport import connect
+            async with connect({**servers[0], "transport": "stdio"}) as client:
+                tool = (await client.list_tools()).tools[0]
+                nonce = re.search(r"nonce=([a-f0-9]+)", prompt).group(1)
+                result = await client.call_tool(tool.name, {"nonce": nonce})
+                if result.isError:
+                    raise ValueError("probe failed")
+                yield InternalEvent("tool_call", {"tool_call_id": "mcp-probe", "title": tool.name})
+                yield agent_message_chunk(result.content[0].text)
+        else:
+            yield agent_message_chunk("WORKSTEP_ENGINE_OK")''')
+    code += '''
+    supports_mcp = True
+    async def configure_mcp_servers(self, servers, config_overrides=None):
+        return await super().configure_mcp_servers(servers, config_overrides)
+'''
+    (custom_environment / 'engine.py').write_text(code)
+    report = await manager.run_operation('validate', str(custom_environment))
+    check = next(check for check in report['checks'] if check['name'] == 'mcp_connector_roundtrip')
+    assert check['status'] == ('passed' if consumes_mcp else 'failed'), report
+    if consumes_mcp:
+        assert report['ok'], report
+        result = await manager.register(str(custom_environment))
+        assert result['ok'], result
+        from engines.core.registry import refresh_registry
+        refresh_registry()  # Same explicit Rescan used after registration in Settings.
+        from services.connectors.runtime import engine_supports_mcp
+        assert engine_supports_mcp('example_custom')
+    else:
+        assert not report['ok']
+        with pytest.raises(ValueError, match='验收'):
+            await manager.register(str(custom_environment))

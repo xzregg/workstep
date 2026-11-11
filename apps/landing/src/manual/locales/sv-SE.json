@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Om en artefakt saknas, kontrollera om en fil genererades, om dess utdatadeklaration matchar och exekveringsmeddelandena.",
-          "Klicka på sökvägen i förhandsvisningens rubrik för att kopiera den och kontrollera meddelandet om resultatet."
+          "Klicka på sökvägen i förhandsvisningens rubrik för att kopiera den och kontrollera meddelandet om resultatet.",
+          "Öppna en bild för att kopiera bilden, adressen eller ladda ned den. Kopiering kräver webbläsarens urklippsbehörighet; ladda ned om kopiering misslyckas."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Inga resultat efter att ha sökt manuell-demo i Skill Center",
           "caption": "Skill Center erbjuder namnsökning och källfiltrering. Ingen matchande färdighet eller aktiveringsbrytare visas."
+        }
+      },
+      {
+        "title": "Konfigurera och använd anslutningar",
+        "steps": [
+          "Öppna Inställningar → Anslutningar → Lägg till. Ange kommando och argument separat för lokal MCP, URL för fjärr-MCP eller programfil för CLI. Välj tillåtna projekt.",
+          "Hitta verktyg under Test → Upptäck anslutning. Verktygskörning gör riktiga anrop: granska argumenten. Testet anropar ingen LLM; spara efteråt.",
+          "Aktivera + → Anslutningar i samtalet för nästa meddelande. MCP kräver en kompatibel motor; CLI-inloggning använder det officiella kommandot i värdterminalen. Vid 401 anger du stödd Bearer-token eller autentiseringshuvud. Webbläsar-OAuth saknas ännu."
+        ],
+        "tips": [
+          "Exempel: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Konfigurera och använd anslutningar",
+          "caption": "Verklig skärmbild saknas: inställningar, test och samtalsval."
         }
       }
     ]

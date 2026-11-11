@@ -141,6 +141,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         system_prompt: str | None = None,
         system_prompt_each_turn: bool = False,
         capture_prompt_input: bool = False,
+        _with_connectors: bool = False,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run one engine stream with the adapter's bounded failure policy.
@@ -152,6 +153,9 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         Codex may announce a new thread before its rollout exists on disk;
         restart such a thread if it failed before producing any turn events.
         """
+        if _with_connectors:
+            from services.connectors.runtime import prepare
+            kwargs = await prepare(self, kwargs)
         cwd = kwargs.get("cwd")
         image_output = None
         if cwd:
@@ -321,7 +325,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 })
             return
         async for event in self._stream_with_retry(
-            self.spawn, system_prompt=system_prompt,
+            self.spawn, _with_connectors=True, system_prompt=system_prompt,
             system_prompt_each_turn=system_prompt_each_turn,
             capture_prompt_input=capture_prompt_input, **kwargs,
         ):
@@ -871,6 +875,8 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 mcp_servers = list(
                     (config_overrides or {}).get("mcp_servers") or []
                 )
+                from services.connectors.runtime import acp_servers
+                mcp_servers = acp_servers(mcp_servers)
                 self._validate_session_inputs(
                     init_resp, add_dirs or [], mcp_servers
                 )

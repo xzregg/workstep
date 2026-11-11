@@ -75,6 +75,8 @@ test('finished dictation inserts once at the captured cursor; cancellation disca
 })
 
 test('microphone does not send a message or change the agent stop action', async () => {
+  const originalStatus = speechApi.status
+  speechApi.status = async () => ({ enabled: true } as Awaited<ReturnType<typeof speechApi.status>>)
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const original = voiceCapture.start
@@ -91,7 +93,7 @@ test('microphone does not send a message or change the agent stop action', async
     await act(async () => (document.querySelector('.chat-input-send') as HTMLButtonElement).click())
     assert.equal(stopped, 1)
   } finally {
-    voiceCapture.start = original
+    voiceCapture.start = original; speechApi.status = originalStatus
     await act(async () => root.unmount()); await window.happyDOM.close()
   }
 })
@@ -139,6 +141,8 @@ for (const width of [320, 390, 1023]) {
     window.happyDOM.setWindowSize({ width })
     const root = createRoot(document.body.appendChild(document.createElement('div')))
     let changes = 0
+    const originalStatus = speechApi.status
+    speechApi.status = async () => ({ enabled: true } as Awaited<ReturnType<typeof speechApi.status>>)
     const original = { capture: voiceCapture.start, start: speechApi.start, cancel: speechApi.cancel }
     let captures = 0
     voiceCapture.start = async () => { captures++; return { stop() {}, flush() {} } }
@@ -167,7 +171,7 @@ for (const width of [320, 390, 1023]) {
       assert.doesNotMatch(document.querySelector('.voice-input-actions')!.textContent!, /开始录音/)
     } finally {
       await act(async () => root.unmount()); await window.happyDOM.close()
-      voiceCapture.start = original.capture; speechApi.start = original.start; speechApi.cancel = original.cancel; speechApi.audio = originalAudio
+      voiceCapture.start = original.capture; speechApi.start = original.start; speechApi.cancel = original.cancel; speechApi.audio = originalAudio; speechApi.status = originalStatus
     }
   })
 }
@@ -543,5 +547,46 @@ test('microphone loss settles already captured audio rather than deleting the re
     await act(async () => root.unmount()); await window.happyDOM.close()
     Object.assign(speechApi, { start: original.start, audio: original.audio, cancel: original.cancel }); voiceCapture.start = original.capture
     globalThis.AbortController = OriginalController
+  }
+})
+
+
+test('mobile hold follows the speech setting and restores native text behavior when off', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width: 390 })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { status: speechApi.status, capture: voiceCapture.start, start: speechApi.start }
+  let enabled = false, captures = 0, sessions = 0
+  speechApi.status = async () => ({ enabled } as Awaited<ReturnType<typeof speechApi.status>>)
+  voiceCapture.start = async () => { captures++; throw new Error('must not capture while disabled') }
+  speechApi.start = async () => { sessions++; throw new Error('must not create session while disabled') }
+  const press = async () => {
+    document.querySelector('textarea')!.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }))
+    await new Promise(done => setTimeout(done, 530))
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInput value="草稿" placeholder="输入消息…" onChange={() => {}} onSend={() => {}} /></I18nProvider>))
+    assert.equal(document.querySelector('textarea')!.placeholder, '输入消息…')
+    await act(press)
+    assert.equal(document.querySelector('.voice-input'), null)
+    assert.equal(captures, 0)
+    assert.equal(sessions, 0)
+    const contextMenu = new window.Event('contextmenu', { bubbles: true, cancelable: true })
+    document.querySelector('textarea')!.dispatchEvent(contextMenu)
+    assert.equal(contextMenu.defaultPrevented, false)
+    enabled = true
+    await act(async () => window.dispatchEvent(new window.Event('workstep:speech-settings-changed')))
+    assert.match(document.querySelector('textarea')!.placeholder, /长按语音输入|hold to dictate/)
+    await act(async () => {
+      document.querySelector('textarea')!.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }))
+    })
+    enabled = false
+    await act(async () => window.dispatchEvent(new window.Event('workstep:speech-settings-changed')))
+    await act(async () => new Promise(done => setTimeout(done, 530)))
+    assert.equal(captures, 0)
+    assert.equal(document.querySelector('.voice-input'), null)
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+    speechApi.status = original.status; voiceCapture.start = original.capture; speechApi.start = original.start
   }
 })

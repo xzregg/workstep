@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Hvis en artefakt mangler, sjekk om en fil ble generert, om utdataerklæringen samsvarer, og utførelsesmeldingene.",
-          "Klikk på stien i forhåndsvisningens overskrift for å kopiere den, og kontroller meldingen om resultatet."
+          "Klikk på stien i forhåndsvisningens overskrift for å kopiere den, og kontroller meldingen om resultatet.",
+          "Åpne et bilde for å kopiere bildet, adressen eller laste det ned. Kopiering krever nettleserens utklippstavletillatelse; last ned hvis kopiering feiler."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Ingen resultater etter å ha søkt manuell-demo i ferdighetssenteret",
           "caption": "Ferdighetssenter tilbyr navnesøk og kildefiltrering. Ingen samsvarende ferdighet eller aktiveringsbryter vises."
+        }
+      },
+      {
+        "title": "Konfigurer og bruk koblinger",
+        "steps": [
+          "Åpne Innstillinger → Koblinger → Legg til. For lokal MCP angir du kommando og argumenter separat, for ekstern MCP en URL og for CLI programfilen. Velg tillatte prosjekter.",
+          "Finn verktøy under Test → Oppdag tilkobling. Verktøykjøring gjør faktiske kall: kontroller argumentene. Testen kaller ikke en LLM; lagre etterpå.",
+          "Aktiver + → Koblinger i samtalen for neste melding. MCP krever en kompatibel motor; CLI logger inn med den offisielle kommandoen i vertsterminalen. Ved 401 konfigurerer du støttet Bearer-token eller autentiseringshode. Nettleser-OAuth er ikke tilgjengelig."
+        ],
+        "tips": [
+          "Eksempel: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Konfigurer og bruk koblinger",
+          "caption": "Ekte skjermbilde mangler: oppsett, test og valg i samtalen."
         }
       }
     ]

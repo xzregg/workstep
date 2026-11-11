@@ -1,3 +1,4 @@
+import ConnectorSettingsPanel from '../components/connectors/ConnectorSettingsPanel'
 import MessageHistorySetting from '../components/MessageHistorySetting'
 import AppearanceSettings from './AppearanceSettings'
 import VoiceInputSettings from './VoiceInputSettings'
@@ -162,6 +163,8 @@ export default function SettingsPage({
               onConfigurationChanged?.()
             }}
           />
+        ) : activeSection === 'connectors' ? (
+          <ConnectorSettingsPanel />
         ) : activeSection === 'pricing' ? (
           <ModelPricingSettings />
         ) : activeSection === 'speech' ? (

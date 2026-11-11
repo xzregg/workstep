@@ -51,6 +51,8 @@ export interface ChatInputTextSegmentProps {
   rows?: number
   /** Keep short text beside an adjacent image instead of forcing a full row. */
   inlineWithImage?: boolean
+  /** Share the first line with presentation-only role/connector chips. */
+  inlineWithContext?: boolean
   /** Forwarded to the textarea (the last text run exposes it to focus flows). */
   externalRef?: Ref<HTMLTextAreaElement>
   /** Element registration so the parent keeps its focus/segment maps. */
@@ -72,6 +74,7 @@ export default function ChatInputTextSegment({
   readOnly = false,
   rows = 1,
   inlineWithImage = false,
+  inlineWithContext = false,
   externalRef,
   onElement,
   onCommitText,
@@ -182,7 +185,7 @@ export default function ChatInputTextSegment({
   return (
     <textarea
       ref={attachRef}
-      className={`chat-input-text-segment${inlineWithImage ? ' chat-input-text-segment--inline' : ''}${inlineWithImage && (draft ?? markdown) === '' ? ' chat-input-text-segment--empty' : ''}`}
+      className={`chat-input-text-segment${inlineWithImage ? ' chat-input-text-segment--inline' : ''}${inlineWithImage && (draft ?? markdown) === '' ? ' chat-input-text-segment--empty' : ''}${inlineWithContext ? ' chat-input-text-segment--context' : ''}`}
       value={draft ?? markdown}
       onChange={handleChange}
       onCompositionStart={handleCompositionStart}

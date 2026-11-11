@@ -100,7 +100,6 @@ export default function TaskList() {
   } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
   const { can, canEdit, canCreateTask, canOpenSettings } = useGatewayProjectPermissions(activeProject?.id)
-  const renameProject = useProjectStore((s) => s.renameProject)
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
   const saveSteps = useProjectStore((s) => s.saveSteps)
   const activeWorkflowName = activeProject?.workflows?.find((w) => w.id === activeWorkflowId)?.name
@@ -755,9 +754,6 @@ export default function TaskList() {
       <ProjectSettingsPanel
         project={canOpenSettings && showSettingsPanel ? activeProject : null}
         onClose={() => setShowSettingsPanel(false)}
-        onProjectRenamed={(name) => {
-          if (activeProject) void renameProject(activeProject.path, name)
-        }}
       />
 
       {/* ── Task detail slide-in panel from right ── */}

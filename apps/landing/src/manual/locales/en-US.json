@@ -757,7 +757,8 @@
         ],
         "tips": [
           "If an artifact is missing, check whether a file was generated, whether its output declaration matches, and the execution messages.",
-          "Click the path in a preview heading to copy it, then check the success or failure notice."
+          "Click the path in a preview heading to copy it, then check the success or failure notice.",
+          "Open an image to copy the image, copy its address or download it. Copying requires browser clipboard permission; use download if copying fails."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "No results after searching manual-demo in Skill center",
           "caption": "Skill center offers name search and source filtering. No matching skill or enable switch is displayed."
+        }
+      },
+      {
+        "title": "Configure and use connectors",
+        "steps": [
+          "Open Settings → Connectors → Add. Choose local MCP and enter a command with separate arguments, remote MCP and a URL, or a CLI executable. Select the allowed projects.",
+          "Open Test → Detect connection to discover tools. Tool execution is real: check its arguments first. This test does not call an LLM; save the configuration afterwards.",
+          "In a conversation choose + → Connectors and enable the connection for the next message. MCP requires a compatible engine; CLI login uses its official host-terminal command. For 401 configure a supported Bearer token or authentication header; browser OAuth is not available."
+        ],
+        "tips": [
+          "Example: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Configure and use connectors",
+          "caption": "Real screenshot pending: connector configuration, testing and conversation selection."
         }
       }
     ]

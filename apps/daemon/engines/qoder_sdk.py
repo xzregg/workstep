@@ -72,6 +72,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         await client.set_permission_mode(mapped)
 
     ENGINE_ID = "qoder_sdk"
+    supports_mcp = True
     SYSTEM_PROMPT_MODE = "system"
     RUNTIME_PACKAGE = RuntimePackage('qoder-agent-sdk', 'pypi')
     UPDATE_PACKAGE = "qoder-agent-sdk"
@@ -414,7 +415,9 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         from services.coordinator_source import coordinator_source_env
         from services.conversation_context import execution_env
 
+        from services.connectors.runtime import native_servers
         options = QoderAgentOptions(
+            **({"mcp_servers": native_servers(config_overrides)} if native_servers(config_overrides) else {}),
             auth=auth,
             cwd=cwd,
             cli_path=binary,

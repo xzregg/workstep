@@ -1,6 +1,7 @@
 import Select from './Select'
 import { useEffect, useState } from 'react'
 import { projectAuditApi, type ProjectAuditPage } from '../api/projectAudit'
+import { ApiError } from '../api/transport'
 import { useI18n } from '../i18n'
 import Button from './Button'
 import Icon from './Icon'
@@ -13,6 +14,7 @@ export default function ProjectAuditSettings({ projectId }: { projectId: string 
   const [page, setPage] = useState<ProjectAuditPage | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [forbidden, setForbidden] = useState(false)
   const actions: Record<string, string> = {
     'file.upload': t('projectAudit.upload'), 'workflow.create': t('projectAudit.createWorkflow'),
     'workflow.update': t('projectAudit.updateWorkflow'), 'workflow.delete': t('projectAudit.deleteWorkflow'),
@@ -33,17 +35,22 @@ export default function ProjectAuditSettings({ projectId }: { projectId: string 
 
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true); setError(''); setPage(null)
+    setLoading(true); setError(''); setPage(null); setForbidden(false)
     void projectAuditApi.list(projectId, { ...filters, signal: controller.signal })
       .then(data => { if (!controller.signal.aborted) setPage(data) })
-      .catch(() => { if (!controller.signal.aborted) setError(t('projectAudit.error')) })
+      .catch(cause => {
+        if (controller.signal.aborted) return
+        const denied = cause instanceof ApiError && cause.status === 403
+        setForbidden(denied)
+        setError(t(denied ? 'projectAudit.localOnly' : 'projectAudit.error'))
+      })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [projectId, filters, revision, t])
 
   return <div className="project-audit-settings">
     <p className="project-audit-hint">{t('projectAudit.hint', { days: page?.retention_days ?? 30 })}</p>
-    <div className="project-audit-controls">
+    {!forbidden && <div className="project-audit-controls">
       <label>{t('projectAudit.action')}<Select aria-label={t('projectAudit.action')} value={filters.action}
         onChange={event => setFilters(previous => ({ ...previous, action: event.target.value, before: undefined }))}>
         <option value="">{t('projectAudit.all')}</option>
@@ -57,9 +64,9 @@ export default function ProjectAuditSettings({ projectId }: { projectId: string 
       <Button disabled={loading} onClick={() => { setFilters(previous => ({ ...previous, before: undefined })); setRevision(value => value + 1) }}>
         <Icon name="refresh" size={14} />{t('projectAudit.refresh')}
       </Button>
-    </div>
+    </div>}
     {loading && <p className="project-audit-loading" role="status"><Icon name="loader-circle" size={16} className="project-audit-spinner" />{t('common.loading')}</p>}
-    {error && <p role="alert">{error}<Button onClick={() => setRevision(value => value + 1)}>{t('projectAudit.retry')}</Button></p>}
+    {error && <p role="alert">{error}{!forbidden && <Button onClick={() => setRevision(value => value + 1)}>{t('projectAudit.retry')}</Button>}</p>}
     {!loading && !error && page?.items.length === 0 && <p>{t('projectAudit.empty')}</p>}
     <ol className="project-audit-list">
       {page?.items.map(item => <li key={item.id} className="project-audit-row">
@@ -73,9 +80,9 @@ export default function ProjectAuditSettings({ projectId }: { projectId: string 
         {item.metadata.file_path && <div className="project-audit-path">{String(item.metadata.file_path)}</div>}
       </li>)}
     </ol>
-    <div className="project-audit-pagination">
+    {!forbidden && <div className="project-audit-pagination">
       <Button disabled={loading || !filters.before} onClick={() => setFilters(previous => ({ ...previous, before: undefined }))}>{t('projectAudit.first')}</Button>
       <Button disabled={loading || !page?.next_before} onClick={() => setFilters(previous => ({ ...previous, before: page?.next_before ?? undefined }))}>{t('projectAudit.next')}</Button>
-    </div>
+    </div>}
   </div>
 }

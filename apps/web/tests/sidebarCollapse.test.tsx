@@ -86,12 +86,29 @@ test('Layout expands the workspace and removes only the sidebar resize handle', 
     close() { this.readyState = 3 }
   }
   Object.assign(globalThis, { WebSocket: Socket, ResizeObserver: window.ResizeObserver })
-  globalThis.fetch = async () => Response.json({ projects: [], sessions: [], engines: [], providers: [], buttons: [] })
-  useProjectStore.setState({ projects: [], activeProject: null })
+  const project = { id: 'menu-project', name: '菜单项目', path: '/tmp/menu-project', steps: [], workflows: [] }
+  globalThis.fetch = async () => Response.json({ projects: [project], sessions: [], engines: [], providers: [], buttons: [], name: project.name, path: project.path, chat_system_prompt: '', quick_buttons: [] })
+  useProjectStore.setState({ projects: [project], activeProject: null })
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><MemoryRouter><Layout onSelectProject={() => {}}><input data-test="conversation" defaultValue="未发送草稿" /></Layout></MemoryRouter></I18nProvider>))
+    const treeToggle = () => container.querySelector<HTMLButtonElement>('.layout-sidebar-tree-toggle')!
+    assert.ok(treeToggle())
+    const activeBeforeToggle = useProjectStore.getState().activeProject
+    await act(async () => treeToggle().click())
+    assert.equal(container.querySelector('[aria-controls="sidebar-project-menu-project"]')?.getAttribute('aria-expanded'), 'true')
+    assert.equal(treeToggle().getAttribute('aria-label'), '收起所有项目')
+    await act(async () => treeToggle().click())
+    assert.equal(container.querySelector('[aria-controls="sidebar-project-menu-project"]')?.getAttribute('aria-expanded'), 'false')
+    assert.equal(treeToggle().getAttribute('aria-label'), '展开所有项目')
+    assert.equal(useProjectStore.getState().activeProject, activeBeforeToggle)
+    await act(async () => container.querySelector<HTMLButtonElement>('.ws-more-btn')!.click())
+    const settingsAction = [...container.querySelectorAll<HTMLButtonElement>('.sidebar-action-item')].find(button => button.textContent === '项目配置')
+    assert.ok(settingsAction)
+    await act(async () => settingsAction.click())
+    assert.equal(container.querySelector('.sidebar-action-menu'), null)
+    assert.ok(document.body.textContent?.includes('项目名称'))
     const sidebar = container.querySelector<HTMLElement>('.layout-sidebar')!
     const originalWidth = sidebar.style.width
     const list = sidebar.querySelector('.layout-sidebar-body')

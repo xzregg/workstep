@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Bir yapı eksikse, bir dosyanın oluşturulup oluşturulmadığını, çıktı bildiriminin eşleşip eşleşmediğini ve yürütme mesajlarını kontrol edin.",
-          "Kopyalamak için önizleme başlığındaki yola tıklayın ve başarı veya hata bildirimini kontrol edin."
+          "Kopyalamak için önizleme başlığındaki yola tıklayın ve başarı veya hata bildirimini kontrol edin.",
+          "Görseli açarak görseli veya adresini kopyalayabilir ya da indirebilirsiniz. Kopyalama tarayıcının pano iznini gerektirir; başarısız olursa indirin."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Beceri merkezinde manuel demo arandıktan sonra sonuç yok",
           "caption": "Beceri merkezi, ad arama ve kaynak filtreleme olanağı sunar. Eşleşen beceri veya etkinleştirme anahtarı görüntülenmiyor."
+        }
+      },
+      {
+        "title": "Bağlayıcıları yapılandırma ve kullanma",
+        "steps": [
+          "Ayarlar → Bağlayıcılar → Ekle bölümünü açın. Yerel MCP için komut ve argümanları ayrı, uzak MCP için URL, CLI için yürütülebilir dosyayı girin. İzin verilen projeleri seçin.",
+          "Test → Bağlantıyı algıla ile araçları bulun. Araç çalıştırmak gerçek çağrı yapar: argümanları denetleyin. Test LLM çağırmaz; ardından kaydedin.",
+          "Sohbette + → Bağlayıcılar ile sonraki mesaj için etkinleştirin. MCP uyumlu motor gerektirir; CLI oturumu ana makine terminalindeki resmî komutla açılır. 401 için desteklenen Bearer belirtecini veya kimlik başlığını ayarlayın. Tarayıcı OAuth henüz yoktur."
+        ],
+        "tips": [
+          "Örnek: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Bağlayıcıları yapılandırma ve kullanma",
+          "caption": "Gerçek ekran görüntüsü bekleniyor: yapılandırma, test ve sohbet seçimi."
         }
       }
     ]

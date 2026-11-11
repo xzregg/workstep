@@ -238,6 +238,7 @@ def get_available_engines() -> list[dict]:
                 "supports_sessions": caps.supports_sessions,
                 "supports_tool_approval": caps.supports_tool_approval,
                 "supports_workstep_tools": caps.supports_workstep_tools,
+                "supports_mcp": caps.supports_mcp,
                 "skill_policy": instance.skill_policy.value,
                 "supports_controlled_skills": instance.supports_controlled_skills,
                 "binary_path": (
@@ -282,6 +283,7 @@ def get_available_engines() -> list[dict]:
                 "supports_sessions": False,
                 "supports_tool_approval": False,
                 "supports_workstep_tools": False,
+                "supports_mcp": False,
                 "skill_policy": target().skill_policy.value if target else "unsupported",
                 "supports_controlled_skills": bool(target and target().supports_controlled_skills),
                 "binary_path": target.resolve_binary() if target else None,

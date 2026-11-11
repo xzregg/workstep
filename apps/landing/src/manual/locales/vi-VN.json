@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Nếu thiếu thành phần lạ, hãy kiểm tra xem tệp có được tạo hay không, khai báo đầu ra của nó có khớp hay không và thông báo thực thi có khớp hay không.",
-          "Nhấn đường dẫn trong tiêu đề xem trước để sao chép, rồi kiểm tra thông báo thành công hoặc thất bại."
+          "Nhấn đường dẫn trong tiêu đề xem trước để sao chép, rồi kiểm tra thông báo thành công hoặc thất bại.",
+          "Mở ảnh để sao chép ảnh, sao chép địa chỉ hoặc tải xuống. Sao chép cần quyền bảng tạm của trình duyệt; nếu thất bại, hãy tải xuống."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Không có kết quả sau khi tìm kiếm bản demo thủ công trong Trung tâm kỹ năng",
           "caption": "Trung tâm kỹ năng cung cấp tính năng tìm kiếm tên và lọc nguồn. Không có kỹ năng phù hợp hoặc công tắc kích hoạt nào được hiển thị."
+        }
+      },
+      {
+        "title": "Cấu hình và sử dụng trình kết nối",
+        "steps": [
+          "Mở Cài đặt → Trình kết nối → Thêm. Với MCP cục bộ nhập riêng lệnh và đối số, MCP từ xa nhập URL, CLI nhập tệp thực thi. Chọn dự án được phép.",
+          "Trong Kiểm tra → Phát hiện kết nối, tìm các công cụ. Chạy công cụ là gọi thực: hãy kiểm tra đối số. Kiểm tra không gọi LLM; lưu cấu hình sau đó.",
+          "Trong hội thoại bật ＋ → Trình kết nối cho tin nhắn tiếp theo. MCP cần bộ máy tương thích; đăng nhập CLI bằng lệnh chính thức trong terminal máy chủ. Với 401, cấu hình Bearer token hoặc tiêu đề xác thực được hỗ trợ. Chưa có OAuth trên trình duyệt."
+        ],
+        "tips": [
+          "Ví dụ: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Cấu hình và sử dụng trình kết nối",
+          "caption": "Chưa có ảnh chụp thực: cấu hình, kiểm tra và chọn trong hội thoại."
         }
       }
     ]

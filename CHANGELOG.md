@@ -4,6 +4,8 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Add host-managed MCP and CLI connectors with project availability, session selection, connection diagnostics and explicit tool testing. Browser OAuth is not supported.
+- Improve shared composer context chips, image preview copying and downloads, local artifact-directory access, and desktop-authenticated audit visibility through container port forwarding.
 - Organize ordinary and channel conversations into project-local groups, with drag-and-drop assignment, group creation, archiving and explicit deletion choices.
 - Support selectable local speech models, saved server-address lists on Android and iOS, and configured Gateway entry aliases that preserve the validated entry origin through authentication.
 - Carry conversation identifiers through engine execution context instead of injecting scheduling instructions into each user prompt, and refine project-scoped statistics, language access and device-grant precedence.

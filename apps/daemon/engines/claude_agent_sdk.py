@@ -54,6 +54,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
     """
 
     ENGINE_ID = "claude_agent_sdk"
+    supports_mcp = True
     SYSTEM_PROMPT_MODE = "system"
     RUNTIME_PACKAGE = RuntimePackage('claude-agent-sdk', 'pypi')
     UPDATE_PACKAGE = "claude-agent-sdk"
@@ -389,7 +390,9 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
             child_env = {**provider_runtime.child_env(), **custom_env, **sandbox_env}
         else:
             child_env = {}
+        from services.connectors.runtime import native_servers
         options = ClaudeAgentOptions(
+            **({"mcp_servers": native_servers(config_overrides)} if native_servers(config_overrides) else {}),
             cwd=cwd,
             model=model or None,
             permission_mode=sdk_config["permission_mode"] or "acceptEdits",

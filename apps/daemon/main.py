@@ -63,6 +63,7 @@ from api import notification_hooks
 from api.git import router as git_router
 from services.git import git_service
 from api.skills import router as skills_router
+from api.connectors import router as connectors_router
 from api.project_settings import router as project_settings_router
 from api.pending_message_inserts import router as pending_message_inserts_router
 from api.project_audit import router as project_audit_router
@@ -402,6 +403,7 @@ app.include_router(notification_hooks.router)
 app.include_router(hook_ingress_router)
 app.include_router(git_router)
 app.include_router(skills_router)
+app.include_router(connectors_router)
 app.include_router(remote_project_router)
 
 

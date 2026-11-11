@@ -495,6 +495,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
       <ChatRoleBinding key={`${activeProject.id}/${sessionId}`} projectId={activeProject.id} sessionId={sessionId} running={running}
         enabled={(!sessionParam || historyReady) && !isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('session.config')}>
       {roleBinding => <AssistantChatPanel
+        connectorsEnabled={activeProject.type !== 'remote'}
         roleBinding={roleBinding}
         workflowSkill={!isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('workflow.create') && can('task.create') ? workflowSkill : undefined}
         projectId={activeProject.id}

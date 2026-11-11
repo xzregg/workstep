@@ -1,6 +1,7 @@
 """Read-only project operation audit API."""
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from api.desktop_security import desktop_runtime_authenticated
 
 from services.project_audit import list_project_audit, remote_audit_source
 from services.remote_access import get_current_actor, _client_host, _is_loopback
@@ -23,7 +24,8 @@ async def get_project_audit(
     from main import project_manager
 
     actor = get_current_actor()
-    if not _is_loopback(_client_host(request.headers, request.client)) or remote_audit_source() or request.scope.get("gateway_remote_actor") is not None or (
+    local = desktop_runtime_authenticated(request) or _is_loopback(_client_host(request.headers, request.client))
+    if not local or remote_audit_source() or request.scope.get("gateway_remote_actor") is not None or (
         actor is not None and actor.source == "remote"
     ):
         raise HTTPException(403, "操作审计仅限项目所在设备查看")

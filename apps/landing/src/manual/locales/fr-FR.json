@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Si un livrable manque, vérifiez génération du fichier, correspondance de sa déclaration et messages d’exécution.",
-          "Cliquez sur le chemin dans l’en-tête de l’aperçu pour le copier, puis vérifiez le message de réussite ou d’échec."
+          "Cliquez sur le chemin dans l’en-tête de l’aperçu pour le copier, puis vérifiez le message de réussite ou d’échec.",
+          "Ouvrez une image pour copier l’image, son adresse ou la télécharger. La copie nécessite l’autorisation du presse-papiers ; en cas d’échec, téléchargez-la."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Recherche manual-demo sans résultat dans les compétences",
           "caption": "Recherche et filtre de source sont disponibles. Aucune compétence correspondante ni interrupteur n’apparaît."
+        }
+      },
+      {
+        "title": "Configurer et utiliser les connecteurs",
+        "steps": [
+          "Ouvrez Paramètres → Connecteurs → Ajouter. Pour MCP local, séparez commande et arguments ; pour MCP distant, indiquez l’URL ; pour CLI, l’exécutable. Choisissez les projets autorisés.",
+          "Dans Test → Détecter la connexion, découvrez les outils. Leur exécution est réelle : vérifiez les arguments. Ce test n’appelle pas de LLM ; enregistrez ensuite.",
+          "Dans la conversation, activez via + → Connecteurs pour le prochain message. MCP nécessite un moteur compatible ; connectez le CLI avec sa commande officielle dans le terminal hôte. Pour 401, configurez le jeton Bearer ou l’en-tête accepté. OAuth navigateur reste indisponible."
+        ],
+        "tips": [
+          "Exemple: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Configurer et utiliser les connecteurs",
+          "caption": "Capture réelle à fournir : configuration, test et sélection en conversation."
         }
       }
     ]

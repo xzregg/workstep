@@ -29,8 +29,8 @@ test('desktop rail opens existing appearance and role settings, and keeps one sc
     assert.ok(button('数据统计'), container.innerHTML)
     assert.ok(button('外观'))
     assert.ok(button('角色中心'))
-    assert.deepEqual([...container.querySelectorAll('nav > button')].slice(0, 3).map(button => button.getAttribute('aria-label')), ['数据统计', '定时任务', '角色中心'])
-    assert.deepEqual([...container.querySelectorAll('nav > button')].slice(3).map(button => button.getAttribute('aria-label')),
+    assert.deepEqual([...container.querySelectorAll('nav > button')].slice(0, 4).map(button => button.getAttribute('aria-label')), ['数据统计', '定时任务', '连接器', '角色中心'])
+    assert.deepEqual([...container.querySelectorAll('nav > button')].slice(4).map(button => button.getAttribute('aria-label')),
       ['自动更新 1.0.17', '外观', '设置'])
     const style = document.createElement('style')
     style.textContent = await readFile(new URL('../src/components/Layout.css', import.meta.url), 'utf8')
@@ -40,10 +40,11 @@ test('desktop rail opens existing appearance and role settings, and keeps one sc
     assert.ok(button('角色中心').querySelector('svg.lucide-drama'))
     assert.equal(container.querySelector('button[aria-label="工作台"]'), null)
     assert.equal(container.querySelector('button[aria-label="项目与会话"]'), null)
+    await act(async () => button('连接器').click())
     await act(async () => button('外观').click())
     await act(async () => button('角色中心').click())
     await act(async () => button('设置').click())
-    assert.deepEqual(opened, ['appearance', 'roles', 'providers'])
+    assert.deepEqual(opened, ['connectors', 'appearance', 'roles', 'providers'])
     assert.equal(button('角色中心').getAttribute('aria-current'), 'page')
     assert.equal(container.querySelectorAll('button[aria-haspopup="dialog"]').length, 1)
     await act(async () => button('数据统计').click())
@@ -76,7 +77,7 @@ test('project gateway keeps personal appearance and hides host role/settings ent
   }
 })
 
-test('rail stays outside the lists on PC and mobile keeps its compact three-button footer', async () => {
+test('rail stays outside the lists on PC and mobile keeps its original compact footer without connectors', async () => {
   const { window } = installDomEnvironment()
   window.happyDOM.setWindowSize({ width: 1280, height: 900 })
   useLocaleStore.setState({ locale: 'zh-CN' })

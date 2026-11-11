@@ -266,6 +266,7 @@ export interface CoordinatorEngineSummary {
   built_in: boolean
   supports_coordinator: boolean
   supports_session_fork: boolean
+  supports_mcp?: boolean
   supports_provider: boolean
   provider_protocols: string[]
   skill_policy?: string

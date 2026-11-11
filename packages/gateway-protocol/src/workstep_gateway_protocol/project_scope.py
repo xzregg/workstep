@@ -79,6 +79,8 @@ _PROJECT_SERVICES = [
     (r"/api/speech/sessions/[a-f0-9]{32}/audio", {'POST'}, set()),
     (r"/api/speech/sessions/[a-f0-9]{32}", {'DELETE'}, set()),
     (r"/api/completion-notifications/recent", {'GET'}, {'since'}),
+    (r"/api/connectors/available", {'GET'}, {'session_id', 'engine_id'}),
+    (r"/api/connectors/selection", {'PUT'}, set()),
     (r"/api/skills", {'GET'}, set()),
     (r"/api/skills/rescan", {'POST'}, set()),
     (r"/api/fs/memory", {'GET','PUT'}, set()),

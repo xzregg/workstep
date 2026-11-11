@@ -85,3 +85,19 @@ test('new backend capacity and permission failures retain their actual cause', a
     }
   } finally { globalThis.fetch = original; await window.happyDOM.close() }
 })
+
+
+test('successful speech setting saves notify composers, rejected saves do not', async () => {
+  const { window } = installDomEnvironment()
+  const original = globalThis.fetch
+  let changes = 0
+  window.addEventListener('workstep:speech-settings-changed', () => { changes++ })
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ enabled: false }), { headers: { 'Content-Type': 'application/json' } })
+    await speechApi.configure(false, 'auto')
+    assert.equal(changes, 1)
+    globalThis.fetch = async () => new Response(JSON.stringify({ detail: '录音期间不能修改语音设置' }), { status: 409, headers: { 'Content-Type': 'application/json' } })
+    await assert.rejects(speechApi.configure(false, 'auto'))
+    assert.equal(changes, 1)
+  } finally { globalThis.fetch = original; await window.happyDOM.close() }
+})

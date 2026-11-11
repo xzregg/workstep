@@ -10,6 +10,7 @@ import {
   type ProjectSettingsResult,
 } from '../api/client'
 import { useI18n } from '../i18n'
+import { useProjectStore } from '../stores/projectStore'
 import { useChatListStore } from '../stores/chatSessionStore'
 import Button from './Button'
 import ConcurrencyLimitInput from './ConcurrencyLimitInput'
@@ -164,7 +165,7 @@ function LocalProjectSettingsPanel({
     setNameError('')
     setNameSaved(false)
     try {
-      await projectApi.rename(project.path, trimmed)
+      await useProjectStore.getState().renameProject(project.path, trimmed)
       markSaved('name', trimmed)
       setNameSaved(true)
       onProjectRenamed?.(trimmed)

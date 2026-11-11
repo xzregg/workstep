@@ -1,6 +1,9 @@
 /** Artifact Preview Component - shows file contents or a directory listing. */
 
 import Icon from './Icon'
+import OpenLocationButton from './OpenLocationButton'
+import { useProjectStore } from '../stores/projectStore'
+import { usesWebDirectoryBrowser } from '../utils/openLocation'
 import { useState, useEffect, type ReactNode } from 'react'
 import {
   fsApi,
@@ -102,6 +105,12 @@ export default function ArtifactPreview({
 }: ArtifactPreviewProps) {
   const { t } = useI18n()
   const taskFilePreview = useTaskFilePreview()
+  const project = useProjectStore(state => state.projects.find(item => item.id === projectId)
+    ?? (state.activeProject?.id === projectId ? state.activeProject : null))
+  const canOpenDirectory = project && !gatewayWorkspacePath()
+    && !window.location.pathname.startsWith('/share/')
+    && !usesWebDirectoryBrowser(project.type, window.location.hostname, navigator.userAgent,
+      Boolean(window.workstepDesktop?.directories))
   const [view, setView] = useState<PreviewView>(() =>
     isDir
       ? { kind: 'directory', path }
@@ -148,6 +157,12 @@ export default function ArtifactPreview({
     }
   }, [view.kind, view.path, projectId, taskFilePreview, t])
 
+  const normalizedPath = view.path.replace(/\\/g, '/')
+  const absolutePath = /^(?:[a-z]:\/|\/)/i.test(normalizedPath)
+    ? normalizedPath : `${project?.path.replace(/\\/g, '/').replace(/\/$/, '')}/${normalizedPath}`
+  const directoryPath = absolutePath.slice(0, absolutePath.lastIndexOf('/') + 1)
+    .replace(/([^:])\/$/, '$1') || '/'
+
   const fileHeader = (label: string, extra?: ReactNode) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
@@ -156,6 +171,9 @@ export default function ArtifactPreview({
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {canOpenDirectory && view.kind === 'file' && !previewLoading && !previewError && preview && (
+          <OpenLocationButton activeProject={project} directoryPath={directoryPath} t={t} />
+        )}
         {extra}
         {onClose && (
           <Button variant="ghost" onClick={onClose}>

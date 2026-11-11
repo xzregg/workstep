@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Jos artefakti puuttuu, tarkista, onko tiedosto luotu, vastaako sen tulosilmoitus ja suoritusviestit.",
-          "Kopioi polku napsauttamalla sitä esikatselun otsikossa ja tarkista onnistumis- tai virheilmoitus."
+          "Kopioi polku napsauttamalla sitä esikatselun otsikossa ja tarkista onnistumis- tai virheilmoitus.",
+          "Avaa kuva kopioidaksesi kuvan tai osoitteen tai ladataksesi sen. Kopiointi tarvitsee selaimen leikepöytäluvan; lataa kuva, jos kopiointi epäonnistuu."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Ei tuloksia manuaalisen esittelyn haun jälkeen taitokeskuksessa",
           "caption": "Taitokeskus tarjoaa nimihaun ja lähdesuodatuksen. Vastaavaa taitoa tai käyttöönottokytkintä ei näytetä."
+        }
+      },
+      {
+        "title": "Yhdistimien määritys ja käyttö",
+        "steps": [
+          "Avaa Asetukset → Yhdistimet → Lisää. Anna paikalliselle MCP:lle komento ja argumentit erikseen, etä-MCP:lle URL tai CLI:lle suoritettava tiedosto. Valitse sallitut projektit.",
+          "Etsi työkalut kohdasta Testi → Tunnista yhteys. Työkalun suoritus tekee oikean kutsun: tarkista argumentit. Testi ei kutsu LLM:ää; tallenna asetukset sen jälkeen.",
+          "Ota keskustelussa + → Yhdistimet käyttöön seuraavaa viestiä varten. MCP tarvitsee yhteensopivan moottorin; CLI-kirjautuminen tehdään virallisella komennolla isäntäkoneen päätteessä. Määritä 401-virheessä tuettu Bearer-tunniste tai todennusotsake. Selain-OAuth ei ole käytettävissä."
+        ],
+        "tips": [
+          "Esimerkki: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Yhdistimien määritys ja käyttö",
+          "caption": "Oikea kuvakaappaus puuttuu: määritys, testi ja keskusteluvalinta."
         }
       }
     ]

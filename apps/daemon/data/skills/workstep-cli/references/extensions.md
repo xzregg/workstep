@@ -12,7 +12,7 @@ Use the Transport above with `skill create --json` to start an ordinary conversa
 
 ## Custom engines
 
-When creating or updating a custom engine, read [the onboarding guide](custom-engine.md) and [adapter contract](custom-engine-contract.md) on demand. These are reference documents within this CLI skill; do not load a separate custom-engine skill. Commands accept an absolute package directory or its Python entry file.
+When creating or updating a custom engine, read [the onboarding guide](custom-engine.md) and [adapter contract](custom-engine-contract.md) on demand. These are reference documents within this CLI skill; do not load a separate custom-engine skill. MCP connector support must declare `supports_mcp`, implement `configure_mcp_servers`, and pass real tool-call acceptance including resume when supported; see the adapter contract. Commands accept an absolute package directory or its Python entry file.
 
 ```bash
 workstep engine inspect /absolute/adapter --json

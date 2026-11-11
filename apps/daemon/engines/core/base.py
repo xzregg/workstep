@@ -157,6 +157,7 @@ class EngineCapabilities:
     supports_thinking_effort: bool = False
     supports_plan_mode: bool = False
     supports_goal_mode: bool = False
+    supports_mcp: bool = False
 
 
 class EngineSkillPolicy(str, Enum):
@@ -937,6 +938,31 @@ class BaseLLMEngine(ABC):
 
 
     @property
+    def supports_mcp(self) -> bool:
+        """Whether execution actually consumes per-run MCP server configuration."""
+        return False
+
+    async def configure_mcp_servers(self, servers: list[dict], config_overrides: dict | None = None) -> dict:
+        """Merge private bridge descriptors; adapters may translate to native options.
+
+        Unsupported engines reject explicitly. No servers/overrides are mutated,
+        and existing native definitions must remain intact. SDK custom adapters
+        override this method and consume its output in spawn/resume.
+        """
+        if not self.supports_mcp:
+            raise NotImplementedError('当前引擎不支持 MCP 连接器')
+        from copy import deepcopy
+        result = deepcopy(config_overrides or {})
+        existing = list(result.get('mcp_servers') or [])
+        names = {server.get('name') if isinstance(server, dict) else getattr(server, 'name', None) for server in existing}
+        added = deepcopy(servers)
+        new_names = [server.get('name') for server in added]
+        if len(new_names) != len(set(new_names)) or any(name in names for name in new_names):
+            raise ValueError('连接器 MCP 名称冲突')
+        result['mcp_servers'] = [*existing, *added]
+        return result
+
+    @property
     def capabilities(self) -> EngineCapabilities:
         return EngineCapabilities(
             supports_coordinator=self.is_configured(),
@@ -952,6 +978,7 @@ class BaseLLMEngine(ABC):
             supports_thinking_effort=self.supports_thinking_effort,
             supports_plan_mode=self.supports_plan_mode,
             supports_goal_mode=self.supports_goal_mode,
+            supports_mcp=self.supports_mcp,
         )
 
     @property

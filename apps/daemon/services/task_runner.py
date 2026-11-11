@@ -1011,6 +1011,8 @@ class TaskRunner:
                 )
             prompt_snapshots = []
             spawn_iter = spawn(**spawn_kwargs)
+            from services.connectors.runtime import scoped_task_stream
+            spawn_iter = scoped_task_stream(spawn_iter, getattr(self._database_executor, "project_id", None), task.id)
             idle_timeout = await asyncio.to_thread(
                 config_store.get_engine_idle_timeout_seconds
             )

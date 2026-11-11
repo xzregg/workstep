@@ -1,3 +1,4 @@
+import { useChatConnectors } from './connectors/useChatConnectors'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import ResponsivePopover from './ResponsivePopover'
 import Icon from './Icon'
@@ -5,6 +6,7 @@ import SkinnedComposerSendIcon from './ComposerSendIcon'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useChatInputDraft } from '../hooks/useChatInputDraft'
 import { useVoiceInput } from '../hooks/useVoiceInput'
+import { useSpeechEnabled } from '../hooks/useSpeechEnabled'
 import VoiceInputControls, { VoiceMicrophone } from './VoiceInputControls'
 import { useChatInputAttachments } from '../hooks/useChatInputAttachments'
 import {
@@ -16,6 +18,7 @@ import {
   type Ref,
 } from 'react'
 import ChatInputTextSegment from './ChatInputTextSegment'
+import ComposerContextChip from './ComposerContextChip'
 import ChatInputUsage from './ChatInputUsage'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
@@ -211,6 +214,7 @@ export interface ChatInputWorkflowSkill {
 }
 
 export interface ChatInputProps {
+  connectorsEnabled?: boolean
   workflowSkill?: ChatInputWorkflowSkill
   roleBinding?: ChatInputRoleBinding
   value: string
@@ -276,6 +280,7 @@ export interface ChatInputProps {
 }
 
 export default function ChatInput({
+  connectorsEnabled = false,
   value,
   onChange,
   onSend,
@@ -354,7 +359,8 @@ export default function ChatInput({
   const attachInputRef = useRef<HTMLInputElement>(null)
   const attachFileInputRef = useRef<HTMLInputElement>(null)
   const valueRef = useChatInputDraft({ sessionId, taskId, value, onChange })
-  const voiceAllowed = can('task.edit') && (typeof window === 'undefined' || !window.location.pathname.startsWith('/share/'))
+  const voicePermitted = can('task.edit') && (typeof window === 'undefined' || !window.location.pathname.startsWith('/share/'))
+  const voiceAllowed = useSpeechEnabled(projectId || imageAttach?.projectId || '', voicePermitted)
   const voiceDisabled = disabled || stopping || (running && !allowSendWhileRunning) || !voiceAllowed
   const inputPlaceholder = isCompact && voiceAllowed
     ? placeholder
@@ -375,7 +381,11 @@ export default function ChatInput({
       requestAnimationFrame(() => focusMarkdownCursor(next, position + text.length))
     },
   })
-  const canSend = !disabled
+  const connectors = useChatConnectors({ enabled: connectorsEnabled, projectId,
+    sessionId: taskId ? `task:${taskId}` : sessionId || undefined,
+    engineId: skillEngine || config?.engine || config?.defaultEngine || '',
+    locked: disabled || running, value, onChange })
+  const canSend = !connectors.blocked && !disabled
     && !voice.active
     && !roleBinding?.loading
     && !workflowSkill?.loading
@@ -880,6 +890,7 @@ export default function ChatInput({
         )}
         <div
           className="chat-input-editor"
+          data-context-chips={Boolean(roleBinding?.name || connectors.hasSelection) || undefined}
           {...(voiceAllowed ? voice.pointer : {})}
           data-voice-mode={voice.mode || undefined}
           data-all-selected={allSelected || undefined}
@@ -896,6 +907,12 @@ export default function ChatInput({
             lastInput?.focus({ preventScroll: true })
           }}
         >
+          {roleBinding?.name && <ComposerContextChip name={roleBinding.name}
+            icon={roleBinding.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="drama" size={14} />}
+            unavailable={roleBinding.missing} disabled={roleBinding.disabled} onOpen={roleBinding.onOpen} onRemove={roleBinding.onRemove}
+            openLabel={t('roleCenter.boundRoleLabel', { name: roleBinding.name })} removeLabel={t('roleCenter.removeChatRole')}
+            nameClassName="chat-role-binding-name" removeClassName="chat-role-binding-remove" />}
+          {connectors.tags}
           {(() => {
             let textIndex = -1
             return inputSegments.map((segment, segmentIndex) => {
@@ -972,6 +989,7 @@ export default function ChatInput({
                   readOnly={voice.active}
                   rows={rows}
                   inlineWithImage={inlineWithImage}
+                  inlineWithContext={segmentIndex === 0 && !segment.markdown.includes('\n') && Boolean(roleBinding?.name || connectors.hasSelection)}
                   externalRef={isLastText ? inputRef : undefined}
                   onElement={(element) => {
                     if (element) {
@@ -1007,7 +1025,8 @@ export default function ChatInput({
         <div className="chat-input-toolbar">
           <div className="chat-input-toolbar-scroll">
             {left}
-            {(imageAttach || roleBinding || workflowSkill) && (
+            {connectors.control}
+            {(imageAttach || roleBinding || workflowSkill || connectors.active) && (
             <>
               {imageAttach && <>
               <input
@@ -1097,6 +1116,11 @@ export default function ChatInput({
                         <span className="chat-input-menu-name">{t('chatInput.attachFile')}</span>
                       </button>
                       </>}
+                      {connectors.active && <button type="button" className="chat-input-menu-item" disabled={disabled || running}
+                        onClick={() => { setAttachMenuOpen(false); connectors.open() }}>
+                        <span className="chat-input-menu-icon"><Icon name="plug" size={14} /></span>
+                        <span className="chat-input-menu-name">{t('connectors.title')}</span>
+                      </button>}
                       {roleBinding && <button type="button" className="chat-input-menu-item" disabled={roleBinding.disabled}
                         onClick={() => { setAttachMenuOpen(false); roleBinding.onOpen() }}>
                         <span className="chat-input-menu-icon">{roleBinding.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="drama" size={14} strokeWidth={1.8} />}</span>
@@ -1193,14 +1217,6 @@ export default function ChatInput({
               </span>
             </button>
           )}
-          {roleBinding?.name && <div className="chat-role-binding" data-missing={roleBinding.missing || undefined}>
-            <button type="button" className="chat-role-binding-name" disabled={roleBinding.disabled} onClick={roleBinding.onOpen}
-              aria-label={t('roleCenter.boundRoleLabel', { name: roleBinding.name })}>
-              {roleBinding.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="drama" size={14} />}<span>{roleBinding.name}</span>
-            </button>
-            <button type="button" className="chat-role-binding-remove" disabled={roleBinding.disabled} onClick={roleBinding.onRemove}
-              aria-label={t('roleCenter.removeChatRole')}><Icon name="x" size={13} /></button>
-          </div>}
           <div className="chat-input-toolbar-spacer" />
           <ChatInputUsage context={context} quota={quota} onRefreshQuota={onRefreshQuota} quotaRefreshing={quotaRefreshing} compact={isCompact} />
           {config && (

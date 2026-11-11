@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Se manca un artefatto, controlla se è stato generato un file, se la sua dichiarazione di output corrisponde e i messaggi di esecuzione.",
-          "Premi il percorso nel titolo dell’anteprima per copiarlo, poi verifica l’avviso di successo o errore."
+          "Premi il percorso nel titolo dell’anteprima per copiarlo, poi verifica l’avviso di successo o errore.",
+          "Apri un’immagine per copiarla, copiarne l’indirizzo o scaricarla. La copia richiede il permesso degli appunti del browser; se fallisce, scaricala."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Nessun risultato dopo la ricerca della demo manuale nello Skill Center",
           "caption": "Il centro competenze offre la ricerca dei nomi e il filtraggio delle fonti. Non viene visualizzata alcuna abilità corrispondente o interruttore di abilitazione."
+        }
+      },
+      {
+        "title": "Configurare e usare i connettori",
+        "steps": [
+          "Apri Impostazioni → Connettori → Aggiungi. Per MCP locale inserisci comando e argomenti separati; per MCP remoto un URL; per CLI l’eseguibile. Seleziona i progetti autorizzati.",
+          "In Test → Rileva connessione scopri gli strumenti. L’esecuzione effettua chiamate reali: controlla gli argomenti. Il test non chiama un LLM; salva in seguito.",
+          "Nella conversazione attiva + → Connettori per il messaggio successivo. MCP richiede un motore compatibile; accedi al CLI con il comando ufficiale nel terminale host. Per 401 configura il token Bearer o l’intestazione supportata. OAuth nel browser non è disponibile."
+        ],
+        "tips": [
+          "Esempio: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Configurare e usare i connettori",
+          "caption": "Schermata reale da acquisire: configurazione, test e scelta nella conversazione."
         }
       }
     ]

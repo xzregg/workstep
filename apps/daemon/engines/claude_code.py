@@ -102,6 +102,7 @@ _PERMISSION_REJECT_FOR_SESSION_CONTENT = (
 )
 class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
     ENGINE_ID = "claude"
+    supports_mcp = True
     RUNTIME_PACKAGE = RuntimePackage('@anthropic-ai/claude-code', 'npm')
 
     @classmethod
@@ -408,6 +409,10 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
             skill_settings=skill_settings,
         )
 
+        from services.connectors.runtime import claude_mcp_config
+        connector_config = claude_mcp_config(config_overrides)
+        if connector_config:
+            cmd.extend(["--mcp-config", connector_config])
         command_text = shlex.join(cmd)
         logger.info("Spawning: %s (cwd=%s)", command_text, cwd)
         print(

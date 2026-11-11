@@ -46,6 +46,7 @@ export function toCoordinatorEngines(
       built_in: engine.built_in,
       supports_coordinator: engine.supports_coordinator,
       supports_session_fork: engine.supports_session_fork,
+      supports_mcp: engine.supports_mcp,
       supports_provider: engine.supports_provider,
       provider_protocols: engine.provider_protocols,
     }))

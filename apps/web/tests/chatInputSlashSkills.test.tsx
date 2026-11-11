@@ -21,7 +21,13 @@ test('slash opens at the start or after whitespace and filters skills by name pr
   const { window } = installDomEnvironment()
   const originalFetch = globalThis.fetch
   let requests = 0
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (input) => {
+    const url = input instanceof Request ? input.url : String(input)
+    if (url.split('?')[0].endsWith('/speech')) {
+      return new Response(JSON.stringify({ enabled: false }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
     requests += 1
     return new Response(JSON.stringify({
       skills: [

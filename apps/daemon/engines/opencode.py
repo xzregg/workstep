@@ -133,6 +133,7 @@ def _ensure_permission_config(mode: str = "ask") -> str:
 
 class OpencodeEngine(AcpEngineBase):
     ENGINE_ID = "opencode"
+    supports_mcp = True
 
     #: ACP 原生全量词汇 + 子代理提升（`task` 委托工具 → `subagent`）。
     acp_events: ClassVar[frozenset] = frozenset(AcpEngineBase.acp_events)
@@ -491,6 +492,8 @@ class OpencodeEngine(AcpEngineBase):
                 mcp_servers = list(
                     (config_overrides or {}).get("mcp_servers") or []
                 )
+                from services.connectors.runtime import acp_servers
+                mcp_servers = acp_servers(mcp_servers)
                 self._validate_session_inputs(
                     init_resp, add_dirs or [], mcp_servers
                 )

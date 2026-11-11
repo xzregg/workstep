@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import type { ProjectFileLink } from '../utils/markdownFilePreview'
 import FilePreviewDialog from './FilePreviewDialog'
 import ImagePreview from './ImagePreview'
@@ -135,14 +134,13 @@ function MarkdownMessage({
           onClose={() => setPreviewFile(null)}
         />
       )}
-      {previewImage && createPortal(
+      {previewImage && (
         <ImagePreview
           src={previewImage.src}
           alt={previewImage.alt}
           projectId={projectId}
           onClose={() => setPreviewImage(null)}
-        />,
-        document.body,
+        />
       )}
     </>
   )

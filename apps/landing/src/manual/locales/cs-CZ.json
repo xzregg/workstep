@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Pokud artefakt chybí, zkontrolujte, zda byl soubor vygenerován, zda odpovídá jeho výstupní deklarace a zprávy o provedení.",
-          "Kliknutím na cestu v záhlaví náhledu ji zkopírujete a ověříte oznámení úspěchu nebo chyby."
+          "Kliknutím na cestu v záhlaví náhledu ji zkopírujete a ověříte oznámení úspěchu nebo chyby.",
+          "Otevřete obrázek a zkopírujte jej, jeho adresu nebo jej stáhněte. Kopírování vyžaduje oprávnění schránky prohlížeče; při chybě použijte stažení."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Žádné výsledky po vyhledání ruční ukázky v centru dovedností",
           "caption": "Centrum dovedností nabízí vyhledávání jmen a filtrování zdrojů. Není zobrazen žádný odpovídající přepínač dovedností nebo povolení."
+        }
+      },
+      {
+        "title": "Nastavení a použití konektorů",
+        "steps": [
+          "Otevřete Nastavení → Konektory → Přidat. Pro místní MCP zadejte zvlášť příkaz a argumenty, pro vzdálené MCP URL, pro CLI spustitelný soubor. Vyberte povolené projekty.",
+          "V Test → Zjistit připojení načtěte nástroje. Jejich spuštění provádí skutečné volání: zkontrolujte argumenty. Test nevolá LLM; potom nastavení uložte.",
+          "V konverzaci zapněte + → Konektory pro další zprávu. MCP vyžaduje kompatibilní engine; CLI se přihlašuje oficiálním příkazem v terminálu hostitele. Při 401 nastavte podporovaný Bearer token nebo ověřovací hlavičku. OAuth v prohlížeči není dostupný."
+        ],
+        "tips": [
+          "Příklad: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Nastavení a použití konektorů",
+          "caption": "Skutečný snímek chybí: nastavení, test a výběr v konverzaci."
         }
       }
     ]

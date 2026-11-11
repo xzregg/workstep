@@ -31,6 +31,7 @@ export interface EngineInfo {
   third_party_terms_url: string | null
   supports_resume: boolean
   supports_session_fork: boolean
+  supports_mcp?: boolean
   supports_coordinator: boolean
   supports_tool_disable: boolean
   supports_native_schema: boolean

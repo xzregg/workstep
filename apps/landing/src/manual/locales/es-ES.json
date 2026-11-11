@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Si falta un artefacto, verifique si se generó un archivo, si su declaración de salida coincide y los mensajes de ejecución.",
-          "Pulsa la ruta del encabezado de la vista previa para copiarla y comprueba el aviso de éxito o fallo."
+          "Pulsa la ruta del encabezado de la vista previa para copiarla y comprueba el aviso de éxito o fallo.",
+          "Abra una imagen para copiarla, copiar su dirección o descargarla. La copia requiere permiso del portapapeles del navegador; si falla, descárguela."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "No hay resultados después de buscar manual-demo en el centro de habilidades",
           "caption": "El centro de habilidades ofrece búsqueda de nombres y filtrado de fuentes. No se muestra ninguna habilidad coincidente o interruptor de habilitación."
+        }
+      },
+      {
+        "title": "Configurar y usar conectores",
+        "steps": [
+          "Abra Ajustes → Conectores → Añadir. Para MCP local, indique comando y argumentos por separado; para MCP remoto, una URL; para CLI, el ejecutable. Seleccione los proyectos permitidos.",
+          "En Prueba → Detectar conexión, descubra las herramientas. Ejecutarlas realiza llamadas reales: revise los argumentos. La prueba no llama a un LLM; guarde después.",
+          "En la conversación active + → Conectores para el siguiente mensaje. MCP requiere un motor compatible; el CLI inicia sesión con su comando oficial en el terminal anfitrión. Ante 401, configure el token Bearer o encabezado admitido. OAuth del navegador no está disponible."
+        ],
+        "tips": [
+          "Ejemplo: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Configurar y usar conectores",
+          "caption": "Captura real pendiente: configuración, prueba y selección en conversación."
         }
       }
     ]

@@ -2,7 +2,7 @@ import Icon, { type IconName } from './Icon'
 import { useI18n } from '../i18n'
 import './SettingsNavigation.css'
 
-export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'roles' | 'channels' | 'remote' | 'concurrency' | 'git' | 'appearance' | 'system' | 'feedback' | 'sandbox' | 'speech'
+export type SettingsSection = 'connectors' | 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'roles' | 'channels' | 'remote' | 'concurrency' | 'git' | 'appearance' | 'system' | 'feedback' | 'sandbox' | 'speech'
 
 const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: string }[] = [
   { id: 'providers', label: 'providerSettings.nav', icon: 'sliders-horizontal' },
@@ -11,6 +11,7 @@ const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: s
   { id: 'assistants', label: 'settings.assistantNav', glyph: '✦' },
   { id: 'speech', label: 'speech.title', icon: 'mic' },
   { id: 'templates', label: 'settings.templatesNav', icon: 'layout-grid' },
+  { id: 'connectors', label: 'connectors.title', icon: 'plug' },
   { id: 'roles', label: 'roleCenter.title', icon: 'drama' },
   { id: 'channels', label: 'channelBot.title', icon: 'bot' },
   { id: 'remote', label: 'settings.remoteAccessTitle', icon: 'share' },

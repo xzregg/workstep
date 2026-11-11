@@ -1,4 +1,6 @@
 export const zhCN = {
+  connectors: {"configuration": "配置", "testTab": "测试", "testTitle": "连接测试", "testDraftHint": "使用当前配置测试，不会自动保存。", "testInvalid": "请先补全配置中的名称、地址或启动命令及认证信息。", "testing": "正在连接并读取工具…", "invoking": "正在执行工具…", "configureAuthentication": "配置认证", "oauthNotAvailable": "在配置中填写服务支持的令牌或请求头。仅支持网页 OAuth 授权的服务，当前版本暂无法连接。", "cliTestHint": "这里只确认 CLI 是否可执行。登录请在宿主终端执行官方登录命令，再返回重试。", "toolsCount": "可用工具（{count}）", "toolsPartial": "当前仅显示部分工具，服务仍有更多结果。", "selectTestTool": "选择测试工具", "toolSchema": "参数结构", "toolArguments": "工具参数（JSON 对象）", "toolArgumentsInvalid": "请输入有效的 JSON 对象。", "toolExecutionHint": "执行会真实调用服务，可能修改数据。请确认所选工具和参数。", "invokeTool": "执行工具", "toolResult": "返回结果", "arguments": "启动参数", "editMode": "参数编辑方式", "visual": "可视化", "source": "JSON / 文本", "argumentNumber": "参数 {count}", "argumentValue": "填写参数值", "removeArgument": "删除参数 {count}", "addArgument": "添加参数", "nameExample": "例如：设计资料", "descriptionExample": "用几句话说明它的功能（可选）", "connection": "连接", "serverUrl": "服务器 URL", "authentication": "身份认证", "keepAuthentication": "保持已保存的认证", "noAuthentication": "无需认证", "bearerAuthentication": "访问令牌（Bearer Token）", "tokenExample": "粘贴访问令牌，无需填写 Bearer 前缀", "advanced": "高级设置", "protocol": "传输协议", "subtitle": "把常用工具，带进你的工作流。", "tabAdded": "已添加", "tabBrowse": "浏览连接器", "tabLocal": "本机发现", "autoEngines": "连接一次，兼容引擎自动可用", "manageShort": "管理", "addShort": "添加", "remoteDescription": "通过服务地址连接远程工具，使用提供方的认证信息。", "localDescription": "启动本机 MCP 服务，将工具接入工作流。", "cliDescription": "通过本机 CLI 访问已授权的服务，沿用已有登录状态。", "existingLogin": "本机登录", "visualConfiguration": "可视化配置，无需 JSON", "emptyHint": "添加常用工具，或扫描本机已有的连接配置。", "noMatches": "没有找到匹配的连接器", "searchAgain": "试试其他关键词。", "credentialsHint": "兼容引擎自动接入，连接凭据不会写入提示词。", "discoverMore": "发现更多工作方式", "browseAll": "浏览全部连接器", "scanTitle": "发现已经安装的工具", "scanSummary": "预览常见 MCP 配置与 CLI 安装位置，不改写来源配置。", "startScan": "开始扫描", "rescan": "重新扫描", "localResults": "发现 {count} 项配置", "requiresReview": "添加前核对配置", "title": "连接器", "manage": "管理连接器", "search": "搜索连接器", "loading": "正在读取…", "empty": "还没有连接器", "unavailable": "当前引擎暂不可用", "add": "添加连接器", "edit": "编辑连接器", "save": "保存连接器", "name": "名称", "description": "简介", "type": "连接方式", "remote": "远程 MCP", "local": "本地 MCP", "url": "服务地址", "command": "可执行命令", "args": "参数（JSON 数组或每行一项）", "argsInvalid": "请输入有效的 JSON 字符串数组，例如 [\"-y\", \"example-server\"]。", "keepSecrets": "已保存的凭据不会回填；不填写则保留。填写同类凭据时将替换该组。", "localSecrets": "凭据仅在宿主本地加密保存，密钥文件由本机文件权限保护。", "headers": "认证请求头", "env": "环境变量", "key": "名称", "secret": "值（保密）", "removeField": "移除此字段", "addField": "添加字段", "projects": "可用项目", "allProjectsHint": "不选择表示所有项目；选择后仅这些项目可用。", "allProjects": "所有项目", "limitedProjects": "仅 {count} 个项目", "enabled": "已启用", "disabled": "已停用", "test": "检测连接", "scan": "扫描本机", "discovered": "本机发现", "scanHint": "仅读取已知配置和 CLI 路径，不修改来源、不复制密钥。添加前请核对地址与参数。", "scanEmpty": "未发现可导入的连接配置", "configure": "配置并添加", "remove": "移除连接器", "removeHint": "移除本地记录和会话选择，不会撤销平台授权或删除原生配置。", "discard": "放弃未保存的连接器更改？", "nextRun": "更改在下一次执行时生效", "choose": "连接器", "clearCredentials": "清除已保存凭据", "cliLogin": "登录 CLI", "loginHint": "请在终端运行 CLI 官方登录命令，完成后检测连接。"},
+
   sessionGroups: {"create": "创建分组", "name": "分组名", "actions": "分组操作", "archive": "归档分组", "delete": "删除分组", "ungrouped": "未分组", "archiveConfirm": "归档「{name}」及其中的 {count} 个对话？对话和消息会保留，可在已归档对话中查看、恢复。运行中的对话将保留在当前列表。", "deleteConfirm": "删除分组「{name}」？其中的 {count} 个对话和消息会保留，对话移回普通列表。", "skipped": "{count} 个对话未能处理，已保留在分组中，请稍后重试。", "failed": "分组操作失败，请重试", "discard": "放弃填写分组名？", "deleteSessions": "同时删除组内对话和消息", "deleteWithSessionsConfirm": "永久删除「{name}」及其中的 {count} 个对话和消息？此操作无法撤销，运行中的对话将保留。"},
 
   channelDirectory: {"title": "通讯录", "enabled": "读取企业通讯录", "memoryHint": "通讯录仅缓存在内存中，重启后重新获取；日常查询不请求平台，人员变化后请手动更新。", "directory_corp_id": "企业 ID", "directory_agent_id": "通讯录应用 Agent ID", "directory_secret": "通讯录应用 Secret", "identityHint": "请使用机器人所属企业的应用凭证。企微成员需先与此机器人交互，且消息中的用户 ID 与目录 ID 完全一致，才能按姓名发送；ID 不一致时请使用已有会话发送。", "save": "保存通讯录配置", "botDisabled": "请先启用机器人", "loading": "正在获取通讯录…", "count": "已缓存 {count} 位成员", "refresh": "更新通讯录", "updated": "上次更新：", "search": "搜索姓名、部门或用户 ID", "name": "姓名", "department": "部门", "userId": "用户 ID", "unverified": "发送身份未验证", "empty": "没有匹配的联系人", "previous": "上一页", "next": "下一页"},
@@ -85,6 +87,7 @@ export const zhCN = {
     "refresh": "刷新",
     "retry": "重试",
     "error": "操作审计加载失败，请重试。",
+    "localOnly": "操作审计仅限项目所在设备查看，请在该设备上通过桌面端或本机地址打开。",
     "empty": "暂无远程操作记录。",
     "unknown": "未知用户",
     "first": "回到最新",
@@ -1106,6 +1109,11 @@ export const zhCN = {
     status: { active: '进行中', paused: '已暂停', blocked: '受阻', usageLimited: '用量受限', budgetLimited: '预算已用尽', complete: '已完成', cleared: '已清除' },
   },
   md: {
+    downloadImage: '下载图片',
+    imageDownloadStarted: '已请求下载，请在系统下载界面确认保存',
+    imageDownloadFailed: '下载失败，请重试',
+    copyImage: '复制图片',
+    copyImageAddress: '复制地址',
     localImageHint: '本机文件，请上传为图片附件后查看。',
     placeholder: '输入内容…（支持 Markdown，可粘贴或拖入附件）',
     ariaLabel: '任务说明',
@@ -1561,6 +1569,8 @@ export const zhCN = {
     switch: '切换',
   },
   layout: {
+    collapseAllProjects: '收起所有项目',
+    expandAllProjects: '展开所有项目',
     sidebarSectionResize: '拖动调整最近聊天高度，双击恢复默认',
     sidebarSectionDragHint: '拖动调整分区位置，或按 Alt + ↑/↓',
     workspaceHome: '工作台',

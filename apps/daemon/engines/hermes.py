@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 class HermesEngine(AcpEngineBase):
     ENGINE_ID = "hermes"
+    supports_mcp = True
 
     # Hermes 按 ACP 规范在 session/load 内重播整段历史，不丢弃会被当成
     # 新一轮事件写入新消息正文（旧文复读）。

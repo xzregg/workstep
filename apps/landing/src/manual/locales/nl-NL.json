@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Als een artefact ontbreekt, controleer dan of er een bestand is gegenereerd, of de uitvoerdeclaratie overeenkomt en of er uitvoeringsberichten zijn.",
-          "Klik op het pad in de voorbeeldkop om het te kopiëren en controleer de melding van succes of mislukking."
+          "Klik op het pad in de voorbeeldkop om het te kopiëren en controleer de melding van succes of mislukking.",
+          "Open een afbeelding om deze of het adres te kopiëren of te downloaden. Kopiëren vereist klembordtoestemming van de browser; download bij een fout."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Geen resultaten na zoeken naar handmatige demo in Vaardigheidscentrum",
           "caption": "Skill center biedt zoeken op naam en bronfiltering. Er wordt geen overeenkomende vaardigheid of activeringsschakelaar weergegeven."
+        }
+      },
+      {
+        "title": "Connectoren instellen en gebruiken",
+        "steps": [
+          "Open Instellingen → Connectoren → Toevoegen. Vul voor lokale MCP opdracht en argumenten apart in, voor externe MCP een URL of voor CLI het uitvoerbare bestand. Selecteer toegestane projecten.",
+          "Ontdek tools via Test → Verbinding detecteren. Tools uitvoeren doet echte aanroepen: controleer argumenten. Deze test gebruikt geen LLM; sla daarna op.",
+          "Schakel in het gesprek + → Connectoren in voor het volgende bericht. MCP vereist een geschikte engine; meld CLI aan met de officiële opdracht in de hostterminal. Configureer bij 401 een ondersteund Bearer-token of authenticatieheader. Browser-OAuth is niet beschikbaar."
+        ],
+        "tips": [
+          "Voorbeeld: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Connectoren instellen en gebruiken",
+          "caption": "Echte schermafbeelding ontbreekt: configuratie, test en gespreksselectie."
         }
       }
     ]

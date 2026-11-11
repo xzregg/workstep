@@ -81,6 +81,7 @@ export interface AssistantQuickPrompt {
 }
 
 export interface AssistantChatPanelProps {
+  connectorsEnabled?: boolean
   projectId: string
   visibilityPermission?: string
   /** Stable WorkStep conversation id shown in message metadata. */
@@ -290,7 +291,7 @@ const MessageItem = memo(function MessageItem({
 
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
-  projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeaderStatus = false, welcome = false, messages, running, stopping, input, sendError, copy,
+  connectorsEnabled = false, projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeaderStatus = false, welcome = false, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
   onA2uiAction, headerDrag, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, workflowSkill, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
@@ -717,6 +718,7 @@ export default function AssistantChatPanel({
             )}
           <SkinExtensionSlot name="composer-before" />
           <ChatInput
+            connectorsEnabled={connectorsEnabled && can('session.config')}
             roleBinding={roleBinding}
             projectId={projectId}
             sessionId={sessionId}

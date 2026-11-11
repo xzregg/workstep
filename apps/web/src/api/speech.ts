@@ -17,7 +17,10 @@ function checkCancelled(signal?: AbortSignal) {
 }
 export const speechApi = {
   status: async (projectId = '') => request<SpeechStatus>(await workspaceCatalogPath('/speech', projectId)),
-  configure: (enabled: boolean, language: string, model_id?: string) => request('/speech/settings', options('PUT', { enabled, language, model_id })),
+  configure: (enabled: boolean, language: string, model_id?: string) => request('/speech/settings', options('PUT', { enabled, language, model_id })).then(result => {
+    window.dispatchEvent(new Event('workstep:speech-settings-changed'))
+    return result
+  }),
   download: (modelId?: string) => request<SpeechStatus>('/speech/models/download' + (modelId ? `?model_id=${encodeURIComponent(modelId)}` : ''), options('POST')),
   cancelDownload: () => request<SpeechStatus>('/speech/models/cancel', options('POST')),
   deleteModel: (modelId?: string) => request<SpeechStatus>('/speech/models/current' + (modelId ? `?model_id=${encodeURIComponent(modelId)}` : ''), options('DELETE')),

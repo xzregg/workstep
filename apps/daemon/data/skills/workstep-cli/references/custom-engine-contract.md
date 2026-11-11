@@ -22,6 +22,31 @@
 
 签名、事件和能力的权威定义在 `$WORKSTEP_DAEMON_DIR/engines/core/{acp_base,base,events,schema,agui}.py`。允许读取这些接口文件实现适配；不需要为了运行 CLI 探索传输源码。
 
+## MCP 连接器接口（必读）
+
+所有引擎都继承同一接口；没有真实接入能力时保持 `supports_mcp = False`，不能静默忽略用户已启用的连接器。声明支持时必须显式实现：
+
+```python
+supports_mcp = True
+
+async def configure_mcp_servers(self, servers: list[dict], config_overrides: dict | None = None) -> dict:
+    return await super().configure_mcp_servers(servers, config_overrides)
+```
+
+这段代码只展示标准合并接口，不是完整接入。SDK/CLI 适配器还必须在 `spawn` 中把返回配置交给官方原生 MCP 入口；如果 SDK 使用不同字段，可在此方法转换，`spawn` 必须读取转换结果。ACP 适配器也须显式实现上述方法，标准 `mcp_servers` 随新建／恢复会话传给原生 ACP Agent。若自行覆盖 `capabilities`，其中 `supports_mcp` 必须与属性一致。
+
+- `servers` 是本次运行的本地 stdio 桥接描述列表，每项包含 `name/command/args/env`；HTTP/SSE 上游认证由 WorkStep 桥接层处理，自定义引擎无需读取凭据保险库。
+- 返回 JSON 可序列化的配置字典，不修改入参，保留原模型、供应商、沙箱、审批和原生 MCP 配置；同名冲突要明确报错，不覆盖。
+- 不把 MCP 描述或认证拼进提示词，不写用户全局原生配置文件。沿用原生工具审批；执行结束／停止时回收自身客户端和子进程。
+- 无连接器的执行保持原行为；只读协调调用不自动注入。恢复会话时也要重新应用本轮配置，不能只在首次创建时生效。
+- `inspect` 检查方法存在、异步签名和能力声明；自定义引擎不需要加入内置 ID 白名单。
+
+## MCP 验收测试
+
+引擎专属 unittest 必须覆盖：空配置不改变行为、现有原生 MCP 合并、名称冲突、官方 SDK/CLI 实际接收参数、工具调用失败、审批拒绝、停止清理，以及声明支持时的会话恢复。
+
+`engine validate` 对 `supports_mcp=True` 自动运行 `mcp_connector_roundtrip`：在隔离临时目录启动专用 stdio MCP 服务，让引擎调用随机名称的探测工具，以服务端收到的 nonce 验证真实调用；声明 `supports_resume=True` 时恢复原会话后再验一次。只输出“支持”、伪造工具事件或不传配置都会失败。验收只允许单次批准该专用测试工具，其他审批拒绝；不会使用用户已有连接器或项目密钥。测试失败不得注册；不支持时该项标为不适用，不得伪报通过。
+
 ## 事件
 
 内部只产出 ACP 对齐 `InternalEvent`，声明 `acp_events` 为实际来源集合。文本使用 `agent_message_chunk(text)`，思考使用对应 helper，工具保留稳定 tool_call_id 和 pending/in_progress/completed/failed 状态，审批保留 interaction_id 与 options。会话启动保留真实 session_id；用量只发布真实非负数；不能补造默认用量。目标模式的 `goal_update` 属于 WorkStep 扩展，单独声明 `workstep_events = frozenset({"goal_update"})`，不加入 acp_events；统一 AG-UI 翻译由 WorkStep 完成，适配器不直接发前端消息。

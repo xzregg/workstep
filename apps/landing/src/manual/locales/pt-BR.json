@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Se um artefato estiver faltando, verifique se um arquivo foi gerado, se sua declaração de saída corresponde e as mensagens de execução.",
-          "Clique no caminho no título da prévia para copiá-lo e confira o aviso de sucesso ou falha."
+          "Clique no caminho no título da prévia para copiá-lo e confira o aviso de sucesso ou falha.",
+          "Abra uma imagem para copiá-la, copiar seu endereço ou baixá-la. A cópia exige permissão da área de transferência; se falhar, use o download."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Nenhum resultado após pesquisar demonstração manual no Centro de habilidades",
           "caption": "O centro de habilidades oferece pesquisa de nomes e filtragem de fontes. Nenhuma habilidade correspondente ou chave de habilitação é exibida."
+        }
+      },
+      {
+        "title": "Configurar e usar conectores",
+        "steps": [
+          "Abra Configurações → Conectores → Adicionar. Para MCP local, informe comando e argumentos separados; para MCP remoto, uma URL; para CLI, o executável. Selecione os projetos permitidos.",
+          "Em Teste → Detectar conexão, descubra ferramentas. A execução faz chamadas reais: confira os argumentos. O teste não chama um LLM; salve depois.",
+          "Na conversa, ative + → Conectores para a próxima mensagem. MCP exige um mecanismo compatível; entre no CLI com o comando oficial no terminal do host. Para 401, configure o token Bearer ou cabeçalho aceito. OAuth no navegador não está disponível."
+        ],
+        "tips": [
+          "Exemplo: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Configurar e usar conectores",
+          "caption": "Captura real pendente: configuração, teste e seleção na conversa."
         }
       }
     ]

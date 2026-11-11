@@ -1,10 +1,3 @@
-.chat-role-binding { display: flex; align-items: center; gap: 6px; flex-shrink: 0; max-width: 100%; min-width: 0; }
-.chat-role-binding > button { padding: 0; border: 0; background: var(--surface); color: var(--accent); border-radius: var(--radius-sm); min-height: 28px; }
-.chat-role-binding .chat-role-binding-name { display: flex; gap: 6px; align-items: center; padding: 4px 8px; max-width: min(65vw, 320px); min-width: 0; }
-.chat-role-binding-name > svg, .chat-role-binding-name > .task-status-spinner { flex-shrink: 0; }
-.chat-role-binding-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-role-binding .chat-role-binding-remove { display: grid; place-items: center; width: 28px; flex-shrink: 0; }
-.chat-role-binding[data-missing] > button { color: var(--danger); }
 .chat-role-binding-error { color: var(--danger); font-size: calc(12px * var(--font-scale)); overflow-wrap: anywhere; }
 .chat-role-binding-error button { margin-left: 8px; }
 .chat-role-picker-overlay { z-index: 330; }
@@ -30,8 +23,6 @@
 .chat-role-picker-footer > p { font-size: calc(12px * var(--font-scale)); color: var(--muted); margin: 4px 0 10px; }
 .chat-role-picker-footer > div:last-child { display: flex; justify-content: flex-end; gap: 8px; }
 @media (max-width: 1023px) {
-  .chat-role-binding > button { min-height: var(--mobile-control-regular); }
-  .chat-role-binding .chat-role-binding-remove { width: var(--mobile-control-regular); }
   .modal.chat-role-picker { width: 100%; height: calc(100dvh - 24px); }
   .chat-role-picker-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(120px, 1fr) minmax(140px, 1fr); }
   .chat-role-picker-list { border-right: 0; border-bottom: 1px solid var(--border-soft); }

@@ -757,7 +757,8 @@
         ],
         "tips": [
           "Jeśli brakuje artefaktu, sprawdź, czy plik został wygenerowany, czy jego deklaracja wyjściowa jest zgodna i jakie są komunikaty wykonania.",
-          "Kliknij ścieżkę w nagłówku podglądu, aby ją skopiować, i sprawdź komunikat o powodzeniu lub błędzie."
+          "Kliknij ścieżkę w nagłówku podglądu, aby ją skopiować, i sprawdź komunikat o powodzeniu lub błędzie.",
+          "Otwórz obraz, aby go skopiować, skopiować jego adres lub pobrać. Kopiowanie wymaga zgody na schowek przeglądarki; w razie błędu pobierz plik."
         ],
         "screenshot": {
           "id": "task-artifacts",
@@ -921,6 +922,22 @@
           "id": "project-skills",
           "alt": "Brak wyników po przeszukaniu wersji demonstracyjnej ręcznej w Centrum umiejętności",
           "caption": "Centrum umiejętności oferuje wyszukiwanie nazw i filtrowanie źródeł. Nie wyświetla się żadna pasująca umiejętność ani przełącznik włączający."
+        }
+      },
+      {
+        "title": "Konfigurowanie i używanie łączników",
+        "steps": [
+          "Otwórz Ustawienia → Łączniki → Dodaj. Dla lokalnego MCP podaj osobno polecenie i argumenty, dla zdalnego MCP adres URL, a dla CLI plik wykonywalny. Wybierz dozwolone projekty.",
+          "W Test → Wykryj połączenie odczytaj narzędzia. Uruchomienie narzędzia wykonuje rzeczywiste wywołanie: sprawdź argumenty. Test nie wywołuje LLM; potem zapisz ustawienia.",
+          "W rozmowie włącz + → Łączniki dla następnej wiadomości. MCP wymaga zgodnego silnika; CLI loguje się oficjalnym poleceniem w terminalu hosta. Przy 401 ustaw obsługiwany token Bearer lub nagłówek uwierzytelnienia. OAuth w przeglądarce jest niedostępny."
+        ],
+        "tips": [
+          "Przykład: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
+        ],
+        "screenshot": {
+          "id": "connector-settings",
+          "alt": "Konfigurowanie i używanie łączników",
+          "caption": "Brakuje rzeczywistego zrzutu: konfiguracja, test i wybór w rozmowie."
         }
       }
     ]

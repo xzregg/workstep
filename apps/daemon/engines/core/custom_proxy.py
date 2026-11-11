@@ -270,14 +270,14 @@ def make_custom_engine(root: Path, metadata: dict):
 for _method in ("inject_response", "approve_tool", "approve_tool_option", "respond_interaction",
                 "create_session", "load_session", "list_sessions", "resume_session", "fork_session",
                 "close_session", "cancel_session", "set_config_option", "set_session_mode", "reset_options",
-                "send_live_step_message", "send_live_stage_message", "set_permission_mode"):
+                "send_live_step_message", "send_live_stage_message", "set_permission_mode", "configure_mcp_servers"):
     def make_method(name):
         async def invoke(self, *args, **kwargs):
             if name == "set_permission_mode":
                 await AcpEngineBase.set_permission_mode(self, *args, **kwargs)
             result = await self._call(name, args, kwargs)
             if not self._running:
-                if name in {"create_session", "load_session", "resume_session", "fork_session", "set_config_option", "set_session_mode", "reset_options", "set_permission_mode"}:
+                if name in {"create_session", "load_session", "resume_session", "fork_session", "set_config_option", "set_session_mode", "reset_options", "set_permission_mode", "configure_mcp_servers"}:
                     self._schedule_idle_cleanup()
                 else:
                     await self.stop()

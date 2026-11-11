@@ -44,7 +44,9 @@ class BrowserActorMiddleware(BaseHTTPMiddleware):
         if get_current_actor() is not None:
             return await call_next(request)
         from services.project_audit import _remote_browser_request
-        remote = not _is_loopback(_client_host(request.headers, request.client))
+        # Container port forwarding changes the peer address of local Electron requests.
+        remote = (not desktop_runtime_authenticated(request)
+                  and not _is_loopback(_client_host(request.headers, request.client)))
         remote_token = _remote_browser_request.set(remote)
         actor = actor_from_browser_headers(request.headers)
         token = None

@@ -21,6 +21,9 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     assert "$custom-engine" not in result["prompt"]
     assert "workstep-cli" in result["prompt"]
     assert "custom-engine.md" in result["prompt"]
+    assert "supports_mcp" in result["prompt"]
+    assert "configure_mcp_servers" in result["prompt"]
+    assert "real MCP" in result["prompt"]
     assert result["workspace_path"] in result["prompt"]
     assert "no restart is needed" in result["prompt"]
     module.create_session.assert_called_once()
@@ -75,6 +78,8 @@ async def test_onboarding_api_uses_real_db_without_blocking_event_loop(tmp_path,
             result = response.json()
             detail = await manager.run_db(result["project_id"], lambda current: module.get_session(result["project_id"], result["session_id"]))
             assert detail["title"] == ("Imported engine" if imported else "自定义引擎接入")
+            assert 'supports_mcp' in result['prompt']
+            assert 'configure_mcp_servers' in result['prompt']
             if imported:
                 assert result['package_path'] in result['prompt']
                 assert 'engine validate' in result['prompt']
