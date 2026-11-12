@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型编辑练习</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f7fa;color:#182234;font:15px/1.65 system-ui,-apple-system,sans-serif}.page{max-width:1000px;margin:auto;padding:48px 28px}header{display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-weight:700;letter-spacing:2px;color:#3568d4}.tag{background:#e8efff;color:#3568d4;padding:5px 12px;border-radius:20px;font-size:13px}h1{font-size:38px;line-height:1.3;margin:34px 0 12px}.intro{color:#69758a;max-width:620px}.actions{display:flex;gap:12px;margin:24px 0 36px}button{font:inherit;border:0;border-radius:9px;padding:10px 20px;cursor:pointer;background:#3568d4;color:white}.secondary{background:white;color:#3568d4;border:1px solid #dce4f2}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{background:white;border:1px solid #e1e6ee;border-radius:14px;padding:24px}.card h2{font-size:18px;margin:14px 0 8px}.card p{color:#69758a;margin:0 0 20px}.number{font-size:13px;color:#8b96a8}.card button{font-size:13px;padding:8px 15px}.note{margin:24px 0;padding:18px 22px;background:#fff7e7;border:1px solid #f0dfbb;border-radius:12px}.note strong{color:#94631d}.note p{margin:4px 0 0;color:#856d49}footer{display:flex;justify-content:space-between;gap:16px;margin-top:32px;color:#8b96a8;font-size:13px}#feedback{min-height:26px;color:#3568d4}@media(max-width:650px){.page{padding:28px 20px}.grid{grid-template-columns:1fr}h1{font-size:30px}footer{flex-direction:column}}
+</style>
+</head>
+<body>
+<main class="page">
+<header><span class="brand">WORKSPACE</span><span class="tag">原型编辑练习</span></header>
+<h1>把一个想法，变成清晰的计划。</h1>
+<p class="intro">这是一个无需联网的示例页面。试着修改标题、调整按钮颜色和宽度，或者删除下面的提示卡片。</p>
+<div class="actions"><button id="primary-action" type="button">创建新项目</button><button class="secondary" type="button">浏览模板</button></div>
+<div class="grid">
+<article class="card"><span class="number">01 / 需求</span><h2>整理需求</h2><p>把零散想法整理成目标、范围与验收条件。</p><button type="button">查看详情</button></article>
+<article class="card"><span class="number">02 / 设计</span><h2>打磨原型</h2><p>选择具体元素，调整文案、间距与视觉样式。</p><button type="button">查看详情</button></article>
+<article class="card"><span class="number">03 / 交付</span><h2>检查成果</h2><p>比较修改前后的差异，确认结果符合预期。</p><button type="button">查看详情</button></article>
+</div>
+<aside class="note"><strong>这张提示卡片可以删除</strong><p>选中具体元素后尝试删除，再使用撤销恢复。</p></aside>
+<p id="feedback" aria-live="polite">切换到浏览模式，点击按钮体验交互。</p>
+<footer><span>示例内容，不包含真实项目数据</span><span>可练习：改字、改色、拖动尺寸、评论、撤销</span></footer>
+</main>
+<script>
+document.querySelectorAll('button').forEach(function(button){button.addEventListener('click',function(){document.getElementById('feedback').textContent='已点击：'+button.textContent+'。这是模拟交互，不会创建真实项目。';});});
+</script>
+</body>
+</html>
