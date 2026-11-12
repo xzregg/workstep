@@ -893,15 +893,28 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             return ""
         return self.get_system_prompt(session.project_id)
 
+    def _digital_person_prompt(self, session) -> str:
+        from services.digital_person import prompt_for_project
+        from services.customization_workspace import is_default_workspace
+        if self._project_manager is None:
+            return ""
+        project = self._project_manager.get_project_by_id(session.project_id)
+        prompt = prompt_for_project(project)
+        if not prompt and project is not None and is_default_workspace(project) and config_store.get('digital_person'):
+            prompt = '[WorkStep digital person] 数字人模式已关闭，不再沿用此前数字人身份与职责。'
+        # Native resumed sessions must receive changes to the identity too.
+        session.extra['digital_person_each_turn'] = bool(prompt) or session.extra.get('digital_person_each_turn', False)
+        return prompt
+
     def _engine_system_prompt(self, session) -> str:
         if self._config.name != "chat_session":
             return super()._engine_system_prompt(session)
         return "\n\n".join(part for part in (
-            self.get_system_prompt(session.project_id), self._role_system_prompt(session),
+            self._digital_person_prompt(session), self.get_system_prompt(session.project_id), self._role_system_prompt(session),
         ) if part)
 
     def _session_system_prompt_each_turn(self, session) -> bool:
-        return bool(session.extra.get('pending_role_checkpoint')) or super()._session_system_prompt_each_turn(session)
+        return bool(session.extra.get('pending_role_checkpoint') or session.extra.get('digital_person_each_turn')) or super()._session_system_prompt_each_turn(session)
 
     def _capture_prompt_input(self) -> bool:
         return self._config.name in {"chat_session", "channel_chat"} or super()._capture_prompt_input()

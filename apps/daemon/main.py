@@ -59,6 +59,7 @@ from api.chat_session import router as chat_session_router
 from api.chat_roles import router as chat_roles_router
 from api.statistics import router as statistics_router
 from api.share import router as share_router
+from api.digital_person import router as digital_person_router
 from api.assistant import router as assistant_router
 from api.system_settings import router as system_settings_router
 from api.workflow_hooks import router as workflow_hooks_router, public_router as hook_ingress_router
@@ -412,6 +413,7 @@ app.include_router(task_group_router)
 app.include_router(statistics_router)
 app.include_router(share_router)
 app.include_router(assistant_router)
+app.include_router(digital_person_router)
 app.include_router(project_settings_router)
 app.include_router(system_settings_router)
 app.include_router(workflow_hooks_router)

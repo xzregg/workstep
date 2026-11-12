@@ -4,6 +4,7 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useLocation } from 'react-router-dom'
+import SchedulePage from '../src/pages/SchedulePage'
 import ScheduleCenter from '../src/components/ScheduleCenter'
 import { scheduleApi, workflowApi, taskApi, type Project, type ProjectSchedule } from '../src/api/client'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
@@ -27,6 +28,8 @@ const schedule = (id: string): ProjectSchedule => ({
 function Route() { const location = useLocation(); return <output id="route">{location.pathname + location.search}</output> }
 async function setup() {
   const { window } = installDomEnvironment()
+  const previousResizeObserver = globalThis.ResizeObserver
+  Object.assign(globalThis, { ResizeObserver: window.ResizeObserver })
   useLocaleStore.setState({ locale: 'zh-CN' })
   const projectState = useProjectStore.getState(), sessionState = useGatewaySessionStore.getState()
   const original = { ...scheduleApi }, originalWorkflowGet = workflowApi.get, originalFetch = globalThis.fetch
@@ -40,7 +43,7 @@ async function setup() {
   workflowApi.get = async id => ({ id, name: id, steps: { nodes: [] } }) as any
   globalThis.fetch = async () => Response.json({ providers: [], buttons: [], assistants: [], models: [] })
   const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
-  const render = () => act(async () => root.render(<MemoryRouter initialEntries={['/tasks?project=项目A&workflow=flow-a']}><I18nProvider><ScheduleCenter /><Route /></I18nProvider></MemoryRouter>))
+  const render = (conversationDefault = false) => act(async () => root.render(<MemoryRouter initialEntries={['/tasks?project=项目A&workflow=flow-a']}><I18nProvider>{conversationDefault ? <SchedulePage project={projects[0]} defaultTargetType="session" /> : <ScheduleCenter />}<Route /></I18nProvider></MemoryRouter>))
   const button = (name: string, scope: ParentNode = document.body) => {
     const found = [...scope.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === name || b.getAttribute('aria-label') === name)
     assert.ok(found, `button: ${name}`); return found
@@ -48,6 +51,7 @@ async function setup() {
   const click = (name: string) => act(async () => button(name).click())
   const cleanup = async () => {
     await act(async () => root.unmount()); container.remove()
+    globalThis.ResizeObserver = previousResizeObserver
     Object.assign(scheduleApi, original); workflowApi.get = originalWorkflowGet; globalThis.fetch = originalFetch
     useProjectStore.setState(projectState); useGatewaySessionStore.setState(sessionState)
     await window.happyDOM.close()
@@ -477,4 +481,19 @@ test('fixed schedule logs do not show generated JSON or its unavailable placehol
     assert.equal(document.querySelector('.schedule-run-json'), null)
     assert.doesNotMatch(document.querySelector('.schedule-runs')!.textContent!, /生成的任务 JSON|未记录生成结果/)
   } finally { await app.cleanup() }
+})
+
+
+test('digital person schedule entry starts new rules as conversation schedules', async () => {
+  const app = await setup()
+  scheduleApi.list = async () => ({ schedules: [] })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({sessions:[], providers:[],buttons:[]})
+  try {
+    await app.render(true)
+    await app.click('新建定时任务')
+    assert.ok(app.container.querySelector('[data-save-session-schedule]'))
+    assert.ok(app.container.querySelector('[aria-label="关联对话"]'))
+    assert.equal(app.container.querySelector<HTMLButtonElement>('[data-save-session-schedule]')!.disabled, true)
+  } finally { globalThis.fetch = originalFetch; await app.cleanup() }
 })

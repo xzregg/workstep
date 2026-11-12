@@ -19,11 +19,11 @@ test('settings navigation has one current section and changes sections by click'
       </I18nProvider>,
     ))
     const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-    assert.equal(buttons.length, 16)
+    assert.equal(buttons.length, 17)
     assert.doesNotMatch(container.textContent ?? '', /NEW/)
     assert.ok(buttons.findIndex(button => button.textContent === '外观') < buttons.findIndex(button => /系统设置|System/.test(button.textContent ?? '')))
     assert.equal(buttons.filter((button) => button.getAttribute('aria-current') === 'page').length, 1)
-    assert.equal(buttons[0].getAttribute('aria-current'), 'page')
+    assert.equal(buttons[1].getAttribute('aria-current'), 'page')
     assert.ok(buttons.every((button) => button.classList.contains('settings-nav-button')))
     assert.ok(buttons.every((button) => !button.hasAttribute('style')))
     assert.deepEqual([...container.querySelectorAll('.settings-nav-heading')].map(node => node.textContent), ['模型与能力', '工作区'])
@@ -34,7 +34,7 @@ test('settings navigation has one current section and changes sections by click'
     await act(async () => buttons.find(button => button.textContent === '连接器')!.click())
     assert.equal(selected, 'connectors')
     assert.equal(buttons.findIndex(button => button.textContent === '连接器') + 1, buttons.findIndex(button => button.textContent === '角色中心'))
-    await act(async () => buttons[1].click())
+    await act(async () => buttons[2].click())
     assert.equal(selected, 'engines')
     await act(async () => buttons.find(button => /远程访问|Remote access/.test(button.textContent ?? ''))!.click())
     assert.equal(selected, 'remote')
@@ -68,7 +68,7 @@ test('managed settings hide the legacy remote project section', async () => {
         <SettingsNavigation activeSection="providers" onSelect={() => {}} />
       </I18nProvider>,
     ))
-    assert.equal(container.querySelectorAll('button').length, 16)
+    assert.equal(container.querySelectorAll('button').length, 17)
     assert.doesNotMatch(container.textContent ?? '', /远程项目/)
     assert.match(container.textContent ?? '', /远程访问|Remote access/)
     assert.doesNotMatch(container.textContent ?? '', /网关平台/)
