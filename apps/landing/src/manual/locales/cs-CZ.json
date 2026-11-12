@@ -1302,6 +1302,7 @@
           "Pomocí platformy Return to Gateway vyberte jiné zařízení. Zpětné autorizační volání prohlížeče, jehož platnost vypršela, restartuje přihlášení; po zrušení autorizace plochy to zkuste znovu ručně nebo se vraťte do místního pracovního prostoru."
         ],
         "tips": [
+          "Pracovní prostor brány po odpojení provede nejvýše 3 automatické opakované pokusy. Poté zobrazí dialog a pozastaví spojení v reálném čase, kontroly relace a obnovování seznamu zařízení. Zkontrolujte síť, bránu a zařízení a zvolte opětovné připojení. Zavření dialogu, odložení, návrat do okna ani obnovení sítě pokusy neobnoví; tlačítko zůstane na stránce. Po 30 sekundách stabilního spojení se počítadlo vynuluje. Po vypršení oprávnění vstupte znovu přes bránu. Místní spojení bez brány nejsou ovlivněna.",
           "Paměť stránek je lokální v prohlížeči, není synchronizována mezi prohlížeči. Přístup funguje bez úložiště prohlížeče, ale umístění se neuchová.",
           "Znovu se připojte podle výzvy v případě offline zařízení, zrušené autorizace nebo selhání sítě. Uložená umístění nenahrazují oprávnění.",
           "Skutečné snímky karet zařízení a souhrnných oznámení z pevného demonstračního projektu zůstávají nevyřízené."

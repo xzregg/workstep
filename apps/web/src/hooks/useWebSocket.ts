@@ -28,6 +28,8 @@ import { completionNotice, notificationUrl, notifyCompletion, unwatchPendingComp
 import { clearBrowserPushWatch, syncBrowserPush } from '../utils/browserPush'
 import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 import { useWebSocketConnectionStore } from '../stores/webSocketConnectionStore'
+import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { GATEWAY_RETRY_LIMIT, GATEWAY_STABLE_MS, useGatewayRecoveryStore } from '../stores/gatewayRecoveryStore'
 
 const WS_RECONNECT_BASE_MS = 1000
 const WS_RECONNECT_MAX_MS = 30000
@@ -70,6 +72,9 @@ export function flushWsSubscriptionNow() {
 }
 
 export function useWebSocket() {
+  const gateway = isGatewayRemoteBrowser()
+  const paused = useGatewayRecoveryStore(state => state.paused)
+  const retryRevision = useGatewayRecoveryStore(state => state.retryRevision)
   const sockets = useRef(new Map<string, WebSocket>())
   const scopeKey = useGatewaySessionStore(s => JSON.stringify(
     s.session?.projects?.map(project => project.host_project_id) ?? [''],
@@ -167,7 +172,7 @@ export function useWebSocket() {
     const checks: Array<() => void> = []
     const checkAll = () => checks.forEach(check => check())
     verifyConnection = checkAll
-    const cleanups = (JSON.parse(scopeKey) as string[]).map(scopeId => {
+    const cleanups = (gateway && paused ? [] : JSON.parse(scopeKey) as string[]).map(scopeId => {
       const wsRef: { current: WebSocket | null } = { current: null }
       const send = (message: object) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(message))
@@ -180,6 +185,7 @@ export function useWebSocket() {
       let heartbeatTimer: ReturnType<typeof setInterval> | null = null
       let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null
       let connectTimeout: ReturnType<typeof setTimeout> | null = null
+      let stableTimer: ReturnType<typeof setTimeout> | null = null
       let heartbeatNonce = 0
       let heartbeatStartedAt: number | null = null
       let disconnectedAt = 0
@@ -187,13 +193,15 @@ export function useWebSocket() {
         if (heartbeatTimer) clearInterval(heartbeatTimer)
         if (heartbeatTimeout) clearTimeout(heartbeatTimeout)
         if (connectTimeout) clearTimeout(connectTimeout)
+        if (stableTimer) clearTimeout(stableTimer)
+        stableTimer = null
         heartbeatTimer = heartbeatTimeout = connectTimeout = null
         heartbeatStartedAt = null
         useWebSocketConnectionStore.setState({ connected: [...sockets.current.values()].some(socket => socket.readyState === WebSocket.OPEN), latencyMs: null })
       }
 
       const connect = () => {
-        if (!active) return
+        if (!active || (gateway && useGatewayRecoveryStore.getState().paused)) return
         if (
           wsRef.current?.readyState === WebSocket.OPEN ||
           wsRef.current?.readyState === WebSocket.CONNECTING
@@ -214,7 +222,9 @@ export function useWebSocket() {
           console.log('[WS] connected')
           const isReconnect = hasOpened
           hasOpened = true
-          reconnectAttempt = 0
+          // A socket that opens then immediately closes is not a recovery.
+          if (gateway) stableTimer = setTimeout(() => { reconnectAttempt = 0 }, GATEWAY_STABLE_MS)
+          else reconnectAttempt = 0
           // Narrow the server-side fan-out to what this client renders.
           flushSubscription()
           // A reconnect (e.g. daemon restart) may have changed persisted task
@@ -331,27 +341,43 @@ export function useWebSocket() {
           }
         }
         ws.onerror = () => ws.close()
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           if (wsRef.current !== ws) return
           disconnectedAt = Date.now() / 1000
           wsRef.current = null
           sockets.current.delete(scopeId)
           clearSocketTimers()
           if (!active || reconnectTimer) return
-          const delay = Math.min(
-            WS_RECONNECT_BASE_MS * 2 ** reconnectAttempt,
-            WS_RECONNECT_MAX_MS,
-          )
-          reconnectAttempt++
-          reconnectTimer = setTimeout(() => {
-            reconnectTimer = null
-            connect()
-          }, delay)
+          scheduleReconnect(event?.code)
         }
+      }
+
+      const scheduleReconnect = (code?: number) => {
+        if (!active || reconnectTimer || (gateway && useGatewayRecoveryStore.getState().paused)) return
+        if (gateway && reconnectAttempt >= GATEWAY_RETRY_LIMIT) {
+          console.warn('[Gateway] automatic reconnect paused', { code, retries: reconnectAttempt })
+          useGatewayRecoveryStore.getState().pause()
+          return
+        }
+        const delay = Math.min(
+          WS_RECONNECT_BASE_MS * 2 ** reconnectAttempt,
+          WS_RECONNECT_MAX_MS,
+        )
+        reconnectAttempt++
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null
+          connect()
+        }, delay)
       }
 
       const restart = () => {
         if (!active) return
+        if (gateway) {
+          if (useGatewayRecoveryStore.getState().paused || reconnectTimer) return
+          if (wsRef.current) wsRef.current.close()
+          else scheduleReconnect()
+          return
+        }
         if (reconnectTimer) clearTimeout(reconnectTimer)
         reconnectTimer = null
         sockets.current.delete(scopeId)
@@ -369,6 +395,7 @@ export function useWebSocket() {
         }, 0)
       }
       const checkConnection = () => {
+        if (!active || (gateway && useGatewayRecoveryStore.getState().paused)) return
         const ws = wsRef.current
         if (!ws || ws.readyState > WebSocket.OPEN) { restart(); return }
         if (ws.readyState !== WebSocket.OPEN) return
@@ -409,7 +436,7 @@ export function useWebSocket() {
       cleanups.forEach(cleanup => cleanup())
       useWebSocketConnectionStore.setState({ connected: false, latencyMs: null })
     }
-  }, [scopeKey, handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, flushSubscription, send, buildSubscription])
+  }, [scopeKey, handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, flushSubscription, send, buildSubscription, gateway, paused, retryRevision])
 
   return { send }
 }

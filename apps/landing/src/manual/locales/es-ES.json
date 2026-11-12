@@ -1302,6 +1302,7 @@
           "Utilice la plataforma Return to Gateway para elegir otro dispositivo. Una devolución de llamada de autorización del navegador vencida reinicia el inicio de sesión; Después de cancelar la autorización del escritorio, vuelva a intentarlo manualmente o regrese al espacio de trabajo local."
         ],
         "tips": [
+          "El espacio de trabajo de la pasarela reintenta automáticamente la conexión hasta 3 veces tras una desconexión. Si sigue fallando, muestra un diálogo y pausa la conexión en tiempo real, la comprobación de sesión y la actualización de dispositivos. Compruebe la red, la pasarela y el dispositivo y elija reconectar. Cerrar o posponer el diálogo, volver a la ventana o recuperar la red no reanuda los intentos; el botón sigue en la página. El contador se restablece tras 30 segundos de conexión estable. Una autorización caducada exige volver a entrar por la pasarela. Las conexiones locales sin pasarela no cambian.",
           "La memoria de la página es local del navegador, no está sincronizada entre navegadores. El acceso funciona sin almacenamiento en el navegador, pero las ubicaciones no se conservan.",
           "Vuelva a conectarse cuando se le solicite para dispositivos fuera de línea, autorización revocada o fallas de red. Las ubicaciones guardadas no reemplazan los permisos.",
           "Las capturas de pantalla reales de la pestaña del dispositivo y de las notificaciones agregadas del proyecto de demostración solucionado siguen pendientes."

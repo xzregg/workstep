@@ -14,6 +14,8 @@ import { NavigationHeaderContext } from './NavigationHeaderContext'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import { initializeAppearancePreferences } from '../utils/appearancePreferences'
+import GatewayConnectionProblem from './GatewayConnectionProblem'
+import { GATEWAY_RETRY_LIMIT, useGatewayRecoveryStore } from '../stores/gatewayRecoveryStore'
 
 export default function GatewayRemoteFrame({ children }: { children: ReactNode }) {
   const { t } = useI18n()
@@ -29,6 +31,8 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
   const sessionErrorStatus = useGatewaySessionStore(state => state.errorStatus)
   const loading = useGatewaySessionStore(state => state.loading)
   const load = useGatewaySessionStore(state => state.load)
+  const paused = useGatewayRecoveryStore(state => state.paused)
+  const retryRevision = useGatewayRecoveryStore(state => state.retryRevision)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(false)
   const appearanceIdentity = useRef<string | null>(null)
@@ -40,12 +44,13 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
   const displayContext=context ?? lastContext.current
 
   useEffect(() => {
-    if (!gatewayUrl) return
+    if (!gatewayUrl || paused) return
     let active = true
     let timer: number | undefined
     let refreshing = false
+    let failures = 0
     async function refresh() {
-      if (!active || refreshing) return
+      if (!active || refreshing || useGatewayRecoveryStore.getState().paused) return
       refreshing = true
       let retryDelay = 20000
       window.clearTimeout(timer)
@@ -77,20 +82,26 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
           }
           projectDirectory.current = directory
         }
-        if (active) { setReady(true); setError(false) }
+        if (active) { failures = 0; setReady(true); setError(false) }
       } catch {
         retryDelay = 5000
         if (active) {
           if (!useGatewaySessionStore.getState().session) setReady(false)
           setError(true)
+          const status = useGatewaySessionStore.getState().errorStatus
+          if (status !== 401 && status !== 403 && ++failures > GATEWAY_RETRY_LIMIT) {
+            console.warn('[Gateway] session recovery paused', { status, retries: GATEWAY_RETRY_LIMIT })
+            useGatewayRecoveryStore.getState().pause()
+          }
         }
       } finally {
         refreshing = false
         const status = useGatewaySessionStore.getState().errorStatus
-        if (active && status !== 401 && status !== 403) timer = window.setTimeout(() => void refresh(), retryDelay)
+        if (active && !useGatewayRecoveryStore.getState().paused && status !== 401 && status !== 403) timer = window.setTimeout(() => void refresh(), retryDelay)
       }
     }
-    const resume = () => void refresh()
+    // Focus/online events must not accelerate a pending failure backoff.
+    const resume = () => { if (!failures) void refresh() }
     const visible = () => { if (document.visibilityState === 'visible') resume() }
     void refresh()
     window.addEventListener('workstep:resume', resume)
@@ -103,7 +114,7 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
       window.removeEventListener('online', resume)
       document.removeEventListener('visibilitychange', visible)
     }
-  }, [gatewayUrl, load])
+  }, [gatewayUrl, load, paused, retryRevision])
 
   const deviceTrigger = compact && !embedded ? <button type="button" className="gateway-mobile-device-trigger" aria-label={t('gatewayRemote.switchDevices')}
         title={displayContext?.device_name} aria-expanded={pickerOpen} aria-controls="gateway-device-picker" onClick={() => setPickerOpen(value => !value)}>
@@ -112,6 +123,7 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
 
   if (!gatewayUrl) return <>{children}</>
   return <div key={JSON.stringify([displayContext?.user_id, displayContext?.device_id])} className={`gateway-remote-frame${compact && !embedded ? ' gateway-remote-frame--mobile' : ''}`}>
+    <GatewayConnectionProblem />
     {!embedded && <>
       {pickerOpen && <button type="button" className="gateway-mobile-picker-backdrop" aria-label={t('common.close')} onClick={() => setPickerOpen(false)}/>}
     </>}
@@ -128,10 +140,10 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
     </div>}
     <div className="gateway-remote-body">
       <div className="gateway-remote-content">{ready && context ? <NavigationHeaderContext.Provider value={deviceTrigger}>{children}</NavigationHeaderContext.Provider> : <div className="gateway-remote-loading" role="status">
-      {(!requiresEntry || loading) && <Spinner size={16} />}
-      <span>{requiresEntry ? t('gatewayRemote.sessionExpired') : disconnected ? t('gatewayRemote.reconnecting') : t('gatewayRemote.loading')}</span>
+      {!paused && (!requiresEntry || loading) && <Spinner size={16} />}
+      {!paused && <span>{requiresEntry ? t('gatewayRemote.sessionExpired') : disconnected ? t('gatewayRemote.reconnecting') : t('gatewayRemote.loading')}</span>}
       <div className="gateway-recovery-actions">
-        <button type="button" className="btn-secondary" disabled={loading} onClick={() => window.dispatchEvent(new Event('workstep:resume'))}>{t('gatewayRemote.retryNow')}</button>
+        {!paused && <button type="button" className="btn-secondary" disabled={loading} onClick={() => useGatewayRecoveryStore.getState().retry()}>{t('gatewayRemote.retryNow')}</button>}
         <ButtonLink href={gatewayUrl}>{t('gatewayRemote.back')}</ButtonLink>
       </div>
     </div>}</div>

@@ -1302,6 +1302,7 @@
           "Use Return to Gateway platform to choose another device. En utgången webbläsarbehörighetsåteruppringning startar om inloggningen; efter att ha avbrutit skrivbordsauktorisering, försök igen manuellt eller återgå till den lokala arbetsytan."
         ],
         "tips": [
+          "Gatewayens arbetsyta försöker automatiskt ansluta igen högst 3 gånger efter ett avbrott. Därefter visas en dialog och realtidsanslutningen, sessionskontrollerna och uppdateringen av enhetslistan pausas. Kontrollera nätverk, gateway och enhet och välj att ansluta igen. Stängning, uppskjutning, återgång till fönstret eller återställt nätverk återupptar inte försöken; knappen finns kvar på sidan. Räknaren nollställs efter 30 sekunders stabil anslutning. Utgången behörighet kräver ny ingång via gatewayen. Lokala anslutningar utan gateway påverkas inte.",
           "Page memory is browser-local, not synchronized across browsers. Åtkomst fungerar utan webbläsarlagring men platser behålls inte.",
           "Reconnect as prompted for offline devices, revoked authorization or network failures. Sparade platser ersätter inte behörigheter.",
           "Verkliga skärmdumpar av enhetsflikar och sammanställda meddelanden från det fasta demonstrationsprojektet förblir väntande."

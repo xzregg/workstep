@@ -1302,6 +1302,7 @@
           "Sử dụng nền tảng Return to Gateway để chọn thiết bị khác. Lệnh gọi lại ủy quyền trình duyệt đã hết hạn khởi động lại đăng nhập; sau khi hủy ủy quyền máy tính để bàn, hãy thử lại theo cách thủ công hoặc quay lại không gian làm việc cục bộ."
         ],
         "tips": [
+          "Không gian làm việc cổng kết nối tự động thử lại tối đa 3 lần sau khi mất kết nối. Nếu vẫn thất bại, hộp thoại xuất hiện và tạm dừng kết nối thời gian thực, kiểm tra phiên và làm mới danh sách thiết bị. Kiểm tra mạng, cổng và thiết bị rồi chọn kết nối lại. Đóng hoặc hoãn hộp thoại, quay lại cửa sổ hay mạng phục hồi đều không tiếp tục thử; nút kết nối lại vẫn có trên trang. Bộ đếm chỉ đặt lại sau 30 giây kết nối ổn định. Quyền hết hạn yêu cầu vào lại qua cổng. Kết nối cục bộ không qua cổng không bị ảnh hưởng.",
           "Bộ nhớ trang là cục bộ của trình duyệt, không được đồng bộ hóa giữa các trình duyệt. Access hoạt động mà không cần bộ nhớ trình duyệt nhưng vị trí không được giữ lại.",
           "Kết nối lại theo lời nhắc đối với các thiết bị ngoại tuyến, ủy quyền bị thu hồi hoặc lỗi mạng. Vị trí đã lưu không thay thế quyền.",
           "Ảnh chụp màn hình tab thiết bị thực và thông báo tổng hợp từ dự án trình diễn cố định vẫn đang chờ xử lý."

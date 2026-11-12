@@ -1302,6 +1302,7 @@
           "Brug Return to Gateway platform til at vælge en anden enhed. Et udløbet browsergodkendelsestilbagekald genstarter login; efter annullering af desktop-autorisation, prøv igen manuelt eller vend tilbage til det lokale arbejdsområde."
         ],
         "tips": [
+          "Gateway-arbejdsområdet prøver automatisk igen højst 3 gange efter en afbrydelse. Derefter vises en dialog, og realtidsforbindelsen, sessionskontrol og opdatering af enhedslisten sættes på pause. Kontrollér netværk, gateway og enhed, og vælg at oprette forbindelse igen. Lukning, udsættelse, vinduesfokus eller genetableret netværk genoptager ikke forsøgene; knappen bliver på siden. Tælleren nulstilles efter 30 sekunders stabil forbindelse. Udløbet adgang kræver ny indgang via gatewayen. Lokale forbindelser uden gateway påvirkes ikke.",
           "Sidehukommelsen er browserlokal, ikke synkroniseret på tværs af browsere. Adgang fungerer uden browserlagring, men placeringer bevares ikke.",
           "Genopret forbindelse som bedt om offline-enheder, tilbagekaldt godkendelse eller netværksfejl. Gemte placeringer erstatter ikke tilladelser.",
           "Skærmbilleder af rigtige enhedsfaner og samlede notifikationer fra det faste demonstrationsprojekt forbliver afventende."

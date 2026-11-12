@@ -1302,6 +1302,7 @@
           "Gebruik Return to Gateway-platform om een ​​ander apparaat te kiezen. Een verlopen browserautorisatie-callback start het inloggen opnieuw; Nadat u de bureaubladautorisatie hebt geannuleerd, probeert u het handmatig opnieuw of keert u terug naar de lokale werkruimte."
         ],
         "tips": [
+          "De gatewaywerkruimte probeert een verbroken verbinding maximaal 3 keer automatisch opnieuw. Daarna verschijnt een dialoog en worden de realtimeverbinding, sessiecontroles en apparaatlijstverversing gepauzeerd. Controleer netwerk, gateway en apparaat en kies opnieuw verbinden. Sluiten of uitstellen, terugkeren naar het venster of netwerkherstel hervat de pogingen niet; de knop blijft op de pagina staan. De teller wordt na 30 seconden stabiele verbinding gereset. Verlopen autorisatie vereist opnieuw binnengaan via de gateway. Lokale verbindingen zonder gateway blijven ongewijzigd.",
           "Paginageheugen is browserlokaal en niet gesynchroniseerd tussen browsers. Toegang werkt zonder browseropslag, maar locaties worden niet behouden.",
           "Maak opnieuw verbinding als daarom wordt gevraagd voor offline apparaten, ingetrokken autorisatie of netwerkfouten. Opgeslagen locaties vervangen de machtigingen niet.",
           "Schermafbeeldingen van echte apparaattabbladen en geaggregeerde meldingen van het vaste demonstratieproject blijven in behandeling."

@@ -10,6 +10,7 @@ import { taskApi, type Task } from '../src/api/client'
 import { useTaskStore } from '../src/stores/taskStore'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
 import { useWebSocketConnectionStore } from '../src/stores/webSocketConnectionStore'
+import { useGatewayRecoveryStore } from '../src/stores/gatewayRecoveryStore'
 
 class Socket {
   static OPEN = 1
@@ -27,6 +28,84 @@ class Socket {
   open() { this.readyState = 1; this.onopen?.() }
   receive(value: object) { this.onmessage?.({ data: JSON.stringify(value) }) }
 }
+
+test('gateway flapping exhausts three retries, stays paused on resume, and only retries manually', async (context) => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.test/workspace/device/chat')
+  const originalSocket = globalThis.WebSocket
+  const originalProject = useProjectStore.getState()
+  useProjectStore.setState({ activeProject: null })
+  globalThis.WebSocket = Socket as never
+  Socket.instances = []
+  context.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  function Harness() { useWebSocket(); return null }
+  try {
+    await act(async () => root.render(<Harness />))
+    for (const delay of [1000, 2000, 4000]) {
+      await act(async () => { Socket.instances.at(-1)!.open(); Socket.instances.at(-1)!.close() })
+      await act(async () => context.mock.timers.tick(delay))
+    }
+    await act(async () => { Socket.instances.at(-1)!.open(); Socket.instances.at(-1)!.close() })
+    assert.equal(Socket.instances.length, 4)
+    assert.equal(useGatewayRecoveryStore.getState().paused, true)
+    assert.equal(useGatewayRecoveryStore.getState().dialogOpen, true)
+    await act(async () => useGatewayRecoveryStore.getState().dismiss())
+    await act(async () => {
+      for (const name of ['online', 'focus', 'workstep:resume']) window.dispatchEvent(new window.Event(name))
+      flushWsSubscriptionNow()
+      context.mock.timers.tick(120000)
+    })
+    assert.equal(Socket.instances.length, 4, 'dismissal and resume cannot bypass the retry budget')
+    await act(async () => useGatewayRecoveryStore.getState().retry())
+    assert.equal(Socket.instances.length, 5)
+    assert.equal(useGatewayRecoveryStore.getState().paused, false)
+  } finally {
+    await act(async () => root.unmount())
+    context.mock.timers.reset()
+    useGatewayRecoveryStore.getState().retry()
+    globalThis.WebSocket = originalSocket
+    useProjectStore.setState(originalProject)
+    await window.happyDOM.close()
+  }
+})
+
+test('a stable gateway socket resets the budget and silent connection timeouts also exhaust it', async (context) => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.test/workspace/device/chat')
+  const originalSocket = globalThis.WebSocket
+  const originalProject = useProjectStore.getState()
+  useProjectStore.setState({ activeProject: null })
+  globalThis.WebSocket = Socket as never
+  Socket.instances = []
+  context.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  function Harness() { useWebSocket(); return null }
+  try {
+    await act(async () => root.render(<Harness />))
+    await act(async () => Socket.instances.at(-1)!.close())
+    await act(async () => context.mock.timers.tick(1000))
+    const stable = Socket.instances.at(-1)!
+    await act(async () => stable.open())
+    await act(async () => context.mock.timers.tick(20000))
+    await act(async () => stable.receive({ type: 'pong', nonce: stable.sent.at(-1)!.nonce }))
+    await act(async () => context.mock.timers.tick(10000))
+    await act(async () => stable.close())
+    for (const delay of [1000, 2000, 4000]) {
+      await act(async () => context.mock.timers.tick(delay))
+      await act(async () => context.mock.timers.tick(10000))
+    }
+    assert.equal(Socket.instances.length, 5, 'stable recovery grants a fresh three-attempt budget')
+    assert.equal(useGatewayRecoveryStore.getState().paused, true)
+  } finally {
+    await act(async () => root.unmount())
+    context.mock.timers.reset()
+    useGatewayRecoveryStore.getState().retry()
+    globalThis.WebSocket = originalSocket
+    useProjectStore.setState(originalProject)
+    await window.happyDOM.close()
+  }
+})
 
 test('latency reuses heartbeat and resume pings, ignores stale pongs, and clears on reconnect', async (context) => {
   const { window } = installDomEnvironment()

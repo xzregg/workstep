@@ -1,6 +1,7 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const enUS: Messages = {
+  gatewayRecovery: {"title":"Gateway connection problem","message":"The connection is still unstable after 3 automatic retries. Automatic reconnection has stopped. Check your network, gateway service and device status before retrying.","paused":"Automatic reconnection paused","retry":"Reconnect","dismiss":"Not now"},
   prototype: {"viewport": "预览设备", "desktop": "桌面预览", "mobile": "手机预览", "zoom": "预览缩放", "title": "原型编辑", "assistant": "原型助手", "saving": "保存中", "saved": "已保存", "undo": "撤销", "history": "修改历史", "maximize": "最大化", "recovery": "存在未完成修改，工作副本已保留", "publish": "恢复保存", "discard": "放弃未完成修改", "chat": "聊天", "preview": "预览", "properties": "属性", "resizeChat": "调整聊天宽度", "resizeProperties": "调整属性宽度", "select": "点选", "browse": "浏览", "refresh": "刷新", "pin": "固定展开", "comment": "评论此元素…", "sendComment": "发送到聊天", "selected": "选中元素", "parent": "选择父元素", "dynamic": "此元素无法可靠映射源码，请通过评论修改。", "delete": "删除选中元素", "selectHint": "在预览中点选元素", "closeDraft": "关闭并放弃未发送的评论？", "intro": "选中原型元素，或描述需要调整的细节。", "placeholder": "描述想调整的细节…", "text": "文字", "cleanHistory": "清理修改历史", "cleanConfirm": "清理历史？当前文件和聊天记录会保留。", "pendingDiff": "未完成修改", "noDiff": "暂无差异", "running": "修改中", "interrupted": "已中断", "conflict": "需要处理冲突", "publishing": "回写中", "modeHint": "点选模式编辑静态元素；浏览模式运行页面交互"},
   artifactTemplate: {"title": "Template", "placeholder": "Define the artifact structure and requirements", "reset": "Reset to default"},
 

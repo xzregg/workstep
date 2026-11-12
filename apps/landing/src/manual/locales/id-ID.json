@@ -1302,6 +1302,7 @@
           "Gunakan platform Return to Gateway untuk memilih perangkat lain. Panggilan balik otorisasi browser yang kedaluwarsa akan memulai ulang login; setelah membatalkan otorisasi desktop, coba lagi secara manual atau kembali ke ruang kerja lokal."
         ],
         "tips": [
+          "Ruang kerja gateway mencoba ulang koneksi secara otomatis hingga 3 kali setelah terputus. Jika tetap gagal, dialog muncul dan koneksi waktu nyata, pemeriksaan sesi serta penyegaran daftar perangkat dijeda. Periksa jaringan, gateway dan perangkat, lalu pilih sambungkan kembali. Menutup atau menunda dialog, kembali ke jendela atau pulihnya jaringan tidak melanjutkan percobaan; tombol tetap tersedia di halaman. Penghitung direset setelah koneksi stabil selama 30 detik. Otorisasi kedaluwarsa mengharuskan masuk kembali melalui gateway. Koneksi lokal tanpa gateway tidak terpengaruh.",
           "Memori halaman bersifat lokal browser, tidak disinkronkan antar browser. Akses berfungsi tanpa penyimpanan browser namun lokasi tidak dipertahankan.",
           "Sambungkan kembali seperti yang diminta untuk perangkat offline, otorisasi dicabut, atau kegagalan jaringan. Lokasi yang disimpan tidak menggantikan izin.",
           "Tangkapan layar tab perangkat dan pemberitahuan agregat yang sebenarnya dari proyek demonstrasi tetap masih menunggu keputusan."

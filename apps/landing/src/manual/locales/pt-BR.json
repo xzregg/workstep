@@ -1302,6 +1302,7 @@
           "Use a plataforma Return to Gateway para escolher outro dispositivo. Um retorno de chamada de autorização do navegador expirado reinicia o login; após cancelar a autorização da área de trabalho, tente novamente manualmente ou retorne ao espaço de trabalho local."
         ],
         "tips": [
+          "O espaço de trabalho do gateway tenta reconectar automaticamente até 3 vezes após uma queda. Se continuar falhando, exibe um diálogo e pausa a conexão em tempo real, as verificações de sessão e a atualização dos dispositivos. Verifique a rede, o gateway e o dispositivo e escolha reconectar. Fechar ou adiar o diálogo, voltar à janela ou recuperar a rede não retoma as tentativas; o botão permanece na página. O contador é reiniciado após 30 segundos de conexão estável. Uma autorização expirada exige entrar novamente pelo gateway. Conexões locais sem gateway não são afetadas.",
           "A memória da página é local do navegador e não é sincronizada entre navegadores. O acesso funciona sem armazenamento no navegador, mas os locais não são retidos.",
           "Reconecte conforme solicitado em caso de dispositivos off-line, autorização revogada ou falhas de rede. Os locais salvos não substituem as permissões.",
           "As capturas de tela reais da guia do dispositivo e da notificação agregada do projeto de demonstração corrigido permanecem pendentes."

@@ -8,12 +8,15 @@ import { openRemoteAccess } from '@workstep/gateway-ui/openRemoteAccess'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 import { readWorkspaceLocation } from '../utils/gatewayWorkspaceLocation'
+import { useGatewayRecoveryStore } from '../stores/gatewayRecoveryStore'
 
 type Device = {id: string; name: string; online: boolean; project_only?:boolean}
 type GatewayDirectoryProject = {id:string;device_id:string;device_name:string;device_online:boolean;name:string}
 
 export default function GatewayDeviceTabs({currentDeviceId,header}: {currentDeviceId: string;header?:ReactNode}) {
   const {t} = useI18n()
+  const paused = useGatewayRecoveryStore(state => state.paused)
+  const retryRevision = useGatewayRecoveryStore(state => state.retryRevision)
   const [devices, setDevices] = useState<Device[]>([])
   const [projects,setProjects]=useState<GatewayDirectoryProject[]>([])
   const [loading, setLoading] = useState(true)
@@ -22,9 +25,11 @@ export default function GatewayDeviceTabs({currentDeviceId,header}: {currentDevi
   const [revision, setRevision] = useState(0)
   const pending = useRef(false)
   useEffect(() => {
+    if (paused) { setLoading(false); return }
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
     async function refresh() {
+      if (!active || useGatewayRecoveryStore.getState().paused) return
       try {
         if(gatewayWorkspacePath()) {
           const responses=await Promise.all(['/api/devices','/api/projects'].map(url=>fetch(url,{credentials:'same-origin'})))
@@ -44,7 +49,7 @@ export default function GatewayDeviceTabs({currentDeviceId,header}: {currentDevi
     setLoading(true)
     void refresh()
     return () => {active = false; clearTimeout(timer)}
-  }, [revision, t, currentDeviceId])
+  }, [revision, t, currentDeviceId, paused, retryRevision])
   async function select(device: Device) {
     if (pending.current || !device.online || device.id === currentDeviceId) return
     pending.current = true; setOpening(device.id); setError('')

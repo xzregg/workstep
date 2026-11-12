@@ -5,6 +5,27 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import GatewayDeviceSidebar from '../src/components/GatewayDeviceTabs'
 import { I18nProvider } from '../src/i18n'
+import { useGatewayRecoveryStore } from '../src/stores/gatewayRecoveryStore'
+
+test('device directory polling respects the shared gateway pause and manual recovery', async (context) => {
+ const {window}=installDomEnvironment();window.happyDOM.setURL('http://d-one.localhost:8700/')
+ const original=globalThis.fetch
+ let requests=0
+ globalThis.fetch=async()=>{requests++;return Response.json({devices:[]})}
+ context.mock.timers.enable({apis:['setTimeout','setInterval']})
+ const root=createRoot(document.body.appendChild(document.createElement('div')))
+ try{
+  await act(async()=>root.render(<I18nProvider><GatewayDeviceSidebar currentDeviceId="one"/></I18nProvider>))
+  assert.equal(requests,1)
+  await act(async()=>useGatewayRecoveryStore.getState().pause())
+  await act(async()=>context.mock.timers.tick(120000))
+  assert.equal(requests,1)
+  await act(async()=>useGatewayRecoveryStore.getState().retry())
+  assert.equal(requests,2)
+ }finally{
+  await act(async()=>root.unmount());context.mock.timers.reset();useGatewayRecoveryStore.getState().retry();globalThis.fetch=original;await window.happyDOM.close()
+ }
+})
 
 test('remote device tabs switch directly through a ticket with offline devices disabled', async()=>{
  const {window}=installDomEnvironment();window.happyDOM.setURL('http://d-one.localhost:8700/')

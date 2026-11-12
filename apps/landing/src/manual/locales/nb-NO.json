@@ -1302,6 +1302,7 @@
           "Bruk Return to Gateway-plattformen for å velge en annen enhet. En utløpt nettleserautorisasjonstilbakeringing starter påloggingen på nytt; etter at du har kansellert skrivebordsautorisasjonen, prøv på nytt manuelt eller gå tilbake til det lokale arbeidsområdet."
         ],
         "tips": [
+          "Gateway-arbeidsområdet prøver tilkoblingen automatisk på nytt opptil 3 ganger etter et brudd. Ved fortsatt feil vises en dialog, og sanntidstilkoblingen, øktkontroller og oppdatering av enhetslisten settes på pause. Kontroller nettverk, gateway og enhet, og velg å koble til igjen. Lukking, utsettelse, vindusfokus eller gjenopprettet nettverk gjenopptar ikke forsøkene; knappen forblir på siden. Telleren nullstilles etter 30 sekunders stabil tilkobling. Utløpt tilgang krever ny inngang via gatewayen. Lokale tilkoblinger uten gateway påvirkes ikke.",
           "Sideminnet er nettleserlokalt, ikke synkronisert på tvers av nettlesere. Tilgang fungerer uten nettleserlagring, men plasseringer beholdes ikke.",
           "Koble til på nytt når du blir bedt om enheter frakoblet, tilbakekalt autorisasjon eller nettverksfeil. Lagrede plasseringer erstatter ikke tillatelser.",
           "Virkelige skjermbilder fra enhetsfaner og samlet varsling fra det faste demonstrasjonsprosjektet forblir under behandling."

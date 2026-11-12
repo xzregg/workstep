@@ -1302,6 +1302,7 @@
           "Utilizza la piattaforma Return to Gateway per scegliere un altro dispositivo. Una richiamata di autorizzazione del browser scaduta riavvia l'accesso; dopo aver annullato l'autorizzazione del desktop, riprovare manualmente o tornare all'area di lavoro locale."
         ],
         "tips": [
+          "L’area di lavoro del gateway ritenta automaticamente la connessione fino a 3 volte dopo una disconnessione. Se continua a fallire, mostra un dialogo e sospende la connessione in tempo reale, i controlli di sessione e l’aggiornamento dei dispositivi. Controllare rete, gateway e dispositivo, quindi scegliere di riconnettersi. Chiudere o rinviare il dialogo, tornare alla finestra o ripristinare la rete non riavvia i tentativi; il pulsante resta nella pagina. Il contatore si azzera dopo 30 secondi di connessione stabile. Un’autorizzazione scaduta richiede un nuovo ingresso dal gateway. Le connessioni locali senza gateway non cambiano.",
           "La memoria della pagina è locale del browser e non è sincronizzata tra i browser. L'accesso funziona senza la memorizzazione nel browser, ma le posizioni non vengono conservate.",
           "Riconnettiti come richiesto per dispositivi offline, autorizzazione revocata o errori di rete. Le posizioni salvate non sostituiscono le autorizzazioni.",
           "Gli screenshot reali della scheda del dispositivo e delle notifiche aggregate del progetto dimostrativo corretto rimangono in sospeso."

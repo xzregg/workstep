@@ -66,6 +66,12 @@ iOS 客户端入口为 `apps/ios/WorkStep.xcodeproj`（可用 `scripts/generate-
 
 # 按功能查找代码
 
+### 网关断线恢复
+
+网关页面的实时连接由 `apps/web/src/hooks/useWebSocket.ts` 管理，会话检测由 `components/GatewayRemoteFrame.tsx` 管理；二者通过 `stores/gatewayRecoveryStore.ts` 共享暂停状态。初次失败后最多自动重试 3 次，耗尽时停止连接和 `GatewayDeviceTabs` 的设备目录轮询，由 `components/GatewayConnectionProblem.tsx` 复用确认弹窗告知用户。关闭弹窗、窗口聚焦、网络恢复不会解除暂停，仅“重新连接”重置预算；WebSocket 须稳定连接 30 秒才自动重置预算，避免开关抖动无限刷新。会话 401/403 沿用重新授权入口，不放宽权限；本机非网关连接保留原重连策略。暂停日志仅记录数值状态码及重试次数，不记录地址、票据或响应正文。
+
+行为测试：`apps/web/tests/websocketRecovery.test.tsx`（抖动、超时、稳定恢复、手动重试及本机连接回归）、`gatewayRemoteFrame.test.tsx`（会话重试上限、弹窗和暂停）、`gatewayDeviceSidebar.test.tsx`（设备目录随共享状态暂停／恢复）。
+
 微信 ClawBot 入口为「设置 → 渠道机器人 → 微信 ClawBot」：`BotSettingsEditor.tsx` 复用名称、默认项目和保存，`WeixinLoginPanel.tsx` 自管理二维码、串行状态轮询、取消与迟到响应；只提交授权编号，不接触微信 Token。`api/channel_bots.py` 的 `/api/channel-bots/weixin/login` 与 `/{login_id}` 提供扫码生命周期；`services/channels/weixin_login.py` 保存限时凭据，`BotManager` 保存时消费授权、限制同微信重新授权并复用私聊白名单与项目会话。`weixin.py::WeixinAdapter` 自动注册 `weixin`，通过公共 `ChannelReplyStream` 接收累计正文，`update_reply` 分块发送并记录已确认前缀，`send` 仅补齐尾段和最终附件；`weixin_api.py` 持有原生异步 iLink HTTP 协议，`weixin_state.py` 在线程中持久化游标与回复上下文，`weixin_media.py` 负责受限 CDN 与媒体加解密。`TaskDiscussionGroups.tsx` 排除不支持群聊的 ClawBot，后端同步拒绝群绑定。行为测试：daemon `test_weixin_channel.py`，Web `weixinLogin.test.tsx`、`botSettings.test.tsx`、`taskDiscussionGroups.test.tsx`；能力和真实联调边界见 [微信 ClawBot](channel-bots.md#微信-clawbot)。
 
 消息正文的流式晕染由 `MarkdownMessage.tsx` 接入，`useStreamReveal` 以默认 65 字/秒起步，并按积压量自适应加速，默认约 450ms 追平一批积压，保持 90ms 解析间隔及完整字素边界，`MarkdownContent.tsx` 通过 `utils/rehypeStreamReveal.ts` 仅包装正文文本；`StreamRevealText.tsx` 管理新增字符及稳定节点，`index.css` 执行单字 160ms、3px 到 0 的轻微模糊淡入，批内错峰压缩到一个 90ms 更新间隔内，避免大段积压的动画长尾。每个文本节点最多保留 32 个动画字符，代码块、历史恢复消息及关闭动效时直接显示，减少动态效果由 CSS 禁用动画；不新增 API。行为入口：`tests/streamRevealText.test.tsx`、`tests/useStreamReveal.test.tsx`。消息的处理中／耗时标题和底部统计通过 `index.css` 使用等宽数字，计时回归为 `tests/messageClock.test.tsx`。 移动端元信息由 `mobile.css` 收紧消息左右留白和状态箭头间距，`MessageMetaBar.tsx` 仅在移动端显示短标签「提示词」；会话 ID 与完整日期保持原顺序和右对齐，空间不足时仅左侧状态文本横向滚动，桌面文案与布局不变。提示词入口行为覆盖于 `tests/messageMetaRetry.test.tsx`。

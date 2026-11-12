@@ -1302,6 +1302,7 @@
           "Başka bir cihaz seçmek için Ağ Geçidi platformuna dön'ü kullanın. Süresi dolmuş bir tarayıcı yetkilendirme geri araması oturum açmayı yeniden başlatır; masaüstü yetkilendirmesini iptal ettikten sonra manuel olarak yeniden deneyin veya yerel çalışma alanına dönün."
         ],
         "tips": [
+          "Ağ geçidi çalışma alanı bağlantı kesildikten sonra en fazla 3 kez otomatik yeniden dener. Ardından bir iletişim kutusu gösterir ve gerçek zamanlı bağlantıyı, oturum denetimlerini ve cihaz listesi yenilemeyi duraklatır. Ağı, ağ geçidini ve cihazı denetleyip yeniden bağlanmayı seçin. Kutuyu kapatmak veya ertelemek, pencereye dönmek ya da ağın düzelmesi denemeleri sürdürmez; düğme sayfada kalır. Sayaç 30 saniyelik kararlı bağlantıdan sonra sıfırlanır. Süresi dolan yetki için ağ geçidinden yeniden girin. Ağ geçidi kullanmayan yerel bağlantılar etkilenmez.",
           "Sayfa belleği tarayıcıda yereldir, tarayıcılar arasında senkronize edilmez. Erişim, tarayıcı depolama alanı olmadan çalışır ancak konumlar korunmaz.",
           "Çevrimdışı cihazlar, iptal edilen yetkilendirme veya ağ arızaları için istendiğinde yeniden bağlanın. Kaydedilen konumlar izinlerin yerine geçmez.",
           "Sabit tanıtım projesinin gerçek cihaz sekmesi ve toplu bildirim ekran görüntüleri beklemededir."

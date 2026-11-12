@@ -1302,6 +1302,7 @@
           "Skorzystaj z platformy Return to Gateway, aby wybrać inne urządzenie. Wygasłe wywołanie zwrotne autoryzacji przeglądarki powoduje ponowne uruchomienie logowania; po anulowaniu autoryzacji pulpitu spróbuj ponownie ręcznie lub wróć do lokalnego obszaru roboczego."
         ],
         "tips": [
+          "Obszar roboczy bramy ponawia zerwane połączenie automatycznie najwyżej 3 razy. Następnie wyświetla okno i wstrzymuje połączenie w czasie rzeczywistym, kontrolę sesji oraz odświeżanie urządzeń. Sprawdź sieć, bramę i urządzenie, a następnie wybierz ponowne połączenie. Zamknięcie lub odłożenie okna, powrót do niego ani przywrócenie sieci nie wznawia prób; przycisk pozostaje na stronie. Licznik zeruje się po 30 sekundach stabilnego połączenia. Wygasłe uprawnienia wymagają ponownego wejścia przez bramę. Lokalne połączenia bez bramy pozostają bez zmian.",
           "Pamięć strony jest lokalna w przeglądarce i nie jest synchronizowana między przeglądarkami. Dostęp działa bez pamięci przeglądarki, ale lokalizacje nie są zachowywane.",
           "Połącz się ponownie, gdy pojawi się monit dotyczący urządzeń offline, cofniętej autoryzacji lub awarii sieci. Zapisane lokalizacje nie zastępują uprawnień.",
           "Zrzuty ekranu rzeczywistych kart urządzeń i powiadomień zbiorczych z ustalonego projektu demonstracyjnego pozostają w toku."

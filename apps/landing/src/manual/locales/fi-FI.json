@@ -1302,6 +1302,7 @@
           "Käytä Return to Gateway -alustaa valitaksesi toinen laite. Vanhentunut selaimen valtuutus käynnistää kirjautumisen uudelleen; Kun olet peruuttanut työpöydän valtuutuksen, yritä uudelleen manuaalisesti tai palaa paikalliseen työtilaan."
         ],
         "tips": [
+          "Yhdyskäytävän työtila yrittää katkennutta yhteyttä automaattisesti uudelleen enintään 3 kertaa. Sen jälkeen se näyttää ilmoitusikkunan ja keskeyttää reaaliaikayhteyden, istuntotarkistukset ja laitelistan päivitykset. Tarkista verkko, yhdyskäytävä ja laite ja valitse uudelleenyhdistäminen. Ikkunan sulkeminen, lykkääminen, ikkunaan palaaminen tai verkon palautuminen ei jatka yrityksiä; painike jää sivulle. Laskuri nollautuu 30 sekunnin vakaan yhteyden jälkeen. Vanhentunut valtuutus edellyttää uutta siirtymistä yhdyskäytävän kautta. Paikalliset yhteydet ilman yhdyskäytävää eivät muutu.",
           "Sivumuisti on selaimen paikallinen, eikä sitä synkronoida eri selainten välillä. Pääsy toimii ilman selaimen tallennustilaa, mutta sijainteja ei säilytetä.",
           "Muodosta yhteys uudelleen pyydettäessä offline-laitteiden, peruutetun valtuutuksen tai verkkovirheiden vuoksi. Tallennetut sijainnit eivät korvaa käyttöoikeuksia.",
           "Todelliset laitevälilehden ja koosteilmoitusten kuvakaappaukset kiinteästä demonstraatioprojektista jäävät odottamaan."

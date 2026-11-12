@@ -1302,6 +1302,7 @@
           "Use Return to Gateway platform to choose another device. An expired browser authorization callback restarts login; after cancelling desktop authorization, retry manually or return to the local workspace."
         ],
         "tips": [
+          "The Gateway workspace retries a failed connection up to 3 times, then shows “Gateway connection problem” and pauses the event connection, session checks and device-list refresh. Check your network, gateway and device status, then select “Reconnect”. “Not now”, focusing the window or network recovery does not resume retries; the page keeps a reconnect button after dismissal. The event connection must remain stable for 30 seconds to reset the retry count. Expired authorization still requires re-entering through the Gateway. Local non-Gateway connections are unaffected.",
           "Page memory is browser-local, not synchronized across browsers. Access works without browser storage but locations are not retained.",
           "Reconnect as prompted for offline devices, revoked authorization or network failures. Saved locations do not replace permissions.",
           "Real device-tab and aggregate-notification screenshots from the fixed demonstration project remain pending."

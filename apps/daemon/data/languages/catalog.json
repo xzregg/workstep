@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "baa589d56767c1e5894b1b01b4cc43cf4d34336c72e7549e698d4b3b3ccf7446",
+  "revision": "ec64bb72d7146b4648b2f2f76e9bfb92bb7b981e365cb03d9cc6b211fb6e4294",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -9,6 +9,11 @@
     "interaction.deny"
   ],
   "messages": {
+    "gatewayRecovery.title": "网关连接异常",
+    "gatewayRecovery.message": "已自动重试 3 次，仍无法稳定连接。已停止自动连接，请检查网络、网关服务和设备在线状态后重试。",
+    "gatewayRecovery.paused": "自动连接已暂停",
+    "gatewayRecovery.retry": "重新连接",
+    "gatewayRecovery.dismiss": "暂不重试",
     "prototype.viewport": "预览设备",
     "prototype.desktop": "桌面预览",
     "prototype.mobile": "手机预览",

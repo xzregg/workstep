@@ -1302,6 +1302,7 @@
           "Retour à Gateway permet de rechoisir un appareil. Un rappel d’autorisation expiré relance la connexion ; après annulation du bureau, réessayez ou revenez au local."
         ],
         "tips": [
+          "L’espace de travail de la passerelle effectue au maximum 3 nouvelles tentatives après une déconnexion, puis affiche un dialogue et suspend la connexion temps réel, les contrôles de session et l’actualisation des appareils. Vérifiez le réseau, la passerelle et l’appareil, puis choisissez « Reconnecter ». « Plus tard », le retour à la fenêtre ou le rétablissement du réseau ne relancent pas les tentatives ; le bouton reste accessible après fermeture du dialogue. Le compteur se réinitialise après 30 secondes de connexion stable. Une autorisation expirée impose de revenir par la passerelle. Les connexions locales sans passerelle ne sont pas concernées.",
           "La page mémorisée reste propre au navigateur. Sans stockage, l’accès fonctionne sans mémoriser la position.",
           "Appareil hors ligne, droit retiré ou réseau défaillant : reconnectez selon l’interface. Une page enregistrée ne remplace pas une autorisation.",
           "Captures réelles des onglets d’appareil et notifications agrégées de démonstration encore à fournir."

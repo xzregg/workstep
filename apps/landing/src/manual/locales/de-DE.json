@@ -1302,6 +1302,7 @@
           "Zurück zur Gateway-Plattform ermöglicht neue Gerätewahl. Abgelaufene Browser-Rückrufe starten die Anmeldung erneut; nach abgebrochener Desktop-Autorisierung können Sie erneut versuchen oder lokal zurückkehren."
         ],
         "tips": [
+          "Der Gateway-Arbeitsbereich versucht eine unterbrochene Verbindung höchstens dreimal erneut. Danach zeigt er einen Verbindungsdialog und pausiert Echtzeitverbindung, Sitzungsprüfung und Gerätelistenaktualisierung. Prüfen Sie Netzwerk, Gateway und Gerät und wählen Sie „Neu verbinden“. „Nicht jetzt“, Fensterfokus oder Netzwerkwiederkehr setzen die Versuche nicht fort; die Seite behält eine Schaltfläche zum Neuverbinden. Erst nach 30 Sekunden stabiler Verbindung wird der Zähler zurückgesetzt. Bei abgelaufener Berechtigung müssen Sie erneut über das Gateway eintreten. Lokale Verbindungen ohne Gateway sind nicht betroffen.",
           "Seitenpositionen werden nur im aktuellen Browser gespeichert, nicht browserübergreifend synchronisiert. Ohne Browserspeicher funktioniert Zugriff, aber keine Positionswiederherstellung.",
           "Verbinden Sie bei Offlinezustand, Widerruf oder Netzfehler gemäß Hinweis erneut. Gespeicherte Positionen ersetzen keine Rechte.",
           "Echte Aufnahme der Gerätereiter und Sammelbenachrichtigungen im festen Demoprojekt noch ausstehend."
