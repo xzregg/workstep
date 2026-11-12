@@ -9,6 +9,53 @@ from cli import build_parser, dispatch, main
 from services.tool_registry import WorkstepClient
 
 
+@pytest.mark.parametrize("rename", [False, True])
+def test_workflow_update_preserves_id_and_sends_canvas(tmp_path, capsys, rename):
+    canvas = {"nodes": [{"id": 1, "type": "promote", "prompt": "推广"}], "connections": []}
+    path = tmp_path / "canvas.json"
+    path.write_text(json.dumps(canvas), encoding="utf-8")
+
+    async def handler(request):
+        assert request.method == "PUT"
+        assert request.url.path == "/api/workflow/w1"
+        assert request.url.params["project_id"] == "p1"
+        expected = {"steps": canvas}
+        if rename:
+            expected["name"] = "推广循环"
+        assert json.loads(request.content) == expected
+        return httpx.Response(200, json={"id": "w1", **expected})
+
+    args = ["workflow", "update", "--project", "p1", "--workflow", "w1",
+            "--steps-file", str(path), "--json"]
+    if rename:
+        args += ["--name", "推广循环"]
+    assert main(args, client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out)["id"] == "w1"
+
+
+def test_workflow_update_requires_changes_before_request(capsys):
+    async def handler(request):
+        pytest.fail("Empty update must not send a request")
+
+    assert main(["workflow", "update", "--project", "p1", "--workflow", "w1", "--json"],
+                client=WorkstepClient(transport=httpx.MockTransport(handler))) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
+@pytest.mark.parametrize("content", ["[]", "null", "invalid JSON"])
+def test_workflow_update_rejects_invalid_canvas_before_request(tmp_path, capsys, content):
+    path = tmp_path / "canvas.json"
+    path.write_text(content, encoding="utf-8")
+
+    async def handler(request):
+        pytest.fail("Invalid canvas must not send a request")
+
+    assert main(["workflow", "update", "--project", "p1", "--workflow", "w1",
+                 "--steps-file", str(path), "--json"],
+                client=WorkstepClient(transport=httpx.MockTransport(handler))) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
 @pytest.mark.parametrize('operation', ['history', 'reviews'])
 def test_task_diagnostics_read_remote_history_and_reviews(capsys, operation):
     async def handler(request):

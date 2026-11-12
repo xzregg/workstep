@@ -241,6 +241,12 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_create.add_argument("--name", required=True)
     workflow_create.add_argument("--steps-file", required=True, help="UTF-8 JSON file containing nodes and connections")
     add_json(workflow_create)
+    workflow_update = workflow_sub.add_parser("update", help="update an existing workflow name or canvas")
+    workflow_update.add_argument("--project", required=True, dest="project_id")
+    workflow_update.add_argument("--workflow", required=True, dest="workflow_id")
+    workflow_update.add_argument("--name")
+    workflow_update.add_argument("--steps-file", help="UTF-8 JSON file containing the complete canvas")
+    add_json(workflow_update)
     workflow_list = workflow_sub.add_parser("list", help="list workflows of a project")
     workflow_list.add_argument("--project", required=True, dest="project_id", help="project id")
     add_json(workflow_list, list_output=True)
@@ -644,6 +650,20 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
             return await client.call("workstep_create_task", arguments)
     if command == "workflow":
         arguments = {"project_id": args.project_id}
+        if args.subcommand == "update":
+            changes = {}
+            if args.name is not None:
+                changes["name"] = args.name
+            if args.steps_file:
+                steps = json.loads(await asyncio.to_thread(Path(args.steps_file).read_text, encoding="utf-8"))
+                if not isinstance(steps, dict):
+                    raise ValueError("Workflow steps must be a JSON object")
+                changes["steps"] = steps
+            if not changes:
+                raise ValueError("Provide --name or --steps-file to update a workflow")
+            return await client.call("workstep_update_workflow", {
+                **arguments, "workflow_id": args.workflow_id, **changes, "confirm": "yes",
+            })
         if args.subcommand == "create":
             steps = json.loads(await asyncio.to_thread(Path(args.steps_file).read_text, encoding="utf-8"))
             if not isinstance(steps, dict):

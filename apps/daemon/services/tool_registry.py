@@ -129,6 +129,16 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         query_params=("project_id",), body_params=("name", "steps"),
     ),
     WorkstepTool(
+        name="workstep_update_workflow",
+        description="Update an existing workflow name or complete canvas after user authorization. Read the workflow first and preserve unrelated canvas settings.",
+        method="PUT", path="/api/workflow/{workflow_id}",
+        parameters={"project_id": {"type": "string"}, "workflow_id": {"type": "string"},
+                    "name": {"type": "string"}, "steps": {"type": "object"}},
+        required=("project_id", "workflow_id"), read_only=False,
+        side_effect="update a project workflow",
+        path_params=("workflow_id",), query_params=("project_id",), body_params=("name", "steps"),
+    ),
+    WorkstepTool(
         name="workstep_get_workflow",
         description="Get one workflow with its complete step definition, including workflow and stage quick buttons and inherited project button IDs.",
         method="GET",
