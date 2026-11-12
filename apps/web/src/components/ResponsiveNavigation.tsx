@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useLocation, useNavigationType } from 'react-router-dom'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
@@ -27,6 +27,27 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
   const preserveNavigationDrawer = Boolean(
     (location.state as { preserveNavigationDrawer?: boolean } | null)?.preserveNavigationDrawer,
   )
+  const headerRef = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    if (!compact) return
+    const header = headerRef.current
+    if (!header) return
+    const left = header.querySelector<HTMLElement>('.mobile-header-left')!
+    const right = header.querySelector<HTMLElement>('.mobile-header-actions')!
+    // Reserve equal space on both sides, even while session actions load.
+    const measure = () => {
+      const bounds = header.getBoundingClientRect()
+      const inset = Math.max(left.getBoundingClientRect().right - bounds.left,
+        bounds.right - right.getBoundingClientRect().left) + 8
+      header.style.setProperty('--mobile-header-side-space', `${inset}px`)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(header)
+    observer.observe(left)
+    observer.observe(right)
+    return () => observer.disconnect()
+  }, [compact])
   const ref = useRef<HTMLElement>(null)
   useOverlay(compact && open, () => setOpen(false), ref)
   useEffect(() => {
@@ -36,7 +57,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
   useEffect(() => { setOpen(false) }, [compact, dismissSignal])
   return <>
     {compact && !window.WorkStepAndroid && !window.workstepDesktop && <MobileNavigationFloat open={open} onToggle={() => setOpen(value => !value)}/>}
-    <header className={`mobile-header${headerLeft ? ' mobile-header--device' : ''}`} >
+    <header ref={headerRef} className={`mobile-header${headerLeft ? ' mobile-header--device' : ''}`} >
       <div className="mobile-header-left">
       <button aria-label={t('mobile.openNavigation')} aria-expanded={open} aria-controls="workstep-navigation" onClick={() => setOpen(true)}><Icon name="menu" size={21} /></button>
       {headerLeft}
@@ -44,6 +65,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
       <span className="mobile-header-title" title={displayTitle}>{showBrandIcon && displayTitle === 'WorkStep' && <BrandIcon size={18}/>}<span>{displayTitle}</span></span>
       <div className="mobile-header-actions">
         {headerRight}
+        <MobileHeaderActionsSlot beforeNew />
         {showNew && <button aria-label={t('mobile.newChat')} disabled={newDisabled} aria-busy={newLoading || undefined} onClick={onNew}>{newLoading ? <Spinner size={21} /> : <Icon name="plus" size={21} />}</button>}
         <div className="mobile-header-session-actions"><MobileHeaderActionsSlot /></div>
       </div>

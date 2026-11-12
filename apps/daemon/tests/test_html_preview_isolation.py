@@ -143,7 +143,7 @@ async def test_preview_slow_disk_keeps_health_responsive(preview_site, monkeypat
     headers = {'x-workstep-desktop-token': 'test-desktop-token'}
     params = {'project_id': 'project-1', 'path': 'prototype/index.html'}
     path = '/api/fs/preview'
-    owner, name = fs_api, '_resolve_project_file'
+    owner, name = fs_api, '_resolve_preview_file'
     if source == 'resource':
         ticket = (await client.get(path, params=params, headers=headers)).json()['html_preview']['token']
         path, params = f'/api/fs/html-resource/project-1/{ticket}/data.json', {}

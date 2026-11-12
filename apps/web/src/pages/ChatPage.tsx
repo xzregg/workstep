@@ -665,8 +665,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         onClose={() => setShowSettingsPanel(false)}
       />
       {can('session.manage') && showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
-      {!embedded && pane?.active !== false && compact && <MobileHeaderActions>
-        <ChatSessionLinkButton projectName={activeProject.name} sessionId={sessionId} mobile />
+      {!embedded && pane?.active !== false && compact && <MobileHeaderActions beforeNew={<ChatSessionLinkButton projectName={activeProject.name} sessionId={sessionId} mobile />}>
         <button
           className="mobile-session-kebab"
           aria-label={t('chatSession.sessionMenu')}

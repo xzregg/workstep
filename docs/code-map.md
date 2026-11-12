@@ -340,7 +340,7 @@ Gateway 项目管理的只读分页目录、已发布项目过滤、授权摘要
 
 daemon 的会话只读入口同样通过 `api/chat_session.py::_run_db` 再核对可信操作者项目，覆盖会话列表、详情、消息事件和项目级设置；流程与任务的共享入口分别在 `api/workflow.py::_run_db`、`api/task_context.py::_project`／`_run_db` 做同一校验。`api/task.py` 在调用全局运行器启动任务或向协调器提交消息前先确认任务归属。真实代理及绕过外层路由表的直接调用回归见 `test_gateway_project_chat_scope.py`、`test_gateway_project_workflow_scope.py`、`test_gateway_project_task_paths.py`、`test_gateway_project_task_actions_scope.py`。
 
-项目文件浏览、搜索、条目编辑及内容读取由 `api/fs_browser.py`、`api/fs.py` 负责；`api/fs_paths.py` 在可信项目操作者下要求明确且匹配的项目 ID，并禁止绝对路径绕过项目根。项目票据的目录、条目和错误响应不含宿主路径，`/api/fs/file` 接受项目相对路径；共享 `project_scope.py` 不开放镜像宿主绝对路径的 `/api/fs/raw`。旧 Markdown 的项目名图片路径由 Web `utils/markdownImages.ts` 映射为带项目 ID 的 `/api/fs/serve`，daemon 的旧式直达路由再次核对操作者项目。真实代理、直接调用和慢目录健康检查见 `tests/test_gateway_project_file_paths.py`，本地文件契约见 `tests/test_api_contracts.py`，映射测试见 Web `tests/chatInputImages.test.mjs`。
+项目文件浏览、搜索、条目编辑及内容读取由 `api/fs_browser.py`、`api/fs.py` 负责；`api/fs_paths.py` 在可信项目操作者下要求明确且匹配的项目 ID，除下述临时文件读取例外外，禁止绝对路径绕过项目根。项目票据的目录、条目和错误响应不含宿主路径，`/api/fs/file` 接受项目相对路径，并通过 `fs_paths.py::_resolve_preview_file` 允许绝对路径读取系统临时目录（`tempfile.gettempdir()`、`/tmp`、`/var/tmp`）中的文件；临时例外仅用于文件读取、`/api/fs/preview` 及带票据的 HTML 资源读取，仍校验操作者项目、符号链接解析后的目录边界，临时目录中的已注册项目仍遵循项目隔离；网关预览路由接受前端的 `absolute=true`，daemon 不将该参数视为项目身份的越界授权；共享 `project_scope.py` 不开放镜像宿主绝对路径的 `/api/fs/raw`。旧 Markdown 的项目名图片路径由 Web `utils/markdownImages.ts` 映射为带项目 ID 的 `/api/fs/serve`，daemon 的旧式直达路由再次核对操作者项目。真实代理、直接调用和慢目录健康检查见 `tests/test_gateway_project_file_paths.py`，本地文件契约见 `tests/test_api_contracts.py`，映射测试见 Web `tests/chatInputImages.test.mjs`。
 
 项目专用流程编辑沿用 Web `src/api/project.ts::workflowApi` 的项目查询参数；共享 `project_scope.py` 向目标项目 `edit` 票据开放创建、更新、删除、恢复、排序和流程快捷 Action 发布，保留 `read` 的列表与详情。daemon `api/workflow.py` 在目标项目执行器内调用 `services/project.py` 与 `services/workflow_actions.py`，流程 ID 猜测无法跨项目查改。真实代理正反例见 `tests/test_gateway_project_workflow_scope.py`，流程数据库隔离及慢创建健康检查见 `tests/test_api_contracts.py`。
 
@@ -1315,7 +1315,7 @@ Android 语音权限由 `apps/android/app/src/main/java/com/workstep/android/Mic
 
 设备／项目授权优先级：`gateway/services/remote_access_api.py::_remote_identity` 每次按实时个人、用户组、所有者及管理员设备授权计算有效工作区。整台设备权限优先于旧项目票据，支持新建项目；仅在请求内提升范围，保留原项目票据，设备授权撤销后回落到仍有效的项目授权。`remote_session.workspace_scope` 区分工作区权限与项目上下文查询，Web `gatewaySessionStore` 避免将设备会话误判为项目会话；`GatewayRemoteFrame` 检测范围变化时刷新宿主权限和项目列表。管理端 `AdminAccessGrants`／`AdminProjectGrantDialog` 明示设备权限优先及撤销后的回落行为，不删除项目授权。回归：Gateway `test_device_project_precedence.py`（个人／用户组、旧会话提升、新建项目、撤销回落）、`test_remote_session_renewal.py`；Web `gatewaySessionRecovery.test.ts`。
 
-Markdown 项目图片：`utils/markdownImages.ts::resolveMarkdownImageSrc` 将代理输出的绝对路径（含容器 `/data/projects`、macOS／Windows 路径）及项目相对路径映射到带 `project_id` 的 `/api/fs/file`，网关自动加工作区前缀；`MarkdownContent`、`ImagePreview` 与任务详情复用同一解析。附件和外部 URL 保留原逻辑；缺少项目上下文的本机路径保留文字提示。后端沿用项目及全局目录边界，不使用 `absolute=true`。回归：Web `markdownImagePreview.test.tsx`（中文绝对路径、两种消息模式、本地／网关及放大预览），daemon `test_gateway_project_file_paths.py::test_markdown_absolute_project_image_delivery`（真实 PNG、本地／桥接、越界及符号链接拒绝）。
+Markdown 项目图片：`utils/markdownImages.ts::resolveMarkdownImageSrc` 将代理输出的绝对路径（含容器 `/data/projects`、macOS／Windows 路径）及项目相对路径映射到带 `project_id` 的 `/api/fs/file`，网关自动加工作区前缀；`MarkdownContent`、`ImagePreview` 与任务详情复用同一解析。附件和外部 URL 保留原逻辑；缺少项目上下文的本机路径保留文字提示。后端沿用项目及全局目录边界，文件读取与预览另允许系统临时目录的显式绝对路径，不使用 `absolute=true`。回归：Web `markdownImagePreview.test.tsx`（中文绝对路径、两种消息模式、本地／网关及放大预览），daemon `test_gateway_project_file_paths.py::test_markdown_absolute_project_image_delivery`（真实 PNG、本地／桥接、越界及符号链接拒绝），`test_temporary_file_delivery_preserves_boundaries_and_health`（临时图片、本地／桥接、项目隔离及慢磁盘健康检查）、`test_temporary_html_preview_and_resources`（临时 HTML、CSS 资源、真实网关桥接及隔离策略）。
 
 图片预览复制：共用 `apps/web/src/components/ImagePreview.tsx` 提供复制图片（转换为 PNG 写入剪贴板）、复制完整图片地址与下载原始图片文件（不转换格式；安卓和 iOS 的同源 HTTP 图片使用真实地址及 download 链接触发现有原生保存流程，保留网关／分享查询参数），沿用项目／网关／分享的图片解析地址，无新增 API；复制结果与失败反馈由预览组件负责。行为测试：`apps/web/tests/imagePreviewCopy.test.tsx`。
 
@@ -1350,6 +1350,8 @@ daemon `services/task_workflow.py` 将原产物的模板变化保存为 `output_
 
 PC 图片放大由 `ImagePreview.tsx` 与 `.desktop-image-preview` 持有，初始按视口适配，双击以鼠标位置放大 200%／恢复，放大后的图片在独立区域原生滚动；工具栏与关闭入口不参与缩放。行为回归：`imagePreviewCopy.test.tsx`。
 
-普通对话链接复制入口：`pages/ChatPage.tsx` 的桌面标题栏与移动端右上角加号旁分享图标，统一由 `components/ChatSessionLinkButton.tsx` 复制项目／会话定位地址；网关页面保留设备路径，本机连接网关时使用 `/api/gateway-platform/settings` 返回的 `device_id` 生成网关设备地址，不创建公开访问权限。行为测试：`tests/chatSessionLink.test.tsx`。
+普通对话链接复制入口：`pages/ChatPage.tsx` 的桌面标题栏与移动端右上角加号左侧分享图标，统一由 `components/ChatSessionLinkButton.tsx` 复制项目／会话定位地址；网关页面保留设备路径，本机连接网关时使用 `/api/gateway-platform/settings` 返回的 `device_id` 生成网关设备地址，不创建公开访问权限。行为测试：`tests/chatSessionLink.test.tsx`。
 
 会话重连刷新由 `hooks/useChatSessionHistory.ts` 调用 `stores/assistantStore.ts::hydrateSession` 合并历史；摘要响应不得覆盖用户已加载的完整事件及详情加载标记。消息正文、状态仍按原历史恢复规则更新。`useChatSessionHistory.test.tsx` 覆盖已完成消息展开完整事件后重连，箭头及正文仍保持可见；`ProcessTrace` 在运行消息有过程摘要但没有过程记录时，自动复用详情加载回调补齐预览，保持默认折叠；已完成消息仍按需加载。`useChatSessionHistory.test.tsx` 同时覆盖未点击即显示两条、展开完整记录、后续 WebSocket 更新和不重复补拉；两条预览、向上切换动效及原有折叠规则保持不变。
+
+移动端普通对话标题由 `ResponsiveNavigation.tsx` 相对窗口居中，观察左右按钮尺寸并对称预留空间，异步加载会话操作不移动标题；`MobileHeaderActions.tsx` 的 `beforeNew` 插槽供 `ChatPage.tsx` 将分享放在加号左侧，更多菜单仍在右侧。真实浏览器回归：`scripts/check-mobile-chat-header.mjs`（320／390／1023px，加载前后居中、按钮顺序与命中区域）。

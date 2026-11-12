@@ -6,6 +6,37 @@ import { createRoot } from 'react-dom/client'
 import ChatInputUsage from '../src/components/ChatInputUsage'
 import { I18nProvider } from '../src/i18n'
 
+test('compact quota uses an icon and percentage while retaining an accessible label and details', async () => {
+  const { window } = installDomEnvironment()
+  const container = window.document.body.appendChild(window.document.createElement('div'))
+  const root = createRoot(container as never)
+  try {
+    const render = (compact: boolean) => <I18nProvider><ChatInputUsage
+      compact={compact}
+      quota={{ engine_id: 'codex_sdk', primary: { used_percent: 25, remaining_percent: 75 } }}
+    /></I18nProvider>
+    await act(async () => root.render(render(true)))
+    const quota = container.querySelector('.chat-input-quota') as HTMLElement
+    const label = quota.cloneNode(true) as HTMLElement
+    label.querySelector('.chat-input-quota-tip')?.remove()
+    assert.equal(label.textContent, '75%')
+    assert.ok(label.querySelector('svg[aria-hidden="true"]'))
+    assert.match(quota.getAttribute('aria-label') || '', /75%/)
+    await act(async () => quota.click())
+    assert.ok(quota.classList.contains('is-tip-open'))
+    assert.ok(quota.querySelector('.chat-input-quota-tip strong')?.textContent)
+
+    await act(async () => root.render(render(false)))
+    const desktopLabel = quota.cloneNode(true) as HTMLElement
+    desktopLabel.querySelector('.chat-input-quota-tip')?.remove()
+    assert.match(desktopLabel.textContent || '', /\S+ 75%/)
+    assert.equal(desktopLabel.querySelector('svg'), null)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('chat usage owns quota and context details in toolbar order', async () => {
   const { window } = installDomEnvironment()
   const container = window.document.body.appendChild(window.document.createElement('div'))

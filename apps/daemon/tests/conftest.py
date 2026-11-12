@@ -13,6 +13,9 @@ import pytest
 def preview_directory(tmp_path, monkeypatch):
     """File API tests explicitly authorize their isolated filesystem workspace."""
     from services.config import config_store
+    import api.fs_paths as fs_paths
+    # Keep the machine's broad /tmp tree from authorizing unrelated test files.
+    monkeypatch.setattr(fs_paths, '_temporary_preview_roots', lambda: (tmp_path / 'system-temp',))
     monkeypatch.setattr(config_store, '_cache', {
         **config_store._load(), 'default_project_directory': str(tmp_path),
     })

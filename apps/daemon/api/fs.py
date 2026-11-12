@@ -16,7 +16,7 @@ from services.project_memory import read_memory_bytes, write_memory_bytes
 from api.fs_browser import router as browser_router
 from api.fs_paths import (
     _assert_preview_path, _assert_project_path, _path_error_detail, _project, _project_relative_path,
-    _require_actor_project, _resolve_project_file,
+    _require_actor_project, _resolve_preview_file, _resolve_project_file,
 )
 
 router = APIRouter(prefix="/api/fs")
@@ -453,7 +453,7 @@ async def serve_upload_by_project_name(project_name: str, filename: str):
 async def serve_file(path: str, project_id: str | None = Query(None)):
     """Serve a raw file over HTTP (used for HTML preview links / downloads)."""
     def response() -> FileResponse:
-        file_path = _resolve_project_file(path, project_id)
+        file_path = _resolve_preview_file(path, project_id)
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=_path_error_detail("File not found", file_path))
         if not file_path.is_file():
@@ -519,7 +519,7 @@ async def preview_file(
         if preview['content_type'] == 'text/html':
             from services.html_preview import issue_ticket
             preview['html_preview'] = issue_ticket(
-                _resolve_project_file(path, project_id, allow_absolute=absolute), project_id,
+                _resolve_preview_file(path, project_id, allow_absolute=absolute), project_id,
             )
         return preview
     preview = await asyncio.to_thread(load)
@@ -547,7 +547,7 @@ async def html_preview_resource(request: Request, project_ref: str, token: str,
             target = resource_file(token, effective_project, resource_path)
         except HtmlPreviewError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-        _assert_preview_path(resource_boundary(token, target))
+        _assert_preview_path(resource_boundary(token, target), allow_temporary=True)
         media, _ = mimetypes.guess_type(str(target))
         if media == 'text/html':
             response = HTMLResponse(prepare_html(prepare_editor_html(token, target.read_bytes().decode('utf-8'))))
@@ -567,7 +567,7 @@ async def html_preview_resource(request: Request, project_ref: str, token: str,
 
 
 def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
-    file_path = _resolve_project_file(path, project_id, allow_absolute=absolute)
+    file_path = _resolve_preview_file(path, project_id, allow_absolute=absolute)
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=_path_error_detail("File not found", file_path))

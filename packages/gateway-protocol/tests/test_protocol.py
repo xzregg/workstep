@@ -91,8 +91,14 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("project_id", "host-1")], "host-1")
     assert allowed("GET", "/api/fs/preview", [
         ("project_id", "host-1"), ("path", "readme.md")], "host-1")
+    assert allowed("GET", "/api/fs/preview", [
+        ("project_id", "host-1"), ("path", "/tmp/preview.html"), ("absolute", "true")], "host-1")
     assert not allowed("GET", "/api/fs/preview", [
-        ("project_id", "host-1"), ("path", "/private"), ("absolute", "true")], "host-1")
+        ("project_id", "host-2"), ("path", "/tmp/preview.html"), ("absolute", "true")], "host-1")
+    assert not allowed("GET", "/api/fs/preview", [
+        ("project_id", "host-1"), ("path", "/tmp/preview.html"), ("absolute", "invalid")], "host-1")
+    assert not allowed("GET", "/api/fs/project-raw/host-1/private", [
+        ("project_id", "host-1"), ("absolute", "true")], "host-1")
     assert not allowed("GET", "/api/fs/file", [("path", "/private")], "host-1")
     assert allowed("POST", "/api/fs/upload/file", [("project_id", "host-1")],
                    "host-1", access_level="edit")

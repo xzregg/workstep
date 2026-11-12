@@ -215,7 +215,7 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/project/host-2/summary").status_code == 403
         assert client.get(f"{host}/api/task/list?project_id=host-2").status_code == 403
         assert client.get(f"{host}/api/fs/browse?project_id=host-1").status_code == 200
-        assert client.get(f"{host}/api/fs/preview?project_id=host-1&path=README.md&absolute=true").status_code == 403
+        assert client.get(f"{host}/api/fs/preview?project_id=host-1&path=README.md&absolute=true").status_code == 200
         assert client.post(f"{host}/api/fs/upload/image?project_id=host-1",
                            headers={"Origin": host}, json={"data_url": "data:image/png;base64,aA=="}).status_code == 403
         assert client.put(f"{host}/api/fs/content?project_id=host-1",

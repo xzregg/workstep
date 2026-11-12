@@ -19,14 +19,19 @@ const bundle = await build({
     import Icon from './src/components/Icon';
     import { I18nProvider } from './src/i18n';
     window.WorkStepAndroid = { postMessage() {} };
-    createRoot(document.getElementById('root')).render(<I18nProvider><MemoryRouter><MobileHeaderActionsProvider>
+    function Preview() {
+      const [ready, setReady] = React.useState(false);
+      window.setActionsReady = setReady;
+      return <I18nProvider><MemoryRouter><MobileHeaderActionsProvider>
       <NavigationHeaderContext.Provider value={<button aria-label="切换设备"><Icon name="layers" size={20}/></button>}>
         <ResponsiveNavigation title="这是一段很长的对话标题用于检查分享按钮是否被挤出" onNew={() => {}}><span>模拟项目</span></ResponsiveNavigation>
-        <MobileHeaderActions><ChatSessionLinkButton projectName="demo" sessionId="demo" mobile/>
+        {ready && <MobileHeaderActions beforeNew={<ChatSessionLinkButton projectName="demo" sessionId="demo" mobile/>}>
           <button className="mobile-session-kebab" aria-label="会话菜单"><Icon name="ellipsis" size={20}/></button>
-        </MobileHeaderActions>
+        </MobileHeaderActions>}
       </NavigationHeaderContext.Provider>
-    </MobileHeaderActionsProvider></MemoryRouter></I18nProvider>);
+    </MobileHeaderActionsProvider></MemoryRouter></I18nProvider>;
+    }
+    createRoot(document.getElementById('root')).render(<Preview/>);
   `, resolveDir: path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'), loader: 'tsx' },
   bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic',
   loader: { '.css': 'empty' },
@@ -67,19 +72,26 @@ try {
     await call('Emulation.setTouchEmulationEnabled', { enabled: true }, sessionId)
     await call('Page.navigate', { url: `file://${file}` }, sessionId)
     await new Promise(resolve => setTimeout(resolve, 250))
+    const centerBefore = await call('Runtime.evaluate', { returnByValue: true, expression: `(() => { const b = document.querySelector('.mobile-header-title').getBoundingClientRect(); return b.left + b.width / 2; })()` }, sessionId)
+    assert.ok(Math.abs(centerBefore.result.result.value - width / 2) < 1, `${width}px: title is centered before session actions load`)
+    await call('Runtime.evaluate', { expression: 'window.setActionsReady(true)' }, sessionId)
+    await new Promise(resolve => setTimeout(resolve, 100))
     const { result } = await call('Runtime.evaluate', { returnByValue: true, expression: `(() => {
       const box = selector => { const b = document.querySelector(selector).getBoundingClientRect(); return { left: b.left, right: b.right, height: b.height }; };
-      return { left: box('.mobile-header-left'), title: box('.mobile-header-title'), actions: box('.mobile-header-actions'),
+      return { titleCenter: (() => { const b = document.querySelector('.mobile-header-title').getBoundingClientRect(); return b.left + b.width / 2; })(), order: [...document.querySelectorAll('.mobile-header-actions button')].map(b => b.getAttribute('aria-label')), left: box('.mobile-header-left'), title: box('.mobile-header-title'), actions: box('.mobile-header-actions'),
         buttons: [...document.querySelectorAll('.mobile-header button')].map(button => { const b = button.getBoundingClientRect(); return { left: b.left, right: b.right, hit: button.contains(document.elementFromPoint(b.x + b.width/2, b.y + b.height/2)) }; }) };
     })()` }, sessionId)
     const m = result.result.value
     assert.ok(m.left.right <= m.title.left && m.title.right <= m.actions.left, `${width}px: title and controls do not overlap: ${JSON.stringify(m)}`)
+    assert.ok(Math.abs(m.titleCenter - width / 2) < 1, `${width}px: title stays centered on the viewport: ${JSON.stringify(m)}`)
+    assert.match(m.order[0], /复制|分享/)
+    assert.match(m.order[1], /新建/)
     assert.equal(m.buttons.length, 5)
     for (const button of m.buttons) assert.ok(button.left >= 0 && button.right <= width && button.hit, `${width}px: every header button is visible and clickable`)
     for (const button of m.buttons.slice(2)) assert.ok(button.left >= m.title.right, `${width}px: action buttons stay outside the title`)
     const screenshot = await call('Page.captureScreenshot', { format: 'png' }, sessionId)
     fs.writeFileSync(path.join(dir, `${width}.png`), Buffer.from(screenshot.result.data, 'base64'))
-    console.log(`${width}px: title shrinks; sharing and menu controls remain visible and clickable`)
+    console.log(`${width}px: title remains centered before/after loading; share precedes plus; controls remain clickable`)
   }
   console.log(`Screenshots: ${dir}`)
 } finally {

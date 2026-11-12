@@ -47,6 +47,7 @@ export default function ChatInputUsage({
               className={`chat-input-context chat-input-quota${quotaTipOpen ? ' is-tip-open' : ''}`}
               tabIndex={0}
               role="button"
+              aria-label={t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })}
               onClick={() => {
                 if (compact && quotaRef.current) {
                   const rect = quotaRef.current.getBoundingClientRect()
@@ -57,7 +58,10 @@ export default function ChatInputUsage({
                 setQuotaTipOpen((open) => !open)
               }}
             >
-              {t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })}
+              {compact ? <>
+                <Icon name="circle-dollar-sign" size={14} />
+                <span>{quota.primary.remaining_percent}%</span>
+              </> : t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })}
               <span className={`chat-input-context-tip chat-input-quota-tip${compact && quotaTipOpen ? ' is-compact-positioned' : ''}`} style={quotaTipStyle}>
                 <span className="chat-input-quota-heading">
                   <strong>{quota.limit_name || t('chatInput.quotaTitle')}</strong>

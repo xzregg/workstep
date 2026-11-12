@@ -1,6 +1,7 @@
 """Project-scoped path resolution for file APIs."""
 
 from pathlib import Path
+import tempfile
 
 from fastapi import HTTPException
 from settings import settings
@@ -17,7 +18,7 @@ def _file_access_root() -> Path | None:
     return (Path(configured).expanduser() if configured else projects_root() or Path.home()).resolve()
 
 
-def _assert_preview_path(path: Path) -> Path:
+def _assert_preview_path(path: Path, *, allow_temporary: bool = False) -> Path:
     """Enforce the configured file boundary in an I/O worker, for every actor."""
     from services.project_scope import projects_root
     from services.customization_workspace import workspace_root
@@ -25,6 +26,8 @@ def _assert_preview_path(path: Path) -> Path:
     try:
         root = _file_access_root()
         target = path.resolve()
+        if allow_temporary and _is_temporary_preview_path(path, target):
+            return target
         container_root = projects_root()
         if (root is not None and not target.is_relative_to(root)
                 and not target.is_relative_to(workspace_root().resolve())) or (
@@ -111,3 +114,41 @@ def _project_relative_path(path: Path, project_id: str | None) -> str | None:
             return (Path(settings.workstep_dir) / path.relative_to(project.workstep_dir.resolve())).as_posix()
         except ValueError:
             return None
+
+
+def _temporary_preview_roots() -> tuple[Path, ...]:
+    """Include Unix temp aliases even when TMPDIR selects a user-specific root."""
+    return (Path(tempfile.gettempdir()), Path('/tmp'), Path('/var/tmp'))
+
+
+def _is_temporary_preview_path(candidate: Path, target: Path) -> bool:
+    if not candidate.is_absolute():
+        return False
+    for root in _temporary_preview_roots():
+        resolved_root = root.resolve()
+        if ((candidate.is_relative_to(root) or candidate.is_relative_to(resolved_root))
+                and target.is_relative_to(resolved_root)):
+            # Registered projects in temp retain their existing file boundaries.
+            from main import project_manager
+            if project_manager is not None:
+                for project in project_manager.iter_projects():
+                    for boundary in (project.path.resolve(), project.workstep_dir.resolve()):
+                        if candidate.is_relative_to(boundary) or target.is_relative_to(boundary):
+                            return False
+            return True
+    return False
+
+
+def _resolve_preview_file(
+    path: str, project_id: str | None, *, allow_absolute: bool = False,
+) -> Path:
+    """Allow temporary reads for downloads and previews, without widening writes."""
+    _require_actor_project(project_id)
+    if project_id:
+        _project(project_id)
+    candidate = Path(path).expanduser()
+    if candidate.is_absolute():
+        target = candidate.resolve()
+        if _is_temporary_preview_path(candidate, target):
+            return target
+    return _resolve_project_file(path, project_id, allow_absolute=allow_absolute)

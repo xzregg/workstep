@@ -309,7 +309,14 @@ def project_http_route_allowed(method: str, path: str,
                    for key, _ in query_pairs)
     if path == "/api/fs/file":
         return all(key in ("project_id", "path") for key, _ in query_pairs)
-    if path == "/api/fs/preview" or _PROJECT_RAW.fullmatch(path):
+    if path == "/api/fs/preview":
+        # The UI marks absolute file links; the daemon still enforces the actor's
+        # project boundary and its explicit temporary-file exception.
+        return (len(query_pairs) == len(dict(query_pairs))
+                and all(key in ("project_id", "path", "absolute") for key, _ in query_pairs)
+                and all(value in ("true", "True", "1", "false", "False", "0")
+                        for key, value in query_pairs if key == "absolute"))
+    if _PROJECT_RAW.fullmatch(path):
         return all(key in ("project_id", "path", "absolute")
                    for key, _ in query_pairs) and all(
                        value in ("false", "False", "0") for key, value in query_pairs

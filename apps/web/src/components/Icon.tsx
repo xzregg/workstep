@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Drama, Ellipsis, Eye,
+  ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, CircleDollarSign, Clock, Copy, Download, Drama, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List, Monitor, Smartphone, MousePointer2, PanelTop,
   Crosshair, Maximize2, Menu, Mic, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
   PanelLeftClose, PanelLeftOpen, Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
@@ -28,6 +28,7 @@ const glyphs = {
   'chevron-down': ChevronDown,
   'chevron-right': ChevronRight,
   clock: Clock,
+  'circle-dollar-sign': CircleDollarSign,
   copy: Copy,
   crosshair: Crosshair,
   download: Download,

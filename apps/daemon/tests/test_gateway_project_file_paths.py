@@ -192,3 +192,153 @@ async def test_markdown_absolute_project_image_delivery(api_context, monkeypatch
         assert await request(path) == (200, content)
     for path in (private, directory / 'escape.png', '../private.png'):
         assert (await request(path))[0] == 403
+
+
+@pytest.mark.anyio
+async def test_temporary_file_delivery_preserves_boundaries_and_health(api_context, monkeypatch):
+    from urllib.parse import urlencode
+    import api.fs_paths as paths
+    import main
+
+    client, tmp_path = api_context
+    project_root = tmp_path / "projects"
+    project_root.mkdir()
+    directory = project_root / "visible"
+    directory.mkdir()
+    pid = (await client.post('/api/project/init', json={'path': str(directory)})).json()['id']
+    temporary = tmp_path / "system-temp"
+    temporary.mkdir()
+    monkeypatch.setattr(paths, '_temporary_preview_roots', lambda: (temporary.resolve(),), raising=False)
+    private_project = temporary / 'another-project'
+    private_project.mkdir()
+    assert (await client.post('/api/project/init', json={'path': str(private_project)})).status_code == 200
+    (private_project / 'private.png').write_bytes(b'private')
+    monkeypatch.setenv('WORKSTEP_PROJECTS_ROOT', str(project_root))
+    image = temporary / 'workstep-quota-icons.svg.png'
+    content = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ioAAAAASUVORK5CYII=')
+    image.write_bytes(content)
+    outside = tmp_path / 'private.png'
+    outside.write_bytes(content)
+    (temporary / 'escape.png').symlink_to(outside)
+    (directory / 'escape.png').symlink_to(image)
+
+    async def request(path, *, bridged=False, project_id=None):
+        monkeypatch.setattr(main.gateway_client, 'managed_config', object() if bridged else None)
+        query = {'project_id': project_id or pid, 'path': str(path)}
+        if not bridged:
+            response = await client.get('/api/fs/file', params=query)
+            return response.status_code, response.content
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, 'temporary-image', {
+            'method': 'GET', 'path': '/api/fs/file', 'query': urlencode(query),
+            'headers': [], 'user_id': 'viewer', 'username': 'viewer',
+            'project_id': pid, 'access_level': 'read',
+        }, capture, 'device')
+        bridge.start_task()
+        await bridge.feed(ProxyFrame(stream_id='temporary-image', type=FrameType.http_request,
+                                     payload={'phase': 'end'}))
+        await asyncio.wait_for(bridge._task, 3)
+        raw = b''.join(base64.b64decode(frame.payload['data'])
+                       for frame in frames if frame.payload.get('phase') == 'body')
+        return frames[0].payload['status'], raw
+
+    for bridged in (False, True):
+        assert await request(image, bridged=bridged) == (200, content)
+        assert (await request(temporary / 'missing.png', bridged=bridged))[0] == 404
+        for denied in (outside, private_project / 'private.png', temporary / 'escape.png', directory / 'escape.png',
+                       temporary / '..' / 'private.png', '../system-temp/workstep-quota-icons.svg.png'):
+            assert (await request(denied, bridged=bridged))[0] == 403
+    actor = ActorSnapshot('viewer', 'Viewer', 'device', 'Device', 'managed',
+                          project_id='another-project', access_level='read')
+    with actor_context(actor):
+        assert (await request(image))[0] == 403
+    assert (await client.get('/api/fs/preview', params={'project_id': pid, 'path': str(image)})).status_code == 200
+
+    entered, release = threading.Event(), threading.Event()
+    original = paths._temporary_preview_roots
+    def slow_roots():
+        entered.set()
+        release.wait(2)
+        return original()
+    monkeypatch.setattr(paths, '_temporary_preview_roots', slow_roots)
+    pending = asyncio.create_task(request(image))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        health = await asyncio.wait_for(client.get('/api/health'), .2)
+        assert health.status_code == 200
+    finally:
+        release.set()
+        assert await pending == (200, content)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('bridged', [False, True])
+async def test_temporary_html_preview_and_resources(api_context, monkeypatch, bridged):
+    from urllib.parse import urlencode
+    import api.fs_paths as paths
+    import main
+
+    client, tmp_path = api_context
+    projects = tmp_path / 'projects'
+    directory = projects / 'visible'
+    directory.mkdir(parents=True)
+    pid = (await client.post('/api/project/init', json={'path': str(directory)})).json()['id']
+    temporary = tmp_path / 'system-temp'
+    site = temporary / 'site'
+    site.mkdir(parents=True)
+    document = site / 'workstep-quota-icons.html'
+    document.write_text('<!doctype html><link rel="stylesheet" href="style.css"><p>Quota icons</p>')
+    (site / 'style.css').write_text('body { color: blue; }')
+    (site / '.env').write_text('private')
+    outside = tmp_path / 'private.css'
+    outside.write_text('private')
+    (site / 'escape.css').symlink_to(outside)
+    monkeypatch.setattr(paths, '_temporary_preview_roots', lambda: (temporary,))
+    monkeypatch.setenv('WORKSTEP_PROJECTS_ROOT', str(projects))
+
+    async def request(route, query=None):
+        if not bridged:
+            response = await client.get(route, params=query)
+            return response.status_code, response.content, response.headers
+        monkeypatch.setattr(main.gateway_client, 'managed_config', object())
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, 'temp-html', {
+            'method': 'GET', 'path': route, 'query': urlencode(query or {}),
+            'headers': [], 'user_id': 'viewer', 'username': 'viewer',
+            'project_id': pid, 'access_level': 'read',
+        }, capture, 'device')
+        bridge.start_task()
+        await bridge.feed(ProxyFrame(stream_id='temp-html', type=FrameType.http_request,
+                                     payload={'phase': 'end'}))
+        await asyncio.wait_for(bridge._task, 3)
+        body = b''.join(base64.b64decode(frame.payload['data'])
+                        for frame in frames if frame.payload.get('phase') == 'body')
+        return frames[0].payload['status'], body, dict(frames[0].payload['headers'])
+
+    for absolute in (False, True):
+        status, body, _ = await request('/api/fs/preview', {
+            'project_id': pid, 'path': str(document), 'absolute': str(absolute).lower(),
+        })
+        assert status == 200, body
+        assert (await request('/api/fs/preview', {
+            'project_id': pid, 'path': str(outside), 'absolute': 'true',
+        }))[0] == 403
+        result = json.loads(body)
+        assert result['content_type'] == 'text/html'
+        assert result['relative_path'] is None
+        ticket = result['html_preview']
+        base = f"/api/fs/html-resource/{pid}/{ticket['token']}/"
+        status, html, headers = await request(base + ticket['entry'])
+        assert status == 200, html
+        assert b'Quota icons' in html
+        assert 'sandbox allow-scripts' in headers['content-security-policy']
+        assert 'allow-same-origin' not in headers['content-security-policy']
+        assert (await request(base + 'style.css'))[:2] == (200, b'body { color: blue; }')
+        for denied in ('.env', 'escape.css', '%2e%2e/private.css'):
+            assert (await request(base + denied))[0] in (403, 404)
+        wrong = base.replace(f'/{pid}/', '/other-project/')
+        assert (await request(wrong + ticket['entry']))[0] in (403, 404)
