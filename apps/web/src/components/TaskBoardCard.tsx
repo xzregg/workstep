@@ -49,6 +49,7 @@ interface Props {
   showArchived: boolean
   starting: boolean
   dragging?: boolean
+  draggable?: boolean
   readOnly?: boolean
   canRun?: boolean
   canArchive?: boolean
@@ -64,7 +65,7 @@ interface Props {
 
 /** One task board card owns its status, metadata, and action presentation. */
 export default function TaskBoardCard({
-  task, projectId, durationNowMs, showArchived, starting, dragging = false, readOnly = false, canRun = !readOnly, canArchive = !readOnly, canDelete = !readOnly,
+  task, projectId, durationNowMs, showArchived, starting, dragging = false, draggable = true, readOnly = false, canRun = !readOnly, canArchive = !readOnly, canDelete = !readOnly,
   onOpen, onStart, onArchive, onRestore, onDelete, onDragStart, onDragEnd,
 }: Props) {
   const { t, locale } = useI18n()
@@ -101,7 +102,7 @@ export default function TaskBoardCard({
       className="task-board-card"
       data-task-status={status}
       data-dragging={dragging || undefined}
-      draggable={canArchive && !showArchived}
+      draggable={draggable && canArchive && !showArchived}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onOpen}

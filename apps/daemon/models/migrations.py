@@ -106,6 +106,7 @@ _ADDITIVE_COLUMNS = {
         "role_binding_json": "TEXT",
         "role_checkpoint_json": "TEXT",
         "archived": "INTEGER NOT NULL DEFAULT 0",
+        "archived_at": "DATETIME",
         "vision_model": "TEXT",
         "parent_session_id": "TEXT",
         "forked_from_message_id": "TEXT",

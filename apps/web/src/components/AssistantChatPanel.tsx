@@ -114,6 +114,8 @@ export interface AssistantChatPanelProps {
   onStop: () => void
   /** Allow messages to be inserted into the active engine turn. */
   allowSendWhileRunning?: boolean
+  /** Keep drafts editable while the owning workspace cannot accept a turn. */
+  composerDisabled?: boolean
   onAttachmentError?: (message: string) => void
   onClose?: () => void
   onA2uiAction?: (action: A2uiClientAction) => void
@@ -295,7 +297,7 @@ export default function AssistantChatPanel({
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
   onA2uiAction, headerDrag, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, workflowSkill, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
-  onLoadMessageEvents, onLoadOlderHistory, onForkMessage, allowSendWhileRunning = false,
+  onLoadMessageEvents, onLoadOlderHistory, onForkMessage, allowSendWhileRunning = false, composerDisabled = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const userName = useUserSettingsStore((state) => state.userName)
@@ -728,7 +730,7 @@ export default function AssistantChatPanel({
             onChange={onInputChange}
             onSend={sendFromComposer}
             onStop={onStop}
-            disabled={running && !effectiveAllowSendWhileRunning}
+            disabled={composerDisabled || (running && !effectiveAllowSendWhileRunning)}
             running={running}
             allowSendWhileRunning={effectiveAllowSendWhileRunning}
             stopping={stopping}

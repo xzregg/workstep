@@ -66,7 +66,7 @@ async def _local_project_summary(project_id: str) -> dict[str, Any] | None:
 
 _SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels", "remote_project_ids")
 _PROJECT_EVENT_CHANNELS = frozenset({
-    "execution", "coordinator", "review", "archive_experience", "session_chat", "channel_chat", "channel_bots",
+    "execution", "coordinator", "review", "archive_experience", "session_chat", "channel_chat", "channel_bots", "prototype",
 })
 
 
@@ -88,6 +88,7 @@ class WsSubscription:
     channels: set[str] = field(default_factory=set)
     project_id: str = ""
     selected_project_id: str = ""
+    prototype_edit: bool = False
     remote_project_ids: set[str] = field(default_factory=set)
     active: bool = False
 
@@ -145,9 +146,11 @@ def _make_subscription_predicate(sub: WsSubscription):
             channel = event.get("channel")
             if channel is not None and channel not in _PROJECT_EVENT_CHANNELS:
                 return False
+            if channel == "prototype" and not sub.prototype_edit:
+                return False
             if channel in ("review", "archive_experience") and not event.get("task_id"):
                 return False
-            if channel in ("session_chat", "channel_chat"):
+            if channel in ("session_chat", "channel_chat", "prototype"):
                 return bool(sub.active and event.get("session_id") in sub.session_ids)
             if event.get("session_id") and not event.get("task_id"):
                 return False
@@ -293,7 +296,7 @@ def register_websocket_routes(app: FastAPI) -> None:
         await ws.accept()
         actor = ws.scope.get("managed_actor")
         project_id = actor.project_id if actor is not None else None
-        subscription = WsSubscription(project_id=project_id or "")
+        subscription = WsSubscription(project_id=project_id or "", prototype_edit=bool(actor and actor.project_access_level == "edit"))
         queue = main.event_bus.subscribe(
             _make_subscription_predicate(subscription) if project_id else None
         )

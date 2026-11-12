@@ -25,6 +25,8 @@
 
 供应商布局设计参考统一存放于 `prototypes/`：[原型片段](prototypes/provider-layout.html)和[独立预览](prototypes/provider-layout-preview.html)。仅用于设计讨论，不代表当前应用已实现或通过验收。
 
+Jev 决策模型设置：[交互原型](prototypes/jev-model-settings.html)。展示本地托管资源的手动下载、本地及远程 Jev 兼容服务配置，包含模拟下载、测试和错误状态；不发起真实请求，不接入业务场景。
+
 ## 已实现功能的文档入口
 
 - [架构](../docs/architecture.md)：项目数据、并发、普通会话、定时助手与脚本 Action。

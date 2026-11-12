@@ -477,6 +477,14 @@ export function createAssistantStore(
           const stored = recovered.get(message.id)
           if (!stored) return message
           const backfill: Partial<AssistantChatMessage> = {}
+          const cached = live.get(message.id)
+          // Recovery returns event summaries. Keep details the user already
+          // loaded instead of clearing the still-expanded process timeline.
+          if (cached?.event_detail?.loaded && stored.event_detail?.available
+            && !stored.event_detail.loaded && message !== cached) {
+            backfill.events = mergeMessageEvents(stored.events ?? [], cached.events ?? [])
+            backfill.event_detail = cached.event_detail
+          }
           for (const key of ['author_id', 'author_username', 'author_name',
             'initiated_by_user_id', 'initiated_by_username', 'author_device_id', 'author_device_name'] as const) {
             if (!message[key] && stored[key]) backfill[key] = stored[key]

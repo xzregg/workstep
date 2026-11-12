@@ -748,6 +748,24 @@
     "summary": "Periksa berkas yang dikirimkan, pahami konsumsinya, dan simpan pelajaran yang dapat digunakan kembali.",
     "sections": [
       {
+        "title": "Mengedit prototipe HTML",
+        "steps": [
+          "Buka pratinjau HTML proyek lalu editor prototipe. Untuk perubahan AI, atur mesin di Pengaturan → Asisten → Asisten prototipe.",
+          "Klik nama berkas di atas pratinjau untuk memilih HTML pada folder yang sama atau subfolder. Setiap HTML menyimpan percakapan sendiri. Seret tepi jendela dan pembatas untuk mengubah ukuran.",
+          "Arahkan penunjuk untuk menyorot, klik untuk memilih, atau klik kanan untuk berkomentar. Contoh: “Ubah tombol ini menjadi hijau, jangan ubah tombol di sebelahnya.” Kirim ke obrolan.",
+          "Ubah teks, warna, atau width (misalnya 180px) pada properti lalu tinggalkan kolom untuk menyimpan. Anda juga dapat mengeklik ganda teks sederhana atau menyeret pegangan ukuran. Pilih elemen yang tepat sebelum mengonfirmasi penghapusan.",
+          "Dalam riwayat perubahan, periksa perbedaan, batalkan perubahan, atau bersihkan riwayat. Setelah terputus, periksa salinan yang disimpan lalu lanjutkan penyimpanan atau buang salinan. Berkas asli yang berkonflik tidak ditimpa."
+        ],
+        "tips": [
+          "Pengeditan langsung mendukung HTML statis. Mode pilih menjeda skrip halaman; mode jelajah menjalankan interaksi. Hanya perubahan HTML/CSS/JS yang sudah ada yang diterbitkan, tanpa menambah atau menghapus seluruh berkas."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Mengedit prototipe HTML",
+          "caption": "Antarmuka berbahasa Tionghoa yang nyata pada proyek demo tetap: tombol kedua selebar 180px dan komentar belum dikirim. Tidak ada model nyata yang dipanggil."
+        }
+      },
+      {
         "title": "Periksa input, output, dan berkas artefak",
         "steps": [
           "Buka masukan dan keluaran Langkah dalam detail tugas untuk memeriksa masukan yang tersedia dan keluaran yang diselesaikan.",

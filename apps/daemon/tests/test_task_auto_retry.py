@@ -3,7 +3,7 @@ import asyncio
 import threading
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 
@@ -19,7 +19,12 @@ def setup_retry(tmp_path):
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "retry")
     config = SimpleNamespace(get_task_retry_interval_minutes=lambda: 5)
-    runtime = SimpleNamespace(retry_failed_message=AsyncMock(return_value={"run_id": "new"}))
+    async def finish_retry(project_id, task_id, message_id, *, task_permit):
+        # A successful runtime accepts and eventually releases this exact permit.
+        task_permit.claimed = True
+        await concurrency_gate.release_task(project_id, task_id, permit=task_permit)
+        return {'run_id': 'new'}
+    runtime = SimpleNamespace(retry_failed_message=AsyncMock(side_effect=finish_retry))
     service = TaskAutoRetry(manager, runtime, config)
     concurrency_gate.reset()
     yield manager, project, runtime, config, service
@@ -54,7 +59,7 @@ async def test_due_failure_only_and_persistent_cooldown(setup_retry):
     await seed(manager, project, task_id="recent", age=1)
     await seed(manager, project, task_id="rejected", error="")
     await service.tick()
-    runtime.retry_failed_message.assert_awaited_once_with(project.id, "task", "msg-task")
+    runtime.retry_failed_message.assert_awaited_once_with(project.id, "task", "msg-task", task_permit=ANY)
     # A second process/service and immediate ticks cannot submit the same failure again.
     await TaskAutoRetry(manager, runtime, config).tick()
     assert runtime.retry_failed_message.await_count == 1
@@ -212,7 +217,7 @@ async def test_old_attempts_do_not_block_latest_failure_and_assistants_are_exclu
                            content="network error", created_at=utc_now() - timedelta(hours=1))
     await manager.run_db(project.id, history)
     await service.tick()
-    runtime.retry_failed_message.assert_awaited_once_with(project.id, "task", "msg-task")
+    runtime.retry_failed_message.assert_awaited_once_with(project.id, "task", "msg-task", task_permit=ANY)
 
 
 async def test_disabling_during_claim_does_not_launch(setup_retry, monkeypatch):

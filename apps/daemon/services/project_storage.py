@@ -35,6 +35,10 @@ def external_directory(project_id: str) -> Path:
 
 
 def data_directory(root: str | Path) -> Path:
+    from services.engine_project_context import project_context_for
+    context = project_context_for(root)
+    if context:
+        return context[2]
     identity = read_identity(root)
     if identity.get("follow_project", True):
         return Path(root) / settings.workstep_dir

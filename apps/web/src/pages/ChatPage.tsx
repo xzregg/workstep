@@ -3,7 +3,7 @@ import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissi
 import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
 import ProjectGitButton from '../components/git/ProjectGitButton'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import MobileHeaderActions from '../components/MobileHeaderActions'
 import { useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom'
 import AssistantChatPanel, { type AssistantChatPanelProps } from '../components/AssistantChatPanel'
 import ChatRoleBinding from '../components/role-center/ChatRoleBinding'
@@ -14,6 +14,7 @@ import { ProjectActionMessages } from '../components/ProjectActionMessages'
 import { useProjectActions } from '../components/useActionRuns'
 import Button from '../components/Button'
 import ChatSessionRenameDialog from '../components/ChatSessionRenameDialog'
+import ChatSessionLinkButton from '../components/ChatSessionLinkButton'
 import EmptyState from '../components/EmptyState'
 import Icon from '../components/Icon'
 import Spinner from '../components/Spinner'
@@ -545,6 +546,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         headerActions={!embedded && (
           <>
             <div className="chat-header-hover-actions">
+            {!compact && <ChatSessionLinkButton projectName={activeProject.name} sessionId={sessionId} />}
             {can('session.create') && <Button
               variant="ghost"
               size="sm"
@@ -663,7 +665,8 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         onClose={() => setShowSettingsPanel(false)}
       />
       {can('session.manage') && showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
-      {!embedded && pane?.active !== false && compact && createPortal(
+      {!embedded && pane?.active !== false && compact && <MobileHeaderActions>
+        <ChatSessionLinkButton projectName={activeProject.name} sessionId={sessionId} mobile />
         <button
           className="mobile-session-kebab"
           aria-label={t('chatSession.sessionMenu')}
@@ -671,9 +674,8 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
           onClick={() => setMobileMenuOpen(true)}
         >
           <Icon name="ellipsis" size={20} />
-        </button>,
-        document.querySelector('.mobile-header-actions') || document.body,
-      )}
+        </button>
+      </MobileHeaderActions>}
       <MobileSheet
         open={mobileMenuOpen}
         title={t('chatSession.sessionMenu')}

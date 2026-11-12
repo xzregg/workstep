@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import EngineCapabilitiesDialog from './EngineCapabilitiesDialog'
 import Button from './Button'
 import Input from './Input'
 import Select from './Select'
@@ -63,7 +62,6 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
   const [pathDraft, setPathDraft] = useState('')
   const [pathSaving, setPathSaving] = useState(false)
   const [pathError, setPathError] = useState('')
-  const [inspectEngineId, setInspectEngineId] = useState<string | null>(null)
   // 引擎的安装 / 配置 / 测试状态每次变化都同步给共享可用性，聊天框和步骤引擎下拉
   // 才能立即跟随禁用状态（设置弹框是浮层，不会卸载底下的聊天页）。
   useEffect(() => {
@@ -541,18 +539,6 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                     </Button>
                   )}
 
-                  {engine.id === 'pydantic_ai' && engine.installed && (
-                    <Button
-                      variant="ghost"
-                      className="engine-settings-test-button"
-                      disabled={inspectEngineId !== null}
-                      onClick={() => setInspectEngineId(engine.id)}
-                    >
-                      {t('settings.viewCapabilities')}
-                    </Button>
-                  )}
-
-
                   <div className="engine-settings-visibility" title={t('engine.visibilityHint')}>
                     <button type="button" className="settings-switch" role="switch"
                       aria-label={`${engine.name || engineLabel(engine.id, t)} · ${t(engine.enabled !== false ? 'engine.visibilityOn' : 'engine.visibilityOff')}`}
@@ -710,9 +696,6 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
             </div>
           )}
         </div>
-      {inspectEngineId && (
-        <EngineCapabilitiesDialog engineId={inspectEngineId} onClose={() => setInspectEngineId(null)} />
-      )}
     </>
   )
 }

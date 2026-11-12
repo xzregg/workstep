@@ -8,6 +8,7 @@ import ChatSessionSourceBadge from './ChatSessionSourceBadge'
 import { useVisualViewport } from '../hooks/useVisualViewport'
 import Icon from './Icon'
 import ResponsiveNavigation from './ResponsiveNavigation'
+import { MobileHeaderActionsProvider } from './MobileHeaderActions'
 import { BrandIcon } from './BrandIcon'
 import { useState, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
@@ -465,6 +466,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   }
 
   return (
+    <MobileHeaderActionsProvider>
     <SkinWorkspaceFrame onOpenSettings={section => { setSettingsSection(section); setSettingsFocus(undefined); setShowSettings(true) }}>
     <div className="app-shell" data-ui="app-shell">
       {/* Sidebar */}
@@ -495,7 +497,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             disabled={projects.length === 0 || sidebarSearchActive}
             onClick={() => setExpandedProjectIds(allProjectsExpanded ? [] : projects.map(project => project.id))}
           >
-            <Icon name={allProjectsExpanded ? 'chevron-down' : 'chevron-right'} size={14} strokeWidth={2} />
+            <Icon name={allProjectsExpanded ? 'minimize-2' : 'maximize-2'} size={14} strokeWidth={2} />
           </Button>
           <Button
             variant="icon"
@@ -1356,5 +1358,6 @@ export default function Layout({ onSelectProject, children }: Props) {
       </ConfirmDialog>
     </div>
     </SkinWorkspaceFrame>
+    </MobileHeaderActionsProvider>
   )
 }

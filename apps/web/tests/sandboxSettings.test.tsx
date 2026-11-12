@@ -75,7 +75,7 @@ test('sandbox entry is last in desktop settings and hidden in ordinary browser',
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<I18nProvider><SettingsNavigation activeSection="sandbox" onSelect={() => {}} /></I18nProvider>))
-    assert.equal(document.querySelector('.settings-nav-button:last-child')?.textContent, '沙箱')
+    assert.equal([...document.querySelectorAll('.settings-nav-button')].at(-1)?.textContent, '沙箱')
     delete window.workstepDesktop
     await act(async () => root.render(<I18nProvider><SettingsNavigation activeSection="system" onSelect={() => {}} /></I18nProvider>))
     assert.ok(![...document.querySelectorAll('.settings-nav-button')].some(b => b.textContent === '沙箱'))

@@ -134,7 +134,7 @@ async def test_review_callback_persists_reviewer_and_message_author_after_restar
     from services.workflow_runtime import WorkflowRuntime
     relay,bus,event,adapter,controls,_,projects,project,_,store = setup
     runtime = WorkflowRuntime(bus, projects)
-    runtime._resume_in_project = AsyncMock()
+    runtime._resume_in_project_locked = AsyncMock()
     await bus.publish(event('workstep.review_result',review_run_id='review',status='awaiting_review'))
     await until(lambda: adapter.send_card.await_count == 2)
     recipient,card = adapter.send_card.await_args_list[0].args
@@ -150,9 +150,9 @@ async def test_review_callback_persists_reviewer_and_message_author_after_restar
     assert await projects.run_db(project.id, read) == (decision,'channel:wecom:reviewer','小陈','小陈','reviewer',status)
     assert await projects.run_db(project.id, lambda _p: ReviewRun.get_by_id('review').decision_comment) == '已核对边界行为'
     if decision == 'terminate':
-        runtime._resume_in_project.assert_not_awaited()
+        runtime._resume_in_project_locked.assert_not_awaited()
     else:
-        runtime._resume_in_project.assert_awaited_once()
+        runtime._resume_in_project_locked.assert_awaited_once()
     assert '失效' in await fresh.handle(ChannelAction('bot',card.id,key,'reviewer',conversation_id=recipient.conversation_id))
 
 

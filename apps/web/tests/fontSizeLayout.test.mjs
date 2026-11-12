@@ -35,3 +35,15 @@ async function sourceFiles(directory) {
   return files.flat()
 }
 
+
+test('settings typography uses the shared font scale and navigation can grow with text', async () => {
+  for (const path of ['pages/DecisionModelSettings.css', 'components/SettingsNavigation.css', 'components/EngineSettingsPanel.css', 'components/SandboxSettings.css', 'components/BotDirectorySettings.css', 'components/ProblemFeedbackSettings.css', 'pages/GatewayPlatformSettings.css', 'pages/GitScanSettings.css']) {
+    const source = await readFile(new URL(`../src/${path}`, import.meta.url), 'utf8')
+    for (const declaration of source.matchAll(/font-size:\s*([^;}]+)/g)) {
+      assert.match(declaration[1], /var\(--(?:font-scale|text-[^)]+)\)|inherit/, `${path}: ${declaration[0]}`)
+    }
+  }
+  const navigation = await readFile(new URL('../src/components/SettingsNavigation.css', import.meta.url), 'utf8')
+  assert.match(navigation, /height:\s*auto/)
+  assert.doesNotMatch(navigation, /(?<!min-)height:\s*(?:28|30)px/)
+})

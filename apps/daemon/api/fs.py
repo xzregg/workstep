@@ -534,7 +534,7 @@ async def preview_file(
 async def html_preview_resource(request: Request, project_ref: str, token: str,
                                 resource_path: str, project_id: str | None = Query(None)):
     from urllib.parse import quote
-    from services.html_preview import resource_file, prepare_html, HtmlPreviewError
+    from services.html_preview import resource_file, prepare_html, prepare_editor_html, resource_boundary, HtmlPreviewError
     from workstep_gateway_protocol.html_preview import html_preview_policy, PREVIEW_RESOURCES_HEADER
     # The query is rewritten by authenticated remote dispatch; the path preserves
     # the client's remote-project routing hint for relative assets.
@@ -547,10 +547,10 @@ async def html_preview_resource(request: Request, project_ref: str, token: str,
             target = resource_file(token, effective_project, resource_path)
         except HtmlPreviewError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-        target = _assert_preview_path(target)
+        _assert_preview_path(resource_boundary(token, target))
         media, _ = mimetypes.guess_type(str(target))
         if media == 'text/html':
-            response = HTMLResponse(prepare_html(target.read_text(encoding='utf-8')))
+            response = HTMLResponse(prepare_html(prepare_editor_html(token, target.read_bytes().decode('utf-8'))))
         else:
             response = FileResponse(target, media_type=media or 'application/octet-stream')
         response.headers.update({

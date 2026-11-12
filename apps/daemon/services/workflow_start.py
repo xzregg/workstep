@@ -130,6 +130,8 @@ def prepare_start_in_project(
     workflow = WorkflowDefinition.load(workflow_data)
     compiled = workflow.compile()
     steps_config = compiled.to_steps_config()
+    if not steps_config['steps']:
+        raise ValueError('空流程不能启动，请先添加步骤')
     entry_step_key, execution_scope = infer_entry_scope(task, steps_config)
     routing_state = empty_routing_state()
     routing_state["configuration_current"] = True

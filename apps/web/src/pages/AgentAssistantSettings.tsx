@@ -8,6 +8,7 @@ import { useI18n, type TFunction, type TKey } from '../i18n'
 import PromptEnhanceSettings from './PromptEnhanceSettings'
 
 const ASSISTANT_NAME_KEYS: Record<string, TKey> = {
+  prototype: 'prototype.assistant',
   task_coordinator: 'settings.assistantNames.taskCoordinator',
   task_create: 'settings.assistantNames.taskCreate',
   workflow_gen: 'settings.assistantNames.workflowGen',

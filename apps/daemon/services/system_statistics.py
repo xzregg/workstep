@@ -83,6 +83,18 @@ class SystemCollector:
         daemon['descriptor_limit'] = limit
         descendants = read(lambda: parent.children(recursive=True))
         children = [process_row(child) for child in descendants or []]
+        # Identify our owned worker from runtime memory; do not inspect command lines,
+        # read model/config files, or add another copy to the existing child totals.
+        from services.decision_models import service as decision_models
+        runtime = decision_models.runtime
+        worker = runtime.process
+        model = runtime.model_path
+        if worker is not None and worker.returncode is None and model is not None:
+            for row in children:
+                if row['pid'] == worker.pid:
+                    row.update(process_kind='decision_model', model_id=model.name,
+                               worker_state=runtime.state)
+                    break
         children.sort(key=lambda row: (row['cpu_percent'] is None, -(row['cpu_percent'] or 0), row['pid']))
         children_summary = _sum_metrics(children)
         children_summary['process_count'] = len(children) if descendants is not None else None

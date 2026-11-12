@@ -1009,6 +1009,10 @@ async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
             WorkflowRun.update(
                 heartbeat_at=utc_now() - timedelta(seconds=RUN_LEASE_STALE_SECONDS + 5)
             ).where(WorkflowRun.id == run_id).execute()
+        # A new daemon process has a fresh in-memory concurrency gate. The
+        # abandoned runtime's permit must not be shared with the replacement.
+        from services.concurrency import concurrency_gate
+        concurrency_gate.reset()
         assert await runtime2.recover_running_workflows() == 1
 
         with pm.activate_project(project.path):

@@ -316,6 +316,15 @@ export default function ProcessTrace({
     ),
     [timeline],
   )
+  const hasProcessSummary = Boolean(eventSummary?.tool_count || eventSummary?.thought_characters || eventSummary?.commentary_characters)
+  useEffect(() => {
+    // A restored running message can contain counts but no timeline events.
+    // Catch up once without requiring the user to open the disclosure first.
+    if (running && hasProcessSummary && processItems.length === 0
+      && detailsAvailable && !detailsLoaded && !detailsLoading && !detailsError) {
+      onLoadDetails?.()
+    }
+  }, [running, hasProcessSummary, processItems.length, detailsAvailable, detailsLoaded, detailsLoading, detailsError, onLoadDetails])
   const lastProcessItem = timeline[timeline.length - 1]
   const thinkingItems = useMemo(
     () => processItems.filter(

@@ -481,7 +481,8 @@ async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_mana
 
 
 @pytest.mark.asyncio
-async def test_project_websocket_bridge_only_receives_explicit_project_events():
+@pytest.mark.parametrize("access_level", ["read", "edit"])
+async def test_project_websocket_bridge_only_receives_explicit_project_events(monkeypatch, access_level):
     import main
     from streaming.ws import register_websocket_routes
 
@@ -491,6 +492,15 @@ async def test_project_websocket_bridge_only_receives_explicit_project_events():
     frames = []
     opened = asyncio.Event()
     sent = asyncio.Event()
+    subscribed = asyncio.Event()
+    original_subscribe = main.event_bus.subscribe
+
+    def subscribe(predicate=None):
+        queue = original_subscribe(predicate)
+        subscribed.set()
+        return queue
+
+    monkeypatch.setattr(main.event_bus, "subscribe", subscribe)
 
     async def capture(frame):
         frames.append(frame)
@@ -502,12 +512,13 @@ async def test_project_websocket_bridge_only_receives_explicit_project_events():
     bridge = ManagedWebSocketBridge(app, "project-ws", {
         "path": "/ws", "query": "", "headers": [],
         "user_id": "remote-user", "username": "alice",
-        "project_id": "project-1", "access_level": "read",
+        "project_id": "project-1", "access_level": access_level,
     }, capture, "device-1")
     bridge.start_task()
     try:
         await asyncio.wait_for(opened.wait(), timeout=1)
         assert frames[0].payload["accepted"] is True
+        await asyncio.wait_for(subscribed.wait(), timeout=1)
         await main.event_bus.publish({"type": "RUN_STARTED", "project_id": "project-2"})
         await main.event_bus.publish({"type": "RUN_STARTED", "task_id": "untagged"})
         assert not sent.is_set()

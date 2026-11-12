@@ -40,13 +40,13 @@ function InputEditor({ inputs, onChange, sourceInputs, allowAppendOutputs = true
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {inputs.map((inp, i) => (
           <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 8, border: '1px solid var(--border-soft)' }}>
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <Input disabled={Boolean(sourceInputs)} value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder={t('flow.name')} style={{ flex: 1, height: 28, fontSize: 'calc(13px * var(--font-scale))' }} />
-              <Combobox disabled={Boolean(sourceInputs)} value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 28, fontSize: 'calc(13px * var(--font-scale))', border: '1px solid var(--border)', borderRadius: 4 }} />
-              <Button variant="icon" disabled={Boolean(sourceInputs)} onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>×</Button>
+            <div className="artifact-input-row">
+              <Input disabled={Boolean(sourceInputs)} value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder={t('flow.name')} />
+              <Combobox disabled={Boolean(sourceInputs)} value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder={t('flow.type')} />
+              <Button variant="icon" disabled={Boolean(sourceInputs)} onClick={() => removeInput(i)}>×</Button>
             </div>
             {/* Sub-outputs */}
-            <ArtifactOutputsEditor outputs={inp.outputs} protectedCount={sourceInputs?.[i]?.outputs.length || 0}
+            <ArtifactOutputsEditor outputs={inp.outputs} sourceOutputs={sourceInputs?.[i]?.outputs} protectedCount={sourceInputs?.[i]?.outputs.length || 0}
               appendDisabled={Boolean(sourceInputs) && (!allowAppendOutputs || i !== inputs.length - 1)}
               onChange={(outputs) => onChange(inputs.map((input, index) => index === i ? { ...input, outputs } : input))} />
           </div>
@@ -395,7 +395,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
             onChange={(inputs) => updateDraft('inputs', inputs)}
           />
           {lockedSource && (!lockedSource.inputs.length || JSON.stringify(lockedSource.inputs.flatMap((input) => input.outputs)) !== JSON.stringify(lockedSource.outputs)) &&
-            <ArtifactOutputsEditor outputs={draft.outputs} protectedCount={lockedSource.outputs.length}
+            <ArtifactOutputsEditor outputs={draft.outputs} sourceOutputs={lockedSource.outputs} protectedCount={lockedSource.outputs.length}
               onChange={(outputs) => updateDraft('outputs', outputs)} />}
           </div>
           <div className="flow-node-config-section flow-node-config-section--engine">

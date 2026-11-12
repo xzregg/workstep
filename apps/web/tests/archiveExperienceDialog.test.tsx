@@ -7,6 +7,46 @@ import { I18nProvider } from '../src/i18n'
 import { useTaskStore } from '../src/stores/taskStore'
 import ArchiveExperienceDialog from '../src/components/ArchiveExperienceDialog'
 
+test('failed generation retains process and output without archiving or writing Memory', async () => {
+  const { window } = installDomEnvironment()
+  const original = useTaskStore.getState()
+  const mutations: string[] = []
+  useTaskStore.setState({
+    getArchiveExperienceDraft: async () => ({ found: false, message_id: null,
+      experience: '', has_experience: false, events: [], prompt: '' }),
+    prepareArchiveExperience: async (taskId, _projectId, messageId) => {
+      useTaskStore.setState({ liveMessages: { [taskId]: { [messageId]: {
+        id: messageId, channel: 'archive_experience', content: '金额统一使用分。',
+        events: [], status: 'failed', proposals: [],
+      } } } })
+      throw new Error('草稿超过长度限制')
+    },
+    archiveTask: async () => { mutations.push('archive') },
+    confirmArchiveExperience: async () => { mutations.push('confirm') },
+  })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ArchiveExperienceDialog
+      task={{ id: 'task', title: '任务' }} projectId="project"
+      onClose={() => {}} onArchived={() => { mutations.push('archived') }} /></I18nProvider>))
+    const generate = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find(button => /提炼错误经验|lesson/i.test(button.textContent || ''))!
+    assert.ok(generate)
+    await act(async () => generate.click())
+    assert.match(container.textContent || '', /金额统一使用分/)
+    assert.match(container.querySelector('[role="alert"]')?.textContent || '', /草稿超过长度限制/)
+    assert.deepEqual(mutations, [])
+    assert.ok([...container.querySelectorAll('button')]
+      .some(button => /重新整理|Try again/i.test(button.textContent || '')))
+  } finally {
+    await act(async () => root.unmount())
+    useTaskStore.setState(original)
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
 test('an empty saved archive draft can be archived without adding experience', async () => {
   const { window } = installDomEnvironment()
   const original = useTaskStore.getState()

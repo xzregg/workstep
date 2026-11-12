@@ -6,6 +6,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useNavigate } from 'react-router-dom'
 import ChatWorkspace from '../src/pages/ChatWorkspace'
+import { MobileHeaderActionsProvider, MobileHeaderActionsSlot } from '../src/components/MobileHeaderActions'
 import { I18nProvider } from '../src/i18n'
 import { useProjectStore } from '../src/stores/projectStore'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
@@ -95,7 +96,7 @@ test('desktop chat opens at most four independent panes, preserves drafts across
     })
   }
   try {
-    await act(async () => root.render(<MemoryRouter initialEntries={['/chat?project=demo&session=a']}><I18nProvider><Navigation /><ChatWorkspace /></I18nProvider></MemoryRouter>))
+    await act(async () => root.render(<MemoryRouter initialEntries={['/chat?project=demo&session=a']}><I18nProvider><MobileHeaderActionsProvider><div className="mobile-header-session-actions"><MobileHeaderActionsSlot /></div><Navigation /><ChatWorkspace /></MobileHeaderActionsProvider></I18nProvider></MemoryRouter>))
     assert.equal(document.querySelector('.chat-workspace-session'), null)
     assert.equal(document.querySelector('.chat-workspace-toolbar'), null)
     assert.equal(document.querySelector('.chat-workspace-pane-toolbar'), null)
@@ -145,7 +146,9 @@ test('desktop chat opens at most four independent panes, preserves drafts across
       const close = pane.querySelector<HTMLElement>('[aria-label="关闭对话窗口"]')!
       assert.ok(close.closest('.chat-header-persistent-actions'))
       assert.equal(close.parentElement!.lastElementChild, close, 'close stays at the far right of the header actions')
-      const newConversationButton = secondaryActions.firstElementChild!
+      const newConversationButton = [...secondaryActions.querySelectorAll('button')]
+        .find(button => /New conversation|新建对话/.test(button.textContent || ''))!
+      assert.ok(newConversationButton)
       assert.match(newConversationButton.textContent!, /New conversation|新建对话/)
       const windowButton = newConversationButton.nextElementSibling!
       assert.equal(windowButton.getAttribute('aria-label'), '对话窗口')

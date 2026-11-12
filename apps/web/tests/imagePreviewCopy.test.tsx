@@ -4,6 +4,7 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ImagePreview from '../src/components/ImagePreview'
+import MermaidPreviewDialog from '../src/components/MermaidPreviewDialog'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { MarkdownAssetUrlProvider } from '../src/contexts/MarkdownAssetUrlContext'
 import { installDomEnvironment } from './helpers/domEnv'
@@ -53,8 +54,8 @@ test('preview copies resolved addresses and image contents and reports failures'
         <ImagePreview src="relative.jpg" onClose={() => { closed = true }} />
       </MarkdownAssetUrlProvider>
     </I18nProvider>))
-    const previewImage = document.querySelector('.image-preview-window > img')!
-    assert.equal(previewImage.nextElementSibling?.className, 'image-preview-toolbar')
+    const previewImage = document.querySelector('.image-preview-window img')!
+    assert.equal((previewImage.closest('.image-preview-viewport, .desktop-image-preview') ?? previewImage).nextElementSibling?.className, 'image-preview-toolbar')
     const button = (label: string) => {
       const found = [...document.querySelectorAll('button')].find(item => item.getAttribute('aria-label') === label)
       assert.ok(found, label)
@@ -205,5 +206,109 @@ test('Android and iOS hand service image downloads directly to the native browse
       globalThis.fetch = originalFetch
       await window.happyDOM.close()
     }
+  }
+})
+
+
+test('diagram preview downloads a standalone SVG and skips project asset resolution', async () => {
+  const { window, document } = installDomEnvironment()
+  useLocaleStore.getState().setLocale('zh-CN')
+  const originalCreate = URL.createObjectURL
+  const originalRevoke = URL.revokeObjectURL
+  let saved: Blob | undefined
+  let filename = ''
+  URL.createObjectURL = blob => { saved = blob as Blob; return 'blob:http://localhost/diagram' }
+  URL.revokeObjectURL = () => {}
+  const createElement = document.createElement.bind(document)
+  document.createElement = ((tag: string) => {
+    const element = createElement(tag)
+    if (tag === 'a') element.click = () => { filename = (element as HTMLAnchorElement).download }
+    return element
+  }) as typeof document.createElement
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider>
+      <MarkdownAssetUrlProvider resolver={() => { throw Error('generated SVG is not a project asset') }}>
+        <MermaidPreviewDialog svg='<svg viewBox="0 0 400 200"><text>流程图</text></svg>' onClose={() => {}} />
+      </MarkdownAssetUrlProvider>
+    </I18nProvider>))
+    const button = [...document.querySelectorAll('button')].find(item => item.textContent === '下载图片')!
+    await act(async () => button.click())
+    assert.equal(filename, 'image.svg')
+    assert.equal(saved?.type.split(';')[0], 'image/svg+xml')
+    const source = await saved!.text()
+    assert.match(source, /xmlns="http:\/\/www.w3.org\/2000\/svg"/)
+    assert.match(source, /viewBox="0 0 400 200"/)
+    assert.match(source, /流程图/)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+    URL.createObjectURL = originalCreate
+    URL.revokeObjectURL = originalRevoke
+  }
+})
+
+
+test('diagram double click zoom anchors the pointer and leaves wheel scrolling available', async () => {
+  const { window, document } = installDomEnvironment()
+  window.innerWidth = 1400
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider>
+      <MermaidPreviewDialog svg='<svg viewBox="0 0 400 200"></svg>' onClose={() => {}} />
+    </I18nProvider>))
+    const viewport = document.querySelector<HTMLElement>('.mermaid-preview__scroll')!
+    viewport.scrollLeft = 0
+    viewport.scrollTop = 0
+    const canvas = viewport.firstElementChild as HTMLElement
+    canvas.getBoundingClientRect = () => {
+      const scale = Number.parseFloat(canvas.style.width) / 100
+      return { left: 0, top: 0, width: 400 * scale, height: 200 * scale } as DOMRect
+    }
+    const level = () => document.querySelector('[data-testid="mermaid-preview-zoom-level"]')!.textContent
+    const wheel = new window.WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true })
+    await act(async () => { viewport.dispatchEvent(wheel) })
+    assert.equal(wheel.defaultPrevented, false)
+    assert.equal(level(), '100%')
+    const doubleClick = async () => {
+      await act(async () => { canvas.dispatchEvent(new window.MouseEvent('dblclick', { clientX: 200, clientY: 100, bubbles: true, cancelable: true })) })
+    }
+    await doubleClick()
+    assert.equal(level(), '200%')
+    assert.equal(viewport.scrollLeft, 200)
+    assert.equal(viewport.scrollTop, 100)
+    await act(async () => { viewport.dispatchEvent(wheel) })
+    assert.equal(wheel.defaultPrevented, false)
+    assert.equal(level(), '200%')
+    await doubleClick()
+    assert.equal(level(), '100%')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+
+test('desktop image preview zooms on double click and retains wheel scrolling', async () => {
+  const { window, document } = installDomEnvironment()
+  window.innerWidth = 1400
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider><ImagePreview src="/large.png" onClose={() => {}} /></I18nProvider>))
+    const viewport = document.querySelector<HTMLElement>('.desktop-image-preview')!
+    assert.ok(viewport)
+    const image = viewport.querySelector('img')!
+    image.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 200 }) as DOMRect
+    await act(async () => { image.dispatchEvent(new window.Event('load')) })
+    await act(async () => { image.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true, clientX: 100, clientY: 50 })) })
+    assert.equal(image.style.width, '800px')
+    const wheel = new window.WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true })
+    await act(async () => { viewport.dispatchEvent(wheel) })
+    assert.equal(wheel.defaultPrevented, false)
+    await act(async () => { image.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true, clientX: 100, clientY: 50 })) })
+    assert.equal(image.style.width, '400px')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
   }
 })

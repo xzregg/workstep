@@ -748,6 +748,24 @@
     "summary": "Tarkista toimitetut tiedostot, ymmärrä kulutusta ja säilytä uudelleenkäytettäviä oppitunteja.",
     "sections": [
       {
+        "title": "HTML-prototyyppien muokkaaminen",
+        "steps": [
+          "Avaa projektin HTML-esikatselu ja prototyyppieditori. AI-muutoksia varten määritä moottori kohdassa Asetukset → Avustajat → Prototyyppiavustaja.",
+          "Valitse saman kansion tai alikansion HTML napsauttamalla tiedostonimeä esikatselun yläpuolella. Jokaisella HTML-tiedostolla on oma keskustelu. Muuta kokoa vetämällä ikkunan reunoja ja jakajia.",
+          "Vie osoitin elementin päälle korostaaksesi sen, napsauta valitaksesi tai avaa kommentti hiiren oikealla painikkeella. Esimerkiksi: ”Muuta tämä painike vihreäksi, mutta älä muuta viereistä.” Lähetä keskusteluun.",
+          "Muokkaa tekstiä, väriä tai width-arvoa (esim. 180px) ominaisuuksissa ja poistu kentästä tallentaaksesi. Voit myös kaksoisnapsauttaa tavallista tekstiä tai vetää koonsäätökahvoja. Valitse täsmällinen elementti ennen poiston vahvistamista.",
+          "Muutoshistoriassa voit tarkistaa erot, kumota muutoksia tai tyhjentää historian. Keskeytyksen jälkeen tarkista säilytetty kopio ja jatka tallennusta tai hylkää se. Ristiriitaisia alkuperäistiedostoja ei korvata."
+        ],
+        "tips": [
+          "Suora muokkaus tukee staattista HTML:ää. Valintatila keskeyttää sivun skriptit; selaustila suorittaa vuorovaikutukset. Vain olemassa olevien HTML/CSS/JS-tiedostojen muutokset julkaistaan; kokonaisia tiedostoja ei voi lisätä tai poistaa."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "HTML-prototyyppien muokkaaminen",
+          "caption": "Kiinteän esimerkkiprojektin aito kiinankielinen käyttöliittymä: toinen painike on 180px leveä ja kommentti lähettämättä. Oikeaa mallia ei kutsuttu."
+        }
+      },
+      {
         "title": "Tarkista tulot, lähdöt ja artefaktitiedostot",
         "steps": [
           "Avaa vaiheen tulot ja lähdöt tehtävän tiedoissa tarkistaaksesi käytettävissä olevat tulot ja valmiit lähdöt.",

@@ -1,5 +1,8 @@
+import Icon from './Icon'
+import { copyMermaidPng } from '../utils/mermaidPng'
 import ResizablePanel from './ResizablePanel'
-import { useEffect, useState } from 'react'
+import MobilePreviewImage from './MobilePreviewImage'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { copyText } from '../utils/clipboard'
 import { useCompactLayout } from '../hooks/useCompactLayout'
@@ -20,6 +23,8 @@ export interface ImagePreviewProps {
   /** Image source as stored (raw relative path or absolute URL). */
   src: string
   alt?: string
+  /** Render a generated diagram with shared window, copy and download actions. */
+  diagramSvg?: string
   /** Project id used to resolve `.workstep/uploads/...` relative paths. */
   projectId?: string
   onClose: () => void
@@ -44,11 +49,29 @@ async function imageToPng(src: string): Promise<Blob> {
   })
 }
 
-export default function ImagePreview({ src, alt, projectId, onClose }: ImagePreviewProps) {
+export default function ImagePreview({ src, alt, projectId, diagramSvg, onClose }: ImagePreviewProps) {
   const { t } = useI18n()
   const compact = useCompactLayout()
   const markdownUrlResolver = useMarkdownUrlResolver()
-  const resolved = markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)
+  const resolved = diagramSvg ? src : markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)
+  const [zoom, setZoom] = useState(1)
+  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null)
+  useEffect(() => {
+    setZoom(1)
+    setImageSize(null)
+  }, [resolved])
+  const desktopViewport = useRef<HTMLDivElement>(null)
+  const zoomAnchor = useRef<{ x: number; y: number; ratioX: number; ratioY: number } | null>(null)
+
+  useLayoutEffect(() => {
+    const viewport = desktopViewport.current
+    const anchor = zoomAnchor.current
+    zoomAnchor.current = null
+    if (!viewport || !anchor) return
+    const rect = viewport.firstElementChild!.getBoundingClientRect()
+    viewport.scrollLeft += rect.left + anchor.ratioX * rect.width - anchor.x
+    viewport.scrollTop += rect.top + anchor.ratioY * rect.height - anchor.y
+  }, [zoom])
   const [copying, setCopying] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [result, setResult] = useState<{ src: string; action: 'image' | 'address' | 'download'; key: Parameters<typeof t>[0] } | null>(null)
@@ -61,6 +84,8 @@ export default function ImagePreview({ src, alt, projectId, onClose }: ImagePrev
       let ok = true
       if (kind === 'address') {
         ok = await copyText(new URL(resolved, document.baseURI).href)
+      } else if (diagramSvg) {
+        await copyMermaidPng(diagramSvg)
       } else {
         if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
           throw new Error('Image clipboard is unavailable')
@@ -103,7 +128,7 @@ export default function ImagePreview({ src, alt, projectId, onClose }: ImagePrev
       if (!response.ok) throw new Error('Unable to download image')
       const blob = await response.blob()
       const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp',
-        'image/gif': 'gif', 'image/svg+xml': 'svg', 'image/avif': 'avif' }[blob.type]
+        'image/gif': 'gif', 'image/svg+xml': 'svg', 'image/avif': 'avif' }[blob.type.split(';')[0]]
       const url = URL.createObjectURL(blob)
       try {
         const link = document.createElement('a')
@@ -161,7 +186,7 @@ export default function ImagePreview({ src, alt, projectId, onClose }: ImagePrev
 
   return createPortal(
     <div
-      className="image-preview"
+      className={diagramSvg ? 'image-preview mermaid-preview' : 'image-preview'}
       role="dialog"
       aria-modal="true"
       aria-label={`${t('md.preview')}：${alt || t('md.image')}`}
@@ -169,19 +194,48 @@ export default function ImagePreview({ src, alt, projectId, onClose }: ImagePrev
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <ResizablePanel className="image-preview-window" minWidth={280} minHeight={160}>
+      <ResizablePanel className={diagramSvg ? 'image-preview-window mermaid-preview__viewport' : 'image-preview-window'} minWidth={280} minHeight={160}>
         {!compact && <div className="preview-drag-handle" data-dialog-drag-handle role="button" tabIndex={0} aria-label={t('taskDetail.dragWindowAria')} title={t('taskDetail.dragWindowTitle')} />}
         {!compact && <div className="image-preview-header">{closeButton}</div>}
         {compact && closeButton}
-        <img src={resolved} alt={alt || t('md.image')} />
+        {!compact ? <div className={diagramSvg ? 'mermaid-preview__scroll' : 'desktop-image-preview'} ref={desktopViewport}
+          style={!diagramSvg && imageSize ? { width: imageSize.width, height: imageSize.height } : undefined}
+          onDoubleClick={event => {
+            const canvas = desktopViewport.current?.firstElementChild
+            if (!canvas) return
+            const rect = canvas.getBoundingClientRect()
+            if (!rect.width || !rect.height) return
+            event.preventDefault()
+            zoomAnchor.current = {
+              x: event.clientX, y: event.clientY,
+              ratioX: (event.clientX - rect.left) / rect.width,
+              ratioY: (event.clientY - rect.top) / rect.height,
+            }
+            setZoom(value => value > 1 ? 1 : 2)
+          }}>
+          {diagramSvg ? <div className="mermaid-preview__canvas" style={{ width: `${zoom * 100}%` }} dangerouslySetInnerHTML={{ __html: diagramSvg }} /> :
+            <img src={resolved} alt={alt || t('md.image')} draggable={false}
+              className={imageSize ? 'desktop-image-preview__scaled' : undefined}
+              style={imageSize ? { width: imageSize.width * zoom, height: imageSize.height * zoom } : undefined}
+              onLoad={event => {
+                const rect = event.currentTarget.getBoundingClientRect()
+                if (rect.width && rect.height) setImageSize({ width: rect.width, height: rect.height })
+              }} />}
+        </div> : <MobilePreviewImage key={resolved} src={resolved} alt={alt || t('md.image')} />}
         <div className="image-preview-toolbar">
+          {!compact && <>
+            <button type="button" data-testid="mermaid-preview-zoom-out" aria-label={t('md.mermaidZoomOut')} disabled={zoom <= 0.5} onClick={() => setZoom(value => Math.max(0.5, value - 0.25))}><Icon name="minus" size={15} /></button>
+            <button type="button" data-testid="mermaid-preview-zoom-level" aria-label={t('md.mermaidZoomReset')} onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+            <button type="button" data-testid="mermaid-preview-zoom-in" aria-label={t('md.mermaidZoomIn')} disabled={zoom >= 3} onClick={() => setZoom(value => Math.min(3, value + 0.25))}><Icon name="plus" size={15} /></button>
+          </>}
+
           <button type="button" aria-label={t('md.copyImage')} disabled={copying} onClick={() => void copy('image')}>
             {copying && <span className="image-preview-copy-spinner" aria-hidden="true" />}
             {copyLabel('image', 'md.copyImage')}
           </button>
-          <button type="button" aria-label={t('md.copyImageAddress')} disabled={copying} onClick={() => void copy('address')}>
+          {!diagramSvg && <button type="button" aria-label={t('md.copyImageAddress')} disabled={copying} onClick={() => void copy('address')}>
             {copyLabel('address', 'md.copyImageAddress')}
-          </button>
+          </button>}
           <button type="button" disabled={downloading} onClick={() => void download()}>
             {downloading && <span className="image-preview-copy-spinner" aria-hidden="true" />}
             {t('md.downloadImage')}

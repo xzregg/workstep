@@ -382,6 +382,15 @@ class CoordinatorFakeEngine(AcpEngineBase):
     def resolve_binary():
         return "fake"
 
+    def response_text(self, prompt):
+        if "Extract reusable error lessons for an archived task" in prompt:
+            if type(self).reply.get("has_experience") is False:
+                return "<no_experience />"
+            return f'<experience>\n{type(self).reply["reply"]}\n</experience>'
+        if "Maintain compact evidence notes" in prompt:
+            return type(self).reply["reply"]
+        return json.dumps(type(self).reply, ensure_ascii=False)
+
     async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
         type(self).calls.append({
             "prompt": prompt,
@@ -391,7 +400,7 @@ class CoordinatorFakeEngine(AcpEngineBase):
         })
         yield InternalEvent(
             type="agent_message_chunk",
-            data={"content": {"text": json.dumps(type(self).reply, ensure_ascii=False)}},
+            data={"content": {"text": self.response_text(prompt)}},
         )
         yield InternalEvent(
             type="usage_update",
@@ -462,17 +471,7 @@ class ArchiveProgressCoordinatorFakeEngine(CoordinatorFakeEngine):
             type="agent_message_chunk",
             data={
                 "content": {
-                    "text": json.dumps(
-                        {
-                            "version": 1,
-                            "reply": "- 错误：忽略类型检查；原因：未先构建；纠正：提交前运行类型检查。",
-                            "intent": "answer",
-                            "target_step_key": None,
-                            "artifact_requests": [],
-                            "proposal": None,
-                        },
-                        ensure_ascii=False,
-                    )
+                    "text": "<experience>\n- 错误：忽略类型检查；原因：未先构建；纠正：提交前运行类型检查。\n</experience>"
                 }
             },
         )
@@ -1312,14 +1311,14 @@ async def test_archive_experience_batches_oversized_history(api_context, monkeyp
             if "Archive evidence fragment" in prompt:
                 markers = [marker for marker in ("early-correction", "late-correction", "memory-rule")
                            if marker in prompt]
-                reply = {"reply": " ".join(markers)}
+                reply = " ".join(markers)
             else:
                 assert all(marker in prompt for marker in (
                     "early-correction", "late-correction", "memory-rule",
                 ))
-                reply = {"has_experience": True, "reply": "- 重复遗漏校验，提交前运行相关测试。"}
+                reply = "<experience>\n- 重复遗漏校验，提交前运行相关测试。\n</experience>"
             yield InternalEvent("agent_message_chunk", {
-                "content": {"text": json.dumps(reply, ensure_ascii=False)},
+                "content": {"text": reply},
             })
 
     client, tmp_path = api_context
@@ -1602,6 +1601,7 @@ async def test_archive_experience_streams_visible_coordinator_progress(
         "TOOL_CALL_ARGS",
         "TOOL_CALL_RESULT",
         "TEXT_MESSAGE_CHUNK",
+        "REASONING_MESSAGE_CHUNK",
         "TEXT_MESSAGE_CONTENT",
         "TEXT_MESSAGE_END",
     ]

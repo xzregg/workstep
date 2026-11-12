@@ -748,6 +748,24 @@
     "summary": "Undersøg leverede filer, forstå forbrug og behold genbrugelige lektioner.",
     "sections": [
       {
+        "title": "Rediger HTML-prototyper",
+        "steps": [
+          "Åbn projektets HTML-forhåndsvisning og prototypeeditoren. Ved AI-ændringer konfigureres motoren under Indstillinger → Assistenter → Prototypeassistent.",
+          "Klik på filnavnet over forhåndsvisningen for at vælge HTML i samme mappe eller en undermappe. Hver HTML har sin egen samtale. Træk i vindueskanter og skillelinjer for at ændre størrelsen.",
+          "Hold markøren over for at fremhæve, klik for at vælge eller højreklik for at kommentere. Eksempel: “Gør denne knap grøn, og bevar knappen ved siden af.” Send til chatten.",
+          "Rediger tekst, farve eller width (f.eks. 180px) i egenskaberne, og forlad feltet for at gemme. Du kan også dobbeltklikke på almindelig tekst eller trække i størrelseshåndtag. Vælg det præcise element, før sletning bekræftes.",
+          "I ændringshistorikken kan du se forskelle, fortryde eller rydde historikken. Efter en afbrydelse kontrolleres den bevarede kopi; genoptag lagring eller kassér den. Originaler med konflikter overskrives ikke."
+        ],
+        "tips": [
+          "Direkte redigering gælder statisk HTML. Markeringstilstand pauser sidescripts; visningstilstand kører interaktioner. Kun ændringer af eksisterende HTML/CSS/JS udgives; hele filer kan ikke tilføjes eller slettes."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Rediger HTML-prototyper",
+          "caption": "Det faste demoprojekts faktiske kinesiske grænseflade: den anden knap er 180px bred, og kommentaren er ikke sendt. Ingen rigtig model blev kaldt."
+        }
+      },
+      {
         "title": "Undersøg input, output og artefaktfiler",
         "steps": [
           "Åbn Step-input og -output i opgavedetaljer for at kontrollere tilgængelige input og afsluttede output.",

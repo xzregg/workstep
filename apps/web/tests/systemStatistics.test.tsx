@@ -245,3 +245,21 @@ test('shared project statistics always requests the authorized project', async (
     }
   } finally { statisticsApi.overview = original; useGatewaySessionStore.setState(previous) }
 })
+
+
+test('managed Jev worker displays its model and state alongside existing process metrics', async () => {
+  const original = statisticsApi.system
+  const value = structuredClone(report)
+  value.sample!.children = [{ ...process, pid: 93, name: 'Python', process_kind: 'decision_model', model_id: 'laya-multilingual', worker_state: 'ready' }]
+  statisticsApi.system = async () => value
+  const view = await mount(<SystemStatisticsPanel />)
+  try {
+    const row = view.container.querySelector('tbody tr')!
+    assert.match(row.textContent || '', /Jev · laya-multilingual/)
+    assert.match(row.textContent || '', /本地决策推理/)
+    assert.match(row.textContent || '', /Python/)
+    assert.match(row.textContent || '', /93/)
+    assert.match(row.textContent || '', /186.0 MB/)
+    assert.match(row.textContent || '', /就绪/)
+  } finally { await view.close(); statisticsApi.system = original }
+})

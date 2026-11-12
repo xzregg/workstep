@@ -748,6 +748,24 @@
     "summary": "Contrôlez les fichiers livrés, la consommation et les enseignements réutilisables.",
     "sections": [
       {
+        "title": "Modifier un prototype HTML",
+        "steps": [
+          "Ouvrez un aperçu HTML du projet, puis l’éditeur de prototype. Pour les modifications par IA, configurez le moteur dans Paramètres → Assistants → Assistant de prototype.",
+          "Cliquez sur le nom du fichier au-dessus de l’aperçu pour choisir un HTML voisin ou dans un sous-dossier. Chaque HTML conserve sa conversation. Faites glisser les bords et séparateurs pour redimensionner.",
+          "Survolez pour surligner, cliquez pour sélectionner, ou faites un clic droit pour commenter. Exemple : « Passe ce bouton en vert sans modifier le bouton voisin. » Envoyez le commentaire au chat.",
+          "Modifiez le texte, la couleur ou width (par exemple 180px) dans les propriétés, puis quittez le champ pour enregistrer. Vous pouvez aussi double-cliquer sur du texte simple ou tirer les poignées. Sélectionnez précisément l’élément avant de confirmer sa suppression.",
+          "Dans l’historique des modifications, comparez, annulez ou effacez l’historique. Après une interruption, inspectez la copie conservée puis reprenez l’enregistrement ou abandonnez. Les originaux en conflit ne sont pas écrasés."
+        ],
+        "tips": [
+          "L’édition directe concerne le HTML statique. Le mode sélection suspend les scripts ; le mode navigation exécute les interactions. Seules les modifications de fichiers HTML/CSS/JS existants sont publiées, sans ajout ni suppression de fichiers entiers."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Modifier un prototype HTML",
+          "caption": "Interface chinoise réelle du projet de démonstration fixe : le deuxième bouton mesure 180px et le commentaire n’est pas envoyé. Aucun modèle réel n’a été appelé."
+        }
+      },
+      {
         "title": "Consulter entrées, sorties et livrables",
         "steps": [
           "Ouvrez Entrées et sorties de l’étape pour vérifier disponibilité et achèvement.",

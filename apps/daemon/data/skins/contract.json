@@ -1805,6 +1805,7 @@
     "task-board-load-error": ".task-board-load-error",
     "task-board-loading": ".task-board-loading",
     "task-board-table": ".task-board-table",
+    "task-board-view-toggle": ".task-board-view-toggle",
     "task-card-meta": ".task-card-meta",
     "task-card-recovered-badge": ".task-card-recovered-badge",
     "task-card-status-badge": ".task-card-status-badge",

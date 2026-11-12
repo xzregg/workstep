@@ -748,6 +748,24 @@
     "summary": "Zkontrolujte dodané soubory, pochopte spotřebu a uchovejte znovu použitelné lekce.",
     "sections": [
       {
+        "title": "Úprava prototypů HTML",
+        "steps": [
+          "Otevřete náhled HTML projektu a editor prototypů. Pro úpravy pomocí AI nastavte engine v Nastavení → Asistenti → Asistent prototypů.",
+          "Kliknutím na název nad náhledem vyberte HTML ve stejné složce nebo podsložce. Každý HTML má vlastní konverzaci. Přetažením okrajů a dělicích čar změňte velikost.",
+          "Přejetím zvýrazníte prvek, kliknutím jej vyberete a pravým tlačítkem otevřete komentář. Například: „Změň tento knoflík na zelený, sousední ponech beze změny.“ Odešlete do chatu.",
+          "Ve vlastnostech změňte text, barvu nebo width (například 180px) a opusťte pole pro uložení. Lze také dvojkliknout na prostý text nebo táhnout za úchyty velikosti. Před potvrzením smazání vyberte přesný prvek.",
+          "V historii změn zkontrolujte rozdíly, vraťte změny nebo historii vyčistěte. Po přerušení ověřte zachovanou kopii a obnovte ukládání nebo ji zahoďte. Konfliktní originály se nepřepisují."
+        ],
+        "tips": [
+          "Přímé úpravy podporují statické HTML. Režim výběru pozastaví skripty, režim prohlížení spustí interakce. Publikují se jen změny existujících HTML/CSS/JS; přidávání a mazání celých souborů není podporováno."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Úprava prototypů HTML",
+          "caption": "Skutečné čínské rozhraní pevného demonstračního projektu: druhé tlačítko má šířku 180px a komentář nebyl odeslán. Skutečný model nebyl volán."
+        }
+      },
+      {
         "title": "Zkontrolujte vstupy, výstupy a soubory artefaktů",
         "steps": [
           "Otevřete vstupy a výstupy Step v podrobnostech úlohy a zkontrolujte dostupné vstupy a dokončené výstupy.",

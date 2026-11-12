@@ -748,6 +748,24 @@
     "summary": "Teslim edilen dosyaları inceleyin, tüketimi anlayın ve yeniden kullanılabilir dersleri saklayın.",
     "sections": [
       {
+        "title": "HTML prototiplerini düzenleme",
+        "steps": [
+          "Projenin HTML önizlemesini ve prototip düzenleyicisini açın. AI değişiklikleri için Ayarlar → Asistanlar → Prototip asistanı altında motoru yapılandırın.",
+          "Aynı klasördeki veya alt klasördeki HTML dosyasını seçmek için önizlemenin üstündeki dosya adına tıklayın. Her HTML kendi konuşmasını saklar. Boyutu değiştirmek için pencere kenarlarını ve ayırıcıları sürükleyin.",
+          "Vurgulamak için imleci üzerine getirin, seçmek için tıklayın veya yorum için sağ tıklayın. Örnek: “Bu düğmeyi yeşil yap, yanındaki düğmeyi değiştirme.” Sohbete gönderin.",
+          "Özelliklerde metni, rengi veya width değerini (örneğin 180px) değiştirip kaydetmek için alandan çıkın. Düz metne çift tıklayabilir veya boyut tutamaçlarını sürükleyebilirsiniz. Silmeyi onaylamadan önce tam olarak ilgili öğeyi seçin.",
+          "Değişiklik geçmişinde farkları inceleyin, geri alın veya geçmişi temizleyin. Kesinti sonrası korunan kopyayı kontrol edip kaydetmeye devam edin ya da kopyayı atın. Çakışan asıl dosyaların üzerine yazılmaz."
+        ],
+        "tips": [
+          "Doğrudan düzenleme statik HTML içindir. Seçim modu sayfa betiklerini duraklatır; göz atma modu etkileşimleri çalıştırır. Yalnızca mevcut HTML/CSS/JS değişiklikleri yayımlanır; dosyaların tamamını ekleme veya silme desteklenmez."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "HTML prototiplerini düzenleme",
+          "caption": "Sabit demo projesindeki gerçek Çince arayüz: ikinci düğme 180px genişliğindedir ve yorum henüz gönderilmemiştir. Gerçek bir model çağrılmamıştır."
+        }
+      },
+      {
         "title": "Girişleri, çıkışları ve yapıt dosyalarını inceleyin",
         "steps": [
           "Mevcut girişleri ve tamamlanan çıkışları kontrol etmek için görev ayrıntılarında Adım girişleri ve çıkışlarını açın.",

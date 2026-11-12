@@ -23,6 +23,8 @@ class PreviewTicket:
     project_id: str | None
     root: Path
     expires: float
+    editor: bool = False
+    boundary: Path | None = None
 
 
 _tickets: OrderedDict[str, PreviewTicket] = OrderedDict()
@@ -36,7 +38,7 @@ class HtmlPreviewError(Exception):
         self.detail = detail
 
 
-def issue_ticket(file_path: Path, project_id: str | None) -> dict:
+def issue_ticket(file_path: Path, project_id: str | None, *, editor: bool = False, root: Path | None = None, boundary: Path | None = None) -> dict:
     now = time.monotonic()
     with _lock:
         for key in list(_tickets):
@@ -45,8 +47,38 @@ def issue_ticket(file_path: Path, project_id: str | None) -> dict:
         while len(_tickets) >= MAX_TICKETS:
             _tickets.popitem(last=False)
         token = secrets.token_urlsafe(32)
-        _tickets[token] = PreviewTicket(project_id, file_path.parent.resolve(), now + TTL_SECONDS)
-    return {'token': token, 'entry': file_path.name}
+        ticket_root = (root or file_path.parent).resolve()
+        _tickets[token] = PreviewTicket(project_id, ticket_root, now + TTL_SECONDS, editor, boundary)
+    return {'token': token, 'entry': file_path.relative_to(ticket_root).as_posix()}
+
+
+def prepare_editor_html(token: str, content: str) -> str:
+    with _lock:
+        ticket = _tickets.get(token)
+    if not ticket or not ticket.editor:
+        return content
+    from services.prototype_source import HtmlSource
+    import json
+    document = HtmlSource(content)
+    script = (Path(__file__).parent.parent / 'data' / 'prototype-editor.js').read_text()
+    # Editing messages can write files. Run only our nonce-bearing bridge in
+    # this mode, so an HTML script cannot forge an edit on behalf of the user.
+    # Browse mode issues a normal sandboxed ticket and runs the prototype code.
+    import re
+    content = document.preview()
+    doctype = re.match(r'[\s\ufeff]*<!doctype[^>]*>', content, re.IGNORECASE)
+    index = doctype.end() if doctype else 0
+    policy = f"<meta http-equiv=\"Content-Security-Policy\" content=\"script-src 'nonce-{token}'; frame-src 'none'; object-src 'none'\">"
+    content = content[:index] + policy + content[index:]
+    return content + f'<script nonce="{token}">' + script.replace('__WS_VERSION__', json.dumps(document.version)) + '</script>'
+
+
+def resource_boundary(token: str, target: Path) -> Path:
+    # A copy may live in the project's external data directory. Its ticket
+    # remains bound to the original allowed source directory, not all data.
+    with _lock:
+        ticket = _tickets.get(token)
+    return ticket.boundary if ticket and ticket.boundary else target
 
 
 def resource_file(token: str, project_id: str | None, path: str) -> Path:

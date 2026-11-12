@@ -781,8 +781,10 @@ class BaseLLMEngine(ABC):
     def project_skills(self, cwd: str):
         """Resolve and refresh the project whitelist immediately before spawn."""
         from services.skill_center import ProjectSkillSelection, skill_center
+        from services.engine_project_context import project_context_for
 
-        root = Path(cwd).expanduser().resolve()
+        context = project_context_for(cwd)
+        root = context[1] if context else Path(cwd).expanduser().resolve()
         if not root.is_dir():
             return ProjectSkillSelection(
                 project_root=root,

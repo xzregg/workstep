@@ -54,7 +54,9 @@ def summarize_task_state(status, steps, *, reason=None, settled=False):
                   'auto_review' if 'reviewing' in active else 'rework')
     elif any(_value(step, 'status') in {'failed', 'rejected'} for step in steps):
         status, reason = 'failed', reason if reason in {'engine_error', 'workflow_blocked'} else 'step_failed'
-    elif status == 'waiting' and reason == 'manual_continue':
+    elif (status == 'waiting' and reason == 'manual_continue'
+          and not (settled and steps and all(
+              _value(step, 'status') in {'passed', 'skipped'} for step in steps))):
         pass
     elif pending:
         status, reason = 'waiting', pending[0]['reason']
@@ -63,7 +65,7 @@ def summarize_task_state(status, steps, *, reason=None, settled=False):
     elif settled and steps and all(_value(step, 'status') in {'passed', 'skipped'} for step in steps):
         status, reason = 'completed', None
     elif settled or status in {'paused', 'failed', 'waiting'}:
-        status, reason = 'failed', reason or 'workflow_blocked'
+        status, reason = 'failed', reason if reason in {'engine_error', 'step_failed'} else 'workflow_blocked'
     else:
         reason = 'execution' if status == 'running' else reason
     return {'status': status, 'status_reason': reason, 'pending_confirmations': pending}
@@ -103,6 +105,28 @@ def reconcile_task_state(task, *, settled=False, reason=None):
 
 def task_has_active_execution(task):
     """A runner waiting for tool approval is still active for destructive actions."""
-    return task.status == 'running' or (task.status == 'waiting' and any(
-        row.status in {'running', 'reviewing'} for row in current_task_steps(task)
-    ))
+    # A stale task label must never hide a live step, including one outside a
+    # newly edited workflow scope. DB callers also protect orphaned executions.
+    from models import TaskStep
+    return task.status in {'running', 'queued'} or TaskStep.select().where(
+        (TaskStep.task == task) & TaskStep.status.in_(['running', 'reviewing'])
+    ).exists()
+
+
+def settle_manual_completion(task, workflow_run, *, wait_for_downstream=True):
+    """Finish a fully accepted execution scope; preserve deliberate stops otherwise."""
+    from models.fields import utc_now
+    rows = current_task_steps(task)
+    complete = bool(rows) and all(row.status in {'passed', 'skipped'} for row in rows)
+    if complete:
+        task.status, task.status_reason = 'completed', None
+        workflow_run.status = 'succeeded'
+        workflow_run.ended_at = utc_now()
+        workflow_run.owner_id = workflow_run.heartbeat_at = None
+        workflow_run.save()
+    elif wait_for_downstream and task.status != 'stopped':
+        task.status, task.status_reason = 'waiting', 'manual_continue'
+    task.updated_at = utc_now()
+    task.state_version += 1
+    task.save()
+    return summarize_task_state(task.status, rows, reason=task.status_reason, settled=True)

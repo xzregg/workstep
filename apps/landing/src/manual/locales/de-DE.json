@@ -748,6 +748,24 @@
     "summary": "Prüfen Sie tatsächliche Dateien, verstehen Sie Verbrauch und speichern Sie wiederverwendbare Erfahrungen.",
     "sections": [
       {
+        "title": "HTML-Prototypen bearbeiten",
+        "steps": [
+          "Öffnen Sie eine HTML-Vorschau des Projekts und den Prototyp-Editor. Für KI-Änderungen konfigurieren Sie die Engine unter Einstellungen → Assistenten → Prototyp-Assistent.",
+          "Über den Dateinamen oberhalb der Vorschau wählen Sie HTML-Dateien im selben Ordner oder Unterordner. Jede HTML-Datei behält ihren eigenen Chat. Ziehen Sie Fensterkanten und Trennlinien zum Vergrößern oder Verkleinern.",
+          "Beim Darüberfahren wird das Element hervorgehoben; klicken Sie zum Auswählen oder rechtsklicken Sie zum Kommentieren. Beispiel: „Diesen Button grün machen, den Nachbarbutton unverändert lassen.“ Senden Sie den Kommentar an den Chat.",
+          "Ändern Sie Text, Farbe oder width (z. B. 180px) in den Eigenschaften und verlassen Sie das Feld zum Speichern. Einfachen Text können Sie doppelklicken, Größen über Griffe ändern. Vor dem bestätigten Löschen das genaue Element auswählen.",
+          "Im Änderungsverlauf prüfen Sie Unterschiede, machen Änderungen rückgängig oder leeren den Verlauf. Nach einer Unterbrechung die erhaltene Kopie prüfen und Speichern fortsetzen oder verwerfen. Originale mit Konflikten werden nicht überschrieben."
+        ],
+        "tips": [
+          "Direkte Bearbeitung gilt für statisches HTML. Der Auswahlmodus pausiert Seitenskripte, der Ansichtsmodus führt Interaktionen aus. Veröffentlicht werden nur Änderungen vorhandener HTML/CSS/JS-Dateien; ganze Dateien können nicht hinzugefügt oder gelöscht werden."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "HTML-Prototypen bearbeiten",
+          "caption": "Echte chinesische Oberfläche im festen Demoprojekt: Der zweite Button ist 180px breit, der Kommentar noch ungesendet. Es wurde kein echtes Modell aufgerufen."
+        }
+      },
+      {
         "title": "Ein-/Ausgaben und Artefakte ansehen",
         "steps": [
           "Öffnen Sie Schritteingaben/-ausgaben in den Details und prüfen Sie verfügbare Eingaben und fertige Ausgaben.",

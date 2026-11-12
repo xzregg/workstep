@@ -748,6 +748,24 @@
     "summary": "Inspecteer geleverde bestanden, begrijp het verbruik en bewaar herbruikbare lessen.",
     "sections": [
       {
+        "title": "HTML-prototypes bewerken",
+        "steps": [
+          "Open een HTML-voorbeeld van het project en de prototype-editor. Stel voor AI-wijzigingen een engine in via Instellingen → Assistenten → Prototype-assistent.",
+          "Klik op de bestandsnaam boven het voorbeeld om HTML in dezelfde map of een submap te kiezen. Elk HTML-bestand behoudt zijn eigen gesprek. Versleep vensterranden en scheidingslijnen om de grootte aan te passen.",
+          "Beweeg de aanwijzer voor markering, klik om te selecteren of rechtsklik om commentaar te geven. Bijvoorbeeld: “Maak deze knop groen en laat de knop ernaast ongewijzigd.” Stuur dit naar de chat.",
+          "Wijzig tekst, kleur of width (bijvoorbeeld 180px) bij Eigenschappen en verlaat het veld om op te slaan. U kunt ook dubbelklikken op eenvoudige tekst of formaatgrepen slepen. Selecteer het juiste element voordat u verwijdering bevestigt.",
+          "Bekijk verschillen, draai wijzigingen terug of wis de wijzigingsgeschiedenis. Controleer na een onderbreking de bewaarde kopie en hervat het opslaan of verwerp deze. Conflicterende originelen worden niet overschreven."
+        ],
+        "tips": [
+          "Direct bewerken werkt met statische HTML. Selectiemodus pauzeert paginascripts; bladermodus voert interacties uit. Alleen wijzigingen aan bestaande HTML/CSS/JS-bestanden worden gepubliceerd; volledige bestanden toevoegen of verwijderen wordt niet ondersteund."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "HTML-prototypes bewerken",
+          "caption": "Echte Chinese interface van het vaste demoproject: de tweede knop is 180px breed en het commentaar is niet verzonden. Er is geen echt model aangeroepen."
+        }
+      },
+      {
         "title": "Invoer, uitvoer en artefactbestanden inspecteren",
         "steps": [
           "Open Stap-invoer en -uitvoer in taakdetails om beschikbare invoer en voltooide uitvoer te controleren.",

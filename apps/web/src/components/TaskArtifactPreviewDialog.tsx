@@ -4,6 +4,7 @@ import { useI18n } from '../i18n'
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ArtifactPreview from './ArtifactPreview'
+import PrototypeEditor from './prototype/PrototypeEditor'
 import Button from './Button'
 import ResizablePanel from './ResizablePanel'
 import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
@@ -23,6 +24,7 @@ interface Props {
 
 export default function TaskArtifactPreviewDialog({ artifact, projectId, projectType = 'local', onClose, onOpenDirectory, canOpenDirectory, directoryFiles, sharedFiles }: Props) {
   const { t } = useI18n()
+  const [prototypePath, setPrototypePath] = useState<string | null>(null)
   const [showDirectoryBrowser, setShowDirectoryBrowser] = useState(false)
   const directoryPath = artifact.is_dir
     ? artifact.path
@@ -57,6 +59,7 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, project
     typeof window === 'undefined' ? 'localhost' : window.location.hostname,
     typeof navigator === 'undefined' ? '' : navigator.userAgent,
   ))
+  if (prototypePath && projectId) return <PrototypeEditor projectId={projectId} path={prototypePath} onClose={() => setPrototypePath(null)} />
   if (directoryFiles) return (
     <ProjectDirectoryBrowserDialog
       projectId={projectId || ''}
@@ -98,7 +101,7 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, project
         <Button variant="icon" onClick={onClose}>✕</Button>
       </div>
       <div className="artifact-preview-container task-artifact-preview-body">
-        <ArtifactPreview path={artifact.path} projectId={projectId} onClose={onClose} />
+        <ArtifactPreview path={artifact.path} projectId={projectId} onClose={onClose} onOpenPrototype={setPrototypePath} />
       </div>
     </ResizablePanel>
   </div>

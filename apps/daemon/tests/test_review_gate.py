@@ -1813,7 +1813,7 @@ async def test_stopped_automatic_review_can_set_step_complete(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("schedule_downstream", [True, False])
-@pytest.mark.parametrize("other_step_status", ["pending", "awaiting_review"])
+@pytest.mark.parametrize("other_step_status", ["pending", "awaiting_review", "passed"])
 @pytest.mark.parametrize("message_status", ["failed", "cancelled"])
 async def test_failed_execution_with_existing_artifact_can_be_set_complete(
     tmp_path, schedule_downstream, other_step_status, message_status,
@@ -1901,8 +1901,12 @@ async def test_failed_execution_with_existing_artifact_can_be_set_complete(
             & (StepRun.status == "reused")
         ).count() == 1
         if not schedule_downstream:
-            assert Task.get_by_id(task.id).status == "paused"
-            assert WorkflowRun.get_by_id(run.id).status == "failed"
+            assert Task.get_by_id(task.id).status == (
+                "completed" if other_step_status == "passed" else "paused"
+            )
+            assert WorkflowRun.get_by_id(run.id).status == (
+                "succeeded" if other_step_status == "passed" else "failed"
+            )
     finally:
         await runtime.shutdown()
         await bus.close()

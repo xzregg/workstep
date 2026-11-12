@@ -7,6 +7,12 @@ import { Nav } from '../src/components/Nav'
 import { I18nProvider } from '../src/i18n'
 
 describe('operation manual', () => {
+  it('documents prototype selection, recovery and the static editing boundary with a real screenshot', () => {
+    const section = manualChapters.find(chapter => chapter.id === 'results')!.sections.find(section => section.screenshot?.id === 'prototype-editor')
+    expect(section).toBeDefined()
+    for (const phrase of ['原型编辑', '右键', '恢复保存', '静态 HTML', '原型助手', '修改历史']) expect(JSON.stringify(section)).toContain(phrase)
+    expect(manualContent.screenshotUrl('prototype-editor')).toBeTruthy()
+  })
   it('explains connector configuration, real tool testing and session scope without claiming OAuth support', () => {
     const chapter = manualChapters.find(chapter => chapter.id === 'chat-skills')!
     const section = chapter.sections.find(section => section.screenshot?.id === 'connector-settings')

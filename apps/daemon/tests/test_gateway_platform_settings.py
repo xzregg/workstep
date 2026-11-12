@@ -650,3 +650,15 @@ def test_gateway_address_alias_reuses_only_successfully_connected_signed_identit
     assert platform_identity('g1', Ed25519PrivateKey.generate().public_key(), duplicate) == duplicate
     assert module._identity('https://gateway.test') == original
     assert module._identity('http://127.0.0.1:8700') == duplicate, 'Legacy identities remain available'
+
+
+@pytest.mark.asyncio
+async def test_gateway_settings_exposes_connected_device_for_conversation_links(monkeypatch):
+    from services.gateway_client import browser_login as module
+    monkeypatch.setattr(module, 'config_store', SimpleNamespace(
+        get=lambda *args: {'url': 'https://gateway.example', 'enabled': True}))
+    gateway = SimpleNamespace(device_id='device-1', current_user_id='owner',
+                              control_client=SimpleNamespace(online=True))
+    result = await module.GatewayBrowserLogin(gateway).settings()
+    assert result['device_id'] == 'device-1'
+    assert result['url'] == 'https://gateway.example'

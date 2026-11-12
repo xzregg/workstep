@@ -159,6 +159,7 @@ class TaskAutoRetry:
         acquired = await concurrency_gate.acquire_task(project_id, task_id, "manual")
         if acquired != GRANTED:
             return
+        permit = concurrency_gate.task_permit(project_id, task_id)
         launched = False
         try:
             claimed = await self.manager.run_db(
@@ -170,7 +171,10 @@ class TaskAutoRetry:
                 return
             # Preserve parent-run attribution; never impersonate the host's current user.
             with replayed_actor_context(None):
-                await self.runtime.retry_failed_message(project_id, task_id, message_id)
+                await self.runtime.retry_failed_message(
+                    project_id, task_id, message_id,
+                    task_permit=permit,
+                )
             launched = True
             logger.info("Automatically retried failed task: project=%s task=%s", project_id, task_id)
         except (ValueError, RuntimeError):
@@ -179,4 +183,4 @@ class TaskAutoRetry:
             logger.exception("Automatic retry submission failed: project=%s task=%s", project_id, task_id)
         finally:
             if not launched:
-                await concurrency_gate.release_task(project_id, task_id)
+                await concurrency_gate.release_task(project_id, task_id, permit=permit)

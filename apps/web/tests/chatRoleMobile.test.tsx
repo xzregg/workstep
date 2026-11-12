@@ -10,6 +10,7 @@ import { useProjectStore } from '../src/stores/projectStore'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 import { chatRoleApi } from '../src/api/chatRoles'
 import { roleCenterApi } from '../src/api/roleCenter'
+import { MobileHeaderActionsProvider, MobileHeaderActionsSlot } from '../src/components/MobileHeaderActions'
 
 for (const projectScoped of [false, true]) test(`phone gateway ${projectScoped ? 'project ticket keeps host role assets hidden' : 'whole-device workspace shows role selection in the plus sheet'}`, async () => {
   const { window } = installDomEnvironment()
@@ -40,9 +41,16 @@ for (const projectScoped of [false, true]) test(`phone gateway ${projectScoped ?
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   try {
     await act(async () => root.render(<MemoryRouter initialEntries={['/chat?project=phone&session=phone-session']}>
-      <I18nProvider><ChatPage /></I18nProvider>
+      <I18nProvider><MobileHeaderActionsProvider>
+        <div className="mobile-header-session-actions"><MobileHeaderActionsSlot /></div>
+        <ChatPage />
+      </MobileHeaderActionsProvider></I18nProvider>
     </MemoryRouter>))
     assert.match(document.querySelector('.chat-session-welcome')?.textContent || '', /你想在 phone 中完成什么？/)
+    const share = document.querySelector<HTMLButtonElement>('.mobile-session-link')
+    assert.ok(share)
+    assert.equal(share.getAttribute('aria-label'), '复制对话链接')
+    assert.equal(document.querySelector('.mobile-sheet .mobile-session-link'), null)
     const plus = document.querySelector<HTMLButtonElement>('.chat-input-attach')
     assert.ok(plus)
     await act(async () => plus.click())

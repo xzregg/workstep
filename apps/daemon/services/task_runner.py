@@ -210,124 +210,123 @@ class TaskRunner:
             artifacts_dir: Path to .workstep/artifacts/.
             user_input: Optional user supplementary input.
         """
-        # Build DAG
-        step_list = [Step.from_dict(s) for s in steps_config.get("steps", [])]
-        if not step_list:
-            logger.warning("No steps in pipeline for task %s", task.id)
-            return
+        try:
+            # Build DAG
+            step_list = [Step.from_dict(s) for s in steps_config.get("steps", [])]
+            if not step_list:
+                raise ValueError('空流程不能启动，请先添加步骤')
 
-        scheduler = DAGScheduler(step_list)
+            scheduler = DAGScheduler(step_list)
 
-        def initialize_pipeline_state() -> tuple[set[str], set[str], str | None]:
-            # Ensure task_steps exist for all steps.
-            for step in step_list:
-                TaskStep.get_or_create(
-                    task=task,
-                    step_key=step.key,
-                    defaults={"status": "pending"},
+            def initialize_pipeline_state() -> tuple[set[str], set[str], str | None]:
+                # Ensure task_steps exist for all steps.
+                for step in step_list:
+                    TaskStep.get_or_create(
+                        task=task,
+                        step_key=step.key,
+                        defaults={"status": "pending"},
+                    )
+
+                task.status = "running"
+                task.status_reason = 'execution'
+                task.updated_at = utc_now()
+                # 只写状态列：整行 save() 会用可能已过期的实例字段覆盖并发写入。
+                Task.update(
+                    status="running",
+                    status_reason='execution',
+                    updated_at=task.updated_at,
+                ).where(Task.id == task.id).execute()
+
+                persisted_completed: set[str] = set()
+                task_step_statuses = {
+                    row.step_key: row.status
+                    for row in TaskStep.select().where(TaskStep.task == task)
+                }
+                # A task may intentionally start from a later step. Persisted
+                # skipped steps satisfy their DAG dependencies.
+                persisted_completed.update(
+                    step_key
+                    for step_key, status in task_step_statuses.items()
+                    if status == "skipped"
                 )
 
-            task.status = "running"
-            task.status_reason = 'execution'
-            task.updated_at = utc_now()
-            # 只写状态列：整行 save() 会用可能已过期的实例字段覆盖并发写入。
-            Task.update(
-                status="running",
-                status_reason='execution',
-                updated_at=task.updated_at,
-            ).where(Task.id == task.id).execute()
+                if workflow_run is not None:
+                    latest_attempts = {}
+                    for step_run in StepRun.select().where(
+                        StepRun.run == workflow_run
+                    ).order_by(StepRun.attempt):
+                        latest_attempts[step_run.step_key] = step_run
+                    for step_run in latest_attempts.values():
+                        # Recovery turns an interrupted attempt into failed/pending.
+                        # An older successful round must not complete its unfinished rework.
+                        if step_run.status not in {"succeeded", "reused"}:
+                            continue
+                        # A persisted return/retry marker wins over historical
+                        # successful attempts.  Otherwise resuming after a
+                        # manually approved feedback artifact would silently
+                        # classify the rewound target as already completed.
+                        if task_step_statuses.get(step_run.step_key) in {
+                            "rework",
+                            "rework_waiting",
+                            "retrying",
+                            "failed",
+                            "awaiting_review",
+                            "reviewing",
+                        }:
+                            continue
+                        reviews = list(
+                            ReviewRun.select()
+                            .where(ReviewRun.step_run == step_run)
+                            .order_by(ReviewRun.attempt.desc())
+                        )
+                        if not reviews or reviews[0].status == "passed":
+                            persisted_completed.add(step_run.step_key)
+                else:
+                    for ts in TaskStep.select().where(
+                        (TaskStep.task == task) & (TaskStep.status == "passed")
+                    ):
+                        persisted_completed.add(ts.step_key)
+                return (
+                    persisted_completed,
+                    {key for key, status in task_step_statuses.items()
+                     if status == "awaiting_review"},
+                    workflow_run.routing_state_json if workflow_run is not None else None,
+                )
 
-            persisted_completed: set[str] = set()
-            task_step_statuses = {
-                row.step_key: row.status
-                for row in TaskStep.select().where(TaskStep.task == task)
-            }
-            # A task may intentionally start from a later step. Persisted
-            # skipped steps satisfy their DAG dependencies.
-            persisted_completed.update(
-                step_key
-                for step_key, status in task_step_statuses.items()
-                if status == "skipped"
+            completed, awaiting_review, routing_state_json = await self._run_db(initialize_pipeline_state)
+            completed.intersection_update(scheduler.steps)
+            # A saved success is still an ordering barrier when an upstream step
+            # is being rerun. Do not let its consumer overtake that upstream.
+            while True:
+                waiting = {key for key in completed if scheduler.steps[key].reuse_success
+                           and not set(scheduler.steps[key].depends_on).issubset(completed)}
+                if not waiting:
+                    break
+                completed.difference_update(waiting)
+            self._artifact_routes.restore(routing_state_json, execution_scope)
+            overlay = json.loads(task.workflow_overrides_json or "{}")
+            await self._artifact_routes.reconcile_configuration(
+                scheduler, workflow_run,
+                structural_override=bool(overlay.get("added_nodes") or overlay.get("added_connections") or overlay.get("removed_connections")),
+            )
+            # 重启某步骤时只重跑该步骤及其下游（scope）。范围外的步骤即便未通过
+            # 也不再执行，但仍要让依赖它们的下游步骤被视为依赖已满足——否则失败的
+            # 上游会被 DAG 判为 ready 而抢先执行（@ 下游却跑了上游）。
+            scope = self._artifact_routes.scope
+            if scope is not None:
+                completed |= {key for key in scheduler.steps if key not in scope}
+            running = set()
+            # Match the live review path: a pending human decision blocks scheduling,
+            # but does not complete or re-execute the stage when a sibling resumes.
+            failed = awaiting_review & scheduler.steps.keys()
+            await self._artifact_routes.seed_completed_forward_routes(
+                task,
+                scheduler,
+                artifacts_dir,
+                workflow_run,
+                completed,
             )
 
-            if workflow_run is not None:
-                latest_attempts = {}
-                for step_run in StepRun.select().where(
-                    StepRun.run == workflow_run
-                ).order_by(StepRun.attempt):
-                    latest_attempts[step_run.step_key] = step_run
-                for step_run in latest_attempts.values():
-                    # Recovery turns an interrupted attempt into failed/pending.
-                    # An older successful round must not complete its unfinished rework.
-                    if step_run.status not in {"succeeded", "reused"}:
-                        continue
-                    # A persisted return/retry marker wins over historical
-                    # successful attempts.  Otherwise resuming after a
-                    # manually approved feedback artifact would silently
-                    # classify the rewound target as already completed.
-                    if task_step_statuses.get(step_run.step_key) in {
-                        "rework",
-                        "rework_waiting",
-                        "retrying",
-                        "failed",
-                        "awaiting_review",
-                        "reviewing",
-                    }:
-                        continue
-                    reviews = list(
-                        ReviewRun.select()
-                        .where(ReviewRun.step_run == step_run)
-                        .order_by(ReviewRun.attempt.desc())
-                    )
-                    if not reviews or reviews[0].status == "passed":
-                        persisted_completed.add(step_run.step_key)
-            else:
-                for ts in TaskStep.select().where(
-                    (TaskStep.task == task) & (TaskStep.status == "passed")
-                ):
-                    persisted_completed.add(ts.step_key)
-            return (
-                persisted_completed,
-                {key for key, status in task_step_statuses.items()
-                 if status == "awaiting_review"},
-                workflow_run.routing_state_json if workflow_run is not None else None,
-            )
-
-        completed, awaiting_review, routing_state_json = await self._run_db(initialize_pipeline_state)
-        completed.intersection_update(scheduler.steps)
-        # A saved success is still an ordering barrier when an upstream step
-        # is being rerun. Do not let its consumer overtake that upstream.
-        while True:
-            waiting = {key for key in completed if scheduler.steps[key].reuse_success
-                       and not set(scheduler.steps[key].depends_on).issubset(completed)}
-            if not waiting:
-                break
-            completed.difference_update(waiting)
-        self._artifact_routes.restore(routing_state_json, execution_scope)
-        overlay = json.loads(task.workflow_overrides_json or "{}")
-        await self._artifact_routes.reconcile_configuration(
-            scheduler, workflow_run,
-            structural_override=bool(overlay.get("added_nodes") or overlay.get("added_connections") or overlay.get("removed_connections")),
-        )
-        # 重启某步骤时只重跑该步骤及其下游（scope）。范围外的步骤即便未通过
-        # 也不再执行，但仍要让依赖它们的下游步骤被视为依赖已满足——否则失败的
-        # 上游会被 DAG 判为 ready 而抢先执行（@ 下游却跑了上游）。
-        scope = self._artifact_routes.scope
-        if scope is not None:
-            completed |= {key for key in scheduler.steps if key not in scope}
-        running = set()
-        # Match the live review path: a pending human decision blocks scheduling,
-        # but does not complete or re-execute the stage when a sibling resumes.
-        failed = awaiting_review & scheduler.steps.keys()
-        await self._artifact_routes.seed_completed_forward_routes(
-            task,
-            scheduler,
-            artifacts_dir,
-            workflow_run,
-            completed,
-        )
-
-        try:
             await self._execute_dag(
                 task,
                 scheduler,
@@ -340,12 +339,26 @@ class TaskRunner:
             )
         except Exception as e:
             logger.exception("Pipeline failed for task %s", task.id)
-            task.status = "failed"
-            task.status_reason = "engine_error"
+            from services.workflow_finalization import settle_interrupted_run
+
+            await self._run_db(lambda: settle_interrupted_run(
+                task.id, workflow_run.id if workflow_run is not None else None,
+                str(e), stopped=bool(self._cancel_audit),
+            ))
+            task.status = 'stopped' if self._cancel_audit else 'failed'
+            task.status_reason = 'user_stop' if self._cancel_audit else 'engine_error'
         else:
             # Check if all steps completed
             all_keys = set(scheduler.steps.keys())
-            if completed == all_keys:
+            if self._cancel_audit:
+                from services.workflow_finalization import settle_interrupted_run
+
+                await self._run_db(lambda: settle_interrupted_run(
+                    task.id, workflow_run.id if workflow_run is not None else None,
+                    '手动停止', stopped=True,
+                ))
+                task.status, task.status_reason = 'stopped', 'user_stop'
+            elif completed == all_keys:
                 task.status = "completed"
                 task.status_reason = None
             else:
@@ -414,6 +427,8 @@ class TaskRunner:
         await self._artifact_routes.prepare_feedback_context(
             task, scheduler, artifacts_dir,
         )
+        if self._cancel_audit:
+            return
         ready = scheduler.get_ready_steps(
             completed,
             running | failed,
@@ -543,7 +558,14 @@ class TaskRunner:
             )
             for step in ready
         ]
-        await asyncio.gather(*coros)
+        children = [asyncio.create_task(coro) for coro in coros]
+        try:
+            await asyncio.gather(*children)
+        except BaseException:
+            for child in children:
+                child.cancel()
+            await asyncio.gather(*children, return_exceptions=True)
+            raise
         await self._step_rework.reconcile_batch(task, generations, completed, failed)
 
         # Recurse: check for newly ready steps
@@ -754,6 +776,8 @@ class TaskRunner:
         review_feedback: str = "",
     ) -> None:
         """Execute a single pipeline step."""
+        if self._cancel_audit:
+            return
         step_key = step.key
         if workflow_run is not None:
             checkpoint = await self._review_messages.load_checkpoint(
@@ -857,6 +881,8 @@ class TaskRunner:
 
         if step.kind == "task_dispatch":
             try:
+                if self._cancel_audit:
+                    return
                 if self._dispatch_service is None:
                     raise RuntimeError("流程步骤服务未初始化")
                 await self._dispatch_service.dispatch(
@@ -1026,6 +1052,8 @@ class TaskRunner:
                 spawn_iter = _with_engine_idle_timeout(
                     engine, spawn_iter, idle_timeout
                 )
+            if self._cancel_audit:
+                raise asyncio.CancelledError
             async for event in spawn_iter:
                 normalize_event = getattr(
                     engine,
@@ -1503,10 +1531,10 @@ class TaskRunner:
 
         intent = (action, get_effective_actor())
         self._cancel_audit = intent
-        cancelled = await self._live.cancel_task(task_id)
-        if not cancelled and self._cancel_audit is intent:
-            self._cancel_audit = None
-        return cancelled
+        await self._live.cancel_task(task_id)
+        # Cancellation also applies between engines and while waiting for a
+        # concurrency slot. The scheduler checks this intent before fan-out.
+        return True
 
     async def stop_for_shutdown(self) -> None:
         """Stop engines while leaving running steps recoverable."""

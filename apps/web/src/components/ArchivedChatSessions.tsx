@@ -1,3 +1,4 @@
+import ArchivedChatPreview from './ArchivedChatPreview'
 import ChatSessionSourceBadge from './ChatSessionSourceBadge'
 import { useEffect, useMemo, useState } from 'react'
 import { chatSessionApi, type ChatSessionSummary } from '../api/client'
@@ -8,10 +9,13 @@ import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Input from './Input'
 import ResizablePanel from './ResizablePanel'
+import { formatConversationDateTime } from '../utils/datetime'
+import './ArchivedChatSessions.css'
 
 export default function ArchivedChatSessions({ projectId }: { projectId: string }) {
   const { t } = useI18n()
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([])
+  const [previewId, setPreviewId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -23,6 +27,7 @@ export default function ArchivedChatSessions({ projectId }: { projectId: string 
     let live = true
     setLoading(true)
     setSelected(new Set())
+    setPreviewId(null)
     setError('')
     void chatSessionApi.list(projectId, true).then(({ sessions: result }) => {
       if (live) setSessions(result)
@@ -84,8 +89,8 @@ export default function ArchivedChatSessions({ projectId }: { projectId: string 
       placeholder={t('chatSession.searchArchive')}
       aria-label={t('chatSession.searchArchive')}
     />
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+    <div className="archived-session-toolbar">
+      <label className="archived-session-select-all">
         <input type="checkbox" checked={allVisibleSelected} disabled={!visibleIds.length || busy}
           onChange={() => setSelected((current) => {
             const next = new Set(current)
@@ -102,10 +107,8 @@ export default function ArchivedChatSessions({ projectId }: { projectId: string 
     {error && <div role="alert" style={{ color: 'var(--danger)' }}>{error}</div>}
     {loading ? <div>{t('common.loading')}</div> : visible.length === 0 ? (
       <div style={{ color: 'var(--muted)' }}>{t('chatSession.archiveEmpty')}</div>
-    ) : visible.map((session) => <div key={session.id} style={{
-      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-      border: '1px solid var(--border-soft)', borderRadius: 8,
-    }}>
+    ) : visible.map((session) => <div key={session.id} className="archived-session-item">
+      <div className="archived-session-row">
       <input type="checkbox" checked={selected.has(session.id)} disabled={busy}
         aria-label={t('chatSession.selectArchive', { title: session.title })}
         onChange={() => setSelected((current) => {
@@ -113,13 +116,29 @@ export default function ArchivedChatSessions({ projectId }: { projectId: string 
           if (next.has(session.id)) next.delete(session.id); else next.add(session.id)
           return next
         })} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</div>
-        {session.preview && <div style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>{session.preview}</div>}
+      <button type="button" className="archived-session-open" aria-expanded={previewId === session.id}
+        onClick={() => setPreviewId((current) => current === session.id ? null : session.id)}>
+        <div className="archived-session-heading">
+          <div className="archived-session-title" title={session.title}>{session.title}</div>
+        </div>
+        {session.preview && <div className="archived-session-description">
+          <span className="archived-session-summary">{session.preview}</span>
+        </div>}
+      </button>
+        <span className="archived-session-time" title={t('chatSession.archivedAt')}>
+        {session.archived_at ? <time dateTime={session.archived_at}>
+          {formatConversationDateTime(session.archived_at, null) || '—'}
+        </time> : <span>—</span>}
+        </span>
+      <div className="archived-session-actions">
+        <span className="archived-session-source">
+          <ChatSessionSourceBadge source={session.source} platform={session.channel_platform} botName={session.channel_name} conversationType={session.channel_conversation_type} peerName={session.channel_peer_name} />
+        </span>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={() => void restore([session.id])}>{t('chatSession.restore')}</Button>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={() => setDeleteIds([session.id])}>{t('common.delete')}</Button>
       </div>
-      <ChatSessionSourceBadge source={session.source} platform={session.channel_platform} botName={session.channel_name} conversationType={session.channel_conversation_type} peerName={session.channel_peer_name} />
-      <Button variant="ghost" disabled={busy} onClick={() => void restore([session.id])}>{t('chatSession.restore')}</Button>
-      <Button variant="ghost" disabled={busy} onClick={() => setDeleteIds([session.id])}>{t('common.delete')}</Button>
+      </div>
+      {previewId === session.id && <ArchivedChatPreview key={`${projectId}:${session.id}`} projectId={projectId} sessionId={session.id} />}
     </div>)}
     <ConfirmDialog open={deleteIds.length > 0} title={t('chatSession.deleteTitle')}
       message={t('chatSession.archiveDeleteMessage', { count: deleteIds.length })}
@@ -143,7 +162,7 @@ export function ArchivedChatSessionsDialog({ projectId, projectName, onClose }: 
         <span className="modal-title">{t('chatSession.viewArchive')} · {projectName}</span>
         <Button variant="icon" aria-label={t('common.close')} onClick={onClose}>✕</Button>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 20 }}>
+      <div className="archived-session-dialog-body">
         <ArchivedChatSessions projectId={projectId} />
       </div>
     </ResizablePanel>

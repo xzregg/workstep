@@ -9,6 +9,7 @@
 - [容器 Home 与运行时持久化](container-runtime.md) *(简体中文)* — 整体 Home 挂载、基础运行时初始化、引擎持久化与旧挂载迁移。
 - [Development](development.md) — setup, test commands, module boundaries, Git management, onboarding, and pull-request checks.
 - [动态皮肤开发规范](skins.md) *(简体中文)* — 包格式、全站样式部位、PC/手机布局、事件边界与聊天制作。
+- [决策模型与代理](decision-models.md) *(简体中文)* — 可选模型下载、宿主目录、代理地址、共用密钥与性能边界。
 - [Code map](code-map.md) *(简体中文)* — find feature owners, API and service boundaries, tests, and change workflow.
 - [Gateway 开发与部署](gateway-development.md) *(简体中文)* — Gateway 分层、账号、授权、接口及部署入口；未完成验收仍以平台计划为准。
 - [Gateway 运维](gateway-operations.md) *(简体中文)* — 域名、TLS、备份恢复和客户端发布。
@@ -18,7 +19,7 @@
 - [GitHub settings](github-settings.md) — repository features, rulesets, security, Pages, and analytics.
 - [Release checklist](releasing.md) — unsigned desktop packaging, SBOM, checksums, approval, and clean-machine validation.
 - [Plan index](../plans/README.md) — remaining proposals, evolving behavior boundaries, and pending acceptance.
-- [Product requirements](../PRODUCT.md) *(简体中文)* and [design system](../DESIGN.md) — product and visual decisions.
+- [Design system](../DESIGN.md) — visual decisions; current product scope is described in the project overview above.
 
 Repository-agent instructions remain in [`AGENTS.md`](../AGENTS.md); they point back to these human-facing documents instead of duplicating them.
 

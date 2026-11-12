@@ -41,6 +41,13 @@ def persist_review_decision(
         .first()
     )
     setting_complete = decision == "set_complete"
+    task = Task.get_by_id(task_id)
+    if not setting_complete and (
+        task.active_workflow_run_id != review.workflow_run_id
+        or review.status in {'cancelled', 'skipped'}
+        or review.workflow_run.status == 'superseded'
+    ):
+        raise RuntimeError('审核不属于当前有效执行轮次')
     if not setting_complete and (latest is None or latest.id != review.id):
         raise RuntimeError("Review has been superseded by a newer attempt")
     if review.decision:
@@ -53,7 +60,6 @@ def persist_review_decision(
     completed_task = decision == "complete_task"
     approved = decision in {"approve", "force_approve", "complete_task", "set_complete"}
     terminated = decision == "terminate"
-    task = Task.get_by_id(task_id)
     workflow_run = (
         WorkflowRun.get_or_none(WorkflowRun.id == task.active_workflow_run_id)
         if setting_complete else review.workflow_run
@@ -105,6 +111,12 @@ def persist_review_decision(
             )
         ):
             raise RuntimeError("该审核轮次没有已产生的产物，不能设置完成")
+    elif not review.decision and (
+        review.status not in {'pending', 'rejected'}
+        or task.status in {'stopped', 'completed'}
+        or workflow_run.status in {'stopped', 'succeeded'}
+    ):
+        raise RuntimeError('当前审核已结束或任务已停止')
     if completed_task:
         if review.mode != "manual" or review.status not in {"pending", "rejected"}:
             raise RuntimeError("只有待处理的人工审核可以完成任务")
@@ -263,17 +275,25 @@ def persist_review_decision(
             notifications.append({'type':'task_lifecycle','data':{'event':'completed','event_id':f'{workflow_run.id}:completed','run_id':workflow_run.id}})
         return None
     if terminated:
-        task.status = "stopped"
-        task.status_reason = 'user_stop'
+        # The UI action terminates the whole task. The runtime stops and drains
+        # its engines before publishing the terminal task/run state.
+        draining = task_id in active_runners
+        task.status = 'running' if draining else 'stopped'
+        task.status_reason = 'execution' if draining else 'user_stop'
         task.state_version += 1
         task.updated_at = now
         task.save()
-        workflow_run.status = "stopped"
-        workflow_run.ended_at = now
-        workflow_run.owner_id = None
-        workflow_run.heartbeat_at = now
+        if not draining:
+            workflow_run.status = "stopped"
+            workflow_run.ended_at = now
+            workflow_run.owner_id = None
+            workflow_run.heartbeat_at = None
         workflow_run.save()
-        if notifications is not None:
+        if not draining:
+            from services.workflow_finalization import settle_interrupted_run
+
+            settle_interrupted_run(task.id, workflow_run.id, comment or '用户终止', stopped=True)
+        if notifications is not None and not draining:
             notifications.append({'type':'task_lifecycle','data':{'event':'stopped','event_id':f'{workflow_run.id}:stopped','run_id':workflow_run.id}})
         return None
     if setting_complete and not schedule_downstream:
@@ -287,11 +307,16 @@ def persist_review_decision(
                 status="passed",
                 eligible_for_downstream=True,
             )
-        if task.status != 'stopped':
-            task.status, task.status_reason = 'waiting', 'manual_continue'
-        task.state_version += 1
-        task.updated_at = now
-        task.save()
+        from services.task_state import settle_manual_completion
+
+        state = settle_manual_completion(task, workflow_run)
+        if notifications is not None:
+            notifications.append({'type': 'status', 'step_key': '',
+                                  'data': {'task_id': task.id, **state}})
+            if state['status'] == 'completed':
+                notifications.append({'type': 'task_lifecycle', 'data': {
+                    'event': 'completed', 'event_id': f'{workflow_run.id}:completed',
+                    'run_id': workflow_run.id}})
         return None
     assert steps_config is not None
     halt_after_routing = False

@@ -21,6 +21,7 @@ from models.coordinator import (
     StepSupplement,
 )
 from models.gen_session import WorkflowGenSession
+from models.prototype_session import PrototypeSession
 from models.schedule import Schedule, ScheduleRun
 from models.share import TaskShare
 from models.chat_session import ChatSession, ChatMessage, ProjectSetting
@@ -49,6 +50,7 @@ ALL_MODELS = [
     ActionProposal,
     StepSupplement,
     WorkflowGenSession,
+    PrototypeSession,
     Schedule,
     ScheduleRun,
     TaskShare,

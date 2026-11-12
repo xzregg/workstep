@@ -748,6 +748,24 @@
     "summary": "Inspeccione los archivos entregados, comprenda el consumo y conserve lecciones reutilizables.",
     "sections": [
       {
+        "title": "Editar prototipos HTML",
+        "steps": [
+          "Abra la vista previa HTML del proyecto y el editor de prototipos. Para cambios con IA, configure el motor en Ajustes → Asistentes → Asistente de prototipos.",
+          "Pulse el nombre sobre la vista previa para elegir otro HTML de la misma carpeta o de una subcarpeta. Cada HTML conserva su conversación. Arrastre los bordes y separadores para ajustar el tamaño.",
+          "Pase el cursor para resaltar, pulse para seleccionar o haga clic derecho para comentar. Ejemplo: «Pon este botón en verde y conserva el botón de al lado». Envíelo al chat.",
+          "Cambie texto, color o width (por ejemplo 180px) en Propiedades y salga del campo para guardar. También puede hacer doble clic en texto simple o arrastrar los controles de tamaño. Seleccione el elemento exacto antes de confirmar su eliminación.",
+          "En el historial revise diferencias, deshaga cambios o borre el historial. Tras una interrupción, revise la copia conservada y reanude el guardado o descártela. Los originales en conflicto no se sobrescriben."
+        ],
+        "tips": [
+          "La edición directa admite HTML estático. El modo selección pausa los scripts; el modo navegación ejecuta las interacciones. Solo se publican cambios en HTML/CSS/JS existentes, sin añadir ni eliminar archivos completos."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Editar prototipos HTML",
+          "caption": "Interfaz real en chino del proyecto fijo de demostración: el segundo botón mide 180px y el comentario sigue sin enviar. No se llamó a ningún modelo real."
+        }
+      },
+      {
         "title": "Inspeccionar entradas, salidas y archivos de artefactos",
         "steps": [
           "Abra Entradas y salidas de pasos en los detalles de la tarea para verificar las entradas disponibles y las salidas completadas.",

@@ -7,7 +7,7 @@ import ConfirmDialog from './ConfirmDialog'
 import ArchiveExperienceProgress from './ArchiveExperienceProgress'
 import MarkdownEditor from './MarkdownEditor'
 
-type Phase = 'loading' | 'intro' | 'generating' | 'stopping' | 'stopped'
+type Phase = 'loading' | 'intro' | 'generating' | 'stopping' | 'stopped' | 'failed'
   | 'review' | 'empty' | 'saving' | 'archiving'
 
 interface Props {
@@ -101,7 +101,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
       }
       return
     }
-    if (phase === 'intro' || phase === 'stopped') {
+    if (phase === 'intro' || phase === 'stopped' || phase === 'failed') {
       setError('')
       setPhase('generating')
       const newMessageId = randomUuid()
@@ -116,7 +116,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
         setError(t('taskList.archiveExperienceGenerateFailed', {
           error: reason instanceof Error ? reason.message : t('common.unknownError'),
         }))
-        setPhase('intro')
+        setPhase('failed')
       }
       return
     }
@@ -153,7 +153,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
       setError(t('taskList.archiveExperienceDirectArchiveFailed', {
         error: reason instanceof Error ? reason.message : t('common.unknownError'),
       }))
-      setPhase(previous === 'review' ? 'review' : stoppedActiveDraft ? 'stopped' : 'intro')
+      setPhase(previous === 'review' ? 'review' : previous === 'failed' ? 'failed' : stoppedActiveDraft ? 'stopped' : 'intro')
     }
   }
 
@@ -161,7 +161,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
     if (phase === 'generating') { void stopDraft(true); return }
     if (phase !== 'saving' && phase !== 'archiving') onClose()
   }
-  const showProgress = ['generating', 'stopping', 'stopped'].includes(phase)
+  const showProgress = ['generating', 'stopping', 'stopped', 'failed'].includes(phase)
     || (phase === 'archiving' && messageId !== null)
 
   if (!can('file.edit')) return <ConfirmDialog open title={t('taskList.archiveTask')}
@@ -176,12 +176,13 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
           : phase === 'archiving' ? t('taskList.archiveExperienceDirectArchivingMessage')
             : phase === 'generating' || phase === 'stopping' ? t('taskList.archiveExperienceProgressMessage')
               : phase === 'stopped' ? t('taskList.archiveExperienceStoppedMessage')
+                : phase === 'failed' ? t('taskList.archiveExperienceFailedMessage')
                 : t('taskList.archiveExperienceIntroMessage', { title: task.title || t('taskList.thatTask') })}
     confirmText={phase === 'review' || phase === 'saving' ? t('taskList.archiveExperienceConfirm')
       : phase === 'empty' ? t('taskList.archiveExperienceDirectArchive')
         : phase === 'loading' ? t('common.loading')
           : phase === 'generating' || phase === 'stopping' ? t('taskList.archiveExperienceStop')
-            : phase === 'stopped' ? t('taskList.archiveExperienceRetry')
+            : phase === 'stopped' || phase === 'failed' ? t('taskList.archiveExperienceRetry')
               : t('taskList.archiveExperienceGenerate')}
     cancelText={phase === 'generating' || phase === 'stopping'
       ? t('taskList.archiveExperienceCancelAndClose') : undefined}

@@ -1,0 +1,4 @@
+.decision-service-models { margin-bottom:16px; }
+.decision-service-models-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+.decision-service-models-controls .ws-select { flex:1; min-width:180px; max-width:100%; }
+.decision-settings .decision-service-models p { margin:6px 0; font-size:var(--text-caption); }

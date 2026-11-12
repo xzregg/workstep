@@ -155,7 +155,7 @@ function LocalProjectSettingsPanel({
   // ── save handlers ─────────────────────────────────────────────────
 
   const saveName = async () => {
-    if (!can('project.settings') || bound || !project || nameSaving) return
+    if (!can('project.settings') || bound || !project || project.type === 'remote' || nameSaving) return
     const trimmed = nameDraft.trim()
     if (!trimmed || trimmed === project.name) {
       setNameError('')
@@ -343,7 +343,8 @@ function LocalProjectSettingsPanel({
                 {bound || !can('project.settings') ? <p>{t('projectSettings.general.name')}：{project.name}</p> : <Field label={t('projectSettings.general.name')} error={nameError || undefined}>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Input
-                      value={nameDraft}
+                      value={project.type === 'remote' ? project.name : nameDraft}
+                      disabled={project.type === 'remote'}
                       onChange={(event) => { setNameDraft(event.target.value); setNameError(''); setNameSaved(false) }}
                       placeholder={t('projectSettings.general.namePlaceholder')}
                       style={{ flex: 1 }}
@@ -351,7 +352,7 @@ function LocalProjectSettingsPanel({
                     <Button
                       variant="primary"
                       loading={nameSaving}
-                      disabled={!nameDraft.trim() || nameDraft.trim() === project.name}
+                      disabled={project.type === 'remote' || !nameDraft.trim() || nameDraft.trim() === project.name}
                       onClick={() => void saveName()}
                     >
                       {t('common.save')}

@@ -17,5 +17,5 @@
 }
 @media (max-width: 1023px) {
   .problem-feedback > .btn { min-height: var(--mobile-control-regular); }
-  .problem-feedback .problem-feedback-report { min-height: 180px; font-size: 16px; }
+  .problem-feedback .problem-feedback-report { min-height: 180px; font-size: calc(16px * var(--font-scale)); }
 }

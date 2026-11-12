@@ -748,6 +748,24 @@
     "summary": "Inspect delivered files, understand consumption and retain reusable lessons.",
     "sections": [
       {
+        "title": "Edit HTML prototypes",
+        "steps": [
+          "Open a project HTML preview and click Prototype editor. For AI changes, configure an engine under Settings → Agent assistants (Agent 助手) → Prototype assistant.",
+          "Click the filename above the preview to browse sibling and nested HTML files. Each HTML keeps its own conversation. Drag window edges and dividers to resize.",
+          "Hover to highlight, click to select, or right-click to comment. For example: “Make this button green; keep the adjacent button unchanged.” Click Send to chat.",
+          "Edit text, color or width (for example 180px) in Properties; leave the field to save. You can also double-click plain text or drag resize handles. Select the exact element before confirming deletion.",
+          "Use Change history to inspect differences, undo or clear history. After interruption, inspect the retained copy and choose Resume saving or discard. Conflicting original files are not overwritten."
+        ],
+        "tips": [
+          "Direct editing supports static HTML. Selection mode pauses page scripts; Browse runs interactions. Only changes to existing HTML/CSS/JS files are published; adding or deleting whole files is unsupported."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Edit HTML prototypes",
+          "caption": "Real Chinese interface in the fixed demo project: the second button is now 180px wide and the comment is unsent. No real model was called."
+        }
+      },
+      {
         "title": "Inspect inputs, outputs and artifact files",
         "steps": [
           "Open Step inputs and outputs in task details to check available inputs and completed outputs.",

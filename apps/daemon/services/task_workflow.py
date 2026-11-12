@@ -15,7 +15,7 @@ NODE_FIELDS = {
     "title", "color", "position", "prompt", "engine", "model", "config",
     "review", "maxReturnRounds", "inputs", "outputs", "reuseSuccess",
 }
-PATCH_FIELDS = (NODE_FIELDS - {"inputs", "outputs"}) | {"append_outputs", "append_input_outputs"}
+PATCH_FIELDS = (NODE_FIELDS - {"inputs", "outputs"}) | {"append_outputs", "append_input_outputs", "output_templates"}
 
 
 def workflow_revision(value: dict) -> str:
@@ -134,10 +134,14 @@ def _diff(base: dict, value: dict) -> dict:
     return result
 
 
+def _without_templates(outputs: list) -> list:
+    return [{k: v for k, v in output.items() if k != "template"} for output in outputs]
+
+
 def _port_contract(node: dict) -> dict:
     return {"kind": node.get("kind", "llm"),
             "inputs": [{k: v for k, v in port.items() if k != "outputs"} for port in node.get("inputs", [])],
-            "outputs": node.get("outputs", [])}
+            "outputs": _without_templates(node.get("outputs", []))}
 
 
 def _check_extension(base: dict, edited: dict) -> None:
@@ -157,11 +161,11 @@ def _check_extension(base: dict, edited: dict) -> None:
     ):
         raise WorkflowConflict(f"不能修改原输入连接点: {key}")
     old_outputs, new_outputs = base.get("outputs", []), edited.get("outputs", [])
-    if new_outputs[:len(old_outputs)] != old_outputs:
+    if _without_templates(new_outputs[:len(old_outputs)]) != _without_templates(old_outputs):
         raise WorkflowConflict(f"只能末尾追加产物，不能修改原产物及其编号: {key}")
     for old, new in zip(old_ports, new_ports):
         old_values = old.get("outputs", [])
-        if new.get("outputs", [])[:len(old_values)] != old_values:
+        if _without_templates(new.get("outputs", [])[:len(old_values)]) != _without_templates(old_values):
             raise WorkflowConflict(f"不能删除或修改原输入口的产物: {key}")
     nested = [value for port in new_ports for value in port.get("outputs", [])]
     if any(port.get("outputs") for port in old_ports) and nested != new_outputs:
@@ -206,6 +210,11 @@ def build_overrides(source: dict, edited: dict) -> dict | None:
         if old[key]["review"].get("engine") != new[key]["review"].get("engine"):
             patch.setdefault("review", {})["model"] = new[key]["review"].get("model", "")
             patch["review"]["config"] = _diff({}, new[key]["review"].get("config", {}))
+        templates = {str(index): output.get("template", "")
+                     for index, output in enumerate(new[key]["outputs"][:len(old[key]["outputs"])])
+                     if output.get("template", "") != old[key]["outputs"][index].get("template", "")}
+        if templates:
+            patch["output_templates"] = templates
         appended = new[key]["outputs"][len(old[key]["outputs"]):]
         if appended:
             patch["append_outputs"] = deepcopy(appended)
@@ -216,7 +225,7 @@ def build_overrides(source: dict, edited: dict) -> dict | None:
             patch["append_input_outputs"] = input_outputs
         if patch:
             changes[key] = patch
-            guards[key] = _port_contract(old[key]) if appended or input_outputs else {"kind": old[key]["kind"]}
+            guards[key] = _port_contract(old[key]) if appended or input_outputs or templates else {"kind": old[key]["kind"]}
     old_edges = {edge_key(edge): edge for edge in base["connections"]}
     new_edges = {edge_key(edge): edge for edge in value["connections"]}
     removed = [old_edges[key] for key in old_edges if key not in new_edges]
@@ -263,7 +272,16 @@ def merge_workflow(source: dict, delta: dict | None) -> dict:
         if (isinstance(review_patch, dict) and "engine" in review_patch
                 and review_patch["engine"] != nodes[key]["review"].get("engine")):
             nodes[key]["review"]["config"] = {}
-        nodes[key] = _patch(nodes[key], {k: v for k, v in patch.items() if k not in {"append_outputs", "append_input_outputs"}})
+        nodes[key] = _patch(nodes[key], {k: v for k, v in patch.items() if k not in {"append_outputs", "append_input_outputs", "output_templates"}})
+        for index, template in patch.get("output_templates", {}).items():
+            if not isinstance(template, str) or not str(index).isdigit() or int(index) >= len(nodes[key]["outputs"]):
+                raise WorkflowConflict(f"产物模板覆盖无效: {key}")
+            output = nodes[key]["outputs"][int(index)]
+            output["template"] = template
+            for port in nodes[key]["inputs"]:
+                for nested in port.get("outputs", []):
+                    if nested.get("name") == output.get("name") and nested.get("type") == output.get("type"):
+                        nested["template"] = template
         nodes[key]["outputs"].extend(deepcopy(patch.get("append_outputs", [])))
         for index, values in patch.get("append_input_outputs", {}).items():
             nodes[key]["inputs"][int(index)].setdefault("outputs", []).extend(deepcopy(values))

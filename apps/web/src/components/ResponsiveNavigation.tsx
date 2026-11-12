@@ -9,6 +9,7 @@ import MobileNavigationFloat from './MobileNavigationFloat'
 import { NavigationHeaderContext } from './NavigationHeaderContext'
 import { BrandIcon } from './BrandIcon'
 import { NavigationDismissContext } from './NavigationDismissContext'
+import { MobileHeaderActionsSlot } from './MobileHeaderActions'
 
 export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, newLoading = false, showNew = true, headerRight, showBrandIcon = true, onVisibilityChange }: {
   children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; newLoading?: boolean; showNew?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean; onVisibilityChange?: (visible: boolean) => void
@@ -44,6 +45,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
       <div className="mobile-header-actions">
         {headerRight}
         {showNew && <button aria-label={t('mobile.newChat')} disabled={newDisabled} aria-busy={newLoading || undefined} onClick={onNew}>{newLoading ? <Spinner size={21} /> : <Icon name="plus" size={21} />}</button>}
+        <div className="mobile-header-session-actions"><MobileHeaderActionsSlot /></div>
       </div>
     </header>
     {compact && open && <div className="mobile-overlay-backdrop navigation-backdrop" onClick={() => setOpen(false)} />}

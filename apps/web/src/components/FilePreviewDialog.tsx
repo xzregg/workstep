@@ -1,9 +1,10 @@
 import CopyablePath from './CopyablePath'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ArtifactPreview from './ArtifactPreview'
+import PrototypeEditor from './prototype/PrototypeEditor'
 import Button from './Button'
 import Icon from './Icon'
 import ResizablePanel from './ResizablePanel'
@@ -28,7 +29,10 @@ export default function FilePreviewDialog({
   const closeRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const compact = useCompactLayout()
-  useOverlay(true, onClose, dialogRef, compact)
+  const [prototypePath, setPrototypePath] = useState<string | null>(null)
+  useOverlay(!prototypePath, onClose, dialogRef, compact)
+
+  if (prototypePath && projectId) return <PrototypeEditor projectId={projectId} path={prototypePath} onClose={() => setPrototypePath(null)} />
 
   return createPortal(
     <div
@@ -73,6 +77,7 @@ export default function FilePreviewDialog({
             name={name}
             line={line}
             projectId={projectId}
+            onOpenPrototype={setPrototypePath}
           />
         </div>
       </ResizablePanel>

@@ -749,3 +749,62 @@ async def test_copy_task_copies_overrides_but_not_sessions_or_execution_history(
     original = await s.config()
     assert next(n for n in original["workflow"]["nodes"] if n["type"] == "develop")["prompt"] == "TASK_COPY_PROMPT"
     await s.unchanged_source()
+
+
+@pytest.mark.anyio
+async def test_artifact_template_task_save_execution_history_and_slow_db(scenario, monkeypatch):
+    import main
+    s = scenario
+    await s.source_update(lambda flow: flow['nodes'][1]['outputs'][0].update(template='# Source'))
+    config = await s.config()
+    edited = deepcopy(config['workflow'])
+    edited['nodes'][1]['outputs'][0]['template'] = '# {{任务名称}}\n[Only one sentence]'
+    database = main.project_manager.get_project_by_id(s.pid).db
+    execute = database.execute_sql
+    entered = threading.Event()
+
+    def slow_save(sql, params=None, commit=None):
+        if sql.startswith('UPDATE "tasks"'):
+            entered.set()
+            time.sleep(.3)
+        return execute(sql, params)
+
+    monkeypatch.setattr(database, 'execute_sql', slow_save)
+    pending = asyncio.create_task(s.client.put(s.url, json={'workflow': edited, 'revision': config['revision']}))
+    assert await asyncio.to_thread(entered.wait, 3)
+    started = time.monotonic()
+    assert (await s.client.get('/api/health')).status_code == 200
+    assert time.monotonic() - started < .15
+    response = await pending
+    assert response.status_code == 200, response.text
+    monkeypatch.setattr(database, 'execute_sql', execute)
+    await s.unchanged_source()
+    assert (await s.client.put(s.url, json={'workflow': edited, 'revision': config['revision']})).status_code == 409
+    s.script.feedback_rounds = 1
+    assert await s.start() == 'completed'
+    calls = s.script.select('develop')
+    assert len(calls) == 2
+    for call in calls:
+        assert 'Please use the following template for artifact "API":\n<artifact_template>\n# ScenarioTask\n[Only one sentence]\n</artifact_template>' in call['prompt']
+    history = await s.db(lambda _: [json.loads(row.io_contract_json)['outputs'][0]['template']
+        for row in StepRun.select().where(StepRun.step_key == 'develop')])
+    assert history == ['# {{任务名称}}\n[Only one sentence]'] * 2
+    await s.save(lambda flow: flow['nodes'][1]['outputs'][0].update(template=''))
+    await s.source_update(lambda flow: flow['nodes'][1]['outputs'][0].update(template='# New source'))
+    assert (await s.config())['workflow']['nodes'][1]['outputs'][0]['template'] == ''
+    await s.save(lambda flow: flow['nodes'][1]['outputs'][0].update(template='# New source'))
+    assert not (await s.config())['has_overrides']
+
+
+@pytest.mark.anyio
+async def test_task_copy_preserves_local_artifact_templates(scenario):
+    s = scenario
+    await s.save(lambda flow: flow['nodes'][1]['outputs'][0].update(template='# Task template'))
+    response = await s.client.post(f'/api/task/copy?project_id={s.pid}',
+                                   json={'task_id': s.task_id, 'newTitle': 'TemplateCopy'})
+    assert response.status_code == 200, response.text
+    copy_id = response.json()['id']
+    config = await s.client.get(f'/api/task/{copy_id}/workflow?project_id={s.pid}')
+    assert config.status_code == 200, config.text
+    assert config.json()['workflow']['nodes'][1]['outputs'][0]['template'] == '# Task template'
+    await s.unchanged_source()

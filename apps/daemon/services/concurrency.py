@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections import defaultdict, deque
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,16 @@ QUEUED = "queued"
 ALREADY_ACTIVE = "already_active"
 
 
+@dataclass(eq=False)
+class TaskPermit:
+    """Identity of one admission attempt; stale cleanup cannot release its successor."""
+    future: asyncio.Future
+    source: str
+    exempt: bool = False
+    claimed: bool = False
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
+
+
 class ConcurrencyGate:
     """Per-project FIFO semaphores for the task and chat channels."""
 
@@ -47,6 +59,7 @@ class ConcurrencyGate:
         # task channel: project_id -> {running set, waiting deque}
         self._task_running: dict[str, set[str]] = defaultdict(set)
         self._task_waiters: dict[str, deque[tuple[str, asyncio.Future]]] = defaultdict(deque)
+        self._task_permits: dict[tuple[str, str], TaskPermit] = {}
         # chat channel: project_id -> {running session keys, waiting deque}
         self._chat_running: dict[str, set[str]] = defaultdict(set)
         self._chat_waiters: dict[str, deque[tuple[str, asyncio.Future]]] = defaultdict(deque)
@@ -57,6 +70,10 @@ class ConcurrencyGate:
         """Clear all state and restore unlimited defaults (used on shutdown/tests)."""
         self._global = {"max_tasks": 0, "max_chats": 0, "schedule_exempt": False}
         self._projects.clear()
+        for permit in self._task_permits.values():
+            if not permit.future.done():
+                permit.future.cancel()
+        self._task_permits.clear()
         self._task_running.clear()
         self._task_waiters.clear()
         self._chat_running.clear()
@@ -119,38 +136,37 @@ class ConcurrencyGate:
         the task already holds a slot or sits in the queue.
         """
         cfg = self._effective(project_id)
-        if cfg["schedule_exempt"] and source in SCHEDULE_SOURCES:
-            return GRANTED
         max_tasks = cfg["max_tasks"]
-        if max_tasks <= 0:
-            return GRANTED
         async with self._lock:
-            if self._task_active(project_id, task_id):
+            if (project_id, task_id) in self._task_permits:
                 return ALREADY_ACTIVE
-            if len(self._task_running[project_id]) < max_tasks:
-                self._task_running[project_id].add(task_id)
+            permit = TaskPermit(
+                asyncio.get_running_loop().create_future(), source,
+                exempt=cfg['schedule_exempt'] and source in SCHEDULE_SOURCES,
+            )
+            self._task_permits[project_id, task_id] = permit
+            if permit.exempt or max_tasks <= 0 or len(self._task_running[project_id]) < max_tasks:
+                if not permit.exempt:
+                    self._task_running[project_id].add(task_id)
+                permit.future.set_result(None)
                 return GRANTED
-            loop = asyncio.get_running_loop()
-            fut: asyncio.Future = loop.create_future()
-            self._task_waiters[project_id].append((task_id, fut))
+            self._task_waiters[project_id].append((task_id, permit.future))
         return QUEUED
 
-    async def wait_task_slot(self, project_id: str, task_id: str) -> None:
+    def task_permit(self, project_id: str, task_id: str) -> TaskPermit | None:
+        return self._task_permits.get((project_id, task_id))
+
+    async def wait_task_slot(self, project_id: str, task_id: str, *, permit=None) -> None:
         """Block until the queued task is granted its slot."""
-        fut = self._pop_task_future(project_id, task_id)
-        if fut is None:
-            # Not actually queued (e.g. released between acquire and wait).
-            return
+        permit = permit or self.task_permit(project_id, task_id)
+        if permit is None or self.task_permit(project_id, task_id) is not permit:
+            raise asyncio.CancelledError
         try:
-            await fut
+            await permit.future
+            if self.task_permit(project_id, task_id) is not permit:
+                raise asyncio.CancelledError
         except asyncio.CancelledError:
-            async with self._lock:
-                waiters = self._task_waiters[project_id]
-                self._task_waiters[project_id] = deque(
-                    item for item in waiters if item[1] is not fut
-                )
-                if not fut.done():
-                    fut.cancel()
+            await self.release_task(project_id, task_id, permit=permit)
             raise
 
     def cancel_queued_task(self, project_id: str, task_id: str) -> bool:
@@ -158,22 +174,16 @@ class ConcurrencyGate:
 
         Returns True when the task was actually waiting.
         """
-        async def _cleanup() -> None:
-            async with self._lock:
-                waiters = self._task_waiters.get(project_id)
-                if not waiters:
-                    return
-                kept: deque[tuple[str, asyncio.Future]] = deque()
-                for item in waiters:
-                    if item[0] == task_id:
-                        if not item[1].done():
-                            item[1].cancel()
-                    else:
-                        kept.append(item)
-                self._task_waiters[project_id] = kept
-                self._task_running[project_id].discard(task_id)
-
-        asyncio.create_task(_cleanup())
+        # Every gate mutation runs on the event loop, with no await inside its
+        # critical section. Cancel synchronously before release can grant it.
+        permit = self.task_permit(project_id, task_id)
+        if permit is None or permit.future.done():
+            return False
+        permit.future.cancel()
+        self._task_waiters[project_id] = deque(
+            item for item in self._task_waiters[project_id] if item[1] is not permit.future
+        )
+        self._task_permits.pop((project_id, task_id), None)
         return True
 
     def task_queue_position(self, project_id: str, task_id: str) -> int:
@@ -185,15 +195,24 @@ class ConcurrencyGate:
                 return index
         return 0
 
-    async def release_task(self, project_id: str, task_id: str) -> None:
+    async def release_task(self, project_id: str, task_id: str, *, permit=None) -> None:
         """Free a task slot and wake as many queued tasks of the project as fit."""
         async with self._lock:
+            current = self.task_permit(project_id, task_id)
+            if permit is not None and current is not permit:
+                return
+            self._task_permits.pop((project_id, task_id), None)
+            if current is not None and not current.future.done():
+                current.future.cancel()
+            self._task_waiters[project_id] = deque(
+                item for item in self._task_waiters[project_id] if item[0] != task_id
+            )
             self._task_running[project_id].discard(task_id)
             max_tasks = self._effective(project_id)["max_tasks"]
             waiters = self._task_waiters.get(project_id)
-            if not waiters or max_tasks <= 0:
+            if not waiters:
                 return
-            while waiters and len(self._task_running[project_id]) < max_tasks:
+            while waiters and (max_tasks <= 0 or len(self._task_running[project_id]) < max_tasks):
                 queued_id, fut = waiters.popleft()
                 if fut.done():
                     continue
@@ -260,23 +279,6 @@ class ConcurrencyGate:
 
     # ── helpers ────────────────────────────────────────────────────────
 
-    def _task_active(self, project_id: str, task_id: str) -> bool:
-        if task_id in self._task_running[project_id]:
-            return True
-        return any(
-            item[0] == task_id for item in self._task_waiters.get(project_id, ())
-        )
-
-    def _pop_task_future(
-        self, project_id: str, task_id: str
-    ) -> asyncio.Future | None:
-        for index, (queued_id, fut) in enumerate(
-            self._task_waiters.get(project_id, ())
-        ):
-            if queued_id == task_id:
-                return fut
-        return None
-
     def active_count(self, project_id: str) -> dict:
         """Diagnostic snapshot: running + queued per channel."""
         return {
@@ -313,8 +315,7 @@ class ConcurrencyGate:
                         queued_id, fut = task_waiters.popleft()
                         if fut.done():
                             continue
-                        if max_tasks > 0:
-                            self._task_running[pid].add(queued_id)
+                        self._task_running[pid].add(queued_id)
                         fut.set_result(None)
 
                 chat_waiters = self._chat_waiters.get(pid)

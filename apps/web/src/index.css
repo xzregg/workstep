@@ -345,7 +345,7 @@ body {
     border-bottom: 1px solid var(--border-soft);
   }
 
-  .settings-nav > div:first-child {
+  .settings-nav > .settings-nav-heading {
     display: none;
   }
 
@@ -669,6 +669,18 @@ a.btn { box-sizing: border-box; text-decoration: none; vertical-align: middle; }
   cursor: grab; border-left: 3px solid var(--task-card-status-color);
   transition: box-shadow var(--motion-fast);
 }
+.task-board-card[draggable="false"] { cursor: pointer; }
+.task-board-view-toggle {
+  display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border);
+  border-radius: var(--radius-pill); background: var(--bg);
+}
+.task-board-view-toggle button {
+  border: none; cursor: pointer; display: grid; place-items: center;
+  width: 30px; height: 26px; border-radius: var(--radius-pill); padding: 0;
+  background: transparent; color: var(--meta);
+}
+.task-board-view-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.task-board-view-toggle button:disabled { cursor: default; opacity: 0.4; }
 .task-board-lanes { flex: 1; display: flex; gap: 0; overflow-x: scroll; overflow-y: hidden; padding: 16px 16px 16px 0; }
 .task-board-table { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 16px 20px 24px; }
 .task-board-loading { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--meta); }
@@ -2348,96 +2360,36 @@ details[open] > summary > .process-trace-chevron {
   line-height: 1.45;
 }
 
-.mermaid-preview {
-  position: fixed;
+/* Diagrams share the image preview window and its anchored action bar. */
+.image-preview.mermaid-preview {
   z-index: 2300;
-  inset: 0;
-  display: flex;
-  padding: 58px 24px 24px;
-  background: rgba(0, 0, 0, 0.72);
-  align-items: flex-start;
-  justify-content: center;
 }
 
-.mermaid-preview__toolbar {
-  position: fixed;
-  z-index: 1;
-  top: 14px;
-  right: 18px;
-  display: flex;
-  gap: 4px;
-  align-items: center;
+.image-preview-window.mermaid-preview__viewport {
+  width: min(1200px, 92vw);
+  max-width: min(1200px, 92vw);
 }
 
-.mermaid-preview__toolbar button {
-  display: inline-flex;
-  min-width: 34px;
-  height: 34px;
-  padding: 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.14);
-  color: var(--accent-fg);
-  cursor: pointer;
-  align-items: center;
-  justify-content: center;
-}
-
-.mermaid-preview__toolbar button:hover:not(:disabled),
-.mermaid-preview__toolbar button:focus-visible {
-  background: rgba(255, 255, 255, 0.24);
-}
-
-.mermaid-preview__toolbar button:disabled {
-  cursor: not-allowed;
-  opacity: 0.4;
-}
-
-.mermaid-preview__toolbar .mermaid-preview__zoom-level {
-  min-width: 58px;
-}
-
-.mermaid-preview__viewport {
-  width: min(1200px, 96vw);
-  max-height: calc(100dvh - 82px);
+.mermaid-preview__scroll {
+  width: 100%;
+  min-height: 0;
   overflow: auto;
-  border-radius: 10px;
   background: var(--bg);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
 }
 
 .mermaid-preview__canvas {
-  min-width: 50%;
   margin: auto;
   padding: 24px;
   box-sizing: border-box;
 }
 
-.mermaid-preview__canvas svg {
+.mermaid-preview__canvas > svg {
   display: block;
   width: 100%;
-  max-width: none;
+  /* Mermaid sets an inline max-width; preview zoom must scale past it. */
+  max-width: none !important;
   height: auto;
   margin: auto;
-}
-
-@media (max-width: 520px) {
-  .mermaid-preview {
-    padding: 62px 8px 8px;
-  }
-
-  .mermaid-preview__toolbar {
-    top: 8px;
-    right: 8px;
-  }
-
-  .mermaid-preview__viewport {
-    max-height: calc(100dvh - 70px);
-  }
-
-  .mermaid-preview__canvas {
-    padding: 14px;
-  }
 }
 
 .markdown-message img {
@@ -4512,26 +4464,24 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   box-shadow: none;
 }
 
-.image-preview-window > img {
-  border: 0;
-  outline: 0;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-  width: auto;
-  height: auto;
-  display: block;
+.desktop-image-preview {
   min-height: 0;
-  flex-shrink: 1;
-  max-width: min(960px, 92vw);
+  max-width: 100%;
   max-height: calc(86vh - 144px);
-  object-fit: contain;
+  overflow: auto;
+  flex-shrink: 1;
 }
 
-.image-preview-window[data-resized] > img {
-  width: 100%;
-  height: 100%;
+.desktop-image-preview > img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(960px, 92vw);
+  max-height: calc(86vh - 144px);
+  cursor: zoom-in;
+}
+
+.desktop-image-preview > .desktop-image-preview__scaled {
   max-width: none;
   max-height: none;
 }

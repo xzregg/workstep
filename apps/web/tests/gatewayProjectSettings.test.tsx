@@ -218,3 +218,38 @@ for (const remote of [false, true]) test(`host shares keep the task host's addre
     await window.happyDOM.close()
   }
 })
+
+
+test('native remote project name is disabled and follows remote metadata', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  useGatewaySessionStore.setState({ session: null })
+  const oldFetch = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = async input => {
+    calls.push(String(input))
+    return Response.json({ name: '旧名称', path: '', chat_system_prompt: '', quick_buttons: [] })
+  }
+  const element = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(element)
+  const project = { id: 'remote-name', name: '远端名称', path: '', type: 'remote' as const, workflows: [], steps: {} }
+  const render = (name: string) => act(async () => root.render(<I18nProvider>
+    <ProjectSettingsPanel project={{ ...project, name }} onClose={() => {}} />
+  </I18nProvider>))
+  try {
+    await render(project.name)
+    const input = element.querySelector<HTMLInputElement>('input')!
+    assert.equal(input.disabled, true)
+    assert.equal(input.value, '远端名称')
+    const save = [...element.querySelectorAll('button')].find(button => button.textContent === '保存')!
+    assert.equal(save.disabled, true)
+    await act(async () => save.click())
+    assert.ok(calls.every(path => !path.includes('rename')))
+    await render('远端新名称')
+    assert.equal(input.value, '远端新名称')
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.fetch = oldFetch
+    await window.happyDOM.close()
+  }
+})

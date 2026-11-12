@@ -129,7 +129,7 @@ class CoordinatorModule:
         self._event_journal = TurnEventJournal()
         self._archive_drafts = ArchiveExperienceDraftService(
             project_manager, event_bus, self._event_journal,
-            self._archive_settings, self._invoke, self._parse_or_repair,
+            self._archive_settings, self._invoke,
             self._running_engines,
         )
         self._reconcile_task: asyncio.Task | None = None

@@ -275,7 +275,10 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                     ChatSession.fork_status == "ready",
                     ChatSession.archived == archived,
                 )
-                .order_by(ChatSession.sort_order, ChatSession.updated_at.desc())
+                .order_by(*(
+                    (pw.fn.COALESCE(ChatSession.archived_at, ChatSession.updated_at).desc(), ChatSession.id)
+                    if archived else (ChatSession.sort_order, ChatSession.updated_at.desc())
+                ))
             )
             return [self._session_summary(row, project_id) for row in rows]
 
@@ -296,6 +299,10 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 raise ValueError("Chat session is running")
             from services.session_schedule_runtime import clear_session_schedules
             with db_proxy.atomic():
+                if archived and not row.archived:
+                    row.archived_at = utc_now()
+                elif not archived:
+                    row.archived_at = None
                 row.archived = archived
                 row.save()
                 if archived:
@@ -643,6 +650,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             "title": row.title or "未命名会话",
             **channel_session_source(row.id, row.title),
             "archived": bool(row.archived),
+            "archived_at": _iso(row.archived_at),
             "engine": row.engine,
             "model": row.model,
             "fast_model": row.fast_model,

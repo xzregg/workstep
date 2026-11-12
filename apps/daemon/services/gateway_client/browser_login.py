@@ -103,6 +103,7 @@ class GatewayBrowserLogin:
         client = self.gateway.control_client
         restoring = getattr(self.gateway, '_restore_task', None)
         return {'url': stored.get('url', ''), 'configured': bool(stored.get('url')),
+            'device_id': getattr(self.gateway, 'device_id', None),
             'enabled': bool(os.environ.get('WORKSTEP_MANAGED_BUNDLE_DIR') or stored.get('enabled', stored.get('authorized', False))),
             'authenticated': bool(self.gateway.current_user_id), 'online': bool(client and client.online),
             'authorization_required': bool(getattr(self.gateway, 'authorization_required', False) or (client and getattr(client, 'authorization_required', False))),

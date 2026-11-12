@@ -18,6 +18,7 @@ interface MarkdownEditorProps {
   minHeight?: number | string
   maxHeight?: number | string
   disabled?: boolean
+  readOnly?: boolean
   autoFocus?: boolean
   ariaLabel?: string
   maxLength?: number
@@ -46,6 +47,7 @@ export default function MarkdownEditor({
   minHeight = 160,
   maxHeight = '45vh',
   disabled = false,
+  readOnly = false,
   autoFocus = false,
   ariaLabel,
   maxLength,
@@ -54,7 +56,7 @@ export default function MarkdownEditor({
 }: MarkdownEditorProps) {
   const { t } = useI18n()
   const { can } = useGatewayProjectPermissions(projectId)
-  const canUpload = allowAttachments && can('file.upload')
+  const canUpload = allowAttachments && !readOnly && can('file.upload')
   const [mode, setMode] = useState<'edit' | 'preview'>('edit')
   const [dragActive, setDragActive] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -191,6 +193,7 @@ export default function MarkdownEditor({
           <Textarea
             ref={textareaRef}
             className="markdown-editor-input"
+            readOnly={readOnly}
             aria-label={ariaLabel ?? t('md.ariaLabel')}
             value={value}
             maxLength={maxLength}

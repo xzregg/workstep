@@ -5,6 +5,9 @@ export interface SystemProcessMetrics {
   descriptors: number | null
 }
 export interface SystemProcess extends SystemProcessMetrics {
+  process_kind?: 'decision_model'
+  model_id?: string
+  worker_state?: string
   pid: number
   name: string | null
   uptime_seconds: number | null

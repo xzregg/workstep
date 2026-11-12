@@ -259,12 +259,14 @@ async def test_session_archive_round_trip(chat_module):
 
     archived = module.set_archived(project.id, first["id"], True)
     assert archived["archived"] is True
+    assert archived["archived_at"] is not None
     assert [row["id"] for row in module.list_sessions(project.id)] == [second["id"]]
     assert [row["id"] for row in module.list_sessions(project.id, archived=True)] == [first["id"]]
     assert module.get_session(project.id, first["id"])["archived"] is True
 
     restored = module.set_archived(project.id, first["id"], False)
     assert restored["archived"] is False
+    assert restored["archived_at"] is None
     assert {row["id"] for row in module.list_sessions(project.id)} == {first["id"], second["id"]}
     with pytest.raises(ValueError, match="not found"):
         module.set_archived(project.id, "missing", True)
@@ -4653,3 +4655,49 @@ async def test_saving_partial_history_preserves_existing_prompt(chat_module):
         ChatRowPersistence().save(runtime)
         return ChatMessage.get_by_id("old-prompt").prompt
     assert await manager.run_db(project.id, save_partial) == "以前存好的提示词"
+
+
+@pytest.mark.anyio
+async def test_archive_list_orders_by_archive_time(chat_module, monkeypatch):
+    import main
+
+    module, _bus, manager, project, _ = chat_module
+    def seed(_project):
+        ids = [module.create_session(project.id, title=str(i))["id"] for i in range(3)]
+        with module._project_ctx(project.id):
+            for i, sid in enumerate(ids):
+                ChatSession.update(sort_order=i, updated_at=datetime(2020, 1, 1)).where(ChatSession.id == sid).execute()
+            ChatSession.update(archived=True).where(ChatSession.id == ids[2]).execute()
+        return ids
+    first, second, legacy = await manager.run_db(project.id, seed)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        async def archive(sid, value=True):
+            response = await client.patch(f"/api/chat-sessions/{sid}/archive", json={"project_id": project.id, "archived": value})
+            assert response.status_code == 200
+        await archive(first)
+        await archive(second)
+        await archive(first)
+        entered, release = threading.Event(), threading.Event()
+        original = project.db.execute_sql
+        def slow(sql, *args, **kwargs):
+            if sql.startswith('SELECT') and 'FROM "chat_sessions"' in sql:
+                entered.set()
+                release.wait(2)
+            return original(sql, *args, **kwargs)
+        monkeypatch.setattr(project.db, "execute_sql", slow)
+        pending = asyncio.create_task(client.get("/api/chat-sessions", params={"project_id": project.id, "archived": True}))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get("/api/health"), .2)).status_code == 200
+        finally:
+            release.set()
+        response = await pending
+        assert response.status_code == 200
+        assert [r["id"] for r in response.json()["sessions"]] == [second, first, legacy]
+        monkeypatch.setattr(project.db, "execute_sql", original)
+        await archive(first, False)
+        await archive(first)
+        response = await client.get("/api/chat-sessions", params={"project_id": project.id, "archived": True})
+        assert [r["id"] for r in response.json()["sessions"]] == [first, second, legacy]

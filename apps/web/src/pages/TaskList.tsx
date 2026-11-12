@@ -36,6 +36,8 @@ import TaskCreatePanel from '../components/TaskCreatePanel'
 import ProjectMemoryPanel from '../components/ProjectMemoryPanel'
 import TaskTableView from '../components/TaskTableView'
 import TaskBoardCard from '../components/TaskBoardCard'
+import TaskBoardViewToggle, { type TaskBoardView } from '../components/TaskBoardViewToggle'
+import { getTaskStatusLanes, taskStatusLane } from './taskStatusLanes'
 import { useI18n, type TFunction } from '../i18n'
 import SchedulePage from './SchedulePage'
 import { deriveTaskLane, orderTaskLanes, type TaskLane } from './taskListLane'
@@ -80,14 +82,6 @@ function getLanesFromSteps(steps: any, t: TFunction): Lane[] {
   }
   return [{ key: 'do', label: t('taskList.execute'), color: 'var(--accent)' }]
 }
-
-const viewToggleButtonStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
-  border: 'none', cursor: disabled ? 'default' : 'pointer', display: 'grid', placeItems: 'center',
-  width: 30, height: 26, borderRadius: 'var(--radius-pill)', padding: 0,
-  background: active ? 'var(--accent)' : 'transparent',
-  color: active ? 'var(--accent-fg)' : 'var(--meta)',
-  opacity: disabled ? 0.4 : 1,
-})
 
 export default function TaskList() {
   const managedMode = useManagedMode()
@@ -144,10 +138,11 @@ export default function TaskList() {
   const [directoryNotice, setDirectoryNotice] = useState('')
   // Local lane override for unstarted cards moved manually in the board.
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
-  // Board display mode: swimlanes (lane columns) or grouped table.
-  const [boardView, setBoardView] = useState<'lanes' | 'table'>(() => {
+  // Preserve existing preferences while adding the aggregate status view.
+  const [boardView, setBoardView] = useState<TaskBoardView>(() => {
     try {
-      return localStorage.getItem('workstep.boardView') === 'table' ? 'table' : 'lanes'
+      const saved = localStorage.getItem('workstep.boardView')
+      return saved === 'table' || saved === 'status' ? saved : 'lanes'
     } catch {
       return 'lanes'
     }
@@ -244,6 +239,14 @@ export default function TaskList() {
     })
     return map
   }, [visibleTasks, lanes, getCardLane])
+
+  const boardLanes = useMemo(() => boardView === 'status' ? getTaskStatusLanes(t) : lanes, [boardView, t, lanes])
+  const boardTasksByLane = useMemo(() => {
+    if (boardView !== 'status') return tasksByLane
+    const grouped: Record<string, typeof visibleTasks> = Object.fromEntries(boardLanes.map(lane => [lane.key, []]))
+    for (const task of visibleTasks) grouped[taskStatusLane(task.status)].push(task)
+    return grouped
+  }, [boardView, boardLanes, tasksByLane, visibleTasks])
 
   const anyRunning = useMemo(
     () => visibleTasks.some((task: any) => (task.status || 'ready') === 'running'),
@@ -516,42 +519,7 @@ export default function TaskList() {
           <Icon name="archive" size={13} strokeWidth={2} />
           {showArchived ? t('taskList.backBoard') : t('taskList.viewArchived')}
         </Button>
-        <div
-          role="group"
-          aria-label={boardView === 'lanes' ? t('taskList.viewLanes') : t('taskList.viewTable')}
-          style={{ display: 'inline-flex', gap: 2, padding: 2, border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', background: 'var(--bg)' }}
-        >
-          <button
-            type="button"
-            title={t('taskList.viewLanes')}
-            aria-label={t('taskList.viewLanes')}
-            aria-pressed={boardView === 'lanes'}
-            disabled={!activeProject}
-            onClick={() => setBoardView('lanes')}
-            style={viewToggleButtonStyle(boardView === 'lanes', !activeProject)}
-          >
-            <svg viewBox="0 0 16 16" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
-              <rect x="1.5" y="2" width="4" height="12" rx="1" />
-              <rect x="6.5" y="2" width="4" height="8" rx="1" />
-              <rect x="11.5" y="2" width="4" height="10" rx="1" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            title={t('taskList.viewTable')}
-            aria-label={t('taskList.viewTable')}
-            aria-pressed={boardView === 'table'}
-            disabled={!activeProject}
-            onClick={() => setBoardView('table')}
-            style={viewToggleButtonStyle(boardView === 'table', !activeProject)}
-          >
-            <svg viewBox="0 0 16 16" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
-              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-              <line x1="1.5" y1="6.2" x2="14.5" y2="6.2" />
-              <line x1="1.5" y1="9.8" x2="14.5" y2="9.8" />
-            </svg>
-          </button>
-        </div>
+        <TaskBoardViewToggle value={boardView} disabled={!activeProject} onChange={setBoardView} />
         {can('file.read') && <OpenLocationButton
           activeProject={activeProject}
           t={t}
@@ -605,7 +573,7 @@ export default function TaskList() {
           <span className="mobile-task-row-meta"><StatusBadge status={task.status} loading={['running', 'reviewing', 'retrying'].includes(task.status)} label={t(`status.${task.status === 'completed' ? 'passed' : task.status || 'ready'}` as 'status.ready')} />{task.creator_name && <span>{t('taskList.creator')}：{task.creator_name}</span>}<span>{lanes.find(lane => lane.key === getCardLane(task.id))?.label}</span><time>{new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
         </MobileTaskRow>)}
       </div>}
-      <div className={`desktop-task-board ${boardView === 'lanes' ? 'task-board-lanes' : 'task-board-table'}`}>
+      <div className={`desktop-task-board ${boardView === 'table' ? 'task-board-table' : 'task-board-lanes'}`}>
         {loading && (
           <div className="task-board-loading">
             {t('common.loading')}
@@ -623,8 +591,8 @@ export default function TaskList() {
           />
         )}
 
-        {!loading && activeProject && boardView === 'lanes' && lanes.map((lane) => {
-          const laneTasks = tasksByLane[lane.key] || []
+        {!loading && activeProject && boardView !== 'table' && boardLanes.map((lane) => {
+          const laneTasks = boardTasksByLane[lane.key] || []
           return (
             <div key={lane.key} className="task-board-lane" style={{ '--task-lane-color': lane.color } as React.CSSProperties}>
               <div className="task-board-lane-header">
@@ -633,7 +601,7 @@ export default function TaskList() {
                   {lane.label}
                   <span className="task-board-lane-count">({laneTasks.length})</span>
                 </div>
-                {canCreateTask && !showArchived && (
+                {boardView === 'lanes' && canCreateTask && !showArchived && (
                   <Button
                     variant="ghost"
                     aria-label={t('taskList.addTaskToLane', { lane: lane.label })}
@@ -647,10 +615,10 @@ export default function TaskList() {
               </div>
               <div
                 className="task-board-lane-body"
-                data-drag-over={dragOverLane === lane.key || undefined}
-                onDragOver={(e) => onDragOver(e, lane.key)}
+                data-drag-over={(boardView === 'lanes' && dragOverLane === lane.key) || undefined}
+                onDragOver={boardView === 'lanes' ? (e) => onDragOver(e, lane.key) : undefined}
                 onDragLeave={onDragLeave}
-                onDrop={(e) => onDrop(e, lane.key)}
+                onDrop={boardView === 'lanes' ? (e) => onDrop(e, lane.key) : undefined}
               >
                 {laneTasks.map((task) => <TaskBoardCard
                   key={task.id}
@@ -661,7 +629,8 @@ export default function TaskList() {
                   starting={startingTaskId === task.id}
                   readOnly={!canEdit}
                   canRun={can('task.run')} canArchive={can('task.archive')} canDelete={can('task.delete')}
-                  dragging={dragId === task.id}
+                  draggable={boardView === 'lanes'}
+                  dragging={boardView === 'lanes' && dragId === task.id}
                   onOpen={() => handleSelectTask(task.id)}
                   onStart={() => setConfirmStartTaskId(task.id)}
                   onArchive={() => setArchiveTarget({ id: task.id, title: task.title })}

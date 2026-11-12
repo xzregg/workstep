@@ -96,13 +96,15 @@ def prepare_project_recovery(
     active_task_ids: frozenset[str],
     owner_id: str,
     current_workflow_steps: Callable[[object, Task], dict],
+    task_ids: frozenset[str] | None = None,
 ) -> RecoveryDecision:
     """Finish synchronous database and journal work before returning pure data."""
     prepared = []
     contended = []
-    interrupted = list(
-        WorkflowRun.select().where(WorkflowRun.status == "running")
-    )
+    query = WorkflowRun.select().where(WorkflowRun.status == "running")
+    if task_ids is not None:
+        query = query.where(WorkflowRun.task.in_(task_ids))
+    interrupted = list(query)
     for workflow_run in interrupted:
         task = Task.get_by_id(workflow_run.task_id)
         if task.id in active_task_ids:
@@ -119,6 +121,15 @@ def prepare_project_recovery(
                 workflow_run.owner_id,
             )
             contended.append(workflow_run.id)
+            continue
+        if task.active_workflow_run_id and task.active_workflow_run_id != workflow_run.id:
+            workflow_run.status = 'superseded'
+        elif task.status in {'completed', 'stopped'}:
+            workflow_run.status = 'succeeded' if task.status == 'completed' else 'stopped'
+        if workflow_run.status != 'running':
+            workflow_run.ended_at = workflow_run.ended_at or now
+            workflow_run.owner_id = workflow_run.heartbeat_at = None
+            workflow_run.save()
             continue
         try:
             steps_config = (

@@ -5,6 +5,7 @@ import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { useUserSettingsStore } from './userSettingsStore'
 
 export type GatewayConnection = {
+  device_id?: string | null
   url: string; enabled: boolean; authenticated: boolean; online: boolean
   pending_device: boolean; package_locked: boolean; authorization_required?: boolean
   reconnecting?: boolean

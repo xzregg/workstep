@@ -8,6 +8,104 @@ import { chatSessionApi } from '../src/api/client'
 import { I18nProvider } from '../src/i18n'
 import { useChatSessionHistory } from '../src/hooks/useChatSessionHistory'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
+import ProcessTrace from '../src/components/ProcessTrace'
+
+for (const running of [true, false]) test(`summary-only messages load the collapsed preview automatically only while running=${running}`, async () => {
+  const { window } = installDomEnvironment()
+  const originalGet = chatSessionApi.get, originalEvents = chatSessionApi.messageEvents
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  let detailRequests = 0
+  function Harness() {
+    const history = useChatSessionHistory({ sessionId: 'preview-session', projectId: 'p', onLoaded() {}, onMissing() {} })
+    const message = useChatSessionStore(state => state.sessions['preview-session']?.messages[0])
+    return message ? <ProcessTrace events={message.events || []} running={message.status === 'running'}
+      eventSummary={message.event_summary} detailsAvailable={message.event_detail?.available}
+      detailsLoaded={message.event_detail?.loaded} detailsLoading={message.event_detail?.loading}
+      detailsError={message.event_detail?.error} onLoadDetails={() => void history.loadMessageEvents(message.id)} /> : null
+  }
+  try {
+    useChatSessionStore.setState({ sessions: {} })
+    chatSessionApi.get = (async () => ({ id: 'preview-session', project_id: 'p', running, messages: [{
+      id: 'preview-message', role: 'assistant', content: '', status: running ? 'running' : 'succeeded',
+      events: [], event_summary: { tool_count: 2, commentary_characters: 10 },
+      event_detail: { available: true, loaded: false },
+    }] })) as never
+    chatSessionApi.messageEvents = (async () => {
+      detailRequests++
+      return { events: [
+        { type: 'TOOL_CALL_START', toolCallId: 'a', toolCallName: '读取文件' },
+        { type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', delta: '继续检查' },
+        { type: 'TOOL_CALL_START', toolCallId: 'b', toolCallName: '检查结果' },
+      ], complete: true, next_cursor: null }
+    }) as never
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    assert.equal(detailRequests, running ? 1 : 0)
+    assert.equal(document.querySelector('.process-trace-session-summary')!.getAttribute('aria-expanded'), 'false')
+    assert.equal(document.querySelectorAll('.process-trace-preview-item').length, running ? 2 : 0)
+    if (running) {
+      assert.match(document.querySelector('.process-trace-preview')!.textContent!, /继续检查.*检查结果/)
+      await act(async () => document.querySelector<HTMLElement>('.process-trace-session-summary')!.click())
+      assert.equal(document.querySelector('.process-trace-body')!.children.length, 3)
+      await act(async () => useChatSessionStore.getState().handleWsEvent({
+        type: 'TEXT_MESSAGE_CHUNK', channel: 'session_chat', session_id: 'preview-session',
+        messageId: 'preview-message', phase: 'commentary', delta: '新的实时进度',
+      }))
+      assert.match(document.querySelector('.process-trace-body')!.textContent!, /新的实时进度/)
+      await act(async () => document.querySelector<HTMLElement>('.process-trace-session-summary')!.click())
+      assert.equal(document.querySelectorAll('.process-trace-preview-item').length, 2)
+      assert.match(document.querySelector('.process-trace-preview')!.textContent!, /新的实时进度/)
+      assert.equal(detailRequests, 1, 'expanding reuses the in-flight or loaded event details')
+    }
+  } finally {
+    await act(async () => root.unmount())
+    chatSessionApi.get = originalGet; chatSessionApi.messageEvents = originalEvents
+    useChatSessionStore.setState({ sessions: {} })
+    await window.happyDOM.close()
+  }
+})
+
+test('reconnect history summaries preserve the event details already opened by the user', async () => {
+  const { window } = installDomEnvironment()
+  const originalGet = chatSessionApi.get
+  const originalEvents = chatSessionApi.messageEvents
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const events = [{ type: 'thinking_delta', data: { delta: '已加载的完整事件详情' } }]
+  let historyRequests = 0
+  function Harness() {
+    const history = useChatSessionHistory({ sessionId: 'detail-session', projectId: 'p', onLoaded() {}, onMissing() {} })
+    const message = useChatSessionStore(state => state.sessions['detail-session']?.messages[0])
+    return message ? <ProcessTrace events={message.events || []} running={message.status === 'running'}
+      detailsAvailable={message.event_detail?.available} detailsLoaded={message.event_detail?.loaded}
+      detailsLoading={message.event_detail?.loading} onLoadDetails={() => void history.loadMessageEvents(message.id)} /> : null
+  }
+  try {
+    useChatSessionStore.setState({ sessions: {} })
+    chatSessionApi.get = (async () => {
+      historyRequests++
+      return { id: 'detail-session', project_id: 'p', running: false, messages: [{
+        id: 'detail-message', role: 'assistant', content: historyRequests === 1 ? '回复' : '后台补齐的回复', status: 'succeeded',
+        events: [], event_detail: { available: true, loaded: false },
+      }] }
+    }) as never
+    chatSessionApi.messageEvents = (async () => ({ events, complete: true, next_cursor: null })) as never
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    await act(async () => document.querySelector<HTMLElement>('.process-trace-session-summary')!.click())
+    assert.match(document.querySelector('.process-trace-body')!.textContent!, /已加载的完整事件详情/)
+    await act(async () => window.dispatchEvent(new window.Event('workstep:reconnected')))
+    assert.equal(historyRequests, 2)
+    assert.equal(useChatSessionStore.getState().sessions['detail-session'].messages[0].content, '后台补齐的回复',
+      'preserving details must not suppress normal history recovery')
+    assert.equal(document.querySelector('.process-trace-session-summary')!.getAttribute('aria-expanded'), 'true')
+    assert.match(document.querySelector('.process-trace-body')!.textContent!, /已加载的完整事件详情/,
+      'background summary refresh must not erase expanded details')
+  } finally {
+    await act(async () => root.unmount())
+    chatSessionApi.get = originalGet
+    chatSessionApi.messageEvents = originalEvents
+    useChatSessionStore.setState({ sessions: {} })
+    await window.happyDOM.close()
+  }
+})
 
 test('reconnect recovers missed conversation messages with no overlapping history requests', async () => {
   const { window } = installDomEnvironment()

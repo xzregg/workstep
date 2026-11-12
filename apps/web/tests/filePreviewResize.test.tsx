@@ -8,7 +8,7 @@ import { createRoot } from 'react-dom/client'
 
 import FilePreviewDialog from '../src/components/FilePreviewDialog.tsx'
 import TaskArtifactPreviewDialog from '../src/components/TaskArtifactPreviewDialog.tsx'
-import { I18nProvider } from '../src/i18n/index.tsx'
+import { I18nProvider, useLocaleStore } from '../src/i18n/index.tsx'
 import { installDomEnvironment } from './helpers/domEnv.ts'
 
 test('file preview resizes from edges and corners within the viewport', async () => {
@@ -93,6 +93,48 @@ test('mobile file and task artifact dialogs share viewport height for all previe
     await act(async () => root.unmount())
     globalThis.fetch = originalFetch
     globalThis.history = oldHistory
+    await window.happyDOM.close()
+  }
+})
+
+
+for (const entry of ['file', 'task']) test(`${entry} preview hands its modal to the prototype editor and refreshes on return`, async () => {
+  const { window, document } = installDomEnvironment()
+  window.innerWidth = 1400
+  const originalFetch = globalThis.fetch
+  useLocaleStore.setState({locale:'zh-CN'})
+  let reads = 0
+  globalThis.fetch = async (input) => {
+    const path = new URL(String(input), 'http://localhost').pathname
+    if (path.includes('/prototype/')) return Response.json({detail:'simulated unavailable workspace'}, {status:500})
+    reads++
+    return Response.json({type:'text',content_type:'text/html',content:'<h1>Demo</h1>',extension:'.html',file_size:13})
+  }
+  let closed = 0
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider>{entry === 'file' ? <FilePreviewDialog path="/demo.html" name="demo.html" projectId="demo" onClose={() => {closed++}} /> : <TaskArtifactPreviewDialog artifact={{path:'/demo.html',name:'demo.html',is_dir:false,step_key:'step',round:1,is_latest:true,is_selected:true,manifest_status:null,eligible_for_downstream:true,logical_name:null,artifact_type:null,relative_path:'demo.html',size:13}} projectId="demo" onClose={() => {closed++}} />}</I18nProvider>))
+    const edit = [...document.querySelectorAll('button')].find(button => button.textContent === '原型编辑')!
+    assert.ok(edit)
+    await act(async () => edit.click())
+    assert.ok(document.querySelector('.prototype-editor'))
+    assert.ok(!document.querySelector('.file-preview-backdrop, .task-artifact-preview-backdrop'), 'empty preview must not cover the editor')
+    await act(async () => (document.querySelector('.prototype-backdrop') as HTMLElement).click())
+    assert.ok(document.querySelector('.prototype-editor'), 'outside clicks must keep the editor open')
+    assert.equal(closed, 0)
+    const before = reads
+    await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', {key:'Escape', bubbles:true})))
+    assert.equal(closed, 0, 'Escape returns to preview without closing its owner')
+    assert.equal(document.querySelector('.prototype-backdrop'), null)
+    assert.ok(document.querySelector('.artifact-html-preview iframe'))
+    assert.ok(reads > before, 'returning reloads the edited source')
+    if (entry === 'file') {
+      await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', {key:'Escape', bubbles:true})))
+      assert.equal(closed, 1)
+    }
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.fetch = originalFetch
     await window.happyDOM.close()
   }
 })

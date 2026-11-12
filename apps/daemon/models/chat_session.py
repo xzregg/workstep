@@ -21,6 +21,7 @@ class ChatSession(BaseModel):
     title = pw.TextField(default="")
     sort_order = pw.IntegerField(default=0)
     archived = pw.BooleanField(default=False)
+    archived_at = UTCDateTimeField(null=True)
     engine = pw.TextField()
     model = pw.TextField(null=True)
     fast_model = pw.TextField(null=True)

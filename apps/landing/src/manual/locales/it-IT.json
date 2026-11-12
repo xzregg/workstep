@@ -748,6 +748,24 @@
     "summary": "Ispeziona i file consegnati, comprendi il consumo e conserva lezioni riutilizzabili.",
     "sections": [
       {
+        "title": "Modificare prototipi HTML",
+        "steps": [
+          "Apri l’anteprima HTML del progetto e l’editor di prototipi. Per le modifiche con IA, configura il motore in Impostazioni → Assistenti → Assistente per prototipi.",
+          "Fai clic sul nome sopra l’anteprima per scegliere un HTML nella stessa cartella o in una sottocartella. Ogni HTML conserva la propria conversazione. Trascina bordi e divisori per ridimensionare.",
+          "Passa il puntatore per evidenziare, fai clic per selezionare o clic destro per commentare. Esempio: «Rendi verde questo pulsante e lascia invariato quello accanto». Invia alla chat.",
+          "Modifica testo, colore o width (ad esempio 180px) nelle proprietà e lascia il campo per salvare. Puoi anche fare doppio clic sul testo semplice o trascinare le maniglie. Seleziona l’elemento preciso prima di confermare l’eliminazione.",
+          "Nella cronologia confronta le differenze, annulla le modifiche o cancella la cronologia. Dopo un’interruzione controlla la copia conservata e riprendi il salvataggio oppure scartala. Gli originali in conflitto non vengono sovrascritti."
+        ],
+        "tips": [
+          "La modifica diretta riguarda HTML statico. La selezione sospende gli script; la navigazione esegue le interazioni. Si pubblicano solo modifiche a HTML/CSS/JS esistenti, senza aggiungere o eliminare interi file."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Modificare prototipi HTML",
+          "caption": "Interfaccia reale in cinese del progetto dimostrativo fisso: il secondo pulsante è largo 180px e il commento non è stato inviato. Nessun modello reale è stato chiamato."
+        }
+      },
+      {
         "title": "Ispeziona input, output e file di artefatti",
         "steps": [
           "Aprire Ingressi e output del passaggio nei dettagli dell'attività per verificare gli input disponibili e gli output completati.",

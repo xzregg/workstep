@@ -20,6 +20,14 @@ function proseStrings(value: unknown): string[] {
 
 describe('builtin language selection', () => {
   for (const lang of supportedLanguages.map(item => item.locale)) {
+    it(`documents prototype editing and its screenshot in ${lang}`, () => {
+      const section = getManualChapters(lang).find(chapter => chapter.id === 'results')!.sections.find(section => section.screenshot?.id === 'prototype-editor')!
+      expect(section).toBeDefined()
+      expect(section.steps).toHaveLength(5)
+      expect(section.steps.join(' ')).toContain('180px')
+      expect(section.tips?.join(' ')).toContain('HTML/CSS/JS')
+    })
+
     it(`documents click-to-install desktop updates and platform limits in ${lang}`, () => {
       const section = getManualChapters(lang).find(chapter => chapter.id === 'settings-troubleshooting')!
         .sections.find(section => section.screenshot?.id === 'desktop-update')!

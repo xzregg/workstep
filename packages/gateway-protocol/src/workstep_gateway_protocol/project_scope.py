@@ -74,6 +74,14 @@ _WORKSPACE_ASSET = re.compile(
 # Project workspace services share the same project identity; route-specific
 # resource ownership is checked by their existing project/database handlers.
 _PROJECT_SERVICES = [
+    (r"/api/prototype/open", {'POST'}, set()),
+    (r"/api/prototype/[a-f0-9]{32}", {'GET'}, set()),
+    (r"/api/prototype/[a-f0-9]{32}/document", {'GET'}, {'path','editing'}),
+    (r"/api/prototype/[a-f0-9]{32}/history", {'GET'}, {'path'}),
+    (r"/api/prototype/[a-f0-9]{32}/diff", {'GET'}, {'revision'}),
+    (r"/api/prototype/[a-f0-9]{32}/(?:edit|chat)", {'POST'}, set()),
+    (r"/api/prototype/[a-f0-9]{32}/stop", {'POST'}, {'path'}),
+    (r"/api/prototype/[a-f0-9]{32}/action/(?:undo|publish|discard|clean_history)", {'POST'}, set()),
     (r"/api/speech", {'GET'}, set()),
     (r"/api/speech/sessions", {'POST'}, set()),
     (r"/api/speech/sessions/[a-f0-9]{32}/audio", {'POST'}, set()),
@@ -119,7 +127,7 @@ def _project_service_allowed(method, path, pairs, project_id, access_level):
     params = dict(pairs)
     if len(params) != len(pairs) or params.get('project_id') != project_id:
         return False
-    if method != 'GET' and access_level != 'edit':
+    if (method != 'GET' or path.startswith('/api/prototype/')) and access_level != 'edit':
         return False
     for pattern, methods, keys in _PROJECT_SERVICES:
         if method in methods and pattern.fullmatch(path) and set(params) <= {'project_id', *keys}:

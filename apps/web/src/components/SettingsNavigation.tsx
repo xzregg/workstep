@@ -2,14 +2,15 @@ import Icon, { type IconName } from './Icon'
 import { useI18n } from '../i18n'
 import './SettingsNavigation.css'
 
-export type SettingsSection = 'connectors' | 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'roles' | 'channels' | 'remote' | 'concurrency' | 'git' | 'appearance' | 'system' | 'feedback' | 'sandbox' | 'speech'
+export type SettingsSection = 'connectors' | 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'roles' | 'channels' | 'remote' | 'concurrency' | 'git' | 'appearance' | 'system' | 'feedback' | 'sandbox' | 'speech' | 'decision'
 
 const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: string }[] = [
   { id: 'providers', label: 'providerSettings.nav', icon: 'sliders-horizontal' },
   { id: 'engines', label: 'settings.enginesNav', icon: 'sliders-horizontal' },
-  { id: 'pricing', label: 'settings.pricingNav', icon: 'layers' },
+  { id: 'decision', label: 'decisionModels.title', icon: 'layers' },
   { id: 'assistants', label: 'settings.assistantNav', glyph: '✦' },
   { id: 'speech', label: 'speech.title', icon: 'mic' },
+  { id: 'pricing', label: 'settings.pricingNav', icon: 'layers' },
   { id: 'templates', label: 'settings.templatesNav', icon: 'layout-grid' },
   { id: 'connectors', label: 'connectors.title', icon: 'plug' },
   { id: 'roles', label: 'roleCenter.title', icon: 'drama' },
@@ -33,10 +34,12 @@ export default function SettingsNavigation({
   const { t } = useI18n()
   return (
     <aside className="settings-nav">
-      <div className="settings-nav-heading">{t('nav.settings')}</div>
       {sections.filter(section => section.id !== 'sandbox' || window.workstepDesktop?.sandbox).map(({ id, label, icon, glyph }) => (
+        <div className="settings-nav-item" key={id}>
+        {id === 'providers' && <div className="settings-nav-heading">{t('decisionModels.modelGroup')}</div>}
+        {id === 'templates' && <div className="settings-nav-heading settings-nav-group-heading">{t('decisionModels.workspaceGroup')}</div>}
+        {id === 'appearance' && <div className="settings-nav-separator" />}
         <button
-          key={id}
           type="button"
           className="settings-nav-button"
           aria-current={activeSection === id ? 'page' : undefined}
@@ -45,7 +48,9 @@ export default function SettingsNavigation({
           {icon ? <Icon name={icon} size={16} strokeWidth={2} /> : <span className="settings-nav-glyph" aria-hidden="true">{glyph}</span>}
           {t(label as Parameters<typeof t>[0])}
         </button>
+        </div>
       ))}
+      {window.workstepDesktop && <div className="settings-nav-caption">{t('decisionModels.desktop')}</div>}
     </aside>
   )
 }

@@ -1,0 +1,3 @@
+.git-scan-settings { font-size:calc(12px * var(--font-scale)); }
+.git-scan-levels { font-size:var(--text-body); }
+.git-scan-settings pre { font-size:inherit; }

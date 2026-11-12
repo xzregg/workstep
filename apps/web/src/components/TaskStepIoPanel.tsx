@@ -1,3 +1,5 @@
+import type { TaskWorkflowConfiguration } from '../api/taskWorkflow'
+import TaskArtifactTemplateEditor from './TaskArtifactTemplateEditor'
 import { useEffect, useMemo, useState } from 'react'
 import type { TaskArtifact, TaskArtifactInputSnapshot } from '../api/client'
 import { useI18n } from '../i18n'
@@ -16,6 +18,10 @@ import TaskDetailTabs from './TaskDetailTabs'
 import TaskStepFeedback from './TaskStepFeedback'
 
 interface TaskStepIoPanelProps {
+  taskId?: string
+  projectId?: string
+  templateConfiguration?: TaskWorkflowConfiguration
+  onTemplateSaved?: (value: TaskWorkflowConfiguration) => void
   currentStep: StepData
   steps: StepData[]
   workflowConnections: NonNullable<TaskDetailViewProps['workflowConnections']>
@@ -38,8 +44,9 @@ function artifactKeyDown(event: React.KeyboardEvent, open: () => void) {
 
 export default function TaskStepIoPanel({ currentStep, steps, workflowConnections,
   progress, artifacts, artifactInputSnapshots, canChat, restartingStepKeys,
-  onRestartStepWithFreshSession, onOpenArtifact, locale }: TaskStepIoPanelProps) {
+  onRestartStepWithFreshSession, onOpenArtifact, locale, taskId, projectId, templateConfiguration, onTemplateSaved }: TaskStepIoPanelProps) {
   const { t } = useI18n()
+  const [templateOutput, setTemplateOutput] = useState<{ stepKey: string; index: number; name: string; value: string } | null>(null)
   const rounds = useMemo(() => [...new Set(artifacts
     .filter((artifact) => artifact.step_key === currentStep.key && artifact.round)
     .map((artifact) => artifact.round))].sort((a, b) => a - b), [artifacts, currentStep.key])
@@ -47,7 +54,7 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
     .filter((artifact) => artifact.step_key === currentStep.key && artifact.round_unchanged_from)
     .map((artifact) => [artifact.round, artifact.round_unchanged_from!])), [artifacts, currentStep.key])
   const [selectedRound, setSelectedRound] = useState<number | null>(null)
-  useEffect(() => setSelectedRound(null), [currentStep.key])
+  useEffect(() => { setSelectedRound(null); setTemplateOutput(null) }, [taskId, currentStep.key])
   const activeRound = selectedRound && rounds.includes(selectedRound)
     ? selectedRound : rounds[rounds.length - 1]
   const executionRound = activeRound ?? progress?.artifact_round ?? undefined
@@ -63,8 +70,10 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
     })
   }
   const producedOutputs = artifactsForStepRoundOutputs(artifacts, currentStep.key, activeRound)
+  const hasInputs = Boolean(currentStep.inputs?.length)
+  const inputPorts = hasInputs ? currentStep.inputs : [{ name: '', type: '', outputs: currentStep.outputs || [] }]
   const outputsByInput = groupStepOutputsByInput(
-    currentStep.inputs || [], currentStep.outputs || [], producedOutputs,
+    inputPorts, currentStep.outputs || [], producedOutputs,
   )
 
   return <section className="task-step-io">
@@ -92,8 +101,8 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
       </p>
     )}
     <div className="task-step-io-inputs">
-      <div className="task-step-io-label"><span aria-hidden="true">→</span>{t('taskDetail.ioInput')}</div>
-      {(currentStep.inputs || []).map((input, inputIndex) => {
+      {hasInputs && <div className="task-step-io-label"><span aria-hidden="true">→</span>{t('taskDetail.ioInput')}</div>}
+      {inputPorts.map((input, inputIndex) => {
         const subOutputs = outputsByInput[inputIndex] || []
         const snapshot = findStepRoundInputPort(artifactInputSnapshots, currentStep.key, executionRound, inputIndex)
         const snapshotArtifact = findStepRoundInputArtifact(
@@ -111,7 +120,7 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
           inputArtifact.name, inputArtifact.step_key, inputArtifact.round, inputArtifact.path,
         )
         return <div className="task-step-io-group" key={inputIndex}>
-          <div className="task-step-io-input" data-openable={Boolean(inputArtifact)}
+          {hasInputs && <div className="task-step-io-input" data-openable={Boolean(inputArtifact)}
             role={inputArtifact ? 'button' : undefined} tabIndex={inputArtifact ? 0 : undefined}
             aria-label={inputArtifact ? t('taskDetail.openInputAria', { name: input.name }) : undefined}
             title={inputArtifact ? t('taskDetail.openFileTitle', { name: input.name }) : undefined}
@@ -130,7 +139,7 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
               <ArtifactUnchangedBadge fromRound={inputArtifact.unchanged_from_round} />}
             <span className="task-step-io-status" data-ready={Boolean(inputArtifact || taskContext)}>{inputStatus}</span>
             {inputArtifact && <span className="task-step-io-open">{t('taskDetail.view')}</span>}
-          </div>
+          </div>}
           {subOutputs.map((output: any, outputIndex: number) => {
             const downstream = downstreamInputsForOutput(
               steps, workflowConnections, currentStep.key, output.outputIndex,
@@ -158,6 +167,12 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
                 : <span className="task-step-io-dot" data-ready={outputReady} />}
               <span className="task-step-io-output-identity">
                 <span className="task-step-io-name">{output.name}</span>
+                {output.outputIndex >= 0 && <Button variant="ghost" className="artifact-template-button"
+                  data-configured={Boolean(currentStep.outputs[output.outputIndex]?.template?.trim())}
+                  title={t('artifactTemplate.title')} aria-label={`${t('artifactTemplate.title')} · ${output.name}`}
+                  onClick={event => { event.stopPropagation(); setTemplateOutput({ stepKey: currentStep.key,
+                    index: output.outputIndex, name: output.name, value: currentStep.outputs[output.outputIndex]?.template || '' }) }}
+                  onKeyDown={event => event.stopPropagation()}><Icon name="file" size={14} /></Button>}
                 <span className="task-step-io-type">{output.type}</span>
               </span>
               {downstream.length > 0 && <MarqueeText className="step-output-route-marquee"
@@ -176,5 +191,9 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
         </div>
       })}
     </div>
+    {templateOutput && templateOutput.stepKey === currentStep.key && <TaskArtifactTemplateEditor
+      taskId={taskId || ''} projectId={projectId || ''} stepKey={templateOutput.stepKey}
+      outputIndex={templateOutput.index} name={templateOutput.name} value={templateOutput.value}
+      configuration={templateConfiguration} onSaved={onTemplateSaved} onClose={() => setTemplateOutput(null)} />}
   </section>
 }

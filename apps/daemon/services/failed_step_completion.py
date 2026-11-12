@@ -117,6 +117,9 @@ def _persist_failed_step_completion_transaction(
     task.updated_at = now
     task.save()
     if not schedule_downstream:
+        from services.task_state import settle_manual_completion
+
+        settle_manual_completion(task, workflow_run, wait_for_downstream=False)
         return None
     assert steps_config is not None
     if manifest is not None:

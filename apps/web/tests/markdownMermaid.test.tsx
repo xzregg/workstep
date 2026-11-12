@@ -1,7 +1,6 @@
 import './helpers/domEnv.ts'
 
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -16,7 +15,6 @@ import {
 import { I18nProvider } from '../src/i18n/index.tsx'
 
 const diagram = 'flowchart LR\n  A --> B'
-const styles = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 
 function renderMarkdown(content: string, streaming = false) {
   return renderToStaticMarkup(
@@ -149,6 +147,12 @@ test('opens an enlarged preview and exposes zoom controls', async () => {
     const dialog = document.body.querySelector<HTMLElement>('.mermaid-preview')
     assert.ok(dialog)
     assert.match(dialog.textContent ?? '', /Preview me/)
+    assert.ok(dialog.classList.contains('image-preview'))
+    const panel = dialog.querySelector('.image-preview-window')!
+    assert.ok(panel.querySelector('.image-preview-toolbar [data-testid="mermaid-preview-zoom-in"]'))
+    assert.ok(panel.querySelector('.image-preview-close'))
+    assert.ok([...panel.querySelectorAll('button')].some(button => /下载图片|Download image/i.test(button.textContent ?? '')))
+    assert.equal([...panel.querySelectorAll('button')].some(button => /复制地址|Copy.*address/i.test(button.textContent ?? '')), false)
     assert.equal(dialog.querySelector('[data-testid="mermaid-preview-zoom-level"]')?.textContent, '100%')
 
     const zoomIn = dialog.querySelector<HTMLButtonElement>('[data-testid="mermaid-preview-zoom-in"]')
@@ -165,14 +169,6 @@ test('opens an enlarged preview and exposes zoom controls', async () => {
     container.remove()
     resetMermaidForTests()
   }
-})
-
-test('preview panel fits the rendered diagram height instead of stretching to the viewport', () => {
-  const overlayRule = styles.match(/\.mermaid-preview\s*\{([\s\S]*?)\}/)?.[1] ?? ''
-  const viewportRule = styles.match(/\.mermaid-preview__viewport\s*\{([\s\S]*?)\}/)?.[1] ?? ''
-
-  assert.match(overlayRule, /align-items:\s*flex-start/)
-  assert.match(viewportRule, /max-height:\s*calc\(100dvh\s*-\s*82px\)/)
 })
 
 test('copies the rendered Mermaid SVG to the clipboard as PNG', async () => {

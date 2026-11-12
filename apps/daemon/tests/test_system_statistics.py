@@ -416,3 +416,29 @@ async def test_real_sampler_cached_response_marks_stale_and_has_bounded_serializ
         assert service.snapshot()['status'] == 'error'
     finally:
         await service.close()
+
+
+def test_managed_decision_worker_is_named_without_extra_io_or_double_counting(monkeypatch, tmp_path):
+    from services.decision_models import service
+    collector, parent, child, _, clock = setup_collector(monkeypatch, tmp_path)
+    monkeypatch.setattr(service.runtime, 'process', SimpleNamespace(pid=child.pid, returncode=None))
+    monkeypatch.setattr(service.runtime, 'model_path', tmp_path / 'laya-multilingual')
+    monkeypatch.setattr(service.runtime, 'state', 'ready')
+    def forbidden(*args): pytest.fail('metrics metadata must not read model resources or settings')
+    monkeypatch.setattr(service, '_settings', forbidden)
+    monkeypatch.setattr(service.resources, 'snapshot', forbidden)
+    first = collector()
+    row = first['children'][0]
+    assert row['process_kind'] == 'decision_model'
+    assert row['model_id'] == 'laya-multilingual'
+    assert row['worker_state'] == 'ready'
+    assert row['name'] == 'node'  # OS process name stays intact.
+    assert first['children_summary']['memory_rss'] == 100
+    assert first['total']['memory_rss'] == 200
+    child.cpu = 2; clock[0] += 5
+    assert collector()['children'][0]['cpu_percent'] == 10
+    monkeypatch.setattr(service.runtime.process, 'returncode', 0)
+    assert 'process_kind' not in collector()['children'][0]
+    monkeypatch.setattr(service.runtime, 'process', None)
+    parent.descendants = []
+    assert collector()['children_summary']['process_count'] == 0

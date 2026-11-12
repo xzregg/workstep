@@ -260,6 +260,7 @@ class AssistantConfig:
     extract_streaming_text: Callable[[str], str] | None = None
     history_message: Callable[[dict], dict] | None = None
     cwd_resolver: Callable[[object, str], str] | None = None
+    session_cwd_resolver: Callable[[AssistantSession], str] | None = None
     validate_engine: Callable[[str], None] | None = None
 
 
@@ -1391,7 +1392,9 @@ class AssistantRuntime:
                 self._turn_states[turn_id]["status"] = "error"
                 self._turn_states[turn_id]["error"] = str(exc)
             try:
-                session.cwd = await asyncio.to_thread(self._cwd, session.project_id)
+                session.cwd = await asyncio.to_thread(
+                    self._config.session_cwd_resolver, session
+                ) if self._config.session_cwd_resolver else await asyncio.to_thread(self._cwd, session.project_id)
                 prompt = await asyncio.to_thread(self._build_prompt, session)
                 system_prompt = await asyncio.to_thread(self._engine_system_prompt, session)
                 display_prompt = await asyncio.to_thread(self._display_prompt, session, prompt, system_prompt)

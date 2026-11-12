@@ -311,6 +311,7 @@ def assemble_prompt(
                 prompt_out_dir,
                 step.outgoing_connections,
                 output_ports=output_ports,
+                task_title=task.title,
             )
         )
 
@@ -512,7 +513,7 @@ def assemble_followup_prompt(
     output_ports = _active_output_ports(step, input_snapshot)
     if output_ports:
         parts.append(_format_retry_output_paths(
-            [step.outputs[index] for index in output_ports], prompt_out_dir,
+            [step.outputs[index] for index in output_ports], prompt_out_dir, task_title=task.title,
         ))
 
     return "\n\n".join(parts)
@@ -603,7 +604,7 @@ def assemble_retry_prompt(
     output_ports = _active_output_ports(step, input_snapshot)
     if output_ports:
         parts.append(_format_retry_output_paths(
-            [step.outputs[index] for index in output_ports], prompt_out_dir,
+            [step.outputs[index] for index in output_ports], prompt_out_dir, task_title=task.title,
         ))
     return "\n\n".join(parts)
 
@@ -697,7 +698,15 @@ def _format_retry_feedback_inputs(
     )
 
 
-def _format_retry_output_paths(outputs: list[dict], out_base: str | Path) -> str:
+def _output_template_lines(output: dict, name: str, task_title: str = "") -> list[str]:
+    template = output.get("template", "")
+    if not isinstance(template, str) or not template.strip():
+        return []
+    template = template.replace("{{任务名称}}", task_title) if task_title else template
+    return [f'\nPlease use the following template for artifact "{name}":\n<artifact_template>\n{template}\n</artifact_template>\n']
+
+
+def _format_retry_output_paths(outputs: list[dict], out_base: str | Path, *, task_title: str = "") -> str:
     """Give a resumed session the new round's destinations without restating
     the unchanged output format contract already present in that session.
     """
@@ -711,6 +720,10 @@ def _format_retry_output_paths(outputs: list[dict], out_base: str | Path) -> str
         path_label, output_path = _output_path(str(out_base), name, output_type)
         suffix = "/" if path_label == "output directory" else ""
         lines.append(f"- {name}: `{output_path}{suffix}`")
+        if "template" in output and not output.get("template", "").strip():
+            lines.append(f'No template is required for artifact "{name}".')
+        else:
+            lines.extend(_output_template_lines(output, name, task_title))
     return "\n".join(lines)
 
 
@@ -815,6 +828,7 @@ def _format_output_specs(
     *,
     heading: str = "Outputs",
     output_ports: list[int] | None = None,
+    task_title: str = "",
 ) -> str:
     """Describe optional outputs once, including their exact destination."""
     lines = [f"## {heading}"]
@@ -830,6 +844,7 @@ def _format_output_specs(
         lines.append(
             f"- **{name}** — {otype}; {constraint}; {path_label}: `{output_path}{suffix}`"
         )
+        lines.extend(_output_template_lines(out, name, task_title))
         output_port = output_ports[i - 1] if output_ports is not None else i - 1
         routes = [
             connection

@@ -32,13 +32,14 @@ async def test_project_statistics_stay_in_ticket_project(api_context, monkeypatc
         projects.append((response.json()["id"], directory))
     (visible, visible_dir), (private, private_dir) = projects
 
-    def seed(task_id, cwd):
+    def seed(task_id, cwd, creator_id='worker'):
         now = utc_now()
         Task.create(id=task_id, title=task_id, cwd=str(cwd),
-                    created_at=now, updated_at=now)
+                    creator_id=creator_id, created_at=now, updated_at=now)
 
     await main.project_manager.run_db(visible, lambda _: seed("visible-task", visible_dir))
     await main.project_manager.run_db(private, lambda _: seed("private-task", private_dir))
+    await main.project_manager.run_db(visible, lambda _: seed("other-user-task", visible_dir, 'other'))
     monkeypatch.setattr(statistics_api, "project_manager", main.project_manager)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
 

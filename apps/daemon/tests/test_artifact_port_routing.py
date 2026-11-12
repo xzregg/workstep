@@ -1485,6 +1485,8 @@ async def test_forward_and_feedback_outputs_in_same_round_pause_as_conflict(tmp_
         workflow_snapshot_json="{}",
         started_at=1,
     )
+    task.active_workflow_run_id = run.id
+    task.save()
     calls = {"develop": [], "test": [], "publish": []}
 
     class BothOutputsEngine(ArtifactWritingEngine):

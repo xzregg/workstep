@@ -748,6 +748,24 @@
     "summary": "Inspiser leverte filer, forstå forbruk og behold gjenbrukbare leksjoner.",
     "sections": [
       {
+        "title": "Rediger HTML-prototyper",
+        "steps": [
+          "Åpne prosjektets HTML-forhåndsvisning og prototyperedigereren. For AI-endringer konfigurerer du motoren under Innstillinger → Assistenter → Prototypeassistent.",
+          "Klikk filnavnet over forhåndsvisningen for å velge HTML i samme mappe eller en undermappe. Hver HTML beholder sin egen samtale. Dra i vinduskanter og skillelinjer for å endre størrelsen.",
+          "Hold pekeren over for å fremheve, klikk for å velge eller høyreklikk for å kommentere. Eksempel: «Gjør denne knappen grønn, men la naboknappen være uendret.» Send til chatten.",
+          "Endre tekst, farge eller width (for eksempel 180px) i egenskapene og forlat feltet for å lagre. Du kan også dobbeltklikke på enkel tekst eller dra i størrelseshåndtakene. Velg riktig element før du bekrefter sletting.",
+          "I endringshistorikken kan du se forskjeller, angre eller tømme historikken. Etter avbrudd kontrollerer du den bevarte kopien og gjenopptar lagringen eller forkaster den. Originaler med konflikter overskrives ikke."
+        ],
+        "tips": [
+          "Direkte redigering gjelder statisk HTML. Valgmodus pauser sideskript, mens visningsmodus kjører interaksjoner. Bare endringer av eksisterende HTML/CSS/JS publiseres; hele filer kan ikke legges til eller slettes."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Rediger HTML-prototyper",
+          "caption": "Ekte kinesisk grensesnitt i det faste demoprosjektet: den andre knappen er 180px bred, og kommentaren er ikke sendt. Ingen ekte modell ble kalt."
+        }
+      },
+      {
         "title": "Inspiser innganger, utganger og artefaktfiler",
         "steps": [
           "Åpne Step-innganger og -utganger i oppgavedetaljer for å sjekke tilgjengelige innganger og fullførte utganger.",

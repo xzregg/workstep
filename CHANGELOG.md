@@ -4,6 +4,9 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Add optional decision-model resource management, local or remote service configuration, and an explicitly authenticated local inference proxy; this does not automatically alter workflow decisions.
+- Add per-output artifact templates, read-only archived conversation previews, and an HTML prototype editor with a dedicated assistant, version-checked source updates, undo and history controls.
+- Fix task admission ownership, queued cancellation, stale review actions, interrupted-run recovery and cleanup; preserve cancellation audit records when waiter cleanup races with persistence.
 - Add host-managed MCP and CLI connectors with project availability, session selection, connection diagnostics and explicit tool testing. Browser OAuth is not supported.
 - Improve shared composer context chips, image preview copying and downloads, local artifact-directory access, and desktop-authenticated audit visibility through container port forwarding.
 - Organize ordinary and channel conversations into project-local groups, with drag-and-drop assignment, group creation, archiving and explicit deletion choices.

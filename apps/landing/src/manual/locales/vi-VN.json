@@ -748,6 +748,24 @@
     "summary": "Kiểm tra các tệp đã phân phối, hiểu mức tiêu thụ và giữ lại các bài học có thể sử dụng lại.",
     "sections": [
       {
+        "title": "Chỉnh sửa nguyên mẫu HTML",
+        "steps": [
+          "Mở bản xem trước HTML của dự án rồi chọn trình sửa nguyên mẫu. Để sửa bằng AI, cấu hình bộ máy tại Cài đặt → Trợ lý → Trợ lý nguyên mẫu.",
+          "Nhấn tên tệp phía trên bản xem trước để chọn HTML cùng thư mục hoặc trong thư mục con. Mỗi HTML giữ cuộc trò chuyện riêng. Kéo cạnh cửa sổ và thanh phân cách để đổi kích thước.",
+          "Di chuột để tô sáng, nhấn để chọn hoặc nhấn chuột phải để bình luận. Ví dụ: “Đổi nút này thành màu xanh lá, giữ nguyên nút bên cạnh.” Gửi vào trò chuyện.",
+          "Sửa chữ, màu hoặc width (ví dụ 180px) trong thuộc tính rồi rời ô để lưu. Có thể nhấn đúp vào văn bản đơn giản hoặc kéo tay nắm kích thước. Chọn đúng phần tử trước khi xác nhận xóa.",
+          "Trong lịch sử thay đổi, xem khác biệt, hoàn tác hoặc dọn lịch sử. Sau gián đoạn, kiểm tra bản sao được giữ lại rồi tiếp tục lưu hoặc bỏ bản sao. Không ghi đè bản gốc khi có xung đột."
+        ],
+        "tips": [
+          "Sửa trực tiếp áp dụng cho HTML tĩnh. Chế độ chọn tạm dừng mã lệnh trang; chế độ duyệt chạy tương tác. Chỉ xuất bản thay đổi của HTML/CSS/JS hiện có; không hỗ trợ thêm hoặc xóa cả tệp."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Chỉnh sửa nguyên mẫu HTML",
+          "caption": "Giao diện tiếng Trung thực tế trong dự án minh họa cố định: nút thứ hai rộng 180px và bình luận chưa gửi. Không gọi mô hình thực."
+        }
+      },
+      {
         "title": "Kiểm tra đầu vào, đầu ra và các tập tin tạo tác",
         "steps": [
           "Mở đầu vào và đầu ra của Bước trong chi tiết nhiệm vụ để kiểm tra đầu vào có sẵn và đầu ra đã hoàn thành.",

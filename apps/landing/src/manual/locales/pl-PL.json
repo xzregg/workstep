@@ -748,6 +748,24 @@
     "summary": "Sprawdź dostarczone pliki, zrozum zużycie i zachowaj lekcje do ponownego wykorzystania.",
     "sections": [
       {
+        "title": "Edytowanie prototypów HTML",
+        "steps": [
+          "Otwórz podgląd HTML projektu i edytor prototypów. Dla zmian z AI skonfiguruj silnik w Ustawienia → Asystenci → Asystent prototypów.",
+          "Kliknij nazwę nad podglądem, aby wybrać HTML z tego samego folderu lub podfolderu. Każdy HTML zachowuje osobną rozmowę. Przeciągaj krawędzie okna i separatory, aby zmienić rozmiar.",
+          "Najedź kursorem, aby podświetlić, kliknij, aby zaznaczyć, lub kliknij prawym przyciskiem, aby skomentować. Przykład: „Zmień ten przycisk na zielony, pozostaw sąsiedni bez zmian”. Wyślij do czatu.",
+          "Zmień tekst, kolor lub width (np. 180px) we właściwościach i opuść pole, aby zapisać. Możesz też dwukrotnie kliknąć prosty tekst lub przeciągać uchwyty rozmiaru. Zaznacz dokładny element przed potwierdzeniem usunięcia.",
+          "W historii zmian sprawdź różnice, cofnij zmiany lub wyczyść historię. Po przerwaniu sprawdź zachowaną kopię i wznów zapis albo ją odrzuć. Oryginały z konfliktem nie są nadpisywane."
+        ],
+        "tips": [
+          "Bezpośrednia edycja obsługuje statyczny HTML. Tryb wyboru wstrzymuje skrypty, a przeglądanie uruchamia interakcje. Publikowane są tylko zmiany istniejących HTML/CSS/JS, bez dodawania i usuwania całych plików."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Edytowanie prototypów HTML",
+          "caption": "Rzeczywisty chiński interfejs stałego projektu demonstracyjnego: drugi przycisk ma szerokość 180px, komentarz nie został wysłany. Nie wywołano rzeczywistego modelu."
+        }
+      },
+      {
         "title": "Sprawdź dane wejściowe, wyjściowe i pliki artefaktów",
         "steps": [
           "Otwórz wejścia i wyjścia kroku w szczegółach zadania, aby sprawdzić dostępne dane wejściowe i ukończone wyniki.",

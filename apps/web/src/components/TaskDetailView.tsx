@@ -1,3 +1,4 @@
+import type { TaskWorkflowConfiguration } from '../api/taskWorkflow'
 import ConversationLayout from './ConversationLayout'
 import { SkinExtensionSlot } from './SkinExtensions'
 import { useSkinActions } from '../skins/actions'
@@ -115,9 +116,9 @@ export interface StepData {
   inputs: Array<{
     name: string
     type: string
-    outputs?: Array<{ name: string; type: string }>
+    outputs?: Array<{ name: string; type: string; template?: string }>
   }>
-  outputs: Array<{ name: string; type: string }>
+  outputs: Array<{ name: string; type: string; template?: string }>
 }
 
 export interface StepProgress extends Partial<TaskStepState> {
@@ -208,6 +209,8 @@ export interface TaskDetailViewProps {
     stepKey?: string,
   ) => void
 
+  templateConfiguration?: TaskWorkflowConfiguration
+  onTemplateSaved?: (value: TaskWorkflowConfiguration) => void
   // ── Artifacts ──
   artifacts: TaskArtifact[]
   artifactDirectory?: string
@@ -370,6 +373,8 @@ export default function TaskDetailView({
   artifacts,
   artifactDirectory,
   artifactInputSnapshots = [],
+  templateConfiguration,
+  onTemplateSaved,
   onOpenArtifact,
   // Chat
   chatTarget,
@@ -626,6 +631,8 @@ export default function TaskDetailView({
         {workflowTools}
 
         <TaskStepIoPanel currentStep={currentStep} steps={steps}
+          taskId={task.id} projectId={projectId} templateConfiguration={templateConfiguration}
+          onTemplateSaved={onTemplateSaved}
           workflowConnections={workflowConnections} progress={stepProgress[selectedStep]}
           artifacts={artifacts} artifactInputSnapshots={artifactInputSnapshots}
           canChat={canChat} restartingStepKeys={restartingStepKeys}

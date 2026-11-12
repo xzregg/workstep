@@ -748,6 +748,24 @@
     "summary": "Inspektera levererade filer, förstå förbrukning och behåll återanvändbara lektioner.",
     "sections": [
       {
+        "title": "Redigera HTML-prototyper",
+        "steps": [
+          "Öppna projektets HTML-förhandsvisning och prototypredigeraren. För AI-ändringar konfigurerar du motorn under Inställningar → Assistenter → Prototypassistent.",
+          "Klicka på filnamnet ovanför förhandsvisningen för att välja HTML i samma mapp eller en undermapp. Varje HTML har en egen konversation. Dra fönsterkanter och avdelare för att ändra storleken.",
+          "Hovra för markering, klicka för att välja eller högerklicka för att kommentera. Exempel: ”Gör den här knappen grön och lämna knappen bredvid oförändrad.” Skicka till chatten.",
+          "Ändra text, färg eller width (till exempel 180px) i egenskaperna och lämna fältet för att spara. Du kan även dubbelklicka på enkel text eller dra i storlekshandtagen. Välj exakt element innan du bekräftar borttagning.",
+          "I ändringshistoriken granskar du skillnader, ångrar eller rensar historiken. Efter ett avbrott kontrollerar du den sparade kopian och återupptar sparandet eller kasserar den. Original med konflikter skrivs inte över."
+        ],
+        "tips": [
+          "Direktredigering gäller statisk HTML. Urvalsläget pausar sidskript, medan visningsläget kör interaktionerna. Endast ändringar av befintliga HTML/CSS/JS publiceras; hela filer kan inte läggas till eller tas bort."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Redigera HTML-prototyper",
+          "caption": "Verkligt kinesiskt gränssnitt i det fasta demoprojektet: den andra knappen är 180px bred och kommentaren är oskickad. Ingen riktig modell har anropats."
+        }
+      },
+      {
         "title": "Inspektera ingångar, utgångar och artefaktfiler",
         "steps": [
           "Öppna Step-ingångar och -utgångar i uppgiftsdetaljer för att kontrollera tillgängliga ingångar och slutförda utgångar.",

@@ -1,3 +1,5 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import PrototypeEditor from './prototype/PrototypeEditor'
 /** Artifact Preview Component - shows file contents or a directory listing. */
 
 import Icon from './Icon'
@@ -28,6 +30,7 @@ interface ArtifactPreviewProps {
   projectId?: string
   standalone?: boolean
   onEdit?: () => void
+  onOpenPrototype?: (path: string) => void
 }
 
 type PreviewView =
@@ -102,6 +105,7 @@ export default function ArtifactPreview({
   projectId,
   standalone = false,
   onEdit,
+  onOpenPrototype,
 }: ArtifactPreviewProps) {
   const { t } = useI18n()
   const taskFilePreview = useTaskFilePreview()
@@ -117,6 +121,8 @@ export default function ArtifactPreview({
       : { kind: 'file', path }
   )
   const [showMarkdownSource, setShowMarkdownSource] = useState(false)
+  const { can: canPrototype } = useGatewayProjectPermissions(projectId)
+  const [prototypeOpen, setPrototypeOpen] = useState(false)
 
   const [preview, setPreview] = useState<FilePreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -312,11 +318,14 @@ export default function ArtifactPreview({
     )
   }
 
+  if (isHtml && prototypeOpen && projectId) return <PrototypeEditor projectId={projectId} path={view.path} onClose={() => setPrototypeOpen(false)} />
+
   if (isHtml) {
     return (
       <div className="artifact-html-preview">
         {fileHeader(t('artifact.htmlFile'), (
           <>
+            {projectId && canPrototype('file.edit') && !taskFilePreview && !window.location.pathname.startsWith('/share/') && <Button onClick={() => onOpenPrototype ? onOpenPrototype(view.path) : setPrototypeOpen(true)}>{t('prototype.title')}</Button>}
             {editButton}
             {downloadButton}
             <CopyTextButton content={content} />

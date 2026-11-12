@@ -1,3 +1,4 @@
+import { usePrototypeStore } from '../stores/prototypeStore'
 import { postAndroidNotification } from '../utils/completionNotifications'
 import { gatewayFetch, gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
 /**
@@ -84,6 +85,7 @@ export function useWebSocket() {
   const remoteProjectIds = useWsSubscriptionStore((s) => s.remoteProjectIds)
   const chatProjectIds = useWsSubscriptionStore((s) => s.chatProjectIds)
   const tasks = useTaskStore(useShallow((s) => s.tasks))
+  const prototypeSessionIds = usePrototypeStore(useShallow((s) => Object.keys(s.sessions)))
   const genSessionIds = useWorkflowGenStore(useShallow((s) => Object.keys(s.sessions)))
   const draftSessionIds = useTaskDraftStore(useShallow((s) => Object.keys(s.sessions)))
   const chatSessionIds = useChatSessionStore(useShallow((s) => Object.keys(s.sessions)))
@@ -118,6 +120,7 @@ export function useWebSocket() {
     ])],
     session_ids: [...new Set([
       ...useRecentActivityStore.getState().targets.filter(target => target.kind === 'session').map(target => target.id),
+      ...Object.keys(usePrototypeStore.getState().sessions),
       ...Object.keys(useWorkflowGenStore.getState().sessions),
       ...Object.keys(useTaskDraftStore.getState().sessions),
       ...Object.keys(useChatSessionStore.getState().sessions),
@@ -147,6 +150,7 @@ export function useWebSocket() {
       void syncBrowserPush({
         projectId: project.id, projectName: project.name,
         sessionIds: [...new Set([
+          ...Object.keys(usePrototypeStore.getState().sessions),
           ...Object.keys(useWorkflowGenStore.getState().sessions),
           ...Object.keys(useTaskDraftStore.getState().sessions),
           ...Object.keys(useChatSessionStore.getState().sessions),
@@ -157,7 +161,7 @@ export function useWebSocket() {
     } else {
       void clearBrowserPushWatch().catch(() => undefined)
     }
-  }, [flushSubscription, detailTaskIds, remoteProjectIds, chatProjectIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId, recentTargets])
+  }, [flushSubscription, detailTaskIds, remoteProjectIds, chatProjectIds, tasks, prototypeSessionIds, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId, recentTargets])
 
   useEffect(() => {
     const checks: Array<() => void> = []
@@ -316,6 +320,7 @@ export function useWebSocket() {
               if (notice.sessionId) unwatchPendingCompletion(notice.projectId, { sessionId: notice.sessionId })
               if (notice.taskId) unwatchPendingCompletion(notice.projectId, { taskId: notice.taskId })
             }
+            if (parsed.session_id && parsed.channel === 'prototype') usePrototypeStore.getState().handleWsEvent(parsed)
             if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)
             if (parsed.session_id && parsed.channel === 'task_create') handleTaskDraftEvent(parsed)
             if (parsed.session_id && CHAT_SESSION_CHANNELS.includes(parsed.channel || '')) handleChatSessionEvent(parsed)

@@ -9,6 +9,27 @@ import EngineSettingsPanel from '../src/components/EngineSettingsPanel'
 import EngineSelect from '../src/components/EngineSelect'
 import { resetEngineAvailabilityStoreForTests, useCoordinatorEngines } from '../src/stores/engineAvailabilityStore'
 
+test('Pydantic AI keeps engine controls without a separate skills and MCP viewer', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const originalList = engineApi.list, originalExecutionConfig = engineApi.executionConfig
+  engineApi.list = async () => ({ engines: [{ id: 'pydantic_ai', name: 'Pydantic AI', installed: true,
+    config: { fields: [], step_fields: [], values: {}, secrets: {} } } as EngineInfo] })
+  engineApi.executionConfig = async () => ({ engine: '' })
+  try {
+    await act(async () => root.render(<I18nProvider><EngineSettingsPanel hidden={false} refreshRevision={0} preferredProviderProtocol="" /></I18nProvider>))
+    assert.match(document.body.textContent!, /Pydantic AI/)
+    const buttons = [...document.querySelectorAll('button')].map(button => button.textContent?.trim())
+    assert.equal(document.querySelectorAll('.engine-settings-test-button').length, 1, 'retain only the engine connection test')
+    assert.ok(!buttons.includes('查看技能与 MCP'))
+    assert.equal(document.querySelector('.engine-capabilities-overlay'), null)
+  } finally {
+    engineApi.list = originalList; engineApi.executionConfig = originalExecutionConfig
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('provider drafts replace model options and ignore late responses', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

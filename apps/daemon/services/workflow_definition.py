@@ -86,6 +86,14 @@ class WorkflowDefinition:
                     raise WorkflowValidationError(
                         f"{collection_name}[{index}].quickButtons: {exc}"
                     ) from exc
+        for item in items:
+            outputs = list(item.get("outputs", []))
+            for port in item.get("inputs", []):
+                if isinstance(port, dict):
+                    outputs.extend(port.get("outputs", []))
+            for output in outputs:
+                if isinstance(output, dict) and "template" in output and not isinstance(output["template"], str):
+                    raise WorkflowValidationError("产物模板必须为文本")
         seen_keys: dict[str, int] = {}
         for index, item in enumerate(items):
             key = item.get("key", item.get("type", item.get("id", "")))

@@ -907,7 +907,7 @@ export default function ChatInput({
             lastInput?.focus({ preventScroll: true })
           }}
         >
-          {roleBinding?.name && <ComposerContextChip name={roleBinding.name}
+          {roleBinding?.name && <ComposerContextChip className="composer-context-chip--role" name={roleBinding.name}
             icon={roleBinding.loading ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="drama" size={14} />}
             unavailable={roleBinding.missing} disabled={roleBinding.disabled} onOpen={roleBinding.onOpen} onRemove={roleBinding.onRemove}
             openLabel={t('roleCenter.boundRoleLabel', { name: roleBinding.name })} removeLabel={t('roleCenter.removeChatRole')}

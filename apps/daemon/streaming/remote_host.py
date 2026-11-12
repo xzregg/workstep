@@ -351,6 +351,7 @@ async def serve_remote_project_socket(
             )
             if (
                 belongs_to_project
+                and (event.get("channel") != "prototype" or principal.access_level == "edit")
                 and any(subscription.values())
                 and _subscription_matches(event, subscription)
             ):

@@ -748,6 +748,24 @@
     "summary": "Inspecione os arquivos entregues, entenda o consumo e retenha lições reutilizáveis.",
     "sections": [
       {
+        "title": "Editar protótipos HTML",
+        "steps": [
+          "Abra a prévia HTML do projeto e o editor de protótipos. Para alterações com IA, configure o mecanismo em Configurações → Assistentes → Assistente de protótipos.",
+          "Clique no nome acima da prévia para escolher outro HTML da mesma pasta ou de uma subpasta. Cada HTML mantém sua conversa. Arraste bordas e divisórias para ajustar o tamanho.",
+          "Passe o cursor para destacar, clique para selecionar ou use o botão direito para comentar. Exemplo: “Deixe este botão verde e mantenha o botão ao lado”. Envie ao chat.",
+          "Edite texto, cor ou width (por exemplo 180px) nas propriedades e saia do campo para salvar. Também pode dar dois cliques em texto simples ou arrastar as alças de tamanho. Selecione o elemento exato antes de confirmar a exclusão.",
+          "No histórico, confira diferenças, desfaça alterações ou limpe os registros. Após uma interrupção, revise a cópia preservada e retome o salvamento ou descarte-a. Originais em conflito não são sobrescritos."
+        ],
+        "tips": [
+          "A edição direta aceita HTML estático. O modo de seleção pausa scripts; a navegação executa as interações. Somente alterações em HTML/CSS/JS existentes são publicadas; adicionar ou excluir arquivos inteiros não é suportado."
+        ],
+        "screenshot": {
+          "id": "prototype-editor",
+          "alt": "Editar protótipos HTML",
+          "caption": "Interface real em chinês do projeto fixo de demonstração: o segundo botão está com 180px e o comentário ainda não foi enviado. Nenhum modelo real foi chamado."
+        }
+      },
+      {
         "title": "Inspecione entradas, saídas e arquivos de artefatos",
         "steps": [
           "Abra as entradas e saídas da etapa nos detalhes da tarefa para verificar as entradas disponíveis e as saídas concluídas.",

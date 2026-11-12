@@ -110,9 +110,9 @@ interface StepData {
   inputs: Array<{
     name: string
     type: string
-    outputs?: Array<{ name: string; type: string }>
+    outputs?: Array<{ name: string; type: string; template?: string }>
   }>
-  outputs: Array<{ name: string; type: string }>
+  outputs: Array<{ name: string; type: string; template?: string }>
 }
 
 interface StepProgress extends Partial<TaskStepState> {
@@ -444,6 +444,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
           outputs: (node.outputs || []).map((output: any) => ({
             name: output.name,
             type: output.type,
+            template: output.template,
           })),
         }
       })
@@ -469,6 +470,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
       outputs: (s.outputs || []).map((o: any) => ({
         name: o.name || o,
         type: o.type || 'any',
+        template: o.template,
       })),
     }))
     return []
@@ -919,6 +921,8 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
         gitCapability={shared?.gitCapability || (projectId ? { api: taskGitApi, projectId, projectScoped: detailProject?.type === 'remote' } : undefined)}
         steps={steps}
         workflowConnections={workflowConfiguration?.workflow?.connections || []}
+        templateConfiguration={workflowConfiguration}
+        onTemplateSaved={!shared ? updateWorkflowConfiguration : undefined}
         workflowTools={workflowConfiguration
           ? <TaskWorkflowTools taskId={taskId} projectId={projectId} configuration={workflowConfiguration}
               readOnly={Boolean(shared)} onChanged={(value) => { updateWorkflowConfiguration(value); void refreshTask(taskId, projectId) }} />

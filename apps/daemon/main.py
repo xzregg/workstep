@@ -39,6 +39,7 @@ from api.history import router as history_router
 from api.fs import router as fs_router
 from api.fs import uploads_router
 from api.speech import router as speech_router
+from api.decision_models import router as decision_models_router
 from api.search import router as search_router
 from api.templates import ensure_global_templates
 from api.templates import router as templates_router
@@ -48,6 +49,8 @@ from services.skins import skin_manager
 from api.engine import router as engine_router
 from api.provider import router as provider_router
 from api.workflow import router as workflow_router
+from api.prototype import router as prototype_router
+from agent_assistants.prototype import PrototypeModule
 from api.workflow_gen import router as workflow_gen_router
 from api.task_draft import router as task_draft_router
 from api.task_dispatch import router as task_dispatch_router
@@ -151,6 +154,7 @@ remote_project_api.client_manager = remote_project_client
 task_service: TaskService | None = None
 workflow_runtime: WorkflowRuntime | None = None
 coordinator_module: CoordinatorModule | None = None
+prototype_module: PrototypeModule | None = None
 workflow_gen_module: WorkflowGenModule | None = None
 task_draft_module: TaskDraftModule | None = None
 schedule_module: ScheduleModule | None = None
@@ -177,6 +181,7 @@ async def lifespan(app: FastAPI):
 @asynccontextmanager
 async def _application_lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
+    global prototype_module
     global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_bot_manager
     from services.resource_limits import configure_file_limit
     configure_file_limit()
@@ -233,6 +238,7 @@ async def _application_lifespan(app: FastAPI):
             "Recovered %d interrupted coordinator state item(s)",
             recovered_coordinator,
         )
+    prototype_module = PrototypeModule(event_bus, project_manager)
     workflow_gen_module = WorkflowGenModule(event_bus, project_manager)
     task_draft_module = TaskDraftModule(event_bus, project_manager)
     schedule_module = ScheduleModule(
@@ -288,6 +294,8 @@ async def _application_lifespan(app: FastAPI):
         await system_statistics.close()
         from services.speech import service as speech_service
         await speech_service.close()
+        from services.decision_models import service as decision_model_service
+        await decision_model_service.close()
         app.state.local_cli_runtime = None
         await asyncio.to_thread(local_cli_runtime.close)
         await completion_push.shutdown()
@@ -305,6 +313,8 @@ async def _application_lifespan(app: FastAPI):
         except Exception:
             logger.warning("DeepSeek Harness pool shutdown failed", exc_info=True)
         logger.info("WorkStep Daemon shutting down")
+        if prototype_module is not None:
+            await prototype_module.shutdown()
         if workflow_gen_module is not None:
             await workflow_gen_module.shutdown()
         if task_draft_module is not None:
@@ -354,6 +364,10 @@ app.add_middleware(
     access_service=remote_access_service,
 )
 app.add_middleware(BrowserActorMiddleware)
+from api.decision_proxy import DecisionProxyMiddleware
+from services.decision_models import service as decision_model_service
+decision_model_service.remote_access = remote_access_service
+app.add_middleware(DecisionProxyMiddleware, service=decision_model_service)
 from api.static_asset_compression import StaticAssetCompressionMiddleware
 app.add_middleware(StaticAssetCompressionMiddleware)
 
@@ -371,6 +385,7 @@ app.include_router(history_router)
 app.include_router(fs_router)
 app.include_router(uploads_router)
 app.include_router(speech_router)
+app.include_router(decision_models_router)
 app.include_router(search_router)
 app.include_router(templates_router)
 app.include_router(role_center_router)
@@ -383,6 +398,7 @@ app.include_router(languages_router)
 app.include_router(appearance_router)
 app.include_router(provider_router)
 app.include_router(workflow_router)
+app.include_router(prototype_router)
 app.include_router(workflow_gen_router)
 app.include_router(task_draft_router)
 app.include_router(task_dispatch_router)
