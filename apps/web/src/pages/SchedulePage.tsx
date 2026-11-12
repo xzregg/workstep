@@ -55,6 +55,7 @@ function formatDate(value?: string | null) {
 }
 
 interface SchedulePageProps {
+  defaultTargetType?: 'project' | 'task' | 'session'
   onClose?: () => void
   onCountChange?: (count: number) => void
   project?: Project
@@ -65,7 +66,7 @@ interface SchedulePageProps {
   onSchedulesChange?: (items: ProjectSchedule[]) => void
 }
 
-export default function SchedulePage({ onClose, onCountChange, project, headerTarget, tabbed, onEditorStateChange, boundTask, onSchedulesChange }: SchedulePageProps = {}) {
+export default function SchedulePage({ onClose, onCountChange, project, headerTarget, tabbed, onEditorStateChange, boundTask, onSchedulesChange, defaultTargetType = 'project' }: SchedulePageProps = {}) {
   const navigate = useNavigate()
   const { t } = useI18n()
   const selectedProject = useProjectStore((state) => state.activeProject)
@@ -94,7 +95,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
   const [focusMessageId, setFocusMessageId] = useState<string | undefined>()
   const [taskId, setTaskId] = useState<string | null>(null)
   const [taskConfigTab, setTaskConfigTab] = useState<'content' | 'review'>('content')
-  const [targetType, setTargetType] = useState<'project' | 'task' | 'session'>('project')
+  const [targetType, setTargetType] = useState<'project' | 'task' | 'session'>(defaultTargetType)
   const [targetFilter, setTargetFilter] = useState('all')
   const [taskFilter, setTaskFilter] = useState('')
   const [generation, setGeneration] = useState<'static' | 'agent'>('static')
@@ -280,7 +281,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
     setNotification({value:item?.notification || {enabled:false},valid:true})
     setTaskConfigTab('content')
     closeTest()
-    setTargetType(boundTask ? 'task' : item?.target_type || 'project')
+    setTargetType(boundTask ? 'task' : item?.target_type || defaultTargetType)
     if (!item) {
       setGeneration('static'); setWorkflowId(defaultWorkflow); setTitle(''); setDescription('')
       setInstruction(''); setCandidateWorkflowIds(workflows.map((wf) => wf.id)); setRetryCount(2)
@@ -312,7 +313,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
     if (item.rule.kind === 'cron') setCron(item.rule.expression)
     setStartDate(item.rule.start_date || ''); setEndDate(item.rule.end_date || '')
     setError('')
-  }, [closeTest, defaultWorkflow, workflows, boundTask])
+  }, [closeTest, defaultWorkflow, workflows, boundTask, defaultTargetType])
 
   useEffect(() => { fill(selected) }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
 

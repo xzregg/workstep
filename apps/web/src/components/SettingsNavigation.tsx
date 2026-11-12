@@ -2,9 +2,10 @@ import Icon, { type IconName } from './Icon'
 import { useI18n } from '../i18n'
 import './SettingsNavigation.css'
 
-export type SettingsSection = 'connectors' | 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'roles' | 'channels' | 'remote' | 'concurrency' | 'git' | 'appearance' | 'system' | 'feedback' | 'sandbox' | 'speech' | 'decision'
+export type SettingsSection = 'digital-person' | 'connectors' | 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'roles' | 'channels' | 'remote' | 'concurrency' | 'git' | 'appearance' | 'system' | 'feedback' | 'sandbox' | 'speech' | 'decision'
 
 const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: string }[] = [
+  { id: 'digital-person', label: 'digitalPerson.title', icon: 'bot' },
   { id: 'providers', label: 'providerSettings.nav', icon: 'sliders-horizontal' },
   { id: 'engines', label: 'settings.enginesNav', icon: 'sliders-horizontal' },
   { id: 'decision', label: 'decisionModels.title', icon: 'layers' },

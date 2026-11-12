@@ -3,6 +3,8 @@ import { zhCN, type Messages } from './zh-CN'
 // 未翻译项沿用中文，键集合随基础词典同步。
 export const frFR: Messages = {
   ...zhCN,
+  voiceWake: {"title": "语音唤醒", "inactive": "未监听", "pending": "初版配置。唤醒模型尚未接入，保存后不会启动监听。", "enable": "开启语音唤醒", "keyword": "唤醒词", "sensitivity": "灵敏度", "low": "低", "balanced": "均衡", "high": "高", "sensitivityHint": "灵敏度越高越容易触发，也可能增加误唤醒；接入唤醒模型后生效。", "test": "试读唤醒词", "testHint": "点击后开始录音，使用上方“完成录音”结束。仅检查转写是否包含唤醒词，不代表真实唤醒效果。", "matched": "转写包含唤醒词", "unmatched": "转写未包含唤醒词", "saved": "配置已保存，监听尚未启用。"},
+  digitalPerson: {"title": "数字人", "card": "名片", "identity": "身份与职责", "appearance": "形象与声音", "proactive": "主动思考", "channels": "渠道机器人", "memory": "记忆", "assistant": "对话助手", "loading": "正在读取数字人", "finish": "开启数字人", "enabled": "已开启", "disabled": "未开启", "chat": "开始对话", "edit": "编辑档案", "disable": "关闭数字人", "enable": "开启数字人", "onboarding": "先认识一下你", "name": "姓名", "role": "角色", "personality": "性格", "duties": "职责", "greeting": "欢迎语", "chooseRole": "从角色中心导入", "avatar": "形象", "robot": "云白机器人", "spark": "星光", "memoryPreview": "记忆可视化预览，当前为示例数据。", "noWorkspace": "默认工作区尚未加载", "discard": "放弃未保存的修改？", "roleTooLong": "角色内容超过 8000 字，请在角色中心精简后导入。", "voiceHint": "使用本机浏览器音色试听，动画跟随播放状态。", "tryVoice": "试听欢迎语", "stopVoice": "停止播放", "voiceUnavailable": "当前环境不支持语音试听", "voiceFailed": "语音播放失败，请重试"},
   gatewayRecovery: {"title":"Problème de connexion à la passerelle","message":"La connexion reste instable après 3 tentatives automatiques. La reconnexion automatique est arrêtée. Vérifiez le réseau, la passerelle et l’appareil avant de réessayer.","paused":"Reconnexion automatique suspendue","retry":"Reconnecter","dismiss":"Plus tard"},
 
 

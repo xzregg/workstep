@@ -84,7 +84,7 @@ class ChannelChatModule(ChatSessionModule):
         if self._config.name != "channel_chat":
             return super()._engine_system_prompt(session)
         return "\n\n".join(
-            part for part in (self._config.system_prompt, self.get_system_prompt(session.project_id))
+            part for part in (self._config.system_prompt, self._digital_person_prompt(session), self.get_system_prompt(session.project_id))
             if part
         )
 

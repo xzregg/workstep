@@ -1,3 +1,4 @@
+import VoiceWakeSettings from '../components/digital-person/VoiceWakeSettings'
 import { useEffect, useRef, useState } from 'react'
 import { speechApi, type SpeechStatus } from '../api/speech'
 import { useI18n } from '../i18n'
@@ -8,7 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 
 const busyStages = ['resolving', 'downloading', 'installing']
 const mib = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MiB`
-export default function VoiceInputSettings() {
+export default function VoiceInputSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
   const { t } = useI18n()
   const [status, setStatus] = useState<SpeechStatus | null>(null)
   const [error, setError] = useState('')
@@ -84,6 +85,9 @@ export default function VoiceInputSettings() {
         <p>{sample || t('speech.testNoSpeech')}</p>
       </section>}
     </>}
+    <VoiceWakeSettings onDirtyChange={onDirtyChange} sample={sample}
+      testDisabled={saving || installing || !status?.enabled || !model?.installed || voice.active}
+      onTest={() => { setSample(null); void voice.start() }} />
     <ConfirmDialog open={confirmDelete !== null} title={`${t('speech.delete')} · ${status?.models.find(item => item.id === confirmDelete)?.name ?? ''}`} message={t('speech.deleteConfirm')}
       onCancel={() => setConfirmDelete(null)} onConfirm={() => { const id = confirmDelete; setConfirmDelete(null); if (id) void mutate(() => speechApi.deleteModel(id)) }} />
   </div>

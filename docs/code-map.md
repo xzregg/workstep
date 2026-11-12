@@ -1353,3 +1353,17 @@ PC 图片放大由 `ImagePreview.tsx` 与 `.desktop-image-preview` 持有，初�
 普通对话链接复制入口：`pages/ChatPage.tsx` 的桌面标题栏与移动端右上角加号旁分享图标，统一由 `components/ChatSessionLinkButton.tsx` 复制项目／会话定位地址；网关页面保留设备路径，本机连接网关时使用 `/api/gateway-platform/settings` 返回的 `device_id` 生成网关设备地址，不创建公开访问权限。行为测试：`tests/chatSessionLink.test.tsx`。
 
 会话重连刷新由 `hooks/useChatSessionHistory.ts` 调用 `stores/assistantStore.ts::hydrateSession` 合并历史；摘要响应不得覆盖用户已加载的完整事件及详情加载标记。消息正文、状态仍按原历史恢复规则更新。`useChatSessionHistory.test.tsx` 覆盖已完成消息展开完整事件后重连，箭头及正文仍保持可见；`ProcessTrace` 在运行消息有过程摘要但没有过程记录时，自动复用详情加载回调补齐预览，保持默认折叠；已完成消息仍按需加载。`useChatSessionHistory.test.tsx` 同时覆盖未点击即显示两条、展开完整记录、后续 WebSocket 更新和不重复补拉；两条预览、向上切换动效及原有折叠规则保持不变。
+
+
+### 数字人设备身份
+
+工具栏「数字人」与设置导航共用 `components/digital-person/DigitalPersonSettings.tsx`，首页为名片；独立管理身份草稿、首次开启、关闭、角色中心导入快照和未保存退出保护。工作区固定为现有默认工作区，不新增项目范围开关或权限提示词。`api/digitalPerson.ts` → `api/digital_person.py` → `services/digital_person.py` 将设备身份保存在宿主配置；宿主鉴权复用 `require_catalog_project("")`，磁盘读写在工作线程。
+
+普通／渠道对话通过 `ChatSessionModule._digital_person_prompt` 仅在默认工作区合并身份与现有附加提示词，原设置读取不混入身份，原运行时、会话、事件和日志继续共用；恢复会话每轮更新身份，关闭时明确撤回旧身份。`useDigitalPerson` 为默认工作区现有聊天提供姓名和欢迎语，不新增聊天实现。主动思考直接组合现有 `SchedulePage`，通过 `defaultTargetType="session"` 使新建规则默认进入对话定时（原有定时任务保留自身类型），渠道组合 `BotSettings`，对话助手配置组合 `AgentAssistantSettings`。已有定时任务的暂停／删除继续在原编辑器管理，数字人开关只管理身份，不批量改变任务。
+
+`DigitalPersonVoice` 仅提供浏览器本机语音试听，动画由真实播放开始／结束／错误驱动；尚未接入渠道音频、口型音素或桌面悬浮。记忆页用沙箱 iframe 加载 `public/digital-person/human-brain.html`（已确认的人脑底图和交互），明确示例数据；未接入记忆录入／检索／自学习后台。原型文件仍保留在 `plans/`，不纳入提交。
+
+验证入口：Web `digitalPerson.test.tsx`、`settingsNavigation.test.tsx`、`i18n.test.ts`；daemon `test_digital_person.py`（配置持久化、角色更新／关闭、宿主权限和慢盘健康检查）、`test_chat_session.py`、`test_channel_prompt.py`。
+
+
+语音设置的唤醒配置初版：`VoiceInputSettings.tsx` 组合自管理的 `components/digital-person/VoiceWakeSettings.tsx`，通过宿主 `/api/digital-person/voice-wake` 保存唤醒词与灵敏度草稿，关闭保护沿用设置弹框。接口明确返回 `available=false`、`listening=false`，不支持启用或启动麦克风。试读复用已有 `useVoiceInput` 与录音控件，只检查转写文本是否包含唤醒词，不能作为关键词模型的命中率或延迟测量。尚无常驻监听、自动发送及唤醒模型下载。验证：`voiceWakeSettings.test.tsx`、`voiceInputSettings.test.tsx`、`test_digital_person.py`（持久化、校验、宿主权限和慢磁盘健康检查）。

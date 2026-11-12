@@ -1,3 +1,4 @@
+import { useDigitalPerson } from '../components/digital-person/useDigitalPerson'
 import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
@@ -120,6 +121,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
   const { can, canOpenSettings, bound: projectScopedAccess } = useGatewayProjectPermissions(activeProject?.id)
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
+  const digitalPerson = useDigitalPerson(Boolean(activeProject?.is_default_workspace && activeProject.type !== 'remote' && !projectScopedAccess && !isEmbedded))
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
   // 引擎可用性（选项是否禁用）跟随共享状态，设置页改动即时生效。
   const sharedEngines = useCoordinatorEngines()
@@ -223,16 +225,16 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
   // 否则流式期间每个 token 都会击穿 memo，历史气泡全量重渲染。
   const hasEmbeddedIntro = Boolean(embedded?.emptyContent)
   const panelCopy = useMemo(() => ({
-    emptyIntro: hasEmbeddedIntro ? '' : isEmbedded ? t('chatSession.emptyIntro') : t('chatSession.welcome', { project: activeProject?.name || '' }),
+    emptyIntro: hasEmbeddedIntro ? '' : isEmbedded ? t('chatSession.emptyIntro') : digitalPerson ? `${digitalPerson.name}，${digitalPerson.greeting}` : t('chatSession.welcome', { project: activeProject?.name || '' }),
     thinking: t('chatSession.thinking'),
     me: t('chatSession.me'),
     meInitials: t('chatSession.meInitials'),
-    agent: t('chatSession.agent'),
+    agent: digitalPerson?.name || t('chatSession.agent'),
     agentInitials: <Icon name="bot" size={18} />,
     placeholder: embedded?.placeholder || t(compact ? 'chatSession.placeholderCompact' : 'chatSession.placeholder'),
     fullPrompt: t('aiFlow.fullPrompt'),
     closePrompt: t('aiFlow.closePrompt'),
-  }), [t, compact, hasEmbeddedIntro, embedded?.placeholder, isEmbedded, activeProject?.name])
+  }), [t, compact, hasEmbeddedIntro, embedded?.placeholder, isEmbedded, activeProject?.name, digitalPerson])
   const quickPromptItems = useMemo(
     () => quickButtons.filter((button) => !isEmbedded && button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
       id: button.id,
