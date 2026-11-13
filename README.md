@@ -56,31 +56,31 @@ Follow the [setup guide](https://xzregg.github.io/workstep/#docs/getting-started
 
 ## See it in action
 
-Real screenshots from the demo project (Chinese interface). The starter task reads demo materials, produces a plan, and creates a usage guide so you can check the handoff between steps and inspect the file. Click an image to view it at full size. Follow the [user manual](https://xzregg.github.io/workstep/#docs) for detailed instructions.
+Real screenshots from the isolated demo project with the English interface. The demo uses deterministic sample outputs to show an execution plan, a getting-started guide, and the handoff between steps; it does not call a model service. Click an image to view it at full size. Follow the [user manual](https://xzregg.github.io/workstep/#docs) for detailed instructions.
 
 ### 1. Install an SDK engine
 
 Open engine settings, choose an SDK engine, and use **Install & version** to download it. Configure authentication, test the connection, and select the default engine. SDKs are the recommended starting point.
 
-[![Codex SDK installation, version selection, and connection test](apps/landing/src/manual/screenshots/sdk-install-version.jpg)](apps/landing/src/manual/screenshots/sdk-install-version.jpg)
+[![Codex SDK installation, version selection, and connection test](docs/screenshots/en/sdk-install-version.jpg)](docs/screenshots/en/sdk-install-version.jpg)
 
 ### 2. Connect steps on the workflow canvas
 
 Add steps and connect their inputs and outputs. This example passes a Markdown execution plan from **requirements analysis** to **task execution**; each step shows its engine.
 
-[![Workflow canvas connecting requirements analysis to task execution with Markdown inputs and outputs](apps/landing/src/manual/screenshots/workflow-canvas.jpg)](apps/landing/src/manual/screenshots/workflow-canvas.jpg)
+[![Workflow canvas connecting requirements analysis to task execution with Markdown inputs and outputs](docs/screenshots/en/workflow-canvas.jpg)](docs/screenshots/en/workflow-canvas.jpg)
 
 ### 3. Run a task and inspect its results
 
-Create a task with your requirements, then follow each step's progress and conversation. The completed example shows both steps and links to the generated plan and execution result.
+Create a task with your requirements, then follow each step's progress and conversation. The completed example lists the plan and getting-started guide under their respective steps in the Artifacts tab.
 
-[![Completed two-step task with execution history and generated artifacts](apps/landing/src/manual/screenshots/first-task-result.jpg)](apps/landing/src/manual/screenshots/first-task-result.jpg)
+[![Completed two-step demo task with generated Markdown artifacts](docs/screenshots/en/first-task-result.jpg)](docs/screenshots/en/first-task-result.jpg)
 
 ### 4. Review before continuing
 
 Enable manual review on a step to wait for your decision. Inspect the output, add feedback, then approve and continue, request rework, complete the step, or stop the task.
 
-[![Task waiting for manual review with feedback, rework, and approval controls](apps/landing/src/manual/screenshots/task-review.jpg)](apps/landing/src/manual/screenshots/task-review.jpg)
+[![Manual review controls with an English review comment, rework, and approval actions](docs/screenshots/en/task-review.jpg)](docs/screenshots/en/task-review.jpg)
 
 ## Core capabilities
 
