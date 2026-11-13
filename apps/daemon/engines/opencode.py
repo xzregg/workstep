@@ -20,6 +20,8 @@ WorkStep 通过 ``OPENCODE_CONFIG`` 环境变量（**文件路径**，env JSON �
 默认 ``ask``。
 """
 
+from contextlib import aclosing
+from engines.core.session_pool import exclusive_engine_run
 import asyncio
 import json
 import logging
@@ -372,7 +374,7 @@ class OpencodeEngine(AcpEngineBase):
         if override_runtime in OPENCODE_PERMISSION_MODES:
             await self.set_permission_mode(runtime_map[override_runtime])
         try:
-            async for event in self._spawn_with_live_interrupt(
+            async with aclosing(self._spawn_with_live_interrupt(
                 prompt=prompt,
                 cwd=cwd,
                 model=model,
@@ -384,11 +386,13 @@ class OpencodeEngine(AcpEngineBase):
                 thinking_effort=thinking_effort,
                 plan_mode=plan_mode,
                 goal_action=goal_action,
-            ):
-                yield event
+            )) as _owned_stream:
+                async for event in _owned_stream:
+                    yield event
         finally:
             await self.set_permission_mode(previous or "")
 
+    @exclusive_engine_run
     async def _spawn_with_live_interrupt(
         self,
         prompt: str,
@@ -461,13 +465,12 @@ class OpencodeEngine(AcpEngineBase):
                 else dict(os.environ)
             )
             process_env.update(skill_env)
-            async with acp.spawn_agent_process(
-                handler,
-                cmd[0],
-                *cmd[1:],
-                cwd=cwd,
-                env=process_env,
+            from engines.core.acp_reuse import pooled_acp_process
+            async with pooled_acp_process(
+                self, handler, cmd, cwd=cwd, env=process_env, session_id=session_id,
+                settings=(add_dirs, config_overrides, permission_mode),
             ) as (client, process):
+                handler = self._handler
                 self._process = process
                 self._running = True
 

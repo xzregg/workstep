@@ -1,6 +1,33 @@
 """Database schema bootstrap behavior exercised through the public model interface."""
 
 
+def test_existing_conversations_gain_reset_boundaries_without_losing_identity(tmp_path):
+    from models import init_db
+    from models.chat_session import ChatSession
+    from models.coordinator import CoordinatorSession
+    from models.task import Task
+    from models.fields import utc_now
+    path = str(tmp_path / 'legacy-context.db')
+    db = init_db(path)
+    now = utc_now()
+    task = Task.create(id='task', title='task', cwd=str(tmp_path), created_at=now, updated_at=now)
+    ChatSession.create(id='chat', project_id='project', workflow_id='', engine='claude',
+        engine_session_id='old-chat-engine', created_at=now, updated_at=now)
+    CoordinatorSession.create(task=task, engine='claude', session_id='old-task-engine', created_at=now, updated_at=now)
+    db.execute_sql('ALTER TABLE chat_sessions DROP COLUMN context_reset_at')
+    db.execute_sql('ALTER TABLE coordinator_sessions DROP COLUMN context_reset_sequence')
+    db.close()
+    for _ in range(2):
+        db = init_db(path)
+        try:
+            assert ChatSession.get_by_id('chat').engine_session_id == 'old-chat-engine'
+            assert ChatSession.get_by_id('chat').context_reset_at is None
+            assert CoordinatorSession.get_by_id('task').session_id == 'old-task-engine'
+            assert CoordinatorSession.get_by_id('task').context_reset_sequence == 0
+        finally:
+            db.close()
+
+
 def test_legacy_paused_tasks_gain_distinct_states_without_losing_steps(tmp_path):
     from models import Task, TaskStep, init_db
     path = str(tmp_path / 'legacy-task-states.db')

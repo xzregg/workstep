@@ -1,6 +1,14 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('workstepDesktop', {
+  digitalPerson: {
+    sync: state => ipcRenderer.invoke('workstep:digital-person:sync', state),
+    onOpenChat: callback => {
+      const listener = () => callback()
+      ipcRenderer.on('workstep:digital-person:open-chat', listener)
+      return () => ipcRenderer.removeListener('workstep:digital-person:open-chat', listener)
+    },
+  },
   feedback: { open: () => ipcRenderer.invoke('workstep:feedback:open') },
   projects: {
     pathForFile: (file) => webUtils.getPathForFile(file),

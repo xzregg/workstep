@@ -10,7 +10,7 @@ const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: s
   { id: 'engines', label: 'settings.enginesNav', icon: 'sliders-horizontal' },
   { id: 'decision', label: 'decisionModels.title', icon: 'layers' },
   { id: 'assistants', label: 'settings.assistantNav', glyph: '✦' },
-  { id: 'speech', label: 'speech.title', icon: 'mic' },
+  { id: 'speech', label: 'speech.settings', icon: 'mic' },
   { id: 'pricing', label: 'settings.pricingNav', icon: 'layers' },
   { id: 'templates', label: 'settings.templatesNav', icon: 'layout-grid' },
   { id: 'connectors', label: 'connectors.title', icon: 'plug' },

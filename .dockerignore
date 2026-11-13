@@ -3,6 +3,7 @@
 .dockerignore
 **/node_modules
 **/dist
+**/dist-*
 **/__pycache__
 **/*.pyc
 .venv
@@ -45,6 +46,7 @@ logs
 **/service-account*.json
 **/*.local.json
 **/plans
+**/prototypes
 **/tmp
 **/temp
 **/tests

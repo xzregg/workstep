@@ -27,6 +27,14 @@ class CustomEngineManager:
     def root(self):
         return custom_root()
 
+    async def _close_cached_workers(self, root, *, include_busy=False):
+        pools = getattr(asyncio.get_running_loop(), '_workstep_session_pools', {})
+        for name, pool in list(pools.items()):
+            if name.startswith('custom:'):
+                for entry in list(pool._entries.values()):
+                    if entry.client.root == root and (include_busy or not entry.busy):
+                        await pool.discard(entry)
+
     def _load(self, path):
         root = package_root(path)
         manifest = load_manifest(root)
@@ -159,6 +167,7 @@ class CustomEngineManager:
             raise ValueError("不支持的接入操作")
 
     async def _install(self, root, manifest):
+        await self._close_cached_workers(root)
         from engines.core.custom_transport import ACTIVE_CLIENTS
         if any(client.root == root and not client.closed for client in ACTIVE_CLIENTS):
             raise ValueError("引擎正在运行，不能替换依赖")
@@ -260,6 +269,7 @@ class CustomEngineManager:
                     raise ValueError("实际运行环境未通过验收")
                 return report
             report = await asyncio.to_thread(verified)
+            await self._close_cached_workers(target)
             from engines.core.custom_transport import ACTIVE_CLIENTS
             if any(client.root == target and not client.closed for client in ACTIVE_CLIENTS):
                 raise ValueError("引擎正在运行，不能替换适配器")
@@ -318,6 +328,8 @@ class CustomEngineManager:
                     values.discard(engine_id)
                 config_store.set("disabled_custom_engines", sorted(values))
         await asyncio.to_thread(save)
+        if disabled:
+            await self._close_cached_workers(self.root() / engine_id, include_busy=True)
         from engines.core.custom_transport import ACTIVE_CLIENTS
         for client in list(ACTIVE_CLIENTS):
             if client.root == self.root() / engine_id and disabled:
@@ -332,6 +344,7 @@ class CustomEngineManager:
             raise ValueError("引擎 ID 无效")
         target = self.root() / engine_id
         backup = self.root() / f".previous-{engine_id}"
+        await self._close_cached_workers(target)
         from engines.core.custom_transport import ACTIVE_CLIENTS
         if any(client.root == target and not client.closed for client in ACTIVE_CLIENTS):
             raise ValueError("引擎正在运行")

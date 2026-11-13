@@ -120,6 +120,7 @@ export interface AssistantChatPanelProps {
   onClose?: () => void
   onA2uiAction?: (action: A2uiClientAction) => void
   headerDrag?: Pick<HTMLAttributes<HTMLDivElement>, 'draggable' | 'onDragStart' | 'onDragEnd' | 'onPointerDownCapture'>
+  headerTitle?: ReactNode
   headerContext?: ReactNode
   headerActions?: ReactNode
   /** Assistant-specific controls rendered in the button row above the composer. */
@@ -146,6 +147,7 @@ export interface AssistantChatPanelProps {
   /** Fetch older messages; capture the scroll position immediately before prepending. */
   onLoadOlderHistory?: (beforePrepend?: () => void) => Promise<void>
   /** Optional message-level fork action, shown on completed assistant replies. */
+  renderMessageActions?: (messageId: string) => ReactNode
   onForkMessage?: (messageId: string, preferSmart?: boolean) => void
 }
 
@@ -166,6 +168,7 @@ interface MessageItemProps {
   ) => Promise<void>
   onViewPrompt: (value: string | null) => void
   onLoadMessageEvents?: MessageEventsLoader
+  renderMessageActions?: (messageId: string) => ReactNode
   onForkMessage?: (messageId: string, preferSmart?: boolean) => void
   onSendToInput: (content: string) => void
   onAsyncQuestionSubmit: (content: string) => Promise<boolean>
@@ -185,7 +188,7 @@ interface MessageItemProps {
 const MessageItem = memo(function MessageItem({
   message, copy, deviceId, userName, locale, showUserTag, projectId, sessionId, visibilityPermission,
   a2uiEntry, respondInteraction, onViewPrompt, onLoadMessageEvents,
-  onForkMessage, onSendToInput, onAsyncQuestionSubmit, canResumeQuestion, onA2uiAction,
+  renderMessageActions, onForkMessage, onSendToInput, onAsyncQuestionSubmit, canResumeQuestion, onA2uiAction,
 }: MessageItemProps) {
   const { t } = useI18n()
   const { can } = useGatewayProjectPermissions(projectId)
@@ -281,6 +284,8 @@ const MessageItem = memo(function MessageItem({
             onFork={message.status !== 'running' && onForkMessage
               ? () => onForkMessage(message.id, message.status === 'error')
               : undefined}
+            compact={Boolean(renderMessageActions)}
+            actions={message.status !== 'running' && canEdit ? renderMessageActions?.(message.id) : undefined}
           />
         ) : undefined
       }
@@ -295,9 +300,9 @@ const MessageItem = memo(function MessageItem({
 export default function AssistantChatPanel({
   connectorsEnabled = false, projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeaderStatus = false, welcome = false, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerDrag, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, workflowSkill, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
+  onA2uiAction, headerDrag, headerTitle, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, workflowSkill, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
-  onLoadMessageEvents, onLoadOlderHistory, onForkMessage, allowSendWhileRunning = false, composerDisabled = false,
+  onLoadMessageEvents, onLoadOlderHistory, renderMessageActions, onForkMessage, allowSendWhileRunning = false, composerDisabled = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const userName = useUserSettingsStore((state) => state.userName)
@@ -505,7 +510,7 @@ export default function AssistantChatPanel({
   return (
     <div className="assistant-chat-panel" ref={rootRef} data-ui="conversation">
       <div className="assistant-chat-header" data-ui="chat-header" {...headerDrag}>
-        <span className="assistant-chat-header-title" title={title} onDoubleClick={onTitleDoubleClick}>{title}</span>
+        <div className="assistant-chat-header-title" title={title} onDoubleClick={onTitleDoubleClick}>{headerTitle || title}</div>
         {running && !hideHeaderStatus && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
             <span className="task-status-spinner" aria-hidden="true" /> {copy.thinking}
@@ -633,6 +638,7 @@ export default function AssistantChatPanel({
               respondInteraction={respondInteraction}
               onViewPrompt={setViewingPrompt}
               onLoadMessageEvents={onLoadMessageEvents}
+              renderMessageActions={renderMessageActions}
               onForkMessage={canEdit && can('session.create') ? onForkMessage : undefined}
               onSendToInput={handleSendToInput}
               onAsyncQuestionSubmit={handleAsyncQuestionSubmit}

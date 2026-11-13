@@ -6,11 +6,18 @@ import { useVoiceInput } from '../hooks/useVoiceInput'
 import VoiceInputControls from '../components/VoiceInputControls'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
+import VoiceOutputSettings from '../components/VoiceOutputSettings'
+import '../components/ProjectSharingTabs.css'
 
 const busyStages = ['resolving', 'downloading', 'installing']
 const mib = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MiB`
 export default function VoiceInputSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
   const { t } = useI18n()
+  const [tab, setTab] = useState<'input' | 'output' | 'wake'>('input')
+  const [outputVisited, setOutputVisited] = useState(false)
+  const [outputDirty, setOutputDirty] = useState(false)
+  const [wakeDirty, setWakeDirty] = useState(false)
+  useEffect(() => { onDirtyChange?.(outputDirty || wakeDirty) }, [outputDirty, wakeDirty, onDirtyChange])
   const [status, setStatus] = useState<SpeechStatus | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -41,7 +48,13 @@ export default function VoiceInputSettings({ onDirtyChange }: { onDirtyChange?: 
   }
   const model = status?.models.find(item => item.id === status.model_id)
   return <div className="speech-settings">
-    <h1>{t('speech.title')}</h1>
+    <h1>{t('speech.settings')}</h1>
+    <div className="project-sharing-tabs" role="tablist" aria-label={t('speech.settings')}>
+      {(['input', 'output', 'wake'] as const).map(value => <button type="button" role="tab" key={value}
+        id={`speech-tab-${value}`} aria-controls={`speech-panel-${value}`} aria-selected={tab === value}
+        onClick={() => { setTab(value); if (value === 'output') setOutputVisited(true) }}>{t(`speech.tab_${value}`)}</button>)}
+    </div>
+    <div className="speech-settings-panel" role="tabpanel" id="speech-panel-input" aria-labelledby="speech-tab-input" hidden={tab !== 'input'}>
     <p>{t('speech.hostHint')}</p>
     {error && <p role="alert" className="voice-input-error">{error}</p>}
     {saving && <span role="status"><span className="task-status-spinner" />{t('common.loading')}</span>}
@@ -85,9 +98,16 @@ export default function VoiceInputSettings({ onDirtyChange }: { onDirtyChange?: 
         <p>{sample || t('speech.testNoSpeech')}</p>
       </section>}
     </>}
-    <VoiceWakeSettings onDirtyChange={onDirtyChange} sample={sample}
+    </div>
+    <div className="speech-settings-panel" role="tabpanel" id="speech-panel-output" aria-labelledby="speech-tab-output" hidden={tab !== 'output'}>
+      {outputVisited && <VoiceOutputSettings onDirtyChange={setOutputDirty} />}
+    </div>
+    <div className="speech-settings-panel" role="tabpanel" id="speech-panel-wake" aria-labelledby="speech-tab-wake" hidden={tab !== 'wake'}>
+    <VoiceWakeSettings onDirtyChange={setWakeDirty} sample={sample}
       testDisabled={saving || installing || !status?.enabled || !model?.installed || voice.active}
       onTest={() => { setSample(null); void voice.start() }} />
+    <VoiceInputControls voice={voice} variant="test" />
+    </div>
     <ConfirmDialog open={confirmDelete !== null} title={`${t('speech.delete')} · ${status?.models.find(item => item.id === confirmDelete)?.name ?? ''}`} message={t('speech.deleteConfirm')}
       onCancel={() => setConfirmDelete(null)} onConfirm={() => { const id = confirmDelete; setConfirmDelete(null); if (id) void mutate(() => speechApi.deleteModel(id)) }} />
   </div>

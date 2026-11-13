@@ -48,6 +48,7 @@ _WORKFLOW_STEP_PROMPT = re.compile(
 _WORKFLOW_ACTION = re.compile(
     r"/api/workflow/[A-Za-z0-9_-]{1,128}/(?:actions|restore)\Z")
 _CHAT_SESSION_DETAIL = re.compile(r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}\Z")
+_CHAT_SESSION_CONFIG = re.compile(r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/execution-config\Z")
 _CHAT_MESSAGE_EVENTS = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/messages/"
     r"[A-Za-z0-9_-]{1,128}/events\Z")
@@ -203,7 +204,7 @@ def project_http_route_allowed(method: str, path: str,
             if (_TASK_DETAIL.fullmatch(path) or _TASK_METADATA_UPDATE.fullmatch(path)
                     or _TASK_STEP_CONFIG.fullmatch(path)):
                 return True
-            if _CHAT_SESSION_DETAIL.fullmatch(path) or _CHAT_SESSION_UPDATE.fullmatch(path):
+            if _CHAT_SESSION_DETAIL.fullmatch(path) or _CHAT_SESSION_UPDATE.fullmatch(path) or _CHAT_SESSION_CONFIG.fullmatch(path):
                 return True
             return path == "/api/fs/entry"
         if method == "DELETE":
@@ -354,4 +355,6 @@ def project_http_route_allowed(method: str, path: str,
     if _CHAT_SESSION_DETAIL.fullmatch(path):
         return (all(key in ("project_id", "limit", "offset") for key, _ in query_pairs)
                 and len(query_pairs) == len(dict(query_pairs)))
+    if _CHAT_SESSION_CONFIG.fullmatch(path):
+        return len(query_pairs) == 1
     return False

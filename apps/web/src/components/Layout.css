@@ -249,9 +249,11 @@
     display: flex; order: 0; flex-shrink: 0; width: 34px; height: 34px; min-height: 34px;
     margin: 0; padding: 0; justify-content: center; border-radius: var(--radius-xs);
   }
-  .layout-sidebar-actions > .layout-sidebar-appearance.btn { margin-top: auto; }
+  .layout-sidebar-actions > .layout-sidebar-appearance.btn,
+  .layout-sidebar-actions > .layout-sidebar-digital-person.btn { margin-top: auto; }
+  .layout-sidebar-actions:has(> .layout-sidebar-digital-person) > .layout-sidebar-appearance.btn { margin-top: 0; }
   .layout-sidebar-actions > .desktop-update-rail-button.btn { margin-top: auto; }
-  .layout-sidebar-actions:has(> .desktop-update-rail-button) > .layout-sidebar-appearance.btn { margin-top: 0; }
+  .layout-sidebar-actions:has(> .desktop-update-rail-button) > :is(.layout-sidebar-appearance,.layout-sidebar-digital-person).btn { margin-top: 0; }
   .layout-sidebar-action-label {
     position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%);
     z-index: 100; width: max-content; max-width: 220px; padding: 6px 10px;

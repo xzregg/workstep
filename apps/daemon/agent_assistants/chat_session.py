@@ -269,11 +269,14 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         if not project_id:
             raise ValueError("project_id is required")
         with self._project_ctx(project_id):
+            from services.digital_person_runtime import read_state
+            internal_sessions = read_state(project_id).get('check_sessions', [])
             rows = (
                 ChatSession.select()
                 .where(
                     ChatSession.fork_status == "ready",
                     ChatSession.archived == archived,
+                    ChatSession.id.not_in(internal_sessions),
                 )
                 .order_by(*(
                     (pw.fn.COALESCE(ChatSession.archived_at, ChatSession.updated_at).desc(), ChatSession.id)
@@ -326,9 +329,9 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         permission_mode = (permission_mode or "").strip()
         if permission_mode and not is_valid_permission_mode(permission_mode):
             raise ValueError(f"Unsupported permission mode: {permission_mode}")
-        engine_id, default_model, default_fast_model = self._resolve_engine_models()
+        engine_id, default_model, default_fast_model = self._resolve_project_engine_models(project_id)
         default_vision_model = config_store.get_assistant_defaults(
-            self._config.name
+            self._execution_settings_name(project_id)
         ).get("vision_model", "") or None
         if engine:
             self._validate_engine(engine)
@@ -339,7 +342,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 default_fast_model = default_model
                 default_vision_model = None
             engine_id = engine
-        defaults = config_store.get_assistant_defaults(self._config.name)
+        defaults = config_store.get_assistant_defaults(self._execution_settings_name(project_id))
         default_provider = (
             defaults.get("provider_id", "")
             if engine_id == (defaults.get("engine") or engine_id)
@@ -380,6 +383,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             if row is None:
                 return None
             summary = self._session_summary(row, project_id)
+            summary["pending_handoff"] = self._pending_handoff_view(row)
         if limit is None:
             history = self.history(project_id, session_id) or {}
         else:
@@ -656,6 +660,9 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             "fast_model": row.fast_model,
             "vision_model": row.vision_model,
             "provider_id": row.provider_id,
+            "thinking_effort": row.thinking_effort,
+            "service_tier": row.service_tier,
+            "execution_config_revision": row.execution_config_revision,
             "permission_mode": row.permission_mode or "",
             "role_binding": _load_json(row.role_binding_json, None),
             "engine_session_id": row.engine_session_id,
@@ -893,6 +900,26 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             return ""
         return self.get_system_prompt(session.project_id)
 
+    def _workstep_tools_for_project(self, project_id: str) -> bool:
+        if self._config.name == 'digital_person':  # isolated checker: analysis only
+            return False
+        return self._config.workstep_tools or self._execution_settings_name(project_id) == 'digital_person'
+
+    async def _prepare_turn_context(self, session):
+        await super()._prepare_turn_context(session)
+        session.extra.pop('digital_person_status', None)
+        if self._config.name not in {'chat_session', 'channel_chat'} or self._project_manager is None:
+            return
+        if await asyncio.to_thread(self._execution_settings_name, session.project_id) != 'digital_person':
+            return
+        from services.digital_person_statistics import load_identity_snapshot
+        project = self._project_manager.get_project_by_id(session.project_id)
+        try:
+            session.extra['digital_person_status'] = await load_identity_snapshot(self._project_manager, project)
+        except Exception:
+            logger.warning('Digital person statistics unavailable', exc_info=True)
+            session.extra['digital_person_status'] = {'unavailable': True}
+
     def _digital_person_prompt(self, session) -> str:
         from services.digital_person import prompt_for_project
         from services.customization_workspace import is_default_workspace
@@ -904,11 +931,19 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             prompt = '[WorkStep digital person] 数字人模式已关闭，不再沿用此前数字人身份与职责。'
         # Native resumed sessions must receive changes to the identity too.
         session.extra['digital_person_each_turn'] = bool(prompt) or session.extra.get('digital_person_each_turn', False)
+        if prompt and config_store.get('digital_person', {}).get('enabled'):
+            from services.digital_person_statistics import format_identity_snapshot
+            snapshot = format_identity_snapshot(session.extra.get('digital_person_status'))
+            return "\n\n".join(part for part in (prompt, snapshot) if part)
         return prompt
 
     def _engine_system_prompt(self, session) -> str:
         if self._config.name != "chat_session":
             return super()._engine_system_prompt(session)
+        return self._chat_system_prompt(session)
+
+    def _chat_system_prompt(self, session) -> str:
+        """Shared identity and conversation rules regardless of message transport."""
         return "\n\n".join(part for part in (
             self._digital_person_prompt(session), self.get_system_prompt(session.project_id), self._role_system_prompt(session),
         ) if part)
@@ -936,8 +971,32 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
     def _build_prompt(self, session) -> str:
         return self._build_chat_prompt(session)
 
+    async def _handle_context_command(self, session, turn_id: str) -> bool:
+        from .context_commands import reset_command
+        user = next(m for m in session.messages if m.get('id') == turn_id)
+        remainder = reset_command(user.get('content', ''))
+        if remainder is None:
+            return False
+        from datetime import datetime
+        boundary = datetime.fromisoformat(user['created_at'])
+
+        def reset(_project):
+            ChatSession.update(
+                engine_session_id=None, engine_state_json=None, fork_context_json=None,
+                role_checkpoint_json=None, context_reset_at=boundary, updated_at=utc_now(),
+            ).where(ChatSession.id == session.session_id).execute()
+
+        await self._project_manager.run_db(session.project_id, reset)
+        session.resolved_session_id = None
+        session.engine_state = None
+        for key in ('pending_handoff', 'role_checkpoint', 'pending_role_checkpoint'):
+            session.extra.pop(key, None)
+        session.messages = [m for m in session.messages if m.get('created_at', '') >= user['created_at']]
+        return not remainder
+
     def _build_chat_prompt(self, session) -> str:
         """Build user/context input; configured chat rules travel independently."""
+        from .context_commands import context_content
         prompt = self._prompt_system_instruction(session)
         pending_handoff = session.extra.get("pending_handoff")
         if isinstance(pending_handoff, dict):
@@ -946,7 +1005,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 raise ValueError(f"Project not found: {session.project_id}")
             user_message = next(
                 (
-                    str(item.get("content") or "")
+                    context_content(str(item.get("content") or ""))
                     for item in reversed(session.messages)
                     if item.get("role") == "user"
                 ),
@@ -966,7 +1025,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         if engine is not None and engine.supports_resume:
             user_message = next(
                 (
-                    str(item.get("content") or "")
+                    context_content(str(item.get("content") or ""))
                     for item in reversed(session.messages)
                     if item.get("role") == "user"
                 ),
@@ -980,7 +1039,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             if not (item.get("role") == "assistant" and item.get("status") == "running")
         ][-self._config.max_history_turns * 2:]
         history = "\n\n".join(
-            f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
+            f"{'User' if item['role'] == 'user' else 'Assistant'}: {context_content(item['content']) if item['role'] == 'user' else item['content']}"
             for item in turns
         )
         tail = f"Conversation history:\n{history}\n\nContinue."
@@ -988,6 +1047,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
 
     def _build_rebuild_prompt(self, session) -> str:
         """Rebuild a lost engine thread from the persisted conversation."""
+        from .context_commands import context_content
         prompt = self._build_chat_prompt(session)
         if session.resolved_session_id:
             turns = [
@@ -998,7 +1058,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 )
             ][-self._config.max_history_turns * 2:]
             history = "\n\n".join(
-                f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
+                f"{'User' if item['role'] == 'user' else 'Assistant'}: {context_content(item['content']) if item['role'] == 'user' else item['content']}"
                 for item in turns
             )
             tail = f"Conversation history:\n{history}\n\nContinue."
@@ -1186,8 +1246,23 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 return candidate, engine
         return default_engine_id, None
 
+    def _execution_settings_name(self, project_id: str) -> str:
+        from services.customization_workspace import is_default_workspace
+        if self._config.name in {"chat_session", "channel_chat"} and config_store.get("digital_person", {}).get("enabled"):
+            project = self._project_manager.get_project_by_id(project_id)
+            if project and is_default_workspace(project):
+                return "digital_person"
+        return self._config.name
+
+    def _resolve_project_engine_models(self, project_id: str):
+        name = self._execution_settings_name(project_id)
+        return self._resolve_named_engine_models(name) if name != self._config.name else self._resolve_engine_models()
+
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
-        defaults = config_store.get_assistant_defaults(self._config.name)
+        return self._resolve_named_engine_models(self._config.name)
+
+    def _resolve_named_engine_models(self, name: str) -> tuple[str, str | None, str | None]:
+        defaults = config_store.get_assistant_defaults(name)
         configured_id = defaults["engine"] or resolve_execution_engine(None)
         if (
             configured_id == "pydantic_ai"

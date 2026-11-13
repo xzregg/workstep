@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from engines.claude_image_input import build_claude_user_content
+from engines.core.session_pool import exclusive_engine_run
 from engines.core.acp_base import AcpEngineBase
 from engines.claude_code_events import ClaudeCodeEventMapper
 from engines.core.packages import RuntimePackage
@@ -329,6 +330,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
             cmd.extend(["--settings", skill_settings])
         return cmd
 
+    @exclusive_engine_run
     async def spawn(
         self,
         prompt: str,
@@ -342,9 +344,9 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
     ) -> AsyncIterator[InternalEvent]:
         """Spawn claude CLI and stream events.
 
-        When ``live_message_queue`` is given the CLI runs in stream-json input
-        mode: stdin stays open and queued ``(message_id, content)`` pairs are
-        injected as ordinary user messages while the turn is still running.
+        Stream-json stdin/stdout stays open across successful normal turns.
+        Queued ``(message_id, content)`` pairs are injected while running;
+        injected turns drain to EOF before this transport is reclaimed.
         """
         user_content, binary = await asyncio.to_thread(
             lambda: (build_claude_user_content(prompt, images), self.resolve_binary())
@@ -374,8 +376,8 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
             })
             return
 
-        self._live_mode = live_message_queue is not None
-        stream_input = self._live_mode or bool(images)
+        self._live_mode = True
+        stream_input = True
         self._cwd = cwd
         self._permission_details.clear()
         self._session_allow.clear()
@@ -455,79 +457,70 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
             )
         if sandbox_env:
             process_kwargs["env"].update(sandbox_env)
-        self._process = await asyncio.create_subprocess_exec(*cmd, **process_kwargs)
-        self._running = True
+        from engines.core.cli_reuse import pooled_cli_process
+        from engines.core.session_pool import get_session_pool
+        pool = get_session_pool(self.ENGINE_ID)
+        async with pooled_cli_process(self, cmd, process_kwargs, session_id) as (lease, transport):
+            self._running = True
+            announced_session = lease.key[1] if lease.thread is not None else None
+            if announced_session is not None:
+                yield InternalEvent(type="session_started", data={"session_id": announced_session})
+            # Send prompt via stdin. Live mode keeps stdin open for later messages.
+            if stream_input:
+                initial = {
+                    "type": "user",
+                    "message": {"role": "user", "content": user_content},
+                }
+                self._process.stdin.write(
+                    (json.dumps(initial, ensure_ascii=False) + "\n").encode()
+                )
+            else:
+                self._process.stdin.write((prompt + "\n").encode())
+            await self._process.stdin.drain()
 
-        # Send prompt via stdin. Live mode keeps stdin open for later messages.
-        if stream_input:
-            initial = {
-                "type": "user",
-                "message": {"role": "user", "content": user_content},
-            }
-            self._process.stdin.write(
-                (json.dumps(initial, ensure_ascii=False) + "\n").encode()
-            )
-        else:
-            self._process.stdin.write((prompt + "\n").encode())
-        await self._process.stdin.drain()
-        if not self._live_mode:
-            self._process.stdin.close()
+            yield InternalEvent(type="status", data={"status": "running"})
 
-        yield InternalEvent(type="status", data={"status": "running"})
+            self._inflight_turns = 1
+            self._cli_injected = False
+            input_ended = False
+            self._turn_done = False
+            self._delivered_after_done = False
+            self._turn_error = False
+            # Parse stdout JSONL; deliver queued live messages between events.
+            async for event in self._parse_stdout():
+                if event.type == "session_started":
+                    pool.bind(lease, event.data["session_id"], event.data["session_id"])
+                    if event.data['session_id'] == announced_session:
+                        continue
+                    announced_session = event.data['session_id']
+                yield event
+                if self._live_mode and live_message_queue is not None:
+                    while not live_message_queue.empty():
+                        message_id, content = live_message_queue.get_nowait()
+                        delivered = await self.send_live_step_message(content)
+                        if delivered and self._turn_done:
+                            self._delivered_after_done = True
+                        yield InternalEvent(type="live_message", data={
+                            "message_id": message_id,
+                            "status": "delivered" if delivered else "error",
+                            "detail": "" if delivered else "引擎执行已结束，无法接收新消息",
+                        })
+                if self._turn_done:
+                    if self._cli_injected:
+                        if not input_ended:
+                            self._process.stdin.close()
+                            input_ended = True
+                    else:
+                        break
 
-        self._turn_done = False
-        self._delivered_after_done = False
-        self._turn_error = False
-        # Parse stdout JSONL; deliver queued live messages between events.
-        async for event in self._parse_stdout():
-            yield event
-            if self._live_mode and live_message_queue is not None:
-                while not live_message_queue.empty():
-                    message_id, content = live_message_queue.get_nowait()
-                    delivered = await self.send_live_step_message(content)
-                    if delivered and self._turn_done:
-                        self._delivered_after_done = True
-                    yield InternalEvent(type="live_message", data={
-                        "message_id": message_id,
-                        "status": "delivered" if delivered else "error",
-                        "detail": "" if delivered else "引擎执行已结束，无法接收新消息",
-                    })
-                if self._turn_done and not self._delivered_after_done:
-                    break
 
-        # Live mode: ask the CLI to finalize, then wait with a bounded watchdog.
-        if self._live_mode:
-            try:
-                self._process.stdin.write(b'{"type":"close_stream"}\n')
-                await self._process.stdin.drain()
-            except (BrokenPipeError, ConnectionResetError, RuntimeError):
-                pass
-            try:
-                self._process.stdin.close()
-            except Exception:
-                pass
-            try:
-                exit_code = await asyncio.wait_for(self._process.wait(), timeout=15)
-            except asyncio.TimeoutError:
-                logger.warning("Claude live mode did not exit after completion; terminating")
-                self._process.terminate()
-                try:
-                    exit_code = await asyncio.wait_for(self._process.wait(), timeout=5)
-                except asyncio.TimeoutError:
-                    self._process.kill()
-                    exit_code = await self._process.wait()
-        else:
-            exit_code = await self._process.wait()
-        self._running = False
-
-        if exit_code != 0:
-            stderr = await self._process.stderr.read()
-            yield InternalEvent(type="error", data={
-                "message": f"Process exited with code {exit_code}",
-                "stderr": stderr.decode(errors="replace"),
-            })
-        elif not self._turn_error:
-            yield InternalEvent(type="status", data={"status": "done"})
+            if not self._turn_done:
+                yield InternalEvent(type="error", data={"message": "Claude CLI 在返回轮次结果前退出"})
+            elif self._process.returncode not in (None, 0):
+                yield InternalEvent(type="error", data={"message": f"Process exited with code {self._process.returncode}",
+                    "stderr": b"".join(transport.stderr).decode(errors="replace")})
+            elif not self._turn_error:
+                yield InternalEvent(type="status", data={"status": "done"})
 
     async def _parse_stdout(self) -> AsyncIterator[InternalEvent]:
         """Parse Claude's stream-json stdout into InternalEvents."""
@@ -547,6 +540,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
                 continue
 
             if obj.get("type") == "result":
+                self._inflight_turns = max(0, getattr(self, "_inflight_turns", 1) - 1)
                 self._turn_done = True
                 self._delivered_after_done = False
                 self._turn_error = bool(
@@ -620,13 +614,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
 
     async def stop(self) -> None:
         """Terminate the subprocess."""
-        if self._process and self._running:
-            self._process.terminate()
-            try:
-                await asyncio.wait_for(self._process.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                self._process.kill()
-            self._running = False
+        await super().stop()
 
     async def _inject_permission(self, tool_use_id: str, content: str) -> None:
         """Inject a permission decision as a tool result, swallowing failures."""
@@ -690,11 +678,17 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
                 (json.dumps(message, ensure_ascii=False) + "\n").encode()
             )
             await self._process.stdin.drain()
+            self._cli_injected = True
+            self._inflight_turns = getattr(self, "_inflight_turns", 0) + 1
             return True
         except (BrokenPipeError, ConnectionResetError, RuntimeError):
             return False
 
     # --- Session resume ---
+
+    @property
+    def supports_process_reuse(self) -> bool:
+        return True
 
     @property
     def supports_resume(self) -> bool:
@@ -765,11 +759,13 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
         """关闭会话 = 结束当前运行中的 claude 进程。"""
         if self._running:
             await self.stop()
+        await self._close_cached_session(session_id, cwd)
 
     async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
         """取消会话 = 终止当前运行中的 claude 进程。"""
         if self._running:
             await self.stop()
+        await self._close_cached_session(session_id, cwd)
 
     async def set_config_option(
         self,

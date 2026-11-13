@@ -1,0 +1,6 @@
+.message-response-footer--compact { position: relative; flex-wrap: wrap; }
+.message-response-details { position: relative; flex: 1; min-width: 80px; max-width: 100%; color: var(--muted); font-size: 12px; }
+.message-response-details > summary { width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; list-style: none; padding: 4px 0; }
+.message-response-details > summary::-webkit-details-marker { display: none; }
+.message-response-details > summary:hover { color: var(--fg); }
+.message-response-details-content { position: absolute; z-index: 12; bottom: 100%; left: 0; width: min(360px, 70vw); padding: 12px; border: .5px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg-2); line-height: 1.6; box-shadow: 0 4px 16px #00000012; overflow-wrap: anywhere; }

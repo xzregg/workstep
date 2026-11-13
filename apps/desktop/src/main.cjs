@@ -344,6 +344,11 @@ function createWindow(url) {
   window.once('ready-to-show', () => { if (windowsVisible) window.show() })
   void window.loadURL(url)
   mainWindow = window
+  const avatarWindow = require('./digital-person-window.cjs').createDigitalPersonWindow({
+    BrowserWindow, ipcMain, getMain: () => mainWindow,
+    trusted: event => event.sender === window.webContents && isTrustedNavigation(event.senderFrame?.url, rootUrl),
+  })
+  window.on('closed', () => avatarWindow.dispose())
   captureRendererErrors(window.webContents, diagnostics, () => rootUrl)
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),

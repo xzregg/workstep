@@ -312,3 +312,29 @@ test('desktop image preview zooms on double click and retains wheel scrolling', 
     await window.happyDOM.close()
   }
 })
+
+
+test('mobile diagram images have intrinsic dimensions instead of Mermaid percentage sizes', async () => {
+  const { window, document } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width: 390, height: 844 })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider>
+      <MermaidPreviewDialog svg='<svg width="100%" height="100%" viewBox="-8 -8 800 3000" style="max-width:800px"><text>流程图</text></svg>' onClose={() => {}} />
+    </I18nProvider>))
+    const image = document.querySelector<HTMLImageElement>('.image-preview-viewport img')!
+    assert.ok(image)
+    const source = decodeURIComponent(image.src.split(',')[1])
+    const svg = new window.DOMParser().parseFromString(source, 'image/svg+xml').documentElement
+    assert.equal(svg.getAttribute('width'), '800')
+    assert.equal(svg.getAttribute('height'), '3000')
+    assert.equal(svg.getAttribute('viewBox'), '-8 -8 800 3000')
+    assert.equal(svg.namespaceURI, 'http://www.w3.org/2000/svg')
+    assert.match(svg.textContent ?? '', /流程图/)
+    assert.ok(document.querySelector('.image-preview-toolbar'))
+    assert.ok(document.querySelector('.image-preview-close'))
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

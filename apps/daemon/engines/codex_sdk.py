@@ -9,10 +9,16 @@ import os
 import re
 import tomllib
 import uuid
+from contextlib import aclosing
 from typing import Any, AsyncIterator
 
 from engines.codex_compaction import compact_codex_thread
 from engines.codex_sdk_events import CodexSDKNotificationMapper
+from engines.codex_sdk_clients import (
+    client_fingerprint,
+    deny_idle_request,
+    get_codex_client_pool,
+)
 from engines.codex_image_input import codex_sdk_input, codex_wire_input
 from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
@@ -71,11 +77,11 @@ def _public_transport_error(error: BaseException) -> str:
 class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     """Codex driven by the official ``openai-codex`` Python SDK.
 
-    The SDK launches a ``codex`` CLI binary in-process (stream-json protocol)
-    — no shell wrapper, no ACP bridge. The bundled ``openai-codex-cli-bin``
-    runtime is used unless an explicit binary override is configured. This
-    adapter only drives the SDK's async client and maps its notifications to
-    internal events.
+    The SDK launches ``codex app-server`` as a subprocess over stdio, without
+    a shell wrapper or ACP bridge. Successful turns retain an exclusive
+    session-scoped client lease. The bundled ``openai-codex-cli-bin`` runtime
+    is used unless an explicit binary override is configured; this adapter
+    drives the async client and maps its notifications to internal events.
     """
 
     ENGINE_ID = "codex_sdk"
@@ -149,6 +155,9 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         self._running = False
         self._stream_task: asyncio.Task | None = None
         self._client: Any | None = None
+        self._client_lease: Any | None = None
+        self._spawn_active = False
+        self._stop_requested = False
         self._goal_state: Any | None = None
 
     # --- Engine discovery ---
@@ -377,7 +386,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         config_overrides: dict | None = None,
         system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
-        async for event in self._spawn_with_sandbox(
+        async with aclosing(self._spawn_with_sandbox(
             prompt=prompt,
             cwd=cwd,
             model=model,
@@ -390,8 +399,9 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             goal_action=goal_action,
             config_overrides=config_overrides,
             system_prompt=system_prompt,
-        ):
-            yield event
+        )) as stream:
+            async for event in stream:
+                yield event
 
     async def spawn_coordinator(
         self,
@@ -414,7 +424,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             prompt if _coordinator_prepared or (session_id and self.supports_resume)
             else self._coordinator_prompt(prompt, workstep_tools=workstep_tools)
         )
-        async for event in self._spawn_with_sandbox(
+        async with aclosing(self._spawn_with_sandbox(
             prompt=guarded_prompt,
             cwd=cwd,
             model=model,
@@ -424,10 +434,25 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             thinking_effort=thinking_effort,
             config_overrides=config_overrides,
             system_prompt=system_prompt,
-        ):
-            yield event
+        )) as stream:
+            async for event in stream:
+                yield event
 
-    async def _spawn_with_sandbox(
+    async def _spawn_with_sandbox(self, **kwargs) -> AsyncIterator[InternalEvent]:
+        # Engine-local stream/stop/approval state cannot serve two turns at once.
+        if self._spawn_active:
+            yield InternalEvent(type="error", data={"message": "Codex 引擎正在执行，请等待当前回复完成"})
+            return
+        self._spawn_active = True
+        self._stop_requested = False
+        try:
+            async with aclosing(self._spawn_owned(**kwargs)) as stream:
+                async for event in stream:
+                    yield event
+        finally:
+            self._spawn_active = False
+
+    async def _spawn_owned(
         self,
         prompt: str,
         cwd: str,
@@ -527,7 +552,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         }
         if system_prompt is not None:
             thread_config.pop("developer_instructions", None)
-            if system_prompt:
+            if system_prompt and not session_id:
                 rules = self._combined_developer_instructions(sdk_config, system_prompt)
                 thread_kwargs["developer_instructions"] = (
                     f"<workstep_system_rules>\n{rules}\n</workstep_system_rules>"
@@ -549,20 +574,38 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         )
 
         self._running = True
-        yield InternalEvent(type="status", data={"status": "initializing"})
 
         client: Any = None
+        lease = None
+        state: dict[str, Any] = {}
+        finished = False
+        pool = get_codex_client_pool()
         try:
+            yield InternalEvent(type="status", data={"status": "initializing"})
             event_queue: asyncio.Queue[InternalEvent | None] = asyncio.Queue()
+            self._permission_session_allow = set()
+            self._permission_session_reject = set()
             approval_handler = self._build_approval_handler(
                 event_queue,
                 asyncio.get_running_loop(),
                 session_id or "",
                 approval_mode=sdk_config["approval_mode"],
             )
-            client = AsyncCodex(config=client_config)
+            fingerprint = await asyncio.to_thread(client_fingerprint, client_config, thread_kwargs)
+            if self._stop_requested:
+                yield InternalEvent(type="status", data={"status": "cancelled"})
+                return
+            lease = await pool.acquire(
+                cwd, session_id, fingerprint, lambda: AsyncCodex(config=client_config),
+            )
+            self._client_lease = lease
+            client = lease.client
             self._install_approval_handler(client, approval_handler)
+            lease.on_close = self._cancel_sdk_interactions
             self._client = client
+            if self._stop_requested:
+                yield InternalEvent(type="status", data={"status": "cancelled"})
+                return
             state: dict[str, Any] = {
                 "emitted_text": False,
                 "emitted_thinking": False,
@@ -675,7 +718,9 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 try:
                     if prompt.strip() == "/compact" and not session_id:
                         raise ValueError("没有可压缩的 Codex 会话")
-                    if session_id:
+                    if lease.thread is not None:
+                        thread = lease.thread
+                    elif session_id:
                         thread = await client.thread_resume(
                             session_id,
                             **thread_kwargs,
@@ -684,6 +729,20 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                         thread = await client.thread_start(
                             **thread_kwargs,
                         )
+                    pool.bind(lease, str(thread.id), thread)
+                    if session_id and system_prompt:
+                        # thread/resume accepts developerInstructions but does not
+                        # reliably update model-visible history on existing turns.
+                        # Use the native history API instead of a user-text fallback.
+                        from openai_codex.generated.v2_all import ThreadInjectItemsResponse
+                        rules = self._combined_developer_instructions(sdk_config, system_prompt)
+                        await client._client.request("thread/inject_items", {
+                            "threadId": str(thread.id),
+                            "items": [{"type": "message", "role": "developer", "content": [{
+                                "type": "input_text",
+                                "text": f"<workstep_system_rules>\n{rules}\n</workstep_system_rules>",
+                            }]}],
+                        }, response_model=ThreadInjectItemsResponse)
                     await event_queue.put(InternalEvent(
                         type="session_started",
                         data={"session_id": str(thread.id)},
@@ -694,6 +753,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                     if prompt.strip() == "/compact":
                         await compact_codex_thread(client, thread)
                         await event_queue.put(compacted_event())
+                        state["reuse_ok"] = True
                         return
                     if goal_action:
                         await self._run_goal_command(
@@ -701,6 +761,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                             model=model, reasoning_effort=reasoning_effort,
                             **({"initial_input": codex_wire_input(prompt, images)} if images else {}),
                         )
+                        state["reuse_ok"] = True
                         return
                     if plan_mode is None:
                         turn = await thread.turn(codex_sdk_input(prompt, images), model=model or None)
@@ -724,6 +785,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                             type="error",
                             data={"message": state["notification_error"]},
                         ))
+                    state["reuse_ok"] = True
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -743,8 +805,13 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 event = await event_queue.get()
                 if event is None:
                     break
+                if event.type == "error" or (
+                    event.type == "status" and event.data.get("status") == "cancelled"
+                ):
+                    state["reuse_failed"] = True
                 yield event
             await stream_task
+            finished = True
         except asyncio.CancelledError:
             yield InternalEvent(type="status", data={"status": "cancelled"})
         except Exception as exc:
@@ -758,14 +825,19 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 self._stream_task.cancel()
                 await asyncio.gather(self._stream_task, return_exceptions=True)
             self._stream_task = None
+            reusable = bool(
+                finished and state.get("reuse_ok") and not state.get("reuse_failed")
+                and self._client is client
+            )
             self._client = None
-            if client is not None:
-                close = getattr(client, "close", None)
-                if callable(close):
-                    try:
-                        await asyncio.wait_for(close(), timeout=5)
-                    except Exception:
-                        pass
+            self._client_lease = None
+            if lease is not None:
+                if reusable:
+                    self._install_approval_handler(client, deny_idle_request)
+                    lease.on_close = None
+                else:
+                    self._cancel_sdk_interactions()
+                await pool.release(lease, reusable=reusable)
             self._running = False
 
     async def _run_goal_command(
@@ -864,28 +936,45 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
         self._goal_state = goal_state
         seen_running = False
+        active_turn = True
+        completed_turn = False
+        terminal_goal = False
         child_reads: list[asyncio.Task] = []
         try:
             while True:
                 notification = await raw.next_goal_notification(goal_state)
+                if getattr(notification, "method", None) == "turn/completed":
+                    active_turn = False
+                    completed_turn = True
                 for event in self._map_notification(notification, state):
+                    if event.type == "goal_update":
+                        terminal_goal = event.data.get("status") in {
+                            "paused", "blocked", "usageLimited", "budgetLimited", "complete", "cleared",
+                        }
                     if event.type == "status":
                         status = str(event.data.get("status") or "")
                         if status == "running":
+                            active_turn = True
                             if seen_running:
                                 continue
                             seen_running = True
                         elif status in {"done", "failed", "cancelled"}:
+                            active_turn = False
+                            completed_turn = True
                             # Physical turn completion is not goal completion.
                             continue
                     await event_queue.put(event)
                     self._schedule_subagent_read(client, event, state, event_queue, child_reads)
-                if goal_state.is_finished():
+                # SDK reader state can run ahead of this consumer. Finish only
+                # after consuming both the terminal goal and its final turn,
+                # otherwise queued text and goal updates are silently dropped.
+                if terminal_goal and completed_turn and not active_turn:
                     break
             if child_reads:
                 await asyncio.gather(*child_reads)
             await event_queue.put(InternalEvent(type="status", data={"status": "done"}))
         except asyncio.CancelledError:
+            self._cancel_sdk_interactions()
             await raw.cancel_goal_operation(goal_state)
             await event_queue.put(InternalEvent(
                 type="goal_update", data={"objective": objective, "status": "paused"},
@@ -1143,28 +1232,38 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         return option_id in {"allow_once", "allow_for_session"}
 
     async def stop(self) -> None:
+        self._stop_requested = True
         if self._retry_wait_task is not None:
             self._retry_wait_task.cancel()
+        # Goal cancellation sends pause/interrupt RPCs. Unblock the SDK reader
+        # first if it is waiting for an approval, so it can receive those replies.
+        self._cancel_sdk_interactions()
         if self._stream_task is not None and not self._stream_task.done():
             self._stream_task.cancel()
             await asyncio.gather(self._stream_task, return_exceptions=True)
             self._stream_task = None
-        client = self._client
+        lease = self._client_lease
+        self._client_lease = None
         self._client = None
-        if client is not None:
-            close = getattr(client, "close", None)
-            if callable(close):
-                try:
-                    await asyncio.wait_for(close(), timeout=5)
-                except Exception:
-                    pass
+        self._cancel_sdk_interactions()
+        if lease is not None:
+            await get_codex_client_pool().discard(lease)
         self._running = False
+
+    def _cancel_sdk_interactions(self) -> None:
+        for future in list(getattr(self, "_pending_interaction_responses", {}).values()):
+            if not future.done():
+                future.cancel()
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         logger.warning("inject_response is not supported by CodexSDKEngine")
 
     @property
     def supports_vision(self) -> bool:
+        return True
+
+    @property
+    def supports_process_reuse(self) -> bool:
         return True
 
     @property
@@ -1288,14 +1387,13 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         return bool(session_id)
 
     async def close_session(self, session_id: str, cwd: str | None = None) -> None:
-        """关闭会话 = 结束当前运行中的 client / 流任务。"""
-        if self._running:
+        """Close this session's active or idle transport, preserving disk history."""
+        if self._client_lease is not None and self._client_lease.key[1] == session_id:
             await self.stop()
+        await get_codex_client_pool().close_session(session_id, cwd)
 
     async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
-        """取消会话 = 终止当前运行中的 client / 流任务。"""
-        if self._running:
-            await self.stop()
+        await self.close_session(session_id, cwd)
 
     async def set_config_option(
         self,

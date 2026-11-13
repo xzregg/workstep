@@ -13,6 +13,7 @@ import logging
 import os
 from typing import AsyncIterator, ClassVar
 
+from engines.core.session_pool import exclusive_engine_run
 from engines.core.image_input import render_image_prompt
 from engines.core.acp_base import AcpEngineBase
 from engines.core.base import ProviderRuntimeConfig
@@ -124,6 +125,10 @@ class CursorSdkEngine(AcpEngineBase):
         return self.is_installed()
 
     @property
+    def supports_process_reuse(self) -> bool:
+        return True
+
+    @property
     def supports_resume(self) -> bool:
         # SDK 提供 client.agents.resume（按 agent id 恢复）。
         return self.is_installed()
@@ -167,11 +172,15 @@ class CursorSdkEngine(AcpEngineBase):
 
     # ------------------------------------------------------------------ 执行
 
-    _active_runs: ClassVar[dict[str, tuple]] = {}
+    def __init__(self):
+        super().__init__()
+        self._active_runs = {}
+        self._transport_lease = None
 
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}
 
+    @exclusive_engine_run
     async def spawn(
         self,
         prompt: str,
@@ -208,23 +217,54 @@ class CursorSdkEngine(AcpEngineBase):
         agent = None
         run = None
         agent_id = session_id
+        lease = None
+        reusable = False
+        from contextlib import asynccontextmanager
+        from types import SimpleNamespace
+        from engines.core.session_pool import ManagedConnection, get_session_pool, startup_fingerprint
+        from engines.core.process_cleanup import close_sdk_client, sdk_process
+        pool = get_session_pool(self.ENGINE_ID)
         try:
-            client = await AsyncClient.launch_bridge(workspace=cwd)
             options = AgentOptions(
                 api_key=api_key,
                 local=LocalAgentOptions(cwd=cwd, **({"dirs": add_dirs} if add_dirs else {})),
                 **({"model": model} if model else {}),
             )
-            if session_id:
-                agent = await client.agents.resume(session_id, options)
-            else:
-                agent = await client.agents.create(
-                    model=model or "auto",
-                    api_key=api_key,
-                    local=LocalAgentOptions(cwd=cwd),
-                )
+            @asynccontextmanager
+            async def context():
+                launch = asyncio.create_task(AsyncClient.launch_bridge(workspace=cwd))
+                try:
+                    native_client = await asyncio.shield(launch)
+                except asyncio.CancelledError:
+                    native_client = await launch
+                    await close_sdk_client(native_client, 'aclose')
+                    raise
+                native_agent = None
+                try:
+                    if session_id:
+                        native_agent = await native_client.agents.resume(session_id, options)
+                    else:
+                        native_agent = await native_client.agents.create(
+                            model=model or 'auto', api_key=api_key,
+                            local=LocalAgentOptions(cwd=cwd, **({'dirs': add_dirs} if add_dirs else {})),
+                        )
+                    yield SimpleNamespace(client=native_client, agent=native_agent,
+                                          process=sdk_process(native_client))
+                finally:
+                    try:
+                        process = sdk_process(native_client)
+                        if native_agent is not None and (process is None or process.returncode is None):
+                            await asyncio.wait_for(native_agent.close(), 3)
+                    finally:
+                        await close_sdk_client(native_client, 'aclose')
+            fingerprint = await asyncio.to_thread(startup_fingerprint, (cwd, api_key, model, add_dirs, config_overrides))
+            lease = await pool.acquire(cwd, session_id, fingerprint, lambda: ManagedConnection(context))
+            self._transport_lease = lease
+            value = await lease.client.open()
+            client, agent = value.client, value.agent
             agent_id = getattr(agent, "agent_id", None) or session_id
             if agent_id:
+                pool.bind(lease, agent_id, agent)
                 yield InternalEvent("session_started", {"session_id": agent_id})
 
             run = await agent.send(
@@ -240,26 +280,21 @@ class CursorSdkEngine(AcpEngineBase):
                 result = await run.wait()
                 usage = self._usage_payload(getattr(result, "usage", None))
                 stop_reason = str(getattr(result, "status", None) or "completed")
+                successful = stop_reason.lower() in {'completed', 'complete', 'success', 'finished'}
             finally:
                 self._active_runs.pop(agent_id or f"cwd:{cwd}", None)
             if usage:
                 yield InternalEvent("usage_update", usage)
             yield InternalEvent("done", {"stop_reason": stop_reason})
+            reusable = successful
         except Exception as exc:  # noqa: BLE001 — spawn 失败转 done(error)
             self._active_runs.pop(agent_id or f"cwd:{cwd}", None)
             logger.warning("cursor_sdk spawn 失败: %s", exc)
             yield InternalEvent("done", {"stop_reason": "error", "error": str(exc)})
         finally:
-            if agent is not None:
-                try:
-                    await agent.close()
-                except Exception:
-                    pass
-            if client is not None:
-                try:
-                    await client.aclose()
-                except Exception:
-                    pass
+            if lease is not None:
+                await pool.release(lease, reusable=reusable)
+            self._transport_lease = None
 
     def _map_sdk_event(self, event) -> InternalEvent | None:
         """Map the documented SDKMessage stream to ACP content events."""
@@ -321,10 +356,15 @@ class CursorSdkEngine(AcpEngineBase):
         for k, (_client, _agent, run) in entries:
             if key is None or k == key:
                 try:
-                    await run.cancel()
+                    await asyncio.wait_for(run.cancel(), 3)
                 except Exception as exc:
                     logger.debug("cursor run.cancel 失败: %s", exc)
                 self._active_runs.pop(k, None)
+        lease = self._transport_lease
+        if lease is not None and (session_id is None or lease.key[1] == session_id):
+            from engines.core.session_pool import get_session_pool
+            await get_session_pool(self.ENGINE_ID).discard(lease)
+            self._transport_lease = None
 
     async def test_connection(self) -> dict:
         if not await asyncio.to_thread(self.is_installed):

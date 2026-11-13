@@ -39,10 +39,10 @@ export default function WorkspaceNavigationActions({ onOpenSettings, activeSetti
     </Button>}
     {can('statistics.read') && action(t('nav.statistics'), 'bar-chart', () => navigate('/statistics'), pathname === '/statistics')}
     <ScheduleCenter />
-    {!bound && action(t('digitalPerson.title'), 'bot', () => onOpenSettings('digital-person'), activeSettingsSection === 'digital-person', 'layout-sidebar-external-only')}
     {!bound && action(t('connectors.title'), 'plug', () => onOpenSettings('connectors'), activeSettingsSection === 'connectors', 'layout-sidebar-external-only')}
     {!bound && action(t('roleCenter.title'), 'drama', () => onOpenSettings('roles'), activeSettingsSection === 'roles', 'layout-sidebar-external-only')}
     <DesktopUpdateRailAction onOpenSettings={onOpenSettings} />
+    {!bound && action(t('digitalPerson.title'), 'bot', () => onOpenSettings('digital-person'), activeSettingsSection === 'digital-person', 'layout-sidebar-external-only layout-sidebar-digital-person')}
     {action(t('skins.appearance'), 'sparkles', () => bound ? navigate('/appearance') : onOpenSettings('appearance'),
       bound ? pathname === '/appearance' : activeSettingsSection === 'appearance',
       bound ? 'layout-sidebar-settings-button layout-sidebar-appearance' : 'layout-sidebar-external-only layout-sidebar-appearance')}

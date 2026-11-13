@@ -1,6 +1,6 @@
 """Metadata-only custom engine discovery and isolated AcpEngineBase proxies."""
 import asyncio
-from contextlib import suppress
+from contextlib import aclosing, suppress
 from dataclasses import fields
 import json
 import logging
@@ -14,6 +14,7 @@ from engines.core.custom_sdk import raw_config
 from engines.core.custom_transport import CustomWorkerClient
 from engines.core.events import InternalEvent
 from engines.core.schema import EngineConfigField, EngineConfigOption
+from engines.core.session_pool import exclusive_engine_run
 from services.config import config_store
 
 logger = logging.getLogger(__name__)
@@ -39,11 +40,16 @@ class CustomEngineProxy(AcpEngineBase):
     _root: Path
     _metadata: dict
 
+    @property
+    def session_pool_id(self):
+        return 'custom:' + self.ENGINE_ID
+
     def __init__(self):
         super().__init__()
         self._worker = None
         self._worker_lock = asyncio.Lock()
         self._idle_cleanup = None
+        self._startup_controls = []
 
     @classmethod
     def is_installed(cls):
@@ -165,14 +171,50 @@ class CustomEngineProxy(AcpEngineBase):
             self._worker = None
             raise
 
+    @exclusive_engine_run
     async def _stream(self, method, kwargs):
+        if self._running:
+            raise RuntimeError('同一引擎实例正在执行，请等待当前回复完成')
         client = await self._client()
+        lease = None
+        pool = None
+        complete = False
+        failed = False
+        prepared_client = None
+        try:
+            if self.supports_process_reuse:
+                from engines.core.session_pool import get_session_pool, startup_fingerprint
+                pool = get_session_pool(self.session_pool_id)
+                settings = {k: v for k, v in kwargs.items()
+                            if k not in {'prompt', 'session_id', 'images', 'live_message_queue'}}
+                snapshot = await asyncio.to_thread(lambda: dict(config_store._load()))
+                fingerprint = await asyncio.to_thread(startup_fingerprint, (
+                    str(self._root), self._metadata.get('package_digest'), settings, snapshot,
+                    self._startup_controls,
+                ))
+                try:
+                    lease = await pool.acquire(kwargs['cwd'], kwargs.get('session_id'), fingerprint, lambda: client)
+                except Exception:
+                    await client.close()
+                    self._worker = None
+                    raise
+                if client is not lease.client:
+                    prepared_client = client
+                client = self._worker = lease.client
+        except BaseException:
+            if lease is not None:
+                await pool.discard(lease)
+            await client.close()
+            self._worker = None
+            raise
         live_queue = kwargs.pop("live_message_queue", None)
         if live_queue is not None:
             kwargs["_live_queue"] = True
         pump = None
         self._running = True
         try:
+            if prepared_client is not None:
+                await prepared_client.close()
             if live_queue is not None:
                 await client.call("prepare_live_queue")
                 async def forward():
@@ -188,7 +230,12 @@ class CustomEngineProxy(AcpEngineBase):
                     event = InternalEvent(type=item["type"], data=item.get("data", {}), timestamp=item.get("timestamp", 0))
                     from engines.core.custom_validation import check_event
                     check_event(event, declared_events(self))
+                    if lease is not None and event.type == 'session_started':
+                        pool.bind(lease, event.data['session_id'], event.data['session_id'])
+                    if event.type == 'error' or (event.type == 'status' and event.data.get('status') in {'cancelled', 'stopped', 'failed'}):
+                        failed = True
                     yield event
+            complete = True
         except Exception:
             await client.close()
             self._worker = None
@@ -199,22 +246,26 @@ class CustomEngineProxy(AcpEngineBase):
                 pump.cancel()
                 with suppress(asyncio.CancelledError, Exception):
                     await pump
-            # End-of-turn cleanup must not leave SDK clients/descendants alive.
-            await client.close()
+            if lease is not None:
+                await pool.release(lease, reusable=complete and not failed)
+            else:
+                await client.close()
             self._worker = None
 
     async def spawn(self, prompt, cwd, model=None, session_id=None, images=None, **kwargs):
-        async for event in self._stream("spawn", dict(prompt=prompt, cwd=cwd, model=model,
-                                                    session_id=session_id, images=images, **kwargs)):
-            yield event
+        async with aclosing(self._stream("spawn", dict(prompt=prompt, cwd=cwd, model=model,
+                                                    session_id=session_id, images=images, **kwargs))) as _owned_stream:
+            async for event in _owned_stream:
+                yield event
 
     async def spawn_coordinator(self, prompt, cwd, **kwargs):
-        async for event in self._stream("spawn_coordinator", dict(prompt=prompt, cwd=cwd, **kwargs)):
-            yield event
+        async with aclosing(self._stream("spawn_coordinator", dict(prompt=prompt, cwd=cwd, **kwargs))) as _owned_stream:
+            async for event in _owned_stream:
+                yield event
 
     def _schedule_idle_cleanup(self):
         async def cleanup():
-            await asyncio.sleep(30)
+            await asyncio.sleep(600)
             await self.stop()
         self._idle_cleanup = asyncio.create_task(cleanup())
 
@@ -273,9 +324,16 @@ for _method in ("inject_response", "approve_tool", "approve_tool_option", "respo
                 "send_live_step_message", "send_live_stage_message", "set_permission_mode", "configure_mcp_servers"):
     def make_method(name):
         async def invoke(self, *args, **kwargs):
+            if name in {'close_session', 'cancel_session'}:
+                sid = args[0] if args else kwargs.get('session_id')
+                cwd = args[1] if len(args) > 1 else kwargs.get('cwd')
+                if sid and await self._close_cached_session(sid, cwd):
+                    return
             if name == "set_permission_mode":
                 await AcpEngineBase.set_permission_mode(self, *args, **kwargs)
             result = await self._call(name, args, kwargs)
+            if name in {"set_config_option", "set_session_mode", "reset_options", "set_permission_mode", "configure_mcp_servers"}:
+                self._startup_controls.append((name, args, kwargs))
             if not self._running:
                 if name in {"create_session", "load_session", "resume_session", "fork_session", "set_config_option", "set_session_mode", "reset_options", "set_permission_mode", "configure_mcp_servers"}:
                     self._schedule_idle_cleanup()

@@ -1,0 +1,33 @@
+.digital-person-activity { display: grid; gap: 20px; min-width: 0; }
+.digital-person-activity h3 { font-size: 13px; font-weight: 600; margin: 12px 0 0; color: var(--fg-2); }
+.digital-person-activity p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
+.digital-person-activity-toolbar.digital-person-actions { margin: 0; }
+.digital-person-activity .digital-person-refresh { width: 32px; height: 32px; padding: 0; margin-left: auto; justify-content: center; }
+.digital-person-run { padding: 14px 0; border-bottom: .5px solid var(--border); overflow-wrap: anywhere; font-size: 13px; }
+.digital-person-run > strong { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
+.digital-person-run > .btn { margin-left: 8px; }
+.digital-person-run summary { cursor: pointer; line-height: 1.7; }
+.digital-person-run > p { margin-top: 12px; }
+.digital-person-run-status { display: inline-block; padding: 2px 8px; border-radius: 5px; background: var(--surface); color: var(--muted); font-size: 12px; }
+.digital-person-run-evidence { margin-top: 12px; color: var(--muted); }
+.digital-person-run pre { white-space: pre-wrap; max-height: 280px; overflow: auto; font-size: 12px; padding: 12px; border-radius: 8px; background: var(--surface); }
+.digital-person-growth { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.digital-person-growth strong { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.digital-person-growth progress { flex: 1; min-width: 40px; width: 80px; height: 4px; border: 0; border-radius: 3px; overflow: hidden; accent-color: var(--accent); }
+.digital-person-growth progress::-webkit-progress-bar { background: var(--surface); border-radius: 3px; }
+.digital-person-growth progress::-webkit-progress-value { background: var(--accent); border-radius: 3px; }
+.digital-person-growth > span { font-size: 12px; white-space: nowrap; color: var(--muted); }
+.digital-person-self-stats { display: grid; gap: 20px; min-width: 0; }
+.digital-person-stat-counts { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin: 0; }
+.digital-person-stat-counts > div { display: grid; gap: 6px; min-width: 0; }
+.digital-person-stat-counts dt { color: var(--muted); font-size: 12px; }
+.digital-person-stat-counts dd { margin: 0; color: var(--fg); font-size: 20px; font-weight: 500; }
+.digital-person-stat-skills { font-size: 13px; border-top: .5px solid var(--border-soft); padding-top: 14px; min-width: 0; }
+.digital-person-stat-skills summary { cursor: pointer; color: var(--fg-2); }
+.digital-person-stat-skills summary > span { margin-left: 8px; color: var(--muted); }
+.digital-person-stat-skills ul { display: flex; flex-wrap: wrap; gap: 8px 16px; list-style: none; padding: 0; margin: 12px 0 0; }
+.digital-person-stat-skills li { overflow-wrap: anywhere; color: var(--muted); }
+.digital-person-stat-skills p { color: var(--muted); font-size: 12px; }
+@media(max-width: 1023px) { .digital-person-stat-counts { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; } }
+.digital-person-answer { display: flex; gap: 12px; align-items: flex-start; }
+.digital-person-answer > p { flex: 1; min-width: 0; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

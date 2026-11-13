@@ -116,10 +116,10 @@ test('uses product-facing engine names', () => {
 })
 
 test('translates the channel chat assistant name', () => {
-  assert.equal(zhCNT('settings.assistantNames.channelChat'), '渠道对话')
-  assert.equal(createT(enUS)('settings.assistantNames.channelChat'), 'Channel Chat')
-  assert.equal(createT(zhTW)('settings.assistantNames.channelChat'), '渠道對話')
-  assert.equal(createT(jaJP)('settings.assistantNames.channelChat'), 'チャンネルチャット')
+  assert.equal(zhCNT('settings.assistantNames.channelChat'), '渠道回复')
+  assert.equal(createT(enUS)('settings.assistantNames.channelChat'), 'Channel Replies')
+  assert.equal(createT(zhTW)('settings.assistantNames.channelChat'), '渠道回覆')
+  assert.equal(createT(jaJP)('settings.assistantNames.channelChat'), 'チャンネル返信')
 })
 
 test('uses the concise coordinator name without an Agent suffix', () => {

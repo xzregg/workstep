@@ -116,9 +116,15 @@ class ConfigStore:
     def set(self, key: str, value: Any):
         """Set a config section and persist."""
         with self._lock:
-            data = self._load()
-            data[key] = value
-            self._save()
+            previous = self._load()
+            self._cache = {**previous, key: value}
+            try:
+                self._save()
+            except Exception:
+                # Failed persistence must not activate a configuration that
+                # would disappear after restart. Keep readers on the old state.
+                self._cache = previous
+                raise
 
     def delete(self, key: str):
         """Remove a config section and persist."""

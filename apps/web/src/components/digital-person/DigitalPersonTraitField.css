@@ -1,0 +1,7 @@
+.digital-person-trait-field { display: grid; gap: 8px; min-width: 0; }
+.digital-person-trait-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.digital-person-trait-presets > button { padding: 6px 12px; min-height: 32px; border: .5px solid var(--border); border-radius: var(--radius-xs); background: var(--bg); color: var(--muted); font-size: 12px; cursor: pointer; }
+.digital-person-trait-presets > button[aria-pressed=true] { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+.digital-person-trait-presets > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.digital-person-trait-presets > button:disabled { opacity: .5; cursor: default; }
+@media(max-width:1023px) { .digital-person-trait-presets > button { min-height: var(--mobile-control-regular); } }

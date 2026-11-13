@@ -201,7 +201,11 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
 
     class Client:
         def __init__(self, **kwargs):
-            pass
+            self._client=SimpleNamespace(request=self.request)
+
+        async def request(self, method, params, **kwargs):
+            captured.setdefault("history_updates",[]).append((method,params))
+            return SimpleNamespace()
 
         async def thread_start(self, **kwargs):
             captured["kwargs"] = kwargs
@@ -237,6 +241,9 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
     sdk.ApprovalMode = lambda value: value
     sdk.Sandbox = SimpleNamespace(read_only="read-only", workspace_write="workspace-write", full_access="full")
     monkeypatch.setitem(sys.modules, "openai_codex", sdk)
+    generated=ModuleType("openai_codex.generated.v2_all")
+    generated.ThreadInjectItemsResponse=SimpleNamespace
+    monkeypatch.setitem(sys.modules,"openai_codex.generated.v2_all",generated)
     engine = CodexSDKEngine()
     monkeypatch.setattr(engine, "_sdk_available", lambda: True)
     monkeypatch.setattr(engine, "_install_approval_handler", lambda *args: None)
@@ -280,9 +287,14 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
             assert "developer_instructions" not in call["config"]
         else:
             assert snapshot["system_prompt"] == "channel role"
-            assert call["developer_instructions"] == (
-                "<workstep_system_rules>\nexisting rules\n\nchannel role\n</workstep_system_rules>"
-            )
+            expected="<workstep_system_rules>\nexisting rules\n\nchannel role\n</workstep_system_rules>"
+            if snapshot["session_id"]:
+                assert "developer_instructions" not in call
+                assert captured["history_updates"] == [("thread/inject_items",{
+                    "threadId":"existing", "items":[{"type":"message","role":"developer","content":[{"type":"input_text","text":expected}]}],
+                })] * len(snapshots)
+            else:
+                assert call["developer_instructions"] == expected
         assert "base_instructions" not in call
 
 

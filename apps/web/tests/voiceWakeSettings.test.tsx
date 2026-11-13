@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import { installDomEnvironment } from './helpers/domEnv'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,10 +15,10 @@ test('wake configuration saves drafts but never starts a microphone or claims li
   let saved:any, dirty=false, tested=0
   voiceWakeApi.get=async()=>({keyword:'你好小研',sensitivity:'balanced',available:false,listening:false})
   voiceWakeApi.save=async value=>{saved=value;return {...value,available:false,listening:false}}
-  const render=()=>root.render(<I18nProvider><VoiceWakeSettings onDirtyChange={value=>{dirty=value}} onTest={()=>{tested++}} testDisabled={false} sample="你好，小舟！帮我检查任务" /></I18nProvider>)
+  const render=()=>root.render(<MemoryRouter><I18nProvider><VoiceWakeSettings onDirtyChange={value=>{dirty=value}} onTest={()=>{tested++}} testDisabled={false} sample="你好，小舟！帮我检查任务" /></I18nProvider></MemoryRouter>)
   try {
     await act(async()=>render())
-    assert.match(element.textContent!,/未监听/)
+    assert.match(element.textContent!,/开始监听唤醒词/)
     assert.equal(element.querySelector<HTMLButtonElement>('[role="switch"]')!.disabled,true)
     const input=element.querySelector('input')!
     await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(input,'你好小舟');input.dispatchEvent(new window.Event('input',{bubbles:true}))})
@@ -27,6 +28,6 @@ test('wake configuration saves drafts but never starts a microphone or claims li
     assert.match(element.textContent!,/包含唤醒词/)
     await act(async()=>element.querySelector<HTMLButtonElement>('[data-test-wake]')!.click())
     assert.equal(tested,1)
-    assert.match(element.textContent!,/未监听/)
+    assert.match(element.textContent!,/开始监听唤醒词/)
   } finally {await act(async()=>root.unmount());Object.assign(voiceWakeApi,original);await window.happyDOM.close()}
 })

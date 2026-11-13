@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError, chatSessionApi } from '../api/client'
 import { useI18n } from '../i18n'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import { useChatExecutionConfigStore } from '../stores/chatExecutionConfigStore'
 import type { ChatEngineConfigState } from '../utils/chatEngineConfig'
 import { randomUuid } from '../utils/uuid'
 import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
@@ -22,7 +23,7 @@ interface Options {
 
 /** Owns a chat turn's send, live-insert, stop and error recovery lifecycle. */
 export function useChatSessionActions({
-  sessionId, projectId, running, engineConfig, permissionMode, planMode,
+  sessionId, projectId, running, permissionMode, planMode,
   goalMode, effectiveEngine, onSessionIdChange, onTitleChange,
 }: Options) {
   const { t } = useI18n()
@@ -47,14 +48,6 @@ export function useChatSessionActions({
     watchPendingCompletion(projectId, { sessionId })
     try {
       const accepted = await chatSessionApi.chat(sessionId, projectId, content, randomUuid(), {
-        engine: engineConfig.engine || undefined,
-        provider_id: engineConfig.providerId || (engineConfig.providerCleared ? '' : undefined),
-        model: engineConfig.model || undefined,
-        fast_model: engineConfig.fastModel || undefined,
-        vision_model: engineConfig.visionModel || undefined,
-        thinking_effort: engineConfig.thinkingEffort || undefined,
-        service_tier: ['codex', 'codex_sdk'].includes(effectiveEngine)
-          ? engineConfig.serviceTier || undefined : undefined,
         permission_mode: permissionMode || undefined,
         plan_mode: goalCommand ? false : planMode || undefined,
         goal_mode: goalCommand ? false : goalMode && effectiveEngine === 'codex_sdk' || undefined,
@@ -72,9 +65,11 @@ export function useChatSessionActions({
         onSessionIdChange(accepted.session_id)
       }
       const finalSessionId = accepted.session_id || sessionId
+      if (accepted.execution_config) useChatExecutionConfigStore.getState().receive(projectId, accepted.execution_config)
       useChatSessionStore.getState().confirmUserMessage(finalSessionId, optimisticId, accepted.turn_id)
       useChatSessionStore.getState().acceptAssistantReply(finalSessionId, accepted.assistant_message_id, {
-        engine: engineConfig.engine || effectiveEngine, model: engineConfig.model || undefined,
+        engine: accepted.engine || accepted.execution_config?.engine,
+        model: accepted.model || accepted.execution_config?.model || undefined,
         status: accepted.status,
       })
       if (finalSessionId !== sessionId) {
@@ -98,7 +93,7 @@ export function useChatSessionActions({
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
       return false
     }
-  }, [sessionId, projectId, engineConfig, permissionMode, planMode, goalMode,
+  }, [sessionId, projectId, permissionMode, planMode, goalMode,
     effectiveEngine, onSessionIdChange, onTitleChange, t])
 
   const sendPendingContent = useCallback(async (

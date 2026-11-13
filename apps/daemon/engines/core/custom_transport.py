@@ -1,6 +1,6 @@
 """Bounded asynchronous RPC transport with process-tree cleanup."""
 import asyncio
-from contextlib import suppress
+from contextlib import aclosing, suppress
 from dataclasses import asdict, is_dataclass
 import json
 import os
@@ -43,6 +43,10 @@ class CustomWorkerClient:
         self.start_lock = asyncio.Lock()
         self.write_lock = asyncio.Lock()
         self.closed = False
+        self._close_task = None
+
+    def is_alive(self):
+        return not self.closed and (self.process is None or self.process.returncode is None)
 
     async def start(self):
         async with self.start_lock:
@@ -53,7 +57,10 @@ class CustomWorkerClient:
                     raise RuntimeError("引擎工作进程已退出")
                 return
             worker = Path(__file__).with_name("custom_worker.py")
-            env = dict(os.environ)
+            from services.conversation_context import execution_env
+            from services.coordinator_source import coordinator_source_env
+            env = execution_env(dict(os.environ))
+            env.update(coordinator_source_env())
             env["WORKSTEP_CUSTOM_WORKER"] = "1"
             env["WORKSTEP_CUSTOM_ENGINE_DIR"] = str(self.root)
             if self.dependencies:
@@ -135,26 +142,23 @@ class CustomWorkerClient:
             self.pending.pop(key, None)
 
     async def call(self, method, args=(), kwargs=None, *, timeout=15):
-        async for message in self.stream(method, args, kwargs, timeout=timeout):
-            if "result" in message:
-                return message["result"]
+        async with aclosing(self.stream(method, args, kwargs, timeout=timeout)) as stream:
+            async for message in stream:
+                if "result" in message:
+                    return message["result"]
 
     async def close(self):
-        self.closed = True
+        from engines.core.process_cleanup import finish_cleanup
+        if self._close_task is None:
+            self.closed = True
+            self._close_task = asyncio.create_task(self._close_owned())
+        await finish_cleanup(self._close_task)
+
+    async def _close_owned(self):
+        from engines.core.process_cleanup import close_subprocess, finish_cleanup
         process = self.process
         if process is not None:
-            if os.name == "nt":
-                with suppress(Exception):
-                    killer = await asyncio.create_subprocess_exec(
-                        "taskkill", "/PID", str(process.pid), "/T", "/F",
-                        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-                    )
-                    await asyncio.wait_for(killer.wait(), 5)
-            else:
-                with suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
-            with suppress(Exception):
-                await asyncio.wait_for(process.wait(), 5)
+            await finish_cleanup(close_subprocess(process, close_stdin=True))
         current = asyncio.current_task()
         for task in (self.reader_task, self.stderr_task):
             if task and task is not current:

@@ -203,6 +203,8 @@ async def set_concurrency_config(req: ConcurrencyConfigRequest):
 
 @router.put("/{name}/config")
 async def set_assistant_config(name: str, req: AssistantConfigRequest):
+    if name == "digital_person":
+        require_catalog_project("")
     config = assistant_registry.get(name)
     if config is None:
         raise HTTPException(status_code=404, detail=f"Assistant not found: {name}")

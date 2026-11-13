@@ -1,0 +1,23 @@
+.assistant-engine-root { max-width: 760px; margin: 0 auto; }
+.assistant-engine-heading { margin-bottom: 24px; }
+.assistant-engine-title { font-size: calc(20px * var(--font-scale)); font-weight: 650; margin-bottom: 6px; }
+.assistant-engine-intro { color: var(--muted); font-size: calc(13px * var(--font-scale)); }
+.assistant-engine-panel { padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.assistant-engine-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.assistant-engine-tab { height: 30px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg-2); font-size: calc(12px * var(--font-scale)); font-weight: 600; font-family: var(--font-body); cursor: pointer; }
+.assistant-engine-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.assistant-engine-label { flex-shrink: 0; font-size: calc(13px * var(--font-scale)); font-weight: 600; width: 84px; }
+.assistant-engine-control { flex: 1; min-width: 0; height: 30px; }
+.assistant-engine-refresh { flex-shrink: 0; height: 28px; padding: 0 8px; font-size: calc(11px * var(--font-scale)); }
+.assistant-engine-hint { margin-bottom: 12px; font-size: calc(11px * var(--font-scale)); color: var(--meta); }
+.assistant-engine-error { margin-top: 7px; font-size: calc(11px * var(--font-scale)); color: var(--warn); }
+.assistant-engine-footer { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.assistant-engine-notice { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
+.assistant-engine-tab[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 88%); color: var(--accent); }
+.assistant-engine-tab:disabled { cursor: default; }
+.assistant-engine-notice[data-status="error"] { color: var(--danger); }
+.assistant-engine-notice[data-status="success"] { color: var(--success); }
+@media (max-width: 1023px) {
+  .assistant-engine-panel { padding: 12px; }
+  .assistant-engine-control { height: var(--mobile-control-regular); }
+}

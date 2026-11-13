@@ -265,7 +265,7 @@ export const assistantApi = {
 // --- File System API ---
 
 export interface FilePreview {
-  type: 'text' | 'image' | 'binary' | 'video'
+  type: 'text' | 'image' | 'binary' | 'video' | 'audio'
   content_type: string
   content: string
   file_size: number

@@ -57,6 +57,19 @@ def test_project_session_history_allows_pagination(level):
     assert not allowed('POST', '/api/chat-sessions/session-1', query, 'visible', access_level=level)
 
 
+def test_shared_chat_execution_config_is_project_scoped_and_readers_cannot_write():
+    allowed = project_http_route_allowed
+    path = '/api/chat-sessions/session-1/execution-config'
+    query = [('project_id', 'visible')]
+    for level in ['read', 'edit']:
+        assert allowed('GET', path, query, 'visible', access_level=level)
+        assert not allowed('GET', path, [('project_id', 'private')], 'visible', access_level=level)
+        assert not allowed('GET', path, query + query, 'visible', access_level=level)
+    assert allowed('PATCH', path, query, 'visible', access_level='edit')
+    assert not allowed('PATCH', path, query, 'visible', access_level='read')
+    assert not allowed('PATCH', path, [('project_id', 'private')], 'visible', access_level='edit')
+
+
 @pytest.mark.parametrize('path', ['/api/task/task-1/history', '/api/project-actions/sessions/session-1'])
 def test_project_workspace_history_and_action_catalog_routes(path):
     query = [('project_id', 'visible')]

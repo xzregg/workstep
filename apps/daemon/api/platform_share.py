@@ -195,7 +195,7 @@ async def read_platform_share_artifact_content(request: Request, artifact_id: st
     scope = _share_scope(request)
     path = await _share_artifact_path(scope, artifact_id)
     media_type, _ = await asyncio.to_thread(mimetypes.guess_type, path)
-    return FileResponse(path, media_type=media_type if media_type and media_type.startswith('video/') else "application/octet-stream",
+    return FileResponse(path, media_type=media_type if media_type and media_type.startswith(('video/', 'audio/')) else "application/octet-stream",
                         filename=Path(path).name,
                         content_disposition_type="attachment")
 

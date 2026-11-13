@@ -358,6 +358,9 @@ class CoordinatorModule:
         channel_source: dict | None = None,
         schedule_run_id: str | None = None,
     ):
+        from .context_commands import reset_command
+        context_command = reset_command(normalized)
+        reset_session = reset_session or context_command is not None
         if not replay_pending and not schedule_run_id:
             require_user_actor()
         if pending_insert_ids:
@@ -424,6 +427,8 @@ class CoordinatorModule:
                     if session is not None:
                         session.session_id = None
                         session.engine_state_json = None
+                        session.summary = None
+                        session.summary_through_sequence = None
                         session.status = "reset"
                         session.version += 1
                         session.updated_at = now
@@ -432,6 +437,10 @@ class CoordinatorModule:
                 # 原子预留两个连续序号（用户消息 + 助手消息），
                 # 并发提交时也不会撞 (task_id, sequence) 唯一索引。
                 user_sequence = allocate_message_sequences(current.id, count=2)
+                if reset_session:
+                    session = self._prepare_session(task, engine, model)
+                    session.context_reset_sequence = user_sequence
+                    session.save()
                 assistant_sequence = user_sequence + 1
                 current.next_message_sequence = assistant_sequence + 1
                 actor_fields = current_actor_message_fields()
@@ -902,22 +911,27 @@ class CoordinatorModule:
                         await make_live_callback([])(event)
 
                 journaled_events: list[dict] = []
-                raw, events, session_id = await self._invoke(
-                    turn.engine or "",
-                    turn_model,
-                    coordinator_root,
-                    prompt,
-                    session_id_before,
-                    make_live_callback(journaled_events),
-                    turn_id,
-                    images=images,
-                    message_history=engine_state,
-                    thinking_effort=thinking_effort,
-                    provider_id=provider_id,
-                    system_prompt=prepared["system_prompt"],
-                    # Refresh role boundaries even when native resume keeps old instructions.
-                    system_prompt_each_turn=True,
-                )
+                from .context_commands import RESET_REPLY
+                if prepared["context_command"] == "":
+                    raw = json.dumps({"reply": RESET_REPLY, "intent": "answer", "proposal": None})
+                    events, session_id = [], None
+                else:
+                    raw, events, session_id = await self._invoke(
+                        turn.engine or "",
+                        turn_model,
+                        coordinator_root,
+                        prompt,
+                        session_id_before,
+                        make_live_callback(journaled_events),
+                        turn_id,
+                        images=images,
+                        message_history=engine_state,
+                        thinking_effort=thinking_effort,
+                        provider_id=provider_id,
+                        system_prompt=prepared["system_prompt"],
+                        # Refresh role boundaries even when native resume keeps old instructions.
+                        system_prompt_each_turn=True,
+                    )
                 self._record_unstreamed_journal_events(
                     journal_ref, events, journaled_events
                 )
@@ -1261,8 +1275,10 @@ class CoordinatorModule:
             project.workstep_dir,
             assistant.event_log_path,
         )
+        from .context_commands import reset_command
         return {
             "turn": turn,
+            "context_command": reset_command(user_message.content),
             "creator_id": task.creator_id,
             "workstep_dir": project.workstep_dir,
             "assistant": assistant,
@@ -1505,6 +1521,7 @@ class CoordinatorModule:
                 (Message.task == task)
                 & (Message.channel == COORDINATOR_CHANNEL)
                 & (Message.run_status.in_(["completed", "succeeded"]))
+                & (Message.sequence >= session.context_reset_sequence)
             )
             .order_by(Message.sequence)
         )

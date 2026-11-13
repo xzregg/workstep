@@ -44,7 +44,7 @@ class _LiveFakeCodexProcess:
             self.stdout.feed_eof()
         self.stderr = asyncio.StreamReader()
         self.stderr.feed_eof()
-        self.returncode = 0
+        self.returncode = 0 if eof else None
         self.terminated = False
         self.args: list[str] = []
 
@@ -53,9 +53,11 @@ class _LiveFakeCodexProcess:
 
     def terminate(self):
         self.terminated = True
+        self.returncode = -15
 
     def kill(self):
         self.terminated = True
+        self.returncode = -9
 
 
 def _codex_config():
@@ -471,6 +473,8 @@ async def test_claude_agent_sdk_client_injects_live_message(monkeypatch):
     delivered = [e for e in events if e.type == "live_message"]
     assert delivered and delivered[0].data["message_id"] == "mid-1"
     assert delivered[0].data["status"] == "delivered"
+    from engines.core.session_pool import close_session_pools
+    await close_session_pools()
     assert client.disconnected is True
 
 
@@ -511,6 +515,8 @@ async def test_claude_agent_sdk_client_reports_failed_injection(monkeypatch):
         e.type == "live_message" and e.data.get("status") == "delivered"
         for e in events
     ), "收流后放入的插入消息不应被投递"
+    from engines.core.session_pool import close_session_pools
+    await close_session_pools()
     assert client.disconnected is True
 
 
@@ -550,6 +556,8 @@ async def test_qoder_sdk_client_injects_live_message(monkeypatch):
     delivered = [e for e in events if e.type == "live_message"]
     assert delivered and delivered[0].data["message_id"] == "mid-1"
     assert delivered[0].data["status"] == "delivered"
+    from engines.core.session_pool import close_session_pools
+    await close_session_pools()
     assert client.disconnected is True
 
 
@@ -589,6 +597,8 @@ async def test_qoder_sdk_client_reports_failed_injection(monkeypatch):
         e.type == "live_message" and e.data.get("status") == "delivered"
         for e in events
     ), "收流后放入的插入消息不应被投递"
+    from engines.core.session_pool import close_session_pools
+    await close_session_pools()
     assert client.disconnected is True
 
 
@@ -886,7 +896,11 @@ async def test_codex_sdk_acks_live_message_before_response_events(tmp_path, monk
     assert ack_index < first_index
     thread = next(iter(_FakeAsyncCodex.instances[0].threads.values()))
     assert thread._turn_count == 1
-    assert _FakeAsyncCodex.instances and _FakeAsyncCodex.instances[0].closed is True
+    # A completed successful turn retains its process for the next message.
+    assert _FakeAsyncCodex.instances and _FakeAsyncCodex.instances[0].closed is False
+    from engines.codex_sdk_clients import close_codex_clients
+    await close_codex_clients()
+    assert _FakeAsyncCodex.instances[0].closed is True
 
 
 @pytest.mark.anyio

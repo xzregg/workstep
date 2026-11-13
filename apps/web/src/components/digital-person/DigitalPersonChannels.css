@@ -1,0 +1,14 @@
+.digital-person-channels { display: grid; gap: 20px; max-width: 720px; }
+.digital-person-channels > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.digital-person-channels > label { display: grid; gap: 8px; font-size: 13px; color: var(--fg-2); }
+.digital-person-channels > button { justify-self: end; }
+.digital-person-channel { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: .5px solid var(--border); }
+.digital-person-channel > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.digital-person-channel strong { overflow-wrap: anywhere; font-size: 14px; }
+.digital-person-channel span,.digital-person-channel small { color: var(--muted); font-size: 12px; }
+.digital-person-channel .digital-person-actions { display: flex; flex-direction: row; margin: 0; flex-shrink: 0; gap: 8px; }
+@media(max-width:1023px) {
+  .digital-person-channel { flex-wrap: wrap; gap: 12px; }
+  .digital-person-channel .digital-person-actions { width: 100%; justify-content: flex-end; }
+  .digital-person-channel .btn { min-height: var(--mobile-control-regular); }
+}

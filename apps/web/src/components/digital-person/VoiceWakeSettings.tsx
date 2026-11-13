@@ -1,3 +1,4 @@
+import DigitalPersonWake from './DigitalPersonWake'
 import { useEffect, useState } from 'react'
 import { voiceWakeApi, type VoiceWakeDraft } from '../../api/digitalPerson'
 import { useI18n } from '../../i18n'
@@ -37,9 +38,8 @@ export default function VoiceWakeSettings({ onDirtyChange, onTest, testDisabled,
     finally { setSaving(false) }
   }
   return <section className="voice-wake-settings" aria-label={t('voiceWake.title')}>
-    <div className="voice-wake-heading"><h2>{t('voiceWake.title')}</h2><span>{t('voiceWake.inactive')}</span></div>
-    <p>{t('voiceWake.pending')}</p>
-    <Button role="switch" aria-checked={false} disabled>{t('voiceWake.enable')}</Button>
+    <div className="voice-wake-heading"><h2>{t('voiceWake.title')}</h2></div>
+    <DigitalPersonWake keyword={saved?.keyword} sensitivity={saved?.sensitivity} />
     {loading ? <div role="status"><Spinner />{t('common.loading')}</div> : draft && <>
       <label>{t('voiceWake.keyword')}<Input value={draft.keyword} maxLength={40} disabled={saving} onChange={event=>{setDraft({...draft,keyword:event.target.value});setNotice(false)}} /></label>
       <label>{t('voiceWake.sensitivity')}<Select value={draft.sensitivity} disabled={saving} onChange={event=>{setDraft({...draft,sensitivity:event.target.value as VoiceWakeDraft['sensitivity']});setNotice(false)}}>

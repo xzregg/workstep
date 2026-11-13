@@ -22,3 +22,13 @@
   .voice-input-actions button { min-height: var(--mobile-control-touch); }
   .speech-settings { padding: 12px; }
 }
+
+.speech-settings-panel:not([hidden]), .speech-output-settings { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.speech-settings-panel[hidden] { display: none; }
+.speech-settings-panel > .voice-wake-settings { border-top: 0; padding-top: 0; margin-top: 0; }
+.speech-output-settings > fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
+.speech-output-settings .digital-person-voice { display: grid; gap: 16px; }
+.speech-output-settings .digital-person-voice-preview { display: flex; gap: 12px; align-items: center; }
+.speech-output-settings label { flex-wrap: wrap; }
+.speech-output-settings label > :is(select,input[type=number]) { max-width: 100%; min-width: 0; }
+.speech-output-settings > .btn { align-self: flex-start; }

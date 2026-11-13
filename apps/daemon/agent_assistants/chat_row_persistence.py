@@ -62,7 +62,7 @@ class ChatRowPersistence(PersistenceAdapter):
         row = ChatSession.get_or_none(ChatSession.id == session.session_id)
         if row is None:
             return
-        session.messages = self._load_messages(row)
+        session.messages = self._load_messages(row, context_only=True)
         session.resolved_session_id = row.engine_session_id
         session.extra['role_checkpoint'] = _load_json(row.role_checkpoint_json, None)
         session.extra['role_binding'] = _load_json(row.role_binding_json, None)
@@ -82,13 +82,15 @@ class ChatRowPersistence(PersistenceAdapter):
         if row.vision_model is not None:
             session.vision_model = row.vision_model
 
-    def _load_messages(self, row: ChatSession, *, limit: int | None = None, offset: int = 0) -> list[dict]:
+    def _load_messages(self, row: ChatSession, *, limit: int | None = None, offset: int = 0, context_only: bool = False) -> list[dict]:
         messages: list[dict] = []
         rows = (
             ChatMessage.select()
             .where(ChatMessage.session == row)
             .order_by(ChatMessage.created_at, ChatMessage.id)
         )
+        if context_only and row.context_reset_at:
+            rows = rows.where(ChatMessage.created_at >= row.context_reset_at)
         if limit is not None:
             rows = rows.order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc()).limit(limit).offset(offset)
         for item in rows:
@@ -176,6 +178,19 @@ class ChatRowPersistence(PersistenceAdapter):
                 row.role_checkpoint_json = self._dump_state(session.extra['role_checkpoint'])
             pending_handoff = session.extra.get("pending_handoff")
             if isinstance(pending_handoff, dict):
+                if pending_handoff.get("mode") == "none":
+                    # Commit a durable boundary only when the new user turn is
+                    # saved. Selecting and undoing an unsent handoff changes no history.
+                    latest_user = next((item for item in reversed(session.messages)
+                                        if item.get("role") == "user"), None)
+                    if latest_user is not None:
+                        boundary = (_from_iso(pending_handoff.get("context_boundary"))
+                                    or _from_iso(latest_user.get("created_at")))
+                        if boundary is not None:
+                            pending_handoff["context_boundary"] = boundary.isoformat()
+                            row.context_reset_at = boundary
+                            session.messages = [item for item in session.messages
+                                                if (_from_iso(item.get("created_at")) or boundary) >= boundary]
                 last = session.messages[-1] if session.messages else {}
                 if last.get("role") == "assistant" and last.get("status") == "succeeded":
                     pending_handoff = {**pending_handoff, "consumed": True}

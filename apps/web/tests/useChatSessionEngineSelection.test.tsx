@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { useChatSessionEngineSelection } from '../src/hooks/useChatSessionEngineSelection'
 import { EMPTY_ENGINE_CONFIG } from '../src/utils/chatEngineConfig'
 
-test('session engine selection restores local choices and clears dependent models', async () => {
+test('session engine selection restores shared config over unsaved local choices', async () => {
   const { window } = installDomEnvironment()
   const key = 'workstep-chat-engine-config:project-1:session-1'
   window.localStorage.setItem(key, JSON.stringify({
@@ -42,15 +42,15 @@ test('session engine selection restores local choices and clears dependent model
       selection.restoreSession({ id: 'session-1', engine: 'codex_sdk', provider_id: '' } as never)
     })
     assert.deepEqual(selection.config, {
-      engine: 'codex_sdk', providerId: 'provider-1', model: 'main',
-      fastModel: 'fast', visionModel: 'vision', thinkingEffort: 'high', providerCleared: false,
+      engine: 'codex_sdk', providerId: '', model: '',
+      fastModel: '', visionModel: '', thinkingEffort: '', serviceTier: '', providerCleared: false,
     })
     await act(async () => { selection.chooseProvider('provider-2') })
     assert.deepEqual(selection.config, {
       ...EMPTY_ENGINE_CONFIG, engine: 'codex_sdk', providerId: 'provider-2',
     })
     await act(async () => { root.unmount() })
-    assert.equal(JSON.parse(window.localStorage.getItem(key) || '{}').providerId, 'provider-2')
+    assert.equal(JSON.parse(window.localStorage.getItem(key) || '{}').providerId, '')
   } finally {
     await window.happyDOM.close()
   }
@@ -143,7 +143,7 @@ test('session engine selection fills an empty provider from the session row', as
   }
 })
 
-test('session engine selection ignores an incompatible row provider', async () => {
+test('session engine selection displays the shared provider without silently rewriting it', async () => {
   const { window } = installDomEnvironment()
   const key = 'workstep-chat-engine-config:project-1:session-3'
   window.localStorage.setItem(key, JSON.stringify({
@@ -175,8 +175,8 @@ test('session engine selection ignores an incompatible row provider', async () =
         id: 'session-3', engine: 'claude', provider_id: 'row-provider',
       } as never)
     })
-    // 协议不兼容时仍按「跟随默认」展示，不把不兼容供应商填进本地配置。
-    assert.equal(selection.config.providerId, '')
+    // 配置失效由后台校验报错，不能用本地默认冒充共享配置。
+    assert.equal(selection.config.providerId, 'row-provider')
     await act(async () => { root.unmount() })
   } finally {
     await window.happyDOM.close()
@@ -184,7 +184,7 @@ test('session engine selection ignores an incompatible row provider', async () =
 })
 
 
-test('explicit default provider survives session restoration', async () => {
+test('unsaved local default provider cannot override the shared provider', async () => {
   const { window } = installDomEnvironment()
   const key = 'workstep-chat-engine-config:project-1:session-default'
   let selection!: ReturnType<typeof useChatSessionEngineSelection>
@@ -205,8 +205,8 @@ test('explicit default provider survives session restoration', async () => {
     await act(async () => selection.restoreSession({
       id: 'session-default', engine: 'codex_sdk', provider_id: 'old-provider',
     } as never))
-    assert.equal(selection.config.providerId, '')
-    assert.equal(selection.config.providerCleared, true)
+    assert.equal(selection.config.providerId, 'old-provider')
+    assert.equal(selection.config.providerCleared, false)
     await act(async () => selection.chooseProvider('new-provider'))
     assert.equal(selection.config.providerCleared, false)
   } finally {

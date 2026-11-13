@@ -19,7 +19,7 @@
 - [GitHub settings](github-settings.md) — repository features, rulesets, security, Pages, and analytics.
 - [Release checklist](releasing.md) — unsigned desktop packaging, SBOM, checksums, approval, and clean-machine validation.
 - [Plan index](../plans/README.md) — remaining proposals, evolving behavior boundaries, and pending acceptance.
-- [Design system](../DESIGN.md) — visual decisions; current product scope is described in the project overview above.
+- [统一设计规范](../DESIGN.md) — 工作台、官网与平台后台的视觉规格、组件选型、响应式及界面验收唯一入口。
 
 Repository-agent instructions remain in [`AGENTS.md`](../AGENTS.md); they point back to these human-facing documents instead of duplicating them.
 

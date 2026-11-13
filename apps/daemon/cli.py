@@ -141,6 +141,15 @@ def build_parser() -> argparse.ArgumentParser:
                 help="include full data instead of list summaries",
             )
 
+    person = subparsers.add_parser('digital-person', help='delegate work through the device companion')
+    person_sub = person.add_subparsers(dest='subcommand', required=True)
+    delegate = person_sub.add_parser('delegate', help='start a tracked project execution session')
+    delegate.add_argument('--project', dest='project_id', required=True)
+    delegate.add_argument('--instruction', required=True)
+    delegate.add_argument('--session', dest='origin_session_id', required=True)
+    delegate.add_argument('--idempotency-key', dest='request_id', required=True)
+    add_json(delegate)
+
     context = subparsers.add_parser("context", help="read current execution context")
     context_sub = context.add_subparsers(dest="subcommand", required=True)
     add_json(context_sub.add_parser("get", help="get the current WorkStep project and session IDs"))
@@ -495,6 +504,9 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     """Resolve a parsed command to one tool call and return its JSON result."""
     client = client or WorkstepClient(base_url=args.url)
     command = args.command
+    if command == 'digital-person':
+        return await client.call('workstep_delegate_digital_person', {
+            **{key: getattr(args, key) for key in ('project_id', 'instruction', 'origin_session_id', 'request_id')}, 'confirm': 'yes'})
     if command == "context":
         from services.conversation_context import current_conversation
         return current_conversation()

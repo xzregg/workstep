@@ -20,6 +20,18 @@
 
 ## 0. 基类层次（先读）
 
+### 会话传输复用
+
+`supports_process_reuse` 声明原生连接能否在一轮结束后继续接收下一轮。它不等同于 `supports_resume`：一次性 `codex exec resume` 能恢复历史，但已退出的进程不能复用。支持复用的传输必须按 `(engine, cwd, native session ID)` 独占绑定；同会话拒绝重叠执行，不同会话独立并发。任务的每个任务／步骤分别保存原生 ID，不能按模型或工作流模板把会话混用。
+
+`engines/core/session_pool.py` 提供共享缓存和 `ManagedConnection` 常驻所有者协程。默认成功完整收流后空闲 600 秒、每个引擎最多缓存 8 个空闲客户端；正在执行、等待审批不计空闲。启动参数、供应商、认证、权限、连接器、技能或来源身份变化时重建；取消、错误、提前关闭不得返回可用缓存。新请求必须绑定自己的回调和队列，空闲客户端不得保留上一轮的审批授权。进程树回收走 `core/process_cleanup.py`，daemon 在消息生产者／任务停止后关闭全部池。
+
+Codex SDK 保留官方 AsyncThread；Claude Agent SDK／Qoder SDK 由 `core/sdk_reuse.py` 保留双向客户端，轮次收尾只结束本轮消费者；Hermes／OpenCode／自定义 ACP 通过 `core/acp_reuse.py` 保留连接与原生 session，不重复 initialize/load；Claude CLI 通过 `core/cli_reuse.py` 固定 JSONL stdin/stdout，普通轮次结束后归还客户端；Cursor 保留 bridge 和 agent，通过同一 agent.send 发起下一轮。DeepSeek Harness 已按项目与配置共享原生运行时；其不具备持久化恢复的旧 SDK 仍须保留运行时，不能通过空闲淘汰丢失历史。Pydantic AI 是进程内运行，没有对应的主引擎子进程缓存。Codex CLI／OpenClaw 当前一次性命令不复用。
+
+Claude Agent SDK／Qoder SDK／Claude CLI 若本轮有运行中插入消息，原生传输可能合并或排队输入，不能按输入数量推算结果数量；此时关闭输入、消费到 EOF 后回收，下一轮按原生 session ID 恢复，防止旧回复串入下一请求。
+
+自定义引擎声明、宿主隔离 worker 的复用和必测项见 [接口规范](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md#进程复用声明与验收)。导入、安装、验证及注册遵守同一约定；公共 `session_transport_reuse` 之外，专属测试必须核对内层原生客户端 PID／连接，不能只证明外层 worker 常驻。
+
 ### 会话系统指令追加
 
 统一执行入口默认在失败后立即重试一次。Codex SDK 收到 `Selected model is at capacity` 容量错误时，改为等待 5、10、20、40 秒后重试，最多执行 5 次；保留原模型和已有会话，新线程尚无回合事件时仍重新创建。重试等待使用异步计时，调用停止或取消运行会打断等待；耗尽后才透出最终错误。手动 `/compact` 沿用不自动重试的规则。行为回归：`tests/test_codex_sdk_retry.py`、`tests/test_engines.py`。
@@ -672,20 +684,20 @@ WorkStep 后台通过 `core/interaction_policy.py` 和 `AcpEngineBase.request_in
 
 ## 8. 资源与安全
 
-- `stop()` 必须幂等且可重复调用；`spawn()` 的 `finally` 必须关闭子进程 / SDK client / 连接。
+- `stop()` 必须幂等且可重复调用；`spawn()` 的 `finally` 必须归还成功完成的会话租约，或关闭失败／取消／不支持复用的子进程、SDK client 和连接。
 - 不得把 API Key、PAT、权限令牌等敏感内容写入日志或消息。
+
+后台启动和退出通过 `services/process_recovery.py` 管理跨重启的进程归属：本轮环境中的 `WORKSTEP_PROCESS_OWNER` / `WORKSTEP_PROCESS_SCOPE` 应随原生子进程环境继承，不在用户消息中暴露；如果自定义适配器必须重建环境，须保留这两个宿主字段。服务每秒在线程中保存 PID 与创建时间；下次启动确认旧后台已退出后，仅回收标记和身份匹配的后代，正常退出及业务启动失败也执行最后清理。活跃后台、其他配置目录及未登记的历史进程不按名称清理。 归属记录格式v2额外绑定系统启动身份；Linux还绑定PID/cgroup命名空间、命名空间PID 1创建时间和cgroup归属，防止共用数据卷或容器重建后的PID映射误判。命名空间编号可能被回收复用，不能单独用编号判定；不同运行环境及缺少身份信息的v1记录只跳过，不按其中PID回收。读取不到必要身份信息时禁用这层辅助兜底，不能降级为仅按PID扫描。原生组件既清空继承环境，又在首次检查点前脱离父树的情形没有可靠归属证据，不能保证自动找回。 回收属于辅助兜底，准备、扫描或写盘异常只告警，不阻止主业务启动；无法写入初始归属记录时不发布标记、不启动本轮监控，正常服务专属清理仍照常执行。单条旧记录失败不阻止其他记录回收；退出检查点失败仍尝试清理，失败时保留已有记录，不能覆盖主业务错误或吞掉启动取消。
 
 ### 8.1 空闲超时保护
 
 `TaskRunner` 与共享聊天运行时 `AssistantRuntime` 的空闲看门狗默认 1200 秒（20 分钟），为长时间思考和工具执行留出更长等待时间，同时限制持续静默的执行。可在 `~/.workstep/config.json` 设置 `engine_idle_timeout_seconds` 调整（单位秒；默认 1200；0 表示关闭；无效配置回退到 1200）。启用后，超过设定时间没有引擎事件，运行时会调用 `engine.stop()` 停止执行；流程步骤标记为 `failed`，聊天回合标记为 `error`，错误信息含「引擎空闲超时」。**不会清除引擎 Session**：重新执行步骤或重新发送消息可使用保留的会话恢复。配置读取遵循 `WORKSTEP_CONFIG_DIR`。
 
-进程内 SDK 引擎（Claude Agent SDK、Qoder SDK）的 session 在回合结束后仍保持打开，需要主动结束。它们的输入采用**流式 prompt 源**：初始 prompt 与后续插入消息都经 `client.query(AsyncIterable)` 写入 stdin，输入源结束 → SDK `end_input()` 关闭 stdin → CLI 收到 EOF 处理完当前回合后优雅退出 → SDK 发出流结束帧（`end`），事件流随之结束。这就是确定性的「主动结束事件」，不依赖超时兜底。
+Claude Agent SDK、Qoder SDK 使用流式 prompt 源把初始输入与运行中插入消息送入 `client.query(AsyncIterable)`。收到 `result` 后，共享 `sdk_turn_watchdog` 检查待注入队列及正在投递的输入：没有待处理输入就立即结束本轮输入源，并调用断开回调，不增加插入宽限窗口。复用包装层的 `disconnect()` 只结束本轮消费者；正常轮次保留原生传输，不向 CLI 发送 EOF。若本轮发生过运行中插入，则关闭原生输入、消费到 EOF 后回收；原生 CLI 可能把多条输入合并成一次结果，也可能分成多轮，因此不能按输入条数等待相同数量的 `result`。断开回调仍由 `escalate_seconds`（默认 15 秒）限制收尾时间，失败时销毁租约，不能继续缓存未完整收流的连接。
 
-这类引擎挂**回合看门狗** `sdk_turn_watchdog`（`engines/core/base.py`，所有 SDK 引擎共享，不依赖具体引擎）：收到本回合 `result`（回复结束）后检查插入队列——**队列为空立即调用 `on_idle()` 结束 prompt 源收尾，不论本回合是否插入过消息，都不等任何宽限期**；只有队列中仍有待注入消息时才保持 session，等该消息被消费进下一回合的 `result` 后再重新评估。`result` 之前已消费的注入（CLI 可能把它合并进当前回合）也不会触发保活，因此不存在「等永远不会出现的下一次 result」的卡死。若 CLI 在 `escalate_seconds`（默认 15s）内仍未退出（如后台任务挂起），再以 `disconnect()` 强制收尾。看门狗不再产生 `idle_timeout` 事件（无宽限期可超时）。
+其余支持执行中插入的引擎遵循同一原则：**插入队列为空即收尾，不等待插入窗口**。`codex_sdk` 与 `pydantic_ai` 在每轮结束后直接检查队列，空队列立即结束（不再有轮间等待窗口）；`claude_code` 的普通轮次在 `result` 后归还原生 JSONL 连接；发生运行中插入时关闭输入并读到 EOF 后回收；`codex`（CLI）进程退出后检查队列，空队列直接结束。只有队列中已有待注入消息时才继续下一轮。回复完成后才发出的插入消息不再被接收（步骤已收尾），runner 会将其标记为 `failed`。
 
-其余支持执行中插入的引擎遵循同一原则：**插入队列为空即收尾，不等待插入窗口**。`codex_sdk` 与 `pydantic_ai` 在每轮结束后直接检查队列，空队列立即结束（不再有轮间等待窗口）；`claude_code` 在 `result` 后立即 `close_stream`；`codex`（CLI）进程退出后检查队列，空队列直接结束。只有队列中已有待注入消息时才继续下一轮。回复完成后才发出的插入消息不再被接收（步骤已收尾），runner 会将其标记为 `failed`。
-
-引擎侧注意：`spawn()` 的 `finally` 必须做好资源清理（关闭子进程/SDK client），因为空闲超时路径会先调 `stop()` 再 `aclose()` 事件流；不要在 `finally` 中依赖再次 `yield` 才能完成清理。
+引擎侧注意：`spawn()` 的 `finally` 必须归还或销毁租约；仅成功完整结束的轮次可缓存，其余关闭子进程/SDK client，因为空闲超时路径会先调 `stop()` 再 `aclose()` 事件流；不要在 `finally` 中依赖再次 `yield` 才能完成清理。
 
 ## 9. 注册新引擎
 
@@ -988,14 +1000,14 @@ Pydantic AI 的 `_prepare_prompt_input` 在输入捕获前异步检查持久化�
 
 ### 原生系统指令的恢复与重复设置
 
-ACP 统一接受固定配置，各引擎按自己的恢复约定决定是否传入；Codex SDK 依据 session ID 与 `supports_resume`，Pydantic AI 依据持久化系统消息，Claude/Qoder SDK 仍保留每轮启动配置。
+ACP 统一接受固定配置，各引擎按自己的恢复约定决定是否传入；Codex SDK 依据 session ID 与 `supports_resume`，Pydantic AI 依据持久化系统消息，Claude/Qoder SDK 每轮核对启动配置指纹，相同配置复用，变化则重建。
 
 | 引擎 | 同会话固定规则的处理 |
 |---|---|
 | Pydantic AI | 从 Harness 的系统消息恢复；规则相同不新增，变更／清空替换自己的消息 |
 | Codex SDK | 有 session ID 且支持恢复时不覆盖固定指令，不读取原生日志；首次、无恢复能力或显式每轮注入时设置。已有会话继续使用原指令，变更新会话生效 |
-| Claude Agent SDK | 当前适配器每轮创建新进程；保持 preset append，不凭 ID 省略。SDK 未设置 system_prompt 时可生成空 `--system-prompt`；较新 Claude 的 snapshot 是版本相关能力，尚未在本适配器接入 |
-| Qoder SDK | 每轮创建新进程，当前接口未验证系统配置随 resume 恢复；继续设置 preset append，不能将聊天历史恢复视作系统配置恢复 |
+| Claude Agent SDK | 相同启动配置保留原生双向客户端；preset append 属于启动配置，变化时重建，不向历史重复追加。SDK 未设置 system_prompt 时可生成空 `--system-prompt`；较新 Claude 的 snapshot 是版本相关能力，尚未在本适配器接入 |
+| Qoder SDK | 相同启动配置保留原生双向客户端；原生恢复或配置变化重建时仍设置 preset append，不能将聊天历史恢复视作系统配置恢复 |
 
 Codex 的恢复判断在 `codex_sdk.py::_prepare_prompt_input` 中、输入捕获之前完成，无配置或原生日志 I/O。内部空字符串标记表示不重新覆盖 developer 配置，实际 SDK 的 `thread_resume` 不携带新的 `developer_instructions`，`config` 中也不携带自定义 developer 覆盖；原生会话负责恢复规则。首次和 `system_prompt_each_turn=True` 仍传递独立规则。恢复失败沿用引擎错误处理，不通过读取日志猜测或补写指令。此逻辑不另建数据库字段，不写入原生会话文件。
 

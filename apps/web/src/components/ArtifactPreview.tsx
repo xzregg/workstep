@@ -16,6 +16,7 @@ import { useI18n } from '../i18n'
 import MarkdownMessage from './MarkdownMessage'
 import CodeFilePreview from './CodeFilePreview'
 import { copyText } from '../utils/clipboard'
+import { openFilePreviewWindow } from '../utils/filePreviewNavigation'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 import ProjectDirectoryBrowser from './ProjectDirectoryBrowser'
 import { HTML_PREVIEW_SANDBOX, isolatedHtmlDocument, prepareFrame } from '../utils/htmlPreviewCompat'
@@ -276,14 +277,12 @@ export default function ArtifactPreview({
       variant="primary"
       className="artifact-open-window-button"
       onClick={() => {
-        window.open(
+        openFilePreviewWindow(
           taskFilePreview?.windowUrl
             ? taskFilePreview.windowUrl(view.path, name || filenameFromPath(view.path), line)
             : projectId
               ? previewWindowUrl(view.path, name || filenameFromPath(view.path), projectId, line)
               : taskFilePreview!.rawUrl(preview.relative_path || view.path),
-          '_blank',
-          'noopener,noreferrer',
         )
       }}
     >
@@ -292,11 +291,17 @@ export default function ArtifactPreview({
     </Button>
   ) : null
 
-  if (type === 'video') {
+  if (type === 'video' || type === 'audio') {
     return (
-      <div className="artifact-video-preview">
+      <div className={`artifact-media-preview artifact-${type}-preview`}>
         {fileHeader(name || filenameFromPath(view.path), <>{downloadButton}{openWindowButton}</>)}
-        <video className="artifact-video-player" src={rawUrl} controls playsInline preload="metadata" />
+        {type === 'video' ? (
+          <video className="artifact-video-player" src={rawUrl} controls playsInline preload="metadata" />
+        ) : (
+          <div className="artifact-audio-content">
+            <audio className="artifact-audio-player" src={rawUrl} controls preload="metadata" />
+          </div>
+        )}
         {fileFooter(content_type, file_size)}
       </div>
     )

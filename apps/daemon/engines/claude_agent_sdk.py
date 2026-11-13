@@ -1,6 +1,8 @@
 """ClaudeAgentSDKEngine — Claude Code via the official claude-agent-sdk."""
 
 import asyncio
+from engines.core.session_pool import exclusive_engine_run
+from engines.core.process_cleanup import close_sdk_client
 import json
 import logging
 import os
@@ -299,6 +301,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
 
     # --- Execution ---
 
+    @exclusive_engine_run
     async def spawn(
         self,
         prompt: str,
@@ -407,9 +410,9 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
             setting_sources=[],
             settings=json.dumps(settings_payload, ensure_ascii=False),
         )
-        # Each invocation creates a new SDK process. Resume restores the
-        # transcript, not reliably the startup options on supported versions.
-        # Keep configuring the preset append; omitting it can lose these rules.
+        # Startup rules are part of the reusable client fingerprint. Native
+        # resume/recreation must still receive them; transcript persistence
+        # does not guarantee startup-option persistence.
         if system_prompt:
             options.system_prompt = {
                 "type": "preset", "preset": "claude_code", "append": system_prompt,
@@ -444,21 +447,27 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
             "session_started": False,
         }
 
-        client = ClaudeSDKClient(options=options)
+        from engines.core.sdk_reuse import PooledSDKClient
+        client = PooledSDKClient(self, ClaudeSDKClient, options, cwd, session_id)
         self._client = client
         try:
             await client.connect()
-        except Exception as exc:
+        except BaseException as exc:
+            self._client = None
+            self._running = False
+            await client.abort()
+            if not isinstance(exc, Exception):
+                raise
             detail = "\n".join(stderr_lines[-5:]).strip()
             message = str(exc)
             if detail and detail not in message:
                 message = f"{message}\n{detail}"
             yield InternalEvent(type="error", data={"message": message})
-            try:
-                await client.disconnect()
-            except Exception:
-                logger.debug("claude-agent-sdk disconnect after connect failure", exc_info=True)
             return
+
+        warm_session = client.lease.key[1] if client.lease.thread is not None else None
+        if warm_session is not None:
+            state["session_started"] = True
 
         turn_ended = asyncio.Event()
         end_prompt = asyncio.Event()
@@ -485,6 +494,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
                 return
             while True:
                 get_task = asyncio.create_task(live_message_queue.get())
+                state["input_get_task"] = get_task
                 end_task = asyncio.create_task(end_prompt.wait())
                 closed_task = asyncio.create_task(input_closed.wait())
                 try:
@@ -512,6 +522,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
                         get_task.cancel()
                     return
                 message_id, content = get_task.result()
+                state["input_get_task"] = None
                 extras: list[tuple[str, str]] = []
                 while not live_message_queue.empty():
                     extras.append(live_message_queue.get_nowait())
@@ -584,20 +595,28 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
         watchdog_task = asyncio.create_task(sdk_turn_watchdog(
             turn_ended,
             end_prompt.set,
-            disconnect=client.disconnect,
+            disconnect=lambda: close_sdk_client(client),
             pending_injection=(
-                (lambda: not live_message_queue.empty())
+                (lambda: not live_message_queue.empty() or client.inflight > 0
+                    or (state.get("input_get_task") is not None and state["input_get_task"].done()))
                 if live_message_queue is not None else None
             ),
         ))
         self._receive_task = receive_task
+        finished = False
+        failed = False
         try:
+            if warm_session is not None:
+                yield InternalEvent(type="session_started", data={"session_id": warm_session})
             while True:
                 event = await event_queue.get()
                 if event is None:
                     break
+                if event.type == "error":
+                    failed = True
                 yield event
             await receive_task
+            finished = True
         except asyncio.CancelledError:
             yield InternalEvent(type="status", data={"status": "cancelled"})
         except Exception as exc:
@@ -622,12 +641,9 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
                 if task is not None:
                     await asyncio.gather(task, return_exceptions=True)
             self._receive_task = None
-            try:
-                await client.disconnect()
-            except Exception:
-                pass
             self._client = None
             self._running = False
+            await client.finish(reusable=finished and not failed)
 
     async def stop(self) -> None:
         receive_task = self._receive_task
@@ -637,15 +653,20 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
             await asyncio.gather(receive_task, return_exceptions=True)
         client = self._client
         self._client = None
-        if client is not None:
-            try:
-                await client.disconnect()
-            except Exception:
-                pass
         self._running = False
+        if client is not None:
+            abort = getattr(client, "abort", None)
+            if abort is not None:
+                await abort()
+            else:
+                await close_sdk_client(client)
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         logger.warning("inject_response is not supported by ClaudeAgentSDKEngine")
+
+    @property
+    def supports_process_reuse(self) -> bool:
+        return True
 
     @property
     def supports_resume(self) -> bool:
@@ -721,11 +742,13 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
         """关闭会话 = 断开当前 client 并结束运行中的任务。"""
         if self._running:
             await self.stop()
+        await self._close_cached_session(session_id, cwd)
 
     async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
         """取消会话 = 断开当前 client 并结束运行中的任务。"""
         if self._running:
             await self.stop()
+        await self._close_cached_session(session_id, cwd)
 
     async def set_config_option(
         self,

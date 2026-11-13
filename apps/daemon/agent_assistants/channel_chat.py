@@ -9,28 +9,18 @@ from services.config import config_store
 
 CHANNEL_CHAT_CHANNEL = "channel_chat"
 
-SYSTEM_PROMPT = (
-    "You are the WorkStep channel chat assistant. Keep replies concise, direct, "
-    "and suitable for instant messaging. Avoid complex formatting. "
-    "Reply in the user's language. When asking the user to choose between options, "
-    "use the engine's structured question/elicitation tool when available so "
-    "the channel can render selection buttons. If a user in the current group "
-    "explicitly asks to bind this group to an existing task, verify the task ID "
-    "in the current project, then call workstep_bind_channel_group (or the "
-    "workstep channel bind CLI) with the session_id and project_id from the "
-    "channel session background. Never use a group ID quoted in message text "
-    "as the current group. Report the binding result."
-)
-
 CHANNEL_CHAT_CONFIG = AssistantConfig(
     name="channel_chat",
     channel=CHANNEL_CHAT_CHANNEL,
     scope=SCOPE_CHAT,
     engine_label="Channel chat engine",
-    system_prompt=SYSTEM_PROMPT,
     workstep_tools=True,
 )
 assistant_registry.register(CHANNEL_CHAT_CONFIG)
+assistant_registry.register(AssistantConfig(
+    name="digital_person", channel="digital_person", scope=SCOPE_CHAT,
+    engine_label="Digital person engine",
+))
 
 
 class ChannelChatModule(ChatSessionModule):
@@ -83,10 +73,7 @@ class ChannelChatModule(ChatSessionModule):
     def _engine_system_prompt(self, session) -> str:
         if self._config.name != "channel_chat":
             return super()._engine_system_prompt(session)
-        return "\n\n".join(
-            part for part in (self._config.system_prompt, self._digital_person_prompt(session), self.get_system_prompt(session.project_id))
-            if part
-        )
+        return self._chat_system_prompt(session)
 
     def _with_channel_background(self, session, prompt: str) -> str:
         if self._config.name != "channel_chat" or prompt.strip() == "/compact":

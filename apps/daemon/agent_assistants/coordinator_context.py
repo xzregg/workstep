@@ -115,23 +115,25 @@ def assemble_context(
         .order_by(ReviewRun.started_at.desc())
         .limit(10)
     ]
+    from .context_commands import context_content
     current_message = Message.get_by_id(turn.user_message_id)
     from services.task_state import summarize_task_state, current_task_steps
     task_state = summarize_task_state(task.status, current_task_steps(task), reason=task.status_reason)
+    session = CoordinatorSession.get_or_none(CoordinatorSession.task == task)
     messages = [
-        {"role": item.role, "content": item.content}
+        {"role": item.role, "content": context_content(item.content)}
         for item in Message.select()
         .where(
             (Message.task == task)
             & (Message.channel == COORDINATOR_CHANNEL)
             & (Message.id != turn.assistant_message_id)
             & (Message.sequence <= current_message.sequence)
+            & (Message.sequence >= (session.context_reset_sequence if session else 0))
         )
         .order_by(Message.sequence.desc())
         .limit(20)
     ]
     messages.reverse()
-    session = CoordinatorSession.get_or_none(CoordinatorSession.task == task)
     engine = create_engine(turn.engine) if turn.engine else None
     scheduled = turn.execution_scope == "scheduled"
     engine_manages_context = not scheduled and engine is not None and engine.supports_resume
@@ -140,7 +142,7 @@ def assemble_context(
         current_message = Message.get_by_id(turn.user_message_id)
         recent_messages = [{
             "role": current_message.role,
-            "content": current_message.content,
+            "content": context_content(current_message.content),
         }]
         summary = None
     else:

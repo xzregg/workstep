@@ -22,6 +22,7 @@ interface Props {
   targetProviderLabel?: string
   loading?: boolean
   error?: string
+  initialMode?: ChatSessionHandoffInput['context_mode']
   onConfirm: (input: ChatSessionHandoffInput) => void
   onCancel: () => void
 }
@@ -39,6 +40,7 @@ export default function ChatEngineHandoffDialog({
   targetProviderLabel = '',
   loading = false,
   error = '',
+  initialMode = 'smart',
   onConfirm,
   onCancel,
 }: Props) {
@@ -51,8 +53,8 @@ export default function ChatEngineHandoffDialog({
   )
 
   useEffect(() => {
-    if (open) setMode('smart')
-  }, [open, target.engine, target.providerId])
+    if (open) setMode(initialMode)
+  }, [open, target.engine, target.providerId, initialMode])
 
   const title = providerOnly
     ? t('chatSession.handoffProviderTitle')

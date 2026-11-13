@@ -727,13 +727,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
             yield event
 
     async def stop(self) -> None:
-        if self._process and self._running:
-            self._process.terminate()
-            try:
-                await asyncio.wait_for(self._process.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                self._process.kill()
-            self._running = False
+        await super().stop()
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         logger.warning("inject_response not supported for Codex")

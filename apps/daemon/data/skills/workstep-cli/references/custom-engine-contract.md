@@ -10,6 +10,16 @@
 
 ## 方法
 
+### 进程复用声明与验收
+
+能持续接收请求的 SDK、ACP、双向 JSONL CLI 应复用同一原生会话的连接；普通一次性 CLI 不声明复用。`supports_process_reuse` 是传输生命周期属性，与恢复历史的 `supports_resume` 不同；支持复用的适配器必须同时支持原生恢复，并返回真实 `session_started.session_id`。ACP 基类在可恢复时默认支持，`CustomEngineBase` 的 SDK/Agent 适配器须显式声明 `supports_process_reuse = True`、`supports_resume = True`。
+
+宿主按引擎、项目 cwd、原生 session ID 独占隔离 worker，跨不同代理对象的连续请求仍复用同一个 worker／适配器实例；不同 session 不共用执行实例，同一 session 不接受重叠执行。成功完整收流后才进入缓存；默认空闲 **600 秒**、每个引擎最多 **8 个空闲客户端**，运行中及等待审批不计入空闲。异常、停止、提前关闭、配置／凭据／身份／包内容变化必须销毁或重建，恢复时保留原生 ID。不要把请求专属回调、来源权限、消息队列及旧的审批授权留给下一轮。
+
+内部原生客户端也要保留：不能只缓存外层 Python worker，而 `spawn` 仍每轮创建并关闭 SDK。可复用 `engines.core.session_pool` 的 `ManagedConnection`、`get_session_pool` 与 `startup_fingerprint`；`ManagedConnection` 保证 SDK/ACP 上下文在同一常驻协程中创建和销毁，适用于持有 anyio cancel scope 的 SDK。同步磁盘、配置、SDK 初始化／退出必须隔离到线程。`stop()` 及时取消本实例的执行与挂起审批；只有明确关闭时销毁对应资源，不能取消其他 session。
+
+`engine validate` 对声明复用的包增加 `session_transport_reuse`：真实隔离 worker 跨两个代理对象执行同一原生会话，核对 worker PID 保持、独立会话 PID 不同、关闭其中一个不影响另一个。声明复用却不支持恢复、没有原生 session ID 或未通过检查均不能注册。专属 unittest 还须证明内层真实 SDK/ACP 进程或连接复用，覆盖多轮、同会话竞争、并发、审批允许／拒绝、审批中停止、协程取消、异常／崩溃、TTL／LRU、配置／身份变化、原生恢复以及子孙进程回收；宿主 worker PID 不代替内层客户端验证。
+
 - 安装元信息：`is_installed()`、`get_version()`、`resolve_binary()`；静态查询必须真实、快速且无需初始化网络客户端。SDK 导入延迟到执行/安装检查。
 - `async install()` → `EngineInstallResult(success, message, already_installed=False)`。`self.install_context` 提供 target_dir/cache_dir/engine_dir/system/architecture/python_version/python_executable。检查系统选择下载，不支持的平台应明确失败。只写目标目录；安装在临时目录完成并复查后整体替换。
 - `config_schema()` → `list[EngineConfigField]`，支持 text/password/select/textarea/json/number/checkbox/model_map；key 唯一，敏感项 sensitive=true，不设密钥默认值。CustomEngineBase 实现通用读取与脱敏，设置页动态生成表单。

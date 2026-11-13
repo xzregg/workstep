@@ -156,7 +156,7 @@ async def _wait_turn(module, turn_id, timeout=5.0):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("tier", [None, "default", "priority", "ultrafast"])
-async def test_chat_api_codex_service_tier_is_per_turn(chat_module, monkeypatch, tier):
+async def test_chat_api_codex_service_tier_follows_shared_config(chat_module, monkeypatch, tier):
     import main
 
     module, _, manager, project, _ = chat_module
@@ -172,6 +172,11 @@ async def test_chat_api_codex_service_tier_is_per_turn(chat_module, monkeypatch,
     session = module.create_session(project.id, engine="codex_sdk")
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
         for index, requested in enumerate([tier, None]):
+            configured = await client.patch(
+                f"/api/chat-sessions/{session['id']}/execution-config",
+                json={"project_id": project.id, "service_tier": requested or ""},
+            )
+            assert configured.status_code == 200
             response = await client.post(
                 f"/api/chat-sessions/{session['id']}/chat",
                 json={"project_id": project.id, "content": "hi", "service_tier": requested},
@@ -847,9 +852,8 @@ async def test_handoff_return_chat_api_slow_database_keeps_health_responsive(cha
     monkeypatch.setattr(main, "chat_session_module", module)
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
         request = asyncio.create_task(client.post(
-            f"/api/chat-sessions/{source['id']}/chat",
-            json={"project_id": project.id, "engine": "claude", "provider_id": "", "content": "切回原配置"},
-            headers={"Idempotency-Key": "restore-api"},
+            f"/api/chat-sessions/{source['id']}/handoff",
+            json={"project_id": project.id, "engine": "claude", "provider_id": "", "context_mode": "smart"},
         ))
         try:
             assert await asyncio.to_thread(entered.wait, 1)
@@ -859,12 +863,23 @@ async def test_handoff_return_chat_api_slow_database_keeps_health_responsive(cha
             release.set()
         response = await request
         assert response.status_code == 200
-        assert await _wait_turn(module, response.json()["turn_id"]) == "completed"
+        sent = await client.post(f"/api/chat-sessions/{source['id']}/chat",
+                                 json={"project_id": project.id, "content": "切回原配置"},
+                                 headers={"Idempotency-Key": "restore-api"})
+        assert sent.status_code == 200
+        assert await _wait_turn(module, sent.json()["turn_id"]) == "completed"
 
 
 @pytest.mark.anyio
-async def test_cross_engine_handoff_continues_the_same_session(chat_module, monkeypatch):
-    module, _bus, _manager, project, _ = chat_module
+@pytest.mark.parametrize("target_provider", ["", "provider-b"])
+@pytest.mark.parametrize("reload_memory", [False, True])
+async def test_cross_engine_handoff_continues_the_same_session(
+    chat_module, monkeypatch, target_provider, reload_memory,
+):
+    module, _bus, _manager, project, config = chat_module
+    config.values["providers"] = [
+        {"id": "provider-b", "protocol": "openai_compatible", "enabled": True},
+    ]
     source = module.create_session(project.id, title="同一会话", engine="claude")
     with module._project_ctx(project.id):
         row = ChatSession.get_by_id(source["id"])
@@ -902,11 +917,14 @@ async def test_cross_engine_handoff_continues_the_same_session(chat_module, monk
     assert handoff_path.exists()
     assert "旧目标：完成登录" in handoff_path.read_text(encoding="utf-8")
 
+    if reload_memory:
+        module._sessions.clear()
     accepted = module.submit_message(
         project.id,
         source["id"],
         "请继续",
         "same-session-handoff",
+        provider_id=target_provider,
     )
     assert accepted.session_id == source["id"]
     assert await _wait_turn(module, accepted.turn_id) == "completed"
@@ -914,6 +932,7 @@ async def test_cross_engine_handoff_continues_the_same_session(chat_module, monk
     detail = module.get_session(project.id, source["id"])
     assert detail is not None
     assert detail["engine"] == "pydantic_ai"
+    assert (detail["provider_id"] or "") == target_provider
     assert len(module.list_sessions(project.id)) == 1
     assert [item["content"] for item in detail["messages"]] == [
         "旧目标：完成登录",
@@ -4408,10 +4427,10 @@ async def test_running_chat_can_fork_prior_reply_via_api_with_slow_db_canary(
 @pytest.mark.anyio
 @pytest.mark.parametrize("overrides,expected_provider,expected_model,expected_resume", [
     ({"engine": "claude"}, "provider-a", "stored-model", "existing-engine-session"),
-    ({"provider_id": "provider-b", "model": "new-model"}, "provider-b", "new-model", None),
-    ({"provider_id": "", "model": ""}, None, None, None),
+    ({"provider_id": "provider-b", "model": "new-model"}, "provider-a", "stored-model", "existing-engine-session"),
+    ({"provider_id": "", "model": ""}, "provider-a", "stored-model", "existing-engine-session"),
 ])
-async def test_chat_config_api_inheritance_and_explicit_updates_with_slow_sql(
+async def test_chat_config_api_ignores_stale_send_overrides_with_slow_sql(
     chat_module, monkeypatch, overrides, expected_provider, expected_model, expected_resume,
 ):
     import main

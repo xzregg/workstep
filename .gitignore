@@ -46,5 +46,8 @@ logs/
 # Local security audit evidence and generated test credentials
 /audit-context/
 
+# Temporary test and debugging artifacts
+/tmp/
+
 # Local examples
 /examples/

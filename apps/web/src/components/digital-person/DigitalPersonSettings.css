@@ -1,1 +1,52 @@
-.digital-person-settings{min-width:0;max-width:1320px;margin:auto;font-size:14px}.digital-person-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}.digital-person-header h1,.digital-person-card h2{font-size:24px;margin:0}.digital-person-tabs{display:flex;flex-wrap:wrap;gap:8px;border-bottom:.5px solid var(--border);padding-bottom:12px;margin-bottom:24px}.digital-person-tabs [aria-current=page]{color:var(--accent);background:var(--accent-bg)}.digital-person-card{max-width:800px;border:.5px solid var(--border);border-radius:12px;padding:32px}.digital-person-card-main{display:flex;align-items:center;gap:32px}.digital-person-avatar{width:180px;height:180px;flex-shrink:0;display:grid;place-items:center;position:relative;color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--bg));border-radius:16px}.digital-person-role{font-size:18px}.digital-person-status{font-size:12px;color:var(--muted)}.digital-person-duties{white-space:pre-wrap;overflow-wrap:anywhere;border-top:.5px solid var(--border);padding-top:20px;margin-top:24px;max-height:240px;overflow:auto}.digital-person-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.digital-person-form{display:grid;gap:18px;max-width:760px}.digital-person-form label{display:grid;gap:8px}.digital-person-form textarea{width:100%;min-height:120px;resize:vertical}.digital-person-form>button{justify-self:start}.digital-person-error{color:var(--danger)}.digital-person-loading{display:flex;align-items:center;gap:10px}.digital-person-memory iframe{display:block;width:100%;height:76vh;min-height:620px;border:.5px solid var(--border);border-radius:8px}.digital-person-memory>p,.digital-person-voice>p{font-size:12px;color:var(--muted)}.digital-person-schedules{height:70vh;min-height:600px;display:flex;flex-direction:column}.digital-person-voice{display:grid;gap:12px;justify-items:start}.digital-person-voice-bars{display:flex;gap:4px;position:absolute;bottom:18px;height:18px;align-items:center}.digital-person-voice-bars i{width:4px;height:14px;background:currentColor;animation:digital-person-voice .6s ease-in-out infinite alternate}.digital-person-voice-bars i:nth-child(2){animation-delay:.2s}.digital-person-voice-bars i:nth-child(3){animation-delay:.4s}@keyframes digital-person-voice{to{transform:scaleY(.25)}}@media(prefers-reduced-motion:reduce){.digital-person-voice-bars i{animation:none}}@media(max-width:1023px){.digital-person-card{padding:20px}.digital-person-card-main{flex-direction:column;align-items:flex-start;gap:20px}.digital-person-tabs{gap:4px}.digital-person-memory iframe{min-height:500px}.digital-person-actions .btn{min-height:var(--mobile-control-regular)}}
+.digital-person-settings { min-width: 0; max-width: 1120px; margin: 0 auto; font-size: 14px; color: var(--fg); }
+.digital-person-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.digital-person-header h1 { font-size: 20px; font-weight: 600; margin: 0; }
+.digital-person-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.digital-person-header-actions .settings-switch { background: var(--border); flex-shrink: 0; }
+.digital-person-header-actions .settings-switch[aria-checked=true] { background: var(--accent); }
+.digital-person-settings-body { display: grid; grid-template-columns: 148px minmax(0,1fr); gap: 32px; align-items: start; }
+.digital-person-tabs { display: flex; flex-direction: column; gap: 4px; }
+.digital-person-tabs [role=tab] { padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; text-align: left; cursor: pointer; white-space: nowrap; }
+.digital-person-tabs [role=tab]:hover { background: var(--surface); color: var(--fg); }
+.digital-person-tabs [aria-selected=true] { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+.digital-person-tabs [role=tab]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#digital-person-panel { min-width: 0; }
+.digital-person-card { max-width: 640px; border: .5px solid var(--border); border-radius: 16px; padding: 28px; background: var(--bg); }
+.digital-person-card-main { display: flex; align-items: center; gap: 18px; padding-bottom: 24px; }
+.digital-person-card h2 { font-size: 24px; letter-spacing: -.02em; margin: 0; }
+.digital-person-card-main > div:last-child { min-width: 0; flex: 1; }
+.digital-person-card-main p { margin: 6px 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.digital-person-card-main .digital-person-role { color: var(--fg-2); }
+.digital-person-status { font-size: 12px; color: var(--muted); }
+.digital-person-card-details { margin-top: 20px; padding-top: 16px; border-top: .5px solid var(--border); color: var(--fg-2); }
+.digital-person-card-details > summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.digital-person-duties { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; line-height: 1.7; margin: 12px 0 0; }
+.digital-person-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 20px; }
+.digital-person-form { display: grid; gap: 20px; max-width: 720px; }
+.digital-person-form label { display: grid; gap: 8px; font-size: 13px; color: var(--fg-2); }
+.digital-person-form textarea { width: 100%; min-height: 96px; resize: vertical; line-height: 1.6; }
+.digital-person-form > button { justify-self: start; }
+.digital-person-form-actions { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+.digital-person-field-pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.digital-person-error { color: var(--danger); font-size: 13px; overflow-wrap: anywhere; }
+.digital-person-loading { display: flex; align-items: center; gap: 10px; }
+.digital-person-voice { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px 16px; }
+.digital-person-voice-preview { grid-column: 1/-1; display: flex; align-items: center; gap: 20px; border: .5px solid var(--border); border-radius: 12px; padding: 16px; background: var(--surface); }
+.digital-person-voice-preview > .btn { margin-left: auto; white-space: normal; }
+.digital-person-channel-check { display: flex !important; align-items: center; gap: 8px; font-size: 13px; }
+.digital-person-guide { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; margin-bottom: 20px; border-bottom: .5px solid var(--border); font-size: 13px; }
+.digital-person-chat-action { min-width: 0; }
+.digital-person-chat-action p { max-width: 32ch; overflow-wrap: anywhere; }
+@media (max-width:1023px) {
+  .digital-person-settings-body { display: block; }
+  .digital-person-header { position: sticky; top: 0; background: var(--bg); z-index: 2; padding: 8px 0; margin-bottom: 12px; }
+  .digital-person-tabs { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap: 4px; margin-bottom: 20px; padding-bottom: 8px; scrollbar-width: none; }
+  .digital-person-tabs [role=tab] { flex-shrink: 0; min-height: var(--mobile-control-touch,44px); padding: 8px 12px; font-size: 13px; }
+  .digital-person-card { padding: 20px; border-radius: 12px; }
+  .digital-person-card-main { gap: 12px; padding-bottom: 20px; }
+  .digital-person-card-main .digital-person-avatar { width: 56px; height: 56px; }
+  .digital-person-card h2 { font-size: 20px; }
+  .digital-person-actions .btn { min-height: var(--mobile-control-regular); }
+  .digital-person-form { gap: 16px; }
+  .digital-person-field-pair { gap: 12px; }
+}

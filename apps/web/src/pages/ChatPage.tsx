@@ -1,3 +1,5 @@
+import { useDigitalActivity } from '../components/digital-person/useDigitalActivity'
+import DigitalPersonFeedback from '../components/digital-person/DigitalPersonFeedback'
 import { useDigitalPerson } from '../components/digital-person/useDigitalPerson'
 import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
@@ -122,13 +124,16 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
   const digitalPerson = useDigitalPerson(Boolean(activeProject?.is_default_workspace && activeProject.type !== 'remote' && !projectScopedAccess && !isEmbedded))
+  const digitalActivity = useDigitalActivity(Boolean(digitalPerson))
+  const renderDigitalFeedback = useCallback((messageId: string) => <DigitalPersonFeedback messageId={messageId} initialValue={digitalActivity?.feedback?.[messageId] || 0} />, [digitalActivity?.feedback])
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
   // 引擎可用性（选项是否禁用）跟随共享状态，设置页改动即时生效。
   const sharedEngines = useCoordinatorEngines()
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const {
-    config: engineConfig, setDefaults, restoreSession, applyHandoff,
+    config: engineConfig, pendingHandoff, loadedEndpoint, saving: engineConfigSaving, error: engineConfigError,
+    setDefaults, restoreSession, applyHandoff,
     chooseEngine, chooseProvider, setModel: setSelectedModel,
     setFastModel: setSelectedFastModel, setVisionModel: setSelectedVisionModel,
     setThinkingEffort: setSelectedThinkingEffort, reset: resetEngineSelection,
@@ -199,7 +204,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     activeProject?.id, effectiveEngine, running,
   )
   const {
-    openFork, requestEngineHandoff, requestProviderHandoff, dialogs: transitionDialogs,
+    openFork, requestEngineHandoff, requestProviderHandoff, requestResetHandoff, handingOff, dialogs: transitionDialogs,
   } = useChatSessionTransitions({
     project: activeProject ? {
       id: activeProject.id,
@@ -210,6 +215,8 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     messageIds: messages.map((message) => message.id),
     running,
     current: engineConfig,
+    pendingHandoff,
+    loadedEndpoint,
     defaultEngine: assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai',
     engines: sharedEngines,
     providers,
@@ -236,7 +243,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     closePrompt: t('aiFlow.closePrompt'),
   }), [t, compact, hasEmbeddedIntro, embedded?.placeholder, isEmbedded, activeProject?.name, digitalPerson])
   const quickPromptItems = useMemo(
-    () => quickButtons.filter((button) => !isEmbedded && button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
+    () => [...(digitalPerson ? (digitalActivity?.suggestions || []).map(item => ({...item,kind:'prompt' as const,enabled:true,content:item.prompt})) : []), ...quickButtons].filter((button) => !isEmbedded && button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
       id: button.id,
       label: button.label,
       prompt: button.prompt,
@@ -244,7 +251,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
       kind: button.kind || 'prompt',
       disabled: button.kind === 'action' && projectActions.activeActionIds.includes(button.action_id || button.id),
     })),
-    [isEmbedded, quickButtons, projectActions.activeActionIds, can],
+    [isEmbedded, quickButtons, projectActions.activeActionIds, can, digitalPerson, digitalActivity?.suggestions],
   )
 
   // Resolve project/workflow from the URL (mirrors CanvasEditor's loader).
@@ -277,7 +284,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     assistantApi.list()
       .then(({ assistants }) => {
         if (!active) return
-        const config = assistants.find((item) => item.name === 'chat_session')
+        const config = assistants.find((item) => item.name === (digitalPerson ? 'digital_person' : 'chat_session'))
         if (!config) throw new Error(t('chatSession.configLoadFailed'))
         setAssistantConfig(config)
         publishEngineCatalog(config.available_engines)
@@ -291,7 +298,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         setCoordinatorConfigError(reason instanceof Error ? reason.message : t('chatSession.configLoadFailed'))
       })
     return () => { active = false }
-  }, [activeProject?.id, t, setDefaults]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeProject?.id, Boolean(digitalPerson), t, setDefaults]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let active = true
@@ -370,7 +377,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
   }, [activeProject?.id, permissionMode, sessionId, t])
 
   const send = useCallback(async (contentOverride?: string) => {
-    if (workflowSkill.loading) return false
+    if (workflowSkill.loading || handingOff || engineConfigSaving || (sessionParam && !historyReady)) return false
     const content = (contentOverride ?? input).trim()
     if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
@@ -381,7 +388,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     clearDraft(sessionId, activeProject?.id ?? '')
     resetEnhance()
     return sendMessageNow(content)
-  }, [input, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance, beforeSend, workflowSkill.loading])
+  }, [input, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance, beforeSend, workflowSkill.loading, handingOff, engineConfigSaving, sessionParam, historyReady, setSendError])
 
   const handleInputChange = useCallback((value: string) => {
     enhanceInputChanged(value)
@@ -396,7 +403,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     setCreating(true)
     setSendError('')
     try {
-      const configured = assistantConfig?.configured
+      const configured = activeProject.is_default_workspace ? undefined : assistantConfig?.configured
       const detail = await chatSessionApi.create({
         project_id: activeProject.id,
         engine: configured?.engine || undefined,
@@ -498,6 +505,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
       <ChatRoleBinding key={`${activeProject.id}/${sessionId}`} projectId={activeProject.id} sessionId={sessionId} running={running}
         enabled={(!sessionParam || historyReady) && !isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('session.config')}>
       {roleBinding => <AssistantChatPanel
+        renderMessageActions={digitalPerson ? renderDigitalFeedback : undefined}
         connectorsEnabled={activeProject.type !== 'remote'}
         roleBinding={roleBinding}
         workflowSkill={!isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('workflow.create') && can('task.create') ? workflowSkill : undefined}
@@ -527,7 +535,8 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         scrollKey={sessionId}
         onInputChange={handleInputChange}
         onSend={() => void send()}
-        onSendContent={sendPendingContent}
+        onSendContent={(content, ids) => handingOff || engineConfigSaving || (sessionParam && !historyReady) ? Promise.resolve(false) : sendPendingContent(content, ids)}
+        composerDisabled={handingOff || engineConfigSaving || Boolean(sessionParam && !historyReady)}
         onStop={() => void stop()}
         onAttachmentError={setSendError}
         onLoadMessageEvents={loadMessageEvents}
@@ -602,13 +611,15 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
           defaultThinkingEffort: assistantConfig?.configured.thinking_effort
             || assistantConfig?.resolved?.thinking_effort
             || '',
-          disabled: !assistantConfig || coordinatorConfigError !== '' || running,
-          error: coordinatorConfigError,
+          disabled: !assistantConfig || coordinatorConfigError !== '' || running || handingOff || engineConfigSaving || Boolean(sessionParam && !historyReady),
+          saving: engineConfigSaving,
+          error: coordinatorConfigError || engineConfigError,
           hint: assistantConfig ? t('chatSession.sessionHint') : '',
           engineTitle: t('chatSession.engineTitle'),
           onEngineChange: (engineId) => {
             const defaultEngine = assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai'
             const targetEngine = engineId || defaultEngine
+            if (targetEngine === effectiveEngine) return
             if (requestEngineHandoff(targetEngine)) {
               // 移动端：交接确认弹层弹出时收起配置菜单，避免双层叠放互相遮挡。
               if (compact) return false
@@ -617,6 +628,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
             chooseEngine(engineId)
           },
           onProviderChange: (providerId) => {
+            if ((providerId || '') === selectedProvider) return
             if (requestProviderHandoff(providerId || '')) {
               if (compact) return false
               return
@@ -627,7 +639,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
           onFastModelChange: setSelectedFastModel,
           onVisionModelChange: setSelectedVisionModel,
           onThinkingEffortChange: setSelectedThinkingEffort,
-          onReset: resetEngineSelection,
+          onReset: () => { if (!requestResetHandoff()) resetEngineSelection() },
           reopenSignal: configReopenSignal,
         }}
         permission={{

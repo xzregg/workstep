@@ -78,7 +78,11 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      // A dedicated group lets forced shutdown include SDK/MCP/voice children
+      // without ever signalling Electron or another daemon instance.
+      detached: process.platform !== 'win32',
     })
+    child.workstepProcessGroup = process.platform === 'win32' ? null : child.pid
     child.workstepStartedAt = new Date().toISOString()
     let settled = false
     let recentOutput = ''
@@ -124,6 +128,7 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
     child.once('exit', (code, signal) => {
       logger?.write('daemon', child.workstepStopping ? 'info' : 'error',
         `后台进程退出 ${JSON.stringify({ code, signal, expected: Boolean(child.workstepStopping) })}`)
+      void stopSidecar(child).catch(error => logger?.write('daemon', 'error', String(error)))
     })
     // close follows pipe drainage, so an early exit retains its final output.
     child.once('close', (code, signal) => {
@@ -132,18 +137,65 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
   })
 }
 
-async function stopSidecar(child, graceMs = 10_000) {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return
-  child.workstepStopping = true
-  await new Promise((resolve) => {
-    const timeout = setTimeout(resolve, graceMs)
-    child.once('exit', () => {
+function running(child) {
+  return child.exitCode === null && child.signalCode === null
+}
+
+function signalOwnedGroup(child, signal) {
+  const group = child.workstepProcessGroup
+  if (!Number.isSafeInteger(group) || group <= 0 || group === process.pid) return false
+  try {
+    process.kill(-group, signal)
+    return true
+  } catch (error) {
+    if (error.code === 'ESRCH') return false
+    throw error
+  }
+}
+
+function waitForExit(child, timeoutMs, signal) {
+  if (!running(child)) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const finish = () => { clearTimeout(timeout); child.removeListener('exit', finish); resolve() }
+    const timeout = setTimeout(finish, timeoutMs)
+    child.once('exit', finish)
+    try { signal?.() } catch (error) {
       clearTimeout(timeout)
-      resolve()
-    })
-    child.kill()
+      child.removeListener('exit', finish)
+      reject(error)
+    }
   })
-  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+}
+
+function stopSidecar(child, graceMs = 10_000) {
+  if (!child) return Promise.resolve()
+  if (child.workstepStopPromise) return child.workstepStopPromise
+  child.workstepStopping = true
+  child.workstepStopPromise = (async () => {
+    if (process.platform === 'win32' && running(child)) {
+      // Windows has no POSIX process groups; terminate the owned tree while
+      // its root still exists so taskkill can enumerate descendants.
+      await new Promise((resolve, reject) => {
+        const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+        killer.once('error', reject)
+        killer.once('exit', code => code === 0 || !running(child) ? resolve() : reject(new Error('后台进程树终止失败')))
+      })
+    } else if (running(child)) {
+      await waitForExit(child, graceMs, () => child.kill())
+      if (running(child)) {
+        await waitForExit(child, 2000, () => {
+          if (!signalOwnedGroup(child, 'SIGKILL')) child.kill('SIGKILL')
+        })
+      }
+    }
+    if (process.platform !== 'win32' && signalOwnedGroup(child, 'SIGTERM')) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(graceMs, 250)))
+      signalOwnedGroup(child, 'SIGKILL')
+    }
+    await waitForExit(child, 2000)
+    if (running(child)) throw new Error('后台进程未能退出')
+  })()
+  return child.workstepStopPromise
 }
 
 module.exports = {

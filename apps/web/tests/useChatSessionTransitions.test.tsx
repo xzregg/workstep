@@ -148,10 +148,12 @@ test('engine selection prompts for each new target but not the conversation engi
       await act(async () => { assert.equal(controls.requestEngineHandoff(target), true) })
       await act(async () => { (container.querySelector('.btn-primary') as HTMLButtonElement).click() })
     }
-    await act(async () => { assert.equal(controls.requestEngineHandoff('claude'), false) })
+    await act(async () => { assert.equal(controls.requestEngineHandoff('hermes'), false) })
+    await act(async () => { assert.equal(controls.requestProviderHandoff(''), false) })
+    await act(async () => { assert.equal(controls.requestEngineHandoff('claude'), true) })
     assert.equal(container.querySelector('[role="dialog"]'), null)
     await act(async () => { setMessages(['message-1', 'message-2']) })
-    await act(async () => { assert.equal(controls.requestEngineHandoff('claude'), true) })
+    await act(async () => { assert.equal(controls.requestEngineHandoff('codex'), true) })
     assert.ok(container.querySelector('[role="dialog"]'))
   } finally {
     chatSessionApi.handoff = originalHandoff
@@ -162,7 +164,61 @@ test('engine selection prompts for each new target but not the conversation engi
 })
 
 
-test('provider selection prompts for b and c but not the original a or default provider', async () => {
+test('provider selection after engine handoff reuses confirmation until messages or conversation change', async () => {
+  const { window } = installDomEnvironment()
+  const originalHandoff = chatSessionApi.handoff
+  const originalFetch = useChatListStore.getState().fetchSessions
+  let controls!: ReturnType<typeof useChatSessionTransitions>
+  let setMessages!: (ids: string[]) => void
+  let selectSession!: (id: string) => void
+  const requests: string[] = []
+  function Harness() {
+    const [current, setCurrent] = useState({ engine: 'claude', providerId: '', model: '', fastModel: '', visionModel: '', thinkingEffort: '' })
+    const [messageIds, updateMessages] = useState(['message-1'])
+    const [sessionId, updateSession] = useState('session-1')
+    setMessages = updateMessages
+    selectSession = updateSession
+    controls = useChatSessionTransitions({
+      project: { id: 'project-1', routeName: 'Project' }, sessionId,
+      sessionTitle: 'Source', messageIds, running: false, current,
+      defaultEngine: 'claude', engines: [], providers: [], permissionMode: '',
+      onHandoffApplied: (detail) => setCurrent({ ...current, engine: detail.engine, providerId: detail.provider_id || '' }),
+      navigate: () => {},
+    })
+    return controls.dialogs
+  }
+  const container = window.document.body.appendChild(window.document.createElement('div'))
+  const root = createRoot(container as never)
+  try {
+    chatSessionApi.handoff = async (_sessionId, input) => {
+      requests.push(input.engine)
+      return { engine: input.engine, provider_id: input.provider_id } as never
+    }
+    useChatListStore.setState({ fetchSessions: (async () => {}) as never })
+    await act(async () => { root.render(<I18nProvider><Harness /></I18nProvider>) })
+    await act(async () => { assert.equal(controls.requestEngineHandoff('codex'), true) })
+    await act(async () => { (container.querySelector('.btn-primary') as HTMLButtonElement).click() })
+    for (const providerId of ['provider-b', 'provider-c', '']) {
+      await act(async () => {
+        assert.equal(controls.requestProviderHandoff(providerId), true)
+      })
+      assert.equal(container.querySelector('[role="dialog"]'), null)
+    }
+    assert.deepEqual(requests, ['codex', 'codex', 'codex', 'codex'])
+    await act(async () => { selectSession('session-2') })
+    await act(async () => { assert.equal(controls.requestProviderHandoff('provider-b'), true) })
+    await act(async () => { selectSession('session-1') })
+    await act(async () => { setMessages(['message-1', 'message-2']) })
+    await act(async () => { assert.equal(controls.requestProviderHandoff('provider-b'), true) })
+  } finally {
+    chatSessionApi.handoff = originalHandoff
+    useChatListStore.setState({ fetchSessions: originalFetch })
+    await act(async () => { root.unmount() })
+    await window.happyDOM.close()
+  }
+})
+
+test('provider selection confirms once and persists further unsent choices including return to original', async () => {
   for (const originalProvider of ['provider-a', '']) {
     const { window } = installDomEnvironment()
     const originalHandoff = chatSessionApi.handoff
@@ -187,10 +243,12 @@ test('provider selection prompts for b and c but not the original a or default p
       await act(async () => { root.render(<I18nProvider><Harness /></I18nProvider>) })
       for (const target of ['provider-b', 'provider-c']) {
         await act(async () => { assert.equal(controls.requestProviderHandoff(target), true) })
-        assert.ok(container.querySelector('[role="dialog"]'))
-        await act(async () => { (container.querySelector('.btn-primary') as HTMLButtonElement).click() })
+        if (target === 'provider-b') {
+          assert.ok(container.querySelector('[role="dialog"]'))
+          await act(async () => { (container.querySelector('.btn-primary') as HTMLButtonElement).click() })
+        } else assert.equal(container.querySelector('[role="dialog"]'), null)
       }
-      await act(async () => { assert.equal(controls.requestProviderHandoff(originalProvider), false) })
+      await act(async () => { assert.equal(controls.requestProviderHandoff(originalProvider), true) })
       assert.equal(container.querySelector('[role="dialog"]'), null)
     } finally {
       chatSessionApi.handoff = originalHandoff
@@ -198,5 +256,51 @@ test('provider selection prompts for b and c but not the original a or default p
       await act(async () => { root.unmount() })
       await window.happyDOM.close()
     }
+  }
+})
+
+
+test('handoff completion from a previous conversation does not change or reopen the current conversation', async () => {
+  const { window } = installDomEnvironment()
+  const originalHandoff = chatSessionApi.handoff
+  const originalFetch = useChatListStore.getState().fetchSessions
+  let controls!: ReturnType<typeof useChatSessionTransitions>
+  let selectSession!: (id: string) => void
+  let complete!: (detail: never) => void
+  const applied: string[] = []
+  let settled = 0
+  function Harness() {
+    const [sessionId, setSessionId] = useState('session-1')
+    selectSession = setSessionId
+    controls = useChatSessionTransitions({
+      project: { id: 'project-1', routeName: 'Project' }, sessionId,
+      sessionTitle: 'Source', messageIds: ['message-1'], running: false,
+      current: { engine: 'claude', providerId: '', model: '', fastModel: '', visionModel: '', thinkingEffort: '' },
+      defaultEngine: 'claude', engines: [], providers: [], permissionMode: '',
+      onHandoffApplied: (detail) => applied.push(detail.engine),
+      onHandoffSettled: () => { settled += 1 }, navigate: () => {},
+    })
+    return controls.dialogs
+  }
+  const container = window.document.body.appendChild(window.document.createElement('div'))
+  const root = createRoot(container as never)
+  try {
+    chatSessionApi.handoff = () => new Promise(resolve => { complete = resolve })
+    useChatListStore.setState({ fetchSessions: (async () => {}) as never })
+    await act(async () => { root.render(<I18nProvider><Harness /></I18nProvider>) })
+    await act(async () => { controls.requestEngineHandoff('codex') })
+    await act(async () => { (container.querySelector('.btn-primary') as HTMLButtonElement).click() })
+    await act(async () => { selectSession('session-2') })
+    assert.equal(container.querySelector('[role="dialog"]'), null)
+    await act(async () => { complete({ engine: 'codex', provider_id: '' } as never) })
+    assert.deepEqual(applied, [])
+    assert.equal(settled, 0)
+    await act(async () => { controls.requestEngineHandoff('codex') })
+    assert.equal((container.querySelector('.btn-primary') as HTMLButtonElement).disabled, false)
+  } finally {
+    chatSessionApi.handoff = originalHandoff
+    useChatListStore.setState({ fetchSessions: originalFetch })
+    await act(async () => { root.unmount() })
+    await window.happyDOM.close()
   }
 })

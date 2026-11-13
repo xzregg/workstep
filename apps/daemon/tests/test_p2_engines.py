@@ -3479,7 +3479,10 @@ async def test_codex_sdk_goal_start_explicitly_uses_default_mode(with_image):
             calls.append("unregister")
 
     raw = RawClient()
-    engine._map_notification = lambda notification, state: []
+    engine._map_notification = lambda notification, state: [
+        InternalEvent(type="goal_update", data={"status": "complete"}),
+        InternalEvent(type="status", data={"status": "done"}),
+    ]
     initial_input = [
         {"type": "text", "text": "完成计划"},
         {"type": "localImage", "path": "/project/shot.png"},
@@ -3555,7 +3558,9 @@ async def test_codex_sdk_goal_stream_waits_for_goal_completion_across_turns(monk
             pass
 
         def is_finished(self):
-            return self.index == 4
+            # The real SDK reader can observe completion before the consumer
+            # drains any of the already queued notifications.
+            return True
 
     goal_state = GoalState()
     notifications = [
@@ -5636,6 +5641,8 @@ async def test_claude_agent_sdk_turn_without_injection_ends_immediately(monkeypa
         events.append(event)
 
     client = _FakeSDKClient.last
+    from engines.core.session_pool import close_session_pools
+    await close_session_pools()
     assert client.disconnected is True
     assert client.queries == ["开始任务"]
     assert any(
@@ -5678,6 +5685,8 @@ async def test_claude_agent_sdk_early_injection_ends_when_queue_empty(monkeypatc
         _FakeSDKClient.merge_injections = False
 
     client = _FakeSDKClient.last
+    from engines.core.session_pool import close_session_pools
+    await close_session_pools()
     assert client.disconnected is True
     assert client.queries == ["开始任务", "提前注入"]
     delivered = [
@@ -5711,6 +5720,8 @@ async def test_claude_agent_sdk_injection_keeps_session_alive(monkeypatch):
         events.append(event)
 
     client = _FakeSDKClient.last
+    from engines.core.session_pool import close_session_pools
+    await close_session_pools()
     assert client.disconnected is True
     assert client.queries == ["开始任务", "继续"]
     deltas = [

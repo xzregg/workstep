@@ -82,6 +82,10 @@ type DesktopBridge = {
     openers: () => Promise<{ openers: import('../api/client').DirectoryOpener[] }>
     open: (path: string, opener: string) => Promise<{ opened: boolean; path: string }>
   }
+  digitalPerson?: {
+    sync: (state: {enabled:boolean;name?:string;role?:string;expression?:string;speaking?:boolean}) => Promise<void>
+    onOpenChat: (callback:()=>void) => ()=>void
+  }
   sandbox?: SandboxBridge
   updates?: DesktopUpdateBridge
   notify: (notice: CompletionNotice & { url: string }) => void

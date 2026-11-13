@@ -1,6 +1,6 @@
 """User adapter process. Never imported by the daemon for discovery."""
 import asyncio
-from contextlib import suppress
+from contextlib import aclosing, suppress
 from dataclasses import asdict, is_dataclass
 import importlib.util
 import inspect
@@ -30,7 +30,8 @@ ALLOWED_METHODS = frozenset({
     "inspect_capabilities", "set_permission_mode", "test_connection", "install", "configure_mcp_servers",
 })
 EXTRA_PROPERTIES = ("supports_message_history", "supports_interactive", "supports_resume",
-                    "supports_sessions", "supports_tool_approval", "supports_live_stage_message")
+                    "supports_sessions", "supports_tool_approval", "supports_live_stage_message",
+                    "supports_process_reuse")
 
 
 def plain(value):
@@ -108,6 +109,8 @@ def describe(engine, manifest):
             raise ValueError('configure_mcp_servers 必须接收 servers 与 config_overrides') from exc
     if caps.get("supports_tool_approval") and "interaction_request" not in events:
         raise ValueError("审批能力必须声明 interaction_request")
+    if engine.supports_process_reuse and not engine.supports_resume:
+        raise ValueError("声明进程复用必须支持原生会话恢复")
     return {
         "id": manifest["id"], "name": manifest["name"], "description": manifest.get("description", ""),
         "mode": manifest["mode"], "custom": True, "installed": bool(engine.is_installed()),
@@ -176,12 +179,13 @@ class Worker:
                 function = getattr(self.engine, method)
                 inspect.signature(function).bind(*args, **kwargs)
                 if inspect.isasyncgenfunction(function):
-                    async for event in function(*args, **kwargs):
-                        if not isinstance(event, InternalEvent):
-                            raise ValueError("引擎必须返回 InternalEvent")
-                        if event.type not in declared_events(self.engine):
-                            raise ValueError(f"产生未声明事件：{event.type}")
-                        await self.send({"id": key, "event": event.to_dict()})
+                    async with aclosing(function(*args, **kwargs)) as stream:
+                        async for event in stream:
+                            if not isinstance(event, InternalEvent):
+                                raise ValueError("引擎必须返回 InternalEvent")
+                            if event.type not in declared_events(self.engine):
+                                raise ValueError(f"产生未声明事件：{event.type}")
+                            await self.send({"id": key, "event": event.to_dict()})
                     result = None
                 elif inspect.iscoroutinefunction(function):
                     result = await function(*args, **kwargs)
@@ -214,11 +218,17 @@ class Worker:
                 task = asyncio.create_task(self.request(request))
                 self.turns[request["id"]] = task
         finally:
-            for task in self.turns.values():
+            turns = list(self.turns.values())
+            for task in turns:
                 task.cancel()
+            await asyncio.gather(*turns, return_exceptions=True)
             if self.engine is not None:
                 with suppress(Exception):
                     await asyncio.wait_for(self.engine.stop(), 2)
+            from engines.core.session_pool import close_session_pools
+            from engines.codex_sdk_clients import close_codex_clients
+            await close_session_pools()
+            await close_codex_clients()
 
 
 if __name__ == "__main__":

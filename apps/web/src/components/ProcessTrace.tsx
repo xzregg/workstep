@@ -223,8 +223,14 @@ const ThinkingTimeline = memo(ThinkingTimelineItem)
 
 type ProcessPreviewItem = Exclude<MessageTimelineItem, { type: 'text' }>
 
-function ProcessTracePreview({ items }: { items: ProcessPreviewItem[] }) {
-  const { t } = useI18n()
+function ProcessTracePreview({ items, now, projectId }: { items: ProcessPreviewItem[]; now: number; projectId?: string }) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    // 单行预览始终跟随新到达的文字，不能让左侧截断遮住最新内容。
+    trackRef.current?.querySelectorAll<HTMLElement>('.process-trace-preview-text--tail').forEach((text) => {
+      text.scrollLeft = text.scrollWidth
+    })
+  })
   const previousItems = useRef<ProcessPreviewItem[]>([])
   const [exiting, setExiting] = useState<{ item: ProcessPreviewItem; key: string } | null>(null)
 
@@ -245,6 +251,7 @@ function ProcessTracePreview({ items }: { items: ProcessPreviewItem[] }) {
   const shownItems = exiting ? [exiting.item, ...items] : items
   return (
     <div
+      ref={trackRef}
       key={exiting?.key}
       className={`process-trace-preview-track${exiting ? ' is-scrolling' : ''}`}
       onAnimationEnd={(event) => {
@@ -252,24 +259,20 @@ function ProcessTracePreview({ items }: { items: ProcessPreviewItem[] }) {
       }}
     >
       {shownItems.map((item) => {
-        const label = item.type === 'tool'
-          ? item.activity.name || t('chat.tool')
-          : item.type === 'tool-group'
-            ? t('trace.commandGroup', { count: item.activities.length })
-            : item.type === 'subagent'
-              ? item.activity.description
-              : ''
-        const detail = item.type === 'thinking' || item.type === 'commentary'
-          ? item.content
-          : item.type === 'tool-group'
-            ? item.activities[item.activities.length - 1]?.name
-            : ''
-        const previewDetail = detail && detail.length > 160
-          ? `…${detail.slice(-160)}`
-          : detail
+        if (item.type === 'tool' || item.type === 'tool-group') {
+          return (
+            <div className="process-trace-preview-item" key={item.id} inert>
+              <ToolTimelineItem item={item} streaming now={now} projectId={projectId} />
+            </div>
+          )
+        }
+        const label = item.type === 'subagent' ? item.activity.description : ''
+        const tail = item.type === 'thinking' || item.type === 'commentary'
+        const detail = tail ? item.content : ''
+        const previewDetail = tail && detail.length > 160 ? `…${detail.slice(-160)}` : detail
         return (
           <div className="process-trace-preview-item" key={item.id}>
-            <span className="process-trace-preview-text">
+            <span className={`process-trace-preview-text${tail ? ' process-trace-preview-text--tail' : ''}`}>
               {label}{label && previewDetail ? ' ' : ''}{previewDetail}
             </span>
           </div>
@@ -470,7 +473,7 @@ export default function ProcessTrace({
         </div>
         {running && (
           <div ref={previewRef} className="process-trace-preview" data-visible={previewItems.length > 0 ? 'true' : undefined} aria-hidden={previewItems.length === 0} aria-live="off">
-            <ProcessTracePreview items={previewItems} />
+            <ProcessTracePreview items={previewItems} now={now} projectId={projectId} />
           </div>
         )}
         {open && (

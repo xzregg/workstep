@@ -162,6 +162,7 @@ schedule_module: ScheduleModule | None = None
 chat_session_module: ChatSessionModule | None = None
 channel_chat_module: ChannelChatModule | None = None
 channel_bot_manager: BotManager | None = None
+digital_person_runtime = None
 gateway_client = GatewayClientService()
 gateway_client.event_sink = event_bus.publish
 
@@ -172,18 +173,32 @@ async def lifespan(app: FastAPI):
     from services.git.engine_credentials import install_engine_credentials
 
     restore_git_environment = install_engine_credentials(git_service.credential_file)
+    from services.config import CONFIG_DIR
+    from services.process_recovery import ProcessOwnership
+    process_ownership = ProcessOwnership(CONFIG_DIR)
     try:
+        async with startup_stage("遗留工作进程回收"):
+            try:
+                await process_ownership.start()
+            except Exception as exc:
+                logger.warning("Worker recovery unavailable (%s); continuing startup", type(exc).__name__)
         async with _application_lifespan(app):
             yield
     finally:
-        restore_git_environment()
+        try:
+            try:
+                await process_ownership.close()
+            except Exception as exc:
+                logger.warning("Worker recovery shutdown failed (%s)", type(exc).__name__)
+        finally:
+            restore_git_environment()
 
 
 @asynccontextmanager
 async def _application_lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     global prototype_module
-    global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_bot_manager
+    global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_bot_manager, digital_person_runtime
     from services.resource_limits import configure_file_limit
     configure_file_limit()
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
@@ -256,6 +271,9 @@ async def _application_lifespan(app: FastAPI):
         ChatSessionResponder(event_bus, project_manager, channel_chat_module),
         workflow_runtime=workflow_runtime,
     )
+    from services.digital_person_runtime import DigitalPersonRuntime
+    digital_person_runtime = DigitalPersonRuntime(project_manager, chat_session_module, channel_bot_manager, event_bus)
+    await digital_person_runtime.start()
     schedule_module._notification_sender = channel_bot_manager
     schedule_module._chat_sessions = chat_session_module
     schedule_module._channel_sessions = channel_chat_module
@@ -291,53 +309,56 @@ async def _application_lifespan(app: FastAPI):
     try:
         yield
     finally:
-        await task_auto_retry.close()
-        await system_statistics.close()
         from services.speech import service as speech_service
-        await speech_service.close()
         from services.decision_models import service as decision_model_service
-        await decision_model_service.close()
-        app.state.local_cli_runtime = None
-        await asyncio.to_thread(local_cli_runtime.close)
-        await completion_push.shutdown()
-        await notification_hooks.service.shutdown()
-        await audit_retention.close()
-        await gateway_client.close()
-        await git_service.close()
         from services.engine_runtime import runtime_manager
-        await runtime_manager.shutdown()
         from services.custom_engines import custom_engine_manager
-        await custom_engine_manager.shutdown()
-        try:
-            from engines.deepseek_harness import DeepSeekHarnessEngine
-            await asyncio.to_thread(DeepSeekHarnessEngine.shutdown_pool)
-        except Exception:
-            logger.warning("DeepSeek Harness pool shutdown failed", exc_info=True)
-        logger.info("WorkStep Daemon shutting down")
-        if prototype_module is not None:
-            await prototype_module.shutdown()
-        if workflow_gen_module is not None:
-            await workflow_gen_module.shutdown()
-        if task_draft_module is not None:
-            await task_draft_module.shutdown()
-        if schedule_module is not None:
-            await schedule_module.shutdown()
-        if channel_bot_manager is not None:
-            await channel_bot_manager.shutdown()
-        if channel_chat_module is not None:
-            await channel_chat_module.shutdown()
-        if chat_session_module is not None:
-            await chat_session_module.shutdown()
         from services.action_runtime import action_runtime
-        await action_runtime.shutdown()
-        await remote_project_client.close()
-        await coordinator_module.shutdown()
-        await workflow_runtime.shutdown()
+        from engines.codex_sdk_clients import close_codex_clients
+        from engines.core.session_pool import close_session_pools
+        from services.shutdown import run_shutdown, close_deepseek_pool
+
+        app.state.local_cli_runtime = None
+        logger.info("WorkStep Daemon shutting down")
+        steps = [
+            ("task_auto_retry", task_auto_retry.close),
+            ("system_statistics", system_statistics.close),
+            ("local_cli", lambda: asyncio.to_thread(local_cli_runtime.close)),
+            ("completion_push", completion_push.shutdown),
+            ("notification_hooks", notification_hooks.service.shutdown),
+            ("audit_retention", audit_retention.close),
+            ("gateway", gateway_client.close),
+            ("git", git_service.close),
+            ("engine_runtime", runtime_manager.shutdown),
+            ("custom_engines", custom_engine_manager.shutdown),
+        ]
+        for name, module in (
+            ("prototype", prototype_module), ("workflow_gen", workflow_gen_module),
+            ("task_draft", task_draft_module), ("schedule", schedule_module),
+            ("digital_person", digital_person_runtime), ("channel_bots", channel_bot_manager),
+            ("channel_chat", channel_chat_module), ("chat_session", chat_session_module),
+        ):
+            if module is not None:
+                steps.append((name, module.shutdown))
+        steps.extend([
+            ("action_runtime", action_runtime.shutdown),
+            ("remote_projects", remote_project_client.close),
+            ("coordinator", coordinator_module.shutdown),
+            ("workflow", workflow_runtime.shutdown),
+        ])
         shutdown_task_service = getattr(task_service, "shutdown", None)
         if callable(shutdown_task_service):
-            await shutdown_task_service()
-        await event_bus.close()
-        await asyncio.to_thread(project_manager.close_all)
+            steps.append(("task_service", shutdown_task_service))
+        steps.extend([
+            ("speech", speech_service.close),
+            ("decision_models", decision_model_service.close),
+            ("codex_clients", close_codex_clients),
+            ("engine_session_clients", close_session_pools),
+            ("deepseek_pool", close_deepseek_pool),
+            ("event_bus", event_bus.close),
+            ("project_databases", lambda: asyncio.to_thread(project_manager.close_all)),
+        ])
+        await run_shutdown(steps)
 
 
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")

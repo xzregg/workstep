@@ -187,7 +187,7 @@ test('search tool targets stay plain text even with a project', () => {
   assert.doesNotMatch(html, /markdown-file-link/)
 })
 
-test('process trace reveals tool file links after expanding the timeline', async () => {
+test('process trace previews file rows inertly and enables links after expanding', async () => {
   const events = [
     {
       type: 'tool_use',
@@ -203,7 +203,8 @@ test('process trace reveals tool file links after expanding the timeline', async
     await act(async () => root.render(
       <I18nProvider><ProcessTrace events={events as never} projectId="project-1" running /></I18nProvider>,
     ))
-    assert.doesNotMatch(container.innerHTML, /markdown-file-link/)
+    assert.ok(container.querySelector('.process-trace-preview-item[inert] .markdown-file-link'))
+    assert.equal(container.querySelector('.process-trace-body'), null)
     assert.equal(container.querySelector('.process-trace-session-summary')?.getAttribute('aria-expanded'), 'false')
 
     await act(async () => {

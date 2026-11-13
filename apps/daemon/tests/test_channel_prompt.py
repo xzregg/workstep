@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_assistants.channel_chat import ChannelChatModule, SYSTEM_PROMPT
+from agent_assistants.channel_chat import ChannelChatModule
 from engines.core.acp_base import AcpEngineBase
 from engines.codex_sdk import CodexSDKEngine
 from streaming.bus import EventBus
@@ -28,7 +28,7 @@ def test_channel_background_on_normal_and_rebuilt_turns(monkeypatch, resumed, su
         assert "--after 2h" not in prompt
         assert "When the user explicitly asks" not in prompt
         assert "Hello" in prompt
-        assert SYSTEM_PROMPT not in prompt
+        assert "WorkStep channel chat assistant" not in prompt
         assert "Project rules" not in prompt
     rules = module._engine_system_prompt(session)
     prepared = AcpEngineBase._prepare_system_prompt(
@@ -36,7 +36,7 @@ def test_channel_background_on_normal_and_rebuilt_turns(monkeypatch, resumed, su
         {"prompt": module._build_prompt(session), "session_id": session.resolved_session_id},
         rules, each_turn=module._system_prompt_each_turn(),
     )
-    assert (SYSTEM_PROMPT in prepared["prompt"]) == (not resumed or not supports_resume)
+    assert ("Project rules" in prepared["prompt"]) == (not resumed or not supports_resume)
 
 
 async def test_channel_codex_resume_keeps_saved_rules_and_new_background(monkeypatch, tmp_path):
@@ -76,3 +76,10 @@ def test_chat_normal_and_rebuilt_prompts_do_not_inject_identity(monkeypatch, res
         assert "internal-" not in prompt
         assert "[WorkStep conversation" not in prompt
         assert "--after" not in prompt
+
+
+def test_plain_channel_has_no_automatic_system_instruction(monkeypatch):
+    module=ChannelChatModule(EventBus(), None, register=False)
+    monkeypatch.setattr(module,"get_system_prompt",lambda _: "")
+    assert module._config.system_prompt == ""
+    assert module._engine_system_prompt(SimpleNamespace(project_id="project")) == ""

@@ -4,6 +4,7 @@ import { chatSessionApi, type ChatSessionDetail } from '../api/client'
 import { useI18n } from '../i18n'
 import { getMessageHistoryPageSize, loadMessageHistoryPageSize } from '../stores/userSettingsStore'
 import { useChatSessionStore } from '../stores/chatSessionStore'
+import { useChatExecutionConfigStore } from '../stores/chatExecutionConfigStore'
 
 function normalizeMessages(messages: ChatSessionDetail['messages']) {
   return messages.map((message) => ({
@@ -63,6 +64,7 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
       })
         .then((detail) => {
           if (!active || !detail) return
+          useChatExecutionConfigStore.getState().receive(projectId, detail)
           page.offset = detail.messages?.length || 0
           page.hasOlder = page.offset === page.limit
           page.loading = false

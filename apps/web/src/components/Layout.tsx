@@ -42,7 +42,10 @@ import SandboxModeBadge from './SandboxModeBadge'
 import GatewayConnectionStatus from './GatewayConnectionStatus'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import LayoutOnboardingActions from './LayoutOnboardingActions'
+import { DigitalPersonWakeController } from './digital-person/DigitalPersonWake'
+import DigitalPersonDesktopBridge from './digital-person/DigitalPersonDesktopBridge'
 import WorkspaceNavigationActions, { WORKSPACE_TOOL_RAIL_WIDTH } from './WorkspaceNavigationActions'
+import DigitalPersonSidebarEntry from './digital-person/DigitalPersonSidebarEntry'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import SidebarRenameField from './SidebarRenameField'
 import { SidebarActionItem, SidebarActionMenu } from './SidebarActionMenu'
@@ -553,6 +556,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             const searchResult = sidebarSearchResults.get(p.id)!
             return (
             <div key={p.id}>
+              {p.is_default_workspace && <DigitalPersonSidebarEntry project={p} />}
               <div
                 onClick={() => {
                   if (consumeSidebarLongPressClick()) return
@@ -1268,6 +1272,8 @@ export default function Layout({ onSelectProject, children }: Props) {
         />
       )}
 
+      <DigitalPersonDesktopBridge />
+      <DigitalPersonWakeController />
       <LayoutOnboardingActions
         onOpenSettings={openOnboardingSettings}
         onOpenProject={openLocalProjectModal}

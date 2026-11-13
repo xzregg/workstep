@@ -16,11 +16,18 @@ try {
       const { window, document } = installDomEnvironment()
       window.happyDOM.setWindowSize({ width, height: 900 })
       const root = createRoot(document.body.appendChild(document.createElement('div')))
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${iw} ${ih}" style="max-width: ${iw}px;"><rect width="240" height="80" fill="#eef"/><text x="30" y="50">Flowchart preview</text></svg>`
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 ${iw} ${ih}" style="max-width: ${iw}px;"><rect width="240" height="80" fill="#eef"/><text x="30" y="50">Flowchart preview</text></svg>`
       await act(async () => root.render(React.createElement(I18nProvider, null, React.createElement(MermaidPreviewDialog, { svg, onClose() {} }))))
       const page = await browser.newPage({ viewport: { width, height: 900 } })
       await page.setContent(`<style>${css}</style>${document.body.innerHTML}`)
-      if (width <= 1023) await page.locator('.image-preview img').evaluate(img => img.decode())
+      if (width <= 1023) {
+        const background = await page.locator('.image-preview-viewport').evaluate(element => getComputedStyle(element).backgroundColor)
+        assert.notEqual(background, 'rgba(0, 0, 0, 0)', 'mobile diagram canvas must have an opaque background')
+        const image = page.locator('.image-preview img')
+        await image.evaluate(img => img.decode())
+        const box = await image.boundingBox()
+        assert.ok(box.width > 100 && box.height > 100, `mobile diagram must be visible: ${JSON.stringify(box)}`)
+      }
       for (const selector of ['.image-preview-window', '.image-preview-close', '.image-preview-toolbar']) {
         const box = await page.locator(selector).boundingBox()
         assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= 901, `${width} ${iw}x${ih} ${selector}: ${JSON.stringify(box)}`)

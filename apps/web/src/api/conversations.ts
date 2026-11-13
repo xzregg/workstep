@@ -205,6 +205,9 @@ export interface ChatSessionSummary {
   fast_model?: string | null
   vision_model?: string | null
   provider_id?: string | null
+  thinking_effort?: string | null
+  service_tier?: string | null
+  execution_config_revision?: number
   permission_mode?: string
   role_binding?: import('./chatRoles').ChatRoleReference | null
   engine_session_id?: string | null
@@ -222,7 +225,21 @@ export interface ChatSessionSummary {
 
 export interface ChatSessionDetail extends ChatSessionSummary {
   messages: WorkflowGenHistoryMessage[]
+  pending_handoff?: {
+    source_engine: string
+    source_provider_id: string
+    target_engine: string
+    context_mode: 'smart' | 'full' | 'none'
+    message_id: string | null
+  } | null
 }
+
+export type ChatSessionExecutionConfig = Pick<ChatSessionDetail,
+  'id' | 'project_id' | 'engine' | 'provider_id' | 'model' | 'fast_model' | 'vision_model'
+  | 'thinking_effort' | 'service_tier' | 'execution_config_revision' | 'pending_handoff'>
+
+export type ChatExecutionConfigPatch = Partial<Pick<ChatSessionExecutionConfig,
+  'model' | 'fast_model' | 'vision_model' | 'thinking_effort' | 'service_tier'>>
 
 export interface ChatQuickButton {
   enabled?: boolean
@@ -300,6 +317,9 @@ export const projectActionApi = {
 }
 
 export interface ChatAccepted {
+  execution_config?: ChatSessionExecutionConfig
+  engine?: string | null
+  model?: string | null
   session_id: string
   turn_id: string
   assistant_message_id: string
@@ -410,6 +430,7 @@ export interface ChatSessionHandoffInput {
 }
 
 export interface ChatMessageOptions {
+  /** Legacy callers may pass these; shared execution config is configured separately. */
   engine?: string
   model?: string
   fast_model?: string
@@ -499,6 +520,13 @@ export const chatSessionApi = {
       `/chat-sessions/${encodeURIComponent(sessionId)}/handoff?project_id=${encodeURIComponent(input.project_id)}`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
+  getExecutionConfig: (sessionId: string, projectId: string) => request<ChatSessionExecutionConfig>(
+    `/chat-sessions/${encodeURIComponent(sessionId)}/execution-config?project_id=${encodeURIComponent(projectId)}`,
+  ),
+  updateExecutionConfig: (sessionId: string, projectId: string, changes: ChatExecutionConfigPatch) => request<ChatSessionExecutionConfig>(
+    `/chat-sessions/${encodeURIComponent(sessionId)}/execution-config?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'PATCH', body: JSON.stringify({ project_id: projectId, ...changes }) },
+  ),
   chat: (
     sessionId: string,
     projectId: string,
@@ -512,13 +540,6 @@ export const chatSessionApi = {
       body: JSON.stringify({
         project_id: projectId,
         content,
-        engine: options.engine || undefined,
-        model: options.model || undefined,
-        fast_model: options.fast_model || undefined,
-        vision_model: options.vision_model || undefined,
-        provider_id: options.provider_id || undefined,
-        thinking_effort: options.thinking_effort || undefined,
-        service_tier: options.service_tier || undefined,
         permission_mode: options.permission_mode || undefined,
         plan_mode: options.plan_mode || undefined,
         goal_mode: options.goal_mode || undefined,

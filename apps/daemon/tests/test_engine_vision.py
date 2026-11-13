@@ -412,7 +412,7 @@ async def test_claude_cli_sends_native_images_without_prompt_injection(monkeypat
     async def wait():
         return 0
 
-    proc = SimpleNamespace(stdin=Stdin(), stdout=stdout, stderr=stderr, wait=wait)
+    proc = SimpleNamespace(stdin=Stdin(), stdout=stdout, stderr=stderr, wait=wait, returncode=0)
     async def create_process(*cmd, **kwargs):
         captured["cmd"] = cmd
         return proc

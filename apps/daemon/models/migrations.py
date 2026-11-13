@@ -103,6 +103,10 @@ _ADDITIVE_COLUMNS = {
         "reviewer_device_name": "TEXT",
     },
     "chat_sessions": {
+        "thinking_effort": "TEXT",
+        "service_tier": "TEXT",
+        "execution_config_revision": "INTEGER NOT NULL DEFAULT 0",
+        "context_reset_at": "DATETIME",
         "role_binding_json": "TEXT",
         "role_checkpoint_json": "TEXT",
         "archived": "INTEGER NOT NULL DEFAULT 0",
@@ -131,6 +135,7 @@ _ADDITIVE_COLUMNS = {
         "execution_scope": "TEXT NOT NULL DEFAULT 'main'",
         "schedule_run_id": "TEXT",
     },
+    "coordinator_sessions": {"context_reset_sequence": "INTEGER NOT NULL DEFAULT 0"},
     "tasks": {
         "status": "TEXT NOT NULL DEFAULT 'ready'",
         "status_reason": "TEXT",

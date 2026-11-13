@@ -4,7 +4,6 @@ import re
 
 import pytest
 
-from agent_assistants.channel_chat import SYSTEM_PROMPT as CHANNEL_SYSTEM_PROMPT
 from agent_assistants.chat_session import ENHANCE_SYSTEM_PROMPT
 from agent_assistants.chat_session import SYSTEM_PROMPT as CHAT_SYSTEM_PROMPT
 from agent_assistants.coordinator import COORDINATOR_CONFIG
@@ -30,7 +29,6 @@ PROMPTS = {
     "task": TASK_SYSTEM_PROMPT,
     "task_schedule": SYSTEM_PROMPT_SCHEDULE,
     "workflow": FLOW_SYSTEM_PROMPT,
-    "channel": CHANNEL_SYSTEM_PROMPT,
     "plan_mode": PLAN_MODE_INSTRUCTION,
 }
 

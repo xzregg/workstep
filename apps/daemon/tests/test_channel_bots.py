@@ -973,10 +973,9 @@ async def test_channel_session_binding_uses_actual_group_and_rejects_private_or_
 
 
 def test_channel_assistant_can_use_binding_tool_with_session_context():
-    from agent_assistants.channel_chat import CHANNEL_CHAT_CONFIG, SYSTEM_PROMPT
+    from agent_assistants.channel_chat import CHANNEL_CHAT_CONFIG
     assert CHANNEL_CHAT_CONFIG.workstep_tools is True
-    assert 'workstep_bind_channel_group' in SYSTEM_PROMPT
-    assert 'session_id' in SYSTEM_PROMPT
+    assert CHANNEL_CHAT_CONFIG.system_prompt == ''
 
 
 async def test_channel_session_binding_slow_task_lookup_keeps_health_responsive(bots, monkeypatch):
@@ -1106,3 +1105,24 @@ async def test_review_input_is_consumed_before_coordinator_and_respects_whitelis
     manager._controls.review_message.reset_mock()
     await manager.handle_message(IncomingMessage(bot['id'],'denied','single','member','member','被限制的意见'))
     manager._controls.review_message.assert_not_awaited()
+
+
+async def test_rebind_bot_default_route_starts_new_project_chat_and_keeps_task_groups(bots):
+    manager, first, second, submissions, chats, adapters = bots
+    bot = await manager.create_bot({
+        "platform": "wecom", "name": "数字人入口", "app_id": "rebind-bot",
+        "secret": "secret", "enabled": True,
+        "default_target_type": "project", "default_project_id": first.id,
+    })
+    await manager.bind_group(first.id, "task-1", bot["id"], "group")
+    await manager.handle_message(IncomingMessage(bot["id"], "before", "single", "user", "user", "before"))
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        result = await client.patch('/api/channel-bots/' + bot['id'], json={
+            "default_target_type": "project", "default_project_id": second.id, "default_task_id": "",
+        })
+    assert result.status_code == 200
+    assert result.json()['enabled'] is True
+    await manager.handle_message(IncomingMessage(bot["id"], "after", "single", "user", "user", "after"))
+    assert chats[-1][:2] == (second.id, None)
+    await manager.handle_message(IncomingMessage(bot["id"], "group-message", "group", "group", "user", "task"))
+    assert submissions[-1][:2] == (first.id, "task-1")

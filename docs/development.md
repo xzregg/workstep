@@ -26,7 +26,7 @@ daemon 的专用 `ProjectDatabaseExecutor` 每个项目复用一个线程本地�
 
 ## 前端控件与样式
 
-优先用 `Button`、`Input`、`Select`、`Textarea`、`ChatInput`、`ConfirmDialog` 等共享组件，设计规则见[前端设计文档](frontend-design.md)。移动端普通可见控件统一为 32px，高点击区域和菜单项用 44px；使用 `src/mobile.css` 的 `--mobile-control-*` 变量，不在页面样式写一次性高度。消息操作按钮保持紧凑；图标按钮要有明确内边距。新增文案先写 `zh-CN.ts`，所有词典键集合保持一致且非空。
+优先用 `Button`、`Input`、`Select`、`Textarea`、`ChatInput`、`ConfirmDialog` 等共享组件，设计规则见[统一设计规范](../DESIGN.md)。移动端普通可见控件统一为 32px，高点击区域和菜单项用 44px；使用 `src/mobile.css` 的 `--mobile-control-*` 变量，不在页面样式写一次性高度。消息操作按钮保持紧凑；图标按钮要有明确内边距。新增文案先写 `zh-CN.ts`，所有词典键集合保持一致且非空。
 
 组件新增请求前检查页面、父级和 store 是否已有同一请求；合并重叠 effect 或复用去重的 store action。行为测试跟随拥有状态和请求的组件，页面测试组装。
 

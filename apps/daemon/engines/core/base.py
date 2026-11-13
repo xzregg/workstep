@@ -72,9 +72,10 @@ async def sdk_turn_watchdog(
 
     SDK engines (Claude / Qoder) keep the session open after responding, so a
     finished step would hang forever waiting for a stream-end event. After a
-    turn's ``result`` arrives, the watchdog closes the session immediately
-    (``on_idle()`` → stdin EOF → CLI exits gracefully → stream-end frame →
-    step finalizes) **unless** the live insert queue still has pending
+    turn's ``result`` arrives, the watchdog ends the consumer immediately
+    (``on_idle()`` and ``disconnect()``). Persistent adapters retain the native
+    transport on normal turns and drain EOF for inserted turns, **unless**
+    the live insert queue still has pending
     messages (``pending_injection()``). A pending message is consumed into a
     follow-up turn; the watchdog waits for that turn's ``result`` and
     re-evaluates. No grace window is applied: a finished reply ends the step

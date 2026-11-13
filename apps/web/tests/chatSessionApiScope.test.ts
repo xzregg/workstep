@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { chatSessionApi } from '../src/api/conversations'
 
-test('chat speed uses native service tier values and omits inherited defaults', async () => {
+test('shared config persists native speed values and explicit default clearing', async () => {
   const originalFetch = globalThis.fetch
   const bodies: Record<string, unknown>[] = []
   globalThis.fetch = async (_input, init) => {
@@ -12,9 +12,9 @@ test('chat speed uses native service tier values and omits inherited defaults', 
   }
   try {
     for (const tier of ['', 'default', 'priority', 'ultrafast']) {
-      await chatSessionApi.chat('s', 'p', 'hi', 'key', { service_tier: tier })
+      await chatSessionApi.updateExecutionConfig('s', 'p', { service_tier: tier })
     }
-    assert.equal(Object.hasOwn(bodies[0], 'service_tier'), false)
+    assert.equal(bodies[0].service_tier, '')
     assert.deepEqual(bodies.slice(1).map(body => body.service_tier), ['default', 'priority', 'ultrafast'])
   } finally {
     globalThis.fetch = originalFetch

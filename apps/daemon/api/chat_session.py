@@ -8,7 +8,8 @@ global WebSocket keyed by ``session_id`` on the ``session_chat`` channel.
 from typing import Literal
 
 from fastapi import APIRouter, Body, Header, HTTPException, Query
-from pydantic import Field
+from pydantic import ConfigDict, Field
+from models.chat_session import ChatMessage
 
 from schemas.base import BaseSchema
 
@@ -68,6 +69,10 @@ class ChatSessionHandoffRequest(BaseSchema):
 
 
 class ChatMessageRequest(BaseSchema):
+    """Execution fields remain wire-compatible; sends use the shared stored config.
+
+    Explicit endpoint changes use /handoff; model/options changes use /execution-config.
+    """
     project_id: str
     content: str
     engine: str | None = None
@@ -80,6 +85,16 @@ class ChatMessageRequest(BaseSchema):
     permission_mode: str | None = None
     plan_mode: bool | None = None
     goal_mode: bool | None = None
+
+
+class ChatExecutionConfigRequest(BaseSchema):
+    model_config = ConfigDict(extra="forbid")
+    project_id: str
+    model: str | None = None
+    fast_model: str | None = None
+    vision_model: str | None = None
+    thinking_effort: str | None = None
+    service_tier: str | None = None
 
 
 class ChatLiveMessageRequest(BaseSchema):
@@ -409,7 +424,7 @@ async def handoff_session(session_id: str, req: ChatSessionHandoffRequest):
     """Switch engines without creating another visible chat session."""
     _enforce_project_scope(req.project_id)
     try:
-        return await _run_db(
+        detail = await _run_db(
             req.project_id,
             lambda: _module().handoff_session(
                 req.project_id,
@@ -423,6 +438,33 @@ async def handoff_session(session_id: str, req: ChatSessionHandoffRequest):
                 permission_mode=req.permission_mode,
             ),
         )
+        await _module().publish_execution_config({
+            key: detail.get(key) for key in (
+                "id", "project_id", "engine", "provider_id", "model", "fast_model", "vision_model",
+                "thinking_effort", "service_tier", "execution_config_revision", "pending_handoff",
+            )
+        })
+        return detail
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
+
+
+@router.get("/{session_id}/execution-config")
+async def get_execution_config(session_id: str, project_id: str = Query(...)):
+    try:
+        return await _run_db(project_id, lambda: _module().get_execution_config(project_id, session_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
+
+
+@router.patch("/{session_id}/execution-config")
+async def update_execution_config(session_id: str, req: ChatExecutionConfigRequest):
+    try:
+        config = await _run_db(req.project_id, lambda: _module().update_execution_config(
+            req.project_id, session_id, req.model_dump(exclude_unset=True, exclude={"project_id"}),
+        ))
+        await _module().publish_execution_config(config)
+        return config
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
 
@@ -454,30 +496,36 @@ async def chat_message(
     """Queue one chat turn for a session; events stream over WebSocket."""
     _enforce_project_scope(req.project_id)
     try:
-        accepted = await _run_db(
-            req.project_id,
-            lambda: _module().submit_message(
+        def submit():
+            # A send is not a config mutation: even older clients may submit a
+            # stale engine/provider form. Resolve the complete shared endpoint
+            # in the same DB work unit that accepts this turn.
+            config = _module().get_execution_config(req.project_id, session_id)
+            accepted = _module().submit_message(
                 req.project_id,
                 session_id,
                 req.content,
                 idempotency_key,
-                engine=req.engine,
-                model=req.model,
-                fast_model=req.fast_model,
-                vision_model=req.vision_model,
-                provider_id=req.provider_id,
-                thinking_effort=req.thinking_effort,
-                service_tier=req.service_tier,
+                engine=config["engine"],
+                model=config["model"],
+                fast_model=config["fast_model"],
+                vision_model=config["vision_model"],
+                provider_id=config["provider_id"] or "",
+                thinking_effort=config["thinking_effort"],
+                service_tier=config["service_tier"],
                 permission_mode=req.permission_mode,
                 plan_mode=req.plan_mode,
                 goal_mode=req.goal_mode,
                 schedule=False,
-            ),
-        )
+            )
+            message = ChatMessage.get_or_none(ChatMessage.id == accepted.assistant_message_id, ChatMessage.session == session_id)
+            actual = {"engine": message.engine, "model": message.model} if message else {}
+            return accepted, config, actual
+        accepted, config, actual = await _run_db(req.project_id, submit)
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
     _module().start_queued_turn(accepted.turn_id)
-    return accepted.to_dict()
+    return {**accepted.to_dict(), "execution_config": config, **actual}
 
 
 @router.post("/reorder")

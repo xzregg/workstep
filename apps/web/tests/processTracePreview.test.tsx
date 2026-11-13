@@ -38,7 +38,7 @@ test('running process stays closed and previews only the latest two timeline ite
     assert.equal(container.querySelector('.process-trace-body'), null)
     assert.match(container.querySelector('.process-trace-preview')!.textContent!, /First thought/)
     assert.doesNotMatch(container.querySelector('.process-trace-preview')!.textContent!, /思考过程/)
-    assert.equal(container.querySelectorAll('.process-trace-preview-item .is-shimmer').length, 0)
+    assert.equal(container.querySelectorAll('.process-trace-preview-item .process-trace-thinking-label').length, 0)
 
     await act(async () => render([first, second, third]))
     assert.equal(container.querySelectorAll('.process-trace-preview-item').length, 2)
@@ -103,7 +103,7 @@ test('running preview stays at two compact rows on mobile', async () => {
       { type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', delta: 'Latest' },
     ]} /></I18nProvider>))
     assert.equal(container.querySelectorAll('.process-trace-preview-item').length, 2)
-    assert.equal(container.querySelectorAll('.process-trace-preview-item .is-shimmer').length, 0)
+    assert.equal(container.querySelectorAll('.process-trace-preview-item .process-trace-thinking-label').length, 0)
     assert.match(container.querySelector('.process-trace-preview')!.textContent!, /Latest/)
     assert.doesNotMatch(container.querySelector('.process-trace-preview')!.textContent!, /First/)
     assert.equal(container.querySelector('.process-trace-body'), null)
@@ -180,14 +180,66 @@ test('the collapsed preview animates as a container and respects reduced motion'
   const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
   const titleAnimation = css.match(/\.process-trace-thinking-label\.is-shimmer\s*\{[^}]*animation:\s*process-trace-shine\s+([^;]+);/s)?.[1]
   const previewRule = css.match(/\.process-trace-preview\s*\{([^}]+)\}/s)?.[1] ?? ''
+  assert.match(css, /\.process-trace-preview \.llm-tool-call-chevron\s*\{\s*display:\s*none\s*;/s)
   const previewAnimation = previewRule.match(/animation:\s*process-trace-shine\s+([^;]+);/)?.[1]
   assert.ok(titleAnimation)
   assert.equal(previewAnimation, titleAnimation)
   assert.match(previewRule, /-webkit-mask-image:\s*linear-gradient/)
   assert.match(css, /@keyframes process-trace-shine\s*\{[^}]*-webkit-mask-position:/s)
   assert.match(css, /\.process-trace-preview-track\.is-scrolling\s*\{[^}]*animation:\s*process-trace-scroll-up/s)
-  assert.match(css, /@keyframes process-trace-scroll-up\s*\{[^}]*translateY\(-20px\)/s)
+  assert.match(css, /@keyframes process-trace-scroll-up\s*\{[^}]*translateY\(-26px\)/s)
   assert.match(css, /\.process-trace-preview:not\(\[data-visible\]\)\s*\{[^}]*visibility:\s*hidden/s)
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.process-trace-preview\s*\{\s*animation:\s*none/s)
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*\}[^}]*\.process-trace-preview-track\.is-scrolling\s*\{\s*animation:\s*none/s)
+})
+
+
+test('collapsed reasoning follows the streaming tail even when the row is narrower than the text', async () => {
+  const window = new Window({ width: 390 })
+  Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const first = { type: 'REASONING_MESSAGE_CHUNK', delta: 'Beginning of thought. ' }
+  const render = (events: object[]) => root.render(<I18nProvider><ProcessTrace running events={events as never} /></I18nProvider>)
+  try {
+    await act(async () => render([first]))
+    const text = container.querySelector<HTMLElement>('.process-trace-preview-text')!
+    Object.defineProperty(text, 'scrollWidth', { configurable: true, value: 900 })
+    await act(async () => render([first, { ...first, delta: 'Latest streaming words' }]))
+    assert.equal(text.scrollLeft, 900)
+    assert.match(text.textContent!, /Latest streaming words$/)
+    assert.ok(text.classList.contains('process-trace-preview-text--tail'))
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('collapsed tools reuse expanded icons, command count and duration without showing details', async () => {
+  const window = new Window({ width: 390 })
+  Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const events = [
+    { type: 'TOOL_CALL_START', toolCallId: 'one', toolCallName: 'Bash', timestamp: 1000 },
+    { type: 'TOOL_CALL_ARGS', toolCallId: 'one', delta: JSON.stringify({ command: 'rg wake_word' }) },
+    { type: 'TOOL_CALL_RESULT', toolCallId: 'one', content: 'result', timestamp: 2000 },
+    { type: 'TOOL_CALL_START', toolCallId: 'two', toolCallName: 'WebSearch', timestamp: 2000 },
+    { type: 'TOOL_CALL_RESULT', toolCallId: 'two', content: 'result', timestamp: 3000 },
+  ]
+  try {
+    await act(async () => root.render(<I18nProvider><ProcessTrace running events={events as never} /></I18nProvider>))
+    const preview = container.querySelector('.process-trace-preview')!
+    const summary = preview.querySelector('.llm-tool-group > summary')!
+    assert.ok(summary.querySelector('.llm-tool-call-icon svg'))
+    assert.match(summary.textContent!, /2.*命令.*2/)
+    assert.doesNotMatch(preview.textContent!, /rg wake_word/)
+    assert.equal(preview.querySelector('.llm-tool-call-detail'), null)
+    const text = summary.textContent
+    await act(async () => container.querySelector<HTMLElement>('.process-trace-session-summary')!.click())
+    assert.equal(container.querySelector('.process-trace-body .llm-tool-group > summary')!.textContent, text)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
 })

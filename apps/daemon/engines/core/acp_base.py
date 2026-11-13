@@ -1,5 +1,7 @@
 """AcpEngineBase — base class for ACP-protocol engines using Python SDK."""
 
+from contextlib import aclosing
+from engines.core.session_pool import exclusive_engine_run
 import asyncio
 import base64
 import json
@@ -315,10 +317,11 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 yield self._prompt_input_event(kwargs)
             confirmed = False
             failed = False
-            async for event in self.spawn(**kwargs):
-                confirmed |= event.type == "compacted"
-                failed |= event.type == "error"
-                yield event
+            async with aclosing(self.spawn(**kwargs)) as _owned_stream:
+                async for event in _owned_stream:
+                    confirmed |= event.type == "compacted"
+                    failed |= event.type == "error"
+                    yield event
             if not confirmed and not failed:
                 yield InternalEvent(type="error", data={
                     "message": "引擎未返回压缩完成事件，无法确认上下文已压缩",
@@ -773,6 +776,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             return True
         return False
 
+    @exclusive_engine_run
     async def spawn(
         self,
         prompt: str,
@@ -844,13 +848,12 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 else dict(os.environ)
             )
             process_env.update(skill_env)
-            async with acp.spawn_agent_process(
-                handler,
-                cmd[0],
-                *cmd[1:],
-                cwd=cwd,
-                env=process_env,
+            from engines.core.acp_reuse import pooled_acp_process
+            async with pooled_acp_process(
+                self, handler, cmd, cwd=cwd, env=process_env, session_id=session_id,
+                settings=(add_dirs, config_overrides, permission_mode),
             ) as (client, process):
+                handler = self._handler
                 self._process = process
                 self._running = True
 
@@ -1193,15 +1196,16 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             spawn_kwargs["thinking_effort"] = thinking_effort
         if config_overrides:
             spawn_kwargs["config_overrides"] = config_overrides
-        async for event in self.spawn(
+        async with aclosing(self.spawn(
             prompt=guarded_prompt,
             cwd=cwd,
             model=model,
             session_id=session_id,
             images=images,
             **spawn_kwargs,
-        ):
-            yield event
+        )) as _owned_stream:
+            async for event in _owned_stream:
+                yield event
 
     @staticmethod
     def coordinator_guard(prompt: str) -> str:
@@ -1382,9 +1386,16 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         return False
 
     async def stop(self) -> None:
+        from engines.core.process_cleanup import close_subprocess, finish_cleanup
+        self._running = False
+        lease = getattr(self, '_transport_lease', None)
+        if lease is not None:
+            from engines.core.session_pool import get_session_pool
+            await get_session_pool(self.ENGINE_ID).discard(lease)
+            self._transport_lease = None
+            return
         if self._process:
-            self._process.terminate()
-            self._running = False
+            await finish_cleanup(close_subprocess(self._process))
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         logger.info("ACP inject_response: tool_use_id=%s", tool_use_id)
@@ -1392,6 +1403,15 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
     @property
     def supports_resume(self) -> bool:
         return True
+
+    @property
+    def supports_process_reuse(self) -> bool:
+        """Whether a native session can keep its transport between turns."""
+        return self._is_acp_native and self.supports_resume
+
+    @property
+    def session_pool_id(self) -> str:
+        return self.ENGINE_ID
 
     @property
     def supports_interactive(self) -> bool:

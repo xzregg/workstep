@@ -137,3 +137,37 @@ test('two streaming models download by id and selection uses the installed curre
     await act(async () => root.unmount()); await window.happyDOM.close(); Object.assign(speechApi, original)
   }
 })
+
+test('speech settings separates input output and wake, preserves output drafts and saves only voice fields', async () => {
+  const { digitalPersonApi, voiceWakeApi } = await import('../src/api/digitalPerson')
+  const { window } = installDomEnvironment()
+  const host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
+  const oldSpeech = speechApi.status, oldGet = digitalPersonApi.get, oldSave = digitalPersonApi.save, oldWake = voiceWakeApi.get
+  let current = { enabled: true, name: '小研', role: '伙伴', personality: '严谨', duties: '', avatar: 'robot' as const, greeting: '你好', voice_rate: 1, auto_speak: false }
+  digitalPersonApi.get = async () => ({...current})
+  digitalPersonApi.save = async value => { current = value as typeof current; return value }
+  voiceWakeApi.get = async () => ({keyword:'你好小研', sensitivity:'balanced', available:false, listening:false})
+  speechApi.status = async () => ({enabled:false, language:'auto', model_id:'none', languages:['auto'], service:'stopped', models:[]})
+  const switchTab = async (label: string) => act(async () => [...host.querySelectorAll<HTMLButtonElement>('[role=tab]')].find(button => button.textContent === label)!.click())
+  try {
+    await act(async () => root.render(<I18nProvider><VoiceInputSettings /></I18nProvider>))
+    assert.equal(host.querySelector('h1')!.textContent, '语音设置')
+    assert.deepEqual([...host.querySelectorAll('[role=tab]')].map(tab => tab.textContent), ['输入','输出','唤醒'])
+    await switchTab('输出')
+    const output = host.querySelector<HTMLElement>('#speech-panel-output')!
+    assert.equal(output.hidden, false)
+    await act(async () => output.querySelector<HTMLInputElement>('input[type=checkbox]')!.click())
+    await switchTab('唤醒')
+    assert.equal(host.querySelector<HTMLElement>('#speech-panel-input')!.hidden, true)
+    assert.ok(host.querySelector('#speech-panel-wake .voice-wake-settings'))
+    await switchTab('输出')
+    assert.equal(output.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked, true)
+    current.name = '已更新姓名'
+    await act(async () => output.querySelector<HTMLButtonElement>('[data-save-output]')!.click())
+    assert.equal(current.auto_speak, true)
+    assert.equal(current.name, '已更新姓名')
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+    speechApi.status = oldSpeech; digitalPersonApi.get = oldGet; digitalPersonApi.save = oldSave; voiceWakeApi.get = oldWake
+  }
+})

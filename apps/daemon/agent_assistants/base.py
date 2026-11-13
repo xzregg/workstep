@@ -342,7 +342,7 @@ class AssistantRuntime:
                 if self._config.name == "task_coordinator"
                 else config_store.get_assistant_config
             )
-            normalized_effort = reader(self._config.name).get(
+            normalized_effort = reader(self._execution_settings_name(project_id)).get(
                 "thinking_effort", ""
             ) or ""
         normalized_permission = (permission_mode or "").strip()
@@ -364,9 +364,9 @@ class AssistantRuntime:
                 status=self._turn_states[existing_turn_id]["status"],
             )
 
-        engine_id, default_model, default_fast_model = self._resolve_engine_models()
+        engine_id, default_model, default_fast_model = self._resolve_project_engine_models(project_id)
         default_vision_model = config_store.get_assistant_defaults(
-            self._config.name
+            self._execution_settings_name(project_id)
         ).get("vision_model", "") or None
         if engine:
             if self._config.validate_engine is not None:
@@ -537,6 +537,8 @@ class AssistantRuntime:
         state = self._turn_states.get(turn_id)
         if state is None:
             raise ValueError("Assistant turn not found")
+        if state.get("status") != "queued":
+            return
         session = self._sessions.get(state.get("memory_key"))
         if session is None:
             raise ValueError("Assistant session not found")
@@ -775,6 +777,9 @@ class AssistantRuntime:
         pending_insert_ids: list[str] | None = None,
     ) -> dict:
         """Persist and queue a user message for the active assistant turn."""
+        from .context_commands import reset_command
+        if reset_command(content) is not None:
+            raise ValueError("请先停止当前回复，再清空上下文")
         normalized = content.strip()
         if not normalized:
             raise ValueError("消息内容不能为空")
@@ -1184,6 +1189,15 @@ class AssistantRuntime:
             for key in inactive_keys[:overflow]:
                 self._turn_keys.pop(key, None)
 
+    def _workstep_tools_for_project(self, project_id: str) -> bool:
+        return self._config.workstep_tools
+
+    def _execution_settings_name(self, project_id: str) -> str:
+        return self._config.name
+
+    def _resolve_project_engine_models(self, project_id: str):
+        return self._resolve_engine_models()
+
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
         resolver = self._config.resolve_engine_models
         if resolver is not None:
@@ -1261,6 +1275,9 @@ class AssistantRuntime:
         """Return the system instruction that remains effective for this session."""
         return self._config.system_prompt
 
+    async def _prepare_turn_context(self, session: AssistantSession) -> None:
+        """Load asynchronous per-turn context before assembling prompt strings."""
+
     def _engine_system_prompt(self, session: AssistantSession) -> str:
         """Return fixed rules separately from the changing turn context."""
         if self._config.engine_system_prompt is not None:
@@ -1302,6 +1319,10 @@ class AssistantRuntime:
         return None
 
     # ── turn execution ──────────────────────────────────────────────────
+
+    async def _handle_context_command(self, session: AssistantSession, turn_id: str) -> bool:
+        """Return true when an assistant handled a host control without an LLM."""
+        return False
 
     async def _run_turn(
         self,
@@ -1392,6 +1413,29 @@ class AssistantRuntime:
                 self._turn_states[turn_id]["status"] = "error"
                 self._turn_states[turn_id]["error"] = str(exc)
             try:
+                if await self._handle_context_command(session, turn_id):
+                    from .context_commands import RESET_REPLY
+                    assistant_message.update(
+                        content=RESET_REPLY, status="succeeded", ended_at=utc_now().isoformat(),
+                    )
+                    await self._finish_journal(
+                        journal_ref, assistant_message,
+                        {"type": "status", "data": {"status": "succeeded"}},
+                    )
+                    turn_persisted[0] = await self._persist_session(session)
+                    user = next(m for m in session.messages if m.get("id") == turn_id)
+                    seq = await self._publish(
+                        session, turn_id, "message_started",
+                        {"content": user["content"], "role": "user", "status": "completed"}, seq,
+                    )
+                    seq = await self._publish(session, assistant_message_id, "message_started", {}, seq)
+                    await self._publish(
+                        session, assistant_message_id, "message_completed",
+                        {"status": "succeeded", "content": RESET_REPLY}, seq,
+                    )
+                    self._turn_states[turn_id]["status"] = "completed"
+                    return
+                await self._prepare_turn_context(session)
                 session.cwd = await asyncio.to_thread(
                     self._config.session_cwd_resolver, session
                 ) if self._config.session_cwd_resolver else await asyncio.to_thread(self._cwd, session.project_id)
@@ -2363,7 +2407,7 @@ class AssistantRuntime:
             permission_mode=permission_mode,
             plan_mode=plan_mode,
             goal_mode=goal_mode,
-            workstep_tools=self._config.workstep_tools,
+            workstep_tools=await asyncio.to_thread(self._workstep_tools_for_project, turn_state.get("project_id", "")),
             config_overrides=config_overrides,
             live_message_queue=turn_state.get("live_message_queue"),
             **({"system_prompt": system_prompt} if system_prompt else {}),

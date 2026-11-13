@@ -1,5 +1,6 @@
 """HermesEngine — JSON-RPC bidirectional communication."""
 
+from contextlib import aclosing
 import asyncio
 import json
 import logging
@@ -306,7 +307,7 @@ class HermesEngine(AcpEngineBase):
         config_overrides: dict | None,
         thinking_effort: str | None,
     ) -> AsyncIterator[InternalEvent]:
-        async for event in super().spawn(
+        async with aclosing(super().spawn(
             prompt=prompt,
             cwd=cwd,
             model=model,
@@ -316,19 +317,20 @@ class HermesEngine(AcpEngineBase):
             live_message_queue=live_message_queue,
             config_overrides=config_overrides,
             thinking_effort=thinking_effort,
-        ):
-            if event.type == "error" and (event.data.get("message") or "") == "Internal error":
-                # Hermes 服务端把真实原因吞成无意义的 Internal error（实测最常见
-                # 的是自身未配置供应商）；转成可行动的提示，而不是让用户干瞪眼。
-                event = InternalEvent(type="error", data={
-                    **event.data,
-                    "message": (
-                        "Hermes 内部错误（Internal error）：可能是 Hermes 自身未配置"
-                        "可用的模型供应商（与 WorkStep 供应商配置无关），请在终端运行"
-                        " `hermes model` 选择供应商，或 `hermes setup` 完成首次配置"
-                    ),
-                })
-            yield event
+        )) as _owned_stream:
+            async for event in _owned_stream:
+                if event.type == "error" and (event.data.get("message") or "") == "Internal error":
+                    # Hermes 服务端把真实原因吞成无意义的 Internal error（实测最常见
+                    # 的是自身未配置供应商）；转成可行动的提示，而不是让用户干瞪眼。
+                    event = InternalEvent(type="error", data={
+                        **event.data,
+                        "message": (
+                            "Hermes 内部错误（Internal error）：可能是 Hermes 自身未配置"
+                            "可用的模型供应商（与 WorkStep 供应商配置无关），请在终端运行"
+                            " `hermes model` 选择供应商，或 `hermes setup` 完成首次配置"
+                        ),
+                    })
+                yield event
 
     async def spawn(
         self,
@@ -343,7 +345,7 @@ class HermesEngine(AcpEngineBase):
         thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         if not session_id:
-            async for event in self._spawn_once(
+            async with aclosing(self._spawn_once(
                 prompt=prompt,
                 cwd=cwd,
                 model=model,
@@ -353,15 +355,16 @@ class HermesEngine(AcpEngineBase):
                 live_message_queue=live_message_queue,
                 config_overrides=config_overrides,
                 thinking_effort=thinking_effort,
-            ):
-                yield event
+            )) as _owned_stream:
+                async for event in _owned_stream:
+                    yield event
             return
 
         resumed_session_id = session_id
         seen_content = False
         terminal_refusal = False
         replay_drained = False
-        async for event in self._spawn_once(
+        async with aclosing(self._spawn_once(
             prompt=prompt,
             cwd=cwd,
             model=model,
@@ -371,22 +374,23 @@ class HermesEngine(AcpEngineBase):
             live_message_queue=live_message_queue,
             config_overrides=config_overrides,
             thinking_effort=thinking_effort,
-        ):
-            if event.type == "session_started" and not replay_drained:
-                # 基类刚从 load 返回、prompt 尚未发出：清掉重播 history。
-                replay_drained = True
-                self._drain_replayed_history()
-            if event.type in self._CONTENT_EVENT_TYPES:
-                seen_content = True
-            if (
-                event.type == "error"
-                and not seen_content
-                and (event.data.get("message") or "")
-                == self._RESUME_LOST_REFUSAL_MESSAGE
-            ):
-                terminal_refusal = True
-                break
-            yield event
+        )) as _owned_stream:
+            async for event in _owned_stream:
+                if event.type == "session_started" and not replay_drained:
+                    # 基类刚从 load 返回、prompt 尚未发出：清掉重播 history。
+                    replay_drained = True
+                    self._drain_replayed_history()
+                if event.type in self._CONTENT_EVENT_TYPES:
+                    seen_content = True
+                if (
+                    event.type == "error"
+                    and not seen_content
+                    and (event.data.get("message") or "")
+                    == self._RESUME_LOST_REFUSAL_MESSAGE
+                ):
+                    terminal_refusal = True
+                    break
+                yield event
         if not terminal_refusal:
             return
 
@@ -405,7 +409,7 @@ class HermesEngine(AcpEngineBase):
                 ),
             },
         )
-        async for event in self._spawn_once(
+        async with aclosing(self._spawn_once(
             prompt=prompt,
             cwd=cwd,
             model=model,
@@ -415,8 +419,9 @@ class HermesEngine(AcpEngineBase):
             live_message_queue=live_message_queue,
             config_overrides=config_overrides,
             thinking_effort=thinking_effort,
-        ):
-            yield event
+        )) as _owned_stream:
+            async for event in _owned_stream:
+                yield event
 
     def _stdout_lines(self) -> ChunkedLineReader:
         """返回与当前进程 stdout 绑定的分块行读取器（跨多次调用复用缓冲）。
@@ -627,17 +632,13 @@ class HermesEngine(AcpEngineBase):
         ]
 
     async def stop(self) -> None:
-        if self._process and self._running:
-            self._process.stdin.close()
-            try:
-                await asyncio.wait_for(self._process.wait(), timeout=3)
-            except asyncio.TimeoutError:
-                self._process.terminate()
-                try:
-                    await asyncio.wait_for(self._process.wait(), timeout=2)
-                except asyncio.TimeoutError:
-                    self._process.kill()
-            self._running = False
+        from engines.core.process_cleanup import close_subprocess, finish_cleanup
+        if getattr(self, '_transport_lease', None) is not None:
+            await super().stop()
+            return
+        self._running = False
+        if self._process:
+            await finish_cleanup(close_subprocess(self._process, close_stdin=True))
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         logger.warning("inject_response not implemented for Hermes")

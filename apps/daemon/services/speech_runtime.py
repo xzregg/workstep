@@ -5,6 +5,7 @@ import json
 import time
 
 from engines.core.stream_lines import ChunkedLineReader
+from engines.core.process_cleanup import finish_cleanup
 
 
 class SpeechRuntime:
@@ -17,13 +18,10 @@ class SpeechRuntime:
 
     async def infer(self, command, pcm, session_id, final):
         async with self.lock:
-            if self.process is None or self.process.returncode is not None:
-                self.process = await asyncio.create_subprocess_exec(*command,
-                    stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL)
-                self.reader = ChunkedLineReader(self.process.stdout)
-            proc = self.process
             try:
+                if self.process is None or self.process.returncode is not None:
+                    await finish_cleanup(self._start(command))
+                proc = self.process
                 proc.stdin.write((json.dumps({'audio': base64.b64encode(pcm).decode(),
                                               'session_id': session_id, 'final': final}) + '\n').encode())
                 await asyncio.wait_for(proc.stdin.drain(), 15)
@@ -36,19 +34,32 @@ class SpeechRuntime:
                 self.last_used = time.monotonic()
                 return str(result['text'])[:16000]
             except BaseException as error:
-                if proc.returncode is None:
-                    try:
-                        proc.kill()
-                    except ProcessLookupError:
-                        pass
-                await proc.wait()
-                self.process = None
-                self.reader = None
+                await finish_cleanup(self._stop_locked())
                 if isinstance(error, TimeoutError):
                     raise ValueError('语音识别超时，请重试') from error
                 raise
 
+    async def _start(self, command):
+        self.process = await asyncio.create_subprocess_exec(*command,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL)
+        self.reader = ChunkedLineReader(self.process.stdout)
+
+    async def _stop_locked(self):
+        proc, self.process = self.process, None
+        self.reader = None
+        if proc:
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            await proc.wait()
+
     async def close(self):
+        await finish_cleanup(self._close())
+
+    async def _close(self):
         # Interrupt only this recording's pipe, never another user's decoder.
         proc = self.process
         if proc and proc.returncode is None:
@@ -57,7 +68,5 @@ class SpeechRuntime:
             except ProcessLookupError:
                 pass
         async with self.lock:
-            proc, self.process = self.process, None
-            self.reader = None
-            if proc:
-                await proc.wait()
+            # Recheck after the lock: a worker may have finished spawning.
+            await self._stop_locked()

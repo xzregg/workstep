@@ -21,6 +21,7 @@ import { useTaskStore } from '../stores/taskStore'
 import { useWorkflowGenStore } from '../stores/workflowGenStore'
 import { useTaskDraftStore } from '../stores/taskDraftStore'
 import { CHAT_SESSION_CHANNELS, useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import { useChatExecutionConfigStore } from '../stores/chatExecutionConfigStore'
 import { useRecentActivityStore } from '../stores/recentActivityStore'
 import { useProjectStore } from '../stores/projectStore'
 import { completionNotice, notificationUrl, notifyCompletion, unwatchPendingCompletion, completionScopeName,
@@ -268,6 +269,7 @@ export function useWebSocket() {
           if (!active || wsRef.current !== ws) return
           try {
             const parsed = JSON.parse(event.data)
+            useChatExecutionConfigStore.getState().handleWsEvent(parsed)
             if (parsed.type === 'pong') {
               if (parsed.nonce === heartbeatNonce && heartbeatTimeout) {
                 if (heartbeatStartedAt !== null)

@@ -603,12 +603,26 @@ class BotManager:
         kind = "task" if binding else bot["default_target_type"]
         project_id = binding["project_id"] if binding else bot["default_project_id"]
         task_id = binding["task_id"] if binding else bot["default_task_id"]
+        # Explicit task groups keep their existing owner. Digital-person bindings
+        # only redirect selected peers; unrelated conversations retain the bot route.
+        from services.digital_person_channels import get_bindings
+        from services.digital_person import get_profile
+        profile, peers = await asyncio.gather(asyncio.to_thread(get_profile), asyncio.to_thread(get_bindings))
+        if kind != 'task' and profile.enabled and any(
+            peer['bot_id'] == message.bot_id and peer['conversation_type'] == message.conversation_type
+            and peer['conversation_id'] == message.conversation_id for peer in peers
+        ):
+            from services.customization_workspace import ensure_default_workspace
+            home = await ensure_default_workspace(self._project_manager)
+            kind, project_id, task_id = 'project', home.id, ''
         if not kind or not project_id:
             return
         adapter = self._adapters.get(message.bot_id)
         if not adapter:
             return
-        review_reply = await self._controls.review_message(message)
+        from agent_assistants.context_commands import reset_command
+        review_reply = (None if reset_command(message.text) is not None
+                        else await self._controls.review_message(message))
         if review_reply is not None:
             await adapter.send_text(message, review_reply)
             return
@@ -635,7 +649,13 @@ class BotManager:
                     project = self._project_manager.get_project_by_id(project_id)
                     if project is None:
                         raise ValueError("项目不存在")
-                    message = replace(message, text=await incoming_content(project, adapter, message), quote=None)
+                    remainder = reset_command(message.text)
+                    media_message = replace(message, text=remainder) if remainder is not None else message
+                    content = await incoming_content(project, adapter, media_message)
+                    # Quote wrappers must not hide a leading host control.
+                    if remainder is not None:
+                        content = f"/clear\n{content}".strip()
+                    message = replace(message, text=content, quote=None)
                 if kind == "task":
                     await self._validate_target("task", project_id, task_id)
                     reply = await self._task_reply(
@@ -647,6 +667,9 @@ class BotManager:
                     async with self._config_lock:
                         latest = await self._load()
                     session_id = latest["sessions"].get(session_key)
+                    source_project = latest["session_sources"].get(session_id, {}).get("project_id")
+                    if source_project and source_project != project_id:
+                        session_id = None
                     reported_group_name = message.conversation_name
                     if session_id and message.conversation_type == "group" and not reported_group_name:
                         def existing_title(_project):

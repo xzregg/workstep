@@ -1,3 +1,4 @@
+import { closeFilePreviewWindow } from '../utils/filePreviewNavigation'
 import { useSearchParams } from 'react-router-dom'
 import ArtifactPreview from '../components/ArtifactPreview'
 import Button from '../components/Button'
@@ -20,7 +21,7 @@ export default function FilePreviewPage() {
     return (
       <div className="standalone-preview-empty">
         <span>{t('artifact.missingPath')}</span>
-        <Button variant="ghost" onClick={() => window.close()}>{t('common.close')}</Button>
+        <Button variant="ghost" onClick={closeFilePreviewWindow}>{t('common.close')}</Button>
       </div>
     )
   }
@@ -34,7 +35,7 @@ export default function FilePreviewPage() {
           line={Number.isFinite(line) ? line : undefined}
           projectId={projectId}
           standalone
-          onClose={() => window.close()}
+          onClose={closeFilePreviewWindow}
         />
       </section>
     </main>

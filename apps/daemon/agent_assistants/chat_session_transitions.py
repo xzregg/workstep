@@ -13,12 +13,65 @@ from engines.core.registry import create_engine
 from models.chat_session import ChatMessage, ChatSession
 from models.fields import utc_now
 from services.chat_permissions import is_valid_permission_mode
+from services.engine_efforts import is_supported_effort
 
 logger = logging.getLogger(__name__)
 
 
 class ChatSessionTransitions:
     """Session transitions; mixed into ChatSessionModule for its runtime state."""
+
+    def get_execution_config(self, project_id: str, session_id: str) -> dict:
+        """Read one shared configuration snapshot inside the project DB executor."""
+        with self._project_ctx(project_id):
+            row = ChatSession.get_or_none(ChatSession.id == session_id)
+            if row is None:
+                raise ValueError("Chat session not found")
+            return {
+                "id": row.id, "project_id": project_id,
+                **{key: getattr(row, key) for key in (
+                    "engine", "provider_id", "model", "fast_model", "vision_model",
+                    "thinking_effort", "service_tier", "execution_config_revision",
+                )},
+                "pending_handoff": self._pending_handoff_view(row),
+            }
+
+    def update_execution_config(self, project_id: str, session_id: str, changes: dict) -> dict:
+        """Patch only explicitly changed model/options; endpoint changes use handoff."""
+        allowed = {"model", "fast_model", "vision_model", "thinking_effort", "service_tier"}
+        if set(changes) - allowed:
+            raise ValueError("Endpoint changes require handoff")
+        if changes.get("service_tier") not in {None, "", "default", "priority", "fast", "ultrafast"}:
+            raise ValueError("Invalid service tier")
+        with self._project_ctx(project_id):
+            row = ChatSession.get_or_none(ChatSession.id == session_id)
+            if row is None:
+                raise ValueError("Chat session not found")
+            if not is_supported_effort(changes.get("thinking_effort") or "", row.engine,
+                                       changes.get("model") or row.model or "", self._config.name):
+                raise ValueError("Invalid thinking effort")
+            if any(state.get("session_id") == session_id and state.get("status") in {"queued", "running", "stopping"}
+                   for state in self._turn_states.values()) or ChatMessage.select().where(
+                       ChatMessage.session == row, ChatMessage.status == "running",
+                   ).exists():
+                raise ValueError("Chat session is running")
+            changed = False
+            for key, value in changes.items():
+                value = (value or "").strip() or None
+                if getattr(row, key) != value:
+                    setattr(row, key, value)
+                    changed = True
+            if changed:
+                row.execution_config_revision += 1
+                row.updated_at = utc_now()
+                row.save()
+            return self.get_execution_config(project_id, session_id)
+
+    async def publish_execution_config(self, config: dict) -> None:
+        await self._event_bus.publish({
+            "type": "CUSTOM", "name": "workstep.chat_execution_config", "channel": "session_chat",
+            "project_id": config["project_id"], "session_id": config["id"], "value": config,
+        })
 
     def _handoff_return_state(self, row: ChatSession) -> dict | None:
         pending = _load_json(row.fork_context_json, None)
@@ -33,6 +86,22 @@ class ChatSessionTransitions:
             return None
         return state
 
+    def _pending_handoff_view(self, row: ChatSession) -> dict | None:
+        """Expose only the unsent endpoint boundary, never engine state or log content."""
+        state = self._handoff_return_state(row)
+        if state is None:
+            return None
+        pending = _load_json(row.fork_context_json, {})
+        last = (ChatMessage.select(ChatMessage.id).where(ChatMessage.session == row)
+                .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc()).first())
+        return {
+            "source_engine": state["engine"],
+            "source_provider_id": state.get("provider_id") or "",
+            "target_engine": row.engine,
+            "context_mode": pending["mode"],
+            "message_id": last.id if last else None,
+        }
+
     def _restore_handoff_endpoint(
         self, project_id: str, row: ChatSession, engine: str, provider_id: str,
     ) -> bool:
@@ -42,6 +111,7 @@ class ChatSessionTransitions:
         for field, value in state.items():
             if field != "message_count":
                 setattr(row, field, value)
+        row.execution_config_revision += 1
         row.updated_at = utc_now()
         row.save()
         session = self._sessions.get(self._session_identity(project_id, row.id)[0])
@@ -93,13 +163,17 @@ class ChatSessionTransitions:
             if row is None:
                 raise ValueError("Chat session not found")
             provider_changed = (row.provider_id or "") != normalized_provider
-            if row.engine == engine and not provider_changed:
-                raise ValueError("Target engine is already active")
             if ChatMessage.select().where(
                 ChatMessage.session == row,
                 ChatMessage.status == "running",
             ).exists():
                 raise ValueError("Chat session is running")
+            if row.engine == engine and not provider_changed:
+                # A committed response may have been lost. Repeating the endpoint
+                # request must not rebuild its thread or append another handoff.
+                pending = _load_json(row.fork_context_json, {})
+                if self._handoff_return_state(row) is None or pending.get("mode") == context_mode:
+                    return self.get_session(project_id, session_id)
             if self._restore_handoff_endpoint(project_id, row, engine, normalized_provider):
                 return self.get_session(project_id, session_id)
             return_state = self._handoff_return_state(row)
@@ -108,13 +182,14 @@ class ChatSessionTransitions:
                     field: getattr(row, field)
                     for field in (
                         "engine", "provider_id", "model", "fast_model", "vision_model",
+                        "thinking_effort", "service_tier",
                         "engine_session_id", "engine_state_json", "fork_context_mode", "fork_context_json",
                     )
                 }
                 return_state["message_count"] = ChatMessage.select().where(ChatMessage.session == row).count()
             source_engine = row.engine
             source_provider = row.provider_id or ""
-            messages = ChatRowPersistence()._load_messages(row)
+            messages = ChatRowPersistence()._load_messages(row, context_only=True)
             metadata = append_handoff_log(
                 project.workstep_dir,
                 session_id,
@@ -131,6 +206,9 @@ class ChatSessionTransitions:
             row.fast_model = fast_model or None
             row.vision_model = vision_model or None
             row.provider_id = normalized_provider or None
+            row.thinking_effort = None
+            row.service_tier = None
+            row.execution_config_revision += 1
             if permission_mode:
                 row.permission_mode = permission_mode
             row.engine_session_id = None
@@ -197,7 +275,7 @@ class ChatSessionTransitions:
             ).exists()
             if persisted_running and (not fork_message_id or context_mode == "native"):
                 raise ValueError("Chat session is running")
-            messages = ChatRowPersistence()._load_messages(source)
+            messages = ChatRowPersistence()._load_messages(source, context_only=True)
             fork_at_tail = True
             if fork_message_id:
                 selected_index = next(

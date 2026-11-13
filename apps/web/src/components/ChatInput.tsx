@@ -330,14 +330,23 @@ export default function ChatInput({
   const [configOpen, setConfigOpen] = useState(false)
   const [configFocus, setConfigFocus] = useState<'model' | 'reasoning' | null>(null)
   const reopenSignal = config?.reopenSignal ?? 0
-  const reopenSeenRef = useRef(0)
+  const reopenSeenRef = useRef(reopenSignal)
+  const configOwner = JSON.stringify([projectId, taskId, sessionId])
+  const configOwnerRef = useRef(configOwner)
   useEffect(() => {
+    if (configOwnerRef.current !== configOwner) {
+      configOwnerRef.current = configOwner
+      reopenSeenRef.current = reopenSignal
+      setConfigFocus(null)
+      setConfigOpen(false)
+      return
+    }
     if (reopenSignal > reopenSeenRef.current) {
       reopenSeenRef.current = reopenSignal
       setConfigFocus(null)
       setConfigOpen(true)
     }
-  }, [reopenSignal])
+  }, [reopenSignal, configOwner])
   const [statusOpen, setStatusOpen] = useState(false)
   const isCompact = useCompactLayout()
   const permissionMenu = useFloatingMenu()

@@ -17,6 +17,7 @@ from packaging.utils import parse_wheel_filename
 
 from services.config import CONFIG_DIR
 from services.speech_runtime import SpeechRuntime
+from engines.core.process_cleanup import finish_cleanup
 
 MODEL_ID = 'streaming-paraformer-zh-yue-en-int8'
 REVISION = '86931b152d37c908528b44d30b431c24a19770da'
@@ -488,13 +489,18 @@ class SpeechService:
         await asyncio.gather(*(worker.close() for worker in workers))
 
     async def close(self):
+        await finish_cleanup(self._close())
+
+    async def _close(self):
         self.sessions.clear()
-        if self.reaper:
-            self.reaper.cancel()
-            await asyncio.gather(self.reaper, return_exceptions=True)
-            self.reaper = None
-        await self.cancel_download()
-        await self.stop_worker()
+        try:
+            if self.reaper:
+                self.reaper.cancel()
+                await asyncio.gather(self.reaper, return_exceptions=True)
+                self.reaper = None
+            await self.cancel_download()
+        finally:
+            await self.stop_worker()
 
 
 service = SpeechService()

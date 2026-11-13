@@ -251,13 +251,7 @@ class OpenClawEngine(AcpEngineBase):
 
     async def stop(self) -> None:
         """Terminate the subprocess."""
-        if self._process and self._running:
-            self._process.terminate()
-            try:
-                await asyncio.wait_for(self._process.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                self._process.kill()
-            self._running = False
+        await super().stop()
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         """Inject response to a tool use."""

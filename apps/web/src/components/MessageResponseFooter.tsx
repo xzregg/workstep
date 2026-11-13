@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+import './MessageResponseFooter.css'
 import Icon from './Icon'
 import { firstOutputTimestamp } from '../utils/firstOutput'
 import { useEffect, useMemo, useState } from 'react'
@@ -203,6 +205,8 @@ export function formatSeconds(seconds: number): string {
 
 export interface MessageResponseFooterProps {
   content: string
+  actions?: ReactNode
+  compact?: boolean
   usage?: MessageUsage
   /** 消息原始事件流：running 且无 usage_update 时按字符数估算 token。 */
   events?: unknown[]
@@ -236,6 +240,8 @@ export default function MessageResponseFooter({
   stopped = false,
   onContinueStep,
   onFork,
+  actions,
+  compact = false,
 }: MessageResponseFooterProps) {
   const { t, locale } = useI18n()
   // 进行中或手动停止且引擎未上报 usage_update 时，按已接收事件与字符数量换算估算值。
@@ -289,11 +295,14 @@ export default function MessageResponseFooter({
   useEffect(() => { setMarqueeActive(false) }, [running])
 
   return (
-    <div className={running ? 'message-footer--running' : undefined} style={{
+    <div className={`message-response-footer${running ? ' message-footer--running' : ''}${compact ? ' message-response-footer--compact' : ''}`} style={{
       minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
       color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))',
     }}>
-      {isMobile ? (
+      {compact ? <details className="message-response-details">
+        <summary>{[engine ? engineLabel(engine,t) : '', model || ''].filter(Boolean).join(' / ') || t('digitalPerson.responseDetails')}</summary>
+        <div className="message-response-details-content">{summaryText}</div>
+      </details> : isMobile ? (
         marqueeActive ? (
           <MarqueeText
             className="footer-usage-summary footer-usage-summary--marquee"
@@ -333,6 +342,7 @@ export default function MessageResponseFooter({
           {t('footer.restart')}
         </button>
       )}
+      {!running && actions}
       {!running && onFork && (
         <Button
           variant="ghost"

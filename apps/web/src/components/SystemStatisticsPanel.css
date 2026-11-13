@@ -1,4 +1,4 @@
-/* System statistics follows ui/DESIGN/system-statistics.html. */
+/* System statistics follows the workbench rules in root DESIGN.md. */
 .statistics-page--tabs .statistics-heading { max-width: 1500px; margin: 0 auto; padding: 28px 30px 0; }
 .statistics-heading h1 { margin: 0; font-size: calc(24px * var(--font-scale)); letter-spacing: -.7px; line-height: 1.4; }
 .statistics-heading p { margin: 6px 0 0; color: var(--muted); font-size: var(--text-caption); }

@@ -8,11 +8,48 @@ import { I18nProvider } from '../src/i18n'
 import { useChatSessionActions } from '../src/hooks/useChatSessionActions'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
 
-for (const [engine, tier, expected] of [
-  ['codex_sdk', 'priority', 'priority'], ['codex', 'default', 'default'],
-  ['codex_sdk', '', undefined], ['claude', 'priority', undefined],
+for (const fallback of [false, true]) {
+  test(`sending follows the server config rather than the local default engine (${fallback ? 'live fallback' : 'normal'})`, async () => {
+    const { window } = installDomEnvironment()
+    const original = { chat: chatSessionApi.chat, list: chatSessionApi.list, sendLiveMessage: chatSessionApi.sendLiveMessage }
+    let actions!: ReturnType<typeof useChatSessionActions>
+    let requestedEngine: string | undefined
+    function Harness() {
+      actions = useChatSessionActions({
+        sessionId: 'default-engine', projectId: 'p', running: fallback,
+        // The picker uses '' for 默认（Codex）; the persisted session may still be Claude.
+        engineConfig: { engine: '', providerId: '', model: '', fastModel: '', visionModel: '', thinkingEffort: '' },
+        permissionMode: '', planMode: false, goalMode: false, effectiveEngine: 'codex_sdk',
+        onSessionIdChange: () => {}, onTitleChange: () => {},
+      })
+      return null
+    }
+    const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
+    try {
+      chatSessionApi.sendLiveMessage = async () => { throw new Error('not running') }
+      chatSessionApi.chat = async (_id, _project, _content, _key, options) => {
+        requestedEngine = options?.engine
+        return { session_id: 'default-engine', turn_id: 't', assistant_message_id: 'reply', status: 'queued', execution_config: { id: 'default-engine', project_id: 'p', engine: 'claude', provider_id: 'latest-provider', execution_config_revision: 3 } }
+      }
+      chatSessionApi.list = async () => ({ sessions: [] })
+      await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+      await act(async () => { assert.equal(await actions.sendPendingContent('continue with Codex', []), true) })
+      assert.equal(requestedEngine, undefined)
+      assert.equal(useChatSessionStore.getState().sessions['default-engine'].messages.at(-1)?.engine, 'claude')
+    } finally {
+      await act(async () => root.unmount())
+      Object.assign(chatSessionApi, original)
+      useChatSessionStore.getState().resetSession('default-engine')
+      await window.happyDOM.close()
+    }
+  })
+}
+
+for (const [engine, tier] of [
+  ['codex_sdk', 'priority'], ['codex', 'default'],
+  ['codex_sdk', ''], ['claude', 'priority'],
 ] as const) {
-  test(`chat sends speed override only for Codex (${engine}, ${tier || 'inherited'})`, async () => {
+  test(`chat does not resend stale local speed or provider (${engine}, ${tier || 'inherited'})`, async () => {
     const { window } = installDomEnvironment()
     const original = { chat: chatSessionApi.chat, list: chatSessionApi.list }
     let actions!: ReturnType<typeof useChatSessionActions>
@@ -30,13 +67,13 @@ for (const [engine, tier, expected] of [
     try {
       chatSessionApi.chat = async (_id, _project, _content, _key, options) => {
         selected = options?.service_tier
-        assert.equal(options?.provider_id, 'third-party')
+        assert.equal(options?.provider_id, undefined)
         return { session_id: 'speed', turn_id: 't', assistant_message_id: 'reply', status: 'queued' }
       }
       chatSessionApi.list = async () => ({ sessions: [] })
       await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
       await act(async () => { assert.equal(await actions.sendMessageNow('hi'), true) })
-      assert.equal(selected, expected)
+      assert.equal(selected, undefined)
     } finally {
       await act(async () => root.unmount())
       Object.assign(chatSessionApi, original)
@@ -212,7 +249,7 @@ for (const scenario of ['omitted', 'selected', 'cleared', 'live', 'fallback'] as
     try {
       chatSessionApi.chat = (async (_id, _project, _content, _key, overrides) => {
         calls.push('chat')
-        assert.equal(overrides?.provider_id, scenario === 'omitted' ? undefined : scenario === 'selected' ? 'chosen-provider' : '')
+        assert.equal(overrides?.provider_id, undefined)
         return { session_id: 'provider-session' }
       }) as typeof chatSessionApi.chat
       chatSessionApi.sendLiveMessage = (async (...args) => {

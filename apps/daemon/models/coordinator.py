@@ -18,6 +18,7 @@ class CoordinatorSession(BaseModel):
     engine_state_json = pw.TextField(null=True)
     summary = pw.TextField(null=True)
     summary_through_sequence = pw.IntegerField(null=True)
+    context_reset_sequence = pw.IntegerField(default=0)
     version = pw.IntegerField(default=1)
     status = pw.TextField(default="active")
     last_error = pw.TextField(null=True)

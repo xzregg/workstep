@@ -2,7 +2,6 @@ import './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
-import { runInNewContext } from 'node:vm'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { installDomEnvironment } from './helpers/domEnv'
@@ -13,9 +12,7 @@ import AssistantThinkingMessage from '../src/components/AssistantThinkingMessage
 import { I18nProvider } from '../src/i18n'
 
 test('message avatars match the approved preview and contain only two facial features', async () => {
-  const html = readFileSync(new URL('../../../ui/prototypes/chat-avatar/index.html', import.meta.url), 'utf8')
-  const definitions = html.slice(html.indexOf('function face('), html.indexOf('function curve('))
-  const approved = JSON.parse(JSON.stringify(runInNewContext(`${definitions}; faces`)))
+  const approved = JSON.parse(readFileSync(new URL('./fixtures/robot-avatar-approved.json', import.meta.url), 'utf8'))
   assert.deepEqual(robotFaces, approved)
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))

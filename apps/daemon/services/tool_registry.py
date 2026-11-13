@@ -45,6 +45,15 @@ class WorkstepTool:
 
 WORKSTEP_TOOLS: list[WorkstepTool] = [
     WorkstepTool(
+        name="workstep_delegate_digital_person",
+        description="Delegate authorized heavy work to a new conversation in the specified project. Returns immediately; the digital person follows completion. Use the current digital-person session as origin_session_id and a stable unique request_id to avoid duplicate work.",
+        method="POST", path="/api/digital-person/delegate",
+        parameters={"project_id":{"type":"string"},"instruction":{"type":"string"},"origin_session_id":{"type":"string"},"request_id":{"type":"string"}},
+        required=("project_id","instruction","origin_session_id","request_id"),
+        body_params=("project_id","instruction","origin_session_id","request_id"),
+        read_only=False, side_effect="Create and start a project execution conversation",
+    ),
+    WorkstepTool(
         name="workstep_list_projects",
         description=(
             "List all registered WorkStep projects with id, name, path and "

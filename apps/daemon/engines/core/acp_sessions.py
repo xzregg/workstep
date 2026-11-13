@@ -149,6 +149,8 @@ class ACPSessionProtocol:
 
     async def close_session(self, session_id: str, cwd: str | None = None) -> None:
         """session/close — close a session and release its resources."""
+        if await self._close_cached_session(session_id, cwd):
+            return
         if not self._is_acp_native:
             return None
         cwd = cwd or self._last_cwd or "."
@@ -174,6 +176,8 @@ class ACPSessionProtocol:
 
     async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
         """session/cancel — force-stop current reasoning / tool execution."""
+        if await self._close_cached_session(session_id, cwd):
+            return
         if not self._is_acp_native:
             return None
         cwd = cwd or self._last_cwd or "."
@@ -182,6 +186,15 @@ class ACPSessionProtocol:
             await client.cancel(session_id=session_id)
 
         await self._with_agent(cwd, action)
+
+    async def _close_cached_session(self, session_id, cwd):
+        from engines.core.session_pool import get_session_pool
+        pool = get_session_pool(self.session_pool_id)
+        found = any(entry.key[1] == session_id and (cwd is None or entry.key[0] == cwd)
+                    for entry in pool._entries.values())
+        if found:
+            await pool.close_session(session_id, cwd)
+        return found
 
     async def set_config_option(
         self,

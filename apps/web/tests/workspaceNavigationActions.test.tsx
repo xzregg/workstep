@@ -29,9 +29,9 @@ test('desktop rail opens existing appearance and role settings, and keeps one sc
     assert.ok(button('数据统计'), container.innerHTML)
     assert.ok(button('外观'))
     assert.ok(button('角色中心'))
-    assert.deepEqual([...container.querySelectorAll('nav > button')].slice(0, 5).map(button => button.getAttribute('aria-label')), ['数据统计', '定时任务', '数字人', '连接器', '角色中心'])
+    assert.deepEqual([...container.querySelectorAll('nav > button')].slice(0, 5).map(button => button.getAttribute('aria-label')), ['数据统计', '定时任务', '连接器', '角色中心', '自动更新 1.0.17'])
     assert.deepEqual([...container.querySelectorAll('nav > button')].slice(5).map(button => button.getAttribute('aria-label')),
-      ['自动更新 1.0.17', '外观', '设置'])
+      ['数字人', '外观', '设置'])
     const style = document.createElement('style')
     style.textContent = await readFile(new URL('../src/components/Layout.css', import.meta.url), 'utf8')
     document.head.appendChild(style)
@@ -91,7 +91,8 @@ test('rail stays outside the lists on PC and mobile keeps its original compact f
     await act(async () => root.render(<I18nProvider><MemoryRouter><WorkspaceNavigationActions onOpenSettings={() => {}} /></MemoryRouter></I18nProvider>))
     const appearance = container.querySelector<HTMLElement>('[aria-label="外观"]')!
     assert.equal(getComputedStyle(appearance).display, 'flex')
-    assert.equal(getComputedStyle(appearance).marginTop, 'auto', 'personal tools belong at the bottom of the desktop rail')
+    assert.equal(getComputedStyle(appearance).marginTop, '0px', 'personal tools belong at the bottom of the desktop rail')
+    assert.equal(getComputedStyle(container.querySelector<HTMLElement>('[aria-label="数字人"]')!).marginTop, 'auto')
     const body = document.body.appendChild(document.createElement('div'))
     body.className = 'layout-sidebar-body'
     const panel = body.appendChild(document.createElement('section'))

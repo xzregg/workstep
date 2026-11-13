@@ -220,6 +220,57 @@ async def validate_adapter(engine, root, manifest):
                 observed.add(event.type)
             await validate_mcp_connector(engine, cwd, observe)
 
+        async def session_transport_reuse():
+            # Exercise the actual isolated proxy across distinct request objects,
+            # not just a user adapter's in-process boolean claim.
+            from engines.core.custom_transport import CustomWorkerClient
+            from engines.core.custom_proxy import make_custom_engine
+            from engines.core.session_pool import get_session_pool
+            inspector = CustomWorkerClient(root)
+            try:
+                metadata = await inspector.call('describe')
+            finally:
+                await inspector.close()
+            cls = make_custom_engine(root, metadata)
+            pool = get_session_pool('custom:' + engine.ENGINE_ID)
+            first = cls()
+            sid = None
+            other_sid = None
+            try:
+                async for event in first.spawn('Reply WORKSTEP_ENGINE_OK only. Do not use tools.', cwd):
+                    check_event(event, declared_events(first))
+                    assert event.type != 'error'
+                    if event.type == 'session_started':
+                        sid = event.data['session_id']
+                assert sid, '复用必须返回原生 session ID'
+                entry = pool._entries[(cwd, sid)]
+                pid = entry.client.process.pid
+                second = cls()
+                async for event in second.spawn('Reply WORKSTEP_ENGINE_OK only. Do not use tools.', cwd, session_id=sid):
+                    assert event.type != 'error'
+                    if event.type == 'session_started':
+                        assert event.data['session_id'] == sid
+                assert pool._entries[(cwd, sid)] is entry
+                assert entry.client.process.pid == pid and entry.client.process.returncode is None
+                independent = cls()
+                async for event in independent.spawn('Reply WORKSTEP_ENGINE_OK only. Do not use tools.', cwd):
+                    assert event.type != 'error'
+                    if event.type == 'session_started':
+                        other_sid = event.data['session_id']
+                assert other_sid and other_sid != sid
+                other = pool._entries[(cwd, other_sid)]
+                assert other.client.process.pid != pid
+                await independent.close_session(other_sid, cwd)
+                assert other.client.process.returncode is not None
+                assert entry.client.process.returncode is None
+                await second.close_session(sid, cwd)
+                assert entry.client.process.returncode is not None
+            finally:
+                if sid:
+                    await pool.close_session(sid, cwd)
+                if other_sid:
+                    await pool.close_session(other_sid, cwd)
+
         await check("environment", environment)
         await check("idle_lifecycle_and_fallback", idle_methods)
         await check("adapter_unit_tests", dedicated_tests)
@@ -227,6 +278,8 @@ async def validate_adapter(engine, root, manifest):
         await check("coordinator_no_tools", coordinator, applicable=caps.supports_coordinator)
         await check("execute_downstream_review", workflow)
         await check("resume", resume, applicable=caps.supports_resume)
+        await check("session_transport_reuse", session_transport_reuse,
+                    applicable=engine.supports_process_reuse)
         await check("sessions", sessions, applicable=caps.supports_sessions)
         await check("fork", fork, applicable=caps.supports_session_fork)
         await check("mcp_connector_roundtrip", mcp_connector, applicable=caps.supports_mcp)

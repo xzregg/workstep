@@ -718,6 +718,10 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         return True
 
     @property
+    def supports_process_reuse(self) -> bool:
+        return True
+
+    @property
     def supports_resume(self) -> bool:
         return True
 

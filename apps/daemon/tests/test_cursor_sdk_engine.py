@@ -196,6 +196,9 @@ async def test_spawn_uses_documented_async_client_and_message_stream(monkeypatch
         "session_started", "agent_message_chunk", "usage_update", "done"
     ]
     assert events[1].data["text"] == "Done"
+    assert ("close_client",) not in calls
+    from engines.core.session_pool import close_session_pools
+    await close_session_pools()
     assert ("close_client",) in calls
 
 

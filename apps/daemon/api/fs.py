@@ -578,10 +578,10 @@ def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
     content_type, _ = mimetypes.guess_type(str(file_path))
     file_size = file_path.stat().st_size
     relative_path = _project_relative_path(file_path, project_id)
-    # Video bytes are streamed by the raw endpoint, never embedded in JSON.
-    if content_type and content_type.startswith('video/'):
+    # Audio/video bytes are streamed by the raw endpoint, never embedded in JSON.
+    if content_type and content_type.startswith(('video/', 'audio/')):
         return {
-            "type": "video",
+            "type": content_type.split("/", 1)[0],
             "content_type": content_type,
             "content": "",
             "file_size": file_size,
